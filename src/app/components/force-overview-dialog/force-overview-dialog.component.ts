@@ -53,6 +53,7 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
 import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
 import { SORT_OPTIONS } from '../../services/unit-search-filters.service';
+import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
 import { TaggingService } from '../../services/tagging.service';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { AdjustedPV } from '../../pipes/adjusted-pv.pipe';
@@ -310,6 +311,31 @@ export class ForceOverviewDialogComponent {
     async onForceNameClick(): Promise<void> {
         if (this.isReadOnly()) return;
         await this.forceBuilderService.promptChangeForceName(this.data.force);
+    }
+
+    /** Show formation info dialog */
+    showFormationInfo(event: MouseEvent, group: UnitGroup): void {
+        event.stopPropagation();
+        this.forceBuilderService.showFormationInfo(group);
+    }
+
+    /** Build a tooltip title for a mismatched formation */
+    getFormationMismatchTitle(group: UnitGroup): string {
+        const formation = group.formation();
+        if (!formation) return 'Formation does not match group composition';
+        const parts: string[] = [];
+        if (formation.parent) {
+            const parent = FORMATION_DEFINITIONS.find(d => d.id === formation.parent);
+            if (parent?.requirements) {
+                const parentReq = parent.requirements(group.force.gameSystem);
+                if (parentReq) parts.push(`${parent.name}: ${parentReq}`);
+            }
+        }
+        if (formation.requirements) {
+            const req = formation.requirements(group.force.gameSystem);
+            if (req) parts.push(req);
+        }
+        return parts.length > 0 ? parts.join('\n') : 'Formation does not match group composition';
     }
 
     /** Handle group name click - open rename dialog */

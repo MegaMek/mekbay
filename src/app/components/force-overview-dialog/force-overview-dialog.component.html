@@ -50,12 +50,29 @@
                 [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                 @if (!hasSingleGroup()) {
                     <div class="group-header" cdkDragHandle>
-                        <div class="group-name" [class.clickable]="!isReadOnly()" 
-                            (click)="onGroupNameClick(group)" 
-                            [title]="isReadOnly() ? '' : 'Click to rename'">{{ group.groupDisplayName() }}</div>
+                        <div class="group-name-area">
+                            <span class="group-name" [class.clickable]="!isReadOnly()" 
+                                (click)="onGroupNameClick(group)" 
+                                [title]="isReadOnly() ? '' : 'Click to rename'">{{ group.groupDisplayName() }}</span>
+                            @if (group.activeFormation()) {
+                                <span class="group-formation-wrapper">
+                                    @if (!group.isFormationAlreadyInGroupName()) {
+                                        <span class="group-formation" [class.clickable]="!isReadOnly()" (click)="onGroupNameClick(group)">{{ group.formationDisplayName() }}</span>
+                                    }
+                                    @if (group.hasValidFormation()) {
+                                    <button class="btn-formation-info" (click)="showFormationInfo($event, group)" title="Formation info">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                                    </button>
+                                    } @else {
+                                    <button class="btn-formation-info formation-mismatch" (click)="showFormationInfo($event, group)" [title]="getFormationMismatchTitle(group)">
+                                        <svg fill="currentColor" width="14" height="14" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z"/></svg>
+                                    </button>
+                                    }
+                                </span>
+                            }
+                        </div>
                         <div class="group-footer">
                             <span class="group-bv">{{ isAlphaStrike() ? 'PV' : 'BV' }}: {{ group.totalBV() | number }}</span>
-
                         </div>
                     </div>
                 }
