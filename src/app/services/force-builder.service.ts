@@ -2315,10 +2315,12 @@ export class ForceBuilderService {
             if (result.action === 'confirm') {
                 if (result.formation) {
                     group.formationLock = true;
+                    group.formation.set(result.formation);
                 } else {
                     group.formationLock = false; // This is Automatic formation!
+                    group.formation.set(null);
+                    this.assignFormationIfNeeded(group);
                 }
-                group.formation.set(result.formation);
                 if (!result.name) {
                     group.setName(undefined);
                 } else {
