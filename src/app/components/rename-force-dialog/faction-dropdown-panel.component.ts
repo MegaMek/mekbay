@@ -233,12 +233,6 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
         .era-icon.unavailable {
             opacity: 0.15;
         }
-
-        .divider {
-            border: none;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            margin: 0;
-        }
     `],
     imports: [
         DecimalPipe

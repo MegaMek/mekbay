@@ -281,10 +281,10 @@
     }
 
     &.formation-mismatch {
-        color: var(--warning-color);
+        color: red;
 
         &:hover {
-            color: var(--warning-highlight-color);
+            color: #F44;
         }
     }
 }

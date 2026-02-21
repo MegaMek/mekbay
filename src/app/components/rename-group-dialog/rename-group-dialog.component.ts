@@ -116,7 +116,19 @@ export interface RenameGroupDialogResult {
             @if (!isNoFormation(formation)) {
             @if (!isSelectedFormationValid()) {
             <div class="formation-warning">
-              Formation does not match the current group composition
+              @if (getRequirementsText(formation); as reqText) {
+                <div class="formation-warning-body">
+                  <strong>Missing requirements:</strong>
+                  @if (getParentRequirementsText(formation); as parentReqText) {
+                    <span class="formation-warning-req"><strong>{{ getParentFormationName(formation) }}:</strong> {{ parentReqText }}</span>
+                    <span class="formation-warning-req"><strong>{{ formation.name }}:</strong> {{ reqText }}</span>
+                  } @else {
+                    <span class="formation-warning-req">{{ reqText }}</span>
+                  }
+                </div>
+              } @else {
+              <span>Formation does not match the current group composition</span>
+              }
             </div>
             }
             <details class="selected-formation-accordion">
@@ -125,7 +137,7 @@ export interface RenameGroupDialogResult {
                 <svg class="expand-icon" width="16" height="16" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1l5 4-5 4z"/></svg>
               </summary>
               <div class="selected-formation-details">
-                <formation-info [formation]="formation" [gameSystem]="data.group.force.gameSystem" [unitCount]="data.group.units().length"></formation-info>
+                <formation-info [formation]="formation" [gameSystem]="data.group.force.gameSystem" [unitCount]="data.group.units().length" [isValid]="isSelectedFormationValid()"></formation-info>
               </div>
             </details>
             }
@@ -171,7 +183,7 @@ export interface RenameGroupDialogResult {
         }
 
         .formation-selector-warning {
-            color: orange;
+            color: red;
             flex-shrink: 0;
             margin-right: 6px;
         }
@@ -245,9 +257,19 @@ export interface RenameGroupDialogResult {
             padding: 6px 10px;
             margin-top: 4px;
             font-size: 0.85em;
-            color: orange;
-            background: rgba(255, 165, 0, 0.08);
-            border-left: 3px solid orange;
+            color: red;
+            background: rgba(255, 0, 0, 0.08);
+            border-left: 3px solid red;
+        }
+
+        .formation-warning-body {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .formation-warning-req {
+            display: block;
         }
 
         .formation-hint {
@@ -292,10 +314,30 @@ export class RenameGroupDialogComponent {
         return this.formationDisplayList.some(f => f.definition.id === sel.id && f.isValid);
     });
 
-    constructor() {}
+    constructor() { }
 
     /** Expose isNoFormation to the template */
     isNoFormation = isNoFormation;
+
+    /** Get requirements text for a formation definition, including parent requirements */
+    getRequirementsText(formation: FormationTypeDefinition): string | null {
+        if (!formation.requirements) return null;
+        return formation.requirements(this.data.group.force.gameSystem) || null;
+    }
+
+    /** Get parent formation requirements text */
+    getParentRequirementsText(formation: FormationTypeDefinition): string | null {
+        if (!formation.parent) return null;
+        const parent = FORMATION_DEFINITIONS.find(d => d.id === formation.parent);
+        if (!parent?.requirements) return null;
+        return parent.requirements(this.data.group.force.gameSystem) || null;
+    }
+
+    /** Get parent formation name */
+    getParentFormationName(formation: FormationTypeDefinition): string {
+        if (!formation.parent) return '';
+        return FORMATION_DEFINITIONS.find(d => d.id === formation.parent)?.name ?? '';
+    }
 
     /** Compose a display name for a formation definition */
     getDisplayName(definition: FormationTypeDefinition): string {

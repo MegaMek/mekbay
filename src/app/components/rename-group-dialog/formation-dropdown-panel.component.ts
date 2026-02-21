@@ -84,7 +84,7 @@ export interface FormationDisplayItem {
                         </div>
                         @if (expandedId() === item.definition.id) {
                             <div class="formation-option-details">
-                                <formation-info [formation]="item.definition" [gameSystem]="gameSystem()"></formation-info>
+                                <formation-info [formation]="item.definition" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="true"></formation-info>
                             </div>
                         }
                     </div>
@@ -112,7 +112,7 @@ export interface FormationDisplayItem {
                         </div>
                         @if (expandedId() === item.definition.id) {
                             <div class="formation-option-details">
-                                <formation-info [formation]="item.definition" [gameSystem]="gameSystem()"></formation-info>
+                                <formation-info [formation]="item.definition" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="false"></formation-info>
                             </div>
                         }
                     </div>
@@ -163,22 +163,19 @@ export interface FormationDisplayItem {
             color: var(--text-color-secondary);
         }
 
-        .divider {
-            border: none;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            margin: 0;
-        }
-
         .formation-option-wrapper {
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
         }
 
         .formation-option-wrapper.active {
-            background: var(--bt-yellow-background-transparent);
             border-left: 3px solid var(--bt-yellow);
         }
 
-        .formation-option-wrapper.active:hover {
+        .formation-option-wrapper.active > .formation-option {
+            background: var(--bt-yellow-background-transparent);
+        }
+
+        .formation-option-wrapper.active > .formation-option:hover {
             background: var(--bt-yellow-background-bright-transparent);
         }
 
@@ -242,12 +239,15 @@ export interface FormationDisplayItem {
         }
 
         .formation-option-wrapper.not-matching {
-            opacity: 0.6;
+            &.active {
+                border-left-color: red;
+            }
+
+            &.active > .formation-option {
+                background: rgba(255, 0, 0, 0.08);
+            }
         }
 
-        .formation-option-wrapper.not-matching .formation-option-name {
-            font-weight: 400;
-        }
     `]
 })
 export class FormationDropdownPanelComponent {

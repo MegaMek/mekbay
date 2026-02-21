@@ -67,16 +67,8 @@ export interface FormationInfoDialogData {
     template: `
         <div class="content">
             <h2 dialog-title>{{ data.formationDisplayName || data.formation.name }}</h2>
-            @if (data.isValid === false) {
-            <div class="formation-warning">
-                <svg fill="currentColor" width="16px" height="16px" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z"/>
-                </svg>
-                Formation does not match the current group composition
-            </div>
-            }
             <div dialog-content>
-                <formation-info [formation]="data.formation" [gameSystem]="data.gameSystem" [unitCount]="data.unitCount"></formation-info>
+                <formation-info [formation]="data.formation" [gameSystem]="data.gameSystem" [unitCount]="data.unitCount" [isValid]="data.isValid" [showTitle]="false"></formation-info>
             </div>
             <div dialog-actions>
                 <button (click)="close()" class="bt-button">DISMISS</button>
@@ -124,10 +116,15 @@ export interface FormationInfoDialogData {
             padding: 6px 10px;
             margin-bottom: 8px;
             font-size: 0.85em;
-            color: orange;
-            background: rgba(255, 165, 0, 0.08);
-            border-left: 3px solid orange;
+            color: red;
+            background: rgba(255, 0, 0, 0.08);
+            border-left: 3px solid red;
             text-align: left;
+        }
+
+        .formation-warning-body {
+            display: flex;
+            flex-direction: column;
         }
     `]
 })

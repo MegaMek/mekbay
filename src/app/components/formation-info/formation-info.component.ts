@@ -33,6 +33,7 @@
 
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 import { FormationTypeDefinition, FormationEffectGroup } from '../../utils/formation-type.model';
+import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
 import { PilotAbility, PILOT_ABILITIES, getAbilityDetails } from '../../models/pilot-abilities.model';
 import { CommandAbility, COMMAND_ABILITIES } from '../../models/command-abilities.model';
 import { GameSystem, RulesReference } from '../../models/common.model';
@@ -70,6 +71,7 @@ export interface ResolvedEffectGroup {
     template: `
         @if (formation(); as def) {
         <div class="formation-info">
+            @if (showTitle()) {
             <div class="formation-header">
                 <span class="formation-name">{{ def.name }}</span>
                 @if (def.exclusiveFaction) {
@@ -79,8 +81,32 @@ export interface ResolvedEffectGroup {
                     <span class="tech-badge">{{ def.techBase }}</span>
                 }
             </div>
+            }
 
             <div class="formation-description">{{ def.description }}</div>
+
+            @if (requirementsText(); as reqText) {
+                <div class="requirements-section" [class.requirements-unmet]="isValid() === false">
+                    <div class="requirements-label">
+                        @if (isValid() === false) {
+                            <svg class="requirements-warning-icon" fill="currentColor" width="14px" height="14px" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z"/>
+                            </svg>
+                        }
+                        Requirements
+                    </div>
+                    @if (parentRequirementsText(); as parentReqText) {
+                        <div class="requirements-text requirements-parent">
+                            <strong>{{ parentFormationName() }}:</strong> {{ parentReqText }}
+                        </div>
+                        <div class="requirements-text">
+                            <strong>{{ formation()!.name }}:</strong> {{ reqText }}
+                        </div>
+                    } @else {
+                        <div class="requirements-text">{{ reqText }}</div>
+                    }
+                </div>
+            }
 
             @if (def.effectDescription) {
                 <div class="effect-section">
@@ -192,6 +218,48 @@ export interface ResolvedEffectGroup {
             font-size: 0.9em;
             color: var(--text-color-secondary);
             line-height: 1.4;
+        }
+
+        .requirements-section {
+            padding: 8px 10px;
+            background: rgba(255, 255, 255, 0.04);
+            border-left: 3px solid var(--text-color-tertiary);
+        }
+
+        .requirements-section.requirements-unmet {
+            border-left-color: red;
+            background: rgba(255, 0, 0, 0.08);
+
+            .requirements-label,
+            .requirements-text {
+                color: red;
+            }
+        }
+
+        .requirements-label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.8em;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-color-secondary);
+            margin-bottom: 4px;
+        }
+
+        .requirements-warning-icon {
+            flex-shrink: 0;
+        }
+
+        .requirements-text {
+            font-size: 0.88em;
+            line-height: 1.45;
+            color: var(--text-color);
+        }
+
+        .requirements-parent {
+            margin-bottom: 2px;
         }
 
         .effect-section {
@@ -341,6 +409,36 @@ export class FormationInfoComponent {
     gameSystem = input<GameSystem>(GameSystem.ALPHA_STRIKE);
     /** Optional unit count in the group: used to compute concrete numbers for distribution labels. */
     unitCount = input<number | undefined>(undefined);
+    /** Whether the formation is valid for the current group composition. undefined = unknown / not checked. */
+    isValid = input<boolean | undefined>(undefined);
+    /** Whether to show the formation name header. Defaults to true. */
+    showTitle = input<boolean>(true);
+
+    /** Resolved requirements text for the current formation & game system. */
+    requirementsText = computed<string | null>(() => {
+        const def = this.formation();
+        if (!def?.requirements) return null;
+        return def.requirements(this.gameSystem()) || null;
+    });
+
+    /** Resolved parent formation definition (if any). */
+    private parentFormation = computed<FormationTypeDefinition | null>(() => {
+        const def = this.formation();
+        if (!def?.parent) return null;
+        return FORMATION_DEFINITIONS.find(d => d.id === def.parent) ?? null;
+    });
+
+    /** Resolved parent requirements text. */
+    parentRequirementsText = computed<string | null>(() => {
+        const parent = this.parentFormation();
+        if (!parent?.requirements) return null;
+        return parent.requirements(this.gameSystem()) || null;
+    });
+
+    /** Parent formation name for display. */
+    parentFormationName = computed<string>(() => {
+        return this.parentFormation()?.name ?? '';
+    });
 
     /** Set of expanded individual abilities, keyed by "groupIndex:abilityName". */
     private expandedAbilities = signal(new Set<string>());

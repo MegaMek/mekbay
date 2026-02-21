@@ -46,6 +46,7 @@ import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { ToastService } from '../../services/toast.service';
 import { isNoFormation } from '../../utils/formation-type.model';
+import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
 import { FormationNamerUtil } from '../../utils/formation-namer.util';
 
 
@@ -778,6 +779,25 @@ export class ForceBuilderViewerComponent {
         if (!formation || isNoFormation(formation)) return true;
         const matchingDefs = FormationNamerUtil.getAvailableFormationDefinitions(group);
         return matchingDefs.some(d => d.id === formation.id);
+    }
+
+    /** Build a tooltip title for a mismatched formation, including requirements if available. */
+    getFormationMismatchTitle(group: UnitGroup): string {
+        const formation = group.formation();
+        if (!formation) return 'Formation does not match group composition';
+        const parts: string[] = [];
+        if (formation.parent) {
+            const parent = FORMATION_DEFINITIONS.find(d => d.id === formation.parent);
+            if (parent?.requirements) {
+                const parentReq = parent.requirements(group.force.gameSystem);
+                if (parentReq) parts.push(`${parent.name}: ${parentReq}`);
+            }
+        }
+        if (formation.requirements) {
+            const req = formation.requirements(group.force.gameSystem);
+            if (req) parts.push(req);
+        }
+        return parts.length > 0 ? parts.join('\n') : 'Formation does not match group composition';
     }
 
     shareForce() {
