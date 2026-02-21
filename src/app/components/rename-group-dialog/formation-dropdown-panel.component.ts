@@ -32,7 +32,7 @@
  */
 
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
-import { FormationTypeDefinition, NO_FORMATION, NO_FORMATION_ID, isNoFormation } from '../../utils/formation-type.model';
+import { FormationTypeDefinition, NO_FORMATION, NO_FORMATION_ID } from '../../utils/formation-type.model';
 import { FormationInfoComponent } from '../formation-info/formation-info.component';
 import { GameSystem } from '../../models/common.model';
 

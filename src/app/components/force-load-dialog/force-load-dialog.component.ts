@@ -56,7 +56,7 @@ import { ForceAddModePickerDialogComponent, ForceAddModePickerData, ForceAddMode
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
-import { isNoFormation, NO_FORMATION_ID } from '../../utils/formation-type.model';
+import { NO_FORMATION_ID } from '../../utils/formation-type.model';
 
 /*
  * Author: Drake

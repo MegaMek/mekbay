@@ -38,7 +38,7 @@ import { AlphaStrikeCardComponent } from '../components/alpha-strike-card/alpha-
 import { getLayoutForUnitType } from '../components/alpha-strike-card/card-layout.config';
 import { OptionsService } from '../services/options.service';
 import { isIOS } from './platform.util';
-import { isNoFormation } from './formation-type.model';
+import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
 
 /**
  * Represents a single card to render (handles multi-card units)
@@ -382,30 +382,6 @@ export class ASPrintUtil {
             .sort((a, b) => a[0] - b[0])
             .map(([, items]) => items);
     }
-    
-    /**
-     * Computes the display label for a group (name + formation), matching
-     * the logic used in the force builder viewer.
-     */
-    private static getGroupDisplayLabel(group: UnitGroup<ASForceUnit>): string {
-        const name = group.name();
-        if (name) return name;
-        const formation = group.formation();
-        if (formation && !isNoFormation(formation)) return formation.name;
-        return '';
-    }
-
-    /**
-     * Returns the formation name to display alongside the group name,
-     * or null if it would be redundant (already shown in the display label).
-     */
-    private static getFormationSubtitle(group: UnitGroup<ASForceUnit>): string | null {
-        const formation = group.formation();
-        if (!formation || isNoFormation(formation)) return null;
-        // Don't repeat if the group name already contains the formation name
-        if (group.name()?.toLowerCase().includes(formation.name.toLowerCase())) return null;
-        return formation.name;
-    }
 
     /**
      * Creates a DOM element for a group header (name + optional formation).
@@ -416,15 +392,22 @@ export class ASPrintUtil {
 
         const nameSpan = document.createElement('span');
         nameSpan.className = 'as-group-name';
-        nameSpan.textContent = this.getGroupDisplayLabel(group);
+        nameSpan.textContent = group.groupDisplayName();
         header.appendChild(nameSpan);
 
-        const subtitle = this.getFormationSubtitle(group);
+        const formation = group.getFormation();
+        const subtitle = group.formationDisplayName();
         if (subtitle) {
             const formSpan = document.createElement('span');
             formSpan.className = 'as-group-formation';
             formSpan.textContent = subtitle;
             header.appendChild(formSpan);
+            if (!group.hasValidFormation()) {
+                const warnSpan = document.createElement('span');
+                warnSpan.className = 'as-group-warning';
+                warnSpan.textContent = '⚠ Invalid Formation';
+                header.appendChild(warnSpan);
+            }
         }
 
         return header;
@@ -527,7 +510,7 @@ export class ASPrintUtil {
                 flex-basis: 100%;
                 display: flex;
                 align-items: baseline;
-                gap: 0.15in;
+                gap: 0.06in;
                 padding: 0.06in 0.04in;
                 font-family: sans-serif;
                 color: #333;
@@ -541,9 +524,19 @@ export class ASPrintUtil {
             }
 
             .as-group-formation {
-                font-size: 9pt;
                 font-weight: 400;
                 color: #666;
+            }
+
+            .as-group-formation::before {
+                content: '·';
+                margin-right: 4px;
+            }
+
+            .as-group-warning {
+                font-weight: 600;
+                color: #000;
+                margin-left: 0.05in;
             }
 
             @media print {
@@ -607,7 +600,7 @@ export class ASPrintUtil {
                 flex-basis: 100%;
                 display: flex;
                 align-items: baseline;
-                gap: 0.15in;
+                gap: 0.05in;
                 padding: 0.06in 0.04in;
                 font-family: sans-serif;
                 color: #333;
@@ -621,9 +614,19 @@ export class ASPrintUtil {
             }
 
             .as-group-formation {
-                font-size: 9pt;
                 font-weight: 400;
                 color: #666;
+            }
+
+            .as-group-formation::before {
+                content: '·';
+                margin-right: 4px;
+            }
+
+            .as-group-warning {
+                font-weight: 600;
+                color: #000;
+                margin-left: 0.05in;
             }
 
             @media print {

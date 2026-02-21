@@ -76,14 +76,13 @@
                                 </svg>
                             </button>
                             <div class="group-name-area">
-                                <span class="group-name" (click)="promptChangeGroupName(group)">{{ getGroupDisplayLabel(group) }}</span>
-                                @if (group.formation(); as formation) {
-                                    @if (!isNoFormation(formation)) {
+                                <span class="group-name" (click)="promptChangeGroupName(group)">{{ group.groupDisplayName() }}</span>
+                                @if (group.getFormation()) {
                                     <span class="group-formation-wrapper">
-                                        @if (!groupNameContainsFormation(group)) {
+                                        @if (!group.isFormationAlreadyInGroupName()) {
                                             <span class="group-formation" (click)="promptChangeGroupName(group)">{{ group.formationDisplayName() }}</span>
                                         }
-                                        @if (isFormationMatching(group)) {
+                                        @if (group.hasValidFormation()) {
                                         <button class="btn-formation-info" (click)="showFormationInfo($event, group)" title="Formation info">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                                         </button>
@@ -93,7 +92,6 @@
                                         </button>
                                         }
                                     </span>
-                                    }
                                 }
                             </div>
                             <div class="group-footer">
@@ -113,7 +111,7 @@
                         }
                     }
                     @if (groupCollapsed && miniMode()) {
-                        <div class="mini-collapsed-indicator" (click)="toggleGroupCollapsed($event, group.id)" title="{{ group.name() }} ({{ group.units().length }} units) — click to expand">
+                        <div class="mini-collapsed-indicator" (click)="toggleGroupCollapsed($event, group.id)" title="{{ group.groupDisplayName() }} ({{ group.units().length }} units) — click to expand">
                             <svg width="14px" height="14px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" class="collapsed">
                                 <path d="M0 2l5 6 5-6z"/>
                             </svg>

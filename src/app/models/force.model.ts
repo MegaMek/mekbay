@@ -136,14 +136,50 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     sizeName = computed(() => {
         return FormationNamerUtil.getFormationSizeName(this);
     });
-    
-    formationDisplayName = computed(() => {
+
+    getFormation = computed<FormationTypeDefinition | null>(() => {
         const formation = this.formation();
-        if (!formation || isNoFormation(formation)) return null;
+        return !!formation && !isNoFormation(formation) ? formation : null;
+    });
+
+    groupDisplayName = computed<string>(() => {
+        const name = this.name();
+        if (name) {
+            return name;
+        }
+        const formation = this.getFormation();
+        if (!formation) {
+            return this.sizeName();
+        }
         return FormationNamerUtil.composeFormationDisplayName(
             formation,
             this
         );
+    });
+
+    isFormationAlreadyInGroupName = computed<boolean>(() => {   
+        const formation = this.getFormation();
+        if (!formation) return true;
+        if (this.groupDisplayName().includes(formation.name)) {
+            return true; // Avoid redundant display of formation name if it's already in the group name (e.g. "Battle Lance")
+        }
+        return false;
+    });
+    
+    formationDisplayName = computed<string | null>(() => {
+        const formation = this.getFormation();
+        if (!formation) return null;
+        return FormationNamerUtil.composeFormationDisplayName(
+            formation,
+            this
+        );
+    });
+
+    hasValidFormation = computed<boolean>(() => {
+        const formation = this.getFormation();
+        if (!formation) return true;
+        const matchingDefs = FormationNamerUtil.getAvailableFormationDefinitions(this);
+        return matchingDefs.some(d => d.id === formation.id);
     });
 }
 
@@ -225,7 +261,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         return majority;
     });
 
-    prefixFormationSizeName = computed(() => {
+    sizeNamePrefixesFormationName = computed(() => {
         const factionName = this.faction()?.name ?? '';
         const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
         return isComStarOrWoB;
@@ -520,11 +556,10 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             this.instanceId.set(instanceId);
         }
         const serializedGroups: SerializedGroup[] = this.groups().filter(g => g.units().length > 0).map(g => {
-            const formation = g.formation();
-            const formationName = (formation && !isNoFormation(formation)) ? formation.name : undefined;
+            const formation = g.getFormation();
             return {
                 id: g.id,
-                name: g.name() || formationName || undefined,
+                name: g.name() || undefined,
                 color: g.color,
                 formationId: formation?.id,
                 formationLock: g.formationLock || undefined,

@@ -79,8 +79,10 @@ export interface RenameGroupDialogResult {
               contentEditable="true"
               #inputRef
               autocomplete="off"
+              [attr.data-placeholder]="placeholderName()"
               [textContent]="data.group.name()"
               (keydown.enter)="submit()"
+              (input)="onInputCleanup($event)"
             ></div>
           </div>
           <p class="hint">If left empty, the formation name will be used</p>
@@ -314,7 +316,24 @@ export class RenameGroupDialogComponent {
         return this.formationDisplayList.some(f => f.definition.id === sel.id && f.isValid);
     });
 
+    /** Placeholder name based on the currently selected formation. */
+    placeholderName = computed<string>(() => {
+        const sel = this.selectedFormation();
+        if (sel && !isNoFormation(sel)) {
+            return FormationNamerUtil.composeFormationDisplayName(sel, this.data.group);
+        }
+        return this.data.group.sizeName() ?? 'Group';
+    });
+
     constructor() { }
+
+    /** Clear leftover <br> / whitespace so :empty placeholder works */
+    onInputCleanup(event: Event): void {
+        const el = event.target as HTMLElement;
+        if (!el.textContent?.trim()) {
+            el.innerHTML = '';
+        }
+    }
 
     /** Expose isNoFormation to the template */
     isNoFormation = isNoFormation;

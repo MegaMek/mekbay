@@ -89,7 +89,7 @@ export class FormationNamerUtil {
         return LanceTypeIdentifierUtil.identifyLanceTypes(group.units(), targetForce.techBase(), factionName, targetForce.gameSystem);
     }
 
-    public static getFormationSizeName(group: UnitGroup): ForceType | null {
+    public static getFormationSizeName(group: UnitGroup): ForceType {
         const force = group.force;
         const factionName = force.faction()?.name ?? 'Mercenary';
         const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
@@ -97,7 +97,7 @@ export class FormationNamerUtil {
         return getForceSizeName(group.units(), techBase, factionName);
     }
 
-    public static getForceSizeName(force: Force): ForceType | null {
+    public static getForceSizeName(force: Force): ForceType {
         const factionName = force.faction()?.name ?? 'Mercenary';
         const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
         const techBase = isComStarOrWoB ? '' : force.techBase();
@@ -111,7 +111,7 @@ export class FormationNamerUtil {
         definition: FormationTypeDefinition,
         group: UnitGroup,
     ): string {
-        if (group.force.prefixFormationSizeName()) {
+        if (group.force.sizeNamePrefixesFormationName() && group.sizeName()?.includes('Level')) {
             return group.sizeName() + ' - ' + definition.name;
         }
         return definition.name + ' ' + group.sizeName();

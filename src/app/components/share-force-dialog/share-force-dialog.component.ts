@@ -279,7 +279,8 @@ export class ShareForceDialogComponent {
             queryParams: {
                 gs: singleForceParams.gs || null,
                 units: singleForceParams.units,
-                name: singleForceParams.name || null
+                name: singleForceParams.name || null,
+                factionId: singleForceParams.factionId || null
             }
         });
         const cleanUrl = this.router.serializeUrl(cleanTree);

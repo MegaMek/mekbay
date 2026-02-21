@@ -769,6 +769,12 @@ hr {
             color: var(--text-color-tertiary);
             cursor: not-allowed;
         }
+
+        &[contenteditable]:empty::before {
+            content: attr(data-placeholder);
+            color: #888;
+            pointer-events: none;
+        }
     }
 
     select.field-input {

@@ -52,7 +52,7 @@
                     <div class="group-header" cdkDragHandle>
                         <div class="group-name" [class.clickable]="!isReadOnly()" 
                             (click)="onGroupNameClick(group)" 
-                            [title]="isReadOnly() ? '' : 'Click to rename'">{{ group.name() }}</div>
+                            [title]="isReadOnly() ? '' : 'Click to rename'">{{ group.groupDisplayName() }}</div>
                         <div class="group-footer">
                             <span class="group-bv">{{ isAlphaStrike() ? 'PV' : 'BV' }}: {{ group.totalBV() | number }}</span>
 

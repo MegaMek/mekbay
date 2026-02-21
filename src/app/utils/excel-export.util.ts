@@ -42,7 +42,6 @@ import type { ASForceUnit } from '../models/as-force-unit.model';
 import type { Force, UnitGroup } from '../models/force.model';
 import { GameSystem } from '../models/common.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
-import { isNoFormation } from './formation-type.model';
 
 async function loadXlsx() {
     const { utils, writeFile } = await import('xlsx');
@@ -281,9 +280,16 @@ function forceGroupsToRows(
 ): Record<string, unknown>[] {
     const rowConverter = gameSystem === GameSystem.ALPHA_STRIKE ? forceUnitToASRow : forceUnitToCBTRow;
     return groups.flatMap(group => {
-        const formation = group.formation();
-        const formationName = (formation && !isNoFormation(formation)) ? formation.name : '';
-        return group.units().map(unit => rowConverter(unit, (group.name() ?? '') + ' ' + formationName));
+        let groupName;
+        if (group.isFormationAlreadyInGroupName()) {
+            groupName = group.groupDisplayName();
+        } else {
+            groupName = group.groupDisplayName() + ' - ' + group.formationDisplayName();
+        }
+        if (group.getFormation() && !group.hasValidFormation()) {
+            groupName += ' (Invalid Formation)';
+        }
+        return group.units().map(unit => rowConverter(unit, groupName));
     });
 }
 

@@ -74,7 +74,7 @@ import { CommonModule } from '@angular/common';
     <div class="unit-scroll">
         @for (group of f.groups(); track group.id) {
             <div class="unit-group">
-                <div class="group-name">{{ group.name() }}</div>
+                <div class="group-name">{{ group.groupDisplayName() }}</div>
                 <div class="units">
                     @for (fu of group.units(); track fu.id) {
                         <div class="unit-square compact-mode" [class.destroyed]="fu.destroyed">

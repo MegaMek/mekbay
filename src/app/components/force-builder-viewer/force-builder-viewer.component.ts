@@ -45,9 +45,7 @@ import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-detai
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { ToastService } from '../../services/toast.service';
-import { isNoFormation } from '../../utils/formation-type.model';
 import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
-import { FormationNamerUtil } from '../../utils/formation-namer.util';
 
 
 /*
@@ -69,9 +67,6 @@ export class ForceBuilderViewerComponent {
     private dialogsService = inject(DialogsService);
     private injector = inject(Injector);
     private scrollableContent = viewChild<ElementRef<HTMLDivElement>>('scrollableContent');
-
-    /** Expose isNoFormation to the template */
-    isNoFormation = isNoFormation;
 
     forceUnitItems = viewChildren<ElementRef<HTMLElement>>('forceUnitItem');
     private forceSlotHeaders = viewChildren<ElementRef<HTMLElement>>('forceSlotHeader');
@@ -753,32 +748,6 @@ export class ForceBuilderViewerComponent {
     showFormationInfo(event: MouseEvent, group: UnitGroup) {
         event.stopPropagation();
         this.forceBuilderService.showFormationInfo(group);
-    }
-
-    /** Returns the text to display as the group label */
-    getGroupDisplayLabel(group: UnitGroup): string {
-        const name = group.name();
-        if (name) return name;
-        const displayName = group.formationDisplayName();
-        if (displayName) return displayName;
-        return 'Group';
-    }
-
-    /** Check whether the group's display label already shows the formation name. */
-    groupNameContainsFormation(group: UnitGroup): boolean {
-        const formation = group.formation();
-        if (!formation) return false;
-        const formationDisplayName = group.formationDisplayName()?.toLowerCase();
-        if (!formationDisplayName) return false;
-        return group.name()?.toLowerCase().includes(formationDisplayName) || false;
-    }
-
-    /** Check whether the group's current formation matches its composition. */
-    isFormationMatching(group: UnitGroup): boolean {
-        const formation = group.formation();
-        if (!formation || isNoFormation(formation)) return true;
-        const matchingDefs = FormationNamerUtil.getAvailableFormationDefinitions(group);
-        return matchingDefs.some(d => d.id === formation.id);
     }
 
     /** Build a tooltip title for a mismatched formation, including requirements if available. */

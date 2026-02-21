@@ -40,7 +40,6 @@ import { LayoutService } from './layout.service';
 import { ForceNamerUtil } from '../utils/force-namer.util';
 import { Faction } from '../models/factions.model';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
-import { FormationTypeDefinition, isNoFormation } from '../utils/formation-type.model';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
 import { firstValueFrom, Subject } from 'rxjs';
 import { RenameForceDialogComponent, RenameForceDialogData, RenameForceDialogResult } from '../components/rename-force-dialog/rename-force-dialog.component';
@@ -612,7 +611,8 @@ export class ForceBuilderService {
             units: null,
             name: null,
             instance: null,
-            operation: null
+            operation: null,
+            factionId: null
         });
     }
 
@@ -1113,11 +1113,9 @@ export class ForceBuilderService {
             group.formationLock = false; // Unlock name so it can update with new formation name
             return;
         }
+        if (group.formationLock) return; // Don't change formation if it's already locked
         const currentFormation = group.formation();
         // If the user explicitly chose "No Formation", respect that choice
-        if (isNoFormation(currentFormation)) {
-            return;
-        }
         if (currentFormation && group.formationLock) {
             // Validate existing locked formation: keep it if still valid
             const definitions = FormationNamerUtil.getAvailableFormationDefinitions(group);
@@ -1141,8 +1139,8 @@ export class ForceBuilderService {
     public showFormationInfo(group: UnitGroup): void {
         const targetForce = group.force;
         if (!targetForce) return;
-        const formation = group.formation();
-        if (!formation || isNoFormation(formation)) return;
+        const formation = group.getFormation();
+        if (!formation) return;
         const matchingDefs = FormationNamerUtil.getAvailableFormationDefinitions(group);
         const isValid = matchingDefs.some(d => d.id === formation.id);
         this.dialogsService.createDialog(FormationInfoDialogComponent, {
@@ -1357,7 +1355,8 @@ export class ForceBuilderService {
                 units: params.units,
                 name: params.name,
                 instance: params.instance,
-                operation: params.operation
+                operation: params.operation,
+                factionId: params.factionId
             });
         });
     }
@@ -1367,7 +1366,7 @@ export class ForceBuilderService {
         const op = this.currentOperation();
         if (op) {
             // Operation loaded: only emit the operation ID, no force-level params
-            return { gs: null, units: null, name: null, instance: null, operation: op.operationId };
+            return { gs: null, units: null, name: null, instance: null, operation: op.operationId, factionId: null };
         }
         const params = buildMultiForceQueryParams(this.loadedForces());
         return { ...params, operation: null };
@@ -1548,6 +1547,19 @@ export class ForceBuilderService {
             try {
                 if (forceNameParam) {
                     newForce.setName(forceNameParam);
+                }
+                // Restore faction from URL param
+                const factionIdParam = params.get('factionId');
+                if (factionIdParam) {
+                    const factionId = parseInt(factionIdParam, 10);
+                    if (!isNaN(factionId)) {
+                        const faction = this.dataService.getFactionById(factionId) ?? null;
+                        newForce.faction.set(faction);
+                        if (faction) {
+
+                            newForce.factionLock = true; // lock faction since it was explicitly set in URL
+                        }
+                    }
                 }
                 const forceUnits = this.parseUnitsFromUrl(newForce, unitsParam);
                 if (forceUnits.length > 0) {

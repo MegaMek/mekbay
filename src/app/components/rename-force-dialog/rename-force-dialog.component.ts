@@ -83,6 +83,7 @@ export interface RenameForceDialogResult {
                     autocomplete="off"
                     [textContent]="data.force.name"
                     (keydown.enter)="submit()"
+                    (input)="onInputCleanup($event)"
                     required
                 ></div>
                 <button
@@ -298,6 +299,14 @@ export class RenameForceDialogComponent {
     });
 
     constructor() { }
+
+    /** Clear leftover <br> / whitespace so :empty placeholder works */
+    onInputCleanup(event: Event): void {
+        const el = event.target as HTMLElement;
+        if (!el.textContent?.trim()) {
+            el.innerHTML = '';
+        }
+    }
 
     submit() {
         const value = this.inputRef().nativeElement.textContent?.trim() || '';
