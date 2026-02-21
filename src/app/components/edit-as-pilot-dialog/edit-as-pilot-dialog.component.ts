@@ -34,11 +34,13 @@
 import { ChangeDetectionStrategy, Component, ElementRef, inject, signal, viewChild, computed, DestroyRef, Injector } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { AS_PILOT_ABILITIES, ASPilotAbility, ASCustomPilotAbility, getAbilityLimitsForSkill, ASPilotAbilityLimits } from '../../models/as-abilities.model';
+import { PILOT_ABILITIES, PilotAbility, ASCustomPilotAbility, getAbilityLimitsForSkill, PilotAbilityLimits, getAbilityDetails } from '../../models/pilot-abilities.model';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { AbilityDropdownPanelComponent } from './ability-dropdown-panel.component';
 import { CustomAbilityDialogComponent } from './custom-ability-dialog.component';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { RulesReference, GameSystem } from '../../models/common.model';
+import { ASUnitTypeCode } from '../../models/units.model';
 
 /*
  * Author: Drake
@@ -51,6 +53,8 @@ export interface EditASPilotDialogData {
     name: string;
     skill: number;
     abilities: AbilitySelection[]; // Array of ability IDs or custom abilities
+    /** The unit's AS type code (e.g. 'BM', 'CV') for filtering abilities by unitTypeFilter. */
+    unitTypeCode?: ASUnitTypeCode;
 }
 
 export interface EditASPilotResult {
@@ -82,12 +86,12 @@ export class EditASPilotDialogComponent {
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
 
-    availableAbilities = signal<ASPilotAbility[]>(AS_PILOT_ABILITIES);
+    availableAbilities = signal<PilotAbility[]>(PILOT_ABILITIES);
     selectedAbilities = signal<(AbilitySelection | null)[]>([null, null, null]);
     openDropdown = signal<number | null>(null);
     currentSkill = signal<number>(4);
 
-    abilityLimits = computed<ASPilotAbilityLimits>(() => {
+    abilityLimits = computed<PilotAbilityLimits>(() => {
         return getAbilityLimitsForSkill(this.currentSkill());
     });
 
@@ -136,7 +140,7 @@ export class EditASPilotDialogComponent {
     }
 
     /** Get display info for any ability selection */
-    getAbilityDisplayInfo(ability: AbilitySelection | null): { name: string; cost: number; summary: string; isCustom: boolean; rulesInfo?: string } | null {
+    getAbilityDisplayInfo(ability: AbilitySelection | null): { name: string; cost: number; summary: string; isCustom: boolean; rulesRef?: RulesReference[]; unitTypeInvalid: boolean } | null {
         if (!ability) return null;
         
         if (this.isCustomAbility(ability)) {
@@ -144,19 +148,24 @@ export class EditASPilotDialogComponent {
                 name: ability.name,
                 cost: ability.cost,
                 summary: ability.summary,
-                isCustom: true
+                isCustom: true,
+                unitTypeInvalid: false
             };
         }
         
         const standardAbility = this.getAbilityById(ability);
         if (!standardAbility) return null;
         
+        const details = getAbilityDetails(standardAbility, GameSystem.ALPHA_STRIKE);
+        const unitTypeCode = this.data.unitTypeCode;
+        const unitTypeInvalid = !!(unitTypeCode && details.unitTypeFilter?.length && !details.unitTypeFilter.includes(unitTypeCode));
         return {
             name: standardAbility.name,
             cost: standardAbility.cost,
-            summary: standardAbility.summary[0],
+            summary: details.summary[0],
             isCustom: false,
-            rulesInfo: `${standardAbility.rulesBook}, p.${standardAbility.rulesPage}`
+            rulesRef: details.rulesRef,
+            unitTypeInvalid
         };
     }
 
@@ -178,9 +187,9 @@ export class EditASPilotDialogComponent {
         this.overlayManager.closeManagedOverlay('custom-ability-dialog');
     }
 
-    getAbilityById(id: string | null): ASPilotAbility | undefined {
+    getAbilityById(id: string | null): PilotAbility | undefined {
         if (!id) return undefined;
-        return AS_PILOT_ABILITIES.find(a => a.id === id);
+        return PILOT_ABILITIES.find(a => a.id === id);
     }
 
     isAbilitySelected(id: string): boolean {
@@ -284,13 +293,16 @@ export class EditASPilotDialogComponent {
                 closeOnOutsideClick: true,
                 panelClass: 'ability-dropdown-overlay',
                 matchTriggerWidth: true,
-                fullHeight: true
+                anchorActiveSelector: '.dropdown-option:first-child'
             }
         );
 
         componentRef.setInput('abilities', this.availableAbilities());
         componentRef.setInput('disabledIds', disabledIds);
         componentRef.setInput('remainingCost', this.remainingCost());
+        if (this.data.unitTypeCode) {
+            componentRef.setInput('unitTypeCode', this.data.unitTypeCode);
+        }
 
         // Handle standard ability selection - cleanup when dialog closes
         outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((abilityId: string) => {

@@ -315,6 +315,28 @@
     opacity: 1;
 }
 
+// Friendly/enemy alignment tint
+:host(.friendly) .unit-card,
+:host(.friendly) .unit-square {
+    border-color: rgba(var(--friendly-color), 0.4);
+    background-color: rgba(var(--friendly-color), 0.06);
+}
+
+:host(.enemy) .unit-card,
+:host(.enemy) .unit-square {
+    border-color: rgba(var(--enemy-color), 0.4);
+    background-color: rgba(var(--enemy-color), 0.06);
+}
+
+// Selected overrides alignment
+:host(.selected.friendly) .unit-card,
+:host(.selected.friendly) .unit-square,
+:host(.selected.enemy) .unit-card,
+:host(.selected.enemy) .unit-square {
+    border-color: var(--bt-yellow);
+    background-color: var(--bt-yellow-background);
+}
+
 .dirty-state {
     position: absolute;
     display: block;

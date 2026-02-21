@@ -37,10 +37,10 @@ import { AlphaStrikeUnitStats, Unit } from '../../../models/units.model';
 import { Era } from '../../../models/eras.model';
 import { DataService } from '../../../services/data.service';
 import { AsAbilityLookupService } from '../../../services/as-ability-lookup.service';
-import { AS_PILOT_ABILITIES, ASPilotAbility, ASCustomPilotAbility } from '../../../models/as-abilities.model';
+import { PILOT_ABILITIES, PilotAbility, ASCustomPilotAbility } from '../../../models/pilot-abilities.model';
 import { CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
-import { formatMovement } from '../../../models/as-common';
+import { formatMovement } from '../../../utils/as-common.util';
 
 /*
  * Author: Drake
@@ -91,9 +91,7 @@ export abstract class AsLayoutBaseComponent {
     protected readonly dataService = inject(DataService);
     protected readonly abilityLookup = inject(AsAbilityLookupService);
 
-    protected readonly pilotAbilityById = new Map<string, ASPilotAbility>(
-        AS_PILOT_ABILITIES.map((ability) => [ability.id, ability])
-    );
+    protected readonly PILOT_ABILITIES = PILOT_ABILITIES;
 
     // Common inputs
     forceUnit = input<ASForceUnit>();
@@ -359,15 +357,20 @@ export abstract class AsLayoutBaseComponent {
 
     movementDisplay = computed<string>(() => {
         const fu = this.forceUnit();
+        const isBM = this.asStats().TP === 'BM';
         if (!fu) {
             return Object.entries(this.asStats().MVm)
+                .filter(([mode]) => !isBM || (mode !== 'a' && mode !== 'g'))
                 .sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : 0))
                 .map(([mode, inches]) => formatMovement(inches, mode, this.useHex()))
                 .join('/');
         }
 
         const effectiveMv = fu.effectiveMovement();
-        const entries = this.getMovementEntries(effectiveMv);
+        let entries = this.getMovementEntries(effectiveMv);
+        if (isBM) {
+            entries = entries.filter(([mode]) => mode !== 'a' && mode !== 'g');
+        }
         if (entries.length === 0) {
             return '';
         };
@@ -449,7 +452,7 @@ export abstract class AsLayoutBaseComponent {
 
     formatPilotAbility(selection: AbilitySelection): string {
         if (typeof selection === 'string') {
-            const ability = this.pilotAbilityById.get(selection);
+            const ability = this.PILOT_ABILITIES.find(a => a.id === selection);
             return ability ? `${ability.name} (${ability.cost})` : selection;
         }
         return `${selection.name} (${selection.cost})`;

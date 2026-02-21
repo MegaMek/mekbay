@@ -102,13 +102,13 @@ unit().moveType }}</strong></div>
             <!-- Bays (matrix) -->
             @if (areaHasBays(area)) {
                 <div class="bay">
-                    @for (bay of getBaysForArea(area); let i = $index; track trackByBay(bay)) {
+                    @for (bay of getBaysForArea(area); let i = $index; track i) {
                         <unit-component-item [unit]="unit()" [comp]="bay" displayStyle="small"></unit-component-item>
                     }
                 </div>
             } @else {
                 <!-- Normal components (matrix) -->
-                @for (comp of getComponentsForArea(area); let i = $index; track trackByComp(comp)) {
+                @for (comp of getComponentsForArea(area); let i = $index; track i) {
                     <unit-component-item [unit]="unit()" [comp]="comp" displayStyle="normal"></unit-component-item>
                 }
             }
@@ -197,6 +197,12 @@ unit().moveType }}</strong></div>
 } @else {
 <span>{{ src }}</span>
 }
+}
+}
+@if (forcePacks().length > 0) {
+<span class="label muted">Force Packs: </span>
+@for (pack of forcePacks(); let i = $index; track i) {
+    <span>{{ pack }}</span>
 }
 }
 </div>

@@ -1,17 +1,18 @@
-<div class="content">
-    <h2 dialog-title>Warrior Data</h2>
-    <div dialog-content>
-        <div class="group">
-            <div class="name-wrapper">
-                <p>Name</p>
+<div class="wide-dialog">
+    <h2 class="wide-dialog-title">Warrior Data</h2>
+    <div class="wide-dialog-body">
+        <div class="form-row">
+            <div class="form-fields name-field">
+                <label class="field-label">Name</label>
                 <div class="input-wrapper">
-                    <input #nameInput type="text" class="input" maxlength="40" [value]="data.name || ''" (keydown.enter)="submit()" />
+                    <input #nameInput type="text" class="field-input" autocomplete="off" maxlength="40" [value]="data.name || ''" (keydown.enter)="submit()" />
                 </div>
             </div>
-            <div class="skill-wrapper">
-                <p>Skill</p>
+            <div class="form-fields skill-field">
+                <label class="field-label">Skill</label>
                 <div class="input-wrapper">
-                    <input #skillInput type="number" class="input" [value]="data.skill" [placeholder]="data.skill"
+                    <input #skillInput type="number" class="field-input" [value]="data.skill" [placeholder]="data.skill"
+                        autocomplete="off"
                         min="0" max="8" (keydown.enter)="submit()" (input)="onSkillChange($event)" />
                 </div>
             </div>
@@ -40,6 +41,7 @@
                     <div class="selected-ability-info corner-borders" 
                          [class.custom-ability]="displayInfo.isCustom"
                          [class.clickable]="displayInfo.isCustom"
+                         [class.unit-type-restricted]="displayInfo.unitTypeInvalid"
                          (click)="displayInfo.isCustom ? editCustomAbility(slot) : null">
                         <div class="ability-detail-header">
                             <div class="group">
@@ -60,10 +62,23 @@
                                 </svg>
                             </button>
                         </div>
-                        @if (displayInfo.rulesInfo) {
-                            <div class="ability-detail-rules">{{ displayInfo.rulesInfo }}</div>
+                        @if (displayInfo.unitTypeInvalid) {
+                            <div class="unit-type-warning">
+                                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z"/></svg>
+                                Not valid for this unit type
+                            </div>
                         }
                         <div class="ability-detail-summary">{{ displayInfo.summary }}</div>
+                        @if (displayInfo.rulesRef) {
+                            <div class="ability-detail-rules">
+                                @for (rule of displayInfo.rulesRef; let last = $last; track $index) {
+                                    {{ rule.book }}, p.{{ rule.page }}
+                                    @if (!last) {
+                                        <span class="separator"> · </span>
+                                    }
+                                }
+                            </div>
+                        }
                     </div>
                     }
                     } @else {
@@ -92,7 +107,7 @@
             }
         </div>
     </div>
-    <div dialog-actions>
+    <div class="wide-dialog-actions">
         <button (click)="submit()" class="bt-button">CONFIRM</button>
         <button (click)="close()" class="bt-button">DISMISS</button>
     </div>

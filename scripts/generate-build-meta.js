@@ -74,7 +74,7 @@ function writeBuildMeta(version, commitNumber, commitHash, branch, timestamp) {
 export const APP_VERSION = '${version}';
 export const BUILD_COMMIT_NUMBER = ${commitNumber};
 export const BUILD_COMMIT_HASH = '${commitHash}';
-export const BUILD_BRANCH = '${branch}';
+export const BUILD_BRANCH: string = '${branch}';
 export const BUILD_TIMESTAMP = '${timestamp}';
 export const APP_VERSION_STRING = '${versionString}';
 `;

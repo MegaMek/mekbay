@@ -7,6 +7,7 @@
                 <img class="logo" src="/icons/icon-192x192.png" alt="MekBay">
             } @else {
                 <img class="logo" src="/images/logo.png" alt="MekBay">
+                @if (isNextBuild) { <span class="next-badge" (click)="showNextDialog(); $event.stopPropagation()">NEXT</span> }
             }
             </div>
             <div class="searchPortal" [cdkPortalOutlet]="unitSearchPortal()"></div>

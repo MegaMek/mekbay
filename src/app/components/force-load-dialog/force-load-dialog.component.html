@@ -1,7 +1,7 @@
 @let unitDisplayName = optionsService.options().unitDisplayName;
 <base-dialog modalClass="wide" [tabs]="tabs" [activeTab]="activeTab()" (activeTabChange)="activeTab.set($event)" >
     <div dialog-header>
-        <div class="title">Load Force</div>
+        <div class="title">Load</div>
     </div>
     <div dialog-body>
         @if (!loading()) {
@@ -21,11 +21,11 @@
                     [class.active]="gameTypeFilter() === 'all'" 
                     (click)="onGameTypeFilter('all')">All</button>
                 <button class="filter-btn" 
-                    [class.active]="gameTypeFilter() === 'cbt'" 
-                    (click)="onGameTypeFilter('cbt')">Battletech</button>
+                    [class.active]="gameTypeFilter() === GameSystem.CLASSIC" 
+                    (click)="onGameTypeFilter(GameSystem.CLASSIC)">Battletech</button>
                 <button class="filter-btn" 
-                    [class.active]="gameTypeFilter() === 'as'" 
-                    (click)="onGameTypeFilter('as')">Alpha Strike</button>
+                    [class.active]="gameTypeFilter() === GameSystem.ALPHA_STRIKE" 
+                    (click)="onGameTypeFilter(GameSystem.ALPHA_STRIKE)">Alpha Strike</button>
             </div>
             @if (loading()) {
                 <div class="loading-spinner">Loading forces...</div>
@@ -34,10 +34,16 @@
             } @else {
                 <div class="force-list">
                     @for (force of filteredForces(); let i = $index; track force.instanceId) {
+                    @defer (on viewport) {
                     <div class="force-entry" [class.selected]="selectedForce() === force" (click)="selectForce(force)"
                         tabindex="0">
                         <div class="force-header">
-                            <span class="force-name">{{ force.name }}</span>
+                            <div class="faction-name-wrapper">
+                                @if (force.factionId | factionImg; as factionImgUrl) {
+                                    <img [src]="factionImgUrl" class="faction-icon" />
+                                }
+                                <div class="force-name">{{ force.name }}</div>
+                            </div>
                             <div class="force-info">                                
                                 <span class="force-timestamp">
                                     <span class="game-type-badge" [class.as]="force.type === 'as'">{{ getGameTypeLabel(force.type) }}</span>
@@ -67,7 +73,11 @@
                         <div class="unit-scroll">
                             @for (group of force.groups; let gi = $index; track gi) {
                             <div class="unit-group">
-                                <div class="group-name">{{ group.name }}</div>
+                                <div class="group-name">{{ getGroupName(group) }}
+                                    @if (getGroupFormationName(group); as fName) {
+                                        <span class="group-formation">{{ fName }}</span>
+                                    }
+                                </div>
                                 <div class="units">
                                     @for (unitEntry of group.units; let i = $index; track i) {
                                     <div class="unit-square compact-mode" [class.destroyed]="unitEntry.destroyed" [class.missing]="!unitEntry.unit">
@@ -89,9 +99,12 @@
                             }
                         </div>
                     </div>
+                    } @placeholder {
+                    <div class="force-entry-placeholder"></div>
+                    }
                     }
                 </div>
-            }   
+            }
         }
         @if (activeTab() === 'Force Packs') {
             @if (filteredPacks().length === 0) {
@@ -99,6 +112,7 @@
             } @else {
             <div class="force-list"> 
                     @for (pack of filteredPacks(); let i = $index; track i) {
+                    @defer (on viewport) {
                     <div class="force-entry" [class.selected]="selectedPack() === pack" (click)="selectPack(pack)" tabindex="0">
                         <div class="force-header">
                             <span class="force-name">
@@ -129,14 +143,72 @@
                             </div>
                         </div>
                     </div>
+                    } @placeholder {
+                    <div class="force-entry-placeholder"></div>
+                    }
+                    }
+                </div>
+            }
+        }
+        @if (activeTab() === 'Operations') {
+            <div class="filter-bar">
+                <button class="filter-btn" 
+                    [class.active]="gameTypeFilter() === 'all'" 
+                    (click)="onGameTypeFilter('all')">All</button>
+                <button class="filter-btn" 
+                    [class.active]="gameTypeFilter() === GameSystem.CLASSIC" 
+                    (click)="onGameTypeFilter(GameSystem.CLASSIC)">Battletech</button>
+                <button class="filter-btn" 
+                    [class.active]="gameTypeFilter() === GameSystem.ALPHA_STRIKE" 
+                    (click)="onGameTypeFilter(GameSystem.ALPHA_STRIKE)">Alpha Strike</button>
+            </div>
+            @if (operationsLoading()) {
+                <div class="loading-spinner">Loading operations...</div>
+            } @else if (filteredOperations().length === 0) {
+                <div class="empty-state">No saved operations found.</div>
+            } @else {
+                <div class="force-list">
+                    @for (op of filteredOperations(); let i = $index; track op.operationId) {
+                    <div class="force-entry operation-entry" [class.selected]="selectedOperation() === op" (click)="selectOperation(op)" tabindex="0">
+                        <div class="operation-header">
+                            <div class="operation-title">
+                                <span class="operation-name">{{ op.name || 'Unnamed Operation' }}
+                                    <button class="op-edit-btn" (click)="onEditOperation(op, $event)" title="Edit name &amp; note">
+                                        <svg width="16px" height="16px" viewBox="0 -0.5 21 21" fill="currentColor"><path d="M61.9,258.010643 L45.1,258.010643 L45.1,242.095788 L53.5,242.095788 L53.5,240.106431 L43,240.106431 L43,260 L64,260 L64,250.053215 L61.9,250.053215 L61.9,258.010643 Z M49.3,249.949769 L59.63095,240 L64,244.114985 L53.3341,254.031929 L49.3,254.031929 L49.3,249.949769 Z" transform="translate(-43, -240)"/></svg>
+                                    </button>
+                                </span>
+                            </div>
+                            <div class="operation-meta">
+                                @for (gt of op.gameTypes; track gt) {
+                                    <span class="game-type-badge" [class.as]="gt === 'as'">{{ gt === 'as' ? 'AS' : 'CBT' }}</span>
+                                }
+                                <span class="operation-timestamp">
+                                    @if (op.local) {
+                                        <img src="/images/floppy.svg" class="save-state-icon" alt="Saved locally" title="Stored locally" />
+                                    }
+                                    <img [src]="op.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'" class="save-state-icon" alt="Cloud status" [title]="op.cloud ? 'Stored online' : 'Not stored online'" />
+                                    {{ op.timestamp | formatTimestamp }}
+                                </span>
+                            </div>
+                        </div>
+                        @if (op.note) {
+                            <span class="operation-note">{{ op.note }}</span>
+                        }
+                        <div class="operation-sides">
+                            <op-preview [forces]="op.forces"></op-preview>
+                        </div>
+                    </div>
                     }
                 </div>
             }
         }
     </div>
     <div dialog-footer class="footer">
-        <button class="modal-btn bt-button" (click)="onLoad();" [disabled]="!selectedForce() && !selectedPack()">LOAD</button>
-        <button class="modal-btn bt-button danger" (click)="onDelete();" [disabled]="!selectedForce()">DELETE</button>
+        <button class="modal-btn bt-button" (click)="onLoad();" [disabled]="activeTab() === 'Operations' ? !selectedOperation() : (!selectedForce() && !selectedPack())">LOAD</button>
+        @if (forceBuilderService.loadedForces().length > 0 && activeTab() !== 'Operations') {
+            <button class="modal-btn bt-button" (click)="onAdd();" [disabled]="(!selectedForce() && !selectedPack()) || isSelectedForceLoaded()">ADD</button>
+        }
+        <button class="modal-btn bt-button danger" (click)="onDelete();" [disabled]="activeTab() === 'Operations' ? !selectedOperation() : !selectedForce()">DELETE</button>
         <button class="modal-btn bt-button" (click)="onClose();">DISMISS</button>
     </div>
 </base-dialog>

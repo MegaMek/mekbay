@@ -470,6 +470,8 @@ export class Equipment {
     get availability(): String { return [this.tech.availability.sl??'X', this.tech.availability.sw??'X', this.tech.availability.clan??'X', this.tech.availability.da??'X'].join('-'); }
 
     hasFlag(flag: string): boolean { return this.flags.has(flag); }
+    hasAnyFlag(flags: string[]): boolean { return flags.some(f => this.flags.has(f)); }
+    hasAllFlags(flags: string[]): boolean { return flags.every(f => this.flags.has(f)); }
     hasMode(mode: string): boolean { return this.modes.includes(mode); }
 }
 
@@ -522,10 +524,12 @@ export class WeaponEquipment extends Equipment {
 
 export class AmmoEquipment extends Equipment {
     readonly ammo: AmmoData;
+    readonly munitionType: Set<string>;
 
     constructor(data: EquipmentRawData) {
         super({ ...data, type: 'ammo' });
         this.ammo = merge(AMMO_DEFAULTS, data.ammo);
+        this.munitionType = new Set(this.ammo.munitionType);
     }
 
     get ammoType(): AmmoType { return this.ammo.type; }
@@ -535,7 +539,6 @@ export class AmmoEquipment extends Equipment {
     get capital(): boolean { return this.ammo.capital; }
     get category(): AmmoCategory { return this.ammo.category; }
     get baseAmmo(): string | undefined { return this.ammo.baseAmmo; }
-    get munitionType(): string[] { return this.ammo.munitionType; }
     get mutatorName(): string | undefined { return this.ammo.mutatorName; }
 
     /** Returns true if kgPerShot was explicitly set (> 0) */
@@ -547,7 +550,7 @@ export class AmmoEquipment extends Equipment {
     }
 
     hasMunitionType(type: string): boolean {
-        return this.ammo.munitionType.includes(type);
+        return this.munitionType.has(type);
     }
 
     equalsAmmoTypeOnly(other: AmmoEquipment): boolean {

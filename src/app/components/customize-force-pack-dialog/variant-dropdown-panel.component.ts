@@ -34,8 +34,8 @@
 import { ChangeDetectionStrategy, Component, ElementRef, afterNextRender, inject, input, output, viewChild, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Unit } from '../../models/units.model';
+import { GameSystem } from '../../models/common.model';
 import { UnitCardCompactComponent } from '../unit-card-compact/unit-card-compact.component';
-import { GameService } from '../../services/game.service';
 import { TaggingService } from '../../services/tagging.service';
 import { TagClickEvent } from '../unit-tags/unit-tags.component';
 
@@ -50,6 +50,7 @@ import { TagClickEvent } from '../unit-tags/unit-tags.component';
                 @let isCurrent = variant.name === currentUnitName();
                 <unit-card-compact
                     [unit]="variant"
+                    [gameSystem]="gameSystem()"
                     [isOriginal]="isOriginal"
                     [isSelected]="isCurrent"
                     [showInfoButton]="true"
@@ -96,13 +97,14 @@ import { TagClickEvent } from '../unit-tags/unit-tags.component';
 })
 export class VariantDropdownPanelComponent {
     private taggingService = inject(TaggingService);
-    gameService = inject(GameService);
 
     panelContainer = viewChild<ElementRef<HTMLDivElement>>('panelContainer');
 
     variants = input.required<Unit[]>();
     originalUnitName = input<string | null>(null);
     currentUnitName = input<string | null>(null);
+    /** Game system override for correct stat display (PV vs BV). */
+    gameSystem = input<GameSystem | null>(null);
 
     selected = output<Unit>();
     infoRequested = output<Unit>();

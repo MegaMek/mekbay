@@ -130,6 +130,13 @@ export class UnitDetailsGeneralTabComponent {
     private baysForArea = computed(() => this.matrixData().baysForArea);
     private compsForArea = computed(() => this.matrixData().compsForArea);
 
+    /** Force packs that contain the current unit's chassis|type */
+    forcePacks = computed<string[]>(() => {
+        const u = this.unit();
+        if (!u) return [];
+        return this.dataService.getForcePacksForUnit(u);
+    });
+
     get weaponTypes() {
         return weaponTypes;
     }
@@ -143,10 +150,6 @@ export class UnitDetailsGeneralTabComponent {
         }
         return BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
     });
-
-    trackByBay = (bay: UnitComponent) => `${bay.n}|${bay.t}|${bay.l}`;
-    trackByComp = (comp: UnitComponent) => `${comp.n}|${comp.t}|${comp.l}`;
-
 
     formatThousands(value: number): string {
         if (value === undefined || value === null) return '';

@@ -31,7 +31,6 @@
  * affiliated with Microsoft.
  */
 
-import { DEFAULT_PILOTING_SKILL } from "../models/crew-member.model";
 import { Unit, UnitComponent } from "../models/units.model";
 
 /*

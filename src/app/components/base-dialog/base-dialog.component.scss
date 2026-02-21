@@ -198,3 +198,22 @@
 .modal.wide {
     max-width: 900px;
 }
+
+/* Compact layout for low viewport height */
+@media (max-height: 550px) {
+    .modal-header {
+        .tab-button {
+            padding: 0.3em 0.7em;
+            font-size: 0.9em;
+        }
+
+        ::ng-deep .title {
+            padding: 4px 8px;
+            font-size: 1.1em;
+        }
+    }
+
+    .modal-footer {
+        padding: 4px 8px;
+    }
+}

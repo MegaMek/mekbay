@@ -32,18 +32,19 @@
  */
 
 
-import { ChangeDetectionStrategy, Component, ElementRef, inject, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, ElementRef, inject, Injector, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { ForceBuilderService } from '../../services/force-builder.service';
+import { ComponentPortal } from '@angular/cdk/portal';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { outputToObservable } from '@angular/core/rxjs-interop';
+import { DecimalPipe } from '@angular/common';
 import { DataService } from '../../services/data.service';
-import { Force, UnitGroup } from '../../models/force.model';
-import { ForceNamerUtil } from '../../utils/force-namer.util';
-
-interface FactionDisplay {
-    name: string;
-    img: string;
-    percentage: number;
-}
+import { Force } from '../../models/force.model';
+import { Faction, FACTION_MERCENARY } from '../../models/factions.model';
+import { ForceNamerUtil, FactionDisplayInfo } from '../../utils/force-namer.util';
+import { OverlayManagerService } from '../../services/overlay-manager.service';
+import { FactionDropdownPanelComponent } from './faction-dropdown-panel.component';
+import { getForceSizeName } from '../../utils/force-type.util';
 
 
 /*
@@ -54,104 +55,108 @@ export interface RenameForceDialogData {
     hideUnset?: boolean;
 }
 
+export interface RenameForceDialogResult {
+    name: string;
+    faction: Faction | null;
+    action: 'confirm' | 'unset';
+}
+
 @Component({
     selector: 'rename-force-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
+    imports: [DecimalPipe],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
     template: `
-    <div class="content">
-      <h2 dialog-title></h2>
-      <div dialog-content>
-        <p>Force Name</p>
-        <div class="input-wrapper">
-          <div
-            class="input"
-            contentEditable="true"
-            #inputRef
-            [textContent]="data.force.name"
-            (keydown.enter)="submit()"
-            required
-          ></div>
-          <button
-            type="button"
-            class="random-button"
-            (click)="fillRandomName()"
-            aria-label="Generate random force name"
-          ></button>
-        </div>
-        @if (factionsData) {
-          <details class="faction-accordion">
-            <summary>Factions ({{ factionsData.length }})</summary>
-            <div class="faction-list">
-              @for (faction of factionsData; let isLast = $last; track faction.name) {
-                <span class="faction-item" (click)="selectFaction(faction.name)">
-                  @if (faction.img) {
-                    <img [src]="faction.img" class="faction-icon" [alt]="faction.name" />
-                  }
-                  {{ faction.name }}@if (faction.percentage < 100) { ({{ faction.percentage }}%)}@if (!isLast) {,}
-                </span>{{ !isLast ? ' ' : '' }}
-              }
+    <div class="wide-dialog">
+      <div class="wide-dialog-body">
+        <div class="form-fields">
+            <label class="field-label" for="name">{{ forceSizeName() }} Name</label>
+            <div class="input-wrapper">
+                <div
+                    class="field-input"
+                    id="name"
+                    contentEditable="true"
+                    #inputRef
+                    autocomplete="off"
+                    [textContent]="data.force.name"
+                    (keydown.enter)="submit()"
+                    (input)="onInputCleanup($event)"
+                    required
+                ></div>
+                <button
+                    type="button"
+                    class="random-button"
+                    (click)="fillRandomName()"
+                    aria-label="Generate random force name"
+                ></button>
             </div>
-          </details>
-        }
+        </div>
+
+        <div class="form-fields">
+            <label class="field-label" for="faction">Faction</label>
+            <div #factionTriggerWrapper class="input-wrapper">
+              <button id="faction" #factionTrigger class="faction-selector bt-select" (click)="toggleFactionDropdown()">
+                @if (selectedFactionDisplay(); as display) {
+                  <div class="faction-selector-content">
+                    @if (display.faction.img) {
+                      <img [src]="display.faction.img" class="faction-selector-icon" [alt]="display.faction.name" />
+                    }
+                    <div class="faction-selector-details">
+                      <div class="faction-selector-header">
+                        <span class="faction-selector-name">{{ display.faction.name }}</span>
+                        @if (display.faction.id !== FACTION_MERCENARY) {
+                          <span class="match-badge">{{ (display.matchPercentage * 100) | number:'1.0-0' }}% match</span>
+                        }
+                      </div>
+                      <div class="faction-selector-eras">
+                        @for (eraItem of display.eraAvailability; track eraItem.era.id) {
+                          @if (eraItem.era.icon) {
+                            <img class="faction-selector-era-icon"
+                                 [src]="eraItem.era.icon"
+                                 [alt]="eraItem.era.name"
+                                 [class.unavailable]="!eraItem.isAvailable" />
+                          }
+                        }
+                      </div>
+                    </div>
+                  </div>
+              } @else {
+                <span class="placeholder">No faction selected</span>
+              }
+              </button>
+              <button
+                type="button"
+                class="random-button"
+                (click)="fillRandomFaction()"
+                aria-label="Pick random faction"
+              ></button>
+            </div>
+        </div>
       </div>
-      <div dialog-actions>
+      @if (!data.force.factionLock) {
+        <p class="faction-hint">The faction will change dynamically based on force composition. Confirm to lock it in.</p>
+      }
+      <div class="wide-dialog-actions">
         <button (click)="submit()" class="bt-button">CONFIRM</button>
         @if (!data.hideUnset) {
-          <button (click)="submitEmpty()" class="bt-button">UNSET</button>
+          <button (click)="submitUnset()" class="bt-button">UNSET</button>
         }
         <button (click)="close()" class="bt-button">DISMISS</button>
       </div>
     </div>
     `,
     styles: [`
-        .content {
-            display: block;
-            max-width: 1000px;
-            text-align: center;
-        }
-
-        h2 {
-            margin-top: 8px;
-            margin-bottom: 8px;
-        }
-
-        [dialog-content] .input {
-            width: calc(90vw - 32px);
-            max-width: 500px;
-            margin-bottom: 16px;
-            font-size: 1.5em;
-            background: var(--background-input);
-            color: white;
-            border: 0;
-            border-bottom: 1px solid #666;
-            text-align: center;
-            outline: none;
-            transition: all 0.2s ease-in-out;
-            padding-left: 32px;
-            white-space: normal;
-            overflow-wrap: break-word;
-            word-break: break-word;
-        }
-
-        [dialog-content] .input:focus {
-            border-bottom: 1px solid #fff;
-            outline: none;
-        }
-
-        .input-wrapper {
-            position: relative;
-            display: inline-flex;
-            align-items: center;
-            box-sizing: border-box;
+        .unlock-icon {
+            font-size: 0.8em;
+            opacity: 0.6;
+            vertical-align: middle;
         }
 
         .random-button {
-            align-self: baseline;
+            flex-shrink: 0;
             height: 32px;
             width: 32px;
             border: none;
@@ -166,114 +171,221 @@ export interface RenameForceDialogData {
             opacity: 1;
         }
 
-        [dialog-actions] {
-            padding-top: 8px;
-            display: flex;
-            gap: 8px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-
-        [dialog-actions] button {
-            padding: 8px;
-            min-width: 100px;
-        }
-
-        .faction-accordion {
-            margin: 0 auto 16px;
-            width: 90vw;
-            max-width: 500px;
-            text-align: left;
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        .faction-accordion summary {
+        .faction-selector {
+            box-sizing: border-box;
+            flex: 1 1 auto;
+            min-width: 0;
+            padding: 10px 12px;
+            cursor: pointer;
             display: flex;
             align-items: center;
+            text-align: left;
+            font-size: 1em;
+        }
+
+        .faction-selector:hover {
+            border-color: #666;
+        }
+
+        .faction-selector-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+        }
+
+        .faction-selector-icon {
+            width: 2.4em;
+            height: 2.4em;
+            object-fit: contain;
+            flex-shrink: 0;
+        }
+
+        .faction-selector-details {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .faction-selector-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
             gap: 6px;
-            cursor: pointer;
-            padding: 8px 16px;
+            padding-right: 16px;
+        }
+
+        .faction-selector-name {
             font-weight: 600;
-            list-style: none;
         }
 
-        .faction-accordion summary::before {
-            content: '▶';
-            font-size: 0.9em;
-            transition: transform 0.2s ease-in-out;
-        }
-
-        .faction-accordion[open] summary::before {
-            content: '▼';
-        }
-
-        .faction-accordion summary::-webkit-details-marker {
-            display: none;
-        }
-
-        .faction-accordion p {
-            margin: 0;
-            padding: 0 16px 12px;
-            font-size: 0.95em;
-            line-height: 1.4;
-        }
-
-        .faction-list {
-            padding: 0 16px 12px;
-            font-size: 0.95em;
-            line-height: 1.6;
-        }
-
-        .faction-item {
-            display: inline-flex;
-            align-items: baseline;
+        .match-badge {
+            font-size: 0.8em;
+            color: var(--bt-yellow);
+            padding: 2px 6px;
+            background: rgba(240, 192, 64, 0.15);
             white-space: nowrap;
-            cursor: pointer;
-            transition: opacity 0.2s ease-in-out;
         }
 
-        .faction-item:hover {
-            opacity: 0.7;
+        .faction-selector-eras {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
         }
 
-        .faction-icon {
-            height: 1.2em;
+        .faction-selector-era-icon {
             width: 1.2em;
-            align-self: center;
-            margin-right: 2px;
+            height: 1.2em;
             object-fit: contain;
         }
 
-        .faction-separator {
-            margin-right: 4px;
+        .faction-selector-era-icon.unavailable {
+            opacity: 0.15;
+        }
+
+        .placeholder {
+            color: #888;
+        }
+
+        .faction-hint {
+            font-size: 0.85em;
+            color: var(--text-color-tertiary);
+            margin: 4px 0 0;
+            text-align: center;
         }
     `]
 })
 
 export class RenameForceDialogComponent {
-    inputRef = viewChild.required<ElementRef<HTMLDivElement>>('inputRef');
-    public dialogRef: DialogRef<string | number | null, RenameForceDialogComponent> = inject(DialogRef);
-    readonly data: RenameForceDialogData = inject(DIALOG_DATA);
-    private forceBuilder = inject(ForceBuilderService);
-    private dataService = inject(DataService);
-    factionsData = this.computeFactionsData();
+    readonly FACTION_MERCENARY = FACTION_MERCENARY;
 
-    constructor() {}
+    inputRef = viewChild.required<ElementRef<HTMLDivElement>>('inputRef');
+    factionTrigger = viewChild.required<ElementRef<HTMLButtonElement>>('factionTrigger');
+    factionTriggerWrapper = viewChild.required<ElementRef<HTMLDivElement>>('factionTriggerWrapper');
+
+    public dialogRef: DialogRef<RenameForceDialogResult | null, RenameForceDialogComponent> = inject(DialogRef);
+    readonly data: RenameForceDialogData = inject(DIALOG_DATA);
+    private dataService = inject(DataService);
+    private overlayManager = inject(OverlayManagerService);
+    private injector = inject(Injector);
+    private destroyRef = inject(DestroyRef);
+
+    selectedFaction = signal<Faction | null>(this.data.force.faction());
+
+    selectedFactionDisplay = computed<FactionDisplayInfo | null>(() => {
+        const faction = this.selectedFaction();
+        if (!faction) return null;
+        return this.factionDisplayList().find(f => f.faction.id === faction.id) ?? null;
+    });
+
+    factionDisplayList = computed<FactionDisplayInfo[]>(() => {
+        const units = this.data.force.units();
+        return ForceNamerUtil.buildFactionDisplayList(
+            units,
+            this.dataService.getFactions(),
+            this.dataService.getEras()
+        );
+    });
+
+    forceSizeName = computed(() => {
+        const units = this.data.force.units();
+        if (units.length === 0) return null;
+        const factionName = this.selectedFaction()?.name ?? 'Mercenary';
+        const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
+        const techBase = isComStarOrWoB ? '' : this.data.force.techBase();
+        return getForceSizeName(units, techBase, factionName).toUpperCase();
+    });
+
+    constructor() { }
+
+    /** Clear leftover <br> / whitespace so :empty placeholder works */
+    onInputCleanup(event: Event): void {
+        const el = event.target as HTMLElement;
+        if (!el.textContent?.trim()) {
+            el.innerHTML = '';
+        }
+    }
 
     submit() {
         const value = this.inputRef().nativeElement.textContent?.trim() || '';
-        this.dialogRef.close(value);
+        this.dialogRef.close({
+            name: value,
+            faction: this.selectedFaction(),
+            action: 'confirm'
+        });
     }
 
-    submitEmpty() {
-        this.dialogRef.close('');
+    submitUnset() {
+        this.dialogRef.close({
+            name: '',
+            faction: null,
+            action: 'unset'
+        });
     }
 
     fillRandomName() {
-        const randomName = this.forceBuilder.generateForceName();
+        const faction = this.selectedFaction();
+        const newName = ForceNamerUtil.generateForceNameForFaction(faction);
+        this.setInputText(newName);
+    }
+
+    fillRandomFaction() {
+        const units = this.data.force.units();
+        const randomFaction = ForceNamerUtil.pickRandomFaction(
+            units,
+            this.dataService.getFactions(),
+            this.dataService.getEras()
+        );
+        this.selectedFaction.set(randomFaction);
+        // Also regenerate name for the new faction
+        const newName = ForceNamerUtil.generateForceNameForFaction(randomFaction);
+        this.setInputText(newName);
+    }
+
+    toggleFactionDropdown(): void {
+        this.overlayManager.closeManagedOverlay('faction-dropdown');
+
+        const factionTriggerWrapper = this.factionTriggerWrapper();
+        if (!factionTriggerWrapper) return;
+
+        const portal = new ComponentPortal(FactionDropdownPanelComponent, null, this.injector);
+
+        const { componentRef } = this.overlayManager.createManagedOverlay(
+            'faction-dropdown',
+            factionTriggerWrapper,
+            portal,
+            {
+                closeOnOutsideClick: true,
+                panelClass: 'faction-dropdown-overlay',
+                matchTriggerWidth: true,
+                anchorActiveSelector: '.dropdown-option.active, .none-option.active'
+            }
+        );
+
+        componentRef.setInput('factions', this.factionDisplayList());
+        componentRef.setInput('selectedFactionId', this.selectedFaction()?.id ?? null);
+
+        outputToObservable(componentRef.instance.selected)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((faction: Faction | null) => {
+                this.overlayManager.closeManagedOverlay('faction-dropdown');
+                if (faction?.id === this.selectedFaction()?.id) return; // no change
+                this.selectedFaction.set(faction);
+
+                // Auto-update force name when faction is changed
+                if (faction) {
+                    const newName = ForceNamerUtil.generateForceNameForFaction(faction);
+                    this.setInputText(newName);
+                }
+            });
+    }
+
+    private setInputText(text: string): void {
         const nativeEl = this.inputRef().nativeElement;
         if (!nativeEl) return;
-        nativeEl.textContent = randomName;
+        nativeEl.textContent = text;
         nativeEl.focus();
         const range = document.createRange();
         range.selectNodeContents(nativeEl);
@@ -282,36 +394,7 @@ export class RenameForceDialogComponent {
         sel?.addRange(range);
     }
 
-    selectFaction(factionName: string) {
-        const units = this.forceBuilder.forceUnits();
-        if (!units) return;
-        const forceName = ForceNamerUtil.generateForceNameForFaction(units, factionName);
-        const nativeEl = this.inputRef().nativeElement;
-        if (!nativeEl) return;
-        nativeEl.textContent = forceName;
-        nativeEl.focus();
-    }
-
-    private computeFactionsData(): FactionDisplay[] | null {
-        const factions = this.forceBuilder.getAllFactionsAvailable();
-        const totalUnits = this.forceBuilder.forceUnits()?.length;
-        if (!totalUnits || !factions || factions.size === 0) {
-            return null;
-        }
-        const allFactions = this.dataService.getFactions();
-        const factionMap = new Map(allFactions.map(f => [f.name, f.img]));
-        
-        const formatted = Array.from(factions.entries())
-            .sort((a, b) => b[1] - a[1])
-            .map(([name, percentage]) => ({
-                name,
-                img: factionMap.get(name) || '',
-                percentage: Math.round(percentage * 100)
-            }));
-        return formatted;
-    }
-
     close(value = null) {
-        this.dialogRef.close(value);
+        this.dialogRef.close(null);
     }
 }

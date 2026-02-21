@@ -57,6 +57,7 @@ import { AsLayoutBaseComponent } from './layout-base.component';
     templateUrl: './layout-large-vessel-1.component.html',
     styleUrls: ['./layout-large-vessel-1.component.scss'],
     host: {
+        '[class.interactive]': 'interactive()',
         '[class.monochrome]': 'cardStyle() === "monochrome"',
     }
 })

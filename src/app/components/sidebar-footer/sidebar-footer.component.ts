@@ -1,21 +1,15 @@
 
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, computed, input, ElementRef, Injector, viewChildren, ApplicationRef } from '@angular/core';
-import { PortalModule } from '@angular/cdk/portal';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, computed, input, signal, ElementRef, viewChildren } from '@angular/core';
+import { Subscription, firstValueFrom } from 'rxjs';
 import { LayoutService } from '../../services/layout.service';
-import { OptionsService } from '../../services/options.service';
 import { OptionsDialogComponent } from '../options-dialog/options-dialog.component';
 import { ToastService } from '../../services/toast.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { DialogsService } from '../../services/dialogs.service';
-import { SheetService } from '../../services/sheet.service';
-import { CBTPrintUtil } from '../../utils/cbtprint.util';
-import { ASPrintUtil } from '../../utils/asprint.util';
+import { DataService } from '../../services/data.service';
+import { ForceAlignment } from '../../models/force-slot.model';
 import { CdkMenuModule, CdkMenuTrigger, MenuTracker } from '@angular/cdk/menu';
-import { ShareForceDialogComponent } from '../share-force-dialog/share-force-dialog.component';
 import { CompactModeService } from '../../services/compact-mode.service';
-import { CBTForce } from '../../models/cbt-force.model';
-import { ASForce } from '../../models/as-force.model';
-import { ForceOverviewDialogComponent } from '../force-overview-dialog/force-overview-dialog.component';
 import { C3NetworkUtil } from '../../utils/c3-network.util';
 
 /*
@@ -26,20 +20,17 @@ import { C3NetworkUtil } from '../../utils/c3-network.util';
     selector: 'sidebar-footer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [PortalModule, CdkMenuModule],
+    imports: [CdkMenuModule],
     templateUrl: './sidebar-footer.component.html',
     styleUrls: ['./sidebar-footer.component.scss'],
 })
 export class SidebarFooterComponent {
-    injector = inject(Injector);
-    appRef = inject(ApplicationRef);
     elRef = inject(ElementRef<HTMLElement>);
     layoutService = inject(LayoutService);
-    optionsService = inject(OptionsService);
     toastService = inject(ToastService);
     forceBuilderService = inject(ForceBuilderService);
     dialogsService = inject(DialogsService);
-    sheetService = inject(SheetService);
+    dataService = inject(DataService);
     compactModeService = inject(CompactModeService);
     menuTriggers = viewChildren<CdkMenuTrigger>(CdkMenuTrigger);
 
@@ -51,41 +42,64 @@ export class SidebarFooterComponent {
     /**
      * Returns true if the force can be saved (has units, no instanceId, and is not readOnly)
      */
-    canSaveForce = computed(() => {
-        const force = this.forceBuilderService.currentForce();
-        if (!force) return false;
-        return force.units().length > 0 && !force.instanceId() && !force.readOnly();
-    });
-
-    /**
-     * Returns true if the force has any units (for showing Overview menu item)
-     */
-    hasUnits = computed(() => {
-        const force = this.forceBuilderService.currentForce();
-        if (!force) return false;
-        return force.units().length > 0;
+    smartCurrentForceCanSave = computed<boolean>(() => {
+        const f = this.forceBuilderService.smartCurrentForce();
+        return !!f && f.units().length > 0 && !f.instanceId() && !f.readOnly();
     });
 
     /**
      * Returns true if the force has any units with C3 network capability
      */
     hasC3Units = computed(() => {
-        const force = this.forceBuilderService.currentForce();
-        if (!force) return false;
-        const units = force.units();
-        if (units.length === 0) return false;
-        return units.some(forceUnit => {
+        return this.forceBuilderService.currentForce()?.units()?.some(forceUnit => {
             const unit = forceUnit.getUnit();
             return C3NetworkUtil.getC3Components(unit).length > 0;
         });
     });
 
+    /**
+     * Title text for the alignment filter button based on current state.
+     */
+    alignmentFilterTitle = computed(() => {
+        switch (this.forceBuilderService.alignmentFilter()) {
+            case 'friendly': return 'Click to show Enemy';
+            default: return 'Click to show Friendly';
+        }
+    });
+
+    /** True when the alignment filter button should blink (remote update on hidden alignment). */
+    alignmentFilterBlink = signal(false);
+    private blinkTimeout: ReturnType<typeof setTimeout> | null = null;
+    private remoteUpdateSub: Subscription | null = null;
+
     constructor() {
-        inject(DestroyRef).onDestroy(() => this.closeAllMenus());
+        const destroyRef = inject(DestroyRef);
+
+        this.remoteUpdateSub = this.forceBuilderService.remoteForceUpdated$.subscribe(({ alignment }) => {
+            if (!this.forceBuilderService.hasMixedAlignments()) return;
+            const filter = this.forceBuilderService.alignmentFilter();
+            // Blink when the updated force is NOT visible (filter doesn't match)
+            const isHidden = filter !== 'all' && filter !== alignment;
+            if (isHidden) {
+                if (this.blinkTimeout) clearTimeout(this.blinkTimeout);
+                this.alignmentFilterBlink.set(true);
+                this.blinkTimeout = setTimeout(() => this.alignmentFilterBlink.set(false), 2000);
+            }
+        });
+
+        destroyRef.onDestroy(() => {
+            this.closeAllMenus();
+            this.remoteUpdateSub?.unsubscribe();
+            if (this.blinkTimeout) clearTimeout(this.blinkTimeout);
+        });
     }
     
     toggleCompactMode() {
         this.compactModeService.toggle();
+    }
+
+    cycleAlignmentFilter() {
+        this.forceBuilderService.cycleAlignmentFilter();
     }
 
     showOptionsDialog(): void {
@@ -93,18 +107,15 @@ export class SidebarFooterComponent {
     }
 
     showForceOverview(): void {
-        const currentForce = this.forceBuilderService.currentForce();
-        if (!currentForce) return;
-        this.dialogsService.createDialog(ForceOverviewDialogComponent, {
-            data: { force: currentForce }
-        });
+        const force = this.forceBuilderService.currentForce();
+        if (!force) { return; }
+        this.forceBuilderService.showForceOverview(force);
     }
 
     showC3NetworkDialog(): void {
-        const currentForce = this.forceBuilderService.currentForce();
-        if (!currentForce) return;
-        const readOnly = this.forceBuilderService.readOnlyForce();
-        this.forceBuilderService.openC3Network(currentForce, readOnly);
+        const force = this.forceBuilderService.currentForce();
+        if (!force) { return; }
+        this.forceBuilderService.showC3Network(force);
     }
 
     showLoadForceDialog(): void {
@@ -115,44 +126,100 @@ export class SidebarFooterComponent {
         this.forceBuilderService.showForcePackDialog();
     }
 
-    async requestRemoveForce(): Promise<void> {
-        if (await this.forceBuilderService.removeForce()) {
+    async addExternalForce(): Promise<void> {
+        const input = await this.dialogsService.prompt(
+            'Enter the Force Instance ID or a MekBay URL:',
+            'Add Force',
+            '',
+            'You can paste an Instance ID or a full MekBay URL containing one.'
+        );
+        if (!input) return;
+
+        const instanceId = this.extractInstanceId(input.trim());
+
+        // Check if already loaded
+        if (this.forceBuilderService.loadedForces().some(s => s.force.instanceId() === instanceId)) {
+            this.toastService.showToast('This force is already loaded.', 'info');
+            return;
+        }
+
+        const force = await this.dataService.getForce(instanceId);
+        if (!force) {
+            this.toastService.showToast('Force not found.', 'error');
+            return;
+        }
+
+        // Show alignment picker with force preview
+        const { AlignmentPickerDialogComponent } = await import('../alignment-picker-dialog/alignment-picker-dialog.component');
+        const ref = this.dialogsService.createDialog<ForceAlignment | null>(AlignmentPickerDialogComponent, {
+            data: { force }
+        });
+        const alignment = await firstValueFrom(ref.closed);
+        if (!alignment) return;
+
+        this.forceBuilderService.addLoadedForce(force, alignment);
+        this.toastService.showToast(`Force "${force.name}" added.`, 'success');
+    }
+
+    private extractInstanceId(input: string): string {
+        try {
+            const url = new URL(input);
+            const instance = url.searchParams.get('instance');
+            if (instance) return instance;
+        } catch {
+            // Not a valid URL: treat as a plain instance ID
+        }
+        return input;
+    }
+
+    async requestClear(): Promise<void> {
+        if (await this.forceBuilderService.clear()) {
             this.layoutService.closeMenu();
         }
     }
 
     async saveForce(): Promise<void> {
-        await this.forceBuilderService.saveForceWithNameConfirmation();
+        const force = this.forceBuilderService.smartCurrentForce();
+        if (!force || force.readOnly()) {return; }
+        await this.forceBuilderService.saveForceWithNameConfirmation(force);
+    }
+
+    async saveOperation(): Promise<void> {
+        await this.forceBuilderService.saveOperation();
+    }
+
+    async updateOperation(): Promise<void> {
+        await this.forceBuilderService.updateOperation();
+    }
+
+    async closeOperation(): Promise<void> {
+        await this.forceBuilderService.closeOperation();
+    }
+
+    loadOperation(): void {
+        this.forceBuilderService.showLoadForceDialog({ initialTab: 'Operations' });
     }
 
     async requestRepairAll(): Promise<void> {
-        if (await this.forceBuilderService.repairAllUnits()) {
+        const force = this.forceBuilderService.smartCurrentForce();
+        if (!force || force.readOnly()) {return; }
+        if (await this.forceBuilderService.repairAllUnits(force)) {
             this.toastService.showToast(`Repaired all units.`, 'success');
         }
     }
 
     async requestCloneForce(): Promise<void> {
-        this.forceBuilderService.requestCloneForce();
+        const force = this.forceBuilderService.currentForce();
+        if (!force) { return; }
+        this.forceBuilderService.requestCloneForce(force);
     }
 
     shareForce() {
-        const currentForce = this.forceBuilderService.currentForce();
-        if (!currentForce) return;
-        this.dialogsService.createDialog(ShareForceDialogComponent, {
-            data: { force: currentForce }
-        });
+        this.forceBuilderService.shareForce();
     }
 
     printAll(): void {
-        const currentForce = this.forceBuilderService.currentForce();
-        if (!currentForce) {
-            return;
-        }
-        if (currentForce instanceof CBTForce) {
-            CBTPrintUtil.multipagePrint(this.sheetService, this.optionsService, currentForce.units());
-        } else if (currentForce instanceof ASForce) {
-            ASPrintUtil.multipagePrint(this.appRef, this.injector, this.optionsService, currentForce.groups());
-        }
+        this.forceBuilderService.printAll();
     }
 
     closeAllMenus(): void {

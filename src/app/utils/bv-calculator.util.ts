@@ -31,9 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { DEFAULT_PILOTING_SKILL } from "../models/crew-member.model";
 import { Unit } from "../models/units.model";
-import { canAntiMech, NO_ANTIMEK_SKILL } from "./infantry.util";
+import { getEffectivePilotingSkill } from "./cbt-common.util";
 
 /*
  * Author: Drake
@@ -76,16 +75,7 @@ export class BVCalculatorUtil {
      * @returns Adjusted Battle Value rounded to nearest integer
      */
     static calculateAdjustedBV(unit: Unit, baseBv: number, gunnerySkill: number, pilotingSkill: number): number {
-        if (unit.type === 'Infantry') {
-            // Evaluate anti-mech capability for infantry units
-            if (!canAntiMech(unit)) {
-                if (unit.subtype === 'Conventional Infantry') {
-                    pilotingSkill = NO_ANTIMEK_SKILL;
-                } else {
-                    pilotingSkill = DEFAULT_PILOTING_SKILL;
-                }
-            }
-        }
+        pilotingSkill = getEffectivePilotingSkill(unit, pilotingSkill);
         const multiplier = this.getSkillMultiplier(gunnerySkill, pilotingSkill);
         if (multiplier === 1.0) {
             return baseBv;

@@ -223,6 +223,8 @@ function forceUnitToCBTRow(forceUnit: ForceUnit, groupName: string): Record<stri
     
     // Insert force-specific fields
     const { chassis, model, ...rest } = baseRow;
+    const baseBvOfUnit = cbtUnit.getUnit().bv;
+    const baseBvOfCurrentUnit = cbtUnit.getBaseBv();
     return {
         group: groupName,
         chassis,
@@ -231,8 +233,10 @@ function forceUnitToCBTRow(forceUnit: ForceUnit, groupName: string): Record<stri
         gunnery: pilot?.getSkill('gunnery') ?? DEFAULT_GUNNERY_SKILL,
         piloting: pilot?.getSkill('piloting') ?? DEFAULT_PILOTING_SKILL,
         wounds: pilot?.getHits() ?? 0,
-        BV: cbtUnit.getUnit().bv,
+        BV: (baseBvOfUnit !== baseBvOfCurrentUnit) ? `${baseBvOfCurrentUnit} (${baseBvOfUnit})` : baseBvOfUnit,
+        tagBV: cbtUnit.tagBV(),
         C3BV: cbtUnit.c3Tax(),
+        externalStoresBV: cbtUnit.externalStoresBv(),
         pilotBV: cbtUnit.pilotBV(),
         totalBV: cbtUnit.getBv(),
         armorDamage: totalArmorDamage,
@@ -275,9 +279,18 @@ function forceGroupsToRows(
     gameSystem: GameSystem
 ): Record<string, unknown>[] {
     const rowConverter = gameSystem === GameSystem.ALPHA_STRIKE ? forceUnitToASRow : forceUnitToCBTRow;
-    return groups.flatMap(group =>
-        group.units().map(unit => rowConverter(unit, group.name()))
-    );
+    return groups.flatMap(group => {
+        let groupName;
+        if (!group.activeFormation()) {
+            groupName = group.groupDisplayName();
+        } else {
+            groupName = group.groupDisplayName() + ' - ' + group.formationDisplayName();
+        }
+        if (group.activeFormation() && !group.hasValidFormation()) {
+            groupName += ' (Invalid Formation)';
+        }
+        return group.units().map(unit => rowConverter(unit, groupName));
+    });
 }
 
 /**

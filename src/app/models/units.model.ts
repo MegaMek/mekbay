@@ -153,6 +153,7 @@ export interface Unit {
     year: number;
     weightClass: string;
     tons: number;
+    offSpeedFactor: number;
     bv: number;
     pv: number;
     cost: number;

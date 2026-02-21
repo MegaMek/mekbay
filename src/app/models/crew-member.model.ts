@@ -30,7 +30,7 @@
  * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
  * affiliated with Microsoft.
  */
-import { canAntiMech, NO_ANTIMEK_SKILL } from "../utils/infantry.util";
+import { getEffectivePilotingSkill } from "../utils/cbt-common.util";
 import { CBTForceUnit } from "./cbt-force-unit.model";
 import { ForceUnit } from "./force-unit.model";
 
@@ -165,21 +165,7 @@ export class CrewMember {
         crew.setName(data.name);
         crew.setSkill('gunnery', data.gunnerySkill);
         const baseUnit = unit.getUnit();
-        if (baseUnit.type === 'ProtoMek') {
-            crew.setSkill('piloting', DEFAULT_PILOTING_SKILL);
-        } else {
-            let finalPilotingSkill = data.pilotingSkill;
-            if (baseUnit.type === 'Infantry') {
-                if (!canAntiMech(baseUnit)) {
-                    if (baseUnit.subtype === 'Conventional Infantry') {
-                        finalPilotingSkill = NO_ANTIMEK_SKILL;
-                    } else {
-                        finalPilotingSkill = DEFAULT_PILOTING_SKILL;
-                    }
-                }
-            }
-            crew.setSkill('piloting', finalPilotingSkill);
-        }
+        crew.setSkill('piloting', getEffectivePilotingSkill(baseUnit, data.pilotingSkill));
         if (data.asfGunnerySkill !== undefined)
             crew.setSkill('gunnery', data.asfGunnerySkill, true);
         if (data.asfPilotingSkill !== undefined)

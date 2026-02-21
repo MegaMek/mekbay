@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, inject, computed, effect, ElementRef, viewChildren, signal, DestroyRef, viewChild, Injector, ApplicationRef } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, computed, effect, ElementRef, viewChildren, signal, DestroyRef, viewChild } from '@angular/core';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import { OptionsService } from '../../services/options.service';
 import { ASForceUnit } from '../../models/as-force-unit.model';
@@ -42,7 +42,6 @@ import { PageViewerCanvasControlsComponent } from '../page-viewer/canvas/page-vi
 import { PageCanvasOverlayComponent } from '../page-viewer/canvas/page-canvas-overlay.component';
 import { PageViewerCanvasService } from '../page-viewer/canvas/page-viewer-canvas.service';
 import { DbService } from '../../services/db.service';
-import { ASPrintUtil } from '../../utils/asprint.util';
 import { ASInteractionOverlayComponent } from './as-interaction-overlay.component';
 
 /**
@@ -59,6 +58,7 @@ const BASE_CELL_WIDTH = 350;
 const MIN_CELL_WIDTH = 280;
 const CELL_GAP = 4;
 const CONTAINER_PADDING = 8 * 2; // left + right padding
+const CARD_ASPECT_RATIO = 1120 / 800; // width / height
 
 // Pinch zoom threshold: computed from container/viewport diagonal.
 // Using a ratio keeps gesture sensitivity consistent across device sizes.
@@ -94,14 +94,24 @@ interface Point {
 })
 export class AlphaStrikeViewerComponent {
     private readonly optionsService = inject(OptionsService);
-    private readonly forceBuilderService = inject(ForceBuilderService);
+    private readonly forceBuilder = inject(ForceBuilderService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly dbService = inject(DbService);
-    private readonly injector = inject(Injector);
-    private readonly appRef = inject(ApplicationRef);
-    
-    unit = input<ASForceUnit | null>(null);
-    force = input<ASForce | null>(null);
+
+    readonly unit = computed(() => {
+        const selectedUnit = this.forceBuilder.selectedUnit();
+        if (selectedUnit instanceof ASForceUnit) {
+            return selectedUnit;
+        }
+        return null;
+    }, { equal: () => false });
+    readonly force = computed(() => {
+        const force = this.unit()?.force;
+        if (force instanceof ASForce) {
+            return force;
+        }
+        return null;
+    });
     
     private readonly cardWrappers = viewChildren<ElementRef<HTMLElement>>('cardWrapper');
     private readonly viewerContainer = viewChild<ElementRef<HTMLElement>>('viewerContainer');
@@ -115,16 +125,27 @@ export class AlphaStrikeViewerComponent {
     // Cell width is derived from column count and container width
     private containerWidth = signal(0);
     
+    // Viewport height tracking for card constraint calculations
+    private viewportHeight = signal(typeof window !== 'undefined' ? window.innerHeight : Infinity);
+    
+    // Max card width imposed by viewport height (card aspect ratio constrains width when height is limited)
+    private maxCardWidthFromViewport = computed(() => this.viewportHeight() * CARD_ASPECT_RATIO);
+    
+    // Effective cell widths accounting for viewport height constraint
+    private effectiveBaseCellWidth = computed(() => Math.min(BASE_CELL_WIDTH, this.maxCardWidthFromViewport()));
+    private effectiveMinCellWidth = computed(() => Math.min(MIN_CELL_WIDTH, this.maxCardWidthFromViewport()));
+    
     readonly cellWidth = computed(() => {
         const width = this.containerWidth();
         const cols = this.columnCount();
-        if (width <= 0) return BASE_CELL_WIDTH;
+        if (width <= 0) return this.effectiveBaseCellWidth();
         
         // Calculate cell width that fits exactly `cols` columns
         // Formula: cols * cellWidth + (cols - 1) * gap + padding = containerWidth
         const availableWidth = width - CONTAINER_PADDING;
         const cellWidth = (availableWidth - (cols - 1) * CELL_GAP) / cols;
-        return Math.floor(Math.max(MIN_CELL_WIDTH, cellWidth));
+        // Cap at the max card width the viewport allows
+        return Math.floor(Math.min(Math.max(this.effectiveMinCellWidth(), cellWidth), this.maxCardWidthFromViewport()));
     });
     
     // Pinch gesture state
@@ -146,6 +167,9 @@ export class AlphaStrikeViewerComponent {
     
     // Flag to prevent scroll effect when selection is made by clicking a card
     private internalSelectionInProgress = false;
+    
+    // First scroll should be instant (when the viewer first appears with a selection)
+    private firstScroll = true;
     
     // Signal to trigger closing pickers in all cards (increments to trigger)
     readonly updatePickerPositionTrigger = signal(0);
@@ -207,21 +231,19 @@ export class AlphaStrikeViewerComponent {
      * Handle print request from controls
      */
     onPrintRequested(): void {
-        const currentForce = this.forceBuilderService.currentForce();
-        if (!currentForce || currentForce instanceof ASForce === false) return;
-        ASPrintUtil.multipagePrint(this.appRef, this.injector, this.optionsService, currentForce.groups());
+        this.forceBuilder.printAll();
     }
 
     private setupEffects(): void {
         // Clean up stale cardRenderItemsCache entries when force changes
         effect(() => {
-            const currentForce = this.force();
-            if (!currentForce) {
+            const force = this.force();
+            if (!force) {
                 this.cardRenderItemsCache.clear();
                 return;
             }
 
-            const currentUnitIds = new Set(currentForce.units().map(u => u.id));
+            const currentUnitIds = new Set(force.units().map(u => u.id));
             // Remove stale cache entries
             this.cardRenderItemsCache.forEach((_, id) => {
                 if (!currentUnitIds.has(id)) this.cardRenderItemsCache.delete(id);
@@ -274,6 +296,15 @@ export class AlphaStrikeViewerComponent {
             });
         });
         
+        // Track viewport height for card constraint calculations
+        effect((onCleanup) => {
+            if (typeof window === 'undefined') return;
+            
+            const onResize = () => this.viewportHeight.set(window.innerHeight);
+            window.addEventListener('resize', onResize, { passive: true });
+            onCleanup(() => window.removeEventListener('resize', onResize));
+        });
+        
         // Calculate optimal column count on initial render
         let initialColumnsCalculated = false;
         effect(() => {
@@ -290,6 +321,18 @@ export class AlphaStrikeViewerComponent {
             this.updatePickerPositionTrigger.update(v => v + 1);
             if (width > 0) {
                 this.clampColumnsToFit();
+            }
+        });
+        
+        // Recalculate optimal columns when viewport height changes
+        // (card max width may shrink/grow, allowing more/fewer columns)
+        let prevViewportMaxWidth = this.maxCardWidthFromViewport();
+        effect(() => {
+            const currentMax = this.maxCardWidthFromViewport();
+            const width = this.containerWidth();
+            if (width > 0 && currentMax !== prevViewportMaxWidth) {
+                prevViewportMaxWidth = currentMax;
+                this.calculateOptimalColumns();
             }
         });
         
@@ -313,7 +356,7 @@ export class AlphaStrikeViewerComponent {
     onCardCellClick(event: MouseEvent, unit: ASForceUnit): void {
         // Mark as internal selection to prevent the effect from scrolling
         this.internalSelectionInProgress = true;
-        this.forceBuilderService.selectUnit(unit);
+        this.forceBuilder.selectUnit(unit);
         
         // Scroll to the clicked card cell
         const cardCell = (event.currentTarget as HTMLElement);
@@ -321,7 +364,7 @@ export class AlphaStrikeViewerComponent {
     }
 
     onEditPilot(unit: ASForceUnit): void {
-        this.forceBuilderService.editPilotOfUnit(unit);
+        this.forceBuilder.editPilotOfUnit(unit);
     }
     
     toggleHexMode(): void {
@@ -344,8 +387,9 @@ export class AlphaStrikeViewerComponent {
         if (width <= 0) return;
         
         const availableWidth = width - CONTAINER_PADDING;
-        // How many BASE_CELL_WIDTH cells fit?
-        const cols = Math.max(1, Math.floor((availableWidth + CELL_GAP) / (BASE_CELL_WIDTH + CELL_GAP)));
+        // How many cells fit at the effective base width (accounts for viewport height constraint)?
+        const baseCellWidth = this.effectiveBaseCellWidth();
+        const cols = Math.max(1, Math.floor((availableWidth + CELL_GAP) / (baseCellWidth + CELL_GAP)));
         if (cols != this.columnCount()) {
             this.updatePickerPositionTrigger.update(v => v + 1);
         }
@@ -374,7 +418,8 @@ export class AlphaStrikeViewerComponent {
         if (width <= 0) return 1;
         
         const availableWidth = width - CONTAINER_PADDING;
-        return Math.max(1, Math.floor((availableWidth + CELL_GAP) / (MIN_CELL_WIDTH + CELL_GAP)));
+        const minCellWidth = this.effectiveMinCellWidth();
+        return Math.max(1, Math.floor((availableWidth + CELL_GAP) / (minCellWidth + CELL_GAP)));
     }
     
     // Ctrl+Wheel to change column count
@@ -442,7 +487,9 @@ export class AlphaStrikeViewerComponent {
         const targetWrapper = this.cardWrappers().find(
             wrapper => wrapper.nativeElement.getAttribute('data-unit-id') === selectedUnit.id
         );
-        targetWrapper?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const behavior = this.firstScroll ? 'instant' as ScrollBehavior : 'smooth';
+        this.firstScroll = false;
+        targetWrapper?.nativeElement.scrollIntoView({ behavior, block: 'center' });
     }
     
     // ==================== Pinch Gesture ====================

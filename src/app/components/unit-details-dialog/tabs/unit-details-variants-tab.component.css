@@ -19,9 +19,9 @@
     display: flex;
     justify-content: flex-end;
     align-items: center;
-    padding: 8px;
+    padding: 4px;
     position: sticky;
-    gap: 8px;
+    gap: 4px;
     bottom: 0;
     z-index: 1;
     border-top: 1px solid var(--border-color);
@@ -68,7 +68,7 @@
 .view-toggle-btn {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
 }
 
 .view-toggle-btn svg {

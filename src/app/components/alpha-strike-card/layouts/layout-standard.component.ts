@@ -52,7 +52,7 @@ import {
     AsCriticalHitsEmplacementComponent,
 } from '../critical-hits';
 import { AsLayoutBaseComponent } from './layout-base.component';
-import { formatMovement, isAerospace } from '../../../models/as-common';
+import { formatMovement, isAerospace } from '../../../utils/as-common.util';
 
 /*
  * Author: Drake
@@ -74,6 +74,7 @@ import { formatMovement, isAerospace } from '../../../models/as-common';
     templateUrl: './layout-standard.component.html',
     styleUrls: ['./layout-standard.component.scss'],
     host: {
+        '[class.interactive]': 'interactive()',
         '[class.monochrome]': 'cardStyle() === "monochrome"',
     }
 })
@@ -128,7 +129,9 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
     });
 
     private formatTmm(tmm: { [mode: string]: number }): string {
-        const entries = Object.entries(tmm);
+        const isBM = this.asStats().TP === 'BM';
+        const entries = Object.entries(tmm)
+            .filter(([mode]) => !isBM || (mode !== 'a' && mode !== 'g'));
         if (entries.length === 0) return '';
         return entries
             .map(([mode, value]) => `${value}${mode}`)
@@ -195,7 +198,9 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
             this.resizeObserver.observe(statsEl);
 
             // Initial calculation after layout.
-            requestAnimationFrame(() => this.updateChassisSmallClass());
+            requestAnimationFrame(() => {
+                this.updateChassisSmallClass();
+            });
         });
 
         this.destroyRef.onDestroy(() => {

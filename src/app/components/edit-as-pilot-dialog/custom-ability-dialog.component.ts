@@ -32,7 +32,7 @@
  */
 
 import { afterNextRender, ChangeDetectionStrategy, Component, ElementRef, input, output, viewChild } from '@angular/core';
-import { ASCustomPilotAbility } from '../../models/as-abilities.model';
+import { ASCustomPilotAbility } from '../../models/pilot-abilities.model';
 
 @Component({
     selector: 'custom-ability-dialog',

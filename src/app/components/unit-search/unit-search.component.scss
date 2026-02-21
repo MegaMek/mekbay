@@ -203,7 +203,7 @@
     width: 850px;
 }
 
-.results-dropdown-item.unit-card.panel-selected:not(.selected) {
+.results-dropdown-item.unit-card.panel-selected {
     background-color: var(--background-highlight);
 }
 
@@ -273,13 +273,6 @@
         border-bottom: none;
     }
     
-    &.selected {
-        background-color: var(--bt-yellow-background);
-        &:hover {
-            background-color: var(--bt-yellow-background-bright);
-        }
-    }
-    
     &.no-results {
       color: var(--text-color-secondary);
       font-style: italic;
@@ -301,6 +294,165 @@
   margin-left: 9px;
   -webkit-user-select: none;
   user-select: none;
+}
+
+/* Card View Grid */
+.card-view-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 4px;
+    padding: 4px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    scrollbar-width: thin;
+    align-content: start;
+}
+
+
+.card-view-cell {
+    cursor: pointer;
+    position: relative;
+
+    &.selected {
+        &::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-color: #ff04;
+            box-sizing: border-box;
+            pointer-events: none;
+            z-index: 2;
+        }
+    }
+}
+
+
+.card-view-placeholder {
+    width: 100%;
+    aspect-ratio: 1120 / 800;
+    background-color: #1a1a1a;
+}
+
+/* Compact Chassis-Grouped View */
+.chassis-view-grid {
+    display: grid;
+    grid-template-columns: auto 36px 1fr auto;
+    align-content: start;
+    gap: 0 4px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    scrollbar-width: thin;
+    container-type: inline-size;
+    container-name: chassis-grid;
+
+    &.has-sort-slot {
+        grid-template-columns: auto 36px 1fr auto auto;
+    }
+}
+
+.chassis-view-header {
+    display: grid;
+    grid-template-columns: subgrid;
+    grid-column: 1 / -1;
+    align-items: center;
+    padding: 6px;
+    background-color: #333;
+    border-bottom: 2px solid #555;
+    font-weight: bold;
+    font-size: 0.85em;
+    color: var(--text-color-secondary);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.chassis-view-th {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chassis-view-th-count { text-align: center; }
+.chassis-view-th-icon { text-align: center; }
+.chassis-view-th-chassis { text-align: left; }
+.chassis-view-th-value { text-align: center; }
+
+.chassis-view-row {
+    display: grid;
+    grid-template-columns: subgrid;
+    grid-column: 1 / -1;
+    align-items: center;
+    padding: 2px 6px;
+    cursor: pointer;
+    border-bottom: 1px solid #444;
+    transition: background-color 0.15s;
+    min-height: 36px;
+
+    &:hover {
+        background-color: var(--background-highlight);
+    }
+
+    &:last-child {
+        border-bottom: none;
+    }
+}
+
+.chassis-view-td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chassis-view-td-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.chassis-view-td-chassis {
+    font-weight: bold;
+    min-width: 0;
+    white-space: normal;
+    word-break: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-clamp: 2;
+    overflow: hidden;
+    line-height: 1;
+}
+
+.chassis-view-td-value {
+    color: var(--text-color-secondary);
+    font-size: 0.9em;
+    text-align: center;
+}
+
+.chassis-view-td-count {
+    color: var(--bt-yellow);
+    font-weight: bold;
+    font-size: 0.9em;
+    text-align: center;
+
+    &::after {
+        content: '\00d7'; /* multiplication sign */
+        margin-right: 2px;
+        font-weight: normal;
+    }
+}
+
+.chassis-view-th-sort-slot {
+    text-align: center;
+}
+
+.chassis-view-td-sort-slot {
+    color: var(--text-color-secondary);
+    font-size: 0.9em;
+    text-align: center;
+    white-space: nowrap;
 }
 
 .adv-panel-header {
@@ -470,6 +622,13 @@
         position: sticky;
         top: 0;
         z-index: 1;
+    }
+    
+    .results-dropdown-item.selected {
+        background-color: var(--bt-yellow-background-transparent);
+        &:hover {
+            background-color: var(--bt-yellow-background-bright-transparent);
+        }
     }
 
     .as-table-row {

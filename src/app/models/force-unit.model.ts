@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { signal, computed, Injector, Signal } from '@angular/core';
+import { signal, computed, Injector, Signal, WritableSignal } from '@angular/core';
 import { DataService } from '../services/data.service';
 import { Unit } from "./units.model";
 import { UnitInitializerService } from '../services/unit-initializer.service';
@@ -46,15 +46,23 @@ import { CrewMember } from './crew-member.model';
  */
 export abstract class ForceUnit {
     protected unit: Unit; // Original unit data
-    force: Force;
+    private _forceRef = signal<Force>(null!);
     id: string;
     initialized = false;
+
+    /**
+     * The force this unit belongs to.
+     * Backed by a signal so that computed properties (e.g. readOnly)
+     * automatically react when the unit is moved to a different force.
+     */
+    get force(): Force { return this._forceRef(); }
+    set force(value: Force) { this._forceRef.set(value); }
 
     // Dependencies for deferred loading
     protected dataService: DataService;
     protected unitInitializer: UnitInitializerService;
     protected injector: Injector;
-    protected isLoaded: boolean = false;
+    isLoaded: WritableSignal<boolean> = signal(false);
     public disabledSaving: boolean = false;
     phaseTrigger = signal(0); // Used to trigger change detection on phase changes
 
@@ -132,6 +140,8 @@ export abstract class ForceUnit {
             group.units().some(u => u === this)
         ) ?? null;
     }
+
+    abstract getBaseBv: Signal<number>;
 
     abstract getBv: Signal<number>;
 

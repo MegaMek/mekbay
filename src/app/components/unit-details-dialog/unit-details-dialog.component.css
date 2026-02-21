@@ -227,27 +227,29 @@
     background-color: #202b46;
 }
 
-.fluff-bg-image {
-    position: absolute;
-    top: calc(10% - 100px);
-    right: calc(40% - 400px);
-    width: 800px;
-    height: auto;
-    object-fit: cover;
-    object-position: right center;
-    filter: saturate(0) invert(1) blur(0.5px) opacity(0.08);
-    mix-blend-mode: lighten;
-    pointer-events: none;
-    z-index: 0;
-}
-
-:host ::ng-deep .modal.fluff-background {
+:host.fluff-background ::ng-deep .modal {
     position: relative;
     overflow: hidden;
 }
 
-:host ::ng-deep .modal.fluff-background>*:not(.fluff-bg-image) {
+:host.fluff-background ::ng-deep .modal::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: var(--fluff-bg);
+    background-repeat: no-repeat;
+    background-size: 800px auto;
+    background-position: right calc(40% - 80px) top calc(5%);
+    filter: saturate(0) invert(1) blur(0.5px) opacity(0.08);
+    mix-blend-mode: lighten;
+    pointer-events: none;
+    z-index: 0;
+    isolation: isolate;
+}
+
+:host.fluff-background ::ng-deep .modal>* {
     position: relative;
+    z-index: 1;
 }
 
 @container (max-width: 600px) {
@@ -271,5 +273,63 @@
             width: 14px;
             height: 14px;
         }
+    }
+}
+
+/* Compact header for low viewport height */
+@media (max-height: 550px) {
+    .header {
+        min-height: unset;
+        padding: 0px 8px 0px 8px;
+        gap: 4px;
+        font-size: 1.1em;
+    }
+
+    .header-icon-container {
+        transform: scale(0.5);
+        transform-origin: center;
+        margin: -10px;
+    }
+
+    .header-content {
+        /* Collapse the two rows into a single inline flow */
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 0 8px;
+    }
+
+    .header-content .header-row {
+        display: contents;
+    }
+
+    .header-model {
+        font-size: 0.75em;
+        margin-right: 0;
+        order: 1;
+    }
+
+    .header-chassis {
+        font-size: 1em;
+        letter-spacing: 0.03em;
+        margin-right: 0;
+        order: 0;
+    }
+
+    .header-details {
+        font-size: 0.85em;
+        margin-left: auto;
+        margin-right: 24px;
+        gap: 0.4em;
+        order: 2;
+    }
+
+    .header-details .icon {
+        width: 13px;
+        height: 13px;
+    }
+
+    .header-row-tags {
+        display: none;
     }
 }

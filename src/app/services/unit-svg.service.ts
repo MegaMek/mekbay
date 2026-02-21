@@ -274,6 +274,7 @@ export class UnitSvgService {
         const bvElement = svg.querySelector('#bv');
         if (bvElement) {
             const bv = this.unit.getBv();
+            // Here is ok to use .bv, we want custom ammo to show up in the variation too 
             const originalBv = this.unit.getUnit().bv || 0;
             if (bv !== originalBv) {
                 bvElement.textContent = `${bv} (${originalBv})`;

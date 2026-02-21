@@ -46,6 +46,7 @@ export interface InputDialogData {
     maximumValue?: number; // for number input
     placeholder?: string;
     defaultValue?: string | number;
+    hint?: string;
     buttons?: { label: string; value: 'ok' | 'cancel'; class?: string }[];
 }
 
@@ -58,23 +59,30 @@ export interface InputDialogData {
         class: 'fullscreen-dialog-host glass'
     },
     template: `
-    <div class="content">
-        <h2 dialog-title>{{ data.title }}</h2>
-        <div dialog-content>
-            <p>{{ data.message }}</p>
-            <input
-                #inputRef
-                [type]="data.inputType || 'text'"
-                [placeholder]="data.placeholder ?? ''"
-                [value]="data.defaultValue ?? ''"
-                [attr.min]="data.inputType === 'number' ? (data.minimumValue ?? 0) : null"
-                [attr.max]="data.inputType === 'number' && data.maximumValue !== undefined ? data.maximumValue : null"
-                (keydown.enter)="$event.preventDefault(); $event.stopPropagation(); submit()"
-                (input)="onInputChange($event)"
-                required
-            />
+    <div class="wide-dialog">
+        <h2 class="wide-dialog-title">{{ data.title }}</h2>
+        <div class="wide-dialog-body">
+            <p class="message">{{ data.message }}</p>
+            <div class="form-fields">
+                <input
+                    #inputRef
+                    class="field-input"
+                    [type]="data.inputType || 'text'"
+                    [placeholder]="data.placeholder ?? ''"
+                    [value]="data.defaultValue ?? ''"
+                    autocomplete="off"
+                    [attr.min]="data.inputType === 'number' ? (data.minimumValue ?? 0) : null"
+                    [attr.max]="data.inputType === 'number' && data.maximumValue !== undefined ? data.maximumValue : null"
+                    (keydown.enter)="$event.preventDefault(); $event.stopPropagation(); submit()"
+                    (input)="onInputChange($event)"
+                    required
+                />
+                @if (data.hint) {
+                    <p class="hint">{{ data.hint }}</p>
+                }
+            </div>
         </div>
-        <div dialog-actions>
+        <div class="wide-dialog-actions">
             @for (btn of buttons; track btn.label) {
                 <button
                     (click)="btn.value === 'ok' ? submit() : close(null)"
@@ -86,60 +94,29 @@ export interface InputDialogData {
     </div>
     `,
     styles: [`
-        .content {
-            display: block;
-            max-width: 1000px;
-            text-align: center;
+        .message {
+            margin: 0;
+            font-size: 0.95em;
+            color: var(--text-color-secondary);
         }
 
-        h2 {
-            margin-top: 8px;
-            margin-bottom: 8px;
+        .hint {
+            font-size: 0.85em;
+            color: var(--text-color-tertiary);
+            margin-top: 2px;
         }
 
-        [dialog-content] input {
-            width: 90vw;
-            max-width: 500px;
-            margin-bottom: 16px;
-            font-size: 1.5em;
-            background: var(--background-input);
-            color: white;
-            border: 0;
-            border-bottom: 1px solid #666;
-            text-align: center;
-            outline: none;
-            transition: all 0.2s ease-in-out;    
-        }
-
-        [dialog-content] input:focus {
-            border-bottom: 1px solid #fff;
-            outline: none;
-        }
-
-        [dialog-content] input[type="number"] {
+        input[type="number"].field-input {
             max-width: 200px;
             -webkit-appearance: none;
             -moz-appearance: textfield;
             appearance: textfield;
         }
 
-        [dialog-content] input[type="number"]::-webkit-outer-spin-button,
-        [dialog-content] input[type="number"]::-webkit-inner-spin-button {
+        input[type="number"].field-input::-webkit-outer-spin-button,
+        input[type="number"].field-input::-webkit-inner-spin-button {
             -webkit-appearance: none;
             margin: 0;
-        }
-
-        [dialog-actions] {
-            padding-top: 8px;
-            display: flex;
-            gap: 8px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-
-        [dialog-actions] button {
-            padding: 8px;
-            min-width: 100px;
         }
     `]
 })

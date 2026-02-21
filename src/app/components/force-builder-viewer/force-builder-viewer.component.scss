@@ -25,6 +25,130 @@
     }
 }
 
+.force-slot {
+    display: flex;
+    flex-direction: column;
+    transition: border-color 0.2s, background-color 0.2s;
+    box-sizing: border-box;
+    min-width: 0;
+
+    &.friendly {
+        background-color: rgba(var(--friendly-color), 0.04);
+    }
+
+    &.enemy {
+        background-color: rgba(var(--enemy-color), 0.04);
+    }
+
+    &.mini-mode {
+        border-left: none;
+        padding-left: 0;
+    }
+
+    & + .force-slot {
+        margin-top: 0;
+    }
+}
+
+// Force-level drop list container
+.forces-drop-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1em;
+    padding-bottom: 4px;
+
+    // Hard divider between force slots (stronger visual break)
+    .force-slot + .force-slot {
+        position: relative;
+
+        &::before {
+            content: '';
+            position: absolute;
+            top: -10px;
+            left: 6px;
+            right: 6px;
+            height: 1px;
+            background-color: var(--text-color-tertiary);
+            pointer-events: none;
+        }
+    }
+}
+
+// Drag-drop transitions
+.forces-drop-list.cdk-drop-list-dragging .force-slot:not(.cdk-drag-placeholder),
+.force-units-list.cdk-drop-list-dragging .force-unit-item:not(.cdk-drag-placeholder),
+.force-units-list.cdk-drop-list-dragging .group-container:not(.cdk-drag-placeholder) {
+    transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+// Drag placeholders
+.force-slot.cdk-drag-placeholder,
+.group-container.cdk-drag-placeholder {
+    opacity: 0.3;
+    border: 2px dashed var(--text-color-tertiary);
+}
+
+.force-slot-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background-color: var(--background-color-menu);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 2px;
+
+    .friendly & {
+        background-color: color-mix(in srgb, var(--background-color-menu) 85%, rgb(var(--friendly-color)));
+    }
+
+    .enemy & {
+        background-color: color-mix(in srgb, var(--background-color-menu) 85%, rgb(var(--enemy-color)));
+    }
+
+    &.blink {
+        animation: header-blink 0.5s ease-in-out 2;
+    }
+}
+
+@keyframes header-blink {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.2); }
+}
+
+// Collapse/expand toggle button (shared between force + group)
+.btn-toggle-collapse {
+    position: absolute;
+    top: 3px;
+    left: 2px;
+    background: none;
+    border: none;
+    color: var(--text-color-tertiary);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s;
+
+    &:hover {
+        color: var(--text-color);
+    }
+
+    svg {
+        transition: transform 0.2s ease;
+    }
+
+    svg.collapsed {
+        transform: rotate(-90deg);
+    }
+
+    &.group-toggle {
+        top: 2px;
+    }
+}
+
 .force-name {
     font-size: 0.9em;
     font-weight: bold;
@@ -32,20 +156,76 @@
     color: var(--text-color);
     cursor: pointer;
     transition: color 0.2s;
+    padding: 0 18px;
+}
+
+.force-faction-icon {
+    width: 1.2em;
+    height: 1.2em;
+    object-fit: contain;
+    position: relative;
+    top: 0.3em;
+    margin-top: -0.3em;
+
+}
+
+.force-total {
+    font-size: 0.8em;
+    font-weight: bold;
+    color: var(--text-color-secondary);
+}
+
+.btn-remove {
+    position: absolute;
+    top: 3px;
+    right: 2px;
+    background: none;
+    border: none;
+    color: var(--text-color-tertiary);
+    cursor: pointer;
+    padding: 4px;
     display: flex;
     align-items: center;
     justify-content: center;
+    transition: color 0.2s;
+
+    &:hover {
+        color: red;
+    }
+
+    &.group-remove {
+        top: 2px;
+    }
 }
 
 .group-header {
     position: sticky;
-    top: 0px;
+    top: var(--force-header-height, 0px);
     z-index: 1;
     background-color: var(--background-highlight);
     padding: 4px 2px;
     display: flex;
     flex-direction: column;
     gap: 4px;
+
+    .friendly & {
+        background-color: color-mix(in srgb, var(--background-highlight) 85%, rgb(var(--friendly-color)));
+    }
+
+    .enemy & {
+        background-color: color-mix(in srgb, var(--background-highlight) 85%, rgb(var(--enemy-color)));
+    }
+}
+
+.group-name-area {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0px 4px;
+    flex: 1;
+    min-width: 0;
+    padding: 0 18px;
 }
 
 .group-name {
@@ -55,14 +235,72 @@
     color: var(--text-color);
     cursor: pointer;
     transition: color 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
 }
 
-.group-name:hover,
+.group-formation-wrapper {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.group-formation {
+    font-size: 0.75em;
+    font-weight: 400;
+    color: var(--text-color-secondary);
+    cursor: pointer;
+    transition: color 0.2s;
+
+    &::before {
+        content: '·';
+        margin-right: 4px;
+    }
+}
+
+.group-name-area:hover:not(:has(.btn-formation-info:hover)) .group-name,
+.group-name-area:hover:not(:has(.btn-formation-info:hover)) .group-formation,
 .force-name:hover {
     color: var(--bt-yellow);
+}
+
+.btn-formation-info {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--text-color-tertiary);
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 50%;
+    transition: color 0.15s;
+
+    &:hover {
+        color: var(--bt-yellow);
+    }
+
+    &.formation-mismatch {
+        color: red;
+
+        &:hover {
+            color: #F44;
+        }
+    }
+}
+
+.read-only {
+    .group-name,
+    .group-formation,
+    .force-name {
+        cursor: default;
+    }
+
+    .group-name-area:hover:not(:has(.btn-formation-info:hover)) .group-name,
+    .group-name-area:hover:not(:has(.btn-formation-info:hover)) .group-formation,
+    .force-name:hover {
+        color: inherit;
+    }
 }
 
 .group-footer {
@@ -87,10 +325,41 @@
     hr {
         border: none;
         height: 1px;
-        background-color: var(--text-color-tertiary);
+        background: linear-gradient(90deg, transparent, var(--text-color-tertiary), transparent);
         margin: 6px 0;
         width: 100%;
         box-sizing: border-box;
+    }
+}
+
+.mini-collapsed-indicator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity 0.15s;
+
+    &:hover {
+        opacity: 1;
+    }
+
+    svg {
+        width: 14px;
+        height: 14px;
+        transition: transform 0.2s;
+
+        &.collapsed {
+            transform: rotate(-90deg);
+        }
+    }
+
+    .mini-collapsed-count {
+        font-size: 0.9em;
+        color: var(--text-color-secondary);
+        line-height: 1;
     }
 }
 
@@ -145,10 +414,11 @@
     min-height: 75px;
 }
 
-.new-group-dropzone {
+.new-group-dropzone:not(.visible) {
     min-width: 0;
     max-height: 0;
     opacity: 0;
+    border: none;
 }
 
 .new-group-dropzone.visible {
@@ -177,7 +447,7 @@
     flex-direction: column;
 }
 
-.footer {
+.force-slot-footer {
     display: flex;
     flex: 0 0 auto;
     flex-direction: column;
@@ -204,14 +474,6 @@
     }
 }
 
-.force-view {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    flex: 1 1 auto;
-    min-height: 0;
-}
-
 .cdk-drag-preview {
     font-family: 'Roboto', sans-serif;
     background-color: var(--background-color-menu);
@@ -227,9 +489,5 @@
 }
 
 .cdk-drag-animating {
-    transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
-}
-
-.force-units-list.cdk-drop-list-dragging .force-unit-item:not(.cdk-drag-placeholder) {
     transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
 }

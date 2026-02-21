@@ -585,7 +585,8 @@ const FORCE_PACKS: ForcePack[] = [
           { "name": "BMShadowHawk_SHD7M" },
           { "name": "BMThunderbolt_TDR7S" },
           { "name": "BMWolverine_WVR9R" }
-        ] }
+        ]
+      }
     ]
   },
   {

@@ -1,5 +1,5 @@
 <main class="app-container" [class.menu-open]="this.layoutService.isMenuOpen()">
-    @if (this.hasUnits()) {
+    @if (this.hasForces()) {
     <sidebar #sidebar [unitSearchPortal]="unitSearchPortalForceBuilder()"
         [unitSearchComponent]="unitSearchComponentRef()"></sidebar>
     }
@@ -8,12 +8,12 @@
     </div>
     <div class="main-content">
 
-        @if (this.hasUnits()) {
+        @if (this.hasForces()) {
         <div class="content-area">
             @if (gameService.isAlphaStrike()) {
-            <alpha-strike-viewer [unit]="selectedASUnit()" [force]="currentASForce()"></alpha-strike-viewer>
+            <alpha-strike-viewer></alpha-strike-viewer>
             } @else {
-            <page-viewer [unit]="selectedCBTUnit()" [force]="currentCBTForce()"></page-viewer>
+            <page-viewer></page-viewer>
             }
         </div>
         } @else {
@@ -51,6 +51,7 @@
                 <div class="main-search">
                     <div class="empty-state-logo">
                         <img src="/images/logo.png" alt="MekBay Logo">
+                        @if (isNextBuild) { <span class="next-badge" (click)="showNextDialog()">NEXT</span> }
                     </div>
                     <div class="gameSystemSelector" [class.loading]="!this.dataService.isDataReady()">
                         <div class="battletech-logo" [class.inactive]="gameService.isAlphaStrike()"

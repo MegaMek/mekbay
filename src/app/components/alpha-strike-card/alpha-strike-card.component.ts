@@ -34,7 +34,7 @@
 import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output, ElementRef, DestroyRef, afterNextRender, ComponentRef, Injector } from '@angular/core';
 import { ASUnitTypeCode, Unit } from '../../models/units.model';
 import { ASForceUnit, AbilitySelection } from '../../models/as-force-unit.model';
-import { AS_PILOT_ABILITIES, ASCustomPilotAbility } from '../../models/as-abilities.model';
+import { PILOT_ABILITIES, ASCustomPilotAbility } from '../../models/pilot-abilities.model';
 import { AsAbilityLookupService, ParsedAbility } from '../../services/as-ability-lookup.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
@@ -45,7 +45,7 @@ import { SpecialAbilityState, SpecialAbilityClickEvent } from './layouts/layout-
 import { CriticalHitRollDialogComponent, CriticalHitRollDialogData } from './critical-hit-roll-dialog/critical-hit-roll-dialog.component';
 import { MotiveDamageRollDialogComponent, MotiveDamageRollDialogData } from './motive-damage-roll-dialog/motive-damage-roll-dialog.component';
 import { AsLayoutStandardComponent, AsLayoutLargeVessel1Component, AsLayoutLargeVessel2Component } from './layouts';
-import { REMOTE_HOST } from '../../models/common.model';
+import { GameSystem, REMOTE_HOST } from '../../models/common.model';
 import { ChoicePickerInstance, NumericPickerInstance, NumericPickerResult, PickerChoice, PickerPosition } from '../picker/picker.interface';
 import { vibrate } from '../../utils/vibrate.util';
 import { firstValueFrom } from 'rxjs';
@@ -240,6 +240,7 @@ export class AlphaStrikeCardComponent {
     // Handle special ability click from layout components
     onSpecialClick(clickEvent: SpecialAbilityClickEvent): void {
         const { state, event } = clickEvent;
+        event.stopPropagation();
         const parsedAbility = this.abilityLookup.parseAbility(state.original);
         const ability = parsedAbility.ability;
         const fu = this.forceUnit();
@@ -373,14 +374,13 @@ export class AlphaStrikeCardComponent {
         let ability: PilotAbilityInfoDialogData['ability'];
         
         if (typeof selection === 'string') {
-            const found = AS_PILOT_ABILITIES.find(a => a.id === selection);
-            ability = found ?? { name: selection, cost: 0, summary: '' } as ASCustomPilotAbility;
+            ability = PILOT_ABILITIES.find(a => a.id === selection) ?? { name: selection, cost: 0, summary: '' } as ASCustomPilotAbility;
         } else {
             ability = selection;
         }
         
         this.dialogs.createDialog<void>(PilotAbilityInfoDialogComponent, {
-            data: { ability, isCustom } as PilotAbilityInfoDialogData
+            data: { gameSystem: GameSystem.ALPHA_STRIKE, ability, isCustom } as PilotAbilityInfoDialogData
         });
     }
 

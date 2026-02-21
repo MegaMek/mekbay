@@ -41,6 +41,7 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
 import { UnitComponentItemComponent } from '../unit-component-item/unit-component-item.component';
 import { GameService } from '../../services/game.service';
+import { GameSystem } from '../../models/common.model';
 import { DialogsService } from '../../services/dialogs.service';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
@@ -54,7 +55,8 @@ import { ExpandedComponentsPipe } from '../../pipes/expanded-components.pipe';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { SearchTokensGroup, highlightMatches } from '../../utils/search.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
-import { formatMovement, isAerospace } from '../../models/as-common';
+import { formatMovement, isAerospace } from '../../utils/as-common.util';
+import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 
 /**
  * Author: Drake
@@ -69,6 +71,7 @@ import { formatMovement, isAerospace } from '../../models/as-common';
         UnitIconComponent,
         UnitTagsComponent,
         UnitComponentItemComponent,
+        AlphaStrikeCardComponent,
         AdjustedBV,
         AdjustedPV,
         FormatNumberPipe,
@@ -174,6 +177,15 @@ export class UnitCardExpandedComponent {
         return null; // Let the pipe calculate it
     });
     
+    /** Derives Alpha Strike status from the ForceUnit's force when available, falls back to global game mode. */
+    isAlphaStrike = computed<boolean>(() => {
+        const u = this.unit();
+        if (this.isForceUnit(u)) {
+            return u.force.gameSystem === GameSystem.ALPHA_STRIKE;
+        }
+        return this.gameService.isAlphaStrike();
+    });
+
     isAerospace = computed<boolean>(() => {
         const unit = this.resolvedUnit();
         const type = unit.as.TP;
@@ -202,6 +214,12 @@ export class UnitCardExpandedComponent {
 
     /** Whether to show expanded view (true) or compact view (false) */
     expandedView = input(true);
+
+    /** Whether to show alpha-strike card view (renders the actual AS card) */
+    cardView = input(false);
+
+    /** Card style for alpha-strike card view */
+    cardStyle = input<'colored' | 'monochrome'>('monochrome');
 
     /** Emitted when the card is clicked */
     cardClick = output<void>();
@@ -373,7 +391,7 @@ export class UnitCardExpandedComponent {
 
     /** Get the current view mode key */
     private getViewMode(): string {
-        const isAS = this.gameService.isAlphaStrike();
+        const isAS = this.isAlphaStrike();
         const expanded = this.expandedView();
         if (expanded) {
             return isAS ? 'expanded-as' : 'expanded-cbt';

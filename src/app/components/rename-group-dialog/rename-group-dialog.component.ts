@@ -32,11 +32,18 @@
  */
 
 
-import { ChangeDetectionStrategy, Component, ElementRef, inject, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, ElementRef, inject, Injector, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
+import { ComponentPortal } from '@angular/cdk/portal';
+import { takeUntilDestroyed, outputToObservable } from '@angular/core/rxjs-interop';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { Force, UnitGroup } from '../../models/force.model';
-import { ForceUnit } from '../../models/force-unit.model';
+import { FormationTypeDefinition, isNoFormation } from '../../utils/formation-type.model';
+import { FormationInfoComponent } from '../formation-info/formation-info.component';
+import { OverlayManagerService } from '../../services/overlay-manager.service';
+import { FormationDropdownPanelComponent, FormationDisplayItem } from './formation-dropdown-panel.component';
+import { FormationNamerUtil } from '../../utils/formation-namer.util';
+import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
 /*
  * Author: Drake
  */
@@ -44,94 +51,151 @@ export interface RenameGroupDialogData {
     group: UnitGroup;
 }
 
+export interface RenameGroupDialogResult {
+    /** Custom group name (empty string = unset / auto-generate). */
+    name: string;
+    /** Selected formation definition, or null to clear. */
+    formation: FormationTypeDefinition | null;
+    action: 'confirm' | 'unset';
+}
+
 @Component({
     selector: 'rename-group-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
+    imports: [FormationInfoComponent],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
     template: `
-    <div class="content">
-      <h2 dialog-title></h2>
-      <div dialog-content>
-        <p>Group Name</p>
-        <div class="input-wrapper">
-          <div
-            class="input"
-            contentEditable="true"
-            #inputRef
-            [textContent]="data.group.name()"
-            (keydown.enter)="submit()"
-            required
-          ></div>
-          <button
-            type="button"
-            class="random-button"
-            (click)="fillRandomName()"
-            aria-label="Generate random force name"
-          ></button>
+    <div class="wide-dialog">
+      <div class="wide-dialog-body">
+
+        <div class="form-fields">
+          <label class="field-label">Group Name <span class="optional">(optional)</span></label>
+          <div class="input-wrapper">
+            <div
+              class="field-input"
+              contentEditable="true"
+              #inputRef
+              autocomplete="off"
+              [attr.data-placeholder]="placeholderName()"
+              [textContent]="data.group.name()"
+              (keydown.enter)="submit()"
+              (input)="onInputCleanup($event)"
+            ></div>
+          </div>
+          <p class="hint">If left empty, the formation name will be used</p>
         </div>
-        @if (formationsText) {
-          <details class="faction-accordion">
-            <summary>Formations ({{ formationsText.length }})</summary>
-            <div class="formation-list">
-              @for (formation of formationsText; let isLast = $last; track formation) {
-                <span class="formation-item" (click)="selectFormation(formation)">{{ formation }}</span>@if (!isLast) {<span class="formation-separator">, </span>}
+
+        <div class="form-fields">
+          <label class="field-label">Formation</label>
+          <div #formationTriggerWrapper class="input-wrapper">
+            <button class="formation-selector bt-select" [class.danger]="!isSelectedFormationValid()" (click)="toggleFormationDropdown()">
+              @if (selectedFormation(); as formation) {
+                @if (isNoFormation(formation)) {
+                  <span class="placeholder">No Formation</span>
+                } @else {
+                  @if (!isSelectedFormationValid()) {
+                    <svg class="formation-selector-warning" fill="currentColor" width="14px" height="14px" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z"/>
+                    </svg>
+                  }
+                  <span class="formation-selector-name">{{ getDisplayName(formation) }}</span>
+                }
+              } @else {
+                <span class="placeholder">Automatic</span>
+              }
+            </button>
+            <button
+              type="button"
+              class="random-button"
+              (click)="fillRandomFormation()"
+              aria-label="Pick random formation"
+            ></button>
+          </div>
+          @if (selectedFormation(); as formation) {
+            @if (!isNoFormation(formation)) {
+            @if (!isSelectedFormationValid()) {
+            <div class="formation-warning">
+              @if (getRequirementsText(formation); as reqText) {
+                <div class="formation-warning-body">
+                  <strong>Missing requirements:</strong>
+                  @if (getParentRequirementsText(formation); as parentReqText) {
+                    <span class="formation-warning-req"><strong>{{ getParentFormationName(formation) }}:</strong> {{ parentReqText }}</span>
+                    <span class="formation-warning-req"><strong>{{ formation.name }}:</strong> {{ reqText }}</span>
+                  } @else {
+                    <span class="formation-warning-req">{{ reqText }}</span>
+                  }
+                </div>
+              } @else {
+              <span>Formation does not match the current group composition</span>
               }
             </div>
-          </details>
-        }
+            }
+            <details class="selected-formation-accordion">
+              <summary class="selected-formation-summary">
+                <span>Formation details</span>
+                <svg class="expand-icon" width="16" height="16" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1l5 4-5 4z"/></svg>
+              </summary>
+              <div class="selected-formation-details">
+                <formation-info [formation]="formation" [gameSystem]="data.group.force.gameSystem" [unitCount]="data.group.units().length" [isValid]="isSelectedFormationValid()"></formation-info>
+              </div>
+            </details>
+            }
+          }
+        </div>
+
       </div>
-      <div dialog-actions>
+      @if (!data.group.formationLock) {
+        <p class="formation-hint">The formation will change dynamically based on group composition. Confirm to lock it in.</p>
+      }
+      <div class="wide-dialog-actions">
         <button (click)="submit()" class="bt-button">CONFIRM</button>
-        <button (click)="submitEmpty()" class="bt-button">UNSET</button>
+        <button (click)="submitUnset()" class="bt-button">UNSET</button>
         <button (click)="close()" class="bt-button">DISMISS</button>
       </div>
     </div>
     `,
     styles: [`
-        .content {
-            display: block;
-            max-width: 1000px;
-            text-align: center;
+        .hint {
+            font-size: 0.85em;
+            color: var(--text-color-tertiary);
+            margin-top: 2px;
+            margin-bottom: 0;
         }
 
-        h2 {
-            margin-top: 8px;
-            margin-bottom: 8px;
-        }
-
-        [dialog-content] .input {
-            width: calc(90vw - 32px);
-            max-width: 500px;
-            margin-bottom: 16px;
-            font-size: 1.5em;
-            background: var(--background-input);
-            color: white;
-            border: 0;
-            border-bottom: 1px solid #666;
-            text-align: center;
-            outline: none;
-            transition: all 0.2s ease-in-out;
-            padding-left: 32px;
-        }
-
-        [dialog-content] .input:focus {
-            border-bottom: 1px solid #fff;
-            outline: none;
-        }
-
-        .input-wrapper {
-            position: relative;
-            display: inline-flex;
+        .formation-selector {
+            flex: 1 1 auto;
+            min-width: 0;
+            padding: 10px 12px;
+            cursor: pointer;
+            display: flex;
             align-items: center;
-            box-sizing: border-box;
+            text-align: left;
+            font-size: 1em;
+            gap: 8px;
+        }
+
+        .formation-selector:hover {
+            border-color: #666;
+        }
+
+        .formation-selector-name {
+            font-weight: 600;
+        }
+
+        .formation-selector-warning {
+            color: red;
+            flex-shrink: 0;
+        }
+
+        .placeholder {
+            color: #888;
         }
 
         .random-button {
-            align-self: baseline;
+            flex-shrink: 0;
             height: 32px;
             width: 32px;
             border: none;
@@ -146,127 +210,215 @@ export interface RenameGroupDialogData {
             opacity: 1;
         }
 
-        [dialog-actions] {
-            padding-top: 8px;
-            display: flex;
-            gap: 8px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-
-        [dialog-actions] button {
-            padding: 8px;
-            min-width: 100px;
-        }
-
-        .faction-accordion {
-            margin: 0 auto 16px;
-            width: 90vw;
-            max-width: 500px;
+        /* Selected formation accordion */
+        .selected-formation-accordion {
+            width: 100%;
             text-align: left;
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(255, 255, 255, 0.04);
+            margin-top: 4px;
         }
 
-        .faction-accordion summary {
+        .selected-formation-summary {
             display: flex;
             align-items: center;
-            gap: 6px;
+            justify-content: space-between;
+            padding: 8px 12px;
             cursor: pointer;
-            padding: 8px 16px;
-            font-weight: 600;
+            font-size: 0.85em;
+            color: var(--text-color-secondary);
             list-style: none;
         }
 
-        .faction-accordion summary::before {
-            content: '▶';
-            font-size: 0.9em;
-            transition: transform 0.2s ease-in-out;
-        }
-
-        .faction-accordion[open] summary::before {
-            content: '▼';
-        }
-
-        .faction-accordion summary::-webkit-details-marker {
+        .selected-formation-summary::-webkit-details-marker {
             display: none;
         }
 
-        .faction-accordion p {
-            margin: 0;
-            padding: 0 16px 12px;
-            font-size: 0.95em;
-            line-height: 1.4;
+        .selected-formation-summary:hover {
+            color: var(--text-color);
         }
 
-        .formation-list {
-            padding: 0 16px 12px;
-            font-size: 0.95em;
-            line-height: 1.6;
+        .expand-icon {
+            transition: transform 0.2s;
         }
 
-        .formation-item {
-            display: inline;
-            cursor: pointer;
-            transition: opacity 0.2s ease-in-out;
+        .selected-formation-accordion[open] .expand-icon {
+            transform: rotate(90deg);
         }
 
-        .formation-item:hover {
-            opacity: 0.7;
+        .selected-formation-details {
+            padding: 8px 12px 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            max-height: 40vh;
+            overflow-y: auto;
         }
 
-        .formation-separator {
-            margin-right: 4px;
+        .formation-warning {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            margin-top: 4px;
+            font-size: 0.85em;
+            color: red;
+            background: rgba(255, 0, 0, 0.08);
+            border-left: 3px solid red;
+        }
+
+        .formation-warning-body {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .formation-warning-req {
+            display: block;
+        }
+
+        .formation-hint {
+            font-size: 0.85em;
+            color: var(--text-color-tertiary);
+            margin: 4px 0 0;
+            text-align: center;
         }
     `]
 })
 
 export class RenameGroupDialogComponent {
     inputRef = viewChild.required<ElementRef<HTMLDivElement>>('inputRef');
-    public dialogRef: DialogRef<string | number | null, RenameGroupDialogComponent> = inject(DialogRef);
+    formationTriggerWrapper = viewChild.required<ElementRef<HTMLDivElement>>('formationTriggerWrapper');
+
+    public dialogRef: DialogRef<RenameGroupDialogResult | null, RenameGroupDialogComponent> = inject(DialogRef);
     readonly data: RenameGroupDialogData = inject(DIALOG_DATA);
     private forceBuilder = inject(ForceBuilderService);
-    formationsText = this.computeFormationsText();
+    private overlayManager = inject(OverlayManagerService);
+    private injector = inject(Injector);
+    private destroyRef = inject(DestroyRef);
 
-    constructor() {}
+    /** Currently selected formation */
+    selectedFormation = signal<FormationTypeDefinition | null>(this.data.group.formation());
 
-    submit() {
-        const value = this.inputRef().nativeElement.textContent?.trim() || '';
-        this.dialogRef.close(value);
-    }
+    /** All formation definitions with validity flag. */
+    formationDisplayList: FormationDisplayItem[] = (() => {
+        const validIds = new Set(FormationNamerUtil.getAvailableFormationDefinitions(this.data.group).map(d => d.id));
+        return FORMATION_DEFINITIONS
+            .filter(def => def.validator)
+            .map(def => ({
+                definition: def,
+                displayName: FormationNamerUtil.composeFormationDisplayName(def, this.data.group),
+                isValid: validIds.has(def.id),
+            }));
+    })();
 
-    submitEmpty() {
-        this.dialogRef.close('');
-    }
+    /** Whether the currently selected formation is valid for the group. */
+    isSelectedFormationValid = computed<boolean>(() => {
+        const sel = this.selectedFormation();
+        if (!sel || isNoFormation(sel)) return true;
+        return this.formationDisplayList.some(f => f.definition.id === sel.id && f.isValid);
+    });
 
-    fillRandomName() {
-        const randomName = this.forceBuilder.generateGroupName(this.data.group);
-        const nativeEl = this.inputRef().nativeElement;
-        if (!nativeEl) return;
-        nativeEl.textContent = randomName;
-        nativeEl.focus();
-        const range = document.createRange();
-        range.selectNodeContents(nativeEl);
-        const sel = window.getSelection();
-        sel?.removeAllRanges();
-        sel?.addRange(range);
-    }
-
-    selectFormation(formationName: string) {
-        const nativeEl = this.inputRef().nativeElement;
-        if (!nativeEl) return;
-        nativeEl.textContent = formationName;
-        nativeEl.focus();
-    }
-
-    private computeFormationsText(): string[] | null {
-        const formations = this.forceBuilder.getAllFormationsAvailable(this.data.group);
-        if (!formations || formations.length === 0) {
-            return null;
+    /** Placeholder name based on the currently selected formation. */
+    placeholderName = computed<string>(() => {
+        const sel = this.selectedFormation();
+        if (sel && !isNoFormation(sel)) {
+            return FormationNamerUtil.composeFormationDisplayName(sel, this.data.group);
         }
-        return formations;
+        return this.data.group.sizeName() ?? 'Group';
+    });
+
+    constructor() { }
+
+    /** Clear leftover <br> / whitespace so :empty placeholder works */
+    onInputCleanup(event: Event): void {
+        const el = event.target as HTMLElement;
+        if (!el.textContent?.trim()) {
+            el.innerHTML = '';
+        }
     }
 
-    close(value = null) {
+    /** Expose isNoFormation to the template */
+    isNoFormation = isNoFormation;
+
+    /** Get requirements text for a formation definition, including parent requirements */
+    getRequirementsText(formation: FormationTypeDefinition): string | null {
+        if (!formation.requirements) return null;
+        return formation.requirements(this.data.group.force.gameSystem) || null;
+    }
+
+    /** Get parent formation requirements text */
+    getParentRequirementsText(formation: FormationTypeDefinition): string | null {
+        if (!formation.parent) return null;
+        const parent = FORMATION_DEFINITIONS.find(d => d.id === formation.parent);
+        if (!parent?.requirements) return null;
+        return parent.requirements(this.data.group.force.gameSystem) || null;
+    }
+
+    /** Get parent formation name */
+    getParentFormationName(formation: FormationTypeDefinition): string {
+        if (!formation.parent) return '';
+        return FORMATION_DEFINITIONS.find(d => d.id === formation.parent)?.name ?? '';
+    }
+
+    /** Compose a display name for a formation definition */
+    getDisplayName(definition: FormationTypeDefinition): string {
+        return FormationNamerUtil.composeFormationDisplayName(definition, this.data.group);
+    }
+
+    submit(): void {
+        const name = this.inputRef().nativeElement.textContent?.trim() || '';
+        this.dialogRef.close({ name, formation: this.selectedFormation(), action: 'confirm' });
+    }
+
+    submitUnset(): void {
+        this.dialogRef.close({ name: '', formation: null, action: 'unset' });
+    }
+
+    fillRandomFormation(): void {
+        const validList = this.formationDisplayList.filter(item => item.isValid);
+        if (validList.length === 0) {
+            this.selectedFormation.set(null);
+            return;
+        }
+        const currentId = this.selectedFormation()?.id ?? null;
+        const candidates = validList.length > 1
+            ? validList.filter(item => item.definition.id !== currentId)
+            : validList;
+        const randomIndex = Math.floor(Math.random() * candidates.length);
+        this.selectedFormation.set(candidates[randomIndex].definition);
+    }
+
+    toggleFormationDropdown(): void {
+        this.overlayManager.closeManagedOverlay('formation-dropdown');
+
+        const triggerWrapper = this.formationTriggerWrapper();
+        if (!triggerWrapper) return;
+
+        const portal = new ComponentPortal(FormationDropdownPanelComponent, null, this.injector);
+
+        const { componentRef } = this.overlayManager.createManagedOverlay(
+            'formation-dropdown',
+            triggerWrapper,
+            portal,
+            {
+                closeOnOutsideClick: true,
+                panelClass: 'formation-dropdown-overlay',
+                matchTriggerWidth: true,
+                anchorActiveSelector: '.none-option.active, .formation-option-wrapper.active'
+            }
+        );
+
+        componentRef.setInput('formations', this.formationDisplayList);
+        componentRef.setInput('selectedFormationId', this.selectedFormation()?.id ?? null);
+        componentRef.setInput('gameSystem', this.data.group.force.gameSystem);
+
+        outputToObservable(componentRef.instance.selected)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((formation: FormationTypeDefinition | null) => {
+                this.selectedFormation.set(formation);
+                this.overlayManager.closeManagedOverlay('formation-dropdown');
+            });
+    }
+
+    close(value: RenameGroupDialogResult | null = null): void {
         this.dialogRef.close(value);
     }
 }

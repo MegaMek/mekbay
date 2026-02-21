@@ -16,10 +16,11 @@
         </svg>
     </button>
     } @else {
-    <button type="button" class="bt-button expand-btn square" (click)="toggleExpandedView()"
-        [title]="this.expandedView() ? 'Collapse View' : 'Expand View'"
-        [attr.aria-label]="this.expandedView() ? 'Collapse View' : 'Expand View'">
-        @if (this.expandedView()) {
+    <button type="button" class="bt-button expand-btn square"
+        (click)="toggleExpandedView()"
+        [title]="expandedView() ? 'Collapse View' : 'Expand View'"
+        [attr.aria-label]="expandedView() ? 'Collapse View' : 'Expand View'">
+        @if (expandedView()) {
         <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
             focusable="false" aria-hidden="true" role="img">
             <path d="M4 14H10M10 14V20M10 14L3 21M20 10H14M14 10V4M14 10L21 3" stroke="currentColor" stroke-width="2"
@@ -30,6 +31,32 @@
             focusable="false" aria-hidden="true" role="img">
             <path d="M14 10L21 3M21 3H15M21 3V9M10 14L3 21M3 21H9M3 21L3 15" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        }
+    </button>
+    <button type="button" class="bt-button card-view-btn square"
+        (click)="cycleViewMode()"
+        [title]="viewMode() === 'chassis' ? 'Chassis View' : viewMode() === 'card' ? 'Card View' : 'List View'"
+        [attr.aria-label]="viewMode() === 'chassis' ? 'Chassis View' : viewMode() === 'card' ? 'Card View' : 'List View'">
+        @if (viewMode() === 'chassis') {
+        <!-- Chassis view -->
+        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <path d="M2 20h1v1H1v-2h1zm20 0h-1v1h2v-2h-1zM1 5h1V4h1V3H1zm1 2H1v2h1zm0 4H1v2h1zm20-2h1V7h-1zm0 4h1v-2h-1zM2 15H1v2h1zm20 2h1v-2h-1zM5 4h2V3H5zm6 0V3H9v1zm2 0h2V3h-2zm6-1h-2v1h2zM5 21h2v-1H5zm4 0h2v-1H9zm4 0h2v-1h-2zm4 0h2v-1h-2zm4-17h1v1h1V3h-2zm-1 4v2a1.001 1.001 0 0 1-1 1H5a1.001 1.001 0 0 1-1-1V8a1.001 1.001 0 0 1 1-1h14a1.001 1.001 0 0 1 1 1zm-.999 2H19V8H5v2h14m1 4v2a1.001 1.001 0 0 1-1 1H5a1.001 1.001 0 0 1-1-1v-2a1.001 1.001 0 0 1 1-1h14a1.001 1.001 0 0 1 1 1zm-.999 2H19v-2H5v2h14"/>
+        </svg>
+        } @else if (viewMode() === 'card') {
+        <!-- Card view -->
+        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="arcs" stroke-linejoin="arcs" xmlns="http://www.w3.org/2000/svg">
+            <rect x="2" y="4.5" width="20" height="15"/>
+            <line x1="4.5" y1="8" x2="12" y2="8"/>
+            <line x1="4.5" y1="12" x2="12" y2="12"/>
+            <line x1="4.5" y1="16" x2="10" y2="16"/>
+            <rect x="14.5" y="8" width="4" height="4"/>
+        </svg>
+        } @else {
+        <!-- List view -->
+        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="arcs" />
         </svg>
         }
     </button>
@@ -101,7 +128,7 @@
         [pilotingSkill]="this.filtersService.pilotPilotingSkill()"
         [hasPrev]="inlinePanelHasPrev()"
         [hasNext]="inlinePanelHasNext()"
-        (add)="onInlinePanelAdd($event)"
+        (add)="onInlinePanelAdd()"
         (prev)="onInlinePanelPrev()"
         (next)="onInlinePanelNext()">
     </unit-details-panel>
@@ -110,8 +137,8 @@
     <div class="results-dropdown framed-borders" [class.expanded]="this.expandedView()">
         <div class="results-dropdown-content">
             @if (this.filtersService.filteredUnits().length > 0) {
-            <!-- Table Header for AS Table View (expanded only) -->
-            @if (this.expandedView() && gameService.isAlphaStrike()) {
+            <!-- Table Header for AS Table View (expanded only, not in card or compact view) -->
+            @if (this.expandedView() && gameService.isAlphaStrike() && viewMode() === 'list') {
             <div class="as-table-header">
                 <div class="as-th as-th-icon"></div>
                 <div class="as-th as-th-name">Name</div>
@@ -133,13 +160,60 @@
             </div>
             }
 
-            <!-- Single Virtual Scroll Viewport -->
+            @if (viewMode() === 'chassis') {
+            <!-- Compact Chassis-Grouped View -->
+            <div class="chassis-view-grid" [class.has-sort-slot]="chassisSortSlotHeader()">
+                <div class="chassis-view-header">
+                    <div class="chassis-view-th chassis-view-th-count">#</div>
+                    <div class="chassis-view-th chassis-view-th-icon"></div>
+                    <div class="chassis-view-th chassis-view-th-chassis">Chassis</div>
+                    <div class="chassis-view-th chassis-view-th-value">{{ gameService.isAlphaStrike() ? 'PV' : 'BV' }}</div>
+                    @if (chassisSortSlotHeader(); as sortHeader) {
+                    <div class="chassis-view-th chassis-view-th-sort-slot">{{ sortHeader }}</div>
+                    }
+                </div>
+                @for (group of groupedUnits(); track group.chassis + group.type) {
+                <div class="chassis-view-row" (click)="onCompactGroupClick(group)">
+                    <div class="chassis-view-td chassis-view-td-count">{{ group.variantCount }}</div>
+                    <div class="chassis-view-td chassis-view-td-icon"><unit-icon [unit]="group.representativeUnit" [size]="28"></unit-icon></div>
+                    <div class="chassis-view-td chassis-view-td-chassis">{{ group.chassis }}</div>
+                    <div class="chassis-view-td chassis-view-td-value">{{ gameService.isAlphaStrike()
+                        ? (group.minPV === group.maxPV ? '' + group.minPV : group.minPV + '–' + group.maxPV)
+                        : (group.minBV === group.maxBV ? '' + group.minBV : group.minBV + '–' + group.maxBV) }}</div>
+                    @if (chassisSortSlotHeader()) {
+                    <div class="chassis-view-td chassis-view-td-sort-slot">{{ getChassisGroupSortSlot(group) }}</div>
+                    }
+                </div>
+                }
+            </div>
+            } @else if (viewMode() === 'card' && gameService.isAlphaStrike()) {
+            <!-- Card View Grid (replaces virtual scroll) -->
+            <div class="card-view-grid">
+                @for (unit of this.filtersService.filteredUnits(); track unit.name) {
+                    <div class="card-view-cell"
+                         longPress
+                         [class.selected]="isUnitSelected(unit)"
+                         (shortPress)="onUnitCardClick(unit, $event)"
+                         (longPress)="multiSelectUnit(unit)">
+                        @defer (on viewport) {
+                        <alpha-strike-card
+                            [unit]="unit"
+                            [useHex]="useHex()"
+                            [cardStyle]="cardStyle()"
+                            [isSelected]="isUnitSelected(unit)" />
+                        } @placeholder {
+                        <div class="card-view-placeholder"></div>
+                        }
+                    </div>
+                }
+            </div>
+            } @else {
             <cdk-virtual-scroll-viewport class="results-dropdown-viewport" [itemSize]="this.itemSize()"
                 [style.--item-size.px]="this.itemSize()" minBufferPx="900" maxBufferPx="1600" tabindex="0">
                 <div class="results-dropdown-item"
                     *cdkVirtualFor="let unit of this.filtersService.filteredUnits(); let i = index; trackBy: trackByUnitId"
-                    [class.active]="activeIndex() === i"
                     [class.selected]="isUnitSelected(unit)"
+                    [class.active]="activeIndex() === i"
                     [class.panel-selected]="showInlinePanel() && inlinePanelUnit()?.name === unit.name"
                     (pointerenter)="activeIndex.set(i)"
                     longPress
@@ -155,6 +229,7 @@
                             [gunnery]="gunnery"
                             [useHex]="useHex()"
                             [sortKey]="currentSortKey()"
+                            [isSelected]="isUnitSelected(unit)"
                             [sortSlotLabel]="currentSortSlotLabel()"
                             [searchTokens]="this.filtersService.searchTokens()"
                             (tagClick)="onAddTag($event)">
@@ -194,6 +269,7 @@
                             [unit]="unit"
                             [gunnery]="gunnery"
                             [piloting]="piloting"
+                            [isSelected]="isUnitSelected(unit)"
                             [sortKey]="currentSortKey()"
                             [sortSlotLabel]="currentSortSlotLabel()"
                             [searchTokens]="this.filtersService.searchTokens()"
@@ -207,6 +283,7 @@
                             [gunnery]="gunnery"
                             [piloting]="piloting"
                             [expandedView]="false"
+                            [isSelected]="isUnitSelected(unit)"
                             [sortKey]="currentSortKey()"
                             [sortSlotLabel]="currentSortSlotLabel()"
                             [searchTokens]="this.filtersService.searchTokens()"
@@ -215,12 +292,13 @@
                     }
                 </div>
             </cdk-virtual-scroll-viewport>
+            }
 
             @if (this.selectedUnits().size > 0) {
                 <div class="selection-footer">
                     <div class="selected-count">{{ this.selectedUnits().size }} units selected</div>
                     <span class="spanner"></span>
-                    <button [disabled]="this.forceBuilderService.readOnlyForce()" type="button" class="bt-button"
+                    <button [disabled]="this.forceBuilderService.smartCurrentForce()?.readOnly()" type="button" class="bt-button"
                         (click)="addSelectedUnits()">ADD TO FORCE</button>
                     <button type="button" class="bt-button" (click)="selectAll()">SELECT ALL</button>
                     <button type="button" class="bt-button" (click)="clearSelection()">CLEAR</button>
@@ -228,8 +306,13 @@
             }
             @if (this.filtersService.filteredUnits().length > 0) {
                 <div class="results-footer">
-                    <div class="results-count">{{ this.filtersService.filteredUnits().length }} result{{
-                        this.filtersService.filteredUnits().length === 1 ? '' : 's' }}</div>
+                    <div class="results-count">
+                        @if (viewMode() === 'chassis') {
+                        {{ groupedUnits().length }} chassis{{ groupedUnits().length === 1 ? '' : 'es' }} ({{ this.filtersService.filteredUnits().length }} variant{{ this.filtersService.filteredUnits().length === 1 ? '' : 's' }})
+                        } @else {
+                        {{ this.filtersService.filteredUnits().length }} result{{ this.filtersService.filteredUnits().length === 1 ? '' : 's' }}
+                        }
+                    </div>
                     <span class="spanner"></span>
                     <div class="results-sort">
                         <select class="bt-input sort-select"

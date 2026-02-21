@@ -31,7 +31,7 @@
 }
 .equip-item {
     display: flex;
-    gap: 6px;
+    gap: 4px;
     font-size: 0.95em;
 }
 .equip-label {

@@ -38,6 +38,9 @@ import { ASForceUnit } from '../models/as-force-unit.model';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import { GameSystem } from '../models/common.model';
+import { ForceSlot } from '../models/force-slot.model';
+import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
+import { isNoFormation } from './formation-type.model';
 
 /**
  * Minimal logger interface for URL parsing warnings.
@@ -47,13 +50,56 @@ export interface UrlParseLogger {
 }
 
 /**
- * Parameters derived from a Force for URL serialization.
+ * Parameters derived from a Force (or set of forces) for URL serialization.
+ * For multi-force support, `instance` may contain comma-separated IDs.
  */
 export interface ForceQueryParams {
     gs: GameSystem | null;
     units: string | null;
     name: string | null;
     instance: string | null;
+    operation: string | null;
+    factionId: number | null;
+}
+
+export interface UnitShareLinks {
+    httpsUrl: string;
+    appUrl: string;
+}
+
+export function buildProtocolShareUrlFromWebUrl(webUrl: string): string | null {
+    try {
+        const parsed = new URL(webUrl);
+        return `web+mekbay://share?${parsed.searchParams.toString()}`;
+    } catch {
+        return null;
+    }
+}
+
+export function buildShareTextPayload(title: string, httpsUrl: string, appUrl?: string | null): string {
+    if (appUrl) {
+        return `${title}\nWeb: ${httpsUrl}\nApp: ${appUrl}`;
+    }
+    return `${title}\n${httpsUrl}`;
+}
+
+export function buildUnitShareLinks(
+    origin: string,
+    pathname: string,
+    gameSystem: GameSystem,
+    unitName: string,
+    tab: string,
+): UnitShareLinks {
+    const params = new URLSearchParams({
+        gs: gameSystem,
+        shareUnit: unitName,
+        tab,
+    });
+
+    const httpsUrl = `${origin}${pathname}?${params.toString()}`;
+    const appUrl = `web+mekbay://share?${params.toString()}`;
+
+    return { httpsUrl, appUrl };
 }
 
 /**
@@ -61,7 +107,7 @@ export interface ForceQueryParams {
  */
 export function buildForceQueryParams(force: Force | null): ForceQueryParams {
     if (!force) {
-        return { gs: null, units: null, name: null, instance: null };
+        return { gs: null, units: null, name: null, instance: null, operation: null, factionId: null };
     }
     const instanceId = force.instanceId();
     const groups = force.groups() || [];
@@ -75,19 +121,91 @@ export function buildForceQueryParams(force: Force | null): ForceQueryParams {
         gs: force.gameSystem,
         units: groupParams.length > 0 ? groupParams.join('|') : null,
         name: forceName || null,
-        instance: instanceId || null
+        instance: instanceId || null,
+        operation: null,
+        factionId: force.faction()?.id ?? null
+    };
+}
+
+/**
+ * Builds URL query parameters representing ALL loaded forces.
+ *
+ * - Saved forces (with instanceId) are combined into a comma-separated `instance` param.
+ *   Enemy forces are prefixed with `enemy:` (friendly is the default, no prefix).
+ *   Example: `instance=UUID1,enemy:UUID2,UUID3`
+ * - At most one unsaved force (without instanceId) is serialized via `gs`, `units`, `name`.
+ *   Unsaved forces are always friendly (our own force).
+ */
+export function buildMultiForceQueryParams(slots: ForceSlot[]): ForceQueryParams {
+    if (slots.length === 0) {
+        return { gs: null, units: null, name: null, instance: null, operation: null, factionId: null };
+    }
+
+    // Collect instance IDs from saved forces, with alignment prefix
+    const instanceEntries: string[] = [];
+    let unsavedForce: Force | null = null;
+
+    for (const slot of slots) {
+        const id = slot.force.instanceId();
+        if (id) {
+            instanceEntries.push(slot.alignment === 'enemy' ? `enemy:${id}` : id);
+        } else if (!unsavedForce) {
+            // Only the first unsaved force is serialized (constraint: max one unsaved)
+            unsavedForce = slot.force;
+        }
+    }
+
+    // Build unsaved force params (gs/units/name/factionId)
+    let gs: GameSystem | null = null;
+    let units: string | null = null;
+    let name: string | null = null;
+    let factionId: number | null = null;
+
+    if (unsavedForce) {
+        gs = unsavedForce.gameSystem;
+        const groups = unsavedForce.groups() || [];
+        const groupParams = generateGroupUrlParams(groups);
+        units = groupParams.length > 0 ? groupParams.join('|') : null;
+        const forceName = unsavedForce.units().length > 0 ? unsavedForce.name : undefined;
+        name = forceName || null;
+        factionId = unsavedForce.faction()?.id ?? null;
+    }
+
+    return {
+        gs,
+        units,
+        name,
+        instance: instanceEntries.length > 0 ? instanceEntries.join(',') : null,
+        operation: null,
+        factionId
     };
 }
 
 /**
  * Generates URL parameters for all groups in a force.
- * Format: groupName~unit1,unit2|groupName2~unit3,unit4
+ * Format: groupName;formationId~unit1,unit2|groupName2~unit3,unit4
+ *
+ * The group prefix before `~` encodes an optional name and optional formation ID
+ * separated by `;`.  Examples:
+ *   - `Alpha;battle-lance~unit1,unit2`  (name + formation)
+ *   - `;battle-lance~unit1,unit2`        (no name, formation only)
+ *   - `Alpha~unit1,unit2`               (name only, no formation)
+ *   - `unit1,unit2`                     (no name, no formation)
  */
 export function generateGroupUrlParams(groups: UnitGroup[]): string[] {
     return groups.filter(g => g.units().length > 0).map(group => {
         const unitParams = generateUnitUrlParams(group.units());
-        const groupName = group.name();
-        return `${groupName}~${unitParams.join(',')}`;
+        const groupName = group.name() || '';
+        const formation = group.activeFormation();
+        const formationId = formation?.id || '';
+
+        // Build prefix: name;formationId (either part may be empty)
+        if (groupName || formationId) {
+            const prefix = formationId ? `${groupName};${formationId}` : groupName;
+            return `${prefix}~${unitParams.join(',')}`;
+        } else {
+            return unitParams.join(','); // No group name or formation, just return units
+        }
     });
 }
 
@@ -170,21 +288,39 @@ export function parseForceFromUrl(
             if (!groupParam.trim()) continue;
 
             let groupName: string | null = null;
+            let formationId: string | null = null;
             let unitsStr: string;
 
-            // Check if group has a name (format: groupName~units)
+            // Check if group has a name/formation prefix (format: name;formationId~units)
             if (groupParam.includes('~')) {
-                const [namePart, unitsPart] = groupParam.split('~', 2);
-                groupName = namePart;
+                const [prefixPart, unitsPart] = groupParam.split('~', 2);
                 unitsStr = unitsPart || '';
+
+                // Parse prefix: may be "name;formationId", ";formationId", or just "name"
+                if (prefixPart.includes(';')) {
+                    const [nameSeg, formationSeg] = prefixPart.split(';', 2);
+                    groupName = nameSeg || null;
+                    formationId = formationSeg || null;
+                } else {
+                    groupName = prefixPart || null;
+                }
             } else {
                 unitsStr = groupParam;
             }
 
             // Create or get group
-            const group = force.addGroup(groupName || 'Group');
+            const group = force.addGroup();
             if (groupName) {
-                group.nameLock = true;
+                group.name.set(groupName);
+            }
+            if (formationId) {
+                const definition = LanceTypeIdentifierUtil.getDefinitionById(formationId, force.gameSystem);
+                if (definition) {
+                    group.formation.set(definition);
+                    group.formationLock = true;
+                } else {
+                    logger?.warn(`Formation "${formationId}" not found`);
+                }
             }
 
             // Parse units for this group
@@ -192,7 +328,7 @@ export function parseForceFromUrl(
             allForceUnits.push(...groupUnits);
         }
     } else {
-        // Legacy format without groups — all units in default group
+        // Legacy format without groups: all units in default group
         const groupUnits = parseUnitUrlParams(force, unitsParam, unitMap, undefined, logger);
         allForceUnits.push(...groupUnits);
     }

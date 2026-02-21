@@ -50,14 +50,16 @@ import { UnitInitializerService } from './unit-initializer.service';
 import { UserStateService } from './userState.service';
 import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
 import { LoggerService } from './logger.service';
+import { SerializedOperation, LoadOperationEntry, OperationForceInfo } from '../models/operation.model';
 import { DialogsService } from './dialogs.service';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, Subject } from 'rxjs';
 import { GameSystem, REMOTE_HOST } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
 import { Sourcebook, Sourcebooks } from '../models/sourcebook.model';
 import { MULUnitSources, MULUnitSourcesData } from '../models/mul-unit-sources.model';
 import { removeAccents } from '../utils/string.util';
+import { getForcePacks } from '../models/forcepacks.model';
 
 /*
  * Author: Drake
@@ -131,15 +133,24 @@ export class DataService {
     isDownloading = signal(false);
     public isCloudForceLoading = signal(false);
 
+    /** Emits when a cloud save is rejected (not_owner) and the force needs adoption. */
+    public forceNeedsAdoption = new Subject<Force>();
+
     private data: LocalStore = {};
     private unitNameMap = new Map<string, Unit>();
     private eraNameMap = new Map<string, Era>();
     private eraIdMap = new Map<number, Era>();
     private factionNameMap = new Map<string, Faction>();
+    private factionIdMap = new Map<number, Faction>();
     private unitTypeMaxStats: UnitTypeMaxStats = {};
     private quirksMap = new Map<string, Quirk>();
     private sourcebooksMap = new Map<string, Sourcebook>();
     private mulUnitSourcesMap = new Map<number, string[]>();
+
+    /** packName -> Set<chassis|type> for force pack membership checks */
+    private forcePackToChassisType: Map<string, Set<string>> | null = null;
+    /** chassis|type -> sorted pack names[] for reverse lookups */
+    private chassisTypeToForcePacks: Map<string, string[]> | null = null;
 
     public tagsVersion = signal(0);
 
@@ -238,8 +249,12 @@ export class DataService {
             putInLocalStorage: async (data: Factions) => this.dbService.saveFactions(data),
             preprocess: (data: Factions): Factions => {
                 this.factionNameMap.clear();
+                this.factionIdMap.clear();
                 for (const faction of data.factions) {
                     this.factionNameMap.set(faction.name, faction);
+                    if (faction.id !== undefined) {
+                        this.factionIdMap.set(faction.id, faction);
+                    }
                     for (const eraId in faction.eras) {
                         faction.eras[eraId] = new Set(faction.eras[eraId]) as any; // Convert to Set for faster lookups
                     }
@@ -498,6 +513,10 @@ export class DataService {
         return this.factionNameMap.get(name);
     }
 
+    public getFactionById(id: number): Faction | undefined {
+        return this.factionIdMap.get(id);
+    }
+
     public getEras(): Era[] {
         return (this.data['eras'] as Eras)?.eras ?? [];
     }
@@ -615,10 +634,10 @@ export class DataService {
                     unit.as.dmg._dmgL = parseFloat(unit.as.dmg.dmgL) || 0;
                     unit.as.dmg._dmgE = parseFloat(unit.as.dmg.dmgE) || 0;
                 }
-                // Normalize MVm: if a unit only has jump movement, treat it as also having standard movement
-                if (unit.as.MVm) {
+                // Normalize MVm: ensure standard movement ('') exists when only jump is present
+                if (unit.as.MVm && unit.as.MVm['j'] !== undefined && unit.as.MVm[''] === undefined) {
                     const mvmKeys = Object.keys(unit.as.MVm);
-                    if (mvmKeys.length === 1 && mvmKeys[0] === 'j') {
+                    if (unit.as.TP === 'BM' || (mvmKeys.length === 1 && mvmKeys[0] === 'j')) {
                         unit.as.MVm = { '': unit.as.MVm['j'], ...unit.as.MVm };
                     }
                 }
@@ -921,6 +940,7 @@ export class DataService {
         }
         let local: Force | null = null;
         let cloud: Force | null = null;
+        let result: Force | null = null;
         if (localRaw) {
             try {
                 if (localRaw.type === GameSystem.ALPHA_STRIKE) {
@@ -945,22 +965,37 @@ export class DataService {
         }
 
         if (local && cloud) {
-            return this.isCloudNewer(localRaw, cloudRaw) ? cloud : local;
+            result = this.isCloudNewer(localRaw, cloudRaw) ? cloud : local;
+        } else if (!triedCloud && local) {
+            result = local;
+        } else {
+            result = cloud || local || null;
         }
-        if (!triedCloud && local) return local;
-        return cloud || local || null;
+
+        // Fix any duplicate group/unit IDs that may have been persisted.
+        if (result && result.deduplicateIds()) {
+            this.logger.warn(`Force "${result.name}" had duplicate IDs — fixed and re-saving.`);
+            this.saveForce(result);
+        }
+
+        return result;
     }
 
     public async saveForce(force: Force, localOnly: boolean = false): Promise<void> {
-        if (!force.instanceId() || !force.owned()) {
+        if (force.readOnly()) {
+            this.logger.warn(`DataService.saveForce() blocked: force "${force.name}" is read-only.`);
+            return;
+        }
+        if (!force.instanceId()) {
             force.instanceId.set(generateUUID());
-            force.owned.set(true);
         }
         await this.dbService.saveForce(force.serialize());
         if (!localOnly) {
             this.saveForceCloud(force);
         }
     }
+
+
 
     public async saveSerializedForceToLocalStorage(serialized: SerializedForce): Promise<void> {
         await this.dbService.saveForce(serialized);
@@ -1036,6 +1071,444 @@ export class DataService {
         }
     }
 
+    /** Delete a force from local storage only (no cloud request). */
+    public async deleteLocalForce(instanceId: string): Promise<void> {
+        await this.dbService.deleteForce(instanceId);
+    }
+
+    /* ----------------------------------------------------------
+     * Operations (multi-force compositions)
+     */
+
+    /**
+     * Save an operation locally and to the cloud.
+     */
+    public async saveOperation(op: SerializedOperation): Promise<void> {
+        await this.dbService.saveOperation(op);
+        this.saveOperationCloud(op);
+    }
+
+    /**
+     * Retrieve a single operation by ID.
+     * Fetches from both local storage and cloud in parallel, then keeps
+     * whichever is newer (mirroring `getForce()` behaviour).
+     * Returns a LoadOperationEntry enriched with force metadata, or null if not found.
+     */
+    public async getOperation(operationId: string): Promise<LoadOperationEntry | null> {
+        const localPromise = this.getOperationLocal(operationId);
+        let cloudEntry: LoadOperationEntry | null = null;
+        let triedCloud = false;
+
+        try {
+            const ws = await this.canUseCloud();
+            if (ws) {
+                try {
+                    cloudEntry = await this.getOperationCloud(operationId);
+                    triedCloud = true;
+                } catch {
+                    cloudEntry = null;
+                }
+            }
+        } catch {
+            // cloud unavailable
+        }
+
+        const localEntry = await localPromise;
+
+        if (localEntry && cloudEntry) {
+            // Keep the newer one, but always use cloud's owned flag
+            const result = cloudEntry.timestamp > localEntry.timestamp ? cloudEntry : localEntry;
+            result.owned = cloudEntry.owned;
+            return result;
+        } else if (!triedCloud && localEntry) {
+            return localEntry;
+        } else {
+            return cloudEntry || localEntry || null;
+        }
+    }
+
+    /**
+     * Retrieve a single operation from local IndexedDB.
+     * No force enrichment — callers that load the operation will fetch
+     * the actual forces via `getForce()` immediately after.
+     */
+    private async getOperationLocal(operationId: string): Promise<LoadOperationEntry | null> {
+        const serialized = await this.dbService.getOperation(operationId);
+        if (!serialized) return null;
+
+        return new LoadOperationEntry({
+            operationId: serialized.operationId,
+            name: serialized.name || '',
+            note: serialized.note || '',
+            timestamp: serialized.timestamp,
+            forces: serialized.forces.map(ref => ({
+                instanceId: ref.instanceId,
+                alignment: ref.alignment,
+                timestamp: ref.timestamp,
+                exists: false,
+            })),
+            local: true,
+        });
+    }
+
+    /**
+     * Delete an operation locally and from the cloud.
+     */
+    public async deleteOperation(operationId: string): Promise<void> {
+        await this.dbService.deleteOperation(operationId);
+        const ws = await this.canUseCloud();
+        if (ws) {
+            this.wsService.send({
+                action: 'delOperation',
+                operationId,
+            });
+        }
+    }
+
+    /**
+     * List operations, merging local and cloud.
+     * Cloud entries include joined force metadata; local entries are enriched
+     * with locally available force data.
+     *
+     * After merging:
+     * - Cloud operations are saved locally for offline access.
+     * - Local-only operations are verified against the cloud to detect
+     *   ownership conflicts (e.g. user changed accounts). If a conflict is
+     *   found, the local operation gets a new operationId and is saved to cloud.
+     */
+    public async listOperations(): Promise<LoadOperationEntry[]> {
+        const [localOps, cloudOps] = await Promise.all([
+            this.listOperationsLocal(),
+            this.listOperationsCloud(),
+        ]);
+
+        // Merge: cloud wins for same operationId, but keep local-only entries
+        const opMap = new Map<string, LoadOperationEntry>();
+
+        for (const op of localOps) {
+            op.local = true;
+            opMap.set(op.operationId, op);
+        }
+
+        const cloudOnlyOps: LoadOperationEntry[] = [];
+        for (const cloudOp of cloudOps) {
+            const existing = opMap.get(cloudOp.operationId);
+            cloudOp.cloud = true;
+            if (existing) {
+                cloudOp.local = true;
+                // Merge: use cloud's enriched force data but update with any
+                // locally-fresher force info
+                this.mergeOperationForceInfo(cloudOp, existing);
+            } else {
+                cloudOnlyOps.push(cloudOp);
+            }
+            opMap.set(cloudOp.operationId, cloudOp);
+        }
+
+        // Save cloud operations locally for offline access and to sync name/note changes.
+        // Fire-and-forget to avoid blocking the UI.
+        this.saveCloudOperationsLocally(cloudOps);
+
+        // Identify local-only operations (not found on cloud) and verify them
+        const localOnlyOps = Array.from(opMap.values()).filter(op => op.local && !op.cloud);
+        if (localOnlyOps.length > 0) {
+            // Fire-and-forget: verify ownership in the background
+            this.verifyLocalOnlyOperations(localOnlyOps, opMap);
+        }
+
+        return Array.from(opMap.values()).sort((a, b) => b.timestamp - a.timestamp);
+    }
+
+    /**
+     * Save cloud operations to local IndexedDB for offline access.
+     * Uses the cloud data (which may have updated name/note) and writes them locally.
+     */
+    private async saveCloudOperationsLocally(cloudOps: LoadOperationEntry[]): Promise<void> {
+        for (const op of cloudOps) {
+            try {
+                const serialized: SerializedOperation = {
+                    operationId: op.operationId,
+                    name: op.name,
+                    note: op.note,
+                    timestamp: op.timestamp,
+                    forces: op.forces.map(f => ({
+                        instanceId: f.instanceId,
+                        alignment: f.alignment,
+                        timestamp: f.timestamp,
+                    })),
+                };
+                await this.dbService.saveOperation(serialized);
+            } catch (err) {
+                this.logger.error(`Failed to save cloud operation locally: ${err}`);
+            }
+        }
+    }
+
+    /**
+     * Verify local-only operations against the cloud to detect ownership conflicts.
+     * If a local operation exists on the cloud but isn't owned by us, we re-ID it
+     * locally and save the new copy to the cloud immediately.
+     * If it doesn't exist on the cloud, we leave it alone (user may have deleted it
+     * from another device).
+     *
+     * Sends requests in chunks of VERIFY_OPS_CHUNK_SIZE to stay within the server limit.
+     */
+    private static readonly VERIFY_OPS_CHUNK_SIZE = 100;
+
+    private async verifyLocalOnlyOperations(
+        localOnlyOps: LoadOperationEntry[],
+        opMap: Map<string, LoadOperationEntry>,
+    ): Promise<void> {
+        const ws = await this.canUseCloud();
+        if (!ws) return;
+
+        const allIds = localOnlyOps.map(op => op.operationId);
+
+        try {
+            // Process in chunks to respect server-side cap
+            for (let i = 0; i < allIds.length; i += DataService.VERIFY_OPS_CHUNK_SIZE) {
+                const chunk = allIds.slice(i, i + DataService.VERIFY_OPS_CHUNK_SIZE);
+                const response = await this.wsService.sendAndWaitForResponse({
+                    action: 'verifyOperations',
+                    operationIds: chunk,
+                });
+                if (!response?.data || !Array.isArray(response.data)) continue;
+
+                await this.processVerifyResults(response.data, localOnlyOps, opMap);
+            }
+        } catch (err) {
+            this.logger.error(`Failed to verify local-only operations: ${err}`);
+        }
+    }
+
+    /**
+     * Process verify results for a single chunk and handle conflicts.
+     */
+    private async processVerifyResults(
+        results: Array<{ operationId: string; exists: boolean; owned: boolean }>,
+        localOnlyOps: LoadOperationEntry[],
+        opMap: Map<string, LoadOperationEntry>,
+    ): Promise<void> {
+        for (const result of results) {
+            const { operationId, exists, owned } = result;
+
+            if (exists && !owned) {
+                // Conflict: the operationId is owned by another user.
+                // Generate a new operationId, update local, and save to cloud.
+                const conflictOp = localOnlyOps.find(op => op.operationId === operationId);
+                if (!conflictOp) continue;
+
+                const newOperationId = generateUUID();
+                this.logger.warn(
+                    `Operation "${conflictOp.name}" (${operationId}) is owned by another account. ` +
+                    `Re-assigning to new ID: ${newOperationId}`
+                );
+
+                // Delete old local entry
+                await this.dbService.deleteOperation(operationId);
+
+                // Build the serialized operation with the new ID
+                const serialized: SerializedOperation = {
+                    operationId: newOperationId,
+                    name: conflictOp.name,
+                    note: conflictOp.note,
+                    timestamp: conflictOp.timestamp,
+                    forces: conflictOp.forces.map(f => ({
+                        instanceId: f.instanceId,
+                        alignment: f.alignment,
+                        timestamp: f.timestamp,
+                    })),
+                };
+
+                // Save locally with new ID
+                await this.dbService.saveOperation(serialized);
+                // Save to cloud with new ID
+                await this.saveOperationCloud(serialized);
+
+                // Update the opMap entry so callers see the new ID
+                opMap.delete(operationId);
+                conflictOp.operationId = newOperationId;
+                conflictOp.cloud = true;
+                opMap.set(newOperationId, conflictOp);
+            }
+            // If !exists: the operation was deleted elsewhere, leave it local-only.
+            // It will be pushed to cloud if the user explicitly loads it.
+        }
+    }
+
+    /**
+     * Merge local force metadata into a cloud-enriched operation entry.
+     * If local has newer timestamps for any force, update the entry.
+     */
+    private mergeOperationForceInfo(target: LoadOperationEntry, localEntry: LoadOperationEntry): void {
+        for (const localForce of localEntry.forces) {
+            const cloudForce = target.forces.find(f => f.instanceId === localForce.instanceId);
+            if (!cloudForce) {
+                // Force exists locally but not in cloud response — add it
+                target.forces.push(localForce);
+            } else {
+                // If local force info is more recent, prefer it
+                const localTs = localForce.forceTimestamp ? new Date(localForce.forceTimestamp).getTime() : 0;
+                const cloudTs = cloudForce.forceTimestamp ? new Date(cloudForce.forceTimestamp).getTime() : 0;
+                if (localTs > cloudTs) {
+                    cloudForce.name = localForce.name ?? cloudForce.name;
+                    cloudForce.type = localForce.type ?? cloudForce.type;
+                    cloudForce.factionId = localForce.factionId ?? cloudForce.factionId;
+                    cloudForce.bv = localForce.bv ?? cloudForce.bv;
+                    cloudForce.pv = localForce.pv ?? cloudForce.pv;
+                    cloudForce.forceTimestamp = localForce.forceTimestamp;
+                }
+                // Mark force as existing if either source has it
+                if (localForce.exists) cloudForce.exists = true;
+            }
+        }
+    }
+
+    private async listOperationsLocal(): Promise<LoadOperationEntry[]> {
+        const serialized = await this.dbService.listOperations();
+        const entries: LoadOperationEntry[] = [];
+
+        for (const op of serialized) {
+            const forces: OperationForceInfo[] = [];
+            for (const ref of op.forces) {
+                // Try to enrich with local force metadata
+                const localForce = await this.dbService.getForce(ref.instanceId);
+                forces.push({
+                    instanceId: ref.instanceId,
+                    alignment: ref.alignment,
+                    timestamp: ref.timestamp,
+                    name: localForce?.name,
+                    type: localForce?.type as GameSystem | undefined,
+                    factionId: localForce?.factionId,
+                    bv: localForce?.bv,
+                    pv: localForce?.pv,
+                    forceTimestamp: localForce?.timestamp,
+                    exists: !!localForce,
+                });
+            }
+            entries.push(new LoadOperationEntry({
+                operationId: op.operationId,
+                name: op.name || '',
+                note: op.note || '',
+                timestamp: op.timestamp,
+                forces,
+                local: true,
+            }));
+        }
+        return entries;
+    }
+
+    private async listOperationsCloud(): Promise<LoadOperationEntry[]> {
+        const ws = await this.canUseCloud();
+        if (!ws) return [];
+
+        const response = await this.wsService.sendAndWaitForResponse({
+            action: 'listOperations',
+        });
+        if (!response?.data || !Array.isArray(response.data)) return [];
+
+        return response.data.map((raw: any) => new LoadOperationEntry({
+            operationId: raw.operationId,
+            name: raw.name || '',
+            note: raw.note || '',
+            timestamp: raw.timestamp,
+            owned: raw.owned ?? true,
+            forces: (raw.forces || []).map((f: any) => ({
+                instanceId: f.instanceId,
+                alignment: f.alignment,
+                timestamp: f.timestamp,
+                name: f.name,
+                type: f.type,
+                factionId: f.factionId,
+                bv: f.bv,
+                pv: f.pv,
+                forceTimestamp: f.forceTimestamp,
+                exists: f.exists ?? false,
+            } as OperationForceInfo)),
+            cloud: true,
+        }));
+    }
+
+    private async getOperationCloud(operationId: string): Promise<LoadOperationEntry | null> {
+        const ws = await this.canUseCloud();
+        if (!ws) return null;
+
+        const response = await this.wsService.sendAndWaitForResponse({
+            action: 'getOperation',
+            operationId,
+        });
+        const raw = response?.data;
+        if (!raw) return null;
+
+        return new LoadOperationEntry({
+            operationId: raw.operationId,
+            name: raw.name || '',
+            note: raw.note || '',
+            timestamp: raw.timestamp,
+            owned: raw.owned ?? false,
+            forces: (raw.forces || []).map((f: any) => ({
+                instanceId: f.instanceId,
+                alignment: f.alignment,
+                timestamp: f.timestamp,
+                exists: false,
+            })),
+            cloud: true,
+        });
+    }
+
+    private async saveOperationCloud(op: SerializedOperation): Promise<void> {
+        const ws = await this.canUseCloud();
+        if (!ws) return;
+        this.wsService.send({
+            action: 'saveOperation',
+            data: op,
+        });
+    }
+
+    /**
+     * Bulk-fetch basic force metadata from the cloud for a list of instanceIds.
+     * Returns enrichment data (name, type, bv, pv, timestamp) for each found force.
+     * Sends requests in chunks of 100 to stay within the server limit.
+     */
+    private static readonly FORCE_INFO_CHUNK_SIZE = 100;
+
+    public async getForceInfoBulk(instanceIds: string[]): Promise<Map<string, OperationForceInfo>> {
+        const result = new Map<string, OperationForceInfo>();
+        const ws = await this.canUseCloud();
+        if (!ws || instanceIds.length === 0) return result;
+
+        try {
+            for (let i = 0; i < instanceIds.length; i += DataService.FORCE_INFO_CHUNK_SIZE) {
+                const chunk = instanceIds.slice(i, i + DataService.FORCE_INFO_CHUNK_SIZE);
+                const response = await this.wsService.sendAndWaitForResponse({
+                    action: 'getForceInfoBulk',
+                    instanceIds: chunk,
+                });
+                if (!response?.data || !Array.isArray(response.data)) continue;
+
+                for (const entry of response.data) {
+                    result.set(entry.instanceId, {
+                        instanceId: entry.instanceId,
+                        alignment: 'friendly', // placeholder, caller should override
+                        timestamp: '',          // placeholder, caller should override
+                        name: entry.name,
+                        type: entry.type,
+                        factionId: entry.factionId,
+                        bv: entry.bv,
+                        pv: entry.pv,
+                        forceTimestamp: entry.timestamp,
+                        exists: true,
+                    });
+                }
+            }
+        } catch (err) {
+            this.logger.error(`Failed to fetch force info bulk: ${err}`);
+        }
+
+        return result;
+    }
+
+
     private async listForcesCloud(): Promise<LoadForceEntry[]> {
         const ws = await this.canUseCloud();
         if (!ws) return [];
@@ -1054,6 +1527,7 @@ export class DataService {
                         for (const group of raw.groups as SerializedGroup[]) {
                             const loadGroup: LoadForceGroup = {
                                 name: group.name,
+                                formationId: group.formationId,
                                 units: []
                             };
                             for (const unit of group.units as SerializedUnit[]) {
@@ -1072,6 +1546,7 @@ export class DataService {
                         instanceId: raw.instanceId,
                         name: raw.name,
                         type: raw.type,
+                        factionId: raw.factionId,
                         bv: raw.bv ?? undefined,
                         pv: raw.pv ?? undefined,
                         timestamp: raw.timestamp,
@@ -1099,6 +1574,10 @@ export class DataService {
     }
 
     private async saveForceCloud(force: Force): Promise<void> {
+        if (force.readOnly()) {
+            this.logger.warn(`DataService.saveForceCloud() blocked: force "${force.name}" is read-only.`);
+            return;
+        }
         const instanceId = force.instanceId();
         if (!instanceId) return; // Should not happen, nothing to save without an instanceId
 
@@ -1139,6 +1618,12 @@ export class DataService {
 
         const { force, resolvers } = entry;
 
+        if (force.readOnly()) {
+            this.logger.warn(`DataService.flushSaveForceCloud() blocked: force "${force.name}" is read-only.`);
+            for (const r of resolvers) r.resolve();
+            return;
+        }
+
         try {
             const ws = await this.canUseCloud();
             if (!ws) {
@@ -1154,15 +1639,9 @@ export class DataService {
             };
             const response = await this.wsService.sendAndWaitForResponse(payload);
             if (response && response.code === 'not_owner') {
-                this.logger.warn('Cannot save force to cloud: not the owner, we regenerated a new instanceId.');
-                const oldInstanceId = force.instanceId();
-                force.instanceId.set(generateUUID());
-                force.owned.set(true);
-                // Save again (this will schedule another debounce for the new instanceId)
-                await this.saveForce(force);
-                if (oldInstanceId) {
-                    this.dbService.deleteForce(oldInstanceId); // Clean up old local copy
-                }
+                this.logger.warn('Cannot save force to cloud: not the owner.');
+                // Signal that this force needs adoption (clone with fresh IDs)
+                this.forceNeedsAdoption.next(force);
             }
             for (const r of resolvers) r.resolve();
         } catch (err) {
@@ -1182,6 +1661,14 @@ export class DataService {
                 // stop scheduled debounce
                 clearTimeout(entry.timeout);
                 this.saveForceCloudDebounce.delete(instanceId);
+
+                // Skip read-only forces, they must never be saved
+                if (entry.force.readOnly()) {
+                    for (const r of entry.resolvers) {
+                        try { r.resolve(); } catch { /* best-effort */ }
+                    }
+                    continue;
+                }
 
                 // try to send final payload over websocket if available (synchronous queueing)
                 if (canSendOverWs) {
@@ -1229,6 +1716,76 @@ export class DataService {
 
     public deleteCanvasDataOfUnit(unit: ForceUnit): void {
         this.dbService.deleteCanvasData(unit.id);
+    }
+
+    /* ----------------------------------------------------------
+     * Force Pack Lookups (lazily built, cached globally)
+     */
+
+    /**
+     * Build both force pack lookup maps on first use.
+     * - forcePackToChassisType: packName -> Set<chassis|type>
+     * - chassisTypeToForcePacks: chassis|type -> sorted packName[]
+     */
+    private buildForcePackCaches(): void {
+        this.forcePackToChassisType = new Map();
+        const reverseMap = new Map<string, Set<string>>();
+
+        for (const pack of getForcePacks()) {
+            const chassisTypeSet = new Set<string>();
+
+            const processUnits = (unitList: Array<{ name: string }>) => {
+                for (const pu of unitList) {
+                    const unit = this.unitNameMap.get(pu.name);
+                    if (unit) {
+                        const key = `${unit.chassis}|${unit.type}`;
+                        chassisTypeSet.add(key);
+                        if (!reverseMap.has(key)) reverseMap.set(key, new Set());
+                        reverseMap.get(key)!.add(pack.name);
+                    }
+                }
+            };
+
+            processUnits(pack.units);
+            if (pack.variants) {
+                for (const variant of pack.variants) {
+                    processUnits(variant.units);
+                }
+            }
+
+            this.forcePackToChassisType.set(pack.name, chassisTypeSet);
+        }
+
+        this.chassisTypeToForcePacks = new Map();
+        for (const [key, names] of reverseMap) {
+            this.chassisTypeToForcePacks.set(key, Array.from(names).sort());
+        }
+    }
+
+    /**
+     * Check if a unit belongs to a force pack (by chassis|type).
+     */
+    public unitBelongsToForcePack(unit: Unit, packName: string): boolean {
+        if (!this.forcePackToChassisType) this.buildForcePackCaches();
+        const chassisSet = this.forcePackToChassisType!.get(packName);
+        if (!chassisSet) return false;
+        return chassisSet.has(`${unit.chassis}|${unit.type}`);
+    }
+
+    /**
+     * Get the chassis|type set for a force pack (for bulk filtering).
+     */
+    public getForcePackChassisTypeSet(packName: string): Set<string> | undefined {
+        if (!this.forcePackToChassisType) this.buildForcePackCaches();
+        return this.forcePackToChassisType!.get(packName);
+    }
+
+    /**
+     * Get the sorted list of force pack names that contain a unit's chassis|type.
+     */
+    public getForcePacksForUnit(unit: Unit): string[] {
+        if (!this.chassisTypeToForcePacks) this.buildForcePackCaches();
+        return this.chassisTypeToForcePacks!.get(`${unit.chassis}|${unit.type}`) ?? [];
     }
 
 }

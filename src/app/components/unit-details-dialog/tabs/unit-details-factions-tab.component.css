@@ -20,22 +20,40 @@
     grid-template-columns: auto 1fr;
     padding: 16px;
     gap: 8px 16px;
-    align-items: baseline;
+    align-items: start;
+}
+
+.era-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 .era-name {
     white-space: nowrap;
     display: flex;
-    align-items: baseline;
+    align-items: flex-start;
     gap: 4px;
+}
+
+.era-name-content {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.6;
+}
+
+.era-years {
+    font-size: 0.7em;
+    color: var(--text-color-secondary);
+    line-height: 1;
 }
 
 .era-icon {
     height: 1.2em;
     vertical-align: middle;
     position: relative;
-    top: 4px;
-    margin-bottom: -4px;
+    top: 3px;
+    margin-bottom: 0;
 }
 
 .faction-list {
@@ -76,6 +94,9 @@ hr.divider {
     }
     hr.divider {
         width: 100%;
+    }
+    .era-name-content {
+        align-items: center;
     }
     .era-name {
         width: 100%;

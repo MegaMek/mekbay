@@ -50,10 +50,6 @@
     <div dialog-body class="dialog-body" swipe [direction]="'horizontal'" [shouldBlockSwipe]="shouldBlockSwipe"
         (swipestart)="onSwipeStart($event)" (swipemove)="onSwipeMove($event)" (swipeend)="onSwipeEnd($event)">
 
-        <!-- Fluff background image - uses header unit (most visible during swipe) -->
-        @if (headerFluffImageUrl(); as bgUrl) {
-        <img [src]="bgUrl" class="fluff-bg-image" alt="">
-        }
         <!-- Swipe animation container -->
         <div class="swipe-container" [class.animating]="isSwipeAnimating()" [class.swiping]="isSwiping()">
             <!-- Current unit view -->
@@ -136,7 +132,7 @@
         @if (data.selectMode) {
         <button class="modal-btn bt-button" (click)="onSelect()">SELECT</button>
         } @else if (!data.hideAddButton) {
-        <button [disabled]="this.forceBuilderService.readOnlyForce()" class="modal-btn bt-button"
+        <button [disabled]="this.forceBuilderService.smartCurrentForce()?.readOnly()" class="modal-btn bt-button"
             (click)="onAdd()">ADD</button>
         }
         @if (isChangeMode()) {

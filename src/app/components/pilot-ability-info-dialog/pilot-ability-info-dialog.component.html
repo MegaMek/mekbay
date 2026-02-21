@@ -19,7 +19,12 @@
 
             @if (rulesReference()) {
             <div class="ability-rules">
-                <span>{{ rulesReference() }}</span>
+                @for (ref of rulesReference(); let last = $last; track $index) {
+                    {{ ref.book }}, p.{{ ref.page }}
+                    @if (!last) {
+                        <span class="separator"> · </span>
+                    }
+                }
             </div>
             }
         </div>

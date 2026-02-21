@@ -36,7 +36,7 @@ import { Sanitizer } from '../utils/sanitizer.util';
 import { ForceUnit } from './force-unit.model';
 import { GameSystem } from './common.model';
 import { CBTForceUnit } from './cbt-force-unit.model';
-import { ASCustomPilotAbility } from './as-abilities.model';
+import { ASCustomPilotAbility } from './pilot-abilities.model';
 import { C3NetworkType } from './c3-network.model';
 import { DEFAULT_GUNNERY_SKILL } from './crew-member.model';
 
@@ -58,7 +58,8 @@ export interface SerializedForce {
     instanceId: string;
     type: GameSystem;
     name: string;
-    nameLock?: boolean;
+    factionId?: number;
+    factionLock?: boolean;
     bv?: number;
     pv?: number;
     owned?: boolean;
@@ -76,9 +77,10 @@ export interface ASSerializedForce extends SerializedForce {
 
 export interface SerializedGroup {
     id: string;
-    name: string;
-    nameLock?: boolean;
+    name?: string;
     color?: string;
+    formationId?: string;
+    formationLock?: boolean;
     units: SerializedUnit[];
 }
 
@@ -218,6 +220,39 @@ export interface CriticalSlot {
     eq?: Equipment;
 }
 
+/**
+ * Schema for network serialized data
+ */
+
+export const C3_POSITION_SCHEMA = Sanitizer.schema<{ x: number; y: number }>()
+    .number('x', { default: 0 })
+    .number('y', { default: 0 })
+    .build();
+
+export const C3_NETWORK_GROUP_SCHEMA = Sanitizer.schema<SerializedC3NetworkGroup>()
+    .string('id')
+    .string('type')
+    .string('color')
+    .custom('peerIds', (value: unknown) => {
+        if (!value) return undefined;
+        if (Array.isArray(value)) {
+            return value.filter(id => typeof id === 'string').map(String);
+        }
+        return undefined;
+    })
+    .string('masterId')
+    .number('masterCompIndex')
+    .custom('members', (value: unknown) => {
+        if (!value) return undefined;
+        if (Array.isArray(value)) {
+            return value.filter(id => typeof id === 'string').map(String);
+        }
+        return undefined;
+    })
+    .build();
+
+// ===== Classic BattleTech Schemas =====
+
 export const HEAT_SCHEMA = Sanitizer.schema<HeatProfile>()
     .number('current', { default: 0, min: 0 })
     .number('previous', { default: 0, min: 0 })
@@ -273,30 +308,105 @@ export const INVENTORY_SCHEMA = Sanitizer.schema<SerializedInventory>()
     .boolean('destroyed')
     .build();
 
-export const C3_POSITION_SCHEMA = Sanitizer.schema<{ x: number; y: number }>()
-    .number('x', { default: 0 })
-    .number('y', { default: 0 })
+/**
+ * Schema for crew member serialized data
+ */
+export const CREW_MEMBER_SCHEMA = Sanitizer.schema<any>()
+    .number('id', { default: 0, min: 0 })
+    .string('name', { default: '' })
+    .number('gunnerySkill', { default: DEFAULT_GUNNERY_SKILL, min: 0, max: 8 })
+    .number('pilotingSkill', { default: 5, min: 0, max: 8 })
+    .number('asfGunnerySkill')
+    .number('asfPilotingSkill')
+    .number('hits', { default: 0, min: 0 })
+    .number('state', { default: 0, min: 0, max: 2 })
     .build();
 
-export const C3_NETWORK_GROUP_SCHEMA = Sanitizer.schema<SerializedC3NetworkGroup>()
-    .string('id')
-    .string('type')
-    .string('color')
-    .custom('peerIds', (value: unknown) => {
-        if (!value) return undefined;
-        if (Array.isArray(value)) {
-            return value.filter(id => typeof id === 'string').map(String);
-        }
-        return undefined;
+/**
+ * Schema for CBTSerializedState
+ */
+export const CBT_SERIALIZED_STATE_SCHEMA = Sanitizer.schema<CBTSerializedState>()
+    .boolean('modified', { default: false })
+    .boolean('destroyed', { default: false })
+    .boolean('shutdown', { default: false })
+    .custom('c3Position', (value: unknown) => {
+        if (!value || typeof value !== 'object') return undefined;
+        return Sanitizer.sanitize(value, C3_POSITION_SCHEMA);
     })
-    .string('masterId')
-    .number('masterCompIndex')
-    .custom('members', (value: unknown) => {
-        if (!value) return undefined;
-        if (Array.isArray(value)) {
-            return value.filter(id => typeof id === 'string').map(String);
+    .custom('crew', (value: unknown) => {
+        if (!Array.isArray(value)) return [];
+        return Sanitizer.sanitizeArray(value, CREW_MEMBER_SCHEMA);
+    })
+    .custom('crits', (value: unknown) => {
+        if (!Array.isArray(value)) return [];
+        return Sanitizer.sanitizeArray(value, CRIT_SLOT_SCHEMA);
+    })
+    .custom('locations', (value: unknown) => {
+        if (!value || typeof value !== 'object') return {};
+        return Sanitizer.sanitizeRecord(value, LOCATION_SCHEMA);
+    })
+    .custom('heat', (value: unknown) => {
+        if (!value || typeof value !== 'object') return { current: 0, previous: 0 };
+        return Sanitizer.sanitize(value, HEAT_SCHEMA);
+    })
+    .custom('inventory', (value: unknown) => {
+        if (!Array.isArray(value)) return undefined;
+        return Sanitizer.sanitizeArray(value, INVENTORY_SCHEMA);
+    })
+    .build();
+
+/**
+ * Schema for CBTSerializedUnit
+ */
+export const CBT_SERIALIZED_UNIT_SCHEMA = Sanitizer.schema<CBTSerializedUnit>()
+    .string('id')
+    .string('unit')
+    .string('model')
+    .string('chassis')
+    .string('alias')
+    .custom('state', (value: unknown) => {
+        if (!value || typeof value !== 'object') {
+            return Sanitizer.sanitize({}, CBT_SERIALIZED_STATE_SCHEMA);
         }
-        return undefined;
+        return Sanitizer.sanitize(value, CBT_SERIALIZED_STATE_SCHEMA);
+    })
+    .build();
+
+/**
+ * Schema for CBTSerializedGroup
+ */
+export const CBT_SERIALIZED_GROUP_SCHEMA = Sanitizer.schema<CBTSerializedGroup>()
+    .string('id')
+    .string('name')
+    .string('color')
+    .string('formationId')
+    .boolean('formationLock')
+    .custom('units', (value: unknown) => {
+        if (!Array.isArray(value)) return [];
+        return Sanitizer.sanitizeArray(value, CBT_SERIALIZED_UNIT_SCHEMA);
+    })
+    .build();
+
+/**
+ * Schema for CBTSerializedForce
+ */
+export const CBT_SERIALIZED_FORCE_SCHEMA = Sanitizer.schema<CBTSerializedForce>()
+    .number('version', { default: 1 })
+    .string('timestamp')
+    .string('instanceId')
+    .string('type')
+    .string('name', { default: 'Unnamed Force' })
+    .boolean('factionLock')
+    .number('factionId')
+    .number('bv')
+    .boolean('owned', { default: true })
+    .custom('groups', (value: unknown) => {
+        if (!Array.isArray(value)) return [];
+        return Sanitizer.sanitizeArray(value, CBT_SERIALIZED_GROUP_SCHEMA);
+    })
+    .custom('c3Networks', (value: unknown) => {
+        if (!Array.isArray(value)) return undefined;
+        return Sanitizer.sanitizeArray(value, C3_NETWORK_GROUP_SCHEMA);
     })
     .build();
 
@@ -423,9 +533,10 @@ export const AS_SERIALIZED_UNIT_SCHEMA = Sanitizer.schema<ASSerializedUnit>()
  */
 export const AS_SERIALIZED_GROUP_SCHEMA = Sanitizer.schema<ASSerializedGroup>()
     .string('id')
-    .string('name', { default: 'Main' })
-    .boolean('nameLock', { default: false })
+    .string('name')
     .string('color')
+    .string('formationId')
+    .boolean('formationLock')
     .custom('units', (value: unknown) => {
         if (!Array.isArray(value)) return [];
         return Sanitizer.sanitizeArray(value, AS_SERIALIZED_UNIT_SCHEMA);
@@ -441,7 +552,8 @@ export const AS_SERIALIZED_FORCE_SCHEMA = Sanitizer.schema<ASSerializedForce>()
     .string('instanceId')
     .string('type')
     .string('name', { default: 'Unnamed Force' })
-    .boolean('nameLock', { default: false })
+    .boolean('factionLock')
+    .number('factionId')
     .number('pv')
     .boolean('owned', { default: true })
     .custom('groups', (value: unknown) => {

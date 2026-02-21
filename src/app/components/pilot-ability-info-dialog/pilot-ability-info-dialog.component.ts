@@ -33,11 +33,14 @@
 
 import { ChangeDetectionStrategy, Component, inject, computed } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { ASPilotAbility, ASCustomPilotAbility } from '../../models/as-abilities.model';
+import { PilotAbility, ASCustomPilotAbility, getAbilityDetails } from '../../models/pilot-abilities.model';
+import { GameSystem, RulesReference } from '../../models/common.model';
+import { GameService } from '../../services/game.service';
 
 export interface PilotAbilityInfoDialogData {
+    gameSystem: GameSystem;
     /** The pilot ability (either standard or custom) */
-    ability: ASPilotAbility | ASCustomPilotAbility;
+    ability: PilotAbility | ASCustomPilotAbility;
     /** Whether this is a custom ability */
     isCustom: boolean;
 }
@@ -68,14 +71,15 @@ export class PilotAbilityInfoDialogComponent {
             // Custom abilities have a single summary string
             return [(ability as ASCustomPilotAbility).summary];
         }
-        return (ability as ASPilotAbility).summary;
+        return getAbilityDetails(ability as PilotAbility, this.data.gameSystem).summary;
     });
     
-    readonly rulesReference = computed<string | null>(() => {
+    readonly rulesReference = computed<RulesReference[] | null>(() => {
         if (this.isCustom()) return null;
-        const ability = this.ability() as ASPilotAbility;
-        if (!ability.rulesPage) return null;
-        return `${ability.rulesBook}, page ${ability.rulesPage}`;
+        const ability = this.ability() as PilotAbility;
+        const details = getAbilityDetails(ability, this.data.gameSystem);
+        if (!details.rulesRef?.length) return null;
+        return details.rulesRef;
     });
 
     close(): void {

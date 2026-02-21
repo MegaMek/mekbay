@@ -31,7 +31,6 @@
  * affiliated with Microsoft.
  */
 import { ChangeDetectionStrategy, Component, signal, input, computed, effect, inject, afterNextRender, Injector } from '@angular/core';
-
 import { App } from '../../app';
 
 /*

@@ -40,8 +40,10 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { ToastService } from '../../services/toast.service';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { Force } from '../../models/force.model';
+import { buildForceQueryParams, buildProtocolShareUrlFromWebUrl, buildShareTextPayload } from '../../utils/force-url.util';
 import { firstValueFrom } from 'rxjs';
 import { DialogsService } from '../../services/dialogs.service';
+import { ForcePreviewComponent } from '../force-preview/force-preview.component';
 
 /*
  * Author: Drake
@@ -55,28 +57,38 @@ export interface ShareForceDialogData {
     selector: 'share-force-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
+    imports: [ForcePreviewComponent],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
     template: `
-    <div class="content">
-        <h2 dialog-title>{{ force.name }}</h2>
-        <div dialog-content class="content">
+    <div class="wide-dialog">
+        <h2 class="wide-dialog-title">SHARE FORCE</h2>
+        <div class="wide-dialog-body">
+
+        <force-preview [force]="force"></force-preview>
+
+        <div class="share-content">
             @let shareLiveUrlString = shareLiveUrl();
             @if (shareLiveUrlString != null) {
-                <label class="description"><strong>Live battle record:</strong> share the current deployment as a read-only field report — includes damage, pilots, and status conditions.</label>
-                <div class="row">
-                    <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="shareLiveUrlString"/>
-                    <button class="bt-button" (click)="share(shareLiveUrlString)">SHARE</button>
+                <div class="form-fields">
+                    <label class="field-label">Live battle record</label>
+                    <div class="row">
+                        <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="shareLiveUrlString"/>
+                        <button class="bt-button" (click)="share(shareLiveUrlString)">SHARE</button>
+                    </div>
+                    <div class="field-note">Share the current deployment as a read-only field report — includes damage, pilots, and status conditions. <strong>Share this link for multiplayer games.</strong></div>
                 </div>
             }
             @let cleanUrlString = cleanUrl();
             @if (cleanUrlString != null) {
-                <label class="description"><strong>Clean roster:</strong> share a pristine copy of the force — no damage, pilots, or status conditions.</label>
-                <div class="row">
-                    <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="cleanUrlString"/>
-                    <button class="bt-button" (click)="share(cleanUrlString)">SHARE</button>
+                <div class="form-fields">
+                    <label class="field-label">Clean roster</label>
+                    <div class="row">
+                        <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="cleanUrlString"/>
+                        <button class="bt-button" (click)="share(cleanUrlString)">SHARE</button>
+                    </div>
+                    <div class="field-note">Share a pristine copy of the force — no damage, pilots, or status conditions.</div>
                 </div>
             }
             
@@ -100,30 +112,30 @@ export interface ShareForceDialogData {
                 </div>
             </div>
         </div>
-        <div dialog-actions>
+
+        </div>
+        <div class="wide-dialog-actions">
             <button class="bt-button" (click)="close(null)">DISMISS</button>
         </div>
     </div>
     `,
     styles: [`
-        .content {
+        .share-content {
             display: flex;
             flex-direction: column;
             gap: 16px;
             width: 100%;
             max-width: 1000px;
-            justify-content: center;
             align-items: center;
+        }
+
+        .form-fields {
+            width: 100%;
         }
 
         .description {
             font-size: 0.9em;
             color: var(--text-color-secondary);
-        }
-
-        h2 {
-            margin-top: 8px;
-            margin-bottom: 8px;
         }
 
         .row {
@@ -161,17 +173,8 @@ export interface ShareForceDialogData {
             flex-grow: 1;
         }
 
-        [dialog-actions] {
-            padding-top: 8px;
-            display: flex;
-            gap: 8px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-
-        [dialog-actions] button {
-            padding: 8px;
-            min-width: 100px;
+        force-preview {
+            width: 100%;
         }
     `]
 })
@@ -184,6 +187,7 @@ export class ShareForceDialogComponent {
     private dialogsService = inject(DialogsService);
     private router = inject(Router);
     private route = inject(ActivatedRoute);
+    instanceId = signal<string | null>(null);
     shareLiveUrl = signal<string | null>(null);
     cleanUrl = signal<string | null>(null);
     force: Force;
@@ -255,13 +259,16 @@ export class ShareForceDialogComponent {
 
     private buildUrls() {
         const origin = window.location.origin || '';
-        // We get the query Parameters from the force builder
-        const queryParameters = this.forceBuilderService.queryParameters();
+        // Single-force clean URL (units-based, for sharing without instance IDs)
+        const singleForceParams = buildForceQueryParams(this.force);
+
+        // Instance ID of the current force
+        this.instanceId.set(this.force.instanceId() || null);
 
         const instanceTree = this.router.createUrlTree([], {
             relativeTo: this.route,
             queryParams: {
-                instance: queryParameters.instance || null
+                instance: this.force.instanceId() || null
             }
         });
         const shareLiveUrl = this.router.serializeUrl(instanceTree);
@@ -270,9 +277,10 @@ export class ShareForceDialogComponent {
         const cleanTree = this.router.createUrlTree([], {
             relativeTo: this.route,
             queryParams: {
-                gs: queryParameters.gs || null,
-                units: queryParameters.units,
-                name: queryParameters.name || null
+                gs: singleForceParams.gs || null,
+                units: singleForceParams.units,
+                name: singleForceParams.name || null,
+                factionId: singleForceParams.factionId || null
             }
         });
         const cleanUrl = this.router.serializeUrl(cleanTree);
@@ -280,18 +288,38 @@ export class ShareForceDialogComponent {
     }
 
     async share(url: string) {
+        const appUrl = buildProtocolShareUrlFromWebUrl(url);
+        const shareTitle = this.force.name || 'Shared MekBay Force';
+        const shareText = buildShareTextPayload(shareTitle, url, appUrl);
+
         if (navigator.share) {
             navigator.share({
-                title: this.force.name || 'Shared MekBay Force',
+                title: shareTitle,
+                text: shareText,
                 url: url
             }).catch(() => {
                 // fallback if user cancels or error
-                copyTextToClipboard(url);
-                this.toastService.showToast('Link copied to clipboard.', 'success');
+                copyTextToClipboard(shareText);
+                this.toastService.showToast('Links copied to clipboard.', 'success');
             });
         } else {
-            copyTextToClipboard(url);
-            this.toastService.showToast('Link copied to clipboard.', 'success');
+            copyTextToClipboard(shareText);
+            this.toastService.showToast('Links copied to clipboard.', 'success');
+        }
+    }
+
+    shareText(text: string) {
+        if (navigator.share) {
+            navigator.share({
+                title: this.force.name || 'MekBay Force',
+                text: text
+            }).catch(() => {
+                copyTextToClipboard(text);
+                this.toastService.showToast('Copied to clipboard.', 'success');
+            });
+        } else {
+            copyTextToClipboard(text);
+            this.toastService.showToast('Copied to clipboard.', 'success');
         }
     }
 

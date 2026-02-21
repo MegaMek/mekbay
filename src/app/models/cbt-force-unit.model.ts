@@ -44,6 +44,7 @@ import { CBTForceUnitState } from './cbt-force-unit-state.model';
 import { UnitSvgMekService } from '../services/unit-svg-mek.service';
 import { UnitSvgInfantryService } from '../services/unit-svg-infantry.service';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
+import { AmmoEquipment, WeaponEquipment } from './equipment.model';
 import { C3NetworkUtil } from '../utils/c3-network.util';
 import { getMotiveModesOptionsByUnit, MotiveModeOption } from './motiveModes.model';
 import { PSRCheck, TurnState } from './turn-state.model';
@@ -54,7 +55,8 @@ import { Sanitizer } from '../utils/sanitizer.util';
  * Author: Drake
  */
 export class CBTForceUnit extends ForceUnit {
-    declare force: CBTForce;
+    override get force(): CBTForce { return super.force as CBTForce; }
+    override set force(value: CBTForce) { super.force = value; }
     private loadingPromise: Promise<void> | null = null;
     svg: WritableSignal<SVGSVGElement | null> = signal(null); // SVG representation of the unit
     private _svgService: UnitSvgService | null = null;
@@ -117,14 +119,17 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     public async load() {
-        if (this.isLoaded) return;
+        if (this.isLoaded()) return;
         if (this.loadingPromise) {
             return this.loadingPromise;
         }
         this.loadingPromise = this.performLoad();
         try {
             await this.loadingPromise;
-            this.isLoaded = true;
+            if (!this.svg()) {
+                throw new Error(`Unit "${this.unit.name}" loaded but SVG is missing`);
+            }
+            this.isLoaded.set(true);
         } finally {
             // Clear the loading promise when done (success or failure)
             this.loadingPromise = null;
@@ -430,26 +435,134 @@ export class CBTForceUnit extends ForceUnit {
         return piloting;
     });
 
+    public customAmmoBvVariation = computed<number>(() => {
+        if (!this.isLoaded()) return 0; // Ensure unit is loaded so that inventory and crits are available
+        const equipmentList = this.getAvailableEquipment();
+        let bvVariation = 0;
+        if (this.getUnit().type === 'Mek') {
+            const crits = this.getCritSlots();
+            for (const crit of crits) {
+                if (crit.eq instanceof AmmoEquipment && crit.originalName && crit.originalName !== crit.name) {
+                    const originalAmmo = equipmentList[crit.originalName] as AmmoEquipment | undefined;
+                    if (originalAmmo) {
+                        const originalBv = originalAmmo.bv;
+                        const currentBv = crit.eq.bv;
+                        bvVariation += currentBv - originalBv;
+                    }
+                }
+            }
+        } else {
+            const inventory = this.getInventory();
+            for (const item of inventory) {
+                if (item.equipment instanceof AmmoEquipment && item.ammo && item.ammo !== item.name) {
+                    const customAmmo = equipmentList[item.ammo] as AmmoEquipment | undefined;
+                    if (customAmmo) {
+                        const originalBv = item.equipment.bv;
+                        const currentBv = customAmmo.bv;
+                        bvVariation += currentBv - originalBv;
+                    }
+                }
+            }
+        }
+        const offSpeedFactor = this.getUnit().offSpeedFactor || 1;
+        return Math.round(bvVariation * offSpeedFactor);
+    });
+
+    public getBaseBv = computed<number>(() => {
+        const baseBv = this.unit.bv;
+        return Math.round(baseBv + this.customAmmoBvVariation());
+    });
+
+    /* TARGET ACQUISITION GEAR (TAG)
+    Any unit in the battle force equipped with TAG, Light TAG or a
+    C3 Master Computer (flag F_TAG)
+    adds BV equal to the BV of each ton of semi-
+    guided (flag M_SEMIGUIDED) LRM ammunition carried in the force (use the ammo BV
+    for the appropriate-size LRM launcher). Units whose only such
+    piece of equipment is rear-mounted add half the BV instead. */
+    public tagBV = computed<number>(() => {
+        const components = this.getUnit().comp;
+        const hasTag = components.some(c => c.eq?.hasFlag('F_TAG'));
+        if (!hasTag) return 0; // No TAG, no BV
+        // Calculate total BV of semi-guided LRM ammo across all units in the force.
+        // We must scan inventory/crits (not unit blueprints) because custom ammo may be loaded.
+        const allUnits = this.force.units();
+        let totalSemiGuidedBV = 0;
+        for (const forceUnit of allUnits) {
+            if (!forceUnit.isLoaded()) continue; // Ensure unit is loaded so that inventory and crits are available
+            if (forceUnit.getUnit().type === 'Mek') {
+                // Check crit slots (Mek-type units where ammo swapping happens on crits)
+                const crits = forceUnit.getCritSlots();
+                for (const crit of crits) {
+                    if (crit.eq instanceof AmmoEquipment && crit.eq.hasMunitionType('M_SEMIGUIDED')) {
+                        const ammo = crit.eq;
+                        const forceUnitComps = forceUnit.getUnit().comp;
+                        // Check if the unit carrying this ammo has any weapon that can use it (matching ammoType and rackSize)
+                        const hasMatchingWeapon = forceUnitComps.some(c =>
+                            c.eq instanceof WeaponEquipment &&
+                            c.eq.ammoType === ammo.ammoType &&
+                            c.eq.rackSize === ammo.rackSize
+                        );
+                        if (!hasMatchingWeapon) continue; // No weapon can use this ammo, skip
+                        // Determine if at least one matching weapon is front-mounted
+                        const hasNonRearWeapon = forceUnitComps.some(c =>
+                            c.eq instanceof WeaponEquipment &&
+                            c.eq.ammoType === ammo.ammoType &&
+                            c.eq.rackSize === ammo.rackSize &&
+                            !c.rear
+                        );
+                        const multiplier = hasNonRearWeapon ? 1 : 0.5;
+                        totalSemiGuidedBV += Math.round(multiplier * crit.eq.bv);
+                    }
+                }
+            } else {
+                // Check direct inventory entries (vehicles, ProtoMeks, etc.)
+                const inventory = forceUnit.getInventory();
+                for (const item of inventory) {
+                    if (item.equipment instanceof AmmoEquipment && item.equipment.hasMunitionType('M_SEMIGUIDED')) {
+                        totalSemiGuidedBV += item.equipment.bv;
+                    }
+                }
+            }
+        }
+        return Math.round(totalSemiGuidedBV);
+    });
+
     public c3Tax = computed<number>(() => {
         const c3Networks = this.force.c3Networks();
         const c3Tax = C3NetworkUtil.calculateUnitC3Tax(
             this,
-            this.unit.bv,
             c3Networks,
             this.force.units()
         );
         return c3Tax;
     });
 
+    // TODO: To be completed
+    /* EXTERNAL STORES
+    Aerospace fighters, conventional aircraft and some Sup-
+    port Vehicles may carry additional weapons and equipment
+    on external hard points (see the Aerospace Weapons and
+    Equipment BV Table, p. 318). The BV of any external stores is
+    added to the base BV of a unit before the base BV is modified
+    for skill rating.
+    Aerospace fighters can carry a maximum of one bomb per 5
+    tons of mass. Support Vehicles can carry one bomb per hard-
+    point added during design. */
+    public externalStoresBv = computed<number>(() => {
+        return 0;
+    });
+
     public pilotBV = computed<number>(() => {
         const finalBv = this.getBv();
-        return finalBv - this.unit.bv - this.c3Tax();
+        return finalBv - this.getBaseBv() - this.tagBV() - this.c3Tax();
     });
 
     getBv = computed<number>(() => {
+        const preSkillRatingBv = this.getBaseBv() + this.tagBV() + this.c3Tax();
         return BVCalculatorUtil.calculateAdjustedBV(
             this.getUnit(),
-            this.unit.bv + this.c3Tax(),
+            preSkillRatingBv,
             this.gunnerySkill(),
             this.pilotingSkill()
         );
@@ -570,9 +683,9 @@ export class CBTForceUnit extends ForceUnit {
         const hasAESinLegs = critSlots.some(slot => slot.name && slot.loc && !slot.destroyed && LEG_LOCATIONS.has(slot.loc) && slot.name.includes('AES'));
         const hasAESinLegsDestroyed = critSlots.some(slot => slot.name && slot.loc && slot.destroyed && LEG_LOCATIONS.has(slot.loc) && slot.name.includes('AES'));
         if (hasAESinLegs && !hasAESinLegsDestroyed) {
-            preExisting -= 1; // AES in legs intact gives -1 modifier
+            preExisting -= 2; // AES in legs intact gives -2 modifier
             modifiers.push({
-                pilotCheck: -1,
+                pilotCheck: -2,
                 reason: "'Mech mounts AES in its legs"
             });
         }
@@ -737,7 +850,7 @@ export class CBTForceUnit extends ForceUnit {
             const inventoryData = Sanitizer.sanitizeArray(state.inventory, INVENTORY_SCHEMA);
             this.state.deserializeInventory(inventoryData);
         }
-        const crewArr = state.crew.map((crewData: any) => CrewMember.deserialize(crewData, this));
+        const crewArr = (state.crew || []).map((crewData: any) => CrewMember.deserialize(crewData, this));
         this.state.crew.set(crewArr);
         if (state.c3Position) {
             this.state.c3Position.set(Sanitizer.sanitize(state.c3Position, C3_POSITION_SCHEMA));

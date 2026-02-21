@@ -92,7 +92,9 @@
 .group-container {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    .compact & {
+        gap: 8px;
+    }
 }
 
 .group-header {
@@ -104,6 +106,17 @@
     align-items: center;
     padding: 6px 12px;
     background-color: var(--background-color-menu);
+    cursor: grab;
+}
+
+.group-name-area {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 0px 4px;
+    flex: 1;
+    min-width: 0;
 }
 
 .group-name {
@@ -114,9 +127,59 @@
     &.clickable {
         cursor: pointer;
         transition: color 0.2s;
+    }
+}
+
+.group-formation-wrapper {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.group-formation {
+    font-size: 0.85em;
+    font-weight: 400;
+    color: var(--text-color-secondary);
+    transition: color 0.2s;
+
+    &::before {
+        content: '·';
+        margin-right: 4px;
+    }
+
+    &.clickable {
+        cursor: pointer;
+    }
+}
+
+.group-name-area:hover:not(:has(.btn-formation-info:hover)) .group-name.clickable,
+.group-name-area:hover:not(:has(.btn-formation-info:hover)) .group-formation.clickable {
+    color: var(--bt-yellow);
+}
+
+.btn-formation-info {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--text-color-tertiary);
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 50%;
+    transition: color 0.15s;
+
+    &:hover {
+        color: var(--bt-yellow);
+    }
+
+    &.formation-mismatch {
+        color: red;
 
         &:hover {
-            color: var(--bt-yellow);
+            color: #F44;
         }
     }
 }
@@ -136,12 +199,12 @@
 .group-units {
     display: flex;
     flex-direction: column;
-    padding-left: 8px;
-    padding-right: 8px;
     gap: 2px;
     min-height: 48px;
 
-    &.compact {
+    .compact & {
+        padding-left: 8px;
+        padding-right: 8px;
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
         gap: 8px;
@@ -157,12 +220,6 @@
             }
         }
     }
-}
-
-.divider {
-    margin: 4px 0;
-    border: none;
-    border-top: 1px solid var(--border-color);
 }
 
 // Drag and Drop
@@ -185,6 +242,16 @@
 
 .cdk-drop-list-dragging .drag-item:not(.cdk-drag-placeholder) {
     transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+// Group drag-drop styles
+.units-list.cdk-drop-list-dragging .group-container:not(.cdk-drag-placeholder) {
+    transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.group-container.cdk-drag-placeholder {
+    opacity: 0.3;
+    border: 2px dashed var(--text-color-tertiary);
 }
 
 .empty-group-placeholder {
@@ -247,7 +314,7 @@
     justify-content: flex-start;
     align-items: center;
     padding: 8px;
-    gap: 8px;
+    gap: 4px;
     background-color: var(--background-color-menu);
     border-top: 2px solid var(--border-color);
 }
@@ -296,7 +363,6 @@
 .view-toggle-btn {
     display: flex;
     align-items: center;
-    gap: 6px;
 
     svg {
         flex-shrink: 0;

@@ -33,6 +33,7 @@
 
 import { Injectable, signal, computed, effect, inject, untracked } from '@angular/core';
 import { Unit } from '../models/units.model';
+import { Era } from '../models/eras.model';
 import { DataService } from './data.service';
 import { CountOperator, MultiState, MultiStateSelection, MultiStateOption } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { getForcePacks } from '../models/forcepacks.model';
@@ -50,11 +51,13 @@ import { filterStateToSemanticText, tokensToFilterState, WildcardPattern } from 
 import { parseSemanticQueryAST, ParseResult, ParseError, filterUnitsWithAST, EvaluatorContext, isComplexQuery, getMatchingTextForUnit } from '../utils/semantic-filter-ast.util';
 import { wildcardToRegex } from '../utils/string.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
-import { canAntiMech, NO_ANTIMEK_SKILL } from '../utils/infantry.util';
+import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import { UserStateService } from './userState.service';
 import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
-import { ADVANCED_FILTERS, AS_MOVEMENT_MODE_DISPLAY_NAMES, AdvFilterConfig, AdvFilterOptions, AdvFilterType, FACTION_EXTINCT, FilterState, DROPDOWN_FILTERS, RANGE_FILTERS, DropdownFilterConfig, RangeFilterConfig, SemanticDisplayItem, SerializedSearchFilter, SORT_OPTIONS } from './unit-search-filters.model';
+import { FACTION_EXTINCT } from '../models/factions.model';
+import { resolveFactionNamesFromFilter } from '../utils/faction-filter.util';
+import { ADVANCED_FILTERS, AS_MOVEMENT_MODE_DISPLAY_NAMES, AdvFilterConfig, AdvFilterOptions, AdvFilterType, FilterState, DROPDOWN_FILTERS, RANGE_FILTERS, DropdownFilterConfig, RangeFilterConfig, SemanticDisplayItem, SerializedSearchFilter, SORT_OPTIONS } from './unit-search-filters.model';
 export * from './unit-search-filters.model';
 
 function sortAvailableDropdownOptions(options: string[], predefinedOrder?: string[]): string[] {
@@ -442,7 +445,6 @@ export class UnitSearchFiltersService {
     expandedView = signal(false);
     advOpen = signal(false);
     private totalRangesCache: Record<string, [number, number]> = {};
-    private forcePackChassisCache: Map<string, Set<string>> | null = null;
     private availableNamesCache = new Map<string, string[]>();
     private availableNamesCacheOrder: string[] = [];
     private readonly availableNamesCacheMaxEntries = 50; // Limit cache size for multistate filter options
@@ -854,7 +856,7 @@ export class UnitSearchFiltersService {
         const era = this.dataService.getEraByName(eraName);
         if (!era) return false;
         
-        const extinctFaction = this.dataService.getFactions().find(f => f.id === FACTION_EXTINCT);
+        const extinctFaction = this.dataService.getFactionById(FACTION_EXTINCT);
         const extinctUnitIdsForEra = extinctFaction?.eras[era.id] as Set<number> || new Set<number>();
         
         // Unit must be in the era's unit set and not extinct
@@ -884,49 +886,14 @@ export class UnitSearchFiltersService {
      * Matches by chassis+type combination.
      */
     public unitBelongsToForcePack(unit: Unit, packName: string): boolean {
-        // Build cache on first use
-        if (!this.forcePackChassisCache) {
-            this.buildForcePackChassisCache();
-        }
-        
-        const chassisSet = this.forcePackChassisCache!.get(packName);
-        if (!chassisSet) return false;
-        
-        const unitKey = `${unit.chassis}|${unit.type}`;
-        return chassisSet.has(unitKey);
-    }
-
-    /**
-     * Build cache of chassis|type sets for all force packs.
-     * Called once lazily on first use.
-     */
-    private buildForcePackChassisCache(): void {
-        this.forcePackChassisCache = new Map();
-        
-        // Build a lookup map from unit name to chassis|type key
-        const nameToChassisType = new Map<string, string>();
-        for (const unit of this.units) {
-            nameToChassisType.set(unit.name, `${unit.chassis}|${unit.type}`);
-        }
-        
-        // Build chassis sets for each force pack
-        for (const pack of getForcePacks()) {
-            const chassisSet = new Set<string>();
-            for (const packUnit of pack.units) {
-                const key = nameToChassisType.get(packUnit.name);
-                if (key) {
-                    chassisSet.add(key);
-                }
-            }
-            this.forcePackChassisCache.set(pack.name, chassisSet);
-        }
+        return this.dataService.unitBelongsToForcePack(unit, packName);
     }
 
     private getUnitIdsForSelectedEras(selectedEraNames: string[]): Set<number> | null {
         if (!selectedEraNames || selectedEraNames.length === 0) return null;
         const unitIds = new Set<number>();
 
-        const extinctFaction = this.dataService.getFactions().find(f => f.id === FACTION_EXTINCT);
+        const extinctFaction = this.dataService.getFactionById(FACTION_EXTINCT);
 
         for (const eraName of selectedEraNames) {
             const era = this.dataService.getEraByName(eraName);
@@ -970,16 +937,11 @@ export class UnitSearchFiltersService {
         return this.getUnitIdsForSelectedEras(contextEraNames) || new Set<number>();
     }
 
-    private getUnitIdsForSelectedFactions(selectedFactionEntries: MultiStateSelection, contextEraIds?: Set<number>): Set<number> | null {
-        const orFactions: string[] = [];
-        const andFactions: string[] = [];
-        const notFactions: string[] = [];
-        for (const [name, selection] of Object.entries(selectedFactionEntries)) {
-            if (!selection.state) continue;
-            if (selection.state === 'or') orFactions.push(selection.name);
-            else if (selection.state === 'and') andFactions.push(selection.name);
-            else if (selection.state === 'not') notFactions.push(selection.name);
-        }        
+    private getUnitIdsForSelectedFactions(selectedFactionEntries: MultiStateSelection, contextEraIds?: Set<number>, wildcardPatterns?: WildcardPattern[]): Set<number> | null {
+        const allFactionNames = this.dataService.getFactions().map(f => f.name);
+        const { or: orFactions, and: andFactions, not: notFactions } = resolveFactionNamesFromFilter(
+            selectedFactionEntries, allFactionNames, wildcardPatterns
+        );
         if (orFactions.length === 0 && andFactions.length === 0 && notFactions.length === 0) {
             return null;
         }
@@ -1039,9 +1001,11 @@ export class UnitSearchFiltersService {
 
         let eraUnitIds: Set<number> | null = null;
         let factionUnitIds: Set<number> | null = null;
-        if (Object.values(selectedFactionEntries).some(s => s.state)) {
+        const factionFilterState = state['faction'];
+        const factionWildcardPatterns = factionFilterState?.wildcardPatterns;
+        if (Object.values(selectedFactionEntries).some(s => s.state) || (factionWildcardPatterns && factionWildcardPatterns.length > 0)) {
             const selectedEraIds = new Set(this.dataService.getEras().filter(e => selectedEraNames.includes(e.name)).map(e => e.id));
-            factionUnitIds = this.getUnitIdsForSelectedFactions(selectedFactionEntries, selectedEraIds.size > 0 ? selectedEraIds : undefined);
+            factionUnitIds = this.getUnitIdsForSelectedFactions(selectedFactionEntries, selectedEraIds.size > 0 ? selectedEraIds : undefined, factionWildcardPatterns);
         } else
             if (selectedEraNames.length > 0) {
                 eraUnitIds = this.getUnitIdsForSelectedEras(selectedEraNames);
@@ -1069,17 +1033,9 @@ export class UnitSearchFiltersService {
         if (selectedForcePackNames.length > 0) {
             const chassisTypeSet = new Set<string>();
             for (const packName of selectedForcePackNames) {
-                const pack = getForcePacks().find(p => p.name === packName);
-                if (pack) {
-                    for (const packUnit of pack.units) {
-                        // Find the full Unit object by name to get its type
-                        const fullUnit = this.units.find(u => u.name === packUnit.name);
-                        if (fullUnit) {
-                            // Create a composite key of chassis + type
-                            const key = `${fullUnit.chassis}|${fullUnit.type}`;
-                            chassisTypeSet.add(key);
-                        }
-                    }
+                const packSet = this.dataService.getForcePackChassisTypeSet(packName);
+                if (packSet) {
+                    for (const key of packSet) chassisTypeSet.add(key);
                 }
             }
             results = results.filter(u => {
@@ -1505,6 +1461,18 @@ export class UnitSearchFiltersService {
         const _tagsVersion = this.tagsVersion();
 
         let baseUnits = this.units;
+
+        // Pre-filter by text search so dropdown/range options cascade from it.
+        // Only for non-complex queries (complex queries hide the UI dropdowns anyway).
+        const textSearch = this.effectiveTextSearch();
+        if (textSearch) {
+            const textTokens = parseSearchQuery(textSearch);
+            baseUnits = baseUnits.filter(u => {
+                const searchableText = u._searchKey || `${u.chassis ?? ''} ${u.model ?? ''}`.toLowerCase();
+                return matchesSearch(searchableText, textTokens, true);
+            });
+        }
+
         const activeFilters: Record<string, any> = {};
         for (const [key, s] of Object.entries(state)) {
             if (s.interactedWith) activeFilters[key] = s.value;
@@ -1534,31 +1502,42 @@ export class UnitSearchFiltersService {
                 if (conf.external) {
                     const contextUnitIds = new Set(contextUnits.filter(u => u.id !== -1).map(u => u.id));
                     if (conf.key === 'era') {
-                        const selectedFactionsAvailableEraIds: Set<number> = new Set(
-                            this.dataService.getFactions()
-                                .filter(faction => selectedFactionNames.includes(faction.name))
-                                .flatMap(faction =>
-                                    Object.entries(faction.eras)
-                                        .filter(([_, unitIds]) => unitIds.size > 0)
-                                        .map(([eraId]) => Number(eraId))
-                                )
-                        );
-                        availableOptions = this.dataService.getEras()
-                            .filter(era => {
-                                if (selectedFactionsAvailableEraIds.size > 0) {
-                                    if (!selectedFactionsAvailableEraIds.has(era.id)) return false;
+                        const selectedFactionsAvailableEraIds = new Set<number>();
+                        for (const name of selectedFactionNames) {
+                            const faction = this.dataService.getFactionByName(name);
+                            if (faction) {
+                                for (const [eraId, unitIds] of Object.entries(faction.eras)) {
+                                    if ((unitIds as Set<number>).size > 0) {
+                                        selectedFactionsAvailableEraIds.add(Number(eraId));
+                                    }
                                 }
-                                return setHasAny(era.units as Set<number>, contextUnitIds);
-                            }).map(era => ({ name: era.name, img: era.img }));
+                            }
+                        }
+                        // When factions are selected, only check their specific eras
+                        const erasToCheck = selectedFactionsAvailableEraIds.size > 0
+                            ? Array.from(selectedFactionsAvailableEraIds, id => this.dataService.getEraById(id)).filter((e): e is Era => !!e)
+                            : this.dataService.getEras();
+                        availableOptions = erasToCheck
+                            .filter(era => setHasAny(era.units as Set<number>, contextUnitIds))
+                            .map(era => ({ name: era.name, img: era.img }));
                     } else 
                     if (conf.key === 'faction') {
-                        const selectedEraIds: Set<number> = new Set(this.dataService.getEras().filter(e => selectedEraNames.includes(e.name)).map(e => e.id));
+                        const selectedEraIds = new Set<number>();
+                        for (const eraName of selectedEraNames) {
+                            const era = this.dataService.getEraByName(eraName);
+                            if (era) selectedEraIds.add(era.id);
+                        }
                         availableOptions = this.dataService.getFactions()
                             .filter(faction => {
-                                for (const eraIdStr in faction.eras) {
-                                    if (selectedEraIds.size > 0) {
-                                        if (!selectedEraIds.has(Number(eraIdStr))) continue;
+                                if (selectedEraIds.size > 0) {
+                                    // Only check the selected eras
+                                    for (const eraId of selectedEraIds) {
+                                        const unitIds = faction.eras[eraId] as Set<number> | undefined;
+                                        if (unitIds && setHasAny(unitIds, contextUnitIds)) return true;
                                     }
+                                    return false;
+                                }
+                                for (const eraIdStr in faction.eras) {
                                     if (setHasAny(faction.eras[eraIdStr] as Set<number>, contextUnitIds)) return true;
                                 }
                                 return false;
@@ -2091,138 +2070,147 @@ export class UnitSearchFiltersService {
         effect(() => {
             const isDataReady = this.dataService.isDataReady();
             if (isDataReady && !this.urlStateInitialized()) {
-                // Use UrlStateService to get initial URL params (captured before any routing effects)
-                let hasFilters = false;
-                
-                // Load search query (may contain semantic filters)
-                const searchParam = this.urlStateService.getInitialParam('q');
-                if (searchParam) {
-                    this.searchText.set(searchParam);
-                    hasFilters = true;
-                }
-
-                // Load sort settings
-                const sortParam = this.urlStateService.getInitialParam('sort');
-                if (sortParam && SORT_OPTIONS.some(opt => opt.key === sortParam)) {
-                    this.selectedSort.set(sortParam);
-                }
-
-                const sortDirParam = this.urlStateService.getInitialParam('sortDir');
-                if (sortDirParam === 'desc' || sortDirParam === 'asc') {
-                    this.selectedSortDirection.set(sortDirParam);
-                }
-
-                // Load UI filters from filters param (these are separate from semantic filters in q)
-                const filtersParam = this.urlStateService.getInitialParam('filters');
-                let parsedFilterState: FilterState = {};
-                if (filtersParam) {
-                    hasFilters = true;
-                    try {
-                        const parsedFilters = this.parseCompactFiltersFromUrl(filtersParam);
-                        const validFilters: FilterState = {};
-
-                        for (const [key, state] of Object.entries(parsedFilters)) {
-                            const conf = ADVANCED_FILTERS.find(f => f.key === key);
-                            if (!conf) continue; // Skip unknown filter keys
-
-                            if (conf.type === AdvFilterType.DROPDOWN) {
-                                // Skip validation for _tags - tags are user-specific and may not
-                                // be loaded into units yet when parsing URL. Trust the URL values.
-                                if (key === '_tags') {
-                                    validFilters[key] = state;
-                                    continue;
-                                }
-                                
-                                // Get case-insensitive lookup map (lowercase -> proper case)
-                                const availableValuesMap = this.getAvailableDropdownValuesMap(conf);
-
-                                if (conf.multistate) {
-                                    const selection = state.value as MultiStateSelection;
-                                    const validSelection: MultiStateSelection = {};
-
-                                    for (const [name, selectionValue] of Object.entries(selection)) {
-                                        const lowerName = name.toLowerCase();
-                                        const properCase = availableValuesMap.get(lowerName);
-                                        if (properCase) {
-                                            // Use proper case for the key, but preserve selection value
-                                            validSelection[properCase] = { ...selectionValue, name: properCase };
-                                        }
-                                    }
-
-                                    if (Object.keys(validSelection).length > 0) {
-                                        validFilters[key] = { value: validSelection, interactedWith: true };
-                                    }
-                                } else {
-                                    const values = state.value as string[];
-                                    // Map to proper case, filtering out unavailable values
-                                    const validValues = values
-                                        .map(v => availableValuesMap.get(v.toLowerCase()))
-                                        .filter((v): v is string => v !== undefined);
-
-                                    if (validValues.length > 0) {
-                                        validFilters[key] = { value: validValues, interactedWith: true };
-                                    }
-                                }
-                            } else {
-                                // For range filters, just keep them as-is
-                                // They'll be clamped automatically by advOptions
-                                validFilters[key] = state;
-                            }
-                        }
-                        parsedFilterState = validFilters;
-                        this.filterState.set(validFilters);
-                    } catch (error) {
-                        this.logger.warn('Failed to parse filters from URL: ' + error);
-                    }
-                }
-
-                // Parse public tags mapping from URL (for both semantic query and dropdown tags)
-                // Format: pt=publicId1:tag1,publicId2:tag2
-                const ptParam = this.urlStateService.getInitialParam('pt');
-                const foreignTags = this.parsePublicTagsParam(ptParam, searchParam, parsedFilterState);
-                if (foreignTags.length > 0) {
-                    // Merge with any existing pending foreign tags
-                    const existing = this.pendingForeignTags();
-                    const merged = [...existing];
-                    for (const ft of foreignTags) {
-                        const key = `${ft.publicId}:${ft.tagName}`.toLowerCase();
-                        if (!existing.some(e => `${e.publicId}:${e.tagName}`.toLowerCase() === key)) {
-                            merged.push(ft);
-                        }
-                    }
-                    this.pendingForeignTags.set(merged);
-                }
-
-                const expandedParam = this.urlStateService.getInitialParam('expanded');
-                const suggestExpanded = !this.urlStateService.hasInitialParam('instance') && !this.urlStateService.hasInitialParam('units') && hasFilters;
-                if (expandedParam === 'true' || suggestExpanded) {
-                    this.expandedView.set(true);
-                }
-
-                if (this.urlStateService.hasInitialParam('gunnery')) {
-                    const gunneryParam = this.urlStateService.getInitialParam('gunnery');
-                    if (gunneryParam) {
-                        const gunnery = parseInt(gunneryParam);
-                        if (!isNaN(gunnery) && gunnery >= 0 && gunnery <= 8) {
-                            this.pilotGunnerySkill.set(gunnery);
-                        }
-                    }
-                }
-
-                if (this.urlStateService.hasInitialParam('piloting')) {
-                    const pilotingParam = this.urlStateService.getInitialParam('piloting');
-                    if (pilotingParam) {
-                        const piloting = parseInt(pilotingParam);
-                        if (!isNaN(piloting) && piloting >= 0 && piloting <= 8) {
-                            this.pilotPilotingSkill.set(piloting);
-                        }
-                    }
-                }
+                this.applyParamsCore(this.urlStateService.initialState.params);
                 this.urlStateInitialized.set(true);
-                // Signal that we're done reading URL state
                 this.urlStateService.markConsumerReady('unit-search-filters');
             }
         });
+    }
+
+    /**
+     * Apply search/filter parameters from a URLSearchParams object.
+     * Used for in-app URL handling when the PWA receives a captured link
+     * while already open. Resets current filters before applying new ones.
+     *
+     * @param params The URLSearchParams to read from
+     * @param opts Options controlling behavior
+     */
+    public applySearchParamsFromUrl(params: URLSearchParams, opts: { expandView?: boolean } = {}): void {
+        this.clearFilters();
+        this.applyParamsCore(params, opts);
+        this.processPendingForeignTags();
+    }
+
+    /**
+     * Core logic for applying search/filter params from a URLSearchParams.
+     * Shared between startup initialization and in-app URL handling.
+     */
+    private applyParamsCore(params: URLSearchParams, opts: { expandView?: boolean } = {}): void {
+        let hasFilters = false;
+
+        // Search query (may contain semantic filters)
+        const searchParam = params.get('q');
+        if (searchParam) {
+            this.searchText.set(searchParam);
+            hasFilters = true;
+        }
+
+        // Sort settings
+        const sortParam = params.get('sort');
+        if (sortParam && SORT_OPTIONS.some(opt => opt.key === sortParam)) {
+            this.selectedSort.set(sortParam);
+        }
+
+        const sortDirParam = params.get('sortDir');
+        if (sortDirParam === 'desc' || sortDirParam === 'asc') {
+            this.selectedSortDirection.set(sortDirParam);
+        }
+
+        // UI filters (separate from semantic filters in q)
+        const filtersParam = params.get('filters');
+        let parsedFilterState: FilterState = {};
+        if (filtersParam) {
+            hasFilters = true;
+            try {
+                const parsedFilters = this.parseCompactFiltersFromUrl(filtersParam);
+                const validFilters: FilterState = {};
+
+                for (const [key, state] of Object.entries(parsedFilters)) {
+                    const conf = ADVANCED_FILTERS.find(f => f.key === key);
+                    if (!conf) continue;
+
+                    if (conf.type === AdvFilterType.DROPDOWN) {
+                        // Skip validation for _tags: tags are user-specific and may not
+                        // be loaded into units yet when parsing URL. Trust the URL values.
+                        if (key === '_tags') {
+                            validFilters[key] = state;
+                            continue;
+                        }
+
+                        const availableValuesMap = this.getAvailableDropdownValuesMap(conf);
+
+                        if (conf.multistate) {
+                            const selection = state.value as MultiStateSelection;
+                            const validSelection: MultiStateSelection = {};
+                            for (const [name, selectionValue] of Object.entries(selection)) {
+                                const lowerName = name.toLowerCase();
+                                const properCase = availableValuesMap.get(lowerName);
+                                if (properCase) {
+                                    validSelection[properCase] = { ...selectionValue, name: properCase };
+                                }
+                            }
+                            if (Object.keys(validSelection).length > 0) {
+                                validFilters[key] = { value: validSelection, interactedWith: true };
+                            }
+                        } else {
+                            const values = state.value as string[];
+                            const validValues = values
+                                .map(v => availableValuesMap.get(v.toLowerCase()))
+                                .filter((v): v is string => v !== undefined);
+                            if (validValues.length > 0) {
+                                validFilters[key] = { value: validValues, interactedWith: true };
+                            }
+                        }
+                    } else {
+                        // Range filters: kept as-is, clamped automatically by advOptions
+                        validFilters[key] = state;
+                    }
+                }
+                parsedFilterState = validFilters;
+                this.filterState.set(validFilters);
+            } catch (error) {
+                this.logger.warn('Failed to parse filters from URL: ' + error);
+            }
+        }
+
+        // Public tags mapping (format: publicId1:tag1,publicId2:tag2)
+        const ptParam = params.get('pt');
+        const foreignTags = this.parsePublicTagsParam(ptParam, searchParam, parsedFilterState);
+        if (foreignTags.length > 0) {
+            const existing = this.pendingForeignTags();
+            const merged = [...existing];
+            for (const ft of foreignTags) {
+                const key = `${ft.publicId}:${ft.tagName}`.toLowerCase();
+                if (!existing.some(e => `${e.publicId}:${e.tagName}`.toLowerCase() === key)) {
+                    merged.push(ft);
+                }
+            }
+            this.pendingForeignTags.set(merged);
+        }
+
+        // Expanded view
+        const expandedParam = params.get('expanded');
+        const shouldExpand = opts.expandView ?? (!params.has('instance') && !params.has('units') && hasFilters);
+        if (expandedParam === 'true' || shouldExpand) {
+            this.expandedView.set(true);
+        }
+
+        // Gunnery / piloting
+        const gunneryParam = params.get('gunnery');
+        if (gunneryParam) {
+            const gunnery = parseInt(gunneryParam);
+            if (!isNaN(gunnery) && gunnery >= 0 && gunnery <= 8) {
+                this.pilotGunnerySkill.set(gunnery);
+            }
+        }
+
+        const pilotingParam = params.get('piloting');
+        if (pilotingParam) {
+            const piloting = parseInt(pilotingParam);
+            if (!isNaN(piloting) && piloting >= 0 && piloting <= 8) {
+                this.pilotPilotingSkill.set(piloting);
+            }
+        }
     }
 
     private getAvailableDropdownValues(conf: AdvFilterConfig): Set<string> {
@@ -3098,19 +3086,7 @@ export class UnitSearchFiltersService {
 
     getAdjustedBV(unit: Unit): number {
         const gunnery = this.pilotGunnerySkill();
-        let piloting = this.pilotPilotingSkill();
-        if (unit.type === 'ProtoMek') {
-            piloting = DEFAULT_PILOTING_SKILL; // ProtoMeks always use Piloting 5
-        } else
-        if (unit.type === 'Infantry') {
-            if (!canAntiMech(unit)) {
-                if (unit.subtype === 'Conventional Infantry') {
-                    piloting = NO_ANTIMEK_SKILL;
-                } else {
-                    piloting = DEFAULT_PILOTING_SKILL;
-                }
-            }
-        }
+        const piloting = getEffectivePilotingSkill(unit, this.pilotPilotingSkill());
         // Use default skills - no adjustment needed
         if (gunnery === DEFAULT_GUNNERY_SKILL && piloting === DEFAULT_PILOTING_SKILL) {
             return unit.bv;

@@ -40,7 +40,6 @@ import {
     ElementRef,
     inject,
     signal,
-    Signal,
     untracked,
     viewChild,
     AfterViewInit
@@ -56,9 +55,9 @@ import { SerializedC3NetworkGroup } from '../../models/force-serialization';
 import { GameSystem } from '../../models/common.model';
 import { ToastService } from '../../services/toast.service';
 import { OptionsService } from '../../services/options.service';
+import { DialogsService } from '../../services/dialogs.service';
 import { LayoutService } from '../../services/layout.service';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
-import { C } from '@angular/cdk/keycodes';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 
 const MIN_ZOOM = 0.1;
@@ -148,6 +147,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     private dialogRef = inject(DialogRef<C3NetworkDialogResult>);
     protected data = inject<C3NetworkDialogData>(DIALOG_DATA);
     private toastService = inject(ToastService);
+    private dialogsService = inject(DialogsService);
     private destroyRef = inject(DestroyRef);
     private optionsService = inject(OptionsService);
     protected layoutService = inject(LayoutService);
@@ -585,10 +585,13 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             if (!isClassic || !node) return {};
             const cbtUnit = node.unit as CBTForceUnit;
             const unit = cbtUnit.getUnit();
-            const baseBv = unit.bv;
-            const c3Tax = C3NetworkUtil.calculateUnitC3Tax(cbtUnit, baseBv, networks, allUnits);
-            const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, baseBv+c3Tax, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
-            return { baseBv: (adjustedBv-c3Tax), c3Tax };
+            const baseBv = cbtUnit.getBaseBv();
+            const tagBv = cbtUnit.tagBV();
+            const c3Bv = C3NetworkUtil.calculateUnitC3Tax(cbtUnit, networks, allUnits);
+            const externalStoresBv = cbtUnit.externalStoresBv();
+            const preSkillAdjustedBv = baseBv + tagBv + c3Bv + externalStoresBv;
+            const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, preSkillAdjustedBv, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
+            return { baseBv: (adjustedBv-c3Bv), c3Tax: c3Bv };
         };
 
         const buildNetworkVm = (network: SerializedC3NetworkGroup, isTopLevel: boolean): SidebarNetworkVm | null => {
@@ -712,14 +715,17 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         for (const node of nodes) {
             const cbtUnit = node.unit as CBTForceUnit;
             const unit = cbtUnit.getUnit();
-            const tax = C3NetworkUtil.calculateUnitC3Tax(cbtUnit, unit.bv, networks, allUnits);
-            const finalBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv + tax, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
-            totalBaseBv += unit.bv;
-            totalTax += tax;
+            const tagBv = cbtUnit.tagBV();
+            const c3Bv = C3NetworkUtil.calculateUnitC3Tax(cbtUnit, networks, allUnits);
+            const externalStoresBv = cbtUnit.externalStoresBv();
+            const preSkillAdjustedBv = cbtUnit.getBaseBv() + tagBv + c3Bv + externalStoresBv;
+            const finalBv = BVCalculatorUtil.calculateAdjustedBV(unit, preSkillAdjustedBv, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
+            totalBaseBv += finalBv - c3Bv;
+            totalTax += c3Bv;
             totalFinalBv += finalBv;
         }
         
-        return { totalBaseBv: totalFinalBv - totalTax, totalTax, grandTotal: totalFinalBv };
+        return { totalBaseBv: totalFinalBv, totalTax, grandTotal: totalFinalBv };
     });
 
     protected pinConnectionState = computed(() => {
@@ -1484,7 +1490,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
      * - For peer networks: connect units in the same group first, balance network sizes
      * - For master-slave networks: connect internal pins first, then connect slaves to masters
      */
-    protected autoConfigureNetworks(): void {
+    protected async autoConfigureNetworks(): Promise<void> {
         if (this.data.readOnly) return;
 
         const nodes = this.nodes();
@@ -1531,16 +1537,21 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
         for (const [networkType, allPeersOfType] of peersByType) {
             const limit = C3_NETWORK_LIMITS[networkType];
-            
+
+            // Skip peers that are already in a network: don't re-wire them
+            const unconnectedPeers = allPeersOfType.filter(
+                n => !C3NetworkUtil.isUnitConnected(n.unit.id, networks)
+            );
+            if (unconnectedPeers.length < 2) continue;
+
             // Sort peers by group to keep same-group units together
-            allPeersOfType.sort((a, b) => {
+            unconnectedPeers.sort((a, b) => {
                 const aGroup = unitGroupMap.get(a.unit.id) || '';
                 const bGroup = unitGroupMap.get(b.unit.id) || '';
                 return aGroup.localeCompare(bGroup);
             });
 
-            const totalPeers = allPeersOfType.length;
-            if (totalPeers < 2) continue;
+            const totalPeers = unconnectedPeers.length;
 
             // Calculate balanced network distribution
             // numNetworks = ceil(totalPeers / limit)
@@ -1558,7 +1569,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             for (let i = 0; i < numNetworks; i++) {
                 const chunkSize = i < (numNetworks - remainder) ? base : base + 1;
                 if (chunkSize >= 2) {
-                    chunks.push(allPeersOfType.slice(idx, idx + chunkSize));
+                    chunks.push(unconnectedPeers.slice(idx, idx + chunkSize));
                 }
                 idx += chunkSize;
             }
@@ -1650,7 +1661,13 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         };
 
         // Step 1: Connect all slaves to master pins
+        // Pre-populate connectedSlaves from existing networks so we don't re-wire them
         const connectedSlaves = new Set<string>();
+        for (const slaveNode of slaveOnlyNodes) {
+            if (C3NetworkUtil.isUnitConnected(slaveNode.unit.id, networks)) {
+                connectedSlaves.add(slaveNode.unit.id);
+            }
+        }
         const allSlaveNodes = [...slaveOnlyNodes].sort((a, b) => {
             const aGroup = unitGroupMap.get(a.unit.id) || '';
             const bGroup = unitGroupMap.get(b.unit.id) || '';
@@ -1665,15 +1682,12 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             
             const slaveGroup = unitGroupMap.get(slaveNode.unit.id) || '';
             
-            // Find best master pin: prefer same group, then single-pin masters, then heavier/slower
-            // Sort candidates for this slave
-            const candidates = [...allMasterPins].sort((a, b) => {
-                const aGroup = unitGroupMap.get(a.node.unit.id) || '';
-                const bGroup = unitGroupMap.get(b.node.unit.id) || '';
-                const aMatch = aGroup === slaveGroup ? 0 : 1;
-                const bMatch = bGroup === slaveGroup ? 0 : 1;
-                if (aMatch !== bMatch) return aMatch - bMatch;
-                
+            // Find best master pin: only same group, then prefer single-pin masters, then heavier/slower
+            // Hard-filter to same group when the slave has a group assignment
+            const eligiblePins = slaveGroup
+                ? allMasterPins.filter(p => unitGroupMap.get(p.node.unit.id) === slaveGroup)
+                : allMasterPins;
+            const candidates = [...eligiblePins].sort((a, b) => {
                 // Prefer single-pin masters (they can only be sub-masters)
                 if (a.pinCount !== b.pinCount) return a.pinCount - b.pinCount;
                 
@@ -1746,24 +1760,19 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             for (const masterPin of mastersNeedingGm()) {
                 const masterGroup = unitGroupMap.get(masterPin.node.unit.id) || '';
                 
-                // Find external GM candidates only (other nodes)
+                // Find external GM candidates only (other nodes, same group)
                 const externalCandidates = allMasterPins.filter(candidate => {
                     if (candidate.node.unit.id === masterPin.node.unit.id) return false; // Same node = internal
+                    if (masterGroup && unitGroupMap.get(candidate.node.unit.id) !== masterGroup) return false; // Same group only
                     if (isPinChild(candidate, networks)) return false;
                     return getGmAvailableSlots(candidate, networks) > 0;
                 });
                 
-                // Sort: prefer those with networks, then same group, then heavier/slower units as GMs
+                // Sort: prefer those with networks, then heavier/slower units as GMs
                 externalCandidates.sort((a, b) => {
                     const aHasNet = pinHasNetwork(a, networks) ? 0 : 1;
                     const bHasNet = pinHasNetwork(b, networks) ? 0 : 1;
                     if (aHasNet !== bHasNet) return aHasNet - bHasNet;
-                    
-                    const aGroup = unitGroupMap.get(a.node.unit.id) || '';
-                    const bGroup = unitGroupMap.get(b.node.unit.id) || '';
-                    const aMatch = aGroup === masterGroup ? 0 : 1;
-                    const bMatch = bGroup === masterGroup ? 0 : 1;
-                    if (aMatch !== bMatch) return aMatch - bMatch;
                     
                     // Prefer heavier units as GMs (higher tonnage = lower sort value)
                     const aTonnage = a.node.unit.getUnit().tons ?? 0;
@@ -1862,6 +1871,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 
                 const externalCandidates = allMasterPins.filter(candidate => {
                     if (candidate.node.unit.id === orphanPin.node.unit.id) return false;
+                    if (orphanGroup && unitGroupMap.get(candidate.node.unit.id) !== orphanGroup) return false; // Same group only
                     return getGmAvailableSlots(candidate, networks) > 0;
                 });
                 
@@ -1870,11 +1880,15 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     const bHasNet = pinHasNetwork(b, networks) ? 0 : 1;
                     if (aHasNet !== bHasNet) return aHasNet - bHasNet;
                     
-                    const aGroup = unitGroupMap.get(a.node.unit.id) || '';
-                    const bGroup = unitGroupMap.get(b.node.unit.id) || '';
-                    const aMatch = aGroup === orphanGroup ? 0 : 1;
-                    const bMatch = bGroup === orphanGroup ? 0 : 1;
-                    return aMatch - bMatch;
+                    // Prefer heavier units as GMs (higher tonnage = lower sort value)
+                    const aTonnage = a.node.unit.getUnit().tons ?? 0;
+                    const bTonnage = b.node.unit.getUnit().tons ?? 0;
+                    if (aTonnage !== bTonnage) return bTonnage - aTonnage;
+                    
+                    // Prefer slower units as GMs (lower movement = lower sort value)
+                    const aMove = a.node.unit.getUnit().walk ?? 99;
+                    const bMove = b.node.unit.getUnit().walk ?? 99;
+                    return aMove - bMove;
                 });
                 
                 for (const gmPin of externalCandidates) {
@@ -1942,6 +1956,200 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     if (hierarchyChanged) break;
                 }
             }
+        }
+
+        // ========== CROSS-GROUP PASS ==========
+        // Run the cross-group linking on a cloned network to see if it produces any real changes.
+        // If it does, prompt the user before applying.
+
+        const preCrossGroupNetworks = networks.map(n => ({ ...n, members: n.members ? [...n.members] : undefined, peerIds: n.peerIds ? [...n.peerIds] : undefined }));
+        const preCrossGroupSlaves = new Set(connectedSlaves);
+
+        // --- Cross-group linking function (operates on the live `networks` variable) ---
+        const runCrossGroupPass = () => {
+            // (a) Orphan slaves to cross-group masters with existing networks
+            const unconnectedSlaves = slaveOnlyNodes.filter(n => !connectedSlaves.has(n.unit.id));
+            for (const slaveNode of unconnectedSlaves) {
+                const slaveCompIdx = slaveNode.c3Components.findIndex(c => c.role === C3Role.SLAVE);
+                if (slaveCompIdx < 0) continue;
+
+                const candidates = allMasterPins
+                    .filter(p => pinHasNetwork(p, networks) && getAvailableSlaveSlots(p, networks) > 0)
+                    .sort((a, b) => {
+                        const aTonnage = a.node.unit.getUnit().tons ?? 0;
+                        const bTonnage = b.node.unit.getUnit().tons ?? 0;
+                        if (aTonnage !== bTonnage) return bTonnage - aTonnage;
+                        const aMove = a.node.unit.getUnit().walk ?? 99;
+                        const bMove = b.node.unit.getUnit().walk ?? 99;
+                        return aMove - bMove;
+                    });
+
+                for (const masterPin of candidates) {
+                    const ctx = this.getNetworkContext();
+                    ctx.networks = networks;
+                    const canConnect = C3NetworkUtil.canConnectToPin(
+                        masterPin.node, masterPin.compIndex, slaveNode, slaveCompIdx, networks
+                    );
+                    if (canConnect.valid) {
+                        const result = C3NetworkUtil.createConnection(ctx, masterPin.node, masterPin.compIndex, slaveNode, slaveCompIdx);
+                        if (result.success) {
+                            networks = result.networks;
+                            connectedSlaves.add(slaveNode.unit.id);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // (b) Root network masters → find cross-group GM
+            const linkRootMasters = () => {
+                let changed = true;
+                while (changed) {
+                    changed = false;
+                    const roots = allMasterPins.filter(pin => pinHasNetwork(pin, networks) && !isPinChild(pin, networks));
+
+                    for (const rootPin of roots) {
+                        const gmCandidates = allMasterPins
+                            .filter(c => {
+                                if (c.node.unit.id === rootPin.node.unit.id) return false;
+                                if (isPinChild(c, networks)) return false;
+                                return getGmAvailableSlots(c, networks) > 0;
+                            })
+                            .sort((a, b) => {
+                                const aHasNet = pinHasNetwork(a, networks) ? 0 : 1;
+                                const bHasNet = pinHasNetwork(b, networks) ? 0 : 1;
+                                if (aHasNet !== bHasNet) return aHasNet - bHasNet;
+
+                                const aTonnage = a.node.unit.getUnit().tons ?? 0;
+                                const bTonnage = b.node.unit.getUnit().tons ?? 0;
+                                if (aTonnage !== bTonnage) return bTonnage - aTonnage;
+                                const aMove = a.node.unit.getUnit().walk ?? 99;
+                                const bMove = b.node.unit.getUnit().walk ?? 99;
+                                return aMove - bMove;
+                            });
+
+                        for (const gmPin of gmCandidates) {
+                            const ctx = this.getNetworkContext();
+                            ctx.networks = networks;
+                            const canConnect = C3NetworkUtil.canConnectToPin(
+                                rootPin.node, rootPin.compIndex, gmPin.node, gmPin.compIndex, networks
+                            );
+                            if (canConnect.valid) {
+                                const result = C3NetworkUtil.createConnection(ctx, rootPin.node, rootPin.compIndex, gmPin.node, gmPin.compIndex);
+                                if (result.success) {
+                                    networks = result.networks;
+                                    changed = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (changed) break;
+                    }
+                }
+            };
+            linkRootMasters();
+
+            // (c) Remaining orphan masters → attach cross-group
+            {
+                let changed = true;
+                while (changed) {
+                    changed = false;
+                    const orphans = allMasterPins.filter(pin => !pinHasNetwork(pin, networks) && !isPinChild(pin, networks));
+
+                    for (const orphanPin of orphans) {
+                        const gmCandidates = allMasterPins
+                            .filter(c => {
+                                if (c.node.unit.id === orphanPin.node.unit.id && c.compIndex === orphanPin.compIndex) return false;
+                                if (isPinChild(c, networks)) return false;
+                                return getGmAvailableSlots(c, networks) > 0;
+                            })
+                            .sort((a, b) => {
+                                const aHasNet = pinHasNetwork(a, networks) ? 0 : 1;
+                                const bHasNet = pinHasNetwork(b, networks) ? 0 : 1;
+                                if (aHasNet !== bHasNet) return aHasNet - bHasNet;
+
+                                const aTonnage = a.node.unit.getUnit().tons ?? 0;
+                                const bTonnage = b.node.unit.getUnit().tons ?? 0;
+                                if (aTonnage !== bTonnage) return bTonnage - aTonnage;
+                                const aMove = a.node.unit.getUnit().walk ?? 99;
+                                const bMove = b.node.unit.getUnit().walk ?? 99;
+                                return aMove - bMove;
+                            });
+
+                        for (const gmPin of gmCandidates) {
+                            const ctx = this.getNetworkContext();
+                            ctx.networks = networks;
+                            const canConnect = C3NetworkUtil.canConnectToPin(
+                                orphanPin.node, orphanPin.compIndex, gmPin.node, gmPin.compIndex, networks
+                            );
+                            if (canConnect.valid) {
+                                const result = C3NetworkUtil.createConnection(ctx, orphanPin.node, orphanPin.compIndex, gmPin.node, gmPin.compIndex);
+                                if (result.success) {
+                                    networks = result.networks;
+                                    changed = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (changed) break;
+                    }
+                }
+            }
+
+            // (c-2) Remaining orphan slaves → attach to any master with available slots
+            const stillUnconnectedSlaves = slaveOnlyNodes.filter(n => !connectedSlaves.has(n.unit.id));
+            for (const slaveNode of stillUnconnectedSlaves) {
+                const slaveCompIdx = slaveNode.c3Components.findIndex(c => c.role === C3Role.SLAVE);
+                if (slaveCompIdx < 0) continue;
+
+                const candidates = allMasterPins
+                    .filter(p => getAvailableSlaveSlots(p, networks) > 0)
+                    .sort((a, b) => {
+                        const aTonnage = a.node.unit.getUnit().tons ?? 0;
+                        const bTonnage = b.node.unit.getUnit().tons ?? 0;
+                        if (aTonnage !== bTonnage) return bTonnage - aTonnage;
+                        const aMove = a.node.unit.getUnit().walk ?? 99;
+                        const bMove = b.node.unit.getUnit().walk ?? 99;
+                        return aMove - bMove;
+                    });
+
+                for (const masterPin of candidates) {
+                    const ctx = this.getNetworkContext();
+                    ctx.networks = networks;
+                    const canConnect = C3NetworkUtil.canConnectToPin(
+                        masterPin.node, masterPin.compIndex, slaveNode, slaveCompIdx, networks
+                    );
+                    if (canConnect.valid) {
+                        const result = C3NetworkUtil.createConnection(ctx, masterPin.node, masterPin.compIndex, slaveNode, slaveCompIdx);
+                        if (result.success) {
+                            networks = result.networks;
+                            connectedSlaves.add(slaveNode.unit.id);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // (d) Final re-check
+            linkRootMasters();
+        };
+
+        // Run cross-group pass on the live networks variable
+        runCrossGroupPass();
+
+        // Compare: did cross-group actually change anything?
+        const crossGroupChanged = JSON.stringify(networks) !== JSON.stringify(preCrossGroupNetworks);
+
+        if (crossGroupChanged) {
+            // Cross-group made real changes: ask the user
+            const postCrossGroupNetworks = networks;
+            const doCrossGroup = await this.dialogsService.requestConfirmation(
+                'Cross-group connections are available. Apply cross-group linking?',
+                'Cross-Group Linking',
+                'info'
+            );
+            // Pick the appropriate network state based on user choice
+            networks = doCrossGroup ? postCrossGroupNetworks : preCrossGroupNetworks;
         }
 
         // Validate and clean the networks

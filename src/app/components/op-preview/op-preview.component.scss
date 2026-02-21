@@ -1,0 +1,146 @@
+:host {
+    display: block;
+    cursor: default;
+}
+
+.op-sides {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+}
+
+.op-side {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.op-side-label {
+    font-size: 0.75em;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 6px;
+    margin-bottom: 2px;
+}
+
+.friendly-label {
+    color: rgb(var(--friendly-color));
+    border-bottom: 2px solid rgba(var(--friendly-color), 0.4);
+    text-align: left;
+}
+
+.enemy-label {
+    color: rgb(var(--enemy-color));
+    border-bottom: 2px solid rgba(var(--enemy-color), 0.4);
+    text-align: right;
+}
+
+.op-force-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+}
+
+.op-force {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 2px 6px;
+    gap: 4px;
+}
+
+.op-force.missing {
+    opacity: 0.45;
+    text-decoration: line-through;
+}
+
+.op-faction-icon {
+    width: 1.2em;
+    height: 1.2em;
+    object-fit: contain;
+    flex-shrink: 0;
+    align-self: center;
+}
+
+.op-force-name {
+    font-size: 0.9em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 1;
+    text-align: left;
+
+    .enemy & {
+        text-align: right;
+    }
+}
+
+.op-force-val {
+    font-size: 0.8em;
+    color: var(--text-color-secondary);
+    white-space: nowrap;
+}
+
+.enemy .op-force {
+    flex-direction: row-reverse;
+    text-align: right;
+}
+
+.op-total {
+    display: flex;
+    gap: 8px;
+    padding: 2px 6px;
+    font-size: 0.8em;
+    font-weight: bold;
+    color: var(--text-color-secondary);
+    border-top: 1px solid var(--border-color);
+    margin-top: auto;
+    justify-content: flex-end;
+}
+
+.enemy .op-total {
+    justify-content: flex-start;
+}
+
+.op-vs {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 40px;
+    padding: 0 4px;
+    color: var(--text-color-secondary);
+    opacity: 0.5;
+}
+
+/* ── Mobile ── */
+@media (max-width: 600px) {
+    .op-sides {
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .op-vs {
+        flex: 0 0 auto;
+        padding: 4px 0;
+    }
+
+    
+    .enemy .op-force-name,
+    .enemy-label {
+        text-align: left;
+    }
+
+    .enemy .op-force {
+        flex-direction: row;
+        text-align: left;
+    }
+
+    .enemy .op-total {
+        justify-content: flex-end;
+    }
+}

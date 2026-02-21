@@ -47,8 +47,8 @@ import { ECMMode } from '../../models/common.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { C3NetworkUtil } from '../../utils/c3-network.util';
 import { C3Component, C3NetworkType } from '../../models/c3-network.model';
-import { GameService } from '../../services/game.service';
-import { formatMovement } from '../../models/as-common';
+import { GameSystem } from '../../models/common.model';
+import { formatMovement } from '../../utils/as-common.util';
 
 /**
  * Author: Drake
@@ -63,7 +63,6 @@ import { formatMovement } from '../../models/as-common';
 })
 export class UnitBlockComponent {
     optionsService = inject(OptionsService);
-    gameService = inject(GameService);
     forceUnit = input<ForceUnit>();
     compactMode = input<boolean>(false);
     onInfo = output<MouseEvent>();
@@ -75,6 +74,9 @@ export class UnitBlockComponent {
     unit = computed<Unit | undefined>(() => {
         return this.forceUnit()?.getUnit();
     });
+
+    /** Derives Alpha Strike status from the unit's own force, not the global game system. */
+    isAlphaStrike = computed<boolean>(() => this.forceUnit()?.force?.gameSystem === GameSystem.ALPHA_STRIKE);
 
     dirty = computed<boolean>(() => {
         if (!this.optionsService.options().useAutomations) {
@@ -283,24 +285,33 @@ export class UnitBlockComponent {
         if (!forceUnit || !unit) return null;
         if (!(forceUnit instanceof CBTForceUnit)) return null;
 
-        const baseBv = unit.bv;
+        const baseBv = forceUnit.getUnit().bv;
+        const ammoBvVariation = forceUnit.customAmmoBvVariation();
         const totalBv = forceUnit.getBv();
         if (baseBv === totalBv) return null; // No adjustments
+        const tagBv = forceUnit.tagBV();
         const c3Tax = forceUnit.c3Tax();
-        const pilotDiff = totalBv - baseBv - c3Tax;
+        const pilotBv = forceUnit.pilotBV();
 
         const lines: TooltipLine[] = [];
         if (baseBv > 0) {
             lines.push({ label: 'Base', value: `${baseBv}` });
         }
+        if (ammoBvVariation !== 0) {
+            const sign = ammoBvVariation > 0 ? '+' : '';
+            lines.push({ label: 'Custom Ammo', value: `${sign}${ammoBvVariation}` });
+        }
+        if (tagBv > 0) {
+            lines.push({ label: 'TAG', value: `+${tagBv}` });
+        }
         if (c3Tax > 0) {
-            lines.push({ label: 'Network', value: `+${c3Tax}` });
+            lines.push({ label: 'C³', value: `+${c3Tax}` });
         }
-        if (pilotDiff !== 0) {
-            const sign = pilotDiff > 0 ? '+' : '';
-            lines.push({ label: 'Pilot', value: `${sign}${pilotDiff}` });
+        if (pilotBv !== 0) {
+            const sign = pilotBv > 0 ? '+' : '';
+            lines.push({ label: 'Pilot', value: `${sign}${pilotBv}` });
         }
-        if (c3Tax > 0 || pilotDiff !== 0) {
+        if (tagBv > 0 || c3Tax > 0 || pilotBv !== 0) {
             lines.push({ label: 'Total', value: `=${totalBv}` });
         }
 

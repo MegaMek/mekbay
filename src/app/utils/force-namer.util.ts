@@ -31,267 +31,347 @@
  * affiliated with Microsoft.
  */
 
-import { Unit } from '../models/units.model';
 import { ForceUnit } from '../models/force-unit.model';
-import { Faction, Factions } from '../models/factions.model';
+import { Faction, FACTION_EXTINCT, FACTION_MERCENARY } from '../models/factions.model';
 import { Era } from '../models/eras.model';
-import { FACTION_EXTINCT } from '../services/unit-search-filters.service';
-import { LanceTypeDefinition, LanceTypeIdentifierUtil } from './lance-type-identifier.util';
+import {
+    MIDDLE_WORD_MERCENARY, END_WORD_MERCENARY,
+    MIDDLE_WORD_CORPORATE, END_WORD_CORPORATE,
+    PRE_FAB,
+} from './force-name-words.data';
 
 /*
  * Author: Drake
+ *
+ * Force-level naming: faction analysis + name generation from word lists.
+ * Adapted from MekHQ's RandomCompanyNameGenerator / BackgroundsController.
+ *
+ * Formation (group-level) naming lives in formation-namer.util.ts.
+ * ForceType / getForceType lives in force-type.util.ts.
  */
-export type ForceType =
-    | 'Squad'
-    | 'Platoon'
-    | 'Flight'
-    | 'Squadron'
-    | 'Wing'
-    | 'Single'
-    | 'Lance'
-    | 'Company'
-    | 'Battalion'
-    | 'Regiment'
-    | 'Brigade'
-    | 'Point'
-    | 'Star'
-    | 'Nova'
-    | 'Binary'
-    | 'Supernova Binary'
-    | 'Trinary'
-    | 'Supernova Trinary'
-    | 'Cluster'
-    | 'Galaxy'
-    | 'Level I'
-    | 'Level II'
-    | 'Level III'
-    | 'Level IV'
-    | 'Level V'
-    | 'Force'
-    | 'Mercenary';
 
-type ForceTypeRange = { type: ForceType; min: number; max: number };
+// ─── Public Types ──────────────────────────────────────────────────────────────
 
-const INNER_SPHERE_FORCE_TYPES: ForceTypeRange[] = [
-    { type: 'Lance', min: 1, max: 4 },
-    { type: 'Company', min: 12, max: 16 }, // 3-4 lances
-    { type: 'Battalion', min: 36, max: 64 }, // 3-4 companies
-    { type: 'Regiment', min: 108, max: 256 }, // 3-4 battalions
-    { type: 'Brigade', min: 324, max: 1536 }, // 3-6 regiments
-];
-
-const CLAN_FORCE_TYPES: ForceTypeRange[] = [
-    { type: 'Point', min: 1, max: 1 },
-    { type: 'Star', min: 5, max: 5 },
-    { type: 'Binary', min: 10, max: 10 }, // 2 stars
-    { type: 'Trinary', min: 15, max: 15 }, // 3 stars
-    { type: 'Cluster', min: 20, max: 45 }, // 3-5 binaries/trinaries
-    { type: 'Galaxy', min: 60, max: 225 }, // 3-5 clusters
-];
-
-const COMSTAR_FORCE_TYPES: ForceTypeRange[] = [
-    { type: 'Level I', min: 1, max: 1 },
-    { type: 'Level II', min: 6, max: 6 }, // Battle Armor
-    { type: 'Level III', min: 6*6, max: 6*6 },
-    { type: 'Level IV', min: 6*6*6, max: 6*6*6 },
-    { type: 'Level V', min: 6*6*6*6, max: 6*6*6*6 },
-];
-
-function identifyLanceTypes(units: ForceUnit[], techBase: string, factionName: string): LanceTypeDefinition[] {
-    return LanceTypeIdentifierUtil.identifyLanceTypes(units, techBase, factionName);
+/** Display info for a faction in the faction selector. */
+export interface FactionDisplayInfo {
+    faction: Faction;
+    /** Match percentage (0–1) based on the force's unit composition, or 0 if not matching. */
+    matchPercentage: number;
+    /** True if the faction is among the composition-matching factions. */
+    isMatching: boolean;
+    /** Per-era availability data for this faction. */
+    eraAvailability: { era: Era; isAvailable: boolean }[];
 }
 
-function getBestLanceType(units: ForceUnit[], techBase: string, factionName: string): LanceTypeDefinition | null {
-    return LanceTypeIdentifierUtil.getBestMatch(units, techBase, factionName);
-}
-
-function getForceType(units: ForceUnit[], techBase: string, factionName: string): ForceType {
-    let configs: ForceTypeRange[] = [];
-    if (factionName === 'ComStar' || factionName === 'Word of Blake') {
-        configs = COMSTAR_FORCE_TYPES;
-    } else if (techBase === 'Clan') {
-        configs = CLAN_FORCE_TYPES;
-    }
-    if ((techBase === 'Inner Sphere') && configs.length === 0) {
-        configs = INNER_SPHERE_FORCE_TYPES;
-    }
-    // Find the first matching force type by unit count
-    for (const cfg of configs) {
-        if (units.length >= cfg.min && units.length <= cfg.max) {
-            return cfg.type;
-        }
-    }
-    return 'Force';
-}
-
-interface ForceNameOptions {
-    units: ForceUnit[];
-    factions: Faction[];
-    eras: Era[];
-}
-
-interface GroupNameOptions {
-    units: ForceUnit[];
-    allUnits: ForceUnit[];
-    forceName: string;
-}
+// ─── Constants ─────────────────────────────────────────────────────────────────
 
 const MIN_UNITS_PERCENTAGE = 0.7;
 
+/** Factions that get corporate-flavored names (e.g. "ComStar Apex Solutions"). */
+const CORPORATE_FACTIONS = new Set(['ComStar', 'Word of Blake']);
+
+// ─── Internal Helpers ──────────────────────────────────────────────────────────
+
+/** Pick a random element from an array. */
+function pick<T>(arr: readonly T[]): T {
+    return arr[Math.floor(Math.random() * arr.length)];
+}
+
+/**
+ * Pick a random word from `arr` that doesn't overlap with words already in
+ * `existing` (avoids names like "Storm Stormriders"). Falls back to any
+ * element after 20 attempts.
+ */
+function pickUnique(arr: readonly string[], existing: string): string {
+    for (let i = 0; i < 20; i++) {
+        const candidate = pick(arr);
+        const checkLen = Math.max(candidate.length - 2, 2);
+        if (!existing.includes(candidate.substring(0, checkLen))) {
+            return candidate;
+        }
+    }
+    return pick(arr);
+}
+
+/**
+ * Clean a faction name for use in generated force names.
+ *  - If name contains parentheses and either "Free Worlds" or "Clan" inside
+ *    the parens, keep only the text inside the parentheses.
+ *  - Otherwise remove parenthesized text entirely.
+ *  - Strip trailing " General".
+ */
+function cleanFactionNameForGeneration(raw: string): string {
+    let name = raw;
+    const parenMatch = name.match(/\(([^)]+)\)/);
+    if (parenMatch) {
+        const inside = parenMatch[1];
+        if (name.includes('Free Worlds') || inside.includes('Clan')) {
+            name = inside;
+        } else {
+            name = name.replace(/\s*\([^)]*\)/, '').trim();
+        }
+    }
+    return name.replace(/ General$/i, '').trim();
+}
+
+/** Generate a random ordinal string (1st-30th). */
+function randomOrdinal(): string {
+    const n = Math.floor(Math.random() * 30) + 1;
+    const mod100 = n % 100;
+    const mod10 = n % 10;
+    if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
+    if (mod10 === 1) return `${n}st`;
+    if (mod10 === 2) return `${n}nd`;
+    if (mod10 === 3) return `${n}rd`;
+    return `${n}th`;
+}
+
+// ─── Name Body Generators ──────────────────────────────────────────────────────
+
+/**
+ * Mercenary-style name (no faction prefix).
+ *
+ *   0: "The {ordinal} {middle} {end}"  - "The 7th Iron Dragoons"
+ *   1: "The {middle} {end}"            - "The Shadow Wolves"
+ *   2: "{middle} {end}"                - "Phantom Lancers"
+ *   3: Pre-fab name                    - "Misfire Misfits"
+ */
+function generateMercenaryName(): string {
+    const roll = Math.floor(Math.random() * 4);
+    switch (roll) {
+        case 0: {
+            const ord = randomOrdinal();
+            const mid = pick(MIDDLE_WORD_MERCENARY);
+            const end = pickUnique(END_WORD_MERCENARY, mid);
+            return `The ${ord} ${mid} ${end}`;
+        }
+        case 1: {
+            const mid = pick(MIDDLE_WORD_MERCENARY);
+            const end = pickUnique(END_WORD_MERCENARY, mid);
+            return `The ${mid} ${end}`;
+        }
+        case 2: {
+            const mid = pick(MIDDLE_WORD_MERCENARY);
+            const end = pickUnique(END_WORD_MERCENARY, mid);
+            return `${mid} ${end}`;
+        }
+        case 3:
+        default:
+            return pick(PRE_FAB);
+    }
+}
+
+/**
+ * Corporate-style name for ComStar / Word of Blake.
+ *
+ *   0: "{faction} {midCorp} {endCorp}"   - "ComStar Apex Solutions"
+ *   1: "{faction} {endCorp}"             - "Word of Blake Technologies"
+ */
+function generateCorporateName(factionName: string): string {
+    if (Math.random() < 0.5) {
+        const mid = pick(MIDDLE_WORD_CORPORATE);
+        const end = pickUnique(END_WORD_CORPORATE, `${factionName} ${mid}`);
+        return `${factionName} ${mid} ${end}`;
+    }
+    return `${factionName} ${pick(END_WORD_CORPORATE)}`;
+}
+
+/**
+ * Faction military name.
+ *
+ *   0: "{ordinal} {faction} {end}"       - "3rd Steiner Lancers"
+ *   1: "{faction} {middle} {end}"        - "Davion Iron Hussars"
+ *   2: "{faction} {end}"                 - "Kurita Dragoons"
+ *   3: "The {ordinal} {faction} {end}"   - "The 5th Liao Cavaliers"
+ */
+function generateFactionMilitaryName(factionName: string): string {
+    const roll = Math.floor(Math.random() * 4);
+    switch (roll) {
+        case 0: {
+            const ord = randomOrdinal();
+            const end = pick(END_WORD_MERCENARY);
+            return `${ord} ${factionName} ${end}`;
+        }
+        case 1: {
+            const mid = pick(MIDDLE_WORD_MERCENARY);
+            const end = pickUnique(END_WORD_MERCENARY, `${factionName} ${mid}`);
+            return `${factionName} ${mid} ${end}`;
+        }
+        case 2: {
+            const end = pick(END_WORD_MERCENARY);
+            return `${factionName} ${end}`;
+        }
+        case 3:
+        default: {
+            const ord = randomOrdinal();
+            const end = pick(END_WORD_MERCENARY);
+            return `The ${ord} ${factionName} ${end}`;
+        }
+    }
+}
+
+// ─── Main Utility Class ────────────────────────────────────────────────────────
+
 export class ForceNamerUtil {
 
-    public static getAvailableFormations(groupUnits: ForceUnit[], allUnits: ForceUnit[], factionName: string): string[] | null {
-        let majorityTechBase = this.getTechBase(allUnits);
-        const lanceTypes: Set<string> = new Set();
-        const identified = identifyLanceTypes(groupUnits, majorityTechBase, factionName);
-        for (const lt of identified) {
-            lanceTypes.add(lt.name);
-        }
-        return lanceTypes.size > 0 ? Array.from(lanceTypes) : null;
-    }
+    // ── Faction Analysis ────────────────────────────────────────────────────
 
-    public static getAvailableFactions(units: ForceUnit[], factions: Faction[], eras: Era[]): Map<string, number> | null {
+    /**
+     * Returns matching factions for a set of units.
+     * Map key is the Faction object, value is the highest match percentage across eras.
+     * @param minPercentage Minimum match threshold (default: MIN_UNITS_PERCENTAGE = 0.7).
+     *                      Pass 0 to include all factions with any match.
+     */
+    public static getAvailableFactions(units: ForceUnit[], factions: Faction[], eras: Era[], minPercentage = MIN_UNITS_PERCENTAGE): Map<Faction, number> | null {
         if (!units?.length) return null;
         const referenceYear = units.reduce(
             (max, u) => Math.max(max, u.getUnit().year),
             Number.NEGATIVE_INFINITY
         );
-        // All eras that include referenceYear or occur after it
         const erasInOrAfter = eras.filter(e => referenceYear <= (e.years.to ?? Number.POSITIVE_INFINITY));
-
         if (erasInOrAfter.length === 0) return null;
+
         const unitIds = units.map(u => u.getUnit().id);
         const totalUnits = units.length;
-
-        const results: Map<string, number> = new Map();
+        const results: Map<Faction, number> = new Map();
 
         for (const faction of factions) {
             if (faction.id === FACTION_EXTINCT) continue;
-
             let highestPercentage = 0;
             for (const era of erasInOrAfter) {
-
                 const eraUnitIds = faction.eras[era.id];
                 if (!eraUnitIds) continue;
-
                 let count = 0;
                 for (const id of unitIds) {
                     if (eraUnitIds.has(id)) count++;
                 }
-
                 if (count > 0) {
                     highestPercentage = Math.max(highestPercentage, count / totalUnits);
                 }
             }
-
-            if (highestPercentage >= MIN_UNITS_PERCENTAGE) {
-                results.set(faction.name, highestPercentage);
+            if (highestPercentage > 0 && highestPercentage >= minPercentage) {
+                results.set(faction, highestPercentage);
             }
         }
         return results;
     }
 
-    private static pickFaction(units: ForceUnit[], factions: Faction[], eras: Era[]): string {
-        const availableFactions = this.getAvailableFactions(units, factions, eras);
-        if (!availableFactions) return 'Unknown Force';
+    /**
+     * Returns a random faction from the matching factions, weighted by match percentage.
+     * Falls back to FACTION_MERCENARY when no composition matches exist.
+     * Returns null only if the factions array itself is empty.
+     */
+    public static pickRandomFaction(units: ForceUnit[], factions: Faction[], eras: Era[]): Faction | null {
+        const mercenary = factions.find(f => f.id === FACTION_MERCENARY) ?? null;
+        const availableFactions = this.getAvailableFactions(units, factions, eras, MIN_UNITS_PERCENTAGE);
+        if (!availableFactions || availableFactions.size === 0) return mercenary;
 
         const entries = Array.from(availableFactions.entries());
-        if (entries.length === 0) return 'Mercenary';
-
-        
-        // If only one faction, return it
         if (entries.length === 1) return entries[0][0];
 
-        // Calculate total weight for weighted random selection
-        const totalWeight = entries.reduce((sum, [, percentage]) => sum + percentage, 0);
-
-        // Generate a random number between 0 and totalWeight
+        // Weighted random selection
+        const totalWeight = entries.reduce((sum, [, pct]) => sum + pct, 0);
         const random = Math.random() * totalWeight;
-
-        // Select faction based on weighted probability
-        let cumulativeWeight = 0;
-        for (const [name, percentage] of entries) {
-            cumulativeWeight += percentage;
-            if (random <= cumulativeWeight) {
-                return name;
-            }
+        let cumulative = 0;
+        for (const [faction, pct] of entries) {
+            cumulative += pct;
+            if (random <= cumulative) return faction;
         }
-
-        // Fallback to the last faction (shouldn't reach here normally)
         return entries[entries.length - 1][0];
     }
 
-    static getTechBase(units: ForceUnit[]): string {
-        const techBaseCounts: Record<string, number> = {};
-        for (const unit of units) {
-            const techBase = unit.getUnit().techBase;
-            if (techBase === 'Mixed') {
-                // Count Mixed units for both Clan and Inner Sphere
-                techBaseCounts['Clan'] = (techBaseCounts['Clan'] || 0) + 1;
-                techBaseCounts['Inner Sphere'] = (techBaseCounts['Inner Sphere'] || 0) + 1;
-            } else {
-                techBaseCounts[techBase] = (techBaseCounts[techBase] || 0) + 1;
-            }
+    public static pickBestFaction(units: ForceUnit[], factions: Faction[], eras: Era[], currentFaction: Faction | null): Faction | null {
+        const mercenary = factions.find(f => f.id === FACTION_MERCENARY) ?? null;
+        const availableFactions = this.getAvailableFactions(units, factions, eras, MIN_UNITS_PERCENTAGE);
+        if (!availableFactions || availableFactions.size === 0) return mercenary;
+
+        // Find the highest match percentage
+        const entries = Array.from(availableFactions.entries());
+        const bestScore = Math.max(...entries.map(([, pct]) => pct));
+        const bestEntries = entries.filter(([, pct]) => pct === bestScore);
+
+        // If the current faction is among the best, keep it
+        if (currentFaction && bestEntries.some(([faction]) => faction === currentFaction)) {
+            return currentFaction;
         }
-        // Find the majority tech base
-        let majorityTechBase = 'Inner Sphere';
-        let maxTechBaseCount = 0;
-        for (const [tb, count] of Object.entries(techBaseCounts)) {
-            if (count > maxTechBaseCount) {
-                majorityTechBase = tb;
-                maxTechBaseCount = count;
-            }
-        }
-        return majorityTechBase;
+
+        // Pick a random faction from the best ones
+        return pick(bestEntries)[0];
     }
 
-    static generateForceName({ units, factions, eras }: ForceNameOptions): string {
+    /**
+     * Build the sorted faction display list for the faction selector.
+     * Order: matching factions (sorted by percentage desc) → remaining factions (alpha).
+     * Excludes FACTION_EXTINCT.
+     */
+    public static buildFactionDisplayList(
+        units: ForceUnit[],
+        allFactions: Faction[],
+        eras: Era[]
+    ): FactionDisplayInfo[] {
+        const rawPctMap = this.getAvailableFactions(units, allFactions, eras, 0);
+        const result: FactionDisplayInfo[] = [];
+        // Build a name-based lookup from the Faction-keyed map for the display loop
+        const pctByName = new Map<string, number>();
+        if (rawPctMap) {
+            for (const [faction, pct] of rawPctMap) pctByName.set(faction.name, pct);
+        }
+
+        for (const faction of allFactions) {
+            if (faction.id === FACTION_EXTINCT) continue;
+            const rawPct = pctByName.get(faction.name) ?? 0;
+            result.push({
+                faction,
+                matchPercentage: rawPct,
+                isMatching: rawPct >= MIN_UNITS_PERCENTAGE,
+                eraAvailability: eras.map(era => ({
+                    era,
+                    isAvailable: faction.eras[era.id] != null && (faction.eras[era.id] as Set<number>).size > 0
+                }))
+            });
+        }
+
+        result.sort((a, b) =>
+            b.matchPercentage - a.matchPercentage
+            || a.faction.name.localeCompare(b.faction.name)
+        );
+
+        return result;
+    }
+
+    // ── Force Name Generation ───────────────────────────────────────────────
+
+    /**
+     * Generate a force name.
+     *
+     * If a faction is provided, uses it directly. Otherwise picks one
+     * randomly from composition matches (falls back to Mercenary).
+     *
+     * Name patterns are chosen by faction type:
+     *   - Mercenary → mercenary-company name (no faction prefix)
+     *   - Corporate (ComStar, WoB) → corporate-style name
+     *   - Other factions → military force name with faction prefix
+     *
+     * Word lists adapted from MekHQ's RandomCompanyNameGenerator.
+     */
+    static generateForceName(units: ForceUnit[], faction: Faction | null, factions: Faction[], eras: Era[]): string {
         if (!units || units.length === 0) return 'Unnamed Force';
-        const factionName = this.pickFaction(units, factions, eras);
-        let forceType: string;
-        if (factionName === 'ComStar' || factionName === 'Word of Blake') {
-            forceType = getForceType(units, '', factionName);
-        } else {
-            // Find the majority tech base
-            const majorityTechBase = this.getTechBase(units);
-            forceType = getForceType(units, majorityTechBase, factionName);
-        }
-        return `${factionName} ${forceType}`;
+        const resolved = faction ?? this.pickRandomFaction(units, factions, eras);
+        return this.generateForceNameForFaction(resolved);
     }
 
-    static generateForceNameForFaction(units: ForceUnit[], factionName: string): string {
-        if (!units || units.length === 0) return 'Unnamed Force';
-        let forceType: string;
-        if (factionName === 'ComStar' || factionName === 'Word of Blake') {
-            forceType = getForceType(units, '', factionName);
-        } else {
-            const majorityTechBase = this.getTechBase(units);
-            forceType = getForceType(units, majorityTechBase, factionName);
+    /**
+     * Generate a force name for a specific faction.
+     * Dispatches to the appropriate naming pattern based on faction type.
+     */
+    static generateForceNameForFaction(faction: Faction | null): string {
+        if (!faction || faction.id === FACTION_MERCENARY) {
+            return generateMercenaryName();
         }
-        return `${factionName} ${forceType}`;
-    }
-
-    static generateFormationName({ units, allUnits, forceName }: GroupNameOptions): string {
-        if (!units || units.length === 0) return 'Unnamed Formation';
-        let forceType: string;
-        if (forceName.includes('ComStar') || forceName.includes('Word of Blake')) {
-            forceType = getForceType(units, '', forceName);
-            const bestLance = getBestLanceType(units, '', forceName);
-            if (bestLance) {
-                const formationType = bestLance.name as ForceType;
-                forceType = forceType + ' - ' + formationType.replace(/\Lance/g, '').trim();
-            }
-        } else {
-            // Find the majority tech base
-            const majorityTechBase = this.getTechBase(allUnits);
-            forceType = getForceType(units, majorityTechBase, forceName);
-            const bestLance = getBestLanceType(units, majorityTechBase, forceName);
-            if (bestLance) {
-                const formationType = bestLance.name as ForceType;
-                forceType = formationType.replace(/Lance/g, forceType);
-            }
+        const name = cleanFactionNameForGeneration(faction.name);
+        if (CORPORATE_FACTIONS.has(faction.name)) {
+            return generateCorporateName(name);
         }
-        return `${forceType}`;
+        return generateFactionMilitaryName(name);
     }
-
 }

@@ -42,10 +42,10 @@ import { ForceUnit } from './force-unit.model';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { ASForceUnitState } from './as-force-unit-state.model';
 import { CrewMember } from './crew-member.model';
-import { ASCustomPilotAbility } from './as-abilities.model';
+import { ASCustomPilotAbility } from './pilot-abilities.model';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 import { SpecialAbilityState } from '../components/alpha-strike-card/layouts/layout-base.component';
-import { isAerospace } from './as-common';
+import { isAerospace } from '../utils/as-common.util';
 
 /** Represents either a standard ability (by ID) or a custom ability (object) */
 export type AbilitySelection = string | ASCustomPilotAbility;
@@ -54,7 +54,8 @@ export type AbilitySelection = string | ASCustomPilotAbility;
  * Author: Drake
  */
 export class ASForceUnit extends ForceUnit {
-    declare force: ASForce;
+    override get force(): ASForce { return super.force as ASForce; }
+    override set force(value: ASForce) { super.force = value; }
     protected override state: ASForceUnitState;
     protected readonly abilityLookup: AsAbilityLookupService;
 
@@ -82,24 +83,28 @@ export class ASForceUnit extends ForceUnit {
     }
 
     public async load() {
-        if (this.isLoaded) return;
+        if (this.isLoaded()) return;
         try {
-            this.isLoaded = true;
+            this.isLoaded.set(true);
         } finally {
         }
     }
+    
+    public getBaseBv = computed<number>(() => {
+        return this.unit.as.PV;
+    });
 
     getBv = computed<number>(() => {
         const adjustedPv = this.adjustedPv();
         if (adjustedPv !== null) {
             return adjustedPv;
         }
-        return this.unit.pv;
+        return this.getBaseBv();
     })
 
     public adjustedPv = computed<number>(() => {
         return PVCalculatorUtil.calculateAdjustedPV(
-            this.unit.pv,
+            this.getBaseBv(),
             this.pilotSkill()
         );
     });
@@ -507,9 +512,11 @@ export class ASForceUnit extends ForceUnit {
         const entries = Object.entries(mvm);
         if (entries.length === 0) return {};
 
-        // Single movement: if only "j", create a ground entry as well "" with same value
-        if (entries.length === 1 && entries[0][0] === 'j') {
-            entries.unshift(['', entries[0][1]]);
+        // Normalize: ensure ground movement ('') exists when only jump is present
+        if (!mvm[''] && mvm['j'] !== undefined) {
+            if (this.unit.as.TP === 'BM' || (entries.length === 1 && entries[0][0] === 'j')) {
+                entries.unshift(['', mvm['j']]);
+            }
         }
 
         // TSM (Triple Strength Myomer): At heat 1+, gain 2" ground Move.
@@ -534,13 +541,10 @@ export class ASForceUnit extends ForceUnit {
             } else {
                 reducedInches = this.applyMpHitsReduction(inches, mpHits);
             }
-
-            // Apply heat reduction only to ground movement (not 'j')
-            if (mode !== 'j') {
-                reducedInches = Math.max(0, reducedInches - heatReduction + tsmBonus);
-            }
-
+            
             if (mode === '') {
+                // Apply heat reduction only to ground movement
+                reducedInches = Math.max(0, reducedInches - heatReduction + tsmBonus);
                 groundValue = reducedInches;
             } else {
                 result[mode] = reducedInches;
@@ -668,11 +672,10 @@ export class ASForceUnit extends ForceUnit {
         const entries = Object.entries(mvm);
         if (entries.length === 0) return {};
 
-        if (entries.length === 1) {
-            // Single movement, if is "j", we create a ground entry as well "" with same value
-            const [mode, inches] = entries[0];
-            if (mode === 'j') {
-                entries.unshift(['', inches]);
+        // Normalize: ensure ground movement ('') exists when only jump is present
+        if (!mvm[''] && mvm['j'] !== undefined) {
+            if (this.unit.as.TP === 'BM' || (entries.length === 1 && entries[0][0] === 'j')) {
+                entries.unshift(['', mvm['j']]);
             }
         }
 
@@ -683,10 +686,7 @@ export class ASForceUnit extends ForceUnit {
         } else {
             tmmPenalty = mpHits;
         }
-
-        // Apply heat TMM penalty: -1 at heat level 2+ (only for ground movement)
-        const heatTmmPenalty = heat >= 2 ? 1 : 0;
-
+        
         // Calculate TMM for each movement mode
         const tmmByMode: { [mode: string]: number } = {};
 
@@ -695,8 +695,8 @@ export class ASForceUnit extends ForceUnit {
 
             const baseTmm = this.calculateBaseTMMFromInches(inches);
 
-            // Heat penalty applies to ground movement only (not 'j')
-            const heatPenalty = mode === 'j' ? 0 : heatTmmPenalty;
+            // Apply heat TMM penalty: -1 at heat level 2+ (only for ground movement)
+            const heatPenalty = mode === '' ? (heat >= 2 ? 1 : 0) : 0;
 
             const effectiveTmm = Math.max(0, baseTmm - tmmPenalty - heatPenalty);
             tmmByMode[mode] = effectiveTmm;
@@ -714,6 +714,7 @@ export class ASForceUnit extends ForceUnit {
         }
         for (const [mode, tmm] of Object.entries(tmmByMode)) {
             // Skip '' (already added) and modes with same TMM as ground
+            if (mode === 'a') continue; // Skip, aerospace movement has no TMM and is confusing for LAM
             if (mode === '' || tmm === groundTmm) continue;
             result[mode] = tmm;
         }
@@ -1166,7 +1167,20 @@ export class ASForceUnit extends ForceUnit {
                 const hits = this.weaponHits();
                 effective = hits > 0 ? this.applyWeaponHitsToSpecial(special, hits) : special;
             }
-            
+
+            // Handle LAM special: populate g and a movement values from effectiveMovement
+            if (effective.startsWith('LAM')) {
+                const effectiveMv = this.effectiveMovement();
+                const gVal = effectiveMv['g'];
+                const aVal = effectiveMv['a'];
+                if (gVal !== undefined || aVal !== undefined) {
+                    const parts: string[] = [];
+                    if (gVal !== undefined) parts.push(`${gVal}″g`);
+                    if (aVal !== undefined) parts.push(`${aVal}″a`);
+                    effective = `LAM (${parts.join('/')})`;
+                }
+            }
+
             const state: SpecialAbilityState = { original: special, effective };
             
             // Add exhausted/consumed state if we have a force unit

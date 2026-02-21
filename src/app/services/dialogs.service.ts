@@ -140,18 +140,28 @@ export class DialogsService {
         await firstValueFrom(ref.closed);
     }
 
-    async prompt(message: string, title: string, defaultValue = ''): Promise<string | null> {
+    async prompt(message: string, title: string, defaultValue = '', hint = ''): Promise<string | null> {
         const ref = this.createDialog<string | null>(InputDialogComponent, {
             disableClose: true,
             data: <InputDialogData>{
                 title,
                 message,
                 inputType: 'text',
-                defaultValue
+                defaultValue,
+                hint: hint || undefined
             }
         });
         const result = await firstValueFrom(ref.closed);
         return result ?? null;
+    }
+
+    showNextDialog(): void {
+        this.showNoticeHtml(
+            'You are using the <strong>pre-release</strong> version of MekBay. ' +
+            'This build may contain experimental features and bugs.<br><br>' +
+            'The stable version is available at <a href="https://mekbay.com" target="_blank" rel="noopener">mekbay.com</a>.',
+            'Pre-Release Version'
+        );
     }
 
     /**

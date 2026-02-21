@@ -31,9 +31,10 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Unit } from '../../models/units.model';
+import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
 import { GameService } from '../../services/game.service';
@@ -60,6 +61,14 @@ export class UnitCardCompactComponent {
 
     /** The unit to display. If null/undefined, shows "NO UNIT" placeholder. */
     unit = input<Unit | null | undefined>(null);
+
+    /** Optional game system override. When provided, determines which stats to display (PV/SZ/TMM vs BV/tons). Falls back to the global game service when null. */
+    gameSystem = input<GameSystem | null>(null);
+
+    isAlphaStrike = computed<boolean>(() => {
+        const gs = this.gameSystem();
+        return gs != null ? gs === GameSystem.ALPHA_STRIKE : this.gameService.isAlphaStrike();
+    });
 
     /** Whether to show the info button */
     showInfoButton = input(false);

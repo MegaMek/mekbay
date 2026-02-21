@@ -73,6 +73,9 @@
     background: #0003;
     cursor: pointer;
     transition: border-color 0.2s, background 0.2s;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
 
 .force-entry:hover {
@@ -87,9 +90,10 @@
 
 .force-header {
     display: flex;
-    align-items: flex-start;
+    flex-wrap: wrap;
+    align-items: first baseline;
     justify-content: space-between;
-    margin-bottom: 0.7em;
+    gap: 4px;
 }
 
 .game-type-badge {
@@ -100,7 +104,7 @@
     color: #fff;
     text-transform: uppercase;
     flex-shrink: 0;
-    align-self: baseline;
+    align-self: center;
 }
 
 .game-type-badge.as {
@@ -111,11 +115,28 @@
     display: flex;
     flex-direction: column;
     text-align: right;
+    margin-left: auto;
+}
+
+.faction-name-wrapper {
+    display: flex;
+    align-items: first baseline;
+    gap: 4px;
+    flex-direction: row;
+    flex: 1 1 0;
+}
+
+.faction-icon {
+    width: 1.2em;
+    height: 1.2em;
+    object-fit: contain;
+    flex-shrink: 0;
+    align-self: flex-start;
 }
 
 .force-name {
     font-weight: bold;
-    font-size: 1.1em;
+    min-width: 120px;
 }
 
 .variant-name {
@@ -138,6 +159,7 @@
     display: flex;
     flex-direction: row;
     gap: 4px;
+    align-items: first baseline;
 }
 
 .save-state-icon {
@@ -145,6 +167,7 @@
     height: 16px;
     vertical-align: text-bottom;
     opacity: 0.8;
+    align-self: center;
 }
 
 .unit-scroll {
@@ -172,6 +195,18 @@
 .unit-group .group-name {
     font-size: 0.8em;
     color: var(--text-color-secondary);
+}
+
+.group-formation {
+    font-weight: 400;
+    color: var(--text-color-secondary);
+    cursor: pointer;
+    transition: color 0.2s;
+
+    &::before {
+        content: '·';
+        margin-right: 4px;
+    }
 }
 
 .unit-group .units {
@@ -261,4 +296,87 @@
         font-weight: normal;
     }
     
+}
+
+.force-entry-placeholder {
+    min-height: 142px;
+    background: #0003;
+    border: 1px solid transparent;
+    padding: 8px;
+    box-sizing: border-box;
+}
+
+/* ── Operations tab ── */
+
+.operation-header {
+    display: flex;
+    align-items: first baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.operation-title {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 2px;
+    align-items: first baseline;
+}
+
+.operation-name {
+    display: inline-flex;
+    align-items: first baseline;
+    gap: 2px;
+    font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.operation-note {
+    font-size: 0.85em;
+    color: var(--text-color-secondary);
+}
+
+.operation-meta {
+    display: flex;
+    align-items: first baseline;
+    gap: 4px;
+    font-size: 0.8em;
+    color: var(--text-color-secondary);
+    margin-left: auto;
+}
+
+.operation-timestamp {
+    display: flex;
+    align-items: first baseline;
+    gap: 4px;
+}
+
+/* ── Operation edit button ── */
+
+.op-edit-btn {
+    display: inline-flex;
+    align-self: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--text-color-tertiary);
+    cursor: pointer;
+    padding: 3px;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    transition: color 0.15s ease;
+}
+
+.op-edit-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+.op-edit-btn:hover {
+    color: var(--bt-yellow);
 }

@@ -39,7 +39,7 @@ import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-inter
 import { firstValueFrom } from 'rxjs';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DataService } from '../../services/data.service';
-import { GameService } from '../../services/game.service';
+import { ForceBuilderService } from '../../services/force-builder.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { LayoutService } from '../../services/layout.service';
@@ -51,6 +51,8 @@ import { Unit } from '../../models/units.model';
 import { PackUnitEntry, ResolvedPack } from '../../utils/force-pack.util';
 import { compareUnitsByName } from '../../utils/sort.util';
 import { TagClickEvent } from '../unit-tags/unit-tags.component';
+import { GameSystem } from '../../models/common.model';
+import { GameService } from '../../services/game.service';
 
 /*
  * Author: Drake
@@ -80,13 +82,15 @@ export class CustomizeForcePackDialogComponent {
     private dialogRef = inject(DialogRef<CustomizeForcePackDialogResult | null>);
     private data = inject<CustomizeForcePackDialogData>(DIALOG_DATA);
     private dataService = inject(DataService);
+    private gameService = inject(GameService);
     private dialogsService = inject(DialogsService);
     private overlayManager = inject(OverlayManagerService);
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
     private taggingService = inject(TaggingService);
     layoutService = inject(LayoutService);
-    gameService = inject(GameService);
+    forceBuilderService = inject(ForceBuilderService);
+    ALPHA_STRIKE = GameSystem.ALPHA_STRIKE;
 
     // The pack we're customizing
     pack = this.data.pack;
@@ -132,6 +136,10 @@ export class CustomizeForcePackDialogComponent {
     totalPV = computed(() => 
         this.customizableUnits().reduce((sum, u) => sum + (u.unit?.as?.PV ?? 0), 0)
     );
+
+    gameSystem = computed(() => {
+        return this.gameService.currentGameSystem();
+    });
 
     // Check if any unit has been modified
     hasChanges = computed(() => {
