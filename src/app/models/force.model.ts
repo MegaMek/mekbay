@@ -144,26 +144,17 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
 
     groupDisplayName = computed<string>(() => {
         const name = this.name();
-        if (name) {
-            return name;
-        }
-        const formation = this.getFormation();
-        if (!formation) {
-            return this.sizeName();
-        }
-        return FormationNamerUtil.composeFormationDisplayName(
-            formation,
-            this
-        );
+        if (name) return name;
+        return this.formationDisplayName() ?? this.sizeName();
     });
 
     isFormationAlreadyInGroupName = computed<boolean>(() => {   
         const formation = this.getFormation();
         if (!formation) return true;
-        if (this.groupDisplayName().includes(formation.name)) {
-            return true; // Avoid redundant display of formation name if it's already in the group name (e.g. "Battle Lance")
-        }
-        return false;
+        const customName = this.name();
+        // No custom name means display name is derived from the formation, so it's inherently included
+        if (!customName) return true;
+        return customName.includes(formation.name);
     });
     
     formationDisplayName = computed<string | null>(() => {

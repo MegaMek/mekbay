@@ -281,7 +281,7 @@ function forceGroupsToRows(
     const rowConverter = gameSystem === GameSystem.ALPHA_STRIKE ? forceUnitToASRow : forceUnitToCBTRow;
     return groups.flatMap(group => {
         let groupName;
-        if (group.isFormationAlreadyInGroupName()) {
+        if (!group.getFormation()) {
             groupName = group.groupDisplayName();
         } else {
             groupName = group.groupDisplayName() + ' - ' + group.formationDisplayName();
