@@ -38,13 +38,13 @@ import { ComponentPortal } from '@angular/cdk/portal';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { outputToObservable } from '@angular/core/rxjs-interop';
 import { DecimalPipe } from '@angular/common';
-import { ForceBuilderService } from '../../services/force-builder.service';
 import { DataService } from '../../services/data.service';
 import { Force } from '../../models/force.model';
 import { Faction, FACTION_MERCENARY } from '../../models/factions.model';
 import { ForceNamerUtil, FactionDisplayInfo } from '../../utils/force-namer.util';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { FactionDropdownPanelComponent } from './faction-dropdown-panel.component';
+import { getForceSizeName } from '../../utils/force-type.util';
 
 
 /*
@@ -73,7 +73,7 @@ export interface RenameForceDialogResult {
     <div class="wide-dialog">
       <div class="wide-dialog-body">
         <div class="form-fields">
-            <label class="field-label" for="name">Force Name</label>
+            <label class="field-label" for="name">{{ forceSizeName() }} Name</label>
             <div class="input-wrapper">
                 <div
                     class="field-input"
@@ -266,7 +266,6 @@ export class RenameForceDialogComponent {
 
     public dialogRef: DialogRef<RenameForceDialogResult | null, RenameForceDialogComponent> = inject(DialogRef);
     readonly data: RenameForceDialogData = inject(DIALOG_DATA);
-    private forceBuilder = inject(ForceBuilderService);
     private dataService = inject(DataService);
     private overlayManager = inject(OverlayManagerService);
     private injector = inject(Injector);
@@ -287,6 +286,15 @@ export class RenameForceDialogComponent {
             this.dataService.getFactions(),
             this.dataService.getEras()
         );
+    });
+
+    forceSizeName = computed(() => {
+        const units = this.data.force.units();
+        if (units.length === 0) return null;
+        const factionName = this.selectedFaction()?.name ?? 'Mercenary';
+        const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
+        const techBase = isComStarOrWoB ? '' : this.data.force.techBase();
+        return getForceSizeName(units, techBase, factionName).toUpperCase();
     });
 
     constructor() { }

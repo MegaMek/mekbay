@@ -37,7 +37,7 @@ import { GameSystem } from '../models/common.model';
 import { FormationTypeDefinition } from './formation-type.model';
 import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
 import { ForceType, getForceSizeName } from './force-type.util';
-import { UnitGroup } from '../models/force.model';
+import { Force, UnitGroup } from '../models/force.model';
 
 /*
  * Author: Drake
@@ -66,7 +66,7 @@ export class FormationNamerUtil {
         if (identified.length === 0) return null;
 
         const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
-        const formationSizeName = group.formationSizeName();
+        const formationSizeName = group.sizeName();
 
         const composedNames: Set<string> = new Set();
         for (const lt of identified) {
@@ -97,6 +97,13 @@ export class FormationNamerUtil {
         return getForceSizeName(group.units(), techBase, factionName);
     }
 
+    public static getForceSizeName(force: Force): ForceType | null {
+        const factionName = force.faction()?.name ?? 'Mercenary';
+        const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
+        const techBase = isComStarOrWoB ? '' : force.techBase();
+        return getForceSizeName(force.units(), techBase, factionName);
+    }
+
     /**
      * Composes the display name for a formation definition given the group context.
      */
@@ -105,8 +112,8 @@ export class FormationNamerUtil {
         group: UnitGroup,
     ): string {
         if (group.force.prefixFormationSizeName()) {
-            return group.formationSizeName() + ' - ' + definition.name;
+            return group.sizeName() + ' - ' + definition.name;
         }
-        return definition.name + ' ' + group.formationSizeName();
+        return definition.name + ' ' + group.sizeName();
     }
 }

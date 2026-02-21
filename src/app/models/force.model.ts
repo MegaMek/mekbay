@@ -133,7 +133,7 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
         return this.force.addUnit(unit, this as UnitGroup);
     }
 
-    formationSizeName = computed(() => {
+    sizeName = computed(() => {
         return FormationNamerUtil.getFormationSizeName(this);
     });
     
@@ -201,6 +201,10 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             this.emitChanged();
         }
     }
+
+    sizeName = computed(() => {
+        return FormationNamerUtil.getForceSizeName(this);
+    });
 
     techBase = computed((): string => {
         const counts: Record<string, number> = {};
