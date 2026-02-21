@@ -499,7 +499,6 @@ hr {
     background-position: right 6px center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
     background-size: 12px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
 
-
     &:focus,
     &:focus-visible,
     &:hover,
@@ -531,6 +530,28 @@ hr {
             linear-gradient(var(--bt-yellow), var(--bt-yellow));
         border-color: var(--bt-yellow);
     }
+
+    &.danger {
+        color: #f00;
+        background-image:
+            url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23a00'%3e%3cpath d='M8 11L2 5h12z'/%3e%3c/svg%3e"),
+            linear-gradient(#a00, #a00), linear-gradient(#a00, #a00),
+            linear-gradient(#a00, #a00), linear-gradient(#a00, #a00),
+            linear-gradient(#a00, #a00), linear-gradient(#a00, #a00),
+            linear-gradient(#a00, #a00), linear-gradient(#a00, #a00);
+
+        &:hover {
+            background-color: #300;
+            color: #f00;
+            background-image:
+                url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23f00'%3e%3cpath d='M8 11L2 5h12z'/%3e%3c/svg%3e"),
+                linear-gradient(red, red), linear-gradient(red, red),
+                linear-gradient(red, red), linear-gradient(red, red),
+                linear-gradient(red, red), linear-gradient(red, red),
+                linear-gradient(red, red), linear-gradient(red, red);
+        }
+    }
+    
 }
 
 .bt-button {

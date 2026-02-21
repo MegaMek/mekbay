@@ -100,6 +100,7 @@ export interface FormationDisplayItem {
                 @for (item of otherFormations(); track item.definition.id) {
                     <div class="formation-option-wrapper not-matching" [class.active]="selectedFormationId() === item.definition.id">
                         <div class="formation-option" (click)="onSelect(item.definition)">
+                            <svg class="invalid-marker" fill="currentColor" width="14" height="14" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z"/></svg>
                             <span class="formation-option-name">{{ item.displayName }}</span>
                             <button class="expand-btn"
                                     (click)="toggleExpand($event, item.definition.id)"
@@ -138,6 +139,7 @@ export interface FormationDisplayItem {
             flex-direction: column;
             gap: 2px;
             background: rgba(255, 255, 255, 0.03);
+            border-left: 3px solid transparent;
         }
 
         .none-option:hover {
@@ -165,6 +167,7 @@ export interface FormationDisplayItem {
 
         .formation-option-wrapper {
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            border-left: 3px solid transparent;
         }
 
         .formation-option-wrapper.active {
@@ -246,6 +249,15 @@ export interface FormationDisplayItem {
             &.active > .formation-option {
                 background: rgba(255, 0, 0, 0.08);
             }
+
+            & > .formation-option:hover {
+                background: rgba(255, 0, 0, 0.08);
+            }
+        }
+
+        .invalid-marker {
+            flex-shrink: 0;
+            color: red;
         }
 
     `]

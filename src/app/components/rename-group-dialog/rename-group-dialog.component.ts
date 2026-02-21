@@ -89,7 +89,7 @@ export interface RenameGroupDialogResult {
         <div class="form-fields">
           <label class="field-label">Formation</label>
           <div #formationTriggerWrapper class="input-wrapper">
-            <button class="formation-selector bt-select" (click)="toggleFormationDropdown()">
+            <button class="formation-selector bt-select" [class.danger]="!isSelectedFormationValid()" (click)="toggleFormationDropdown()">
               @if (selectedFormation(); as formation) {
                 @if (isNoFormation(formation)) {
                   <span class="placeholder">No Formation</span>
@@ -172,6 +172,7 @@ export interface RenameGroupDialogResult {
             align-items: center;
             text-align: left;
             font-size: 1em;
+            gap: 8px;
         }
 
         .formation-selector:hover {
@@ -185,7 +186,6 @@ export interface RenameGroupDialogResult {
         .formation-selector-warning {
             color: red;
             flex-shrink: 0;
-            margin-right: 6px;
         }
 
         .placeholder {
