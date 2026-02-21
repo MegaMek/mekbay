@@ -137,7 +137,7 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
         return FormationNamerUtil.getFormationSizeName(this);
     });
 
-    getFormation = computed<FormationTypeDefinition | null>(() => {
+    activeFormation = computed<FormationTypeDefinition | null>(() => {
         const formation = this.formation();
         return !!formation && !isNoFormation(formation) ? formation : null;
     });
@@ -149,7 +149,7 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     });
 
     isFormationAlreadyInGroupName = computed<boolean>(() => {   
-        const formation = this.getFormation();
+        const formation = this.activeFormation();
         if (!formation) return true;
         const customName = this.name();
         // No custom name means display name is derived from the formation, so it's inherently included
@@ -158,7 +158,7 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     });
     
     formationDisplayName = computed<string | null>(() => {
-        const formation = this.getFormation();
+        const formation = this.activeFormation();
         if (!formation) return null;
         return FormationNamerUtil.composeFormationDisplayName(
             formation,
@@ -167,7 +167,7 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     });
 
     hasValidFormation = computed<boolean>(() => {
-        const formation = this.getFormation();
+        const formation = this.activeFormation();
         if (!formation) return true;
         const matchingDefs = FormationNamerUtil.getAvailableFormationDefinitions(this);
         return matchingDefs.some(d => d.id === formation.id);
@@ -547,7 +547,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             this.instanceId.set(instanceId);
         }
         const serializedGroups: SerializedGroup[] = this.groups().filter(g => g.units().length > 0).map(g => {
-            const formation = g.getFormation();
+            const formation = g.activeFormation();
             return {
                 id: g.id,
                 name: g.name() || undefined,

@@ -281,12 +281,12 @@ function forceGroupsToRows(
     const rowConverter = gameSystem === GameSystem.ALPHA_STRIKE ? forceUnitToASRow : forceUnitToCBTRow;
     return groups.flatMap(group => {
         let groupName;
-        if (!group.getFormation()) {
+        if (!group.activeFormation()) {
             groupName = group.groupDisplayName();
         } else {
             groupName = group.groupDisplayName() + ' - ' + group.formationDisplayName();
         }
-        if (group.getFormation() && !group.hasValidFormation()) {
+        if (group.activeFormation() && !group.hasValidFormation()) {
             groupName += ' (Invalid Formation)';
         }
         return group.units().map(unit => rowConverter(unit, groupName));

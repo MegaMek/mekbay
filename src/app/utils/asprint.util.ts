@@ -395,7 +395,7 @@ export class ASPrintUtil {
         nameSpan.textContent = group.groupDisplayName();
         header.appendChild(nameSpan);
 
-        const formation = group.getFormation();
+        const formation = group.activeFormation();
         const subtitle = group.formationDisplayName();
         if (subtitle) {
             const formSpan = document.createElement('span');

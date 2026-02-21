@@ -1139,7 +1139,7 @@ export class ForceBuilderService {
     public showFormationInfo(group: UnitGroup): void {
         const targetForce = group.force;
         if (!targetForce) return;
-        const formation = group.getFormation();
+        const formation = group.activeFormation();
         if (!formation) return;
         const matchingDefs = FormationNamerUtil.getAvailableFormationDefinitions(group);
         const isValid = matchingDefs.some(d => d.id === formation.id);

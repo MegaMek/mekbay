@@ -77,7 +77,7 @@
                             </button>
                             <div class="group-name-area">
                                 <span class="group-name" (click)="promptChangeGroupName(group)">{{ group.groupDisplayName() }}</span>
-                                @if (group.getFormation()) {
+                                @if (group.activeFormation()) {
                                     <span class="group-formation-wrapper">
                                         @if (!group.isFormationAlreadyInGroupName()) {
                                             <span class="group-formation" (click)="promptChangeGroupName(group)">{{ group.formationDisplayName() }}</span>

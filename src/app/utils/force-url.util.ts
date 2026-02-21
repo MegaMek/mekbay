@@ -196,7 +196,7 @@ export function generateGroupUrlParams(groups: UnitGroup[]): string[] {
     return groups.filter(g => g.units().length > 0).map(group => {
         const unitParams = generateUnitUrlParams(group.units());
         const groupName = group.name() || '';
-        const formation = group.getFormation();
+        const formation = group.activeFormation();
         const formationId = formation?.id || '';
 
         // Build prefix: name;formationId (either part may be empty)
