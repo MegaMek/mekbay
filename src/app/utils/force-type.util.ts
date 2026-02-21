@@ -72,7 +72,8 @@ type ForceTypeRange = { type: ForceType; min: number; max: number };
 
 const INNER_SPHERE_FORCE_TYPES: ForceTypeRange[] = [
     { type: 'Lance', min: 4, max: 4 },
-    { type: 'Company', min: 12, max: 16 },
+    { type: 'Company', min: 12, max: 12 }, // Required for Demi-Company
+    { type: 'Company', min: 13, max: 16 },
     { type: 'Battalion', min: 36, max: 64 },
     { type: 'Regiment', min: 108, max: 256 },
     { type: 'Brigade', min: 324, max: 1536 },
