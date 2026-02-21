@@ -157,12 +157,9 @@ function cbtCanDealDamage(unit: Unit, minDamage: number, atRange: number): boole
     return false;
 }
 
+// Matches both AC and LB-X
 function cbtHasAutocannon(unit: Unit): boolean {
-    return unit.comp?.some(c => c.n?.includes('AC/')) || false;
-}
-
-function cbtHasLBXAutocannon(unit: Unit): boolean {
-    return unit.comp?.some(c => c.n?.includes('LB ')) || false;
+    return unit.comp?.some(c => c.n?.includes('AC/') || c.n?.includes('LB ') || c.n?.includes('LB-')) || false;
 }
 
 function cbtHasLRM(unit: Unit): boolean {
@@ -210,6 +207,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         effectDescription: 'Distracting Swarm: units in this formation swarming an enemy unit cause a +1 To-Hit modifier to any weapon attacks made by the enemy unit.',
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 61 }],
+        requirements: (gameSystem) => {
+            const inf = gameSystem === GameSystem.ALPHA_STRIKE
+                ? 'infantry (CI, BA, or PM)'
+                : 'Infantry';
+            return `Minimum 4 units. All units must be ${inf}.`;
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             return units.every(u => isAS ? asIsInfantry(u.getUnit()) : u.getUnit().type === 'Infantry');
@@ -238,6 +241,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         idealRole: 'Juggernaut',
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 61 }, { book: Rulebook.ASCE, page: 118 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 4 units. At least 3 units Size 3+. No Size 1 units. All armor ≥ 5. 75% must have medium-range damage ≥ 3. At least 1 Juggernaut or 2 Snipers.';
+            }
+            return 'Minimum 4 units. At least 3 heavy or assault. No light units. All armor ≥ 135 points. 75% must deal 25+ damage at 7 hexes. At least 1 Juggernaut or 2 Snipers.';
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const heavyUnits = units.filter(u =>
@@ -281,12 +290,19 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         idealRole: 'Juggernaut',
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 62 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 4 units. Free Worlds League only. All Size 2+. All armor ≥ 4. 50% must have AC, FLK, LRM, or SRM specials.';
+            }
+            return 'Minimum 4 units. Free Worlds League only. All medium or heavier. All armor ≥ 105 points. 50% must have autocannons, LRMs, or SRMs.';
+        },
         validator: (units: ForceUnit[], gameSystem: GameSystem) => {
             if (gameSystem === GameSystem.ALPHA_STRIKE) {
             const allMediumOrLarger = units.every(u => asGetSize(u.getUnit()) >= 2);
             const hasEnoughArmor = units.every(u => (u.getUnit().as?.Arm ?? 0) >= 4);
             const hasWeapons = units.filter(u =>
                 asHasSpecial(u.getUnit(), 'AC') ||
+                asHasSpecial(u.getUnit(), 'FLK') ||
                 asHasSpecial(u.getUnit(), 'LRM') ||
                 asHasSpecial(u.getUnit(), 'SRM'));
             return allMediumOrLarger && hasEnoughArmor && hasWeapons.length >= Math.ceil(units.length * 0.5);
@@ -320,6 +336,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 62 }, { book: Rulebook.ASCE, page: 118 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 4 units. Must meet Assault Lance requirements. All units must have Move 10"+ or any jump capability.';
+            }
+            return 'Minimum 4 units. Must meet Assault Lance requirements. All units must have walk ≥ 5 or jump > 0.';
+        },
         validator: (units: ForceUnit[], gameSystem: GameSystem) => {
             if (gameSystem === GameSystem.ALPHA_STRIKE) {
                 return units.every(u => {
@@ -352,6 +374,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         idealRole: 'Ambusher',
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 62 }],
+        requirements: () => 'Minimum 4 units. At least 50% must have the Ambusher or Juggernaut role.',
         validator: (units) => {
             const count = units.filter(u =>
                 u.getUnit().role === 'Ambusher' || u.getUnit().role === 'Juggernaut');
@@ -378,6 +401,10 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         idealRole: 'Brawler',
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 62 }, { book: Rulebook.ASCE, page: 117 }],
+        requirements: (gameSystem) => {
+            const heavy = gameSystem === GameSystem.ALPHA_STRIKE ? 'Size 3+' : 'heavy or assault';
+            return `Minimum 4 units. 50% must be ${heavy}. At least 3 Brawler, Sniper, or Skirmisher roles. Vehicle formations require 2 matched pairs of heavy units.`;
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const heavyUnits = units.filter(u =>
@@ -406,6 +433,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 62 }, { book: Rulebook.ASCE, page: 117 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 4 units. 75% must be Size 1. No Size 4+ units. At least 1 Scout. Vehicle formations require 2 matched pairs of light units.';
+            }
+            return 'Minimum 4 units. 75% must be light. No assault units. At least 1 Scout. Vehicle formations require 2 matched pairs of light units.';
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const lightUnits = units.filter(u => isAS
@@ -437,6 +470,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 62 }, { book: Rulebook.ASCE, page: 117 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 4 units. 50% must be Size 2. No Size 4+ units. Vehicle formations require 2 matched pairs of medium units.';
+            }
+            return 'Minimum 4 units. 50% must be medium. No assault units. Vehicle formations require 2 matched pairs of medium units.';
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const mediumUnits = units.filter(u => isAS
@@ -467,6 +506,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 63 }, { book: Rulebook.ASCE, page: 117 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 4 units. 50% must be Size 3+. No Size 1 units. Vehicle formations require 2 matched pairs of heavy units.';
+            }
+            return 'Minimum 4 units. 50% must be heavy or assault. No light units. Vehicle formations require 2 matched pairs of heavy units.';
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const heavyUnits = units.filter(u =>
@@ -498,7 +543,14 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             perTurn: true,
         }],
         exclusiveFaction: 'Federated Suns',
+        minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 63 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 4 units. Federated Suns only. 75% must be Size 2-3. 50% must have AC or FLK special. All units Move 8"+.';
+            }
+            return 'Minimum 4 units. Federated Suns only. 75% must be medium or heavy. 50% must have autocannons (including LB-X, Ultra, or Rotary). All units walk ≥ 4.';
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             if (isAS) {
@@ -506,7 +558,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
                     const sz = asGetSize(u.getUnit());
                     return sz >= 2 && sz <= 3;
                 });
-                const withAutocannon = units.filter(u => asHasSpecial(u.getUnit(), 'AC'));
+                const withAutocannon = units.filter(u => asHasSpecial(u.getUnit(), 'AC') || asHasSpecial(u.getUnit(), 'FLK'));
                 const allFast = units.every(u => asGetMaxGroundMove(u.getUnit()) >= 8);
                 return mediumOrHeavy.length >= Math.ceil(units.length * 0.75) &&
                        withAutocannon.length >= Math.ceil(units.length * 0.5) && allFast;
@@ -542,6 +594,10 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 63 }],
+        requirements: (gameSystem) => {
+            const heavy = gameSystem === GameSystem.ALPHA_STRIKE ? 'Size 3+' : 'heavy or assault';
+            return `Minimum 4 units. Same as Battle Lance: 50% must be ${heavy}. At least 3 Brawler, Sniper, or Skirmisher roles. Vehicle formations require 2 matched pairs.`;
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const heavyUnits = units.filter(u =>
@@ -581,6 +637,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         ],
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 63 }, { book: Rulebook.ASCE, page: 120 }],
+        requirements: () => 'Minimum 4 units. 50% must have Sniper, Missile Boat, Skirmisher, or Juggernaut role. At least 1 Brawler, Striker, or Scout.',
         validator: (units) => {
             const heavyRoles = units.filter(u =>
                 ['Sniper', 'Missile Boat', 'Skirmisher', 'Juggernaut'].includes(u.getUnit().role));
@@ -615,6 +672,10 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         exclusiveFaction: 'Draconis Combine',
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 63 }],
+        requirements: (gameSystem) => {
+            const tier = gameSystem === GameSystem.ALPHA_STRIKE ? 'Size class' : 'weight class';
+            return `Minimum 4 units. Draconis Combine only. All units must share the same ${tier} and chassis.`;
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const firstTier = isAS ? asGetSize(units[0].getUnit()) : cbtGetWeightClass(units[0].getUnit());
@@ -648,6 +709,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         ],
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 63 }, { book: Rulebook.ASCE, page: 120 }],
+        requirements: () => 'Minimum 4 units. All must be combat vehicles. At least one matched pair with Sniper, Missile Boat, Skirmisher, or Juggernaut role.',
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             if (!(isAS ? asIsOnlyCombatVehicles(units) : cbtIsOnlyCombatVehicles(units))) return false;
@@ -677,6 +739,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         idealRole: 'Missile Boat',
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 64 }, { book: Rulebook.ASCE, page: 119 }],
+        requirements: () => 'Minimum 4 units. 75% must have the Missile Boat or Sniper role.',
         validator: (units) => {
             const count = units.filter(u =>
                 u.getUnit().role === 'Missile Boat' || u.getUnit().role === 'Sniper');
@@ -703,6 +766,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 64 }, { book: Rulebook.ASCE, page: 119 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 4 units. Must meet Fire Lance requirements. At least 2 units with FLK, AC, or ART specials.';
+            }
+            return 'Minimum 4 units. Must meet Fire Lance requirements. At least 2 units with an LBX autocannon, standard autocannon, artillery weapon, or Anti-Aircraft Targeting quirk.';
+        },
         validator: (units, gameSystem) => {
             if (gameSystem === GameSystem.ALPHA_STRIKE) {
                 const qualifyingUnits = units.filter(u =>
@@ -711,11 +780,11 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
                     asHasSpecial(u.getUnit(), 'ART'));
                 return qualifyingUnits.length >= 2;
             } else {
-                const hasAntiAir = units.filter(u => cbtHasLBXAutocannon(u.getUnit()) ||
-                    cbtHasAutocannon(u.getUnit()));
-                const hasArtillery = units.filter(u => cbtHasArtillery(u.getUnit()));
-                const hasQuirk = units.filter(u => u.getUnit().quirks.includes('Anti-Aircraft Targeting'));
-                return hasAntiAir.length >= 2 || hasArtillery.length >= 2 || hasQuirk.length >= 2;
+                const qualifyingUnits = units.filter(u =>
+                    cbtHasAutocannon(u.getUnit()) ||
+                    cbtHasArtillery(u.getUnit()) ||
+                    u.getUnit().quirks.includes('Anti-Aircraft Targeting'));
+                return qualifyingUnits.length >= 2;
             }
         },
     },
@@ -738,6 +807,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 64 }, { book: Rulebook.ASCE, page: 119 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 4 units. At least 2 units with the ART special.';
+            }
+            return 'Minimum 4 units. At least 2 units with artillery weapons.';
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const artilleryCount = units.filter(u => isAS
@@ -765,6 +840,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 64 }, { book: Rulebook.ASCE, page: 119 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 4 units. At least 2 Size 3+ units. All units must have long-range damage ≥ 2.';
+            }
+            return 'Minimum 4 units. At least 2 heavy or assault units. All units must deal 10+ damage at 18 hexes.';
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const heavyUnits = units.filter(u =>
@@ -794,6 +875,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 64 }, { book: Rulebook.ASCE, page: 119 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 4 units. At least 3 units with the IF (Indirect Fire) special.';
+            }
+            return 'Minimum 4 units. At least 3 units with LRMs or artillery.';
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const indirectCount = units.filter(u => isAS
@@ -814,6 +901,10 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         effectDescription: 'Coordinated Fire Support: If a unit in this formation hits a target with at least one of its weapons, other units in this formation making weapon attacks against the same target receive a -1 modifier to their attack rolls. This bonus is cumulative per attacking unit, up to a -3 To-Hit modifier.',
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 64 }, { book: Rulebook.ASCE, page: 119 }],
+        requirements: (gameSystem) => {
+            const noHeavy = gameSystem === GameSystem.ALPHA_STRIKE ? 'No Size 3+ units' : 'No heavy or assault units';
+            return `Minimum 4 units. ${noHeavy}. 50% must have the Missile Boat or Sniper role.`;
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const noHeavy = units.every(u =>
@@ -836,6 +927,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         effectDescription: 'Mounted infantry may make weapon attacks using the transport\'s attacker movement modifier with an additional +2 TN modifier for being mounted.',
         techBase: 'Clan',
         rulesRef: [{ book: Rulebook.CO, page: 64 }, { book: Rulebook.ASCE, page: 121 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Clan only. Exactly 10 units: 5 OmniMechs (BM/IM with OMNI) and 5 Battle Armor.';
+            }
+            return 'Clan only. Exactly 10 units: 5 OmniMechs and 5 Battle Armor.';
+        },
         validator: (units, gameSystem) => {
             if (units.length !== 10) return false;
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
@@ -873,6 +970,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         idealRole: 'Striker',
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 65 }, { book: Rulebook.ASCE, page: 120 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 4 units. All Size ≤ 2. 75% must have Move 12"+. At least 1 unit with medium-range damage > 1.';
+            }
+            return 'Minimum 4 units. All light or medium. 75% must have walk ≥ 6. At least 1 unit dealing 5+ damage at 15 hexes.';
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const allSmallOrMedium = units.every(u =>
@@ -902,6 +1005,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 65 }, { book: Rulebook.ASCE, page: 120 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 4 units. No Size 4+ units. 75% must have Move 10"+. All units must have medium-range damage ≥ 2.';
+            }
+            return 'Minimum 4 units. No assault units. 75% must have walk ≥ 6. All units must deal 10+ damage at 9 hexes.';
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const allNotHuge = units.every(u =>
@@ -931,6 +1040,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 65 }, { book: Rulebook.ASCE, page: 120 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 4 units. All Size ≤ 2. All units must have Move 10"+. All units must have short-range damage ≥ 2.';
+            }
+            return 'Minimum 4 units. All light or medium. All units must have walk ≥ 5. All units must deal 10+ damage at 6 hexes.';
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const allSmallOrMedium = units.every(u =>
@@ -971,6 +1086,10 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         idealRole: 'Scout',
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 65 }, { book: Rulebook.ASCE, page: 119 }],
+        requirements: (gameSystem) => {
+            const fast = gameSystem === GameSystem.ALPHA_STRIKE ? 'Move 10"+' : 'walk ≥ 5';
+            return `Minimum 4 units. All units must have ${fast}. At least 2 Scout or Striker roles.`;
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const allFast = units.every(u => isAS
@@ -1005,6 +1124,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         ],
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 66 }, { book: Rulebook.ASCE, page: 119 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 4 units. All Move 8"+. At least 2 with Move 10"+. At least 1 Size 3+ unit. At least 2 Scouts.';
+            }
+            return 'Minimum 4 units. All walk ≥ 4. At least 2 with walk ≥ 5. At least 1 heavy or assault. At least 2 Scouts.';
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const allFast = units.every(u => isAS
@@ -1042,6 +1167,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         ],
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 66 }, { book: Rulebook.ASCE, page: 119 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 4 units. All Size 1. All Move 12"+. All must have the Scout role.';
+            }
+            return 'Minimum 4 units. All light. All walk ≥ 6. All must have the Scout role.';
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const allLight = units.every(u =>
@@ -1071,6 +1202,10 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 65 }],
+        requirements: (gameSystem) => {
+            const assault = gameSystem === GameSystem.ALPHA_STRIKE ? 'Size 4+' : 'assault';
+            return `Minimum 4 units. At most 1 ${assault} unit. At least 1 Scout or Striker. At least 1 Sniper or Missile Boat.`;
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const hasScoutOrStriker = units.some(u =>
@@ -1101,6 +1236,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         idealRole: 'Striker',
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 66 }, { book: Rulebook.ASCE, page: 118 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 4 units. All Move 10"+ or Jump 8"+. No Size 4+ units. 50% must have Striker or Skirmisher role.';
+            }
+            return 'Minimum 4 units. All walk ≥ 5 or jump ≥ 4. No assault units. 50% must have Striker or Skirmisher role.';
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const allFast = units.every(u => isAS
@@ -1134,6 +1275,10 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         idealRole: 'Striker',
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 66 }],
+        requirements: (gameSystem) => {
+            const fast = gameSystem === GameSystem.ALPHA_STRIKE ? 'Move 10"+' : 'walk ≥ 5';
+            return `Minimum 4 units. Free Worlds League only. All units must have ${fast}.`;
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             return units.every(u => isAS
@@ -1157,6 +1302,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 67 }, { book: Rulebook.ASCE, page: 118 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 4 units. All Move 10"+. No Size 3+ units. At least 2 with long-range damage. At least 2 Striker or Skirmisher roles.';
+            }
+            return 'Minimum 4 units. All walk ≥ 5. No heavy or assault units. At least 2 with long-range capability. At least 2 Striker or Skirmisher roles.';
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const allFast = units.every(u => isAS
@@ -1188,6 +1339,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 66 }, { book: Rulebook.ASCE, page: 118 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 4 units. All Move 8"+. At least 3 Size 3+. No Size 1 units. At least 1 with long-range damage > 1. At least 2 Striker or Skirmisher roles.';
+            }
+            return 'Minimum 4 units. All walk ≥ 4. At least 3 heavy or assault. No light units. At least 1 with long-range capability. At least 2 Striker or Skirmisher roles.';
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const allFast = units.every(u => isAS
@@ -1217,6 +1374,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         effectDescription: 'Swarm: When any unit in this formation is targeted by an enemy attack, that unit\'s player may switch the target to any other unit in this formation that is still a legal target (within line of sight) and at the same range or less from the attacker. This ability can only be used by units which spent Running, Jumping, or Flank movement points that turn.',
         minUnits: 5,
         rulesRef: [{ book: Rulebook.CO, page: 67 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return '5-10 units. All Size 1. All must have medium-range damage < 2.';
+            }
+            return '5-10 units. All light. All must deal less than 11 damage at 9 hexes.';
+        },
         validator: (units, gameSystem) => {
             if (units.length < 5 || units.length > 10) return false;
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
@@ -1246,6 +1409,10 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         idealRole: 'Skirmisher',
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 67 }],
+        requirements: (gameSystem) => {
+            const noAssault = gameSystem === GameSystem.ALPHA_STRIKE ? 'No Size 4+ units' : 'No assault units';
+            return `Minimum 4 units. ${noAssault}.`;
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             return units.every(u =>
@@ -1260,6 +1427,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         description: 'Multi-role formation backing other units',
         effectDescription: 'Before play, designate one other formation to support. Half the units (round down) receive the same SPAs as the supported formation. SPA count may not exceed the supported formation\'s count.',
         rulesRef: [{ book: Rulebook.CO, page: 66 }, { book: Rulebook.ASCE, page: 121 }],
+        requirements: () => 'Minimum 3 units. No additional composition requirements.',
         validator: (units) => units.length >= 3,
     },
 
@@ -1282,6 +1450,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         idealRole: 'Ambusher',
         minUnits: 4,
         rulesRef: [{ book: Rulebook.CO, page: 67 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 4 units. 50% must have jump movement or be infantry. 50% must have ground Move ≤ 8".';
+            }
+            return 'Minimum 4 units. 50% must have jump movement or be infantry. 50% must have walk ≤ 4.';
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const jumpOrInfantry = units.filter(u => isAS
@@ -1322,6 +1496,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         ],
         minUnits: 6,
         rulesRef: [{ book: Rulebook.CO, page: 68 }, { book: Rulebook.ASCE, page: 122 }],
+        requirements: () => 'Minimum 6 units. All must be aerospace units. More than 50% must have the Interceptor role.',
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             if (!units.every(u => isAS ? asIsAeroUnit(u.getUnit()) : u.getUnit().type === 'Aero')) return false;
@@ -1346,6 +1521,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 6,
         rulesRef: [{ book: Rulebook.CO, page: 67 }, { book: Rulebook.ASCE, page: 122 }],
+        requirements: () => 'Minimum 6 units. All must be aerospace units. More than 50% must have the Interceptor or Fast Dogfighter role.',
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             if (!units.every(u => isAS ? asIsAeroUnit(u.getUnit()) : u.getUnit().type === 'Aero')) return false;
@@ -1373,6 +1549,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 6,
         rulesRef: [{ book: Rulebook.CO, page: 68 }, { book: Rulebook.ASCE, page: 122 }],
+        requirements: () => 'Minimum 6 units. All must be aerospace units. 50% or more must have the Fire Support role. At least 1 Dogfighter.',
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             if (!units.every(u => isAS ? asIsAeroUnit(u.getUnit()) : u.getUnit().type === 'Aero')) return false;
@@ -1405,6 +1582,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         ],
         minUnits: 6,
         rulesRef: [{ book: Rulebook.CO, page: 68 }, { book: Rulebook.ASCE, page: 122 }],
+        requirements: () => 'Minimum 6 units. All must be aerospace units. More than 50% must have an Attack or Dogfighter role.',
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             if (!units.every(u => isAS ? asIsAeroUnit(u.getUnit()) : u.getUnit().type === 'Aero')) return false;
@@ -1430,6 +1608,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 6,
         rulesRef: [{ book: Rulebook.CO, page: 67 }, { book: Rulebook.ASCE, page: 122 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 6 units. All must be aerospace units. More than 50% must have EW specials (PRB, AECM, ECM, TAG, etc.).';
+            }
+            return 'Minimum 6 units. All must be aerospace units. More than 50% must have ECM, BAP, or TAG equipment.';
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             if (!units.every(u => isAS ? asIsAeroUnit(u.getUnit()) : u.getUnit().type === 'Aero')) return false;
@@ -1466,6 +1650,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 6,
         rulesRef: [{ book: Rulebook.CO, page: 68 }, { book: Rulebook.ASCE, page: 123 }],
+        requirements: (gameSystem) => {
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return 'Minimum 6 units. All must be aerospace type (AF, CF, SC, DS, SV, or DA). 50% or more must have the Transport role.';
+            }
+            return 'Minimum 6 units. All must be aerospace units. 50% or more must have the Transport role.';
+        },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             if (isAS) {

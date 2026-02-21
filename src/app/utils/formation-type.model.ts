@@ -95,6 +95,11 @@ export interface FormationTypeDefinition {
     /** Structured SPA distribution rules for this formation's bonus ability. */
     effectGroups?: FormationEffectGroup[];
     validator?: (units: ForceUnit[], gameSystem: GameSystem) => boolean;
+    /**
+     * Returns a human-readable description of what units/roles/weight classes
+     * are needed to qualify for this formation.
+     */
+    requirements?: (gameSystem: GameSystem) => string;
     idealRole?: string;
     techBase?: 'Inner Sphere' | 'Clan' | 'Special';
     minUnits?: number;
