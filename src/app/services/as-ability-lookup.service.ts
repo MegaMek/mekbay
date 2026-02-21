@@ -33,6 +33,7 @@
 
 import { inject, Injectable } from '@angular/core';
 import { AS_SPECIAL_ABILITIES, ASSpecialAbility } from '../models/as-abilities.model';
+import { AlternateMunition, getAlternateMunitionsForAbility } from '../models/as-alternate-munitions.model';
 import { Unit } from '../models/units.model';
 import { LoggerService } from './logger.service';
 
@@ -50,6 +51,8 @@ export interface ParsedAbility {
     subAbilities?: ParsedAbility[];
     /** For consumable abilities, the maximum number of uses extracted from the text */
     consumableMax?: number;
+    /** Available alternate munitions for this ability */
+    alternateMunitions?: AlternateMunition[];
 }
 
 /**
@@ -287,6 +290,9 @@ export class AsAbilityLookupService {
             if (result.ability?.consumable) {
                 result.consumableMax = this.extractConsumableMax(abilityText);
             }
+            if (result.ability) {
+                result.alternateMunitions = getAlternateMunitionsForAbility(result.ability);
+            }
             return result;
         }
 
@@ -295,6 +301,9 @@ export class AsAbilityLookupService {
 
         // Look up the main ability (e.g., TUR -> TUR#)
         result.ability = this.lookupAbility(mainAbilityName);
+        if (result.ability) {
+            result.alternateMunitions = getAlternateMunitionsForAbility(result.ability);
+        }
 
         // Only TUR has true composite sub-abilities
         // Other abilities with parentheses (BIM, LAM, etc.) just have parameters
@@ -327,7 +336,8 @@ export class AsAbilityLookupService {
                 if (implicitAbility) {
                     result.subAbilities!.push({
                         originalText: trimmedPart,
-                        ability: implicitAbility
+                        ability: implicitAbility,
+                        alternateMunitions: getAlternateMunitionsForAbility(implicitAbility)
                     });
                 }
             }

@@ -169,13 +169,14 @@ export class LanceTypeIdentifierUtil {
         units: ForceUnit[],
         techBase: string,
         factionName: string,
-        gameSystem: GameSystem
+        gameSystem: GameSystem,
+        preferredIds?: Set<string>
     ): FormationTypeDefinition | null {
         const matches = this.identifyLanceTypes(units, techBase, factionName, gameSystem);
         if (matches.length === 0) return null;
 
-        let bestMatch: FormationTypeDefinition = matches[0];
-        let bestWeight = 0;
+        let bestMatches: FormationTypeDefinition[] = [];
+        let bestWeight = -1;
 
         for (const match of matches) {
             let weight = 1;
@@ -186,13 +187,27 @@ export class LanceTypeIdentifierUtil {
             } else if (match.id !== 'support-lance' && match.id !== 'command-lance' && match.id !== 'battle-lance') {
                 weight *= 2;
             }
+            
             if (weight > bestWeight) {
                 bestWeight = weight;
-                bestMatch = match;
+                bestMatches = [match];
+            } else if (weight === bestWeight) {
+                bestMatches.push(match);
             }
         }
 
-        return bestMatch;
+        if (bestMatches.length === 0) return null;
+
+        // If we have preferred IDs from history, try to pick one of those first
+        if (preferredIds && preferredIds.size > 0) {
+            const preferredMatch = bestMatches.find(m => preferredIds.has(m.id));
+            if (preferredMatch) {
+                return preferredMatch;
+            }
+        }
+
+        // Otherwise, pick a random one from the best matches
+        return bestMatches[Math.floor(Math.random() * bestMatches.length)];
     }
 
     public static getBestMatchForGroup(group: UnitGroup<ForceUnit>): FormationTypeDefinition | null {
@@ -201,7 +216,7 @@ export class LanceTypeIdentifierUtil {
         const factionName = targetForce.faction()?.name ?? 'Mercenary';
         const techBase = targetForce.techBase();
         const best = LanceTypeIdentifierUtil.getBestMatch(
-            group.units(), techBase, factionName, targetForce.gameSystem
+            group.units(), techBase, factionName, targetForce.gameSystem, group.formationHistory
         );
         return best;
     }

@@ -70,6 +70,7 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     color?: string;
     formation = signal<FormationTypeDefinition | null>(null);
     formationLock?: boolean; // If true, the formation name will not be upgraded by the random generator (this is unset when we have automatic formation)
+    formationHistory = new Set<string>(); // Temporarily stores previously assigned formation IDs for this group
     units: WritableSignal<TUnit[]> = signal([]);
 
     totalBV = computed(() => {
@@ -747,6 +748,9 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                         ? LanceTypeIdentifierUtil.getDefinitionById(groupData.formationId, this.gameSystem)
                         : null);
                     group.formationLock = groupData.formationLock || undefined;
+                    if (!group.formationLock && groupData.formationId) {
+                        group.formationHistory.add(groupData.formationId);
+                    }
                 } else {
                     // Add new group
                     group = new UnitGroup<TUnit>(this);
@@ -758,6 +762,9 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                     if (groupData.formationId) {
                         group.formation.set(LanceTypeIdentifierUtil.getDefinitionById(groupData.formationId, this.gameSystem));
                         group.formationLock = groupData.formationLock || undefined;
+                        if (!group.formationLock) {
+                            group.formationHistory.add(groupData.formationId);
+                        }
                     } else {
                         group.formation.set(null);
                         group.formationLock = undefined;

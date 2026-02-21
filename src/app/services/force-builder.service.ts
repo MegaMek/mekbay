@@ -960,6 +960,9 @@ export class ForceBuilderService {
                 newGroup.name.set(sourceGroup.name());
                 newGroup.formation.set(sourceGroup.formation());
                 newGroup.formationLock = sourceGroup.formationLock;
+                if (!newGroup.formationLock && sourceGroup.formation()) {
+                    newGroup.formationHistory.add(sourceGroup.formation()!.id);
+                }
 
                 for (const sourceUnit of sourceGroup.units()) {
                     const unitName = sourceUnit.getUnit().name;
@@ -1120,6 +1123,9 @@ export class ForceBuilderService {
         const best = LanceTypeIdentifierUtil.getBestMatchForGroup(group);
         if (best?.id !== group.formation()?.id) {
             group.formation.set(best);
+            if (best) {
+                group.formationHistory.add(best.id);
+            }
         }
     }
 
@@ -1740,6 +1746,9 @@ export class ForceBuilderService {
             const newGroup = targetForce.addGroup(sourceGroup.name());
             newGroup.formation.set(sourceGroup.formation());
             newGroup.formationLock = sourceGroup.formationLock;
+            if (!newGroup.formationLock && sourceGroup.formation()) {
+                newGroup.formationHistory.add(sourceGroup.formation()!.id);
+            }
 
             for (const sourceUnit of sourceGroup.units()) {
                 if (needsConversion) {
@@ -2307,6 +2316,7 @@ export class ForceBuilderService {
         const result = await firstValueFrom(dialogRef.closed);
         if (result !== null && result !== undefined) {
             if (result.action === 'unset') {
+                group.formationHistory.clear(); // We unset, we reset!
                 group.formationLock = false;
                 group.formation.set(null);
                 group.setName(undefined);
@@ -2314,6 +2324,7 @@ export class ForceBuilderService {
             } else
             if (result.action === 'confirm') {
                 if (result.formation) {
+                    group.formationHistory.clear(); // We locked it, so we don't care about previous formations
                     group.formationLock = true;
                     group.formation.set(result.formation);
                 } else {
