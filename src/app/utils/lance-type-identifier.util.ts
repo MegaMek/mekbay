@@ -37,10 +37,7 @@ import { FormationTypeDefinition, NO_FORMATION, NO_FORMATION_ID } from './format
 import { FORMATION_DEFINITIONS } from './formation-definitions';
 import { UnitGroup } from '../models/force.model';
 
-/** Pre-built map for O(1) formation lookups by id. */
-export const FORMATION_MAP: ReadonlyMap<string, FormationTypeDefinition> = new Map(
-    FORMATION_DEFINITIONS.map(d => [d.id, d])
-);
+
 
 /*
  * Author: Drake
@@ -60,7 +57,7 @@ export class LanceTypeIdentifierUtil {
     ): boolean {
         // Validate parent chain first
         if (definition.parent) {
-            const parentDefinition = FORMATION_MAP.get(definition.parent);
+            const parentDefinition = FORMATION_DEFINITIONS.find(d => d.id === definition.parent);
             if (!parentDefinition) {
                 console.error(`Parent definition '${definition.parent}' not found for '${definition.id}'`);
                 return false;
@@ -106,7 +103,7 @@ export class LanceTypeIdentifierUtil {
     public static getDefinitionById(id: string, gameSystem?: GameSystem): FormationTypeDefinition | null {
         // Handle the "No Formation" sentinel
         if (id === NO_FORMATION_ID) return NO_FORMATION;
-        const def = FORMATION_MAP.get(id) ?? null;
+        const def = FORMATION_DEFINITIONS.find(d => d.id === id) ?? null;
         if (!def) return null;
         // If a game system is specified, only return if the definition has a validator for it
         if (gameSystem !== undefined) {
@@ -121,7 +118,7 @@ export class LanceTypeIdentifierUtil {
      */
     public static getFormationName(formationId: string | undefined): string | null {
         if (!formationId || formationId === NO_FORMATION_ID) return null;
-        return FORMATION_MAP.get(formationId)?.name ?? null;
+        return FORMATION_DEFINITIONS.find(d => d.id === formationId)?.name ?? null;
     }
 
     /**

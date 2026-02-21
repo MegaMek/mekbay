@@ -37,7 +37,7 @@ import { AlphaStrikeUnitStats, Unit } from '../../../models/units.model';
 import { Era } from '../../../models/eras.model';
 import { DataService } from '../../../services/data.service';
 import { AsAbilityLookupService } from '../../../services/as-ability-lookup.service';
-import { PILOT_ABILITIES_BY_ID, PilotAbility, ASCustomPilotAbility } from '../../../models/pilot-abilities.model';
+import { PILOT_ABILITIES, PilotAbility, ASCustomPilotAbility } from '../../../models/pilot-abilities.model';
 import { CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
 import { formatMovement } from '../../../utils/as-common.util';
@@ -91,7 +91,7 @@ export abstract class AsLayoutBaseComponent {
     protected readonly dataService = inject(DataService);
     protected readonly abilityLookup = inject(AsAbilityLookupService);
 
-    protected readonly pilotAbilityById = PILOT_ABILITIES_BY_ID;
+    protected readonly PILOT_ABILITIES = PILOT_ABILITIES;
 
     // Common inputs
     forceUnit = input<ASForceUnit>();
@@ -452,7 +452,7 @@ export abstract class AsLayoutBaseComponent {
 
     formatPilotAbility(selection: AbilitySelection): string {
         if (typeof selection === 'string') {
-            const ability = this.pilotAbilityById.get(selection);
+            const ability = this.PILOT_ABILITIES.find(a => a.id === selection);
             return ability ? `${ability.name} (${ability.cost})` : selection;
         }
         return `${selection.name} (${selection.cost})`;
