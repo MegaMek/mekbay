@@ -71,7 +71,7 @@ export type ForceType =
 type ForceTypeRange = { type: ForceType; min: number; max: number };
 
 const INNER_SPHERE_FORCE_TYPES: ForceTypeRange[] = [
-    { type: 'Lance', min: 1, max: 4 },
+    { type: 'Lance', min: 4, max: 4 },
     { type: 'Company', min: 12, max: 16 },
     { type: 'Battalion', min: 36, max: 64 },
     { type: 'Regiment', min: 108, max: 256 },
@@ -99,8 +99,11 @@ const COMSTAR_FORCE_TYPES: ForceTypeRange[] = [
  * Determine the force organizational type (Lance, Company, Star, etc.)
  * based on the number of units, tech base, and faction.
  */
-export function getForceSizeName(units: ForceUnit[], techBase: string, factionName: string): ForceType {
+export function getForceSizeName(units: ForceUnit[], techBase: string, factionName: string): string {
     let configs: ForceTypeRange[] = [];
+    let underLabel = 'Understrength ';
+    let halfLabel = 'Demi-';
+    let overLabel = 'Reinforced ';
     if (factionName === 'ComStar' || factionName === 'Word of Blake') {
         configs = COMSTAR_FORCE_TYPES;
     } else if (techBase === 'Clan') {
@@ -108,10 +111,53 @@ export function getForceSizeName(units: ForceUnit[], techBase: string, factionNa
     } else if (techBase === 'Inner Sphere') {
         configs = INNER_SPHERE_FORCE_TYPES;
     }
+
+    if (configs.length === 0 || units.length === 0) {
+        return 'Force';
+    }
+
+    const count = units.length;
+
     for (const cfg of configs) {
-        if (units.length >= cfg.min && units.length <= cfg.max) {
+        if (count >= cfg.min && count <= cfg.max) {
             return cfg.type;
         }
     }
+
+    // If no exact match, we check for a match that is EXACTLY twice our count, we use that name and we put the halfLabel
+    for (const cfg of configs) {
+        if (cfg.min === count * 2 && cfg.max === count * 2) {
+            return halfLabel + cfg.type;
+        }
+    }
+
+    // Otherwise, we find the nearest match and return that with an under/over label as appropriate (with a max distance of 20% of the count, minimum 1, otherwise we just return Force)
+    let nearestType = 'Force';
+    let minDistance = Infinity;
+    let modifier = '';
+
+    for (const cfg of configs) {
+        if (count < cfg.min) {
+            const dist = cfg.min - count;
+            if (dist < minDistance) {
+                minDistance = dist;
+                nearestType = cfg.type;
+                modifier = underLabel;
+            }
+        } else if (count > cfg.max) {
+            const dist = count - cfg.max;
+            if (dist < minDistance) {
+                minDistance = dist;
+                nearestType = cfg.type;
+                modifier = overLabel;
+            }
+        }
+    }
+
+    const maxDistance = Math.max(2, count * 0.2);
+    if (minDistance <= maxDistance) {
+        return modifier + nearestType;
+    }
+
     return 'Force';
 }

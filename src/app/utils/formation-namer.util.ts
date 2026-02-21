@@ -36,7 +36,7 @@ import { Faction } from '../models/factions.model';
 import { GameSystem } from '../models/common.model';
 import { FormationTypeDefinition } from './formation-type.model';
 import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
-import { ForceType, getForceSizeName } from './force-type.util';
+import { getForceSizeName } from './force-type.util';
 import { Force, UnitGroup } from '../models/force.model';
 
 /*
@@ -89,7 +89,7 @@ export class FormationNamerUtil {
         return LanceTypeIdentifierUtil.identifyLanceTypes(group.units(), targetForce.techBase(), factionName, targetForce.gameSystem);
     }
 
-    public static getFormationSizeName(group: UnitGroup): ForceType {
+    public static getFormationSizeName(group: UnitGroup): string {
         const force = group.force;
         const factionName = force.faction()?.name ?? 'Mercenary';
         const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
@@ -97,7 +97,7 @@ export class FormationNamerUtil {
         return getForceSizeName(group.units(), techBase, factionName);
     }
 
-    public static getForceSizeName(force: Force): ForceType {
+    public static getForceSizeName(force: Force): string {
         const factionName = force.faction()?.name ?? 'Mercenary';
         const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
         const techBase = isComStarOrWoB ? '' : force.techBase();
