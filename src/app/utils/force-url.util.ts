@@ -315,7 +315,7 @@ export function parseForceFromUrl(
             }
             if (formationId) {
                 const definition = LanceTypeIdentifierUtil.getDefinitionById(formationId, force.gameSystem);
-                if (definition && !isNoFormation(definition)) {
+                if (definition) {
                     group.formation.set(definition);
                     group.formationLock = true;
                 } else {

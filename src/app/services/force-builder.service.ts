@@ -84,6 +84,7 @@ import { SerializedOperation, LoadOperationEntry, OperationForceRef } from '../m
 import { SaveOperationDialogComponent, OperationDialogData, OperationDialogResult } from '../components/save-operation-dialog/save-operation-dialog.component';
 import { OpPreviewForce } from '../components/op-preview/op-preview.component';
 import { ForceLoadingOverlayComponent, ForceLoadingOverlayData, ForceLoadingProgress } from '../components/force-loading-overlay/force-loading-overlay.component';
+import { isNoFormation } from '../utils/formation-type.model';
 
 /*
  * Author: Drake
@@ -1114,24 +1115,10 @@ export class ForceBuilderService {
             return;
         }
         if (group.formationLock) return; // Don't change formation if it's already locked
-        const currentFormation = group.formation();
-        // If the user explicitly chose "No Formation", respect that choice
-        if (currentFormation && group.formationLock) {
-            // Validate existing locked formation: keep it if still valid
-            const definitions = FormationNamerUtil.getAvailableFormationDefinitions(group);
-            if (definitions.some(d => d.id === currentFormation.id)) {
-                return; // Still valid and locked, nothing to do
-            }
-            // Current formation is no longer valid: fall through to pick a new one
-            group.formation.set(null);
-            group.formationLock = false;
-        }
-        if (!group.formationLock) {
-            // Pick the best formation (weighted towards more specific types),
-            // upgrading when a better match becomes available.
-            const targetForce = group.force;
-            if (!targetForce) return;
-            const best = LanceTypeIdentifierUtil.getBestMatchForGroup(group);
+        // Pick the best formation (deterministic, most specific wins),
+        // upgrading when a better match becomes available.
+        const best = LanceTypeIdentifierUtil.getBestMatchForGroup(group);
+        if (best?.id !== group.formation()?.id) {
             group.formation.set(best);
         }
     }
@@ -2307,7 +2294,7 @@ export class ForceBuilderService {
         } else {
             force.factionLock = true;
             force.faction.set(result.faction);
-            force.setName(result.name.trim());
+            force.setName(result.name);
         }
     }
 
@@ -2326,12 +2313,16 @@ export class ForceBuilderService {
                 this.assignFormationIfNeeded(group);
             } else
             if (result.action === 'confirm') {
-                group.formationLock = true;
+                if (result.formation) {
+                    group.formationLock = true;
+                } else {
+                    group.formationLock = false; // This is Automatic formation!
+                }
                 group.formation.set(result.formation);
-                if (result.name === '' || result.name === null) {
+                if (!result.name) {
                     group.setName(undefined);
                 } else {
-                    group.setName(result.name.trim());
+                    group.setName(result.name);
                 }
             }
         }

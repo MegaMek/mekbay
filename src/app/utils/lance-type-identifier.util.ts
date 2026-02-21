@@ -162,7 +162,8 @@ export class LanceTypeIdentifierUtil {
     }
 
     /**
-     * Gets the best matching formation type (most specific, weighted random).
+     * Gets the best matching formation type (most specific, highest weight).
+     * Returns null when no formation matches.
      */
     public static getBestMatch(
         units: ForceUnit[],
@@ -173,8 +174,9 @@ export class LanceTypeIdentifierUtil {
         const matches = this.identifyLanceTypes(units, techBase, factionName, gameSystem);
         if (matches.length === 0) return null;
 
-        let totalWeight = 0;
-        const weights: number[] = [];
+        let bestMatch: FormationTypeDefinition = matches[0];
+        let bestWeight = 0;
+
         for (const match of matches) {
             let weight = 1;
             if (match.exclusiveFaction && factionName.includes(match.exclusiveFaction)) {
@@ -184,16 +186,13 @@ export class LanceTypeIdentifierUtil {
             } else if (match.id !== 'support-lance' && match.id !== 'command-lance' && match.id !== 'battle-lance') {
                 weight *= 2;
             }
-            weights.push(weight);
-            totalWeight += weight;
+            if (weight > bestWeight) {
+                bestWeight = weight;
+                bestMatch = match;
+            }
         }
 
-        let roll = Math.random() * totalWeight;
-        for (let i = 0; i < matches.length; i++) {
-            roll -= weights[i];
-            if (roll <= 0) return matches[i];
-        }
-        return matches[matches.length - 1];
+        return bestMatch;
     }
 
     public static getBestMatchForGroup(group: UnitGroup<ForceUnit>): FormationTypeDefinition | null {

@@ -373,12 +373,15 @@ export class RenameGroupDialogComponent {
     }
 
     fillRandomFormation(): void {
-        const list = this.formationDisplayList;
-        if (list.length === 0) return;
+        const validList = this.formationDisplayList.filter(item => item.isValid);
+        if (validList.length === 0) {
+            this.selectedFormation.set(null);
+            return;
+        }
         const currentId = this.selectedFormation()?.id ?? null;
-        const candidates = list.length > 1
-            ? list.filter(item => item.definition.id !== currentId)
-            : list;
+        const candidates = validList.length > 1
+            ? validList.filter(item => item.definition.id !== currentId)
+            : validList;
         const randomIndex = Math.floor(Math.random() * candidates.length);
         this.selectedFormation.set(candidates[randomIndex].definition);
     }
