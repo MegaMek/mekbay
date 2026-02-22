@@ -1434,13 +1434,13 @@ hr.divider {
             transition: fill ease-out 0.2s;
         }
 
-        .selectable:hover,
-        .selectable:hover>path {
+        .selectable:not(.pip-hit-area):hover,
+        .selectable:not(.pip-hit-area):hover>path {
             fill: var(--undamaged-highlight-color) !important;
         }
 
-        .selectable.damaged:hover,
-        .selectable.damaged:hover>path {
+        .selectable.damaged:not(.pip-hit-area):hover,
+        .selectable.damaged:not(.pip-hit-area):hover>path {
             fill: var(--damaged-highlight-color) !important;
         }
 
@@ -1485,12 +1485,28 @@ hr.divider {
             paint-order: stroke fill;
         }
 
+        .pip.damaged.pending:not(.fresh) {
+            fill: orange !important;
+        }
+
+        .pip.pending:not(.damaged):not(.fresh) {
+            fill: #03a9f4 !important;
+        }
+
         .soldierPip.fresh {
             filter: brightness(1.1) saturate(100) hue-rotate(-140deg) !important;
         }
 
         .soldierPip.damaged.fresh {
             filter: brightness(1.1) saturate(100) hue-rotate(20deg) !important;
+        }
+
+        .soldierPip.pending:not(.fresh) {
+            filter: brightness(1.1) saturate(50) hue-rotate(-120deg) !important;
+        }
+
+        .soldierPip.damaged.pending:not(.fresh) {
+            filter: brightness(1) saturate(50) hue-rotate(10deg) !important;
         }
 
         .inventoryEntry {
@@ -1848,6 +1864,14 @@ hr.divider {
             stroke: var(--damage-color) !important;
         }
 
+        .pip.damaged.pending:not(.fresh) {
+            fill: orange !important;
+        }
+
+        .pip.pending:not(.damaged):not(.fresh) {
+            fill: #03a9f4 !important;
+        }
+
         .soldierPip.damaged {
             filter: invert(1) opacity(0.3) !important;
         }
@@ -1860,6 +1884,14 @@ hr.divider {
             filter: invert(1) saturate(100) hue-rotate(10deg) !important;
         }
 
+        .soldierPip.pending:not(.fresh) {
+            filter: invert(1) saturate(100) hue-rotate(40deg) !important;
+        }
+
+        .soldierPip.damaged.pending:not(.fresh) {
+            filter: invert(1) brightness(0.6) saturate(50) hue-rotate(217deg) contrast(1.5) !important;
+        }
+
         .skillValue {
             fill: #bbf;
         }
@@ -1868,13 +1900,13 @@ hr.divider {
             fill: #bbf;
         }
 
-        .selectable:hover,
-        .selectable:hover>path {
+        .selectable:not(.pip-hit-area):hover,
+        .selectable:not(.pip-hit-area):hover>path {
             fill: var(--undamaged-night-highlight-color) !important;
         }
 
-        .selectable.damaged:hover,
-        .selectable.damaged:hover>path {
+        .selectable.damaged:not(.pip-hit-area)::hover,
+        .selectable.damaged:not(.pip-hit-area)::hover>path {
             fill: var(--damaged-highlight-color) !important;
         }
 

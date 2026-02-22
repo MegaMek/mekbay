@@ -69,6 +69,39 @@ export class CBTForceUnitState extends ForceUnitState {
         return this.crits().some(crit => !!crit.destroying !== !!crit.destroyed);
     });
 
+    hasUnconsolidatedLocations = computed(() => {
+        const locations = this.locations();
+        return Object.values(locations).some(loc => (loc.pendingArmor ?? 0) !== 0 || (loc.pendingInternal ?? 0) !== 0);
+    });
+
+    consolidateLocations() {
+        if (!this.hasUnconsolidatedLocations()) return;
+        const locations = this.locations();
+        const updated: Record<string, LocationData> = {};
+        for (const [key, loc] of Object.entries(locations)) {
+            updated[key] = {
+                armor: (loc.armor ?? 0) + (loc.pendingArmor ?? 0),
+                internal: (loc.internal ?? 0) + (loc.pendingInternal ?? 0),
+            };
+        }
+        this.locations.set(updated);
+        this.unit.svgService?.evaluateDestroyed();
+        this.unit.setModified();
+    }
+
+    discardPendingLocations() {
+        const locations = this.locations();
+        if (!this.hasUnconsolidatedLocations()) return;
+        const updated: Record<string, LocationData> = {};
+        for (const [key, loc] of Object.entries(locations)) {
+            updated[key] = {
+                armor: loc.armor,
+                internal: loc.internal,
+            };
+        }
+        this.locations.set(updated);
+    }
+
     consolidateCrits() {
         if (!this.hasUnconsolidatedCrits()) return;
         const crits = this.crits();
@@ -98,6 +131,7 @@ export class CBTForceUnitState extends ForceUnitState {
     }
 
     endPhase() {
+        this.consolidateLocations();
         this.consolidateCrits();
         const turnState = this.turnState();
         turnState.resetPSRChecks();
@@ -132,7 +166,11 @@ export class CBTForceUnitState extends ForceUnitState {
                 for (const key of incomingKeys) {
                     const currentLoc = currentLocations[key];
                     const incomingLoc = incomingLocations[key];
-                    if (!currentLoc || currentLoc.armor !== incomingLoc.armor || currentLoc.internal !== incomingLoc.internal) {
+                    if (!currentLoc
+                        || currentLoc.armor !== incomingLoc.armor
+                        || currentLoc.internal !== incomingLoc.internal
+                        || currentLoc.pendingArmor !== incomingLoc.pendingArmor
+                        || currentLoc.pendingInternal !== incomingLoc.pendingInternal) {
                         locationsChanged = true;
                         break;
                     }

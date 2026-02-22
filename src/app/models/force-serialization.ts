@@ -43,6 +43,8 @@ import { DEFAULT_GUNNERY_SKILL } from './crew-member.model';
 export interface LocationData {
     armor?: number;
     internal?: number;
+    pendingArmor?: number;
+    pendingInternal?: number;
 }
 
 export interface HeatProfile {
@@ -263,6 +265,8 @@ export const HEAT_SCHEMA = Sanitizer.schema<HeatProfile>()
 export const LOCATION_SCHEMA = Sanitizer.schema<LocationData>()
     .number('armor')
     .number('internal')
+    .number('pendingArmor')
+    .number('pendingInternal')
     .build();
 
 export const CRIT_SLOT_SCHEMA = Sanitizer.schema<CriticalSlot>()

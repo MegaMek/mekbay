@@ -45,8 +45,8 @@ import { App } from '../../app';
     styleUrls: ['./update-button.component.css']
 })
 export class UpdateButtonComponent {
-    public START_COUNTDOWN = 60; // seconds
-    public WARNING_THRESHOLD = 10; // seconds
+    public START_COUNTDOWN = 120; // seconds
+    public WARNING_THRESHOLD = 30; // seconds
     updateAvailable = input<boolean>(false);
     countdown = signal(this.START_COUNTDOWN);
     isVisible = signal(false);

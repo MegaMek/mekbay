@@ -319,6 +319,7 @@
     z-index: 1;
     border-top: 1px solid var(--border-color);
     flex: 0 0 auto;
+    margin-top: auto;
 }
 
 .sort-controls {

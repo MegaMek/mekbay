@@ -299,20 +299,26 @@ export class CBTForceUnit extends ForceUnit {
 
     getArmorHits(loc: string, rear?: boolean): number {
         const locKey = rear ? `${loc}-rear` : loc;
-        return this.state.locations()[locKey]?.armor || 0;
+        const locData = this.state.locations()[locKey];
+        return (locData?.armor ?? 0) + (locData?.pendingArmor ?? 0);
     }
 
-    addArmorHits(loc: string, hits: number, rear?: boolean) {
+    addArmorHits(loc: string, hits: number, rear?: boolean, consolidateImmediately: boolean = false) {
         const locKey = rear ? `${loc}-rear` : loc;
         const locations = { ...this.state.locations() };
 
         if (locations[locKey] === undefined) {
             locations[locKey] = {};
         }
-        if (typeof locations[locKey].armor !== 'number') {
-            locations[locKey].armor = 0;
+        if (consolidateImmediately) {
+            locations[locKey].armor = (locations[locKey].armor ?? 0) + (locations[locKey].pendingArmor ?? 0) + hits;
+            locations[locKey].pendingArmor = undefined;
+        } else {
+            if (typeof locations[locKey].pendingArmor !== 'number') {
+                locations[locKey].pendingArmor = 0;
+            }
+            locations[locKey].pendingArmor += hits;
         }
-        locations[locKey].armor += hits;
         this.state.locations.set({ ...this.state.locations(), [locKey]: locations[locKey] });
         let hitsForPsr = hits;
         if (this.getUnit().armorType === 'Hardened') {
@@ -329,6 +335,7 @@ export class CBTForceUnit extends ForceUnit {
             locations[locKey] = {};
         }
         locations[locKey].armor = hits;
+        locations[locKey].pendingArmor = undefined;
         this.state.locations.set({ ...this.state.locations(), [locKey]: locations[locKey] });
         this.setModified();
     }
@@ -338,18 +345,24 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     getInternalHits(loc: string): number {
-        return this.state.locations()[loc]?.internal || 0;
+        const locData = this.state.locations()[loc];
+        return (locData?.internal ?? 0) + (locData?.pendingInternal ?? 0);
     }
 
-    addInternalHits(loc: string, hits: number) {
+    addInternalHits(loc: string, hits: number, consolidateImmediately: boolean = false) {
         const locations = { ...this.state.locations() };
         if (locations[loc] === undefined) {
             locations[loc] = {};
         }
-        if (typeof locations[loc].internal !== 'number') {
-            locations[loc].internal = 0;
+        if (consolidateImmediately) {
+            locations[loc].internal = (locations[loc].internal ?? 0) + (locations[loc].pendingInternal ?? 0) + hits;
+            locations[loc].pendingInternal = undefined;
+        } else {
+            if (typeof locations[loc].pendingInternal !== 'number') {
+                locations[loc].pendingInternal = 0;
+            }
+            locations[loc].pendingInternal += hits;
         }
-        locations[loc].internal += hits;
         this.state.locations.set({ ...this.state.locations(), [loc]: locations[loc] });
         this.state.turnState().addDmgReceived(hits);
         this.state.turnState().evaluateLegDestroyed(loc, hits);
@@ -362,6 +375,7 @@ export class CBTForceUnit extends ForceUnit {
             locations[loc] = {};
         }
         locations[loc].internal = hits;
+        locations[loc].pendingInternal = undefined;
         this.state.locations.set({ ...this.state.locations(), [loc]: locations[loc] });
         this.setModified();
     }
@@ -376,6 +390,28 @@ export class CBTForceUnit extends ForceUnit {
     isInternalLocDestroyed(loc: string): boolean {
         if (!this.locations?.internal.has(loc)) return false;
         const hits = this.getInternalHits(loc);
+        return hits >= this.getInternalPoints(loc);
+    }
+
+    getCommittedArmorHits(loc: string, rear?: boolean): number {
+        const locKey = rear ? `${loc}-rear` : loc;
+        return this.state.locations()[locKey]?.armor ?? 0;
+    }
+
+    getCommittedInternalHits(loc: string): number {
+        return this.state.locations()[loc]?.internal ?? 0;
+    }
+
+    isArmorLocCommittedDestroyed(loc: string, rear: boolean = false): boolean {
+        const locKey = rear ? `${loc}-rear` : loc;
+        if (!this.locations?.armor.has(locKey)) return false;
+        const hits = this.getCommittedArmorHits(loc, rear);
+        return hits >= this.getArmorPoints(loc, rear);
+    }
+
+    isInternalLocCommittedDestroyed(loc: string): boolean {
+        if (!this.locations?.internal.has(loc)) return false;
+        const hits = this.getCommittedInternalHits(loc);
         return hits >= this.getInternalPoints(loc);
     }
 

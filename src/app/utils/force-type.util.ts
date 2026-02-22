@@ -65,6 +65,9 @@ export type ForceType =
     | 'Level III'
     | 'Level IV'
     | 'Level V'
+    | 'Un'
+    | 'Trey'
+    | 'Sept'
     | 'Force'
     | 'Mercenary';
 
@@ -237,6 +240,22 @@ const COMSTAR_RULES: ForceTypeRule[] = [
     { type: 'Level V', minPts: 1296, maxPts: 1296, commandRank: 'Precentor' }
 ];
 
+function getSocietyPoints(comp: ForceComposition): number {
+    return comp.BM + 
+           (comp.BA_troopers / 15) + 
+           (comp.CI_troopers / 75) + 
+           (comp.PM / 3) + 
+           (comp.CV / 7) + 
+           (comp.AF / 3) + 
+           comp.other;
+}
+
+const SOCIETY_RULES: ForceTypeRule[] = [
+    { type: 'Un', minPts: 1, maxPts: 1 },
+    { type: 'Trey', minPts: 3, maxPts: 3 },
+    { type: 'Sept', minPts: 7, maxPts: 7 }
+];
+
 function evaluateForce(comp: ForceComposition, rules: ForceTypeRule[], getPoints: (comp: ForceComposition) => number): string {
     const pts = getPoints(comp);
     
@@ -316,6 +335,8 @@ export function getForceSizeName(units: ForceUnit[], techBase: string, factionNa
 
     if (factionName === 'ComStar' || factionName === 'Word of Blake') {
         return evaluateForce(comp, COMSTAR_RULES, getComStarPoints);
+    } else if (factionName === 'Society') {
+        return evaluateForce(comp, SOCIETY_RULES, getSocietyPoints);
     } else if (factionName.includes('Clan') || techBase === 'Clan') {
         return evaluateForce(comp, CLAN_RULES, getClanPoints);
     } else {
