@@ -306,6 +306,58 @@
     box-sizing: border-box;
 }
 
+/* ── Sort footer ── */
+
+.tab-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 4px;
+    position: sticky;
+    gap: 4px;
+    bottom: 0;
+    z-index: 1;
+    border-top: 1px solid var(--border-color);
+    flex: 0 0 auto;
+}
+
+.sort-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.sort-select {
+    height: 32px;
+    padding: 0 8px;
+    font-size: 13px;
+}
+
+.sort-select option {
+    background-color: #222;
+    color: #fff;
+}
+
+.sort-direction-btn {
+    height: 32px;
+    width: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #bbb;
+    cursor: pointer;
+}
+
+.sort-direction-btn:hover {
+    color: white;
+}
+
+.sort-direction-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
 /* ── Operations tab ── */
 
 .operation-header {
