@@ -109,13 +109,34 @@ export class ForceLoadDialogComponent {
 
     readonly GameSystem = GameSystem;
 
-    readonly SORT_OPTIONS: { key: string; label: string }[] = [
+    readonly HANGAR_SORT_OPTIONS: { key: string; label: string }[] = [
         { key: 'timestamp', label: 'Date' },
         { key: 'name', label: 'Name' },
         { key: 'value', label: 'Value' },
+        { key: 'faction', label: 'Faction' },
+        { key: 'size', label: 'Size' },
     ];
-    selectedSort = signal<string>('timestamp');
-    selectedSortDirection = signal<'asc' | 'desc'>('desc');
+    readonly PACK_SORT_OPTIONS: { key: string; label: string }[] = [
+        { key: 'name', label: 'Name' },
+        { key: 'value', label: 'Value' },
+        { key: 'size', label: 'Size' },
+    ];
+
+    hangarSort = signal<string>('timestamp');
+    hangarSortDirection = signal<'asc' | 'desc'>('desc');
+    packSort = signal<string>('name');
+    packSortDirection = signal<'asc' | 'desc'>('asc');
+
+    /** Active sort options/state based on the current tab */
+    activeSortOptions = computed(() =>
+        this.activeTab() === 'Force Packs' ? this.PACK_SORT_OPTIONS : this.HANGAR_SORT_OPTIONS
+    );
+    activeSort = computed(() =>
+        this.activeTab() === 'Force Packs' ? this.packSort() : this.hangarSort()
+    );
+    activeSortDirection = computed(() =>
+        this.activeTab() === 'Force Packs' ? this.packSortDirection() : this.hangarSortDirection()
+    );
 
     forces = signal<LoadForceEntry[]>([]);
     selectedForce = signal<LoadForceEntry | null>(null);
@@ -138,8 +159,8 @@ export class ForceLoadDialogComponent {
         const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
         const typeFilter = this.gameTypeFilter();
         
-        const sortKey = this.selectedSort();
-        const sortDir = this.selectedSortDirection();
+        const sortKey = this.hangarSort();
+        const sortDir = this.hangarSortDirection();
 
         const filtered = this.forces().filter(force => {
             // Game type filter (forces with no type are considered CBT)
@@ -153,21 +174,7 @@ export class ForceLoadDialogComponent {
             return tokens.every(t => hay.indexOf(t) !== -1);
         });
 
-        const dir = sortDir === 'asc' ? 1 : -1;
-        return filtered.sort((a, b) => {
-            switch (sortKey) {
-                case 'name':
-                    return dir * (a.name || '').localeCompare(b.name || '');
-                case 'value': {
-                    const aVal = a.pv || a.bv || 0;
-                    const bVal = b.pv || b.bv || 0;
-                    return dir * (aVal - bVal);
-                }
-                case 'timestamp':
-                default:
-                    return dir * ((a.timestamp || '').localeCompare(b.timestamp || ''));
-            }
-        });
+        return this.sortItems(filtered, sortKey, sortDir);
     });
     
     // Force Packs
@@ -175,11 +182,17 @@ export class ForceLoadDialogComponent {
     selectedPack = signal<ResolvedPack | null>(null);
     filteredPacks = computed<ResolvedPack[]>(() => {
         const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
-        if (tokens.length === 0) return this.packs();
-        return this.packs().filter(pack => {
-            const hay = pack._searchText || '';
-            return tokens.every(t => hay.indexOf(t) !== -1);
-        });
+        const sortKey = this.packSort();
+        const sortDir = this.packSortDirection();
+
+        const filtered = tokens.length === 0
+            ? [...this.packs()]
+            : this.packs().filter(pack => {
+                const hay = pack._searchText || '';
+                return tokens.every(t => hay.indexOf(t) !== -1);
+            });
+
+        return this.sortItems(filtered, sortKey, sortDir);
     });
 
     // Operations
@@ -368,11 +381,60 @@ export class ForceLoadDialogComponent {
     }
 
     setSortOrder(key: string) {
-        this.selectedSort.set(key);
+        if (this.activeTab() === 'Force Packs') {
+            this.packSort.set(key);
+        } else {
+            this.hangarSort.set(key);
+        }
     }
 
     setSortDirection(dir: 'asc' | 'desc') {
-        this.selectedSortDirection.set(dir);
+        if (this.activeTab() === 'Force Packs') {
+            this.packSortDirection.set(dir);
+        } else {
+            this.hangarSortDirection.set(dir);
+        }
+    }
+
+    /** Shared sort comparator for forces and packs */
+    private sortItems<T extends { name?: string; type?: GameSystem; bv?: number; pv?: number; factionId?: number; timestamp?: string; groups?: { units?: any[] }[]; units?: any[] }>(items: T[], sortKey: string, sortDir: 'asc' | 'desc'): T[] {
+        const dir = sortDir === 'asc' ? 1 : -1;
+        return items.sort((a, b) => {
+            switch (sortKey) {
+                case 'name':
+                    return dir * (a.name || '').localeCompare(b.name || '');
+                case 'value': {
+                    const aVal = this.getForceValue(a);
+                    const bVal = this.getForceValue(b);
+                    return dir * (aVal - bVal);
+                }
+                case 'faction': {
+                    const aFaction = a.factionId != null ? (this.dataService.getFactionById(a.factionId)?.name ?? '') : '';
+                    const bFaction = b.factionId != null ? (this.dataService.getFactionById(b.factionId)?.name ?? '') : '';
+                    return dir * aFaction.localeCompare(bFaction);
+                }
+                case 'size': {
+                    const aSize = a.groups
+                        ? a.groups.reduce((sum, g) => sum + (g.units?.length || 0), 0)
+                        : (a.units?.length || 0);
+                    const bSize = b.groups
+                        ? b.groups.reduce((sum, g) => sum + (g.units?.length || 0), 0)
+                        : (b.units?.length || 0);
+                    return dir * (aSize - bSize);
+                }
+                case 'timestamp':
+                default:
+                    return dir * ((a.timestamp || '').localeCompare(b.timestamp || ''));
+            }
+        });
+    }
+
+    /** Pick the right point value: for hangar forces use per-entry type, for packs use current game system */
+    private getForceValue(item: { type?: GameSystem; pv?: number; bv?: number }): number {
+        const isAS = item.type != null
+            ? item.type === GameSystem.ALPHA_STRIKE   // Hangar: each force knows its own type
+            : this.gameService.isAlphaStrike();       // Packs: use current game system
+        return isAS ? (item.pv ?? 0) : (item.bv ?? 0);
     }
 
     getGameTypeLabel(type: GameSystem | undefined): string {
