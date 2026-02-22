@@ -1,4 +1,4 @@
-<div id="force-view" class="force-view">
+<div id="force-view" class="force-view" [class.dragging]="isUnitDragging() || isGroupDragging()">
     <div #scrollableContent class="scrollable-content" cdkScrollable>
         <div class="forces-drop-list"
             cdkDropList
@@ -51,6 +51,7 @@
             <div class="force-units-list" 
                 id="force-groups-{{ slotForce.instanceId() || slotForce.name }}"
                 [class.single-group]="slotForce.groups().length === 1"
+                [class.group-dragging]="isGroupDragging()"
                 cdkDropList 
                 [cdkDropListData]="slotForce.groups()"
                 cdkDropListOrientation="vertical"
