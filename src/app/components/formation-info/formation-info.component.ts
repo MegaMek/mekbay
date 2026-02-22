@@ -108,6 +108,12 @@ export interface ResolvedEffectGroup {
                 </div>
             }
 
+            @if (novaFiltered()) {
+                <div class="nova-warning">
+                    <span><strong>Nova formation:</strong> this formation matches the &#039;Mech portion only. Formation bonus do not apply to Infantry units.</span>
+                </div>
+            }
+
             @if (def.effectDescription) {
                 <div class="effect-section">
                     <div class="effect-label">Formation Bonus</div>
@@ -262,6 +268,18 @@ export interface ResolvedEffectGroup {
             margin-bottom: 2px;
         }
 
+        .nova-warning {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 8px 10px;
+            background: rgba(100, 180, 255, 0.08);
+            border-left: 3px solid rgba(100, 180, 255, 0.6);
+            font-size: 0.88em;
+            line-height: 1.4;
+            color: rgba(140, 200, 255, 0.9);
+        }
+
         .effect-section {
             padding: 8px 10px;
             background: rgba(255, 255, 255, 0.04);
@@ -411,6 +429,8 @@ export class FormationInfoComponent {
     unitCount = input<number | undefined>(undefined);
     /** Whether the formation is valid for the current group composition. undefined = unknown / not checked. */
     isValid = input<boolean | undefined>(undefined);
+    /** Whether the formation was matched via the Nova rule (Infantry filtered out). */
+    novaFiltered = input<boolean>(false);
     /** Whether to show the formation name header. Defaults to true. */
     showTitle = input<boolean>(true);
 

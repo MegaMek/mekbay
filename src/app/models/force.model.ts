@@ -44,7 +44,7 @@ import { C3NetworkUtil } from '../utils/c3-network.util';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { LoggerService } from '../services/logger.service';
 import { Faction } from './factions.model';
-import { FormationTypeDefinition, isNoFormation } from '../utils/formation-type.model';
+import { FormationTypeDefinition, FormationMatch, isNoFormation } from '../utils/formation-type.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
 
@@ -163,15 +163,30 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
         if (!formation) return null;
         return FormationNamerUtil.composeFormationDisplayName(
             formation,
-            this
+            this,
+            this.isNovaFiltered()
         );
+    });
+
+    /**
+     * Formation validation.
+     * Returns the FormationMatch if the current formation is valid, or null.
+     */
+    private _formationMatch = computed<FormationMatch | null>(() => {
+        const formation = this.activeFormation();
+        if (!formation) return null;
+        return LanceTypeIdentifierUtil.isFormationValidForGroup(formation, this);
     });
 
     hasValidFormation = computed<boolean>(() => {
         const formation = this.activeFormation();
         if (!formation) return true;
-        const matchingDefs = FormationNamerUtil.getAvailableFormationDefinitions(this);
-        return matchingDefs.some(d => d.id === formation.id);
+        return this._formationMatch() !== null;
+    });
+
+    /** Whether the current formation was matched via the Nova rule (Infantry filtered out). */
+    isNovaFiltered = computed<boolean>(() => {
+        return this._formationMatch()?.novaFiltered ?? false;
     });
 }
 

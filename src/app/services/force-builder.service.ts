@@ -1129,10 +1129,10 @@ export class ForceBuilderService {
         // Pick the best formation (deterministic, most specific wins),
         // upgrading when a better match becomes available.
         const best = LanceTypeIdentifierUtil.getBestMatchForGroup(group);
-        if (best?.id !== group.formation()?.id) {
-            group.formation.set(best);
+        if (best?.definition.id !== group.formation()?.id) {
+            group.formation.set(best?.definition ?? null);
             if (best) {
-                group.formationHistory.add(best.id);
+                group.formationHistory.add(best.definition.id);
             }
         }
     }
@@ -1142,15 +1142,14 @@ export class ForceBuilderService {
         if (!targetForce) return;
         const formation = group.activeFormation();
         if (!formation) return;
-        const matchingDefs = FormationNamerUtil.getAvailableFormationDefinitions(group);
-        const isValid = matchingDefs.some(d => d.id === formation.id);
         this.dialogsService.createDialog(FormationInfoDialogComponent, {
             data: {
                 formation,
                 gameSystem: targetForce.gameSystem,
                 formationDisplayName: group.formationDisplayName(),
                 unitCount: group.units().length,
-                isValid,
+                isValid: group.hasValidFormation(),
+                novaFiltered: group.isNovaFiltered(),
             } as FormationInfoDialogData
         });
     }
