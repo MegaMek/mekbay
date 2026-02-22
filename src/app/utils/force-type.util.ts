@@ -309,7 +309,7 @@ export function getForceSizeName(units: ForceUnit[], techBase: string, factionNa
 
     if (factionName === 'ComStar' || factionName === 'Word of Blake') {
         return evaluateForce(comp, COMSTAR_RULES, getComStarPoints);
-    } else if (techBase === 'Clan') {
+    } else if (factionName.includes('Clan') || techBase === 'Clan') {
         return evaluateForce(comp, CLAN_RULES, getClanPoints);
     } else {
         return evaluateForce(comp, IS_RULES, getISPoints);
