@@ -650,8 +650,10 @@ export class ForceBuilderService {
             }
         }
         let newForceUnit;
+        const selectedUnit = this.selectedUnit();
+        const targetGroup = group ?? (targetForce === selectedUnit?.force ? selectedUnit?.getGroup() : undefined) ?? undefined;
         try {
-            newForceUnit = targetForce.addUnit(unit, group);
+            newForceUnit = targetForce.addUnit(unit, targetGroup);
         } catch (error) {
             this.toastService.showToast(error instanceof Error ? error.message : (error as string), 'error');
             return null;
