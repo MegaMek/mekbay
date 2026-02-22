@@ -34,7 +34,7 @@
 import { ForceUnit } from '../models/force-unit.model';
 import { Faction } from '../models/factions.model';
 import { GameSystem } from '../models/common.model';
-import { FormationTypeDefinition } from './formation-type.model';
+import { FormationTypeDefinition, FormationMatch } from './formation-type.model';
 import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
 import { getForceSizeName } from './force-type.util';
 import { Force, UnitGroup } from '../models/force.model';
@@ -55,38 +55,15 @@ export interface FormationNameOptions {
 export class FormationNamerUtil {
 
     /**
-     * Returns the list of available formation names for a group of units.
-     */
-    public static getAvailableFormations(group: UnitGroup): string[] | null {
-        const force = group.force;
-        if (!force) return null;
-        const factionName = force.faction()?.name ?? 'Mercenary';
-        const majorityTechBase = force.techBase();
-        const identified = LanceTypeIdentifierUtil.identifyLanceTypes(group.units(), majorityTechBase, factionName, force.gameSystem);
-        if (identified.length === 0) return null;
-
-        const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
-        const formationSizeName = group.sizeName();
-
-        const composedNames: Set<string> = new Set();
-        for (const lt of identified) {
-            if (isComStarOrWoB) {
-                composedNames.add(formationSizeName + ' - ' + lt.name);
-            } else {
-                composedNames.add(lt.name + ' ' + formationSizeName);
-            }
-        }
-        return Array.from(composedNames);
-    }
-
-    /**
      * Returns the list of valid formation definitions for a group of units.
+     * Each result includes whether it was matched via the Nova rule.
      */
-    public static getAvailableFormationDefinitions(group: UnitGroup): FormationTypeDefinition[] {
+    public static getAvailableFormationDefinitions(group: UnitGroup): FormationMatch[] {
          const targetForce = group.force;
          if (!targetForce) return [];
         const factionName = targetForce.faction()?.name ?? 'Mercenary';
-        return LanceTypeIdentifierUtil.identifyLanceTypes(group.units(), targetForce.techBase(), factionName, targetForce.gameSystem);
+        const isNova = group.sizeName()?.toLowerCase().includes('nova') ?? false;
+        return LanceTypeIdentifierUtil.identifyFormations(group.units(), targetForce.techBase(), factionName, targetForce.gameSystem, isNova);
     }
 
     public static getFormationSizeName(group: UnitGroup): string {
@@ -106,14 +83,21 @@ export class FormationNamerUtil {
 
     /**
      * Composes the display name for a formation definition given the group context.
+     * When `novaFiltered` is true, appends a `*` to indicate the Nova rule was applied.
      */
     public static composeFormationDisplayName(
         definition: FormationTypeDefinition,
         group: UnitGroup,
+        novaFiltered: boolean = false,
     ): string {
-        if (group.force.sizeNamePrefixesFormationName() && group.sizeName()?.includes('Level')) {
-            return group.sizeName() + ' - ' + definition.name;
+        const sizeName = group.sizeName();
+        const suffix = novaFiltered ? ' *' : '';
+        if (sizeName && definition.name.includes(sizeName)) {
+            return definition.name + suffix;
         }
-        return definition.name + ' ' + group.sizeName();
+        if (sizeName?.includes('Level')) {
+            return sizeName + ' - ' + definition.name + suffix;
+        }
+        return definition.name + ' ' + sizeName + suffix;
     }
 }

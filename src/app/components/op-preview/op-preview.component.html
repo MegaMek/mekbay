@@ -1,9 +1,12 @@
-<div class="op-sides">
+<div class="op-sides" cdkDropListGroup [class.draggable]="allowDragDrop()">
     <div class="op-side">
         <div class="op-side-label friendly-label">Friendly</div>
-        <div class="op-force-list">
+        <div class="op-force-list"
+             cdkDropList
+             [cdkDropListData]="friendlyForces()"
+             (cdkDropListDropped)="onDrop($event, 'friendly')">
             @for (f of friendlyForces(); track f.instanceId) {
-                <div class="op-force" [class.missing]="f.exists === false">
+                <div class="op-force" [class.missing]="f.exists === false" cdkDrag [cdkDragData]="f" [cdkDragDisabled]="!allowDragDrop()">
                     @if (f.factionId | factionImg; as factionImgUrl) {
                         <img [src]="factionImgUrl" class="op-faction-icon" />
                     }
@@ -34,9 +37,12 @@
 
     <div class="op-side enemy">
         <div class="op-side-label enemy-label">Opposing</div>
-        <div class="op-force-list">
+        <div class="op-force-list"
+             cdkDropList
+             [cdkDropListData]="enemyForces()"
+             (cdkDropListDropped)="onDrop($event, 'enemy')">
             @for (f of enemyForces(); track f.instanceId) {
-                <div class="op-force" [class.missing]="f.exists === false">
+                <div class="op-force" [class.missing]="f.exists === false" cdkDrag [cdkDragData]="f" [cdkDragDisabled]="!allowDragDrop()">
                     @if (f.factionId | factionImg; as factionImgUrl) {
                         <img [src]="factionImgUrl" class="op-faction-icon" />
                     }
@@ -55,3 +61,6 @@
         </div>
     </div>
 </div>
+@if (allowDragDrop()) {
+    <p class="drag-hint">Drag forces between sides to reassign alignment.</p>
+}

@@ -11,6 +11,9 @@ import { ForceAlignment } from '../../models/force-slot.model';
 import { CdkMenuModule, CdkMenuTrigger, MenuTracker } from '@angular/cdk/menu';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { C3NetworkUtil } from '../../utils/c3-network.util';
+import { CommonModule } from '@angular/common';
+import { FactionImgPipe } from '../../pipes/faction-img.pipe';
+import { ForceSlot } from '../../models/force-slot.model';
 
 /*
  * Sidebar footer component
@@ -20,7 +23,7 @@ import { C3NetworkUtil } from '../../utils/c3-network.util';
     selector: 'sidebar-footer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CdkMenuModule],
+    imports: [CdkMenuModule, CommonModule, FactionImgPipe],
     templateUrl: './sidebar-footer.component.html',
     styleUrls: ['./sidebar-footer.component.scss'],
 })
@@ -46,6 +49,16 @@ export class SidebarFooterComponent {
         const f = this.forceBuilderService.smartCurrentForce();
         return !!f && f.units().length > 0 && !f.instanceId() && !f.readOnly();
     });
+
+    /** Friendly slots in the loaded operation. */
+    operationFriendlySlots = computed<ForceSlot[]>(() =>
+        this.forceBuilderService.loadedForces().filter(s => s.alignment === 'friendly')
+    );
+
+    /** Enemy slots in the loaded operation. */
+    operationEnemySlots = computed<ForceSlot[]>(() =>
+        this.forceBuilderService.loadedForces().filter(s => s.alignment === 'enemy')
+    );
 
     /**
      * Returns true if the force has any units with C3 network capability
@@ -102,6 +115,15 @@ export class SidebarFooterComponent {
         this.forceBuilderService.cycleAlignmentFilter();
     }
 
+    selectOperationForce(slot: ForceSlot): void {
+        const firstUnit = slot.force.units()[0] ?? null;
+        this.forceBuilderService.selectUnit(firstUnit);
+        const filter = this.forceBuilderService.alignmentFilter();
+        if (filter !== 'all' && filter !== slot.alignment) {
+            this.forceBuilderService.alignmentFilter.set(slot.alignment);
+        }
+    }
+
     showOptionsDialog(): void {
         this.dialogsService.createDialog(OptionsDialogComponent);
     }
@@ -131,7 +153,7 @@ export class SidebarFooterComponent {
             'Enter the Force Instance ID or a MekBay URL:',
             'Add Force',
             '',
-            'You can paste an Instance ID or a full MekBay URL containing one.'
+            'You can paste an Instance ID or a full MekBay URL containing one. To directly add one of your own forces, use the ADD button in the Load dialog instead.'
         );
         if (!input) return;
 
@@ -151,14 +173,26 @@ export class SidebarFooterComponent {
 
         // Show alignment picker with force preview
         const { AlignmentPickerDialogComponent } = await import('../alignment-picker-dialog/alignment-picker-dialog.component');
-        const ref = this.dialogsService.createDialog<ForceAlignment | null>(AlignmentPickerDialogComponent, {
+        type AlignmentPickerResult = import('../alignment-picker-dialog/alignment-picker-dialog.component').AlignmentPickerResult;
+        const ref = this.dialogsService.createDialog<AlignmentPickerResult | null>(AlignmentPickerDialogComponent, {
             data: { force }
         });
-        const alignment = await firstValueFrom(ref.closed);
-        if (!alignment) return;
+        const result = await firstValueFrom(ref.closed);
+        if (!result) return;
 
-        this.forceBuilderService.addLoadedForce(force, alignment);
-        this.toastService.showToast(`Force "${force.name}" added.`, 'success');
+        let forceToAdd = force;
+        if (result.clone) {
+            forceToAdd = force.clone();
+            forceToAdd.loading = true;
+            try {
+                await this.dataService.saveForce(forceToAdd);
+            } finally {
+                forceToAdd.loading = false;
+            }
+        }
+
+        this.forceBuilderService.addLoadedForce(forceToAdd, result.alignment);
+        this.toastService.showToast(`Force "${forceToAdd.name}" added.`, 'success');
     }
 
     private extractInstanceId(input: string): string {

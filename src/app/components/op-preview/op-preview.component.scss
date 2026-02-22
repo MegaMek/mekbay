@@ -107,6 +107,38 @@
     justify-content: flex-start;
 }
 
+.op-sides.draggable .op-force {
+    cursor: grab;
+
+    &:active {
+        cursor: grabbing;
+    }
+}
+
+.cdk-drag-preview {
+    cursor: grabbing;
+    background: var(--background-color-menu);
+    border: 1px solid var(--border-color);
+    opacity: 0.9;
+    padding: 2px 6px;
+}
+
+.cdk-drag-placeholder {
+    opacity: 0.3;
+}
+
+.cdk-drop-list-dragging .op-force:not(.cdk-drag-placeholder) {
+    transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.drag-hint {
+    font-size: 0.75em;
+    color: var(--text-color-secondary);
+    text-align: center;
+    margin: 4px 0 0;
+    opacity: 0.7;
+}
+
 .op-vs {
     display: flex;
     align-items: center;

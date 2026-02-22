@@ -88,6 +88,12 @@
     border: 2px dashed var(--text-color-tertiary);
 }
 
+// Dim read-only (non-owned) forces during any drag operation
+.force-view.dragging .force-slot.read-only {
+    opacity: 0.3;
+    transition: opacity 0.15s;
+}
+
 .force-slot-header {
     position: sticky;
     top: 0;
@@ -315,6 +321,13 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+
+    // Keep the group drop-list from collapsing to 0 height when the last
+    // group is dragged out, so CDK can still register it as a drop target
+    // and the user can drag the group back to its original position.
+    &.group-dragging {
+        min-height: 48px;
+    }
 }
 
 .group-container {

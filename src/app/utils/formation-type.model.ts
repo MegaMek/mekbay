@@ -133,3 +133,15 @@ export const NO_FORMATION: FormationTypeDefinition = {
 export function isNoFormation(def: FormationTypeDefinition | null | undefined): boolean {
     return def?.id === NO_FORMATION_ID;
 }
+
+/**
+ * A formation definition paired with context about how it was matched.
+ */
+export interface FormationMatch {
+    definition: FormationTypeDefinition;
+    /**
+     * `true` when this formation matched only after filtering out Infantry
+     * units (Nova rule). Formation effects apply to Meks only, not Infantry.
+     */
+    novaFiltered: boolean;
+}

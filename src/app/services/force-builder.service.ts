@@ -650,8 +650,10 @@ export class ForceBuilderService {
             }
         }
         let newForceUnit;
+        const selectedUnit = this.selectedUnit();
+        const targetGroup = group ?? (targetForce === selectedUnit?.force ? selectedUnit?.getGroup() : undefined) ?? undefined;
         try {
-            newForceUnit = targetForce.addUnit(unit, group);
+            newForceUnit = targetForce.addUnit(unit, targetGroup);
         } catch (error) {
             this.toastService.showToast(error instanceof Error ? error.message : (error as string), 'error');
             return null;
@@ -906,6 +908,9 @@ export class ForceBuilderService {
             return false;
         }
 
+        const forceSlot = this.getForceSlot(force);
+        const alignment = forceSlot?.alignment || 'friendly';
+
         const selectedIdx = force.units().findIndex(u => u.id === this.selectedUnit()?.id);
         const cloned = force.clone();
         cloned.loading = true;
@@ -918,7 +923,7 @@ export class ForceBuilderService {
         // Unload old, load clone
         this.removeLoadedForce(force, { skipPrompt: true });
         // Load the new force (this handles URL state and other housekeeping)
-        this.addLoadedForce(cloned, 'friendly', { activate: true });
+        this.addLoadedForce(cloned, alignment, { activate: true });
         const units = cloned.units();
         this.selectUnit(selectedIdx >= 0 && selectedIdx < units.length ? units[selectedIdx] : units[0] ?? null);
 
@@ -937,6 +942,9 @@ export class ForceBuilderService {
 
         const isAlphaStrike = force.gameSystem === GameSystem.ALPHA_STRIKE;
         const targetSystemLabel = isAlphaStrike ? 'Classic BattleTech' : 'Alpha Strike';
+
+        const forceSlot = this.getForceSlot(force);
+        const alignment = forceSlot?.alignment || 'friendly';
 
         // Create new force with opposite game system
         const newForce = isAlphaStrike
@@ -995,7 +1003,7 @@ export class ForceBuilderService {
 
         this.removeLoadedForce(force);
         // Load the new force (this handles URL state and other housekeeping)
-        this.addLoadedForce(newForce, 'friendly', { activate: true });
+        this.addLoadedForce(newForce, alignment, { activate: true });
         this.dataService.saveForce(newForce);
 
         this.toastService.showToast(`Force converted to ${targetSystemLabel} and saved.`, 'success');
@@ -1121,10 +1129,10 @@ export class ForceBuilderService {
         // Pick the best formation (deterministic, most specific wins),
         // upgrading when a better match becomes available.
         const best = LanceTypeIdentifierUtil.getBestMatchForGroup(group);
-        if (best?.id !== group.formation()?.id) {
-            group.formation.set(best);
+        if (best?.definition.id !== group.formation()?.id) {
+            group.formation.set(best?.definition ?? null);
             if (best) {
-                group.formationHistory.add(best.id);
+                group.formationHistory.add(best.definition.id);
             }
         }
     }
@@ -1134,15 +1142,14 @@ export class ForceBuilderService {
         if (!targetForce) return;
         const formation = group.activeFormation();
         if (!formation) return;
-        const matchingDefs = FormationNamerUtil.getAvailableFormationDefinitions(group);
-        const isValid = matchingDefs.some(d => d.id === formation.id);
         this.dialogsService.createDialog(FormationInfoDialogComponent, {
             data: {
                 formation,
                 gameSystem: targetForce.gameSystem,
                 formationDisplayName: group.formationDisplayName(),
                 unitCount: group.units().length,
-                isValid,
+                isValid: group.hasValidFormation(),
+                novaFiltered: group.isNovaFiltered(),
             } as FormationInfoDialogData
         });
     }
@@ -1967,7 +1974,7 @@ export class ForceBuilderService {
      * Opens a dialog for name, note, and a preview of the operation.
      */
     async saveOperation(): Promise<boolean> {
-        const slots = this.loadedForces();
+        let slots = this.loadedForces();
         if (slots.length < 2) {
             this.toastService.showToast('Need at least 2 forces to save an operation.', 'error');
             return false;
@@ -1998,6 +2005,26 @@ export class ForceBuilderService {
         );
         const result = await firstValueFrom(ref.closed);
         if (!result) return false; // User cancelled
+
+        if (result.forces) {
+            const newSlots: ForceSlot[] = [];
+            for (const f of result.forces) {
+                const slot = slots.find(s => s.force.instanceId() === f.instanceId);
+                if (slot) {
+                    if (slot.alignment !== f.alignment) {
+                        slot.alignment = f.alignment;
+                    }
+                    newSlots.push(slot);
+                }
+            }
+            for (const slot of slots) {
+                if (!newSlots.includes(slot)) {
+                    newSlots.push(slot);
+                }
+            }
+            this.loadedForces.set(newSlots);
+            slots = newSlots;
+        }
 
         // Ensure all forces are saved first
         for (const slot of slots) {
@@ -2061,7 +2088,7 @@ export class ForceBuilderService {
             return false;
         }
 
-        const slots = this.loadedForces();
+        let slots = this.loadedForces();
         if (slots.length < 2) {
             this.toastService.showToast('Need at least 2 forces to update an operation.', 'error');
             return false;
@@ -2091,6 +2118,26 @@ export class ForceBuilderService {
         );
         const result = await firstValueFrom(ref.closed);
         if (!result) return false; // User cancelled
+
+        if (result.forces) {
+            const newSlots: ForceSlot[] = [];
+            for (const f of result.forces) {
+                const slot = slots.find(s => s.force.instanceId() === f.instanceId);
+                if (slot) {
+                    if (slot.alignment !== f.alignment) {
+                        slot.alignment = f.alignment;
+                    }
+                    newSlots.push(slot);
+                }
+            }
+            for (const slot of slots) {
+                if (!newSlots.includes(slot)) {
+                    newSlots.push(slot);
+                }
+            }
+            this.loadedForces.set(newSlots);
+            slots = newSlots;
+        }
 
         // Ensure all forces are saved first
         for (const slot of slots) {
