@@ -109,6 +109,14 @@ export class ForceLoadDialogComponent {
 
     readonly GameSystem = GameSystem;
 
+    readonly SORT_OPTIONS: { key: string; label: string }[] = [
+        { key: 'timestamp', label: 'Date' },
+        { key: 'name', label: 'Name' },
+        { key: 'value', label: 'Value' },
+    ];
+    selectedSort = signal<string>('timestamp');
+    selectedSortDirection = signal<'asc' | 'desc'>('desc');
+
     forces = signal<LoadForceEntry[]>([]);
     selectedForce = signal<LoadForceEntry | null>(null);
     loading = signal<boolean>(true);
@@ -130,7 +138,10 @@ export class ForceLoadDialogComponent {
         const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
         const typeFilter = this.gameTypeFilter();
         
-        return this.forces().filter(force => {
+        const sortKey = this.selectedSort();
+        const sortDir = this.selectedSortDirection();
+
+        const filtered = this.forces().filter(force => {
             // Game type filter (forces with no type are considered CBT)
             const forceType = force.type || GameSystem.CLASSIC;
             if (typeFilter !== 'all' && forceType !== typeFilter) {
@@ -140,6 +151,22 @@ export class ForceLoadDialogComponent {
             if (tokens.length === 0) return true;
             const hay = force._searchText || '';
             return tokens.every(t => hay.indexOf(t) !== -1);
+        });
+
+        const dir = sortDir === 'asc' ? 1 : -1;
+        return filtered.sort((a, b) => {
+            switch (sortKey) {
+                case 'name':
+                    return dir * (a.name || '').localeCompare(b.name || '');
+                case 'value': {
+                    const aVal = a.pv || a.bv || 0;
+                    const bVal = b.pv || b.bv || 0;
+                    return dir * (aVal - bVal);
+                }
+                case 'timestamp':
+                default:
+                    return dir * ((a.timestamp || '').localeCompare(b.timestamp || ''));
+            }
         });
     });
     
@@ -338,6 +365,14 @@ export class ForceLoadDialogComponent {
         if (selOp && !this.filteredOperations().includes(selOp)) {
             this.selectedOperation.set(null);
         }
+    }
+
+    setSortOrder(key: string) {
+        this.selectedSort.set(key);
+    }
+
+    setSortDirection(dir: 'asc' | 'desc') {
+        this.selectedSortDirection.set(dir);
     }
 
     getGameTypeLabel(type: GameSystem | undefined): string {
