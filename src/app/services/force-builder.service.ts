@@ -612,7 +612,8 @@ export class ForceBuilderService {
             name: null,
             instance: null,
             operation: null,
-            factionId: null
+            factionId: null,
+            sel: null
         });
     }
 
@@ -1345,6 +1346,9 @@ export class ForceBuilderService {
     private updateUrlOnForceChange() {
         effect(() => {
             const params = this.queryParameters();
+            const selectedUnit = this.selectedUnit();
+            
+            const sel = selectedUnit?.force?.instanceId ? selectedUnit?.id : null;
             if (!this.urlStateInitialized()) {
                 return;
             }
@@ -1355,7 +1359,8 @@ export class ForceBuilderService {
                 name: params.name,
                 instance: params.instance,
                 operation: params.operation,
-                factionId: params.factionId
+                factionId: params.factionId,
+                sel
             });
         });
     }
@@ -1403,6 +1408,9 @@ export class ForceBuilderService {
 
         const loadedAny = await this.loadForceParamsCore(params);
 
+        // Restore selected unit from URL
+        this.restoreSelectionFromUrl(params);
+
         // Show notice when ALL loaded forces are non-owned
         if (loadedAny) {
             const allNonOwned = this.loadedForces().every(s => !s.force.owned());
@@ -1420,6 +1428,20 @@ export class ForceBuilderService {
         // Mark as initialized so the update effect can start running.
         this.urlStateInitialized.set(true);
         this.urlStateService.markConsumerReady('force-builder');
+    }
+
+    /**
+     * Restores the selected unit from the `sel` URL parameter.
+     * Looks up the unit by ID across all loaded forces and selects it if found.
+     */
+    private restoreSelectionFromUrl(params: URLSearchParams): void {
+        const selParam = params.get('sel');
+        if (!selParam) return;
+        const allUnits = this.allLoadedUnits();
+        const unit = allUnits.find(u => u.id === selParam);
+        if (unit) {
+            this.selectUnit(unit);
+        }
     }
 
     /**
@@ -1482,6 +1504,9 @@ export class ForceBuilderService {
         // Load all units across all loaded forces
         const allForces = this.loadedForces().map(s => s.force);
         this.loadAllUnitsWithOverlay(allForces);
+
+        // Restore selected unit from URL
+        this.restoreSelectionFromUrl(this.urlStateService.initialState.params);
 
         this.currentOperation.set(entry);
         return true;
