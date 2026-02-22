@@ -425,12 +425,12 @@ export async function exportForceToExcel(
 
     const worksheet = createWorksheetWithAutoWidth(rows, utils);
     const workbook = utils.book_new();
-    const sheetName = sanitizeSheetName(force.name || 'Force');
+    const sheetName = sanitizeSheetName(force.displayName() || 'Force');
     utils.book_append_sheet(workbook, worksheet, sheetName);
 
     const timestamp = new Date().toISOString().slice(0, 10);
     const systemLabel = gameSystem === GameSystem.ALPHA_STRIKE ? 'as' : 'cbt';
-    const forceName = sanitizeFilename(force.name) || 'force';
+    const forceName = sanitizeFilename(force.displayName()) || 'force';
     const defaultFilename = `mekbay-${systemLabel}-${forceName}-${timestamp}`;
     const exportFilename = `${filename || defaultFilename}.xlsx`;
 
@@ -460,12 +460,12 @@ export async function exportForceToCSV(
 
     const worksheet = utils.json_to_sheet(rows);
     const workbook = utils.book_new();
-    const sheetName = sanitizeSheetName(force.name || 'Force');
+    const sheetName = sanitizeSheetName(force.displayName() || 'Force');
     utils.book_append_sheet(workbook, worksheet, sheetName);
 
     const timestamp = new Date().toISOString().slice(0, 10);
     const systemLabel = gameSystem === GameSystem.ALPHA_STRIKE ? 'as' : 'cbt';
-    const forceName = sanitizeFilename(force.name) || 'force';
+    const forceName = sanitizeFilename(force.displayName()) || 'force';
     const defaultFilename = `mekbay-${systemLabel}-${forceName}-${timestamp}`;
     const exportFilename = `${filename || defaultFilename}.csv`;
 

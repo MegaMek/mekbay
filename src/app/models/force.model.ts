@@ -238,6 +238,14 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         return this._name();
     }
 
+    displayName = computed<string>(() => {
+        const name = this.name;
+        if (!name) {
+            return this.sizeName();
+        }
+        return name;
+    });
+
     public setName(name: string, emitChange: boolean = true) {
         this._name.set(name);
         if (this.instanceId() || emitChange) {

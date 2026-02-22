@@ -58,7 +58,7 @@ import { CommonModule } from '@angular/common';
             @if (factionImg(); as factionImgUrl) {
                 <img [src]="factionImgUrl" class="faction-icon" />
             }
-            <span class="force-preview-name">{{ f.name }}</span>
+            <span class="force-preview-name">{{ f.displayName() }}</span>
         </div>
         <span class="force-preview-info">
             <span class="game-type-badge" [class.as]="f.gameSystem === GameSystem.ALPHA_STRIKE">

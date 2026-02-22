@@ -84,7 +84,6 @@ import { SerializedOperation, LoadOperationEntry, OperationForceRef } from '../m
 import { SaveOperationDialogComponent, OperationDialogData, OperationDialogResult } from '../components/save-operation-dialog/save-operation-dialog.component';
 import { OpPreviewForce } from '../components/op-preview/op-preview.component';
 import { ForceLoadingOverlayComponent, ForceLoadingOverlayData, ForceLoadingProgress } from '../components/force-loading-overlay/force-loading-overlay.component';
-import { isNoFormation } from '../utils/formation-type.model';
 
 /*
  * Author: Drake
@@ -260,7 +259,7 @@ export class ForceBuilderService {
     private setupForceSlot(force: Force, alignment: ForceAlignment): ForceSlot {
         const slot: ForceSlot = { force, alignment, changeSub: null };
         const instanceId = force.instanceId();
-        this.logger.info(`ForceBuilderService: Setting up force slot for "${force.name}"${instanceId ? ` (instance: ${instanceId})` : ''}`);
+        this.logger.info(`ForceBuilderService: Setting up force slot for "${force.displayName()}"${instanceId ? ` (instance: ${instanceId})` : ''}`);
         if (instanceId) {
             this.wsService.subscribeToForceUpdates(instanceId, (serializedForce: SerializedForce) => {
                 if (serializedForce.instanceId !== force.instanceId()) {
@@ -278,7 +277,7 @@ export class ForceBuilderService {
                 return;
             }
             this.dataService.saveForce(force);
-            this.logger.info(`ForceBuilderService: Auto-saved force "${force.name}"`);
+            this.logger.info(`ForceBuilderService: Auto-saved force "${force.displayName()}"`);
         });
         return slot;
     }
@@ -317,7 +316,7 @@ export class ForceBuilderService {
         }
 
         await this.dataService.saveForce(cloned);
-        this.logger.info(`ForceBuilderService: Adopted force "${cloned.name}" with fresh IDs.`);
+        this.logger.info(`ForceBuilderService: Adopted force "${cloned.displayName()}" with fresh IDs.`);
     }
 
     /**
@@ -345,7 +344,7 @@ export class ForceBuilderService {
         // Guard against duplicate instanceIds (can occur from concurrent async loads)
         const instanceId = force.instanceId();
         if (instanceId && this.loadedForces().some(s => s.force.instanceId() === instanceId)) {
-            this.logger.warn(`ForceBuilderService: Skipping duplicate force "${force.name}" (instance: ${instanceId})`);
+            this.logger.warn(`ForceBuilderService: Skipping duplicate force "${force.displayName()}" (instance: ${instanceId})`);
             return;
         }
         const slot = this.setupForceSlot(force, alignment);
@@ -484,7 +483,7 @@ export class ForceBuilderService {
             return false;
         }
         this.addLoadedForce(force, alignment);
-        this.toastService.showToast(`Force "${force.name}" added.`, 'success');
+        this.toastService.showToast(`Force "${force.displayName()}" added.`, 'success');
         return true;
     }
 
@@ -1263,22 +1262,22 @@ export class ForceBuilderService {
                 const cloudTimestamp = cloudForce.timestamp ? new Date(cloudForce.timestamp).getTime() : 0;
 
                 if (cloudTimestamp > localTimestamp) {
-                    this.logger.warn(`Conflict detected for force "${force.name}" (${instanceId}).`);
+                    this.logger.warn(`Conflict detected for force "${force.displayName()}" (${instanceId}).`);
                     if (!force.owned()) {
-                        this.logger.info(`ForceBuilderService: Force "${force.name}" downloading cloud version.`);
+                        this.logger.info(`ForceBuilderService: Force "${force.displayName()}" downloading cloud version.`);
                         this.urlStateInitialized.set(false);
                         try {
                             this.replaceForceInPlace(force, await this.dataService.getForce(instanceId, false) as any);
                         } finally {
                             this.urlStateInitialized.set(true);
                         }
-                        this.toastService.showToast(`Cloud version of "${force.name}" loaded.`, 'success');
+                        this.toastService.showToast(`Cloud version of "${force.displayName()}" loaded.`, 'success');
                         continue;
                     }
                     await this.handleCloudConflict(force, cloudForce, localTimestamp, cloudTimestamp);
                 }
             } catch (error) {
-                this.logger.error(`Error checking for cloud conflict on "${force.name}": ${error}`);
+                this.logger.error(`Error checking for cloud conflict on "${force.displayName()}": ${error}`);
             }
         }
     }
@@ -1297,7 +1296,7 @@ export class ForceBuilderService {
             disableClose: true,
             data: <ConfirmDialogData<string>>{
                 title: 'Sync Conflict Detected',
-                message: `"${localForce.name}" was modified on another device while you were offline. The cloud version is newer. (${formatDate(cloudTimestamp)} > ${formatDate(localTimestamp)})`,
+                message: `"${localForce.displayName()}" was modified on another device while you were offline. The cloud version is newer. (${formatDate(cloudTimestamp)} > ${formatDate(localTimestamp)})`,
                 buttons: [
                     { label: 'LOAD CLOUD', value: 'cloud', class: 'primary' },
                     { label: 'KEEP LOCAL', value: 'local' },
@@ -1312,17 +1311,17 @@ export class ForceBuilderService {
             const serialized = cloudForce.serialize();
             localForce.update(serialized);
             await this.dataService.saveForce(localForce, true);
-            this.toastService.showToast(`Cloud version of "${localForce.name}" loaded.`, 'success');
+            this.toastService.showToast(`Cloud version of "${localForce.displayName()}" loaded.`, 'success');
         } else if (result === 'local') {
             localForce.timestamp = new Date().toISOString();
             await this.dataService.saveForce(localForce);
-            this.toastService.showToast(`Local version of "${localForce.name}" kept and synced.`, 'success');
+            this.toastService.showToast(`Local version of "${localForce.displayName()}" kept and synced.`, 'success');
         } else if (result === 'cloneLocal') {
             const selectedIdx = localForce.units().findIndex(u => u.id === this.selectedUnit()?.id);
             const slot = this.getForceSlot(localForce);
             const alignment = slot?.alignment ?? 'friendly';
             const cloned = localForce.clone();
-            cloned.setName(localForce.name + ' (Cloned)', false);
+            cloned.setName(localForce.displayName() + ' (Cloned)', false);
 
             // Unload old, load clone
             await this.removeLoadedForce(localForce);
@@ -1791,7 +1790,7 @@ export class ForceBuilderService {
         }
         const systemNote = needsConversion ? ' (units were converted)' : '';
         this.toastService.showToast(
-            `Inserted ${insertedCount} unit(s) from "${sourceForce.name}" into "${targetForce.name}"${systemNote}.`,
+            `Inserted ${insertedCount} unit(s) from "${sourceForce.displayName()}" into "${targetForce.displayName()}"${systemNote}.`,
             'success'
         );
         return true;
@@ -1830,7 +1829,7 @@ export class ForceBuilderService {
         this.generateFactionAndForceNameIfNeeded(targetForce);
         this.assignFormationIfNeeded(newGroup);
         this.toastService.showToast(
-            `Inserted ${packUnitCount} unit(s) from pack "${pack.name}" into "${targetForce.name}".`,
+            `Inserted ${packUnitCount} unit(s) from pack "${pack.name}" into "${targetForce.displayName()}".`,
             'success'
         );
         return true;
@@ -1982,7 +1981,7 @@ export class ForceBuilderService {
 
         // Build force preview data for the dialog
         const dialogForces: OpPreviewForce[] = slots.map(slot => ({
-            name: slot.force.name,
+            name: slot.force.displayName(),
             instanceId: slot.force.instanceId() || '',
             alignment: slot.alignment,
             type: slot.force.gameSystem,
@@ -2096,7 +2095,7 @@ export class ForceBuilderService {
 
         // Build force preview data from currently loaded forces
         const dialogForces: OpPreviewForce[] = slots.map(slot => ({
-            name: slot.force.name,
+            name: slot.force.displayName(),
             instanceId: slot.force.instanceId() || '',
             alignment: slot.alignment,
             type: slot.force.gameSystem,
@@ -2582,7 +2581,7 @@ export class ForceBuilderService {
                 entries.push({
                     force,
                     progress: {
-                        forceName: force.name,
+                        forceName: force.displayName(),
                         factionImg: force.faction()?.img || null,
                         loadedUnits: computed(() => units.filter(u => u.isLoaded()).length),
                         totalUnits: units.length

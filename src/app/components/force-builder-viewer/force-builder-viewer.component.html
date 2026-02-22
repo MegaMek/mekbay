@@ -35,7 +35,7 @@
                                 <img [src]="faction.img" class="force-faction-icon" [alt]="faction.name" [title]="faction.name" />
                             }
                         }
-                        {{ slotForce.name }}
+                        {{ slotForce.displayName() }}
                     </div>
                     @if (isReadOnly && forceBuilderService.loadedForces().length === 1) {
                         <button class="bt-button btn-clone primary" (click)="forceBuilderService.requestCloneForce(slotForce)">CLONE FORCE TO EDIT</button>

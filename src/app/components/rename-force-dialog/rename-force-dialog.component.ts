@@ -75,17 +75,30 @@ export interface RenameForceDialogResult {
         <div class="form-fields">
             <label class="field-label" for="name">{{ forceSizeName() }} Name</label>
             <div class="input-wrapper">
-                <div
-                    class="field-input"
-                    id="name"
-                    contentEditable="true"
-                    #inputRef
-                    autocomplete="off"
-                    [textContent]="data.force.name"
-                    (keydown.enter)="submit()"
-                    (input)="onInputCleanup($event)"
-                    required
-                ></div>
+                <div class="name-input-wrapper">
+                    <div
+                        class="field-input"
+                        id="name"
+                        contentEditable="true"
+                        #inputRef
+                        autocomplete="off"
+                        [attr.data-placeholder]="placeholderName()"
+                        [textContent]="data.force.name"
+                        (keydown.enter)="submit()"
+                        (input)="onInputCleanup($event)"
+                        required
+                    ></div>
+                    @if (nameHasText()) {
+                    <button
+                        type="button"
+                        class="clear-btn"
+                        (click)="clearName()"
+                        title="Clear"
+                        aria-label="Clear"
+                        tabindex="-1"
+                    >&#10005;</button>
+                    }
+                </div>
                 <button
                     type="button"
                     class="random-button"
@@ -255,6 +268,43 @@ export interface RenameForceDialogResult {
             margin: 4px 0 0;
             text-align: center;
         }
+
+        .name-input-wrapper {
+            position: relative;
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        .name-input-wrapper .field-input {
+            padding-right: 32px;
+        }
+
+        .clear-btn {
+            position: absolute;
+            right: 4px;
+            top: 0;
+            bottom: 0;
+            margin: auto 0;
+            background: transparent;
+            border: none;
+            color: #999;
+            font-size: 1em;
+            font-weight: 700;
+            cursor: pointer;
+            padding: 0 6px;
+            height: 32px;
+            width: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s;
+            line-height: 1;
+            z-index: 1;
+        }
+
+        .clear-btn:hover {
+            color: #ff4444;
+        }
     `]
 })
 
@@ -271,6 +321,9 @@ export class RenameForceDialogComponent {
     private overlayManager = inject(OverlayManagerService);
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
+
+    /** Tracks whether the name input has text */
+    nameHasText = signal<boolean>(!!this.data.force.name);
 
     selectedFaction = signal<Faction | null>(this.data.force.faction());
 
@@ -297,13 +350,30 @@ export class RenameForceDialogComponent {
         const techBase = isComStarOrWoB ? '' : this.data.force.techBase();
         return getForceSizeName(units, techBase, factionName).toUpperCase();
     });
+    
+    /** Placeholder name based force size. */
+    placeholderName = computed<string>(() => {
+        return this.data.force.sizeName() ?? 'Force';
+    });
 
     constructor() { }
+
+    /** Clear the name input */
+    clearName(): void {
+        const nativeEl = this.inputRef().nativeElement;
+        if (!nativeEl) return;
+        nativeEl.textContent = '';
+        nativeEl.innerHTML = '';
+        this.nameHasText.set(false);
+        nativeEl.focus();
+    }
 
     /** Clear leftover <br> / whitespace so :empty placeholder works */
     onInputCleanup(event: Event): void {
         const el = event.target as HTMLElement;
-        if (!el.textContent?.trim()) {
+        const hasText = !!el.textContent?.trim();
+        this.nameHasText.set(hasText);
+        if (!hasText) {
             el.innerHTML = '';
         }
     }
@@ -338,6 +408,7 @@ export class RenameForceDialogComponent {
             this.dataService.getFactions(),
             this.dataService.getEras()
         );
+        if (randomFaction === this.selectedFaction()) return; // no change
         this.selectedFaction.set(randomFaction);
         // Also regenerate name for the new faction
         const newName = ForceNamerUtil.generateForceNameForFaction(randomFaction);
@@ -386,6 +457,7 @@ export class RenameForceDialogComponent {
         const nativeEl = this.inputRef().nativeElement;
         if (!nativeEl) return;
         nativeEl.textContent = text;
+        this.nameHasText.set(!!text);
         nativeEl.focus();
         const range = document.createRange();
         range.selectNodeContents(nativeEl);
