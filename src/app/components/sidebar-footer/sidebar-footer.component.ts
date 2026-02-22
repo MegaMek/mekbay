@@ -11,6 +11,9 @@ import { ForceAlignment } from '../../models/force-slot.model';
 import { CdkMenuModule, CdkMenuTrigger, MenuTracker } from '@angular/cdk/menu';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { C3NetworkUtil } from '../../utils/c3-network.util';
+import { CommonModule } from '@angular/common';
+import { FactionImgPipe } from '../../pipes/faction-img.pipe';
+import { ForceSlot } from '../../models/force-slot.model';
 
 /*
  * Sidebar footer component
@@ -20,7 +23,7 @@ import { C3NetworkUtil } from '../../utils/c3-network.util';
     selector: 'sidebar-footer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CdkMenuModule],
+    imports: [CdkMenuModule, CommonModule, FactionImgPipe],
     templateUrl: './sidebar-footer.component.html',
     styleUrls: ['./sidebar-footer.component.scss'],
 })
@@ -46,6 +49,16 @@ export class SidebarFooterComponent {
         const f = this.forceBuilderService.smartCurrentForce();
         return !!f && f.units().length > 0 && !f.instanceId() && !f.readOnly();
     });
+
+    /** Friendly slots in the loaded operation. */
+    operationFriendlySlots = computed<ForceSlot[]>(() =>
+        this.forceBuilderService.loadedForces().filter(s => s.alignment === 'friendly')
+    );
+
+    /** Enemy slots in the loaded operation. */
+    operationEnemySlots = computed<ForceSlot[]>(() =>
+        this.forceBuilderService.loadedForces().filter(s => s.alignment === 'enemy')
+    );
 
     /**
      * Returns true if the force has any units with C3 network capability
@@ -100,6 +113,15 @@ export class SidebarFooterComponent {
 
     cycleAlignmentFilter() {
         this.forceBuilderService.cycleAlignmentFilter();
+    }
+
+    selectOperationForce(slot: ForceSlot): void {
+        const firstUnit = slot.force.units()[0] ?? null;
+        this.forceBuilderService.selectUnit(firstUnit);
+        const filter = this.forceBuilderService.alignmentFilter();
+        if (filter !== 'all' && filter !== slot.alignment) {
+            this.forceBuilderService.alignmentFilter.set(slot.alignment);
+        }
     }
 
     showOptionsDialog(): void {

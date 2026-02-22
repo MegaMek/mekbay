@@ -1,3 +1,52 @@
+.menu-section-header {
+    font-size: 0.7em;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 6px 20px 2px;
+    opacity: 0.6;
+
+    &.friendly-header {
+        color: rgb(var(--friendly-color));
+    }
+
+    &.enemy-header {
+        color: rgb(var(--enemy-color));
+    }
+}
+
+.force-item {
+    gap: 6px;
+
+    .menu-faction-icon {
+        width: 1.1em;
+        height: 1.1em;
+        object-fit: contain;
+        flex-shrink: 0;
+    }
+
+    .menu-faction-placeholder {
+        width: 1.1em;
+        height: 1.1em;
+        flex-shrink: 0;
+    }
+
+    .force-item-name {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+    }
+
+    &.active-force {
+        background-color: var(--bt-yellow-background);
+        &:hover {
+            background-color: var(--bt-yellow-background-bright);
+        }
+    }
+}
+
 :host {
     display: flex;
     flex: 0 0 auto;

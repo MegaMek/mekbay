@@ -1975,7 +1975,7 @@ export class ForceBuilderService {
      * Opens a dialog for name, note, and a preview of the operation.
      */
     async saveOperation(): Promise<boolean> {
-        const slots = this.loadedForces();
+        let slots = this.loadedForces();
         if (slots.length < 2) {
             this.toastService.showToast('Need at least 2 forces to save an operation.', 'error');
             return false;
@@ -2006,6 +2006,26 @@ export class ForceBuilderService {
         );
         const result = await firstValueFrom(ref.closed);
         if (!result) return false; // User cancelled
+
+        if (result.forces) {
+            const newSlots: ForceSlot[] = [];
+            for (const f of result.forces) {
+                const slot = slots.find(s => s.force.instanceId() === f.instanceId);
+                if (slot) {
+                    if (slot.alignment !== f.alignment) {
+                        slot.alignment = f.alignment;
+                    }
+                    newSlots.push(slot);
+                }
+            }
+            for (const slot of slots) {
+                if (!newSlots.includes(slot)) {
+                    newSlots.push(slot);
+                }
+            }
+            this.loadedForces.set(newSlots);
+            slots = newSlots;
+        }
 
         // Ensure all forces are saved first
         for (const slot of slots) {
@@ -2069,7 +2089,7 @@ export class ForceBuilderService {
             return false;
         }
 
-        const slots = this.loadedForces();
+        let slots = this.loadedForces();
         if (slots.length < 2) {
             this.toastService.showToast('Need at least 2 forces to update an operation.', 'error');
             return false;
@@ -2099,6 +2119,26 @@ export class ForceBuilderService {
         );
         const result = await firstValueFrom(ref.closed);
         if (!result) return false; // User cancelled
+
+        if (result.forces) {
+            const newSlots: ForceSlot[] = [];
+            for (const f of result.forces) {
+                const slot = slots.find(s => s.force.instanceId() === f.instanceId);
+                if (slot) {
+                    if (slot.alignment !== f.alignment) {
+                        slot.alignment = f.alignment;
+                    }
+                    newSlots.push(slot);
+                }
+            }
+            for (const slot of slots) {
+                if (!newSlots.includes(slot)) {
+                    newSlots.push(slot);
+                }
+            }
+            this.loadedForces.set(newSlots);
+            slots = newSlots;
+        }
 
         // Ensure all forces are saved first
         for (const slot of slots) {

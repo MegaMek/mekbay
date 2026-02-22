@@ -31,8 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, model } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { CdkDragDrop, DragDropModule, moveItemInArray, transferArrayItem } from '@angular/cdk/drag-drop';
 import { ForceAlignment } from '../../models/force-slot.model';
 import { GameSystem } from '../../models/common.model';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
@@ -60,13 +61,16 @@ export interface OpPreviewForce {
     selector: 'op-preview',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, FactionImgPipe],
+    imports: [CommonModule, FactionImgPipe, DragDropModule],
     templateUrl: './op-preview.component.html',
     styleUrls: ['./op-preview.component.scss']
 })
 export class OpPreviewComponent {
     /** The forces to display in the preview. */
-    forces = input.required<OpPreviewForce[]>();
+    forces = model.required<OpPreviewForce[]>();
+    
+    /** Whether to allow drag and drop between the two lists. */
+    allowDragDrop = input<boolean>(false);
 
     friendlyForces = computed(() => this.forces().filter(f => f.alignment === 'friendly'));
     enemyForces = computed(() => this.forces().filter(f => f.alignment === 'enemy'));
@@ -97,4 +101,31 @@ export class OpPreviewComponent {
 
     hasCbt = computed(() => this.forces().some(f => (f.type || 'cbt') !== 'as'));
     hasAs = computed(() => this.forces().some(f => f.type === 'as'));
+
+    onDrop(event: CdkDragDrop<OpPreviewForce[]>, targetAlignment: ForceAlignment) {
+        if (!this.allowDragDrop()) return;
+
+        const item = event.item.data as OpPreviewForce;
+        const currentForces = [...this.forces()];
+        
+        const friendly = currentForces.filter(f => f.alignment === 'friendly');
+        const enemy = currentForces.filter(f => f.alignment === 'enemy');
+
+        const sourceList = item.alignment === 'friendly' ? friendly : enemy;
+        const targetList = targetAlignment === 'friendly' ? friendly : enemy;
+
+        if (event.previousContainer === event.container) {
+            moveItemInArray(sourceList, event.previousIndex, event.currentIndex);
+        } else {
+            transferArrayItem(
+                sourceList,
+                targetList,
+                event.previousIndex,
+                event.currentIndex
+            );
+            targetList[event.currentIndex] = { ...targetList[event.currentIndex], alignment: targetAlignment };
+        }
+
+        this.forces.set([...friendly, ...enemy]);
+    }
 }

@@ -430,7 +430,7 @@ export class ForceLoadDialogComponent {
         if (!result) return;
 
         // Remove forces that no longer exist (not enriched)
-        const existingForces = op.forces.filter(f => f.exists);
+        const existingForces = (result.forces || op.forces).filter(f => f.exists);
 
         // Reconstruct SerializedOperation with updated name/note
         const updatedOp: SerializedOperation = {
@@ -438,11 +438,14 @@ export class ForceLoadDialogComponent {
             name: result.name,
             note: result.note,
             timestamp: op.timestamp,
-            forces: existingForces.map(f => ({
-                instanceId: f.instanceId,
-                alignment: f.alignment,
-                timestamp: f.timestamp,
-            })),
+            forces: existingForces.map(f => {
+                const originalForce = op.forces.find(of => of.instanceId === f.instanceId);
+                return {
+                    instanceId: f.instanceId,
+                    alignment: f.alignment,
+                    timestamp: originalForce?.timestamp || new Date().toISOString(),
+                };
+            }),
         };
 
         await this.dataService.saveOperation(updatedOp);
@@ -450,7 +453,13 @@ export class ForceLoadDialogComponent {
         // Update the local list reactively
         op.name = result.name;
         op.note = result.note;
-        op.forces = existingForces;
+        op.forces = existingForces.map(f => {
+            const originalForce = op.forces.find(of => of.instanceId === f.instanceId);
+            return {
+                ...f,
+                timestamp: originalForce?.timestamp || new Date().toISOString(),
+            };
+        }) as any;
         this.operations.set([...this.operations()]);
     }
 

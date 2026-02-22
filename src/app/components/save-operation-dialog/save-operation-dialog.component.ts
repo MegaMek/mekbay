@@ -50,6 +50,7 @@ export interface OperationDialogData {
 export interface OperationDialogResult {
     name: string;
     note?: string;
+    forces?: OpPreviewForce[];
 }
 
 @Component({
@@ -74,8 +75,8 @@ export interface OperationDialogResult {
                     autofocus />
             </div>
 
-            @if (data.forces.length > 0) {
-                <op-preview [forces]="data.forces"></op-preview>
+            @if (forces().length > 0) {
+                <op-preview [(forces)]="forces" [allowDragDrop]="true"></op-preview>
             }
 
             <div class="form-fields">
@@ -114,6 +115,7 @@ export class SaveOperationDialogComponent {
 
     name = signal(this.data.name || '');
     note = signal(this.data.note || '');
+    forces = signal<OpPreviewForce[]>(this.data.forces || []);
 
     onNameChange(e: Event): void {
         this.name.set((e.target as HTMLInputElement).value);
@@ -132,6 +134,7 @@ export class SaveOperationDialogComponent {
         this.dialogRef.close({
             name: this.name().trim(),
             note: this.note().trim() || undefined,
+            forces: this.forces(),
         });
     }
 
