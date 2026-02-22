@@ -41,12 +41,14 @@ export class TurnState {
         const psrChecks = this.psrChecks();
         const dmgReceived = this.dmgReceived();
         const unconsolidatedCrits = this.unitState.hasUnconsolidatedCrits();
+        const unconsolidatedLocations = this.unitState.hasUnconsolidatedLocations();
         return airborne !== null
             || moveMode !== null
             || moveDistance !== null
             || dmgReceived != 0
             || Object.keys(psrChecks).length > 0
             || unconsolidatedCrits
+            || unconsolidatedLocations
             || heat.next !== undefined;
     });
 
@@ -54,9 +56,11 @@ export class TurnState {
         const psrChecks = this.psrChecks();
         const dmgReceived = this.dmgReceived();
         const unconsolidatedCrits = this.unitState.hasUnconsolidatedCrits();
+        const unconsolidatedLocations = this.unitState.hasUnconsolidatedLocations();
         return dmgReceived != 0
             || Object.keys(psrChecks).length > 0
-            || unconsolidatedCrits;
+            || unconsolidatedCrits
+            || unconsolidatedLocations;
     });
 
     autoFall = computed<boolean>(() => {
@@ -160,7 +164,7 @@ export class TurnState {
                     unit.locations?.internal?.forEach((_value, loc) => {
                         if (hasDamagedLeg) return;
                         if (!LEG_LOCATIONS.has(loc)) return; // Only consider leg locations
-                        if (unit.isInternalLocDestroyed(loc)) {
+                        if (unit.isInternalLocCommittedDestroyed(loc)) {
                             hasDamagedLeg = true;
                         }
                     });
@@ -227,7 +231,7 @@ export class TurnState {
             if (!isFourLegged && FOUR_LEGGED_LOCATIONS.has(loc)) {
                 isFourLegged = true;
             }
-            if (unit.isInternalLocDestroyed(loc)) {
+            if (unit.isInternalLocCommittedDestroyed(loc)) {
                 damagedLegsCount++;
             }
         });

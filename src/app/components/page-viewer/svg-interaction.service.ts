@@ -95,6 +95,11 @@ export class SvgInteractionService {
 
     private currentHighlightedElement: SVGElement | null = null;
 
+    /** When automations are off, damage/heat changes consolidate immediately (no pending state). */
+    private get consolidateImmediately(): boolean {
+        return !this.optionsService.options().useAutomations;
+    }
+
     constructor() {
         inject(DestroyRef).onDestroy(() => {
             this.cleanup();
@@ -325,13 +330,13 @@ export class SvgInteractionService {
                 const newHealth = totalTroops - (soldierId - 1);
                 const deltaChange = newHealth - getHits();
                 if (deltaChange < 0) {
-                    this.unit()?.setInternalHits('TROOP', newHealth - 1);
+                    this.unit()?.addInternalHits('TROOP', deltaChange - 1, this.consolidateImmediately);
                     showToast(deltaChange - 1);
                 } else if (deltaChange > 0) {
-                    this.unit()?.setInternalHits('TROOP', newHealth);
+                    this.unit()?.addInternalHits('TROOP', deltaChange, this.consolidateImmediately);
                     showToast(deltaChange);
                 } else {
-                    this.unit()?.addInternalHits('TROOP', -1);
+                    this.unit()?.addInternalHits('TROOP', -1, this.consolidateImmediately);
                     showToast(-1);
                 }
             }, signal);
@@ -448,7 +453,7 @@ export class SvgInteractionService {
                     const unit = this.unit();
                     if (!unit) return;
                     if (isStructure) {
-                        unit.addInternalHits(loc, value);
+                        unit.addInternalHits(loc, value, this.consolidateImmediately);
                     } else {
                         let valueToApply = value;
                                 // We remove/add first from/to the modular armor, if any
@@ -467,7 +472,7 @@ export class SvgInteractionService {
                                 } else if (consumedModularArmorPoints > 0 && valueToApply < 0) {
                                     unit.getCritSlotsAsMatrix()[loc]?.forEach(critSlot => {
                                         const armorPointsToRepair = Math.min(-valueToApply, unit.getArmorHits(loc, rear));
-                                        unit.addArmorHits(loc, -armorPointsToRepair, rear);
+                                        unit.addArmorHits(loc, -armorPointsToRepair, rear, this.consolidateImmediately);
                                         valueToApply += armorPointsToRepair;
                                         if (valueToApply == 0) return;
                                         if (!critSlot.eq?.flags?.has('F_MODULAR_ARMOR')) return;
@@ -481,7 +486,7 @@ export class SvgInteractionService {
                                     });
                                 }
                         if (valueToApply != 0) {
-                            this.unit()?.addArmorHits(loc, valueToApply, rear);
+                            this.unit()?.addArmorHits(loc, valueToApply, rear, this.consolidateImmediately);
                         }
                     }
                     showArmorToast(value);
@@ -694,10 +699,10 @@ export class SvgInteractionService {
                                 showAmmoToast(critSlot, deltaChange);
                             }
                         } else if (choice.value == 'Hit') {
-                            unit.applyHitToCritSlot(critSlot, 1, !this.optionsService.options().useAutomations);
+                            unit.applyHitToCritSlot(critSlot, 1, this.consolidateImmediately);
                             this.toastService.showToast(`Critical Hit on ${labelText}`, 'error');
                         } else if (choice.value == 'Repair') {
-                            unit.applyHitToCritSlot(critSlot, -1, !this.optionsService.options().useAutomations);
+                            unit.applyHitToCritSlot(critSlot, -1, this.consolidateImmediately);
                             this.toastService.showToast(`Repaired ${labelText}`, 'success');
                         }
                         if (choice.keepOpen && isChoicePickerInstance(pickerInstance)) {
@@ -727,7 +732,7 @@ export class SvgInteractionService {
                     } else {
                         // default is damage
                         if (!critSlot.destroyed) {
-                            unit.applyHitToCritSlot(critSlot, 1, !this.optionsService.options().useAutomations);
+                            unit.applyHitToCritSlot(critSlot, 1, this.consolidateImmediately);
                             this.toastService.showToast(`Critical Hit on ${labelText}`, 'error');
                             return;
                         }
@@ -957,7 +962,7 @@ export class SvgInteractionService {
         const onPointerUp = (evt: PointerEvent) => {
             if (!dragState || evt.pointerId !== dragState.pointerId) return;
             const heatValue = Number(this.state.clickTarget?.getAttribute('heat') || 0);
-            unit.setHeat(heatValue, !this.optionsService.options().useAutomations);
+            unit.setHeat(heatValue, this.consolidateImmediately);
             cancelHeatDrag();
         };
 
@@ -1021,7 +1026,7 @@ export class SvgInteractionService {
                 const newHeatValue = await firstValueFrom(ref.closed);
                 if (newHeatValue === null || isNaN(Number(newHeatValue))) return;
                 const heatValue = Math.max(0, Number(newHeatValue));
-                unit.setHeat(heatValue, !this.optionsService.options().useAutomations);
+                unit.setHeat(heatValue, this.consolidateImmediately);
             };
             overflowButton.classList.add('interactive');
             overflowButton.addEventListener('click', promptHeatOverflow, { passive: false, signal });

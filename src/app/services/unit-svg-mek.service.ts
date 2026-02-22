@@ -206,7 +206,7 @@ export class UnitSvgMekService extends UnitSvgService {
             if (!destroyedLegAES) {
                 destroyedLegAES = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('AES') && slot.destroyed);
             }
-            if (this.unit.isInternalLocDestroyed(loc)) {
+            if (this.unit.isInternalLocCommittedDestroyed(loc)) {
                 destroyedLegsCount++;
             } else {
                 destroyedHipsCount += critSlots.filter(slot => slot.loc === loc && slot.name && slot.name.includes('Hip') && slot.destroyed).length;
@@ -424,8 +424,8 @@ export class UnitSvgMekService extends UnitSvgService {
             UMUValue = Math.max(0, UMUValue - systemsStatus.destroyedUMUCount);
         }
 
-        const destroyedLA = this.unit.isInternalLocDestroyed('LA');
-        const destroyedRA = this.unit.isInternalLocDestroyed('RA');
+        const destroyedLA = this.unit.isInternalLocCommittedDestroyed('LA');
+        const destroyedRA = this.unit.isInternalLocCommittedDestroyed('RA');
 
         let canFire = true;
         if (systemsStatus.cockpitLoc === 'HD' && systemsStatus.destroyedSensorsCount >= 2) {
@@ -855,37 +855,20 @@ export class UnitSvgMekService extends UnitSvgService {
         if (!svg) return;
 
         // Shields
-        const shieldPips = svg.querySelectorAll(`.shield.pip`);
+        const shieldPips = svg.querySelectorAll('.shield.pip');
         if (shieldPips.length > 0) {
             const locations = this.unit.getLocations();
-            const shieldRemaining: Record<string, number> = {};
+            const shieldInfo: Record<string, { committed: number; total: number; idx: number }> = {};
             shieldPips.forEach(pip => {
                 const linkedLoc = pip.getAttribute('loc');
                 const loc = pip.parentElement?.getAttribute('loc');
                 if (!loc || !linkedLoc) return;
-                if (shieldRemaining[loc] === undefined) {
-                    shieldRemaining[loc] = locations[loc]?.armor || 0;
+                if (!shieldInfo[loc]) {
+                    const d = locations[loc];
+                    shieldInfo[loc] = { committed: d?.armor ?? 0, total: (d?.armor ?? 0) + (d?.pendingArmor ?? 0), idx: 0 };
                 }
-                if (shieldRemaining[loc] > 0) {
-                    if (!pip.classList.contains('damaged')) {
-                        pip.classList.add('damaged');
-                        if (!initial) {
-                            pip.classList.add('fresh');
-                        }
-                    } else if (pip.classList.contains('fresh')) {
-                        pip.classList.remove('fresh');
-                    }
-                    shieldRemaining[loc]--;
-                } else {
-                    if (pip.classList.contains('damaged')) {
-                        pip.classList.remove('damaged');
-                        if (!initial) {
-                            pip.classList.add('fresh');
-                        }
-                    } else if (pip.classList.contains('fresh')) {
-                        pip.classList.remove('fresh');
-                    }
-                }
+                const s = shieldInfo[loc];
+                this.updatePip(pip, ++s.idx, s.committed, s.total, initial);
             });
 
 
@@ -908,29 +891,12 @@ export class UnitSvgMekService extends UnitSvgService {
         const lamStructuralIntegrityPips = svg.querySelectorAll(`.structure.pip[loc="SI"]`);
         if (lamStructuralIntegrityPips.length > 0) {
             const locations = this.unit.getLocations();
-            let structuralIntegrityDamageRemaining = locations['CT']?.internal || 0;
+            const ctData = locations['CT'];
+            const siCommitted = ctData?.internal ?? 0;
+            const siTotal = siCommitted + (ctData?.pendingInternal ?? 0);
+            let siIdx = 0;
             lamStructuralIntegrityPips.forEach(pip => {
-                if (structuralIntegrityDamageRemaining > 0) {
-                    if (!pip.classList.contains('damaged')) {
-                        pip.classList.add('damaged');
-                        if (!initial) {
-                            pip.classList.add('fresh');
-                        }
-                    } else if (pip.classList.contains('fresh')) {
-                        pip.classList.remove('fresh');
-                    }
-                    structuralIntegrityDamageRemaining--;
-                } else {
-                    if (pip.classList.contains('damaged')) {
-                        pip.classList.remove('damaged');
-                        if (!initial) {
-                            pip.classList.add('fresh');
-                        }
-                    } else
-                        if (pip.classList.contains('fresh')) {
-                            pip.classList.remove('fresh');
-                        }
-                }
+                this.updatePip(pip, ++siIdx, siCommitted, siTotal, initial);
             });
         }
 

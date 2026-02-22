@@ -62,7 +62,7 @@ export class UnitSvgInfantryService extends UnitSvgService {
         const armorLocs = new Set<string>(this.unit.locations?.armor.keys() || []);
         let allTroopsDestroyed = true;
         for (const loc of armorLocs) {
-            const locDestroyed = this.unit.isArmorLocDestroyed(loc);
+            const locDestroyed = this.unit.isArmorLocCommittedDestroyed(loc);
             if (!locDestroyed) {
                 allTroopsDestroyed = false;
                 break;
@@ -70,7 +70,7 @@ export class UnitSvgInfantryService extends UnitSvgService {
         }
         const structureLocs = new Set<string>(this.unit.locations?.internal.keys() || []);
         for (const loc of structureLocs) {
-            const locDestroyed = this.unit.isInternalLocDestroyed(loc);
+            const locDestroyed = this.unit.isInternalLocCommittedDestroyed(loc);
             if (!locDestroyed) {
                 allTroopsDestroyed = false;
                 break;
@@ -86,38 +86,18 @@ export class UnitSvgInfantryService extends UnitSvgService {
         const svg = this.unit.svg();
         if (!svg) return;
 
-        const armorPips = Array.from(svg.querySelectorAll(`.armor.pip`)).reverse();
+        const armorPips = Array.from(svg.querySelectorAll('.armor.pip')).reverse();
         const locations = this.unit.getLocations();
-        // Track remaining armor pips per location
-        const armorRemaining: Record<string, number> = {};
-
+        const locInfo: Record<string, { committed: number; total: number; idx: number }> = {};
         armorPips.forEach(pip => {
             const loc = pip.getAttribute('loc');
             if (!loc) return;
-            if (armorRemaining[loc] === undefined) {
-                armorRemaining[loc] = locations[loc]?.armor || 0;
+            if (!locInfo[loc]) {
+                const d = locations[loc];
+                locInfo[loc] = { committed: d?.armor ?? 0, total: (d?.armor ?? 0) + (d?.pendingArmor ?? 0), idx: 0 };
             }
-            if (armorRemaining[loc] > 0) {
-                if (!pip.classList.contains('damaged')) {
-                    pip.classList.add('damaged');
-                    if (!initial) {
-                        pip.classList.add('fresh');
-                    }
-                } else if (pip.classList.contains('fresh')) {
-                    pip.classList.remove('fresh');
-                }
-                armorRemaining[loc]--;
-            } else {
-                if (pip.classList.contains('damaged')) {
-                    pip.classList.remove('damaged');
-                    if (!initial) {
-                        pip.classList.add('fresh');
-                    }
-                } else
-                    if (pip.classList.contains('fresh')) {
-                        pip.classList.remove('fresh');
-                    }
-            }
+            const s = locInfo[loc];
+            this.updatePip(pip, ++s.idx, s.committed, s.total, initial);
         });
 
         this.unit.locations?.armor.forEach(entry => {
@@ -138,25 +118,24 @@ export class UnitSvgInfantryService extends UnitSvgService {
         const hasTroops = svg.getElementById('soldier_1');
         if (!hasTroops) return;
         const totalTroops = this.unit.locations?.internal.get('TROOP')!.points || 0;
-        const hits = this.unit.getInternalHits('TROOP');
+        const troopData = this.unit.getLocations()['TROOP'];
+        const committed = troopData?.internal ?? 0;
+        const total = committed + (troopData?.pendingInternal ?? 0);
         for (let i = 1; i <= totalTroops; i++) {
             const soldierEl = svg.getElementById(`soldier_${i}`);
             if (!soldierEl) continue;
-            if (i <= (totalTroops-hits)) {
-                if (soldierEl.classList.contains('damaged')) {
-                    soldierEl.classList.add('fresh');
-                } else {
-                    soldierEl.classList.remove('fresh');
-                }
-                soldierEl.classList.remove('damaged');
+            // Soldiers are numbered 1..N where 1 is the first alive, so damage counts from the end
+            const idx = totalTroops - i + 1; // reverse: soldier_1 = last to be hit
+            const shouldDamage = idx <= total;
+            const shouldPending = (idx > committed && idx <= total) || (idx > total && idx <= committed);
+            const wasDamaged = soldierEl.classList.contains('damaged');
+            if (wasDamaged !== shouldDamage) {
+                soldierEl.classList.toggle('damaged', shouldDamage);
+                soldierEl.classList.add('fresh');
             } else {
-                if (!soldierEl.classList.contains('damaged')) {
-                    soldierEl.classList.add('fresh');
-                } else {
-                    soldierEl.classList.remove('fresh');
-                }
-                soldierEl.classList.add('damaged');
+                soldierEl.classList.remove('fresh');
             }
+            soldierEl.classList.toggle('pending', shouldPending);
         }
     }
 

@@ -217,8 +217,8 @@ function forceUnitToCBTRow(forceUnit: ForceUnit, groupName: string): Record<stri
     let totalArmorDamage = 0;
     let totalInternalDamage = 0;
     for (const locData of Object.values(locations)) {
-        totalArmorDamage += locData.armor ?? 0;
-        totalInternalDamage += locData.internal ?? 0;
+        totalArmorDamage += (locData.armor ?? 0) + (locData.pendingArmor ?? 0);
+        totalInternalDamage += (locData.internal ?? 0) + (locData.pendingInternal ?? 0);
     }
     
     // Insert force-specific fields

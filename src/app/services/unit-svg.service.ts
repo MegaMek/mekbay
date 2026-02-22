@@ -221,7 +221,7 @@ export class UnitSvgService {
             });
         }
         if (this.unit.locations?.internal.has('SI')) {
-            if (this.unit.isInternalLocDestroyed('SI')) {
+            if (this.unit.isInternalLocCommittedDestroyed('SI')) {
                 destroyed = true;
             }
         }
@@ -229,7 +229,7 @@ export class UnitSvgService {
         const unitType = this.unit.getUnit().type;
         if (unitType === 'Naval' || unitType === 'Tank' || unitType === 'VTOL') {
             this.unit.locations?.internal.forEach((value, loc) => { // If any part is destroyed, the unit is destroyed
-                if (this.unit.isInternalLocDestroyed(loc)) {
+                if (this.unit.isInternalLocCommittedDestroyed(loc)) {
                     destroyed = true;
                 }
             });
@@ -577,80 +577,62 @@ export class UnitSvgService {
     }
 
 
+    /**
+     * Updates a single pip's damaged/pending/fresh classes.
+     *
+     * For a location with `committed` damage and signed `pending` delta:
+     *  - Pips 1..total (committed+pending): `damaged` (committed portion) or `damaged+pending` (new pending damage)
+     *  - Pips (total+1)..committed: `pending` only (committed damage pending removal)
+     *  - Beyond both: clean
+     */
+    protected updatePip(pip: Element, idx: number, committed: number, total: number, initial: boolean) {
+        const shouldDamage = idx <= total;
+        const shouldPending = (idx > committed && idx <= total) || (idx > total && idx <= committed);
+        const wasDamaged = pip.classList.contains('damaged');
+
+        if (wasDamaged !== shouldDamage) {
+            pip.classList.toggle('damaged', shouldDamage);
+            if (!initial) pip.classList.add('fresh');
+        } else {
+            pip.classList.remove('fresh');
+        }
+        pip.classList.toggle('pending', shouldPending);
+    }
+
     protected updateArmorDisplay(initial: boolean = false) {
         const svg = this.unit.svg();
         if (!svg) return;
         this.unit.phaseTrigger(); // Ensure phase changes trigger update
 
-        const armorPips = svg.querySelectorAll(`.armor.pip`);
         const locations = this.unit.getLocations();
-
-        // Create copies of armor and internal values to track remaining pips
-        const armorRemaining: Record<string, number> = {};
-        const internalRemaining: Record<string, number> = {};
+        const locInfo: Record<string, { committed: number; total: number; idx: number }> = {};
 
         // Armor pips
-        armorPips.forEach(pip => {
+        svg.querySelectorAll('.armor.pip').forEach(pip => {
             const loc = pip.getAttribute('loc');
             if (!loc) return;
-            const rear = !!pip.getAttribute('rear');
-            const locKey = rear ? `${loc}-rear` : loc;
-            if (armorRemaining[locKey] === undefined) {
-                armorRemaining[locKey] = locations[locKey]?.armor || 0;
+            const locKey = pip.getAttribute('rear') ? `${loc}-rear` : loc;
+            if (!locInfo[locKey]) {
+                const d = locations[locKey];
+                locInfo[locKey] = { committed: d?.armor ?? 0, total: (d?.armor ?? 0) + (d?.pendingArmor ?? 0), idx: 0 };
             }
-            if (armorRemaining[locKey] > 0) {
-                if (!pip.classList.contains('damaged')) {
-                    pip.classList.add('damaged');
-                    if (!initial) {
-                        pip.classList.add('fresh');
-                    }
-                } else if (pip.classList.contains('fresh')) {
-                    pip.classList.remove('fresh');
-                }
-                armorRemaining[locKey]--;
-            } else {
-                if (pip.classList.contains('damaged')) {
-                    pip.classList.remove('damaged');
-                    if (!initial) {
-                        pip.classList.add('fresh');
-                    }
-                } else if (pip.classList.contains('fresh')) {
-                    pip.classList.remove('fresh');
-                }
-            }
+            const s = locInfo[locKey];
+            this.updatePip(pip, ++s.idx, s.committed, s.total, initial);
         });
 
         // Structure (internal) pips
-        const hasCTPips = !!svg.querySelector(`.structure.pip[loc="CT"]`);
-        const structurePips = svg.querySelectorAll(`.structure.pip`);
-        structurePips.forEach(pip => {
+        const hasCTPips = !!svg.querySelector('.structure.pip[loc="CT"]');
+        const intInfo: Record<string, { committed: number; total: number; idx: number }> = {};
+        svg.querySelectorAll('.structure.pip').forEach(pip => {
             const loc = pip.getAttribute('loc');
             if (!loc) return;
-            if (loc == 'SI' && hasCTPips) return; // Skip structural integrity, they are represented by CT damage
-            if (internalRemaining[loc] === undefined) {
-                internalRemaining[loc] = locations[loc]?.internal || 0;
+            if (loc === 'SI' && hasCTPips) return;
+            if (!intInfo[loc]) {
+                const d = locations[loc];
+                intInfo[loc] = { committed: d?.internal ?? 0, total: (d?.internal ?? 0) + (d?.pendingInternal ?? 0), idx: 0 };
             }
-            if (internalRemaining[loc] > 0) {
-                if (!pip.classList.contains('damaged')) {
-                    pip.classList.add('damaged');
-                    if (!initial) {
-                        pip.classList.add('fresh');
-                    }
-                } else if (pip.classList.contains('fresh')) {
-                    pip.classList.remove('fresh');
-                }
-                internalRemaining[loc]--;
-            } else {
-                if (pip.classList.contains('damaged')) {
-                    pip.classList.remove('damaged');
-                    if (!initial) {
-                        pip.classList.add('fresh');
-                    }
-                } else
-                    if (pip.classList.contains('fresh')) {
-                        pip.classList.remove('fresh');
-                    }
-            }
+            const s = intInfo[loc];
+            this.updatePip(pip, ++s.idx, s.committed, s.total, initial);
         });
 
         this.unit.locations?.armor.forEach(entry => {
