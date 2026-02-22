@@ -111,6 +111,7 @@ type ForceTypeRule = {
     minPts: number;
     maxPts: number;
     commandRank?: string;
+    strict?: boolean;
     customMatch?: (comp: ForceComposition) => number;
 };
 
@@ -125,19 +126,19 @@ function getClanPoints(comp: ForceComposition): number {
 }
 
 const CLAN_RULES: ForceTypeRule[] = [
-    { type: 'Nova', minPts: 10, maxPts: 10, commandRank: 'Nova Commander', customMatch: (comp) => {
+    { type: 'Nova', minPts: 10, maxPts: 10, commandRank: 'Nova Commander', strict: true, customMatch: (comp) => {
         const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25);
         if (comp.BM === 0 || infPoints === 0) return Infinity;
         const otherPoints = (comp.PM / 5) + (comp.CV / 2) + (comp.AF / 2) + comp.other;
         return Math.abs(comp.BM - 5) + Math.abs(infPoints - 5) + otherPoints;
     }},
-    { type: 'Supernova Binary', minPts: 20, maxPts: 20, commandRank: 'Nova Captain', customMatch: (comp) => {
+    { type: 'Supernova Binary', minPts: 20, maxPts: 20, commandRank: 'Nova Captain', strict: true, customMatch: (comp) => {
         const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25);
         if (comp.BM === 0 || infPoints === 0) return Infinity;
         const otherPoints = (comp.PM / 5) + (comp.CV / 2) + (comp.AF / 2) + comp.other;
         return Math.abs(comp.BM - 10) + Math.abs(infPoints - 10) + otherPoints;
     }},
-    { type: 'Supernova Trinary', minPts: 30, maxPts: 30, commandRank: 'Nova Captain', customMatch: (comp) => {
+    { type: 'Supernova Trinary', minPts: 30, maxPts: 30, commandRank: 'Nova Captain', strict: true, customMatch: (comp) => {
         const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25);
         if (comp.BM === 0 || infPoints === 0) return Infinity;
         const otherPoints = (comp.PM / 5) + (comp.CV / 2) + (comp.AF / 2) + comp.other;
@@ -261,6 +262,9 @@ function evaluateForce(comp: ForceComposition, rules: ForceTypeRule[], getPoints
             }
         }
 
+        // Strict rules only match on an exact fit (dist === 0)
+        if (rule.strict && dist !== 0) continue;
+
         if (dist !== Infinity && dist < minDistance) {
             minDistance = dist;
             bestType = rule.type;
@@ -277,6 +281,9 @@ function evaluateForce(comp: ForceComposition, rules: ForceTypeRule[], getPoints
 
     if (minDistance > 0 && minDistance !== Infinity) {
         for (const rule of rules) {
+            // Strict rules cannot have Demi- modifier
+            if (rule.strict) continue;
+
             // If the rule has a custom match, we shouldn't blindly apply Demi- based on points
             // For example, a pure Aero force shouldn't become a Demi-Company
             if (rule.customMatch) {
