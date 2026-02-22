@@ -77,9 +77,9 @@ export function buildProtocolShareUrlFromWebUrl(webUrl: string): string | null {
 }
 
 export function buildShareTextPayload(title: string, httpsUrl: string, appUrl?: string | null): string {
-    if (appUrl) {
-        return `${title}\nWeb: ${httpsUrl}\nApp: ${appUrl}`;
-    }
+    // if (appUrl) {
+    //     return `${title}\nWeb: ${httpsUrl}\nApp: ${appUrl}`;
+    // }
     return `${title}\n${httpsUrl}`;
 }
 
