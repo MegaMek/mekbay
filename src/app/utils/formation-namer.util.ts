@@ -111,9 +111,13 @@ export class FormationNamerUtil {
         definition: FormationTypeDefinition,
         group: UnitGroup,
     ): string {
-        if (group.force.sizeNamePrefixesFormationName() && group.sizeName()?.includes('Level')) {
-            return group.sizeName() + ' - ' + definition.name;
+        const sizeName = group.sizeName();
+        if (sizeName && definition.name.includes(sizeName)) {
+            return definition.name;
         }
-        return definition.name + ' ' + group.sizeName();
+        if (sizeName?.includes('Level')) {
+            return sizeName + ' - ' + definition.name;
+        }
+        return definition.name + ' ' + sizeName;
     }
 }

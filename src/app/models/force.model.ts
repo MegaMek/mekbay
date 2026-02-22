@@ -253,12 +253,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         return majority;
     });
 
-    sizeNamePrefixesFormationName = computed(() => {
-        const factionName = this.faction()?.name ?? '';
-        const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
-        return isComStarOrWoB;
-    });
-
     /**
      * Factory method to create the appropriate ForceUnit subclass.
      * Must be implemented by subclasses to create CBTForceUnit, ASForceUnit, etc.
