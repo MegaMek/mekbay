@@ -131,7 +131,7 @@ export class SidebarFooterComponent {
             'Enter the Force Instance ID or a MekBay URL:',
             'Add Force',
             '',
-            'You can paste an Instance ID or a full MekBay URL containing one.'
+            'You can paste an Instance ID or a full MekBay URL containing one. To directly add one of your own forces, use the ADD button in the Load dialog instead.'
         );
         if (!input) return;
 
@@ -151,14 +151,26 @@ export class SidebarFooterComponent {
 
         // Show alignment picker with force preview
         const { AlignmentPickerDialogComponent } = await import('../alignment-picker-dialog/alignment-picker-dialog.component');
-        const ref = this.dialogsService.createDialog<ForceAlignment | null>(AlignmentPickerDialogComponent, {
+        type AlignmentPickerResult = import('../alignment-picker-dialog/alignment-picker-dialog.component').AlignmentPickerResult;
+        const ref = this.dialogsService.createDialog<AlignmentPickerResult | null>(AlignmentPickerDialogComponent, {
             data: { force }
         });
-        const alignment = await firstValueFrom(ref.closed);
-        if (!alignment) return;
+        const result = await firstValueFrom(ref.closed);
+        if (!result) return;
 
-        this.forceBuilderService.addLoadedForce(force, alignment);
-        this.toastService.showToast(`Force "${force.name}" added.`, 'success');
+        let forceToAdd = force;
+        if (result.clone) {
+            forceToAdd = force.clone();
+            forceToAdd.loading = true;
+            try {
+                await this.dataService.saveForce(forceToAdd);
+            } finally {
+                forceToAdd.loading = false;
+            }
+        }
+
+        this.forceBuilderService.addLoadedForce(forceToAdd, result.alignment);
+        this.toastService.showToast(`Force "${forceToAdd.name}" added.`, 'success');
     }
 
     private extractInstanceId(input: string): string {

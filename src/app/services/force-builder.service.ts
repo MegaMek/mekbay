@@ -906,6 +906,9 @@ export class ForceBuilderService {
             return false;
         }
 
+        const forceSlot = this.getForceSlot(force);
+        const alignment = forceSlot?.alignment || 'friendly';
+
         const selectedIdx = force.units().findIndex(u => u.id === this.selectedUnit()?.id);
         const cloned = force.clone();
         cloned.loading = true;
@@ -918,7 +921,7 @@ export class ForceBuilderService {
         // Unload old, load clone
         this.removeLoadedForce(force, { skipPrompt: true });
         // Load the new force (this handles URL state and other housekeeping)
-        this.addLoadedForce(cloned, 'friendly', { activate: true });
+        this.addLoadedForce(cloned, alignment, { activate: true });
         const units = cloned.units();
         this.selectUnit(selectedIdx >= 0 && selectedIdx < units.length ? units[selectedIdx] : units[0] ?? null);
 
@@ -937,6 +940,9 @@ export class ForceBuilderService {
 
         const isAlphaStrike = force.gameSystem === GameSystem.ALPHA_STRIKE;
         const targetSystemLabel = isAlphaStrike ? 'Classic BattleTech' : 'Alpha Strike';
+
+        const forceSlot = this.getForceSlot(force);
+        const alignment = forceSlot?.alignment || 'friendly';
 
         // Create new force with opposite game system
         const newForce = isAlphaStrike
@@ -995,7 +1001,7 @@ export class ForceBuilderService {
 
         this.removeLoadedForce(force);
         // Load the new force (this handles URL state and other housekeeping)
-        this.addLoadedForce(newForce, 'friendly', { activate: true });
+        this.addLoadedForce(newForce, alignment, { activate: true });
         this.dataService.saveForce(newForce);
 
         this.toastService.showToast(`Force converted to ${targetSystemLabel} and saved.`, 'success');
