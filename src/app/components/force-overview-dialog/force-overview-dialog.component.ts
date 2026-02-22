@@ -157,7 +157,7 @@ export class ForceOverviewDialogComponent {
     gameSystem = computed(() => this.gameService.currentGameSystem());
 
     /** Force name for display */
-    forceName = computed(() => this.data.force.name);
+    forceName = computed(() => this.data.force.displayName());
 
     /** Total unit count */
     unitCount = computed(() => this.units().length);

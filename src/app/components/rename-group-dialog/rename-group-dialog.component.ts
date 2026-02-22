@@ -73,7 +73,7 @@ export interface RenameGroupDialogResult {
 
         <div class="form-fields">
           <label class="field-label">Group Name <span class="optional">(optional)</span></label>
-          <div class="input-wrapper">
+          <div class="input-wrapper name-input-wrapper">
             <div
               class="field-input"
               contentEditable="true"
@@ -84,6 +84,16 @@ export interface RenameGroupDialogResult {
               (keydown.enter)="submit()"
               (input)="onInputCleanup($event)"
             ></div>
+            @if (nameHasText()) {
+            <button
+              type="button"
+              class="clear-btn"
+              (click)="clearName()"
+              title="Clear"
+              aria-label="Clear"
+              tabindex="-1"
+            >&#10005;</button>
+            }
           </div>
           <p class="hint">If left empty, the formation name will be used</p>
         </div>
@@ -280,6 +290,41 @@ export interface RenameGroupDialogResult {
             margin: 4px 0 0;
             text-align: center;
         }
+
+        .name-input-wrapper {
+            position: relative;
+        }
+
+        .name-input-wrapper .field-input {
+            padding-right: 32px;
+        }
+
+        .clear-btn {
+            position: absolute;
+            right: 4px;
+            top: 0;
+            bottom: 0;
+            margin: auto 0;
+            background: transparent;
+            border: none;
+            color: #999;
+            font-size: 1em;
+            font-weight: 700;
+            cursor: pointer;
+            padding: 0 6px;
+            height: 32px;
+            width: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s;
+            line-height: 1;
+            z-index: 1;
+        }
+
+        .clear-btn:hover {
+            color: #ff4444;
+        }
     `]
 })
 
@@ -293,6 +338,9 @@ export class RenameGroupDialogComponent {
     private overlayManager = inject(OverlayManagerService);
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
+
+    /** Tracks whether the name input has text */
+    nameHasText = signal<boolean>(!!this.data.group.name());
 
     /** Currently selected formation */
     selectedFormation = signal<FormationTypeDefinition | null>(this.data.group.formation());
@@ -339,10 +387,22 @@ export class RenameGroupDialogComponent {
 
     constructor() { }
 
+    /** Clear the name input */
+    clearName(): void {
+        const nativeEl = this.inputRef().nativeElement;
+        if (!nativeEl) return;
+        nativeEl.textContent = '';
+        nativeEl.innerHTML = '';
+        this.nameHasText.set(false);
+        nativeEl.focus();
+    }
+
     /** Clear leftover <br> / whitespace so :empty placeholder works */
     onInputCleanup(event: Event): void {
         const el = event.target as HTMLElement;
-        if (!el.textContent?.trim()) {
+        const hasText = !!el.textContent?.trim();
+        this.nameHasText.set(hasText);
+        if (!hasText) {
             el.innerHTML = '';
         }
     }

@@ -525,7 +525,7 @@ export class ForceBuilderViewerComponent {
             if (wouldEmptyForce) {
                 const answer = await this.dialogsService.choose(
                     'Remove Empty Force',
-                    `Moving this unit will leave "${fromForce.name}" empty. The empty force will be removed. Continue?`,
+                    `Moving this unit will leave "${fromForce.displayName()}" empty. The empty force will be removed. Continue?`,
                     [
                         { label: 'CONFIRM', value: 'confirm' },
                         { label: 'CANCEL', value: 'cancel' }
@@ -647,7 +647,7 @@ export class ForceBuilderViewerComponent {
         if (wouldEmptyForce) {
             const answer = await this.dialogsService.choose(
                 'Remove Empty Force',
-                `Moving this unit will leave "${sourceForce.name}" empty. The empty force will be removed. Continue?`,
+                `Moving this unit will leave "${sourceForce.displayName()}" empty. The empty force will be removed. Continue?`,
                 [
                     { label: 'CONFIRM', value: 'confirm' },
                     { label: 'CANCEL', value: 'cancel' }
@@ -844,7 +844,7 @@ export class ForceBuilderViewerComponent {
             if (wouldEmptyForce) {
                 const answer = await this.dialogsService.choose(
                     'Remove Empty Force',
-                    `Moving this group will leave "${fromForce.name}" empty. The empty force will be removed. Continue?`,
+                    `Moving this group will leave "${fromForce.displayName()}" empty. The empty force will be removed. Continue?`,
                     [
                         { label: 'CONFIRM', value: 'confirm' },
                         { label: 'CANCEL', value: 'cancel' }
@@ -929,7 +929,7 @@ export class ForceBuilderViewerComponent {
     async removeForceFromSlot(event: MouseEvent, force: Force) {
         event.stopPropagation();
         const confirmed = await this.dialogsService.requestConfirmation(
-            `Remove "${force.name}" from the loaded forces?`,
+            `Remove "${force.displayName()}" from the loaded forces?`,
             'Remove Force',
             'danger'
         );
