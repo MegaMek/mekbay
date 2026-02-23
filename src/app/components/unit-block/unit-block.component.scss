@@ -18,6 +18,15 @@
     border: 1px solid var(--border-color);
     flex-grow: 1;
 
+    .unit-content {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        position: relative;
+        z-index: 2;
+    }
+
     &.destroyed {
         background-image: repeating-linear-gradient(140deg,
                 #500B 0px,
@@ -134,6 +143,15 @@
     justify-content: space-between;
     align-items: stretch;
     transition: background-color 0.2s, border-color 0.2s;
+
+    .unit-content {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        align-items: stretch;
+        position: relative;
+        z-index: 2;
+    }
 
     .unit-alias,
     .chassis {
@@ -351,7 +369,7 @@
     height: 0;
     bottom: 0;
     right: 0;
-    z-index: 0;
+    z-index: 1;
     border-style: solid;
     border-width: 0 0 30px 30px;
     border-color: transparent transparent #666 transparent;
