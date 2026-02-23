@@ -109,7 +109,7 @@ export class App {
 
     protected GameSystem = GameSystem;
     protected buildInfo = APP_VERSION_STRING;
-    protected isNextBuild = true; //BUILD_BRANCH !== 'main';
+    protected isMainBuild = BUILD_BRANCH === 'main';
     private lastUpdateCheck: number = 0;
     private updateCheckInterval = 60 * 60 * 1000; // 1 hour
     private updateCheckTimeoutId: number | null = null;

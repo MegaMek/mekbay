@@ -34,7 +34,7 @@
 import { Component, ChangeDetectionStrategy, input, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Unit, UnitComponent } from '../../../models/units.model';
-import { weaponTypes, getWeaponTypeCSSClass } from '../../../utils/equipment.util';
+import { weaponTypes } from '../../../utils/equipment.util';
 import { DataService } from '../../../services/data.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import { LayoutService } from '../../../services/layout.service';
@@ -137,9 +137,21 @@ export class UnitDetailsGeneralTabComponent {
         return this.dataService.getForcePacksForUnit(u);
     });
 
-    get weaponTypes() {
-        return weaponTypes;
-    }
+    typeSummary = computed(() => {
+        const u = this.unit();
+        const EXCLUDE_FLAGS = ['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_CASE', 'F_CASE_II', 'F_JUMP_JET'];
+        const counts: Record<string, number> = {};
+        if (u?.comp) {
+            for (const comp of u.comp) {
+                let code = comp.t;
+                if (code === 'C' && !comp.eq?.hasAnyFlag(EXCLUDE_FLAGS)) {
+                    code = 'O';
+                }
+                counts[code] = (counts[code] || 0) + (comp.q || 1);
+            }
+        }
+        return weaponTypes.map(wt => ({ ...wt, count: counts[wt.code] ?? 0 }));
+    });
 
     adjustedBV = computed(() => {
         const gunnery = this.gunnerySkill();
@@ -156,25 +168,7 @@ export class UnitDetailsGeneralTabComponent {
         return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     }
 
-    getTypeCount(typeCode: string): number {
-        const u = this.unit();
-        if (!u?.comp) return 0;
-        return u.comp.filter(w => w.t === typeCode).reduce((sum, w) => sum + (w.q || 1), 0);
-    }
 
-    getTypeColor(typeCode: string): string {
-        const found = weaponTypes.find(t => t.code === typeCode);
-        return found ? found.color : '#ccc';
-    }
-
-    getTypeClass(typeCode: string): string {
-        return getWeaponTypeCSSClass(typeCode);
-    }
-
-    getTypeIcon(typeCode: string): string {
-        const found = weaponTypes.find(t => t.code === typeCode);
-        return found ? found.img : '/images/crate.svg';
-    }
 
     hasBays(): boolean {
         return this.unit()?.comp.some(c => c.bay && c.bay.length > 0) ?? false;
@@ -627,7 +621,13 @@ export class UnitDetailsGeneralTabComponent {
             if (!isForMatrix && original.t === 'X') continue;
             if (original.t === 'HIDDEN') continue;
             if (original.t === 'S') continue;
-            if (original.t === 'C' && (original.p < 0)) continue; // Hide non-weapon components that are not in valid location (like HS in engine)
+            if (original.t === 'C') {
+                if (original.p < 0) continue; // Hide non-weapon components that are not in valid location (like HS in engine)
+                if (original.eq?.hasAnyFlag(['F_HEAT_SINK','F_DOUBLE_HEAT_SINK'])) continue; // Hide heatsinks
+                if (original.eq?.hasAnyFlag(['F_CASE','F_CASE_II'])) continue; // Hide CASE components
+                if (original.eq?.hasAnyFlag(['F_JUMP_JET'])) continue; // Hide Jump Jets
+            };
+
             if (original.eq === undefined) {
                 original.eq = equipmentList[original.id] ?? null;
             }
