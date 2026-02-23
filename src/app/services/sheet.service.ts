@@ -53,16 +53,22 @@ export class SheetService {
     private dbService = inject(DbService);
     private logger = inject(LoggerService);
 
+    /** In-flight fetch deduplication: prevents duplicate network requests for the same sheet. */
+    private inFlight = new Map<string, Promise<SVGSVGElement>>();
+
     /**
      * Returns the SVG for the given sheet file name, using a cache-first
      * strategy with ETag validation.
+     *
+     * Multiple parallel calls for the same sheet are deduplicated — only one
+     * network request is made and the resulting SVG is cloned for each caller.
      */
     public async getSheet(sheetFileName: string): Promise<SVGSVGElement> {
+        // Fast path: fresh cache hit — no network, no deduplication needed.
         const meta = await this.dbService.getSheetMeta(sheetFileName);
         const now = Date.now();
         const isFresh = meta && (now - meta.timestamp) < SHEET_CACHE_MAX_AGE_MS;
 
-        // If cache is fresh, use it without checking remote
         if (isFresh) {
             const sheet = await this.dbService.getSheet(sheetFileName);
             if (sheet) {
@@ -71,6 +77,31 @@ export class SheetService {
             }
         }
 
+        // Slow path: needs network check. Deduplicate parallel calls for the same sheet.
+        const existing = this.inFlight.get(sheetFileName);
+        if (existing) {
+            this.logger.info(`Sheet ${sheetFileName} already in-flight, waiting for existing request.`);
+            const original = await existing;
+            return original.cloneNode(true) as SVGSVGElement;
+        }
+
+        const promise = this.getSheetFromNetwork(sheetFileName, meta);
+        this.inFlight.set(sheetFileName, promise);
+        try {
+            return await promise;
+        } finally {
+            this.inFlight.delete(sheetFileName);
+        }
+    }
+
+    /**
+     * Validate ETag and fetch from remote if needed. Separated from getSheet()
+     * so that the in-flight deduplication map can wrap this whole operation.
+     */
+    private async getSheetFromNetwork(
+        sheetFileName: string,
+        meta: { etag: string; timestamp: number } | null,
+    ): Promise<SVGSVGElement> {
         // Cache is stale or missing - check remote ETag
         const remoteEtag = await this.getRemoteETag(`${REMOTE_HOST}/sheets/${sheetFileName}`);
 
