@@ -174,10 +174,21 @@
         &.interactive {
             pointer-events: auto;
             cursor: pointer;
-            transition: filter 0.2s, background-color 0.2s;
-            &:hover {
-                background-color: rgba(255, 255, 255, 0.1);
-                filter: brightness(1.2);
+            transition: background-color 0.2s;
+            position: relative;
+            
+            &::after {
+                content: '';
+                position: absolute;
+                pointer-events: none;
+                background: rgba(255, 255, 255, 0.1);
+                opacity: 0;
+                inset: 0;
+                transition: opacity 0.15s;
+            }
+
+            &:hover::after {
+                opacity: 1;
             }
         }
 
@@ -212,11 +223,7 @@
     
     
         &.pilot-info {
-            background-color: rgba(176, 135, 0, 0.5);
-    
-            &:hover {
-                background-color: rgba(176, 135, 0, 0.8);
-            }
+            background-color: rgba(255, 196, 0, 0.4);
         }
     
         &.destroyed {
