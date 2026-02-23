@@ -81,13 +81,12 @@ unit().moveType }}</strong></div>
 </div>
 <!-- Weapon Type Summary Bar -->
 <div class="type-summary-bar">
-@for (type of weaponTypes; let i = $index; track i) {
+@for (type of typeSummary(); track type.code) {
 <div class="type-summary-rect" [style.border-color]="type.color" [title]="type.name">
     <div [style.background-color]="type.color" class="icon">
-        <img class="type-icon" [src]="getTypeIcon(type.code)" />
+        <img class="type-icon" [src]="type.img" />
     </div>
-    @let count = getTypeCount(type.code);
-    <div class="type-count" [class.empty]="count === 0">{{ count }}</div>
+    <div class="type-count" [class.empty]="type.count === 0">{{ type.count }}</div>
 </div>
 }
 </div>
