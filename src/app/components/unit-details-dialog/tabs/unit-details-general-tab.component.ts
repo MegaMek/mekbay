@@ -627,7 +627,13 @@ export class UnitDetailsGeneralTabComponent {
             if (!isForMatrix && original.t === 'X') continue;
             if (original.t === 'HIDDEN') continue;
             if (original.t === 'S') continue;
-            if (original.t === 'C' && (original.p < 0)) continue; // Hide non-weapon components that are not in valid location (like HS in engine)
+            if (original.t === 'C') {
+                if (original.p < 0) continue; // Hide non-weapon components that are not in valid location (like HS in engine)
+                if (original.eq?.hasAnyFlag(['F_HEAT_SINK','F_DOUBLE_HEAT_SINK'])) continue; // Hide heatsinks
+                if (original.eq?.hasAnyFlag(['F_CASE','F_CASE_II'])) continue; // Hide CASE components
+                if (original.eq?.hasAnyFlag(['F_JUMP_JET'])) continue; // Hide Jump Jets
+            };
+
             if (original.eq === undefined) {
                 original.eq = equipmentList[original.id] ?? null;
             }

@@ -69,6 +69,10 @@ floating-comp-info {
     flex-grow: 1;
 }
 
+.structural .comp-name {
+    color: var(--text-color-secondary);
+}
+
 .tech-base {
     width: 20px;
     height: 20px;

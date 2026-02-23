@@ -1129,13 +1129,24 @@ hr.divider {
     background: #272727;
 }
 
+/* Misc: #7BA3A0, background: #1a2524, inbetween: #4d7370 */
 .misc {
-    --type-color: #ccc;
+    --type-color: #7BA3A0;
     border-left: 5px solid var(--type-color);
-    border-top: 1px solid #999;
-    border-right: 1px solid #999;
-    border-bottom: 1px solid #999;
-    background: #272727;
+    border-top: 1px solid #4d7370;
+    border-right: 1px solid #4d7370;
+    border-bottom: 1px solid #4d7370;
+    background: #1a2524;
+}
+
+/* Structural: #8a8078, background: #1f1d1b, inbetween: #5c564f */
+.structural {
+    --type-color: #8a8078;
+    border-left: 5px solid var(--type-color);
+    border-top: 1px solid #5c564f;
+    border-right: 1px solid #5c564f;
+    border-bottom: 1px solid #5c564f;
+    background: #1f1d1b;
 }
 
 /* Tags */
