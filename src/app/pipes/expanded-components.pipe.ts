@@ -52,7 +52,9 @@ export class ExpandedComponentsPipe implements PipeTransform {
         const aggregated = new Map<string, UnitComponent>();
         for (const comp of components) {
             if (comp.t === 'HIDDEN') continue; // Hide hidden components
+            if (comp.t === 'S') continue; // Hide Structural components
             if (comp.t === 'X') continue; // Hide Ammo
+            if (comp.t === 'C' && (comp.p < 0)) continue; // Hide non-weapon components that are not in valid location (like HS in engine)
             const key = comp.n || '';
             if (aggregated.has(key)) {
                 const existing = aggregated.get(key)!;

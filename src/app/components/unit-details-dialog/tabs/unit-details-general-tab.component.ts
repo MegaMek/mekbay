@@ -626,6 +626,8 @@ export class UnitDetailsGeneralTabComponent {
         for (const original of u.comp) {
             if (!isForMatrix && original.t === 'X') continue;
             if (original.t === 'HIDDEN') continue;
+            if (original.t === 'S') continue;
+            if (original.t === 'C' && (original.p < 0)) continue; // Hide non-weapon components that are not in valid location (like HS in engine)
             if (original.eq === undefined) {
                 original.eq = equipmentList[original.id] ?? null;
             }
