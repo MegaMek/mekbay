@@ -131,8 +131,11 @@ export interface UnitComponent {
      * P: Physical
      * O: Other
      * X: Ammo
+     * C: Components (these are the non-weapon components, the usual MiscType like CASE, JJ, HeatSink, etc...)
+     * S: Structural (armor/structure related)
+     * HIDDEN: used for fake components for the search index, not actually rendered
      */
-    t: 'E' | 'M' | 'B' | 'A' | 'X' | 'P' | 'O' | 'HIDDEN'; // type
+    t: 'E' | 'M' | 'B' | 'A' | 'X' | 'P' | 'O' | 'C' | 'S' | 'HIDDEN'; // type
     p: number; // the location id 
     l: string;      // location (RA, LT, LA, etc. Can contain multiple locations if component is split: LA/LT)
     rear?: boolean  // rear-mounted
