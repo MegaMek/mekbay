@@ -242,7 +242,7 @@ const COMSTAR_RULES: ForceTypeRule[] = [
 
 function getSocietyPoints(comp: ForceComposition): number {
     return comp.BM + 
-           (comp.BA_troopers / 15) + 
+           (comp.BA_troopers / 9) + 
            (comp.CI_troopers / 75) + 
            (comp.PM / 3) + 
            (comp.CV / 7) + 

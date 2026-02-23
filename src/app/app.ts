@@ -156,10 +156,10 @@ export class App {
         document.addEventListener('contextmenu', this.contextMenuHandler);
         window.addEventListener('beforeunload', this.beforeUnloadHandler);
         window.addEventListener('blur', this.onBlur);
-        window.addEventListener('popstate', this.historyNavigationHandler);
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.addEventListener('message', this.serviceWorkerMessageHandler);
-        }
+        // window.addEventListener('popstate', this.historyNavigationHandler);
+        // if ('serviceWorker' in navigator) {
+        //     navigator.serviceWorker.addEventListener('message', this.serviceWorkerMessageHandler);
+        // }
         
         if (this.swUpdate.isEnabled) {
             this.swUpdate.versionUpdates
@@ -290,10 +290,10 @@ export class App {
             window.removeEventListener('appinstalled', this.appInstalledHandler);
             document.removeEventListener('contextmenu', this.contextMenuHandler);
             window.removeEventListener('blur', this.onBlur);
-            window.removeEventListener('popstate', this.historyNavigationHandler);
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.removeEventListener('message', this.serviceWorkerMessageHandler);
-            }
+            // window.removeEventListener('popstate', this.historyNavigationHandler);
+            // if ('serviceWorker' in navigator) {
+            //     navigator.serviceWorker.removeEventListener('message', this.serviceWorkerMessageHandler);
+            // }
         });
     }
 
@@ -306,7 +306,8 @@ export class App {
     }
 
     onFocus() {
-        this.processFocusedCapturedUrl();
+        // TODO: Temporarily disabled, this is for PWA URL handling but is causing issues with normal navigation.
+        // this.processFocusedCapturedUrl();
         void this.checkForUpdate();
     }
 
@@ -318,30 +319,33 @@ export class App {
         return `${window.location.pathname}${window.location.search}`;
     }
 
-    private processFocusedCapturedUrl(): void {
-        const currentUrl = this.getCurrentAppUrl();
-        if (currentUrl === this.urlAtLastBlur) {
-            return;
-        }
-        this.logger.info('[PWA] Focus detected URL change: ' + currentUrl);
-        this.urlAtLastBlur = currentUrl;
-        void this.handleCapturedUrl(window.location.href, 'focus');
-    }
+    // TODO: Temporarily disabled, this is for PWA URL handling but is causing issues with normal navigation.
+    // private processFocusedCapturedUrl(): void {
+    //     const currentUrl = this.getCurrentAppUrl();
+    //     if (currentUrl === this.urlAtLastBlur) {
+    //         return;
+    //     }
+    //     this.logger.info('[PWA] Focus detected URL change: ' + currentUrl);
+    //     this.urlAtLastBlur = currentUrl;
+    //     void this.handleCapturedUrl(window.location.href, 'focus');
+    // }
 
-    private serviceWorkerMessageHandler = (event: MessageEvent) => {
-        const data = event.data as { type?: string; url?: string } | undefined;
-        if (data?.type !== 'NAVIGATE' || !data.url) {
-            return;
-        }
-        this.logger.info('[PWA] Received NAVIGATE message from service worker: ' + data.url);
-        this.urlAtLastBlur = this.getCurrentAppUrl();
-        void this.handleCapturedUrl(data.url, 'service-worker');
-    };
+    // TODO: Temporarily disabled, this is for PWA URL handling but is causing issues with normal navigation.
+    // private serviceWorkerMessageHandler = (event: MessageEvent) => {
+    //     const data = event.data as { type?: string; url?: string } | undefined;
+    //     if (data?.type !== 'NAVIGATE' || !data.url) {
+    //         return;
+    //     }
+    //     this.logger.info('[PWA] Received NAVIGATE message from service worker: ' + data.url);
+    //     this.urlAtLastBlur = this.getCurrentAppUrl();
+    //     void this.handleCapturedUrl(data.url, 'service-worker');
+    // };
 
-    private historyNavigationHandler = () => {
-        this.logger.info('[PWA] History navigation detected, evaluating URL');
-        void this.handleCapturedUrl(window.location.href, 'history');
-    };
+    // TODO: Temporarily disabled, this is for PWA URL handling but is causing issues with normal navigation.
+    // private historyNavigationHandler = () => {
+    //     this.logger.info('[PWA] History navigation detected, evaluating URL');
+    //     void this.handleCapturedUrl(window.location.href, 'history');
+    // };
 
     private shouldSkipDuplicateCapturedUrl(parsed: URL): boolean {
         const normalizedUrl = `${parsed.pathname}${parsed.search}`;
