@@ -100,16 +100,16 @@ import { DialogsService } from '../../services/dialogs.service';
             padding: 8px;
             text-align: center;
             font-weight: bold;
-            transition: filter 0.2s;
+            transition: background-color 0.2s;
             font-size: 0.9em;
 
             &.end-phase-button {
-                background-color: #f00;
+                background-color: #a00;
                 color: white;
             }
 
             &:hover {
-                filter: brightness(1.2);
+                background-color: #f00;
             }
         }
 

@@ -154,7 +154,7 @@
         color: var(--primary-focus-color);
 
         &:hover {
-            filter: brightness(1.2);
+            color: var(--primary-focus-color-highlight);
         }
     }
 }
@@ -306,14 +306,14 @@
     }
 
     .pilot-info {
-        background-color: rgba(176, 135, 0, 0.5);
+        background-color: rgba(255, 196, 0, 0.4);
 
         &.interactive {
             cursor: pointer;
             transition: filter 0.2s, background-color 0.2s;
 
             &:hover {
-                background-color: rgba(176, 135, 0, 0.8);
+                background-color: rgba(255, 196, 0, 0.8);
                 filter: brightness(1.2);
             }
         }

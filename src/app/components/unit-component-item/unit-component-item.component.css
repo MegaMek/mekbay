@@ -5,7 +5,23 @@
 .component {
     position: relative;
     cursor: pointer;
-    transition: filter 0.15s;
+}
+
+.component:not(.text-data)::after {
+    content: '';
+    position: absolute;
+    top: -1px;
+    right: -1px;
+    bottom: -1px;
+    left: -5px;
+    pointer-events: none;
+    background: rgba(255, 255, 255, 0.1);
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.component:not(.text-data):hover::after {
+    opacity: 1;
 }
 
 .normal-data,
@@ -33,10 +49,6 @@
 .tiny-data {
     padding: 4px;
     font-size: .85em;
-}
-
-.component:hover {
-    filter: brightness(1.3);
 }
 
 floating-comp-info {

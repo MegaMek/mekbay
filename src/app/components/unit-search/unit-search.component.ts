@@ -506,8 +506,88 @@ export class UnitSearchComponent {
 
     private setupItemHeightTracking() {
         const DEBOUNCE_MS = 100;
-        const SCROLL_DEBOUNCE_MS = 250;
+        /** Max consecutive gap-correction attempts to prevent infinite loops */
+        const MAX_GAP_CORRECTIONS = 3;
         let prevExpandedView: boolean | undefined;
+        let gapCorrectionPending: { destroy: () => void } | null = null;
+        let gapCorrectionCount = 0;
+
+        /**
+         * Detect and fix blank-space gaps in the virtual scroll viewport.
+         *
+         * The CDK FixedSizeVirtualScrollStrategy calculates total content height as
+         * `dataLength * itemSize`. When items have variable heights and the average
+         * doesn't match, two gap scenarios occur:
+         *
+         * 1. Mid-scroll gap: Average overestimates = fewer items rendered than
+         *    needed to fill the viewport. Fix: nudge scroll offset backward.
+         *
+         * 2. End-of-list gap: Average overestimates = total spacer height exceeds
+         *    the real sum of item heights. At the bottom, rendered items end but spacer
+         *    continues. Fix: set the correct total content size directly on the viewport.
+         */
+        const detectAndFixGap = () => {
+            const vp = this.viewport();
+            if (!vp || !this.resultsVisible()) {
+                return;
+            }
+
+            const vpEl = vp.elementRef.nativeElement;
+            const contentWrapper = vpEl.querySelector('.cdk-virtual-scroll-content-wrapper') as HTMLElement;
+            if (!contentWrapper) {
+                return;
+            }
+
+            const vpRect = vpEl.getBoundingClientRect();
+            const contentRect = contentWrapper.getBoundingClientRect();
+            const gap = vpRect.bottom - contentRect.bottom;
+            const renderedRange = vp.getRenderedRange();
+            const dataLength = vp.getDataLength();
+            const isAtDataEnd = renderedRange.end >= dataLength;
+
+            if (gap <= 1) {
+                // No gap, reset and exit
+                gapCorrectionCount = 0;
+                return;
+            }
+
+            if (isAtDataEnd) {
+                // End-of-list gap: all items are rendered but the spacer is too tall.
+                // Read the actual CSS transform offset applied by the CDK, add the
+                // real content height, that's the true total content size.
+                // Use setTotalContentSize() directly instead of changing itemSize,
+                // which avoids the cascading offset-shift problem.
+                const renderedContentHeight = contentWrapper.offsetHeight;
+
+                // Parse the actual translateY from the CDK's inline transform
+                const transform = contentWrapper.style.transform || '';
+                const match = transform.match(/translateY\((\d+(?:\.\d+)?)px\)/);
+                const actualOffset = match ? parseFloat(match[1]) : renderedRange.start * this.itemSize();
+
+                const realTotalHeight = actualOffset + renderedContentHeight;
+                const currentTotalHeight = dataLength * this.itemSize();
+
+                if (realTotalHeight < currentTotalHeight) {
+                    vp.setTotalContentSize(realTotalHeight);
+                }
+            } else {
+                // Mid-scroll gap: not all items rendered but content doesn't fill viewport.
+                // Nudge scroll offset backward to force CDK to expand the rendered range.
+                const currentOffset = vp.measureScrollOffset();
+                const correctedOffset = Math.max(0, currentOffset - gap - 1);
+                vp.scrollToOffset(correctedOffset);
+            }
+
+            // Schedule a follow-up check in case one correction isn't enough
+            if (gapCorrectionCount < MAX_GAP_CORRECTIONS) {
+                gapCorrectionCount++;
+                gapCorrectionPending?.destroy();
+                gapCorrectionPending = afterNextRender(() => {
+                    gapCorrectionPending = null;
+                    detectAndFixGap();
+                }, { injector: this.injector });
+            }
+        };
 
         const measureHeights = () => {
             // Query DOM directly
@@ -522,6 +602,15 @@ export class UnitSearchComponent {
             if (currentAvg !== avg) {
                 this.itemSize.set(avg);
             }
+
+            // Always schedule a gap check after measurement, regardless of whether
+            // itemSize changed: the gap can exist even with a stable average.
+            gapCorrectionCount = 0;
+            gapCorrectionPending?.destroy();
+            gapCorrectionPending = afterNextRender(() => {
+                gapCorrectionPending = null;
+                detectAndFixGap();
+            }, { injector: this.injector });
         };
 
         const debouncedUpdateHeights = (debounceMs = DEBOUNCE_MS) => {
@@ -544,6 +633,9 @@ export class UnitSearchComponent {
                     clearTimeout(this.heightTrackingDebounceTimer);
                     this.heightTrackingDebounceTimer = undefined;
                 }
+                gapCorrectionPending?.destroy();
+                gapCorrectionPending = null;
+                gapCorrectionCount = 0;
                 // Reset to default on view mode change (will be refined by height tracking)
                 if (prevExpandedView !== undefined && prevExpandedView !== currentExpandedView) {
                     this.itemSize.set(75);
@@ -561,6 +653,61 @@ export class UnitSearchComponent {
             }
             this.filtersService.filteredUnits();
             debouncedUpdateHeights();
+        });
+
+        // Subscribe to viewport scroll events to detect end-of-list gaps on scroll.
+        // The measurement-based gap detection only runs on data/layout changes,
+        // but the user can scroll to the bottom at any time after that.
+        let scrollGapTimer: any;
+        const SCROLL_GAP_DEBOUNCE = 150;
+        const onViewportScroll = () => {
+            const vp = this.viewport();
+            if (!vp || !this.resultsVisible()) return;
+
+            // Only check when near the bottom of the scroll (within 2 viewports)
+            const scrollOffset = vp.measureScrollOffset();
+            const viewportSize = vp.getViewportSize();
+            const totalContentSize = vp.getDataLength() * this.itemSize();
+            const distanceFromEnd = totalContentSize - scrollOffset - viewportSize;
+
+            if (distanceFromEnd < viewportSize * 2) {
+                // Near the bottom: debounce a gap check
+                if (scrollGapTimer) clearTimeout(scrollGapTimer);
+                scrollGapTimer = setTimeout(() => {
+                    gapCorrectionCount = 0;
+                    detectAndFixGap();
+                }, SCROLL_GAP_DEBOUNCE);
+            }
+        };
+
+        // Attach/detach the scroll listener reactively based on viewport availability
+        let currentVpEl: HTMLElement | null = null;
+        effect(() => {
+            const vp = this.viewport();
+            const visible = this.resultsVisible();
+            untracked(() => {
+                const newVpEl = (vp && visible) ? vp.elementRef.nativeElement : null;
+                if (newVpEl === currentVpEl) return;
+
+                // Detach from old
+                if (currentVpEl) {
+                    currentVpEl.removeEventListener('scroll', onViewportScroll);
+                }
+                currentVpEl = newVpEl;
+                // Attach to new
+                if (currentVpEl) {
+                    currentVpEl.addEventListener('scroll', onViewportScroll, { passive: true });
+                }
+            });
+        });
+
+        this.destroyRef.onDestroy(() => {
+            if (scrollGapTimer) clearTimeout(scrollGapTimer);
+            if (currentVpEl) {
+                currentVpEl.removeEventListener('scroll', onViewportScroll);
+                currentVpEl = null;
+            }
+            gapCorrectionPending?.destroy();
         });
     }
 

@@ -18,6 +18,15 @@
     border: 1px solid var(--border-color);
     flex-grow: 1;
 
+    .unit-content {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        position: relative;
+        z-index: 2;
+    }
+
     &.destroyed {
         background-image: repeating-linear-gradient(140deg,
                 #500B 0px,
@@ -135,6 +144,15 @@
     align-items: stretch;
     transition: background-color 0.2s, border-color 0.2s;
 
+    .unit-content {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        align-items: stretch;
+        position: relative;
+        z-index: 2;
+    }
+
     .unit-alias,
     .chassis {
         font-weight: bold;
@@ -174,10 +192,21 @@
         &.interactive {
             pointer-events: auto;
             cursor: pointer;
-            transition: filter 0.2s, background-color 0.2s;
-            &:hover {
-                background-color: rgba(255, 255, 255, 0.1);
-                filter: brightness(1.2);
+            transition: background-color 0.2s;
+            position: relative;
+            
+            &::after {
+                content: '';
+                position: absolute;
+                pointer-events: none;
+                background: rgba(255, 255, 255, 0.1);
+                opacity: 0;
+                inset: 0;
+                transition: opacity 0.15s;
+            }
+
+            &:hover::after {
+                opacity: 1;
             }
         }
 
@@ -212,11 +241,7 @@
     
     
         &.pilot-info {
-            background-color: rgba(176, 135, 0, 0.5);
-    
-            &:hover {
-                background-color: rgba(176, 135, 0, 0.8);
-            }
+            background-color: rgba(255, 196, 0, 0.4);
         }
     
         &.destroyed {
@@ -344,7 +369,7 @@
     height: 0;
     bottom: 0;
     right: 0;
-    z-index: 0;
+    z-index: 1;
     border-style: solid;
     border-width: 0 0 30px 30px;
     border-color: transparent transparent #666 transparent;

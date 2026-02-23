@@ -124,7 +124,7 @@ unit().moveType }}</strong></div>
         <div class="comp-loc">{{ group.l }}</div>
         <div class="bay">
             @for (bay of group.bays; let j = $index; track j) {
-                <unit-component-item [unit]="unit()" [comp]="bay" displayStyle="small" class="comp-single"></unit-component-item>
+                <unit-component-item [unit]="unit()" [comp]="bay" displayStyle="small"></unit-component-item>
             }
         </div>
     </div>
@@ -136,7 +136,7 @@ unit().moveType }}</strong></div>
     <div class="component-rect">
         <div class="comp-loc">{{ comp.l }}</div>
         <div class="comp-list">
-            <unit-component-item [unit]="unit()" [comp]="comp" displayStyle="normal" class="comp-single"></unit-component-item>
+            <unit-component-item [unit]="unit()" [comp]="comp" displayStyle="normal"></unit-component-item>
         </div>
     </div>
 }
