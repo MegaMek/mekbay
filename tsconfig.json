@@ -29,9 +29,6 @@
     },
     {
       "path": "./tsconfig.spec.json"
-    },
-    {
-      "path": "./tsconfig.sw.json"
     }
   ]
 }
