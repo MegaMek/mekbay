@@ -47,6 +47,10 @@ export class UnitDetailsIntelTabComponent {
     unit = input.required<Unit>();
     isSwiping = input<boolean>(false);
 
+    private hasValue(text: string | undefined): boolean {
+        return !!text?.trim();
+    }
+
     fluffImageUrl = computed(() => {
         const unit = this.unit();
 
@@ -55,6 +59,24 @@ export class UnitDetailsIntelTabComponent {
             return `${REMOTE_HOST}/images/fluff/${unit.fluff.img}`;
         }
         return null;
+    });
+
+    isImageOnlyIntel = computed(() => {
+        const fluff = this.unit()?.fluff;
+        if (!fluff || !this.fluffImageUrl()) return false;
+
+        const hasSystems = !!(fluff.systems && fluff.systems.length > 0);
+        const hasTextContent = [
+            fluff.manufacturer,
+            fluff.primaryFactory,
+            fluff.capabilities,
+            fluff.overview,
+            fluff.deployment,
+            fluff.history,
+            fluff.notes,
+        ].some((value) => this.hasValue(value));
+
+        return !hasSystems && !hasTextContent;
     });
 
     sanitizeFluffHtml(text: string | undefined): string {
