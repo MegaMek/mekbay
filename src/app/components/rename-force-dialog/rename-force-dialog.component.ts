@@ -410,9 +410,6 @@ export class RenameForceDialogComponent {
         );
         if (randomFaction === this.selectedFaction()) return; // no change
         this.selectedFaction.set(randomFaction);
-        // Also regenerate name for the new faction
-        const newName = ForceNamerUtil.generateForceNameForFaction(randomFaction);
-        this.setInputText(newName);
     }
 
     toggleFactionDropdown(): void {
@@ -444,12 +441,6 @@ export class RenameForceDialogComponent {
                 this.overlayManager.closeManagedOverlay('faction-dropdown');
                 if (faction?.id === this.selectedFaction()?.id) return; // no change
                 this.selectedFaction.set(faction);
-
-                // Auto-update force name when faction is changed
-                if (faction) {
-                    const newName = ForceNamerUtil.generateForceNameForFaction(faction);
-                    this.setInputText(newName);
-                }
             });
     }
 
