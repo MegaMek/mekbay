@@ -97,7 +97,7 @@
 .force-slot-header {
     position: sticky;
     top: 0;
-    z-index: 2;
+    z-index: 4;
     background-color: var(--background-color-menu);
     display: flex;
     flex-direction: column;
@@ -207,7 +207,7 @@
 .group-header {
     position: sticky;
     top: var(--force-header-height, 0px);
-    z-index: 1;
+    z-index: 3;
     background-color: var(--background-highlight);
     padding: 4px 2px;
     display: flex;
