@@ -286,7 +286,7 @@ export class PageViewerComponent implements AfterViewInit {
     private viewStartIndex = signal(0);
 
     // Track if view is initialized
-    private viewInitialized = false;
+    private viewInitialized = signal(false);
     
     // Track if initial render is complete (prevents resize handler from creating shadows prematurely)
     private initialRenderComplete = false;
@@ -313,7 +313,7 @@ export class PageViewerComponent implements AfterViewInit {
             const currentUnit = this.unit();
 
             // Skip if view isn't ready yet
-            if (!this.viewInitialized) {
+            if (!this.viewInitialized()) {
                 return;
             }
 
@@ -367,7 +367,7 @@ export class PageViewerComponent implements AfterViewInit {
             const currentUnitCount = allUnits.length;
 
             // Skip if view isn't ready yet
-            if (!this.viewInitialized) {
+            if (!this.viewInitialized()) {
                 previousUnitIds = currentUnitIds;
                 previousUnitCount = currentUnitCount;
                 return;
@@ -408,7 +408,7 @@ export class PageViewerComponent implements AfterViewInit {
                 previousAllowMultiple = allowMultiple;
                 
                 // Re-display units with new effective visible count
-                if (this.viewInitialized && !this.isSwiping) {
+                if (this.viewInitialized() && !this.isSwiping) {
                     untracked(() => {
                         this.displayUnit();
                     });
@@ -428,7 +428,7 @@ export class PageViewerComponent implements AfterViewInit {
             }
             
             // Re-display when transitioning from readOnly to editable
-            if (previousReadOnly && !isReadOnly && this.viewInitialized && !this.isSwiping) {
+            if (previousReadOnly && !isReadOnly && this.viewInitialized() && !this.isSwiping) {
                 previousReadOnly = isReadOnly;
                 untracked(() => {
                     this.displayUnit();
@@ -442,19 +442,13 @@ export class PageViewerComponent implements AfterViewInit {
     }
 
     ngAfterViewInit(): void {
-        this.viewInitialized = true;
         this.setupResizeObserver();
         this.setupPageClickCapture();
         this.initializeZoomPan();
         this.updateDimensions();
-
-        // Initial display after view is ready - load unit first if needed
-        const currentUnit = this.unit();
-        if (currentUnit) {
-            currentUnit.load().then(() => {
-                this.displayUnit();
-            });
-        }
+        // Setting this signal triggers the unit effect to re-run, which handles
+        // the initial displayUnit() call with the correct viewStartIndex.
+        this.viewInitialized.set(true);
     }
 
     // ========== Initialization ==========
