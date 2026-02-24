@@ -85,7 +85,7 @@ export class CBTForceUnitState extends ForceUnitState {
             };
         }
         this.locations.set(updated);
-        this.unit.svgService?.evaluateDestroyed();
+        this.unit.evaluateDestroyed();
         this.unit.setModified();
     }
 
@@ -114,7 +114,7 @@ export class CBTForceUnitState extends ForceUnitState {
         });
         if (updated) {
             this.crits.set([...crits]);
-            this.unit.svgService?.evaluateDestroyed();
+            this.unit.evaluateDestroyed();
             this.unit.setModified();
         }
     }

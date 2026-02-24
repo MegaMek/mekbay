@@ -42,14 +42,19 @@ import { UnitSvgService } from '../services/unit-svg.service';
 import { CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './crew-member.model';
 import { CBTForceUnitState } from './cbt-force-unit-state.model';
 import { UnitSvgMekService } from '../services/unit-svg-mek.service';
+import { UnitSvgAeroService } from '../services/unit-svg-aero.service';
 import { UnitSvgInfantryService } from '../services/unit-svg-infantry.service';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { AmmoEquipment, WeaponEquipment } from './equipment.model';
 import { C3NetworkUtil } from '../utils/c3-network.util';
 import { getMotiveModesOptionsByUnit, MotiveModeOption } from './motiveModes.model';
-import { PSRCheck, TurnState } from './turn-state.model';
-import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "../models/common.model";
+import { TurnState } from './turn-state.model';
 import { Sanitizer } from '../utils/sanitizer.util';
+import { UnitTypeRules } from './rules/unit-type-rules';
+import { MekRules } from './rules/mek-rules';
+import { AeroRules } from './rules/aero-rules';
+import { InfantryRules } from './rules/infantry-rules';
+import { VehicleRules } from './rules/vehicle-rules';
 
 /*
  * Author: Drake
@@ -61,6 +66,7 @@ export class CBTForceUnit extends ForceUnit {
     svg: WritableSignal<SVGSVGElement | null> = signal(null); // SVG representation of the unit
     private _svgService: UnitSvgService | null = null;
     private svgServiceInjector: EnvironmentInjector | null = null;
+    private _rules!: UnitTypeRules;
     viewState: ViewportTransform;
     locations?: {
         armor: Map<string, { loc: string; rear: boolean; points?: number }>;
@@ -94,6 +100,27 @@ export class CBTForceUnit extends ForceUnit {
             crew[i] = new CrewMember(i, this);
         }
         this.state.crew.set(crew);
+        this._rules = this.createRules();
+    }
+
+    /** Unit-type-specific game rules (destruction, PSR, systems status for Meks). */
+    get rules(): UnitTypeRules { return this._rules; }
+
+    /** 
+     * Direct write to crits signal, bypassing evaluateDestroyed/setModified. For rules evaluators. 
+     * USE IT CAREFULLY!!!
+     */
+    writeCrits(crits: CriticalSlot[]): void {
+        this.state.crits.set(crits);
+    }
+
+    private createRules(): UnitTypeRules {
+        switch (this.unit.type) {
+            case 'Mek': return new MekRules(this);
+            case 'Aero': return new AeroRules(this);
+            case 'Infantry': return new InfantryRules(this);
+            default: return new VehicleRules(this);
+        }
     }
 
     override destroy() {
@@ -112,7 +139,6 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     override setModified() {
-        this.svgService?.evaluateDestroyed();
         if (this.disabledSaving) return;
         this.state.modified.set(true);
         this.force.emitChanged();
@@ -145,6 +171,9 @@ export class CBTForceUnit extends ForceUnit {
                 switch (this.unit.type) {
                     case 'Mek':
                         this._svgService = new UnitSvgMekService(this, this.unitInitializer);
+                        break;
+                    case 'Aero':
+                        this._svgService = new UnitSvgAeroService(this, this.unitInitializer);
                         break;
                     case 'Infantry':
                         this._svgService = new UnitSvgInfantryService(this, this.unitInitializer);
@@ -196,6 +225,7 @@ export class CBTForceUnit extends ForceUnit {
     setCritSlots(critSlots: CriticalSlot[], initialization: boolean = false) {
         this.state.crits.set(critSlots);
         if (!initialization) {
+            this.evaluateDestroyed();
             this.setModified();
         }
     }
@@ -288,6 +318,7 @@ export class CBTForceUnit extends ForceUnit {
     setLocations(locations: Record<string, LocationData>, initialization: boolean = false) {
         this.state.locations.set(locations);
         if (!initialization) {
+            this.evaluateDestroyed();
             this.setModified();
         }
     }
@@ -325,6 +356,7 @@ export class CBTForceUnit extends ForceUnit {
             hitsForPsr = Math.ceil(hitsForPsr / 2);
         }
         this.state.turnState().addDmgReceived(hitsForPsr);
+        this.evaluateDestroyed();
         this.setModified();
     }
 
@@ -337,6 +369,7 @@ export class CBTForceUnit extends ForceUnit {
         locations[locKey].armor = hits;
         locations[locKey].pendingArmor = undefined;
         this.state.locations.set({ ...this.state.locations(), [locKey]: locations[locKey] });
+        this.evaluateDestroyed();
         this.setModified();
     }
 
@@ -366,6 +399,7 @@ export class CBTForceUnit extends ForceUnit {
         this.state.locations.set({ ...this.state.locations(), [loc]: locations[loc] });
         this.state.turnState().addDmgReceived(hits);
         this.state.turnState().evaluateLegDestroyed(loc, hits);
+        this.evaluateDestroyed();
         this.setModified();
     }
 
@@ -377,6 +411,7 @@ export class CBTForceUnit extends ForceUnit {
         locations[loc].internal = hits;
         locations[loc].pendingInternal = undefined;
         this.state.locations.set({ ...this.state.locations(), [loc]: locations[loc] });
+        this.evaluateDestroyed();
         this.setModified();
     }
 
@@ -655,161 +690,27 @@ export class CBTForceUnit extends ForceUnit {
         });
         this.state.inventory.set([...inventory]);
         this.state.resetTurnState();
+        this.evaluateDestroyed();
         this.setModified();
+    }
+
+    /**
+     * Evaluates whether the unit should be marked destroyed. Delegates to unit-type rules.
+     */
+    public evaluateDestroyed(): void {
+        if (!this.isLoaded()) return;
+        this._rules.evaluateDestroyed();
     }
 
     public getAvailableMotiveModes(): MotiveModeOption[] {
         return getMotiveModesOptionsByUnit(this.getUnit(), this.turnState().airborne() ?? false);
     }
 
-    PSRModifiers = computed<{modifier: number, modifiers: PSRCheck[]}>(() => {
-        const ignoreLeg = new Set<string>();
-        let preExisting = 0;
-        const modifiers: PSRCheck[] = [];
+    /** Delegates to unit-type rules. Non-Mek types return { modifier: 0, modifiers: [] }. */
+    PSRModifiers = computed(() => this._rules.PSRModifiers());
 
-        let isFourLegged = false;
-        let undamagedLegs = true;
-        // Calculate pre-existing leg destruction modifiers. If a leg is gone, is gone.
-        this.locations?.internal?.forEach((_value, loc) => {
-            if (!LEG_LOCATIONS.has(loc)) return; // Only consider leg locations
-            if (!isFourLegged && FOUR_LEGGED_LOCATIONS.has(loc)) {
-                isFourLegged = true;
-            }
-            if (this.isInternalLocDestroyed(loc)) {
-                undamagedLegs = false;
-                ignoreLeg.add(loc); // Track destroyed legs, we ignore further modifiers on that leg
-                preExisting += 5;
-                modifiers.push({
-                    pilotCheck: 5,
-                    reason: 'Leg Destroyed'
-                });
-            }
-        });
-        if (isFourLegged && undamagedLegs) {
-            preExisting -= 2; // Four-legged unit with all legs intact gets -2 modifier
-            modifiers.push({
-                pilotCheck: -2  ,
-                reason: "Four-legged 'Mech with all legs"
-            });
-        }
-        // Calculate current turn modifiers
-        let ignorePreExistingGyro = false;
-        let currentModifiers = 0;
-        const turnState = this.turnState();
-        const phasePSRs = turnState.getPSRChecks();
-        phasePSRs.forEach((check) => {
-            if (check.pilotCheck === undefined) return; // No fall check, skip
-            if (check.loc) {
-                if (ignoreLeg.has(check.loc)) {
-                    return; // Ignore this leg for further calculations
-                }
-            }
-            currentModifiers += check.pilotCheck;
-            if (check.legFilter) {
-                ignoreLeg.add(check.legFilter); // Ignore this leg for further calculations
-            }
-            if (check.ignorePreExistingGyro) {
-                ignorePreExistingGyro = true;
-            }
-            modifiers.push(check);
-        });
-
-        // Calculate pre-existing modifiers for hips and leg actuators destroyed the previous turns
-        const critSlots = this.getCritSlots();
-        const hasAESinLegs = critSlots.some(slot => slot.name && slot.loc && !slot.destroyed && LEG_LOCATIONS.has(slot.loc) && slot.name.includes('AES'));
-        const hasAESinLegsDestroyed = critSlots.some(slot => slot.name && slot.loc && slot.destroyed && LEG_LOCATIONS.has(slot.loc) && slot.name.includes('AES'));
-        if (hasAESinLegs && !hasAESinLegsDestroyed) {
-            preExisting -= 2; // AES in legs intact gives -2 modifier
-            modifiers.push({
-                pilotCheck: -2,
-                reason: "'Mech mounts AES in its legs"
-            });
-        }
-        const hardenedArmor = this.getUnit().armorType === 'Hardened';
-        if (hardenedArmor) {
-            preExisting += 1; // Hardened armor gives +1 modifier
-            modifiers.push({
-                pilotCheck: 1,
-                reason: "'Mech mounts Hardened Armor"
-            });
-        }
-        const modularArmorPanelsCount = critSlots.filter(slot => slot.name && slot.name.includes('Modular Armor')).length;
-        if (modularArmorPanelsCount > 0) {
-            const destroyedModularArmorPanelsCount = critSlots.filter(slot => slot.name && slot.name.includes('Modular Armor') && (slot.destroyed || ((slot.consumed ?? 0) >= 10))).length;
-            if (destroyedModularArmorPanelsCount < modularArmorPanelsCount) {
-                preExisting += 1; // Modular armor gives +1 modifier (until destroyed or fully consumed)
-                modifiers.push({
-                    pilotCheck: 1,
-                    reason: "'Mech mounts Modular Armor"
-                });
-            }
-        }
-        const hasSmallOrTorsoCockpit = critSlots.some(slot => slot.name && slot.loc 
-            && ((slot.name.includes('Cockpit') && slot.name.includes('Small'))
-                || (slot.name.includes('Command') && slot.name.includes('Small'))) ) 
-            || critSlots.some(slot => slot.name && slot.loc && slot.loc === 'CT' && slot.name.includes('Cockpit'));
-        if (hasSmallOrTorsoCockpit) {
-            preExisting += 1; // Small or Torso cockpit gives +1 modifier
-            modifiers.push({
-                pilotCheck: +1,
-                reason: "'Mech mounts small or torso-mounted cockpit"
-            });
-        }
-        const destroyedHips = critSlots.filter(slot => slot.name && slot.loc && slot.destroyed && LEG_LOCATIONS.has(slot.loc) && !ignoreLeg.has(slot.loc) && slot.name.includes('Hip'));
-        for (const hip of destroyedHips) {
-            if (!hip.loc) continue;
-            preExisting += 2;
-            modifiers.push({
-                pilotCheck: 2,
-                reason: 'Hip Destroyed'
-            });
-            ignoreLeg.add(hip.loc); // Track destroyed hip locations, we ignore further modifiers on that leg
-        }
-        const relevantDestroyedLegActuatorsCount = critSlots.filter(slot => {
-            if (!slot.loc || !slot.name || !slot.destroyed) return false;
-            if (!LEG_LOCATIONS.has(slot.loc)) return false;
-            if (ignoreLeg.has(slot.loc)) return false;
-            if (!slot.name.includes('Foot') && !slot.name.includes('Leg')) return false;
-            return true;
-        }).length;
-        preExisting += relevantDestroyedLegActuatorsCount;
-        if (relevantDestroyedLegActuatorsCount > 0) {
-            modifiers.push({
-                pilotCheck: relevantDestroyedLegActuatorsCount,
-                reason: 'Leg Actuator(s) Destroyed'
-            });
-        }
-        if (!ignorePreExistingGyro) {
-            const hasHeavyDutyGyro = critSlots.some(slot => slot.name && slot.name.includes('Heavy Duty') && slot.name.includes('Gyro'));
-            const previouslyDestroyedGyroCount = critSlots.filter(slot => {
-                if (!slot.name || !slot.destroyed) return false;
-                if (!slot.name.includes('Gyro')) return false;
-                return true;
-            }).length;
-            if (hasHeavyDutyGyro && (previouslyDestroyedGyroCount === 1)) {
-                modifiers.push({
-                    pilotCheck: 1,
-                    reason: 'Heavy Duty Gyro first damage'
-                });
-                preExisting += 1;
-            } else if (previouslyDestroyedGyroCount > 0) {
-                preExisting += 3;
-                modifiers.push({
-                    pilotCheck: 3,
-                    reason: 'Gyro damaged'
-                });
-            }
-        }
-        const finalModifier = preExisting + currentModifiers;
-        return {modifier: finalModifier, modifiers: modifiers};
-    });
-
-    PSRTargetRoll = computed<number>(() => {
-        const pilot = this.getCrewMember(0);
-        const piloting = pilot?.getSkill('piloting') ?? 5; // Default to 5 if no pilot
-        const modifiers = this.PSRModifiers();
-        return piloting + modifiers.modifier;
-    });
+    /** Delegates to unit-type rules. Non-Mek types return 0. */
+    PSRTargetRoll = computed(() => this._rules.PSRTargetRoll());
 
     endPhase() {
         this.state.endPhase();

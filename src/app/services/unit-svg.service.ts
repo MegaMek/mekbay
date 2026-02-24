@@ -40,7 +40,8 @@ import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
 import { linkedLocs } from "../models/common.model";
 import { LoggerService } from './logger.service';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
-import { WeaponEquipment } from '../models/equipment.model';
+import { resolveHitModifier, computeLinkedModifiers } from '../models/rules/hit-modifier.util';
+import { formatPilotingDisplay } from '../models/rules/unit-type-rules';
 
 /*
  * Author: Drake
@@ -202,41 +203,7 @@ export class UnitSvgService {
         this.updateHeatDisplay(heat);
         this.updateHeatSinkPips();
         this.updateInventory();
-        this.updateHitMod();
         this.updateTurnState();
-    }
-
-    public evaluateDestroyed() {
-        const svg = this.unit.svg();
-        if (!svg) return;
-        let destroyed = false;
-        if (svg.querySelector('.critLoc')) {
-            this.unit.getCritSlots().forEach(critLoc => {
-                if (!critLoc.el) return;
-                if (critLoc.destroyed) {
-                    if (critLoc.el.getAttribute('destroy')) {
-                        destroyed = true;
-                    }
-                }
-            });
-        }
-        if (this.unit.locations?.internal.has('SI')) {
-            if (this.unit.isInternalLocCommittedDestroyed('SI')) {
-                destroyed = true;
-            }
-        }
-
-        const unitType = this.unit.getUnit().type;
-        if (unitType === 'Naval' || unitType === 'Tank' || unitType === 'VTOL') {
-            this.unit.locations?.internal.forEach((value, loc) => { // If any part is destroyed, the unit is destroyed
-                if (this.unit.isInternalLocCommittedDestroyed(loc)) {
-                    destroyed = true;
-                }
-            });
-        }
-        if (this.unit.destroyed !== destroyed) {
-            this.unit.setDestroyed(destroyed);
-        }
     }
 
     protected updateDestroyedOverlayDisplay(destroyed?: boolean) {
@@ -342,21 +309,11 @@ export class UnitSvgService {
                 const selector = skill.asf ? `#${skill.elementName}` : `#${skill.elementName}${crewId}`;
                 const svgElement = svg.querySelector(selector) as SVGElement | null;
                 if (svgElement) {
-                    const skillValue = member.getSkill(skill.name, skill.asf).toString();
-                    const modifier = PSRMod?.modifier ?? 0;
-                    if (modifier && skill.name === 'piloting') {
-                        const targetPSR = parseInt(skillValue) + modifier;
-                        if (targetPSR > 12) {
-                            svgElement.textContent = `FAIL`;
-                        } else {
-                            if (modifier > 0) {
-                                svgElement.textContent = `${skillValue}+${modifier}`;
-                            } else {
-                                svgElement.textContent = `${skillValue}${modifier}`;
-                            }
-                        }
+                    const skillValue = member.getSkill(skill.name, skill.asf);
+                    if (skill.name === 'piloting') {
+                        svgElement.textContent = formatPilotingDisplay(skillValue, PSRMod?.modifier ?? 0);
                     } else {
-                        svgElement.textContent = skillValue;
+                        svgElement.textContent = skillValue.toString();
                     }
                 }
             });
@@ -685,224 +642,65 @@ export class UnitSvgService {
     }
 
     protected updateHeatSinkPips() {
-        const svg = this.unit.svg();
-        if (!svg) return;
-
-        let hasDoubleHeatsinks = false;
-        const hsTypeElement = svg.getElementById('hsType');
-        if (hsTypeElement) {
-            const hsTypeText = hsTypeElement.textContent?.toLowerCase() ?? '';
-            hasDoubleHeatsinks = hsTypeText.includes('double') || hsTypeText.includes('laser');
-        }
-
-        const heatSinkSlots = this.unit.getCritSlots().filter(slot =>
-            (slot.el && slot.el.hasAttribute('hs') && Number(slot.el.getAttribute('hs')) > 0)
-        );
-
-        const heatsinkGroups = new Map<string, { dissipation: number, slots: CriticalSlot[] }>();
-        heatSinkSlots.forEach(slot => {
-            if (!slot.id) return;
-            if (!heatsinkGroups.has(slot.id)) {
-                const dissipation = Number(slot.el?.getAttribute('hs') ?? 1);
-                heatsinkGroups.set(slot.id, { dissipation, slots: [] });
-            }
-            heatsinkGroups.get(slot.id)!.slots.push(slot);
-        });
-
-        const destroyedSuperCooledMyomer = this.unit.getCritSlots().filter(slot => slot.name && slot.name.includes('SuperCooledMyomer') && slot.destroyed).length;
-
-        let damagedHeatSinkCount = 0;
-        let turnedOffHeatSinkCount = this.unit.getHeat().heatsinksOff || 0;
-        let dissipationFromHittableHeatsinks = 0;
-        let dissipationLostFromDestroyedHittableHeatsinks = 0;
-        heatsinkGroups.forEach(group => {
-            dissipationFromHittableHeatsinks += group.dissipation;
-            if (group.slots.some(slot => slot.destroyed)) {
-                damagedHeatSinkCount++;
-                dissipationLostFromDestroyedHittableHeatsinks += group.dissipation;
-            }
-        });
-
-        // Update hsPips
-        const hsPipsContainer = svg.querySelector('.hsPips');
-        let totalHeatsinkPips = 0;
-
-        if (hsPipsContainer) {
-            const allHsPips = Array.from(hsPipsContainer.querySelectorAll('.pip')) as SVGElement[];
-            totalHeatsinkPips = allHsPips.length;
-            let idx = 0;
-            allHsPips.forEach(pip => {
-                if (idx < (damagedHeatSinkCount + destroyedSuperCooledMyomer)) {
-                    if (!pip.classList.contains('damaged')) {
-                        pip.classList.add('fresh');
-                        pip.classList.add('damaged');
-                    } else {
-                        pip.classList.remove('fresh');
-                    }
-                } else {
-                    if (pip.classList.contains('damaged')) {
-                        pip.classList.add('fresh');
-                        pip.classList.remove('damaged');
-                    } else {
-                        pip.classList.remove('fresh');
-                    }
-                }
-                idx++;
-            });
-
-            idx = 0;
-            allHsPips.reverse().forEach(pip => {
-                if (idx < turnedOffHeatSinkCount) {
-                    if (!pip.classList.contains('disabled')) {
-                        pip.classList.add('disabled');
-                    }
-                } else {
-                    if (pip.classList.contains('disabled')) {
-                        pip.classList.remove('disabled');
-                    }
-                }
-                idx++;
-            });
-
-        }
-        let engineHeatsinksCount = totalHeatsinkPips - heatsinkGroups.size;
-        let healthyHeatsinkPips = totalHeatsinkPips - damagedHeatSinkCount;
-        let totalDissipation = (engineHeatsinksCount * (hasDoubleHeatsinks ? 2 : 1)) + (dissipationFromHittableHeatsinks - dissipationLostFromDestroyedHittableHeatsinks);
-        totalDissipation = Math.max(0, totalDissipation - (turnedOffHeatSinkCount * (hasDoubleHeatsinks ? 2 : 1)));
-
-        if (destroyedSuperCooledMyomer > 0) {
-            totalDissipation -= destroyedSuperCooledMyomer * (hasDoubleHeatsinks ? 2 : 1);
-            totalDissipation = Math.max(0, totalDissipation);
-        }
-
-        const hsCountElement = svg.querySelector('#hsCount');
-        if (hsCountElement) {
-            if (healthyHeatsinkPips !== totalDissipation || (turnedOffHeatSinkCount > 0)) {
-                hsCountElement.textContent = `${healthyHeatsinkPips.toString()} (${totalDissipation.toString()})`;
-            } else {
-                hsCountElement.textContent = totalDissipation.toString();
-            }
-        }
-
-        const critSlots = this.unit.getCritSlots();
-        if (critSlots.length > 0) {
-            const hasPartialWings = critSlots.some(slot => slot.name && slot.name.includes('PartialWing'));
-            if (hasPartialWings) {
-                const destroyedPartialWings = critSlots.filter(slot => slot.name && slot.name.includes('PartialWing') && slot.destroyed).length;
-                const partialWingHeatBonus = Math.max(0, 3 - destroyedPartialWings);
-                totalDissipation += partialWingHeatBonus;
-            }
-        }
-
-        const heatProfileElement = svg.querySelector('#heatProfile');
-        if (heatProfileElement) {
-            const existingText = heatProfileElement.textContent || '';
-            const match = existingText.match(/:\s*(\d+)/);
-            const heatProfileValue = match ? match[1] : '0';
-            heatProfileElement.textContent = `Total Heat (Dissipation): ${heatProfileValue} (${totalDissipation.toString()})`;
-        }
+        // No-op for non-heat units (vehicles, etc.)
     }
 
-    protected updateHitMod() {
-        const svg = this.unit.svg();
-        if (!svg) return;
+    /** Override to inject global fire modifiers (e.g. heat penalties). */
+    protected getGlobalFireModifier(): number { return 0; }
 
-        let heatFireModifier = 0;
-        svg.querySelectorAll('.heatEffect.hot:not(.surpassed)').forEach(effectEl => {
-            const fire = parseInt(effectEl.getAttribute('h-fire') as string);
-            if (fire && fire > heatFireModifier) {
-                heatFireModifier = fire;
-            }
-        });
-        this.unit.getInventory().forEach(entry => {
-            if (!entry.el) return;
-            let additionalModifiers = 0;
-            if (entry.destroyed && entry.el) {
-                const hitModRect = entry.el.querySelector(`:scope > .hitMod-rect`);
-                const hitModText = entry.el.querySelector(`:scope > .hitMod-text`);
-                if (hitModRect && hitModText) {
-                    hitModRect.setAttribute('display', 'none');
-                    hitModText.setAttribute('display', 'none');
-                }
-                return;
-            };
-            additionalModifiers += heatFireModifier;
-            if (entry.linkedWith) {
-                entry.linkedWith.forEach(linkedEntry => {
-                    if (linkedEntry.equipment) {
-                        if (linkedEntry.equipment.flags.has('F_ARTEMIS_V')) {
-                            // If is destroyed, we increase hitmod by +1
-                            if (linkedEntry.destroyed) {
-                                additionalModifiers += 1;
-                            }
-                        }
-                    }
-                });
-            }
-            if (entry.baseHitMod !== 'Vs') {
-                const hitModifier = this.calculateHitModifiers(this.unit, entry, additionalModifiers);
-                if (hitModifier !== null) {
-                    const hitModRect = entry.el.querySelector(`:scope > .hitMod-rect`);
-                    const hitModText = entry.el.querySelector(`:scope > .hitMod-text`);
-                    if (hitModRect && hitModText) {
-                        const weakenedHitMod = (hitModifier > parseInt(entry.baseHitMod || '0'));
-                        if (hitModifier !== 0 || entry.baseHitMod === '+0' || weakenedHitMod) {
-                            hitModRect.setAttribute('display', 'block');
-                            hitModText.setAttribute('display', 'block');
-                            const hitModTextValue = (hitModifier >= 0 ? '+' : '') + hitModifier.toString();
-                            hitModText.textContent = hitModTextValue;
-                        } else {
-                            hitModRect.setAttribute('display', 'none');
-                            hitModText.setAttribute('display', 'none');
-                        }
-                        if (weakenedHitMod) {
-                            entry.el.classList.add('weakenedHitMod');
-                        } else {
-                            entry.el.classList.remove('weakenedHitMod');
-                        }
-                    }
-                }
-            }
-        });
-    }
+    /** Render hit modifier badge for a single inventory entry. Pure presentation. */
+    protected renderHitModEntry(entry: MountedEquipment, hitModifier: number | 'Vs' | null) {
+        if (!entry.el) return;
+        const hitModRect = entry.el.querySelector(`:scope > .hitMod-rect`);
+        const hitModText = entry.el.querySelector(`:scope > .hitMod-text`);
+        if (!hitModRect || !hitModText) return;
 
-    protected calculateHitModifiers(unit: CBTForceUnit, entry: MountedEquipment, additionalModifiers: number): number | null {
-        if (!entry.equipment && !entry.physical) {
-            return null; // No equipment, no hit modifier
+        if (hitModifier === null || entry.destroyed) {
+            hitModRect.setAttribute('display', 'none');
+            hitModText.setAttribute('display', 'none');
+            entry.el.classList.remove('weakenedHitMod');
+            return;
         }
-        if (entry.equipment) {
-            if (entry.equipment.flags.has('F_WEAPON_ENHANCEMENT')) {
-                if (!entry.equipment.flags.has('F_RISC_LASER_PULSE_MODULE')) {
-                    return null; // Skip calculation for weapon enhancements (except RISC Module)
-                }
-            }
-            if (entry.equipment instanceof WeaponEquipment) {
-                if ((entry.equipment.hasNoRange()) && !entry.equipment.flags.has('F_CLUB') && !entry.equipment.flags.has('F_HAND_WEAPON')) {
-                    if (!entry.parent || !entry.parent.equipment || (entry.parent.equipment instanceof WeaponEquipment && entry.parent.equipment.hasNoRange())) {
-                        return null; // No range defined not by itself, not by parent, skip calculate hit modifier
-                    }
-                }
-            }
+
+        if (hitModifier === 'Vs') {
+            hitModRect.setAttribute('display', 'block');
+            hitModText.setAttribute('display', 'block');
+            hitModText.textContent = 'Vs';
+            entry.el.classList.remove('weakenedHitMod');
+            return;
         }
-        let baseHitModValue = parseInt(entry.baseHitMod || '0');
-        if (isNaN(baseHitModValue)) {
-            return null; // Invalid hit modifier
+
+        const weakenedHitMod = hitModifier > parseInt(entry.baseHitMod || '0');
+        if (hitModifier !== 0 || entry.baseHitMod === '+0' || weakenedHitMod) {
+            hitModRect.setAttribute('display', 'block');
+            hitModText.setAttribute('display', 'block');
+            hitModText.textContent = (hitModifier >= 0 ? '+' : '') + hitModifier.toString();
+        } else {
+            hitModRect.setAttribute('display', 'none');
+            hitModText.setAttribute('display', 'none');
         }
-        let hitModValue = baseHitModValue;
-        hitModValue += additionalModifiers;
-        return hitModValue;
+        entry.el.classList.toggle('weakenedHitMod', weakenedHitMod);
     }
 
     protected updateInventory() {
         const svg = this.unit.svg();
         if (!svg) return;
+        const globalFireMod = this.getGlobalFireModifier();
         this.unit.getInventory().forEach(entry => {
             if (!entry.el) return;
+            // Inventory state
             if (entry.destroyed) {
                 entry.el.classList.add('damagedInventory');
                 entry.el.classList.remove('selected');
             } else {
                 entry.el.classList.remove('damagedInventory');
+            }
+            // Hit modifier badge
+            if (entry.destroyed) {
+                this.renderHitModEntry(entry, null);
+            } else {
+                const additionalMod = globalFireMod + computeLinkedModifiers(entry);
+                this.renderHitModEntry(entry, resolveHitModifier(entry, additionalMod));
             }
         });
     }

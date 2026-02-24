@@ -2,9 +2,9 @@ import { computed, signal } from "@angular/core";
 import { ForceUnitState } from "./force-unit-state.model";
 import { getMotiveModeMaxDistance, MotiveModes } from "./motiveModes.model";
 import { CriticalSlot } from "./force-serialization";
-import { UnitSvgMekService } from "../services/unit-svg-mek.service";
-import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "../models/common.model";
+import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "./common.model";
 import { CBTForceUnitState } from "./cbt-force-unit-state.model";
+import { MekRules } from "./rules/mek-rules";
 
 export interface PSRCheck {
     fallCheck?: number;
@@ -419,19 +419,20 @@ export class TurnState {
             return 0;
         }
         const forceUnit = this.unitState.unit;
-        const svgService = forceUnit.svgService;
-        if (svgService instanceof UnitSvgMekService) {
+        const rules = forceUnit.rules;
+        if (rules instanceof MekRules) {
+            const movement = rules.movementState();
             if (moveMode === 'walk') {
-                return svgService.unitState()?.maxWalk ?? 0;
+                return movement?.maxWalk ?? 0;
             }
             if (moveMode === 'run') {
-                return svgService.unitState()?.maxRun ?? 0;
+                return movement?.maxRun ?? 0;
             }
             if (moveMode === 'jump') {
-                return svgService.unitState()?.jump ?? 0;
+                return movement?.jump ?? 0;
             }
             if (moveMode === 'UMU') {
-                return svgService.unitState()?.UMU ?? 0;
+                return movement?.UMU ?? 0;
             }
         }
         const unit = this.unitState.unit.getUnit();

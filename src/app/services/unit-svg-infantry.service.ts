@@ -32,11 +32,13 @@
  */
 
 import { UnitSvgService } from "./unit-svg.service";
+import { InfantryRules } from "../models/rules/infantry-rules";
 
 /*
  * Author: Drake
  */
 export class UnitSvgInfantryService extends UnitSvgService {
+    private get infantryRules(): InfantryRules { return this.unit.rules as InfantryRules; }
     // BattleArmor-specific SVG handling logic goes here
 
     protected override updateAllDisplays() {
@@ -51,35 +53,7 @@ export class UnitSvgInfantryService extends UnitSvgService {
         this.updateCrewDisplay(crew);
         this.updateTroopsDisplay();
         this.updateInventory();
-        this.updateHitMod();
         this.updateTurnState();
-    }
-
-    public override evaluateDestroyed(): void {
-        const svg = this.unit.svg();
-        if (!svg) return;
-
-        const armorLocs = new Set<string>(this.unit.locations?.armor.keys() || []);
-        let allTroopsDestroyed = true;
-        for (const loc of armorLocs) {
-            const locDestroyed = this.unit.isArmorLocCommittedDestroyed(loc);
-            if (!locDestroyed) {
-                allTroopsDestroyed = false;
-                break;
-            }
-        }
-        const structureLocs = new Set<string>(this.unit.locations?.internal.keys() || []);
-        for (const loc of structureLocs) {
-            const locDestroyed = this.unit.isInternalLocCommittedDestroyed(loc);
-            if (!locDestroyed) {
-                allTroopsDestroyed = false;
-                break;
-            }
-        }
-        const destroyed = allTroopsDestroyed;
-        if (this.unit.destroyed !== destroyed) {
-            this.unit.setDestroyed(destroyed);
-        }
     }
 
     protected override updateArmorDisplay(initial: boolean = false) {
@@ -142,18 +116,17 @@ export class UnitSvgInfantryService extends UnitSvgService {
     protected override updateInventory() {
         const svg = this.unit.svg();
         if (!svg) return;
+        // Delegate state computation to the rules layer (handles pending damage too)
+        this.infantryRules.evaluateInventoryDestruction();
         this.unit.getInventory().forEach(entry => {
-            if (entry.el) {
-                if (!entry.el.getAttribute('SSW')) return;
-                entry.destroyed = this.unit.isArmorLocDestroyed('T1');
-                if (entry.destroyed) {
-                    entry.el.classList.add('damagedInventory');
-                    entry.el.classList.remove('interactive');
-                    entry.el.classList.remove('selected');
-                } else {
-                    entry.el.classList.remove('damagedInventory');
-                    entry.el.classList.add('interactive');
-                }
+            if (!entry.el?.getAttribute('SSW')) return;
+            if (entry.destroyed) {
+                entry.el.classList.add('damagedInventory');
+                entry.el.classList.remove('interactive');
+                entry.el.classList.remove('selected');
+            } else {
+                entry.el.classList.remove('damagedInventory');
+                entry.el.classList.add('interactive');
             }
         });
     }

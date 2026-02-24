@@ -31,19 +31,19 @@
  * affiliated with Microsoft.
  */
 
-import { computed } from "@angular/core";
-import { linkedLocs, uidTranslations } from "../models/common.model";
+import { uidTranslations } from "../models/common.model";
 import { CriticalSlot, MountedEquipment } from "../models/force-serialization";
 import { UnitSvgService } from "./unit-svg.service";
 import { AmmoEquipment } from "../models/equipment.model";
+import { MekRules } from "../models/rules/mek-rules";
+import { resolveHitModifier } from "../models/rules/hit-modifier.util";
 
 /*
  * Author: Drake
  */
-type ArmLocation = "LA" | "RA";
-
 export class UnitSvgMekService extends UnitSvgService {
     // Mek-specific SVG handling logic goes here
+    private get mekRules(): MekRules { return this.unit.rules as MekRules; }
 
     protected override updateAllDisplays() {
         if (!this.unit.svg()) return;
@@ -61,7 +61,6 @@ export class UnitSvgMekService extends UnitSvgService {
         this.updateCritSlotDisplay(critSlots);
         this.updateHeatSinkPips();
         this.updateInventory();
-        this.updateHitMod();
         this.updateTurnState();
     }
 
@@ -176,677 +175,170 @@ export class UnitSvgMekService extends UnitSvgService {
         }
     }
 
-    systemsStatus = computed(() => {
-        const critSlots = this.unit.getCritSlots();
-        const hasMASC = critSlots.some(slot => slot.name && slot.name.includes('MASC'));
-        const destroyedMASC = critSlots.some(slot => slot.name && slot.name.includes('MASC') && slot.destroyed);
-        const hasSupercharger = critSlots.some(slot => slot.name && slot.name.includes('Supercharger'));
-        const destroyedSupercharger = critSlots.some(slot => slot.name && slot.name.includes('Supercharger') && slot.destroyed);
-        const jumpJetsCount = critSlots.filter(slot => slot.name && (slot.name.includes('Jump Jet') || slot.name.includes('JumpJet'))).length;
-        const destroyedJumpJetsCount = critSlots.filter(slot => slot.name && (slot.name.includes('Jump Jet') || slot.name.includes('JumpJet')) && slot.destroyed).length;
-        const UMUCount = critSlots.filter(slot => slot.name && (slot.name.includes('UMU'))).length;
-        const destroyedUMUCount = critSlots.filter(slot => slot.name && (slot.name.includes('UMU')) && slot.destroyed).length;
-        const hasPartialWings = critSlots.some(slot => slot.name && slot.name.includes('PartialWing'));
-        const destroyedPartialWings = hasPartialWings ? critSlots.filter(slot => slot.name && slot.name.includes('PartialWing') && slot.destroyed).length : 0;
-        const hasTripleStrengthMyomer = critSlots.some(slot => slot.name && slot.name.includes('Triple Strength Myomer'));
-        const cockpitLoc = critSlots.find(slot => slot.name && slot.name.includes("Cockpit"))?.loc ?? 'HD';
-        const destroyedSensorsCountInHD = critSlots.filter(slot => slot.loc === 'HD' && slot.name && slot.name.includes('Sensor') && slot.destroyed).length;
-        const destroyedSensorsCount = critSlots.filter(slot => slot.name && slot.name.includes('Sensor') && slot.destroyed).length;
-        const destroyedTargetingComputers = critSlots.filter(slot => slot.name && slot.name.includes('Targeting Computer') && slot.destroyed).length;
-
-        const internalLocations = new Set<string>(this.unit.locations?.internal.keys() || []);
-
-        let destroyedLegsCount = 0;
-        let destroyedHipsCount = 0;
-        let destroyedLegActuatorsCount = 0;
-        let destroyedFeetCount = 0;
-        let destroyedLegAES = false;
-
-        const checkLeg = (loc: string) => {
-            if (!destroyedLegAES) {
-                destroyedLegAES = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('AES') && slot.destroyed);
-            }
-            if (this.unit.isInternalLocCommittedDestroyed(loc)) {
-                destroyedLegsCount++;
-            } else {
-                destroyedHipsCount += critSlots.filter(slot => slot.loc === loc && slot.name && slot.name.includes('Hip') && slot.destroyed).length;
-                destroyedLegActuatorsCount += critSlots.filter(slot => slot.loc === loc && slot.name && (slot.name.includes('Upper Leg') || slot.name.includes('Lower Leg')) && slot.destroyed).length;
-                destroyedFeetCount += critSlots.filter(slot => slot.loc === loc && slot.name && slot.name.includes('Foot') && slot.destroyed).length;
-            }
-        };
-
-        if (internalLocations.has('LL') && internalLocations.has('RL')) {
-            // Biped and Tripods
-            checkLeg('LL');
-            checkLeg('RL');
-            if (internalLocations.has('CL')) { // Tripods
-                checkLeg('CL');
-            }
-        } else if (internalLocations.has('RLL') && internalLocations.has('FLL') && internalLocations.has('RRL') && internalLocations.has('FRL')) {
-            // Quadrupeds
-            checkLeg('RLL');
-            checkLeg('FLL');
-            checkLeg('RRL');
-            checkLeg('FRL');
-        }
-
-        let destroyedArmActuatorsCount = { 'LA': 0, 'RA': 0 };
-
-        // Capabilities
-        const getArmsModifiers = (loc: string) => {
-            const destroyedAES = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('AES') && slot.destroyed);
-            if (!this.unit.locations?.armor.has(loc)) {
-                return null;
-            }
-
-            const destroyedShoulder = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Shoulder') && slot.destroyed);
-            const destroyedHand = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Hand') && slot.destroyed);
-            const destroyedUpperArmsCount = critSlots.filter(slot => slot.loc == loc && slot.name && slot.name.includes('Upper Arm') && slot.destroyed).length;
-            const destroyedLowerArmsCount = critSlots.filter(slot => slot.loc == loc && slot.name && slot.name.includes('Lower Arm') && slot.destroyed).length;
-            const destroyedUpperArms = destroyedUpperArmsCount > 0;
-            const destroyedLowerArms = destroyedLowerArmsCount > 0;
-            destroyedArmActuatorsCount[loc as ArmLocation] += destroyedUpperArmsCount + destroyedLowerArmsCount;
-
-            return {
-                canPunch: !destroyedShoulder,
-                canPhysWeapon: !destroyedShoulder && !destroyedHand,
-                pushMod: destroyedShoulder ? 2 : 0,
-                punchMod: (destroyedHand ? 1 : 0) + (destroyedUpperArms ? 2 : 0) + (destroyedLowerArms ? 2 : 0),
-                fireMod: destroyedShoulder ? 4 : (destroyedUpperArms ? 1 : 0) + (destroyedLowerArms ? 1 : 0),
-                physWeaponMod: (destroyedHand ? 2 : 0) + (destroyedUpperArms ? 2 : 0) + (destroyedLowerArms ? 2 : 0),
-                singleArmMod: destroyedAES ? 1 : 0,
-            };
-        };
-        const locationModifiers: { [key: string]: { canPunch: boolean; canPhysWeapon: boolean; pushMod: number; punchMod: number; fireMod: number; physWeaponMod: number; singleArmMod: number; } | null } = {
-            'LA': getArmsModifiers('LA'),
-            'RA': getArmsModifiers('RA'),
-        };
-
-        return {
-            hasMASC,
-            destroyedMASC,
-            hasSupercharger,
-            destroyedSupercharger,
-            jumpJetsCount,
-            destroyedJumpJetsCount,
-            UMUCount,
-            destroyedUMUCount,
-            hasPartialWings,
-            destroyedPartialWings,
-            internalLocations,
-            hasTripleStrengthMyomer,
-            tripleStrengthMyomerMoveBonusActive: (this.unit.getHeat().current >= 9 && hasTripleStrengthMyomer),
-            cockpitLoc,
-            destroyedSensorsCountInHD,
-            destroyedSensorsCount,
-            destroyedTargetingComputers,
-            destroyedLegAES,
-            destroyedLegsCount,
-            destroyedHipsCount,
-            destroyedLegActuatorsCount,
-            destroyedFeetCount,
-            destroyedArmActuatorsCount,
-            locationModifiers: locationModifiers,
-        };
-    });
-
-    unitState = computed(() => {
-        const svg = this.unit.svg();
-        if (!svg) return;
-        const unit = this.unit.getUnit();
-        if (!unit) return;
-        let walkValue = unit.walk;
-        let jumpValue = unit.jump;
-        let UMUValue = unit.umu;
-        let heatMoveModifier = 0;
-        let heatFireModifier = 0;
-        let moveImpaired = false;
-
-        const systemsStatus = this.systemsStatus();
-        const internalLocations = new Set<string>(this.unit.locations?.internal.keys() || []);
-        let runDisabled = false;
-        // Walk MP and crits computation
-        if (internalLocations.has('LL') && internalLocations.has('RL')) {
-            for (let i = 0; i < systemsStatus.destroyedHipsCount; i++) {
-                // Apply hip damage effects
-                walkValue = Math.ceil(walkValue * 0.5);
-                moveImpaired = true;
-            }
-            if (systemsStatus.destroyedLegsCount == 1) {
-                walkValue = 1;
-                moveImpaired = true;
-                runDisabled = true;
-            }
-            if (systemsStatus.destroyedLegsCount >= 2) {
-                walkValue = 0;
-                moveImpaired = true;
-                runDisabled = true;
-            }
-        } else if (internalLocations.has('RLL') && internalLocations.has('FLL') && internalLocations.has('RRL') && internalLocations.has('FRL')) {
-            // Quadrupeds
-            if (systemsStatus.destroyedHipsCount != 0) {
-                moveImpaired = true;
-                walkValue -= systemsStatus.destroyedHipsCount;
-            }
-            if (systemsStatus.destroyedLegsCount === 1) {
-                walkValue = walkValue - 1;
-                moveImpaired = true;
-            }
-            if (systemsStatus.destroyedLegsCount === 2) {
-                walkValue = 1;
-                moveImpaired = true;
-                runDisabled = true;
-            }
-            if (systemsStatus.destroyedLegsCount >= 3) {
-                walkValue = 0;
-                moveImpaired = true;
-                runDisabled = true;
-            }
-        }
-        walkValue -= systemsStatus.destroyedLegActuatorsCount;
-        walkValue -= systemsStatus.destroyedFeetCount;
-        if (systemsStatus.destroyedLegActuatorsCount != 0 || systemsStatus.destroyedFeetCount != 0) {
-            moveImpaired = true;
-        }
-
-        svg.querySelectorAll('.heatEffect.hot:not(.surpassed)').forEach(effectEl => {
-            const move = parseInt(effectEl.getAttribute('h-move') as string);
-            if (move && move < heatMoveModifier) {
-                heatMoveModifier = move;
-                moveImpaired = true;
-            }
-            const fire = parseInt(effectEl.getAttribute('h-fire') as string);
-            if (fire && fire > heatFireModifier) {
-                heatFireModifier = fire;
-            }
-        });
-
-        walkValue += heatMoveModifier;
-        if (heatMoveModifier != 0) {
-            moveImpaired = true;
-        }
-        walkValue = Math.max(0, walkValue);
-        let maxWalkValue = walkValue;
-        if (systemsStatus.tripleStrengthMyomerMoveBonusActive) {
-            // we add it after apply damaged/undamaged
-            walkValue += 2;
-            maxWalkValue += 2;
-        } else if (systemsStatus.hasTripleStrengthMyomer) {
-            maxWalkValue += 1 - heatMoveModifier; // We add back the heatMoveModifier this way we simulate heat at 9+
-        }
-        walkValue = Math.max(0, walkValue);
-
-        // Run MP
-        const hasWorkingMASC = systemsStatus.hasMASC && !systemsStatus.destroyedMASC;
-        const hasWorkingSupercharger = systemsStatus.hasSupercharger && !systemsStatus.destroyedSupercharger;
-        const armorModifierOnRun = (this.unit.getUnit().armorType === 'Hardened') ? -1 : 0;
-        let runValue;
-        let maxRunValue;
-        if (walkValue === 0 || runDisabled) {
-            runValue = 0;
-            maxRunValue = 0;
-        } else {
-            runValue = Math.round(walkValue * 1.5) + armorModifierOnRun;
-            let runValueCoeff = 1.5;
-            if (hasWorkingMASC && hasWorkingSupercharger) {
-                runValueCoeff = 2.5;
-            } else if ((hasWorkingMASC) || (hasWorkingSupercharger)) {
-                runValueCoeff = 2;
-            }
-            maxRunValue = Math.round(walkValue * runValueCoeff) + armorModifierOnRun;
-            if (systemsStatus.hasTripleStrengthMyomer && !systemsStatus.tripleStrengthMyomerMoveBonusActive) {
-                // we recalculate it after apply damaged/undamaged
-                maxRunValue = Math.round((walkValue + (1 - heatMoveModifier)) * runValueCoeff) + armorModifierOnRun;
-            }
-        }
-
-        // Jump MP
-        if (systemsStatus.destroyedJumpJetsCount === systemsStatus.jumpJetsCount) {
-            jumpValue = 0;
-        } else {
-            jumpValue = Math.max(0, jumpValue - systemsStatus.destroyedJumpJetsCount);
-            if (systemsStatus.hasPartialWings) {
-                // I calculate how much JJ bonus I get from the partial wing in Standard conditions
-                const maxWingBonus = this.unit.getUnit().tons <= 55 ? 2 : 1;
-                // I remove 1 JumpMP for each partial wing crit hit up to the maximum bonus given by the wings
-                jumpValue -= Math.min(systemsStatus.destroyedPartialWings, maxWingBonus);
-                const partialWingHeatBonus = Math.max(0, 3 - systemsStatus.destroyedPartialWings);
-                const partialWingsHeatBonusEl = svg.getElementById('partialWingBonus');
-                if (partialWingsHeatBonusEl) {
-                    partialWingsHeatBonusEl.textContent = `(Partial Wing +${partialWingHeatBonus})`;
-                }
-            }
-        }
-
-        if (systemsStatus.destroyedUMUCount === systemsStatus.UMUCount) {
-            UMUValue = 0;
-        } else {
-            UMUValue = Math.max(0, UMUValue - systemsStatus.destroyedUMUCount);
-        }
-
-        const destroyedLA = this.unit.isInternalLocCommittedDestroyed('LA');
-        const destroyedRA = this.unit.isInternalLocCommittedDestroyed('RA');
-
-        let canFire = true;
-        if (systemsStatus.cockpitLoc === 'HD' && systemsStatus.destroyedSensorsCount >= 2) {
-            canFire = false;
-        } else if (systemsStatus.destroyedSensorsCount >= 3) {
-            canFire = false;
-        }
-        let globalFireMod = heatFireModifier;
-        if (systemsStatus.cockpitLoc === 'HD' && systemsStatus.destroyedSensorsCount > 0) {
-            globalFireMod += (systemsStatus.destroyedSensorsCount * 2);
-        } else
-            if (systemsStatus.cockpitLoc !== 'HD' && systemsStatus.destroyedSensorsCountInHD < 2 && systemsStatus.destroyedSensorsCount >= 1) {
-                globalFireMod += systemsStatus.destroyedSensorsCount * 2;
-            }
-
-        let globalMod = 0;
-        if (systemsStatus.cockpitLoc !== 'HD' && systemsStatus.destroyedSensorsCountInHD >= 2) {
-            globalMod += 4;
-        }
-        const locationModifiers = systemsStatus.locationModifiers;
-        return {
-            moveImpaired: moveImpaired,
-            walk: walkValue,
-            maxWalk: maxWalkValue,
-            run: runValue,
-            maxRun: maxRunValue,
-            jumpImpaired: (jumpValue < unit.jump),
-            jump: jumpValue,
-            UMUImpaired: (UMUValue < unit.umu),
-            UMU: UMUValue,
-            canKick: systemsStatus.destroyedLegsCount === 0 && systemsStatus.destroyedHipsCount === 0,
-            kickMod: (systemsStatus.destroyedLegActuatorsCount * 2) + (systemsStatus.destroyedFeetCount) + (systemsStatus.destroyedLegAES ? 1 : 0),
-            canPunch: {
-                'LA': (locationModifiers['LA']?.canPunch && !destroyedLA) || false,
-                'RA': (locationModifiers['RA']?.canPunch && !destroyedRA) || false,
-            },
-            punchMod: {
-                'LA': locationModifiers['LA']?.punchMod || 0,
-                'RA': locationModifiers['RA']?.punchMod || 0,
-            },
-            canPhysWeapon: {
-                'LA': (locationModifiers['LA']?.canPhysWeapon && !destroyedLA) || false,
-                'RA': (locationModifiers['RA']?.canPhysWeapon && !destroyedRA) || false,
-            },
-            physWeaponMod: {
-                'LA': locationModifiers['LA']?.physWeaponMod || 0,
-                'RA': locationModifiers['RA']?.physWeaponMod || 0,
-            },
-            canPush: !destroyedLA && !destroyedRA,
-            canClub: (locationModifiers['LA']?.canPhysWeapon && !destroyedLA) && (locationModifiers['RA']?.canPhysWeapon && !destroyedRA),
-            clubMod: (locationModifiers['LA']?.physWeaponMod || 0) + (locationModifiers['RA']?.physWeaponMod || 0),
-            canFire: canFire,
-            globalFireMod: globalFireMod,
-            fireMod: {
-                'LA': locationModifiers['LA']?.fireMod || 0,
-                'RA': locationModifiers['RA']?.fireMod || 0,
-            },
-            pushMod: (locationModifiers['LA']?.pushMod || 0) + (locationModifiers['RA']?.pushMod || 0),
-            globalMod: globalMod,
-            singleArmMod: {
-                'LA': locationModifiers['LA']?.singleArmMod || 0,
-                'RA': locationModifiers['RA']?.singleArmMod || 0,
-            }
-        };
-    });
-
     protected override updateInventory() {
         const svg = this.unit.svg();
         if (!svg) return;
-        const systemStatus = this.systemsStatus();
-        const unitState = this.unitState();
-        if (!unitState) return;
+        const movement = this.mekRules.movementState();
+        const physical = this.mekRules.physicalCombat();
+        if (!movement || !physical) return;
+
+        // Partial wing heat bonus display
+        if (movement.partialWingHeatBonus !== null) {
+            const el = svg.getElementById('partialWingBonus');
+            if (el) el.textContent = `(Partial Wing +${movement.partialWingHeatBonus})`;
+        }
+
+        // Movement point display
         const mpWalkEl = svg.querySelector('#mpWalk');
         if (mpWalkEl) {
             const mpRunEl = svg.querySelector('#mpRun');
             const mpJumpEl = svg.querySelector('#mpJump');
             const mpAltMode = svg.querySelector('#mp_2');
-            mpWalkEl.classList.toggle('damaged', unitState.moveImpaired);
-            if (unitState.walk != unitState.maxWalk) {
-                mpWalkEl.textContent = `${unitState.walk.toString()} [${unitState.maxWalk.toString()}]`;
-            } else {
-                mpWalkEl.textContent = unitState.walk.toString();
-            }
+            mpWalkEl.classList.toggle('damaged', movement.moveImpaired);
+            mpWalkEl.textContent = (movement.walk !== movement.maxWalk)
+                ? `${movement.walk} [${movement.maxWalk}]` : movement.walk.toString();
             if (mpRunEl) {
-                if (unitState.run != unitState.maxRun) {
-                    mpRunEl.textContent = `${unitState.run.toString()} [${unitState.maxRun.toString()}]`;
-                } else {
-                    mpRunEl.textContent = unitState.run.toString();
-                }
-                mpRunEl.classList.toggle('damaged', unitState.moveImpaired);
+                mpRunEl.textContent = (movement.run !== movement.maxRun)
+                    ? `${movement.run} [${movement.maxRun}]` : movement.run.toString();
+                mpRunEl.classList.toggle('damaged', movement.moveImpaired);
             }
             const elForAltMode = mpJumpEl || mpAltMode;
             if (elForAltMode) {
-                if (unitState.UMU > 0) {
-                    elForAltMode.textContent = unitState.UMU.toString();
-                } else {
-                    elForAltMode.textContent = unitState.jump.toString();
-                }
-                elForAltMode.classList.toggle('damaged', unitState.jumpImpaired || unitState.UMUImpaired);
+                elForAltMode.textContent = (movement.UMU > 0) ? movement.UMU.toString() : movement.jump.toString();
+                elForAltMode.classList.toggle('damaged', movement.jumpImpaired || movement.UMUImpaired);
             }
         }
+
+        // Inventory entries — state from rules, rendering here
+        const entryStates = this.mekRules.computeAllEntryStates();
         this.unit.getInventory().forEach(entry => {
-            if (!entry.el) return;
-            if (!entry.locations) return;
-            let isDamaged = false;
-            let isDisabled = false;
-            let hitMod = 0;
-            if (unitState.globalMod != 0) {
-                hitMod += unitState.globalMod;
-            }
-            if (entry.locations.size === 1) {
-                const singleLoc = Array.from(entry.locations)[0];
-                if (singleLoc in unitState.singleArmMod) {
-                    hitMod += unitState.singleArmMod[singleLoc as ArmLocation];
-                }
-            }
-            if (entry.critSlots && entry.critSlots.filter(slot => slot.destroyed).length > 0) {
-                isDamaged = true;
-            }
+            if (!entry.el || !entry.locations) return;
+
+            const state = entryStates.get(entry);
+            if (!state) return;
+
+            // Physical / melee damage display (reads base values from DOM, computes via rules)
             if (entry.physical) {
                 switch (entry.name) {
                     case 'charge':
-                        const critSlots = this.unit.getCritSlots();
-                        const hasSpikes = critSlots.some(slot => slot.name && slot.name.includes('Spikes'));
-                        if (hasSpikes) {
-                            const spikesCount = critSlots.filter(slot => slot.name && slot.name.includes('Spikes')).length;
-                            const workingSpikesCount = critSlots.filter(slot => slot.name && slot.name.includes('Spikes') && !slot.destroyed).length;
-                            const chargeDamageEl = entry.el.querySelector(`:scope > .damage > text`);
-                            if (chargeDamageEl) {
-                                let originalText = chargeDamageEl.textContent || '';
-                                originalText = originalText.replace(/\+\d+$/, ''); // Remove any previous spike bonus, format is 10/hex+12
-                                if (originalText) {
-                                    let spikesBonusDamage = workingSpikesCount * 2;
-                                    chargeDamageEl.textContent = `${originalText}+${spikesBonusDamage}`;
-                                    chargeDamageEl.classList.toggle('damaged', spikesCount > workingSpikesCount);
-                                }
-                            }
-                        }
+                        this.renderChargeSpikeBonus(entry, physical.spikeBonus);
                         break;
                     case 'punch':
-                        const loc = Array.from(entry.locations)[0]?.toString() as ArmLocation; // We assume punch is only one location
-                        if (loc in unitState.canPunch && !unitState.canPunch[loc]) {
-                            isDisabled = true;
-                        }
-                        if (loc in unitState.punchMod) {
-                            hitMod += unitState.punchMod[loc];
-                        }
-                        const punchDamageEl = entry.el.querySelector(`:scope > .damage > text`);
-                        if (punchDamageEl) {
-                            let originalText = punchDamageEl.getAttribute('originalText');
-                            if (originalText === undefined || originalText === null) {
-                                originalText = punchDamageEl.textContent || '';
-                                punchDamageEl.setAttribute('originalText', originalText);
-                            }
-                            if (originalText) {
-                                let baseDamage = parseInt(originalText);
-                                let damage = baseDamage;
-                                for (let i = 0; i < systemStatus.destroyedArmActuatorsCount[loc]; i++) {
-                                    damage = Math.floor(damage * 0.5);
-                                    if (damage < 1) damage = 1;
-                                }
-                                let maxDamage = damage;
-                                if (systemStatus.hasTripleStrengthMyomer) {
-                                    maxDamage *= 2;
-                                }
-                                if (systemStatus.tripleStrengthMyomerMoveBonusActive) {
-                                    damage *= 2;
-                                }
-                                if (damage !== maxDamage) {
-                                    punchDamageEl.textContent = `${damage} [${maxDamage}]`;
-                                } else {
-                                    punchDamageEl.textContent = `${damage}`;
-                                }
-                                punchDamageEl.classList.toggle('damaged', damage < baseDamage);
-                            }
-
-                        }
+                        this.renderMeleeDamage(entry, 'punch', Array.from(entry.locations)[0]);
                         break;
                     case 'club':
-                        if (!unitState.canClub) {
-                            isDisabled = true;
-                        }
-                        hitMod += unitState.clubMod;
-                        const clubDamageEl = entry.el.querySelector(`:scope > .damage > text`);
-                        if (clubDamageEl) {
-                            let originalText = clubDamageEl.getAttribute('originalText');
-                            if (originalText === undefined || originalText === null) {
-                                originalText = clubDamageEl.textContent || '';
-                                clubDamageEl.setAttribute('originalText', originalText);
-                            }
-                            if (originalText) {
-                                let baseDamage = parseInt(originalText);
-                                let damage = baseDamage;
-                                let maxDamage = baseDamage;
-                                if (systemStatus.hasTripleStrengthMyomer) {
-                                    maxDamage *= 2;
-                                }
-                                if (systemStatus.tripleStrengthMyomerMoveBonusActive) {
-                                    damage *= 2;
-                                }
-                                if (damage !== maxDamage) {
-                                    clubDamageEl.textContent = `${damage} [${maxDamage}]`;
-                                } else {
-                                    clubDamageEl.textContent = `${damage}`;
-                                }
-                                clubDamageEl.classList.toggle('damaged', damage < baseDamage);
-                            }
-                        }
-                        break;
-                    case 'push':
-                        if (!unitState.canPush) {
-                            isDisabled = true;
-                        }
-                        hitMod += unitState.pushMod || 0;
+                        this.renderMeleeDamage(entry, 'club');
                         break;
                     case 'kick [talons]':
                     case 'kick':
-                        if (!unitState.canKick) {
-                            isDisabled = true;
-                        }
-                        hitMod += unitState.kickMod;
-                        const kickDamageEl = entry.el.querySelector(`:scope > .damage > text`);
-                        if (kickDamageEl) {
-                            let originalText = kickDamageEl.getAttribute('originalText');
-                            if (originalText === undefined || originalText === null) {
-                                originalText = kickDamageEl.textContent || '';
-                                kickDamageEl.setAttribute('originalText', originalText);
-                            }
-                            if (originalText) {
-                                let baseDamage = parseInt(originalText); // It should handle properly also situations like "15 [30]" (example: Talons with Triple Strength Myomer)
-                                let damage = baseDamage;
-                                for (let i = 0; i < systemStatus.destroyedLegActuatorsCount; i++) {
-                                    damage = Math.floor(damage * 0.5);
-                                    if (damage < 1) damage = 1;
-                                }
-                                let maxDamage = damage;
-                                if (systemStatus.hasTripleStrengthMyomer) {
-                                    maxDamage *= 2;
-                                }
-                                if (systemStatus.tripleStrengthMyomerMoveBonusActive) {
-                                    damage *= 2;
-                                }
-                                if (damage !== maxDamage) {
-                                    kickDamageEl.textContent = `${damage} [${maxDamage}]`;
-                                } else {
-                                    kickDamageEl.textContent = `${damage}`;
-                                }
-                                kickDamageEl.classList.toggle('damaged', damage < baseDamage);
-                            }
-                        }
+                        this.renderMeleeDamage(entry, 'kick');
                         break;
                 }
-            } else {
-                // Physical weapons are marked as F_CLUB/F_HAND_WEAPON and they have physical=false. 
-                // TODO: make them physical=true
-                if (entry.equipment?.flags.has('F_CLUB') || entry.equipment?.flags.has('F_HAND_WEAPON')) {
-                    const equipDamageEl = entry.el.querySelector(`:scope > .damage > text`);
-                    if (equipDamageEl) {
-                        let originalText = equipDamageEl.getAttribute('originalText');
-                        if (originalText === undefined || originalText === null) {
-                            originalText = equipDamageEl.textContent || '';
-                            equipDamageEl.setAttribute('originalText', originalText);
-                        }
-                        if (originalText) {
-                            let baseDamage = parseInt(originalText);
-                            let damage = baseDamage;
-                            let maxDamage = baseDamage;
-                            if (!entry.equipment?.flags.has('S_FLAIL')) {
-                                if (systemStatus.hasTripleStrengthMyomer) {
-                                    maxDamage *= 2;
-                                }
-                                if (systemStatus.tripleStrengthMyomerMoveBonusActive) {
-                                    damage *= 2;
-                                }
-                            }
-                            
-                            if (damage !== maxDamage) {
-                                equipDamageEl.textContent = `${damage} [${maxDamage}]`;
-                            } else {
-                                equipDamageEl.textContent = `${damage}`;
-                            }
-                            equipDamageEl.classList.toggle('damaged', damage < baseDamage);
-                        }
+            } else if (entry.equipment?.flags.has('F_CLUB') || entry.equipment?.flags.has('F_HAND_WEAPON')) {
+                this.renderMeleeDamage(entry, 'physWeapon', undefined, !!entry.equipment?.flags.has('S_FLAIL'));
+            }
+
+            entry.el.classList.toggle('disabledInventory', state.isDisabled);
+            entry.el.classList.toggle('damagedInventory', state.isDamaged);
+            if (state.isDamaged || state.isDisabled) entry.el.classList.remove('selected');
+
+            // Hit modifier badge
+            this.renderHitModEntry(entry, resolveHitModifier(entry, state.hitMod || 0));
+        });
+    }
+
+    /** Render melee damage text: read base from DOM, compute via rules, write back. */
+    private renderMeleeDamage(entry: MountedEquipment, attackType: 'punch' | 'kick' | 'club' | 'physWeapon', loc?: string, ignoreMyomer?: boolean) {
+        const damageEl = entry.el!.querySelector(`:scope > .damage > text`);
+        if (!damageEl) return;
+        let originalText = damageEl.getAttribute('originalText');
+        if (originalText === undefined || originalText === null) {
+            originalText = damageEl.textContent || '';
+            damageEl.setAttribute('originalText', originalText);
+        }
+        if (!originalText) return;
+        const baseDamage = parseInt(originalText);
+        const { damage, maxDamage } = this.mekRules.computeMeleeDamage(baseDamage, attackType, loc, ignoreMyomer);
+        damageEl.textContent = (damage !== maxDamage) ? `${damage} [${maxDamage}]` : `${damage}`;
+        damageEl.classList.toggle('damaged', damage < baseDamage);
+    }
+
+    /** Render spike bonus on charge damage text. */
+    private renderChargeSpikeBonus(entry: MountedEquipment, spikeBonus: { total: number; working: number } | null) {
+        if (!spikeBonus) return;
+        const damageEl = entry.el!.querySelector(`:scope > .damage > text`);
+        if (!damageEl) return;
+        let originalText = damageEl.textContent || '';
+        originalText = originalText.replace(/\+\d+$/, ''); // Remove any previous spike bonus
+        if (!originalText) return;
+        damageEl.textContent = `${originalText}+${spikeBonus.working * 2}`;
+        damageEl.classList.toggle('damaged', spikeBonus.total > spikeBonus.working);
+    }
+
+    protected override updateHeatSinkPips() {
+        const svg = this.unit.svg();
+        if (!svg) return;
+
+        const dissipation = this.mekRules.heatDissipation();
+        if (!dissipation) return;
+
+        // Update hsPips (visual damaged/fresh/disabled)
+        const hsPipsContainer = svg.querySelector('.hsPips');
+        if (hsPipsContainer) {
+            const allHsPips = Array.from(hsPipsContainer.querySelectorAll('.pip')) as SVGElement[];
+            const damagedPips = dissipation.damagedCount + dissipation.destroyedSuperCooledMyomer;
+            let idx = 0;
+            allHsPips.forEach(pip => {
+                if (idx < damagedPips) {
+                    if (!pip.classList.contains('damaged')) {
+                        pip.classList.add('fresh');
+                        pip.classList.add('damaged');
+                    } else {
+                        pip.classList.remove('fresh');
                     }
-                    entry.locations.forEach(loc => {
-                        if ((loc in unitState.canPhysWeapon) && !unitState.canPhysWeapon[loc as "LA" | "RA"]) {
-                            isDisabled = true;
-                        }
-                        if ((loc in unitState.physWeaponMod)) {
-                            hitMod += unitState.physWeaponMod[loc as "LA" | "RA"];
-                        }
-                    });
                 } else {
-                    if (!unitState.canFire) {
-                        isDisabled = true;
-                    }
-                    if (unitState.globalFireMod) {
-                        hitMod += unitState.globalFireMod;
-                    }
-                    entry.locations.forEach(loc => {
-                        if (loc in unitState.fireMod) {
-                            hitMod += unitState.fireMod[loc as "LA" | "RA"];
-                        }
-                    });
-                    if (systemStatus.destroyedTargetingComputers > 0) {
-                        if (entry.equipment) {
-                            const equipment = (entry.parent && entry.parent.equipment) ? entry.parent.equipment : entry.equipment;
-                            if ((equipment.flags.has('F_ENERGY') || equipment.flags.has('F_BALLISTIC'))
-                                && equipment.flags.has('F_DIRECT_FIRE')) {
-                                hitMod += 1;
-                            }
-                        }
-                    }
-                    if (entry.linkedWith) {
-                        entry.linkedWith.forEach(linkedEntry => {
-                            if (linkedEntry.equipment) {
-                                if (linkedEntry.equipment.flags.has('F_ARTEMIS_V')) {
-                                    // If is destroyed, we increase hitmod by +1
-                                    if (linkedEntry.destroyed) {
-                                        hitMod += 1;
-                                    }
-                                }
-                            }
-                        });
-                    }
-                }
-            }
-            if (entry.states.get('state') === 'jammed') {
-                isDisabled = true;
-            }
-            entry.hitModVariation = hitMod;
-            entry.destroyed = isDamaged;
-            if (entry.el) {
-                entry.el.classList.toggle('disabledInventory', isDisabled);
-                entry.el.classList.toggle('damagedInventory', isDamaged);
-                if (isDamaged || isDisabled) {
-                    entry.el.classList.remove('selected');
-                }
-            }
-        });
-    }
-
-    protected override updateHitMod() {
-        const svg = this.unit.svg();
-        if (!svg) return;
-        this.unit.getInventory().forEach(entry => {
-            if (!entry.el) return;
-            const hitModifier = this.calculateHitModifiers(this.unit, entry, entry.hitModVariation || 0);
-            if (entry.baseHitMod !== 'Vs' && hitModifier !== null) {
-                const hitModRect = entry.el.querySelector(`:scope > .hitMod-rect`);
-                const hitModText = entry.el.querySelector(`:scope > .hitMod-text`);
-                if (hitModRect && hitModText) {
-                    const weakenedHitMod = (hitModifier > parseInt(entry.baseHitMod || '0'));
-                    if (hitModifier !== 0 || entry.baseHitMod === '+0' || weakenedHitMod) {
-                        hitModRect.setAttribute('display', 'block');
-                        hitModText.setAttribute('display', 'block');
-                        const hitModTextValue = (hitModifier >= 0 ? '+' : '') + hitModifier.toString();
-                        hitModText.textContent = hitModTextValue;
+                    if (pip.classList.contains('damaged')) {
+                        pip.classList.add('fresh');
+                        pip.classList.remove('damaged');
                     } else {
-                        hitModRect.setAttribute('display', 'none');
-                        hitModText.setAttribute('display', 'none');
-                    }
-                    if (weakenedHitMod) {
-                        entry.el.classList.add('weakenedHitMod');
-                    } else {
-                        entry.el.classList.remove('weakenedHitMod');
+                        pip.classList.remove('fresh');
                     }
                 }
-            }
-        });
-    }
+                idx++;
+            });
 
-    public override evaluateDestroyed(): void {
-        const svg = this.unit.svg();
-        if (!svg) return;
-
-        const locationsToDestroy = new Set<String>();
-        this.unit.locations?.internal?.forEach((_value, loc) => {
-            if (this.unit.isInternalLocDestroyed(loc)) {
-                locationsToDestroy.add(loc);
-                if (linkedLocs[loc]) {
-                    linkedLocs[loc].forEach(linkedLoc => {
-                        if (this.unit.locations?.internal?.has(linkedLoc)) {
-                            locationsToDestroy.add(linkedLoc);
-                        }
-                    });
-                }
-            }
-        });
-        const critSlots = this.unit.getCritSlotsAsMatrix();
-        this.unit.locations?.internal?.forEach((_value, loc) => {
-            const locDestroyed = locationsToDestroy.has(loc);
-            const critSlotsInLoc = critSlots[loc] || [];
-            if (critSlotsInLoc.length === 0) return;
-            for (const critSlot of critSlotsInLoc) {
-                if (!critSlot) continue;
-                const maxHits = critSlot.armored ? 2 : 1;
-                const destroyed = (locDestroyed || (critSlot.hits ?? 0) >= maxHits);
-                if (!!destroyed !== !!critSlot.destroying) {
-                    critSlot.destroying = destroyed ? Date.now() : undefined;
-                    if (!critSlot.destroying && critSlot.destroyed) {
-                        critSlot.destroyed = critSlot.destroying; // we remove the destruction directly
+            idx = 0;
+            allHsPips.reverse().forEach(pip => {
+                if (idx < dissipation.heatsinksOff) {
+                    if (!pip.classList.contains('disabled')) {
+                        pip.classList.add('disabled');
                     }
-                    this.unit.setCritSlot(critSlot);
+                } else {
+                    if (pip.classList.contains('disabled')) {
+                        pip.classList.remove('disabled');
+                    }
                 }
+                idx++;
+            });
+        }
+
+        // Update heatsink count display
+        const hsCountElement = svg.querySelector('#hsCount');
+        if (hsCountElement) {
+            if (dissipation.healthyPips !== dissipation.totalDissipation || dissipation.heatsinksOff > 0) {
+                hsCountElement.textContent = `${dissipation.healthyPips} (${dissipation.totalDissipation})`;
+            } else {
+                hsCountElement.textContent = dissipation.totalDissipation.toString();
             }
-        });
+        }
 
-        // Check if the unit is destroyed based on its critical slots
-        // Check critSlots with uid="Engine" are damaged
-        const engineHitElems = Array.from(svg.querySelectorAll('[id^="engine_hit_"]'));
-        const engineSlotsRequired = engineHitElems.length;
-        const destroyedEngineSlots = this.unit.getCritSlots().filter(slot => slot.name && slot.destroyed && slot.name.includes("Engine"));
-        const engineBlowed = destroyedEngineSlots.length >= engineSlotsRequired;
-
-        // Check critSlots with uid="Cockpit" are damaged
-        const cockpitDestroyed = this.unit.getCritSlots().some(slot => slot.name && slot.destroyed && slot.name.includes("Cockpit"));
-
-        const destroyed = engineBlowed || cockpitDestroyed;
-        if (this.unit.destroyed !== destroyed) {
-            this.unit.setDestroyed(destroyed);
+        // Update heat profile display
+        const heatProfileElement = svg.querySelector('#heatProfile');
+        if (heatProfileElement) {
+            const existingText = heatProfileElement.textContent || '';
+            const match = existingText.match(/:\s*(\d+)/);
+            const heatProfileValue = match ? match[1] : '0';
+            heatProfileElement.textContent = `Total Heat (Dissipation): ${heatProfileValue} (${dissipation.totalDissipationWithWings})`;
         }
     }
 
