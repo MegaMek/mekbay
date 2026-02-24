@@ -137,7 +137,7 @@ export interface RenameForceDialogResult {
                     </div>
                   </div>
               } @else {
-                <span class="placeholder">No faction selected</span>
+                <span class="placeholder">None</span>
               }
               </button>
               <button

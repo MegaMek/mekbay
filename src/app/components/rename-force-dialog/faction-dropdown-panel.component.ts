@@ -53,7 +53,7 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
                     <div class="faction-header">
                         <span class="faction-name">None</span>
                     </div>
-                    <div class="faction-summary">No faction assigned</div>
+                    <div class="faction-summary">Explicitly opt out of any faction</div>
                 </div>
             </div>
             <hr class="divider"/>
