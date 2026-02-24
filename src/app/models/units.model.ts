@@ -168,6 +168,8 @@ export interface Unit {
     omni: number;
     engine: string;
     engineRating: number;
+    engineHS: number; // Number of HeatSinks on the engine
+    engineHSType: string; // Type of HeatSinks on the engine: "Heat Sink", "Double Heat Sink", "Laser Heat Sink", etc...
     source: string[];
     role: string;
     armorType: string;

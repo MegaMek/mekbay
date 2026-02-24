@@ -28,13 +28,17 @@
     clear: both;
 }
 
-.fluff-content:has(.fluff-image-container:only-child) {
+.fluff-content.image-only {
     display: flex;
     justify-content: center;
     align-items: center;
 }
 
-.fluff-content:has(.fluff-image-container:only-child) .fluff-image-container {
+.fluff-content.image-only::after {
+    display: none;
+}
+
+.fluff-content.image-only .fluff-image-container {
     float: none;
     margin: auto;
     width: 100%;

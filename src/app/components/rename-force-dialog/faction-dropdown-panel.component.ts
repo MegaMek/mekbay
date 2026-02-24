@@ -48,10 +48,13 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
             <div class="dropdown-option none-option"
                  [class.active]="!selectedFactionId()"
                  (click)="onSelectNone()">
-                <div class="faction-header">
-                    <span class="faction-name">None</span>
+                <div class="faction-icon-spacer" aria-hidden="true"></div>
+                <div class="none-option-details">
+                    <div class="faction-header">
+                        <span class="faction-name">None</span>
+                    </div>
+                    <div class="faction-summary">No faction assigned</div>
                 </div>
-                <div class="faction-summary">No faction assigned</div>
             </div>
             <hr class="divider"/>
 
@@ -66,6 +69,8 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
                      (click)="onSelect(item.faction)">
                     @if (item.faction.img) {
                         <img [src]="item.faction.img" class="faction-icon" [alt]="item.faction.name" />
+                    } @else {
+                        <div class="faction-icon-spacer" aria-hidden="true"></div>
                     }
                     <div class="faction-details">
                         <div class="faction-header">
@@ -100,6 +105,8 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
                      (click)="onSelect(item.faction)">
                     @if (item.faction.img) {
                         <img [src]="item.faction.img" class="faction-icon" [alt]="item.faction.name" />
+                    } @else {
+                        <div class="faction-icon-spacer" aria-hidden="true"></div>
                     }
                     <div class="faction-details">
                         <div class="faction-header">
@@ -150,6 +157,7 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
             display: flex;
             align-items: center;
             gap: 10px;
+            border-left: 3px solid transparent;
         }
 
         .dropdown-option:last-child {
@@ -169,8 +177,29 @@ import { FactionDisplayInfo } from '../../utils/force-namer.util';
             }
         }
 
+
         .none-option {
+            padding: 8px 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
             background: rgba(255, 255, 255, 0.03);
+            border-left: 3px solid transparent;
+        }
+
+        .none-option-details {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .faction-icon-spacer {
+            width: 2.4em;
+            height: 2.4em;
+            flex-shrink: 0;
         }
 
         .none-option:hover {
