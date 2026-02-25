@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { EntityType, VTOL_LOCATIONS } from '../../types';
+import { EntityType, VTOL_LOCATIONS, VTOL_LOCATIONS_WITH_TURRET } from '../../types';
 import { VehicleEntity } from './vehicle-entity';
 
 /** VTOL combat vehicle — adds Rotor location. */
@@ -39,9 +39,10 @@ export class VtolEntity extends VehicleEntity {
   override readonly entityType: EntityType = 'VTOL';
 
   override get locationOrder(): readonly string[] {
-    const base = [...VTOL_LOCATIONS];
-    if (this.hasTurret()) base.splice(4, 0, 'Turret'); // Turret before Rotor
-    return base;
+    if (this.hasTurret()) {
+      return VTOL_LOCATIONS_WITH_TURRET;
+    }
+    return VTOL_LOCATIONS;
   }
 
   override get validLocations(): ReadonlySet<string> {

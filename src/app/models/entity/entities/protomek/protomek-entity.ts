@@ -37,6 +37,7 @@ import {
   EntityType,
   EntityValidationMessage,
   PROTO_LOCATIONS,
+  PROTO_LOCATIONS_WITH_MAIN_GUN,
 } from '../../types';
 
 // ============================================================================
@@ -59,9 +60,9 @@ export class ProtoMekEntity extends BaseEntity {
   // ═══════════════════════════════════════════════════════════════════════════
 
   get locationOrder(): readonly string[] {
-    const locs = [...PROTO_LOCATIONS];
-    if (this.tonnage() > 9) locs.push('Main Gun');
-    return locs;
+    return this.tonnage() > 9
+      ? PROTO_LOCATIONS_WITH_MAIN_GUN
+      : PROTO_LOCATIONS;
   }
 
   get validLocations(): ReadonlySet<string> {

@@ -189,9 +189,19 @@ export const FIXED_WING_EQUIP_LOCATIONS = ['Nose', 'Left Wing', 'Right Wing', 'A
 
 export const TANK_LOCATIONS = ['Front', 'Right', 'Left', 'Rear'] as const;
 export const VTOL_LOCATIONS = ['Front', 'Right', 'Left', 'Rear', 'Rotor'] as const;
+export const TANK_LOCATIONS_WITH_TURRET = [...TANK_LOCATIONS, 'Turret'] as const;
+export const TANK_LOCATIONS_WITH_DUAL_TURRET = [...TANK_LOCATIONS, 'Front Turret', 'Rear Turret'] as const;
+export const VTOL_LOCATIONS_WITH_TURRET = ['Front', 'Right', 'Left', 'Rear', 'Turret', 'Rotor'] as const;
+export const LARGE_SUPPORT_TANK_LOCATIONS = [
+  'Front', 'Front Right', 'Front Left',
+  'Right', 'Left',
+  'Rear', 'Rear Right', 'Rear Left',
+] as const;
+export const LARGE_SUPPORT_TANK_LOCATIONS_WITH_TURRET = [...LARGE_SUPPORT_TANK_LOCATIONS, 'Turret'] as const;
 
 export const BA_LOCATIONS = ['Squad'] as const;
 export const PROTO_LOCATIONS = ['Head', 'Torso', 'Right Arm', 'Left Arm', 'Legs'] as const;
+export const PROTO_LOCATIONS_WITH_MAIN_GUN = [...PROTO_LOCATIONS, 'Main Gun'] as const;
 
 export const LARGE_CRAFT_LOCATIONS = ['Nose', 'FLS', 'FRS', 'ALS', 'ARS', 'Aft'] as const;
 export const SMALL_CRAFT_EQUIP_LOCATIONS = ['Nose', 'Left Side', 'Right Side', 'Aft', 'Hull'] as const;

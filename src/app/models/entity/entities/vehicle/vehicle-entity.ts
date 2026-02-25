@@ -38,6 +38,8 @@ import {
   EntityValidationMessage,
   SUSPENSION_FACTOR_TABLE,
   TANK_LOCATIONS,
+  TANK_LOCATIONS_WITH_DUAL_TURRET,
+  TANK_LOCATIONS_WITH_TURRET,
 } from '../../types';
 
 // ============================================================================
@@ -101,10 +103,13 @@ export abstract class VehicleEntity extends BaseEntity {
   // ═══════════════════════════════════════════════════════════════════════════
 
   get locationOrder(): readonly string[] {
-    const base = [...TANK_LOCATIONS];
-    if (this.hasDualTurret()) { base.push('Front Turret', 'Rear Turret'); }
-    else if (this.hasTurret()) { base.push('Turret'); }
-    return base;
+    if (this.hasDualTurret()) {
+      return TANK_LOCATIONS_WITH_DUAL_TURRET;
+    }
+    if (this.hasTurret()) {
+      return TANK_LOCATIONS_WITH_TURRET;
+    }
+    return TANK_LOCATIONS;
   }
 
   get validLocations(): ReadonlySet<string> {

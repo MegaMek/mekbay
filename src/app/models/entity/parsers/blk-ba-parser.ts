@@ -34,6 +34,7 @@
 import { EquipmentMap } from '../../equipment.model';
 import { BattleArmorEntity } from '../entities/infantry/battle-armor-entity';
 import {
+  EntityTechBase,
   LocationArmor,
   locationArmor,
 } from '../types';
@@ -101,7 +102,7 @@ export function parseBlkBA(bb: BuildingBlock, equipmentDb: EquipmentMap): Battle
 function parseBaEquipment(
   bb: BuildingBlock,
   entity: BattleArmorEntity,
-  techBase: string,
+  techBase: EntityTechBase,
   equipmentDb: EquipmentMap,
 ): void {
   // Point Equipment → Squad
@@ -119,7 +120,7 @@ function parseLocationEquipment(
   entity: BattleArmorEntity,
   blkTag: string,
   location: string,
-  techBase: string,
+  techBase: EntityTechBase,
   equipmentDb: EquipmentMap,
 ): void {
   if (!bb.exists(blkTag)) return;

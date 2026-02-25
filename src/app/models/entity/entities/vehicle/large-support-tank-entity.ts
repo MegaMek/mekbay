@@ -31,7 +31,11 @@
  * affiliated with Microsoft.
  */
 
-import { EntityType } from '../../types';
+import {
+  EntityType,
+  LARGE_SUPPORT_TANK_LOCATIONS,
+  LARGE_SUPPORT_TANK_LOCATIONS_WITH_TURRET,
+} from '../../types';
 import { SupportTankEntity } from './support-tank-entity';
 
 /**
@@ -42,12 +46,8 @@ export class LargeSupportTankEntity extends SupportTankEntity {
   override readonly entityType: EntityType = 'LargeSupportTank';
 
   override get locationOrder(): readonly string[] {
-    const base = [
-      'Front', 'Front Right', 'Front Left',
-      'Right', 'Left',
-      'Rear', 'Rear Right', 'Rear Left',
-    ];
-    if (this.hasTurret()) base.push('Turret');
-    return base;
+    return this.hasTurret()
+      ? LARGE_SUPPORT_TANK_LOCATIONS_WITH_TURRET
+      : LARGE_SUPPORT_TANK_LOCATIONS;
   }
 }
