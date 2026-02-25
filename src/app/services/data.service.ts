@@ -51,7 +51,6 @@ import { UserStateService } from './userState.service';
 import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
 import { LoggerService } from './logger.service';
 import { SerializedOperation, LoadOperationEntry, OperationForceInfo } from '../models/operation.model';
-import { DialogsService } from './dialogs.service';
 import { firstValueFrom, Subject } from 'rxjs';
 import { GameSystem, REMOTE_HOST } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';

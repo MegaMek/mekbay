@@ -48,3 +48,7 @@ Thumbs.db
 # Environment files
 .env
 /src/app/build-meta.ts
+/plans
+
+# Test fixtures (large data files)
+/scripts/fixtures/

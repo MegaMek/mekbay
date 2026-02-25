@@ -1,0 +1,74 @@
+/*
+ * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ *
+ * This file is part of MekBay.
+ *
+ * MekBay is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MekBay is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
+ */
+
+import { HandheldWeaponEntity } from '../entities/misc/handheld-weapon-entity';
+import { BuildingBlockWriter } from './building-block-writer';
+import { encodeEquipmentLine } from './equipment-encoder';
+
+// ============================================================================
+// Public API
+// ============================================================================
+
+/**
+ * Serialize a HandheldWeaponEntity to BLK format.
+ */
+export function writeBlkHandheld(entity: HandheldWeaponEntity): string {
+  const w = new BuildingBlockWriter();
+
+  // ── Header ──
+  w.addBlock('BlockVersion', 1);
+  w.addBlock('Version', 'MAM0');
+  w.addBlock('UnitType', 'HandheldWeapon');
+
+  // ── Identity ──
+  w.addBlock('Name', entity.chassis());
+  if (entity.model()) w.addBlock('Model', entity.model());
+  if (entity.mulId() >= 0) w.addBlock('mul id:', entity.mulId());
+
+  // ── Year / Tech / Meta ──
+  w.addBlock('year', entity.year());
+  if (entity.originalBuildYear() >= 0) w.addBlock('originalBuildYear', entity.originalBuildYear());
+  if (entity.techLevel()) w.addBlock('type', entity.techLevel());
+
+  // ── Equipment ──
+  const equipLines = entity.equipment().map(m => encodeEquipmentLine(m, { blkMode: true }));
+  if (equipLines.length > 0) {
+    w.addBlock('Gun Equipment', ...equipLines);
+  }
+
+  // ── Source / Tonnage ──
+  if (entity.source()) w.addBlock('source', entity.source());
+  w.addBlock('tonnage', entity.tonnage());
+
+  return w.toString();
+}
