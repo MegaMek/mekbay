@@ -189,14 +189,23 @@ function matchesTypeFilter(filePath: string): boolean {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Strip comment lines (starting with #) and normalise whitespace for
- * comparison purposes.
+ * Strip comment lines (starting with #), the MTF generator: line, and
+ * normalise whitespace for comparison purposes.
  */
-function stripComments(text: string): string {
-  return text
-    .split(/\r?\n/)
-    .filter(line => !line.trimStart().startsWith('#'))
-    .map(line => line.trimEnd())
+function stripForComparison(text: string): string {
+  const lines = text.split(/\r?\n/);
+  const filtered: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trimStart();
+    // Skip comment lines
+    if (trimmed.startsWith('#')) continue;
+    // Skip MTF generator line (e.g. "generator:MegaMek Suite 0.50.12 on 2026-02-25")
+    if (trimmed.startsWith('generator:')) continue;
+    filtered.push(line.trimEnd());
+  }
+
+  return filtered
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
@@ -257,9 +266,9 @@ function processFile(
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, written, 'utf-8');
 
-  // ── Compare ignoring comments ──
-  const originalStripped = stripComments(content);
-  const writtenStripped = stripComments(written);
+  // ── Compare ignoring comments and generator block ──
+  const originalStripped = stripForComparison(content);
+  const writtenStripped = stripForComparison(written);
 
   if (originalStripped === writtenStripped) {
     return { file: filePath, status: 'match', entityType: entity.entityType };

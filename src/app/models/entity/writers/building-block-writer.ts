@@ -212,7 +212,7 @@ export function writeEngine(
   const isClanEntity = entity.techBase() === 'Clan';
   const isClanEngine = entity.clanEngine();
   if (isClanEngine !== isClanEntity) {
-    w.addBlock('clan_engine', isClanEngine);
+    w.addBlock('clan_engine', isClanEngine ? 1 : 0);
   }
 }
 
