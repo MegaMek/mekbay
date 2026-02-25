@@ -35,9 +35,9 @@ import { ProtoMekEntity } from '../entities/protomek/protomek-entity';
 import {
   ENGINE_TYPE_TO_CODE,
   EngineType,
+  armorTypeToCode,
 } from '../types';
-import { armorTypeToCode } from '../utils/armor-type-parser';
-import { BuildingBlockWriter } from './building-block-writer';
+import { BuildingBlockWriter, writeFluffBlocks } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 
 // ============================================================================
@@ -65,8 +65,6 @@ export function writeBlkProtoMek(entity: ProtoMekEntity): string {
   const w = new BuildingBlockWriter();
 
   // ── Header ──
-  w.addBlock('BlockVersion', 1);
-  w.addBlock('Version', 'MAM0');
   w.addBlock('UnitType', 'ProtoMek');
 
   // ── Identity ──
@@ -138,6 +136,9 @@ export function writeBlkProtoMek(entity: ProtoMekEntity): string {
       w.addBlock(blkTag, ...lines);
     }
   }
+
+  // ── Fluff ──
+  writeFluffBlocks(w, entity.fluff());
 
   // ── Source / Tonnage ──
   if (entity.source()) w.addBlock('source', entity.source());

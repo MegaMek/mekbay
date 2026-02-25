@@ -41,7 +41,7 @@ import {
   HEAT_SINK_TYPE_TO_CODE,
   HeatSinkType,
 } from '../types';
-import { BuildingBlockWriter } from './building-block-writer';
+import { BuildingBlockWriter, writeFluffBlocks } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 
 // ============================================================================
@@ -80,8 +80,6 @@ export function writeBlkAero(entity: AeroEntity): string {
   let unitType = 'Aero';
   if (entity instanceof FixedWingSupportEntity)  unitType = 'FixedWingSupport';
   else if (entity instanceof ConvFighterEntity)  unitType = 'ConvFighter';
-  w.addBlock('BlockVersion', 1);
-  w.addBlock('Version', 'MAM0');
   w.addBlock('UnitType', unitType);
 
   // ── Identity ──
@@ -153,6 +151,9 @@ export function writeBlkAero(entity: AeroEntity): string {
   if (entity.structuralIntegrity() > 0) {
     w.addBlock('structural_integrity', entity.structuralIntegrity());
   }
+
+  // ── Fluff ──
+  writeFluffBlocks(w, entity.fluff());
 
   // ── Source / Tonnage ──
   if (entity.source()) w.addBlock('source', entity.source());

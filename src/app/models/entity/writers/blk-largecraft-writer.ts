@@ -35,14 +35,14 @@ import { JumpShipEntity } from '../entities/largecraft/jumpship-entity';
 import { WarShipEntity } from '../entities/largecraft/warship-entity';
 import { SpaceStationEntity } from '../entities/largecraft/space-station-entity';
 import {
+    armorTypeToCode,
   ENGINE_TYPE_TO_CODE,
   EngineType,
   HEAT_SINK_TYPE_TO_CODE,
   HeatSinkType,
   LARGE_CRAFT_LOCATIONS,
 } from '../types';
-import { armorTypeToCode } from '../utils/armor-type-parser';
-import { BuildingBlockWriter } from './building-block-writer';
+import { BuildingBlockWriter, writeFluffBlocks } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 
 // ============================================================================
@@ -81,8 +81,6 @@ export function writeBlkLargeCraft(entity: JumpShipEntity): string {
   else                                      unitType = 'JumpShip';
 
   // ── Header ──
-  w.addBlock('BlockVersion', 1);
-  w.addBlock('Version', 'MAM0');
   w.addBlock('UnitType', unitType);
 
   // ── Identity ──
@@ -166,6 +164,9 @@ export function writeBlkLargeCraft(entity: JumpShipEntity): string {
       w.addBlock(blkTag, ...lines);
     }
   }
+
+  // ── Fluff ──
+  writeFluffBlocks(w, entity.fluff());
 
   // ── Source / Tonnage ──
   if (entity.source()) w.addBlock('source', entity.source());

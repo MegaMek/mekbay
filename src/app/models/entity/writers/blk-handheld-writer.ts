@@ -32,7 +32,7 @@
  */
 
 import { HandheldWeaponEntity } from '../entities/misc/handheld-weapon-entity';
-import { BuildingBlockWriter } from './building-block-writer';
+import { BuildingBlockWriter, writeFluffBlocks } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 
 // ============================================================================
@@ -46,8 +46,6 @@ export function writeBlkHandheld(entity: HandheldWeaponEntity): string {
   const w = new BuildingBlockWriter();
 
   // ── Header ──
-  w.addBlock('BlockVersion', 1);
-  w.addBlock('Version', 'MAM0');
   w.addBlock('UnitType', 'HandheldWeapon');
 
   // ── Identity ──
@@ -65,6 +63,9 @@ export function writeBlkHandheld(entity: HandheldWeaponEntity): string {
   if (equipLines.length > 0) {
     w.addBlock('Gun Equipment', ...equipLines);
   }
+
+  // ── Fluff ──
+  writeFluffBlocks(w, entity.fluff());
 
   // ── Source / Tonnage ──
   if (entity.source()) w.addBlock('source', entity.source());

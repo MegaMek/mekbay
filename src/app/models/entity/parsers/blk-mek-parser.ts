@@ -31,7 +31,6 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentMap } from '../../equipment.model';
 import { BipedMekEntity } from '../entities/mek/biped-mek-entity';
 import { LamEntity } from '../entities/mek/lam-entity';
 import { MekEntity } from '../entities/mek/mek-entity';
@@ -42,14 +41,16 @@ import {
   EntityMountedEquipment,
   HeatSinkType,
   LocationArmor,
+  armorTypeFromCode,
+  engineTypeFromCode,
   locationArmor,
+  structureTypeFromCode,
 } from '../types';
-import { armorTypeFromCode, structureTypeFromCode } from '../utils/armor-type-parser';
-import { engineTypeFromCode } from '../utils/engine-type-parser';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
-import { parseEquipmentLine, resolveEquipment } from './equipment-resolver';
+import { parseEquipmentLine } from './equipment-resolver';
+import { ParseContext } from './parse-context';
 
 // ============================================================================
 // BLK Armor Array Order
@@ -107,7 +108,7 @@ const BLK_CRIT_QUAD = [
  * Equipment mounts are the single canonical model — crit positions are
  * stored as `placements` on each mount.
  */
-export function parseBlkMek(bb: BuildingBlock, equipmentDb: EquipmentMap): MekEntity {
+export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
   resetMountIdCounter();
 
   // Determine chassis type
@@ -120,7 +121,7 @@ export function parseBlkMek(bb: BuildingBlock, equipmentDb: EquipmentMap): MekEn
   else                                      entity = new BipedMekEntity();
 
   // ── Base parsing ──
-  parseBaseBlk(bb, entity, equipmentDb);
+  parseBaseBlk(bb, entity, ctx);
   const techBase = getBlkTechBase(bb);
 
   // ── Engine ──
@@ -198,7 +199,7 @@ export function parseBlkMek(bb: BuildingBlock, equipmentDb: EquipmentMap): MekEn
       if (isSystemSlotName(raw)) continue;
 
       const parsed = parseEquipmentLine(raw);
-      const resolved = resolveEquipment(parsed.name, techBase, equipmentDb);
+      const resolved = ctx.resolveEquipment(parsed.name, techBase, critTag);
 
       equipmentList.push({
         mountId: generateMountId(),

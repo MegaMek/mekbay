@@ -31,7 +31,6 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentMap } from '../../equipment.model';
 import { InfantryEntity } from '../entities/infantry/infantry-entity';
 import {
   INFANTRY_SPECIALIZATION_FROM_BIT,
@@ -40,7 +39,8 @@ import {
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
-import { parseEquipmentLine, resolveEquipment } from './equipment-resolver';
+import { parseEquipmentLine } from './equipment-resolver';
+import { ParseContext } from './parse-context';
 
 // ============================================================================
 // Public API
@@ -49,12 +49,12 @@ import { parseEquipmentLine, resolveEquipment } from './equipment-resolver';
 /**
  * Parse a BLK file for a conventional Infantry platoon.
  */
-export function parseBlkInfantry(bb: BuildingBlock, equipmentDb: EquipmentMap): InfantryEntity {
+export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): InfantryEntity {
   resetMountIdCounter();
   const entity = new InfantryEntity();
 
   // ── Base parsing ──
-  parseBaseBlk(bb, entity, equipmentDb);
+  parseBaseBlk(bb, entity, ctx);
   const techBase = getBlkTechBase(bb);
 
   // ── Motion type ──
@@ -100,7 +100,7 @@ export function parseBlkInfantry(bb: BuildingBlock, equipmentDb: EquipmentMap): 
       if (!line) continue;
 
       const parsed = parseEquipmentLine(line);
-      const resolved = resolveEquipment(parsed.name, techBase, equipmentDb);
+      const resolved = ctx.resolveEquipment(parsed.name, techBase, 'Field Guns Equipment');
 
       entity.addEquipment({
         mountId: generateMountId(),

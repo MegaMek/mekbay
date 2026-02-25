@@ -31,18 +31,18 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentMap } from '../../equipment.model';
 import { BattleArmorEntity } from '../entities/infantry/battle-armor-entity';
 import {
   EntityTechBase,
   LocationArmor,
+  armorTypeFromCode,
   locationArmor,
 } from '../types';
-import { armorTypeFromCode } from '../utils/armor-type-parser';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
-import { parseEquipmentLine, resolveEquipment } from './equipment-resolver';
+import { parseEquipmentLine } from './equipment-resolver';
+import { ParseContext } from './parse-context';
 
 // ============================================================================
 // Public API
@@ -56,12 +56,12 @@ import { parseEquipmentLine, resolveEquipment } from './equipment-resolver';
  *   - `Trooper 1 Equipment` … `Trooper N Equipment` → per-trooper equipment
  *   - Equipment lines may have `:Body`, `:LA`, `:RA`, `:Turret` suffixes for BA mount location
  */
-export function parseBlkBA(bb: BuildingBlock, equipmentDb: EquipmentMap): BattleArmorEntity {
+export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEntity {
   resetMountIdCounter();
   const entity = new BattleArmorEntity();
 
   // ── Base parsing ──
-  parseBaseBlk(bb, entity, equipmentDb);
+  parseBaseBlk(bb, entity, ctx);
   const techBase = getBlkTechBase(bb);
 
   // ── BA-specific fields ──
@@ -91,7 +91,7 @@ export function parseBlkBA(bb: BuildingBlock, equipmentDb: EquipmentMap): Battle
   }
 
   // ── Squad / Trooper Equipment ──
-  parseBaEquipment(bb, entity, techBase, equipmentDb);
+  parseBaEquipment(bb, entity, techBase, ctx);
 
   return entity;
 }
@@ -103,16 +103,19 @@ function parseBaEquipment(
   bb: BuildingBlock,
   entity: BattleArmorEntity,
   techBase: EntityTechBase,
-  equipmentDb: EquipmentMap,
+  ctx: ParseContext,
 ): void {
   // Point Equipment → Squad
-  parseLocationEquipment(bb, entity, 'Point Equipment', 'Squad', techBase, equipmentDb);
+  parseLocationEquipment(bb, entity, 'Point Equipment', 'Squad', techBase, ctx);
 
   // Trooper N Equipment
   for (let i = 1; i <= 6; i++) {
     const tag = `Trooper ${i} Equipment`;
-    parseLocationEquipment(bb, entity, tag, `Trooper ${i}`, techBase, equipmentDb);
+    parseLocationEquipment(bb, entity, tag, `Trooper ${i}`, techBase, ctx);
   }
+
+  // Slotless equipment → location 'None' (equipment not assigned to a specific trooper)
+  parseLocationEquipment(bb, entity, 'slotless_equipment', 'None', techBase, ctx);
 }
 
 function parseLocationEquipment(
@@ -121,7 +124,7 @@ function parseLocationEquipment(
   blkTag: string,
   location: string,
   techBase: EntityTechBase,
-  equipmentDb: EquipmentMap,
+  ctx: ParseContext,
 ): void {
   if (!bb.exists(blkTag)) return;
   const lines = bb.getDataAsString(blkTag);
@@ -147,7 +150,7 @@ function parseLocationEquipment(
     if (equipLine.endsWith(':APM'))  { isAPM = true; equipLine = equipLine.slice(0, -4); }
 
     const parsed = parseEquipmentLine(equipLine);
-    const resolved = resolveEquipment(parsed.name, techBase, equipmentDb);
+    const resolved = ctx.resolveEquipment(parsed.name, techBase, blkTag);
 
     entity.addEquipment({
       mountId: generateMountId(),

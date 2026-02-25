@@ -34,6 +34,7 @@
 import { EquipmentMap } from '../equipment.model';
 import { BaseEntity } from './base-entity';
 import { BuildingBlock } from './parsers/building-block';
+import { EquipmentFallbackFn, ParseContext, ParseDiagnostic } from './parsers/parse-context';
 import { parseMtf } from './parsers/mtf-parser';
 import { parseBlkMek } from './parsers/blk-mek-parser';
 import { parseBlkAero } from './parsers/blk-aero-parser';
@@ -46,6 +47,12 @@ import { parseBlkDropShip } from './parsers/blk-dropship-parser';
 import { parseBlkLargeCraft } from './parsers/blk-largecraft-parser';
 import { parseBlkHandheld } from './parsers/blk-handheld-parser';
 
+/** Result of parsing a unit file. */
+export interface ParseResult {
+  entity: BaseEntity;
+  diagnostics: ParseDiagnostic[];
+}
+
 /**
  * Unified entry point for parsing any MegaMek unit file (.mtf or .blk).
  *
@@ -55,35 +62,41 @@ import { parseBlkHandheld } from './parsers/blk-handheld-parser';
  * @param content  Raw file content as a string
  * @param fileName File name (used to determine format by extension)
  * @param equipmentDb Equipment lookup map for name resolution
- * @returns Fully-hydrated entity subclass instance
+ * @param equipmentFallback Optional callback for custom/remote equipment lookup
+ * @returns Parsed entity and accumulated diagnostics
  * @throws Error if the file format or unit type is unsupported
  */
 export function parseEntity(
   content: string,
   fileName: string,
   equipmentDb: EquipmentMap,
-): BaseEntity {
+  equipmentFallback?: EquipmentFallbackFn | null,
+): ParseResult {
+  const ctx = new ParseContext(fileName, equipmentDb, equipmentFallback);
   const lowerName = fileName.toLowerCase();
+
+  let entity: BaseEntity;
 
   // ── MTF format (Mek only) ──
   if (lowerName.endsWith('.mtf')) {
-    return parseMtf(content, equipmentDb);
+    entity = parseMtf(content, ctx);
   }
-
   // ── BLK format (all types) ──
-  if (lowerName.endsWith('.blk')) {
+  else if (lowerName.endsWith('.blk')) {
     const bb = new BuildingBlock(content);
-    return parseBlk(bb, equipmentDb);
+    entity = parseBlk(bb, ctx);
+  } else {
+    throw new Error(`Unsupported file format: ${fileName}`);
   }
 
-  throw new Error(`Unsupported file format: ${fileName}`);
+  return { entity, diagnostics: ctx.diagnostics };
 }
 
 /**
  * Dispatch a parsed BuildingBlock to the appropriate type-specific parser
  * based on the `<UnitType>` block.
  */
-function parseBlk(bb: BuildingBlock, equipmentDb: EquipmentMap): BaseEntity {
+function parseBlk(bb: BuildingBlock, ctx: ParseContext): BaseEntity {
   const unitType = bb.getFirstString('UnitType').trim();
 
   switch (unitType) {
@@ -93,23 +106,23 @@ function parseBlk(bb: BuildingBlock, equipmentDb: EquipmentMap): BaseEntity {
     case 'QuadMek':
     case 'QuadVee':
     case 'LAM':
-      return parseBlkMek(bb, equipmentDb);
+      return parseBlkMek(bb, ctx);
 
     // ── Aero fighters ──
     case 'Aero':
     case 'AeroSpaceFighter':
     case 'ConvFighter':
     case 'FixedWingSupport':
-      return parseBlkAero(bb, equipmentDb);
+      return parseBlkAero(bb, ctx);
 
     // ── SmallCraft ──
     case 'SmallCraft':
-      return parseBlkSmallCraft(bb, equipmentDb);
+      return parseBlkSmallCraft(bb, ctx);
 
     // ── DropShip ──
     case 'DropShip':
     case 'Dropship':
-      return parseBlkDropShip(bb, equipmentDb);
+      return parseBlkDropShip(bb, ctx);
 
     // ── Vehicle family ──
     case 'Tank':
@@ -119,19 +132,19 @@ function parseBlk(bb: BuildingBlock, equipmentDb: EquipmentMap): BaseEntity {
     case 'SupportVTOL':
     case 'LargeSupportTank':
     case 'GunEmplacement':
-      return parseBlkVehicle(bb, equipmentDb);
+      return parseBlkVehicle(bb, ctx);
 
     // ── Infantry ──
     case 'Infantry':
-      return parseBlkInfantry(bb, equipmentDb);
+      return parseBlkInfantry(bb, ctx);
 
     // ── BattleArmor ──
     case 'BattleArmor':
-      return parseBlkBA(bb, equipmentDb);
+      return parseBlkBA(bb, ctx);
 
     // ── ProtoMek ──
     case 'ProtoMek':
-      return parseBlkProtoMek(bb, equipmentDb);
+      return parseBlkProtoMek(bb, ctx);
 
     // ── JumpShip / WarShip / SpaceStation ──
     case 'JumpShip':
@@ -139,11 +152,11 @@ function parseBlk(bb: BuildingBlock, equipmentDb: EquipmentMap): BaseEntity {
     case 'WarShip':
     case 'Warship':
     case 'SpaceStation':
-      return parseBlkLargeCraft(bb, equipmentDb);
+      return parseBlkLargeCraft(bb, ctx);
 
     // ── HandheldWeapon ──
     case 'HandheldWeapon':
-      return parseBlkHandheld(bb, equipmentDb);
+      return parseBlkHandheld(bb, ctx);
 
     default:
       throw new Error(`Unsupported BLK UnitType: "${unitType}"`);

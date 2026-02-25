@@ -31,20 +31,20 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentMap } from '../../equipment.model';
 import { DropShipEntity } from '../entities/aero/dropship-entity';
 import {
   DROPSHIP_LOCATIONS,
   HeatSinkType,
   LocationArmor,
+  armorTypeFromCode,
+  engineTypeFromCode,
   locationArmor,
 } from '../types';
-import { armorTypeFromCode } from '../utils/armor-type-parser';
-import { engineTypeFromCode } from '../utils/engine-type-parser';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
-import { parseEquipmentLine, resolveEquipment } from './equipment-resolver';
+import { parseEquipmentLine } from './equipment-resolver';
+import { ParseContext } from './parse-context';
 
 // ============================================================================
 // Equipment location tags
@@ -65,12 +65,12 @@ const DS_EQUIP_TAGS: [string, string][] = [
 /**
  * Parse a BLK file for a DropShip entity.
  */
-export function parseBlkDropShip(bb: BuildingBlock, equipmentDb: EquipmentMap): DropShipEntity {
+export function parseBlkDropShip(bb: BuildingBlock, ctx: ParseContext): DropShipEntity {
   resetMountIdCounter();
   const entity = new DropShipEntity();
 
   // ── Base parsing ──
-  parseBaseBlk(bb, entity, equipmentDb);
+  parseBaseBlk(bb, entity, ctx);
   const techBase = getBlkTechBase(bb);
 
   // ── Movement ──
@@ -133,7 +133,7 @@ export function parseBlkDropShip(bb: BuildingBlock, equipmentDb: EquipmentMap): 
       if (!line) continue;
 
       const parsed = parseEquipmentLine(line);
-      const resolved = resolveEquipment(parsed.name, techBase, equipmentDb);
+      const resolved = ctx.resolveEquipment(parsed.name, techBase, blkTag);
 
       entity.addEquipment({
         mountId: generateMountId(),

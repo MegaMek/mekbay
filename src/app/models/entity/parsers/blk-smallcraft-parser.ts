@@ -31,20 +31,20 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentMap } from '../../equipment.model';
 import { SmallCraftEntity } from '../entities/aero/small-craft-entity';
 import {
   HeatSinkType,
   LocationArmor,
   SMALL_CRAFT_ARMOR_LOCATIONS,
+  armorTypeFromCode,
+  engineTypeFromCode,
   locationArmor,
 } from '../types';
-import { armorTypeFromCode } from '../utils/armor-type-parser';
-import { engineTypeFromCode } from '../utils/engine-type-parser';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
-import { parseEquipmentLine, resolveEquipment } from './equipment-resolver';
+import { parseEquipmentLine } from './equipment-resolver';
+import { ParseContext } from './parse-context';
 
 // ============================================================================
 // SmallCraft equipment location tags
@@ -68,12 +68,12 @@ const SC_EQUIP_TAGS: [string, string][] = [
  * SmallCraft uses different location names than fighters:
  * Left Side / Right Side / Hull instead of Left Wing / Right Wing / Fuselage.
  */
-export function parseBlkSmallCraft(bb: BuildingBlock, equipmentDb: EquipmentMap): SmallCraftEntity {
+export function parseBlkSmallCraft(bb: BuildingBlock, ctx: ParseContext): SmallCraftEntity {
   resetMountIdCounter();
   const entity = new SmallCraftEntity();
 
   // ── Base parsing ──
-  parseBaseBlk(bb, entity, equipmentDb);
+  parseBaseBlk(bb, entity, ctx);
   const techBase = getBlkTechBase(bb);
 
   // ── Movement ──
@@ -128,7 +128,7 @@ export function parseBlkSmallCraft(bb: BuildingBlock, equipmentDb: EquipmentMap)
       if (!line) continue;
 
       const parsed = parseEquipmentLine(line);
-      const resolved = resolveEquipment(parsed.name, techBase, equipmentDb);
+      const resolved = ctx.resolveEquipment(parsed.name, techBase, blkTag);
 
       entity.addEquipment({
         mountId: generateMountId(),

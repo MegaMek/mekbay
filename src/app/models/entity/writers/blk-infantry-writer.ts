@@ -33,7 +33,7 @@
 
 import { InfantryEntity } from '../entities/infantry/infantry-entity';
 import { INFANTRY_SPECIALIZATION_TO_BIT } from '../types';
-import { BuildingBlockWriter } from './building-block-writer';
+import { BuildingBlockWriter, writeFluffBlocks } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 
 // ============================================================================
@@ -47,8 +47,6 @@ export function writeBlkInfantry(entity: InfantryEntity): string {
   const w = new BuildingBlockWriter();
 
   // ── Header ──
-  w.addBlock('BlockVersion', 1);
-  w.addBlock('Version', 'MAM0');
   w.addBlock('UnitType', 'Infantry');
 
   // ── Identity ──
@@ -107,6 +105,9 @@ export function writeBlkInfantry(entity: InfantryEntity): string {
     const lines = fieldGuns.map(m => encodeEquipmentLine(m, { blkMode: true }));
     w.addBlock('Field Guns Equipment', ...lines);
   }
+
+  // ── Fluff ──
+  writeFluffBlocks(w, entity.fluff());
 
   // ── Source / Tonnage ──
   if (entity.source()) w.addBlock('source', entity.source());

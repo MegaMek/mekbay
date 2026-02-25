@@ -31,7 +31,6 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentMap } from '../../equipment.model';
 import { BipedMekEntity } from '../entities/mek/biped-mek-entity';
 import { LamEntity } from '../entities/mek/lam-entity';
 import { MekEntity, MekWithArmsEntity } from '../entities/mek/mek-entity';
@@ -49,11 +48,12 @@ import {
   MekSystemType,
   MountPlacement,
   locationArmor,
+  normalizeSystemManufacturerKey,
 } from '../types';
 import { parseMtfArmor } from '../utils/armor-type-parser';
 import { parseMtfEngine } from '../utils/engine-type-parser';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
-import { resolveEquipment } from './equipment-resolver';
+import { ParseContext } from './parse-context';
 
 // ============================================================================
 // Location normalization — raw MTF strings → canonical location IDs
@@ -147,7 +147,7 @@ const ENGINE_SLOT_NAMES = [
  * stored as `placements` on each mount — the entity's `criticalSlotGrid`
  * computed derives the full grid from these placements + system template.
  */
-export function parseMtf(content: string, equipmentDb: EquipmentMap): MekEntity {
+export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   resetMountIdCounter();
   const lines = content.split(/\r?\n/);
   const header = parseHeader(lines);
@@ -251,7 +251,7 @@ export function parseMtf(content: string, equipmentDb: EquipmentMap): MekEntity 
       } else {
         // New mount
         const mountId = generateMountId();
-        const resolved = resolveEquipment(parsed.name, entity.techBase(), equipmentDb);
+        const resolved = ctx.resolveEquipment(parsed.name, entity.techBase(), locCode);
 
         const mount: EntityMountedEquipment = {
           mountId,
@@ -269,7 +269,7 @@ export function parseMtf(content: string, equipmentDb: EquipmentMap): MekEntity 
           size: parsed.variableSize,
           secondEquipmentId: parsed.secondEquipmentName,
           secondEquipment: parsed.secondEquipmentName
-            ? resolveEquipment(parsed.secondEquipmentName, entity.techBase(), equipmentDb) ?? undefined
+            ? ctx.resolveEquipment(parsed.secondEquipmentName, entity.techBase(), locCode) ?? undefined
             : undefined,
         };
 
@@ -283,7 +283,7 @@ export function parseMtf(content: string, equipmentDb: EquipmentMap): MekEntity 
 
   // ── Nocrit equipment ──
   for (const nocritName of header.nocritEquipment) {
-    const resolved = resolveEquipment(nocritName, entity.techBase(), equipmentDb);
+    const resolved = ctx.resolveEquipment(nocritName, entity.techBase(), 'nocrit');
     entity.addEquipment({
       mountId: generateMountId(),
       equipmentId: nocritName,
@@ -483,7 +483,8 @@ function parseHeader(lines: string[]): MtfHeader {
         const i = value.indexOf(':');
         if (i > 0) {
           if (!h.fluff.systemManufacturers) h.fluff.systemManufacturers = {};
-          h.fluff.systemManufacturers[value.substring(0, i)] = value.substring(i + 1);
+          const rawKey = value.substring(0, i);
+          h.fluff.systemManufacturers[normalizeSystemManufacturerKey(rawKey) ?? rawKey] = value.substring(i + 1);
         }
         break;
       }
@@ -491,7 +492,8 @@ function parseHeader(lines: string[]): MtfHeader {
         const i = value.indexOf(':');
         if (i > 0) {
           if (!h.fluff.systemModels) h.fluff.systemModels = {};
-          h.fluff.systemModels[value.substring(0, i)] = value.substring(i + 1);
+          const rawKey = value.substring(0, i);
+          h.fluff.systemModels[normalizeSystemManufacturerKey(rawKey) ?? rawKey] = value.substring(i + 1);
         }
         break;
       }

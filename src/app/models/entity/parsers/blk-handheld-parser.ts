@@ -31,12 +31,12 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentMap } from '../../equipment.model';
 import { HandheldWeaponEntity } from '../entities/misc/handheld-weapon-entity';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
-import { parseEquipmentLine, resolveEquipment } from './equipment-resolver';
+import { parseEquipmentLine } from './equipment-resolver';
+import { ParseContext } from './parse-context';
 
 // ============================================================================
 // Public API
@@ -48,12 +48,12 @@ import { parseEquipmentLine, resolveEquipment } from './equipment-resolver';
  * HandheldWeapons have a single equipment location: `None`.
  * Equipment is listed under `Gun Equipment`.
  */
-export function parseBlkHandheld(bb: BuildingBlock, equipmentDb: EquipmentMap): HandheldWeaponEntity {
+export function parseBlkHandheld(bb: BuildingBlock, ctx: ParseContext): HandheldWeaponEntity {
   resetMountIdCounter();
   const entity = new HandheldWeaponEntity();
 
   // ── Base parsing ──
-  parseBaseBlk(bb, entity, equipmentDb);
+  parseBaseBlk(bb, entity, ctx);
   const techBase = getBlkTechBase(bb);
 
   // ── Equipment ──
@@ -64,7 +64,7 @@ export function parseBlkHandheld(bb: BuildingBlock, equipmentDb: EquipmentMap): 
       if (!line) continue;
 
       const parsed = parseEquipmentLine(line);
-      const resolved = resolveEquipment(parsed.name, techBase, equipmentDb);
+      const resolved = ctx.resolveEquipment(parsed.name, techBase, 'Gun Equipment');
 
       entity.addEquipment({
         mountId: generateMountId(),

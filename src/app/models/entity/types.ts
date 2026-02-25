@@ -88,6 +88,14 @@ export const ENGINE_TYPE_TO_CODE: Record<EngineType, number> = {
   'Battery': 11, 'Solar': 12, 'External': 13,
 };
 
+export function engineTypeFromCode(code: number): EngineType {
+  return ENGINE_TYPE_FROM_CODE[code] ?? 'Fusion';
+}
+
+export function engineTypeToCode(type: EngineType): number {
+  return ENGINE_TYPE_TO_CODE[type] ?? 0;
+}
+
 // ============================================================================
 // Heat Sinks
 // ============================================================================
@@ -101,6 +109,187 @@ export const HEAT_SINK_TYPE_FROM_CODE: Record<number, HeatSinkType> = {
 export const HEAT_SINK_TYPE_TO_CODE: Record<HeatSinkType, number> = {
   'Single': 0, 'Double': 1, 'Compact': 2, 'Laser': 3,
 };
+
+// ============================================================================
+// Armor Types
+// ============================================================================
+
+/** Map from BLK armor type code → armor name */
+export const ARMOR_TYPE_FROM_CODE: Record<number, string> = {
+  0: 'Standard',
+  1: 'Ferro-Fibrous',
+  2: 'Reactive',
+  3: 'Reflective',
+  4: 'Hardened',
+  5: 'Light Ferro-Fibrous',
+  6: 'Heavy Ferro-Fibrous',
+  7: 'Patchwork',
+  8: 'Stealth',
+  9: 'Ferro-Lamellor',
+  10: 'Primitive',
+  11: 'Commercial',
+  12: 'Industrial',
+  13: 'Heavy Industrial',
+  14: 'Ferro-Fibrous Prototype',
+  15: 'Impact-Resistant',
+  16: 'Heat-Dissipating',
+  17: 'Anti-Penetrative Ablation',
+  18: 'Ballistic-Reinforced',
+  19: 'Ferro-Aluminum',
+  20: 'Ferro-Aluminum Prototype',
+};
+
+/** Reverse map from armor name → BLK code */
+export const ARMOR_TYPE_TO_CODE: Record<string, number> = Object.fromEntries(
+  Object.entries(ARMOR_TYPE_FROM_CODE).map(([code, name]) => [name, parseInt(code, 10)])
+);
+
+export function armorTypeFromCode(code: number): string {
+  return ARMOR_TYPE_FROM_CODE[code] ?? 'Standard';
+}
+
+export function armorTypeToCode(name: string): number {
+  return ARMOR_TYPE_TO_CODE[name] ?? 0;
+}
+
+// ============================================================================
+// Internal Structure Types
+// ============================================================================
+
+export const STRUCTURE_TYPE_FROM_CODE: Record<number, string> = {
+  0: 'Standard',
+  1: 'Endo Steel',
+  2: 'Endo Steel Prototype',
+  3: 'Reinforced',
+  4: 'Composite',
+  5: 'Industrial',
+  6: 'Endo-Composite',
+};
+
+export const STRUCTURE_TYPE_TO_CODE: Record<string, number> = Object.fromEntries(
+  Object.entries(STRUCTURE_TYPE_FROM_CODE).map(([code, name]) => [name, parseInt(code, 10)])
+);
+
+export function structureTypeFromCode(code: number): string {
+  return STRUCTURE_TYPE_FROM_CODE[code] ?? 'Standard';
+}
+
+export function structureTypeToCode(name: string): number {
+  return STRUCTURE_TYPE_TO_CODE[name] ?? 0;
+}
+
+// ============================================================================
+// Gyro Types (Mek)
+// ============================================================================
+
+export const GYRO_TYPE_FROM_CODE: Record<number, string> = {
+  0: 'Standard', 1: 'XL', 2: 'Compact', 3: 'Heavy-Duty', 4: 'None', 5: 'Superheavy',
+};
+
+export function gyroTypeFromCode(code: number): string {
+  return GYRO_TYPE_FROM_CODE[code] ?? 'Standard';
+}
+
+// ============================================================================
+// Cockpit Types (Mek / Aero)
+// ============================================================================
+
+export const MEK_COCKPIT_TYPE_FROM_CODE: Record<number, string> = {
+  0: 'Standard', 1: 'Small', 2: 'Command Console', 3: 'Torso-Mounted',
+  4: 'Dual', 5: 'Industrial', 6: 'Primitive', 7: 'Primitive Industrial',
+  8: 'Superheavy', 9: 'Superheavy Tripod', 10: 'Tripod',
+  11: 'Interface', 12: 'Virtual Reality Piloting Pod', 13: 'QuadVee',
+};
+
+export function mekCockpitTypeFromCode(code: number): string {
+  return MEK_COCKPIT_TYPE_FROM_CODE[code] ?? 'Standard';
+}
+
+// ============================================================================
+// Valid Value Sets (for parser validation)
+// ============================================================================
+
+/** Valid vehicle motion types — derived from SUSPENSION_FACTOR_TABLE keys */
+export const VALID_VEHICLE_MOTION_TYPES = new Set([
+  'Tracked', 'Wheeled', 'Hover', 'WiGE',
+  'Naval', 'Submarine', 'Hydrofoil',
+  'VTOL',
+]);
+
+/** Valid infantry motion types */
+export const VALID_INFANTRY_MOTION_TYPES = new Set([
+  'Leg', 'Motorized', 'Jump', 'Mechanized', 'Submarine',
+  'Hover', 'Wheeled', 'Tracked', 'VTOL',
+]);
+
+/** Valid BA motion types */
+export const VALID_BA_MOTION_TYPES = new Set([
+  'Leg', 'Jump', 'VTOL', 'UMU',
+]);
+
+/** Valid aero motion types */
+export const VALID_AERO_MOTION_TYPES = new Set(['Aerodyne']);
+
+/** Valid DropShip / SmallCraft motion types */
+export const VALID_SPACECRAFT_MOTION_TYPES = new Set(['Aerodyne', 'Spheroid']);
+
+/** Valid fuel types for vehicles */
+export const VALID_FUEL_TYPES = new Set([
+  'PETROCHEMICALS', 'ALCOHOL', 'NATURAL_GAS', 'COAL', 'WOOD',
+  'METHANE', 'KEROSENE', 'DIESEL', 'GASOLINE',
+]);
+
+/** Canonical system manufacturer/model keys (from MegaMek's System enum) */
+export type SystemManufacturerKey = 'CHASSIS' | 'ENGINE' | 'ARMOR' | 'JUMP_JET' | 'COMMUNICATIONS' | 'TARGETING';
+
+/** The 6 canonical keys */
+export const VALID_SYSTEM_MANUFACTURER_KEYS = new Set<SystemManufacturerKey>([
+  'CHASSIS', 'ENGINE', 'ARMOR', 'JUMP_JET', 'COMMUNICATIONS', 'TARGETING',
+]);
+
+/**
+ * Normalize variant key forms to canonical keys.
+ * MegaMek-resaved files always use the uppercase canonical form, but older
+ * hand-edited files or third-party tools might use mixed-case variants.
+ * Returns the canonical key, or `undefined` if unrecognized.
+ */
+export const SYSTEM_MANUFACTURER_KEY_ALIASES: Record<string, SystemManufacturerKey> = {
+  // Canonical (identity)
+  'CHASSIS':        'CHASSIS',
+  'ENGINE':         'ENGINE',
+  'ARMOR':          'ARMOR',
+  'JUMP_JET':       'JUMP_JET',
+  'COMMUNICATIONS': 'COMMUNICATIONS',
+  'TARGETING':      'TARGETING',
+  // Mixed-case variants
+  'JUMPJET':        'JUMP_JET',
+};
+
+export function normalizeSystemManufacturerKey(raw: string): SystemManufacturerKey | undefined {
+  return SYSTEM_MANUFACTURER_KEY_ALIASES[raw];
+}
+
+/** Valid BLK tech-level strings in the `type` block */
+export const VALID_TECH_BASE_STRINGS = new Set([
+  'IS Level 1', 'IS Level 2', 'IS Level 3', 'IS Level 4', 'IS Level 5',
+  'Clan Level 1', 'Clan Level 2', 'Clan Level 3', 'Clan Level 4', 'Clan Level 5',
+  'Mixed (IS Chassis) Level 1', 'Mixed (IS Chassis) Level 2', 'Mixed (IS Chassis) Level 3',
+  'Mixed (IS Chassis) Level 4', 'Mixed (IS Chassis) Level 5',
+  'Mixed (Clan Chassis) Level 1', 'Mixed (Clan Chassis) Level 2', 'Mixed (Clan Chassis) Level 3',
+  'Mixed (Clan Chassis) Level 4', 'Mixed (Clan Chassis) Level 5',
+  'IS Level 2 (Unofficial)', 'IS Level 3 (Unofficial)',
+  'Clan Level 2 (Unofficial)', 'Clan Level 3 (Unofficial)',
+  'Mixed (IS Chassis) Level 2 (Unofficial)', 'Mixed (IS Chassis) Level 3 (Unofficial)',
+  'Mixed (Clan Chassis) Level 2 (Unofficial)', 'Mixed (Clan Chassis) Level 3 (Unofficial)',
+]);
+
+/** Valid BA weight classes */
+export const VALID_BA_WEIGHT_CLASSES = new Set([
+  'PA(L)', 'Light', 'Medium', 'Heavy', 'Assault',
+]);
+
+/** Valid design type codes for DropShips */
+export const VALID_DESIGN_TYPE_CODES = new Set([0, 1]);
 
 // ============================================================================
 // Mek Configuration

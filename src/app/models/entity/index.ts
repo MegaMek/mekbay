@@ -59,14 +59,7 @@ export { parseTechLevel, encodeTechLevel } from './utils/tech-level-parser';
 export type { ParsedTechLevel } from './utils/tech-level-parser';
 export { engineTypeFromCode, engineTypeToCode, parseMtfEngine, formatMtfEngine } from './utils/engine-type-parser';
 export type { MtfEngineInfo } from './utils/engine-type-parser';
-export {
-  armorTypeFromCode,
-  armorTypeToCode,
-  structureTypeFromCode,
-  structureTypeToCode,
-  parseMtfArmor,
-  formatMtfArmor,
-} from './utils/armor-type-parser';
+export { parseMtfArmor, formatMtfArmor } from './utils/armor-type-parser';
 export type { MtfArmorInfo } from './utils/armor-type-parser';
 
 // ── Mek Entities ──
@@ -163,4 +156,9 @@ export { writeBlkHandheld } from './writers/blk-handheld-writer';
 
 // ── Dispatch Entry Points ──
 export { parseEntity } from './parse-entity';
+export type { ParseResult } from './parse-entity';
 export { writeEntity } from './write-entity';
+
+// ── Parse Context ──
+export { ParseContext } from './parsers/parse-context';
+export type { ParseDiagnostic, ParseSeverity, EquipmentFallbackFn } from './parsers/parse-context';

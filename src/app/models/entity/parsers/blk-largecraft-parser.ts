@@ -31,7 +31,6 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentMap } from '../../equipment.model';
 import { JumpShipEntity } from '../entities/largecraft/jumpship-entity';
 import { WarShipEntity } from '../entities/largecraft/warship-entity';
 import { SpaceStationEntity } from '../entities/largecraft/space-station-entity';
@@ -39,14 +38,15 @@ import {
   HeatSinkType,
   LARGE_CRAFT_LOCATIONS,
   LocationArmor,
+  armorTypeFromCode,
+  engineTypeFromCode,
   locationArmor,
 } from '../types';
-import { armorTypeFromCode } from '../utils/armor-type-parser';
-import { engineTypeFromCode } from '../utils/engine-type-parser';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
-import { parseEquipmentLine, resolveEquipment } from './equipment-resolver';
+import { parseEquipmentLine } from './equipment-resolver';
+import { ParseContext } from './parse-context';
 
 // ============================================================================
 // Equipment location tags
@@ -74,7 +74,7 @@ const WARSHIP_EXTRA_EQUIP_TAGS: [string, string][] = [
 /**
  * Parse a BLK file for a JumpShip, WarShip, or SpaceStation entity.
  */
-export function parseBlkLargeCraft(bb: BuildingBlock, equipmentDb: EquipmentMap): JumpShipEntity {
+export function parseBlkLargeCraft(bb: BuildingBlock, ctx: ParseContext): JumpShipEntity {
   resetMountIdCounter();
 
   // ── Determine entity type ──
@@ -88,7 +88,7 @@ export function parseBlkLargeCraft(bb: BuildingBlock, equipmentDb: EquipmentMap)
   }
 
   // ── Base parsing ──
-  parseBaseBlk(bb, entity, equipmentDb);
+  parseBaseBlk(bb, entity, ctx);
   const techBase = getBlkTechBase(bb);
 
   // ── Movement ──
@@ -157,7 +157,7 @@ export function parseBlkLargeCraft(bb: BuildingBlock, equipmentDb: EquipmentMap)
       if (!line) continue;
 
       const parsed = parseEquipmentLine(line);
-      const resolved = resolveEquipment(parsed.name, techBase, equipmentDb);
+      const resolved = ctx.resolveEquipment(parsed.name, techBase, blkTag);
 
       entity.addEquipment({
         mountId: generateMountId(),

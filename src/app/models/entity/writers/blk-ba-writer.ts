@@ -32,8 +32,8 @@
  */
 
 import { BattleArmorEntity } from '../entities/infantry/battle-armor-entity';
-import { armorTypeToCode } from '../utils/armor-type-parser';
-import { BuildingBlockWriter } from './building-block-writer';
+import { armorTypeToCode } from '../types';
+import { BuildingBlockWriter, writeFluffBlocks } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 
 // ============================================================================
@@ -47,8 +47,6 @@ export function writeBlkBA(entity: BattleArmorEntity): string {
   const w = new BuildingBlockWriter();
 
   // ── Header ──
-  w.addBlock('BlockVersion', 1);
-  w.addBlock('Version', 'MAM0');
   w.addBlock('UnitType', 'BattleArmor');
 
   // ── Identity ──
@@ -125,6 +123,15 @@ export function writeBlkBA(entity: BattleArmorEntity): string {
       w.addBlock(`Trooper ${i} Equipment`, ...trooperEquip);
     }
   }
+
+  // ── Slotless Equipment (equipment with no specific trooper) ──
+  const slotlessEquip = mountsByLoc.get('None') ?? [];
+  if (slotlessEquip.length > 0) {
+    w.addBlock('slotless_equipment', ...slotlessEquip);
+  }
+
+  // ── Fluff ──
+  writeFluffBlocks(w, entity.fluff());
 
   // ── Source / Tonnage ──
   if (entity.source()) w.addBlock('source', entity.source());

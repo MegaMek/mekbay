@@ -31,7 +31,6 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentMap } from '../../equipment.model';
 import { BaseEntity } from '../base-entity';
 import {
   EntityFluff,
@@ -39,41 +38,51 @@ import {
   EntityTechBase,
   EntityTransporter,
   EntityWeaponQuirk,
+  VALID_TECH_BASE_STRINGS,
+  normalizeSystemManufacturerKey,
 } from '../types';
 import { parseTechLevel } from '../utils/tech-level-parser';
 import { BuildingBlock } from './building-block';
+import { ParseContext } from './parse-context';
 
 /**
  * Common BLK parsing — reads universal blocks that apply to all unit types.
  *
- * Each type-specific parser calls `parseBaseBlk(bb, entity, equipmentDb)` first,
+ * Each type-specific parser calls `parseBaseBlk(bb, entity, ctx)` first,
  * then handles its own type-specific blocks.
  */
 export function parseBaseBlk(
   bb: BuildingBlock,
   entity: BaseEntity,
-  _equipmentDb: EquipmentMap,
+  ctx: ParseContext,
 ): void {
   // ── Identity ──
   entity.chassis.set(bb.getFirstString('Name'));
   entity.model.set(bb.getFirstString('Model'));
 
   if (bb.exists('mul id:')) {
-    entity.mulId.set(bb.getFirstInt('mul id:'));
+    const mulId = bb.getFirstInt('mul id:');
+    ctx.validateNonNegativeInt('mul id:', mulId);
+    entity.mulId.set(mulId);
   }
 
   // ── Year ──
   if (bb.exists('year')) {
-    entity.year.set(bb.getFirstInt('year'));
+    const year = bb.getFirstInt('year');
+    ctx.validateNumber('year', year);
+    entity.year.set(year);
   }
 
   if (bb.exists('originalBuildYear')) {
-    entity.originalBuildYear.set(bb.getFirstInt('originalBuildYear'));
+    const oby = bb.getFirstInt('originalBuildYear');
+    ctx.validateNumber('originalBuildYear', oby);
+    entity.originalBuildYear.set(oby);
   }
 
   // ── Tech Level ──
   if (bb.exists('type')) {
     const techStr = bb.getFirstString('type');
+    ctx.validateEnum('type', techStr, VALID_TECH_BASE_STRINGS, 'tech level string');
     const parsed = parseTechLevel(techStr);
     entity.techBase.set(parsed.techBase);
     entity.techLevel.set(techStr);
@@ -94,7 +103,11 @@ export function parseBaseBlk(
 
   // ── Tonnage ──
   if (bb.exists('tonnage')) {
-    entity.tonnage.set(bb.getFirstDouble('tonnage'));
+    const tonnage = bb.getFirstDouble('tonnage');
+    if (!Number.isFinite(tonnage) || tonnage <= 0) {
+      ctx.warn('tonnage', `Invalid tonnage: ${tonnage}`);
+    }
+    entity.tonnage.set(tonnage);
   }
 
   // ── Quirks ──
@@ -163,29 +176,73 @@ export function parseBaseBlk(
   if (bb.exists('primaryFactory')) fluff.primaryFactory = bb.getFirstString('primaryFactory');
   if (bb.exists('notes')) fluff.notes = bb.getDataAsString('notes').join('\n');
 
-  // System manufacturers
-  if (bb.exists('systemManufacturers')) {
-    const sysLines = bb.getDataAsString('systemManufacturers');
+  // System manufacturers - two formats:
+  // 1. Unified block: <systemManufacturers> with KEY:VALUE lines
+  // 2. Individual blocks: <systemManufacturer:KEY> VALUE </systemManufacturer:KEY>
+  {
     const sysMfrs: Record<string, string> = {};
-    for (const line of sysLines) {
-      const colonIdx = line.indexOf(':');
-      if (colonIdx > 0) {
-        sysMfrs[line.substring(0, colonIdx)] = line.substring(colonIdx + 1);
+    // Format 1: unified block
+    if (bb.exists('systemManufacturers')) {
+      const sysLines = bb.getDataAsString('systemManufacturers');
+      for (const line of sysLines) {
+        const colonIdx = line.indexOf(':');
+        if (colonIdx > 0) {
+          const rawKey = line.substring(0, colonIdx);
+          const canonical = normalizeSystemManufacturerKey(rawKey);
+          if (!canonical) {
+            ctx.warn('systemManufacturers', `Unknown system manufacturer key: "${rawKey}"`);
+          }
+          sysMfrs[canonical ?? rawKey] = line.substring(colonIdx + 1);
+        }
       }
     }
-    fluff.systemManufacturers = sysMfrs;
+    // Format 2: individual blocks (<systemManufacturer:KEY>)
+    for (const tag of bb.getTagNames()) {
+      if (tag.startsWith('systemmanufacturer:')) {
+        const rawKey = tag.substring('systemmanufacturer:'.length).toUpperCase();
+        const canonical = normalizeSystemManufacturerKey(rawKey);
+        if (!canonical) {
+          ctx.warn(tag, `Unknown system manufacturer key: "${rawKey}"`);
+        }
+        sysMfrs[canonical ?? rawKey] = bb.getFirstString(tag);
+      }
+    }
+    if (Object.keys(sysMfrs).length > 0) {
+      fluff.systemManufacturers = sysMfrs;
+    }
   }
 
-  if (bb.exists('systemModels')) {
-    const modelLines = bb.getDataAsString('systemModels');
+  {
     const sysModels: Record<string, string> = {};
-    for (const line of modelLines) {
-      const colonIdx = line.indexOf(':');
-      if (colonIdx > 0) {
-        sysModels[line.substring(0, colonIdx)] = line.substring(colonIdx + 1);
+    // Format 1: unified block
+    if (bb.exists('systemModels')) {
+      const modelLines = bb.getDataAsString('systemModels');
+      for (const line of modelLines) {
+        const colonIdx = line.indexOf(':');
+        if (colonIdx > 0) {
+          const rawKey = line.substring(0, colonIdx);
+          const canonical = normalizeSystemManufacturerKey(rawKey);
+          if (!canonical) {
+            ctx.warn('systemModels', `Unknown system model key: "${rawKey}"`);
+          }
+          sysModels[canonical ?? rawKey] = line.substring(colonIdx + 1);
+        }
       }
     }
-    fluff.systemModels = sysModels;
+    // Format 2: individual blocks (<systemModel:KEY>)
+    for (const tag of bb.getTagNames()) {
+      if (tag.startsWith('systemmodel:')) {
+        const rawKey = tag.substring('systemmodel:'.length).toUpperCase();
+        const canonical = normalizeSystemManufacturerKey(rawKey);
+        if (!canonical) {
+          ctx.warn(tag, `Unknown system model key: "${rawKey}"`);
+        }
+        sysModels[canonical ?? rawKey] = bb.getFirstString(tag);
+      }
+    }
+    if (Object.keys(sysModels).length > 0) {
+      fluff.systemModels = sysModels;
+    }
   }
 
   entity.fluff.set(fluff);

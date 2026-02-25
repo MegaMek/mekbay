@@ -41,9 +41,9 @@ import { GunEmplacementEntity } from '../entities/vehicle/gun-emplacement-entity
 import {
   ENGINE_TYPE_TO_CODE,
   EngineType,
+  armorTypeToCode,
 } from '../types';
-import { armorTypeToCode } from '../utils/armor-type-parser';
-import { BuildingBlockWriter } from './building-block-writer';
+import { BuildingBlockWriter, writeFluffBlocks } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 
 // ============================================================================
@@ -95,12 +95,10 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
   else if (entity instanceof SupportVtolEntity)      unitType = 'SupportVTOL';
   else if (entity instanceof SupportTankEntity)       unitType = 'SupportTank';
   else if (entity instanceof VtolEntity)              unitType = 'VTOL';
-  else if (entity instanceof NavalEntity)             unitType = 'Naval';
+  else if (entity instanceof NavalEntity)             unitType = 'Tank';  // MegaMek compat: naval vehicles use UnitType=Tank
   else                                                unitType = 'Tank';
 
   // ── Header ──
-  w.addBlock('BlockVersion', 1);
-  w.addBlock('Version', 'MAM0');
   w.addBlock('UnitType', unitType);
 
   // ── Identity ──
@@ -229,6 +227,9 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
       w.addBlock(blkTag, ...lines);
     }
   }
+
+  // ── Fluff ──
+  writeFluffBlocks(w, entity.fluff());
 
   // ── Source / Tonnage ──
   if (entity.source()) w.addBlock('source', entity.source());

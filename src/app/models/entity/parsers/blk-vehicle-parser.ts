@@ -31,7 +31,6 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentMap } from '../../equipment.model';
 import { VehicleEntity } from '../entities/vehicle/vehicle-entity';
 import { TankEntity } from '../entities/vehicle/tank-entity';
 import { NavalEntity } from '../entities/vehicle/naval-entity';
@@ -41,15 +40,20 @@ import { SupportVtolEntity } from '../entities/vehicle/support-vtol-entity';
 import { LargeSupportTankEntity } from '../entities/vehicle/large-support-tank-entity';
 import { GunEmplacementEntity } from '../entities/vehicle/gun-emplacement-entity';
 import {
+  ARMOR_TYPE_FROM_CODE,
+  ENGINE_TYPE_FROM_CODE,
   LocationArmor,
+  VALID_FUEL_TYPES,
+  VALID_VEHICLE_MOTION_TYPES,
+  armorTypeFromCode,
+  engineTypeFromCode,
   locationArmor,
 } from '../types';
-import { armorTypeFromCode } from '../utils/armor-type-parser';
-import { engineTypeFromCode } from '../utils/engine-type-parser';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
-import { parseEquipmentLine, resolveEquipment } from './equipment-resolver';
+import { parseEquipmentLine } from './equipment-resolver';
+import { ParseContext } from './parse-context';
 
 // ============================================================================
 // Equipment location tags for vehicles
@@ -93,40 +97,49 @@ const VTOL_ARMOR_LOCS = ['Front', 'Right', 'Left', 'Rear', 'Rotor', 'Turret'] as
  * Parse a BLK file for a Tank, Naval, VTOL, SupportTank, SupportVTOL,
  * LargeSupportTank, or GunEmplacement entity.
  */
-export function parseBlkVehicle(bb: BuildingBlock, equipmentDb: EquipmentMap): VehicleEntity {
+export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEntity {
   resetMountIdCounter();
 
   // ── Determine entity type ──
+  // MegaMek stores naval vehicles as UnitType=Tank; we promote them based on motion_type.
+  const NAVAL_MOTION_TYPES = new Set(['Naval', 'Submarine', 'Hydrofoil']);
   const unitType = bb.getFirstString('UnitType').trim();
+  const motionType = bb.exists('motion_type') ? bb.getFirstString('motion_type') : '';
   let entity: VehicleEntity;
 
   switch (unitType) {
-    case 'Naval':             entity = new NavalEntity(); break;
     case 'VTOL':              entity = new VtolEntity(); break;
     case 'SupportTank':       entity = new SupportTankEntity(); break;
     case 'SupportVTOL':       entity = new SupportVtolEntity(); break;
     case 'LargeSupportTank':  entity = new LargeSupportTankEntity(); break;
     case 'GunEmplacement':    entity = new GunEmplacementEntity(); break;
-    default:                  entity = new TankEntity(); break;
+    default:
+      entity = NAVAL_MOTION_TYPES.has(motionType) ? new NavalEntity() : new TankEntity();
+      break;
   }
 
   // ── Base parsing ──
-  parseBaseBlk(bb, entity, equipmentDb);
+  parseBaseBlk(bb, entity, ctx);
   const techBase = getBlkTechBase(bb);
 
   // ── Motion type ──
-  if (bb.exists('motion_type')) {
-    entity.motionType.set(bb.getFirstString('motion_type'));
+  if (motionType) {
+    ctx.validateEnum('motion_type', motionType, VALID_VEHICLE_MOTION_TYPES, 'vehicle motion type');
+    entity.motionType.set(motionType);
   }
 
   // ── Movement ──
   if (bb.exists('cruiseMP')) {
-    entity.walkMP.set(bb.getFirstInt('cruiseMP'));
+    const mp = bb.getFirstInt('cruiseMP');
+    ctx.validateNonNegativeInt('cruiseMP', mp);
+    entity.walkMP.set(mp);
   }
 
   // ── Engine ──
   if (bb.exists('engine_type')) {
-    entity.engineType.set(engineTypeFromCode(bb.getFirstInt('engine_type')));
+    const code = bb.getFirstInt('engine_type');
+    ctx.validateCode('engine_type', code, ENGINE_TYPE_FROM_CODE);
+    entity.engineType.set(engineTypeFromCode(code));
   }
 
   // ── Turret ──
@@ -153,7 +166,9 @@ export function parseBlkVehicle(bb: BuildingBlock, equipmentDb: EquipmentMap): V
 
   // ── Fuel ──
   if (bb.exists('fuel_type')) {
-    entity.fuelType.set(bb.getFirstString('fuel_type'));
+    const fuelType = bb.getFirstString('fuel_type');
+    ctx.validateEnum('fuel_type', fuelType, VALID_FUEL_TYPES, 'fuel type');
+    entity.fuelType.set(fuelType);
   }
 
   // ── Trailer / No Control Systems ──
@@ -171,12 +186,15 @@ export function parseBlkVehicle(bb: BuildingBlock, equipmentDb: EquipmentMap): V
 
   // ── Armor ──
   if (bb.exists('armor_type')) {
-    entity.armorType.set(armorTypeFromCode(bb.getFirstInt('armor_type')));
+    const armorCode = bb.getFirstInt('armor_type');
+    ctx.validateCode('armor_type', armorCode, ARMOR_TYPE_FROM_CODE);
+    entity.armorType.set(armorTypeFromCode(armorCode));
   }
   if (bb.exists('armor_tech')) {
     const code = bb.getFirstInt('armor_tech');
     if (code === 1) entity.armorTechBase.set('Clan');
     else if (code === 2) entity.armorTechBase.set('Mixed');
+    else if (code !== 0) ctx.warn('armor_tech', `Unknown armor_tech code: ${code}`);
   }
 
   if (bb.exists('armor')) {
@@ -239,7 +257,7 @@ export function parseBlkVehicle(bb: BuildingBlock, equipmentDb: EquipmentMap): V
       if (!line) continue;
 
       const parsed = parseEquipmentLine(line);
-      const resolved = resolveEquipment(parsed.name, techBase, equipmentDb);
+      const resolved = ctx.resolveEquipment(parsed.name, techBase, blkTag);
 
       entity.addEquipment({
         mountId: generateMountId(),

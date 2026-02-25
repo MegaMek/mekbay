@@ -31,6 +31,8 @@
  * affiliated with Microsoft.
  */
 
+import { EntityFluff } from '../types';
+
 /**
  * Serialises BLK tag-based format.
  *
@@ -91,5 +93,39 @@ export class BuildingBlockWriter {
    */
   toString(): string {
     return this.lines.join('\n');
+  }
+}
+
+// ============================================================================
+// Shared fluff block writer
+// ============================================================================
+
+/**
+ * Write fluff / lore blocks to a BLK BuildingBlockWriter.
+ *
+ * MegaMek outputs these blocks in a consistent order for every entity type:
+ *   capabilities, overview, deployment, history, manufacturer, primaryFactory,
+ *   notes, systemManufacturer:{KEY}, systemModel:{KEY}
+ *
+ * Call this from any BLK writer after equipment and before source/tonnage.
+ */
+export function writeFluffBlocks(w: BuildingBlockWriter, fluff: EntityFluff): void {
+  if (fluff.capabilities)  w.addBlock('capabilities', fluff.capabilities);
+  if (fluff.overview)      w.addBlock('overview', fluff.overview);
+  if (fluff.deployment)    w.addBlock('deployment', fluff.deployment);
+  if (fluff.history)       w.addBlock('history', fluff.history);
+  if (fluff.manufacturer)  w.addBlock('manufacturer', fluff.manufacturer);
+  if (fluff.primaryFactory) w.addBlock('primaryFactory', fluff.primaryFactory);
+  if (fluff.notes)         w.addBlock('notes', fluff.notes);
+
+  if (fluff.systemManufacturers) {
+    for (const [key, value] of Object.entries(fluff.systemManufacturers)) {
+      if (value) w.addBlock(`systemManufacturer:${key}`, value);
+    }
+  }
+  if (fluff.systemModels) {
+    for (const [key, value] of Object.entries(fluff.systemModels)) {
+      if (value) w.addBlock(`systemModel:${key}`, value);
+    }
   }
 }

@@ -31,7 +31,6 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentMap } from '../../equipment.model';
 import { AeroEntity } from '../entities/aero/aero-entity';
 import { AeroSpaceFighterEntity } from '../entities/aero/aero-space-fighter-entity';
 import { ConvFighterEntity } from '../entities/aero/conv-fighter-entity';
@@ -39,15 +38,16 @@ import { FixedWingSupportEntity } from '../entities/aero/fixed-wing-support-enti
 import {
   AERO_LOCATIONS,
   HeatSinkType,
+  armorTypeFromCode,
+  engineTypeFromCode,
   locationArmor,
   LocationArmor,
 } from '../types';
-import { armorTypeFromCode } from '../utils/armor-type-parser';
-import { engineTypeFromCode } from '../utils/engine-type-parser';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
-import { parseEquipmentLine, resolveEquipment } from './equipment-resolver';
+import { parseEquipmentLine } from './equipment-resolver';
+import { ParseContext } from './parse-context';
 
 // ============================================================================
 // BLK equipment location tags per entity type
@@ -83,7 +83,7 @@ const FWS_EQUIP_TAGS: [string, string][] = [
  *
  * Dispatches on `<UnitType>`: `Aero`, `ConvFighter`, `FixedWingSupport`.
  */
-export function parseBlkAero(bb: BuildingBlock, equipmentDb: EquipmentMap): AeroEntity {
+export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
   resetMountIdCounter();
 
   // ── Determine entity type ──
@@ -94,7 +94,7 @@ export function parseBlkAero(bb: BuildingBlock, equipmentDb: EquipmentMap): Aero
   else                                  entity = new AeroSpaceFighterEntity();
 
   // ── Base parsing (identity, year, source, transporters, role, etc.) ──
-  parseBaseBlk(bb, entity, equipmentDb);
+  parseBaseBlk(bb, entity, ctx);
   const techBase = getBlkTechBase(bb);
 
   // ── Movement ──
@@ -152,7 +152,7 @@ export function parseBlkAero(bb: BuildingBlock, equipmentDb: EquipmentMap): Aero
       if (!line) continue;
 
       const parsed = parseEquipmentLine(line);
-      const resolved = resolveEquipment(parsed.name, techBase, equipmentDb);
+      const resolved = ctx.resolveEquipment(parsed.name, techBase, blkTag);
 
       entity.addEquipment({
         mountId: generateMountId(),

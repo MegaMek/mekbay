@@ -33,14 +33,14 @@
 
 import { DropShipEntity } from '../entities/aero/dropship-entity';
 import {
+    armorTypeToCode,
   DROPSHIP_LOCATIONS,
   ENGINE_TYPE_TO_CODE,
   EngineType,
   HEAT_SINK_TYPE_TO_CODE,
   HeatSinkType,
 } from '../types';
-import { armorTypeToCode } from '../utils/armor-type-parser';
-import { BuildingBlockWriter } from './building-block-writer';
+import { BuildingBlockWriter, writeFluffBlocks } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 
 // ============================================================================
@@ -66,8 +66,6 @@ export function writeBlkDropShip(entity: DropShipEntity): string {
   const w = new BuildingBlockWriter();
 
   // ── Header ──
-  w.addBlock('BlockVersion', 1);
-  w.addBlock('Version', 'MAM0');
   w.addBlock('UnitType', 'DropShip');
 
   // ── Identity ──
@@ -136,6 +134,9 @@ export function writeBlkDropShip(entity: DropShipEntity): string {
       w.addBlock(blkTag, ...lines);
     }
   }
+
+  // ── Fluff ──
+  writeFluffBlocks(w, entity.fluff());
 
   // ── Source / Tonnage ──
   if (entity.source()) w.addBlock('source', entity.source());

@@ -32,18 +32,19 @@
  */
 
 /**
- * Entity System Round-trip Verification Script
+ * Entity Output Comparison Script
  *
- * Walks the mm-data corpus, parses every .mtf / .blk file, writes it back,
- * re-parses the output, writes again, and compares the two serialised forms.
- * If they match, the round-trip is lossless.
+ * Parses every .mtf / .blk file from the input folder, writes each one out
+ * to the output folder preserving the original directory structure and file
+ * name, then compares the written output against the original file ignoring
+ * comment lines (lines starting with #).
  *
  * Usage:
- *   npx tsx scripts/verify-entity-roundtrip.ts [--input PATH] [--output PATH] [--type TYPE] [--fail-fast] [--verbose]
+ *   npx tsx scripts/compare-entity-output.ts [--input PATH] [--output PATH] [--type TYPE] [--fail-fast] [--verbose]
  *
  * Options:
  *   --input  PATH   Root directory of unit files (default: ../mm-data/data/mekfiles)
- *   --output PATH   Directory to write diff files for failures (default: ./tmp/roundtrip)
+ *   --output PATH   Directory to write generated files (default: C:\Projects\megamek\svgexport\mbunitfiles)
  *   --type   TYPE   Filter by entity type: meks|fighters|vehicles|battlearmor|infantry|protomeks|dropships|smallcraft|jumpships|warship|spacestation|ge|handheld|convfighter
  *   --fail-fast      Stop on the first failure
  *   --verbose        Print every file result, not just failures
@@ -84,7 +85,7 @@ function getArg(name: string, defaultValue: string): string {
 const hasFlag = (name: string) => args.includes(`--${name}`);
 
 const INPUT_DIR = path.resolve(getArg('input', path.join(__dirname, '..', '..', '..', 'mm-data', 'data', 'mekfiles')));
-const OUTPUT_DIR = path.resolve(getArg('output', path.join(__dirname, '..', 'tmp', 'roundtrip')));
+const OUTPUT_DIR = path.resolve(getArg('output', String.raw`C:\Projects\megamek\svgexport\mbunitfiles`));
 const TYPE_FILTER = getArg('type', '');
 const FAIL_FAST = hasFlag('fail-fast');
 const VERBOSE = hasFlag('verbose');
@@ -184,114 +185,105 @@ function matchesTypeFilter(filePath: string): boolean {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Normalisation – strip mount IDs and whitespace jitter for comparison
+// Comment-stripping comparison
 // ═══════════════════════════════════════════════════════════════════════════
 
-function normalise(text: string): string {
+/**
+ * Strip comment lines (starting with #) and normalise whitespace for
+ * comparison purposes.
+ */
+function stripComments(text: string): string {
   return text
     .split(/\r?\n/)
-    .map(line => line.trimEnd())   // trailing whitespace
+    .filter(line => !line.trimStart().startsWith('#'))
+    .map(line => line.trimEnd())
     .join('\n')
-    .replace(/\n{3,}/g, '\n\n')   // collapse multiple blank lines
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Round-trip verification for a single file
+// Single-file processing
 // ═══════════════════════════════════════════════════════════════════════════
 
-interface VerifyResult {
+interface CompareResult {
   file: string;
-  status: 'pass' | 'parse-error' | 'write-error' | 'diff';
+  status: 'match' | 'diff' | 'parse-error' | 'write-error';
   entityType?: string;
   error?: string;
-  write1?: string;
-  write2?: string;
+  /** First differing line index (0-based) in the non-comment content */
+  firstDiffLine?: number;
+  expectedLine?: string;
+  actualLine?: string;
 }
 
-function verifyFile(filePath: string, equipmentDb: EquipmentMap): VerifyResult {
+function processFile(
+  filePath: string,
+  equipmentDb: EquipmentMap,
+): CompareResult {
   const fileName = path.basename(filePath);
   const content = fs.readFileSync(filePath, 'utf-8');
   const ext = path.extname(fileName).toLowerCase();
-
-  // Determine write format
   const isMtf = ext === '.mtf';
 
-  // ── Pass 1: Parse original ──
-  let entity1;
+  // ── Parse ──
+  let entity;
   try {
     resetMountIdCounter();
-    entity1 = parseEntity(content, fileName, equipmentDb).entity;
+    entity = parseEntity(content, fileName, equipmentDb).entity;
   } catch (e: any) {
-    return { file: filePath, status: 'parse-error', error: `Pass1 parse: ${e.message}` };
+    return { file: filePath, status: 'parse-error', error: `Parse: ${e.message}` };
   }
 
-  // ── Pass 1: Write ──
-  let written1: string;
+  // ── Write ──
+  let written: string;
   try {
-    const format = isMtf && entity1 instanceof MekEntity ? 'mtf' : 'blk';
-    written1 = writeEntity(entity1, format);
+    const format = isMtf && entity instanceof MekEntity ? 'mtf' : 'blk';
+    written = writeEntity(entity, format);
   } catch (e: any) {
     return {
-      file: filePath, status: 'write-error', entityType: entity1.entityType,
-      error: `Pass1 write: ${e.message}`,
+      file: filePath, status: 'write-error', entityType: entity.entityType,
+      error: `Write: ${e.message}`,
     };
   }
 
-  // ── Pass 2: Parse the written output ──
-  let entity2;
-  try {
-    resetMountIdCounter();
-    const pass2Name = isMtf && entity1 instanceof MekEntity ? fileName : fileName.replace(/\.mtf$/i, '.blk');
-    entity2 = parseEntity(written1, pass2Name, equipmentDb).entity;
-  } catch (e: any) {
-    return {
-      file: filePath, status: 'parse-error', entityType: entity1.entityType,
-      error: `Pass2 parse: ${e.message}`, write1: written1,
-    };
+  // ── Save to output dir preserving folder structure ──
+  const relPath = path.relative(INPUT_DIR, filePath);
+  // For MTF files that are non-Mek entities, the writer produces BLK - adjust extension
+  const outRelPath = (isMtf && !(entity instanceof MekEntity))
+    ? relPath.replace(/\.mtf$/i, '.blk')
+    : relPath;
+  const outPath = path.join(OUTPUT_DIR, outRelPath);
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  fs.writeFileSync(outPath, written, 'utf-8');
+
+  // ── Compare ignoring comments ──
+  const originalStripped = stripComments(content);
+  const writtenStripped = stripComments(written);
+
+  if (originalStripped === writtenStripped) {
+    return { file: filePath, status: 'match', entityType: entity.entityType };
   }
 
-  // ── Pass 2: Write again ──
-  let written2: string;
-  try {
-    const format = isMtf && entity2 instanceof MekEntity ? 'mtf' : 'blk';
-    written2 = writeEntity(entity2, format);
-  } catch (e: any) {
-    return {
-      file: filePath, status: 'write-error', entityType: entity2.entityType,
-      error: `Pass2 write: ${e.message}`, write1: written1,
-    };
+  // Find first differing line for reporting
+  const origLines = originalStripped.split('\n');
+  const writLines = writtenStripped.split('\n');
+  const maxLen = Math.max(origLines.length, writLines.length);
+  for (let i = 0; i < maxLen; i++) {
+    const oLine = origLines[i] ?? '<EOF>';
+    const wLine = writLines[i] ?? '<EOF>';
+    if (oLine !== wLine) {
+      return {
+        file: filePath, status: 'diff', entityType: entity.entityType,
+        firstDiffLine: i,
+        expectedLine: oLine,
+        actualLine: wLine,
+      };
+    }
   }
 
-  // ── Compare ──
-  const norm1 = normalise(written1);
-  const norm2 = normalise(written2);
-
-  if (norm1 === norm2) {
-    return { file: filePath, status: 'pass', entityType: entity1.entityType };
-  }
-
-  return {
-    file: filePath, status: 'diff', entityType: entity1.entityType,
-    write1: written1, write2: written2,
-  };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Diff writing
-// ═══════════════════════════════════════════════════════════════════════════
-
-function writeDiffFiles(result: VerifyResult): void {
-  if (!result.write1 && !result.write2) return;
-
-  const relPath = path.relative(INPUT_DIR, result.file).replace(/\\/g, '__');
-  const base = path.join(OUTPUT_DIR, relPath);
-
-  fs.mkdirSync(path.dirname(base), { recursive: true });
-
-  if (result.write1) fs.writeFileSync(base + '.pass1', result.write1, 'utf-8');
-  if (result.write2) fs.writeFileSync(base + '.pass2', result.write2, 'utf-8');
-  if (result.error) fs.writeFileSync(base + '.error', result.error, 'utf-8');
+  // Should not reach here, but just in case
+  return { file: filePath, status: 'diff', entityType: entity.entityType };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -300,7 +292,7 @@ function writeDiffFiles(result: VerifyResult): void {
 
 function main(): void {
   console.log('═══════════════════════════════════════════════════════════════');
-  console.log('  Entity System – Round-trip Verification');
+  console.log('  Entity Output Comparison');
   console.log('═══════════════════════════════════════════════════════════════');
   console.log(`Input:  ${INPUT_DIR}`);
   console.log(`Output: ${OUTPUT_DIR}`);
@@ -322,21 +314,18 @@ function main(): void {
     return;
   }
 
-  // Ensure output dir
-  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-
-  // Run verification
+  // Run
   const stats = {
     total: 0,
-    pass: 0,
+    match: 0,
+    diff: 0,
     parseError: 0,
     writeError: 0,
-    diff: 0,
     skipped: 0,
   };
 
-  const byType = new Map<string, { pass: number; fail: number }>();
-  const failures: VerifyResult[] = [];
+  const byType = new Map<string, { match: number; diff: number }>();
+  const failures: CompareResult[] = [];
 
   const startTime = Date.now();
 
@@ -356,43 +345,42 @@ function main(): void {
       }
     }
 
-    const result = verifyFile(file, equipmentDb);
+    const result = processFile(file, equipmentDb);
 
     const typeKey = result.entityType ?? 'unknown';
-    if (!byType.has(typeKey)) byType.set(typeKey, { pass: 0, fail: 0 });
+    if (!byType.has(typeKey)) byType.set(typeKey, { match: 0, diff: 0 });
 
     switch (result.status) {
-      case 'pass':
-        stats.pass++;
-        byType.get(typeKey)!.pass++;
+      case 'match':
+        stats.match++;
+        byType.get(typeKey)!.match++;
         if (VERBOSE) {
           console.log(`  ✓ ${path.relative(INPUT_DIR, file)}`);
         }
         break;
+      case 'diff':
+        stats.diff++;
+        byType.get(typeKey)!.diff++;
+        failures.push(result);
+        console.log(`  ✗ DIFF   ${path.relative(INPUT_DIR, file)}  (line ${result.firstDiffLine})`);
+        console.log(`           expected: ${truncate(result.expectedLine ?? '', 100)}`);
+        console.log(`           actual:   ${truncate(result.actualLine ?? '', 100)}`);
+        break;
       case 'parse-error':
         stats.parseError++;
-        byType.get(typeKey)!.fail++;
+        byType.get(typeKey)!.diff++;
         failures.push(result);
         console.log(`  ✗ PARSE  ${path.relative(INPUT_DIR, file)}: ${result.error}`);
-        writeDiffFiles(result);
         break;
       case 'write-error':
         stats.writeError++;
-        byType.get(typeKey)!.fail++;
+        byType.get(typeKey)!.diff++;
         failures.push(result);
         console.log(`  ✗ WRITE  ${path.relative(INPUT_DIR, file)}: ${result.error}`);
-        writeDiffFiles(result);
-        break;
-      case 'diff':
-        stats.diff++;
-        byType.get(typeKey)!.fail++;
-        failures.push(result);
-        console.log(`  ✗ DIFF   ${path.relative(INPUT_DIR, file)}`);
-        writeDiffFiles(result);
         break;
     }
 
-    if (FAIL_FAST && result.status !== 'pass') {
+    if (FAIL_FAST && result.status !== 'match') {
       console.log('\n--fail-fast: stopping at first failure');
       break;
     }
@@ -413,32 +401,37 @@ function main(): void {
   console.log(`  Total:        ${stats.total}`);
   console.log(`  Skipped:      ${stats.skipped}`);
   console.log(`  Tested:       ${tested}`);
-  console.log(`  Pass:         ${stats.pass}`);
+  console.log(`  Match:        ${stats.match}`);
+  console.log(`  Diff:         ${stats.diff}`);
   console.log(`  Parse errors: ${stats.parseError}`);
   console.log(`  Write errors: ${stats.writeError}`);
-  console.log(`  Diff (lossy): ${stats.diff}`);
   console.log(`  Time:         ${elapsed}s`);
-  console.log(`  Pass rate:    ${tested > 0 ? ((stats.pass / tested) * 100).toFixed(1) : 0}%`);
+  console.log(`  Match rate:   ${tested > 0 ? ((stats.match / tested) * 100).toFixed(1) : 0}%`);
 
   // ── Per-type breakdown ──
   console.log('\n  By Entity Type:');
   for (const [type, counts] of [...byType.entries()].sort()) {
-    const total = counts.pass + counts.fail;
-    const pct = total > 0 ? ((counts.pass / total) * 100).toFixed(1) : '0.0';
-    const icon = counts.fail === 0 ? '✓' : '✗';
-    console.log(`    ${icon} ${type.padEnd(20)} ${counts.pass}/${total} (${pct}%)`);
+    const total = counts.match + counts.diff;
+    const pct = total > 0 ? ((counts.match / total) * 100).toFixed(1) : '0.0';
+    const icon = counts.diff === 0 ? '✓' : '✗';
+    console.log(`    ${icon} ${type.padEnd(20)} ${counts.match}/${total} (${pct}%)`);
   }
 
   console.log('');
 
   // Exit code
-  const totalFail = stats.parseError + stats.writeError + stats.diff;
+  const totalFail = stats.diff + stats.parseError + stats.writeError;
   if (totalFail > 0) {
-    console.log(`${totalFail} failure(s). Diff files written to: ${OUTPUT_DIR}`);
+    console.log(`${totalFail} file(s) differ from original. Output written to: ${OUTPUT_DIR}`);
     process.exit(1);
   } else {
-    console.log('All files passed! ✓');
+    console.log('All files match the originals (ignoring comments)! ✓');
   }
+}
+
+/** Truncate a string for display */
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max - 3) + '...' : s;
 }
 
 main();

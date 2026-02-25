@@ -35,12 +35,12 @@ import { SmallCraftEntity } from '../entities/aero/small-craft-entity';
 import {
   ENGINE_TYPE_TO_CODE,
   EngineType,
+  armorTypeToCode,
   HEAT_SINK_TYPE_TO_CODE,
   HeatSinkType,
   SMALL_CRAFT_ARMOR_LOCATIONS,
 } from '../types';
-import { armorTypeToCode } from '../utils/armor-type-parser';
-import { BuildingBlockWriter } from './building-block-writer';
+import { BuildingBlockWriter, writeFluffBlocks } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 
 // ============================================================================
@@ -66,8 +66,6 @@ export function writeBlkSmallCraft(entity: SmallCraftEntity): string {
   const w = new BuildingBlockWriter();
 
   // ── Header ──
-  w.addBlock('BlockVersion', 1);
-  w.addBlock('Version', 'MAM0');
   w.addBlock('UnitType', 'SmallCraft');
 
   // ── Identity ──
@@ -124,6 +122,9 @@ export function writeBlkSmallCraft(entity: SmallCraftEntity): string {
     const lines = mountsByLoc.get(locCode) ?? [];
     w.addBlock(blkTag, ...lines);
   }
+
+  // ── Fluff ──
+  writeFluffBlocks(w, entity.fluff());
 
   // ── SmallCraft-specific ──
   w.addBlock('structural_integrity', entity.structuralIntegrity());

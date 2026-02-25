@@ -31,18 +31,18 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentMap } from '../../equipment.model';
 import { ProtoMekEntity } from '../entities/protomek/protomek-entity';
 import {
   LocationArmor,
+  armorTypeFromCode,
+  engineTypeFromCode,
   locationArmor,
 } from '../types';
-import { armorTypeFromCode } from '../utils/armor-type-parser';
-import { engineTypeFromCode } from '../utils/engine-type-parser';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
-import { parseEquipmentLine, resolveEquipment } from './equipment-resolver';
+import { parseEquipmentLine } from './equipment-resolver';
+import { ParseContext } from './parse-context';
 
 // ============================================================================
 // Equipment location tags
@@ -68,12 +68,12 @@ const PROTO_ARMOR_LOCS = ['Head', 'Torso', 'Right Arm', 'Left Arm', 'Legs', 'Mai
 /**
  * Parse a BLK file for a ProtoMek entity.
  */
-export function parseBlkProtoMek(bb: BuildingBlock, equipmentDb: EquipmentMap): ProtoMekEntity {
+export function parseBlkProtoMek(bb: BuildingBlock, ctx: ParseContext): ProtoMekEntity {
   resetMountIdCounter();
   const entity = new ProtoMekEntity();
 
   // ── Base parsing ──
-  parseBaseBlk(bb, entity, equipmentDb);
+  parseBaseBlk(bb, entity, ctx);
   const techBase = getBlkTechBase(bb);
 
   // ── Movement ──
@@ -119,7 +119,7 @@ export function parseBlkProtoMek(bb: BuildingBlock, equipmentDb: EquipmentMap): 
       if (!line) continue;
 
       const parsed = parseEquipmentLine(line);
-      const resolved = resolveEquipment(parsed.name, techBase, equipmentDb);
+      const resolved = ctx.resolveEquipment(parsed.name, techBase, blkTag);
 
       entity.addEquipment({
         mountId: generateMountId(),

@@ -31,28 +31,23 @@
  * affiliated with Microsoft.
  */
 
-import {
+/**
+ * MTF-specific engine parsing and formatting.
+ *
+ * Code tables (ENGINE_TYPE_FROM_CODE, ENGINE_TYPE_TO_CODE) and their
+ * convenience functions live in ../types.ts — re-exported here for
+ * backwards compatibility.
+ */
+
+// Re-export code tables and convenience functions from types.ts
+export {
   ENGINE_TYPE_FROM_CODE,
   ENGINE_TYPE_TO_CODE,
-  EngineType,
+  engineTypeFromCode,
+  engineTypeToCode,
 } from '../types';
 
-/**
- * Convert a BLK engine type integer code to an EngineType string.
- *
- * @param code Integer engine code (0–13)
- * @returns The EngineType string, or 'Fusion' for unknown codes
- */
-export function engineTypeFromCode(code: number): EngineType {
-  return ENGINE_TYPE_FROM_CODE[code] ?? 'Fusion';
-}
-
-/**
- * Convert an EngineType string to the BLK integer code.
- */
-export function engineTypeToCode(type: EngineType): number {
-  return ENGINE_TYPE_TO_CODE[type] ?? 0;
-}
+import type { EngineType } from '../types';
 
 /**
  * Parse an engine type from an MTF string.
