@@ -43,7 +43,7 @@
  *   npx tsx scripts/compare-entity-output.ts [--input PATH] [--output PATH] [--type TYPE] [--fail-fast] [--verbose]
  *
  * Options:
- *   --input  PATH   Root directory of unit files (default: ../mm-data/data/mekfiles)
+ *   --input  PATH   Root directory of unit files (default: C:\Projects\megamek\svgexport\unitfiles)
  *   --output PATH   Directory to write generated files (default: C:\Projects\megamek\svgexport\mbunitfiles)
  *   --type   TYPE   Filter by entity type: meks|fighters|vehicles|battlearmor|infantry|protomeks|dropships|smallcraft|jumpships|warship|spacestation|ge|handheld|convfighter
  *   --fail-fast      Stop on the first failure

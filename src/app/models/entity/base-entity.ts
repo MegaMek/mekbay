@@ -32,8 +32,13 @@
  */
 
 import { Signal, computed, signal } from '@angular/core';
+import { ArmorEquipment } from '../equipment.model';
 import {
   ArmorFace,
+  ArmorType,
+  ARMOR_TYPE_TO_CODE,
+  TECH_RATING_TO_NUMBER,
+  compoundTechLevel,
   EngineFlag,
   EngineType,
   EntityFluff,
@@ -109,13 +114,29 @@ export abstract class BaseEntity {
   // ── Engine ──
   engineType = signal<EngineType>('Fusion');
   engineRating = signal<number>(0);
+  /** True when the engine's clan flag differs from the entity's clan flag (mixed-tech). */
+  clanEngine = signal<boolean>(false);
 
   // ── Weight ──
   tonnage = signal<number>(0);
 
   // ── Armor (structured: each location stores { front, rear }) ──
-  armorType = signal<string>('Standard');
+  armorType = signal<ArmorType>('STANDARD');
   armorTechBase = signal<EntityTechBase>('Inner Sphere');
+  /** Resolved ArmorEquipment from the equipment DB (set by parser). */
+  armorEquipment = signal<ArmorEquipment | null>(null);
+  /** BLK armor type code, derived from `armorType`. */
+  armorTypeCode = computed(() => ARMOR_TYPE_TO_CODE[this.armorType()] ?? 0);
+  /** Tech-rating index (A=0 … F=5), derived from ArmorEquipment tech data. */
+  armorTechRating = computed(() => {
+    const eq = this.armorEquipment();
+    return eq ? (TECH_RATING_TO_NUMBER[eq.rating] ?? 3) : 3;
+  });
+  /** Compound tech level for BLK output, derived from ArmorEquipment tech data. */
+  armorTechLevel = computed(() => {
+    const eq = this.armorEquipment();
+    return eq ? compoundTechLevel(eq.level, this.techBase() === 'Clan') : 0;
+  });
   /**
    * Armor per location.  Keys are canonical location IDs ("CT", "LT", etc.).
    * Each value is `{ front, rear }`.  For locations without rear armour the
@@ -140,6 +161,9 @@ export abstract class BaseEntity {
 
   // ── Fluff ──
   fluff = signal<EntityFluff>({});
+
+  // ── Generator (MTF metadata — tool that created the file) ──
+  generator = signal<string>('');
 
   // ── BV Override ──
   manualBV = signal<number>(0);

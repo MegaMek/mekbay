@@ -110,6 +110,16 @@ export function parseBaseBlk(
     entity.tonnage.set(tonnage);
   }
 
+  // ── Armor type / tech rating / tech level ──
+  // Derived from ArmorEquipment (set by each type-specific parser after
+  // resolving the armor type + tech base against the equipment DB).
+
+  // ── Clan engine flag (mixed-tech) ──
+  if (bb.exists('clan_engine')) {
+    const val = bb.getFirstString('clan_engine');
+    entity.clanEngine.set(val.toLowerCase() === 'true' || val === '1');
+  }
+
   // ── Quirks ──
   if (bb.exists('quirks')) {
     const quirkLines = bb.getDataAsString('quirks');

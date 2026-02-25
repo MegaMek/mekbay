@@ -33,9 +33,9 @@
 
 import { ProtoMekEntity } from '../entities/protomek/protomek-entity';
 import {
+  ARMOR_TYPE_TO_CODE,
   ENGINE_TYPE_TO_CODE,
   EngineType,
-  armorTypeToCode,
 } from '../types';
 import { BuildingBlockWriter, writeFluffBlocks } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
@@ -69,7 +69,7 @@ export function writeBlkProtoMek(entity: ProtoMekEntity): string {
 
   // ── Identity ──
   w.addBlock('Name', entity.chassis());
-  if (entity.model()) w.addBlock('Model', entity.model());
+  w.addBlock('Model', entity.model());
   if (entity.mulId() >= 0) w.addBlock('mul id:', entity.mulId());
 
   // ── Year / Tech / Meta ──
@@ -100,8 +100,8 @@ export function writeBlkProtoMek(entity: ProtoMekEntity): string {
 
   // ── Armor ──
   const armorType = entity.armorType();
-  if (armorType !== 'Standard') {
-    w.addBlock('armor_type', armorTypeToCode(armorType));
+  if (armorType !== 'STANDARD') {
+    w.addBlock('armor_type', ARMOR_TYPE_TO_CODE[armorType] ?? 0);
     const atb = entity.armorTechBase();
     if (atb === 'Clan') w.addBlock('armor_tech', 1);
     else if (atb === 'Mixed') w.addBlock('armor_tech', 2);

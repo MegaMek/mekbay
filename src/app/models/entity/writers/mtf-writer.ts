@@ -31,6 +31,7 @@
  * affiliated with Microsoft.
  */
 
+import { APP_VERSION_STRING } from '../../../build-meta';
 import { MekEntity } from '../entities/mek/mek-entity';
 import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import { TripodMekEntity } from '../entities/mek/tripod-mek-entity';
@@ -41,6 +42,7 @@ import {
   EntityMountedEquipment,
   EntityTechBase,
 } from '../types';
+import { WeaponEquipment } from '../../equipment.model';
 
 // ============================================================================
 // Location → MTF display names & ordering
@@ -68,45 +70,45 @@ const CRIT_ORDER_TRIPOD = ['LA', 'RA', 'LT', 'RT', 'CT', 'HD', 'LL', 'RL', 'CL']
 interface ArmorOutputEntry { label: string; loc: string; face: 'front' | 'rear' }
 
 const ARMOR_ORDER_BIPED: ArmorOutputEntry[] = [
-  { label: 'LA Armor', loc: 'LA', face: 'front' },
-  { label: 'RA Armor', loc: 'RA', face: 'front' },
-  { label: 'LT Armor', loc: 'LT', face: 'front' },
-  { label: 'RT Armor', loc: 'RT', face: 'front' },
-  { label: 'CT Armor', loc: 'CT', face: 'front' },
-  { label: 'HD Armor', loc: 'HD', face: 'front' },
-  { label: 'LL Armor', loc: 'LL', face: 'front' },
-  { label: 'RL Armor', loc: 'RL', face: 'front' },
-  { label: 'RTL Armor', loc: 'LT', face: 'rear' },
-  { label: 'RTR Armor', loc: 'RT', face: 'rear' },
-  { label: 'RTC Armor', loc: 'CT', face: 'rear' },
+  { label: 'LA armor', loc: 'LA', face: 'front' },
+  { label: 'RA armor', loc: 'RA', face: 'front' },
+  { label: 'LT armor', loc: 'LT', face: 'front' },
+  { label: 'RT armor', loc: 'RT', face: 'front' },
+  { label: 'CT armor', loc: 'CT', face: 'front' },
+  { label: 'HD armor', loc: 'HD', face: 'front' },
+  { label: 'LL armor', loc: 'LL', face: 'front' },
+  { label: 'RL armor', loc: 'RL', face: 'front' },
+  { label: 'RTL armor', loc: 'LT', face: 'rear' },
+  { label: 'RTR armor', loc: 'RT', face: 'rear' },
+  { label: 'RTC armor', loc: 'CT', face: 'rear' },
 ];
 
 const ARMOR_ORDER_QUAD: ArmorOutputEntry[] = [
-  { label: 'FLL Armor', loc: 'FLL', face: 'front' },
-  { label: 'FRL Armor', loc: 'FRL', face: 'front' },
-  { label: 'LT Armor', loc: 'LT', face: 'front' },
-  { label: 'RT Armor', loc: 'RT', face: 'front' },
-  { label: 'CT Armor', loc: 'CT', face: 'front' },
-  { label: 'HD Armor', loc: 'HD', face: 'front' },
-  { label: 'RLL Armor', loc: 'RLL', face: 'front' },
-  { label: 'RRL Armor', loc: 'RRL', face: 'front' },
-  { label: 'RTL Armor', loc: 'LT', face: 'rear' },
-  { label: 'RTR Armor', loc: 'RT', face: 'rear' },
-  { label: 'RTC Armor', loc: 'CT', face: 'rear' },
+  { label: 'FLL armor', loc: 'FLL', face: 'front' },
+  { label: 'FRL armor', loc: 'FRL', face: 'front' },
+  { label: 'LT armor', loc: 'LT', face: 'front' },
+  { label: 'RT armor', loc: 'RT', face: 'front' },
+  { label: 'CT armor', loc: 'CT', face: 'front' },
+  { label: 'HD armor', loc: 'HD', face: 'front' },
+  { label: 'RLL armor', loc: 'RLL', face: 'front' },
+  { label: 'RRL armor', loc: 'RRL', face: 'front' },
+  { label: 'RTL armor', loc: 'LT', face: 'rear' },
+  { label: 'RTR armor', loc: 'RT', face: 'rear' },
+  { label: 'RTC armor', loc: 'CT', face: 'rear' },
 ];
 
 const ARMOR_ORDER_TRIPOD: ArmorOutputEntry[] = [
-  { label: 'LA Armor', loc: 'LA', face: 'front' },
-  { label: 'RA Armor', loc: 'RA', face: 'front' },
-  { label: 'LT Armor', loc: 'LT', face: 'front' },
-  { label: 'RT Armor', loc: 'RT', face: 'front' },
-  { label: 'CT Armor', loc: 'CT', face: 'front' },
-  { label: 'HD Armor', loc: 'HD', face: 'front' },
-  { label: 'LL Armor', loc: 'LL', face: 'front' },
-  { label: 'RL Armor', loc: 'RL', face: 'front' },
-  { label: 'CL Armor', loc: 'CL', face: 'front' },
-  { label: 'RTL Armor', loc: 'LT', face: 'rear' },
-  { label: 'RTR Armor', loc: 'RT', face: 'rear' },
+  { label: 'LA armor', loc: 'LA', face: 'front' },
+  { label: 'RA armor', loc: 'RA', face: 'front' },
+  { label: 'LT armor', loc: 'LT', face: 'front' },
+  { label: 'RT armor', loc: 'RT', face: 'front' },
+  { label: 'CT armor', loc: 'CT', face: 'front' },
+  { label: 'HD armor', loc: 'HD', face: 'front' },
+  { label: 'LL armor', loc: 'LL', face: 'front' },
+  { label: 'RL armor', loc: 'RL', face: 'front' },
+  { label: 'CL armor', loc: 'CL', face: 'front' },
+  { label: 'RTL armor', loc: 'LT', face: 'rear' },
+  { label: 'RTR armor', loc: 'RT', face: 'rear' },
   { label: 'RTC Armor', loc: 'CT', face: 'rear' },
 ];
 
@@ -149,6 +151,7 @@ export function writeMtf(entity: MekEntity): string {
 // ============================================================================
 
 function writeIdentity(entity: MekEntity, lines: string[]): void {
+  lines.push(`generator:MekBay ${APP_VERSION_STRING}`);
   lines.push(`chassis:${entity.chassis()}`);
   lines.push(`model:${entity.model()}`);
   if (entity.mulId() >= 0) lines.push(`mul id:${entity.mulId()}`);
@@ -157,37 +160,36 @@ function writeIdentity(entity: MekEntity, lines: string[]): void {
 
 function writeConfig(entity: MekEntity, lines: string[]): void {
   lines.push(`Config:${getConfigString(entity)}`);
-  lines.push(`TechBase:${formatTechBase(entity.techBase())}`);
-  lines.push(`Era:${entity.year()}`);
-  if (entity.source()) lines.push(`Source:${entity.source()}`);
-  lines.push(`Rules Level:${entity.rulesLevel()}`);
+  lines.push(`techbase:${formatTechBase(entity)}`);
+  lines.push(`era:${entity.year()}`);
+  if (entity.source()) lines.push(`source:${entity.source()}`);
+  lines.push(`rules level:${entity.rulesLevel()}`);
   if (entity.role()) lines.push(`role:${entity.role()}`);
   lines.push('');
 }
 
 function writePhysical(entity: MekEntity, lines: string[]): void {
-  lines.push(`Mass:${entity.tonnage()}`);
-  lines.push(`Engine:${entity.engineRating()} ${getEngineMtfName(entity.engineType())}(${tbMarker(entity.techBase())})`);
-  lines.push(`Structure:${getStructureString(entity)}`);
-  lines.push(`Myomer:${entity.myomerType()}`);
+  lines.push(`mass:${entity.tonnage()}`);
+  lines.push(`engine:${entity.engineRating()} ${getEngineMtfName(entity.engineType())}(${tbMarker(entity.techBase())})`);
+  lines.push(`structure:${getStructureString(entity)}`);
+  lines.push(`myomer:${entity.myomerType()}`);
 
-  if (entity.gyroType() !== 'Standard') lines.push(`Gyro:${entity.gyroType()}`);
-  if (entity.cockpitType() !== 'Standard') lines.push(`Cockpit:${entity.cockpitType()}`);
-  if (entity.ejectionType()) lines.push(`Ejection:${entity.ejectionType()}`);
-  if (entity.heatSinkKit()) lines.push(`Heat Sink Kit:${entity.heatSinkKit()}`);
+  if (entity.gyroType() !== 'Standard') lines.push(`gyro:${entity.gyroType()}`);
+  if (entity.cockpitType() !== 'Standard') lines.push(`cockpit:${entity.cockpitType()}`);
+  if (entity.ejectionType()) lines.push(`ejection:${entity.ejectionType()}`);
+  if (entity.heatSinkKit()) lines.push(`heat sink kit:${entity.heatSinkKit()}`);
   lines.push('');
 }
 
 function writeMovement(entity: MekEntity, lines: string[]): void {
   const hsType = entity.heatSinkType();
   const hsCount = entity.heatSinkCount();
-  lines.push(`Heat Sinks:${hsCount} ${hsType}`);
+  lines.push(`heat sinks:${hsCount} ${hsType}`);
   if (entity.baseChassisHeatSinks() >= 0) {
     lines.push(`Base Chassis Heat Sinks:${entity.baseChassisHeatSinks()}`);
   }
-  lines.push(`Walk MP:${entity.walkMP()}`);
-  lines.push(`Run MP:${entity.runMP()}`);
-  lines.push(`Jump MP:${entity.jumpMP()}`);
+  lines.push(`walk mp:${entity.walkMP()}`);
+  lines.push(`jump mp:${entity.jumpMP()}`);
   lines.push('');
 }
 
@@ -197,10 +199,13 @@ function writeArmor(
 ): void {
   const armorType = entity.armorType();
   const armorTb = entity.armorTechBase();
-  if (armorTb === 'Inner Sphere' && armorType === 'Standard') {
-    lines.push('Armor:Standard Armor');
+  const armorDisplayName = entity.armorEquipment()?.name ?? 'Standard';
+  if (armorTb === 'Inner Sphere' && armorType === 'STANDARD') {
+    lines.push('armor:Standard Armor');
+  } else if (armorType === 'PATCHWORK') {
+    lines.push('armor:Patchwork Armor');
   } else {
-    lines.push(`Armor:${armorType}(${formatTechBase(armorTb)})`);
+    lines.push(`armor:${armorDisplayName}(${formatTechBaseLabel(armorTb)})`);
   }
 
   const order = isTripod ? ARMOR_ORDER_TRIPOD : isQuad ? ARMOR_ORDER_QUAD : ARMOR_ORDER_BIPED;
@@ -214,11 +219,11 @@ function writeArmor(
 }
 
 function writeWeapons(entity: MekEntity, lines: string[]): void {
-  const mounts = entity.equipment().filter(m => m.location !== 'None');
+  const mounts = entity.equipment().filter(m => m.location !== 'None' && m.equipment instanceof WeaponEquipment);
   lines.push(`Weapons:${mounts.length}`);
   for (const m of mounts) {
     const locName = LOC_DISPLAY_NAMES[m.location] ?? m.location;
-    lines.push(`1 ${m.equipmentId}, ${locName}`);
+    lines.push(`${m.equipmentId}, ${locName}`);
   }
   lines.push('');
 }
@@ -323,11 +328,22 @@ function getConfigString(entity: MekEntity): string {
   else if (entity instanceof QuadMekEntity) base = 'Quad';
   else if (entity instanceof TripodMekEntity) base = 'Tripod';
   else base = 'Biped';
-  if (entity.omni()) base += ' Omnimech';
+  if (entity.omni()) base += ' OmniMek';
   return base;
 }
 
-function formatTechBase(tb: EntityTechBase): string {
+function formatTechBase(entity: MekEntity): string {
+  const tb = entity.techBase();
+  if (tb === 'Mixed') {
+    // Reconstruct the full mixed chassis string from the tech level
+    const tl = entity.techLevel();
+    if (tl.includes('Clan Chassis')) return 'Mixed (Clan Chassis)';
+    return 'Mixed (IS Chassis)';
+  }
+  return tb === 'Clan' ? 'Clan' : 'Inner Sphere';
+}
+
+function formatTechBaseLabel(tb: EntityTechBase): string {
   return tb === 'Clan' ? 'Clan' : tb === 'Mixed' ? 'Mixed' : 'Inner Sphere';
 }
 

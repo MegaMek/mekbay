@@ -35,14 +35,26 @@ import { JumpShipEntity } from '../entities/largecraft/jumpship-entity';
 import { WarShipEntity } from '../entities/largecraft/warship-entity';
 import { SpaceStationEntity } from '../entities/largecraft/space-station-entity';
 import {
-    armorTypeToCode,
   ENGINE_TYPE_TO_CODE,
-  EngineType,
   HEAT_SINK_TYPE_TO_CODE,
   HeatSinkType,
   LARGE_CRAFT_LOCATIONS,
 } from '../types';
-import { BuildingBlockWriter, writeFluffBlocks } from './building-block-writer';
+import {
+  BuildingBlockWriter,
+  writeIdentity,
+  writeYearTechMeta,
+  writeTransporters,
+  writeArmorBlocks,
+  writeInternalType,
+  writeOmni,
+  writeEngine,
+  writeEquipmentByLocation,
+  writeFluffBlocks,
+  writeSource,
+  writeTonnage,
+  writeManualBV,
+} from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 
 // ============================================================================
@@ -70,6 +82,8 @@ const WARSHIP_EXTRA_EQUIP_TAGS: [string, string][] = [
 
 /**
  * Serialize a JumpShipEntity, WarShipEntity, or SpaceStationEntity to BLK.
+ *
+ * Block ordering matches MegaMek's BLKFile.getBlock() exactly.
  */
 export function writeBlkLargeCraft(entity: JumpShipEntity): string {
   const w = new BuildingBlockWriter();
@@ -77,102 +91,84 @@ export function writeBlkLargeCraft(entity: JumpShipEntity): string {
   // ── Determine UnitType ──
   let unitType: string;
   if (entity instanceof SpaceStationEntity) unitType = 'SpaceStation';
-  else if (entity instanceof WarShipEntity) unitType = 'WarShip';
-  else                                      unitType = 'JumpShip';
+  else if (entity instanceof WarShipEntity) unitType = 'Warship';
+  else                                      unitType = 'Jumpship';
 
-  // ── Header ──
-  w.addBlock('UnitType', unitType);
+  // 1. Identity
+  writeIdentity(w, entity, unitType);
 
-  // ── Identity ──
-  w.addBlock('Name', entity.chassis());
-  if (entity.model()) w.addBlock('Model', entity.model());
-  if (entity.mulId() >= 0) w.addBlock('mul id:', entity.mulId());
+  // 2. Year/Tech/Meta (includes quirks, weaponQuirks)
+  writeYearTechMeta(w, entity);
 
-  // ── Year / Tech / Meta ──
-  w.addBlock('year', entity.year());
-  if (entity.originalBuildYear() >= 0) w.addBlock('originalBuildYear', entity.originalBuildYear());
-  if (entity.techLevel()) w.addBlock('type', entity.techLevel());
-  if (entity.role()) w.addBlock('role', entity.role());
+  // 3. motion_type — all large craft are Aerodyne
+  w.addBlock('motion_type', 'Aerodyne');
 
-  // ── Transporters ──
-  const transporters = entity.transporters();
-  if (transporters.length > 0) {
-    const tLines = transporters.map(t =>
-      `${t.type}:${t.capacity}:${t.doors}` + (t.bayNumber >= 0 ? `:${t.bayNumber}` : '')
-    );
-    w.addBlock('transporters', ...tLines);
-  }
+  // 4. transporters (includes docking collars)
+  writeTransporters(w, entity);
 
-  // ── Movement ──
+  // 5. SafeThrust
   w.addBlock('SafeThrust', entity.walkMP());
 
-  // ── Heat sinks / Fuel / Engine ──
+  // 6. Heat sinks / Fuel
   w.addBlock('heatsinks', entity.heatSinkCount());
   w.addBlock('sink_type', HEAT_SINK_TYPE_TO_CODE[entity.heatSinkType() as HeatSinkType] ?? 0);
   w.addBlock('fuel', entity.fuel());
-  w.addBlock('engine_type', ENGINE_TYPE_TO_CODE[entity.engineType() as EngineType] ?? 0);
 
-  // ── Structural integrity ──
-  w.addBlock('structural_integrity', entity.structuralIntegrity());
+  // 7. Engine: engine_type, clan_engine
+  writeEngine(w, entity, ENGINE_TYPE_TO_CODE);
 
-  // ── JumpShip specifics ──
-  w.addBlock('sail', entity.sail() ? 1 : 0);
-  if (entity.dockingCollars() > 0) w.addBlock('docking_collar', entity.dockingCollars());
-  if (entity.lithiumFusion()) w.addBlock('lithium-fusion', 1);
-  if (entity.hpg()) w.addBlock('hpg', 1);
+  // 8. Armor: armor_type, armor_tech_rating, armor_tech_level
+  writeArmorBlocks(w, entity);
 
-  const gravDecks = entity.gravDecks();
-  if (gravDecks.length > 0) {
-    w.addBlock('grav_decks', ...gravDecks);
-  }
+  // 9. internal_type
+  writeInternalType(w, entity);
 
-  // ── WarShip specifics ──
-  if (entity instanceof WarShipEntity) {
-    if (entity.kfCore() > 0) w.addBlock('kf_core', entity.kfCore());
-  }
+  // 10. omni
+  writeOmni(w, entity);
 
-  // ── Armor ──
-  const armorType = entity.armorType();
-  if (armorType !== 'Standard') {
-    w.addBlock('armor_type', armorTypeToCode(armorType));
-    const atb = entity.armorTechBase();
-    if (atb === 'Clan') w.addBlock('armor_tech', 1);
-    else if (atb === 'Mixed') w.addBlock('armor_tech', 2);
-  }
-
+  // 11. Armor values
   const armorLocs = [...LARGE_CRAFT_LOCATIONS];
   const armorMap = entity.armorValues();
   const armorInts: number[] = armorLocs.map(loc => armorMap.get(loc)?.front ?? 0);
   w.addBlock('armor', ...armorInts);
 
-  // ── Equipment per location ──
-  const mountsByLoc = new Map<string, string[]>();
-  for (const m of entity.equipment()) {
-    let lines = mountsByLoc.get(m.location);
-    if (!lines) { lines = []; mountsByLoc.set(m.location, lines); }
-    lines.push(encodeEquipmentLine(m, { blkMode: true }));
-  }
-
+  // 12. Equipment per location
   let equipTags = [...JUMPSHIP_EQUIP_TAGS];
   if (entity instanceof WarShipEntity) {
     equipTags = [...equipTags, ...WARSHIP_EXTRA_EQUIP_TAGS];
   }
+  writeEquipmentByLocation(w, entity, equipTags, encodeEquipmentLine);
 
-  for (const [blkTag, locCode] of equipTags) {
-    const lines = mountsByLoc.get(locCode) ?? [];
-    if (lines.length > 0) {
-      w.addBlock(blkTag, ...lines);
-    }
-  }
+  // 13. structural_integrity
+  w.addBlock('structural_integrity', entity.structuralIntegrity());
 
-  // ── Fluff ──
+  // 14. Fluff
   writeFluffBlocks(w, entity.fluff());
 
-  // ── Source / Tonnage ──
-  if (entity.source()) w.addBlock('source', entity.source());
-  w.addBlock('tonnage', entity.tonnage());
+  // 15. source
+  writeSource(w, entity);
 
-  // ── Crew ──
+  // 16. tonnage
+  writeTonnage(w, entity);
+
+  // 17. Manual BV
+  writeManualBV(w, entity);
+
+  // 18. WarShip kf_core (between tonnage/bv and lithium-fusion)
+  if (entity instanceof WarShipEntity) {
+    if (entity.kfCore() > 0) w.addBlock('kf_core', entity.kfCore());
+  }
+
+  // 19. JumpShip-specific tail: lithium-fusion, sail, grav_decks
+  if (entity.lithiumFusion()) w.addBlock('lithium-fusion', 1);
+  w.addBlock('sail', entity.sail() ? 1 : 0);
+  const gravDecks = entity.gravDecks();
+  if (gravDecks.length > 0) {
+    w.addBlock('grav_decks', ...gravDecks);
+  }
+
+  // 20. designtype + crew block
+  w.addBlock('designtype', entity.designType());
   w.addBlock('crew', entity.crew());
   w.addBlock('officers', entity.officers());
   w.addBlock('gunners', entity.gunners());

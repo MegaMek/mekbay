@@ -35,13 +35,26 @@ import { AeroEntity } from '../entities/aero/aero-entity';
 import { ConvFighterEntity } from '../entities/aero/conv-fighter-entity';
 import { FixedWingSupportEntity } from '../entities/aero/fixed-wing-support-entity';
 import {
-  AERO_LOCATIONS,
   ENGINE_TYPE_TO_CODE,
-  EngineType,
   HEAT_SINK_TYPE_TO_CODE,
   HeatSinkType,
 } from '../types';
-import { BuildingBlockWriter, writeFluffBlocks } from './building-block-writer';
+import {
+  BuildingBlockWriter,
+  writeIdentity,
+  writeYearTechMeta,
+  writeMotionType,
+  writeTransporters,
+  writeArmorBlocks,
+  writeInternalType,
+  writeOmni,
+  writeEngine,
+  writeEquipmentByLocation,
+  writeFluffBlocks,
+  writeSource,
+  writeTonnage,
+  writeManualBV,
+} from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 
 // ============================================================================
@@ -72,92 +85,90 @@ const FWS_EQUIP_TAGS: [string, string][] = [
 
 /**
  * Serialize an AeroEntity (ASF, ConvFighter, FixedWingSupport) to BLK format.
+ *
+ * Block ordering matches MegaMek's BLKFile.getBlock() exactly.
  */
 export function writeBlkAero(entity: AeroEntity): string {
   const w = new BuildingBlockWriter();
 
   // ── UnitType ──
-  let unitType = 'Aero';
+  let unitType = 'AeroSpaceFighter';
   if (entity instanceof FixedWingSupportEntity)  unitType = 'FixedWingSupport';
   else if (entity instanceof ConvFighterEntity)  unitType = 'ConvFighter';
-  w.addBlock('UnitType', unitType);
 
-  // ── Identity ──
-  w.addBlock('Name', entity.chassis());
-  if (entity.model()) w.addBlock('Model', entity.model());
-  if (entity.mulId() >= 0) w.addBlock('mul id:', entity.mulId());
+  // 1. Identity
+  writeIdentity(w, entity, unitType);
 
-  // ── Year / Source / Tech ──
-  w.addBlock('year', entity.year());
-  if (entity.originalBuildYear() >= 0) w.addBlock('originalBuildYear', entity.originalBuildYear());
-  if (entity.techLevel()) w.addBlock('type', entity.techLevel());
-  if (entity.role()) w.addBlock('role', entity.role());
-  if (entity.motionType()) w.addBlock('motion_type', entity.motionType());
+  // 2. Year/Tech/Meta (includes quirks, weaponQuirks)
+  writeYearTechMeta(w, entity);
 
-  // ── Transporters ──
-  const transporters = entity.transporters();
-  if (transporters.length > 0) {
-    const tLines = transporters.map(t => `${t.type}:${t.capacity}:${t.doors}` + (t.bayNumber ? `:${t.bayNumber}` : ''));
-    w.addBlock('transporters', ...tLines);
-  } else {
-    w.addBlock('transporters', '');
-  }
+  // 3. motion_type
+  writeMotionType(w, entity);
 
-  // ── Movement ──
+  // 4. transporters
+  writeTransporters(w, entity);
+
+  // 5. SafeThrust
   w.addBlock('SafeThrust', entity.walkMP());
 
-  // ── Cockpit / Heat sinks / Fuel / Engine ──
+  // 6. Cockpit / vstol
   if (!(entity instanceof FixedWingSupportEntity)) {
     w.addBlock('cockpit_type', 0); // TODO: map cockpit type to code
   }
-  w.addBlock('heatsinks', entity.heatSinkCount());
-  w.addBlock('sink_type', HEAT_SINK_TYPE_TO_CODE[entity.heatSinkType() as HeatSinkType] ?? 0);
-  w.addBlock('fuel', entity.fuel());
-  w.addBlock('engine_type', ENGINE_TYPE_TO_CODE[entity.engineType() as EngineType] ?? 0);
-
-  // ── Armor ──
-  const armorLocs = [...AERO_LOCATIONS];
-  const armorMap = entity.armorValues();
-  const armorInts: number[] = armorLocs.map(loc => armorMap.get(loc)?.front ?? 0);
-  w.addBlock('armor', ...armorInts);
-
-  // ── Equipment per location ──
-  const equipTags = entity instanceof FixedWingSupportEntity ? FWS_EQUIP_TAGS : FIGHTER_EQUIP_TAGS;
-  const mountsByLoc = new Map<string, string[]>();
-  for (const m of entity.equipment()) {
-    let lines = mountsByLoc.get(m.location);
-    if (!lines) { lines = []; mountsByLoc.set(m.location, lines); }
-    lines.push(encodeEquipmentLine(m, { blkMode: true }));
-  }
-
-  for (const [blkTag, locCode] of equipTags) {
-    const lines = mountsByLoc.get(locCode) ?? [];
-    w.addBlock(blkTag, ...lines);
-  }
-
-  // ── Type-specific fields ──
-
   if (entity instanceof ConvFighterEntity && entity.vstol()) {
     w.addBlock('vstol', 1);
   }
 
+  // 7. Heat sinks / Fuel
+  w.addBlock('heatsinks', entity.heatSinkCount());
+  w.addBlock('sink_type', HEAT_SINK_TYPE_TO_CODE[entity.heatSinkType() as HeatSinkType] ?? 0);
+  w.addBlock('fuel', entity.fuel());
+
+  // 8. Engine: engine_type, clan_engine
+  writeEngine(w, entity, ENGINE_TYPE_TO_CODE);
+
+  // 9. Armor: armor_type, armor_tech_rating, armor_tech_level
+  writeArmorBlocks(w, entity);
+
+  // 10. internal_type
+  writeInternalType(w, entity);
+
+  // 11. omni
+  writeOmni(w, entity);
+
+  // 12. Armor values
+  const armorMap = entity.armorValues();
+  const armorLocs = ['Nose', 'Left Wing', 'Right Wing', 'Aft'];
+  const armorInts: number[] = armorLocs.map(loc => armorMap.get(loc)?.front ?? 0);
+  w.addBlock('armor', ...armorInts);
+
+  // 13. Equipment per location (write empty blocks for fighters)
+  const equipTags = entity instanceof FixedWingSupportEntity ? FWS_EQUIP_TAGS : FIGHTER_EQUIP_TAGS;
+  writeEquipmentByLocation(w, entity, equipTags, encodeEquipmentLine, true);
+
+  // 14. BAR / support tech ratings
   if (entity instanceof FixedWingSupportEntity) {
     w.addBlock('barrating', entity.barRating());
     if (entity.structuralTechRating()) w.addBlock('structural_tech_rating', entity.structuralTechRating());
     if (entity.engineTechRating())     w.addBlock('engine_tech_rating', entity.engineTechRating());
-    if (entity.armorTechRating())      w.addBlock('armor_tech_rating', entity.armorTechRating());
   }
 
+  // 15. Structural integrity (if > 0)
   if (entity.structuralIntegrity() > 0) {
     w.addBlock('structural_integrity', entity.structuralIntegrity());
   }
 
-  // ── Fluff ──
+  // 16. Fluff
   writeFluffBlocks(w, entity.fluff());
 
-  // ── Source / Tonnage ──
-  if (entity.source()) w.addBlock('source', entity.source());
-  w.addBlock('tonnage', entity.tonnage());
+  // 17. source
+  writeSource(w, entity);
+
+  // 18. tonnage
+  writeTonnage(w, entity);
+
+  // 19. Manual BV
+  writeManualBV(w, entity);
 
   return w.toString();
 }

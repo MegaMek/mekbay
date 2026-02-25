@@ -50,7 +50,7 @@ export function writeBlkHandheld(entity: HandheldWeaponEntity): string {
 
   // ── Identity ──
   w.addBlock('Name', entity.chassis());
-  if (entity.model()) w.addBlock('Model', entity.model());
+  w.addBlock('Model', entity.model());
   if (entity.mulId() >= 0) w.addBlock('mul id:', entity.mulId());
 
   // ── Year / Tech / Meta ──

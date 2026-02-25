@@ -34,13 +34,26 @@
 import { SmallCraftEntity } from '../entities/aero/small-craft-entity';
 import {
   ENGINE_TYPE_TO_CODE,
-  EngineType,
-  armorTypeToCode,
   HEAT_SINK_TYPE_TO_CODE,
   HeatSinkType,
   SMALL_CRAFT_ARMOR_LOCATIONS,
 } from '../types';
-import { BuildingBlockWriter, writeFluffBlocks } from './building-block-writer';
+import {
+  BuildingBlockWriter,
+  writeIdentity,
+  writeYearTechMeta,
+  writeMotionType,
+  writeTransporters,
+  writeArmorBlocks,
+  writeInternalType,
+  writeOmni,
+  writeEngine,
+  writeEquipmentByLocation,
+  writeFluffBlocks,
+  writeSource,
+  writeTonnage,
+  writeManualBV,
+} from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 
 // ============================================================================
@@ -61,78 +74,70 @@ const SC_EQUIP_TAGS: [string, string][] = [
 
 /**
  * Serialize a SmallCraftEntity to BLK format.
+ *
+ * Block ordering matches MegaMek's BLKFile.getBlock() exactly.
  */
 export function writeBlkSmallCraft(entity: SmallCraftEntity): string {
   const w = new BuildingBlockWriter();
 
-  // ── Header ──
-  w.addBlock('UnitType', 'SmallCraft');
+  // 1. Identity
+  writeIdentity(w, entity, 'SmallCraft');
 
-  // ── Identity ──
-  w.addBlock('Name', entity.chassis());
-  if (entity.model()) w.addBlock('Model', entity.model());
-  if (entity.mulId() >= 0) w.addBlock('mul id:', entity.mulId());
+  // 2. Year/Tech/Meta (includes quirks, weaponQuirks)
+  writeYearTechMeta(w, entity);
 
-  // ── Year / Source / Tech ──
-  w.addBlock('year', entity.year());
-  if (entity.originalBuildYear() >= 0) w.addBlock('originalBuildYear', entity.originalBuildYear());
-  if (entity.techLevel()) w.addBlock('type', entity.techLevel());
-  if (entity.role()) w.addBlock('role', entity.role());
-  if (entity.motionType()) w.addBlock('motion_type', entity.motionType());
+  // 3. motion_type
+  writeMotionType(w, entity);
 
-  // ── Transporters ──
-  const transporters = entity.transporters();
-  if (transporters.length > 0) {
-    const tLines = transporters.map(t => `${t.type}:${t.capacity}:${t.doors}` + (t.bayNumber >= 0 ? `:${t.bayNumber}` : ''));
-    w.addBlock('transporters', ...tLines);
-  }
+  // 4. transporters
+  writeTransporters(w, entity);
 
-  // ── Movement ──
+  // 5. SafeThrust
   w.addBlock('SafeThrust', entity.walkMP());
 
-  // ── Heat sinks / Fuel / Engine ──
+  // 6. Heat sinks / Fuel
   w.addBlock('heatsinks', entity.heatSinkCount());
   w.addBlock('sink_type', HEAT_SINK_TYPE_TO_CODE[entity.heatSinkType() as HeatSinkType] ?? 0);
   w.addBlock('fuel', entity.fuel());
-  w.addBlock('engine_type', ENGINE_TYPE_TO_CODE[entity.engineType() as EngineType] ?? 0);
 
-  // ── Armor ──
-  const armorType = entity.armorType();
-  if (armorType !== 'Standard') {
-    w.addBlock('armor_type', armorTypeToCode(armorType));
-    const atb = entity.armorTechBase();
-    if (atb === 'Clan') w.addBlock('armor_tech', 1);
-    else if (atb === 'Mixed') w.addBlock('armor_tech', 2);
-  }
+  // 7. Engine: engine_type, clan_engine
+  writeEngine(w, entity, ENGINE_TYPE_TO_CODE);
 
+  // 8. Armor: armor_type, armor_tech_rating, armor_tech_level
+  writeArmorBlocks(w, entity);
+
+  // 9. internal_type
+  writeInternalType(w, entity);
+
+  // 10. omni
+  writeOmni(w, entity);
+
+  // 11. Armor values
   const armorLocs = [...SMALL_CRAFT_ARMOR_LOCATIONS];
   const armorMap = entity.armorValues();
   const armorInts: number[] = armorLocs.map(loc => armorMap.get(loc)?.front ?? 0);
   w.addBlock('armor', ...armorInts);
 
-  // ── Equipment per location ──
-  const mountsByLoc = new Map<string, string[]>();
-  for (const m of entity.equipment()) {
-    let lines = mountsByLoc.get(m.location);
-    if (!lines) { lines = []; mountsByLoc.set(m.location, lines); }
-    lines.push(encodeEquipmentLine(m, { blkMode: true }));
-  }
+  // 12. Equipment per location
+  writeEquipmentByLocation(w, entity, SC_EQUIP_TAGS, encodeEquipmentLine);
 
-  for (const [blkTag, locCode] of SC_EQUIP_TAGS) {
-    const lines = mountsByLoc.get(locCode) ?? [];
-    w.addBlock(blkTag, ...lines);
-  }
+  // 13. structural_integrity
+  w.addBlock('structural_integrity', entity.structuralIntegrity());
 
-  // ── Fluff ──
+  // 14. Fluff
   writeFluffBlocks(w, entity.fluff());
 
-  // ── SmallCraft-specific ──
-  w.addBlock('structural_integrity', entity.structuralIntegrity());
-  if (entity.source()) w.addBlock('source', entity.source());
-  w.addBlock('tonnage', entity.tonnage());
-  w.addBlock('designtype', entity.designType() === 'Aerodyne' ? 1 : 0);
+  // 15. source
+  writeSource(w, entity);
 
-  // ── Crew ──
+  // 16. tonnage
+  writeTonnage(w, entity);
+
+  // 17. Manual BV
+  writeManualBV(w, entity);
+
+  // 18. SmallCraft crew block
+  w.addBlock('designtype', entity.designType() === 'Aerodyne' ? 1 : 0);
   w.addBlock('crew', entity.crew());
   w.addBlock('officers', entity.officers());
   w.addBlock('gunners', entity.gunners());

@@ -37,6 +37,7 @@ import {
   armorTypeFromCode,
   engineTypeFromCode,
   locationArmor,
+  resolveArmorEquipment,
 } from '../types';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
@@ -76,8 +77,12 @@ export function parseBlkProtoMek(bb: BuildingBlock, ctx: ParseContext): ProtoMek
   parseBaseBlk(bb, entity, ctx);
   const techBase = getBlkTechBase(bb);
 
+  // ── Motion type ──
+  if (bb.exists('motion_type')) entity.motionType.set(bb.getFirstString('motion_type'));
+
   // ── Movement ──
-  if (bb.exists('cruiseMP')) entity.walkMP.set(bb.getFirstInt('cruiseMP'));
+  if (bb.exists('cruiseMP'))  entity.walkMP.set(bb.getFirstInt('cruiseMP'));
+  if (bb.exists('jumpingMP')) entity.jumpingMP.set(bb.getFirstInt('jumpingMP'));
 
   // ── Engine ──
   if (bb.exists('engine_type')) entity.engineType.set(engineTypeFromCode(bb.getFirstInt('engine_type')));
@@ -94,6 +99,9 @@ export function parseBlkProtoMek(bb: BuildingBlock, ctx: ParseContext): ProtoMek
     if (code === 1) entity.armorTechBase.set('Clan');
     else if (code === 2) entity.armorTechBase.set('Mixed');
   }
+  entity.armorEquipment.set(
+    resolveArmorEquipment(entity.armorType(), entity.armorTechBase() === 'Clan', ctx.equipmentDb)
+  );
 
   if (bb.exists('armor')) {
     const ints = bb.getDataAsInt('armor');

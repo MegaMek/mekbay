@@ -42,7 +42,7 @@
  *   npx tsx scripts/verify-entity-roundtrip.ts [--input PATH] [--output PATH] [--type TYPE] [--fail-fast] [--verbose]
  *
  * Options:
- *   --input  PATH   Root directory of unit files (default: ../mm-data/data/mekfiles)
+ *   --input  PATH   Root directory of unit files (default: C:\Projects\megamek\svgexport\unitfiles)
  *   --output PATH   Directory to write diff files for failures (default: ./tmp/roundtrip)
  *   --type   TYPE   Filter by entity type: meks|fighters|vehicles|battlearmor|infantry|protomeks|dropships|smallcraft|jumpships|warship|spacestation|ge|handheld|convfighter
  *   --fail-fast      Stop on the first failure
@@ -83,7 +83,7 @@ function getArg(name: string, defaultValue: string): string {
 }
 const hasFlag = (name: string) => args.includes(`--${name}`);
 
-const INPUT_DIR = path.resolve(getArg('input', path.join(__dirname, '..', '..', '..', 'mm-data', 'data', 'mekfiles')));
+const INPUT_DIR = path.resolve(getArg('input', path.join(__dirname, '..', '..', '..', 'svgexport', 'unitfiles')));
 const OUTPUT_DIR = path.resolve(getArg('output', path.join(__dirname, '..', 'tmp', 'roundtrip')));
 const TYPE_FILTER = getArg('type', '');
 const FAIL_FAST = hasFlag('fail-fast');

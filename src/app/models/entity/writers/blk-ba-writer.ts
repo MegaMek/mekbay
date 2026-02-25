@@ -32,8 +32,18 @@
  */
 
 import { BattleArmorEntity } from '../entities/infantry/battle-armor-entity';
-import { armorTypeToCode } from '../types';
-import { BuildingBlockWriter, writeFluffBlocks } from './building-block-writer';
+import {
+  ARMOR_TYPE_TO_CODE,
+} from '../types';
+import {
+  BuildingBlockWriter,
+  writeIdentity,
+  writeYearTechMeta,
+  writeMotionType,
+  writeFluffBlocks,
+  writeSource,
+  writeManualBV,
+} from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 
 // ============================================================================
@@ -51,7 +61,7 @@ export function writeBlkBA(entity: BattleArmorEntity): string {
 
   // ── Identity ──
   w.addBlock('Name', entity.chassis());
-  if (entity.model()) w.addBlock('Model', entity.model());
+  w.addBlock('Model', entity.model());
   if (entity.mulId() >= 0) w.addBlock('mul id:', entity.mulId());
 
   // ── Year / Tech / Meta ──
@@ -80,8 +90,8 @@ export function writeBlkBA(entity: BattleArmorEntity): string {
 
   // ── Armor ──
   const armorType = entity.armorType();
-  if (armorType !== 'Standard') {
-    w.addBlock('armor_type', armorTypeToCode(armorType));
+  if (armorType !== 'STANDARD') {
+    w.addBlock('armor_type', ARMOR_TYPE_TO_CODE[armorType] ?? 0);
     const atb = entity.armorTechBase();
     if (atb === 'Clan') w.addBlock('armor_tech', 1);
     else if (atb === 'Mixed') w.addBlock('armor_tech', 2);

@@ -41,6 +41,7 @@ import {
   armorTypeFromCode,
   engineTypeFromCode,
   locationArmor,
+  resolveArmorEquipment,
 } from '../types';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
@@ -111,6 +112,7 @@ export function parseBlkLargeCraft(bb: BuildingBlock, ctx: ParseContext): JumpSh
   }
 
   // ── JumpShip specifics ──
+  if (bb.exists('designtype'))     entity.designType.set(bb.getFirstInt('designtype'));
   if (bb.exists('sail'))           entity.sail.set(bb.getFirstInt('sail') === 1);
   if (bb.exists('docking_collar')) entity.dockingCollars.set(bb.getFirstInt('docking_collar'));
   if (bb.exists('lithium-fusion')) entity.lithiumFusion.set(bb.getFirstInt('lithium-fusion') === 1);
@@ -132,6 +134,9 @@ export function parseBlkLargeCraft(bb: BuildingBlock, ctx: ParseContext): JumpSh
     if (code === 1) entity.armorTechBase.set('Clan');
     else if (code === 2) entity.armorTechBase.set('Mixed');
   }
+  entity.armorEquipment.set(
+    resolveArmorEquipment(entity.armorType(), entity.armorTechBase() === 'Clan', ctx.equipmentDb)
+  );
 
   if (bb.exists('armor')) {
     const ints = bb.getDataAsInt('armor');

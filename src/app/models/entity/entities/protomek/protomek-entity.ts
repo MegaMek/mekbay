@@ -51,6 +51,8 @@ export class ProtoMekEntity extends BaseEntity {
   //  SIGNALS
   // ═══════════════════════════════════════════════════════════════════════════
 
+  motionType = signal<string>('Biped');
+  jumpingMP = signal<number>(0);
   interfaceCockpit = signal<boolean>(false);
   isGlider = signal<boolean>(false);
   isQuad = signal<boolean>(false);

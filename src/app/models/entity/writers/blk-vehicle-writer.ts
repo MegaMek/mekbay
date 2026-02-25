@@ -40,10 +40,23 @@ import { LargeSupportTankEntity } from '../entities/vehicle/large-support-tank-e
 import { GunEmplacementEntity } from '../entities/vehicle/gun-emplacement-entity';
 import {
   ENGINE_TYPE_TO_CODE,
-  EngineType,
-  armorTypeToCode,
 } from '../types';
-import { BuildingBlockWriter, writeFluffBlocks } from './building-block-writer';
+import {
+  BuildingBlockWriter,
+  writeIdentity,
+  writeYearTechMeta,
+  writeMotionType,
+  writeTransporters,
+  writeArmorBlocks,
+  writeInternalType,
+  writeOmni,
+  writeEngine,
+  writeEquipmentByLocation,
+  writeFluffBlocks,
+  writeSource,
+  writeTonnage,
+  writeManualBV,
+} from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 
 // ============================================================================
@@ -84,6 +97,8 @@ const VTOL_ARMOR_LOCS = ['Front', 'Right', 'Left', 'Rear', 'Rotor', 'Turret'] as
 
 /**
  * Serialize a VehicleEntity (or subclass) to BLK format.
+ *
+ * Block ordering matches MegaMek's BLKFile.getBlock() exactly.
  */
 export function writeBlkVehicle(entity: VehicleEntity): string {
   const w = new BuildingBlockWriter();
@@ -95,83 +110,39 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
   else if (entity instanceof SupportVtolEntity)      unitType = 'SupportVTOL';
   else if (entity instanceof SupportTankEntity)       unitType = 'SupportTank';
   else if (entity instanceof VtolEntity)              unitType = 'VTOL';
-  else if (entity instanceof NavalEntity)             unitType = 'Tank';  // MegaMek compat: naval vehicles use UnitType=Tank
+  else if (entity instanceof NavalEntity)             unitType = 'Tank';
   else                                                unitType = 'Tank';
 
-  // ── Header ──
-  w.addBlock('UnitType', unitType);
+  // 1. Identity: UnitType, Name, Model, mul id
+  writeIdentity(w, entity, unitType);
 
-  // ── Identity ──
-  w.addBlock('Name', entity.chassis());
-  if (entity.model()) w.addBlock('Model', entity.model());
-  if (entity.mulId() >= 0) w.addBlock('mul id:', entity.mulId());
+  // 2. Year/Tech/Meta: year, originalBuildYear, type, role, quirks, weaponQuirks
+  writeYearTechMeta(w, entity);
 
-  // ── Year / Tech / Meta ──
-  w.addBlock('year', entity.year());
-  if (entity.originalBuildYear() >= 0) w.addBlock('originalBuildYear', entity.originalBuildYear());
-  if (entity.techLevel()) w.addBlock('type', entity.techLevel());
-  if (entity.role()) w.addBlock('role', entity.role());
+  // 3. motion_type
+  writeMotionType(w, entity);
 
-  // ── Motion type ──
-  w.addBlock('motion_type', entity.motionType());
+  // 4. transporters
+  writeTransporters(w, entity);
 
-  // ── Transporters ──
-  const transporters = entity.transporters();
-  if (transporters.length > 0) {
-    const tLines = transporters.map(t =>
-      `${t.type}:${t.capacity}:${t.doors}` + (t.bayNumber >= 0 ? `:${t.bayNumber}` : '')
-    );
-    w.addBlock('transporters', ...tLines);
-  }
-
-  // ── Movement ──
+  // 5. Movement: cruiseMP
   w.addBlock('cruiseMP', entity.walkMP());
 
-  // ── Engine ──
-  w.addBlock('engine_type', ENGINE_TYPE_TO_CODE[entity.engineType() as EngineType] ?? 0);
+  // 6. Engine: engine_type, clan_engine
+  writeEngine(w, entity, ENGINE_TYPE_TO_CODE);
 
-  // ── Turret ──
-  if (entity.hasDualTurret()) {
-    w.addBlock('Turret', 0);
-    w.addBlock('Turret2', 0);
-    if (entity.baseChassisTurretWeight() > 0) {
-      w.addBlock('baseChassisTurretWeight', entity.baseChassisTurretWeight());
-    }
-    if (entity.baseChassisTurret2Weight() > 0) {
-      w.addBlock('baseChassisTurret2Weight', entity.baseChassisTurret2Weight());
-    }
-  } else if (entity.hasTurret()) {
-    w.addBlock('Turret', 0);
-    if (entity.baseChassisTurretWeight() > 0) {
-      w.addBlock('baseChassisTurretWeight', entity.baseChassisTurretWeight());
-    }
+  // 7. Armor: armor_type, armor_tech_rating, armor_tech_level
+  if (!(entity instanceof GunEmplacementEntity)) {
+    writeArmorBlocks(w, entity);
   }
 
-  // ── Fuel ──
-  if (entity.fuelType()) {
-    w.addBlock('fuel_type', entity.fuelType());
-  }
+  // 8. internal_type (only if not Standard)
+  writeInternalType(w, entity);
 
-  // ── Trailer / No Controls ──
-  if (entity.isTrailer()) {
-    w.addBlock('trailer', 1);
-  }
-  if (entity.hasNoControlSystems()) {
-    w.addBlock('hasNoControlSystems', 1);
-  }
-  if (entity.extraSeats() > 0) {
-    w.addBlock('extraSeats', entity.extraSeats());
-  }
+  // 9. omni
+  writeOmni(w, entity);
 
-  // ── Armor ──
-  const armorType = entity.armorType();
-  if (armorType !== 'Standard') {
-    w.addBlock('armor_type', armorTypeToCode(armorType));
-    const atb = entity.armorTechBase();
-    if (atb === 'Clan') w.addBlock('armor_tech', 1);
-    else if (atb === 'Mixed') w.addBlock('armor_tech', 2);
-  }
-
+  // 10. Armor values array
   const armorMap = entity.armorValues();
   if (entity instanceof GunEmplacementEntity) {
     const turretArmor = armorMap.get('Turret')?.front ?? 0;
@@ -182,36 +153,7 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
     w.addBlock('armor', ...armorInts);
   }
 
-  // ── Internal Structure ──
-  if (entity.structureType() !== 'Standard') {
-    let code = 0;
-    if (entity.structureType() === 'Endo Steel') code = 1;
-    else if (entity.structureType() === 'Composite') code = 2;
-    else if (entity.structureType() === 'Reinforced') code = 3;
-    w.addBlock('internal_type', code);
-  }
-
-  // ── Gun Emplacement specifics ──
-  if (entity instanceof GunEmplacementEntity) {
-    w.addBlock('buildingCF', entity.buildingCF());
-  }
-
-  // ── BAR rating ──
-  if (entity instanceof SupportTankEntity) {
-    w.addBlock('barrating', entity.barRating());
-  }
-  if (entity instanceof SupportVtolEntity) {
-    w.addBlock('barrating', entity.barRating());
-  }
-
-  // ── Equipment per location ──
-  const mountsByLoc = new Map<string, string[]>();
-  for (const m of entity.equipment()) {
-    let lines = mountsByLoc.get(m.location);
-    if (!lines) { lines = []; mountsByLoc.set(m.location, lines); }
-    lines.push(encodeEquipmentLine(m, { blkMode: true }));
-  }
-
+  // 11. Equipment per location
   let equipTags: [string, string][];
   if (entity instanceof GunEmplacementEntity) {
     equipTags = GE_EQUIP_TAGS;
@@ -221,19 +163,61 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
     equipTags = VEHICLE_EQUIP_TAGS;
   }
 
-  for (const [blkTag, locCode] of equipTags) {
-    const lines = mountsByLoc.get(locCode) ?? [];
-    if (lines.length > 0) {
-      w.addBlock(blkTag, ...lines);
+  writeEquipmentByLocation(w, entity, equipTags, encodeEquipmentLine);
+
+  // 12. BAR rating (for support vehicles with BAR armor)
+  if (entity instanceof SupportTankEntity) {
+    w.addBlock('barrating', entity.barRating());
+  }
+  if (entity instanceof SupportVtolEntity) {
+    w.addBlock('barrating', entity.barRating());
+  }
+
+  // 13. Support vehicle tech ratings
+  if (entity instanceof SupportTankEntity || entity instanceof SupportVtolEntity) {
+    if ((entity as any).structuralTechRating?.()) {
+      w.addBlock('structural_tech_rating', (entity as any).structuralTechRating());
+    }
+    if ((entity as any).engineTechRating?.()) {
+      w.addBlock('engine_tech_rating', (entity as any).engineTechRating());
     }
   }
 
-  // ── Fluff ──
+  // 14. Fluff blocks
   writeFluffBlocks(w, entity.fluff());
 
-  // ── Source / Tonnage ──
-  if (entity.source()) w.addBlock('source', entity.source());
-  w.addBlock('tonnage', entity.tonnage());
+  // 15. source
+  writeSource(w, entity);
+
+  // 16. tonnage
+  writeTonnage(w, entity);
+
+  // 17. Manual BV
+  writeManualBV(w, entity);
+
+  // 18. Omni turret weights (after tonnage, only for Omni vehicles)
+  if (entity.omni()) {
+    if (entity.baseChassisTurretWeight() > 0) {
+      w.addBlock('baseChassisTurretWeight', entity.baseChassisTurretWeight());
+    }
+    if (entity.baseChassisTurret2Weight() > 0) {
+      w.addBlock('baseChassisTurret2Weight', entity.baseChassisTurret2Weight());
+    }
+  }
+
+  // 19. Fuel (support vehicles) / fuelType / controls / trailer / extra seats
+  if (entity.fuelType()) {
+    w.addBlock('fuelType', entity.fuelType());
+  }
+  if (entity.hasNoControlSystems()) {
+    w.addBlock('hasNoControlSystems', 1);
+  }
+  if (entity.isTrailer()) {
+    w.addBlock('trailer', 1);
+  }
+  if (entity.extraSeats() > 0) {
+    w.addBlock('extra_seats', entity.extraSeats());
+  }
 
   return w.toString();
 }

@@ -39,6 +39,7 @@ import {
   armorTypeFromCode,
   engineTypeFromCode,
   locationArmor,
+  resolveArmorEquipment,
 } from '../types';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
@@ -108,6 +109,9 @@ export function parseBlkSmallCraft(bb: BuildingBlock, ctx: ParseContext): SmallC
     if (code === 1) entity.armorTechBase.set('Clan');
     else if (code === 2) entity.armorTechBase.set('Mixed');
   }
+  entity.armorEquipment.set(
+    resolveArmorEquipment(entity.armorType(), entity.armorTechBase() === 'Clan', ctx.equipmentDb)
+  );
 
   if (bb.exists('armor')) {
     const ints = bb.getDataAsInt('armor');

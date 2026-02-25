@@ -48,6 +48,7 @@ import {
   armorTypeFromCode,
   engineTypeFromCode,
   locationArmor,
+  resolveArmorEquipment,
 } from '../types';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
@@ -196,6 +197,9 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
     else if (code === 2) entity.armorTechBase.set('Mixed');
     else if (code !== 0) ctx.warn('armor_tech', `Unknown armor_tech code: ${code}`);
   }
+  entity.armorEquipment.set(
+    resolveArmorEquipment(entity.armorType(), entity.armorTechBase() === 'Clan', ctx.equipmentDb)
+  );
 
   if (bb.exists('armor')) {
     const ints = bb.getDataAsInt('armor');

@@ -38,6 +38,7 @@ import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import { QuadVeeEntity } from '../entities/mek/quad-vee-entity';
 import { TripodMekEntity } from '../entities/mek/tripod-mek-entity';
 import {
+  ArmorType,
   EntityFluff,
   EntityMountedEquipment,
   EntityQuirk,
@@ -49,6 +50,7 @@ import {
   MountPlacement,
   locationArmor,
   normalizeSystemManufacturerKey,
+  resolveArmorByName,
 } from '../types';
 import { parseMtfArmor } from '../utils/armor-type-parser';
 import { parseMtfEngine } from '../utils/engine-type-parser';
@@ -199,8 +201,17 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   // ── Armor (structured { front, rear }) ──
   if (header.armorType) {
     const armorInfo = parseMtfArmor(header.armorType);
-    entity.armorType.set(armorInfo.type);
-    if (armorInfo.clanTech) entity.armorTechBase.set('Clan');
+    const isClan = armorInfo.clanTech;
+    if (isClan) entity.armorTechBase.set('Clan');
+    if (armorInfo.patchwork) {
+      entity.armorType.set('PATCHWORK');
+    } else {
+      const armorEquip = resolveArmorByName(armorInfo.type, isClan, ctx.equipmentDb);
+      if (armorEquip) {
+        entity.armorType.set(armorEquip.armorType as ArmorType);
+        entity.armorEquipment.set(armorEquip);
+      }
+    }
   }
 
   const armorMap = new Map<string, LocationArmor>();
@@ -314,6 +325,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   // ── Fluff & BV ──
   entity.fluff.set(header.fluff);
   if (header.manualBV > 0) entity.manualBV.set(header.manualBV);
+  if (header.generator) entity.generator.set(header.generator);
 
   return entity;
 }
@@ -356,6 +368,7 @@ interface MtfHeader {
   weaponsList: string[];
   fluff: EntityFluff;
   manualBV: number;
+  generator: string;
 }
 
 function parseHeader(lines: string[]): MtfHeader {
@@ -369,7 +382,7 @@ function parseHeader(lines: string[]): MtfHeader {
     armorType: 'Standard', armorValues: new Map(), patchworkTypes: new Map(),
     quirks: [], weaponQuirks: [],
     locationSlots: new Map(), nocritEquipment: [], weaponsList: [],
-    fluff: {}, manualBV: 0,
+    fluff: {}, manualBV: 0, generator: '',
   };
 
   let currentLocHeader: string | null = null;
@@ -420,11 +433,11 @@ function parseHeader(lines: string[]): MtfHeader {
     const value = line.substring(colonIdx + 1).trim();
 
     switch (key) {
-      case 'generator': break;
+      case 'generator': h.generator = value; break;
       case 'chassis':   h.chassis = value; break;
       case 'model':     h.model = value; break;
       case 'mul id':    h.mulId = parseInt(value, 10) || -1; break;
-      case 'config':    h.config = value; h.isOmni = value.toLowerCase().includes('omnimech'); break;
+      case 'config':    h.config = value; h.isOmni = value.toLowerCase().includes('omnimek'); break;
       case 'techbase':
         h.techBaseRaw = value;
         if (value.toLowerCase().includes('clan'))       h.techBase = 'Clan';

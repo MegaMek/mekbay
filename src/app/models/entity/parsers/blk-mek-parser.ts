@@ -44,6 +44,7 @@ import {
   armorTypeFromCode,
   engineTypeFromCode,
   locationArmor,
+  resolveArmorEquipment,
   structureTypeFromCode,
 } from '../types';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
@@ -167,6 +168,9 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
     if (code === 1) entity.armorTechBase.set('Clan');
     else if (code === 2) entity.armorTechBase.set('Mixed');
   }
+  entity.armorEquipment.set(
+    resolveArmorEquipment(entity.armorType(), entity.armorTechBase() === 'Clan', ctx.equipmentDb)
+  );
 
   if (bb.exists('armor')) {
     const ints = bb.getDataAsInt('armor');
