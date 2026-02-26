@@ -144,18 +144,19 @@ export function getEngineCTSlots(engine: EngineComponent, gyroType: GyroType | s
   }
 
   if (isLarge) {
+    if (isSuperHeavy) {
+      // Large + SH: always the same regardless of gyro type
+      return [0, 1, 2, 5];
+    }
     if (normalizedGyro === 'None') {
       // No gyro → engine fills contiguous slots
-      return isSuperHeavy ? [0, 1, 2, 5] : [0, 1, 2, 3, 4, 5, 6, 7];
+      return [0, 1, 2, 3, 4, 5, 6, 7];
     }
     if (normalizedGyro === 'Compact') {
-      return isSuperHeavy ? [0, 1, 2, 5] : [0, 1, 2, 5, 6, 7, 8, 9];
+      return [0, 1, 2, 5, 6, 7, 8, 9];
     }
-    if (normalizedGyro === 'XL') {
-      return isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 9, 10, 11];
-    }
-    // Large + Standard/Heavy Duty/Superheavy gyro (4 crits)
-    return isSuperHeavy ? [0, 1, 2, 5] : [0, 1, 2, 7, 8, 9, 10, 11];
+    // Standard/Heavy Duty/XL/Superheavy gyro — all use default layout
+    return [0, 1, 2, 7, 8, 9, 10, 11];
   }
 
   // Normal-sized engine

@@ -312,10 +312,13 @@ export abstract class MekEntity extends BaseEntity {
       case 'LT': case 'RT': {
         const engine = this.mountedEngine().engine;
         const layout = buildSideTorsoSystemLayout(engine);
-        // Torso-Mounted cockpit adds Life Support to each side torso
+        // Torso-Mounted cockpit adds Life Support at slot 0 of each side torso,
+        // shifting engine slots down by 1. Matches Java's addTorsoMountedCockpit()
+        // which explicitly does setCritical(LOC_*_TORSO, 0, LIFE_SUPPORT).
         if (this.cockpitType() === 'Torso-Mounted' || this.cockpitType() === 'Torso-Mounted Cockpit') {
-          const firstEmpty = layout.indexOf(null);
-          if (firstEmpty >= 0) layout[firstEmpty] = 'Life Support';
+          // Shift everything down by 1 (drop last null) and insert Life Support at 0
+          layout.pop();
+          layout.unshift('Life Support');
         }
         return layout.map(s => s ? sys(s as MekSystemType) : EMPTY_SLOT);
       }
