@@ -46,14 +46,12 @@ import {
   VALID_FUEL_TYPES,
   VALID_VEHICLE_MOTION_TYPES,
   armorTypeFromCode,
-  engineTypeFromCode,
   locationArmor,
   resolveArmorEquipment,
 } from '../types';
-import { createEngine, createMountedEngine } from '../components';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
-import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
+import { getBlkTechBase, parseBaseBlk, parseBlkEngine } from './blk-base-parser';
 import { parseEquipmentLine } from './equipment-resolver';
 import { ParseContext } from './parse-context';
 
@@ -141,10 +139,11 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
   if (bb.exists('engine_type')) {
     const code = bb.getFirstInt('engine_type');
     ctx.validateCode('engine_type', code, ENGINE_TYPE_FROM_CODE);
-    const engineType = engineTypeFromCode(code);
-    const isClan = techBase === 'Clan';
-    const rating = entity.walkMP() * entity.tonnage();
-    entity.mountedEngine.set(createMountedEngine(createEngine(engineType, rating, isClan)));
+    const result = parseBlkEngine(bb, entity, {
+      engineTypeRequired: true,
+      includeHeatSinks: false,
+    });
+    if (result) entity.mountedEngine.set(result.mountedEngine);
   }
 
   // ── Turret ──

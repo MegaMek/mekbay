@@ -39,18 +39,15 @@ import { QuadVeeEntity } from '../entities/mek/quad-vee-entity';
 import { TripodMekEntity } from '../entities/mek/tripod-mek-entity';
 import {
   EntityMountedEquipment,
-  HeatSinkType,
   LocationArmor,
   armorTypeFromCode,
-  engineTypeFromCode,
   locationArmor,
   resolveArmorEquipment,
   structureTypeFromCode,
 } from '../types';
-import { createEngine, createMountedEngine } from '../components';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
-import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
+import { getBlkTechBase, parseBaseBlk, parseBlkEngine } from './blk-base-parser';
 import { parseEquipmentLine } from './equipment-resolver';
 import { ParseContext } from './parse-context';
 
@@ -126,29 +123,16 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
   parseBaseBlk(bb, entity, ctx);
   const techBase = getBlkTechBase(bb);
 
+  // ── Movement (must precede engine — rating = walkMP × tonnage) ──
+  if (bb.exists('walkingMP')) entity.walkMP.set(bb.getFirstInt('walkingMP'));
+
   // ── Engine ──
   {
-    const engineType = bb.exists('engine_type') ? engineTypeFromCode(bb.getFirstInt('engine_type')) : 'Fusion' as const;
-    const rating = bb.exists('engine_rating')
-      ? bb.getFirstInt('engine_rating')
-      : (bb.exists('walkingMP') ? bb.getFirstInt('walkingMP') * entity.tonnage() : 0);
-    const isClan = techBase === 'Clan';
-    const isSuperHeavy = entity.tonnage() > 100;
-    const engine = createEngine(engineType, rating, isClan, isSuperHeavy);
-
-    // Heat sinks
-    const sinkTypes: Record<number, HeatSinkType> = { 0: 'Single', 1: 'Double', 2: 'Compact', 3: 'Laser' };
-    const heatSinkType = bb.exists('sink_type') ? (sinkTypes[bb.getFirstInt('sink_type')] ?? 'Single') : 'Single';
-    const baseChassisHeatSinks = bb.exists('base chassis heat sinks') ? bb.getFirstInt('base chassis heat sinks') : -1;
-
-    entity.mountedEngine.set(createMountedEngine(engine, {
-      heatSinkType,
-      totalHeatSinks: 10,
-      rawHeatSinkLabel: heatSinkType,
-      baseChassisHeatSinks,
-    }));
+    const result = parseBlkEngine(bb, entity, {
+      isSuperHeavy: entity.tonnage() > 100,
+    });
+    if (result) entity.mountedEngine.set(result.mountedEngine);
   }
-  if (bb.exists('walkingMP')) entity.walkMP.set(bb.getFirstInt('walkingMP'));
 
   // ── Structure / Gyro / Cockpit ──
   if (bb.exists('internal_type')) entity.structureType.set(structureTypeFromCode(bb.getFirstInt('internal_type')));

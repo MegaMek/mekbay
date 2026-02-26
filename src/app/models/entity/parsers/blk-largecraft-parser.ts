@@ -35,18 +35,15 @@ import { JumpShipEntity } from '../entities/largecraft/jumpship-entity';
 import { WarShipEntity } from '../entities/largecraft/warship-entity';
 import { SpaceStationEntity } from '../entities/largecraft/space-station-entity';
 import {
-  HeatSinkType,
   LARGE_CRAFT_LOCATIONS,
   LocationArmor,
   armorTypeFromCode,
-  engineTypeFromCode,
   locationArmor,
   resolveArmorEquipment,
 } from '../types';
-import { createEngine, createMountedEngine } from '../components';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
-import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
+import { getBlkTechBase, parseBaseBlk, parseBlkEngine } from './blk-base-parser';
 import { parseEquipmentLine } from './equipment-resolver';
 import { ParseContext } from './parse-context';
 
@@ -99,19 +96,12 @@ export function parseBlkLargeCraft(bb: BuildingBlock, ctx: ParseContext): JumpSh
 
   // ── Engine ──
   {
-    const engineType = bb.exists('engine_type') ? engineTypeFromCode(bb.getFirstInt('engine_type')) : 'Fusion' as const;
-    const isClan = techBase === 'Clan';
-    const rating = entity.walkMP() * entity.tonnage();
-    const sinkTypes: Record<number, HeatSinkType> = { 0: 'Single', 1: 'Double', 2: 'Compact', 3: 'Laser' };
-    const heatSinkType = bb.exists('sink_type') ? (sinkTypes[bb.getFirstInt('sink_type')] ?? 'Single') : 'Single';
-    const totalHeatSinks = bb.exists('heatsinks') ? bb.getFirstInt('heatsinks') : 0;
-    entity.mountedEngine.set(createMountedEngine(createEngine(engineType, rating, isClan), {
-      heatSinkType,
-      totalHeatSinks,
-      rawHeatSinkLabel: heatSinkType,
-    }));
-    entity.heatSinkType.set(heatSinkType);
-    if (bb.exists('heatsinks')) entity.heatSinkCount.set(totalHeatSinks);
+    const result = parseBlkEngine(bb, entity, { defaultTotalHeatSinks: 0 });
+    if (result) {
+      entity.mountedEngine.set(result.mountedEngine);
+      entity.heatSinkType.set(result.heatSinkType);
+      if (bb.exists('heatsinks')) entity.heatSinkCount.set(result.totalHeatSinks);
+    }
   }
 
   // ── Structural integrity ──

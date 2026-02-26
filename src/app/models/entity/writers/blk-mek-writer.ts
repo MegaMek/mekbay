@@ -127,7 +127,6 @@ export function writeBlkMek(entity: MekEntity): string {
   const chassisType = isQuad ? 'Quad' : 'Biped';
   w.addBlock('chassis_type', chassisType);
   w.addBlock('engine_type', ENGINE_TYPE_TO_CODE[entity.engineType() as EngineType] ?? 0);
-  w.addBlock('engine_rating', entity.engineRating());
   w.addBlock('walkingMP', entity.walkMP());
 
   // ── Structure / Gyro / Cockpit ──

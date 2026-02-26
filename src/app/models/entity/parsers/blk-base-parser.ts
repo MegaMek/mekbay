@@ -32,13 +32,17 @@
  */
 
 import { BaseEntity } from '../base-entity';
+import { createEngine, createMountedEngine, type MountedEngine } from '../components';
 import {
   EntityFluff,
   EntityQuirk,
   EntityTechBase,
   EntityTransporter,
   EntityWeaponQuirk,
+  HEAT_SINK_TYPE_FROM_CODE,
+  HeatSinkType,
   VALID_TECH_BASE_STRINGS,
+  engineTypeFromCode,
   normalizeSystemManufacturerKey,
 } from '../types';
 import { parseTechLevel } from '../utils/tech-level-parser';
@@ -113,12 +117,6 @@ export function parseBaseBlk(
   // ── Armor type / tech rating / tech level ──
   // Derived from ArmorEquipment (set by each type-specific parser after
   // resolving the armor type + tech base against the equipment DB).
-
-  // ── Clan engine flag (mixed-tech) ──
-  if (bb.exists('clan_engine')) {
-    const val = bb.getFirstString('clan_engine');
-    entity.clanEngine.set(val.toLowerCase() === 'true' || val === '1');
-  }
 
   // ── Quirks ──
   if (bb.exists('quirks')) {
@@ -265,4 +263,128 @@ export function getBlkTechBase(bb: BuildingBlock): EntityTechBase {
     if (typeStr.includes('mixed')) return 'Mixed';
   }
   return 'Inner Sphere';
+}
+
+/**
+ * Resolve the engine `isClan` flag from the BLK data.
+ *
+ * The `clan_engine` block explicitly overrides the default (which is derived
+ * from the chassis tech base). This is essential for mixed-tech units where
+ * the engine tech base differs from the chassis.
+ */
+export function getBlkEngineIsClan(bb: BuildingBlock): boolean {
+  if (bb.exists('clan_engine')) {
+    const val = bb.getFirstString('clan_engine');
+    return val.toLowerCase() === 'true' || val === '1';
+  }
+  return getBlkTechBase(bb) === 'Clan';
+}
+
+// ============================================================================
+// Centralized BLK engine creation
+// ============================================================================
+
+/**
+ * Options controlling how `parseBlkEngine` reads the BLK data.
+ *
+ * Every field is optional — sensible defaults are derived from the BLK
+ * blocks themselves.
+ */
+export interface BlkEngineOpts {
+  /** Mark the engine as super-heavy (tonnage > 100).  Default: `false`. */
+  isSuperHeavy?: boolean;
+
+  /**
+   * When `true` (the default), heat-sink fields (`sink_type`, `heatsinks`,
+   * `base chassis heat sinks`) are read from the BLK and forwarded to
+   * `createMountedEngine`.  Set to `false` for unit types that never carry
+   * heat sinks (vehicles, ProtoMeks).
+   */
+  includeHeatSinks?: boolean;
+
+  /**
+   * Default value for `totalHeatSinks` when the `heatsinks` block is
+   * absent.  Most unit types use `10`; large craft use `0`.
+   */
+  defaultTotalHeatSinks?: number;
+
+  /**
+   * When `true`, the engine_type block is mandatory — the function returns
+   * `undefined` when it is missing.  Used by vehicles and ProtoMeks whose
+   * files always specify engine_type.
+   */
+  engineTypeRequired?: boolean;
+}
+
+/**
+ * Parsed engine result.  Includes both the `MountedEngine` (always) and
+ * the heat-sink metadata that several entity types copy onto the entity
+ * itself.
+ */
+export interface BlkEngineResult {
+  mountedEngine: MountedEngine;
+  heatSinkType: HeatSinkType;
+  totalHeatSinks: number;
+}
+
+/**
+ * Parse the engine + heat-sink blocks that are duplicated across every
+ * type-specific BLK parser.
+ *
+ * Returns `undefined` only when `opts.engineTypeRequired` is `true` and
+ * the `engine_type` block is absent.
+ */
+export function parseBlkEngine(
+  bb: BuildingBlock,
+  entity: BaseEntity,
+  opts: BlkEngineOpts = {},
+): BlkEngineResult | undefined {
+  const {
+    isSuperHeavy = false,
+    includeHeatSinks = true,
+    defaultTotalHeatSinks = 10,
+    engineTypeRequired = false,
+  } = opts;
+
+  // ── Engine type ──
+  if (engineTypeRequired && !bb.exists('engine_type')) return undefined;
+  const engineType = bb.exists('engine_type')
+    ? engineTypeFromCode(bb.getFirstInt('engine_type'))
+    : 'Fusion' as const;
+
+  // ── Rating (always walkMP × tonnage — callers must set walkMP first) ──
+  const rating = entity.walkMP() * entity.tonnage();
+
+  // ── Clan flag (respects clan_engine override for mixed-tech) ──
+  const isClan = getBlkEngineIsClan(bb);
+
+  const engine = createEngine(engineType, rating, isClan, isSuperHeavy);
+
+  // ── Heat sinks ──
+  let heatSinkType: HeatSinkType = 'Single';
+  let totalHeatSinks = defaultTotalHeatSinks;
+  let baseChassisHeatSinks = -1;
+
+  if (includeHeatSinks) {
+    if (bb.exists('sink_type')) {
+      heatSinkType = HEAT_SINK_TYPE_FROM_CODE[bb.getFirstInt('sink_type')] ?? 'Single';
+    }
+    if (bb.exists('heatsinks')) {
+      totalHeatSinks = bb.getFirstInt('heatsinks');
+    }
+    if (bb.exists('base chassis heat sinks')) {
+      baseChassisHeatSinks = bb.getFirstInt('base chassis heat sinks');
+    }
+  }
+
+  const mountedEngine = includeHeatSinks
+    ? createMountedEngine(engine, {
+        heatSinkType,
+        totalHeatSinks,
+        rawHeatSinkLabel: heatSinkType,
+        baseChassisHeatSinks,
+      })
+    : createMountedEngine(engine);
+
+  return { mountedEngine, heatSinkType, totalHeatSinks };
 }
