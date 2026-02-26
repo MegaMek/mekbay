@@ -100,7 +100,7 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
       if (!line) continue;
 
       const parsed = parseEquipmentLine(line);
-      const resolved = ctx.resolveEquipment(parsed.name, techBase, 'Field Guns Equipment');
+      const resolved = ctx.resolveEquipment(parsed.name, 'Field Guns Equipment');
 
       entity.addEquipment({
         mountId: generateMountId(),

@@ -132,7 +132,7 @@ export function parseBlkProtoMek(bb: BuildingBlock, ctx: ParseContext): ProtoMek
       if (!line) continue;
 
       const parsed = parseEquipmentLine(line);
-      const resolved = ctx.resolveEquipment(parsed.name, techBase, blkTag);
+      const resolved = ctx.resolveEquipment(parsed.name, blkTag);
 
       entity.addEquipment({
         mountId: generateMountId(),

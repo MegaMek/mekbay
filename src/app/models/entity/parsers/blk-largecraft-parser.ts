@@ -160,7 +160,7 @@ export function parseBlkLargeCraft(bb: BuildingBlock, ctx: ParseContext): JumpSh
       if (!line) continue;
 
       const parsed = parseEquipmentLine(line);
-      const resolved = ctx.resolveEquipment(parsed.name, techBase, blkTag);
+      const resolved = ctx.resolveEquipment(parsed.name, blkTag);
 
       entity.addEquipment({
         mountId: generateMountId(),

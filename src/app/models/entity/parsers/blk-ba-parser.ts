@@ -154,7 +154,7 @@ function parseLocationEquipment(
     if (equipLine.endsWith(':APM'))  { isAPM = true; equipLine = equipLine.slice(0, -4); }
 
     const parsed = parseEquipmentLine(equipLine);
-    const resolved = ctx.resolveEquipment(parsed.name, techBase, blkTag);
+    const resolved = ctx.resolveEquipment(parsed.name, blkTag);
 
     entity.addEquipment({
       mountId: generateMountId(),

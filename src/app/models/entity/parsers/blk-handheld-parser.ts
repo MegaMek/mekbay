@@ -64,7 +64,7 @@ export function parseBlkHandheld(bb: BuildingBlock, ctx: ParseContext): Handheld
       if (!line) continue;
 
       const parsed = parseEquipmentLine(line);
-      const resolved = ctx.resolveEquipment(parsed.name, techBase, 'Gun Equipment');
+      const resolved = ctx.resolveEquipment(parsed.name, 'Gun Equipment');
 
       entity.addEquipment({
         mountId: generateMountId(),
