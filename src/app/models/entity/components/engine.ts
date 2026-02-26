@@ -143,6 +143,10 @@ export function getEngineCTSlots(engine: EngineComponent, gyroType: GyroType | s
   }
 
   if (isLarge) {
+    if (normalizedGyro === 'None') {
+      // No gyro → engine fills contiguous slots
+      return isSuperHeavy ? [0, 1, 2, 5] : [0, 1, 2, 3, 4, 5, 6, 7];
+    }
     if (normalizedGyro === 'Compact') {
       return isSuperHeavy ? [0, 1, 2, 5] : [0, 1, 2, 5, 6, 7, 8, 9];
     }
@@ -154,13 +158,17 @@ export function getEngineCTSlots(engine: EngineComponent, gyroType: GyroType | s
   }
 
   // Normal-sized engine
+  if (normalizedGyro === 'None') {
+    // No gyro → engine fills 6 contiguous slots
+    return isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 3, 4, 5];
+  }
   if (normalizedGyro === 'Compact') {
     return isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 5, 6, 7];
   }
   if (normalizedGyro === 'XL') {
     return isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 9, 10, 11];
   }
-  // Standard/Heavy Duty/None/Superheavy gyro
+  // Standard/Heavy Duty/Superheavy gyro
   return isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 7, 8, 9];
 }
 
@@ -343,9 +351,13 @@ export function buildCTSystemLayout(
     if (idx < slotsPerLocation) layout[idx] = 'Engine';
   }
 
-  // Place gyro slots immediately after the first engine block
-  // (after 3 slots for normal engines, 2 for compact)
-  const gyroStart = engine.type === 'Compact' ? 2 : 3;
+  // Place gyro slots immediately after the first contiguous engine block
+  // Find the first gap in engine slots to determine gyro start position
+  let gyroStart = 0;
+  for (const idx of engineSlots) {
+    if (idx === gyroStart) gyroStart = idx + 1;
+    else break;
+  }
   for (let i = 0; i < gyro.criticalSlots; i++) {
     const idx = gyroStart + i;
     if (idx < slotsPerLocation) layout[idx] = 'Gyro';

@@ -32,8 +32,13 @@
  */
 
 import { signal } from '@angular/core';
-import { MekConfig } from '../../types';
+import { CriticalSlotView, MekConfig } from '../../types';
 import { BipedMekEntity } from './biped-mek-entity';
+
+/** Helper to create a system slot view. */
+function sys(systemType: string): CriticalSlotView {
+  return { type: 'system', systemType: systemType as any, armored: false, omniPod: false };
+}
 
 /** Land-Air Mek — a biped Mek with LAM-specific fields. */
 export class LamEntity extends BipedMekEntity {
@@ -42,5 +47,35 @@ export class LamEntity extends BipedMekEntity {
 
   override get chassisConfig(): MekConfig {
     return 'LAM';
+  }
+
+  protected override getSystemSlotsForLocation(loc: string): CriticalSlotView[] {
+    const base = super.getSystemSlotsForLocation(loc);
+
+    if (loc === 'HD') {
+      // LAM head has Avionics at slot 3 (replacing the empty slot in standard cockpit)
+      base[3] = sys('Avionics');
+    } else if (loc === 'CT') {
+      // Add Landing Gear after engine/gyro in CT
+      const firstEmpty = base.findIndex(s => s.type === 'empty');
+      if (firstEmpty >= 0) base[firstEmpty] = sys('Landing Gear');
+    } else if (loc === 'LT' || loc === 'RT') {
+      // Find where engine side-torso slots end, then add Landing Gear + Avionics
+      let insertAt = 0;
+      for (let i = 0; i < base.length; i++) {
+        if (base[i].type === 'system' && base[i].systemType === 'Engine') {
+          insertAt = i + 1;
+        } else {
+          break;
+        }
+      }
+      // Insert Landing Gear and Avionics after engine slots
+      if (insertAt + 1 < base.length) {
+        base[insertAt] = sys('Landing Gear');
+        base[insertAt + 1] = sys('Avionics');
+      }
+    }
+
+    return base;
   }
 }

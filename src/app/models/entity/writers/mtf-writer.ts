@@ -109,7 +109,7 @@ const ARMOR_ORDER_TRIPOD: ArmorOutputEntry[] = [
   { label: 'CL armor', loc: 'CL', face: 'front' },
   { label: 'RTL armor', loc: 'LT', face: 'rear' },
   { label: 'RTR armor', loc: 'RT', face: 'rear' },
-  { label: 'RTC Armor', loc: 'CT', face: 'rear' },
+  { label: 'RTC armor', loc: 'CT', face: 'rear' },
 ];
 
 // ============================================================================
@@ -171,12 +171,16 @@ function writeConfig(entity: MekEntity, lines: string[]): void {
 
 function writePhysical(entity: MekEntity, lines: string[]): void {
   lines.push(`mass:${entity.tonnage()}`);
-  if (entity instanceof LamEntity && entity.lamType()) {
-    lines.push(`lam:${entity.lamType()}`);
-  }
   lines.push(`engine:${formatEngineLine(entity)}`);
   lines.push(`structure:${getStructureString(entity)}`);
   lines.push(`myomer:${entity.myomerType()}`);
+
+  if (entity instanceof LamEntity && entity.lamType()) {
+    lines.push(`lam:${entity.lamType()}`);
+  }
+  if (entity instanceof QuadVeeEntity && entity.motiveType()) {
+    lines.push(`motive:${entity.motiveType()}`);
+  }
 
   if (entity.cockpitType() !== 'Standard') lines.push(`cockpit:${entity.cockpitType()}`);
   if (entity.gyroType() !== 'Standard') lines.push(`gyro:${entity.gyroType()}`);
@@ -192,7 +196,8 @@ function writeMovement(entity: MekEntity, lines: string[]): void {
     lines.push(`base chassis heat sinks:${me.baseChassisHeatSinks}`);
   }
   lines.push(`walk mp:${entity.walkMP()}`);
-  lines.push(`jump mp:${entity.jumpMP()}`);
+  const jumpVal = entity.declaredJumpMP() >= 0 ? entity.declaredJumpMP() : entity.jumpMP();
+  lines.push(`jump mp:${jumpVal}`);
   lines.push('');
 }
 
@@ -204,26 +209,54 @@ function writeArmor(
   const armorTb = entity.armorTechBase();
   const armorDisplayName = entity.armorEquipment()?.name ?? 'Standard';
   if (armorType === 'PATCHWORK') {
-    lines.push('armor:Patchwork Armor');
+    lines.push('armor:Patchwork');
   } else {
     lines.push(`armor:${armorDisplayName}(${formatTechBaseLabel(armorTb)})`);
   }
 
   const order = isTripod ? ARMOR_ORDER_TRIPOD : isQuad ? ARMOR_ORDER_QUAD : ARMOR_ORDER_BIPED;
   const armorMap = entity.armorValues();
+  const patchTypes = armorType === 'PATCHWORK' ? entity.armorTypes() : undefined;
   for (const entry of order) {
     const la = armorMap.get(entry.loc);
     const value = la ? la[entry.face] : 0;
-    lines.push(`${entry.label}:${value}`);
+    // For patchwork armor, front-facing entries include per-location armor type
+    if (patchTypes && entry.face === 'front') {
+      const locType = patchTypes.get(entry.loc) ?? 'Standard(IS/Clan)';
+      lines.push(`${entry.label}:${locType}:${value}`);
+    } else {
+      lines.push(`${entry.label}:${value}`);
+    }
   }
   lines.push('');
 }
 
+/**
+ * Location order for sorting weapons — matches MegaMek's descending location-
+ * index order (LOC_LLEG=7 first … LOC_HEAD=0 last).
+ */
+const WEAPON_LOC_ORDER: Record<string, number> = {
+  CL: 0, LL: 1, RL: 2, LA: 3, RA: 4, LT: 5, RT: 6, CT: 7, HD: 8,
+  RLL: 1, RRL: 2, FLL: 3, FRL: 4,
+};
+
 function writeWeapons(entity: MekEntity, lines: string[]): void {
   const mounts = entity.equipment().filter(m => m.location !== 'None' && m.equipment instanceof WeaponEquipment);
+
+  // Sort by first crit-slot appearance: location order, then slot index
+  mounts.sort((a, b) => {
+    const aFirst = a.placements?.[0];
+    const bFirst = b.placements?.[0];
+    const aLoc = aFirst?.location ?? a.location;
+    const bLoc = bFirst?.location ?? b.location;
+    const locDiff = (WEAPON_LOC_ORDER[aLoc] ?? 99) - (WEAPON_LOC_ORDER[bLoc] ?? 99);
+    if (locDiff !== 0) return locDiff;
+    return (aFirst?.slotIndex ?? 0) - (bFirst?.slotIndex ?? 0);
+  });
+
   lines.push(`Weapons:${mounts.length}`);
   for (const m of mounts) {
-    // mount.location is already the primary (torso for split weapons)
+    // mount.location is the primary location (torso for split weapons)
     const locName = LOC_DISPLAY_NAMES[m.location] ?? m.location;
     const displayName = m.equipment?.name ?? m.equipmentId;
     lines.push(`${displayName}, ${locName}`);
@@ -252,7 +285,8 @@ function writeCriticals(
       if (!slot || slot.type === 'empty') {
         lines.push('-Empty-');
       } else if (slot.type === 'system') {
-        lines.push(slot.systemType === 'Engine' ? 'Fusion Engine' : slot.systemType!);
+        const name = slot.systemType === 'Engine' ? 'Fusion Engine' : slot.systemType!;
+        lines.push(slot.armored ? `${name} (ARMORED)` : name);
       } else {
         // Equipment — look up mount for name and modifiers
         lines.push(formatEquipmentSlot(slot, mountMap));
@@ -289,6 +323,7 @@ function writeFluff(entity: MekEntity, lines: string[]): void {
   if (fluff.history) lines.push(`history:${fluff.history}`);
   if (fluff.manufacturer) lines.push(`manufacturer:${fluff.manufacturer}`);
   if (fluff.primaryFactory) lines.push(`primaryfactory:${fluff.primaryFactory}`);
+  if (fluff.notes) lines.push(`notes:${fluff.notes}`);
 
   // Interleave systemmanufacturer and systemmodel per system key
   // MegaMek outputs: systemmanufacturer:KEY:value then systemmode:KEY:value for each key in order
@@ -327,13 +362,14 @@ function formatEquipmentSlot(
   if (mount.rearMounted) name += ' (R)';
   if (mount.turretMounted) name += ' (T)';
   if (slot.omniPod) name += ' (OMNIPOD)';
-  if (slot.armored) name += ' (ARMORED)';
   if (mount.facing !== undefined) name += ` (${facingLabel(mount.facing)})`;
   if (mount.size !== undefined) {
     // Preserve decimal point: MegaMek writes SIZE:1.0, SIZE:2.0 etc.
     const sizeStr = Number.isInteger(mount.size) ? `${mount.size}.0` : `${mount.size}`;
     name += `:SIZE:${sizeStr}`;
   }
+  // ARMORED goes after SIZE (MegaMek: "name:SIZE:1.0 (ARMORED)")
+  if (slot.armored) name += ' (ARMORED)';
   if (mount.secondEquipmentId) name += `|${mount.secondEquipmentId}`;
   return name;
 }
@@ -378,13 +414,14 @@ function formatEngineLine(entity: MekEntity): string {
   const typeName = getEngineTypePrefix(entity.engineType());
   const isClanEngine = entity.clanEngine();
   const isMixed = entity.mixedTech();
+  const large = rating > 400 ? 'Large ' : '';
 
   if (isClanEngine) {
-    return `${rating} ${typeName} (Clan) Engine`;
+    return `${rating} ${large}${typeName} (Clan) Engine`;
   } else if (isMixed) {
-    return `${rating} ${typeName} Engine(IS)`;
+    return `${rating} ${large}${typeName} Engine(IS)`;
   } else {
-    return `${rating} ${typeName} Engine`;
+    return `${rating} ${large}${typeName} Engine`;
   }
 }
 

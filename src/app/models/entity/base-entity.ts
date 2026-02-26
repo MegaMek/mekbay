@@ -116,6 +116,8 @@ export abstract class BaseEntity {
 
   // ── Movement ──
   walkMP = signal<number>(0);
+  /** Raw jump MP from the source file (for round-trip fidelity). -1 means not set. */
+  declaredJumpMP = signal<number>(-1);
 
   // ── Engine (via MountedEngine) ──
   /**

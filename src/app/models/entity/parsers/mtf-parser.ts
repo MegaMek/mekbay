@@ -135,9 +135,14 @@ const SYSTEM_NAMES: Record<string, MekSystemType> = {
 const ENGINE_SLOT_NAMES = [
   'Fusion Engine', 'XL Engine', 'XXL Engine', 'Light Engine',
   'Compact Engine', 'No Engine',
+  // Large engine variants (rating > 400)
+  'Large Fusion Engine', 'Large XL Engine', 'Large XXL Engine',
+  'Large Light Engine', 'Large Compact Engine',
   // Full MTF names (robustness — some files may use the full label)
   'XL Fusion Engine', 'XXL Fusion Engine', 'Light Fusion Engine',
   'Compact Fusion Engine',
+  'Large XL Fusion Engine', 'Large XXL Fusion Engine',
+  'Large Light Fusion Engine', 'Large Compact Fusion Engine',
 ];
 
 // ============================================================================
@@ -208,6 +213,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   if (header.heatSinkKit) entity.heatSinkKit.set(header.heatSinkKit);
 
   entity.walkMP.set(header.walkMP);
+  if (header.jumpMP >= 0) entity.declaredJumpMP.set(header.jumpMP);
 
   // ── Armor (structured { front, rear }) ──
   if (header.armorType) {
@@ -234,6 +240,16 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   }
   entity.armorValues.set(armorMap);
 
+  // ── Patchwork per-location armor types ──
+  if (header.patchworkTypes.size > 0) {
+    const patchMap = new Map<string, string>();
+    for (const [label, typeStr] of header.patchworkTypes) {
+      const mapping = ARMOR_LABEL_MAP[label.toLowerCase()];
+      if (mapping) patchMap.set(mapping.loc, typeStr);
+    }
+    entity.armorTypes.set(patchMap);
+  }
+
   // ── Quirks ──
   entity.quirks.set(header.quirks);
   entity.weaponQuirks.set(header.weaponQuirks);
@@ -246,6 +262,9 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   // Track multi-crit equipment: key "equipName@locCode" → mountId
   const multiCritMap = new Map<string, string>();
 
+  // Track armored system slots: "LOC:INDEX" keys
+  const armoredSystemSlots = new Set<string>();
+
   for (const [locHeader, slotLines] of header.locationSlots) {
     const locCode = locationMap[locHeader];
     if (!locCode) continue;
@@ -256,8 +275,12 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
 
       const parsed = parseCritSlotLine(raw);
 
-      // System slots are skipped — they're derived from configuration
-      if (SYSTEM_NAMES[parsed.name] || isEngineSlot(parsed.name)) continue;
+      // System slots are skipped — they're derived from configuration,
+      // but we still capture the ARMORED flag for round-trip fidelity.
+      if (SYSTEM_NAMES[parsed.name] || isEngineSlot(parsed.name)) {
+        if (parsed.armored) armoredSystemSlots.add(`${locCode}:${slotIdx}`);
+        continue;
+      }
 
       // Equipment slot — find existing multi-crit mount or create new one
       const dedupKey = `${parsed.name}@${locCode}`;
@@ -297,6 +320,11 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
           incomplete.isSplit = true;
           // Primary location is the more restrictive one (torso > arm)
           incomplete.location = getSplitPrimaryLocation(incomplete.location, locCode);
+          // Update multiCritMap so further crits in the new primary location
+          // can find this mount (e.g. AC/20 split RT+CT: after merging the
+          // first CT crit the location becomes CT, subsequent CT crits must
+          // still de-duplicate to the same mount).
+          multiCritMap.set(`${incomplete.equipmentId}@${incomplete.location}`, incomplete.mountId);
           addedToExisting = true;
         }
       }
@@ -333,6 +361,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   }
 
   entity.equipment.set(mountedEquipment);
+  if (armoredSystemSlots.size > 0) entity.armoredSystemSlots.set(armoredSystemSlots);
 
   // ── Nocrit equipment ──
   for (const nocritName of header.nocritEquipment) {
@@ -518,14 +547,28 @@ function parseHeader(lines: string[]): MtfHeader {
       case 'armor':                   h.armorType = value; break;
       case 'nocrit':                  h.nocritEquipment.push(value); break;
 
-      // Armor values
+      // Armor values — handle patchwork format "ArmorType(TechBase):number"
       case 'la armor': case 'ra armor': case 'lt armor': case 'rt armor':
       case 'ct armor': case 'hd armor': case 'll armor': case 'rl armor':
       case 'cl armor': case 'fll armor': case 'frl armor':
       case 'rll armor': case 'rrl armor':
-      case 'rtl armor': case 'rtr armor': case 'rtc armor':
+      case 'rtl armor': case 'rtr armor': case 'rtc armor': {
+        const lastColon = value.lastIndexOf(':');
+        if (lastColon > 0) {
+          // Patchwork: "Reactive(Inner Sphere):26"
+          const armorTypePart = value.substring(0, lastColon).trim();
+          const numPart = value.substring(lastColon + 1).trim();
+          const parsed = parseInt(numPart, 10);
+          if (!isNaN(parsed)) {
+            h.armorValues.set(key, parsed);
+            h.patchworkTypes.set(key, armorTypePart);
+            break;
+          }
+        }
+        // Non-patchwork: plain number
         h.armorValues.set(key, parseInt(value, 10) || 0);
         break;
+      }
 
       // Quirks
       case 'quirk':       h.quirks.push({ name: value }); break;
@@ -547,6 +590,7 @@ function parseHeader(lines: string[]): MtfHeader {
       case 'history':       h.fluff.history = value; break;
       case 'manufacturer':  h.fluff.manufacturer = value; break;
       case 'primaryfactory': h.fluff.primaryFactory = value; break;
+      case 'notes':         h.fluff.notes = value; break;
       case 'systemmanufacturer': {
         const i = value.indexOf(':');
         if (i > 0) {

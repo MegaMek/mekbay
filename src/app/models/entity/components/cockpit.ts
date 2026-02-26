@@ -82,7 +82,7 @@ const COCKPIT_DEFINITIONS: Record<string, CockpitComponent> = {
   },
   'Torso-Mounted': {
     type: 'Torso-Mounted',
-    headLayout: ['Life Support', 'Sensors', 'Cockpit', null, 'Sensors', 'Life Support'],
+    headLayout: ['Sensors', 'Sensors', null, null, null, null],
   },
   'Dual': {
     type: 'Dual',
@@ -126,7 +126,7 @@ const COCKPIT_DEFINITIONS: Record<string, CockpitComponent> = {
   },
   'QuadVee': {
     type: 'QuadVee',
-    headLayout: ['Life Support', 'Sensors', 'Cockpit', null, 'Sensors', 'Life Support'],
+    headLayout: ['Life Support', 'Sensors', 'Cockpit', 'Cockpit', 'Sensors', 'Life Support'],
   },
 };
 

@@ -71,6 +71,15 @@ export abstract class MekEntity extends BaseEntity {
   ejectionType = signal<string>('');
   heatSinkKit = signal<string>('');
 
+  /**
+   * Set of armored system slot keys: "LOC:INDEX" (e.g. "HD:0", "CT:3").
+   * Parsed from MTF/BLK `(ARMORED)` suffix on system crit slots.
+   * Equipment armored flags are stored on the mount itself, but system
+   * components (Life Support, Sensors, Cockpit, Gyro, Engine, etc.) use
+   * this set because they are not part of the equipment list.
+   */
+  armoredSystemSlots = signal<Set<string>>(new Set());
+
   /** Convenience: heat sink type (delegates to mountedEngine) */
   heatSinkType = computed<HeatSinkType>(() => this.mountedEngine().heatSinkType);
   /** Base-chassis heat sinks from MTF/BLK (delegates to mountedEngine, -1 = unset) */
@@ -136,13 +145,20 @@ export abstract class MekEntity extends BaseEntity {
   criticalSlotGrid = computed<Map<string, CriticalSlotView[]>>(() => {
     const grid = new Map<string, CriticalSlotView[]>();
     const slotsPerLoc = this.slotsPerLocation();
+    const armoredSys = this.armoredSystemSlots();
 
     for (const loc of this.locationOrder) {
       // Start with system template + empty fill
       const systemSlots = this.getSystemSlotsForLocation(loc as string);
       const slots: CriticalSlotView[] = [];
       for (let i = 0; i < slotsPerLoc; i++) {
-        slots.push(systemSlots[i] ?? EMPTY_SLOT);
+        const s = systemSlots[i] ?? EMPTY_SLOT;
+        // Apply armored flag for system slots
+        if (s.type === 'system' && armoredSys.has(`${loc}:${i}`)) {
+          slots.push({ ...s, armored: true });
+        } else {
+          slots.push(s);
+        }
       }
 
       grid.set(loc as string, slots);
@@ -274,7 +290,7 @@ export abstract class MekEntity extends BaseEntity {
    * Entries at a given index mean "this slot is reserved for this system."
    * Remaining indices (up to slotsPerLocation) are empty.
    */
-  private getSystemSlotsForLocation(loc: string): CriticalSlotView[] {
+  protected getSystemSlotsForLocation(loc: string): CriticalSlotView[] {
     const slotsPerLoc = this.slotsPerLocation();
 
     switch (loc) {
@@ -286,11 +302,24 @@ export abstract class MekEntity extends BaseEntity {
       case 'CT': {
         const engine = this.mountedEngine().engine;
         const layout = buildCTSystemLayout(engine, this.gyroType() as GyroType, slotsPerLoc);
+        // Torso-Mounted cockpit adds Cockpit + Sensors to CT after engine/gyro
+        if (this.cockpitType() === 'Torso-Mounted' || this.cockpitType() === 'Torso-Mounted Cockpit') {
+          const firstEmpty = layout.indexOf(null);
+          if (firstEmpty >= 0 && firstEmpty + 1 < slotsPerLoc) {
+            layout[firstEmpty] = 'Cockpit';
+            layout[firstEmpty + 1] = 'Sensors';
+          }
+        }
         return layout.map(s => s ? sys(s as MekSystemType) : EMPTY_SLOT);
       }
       case 'LT': case 'RT': {
         const engine = this.mountedEngine().engine;
         const layout = buildSideTorsoSystemLayout(engine, slotsPerLoc);
+        // Torso-Mounted cockpit adds Life Support to each side torso
+        if (this.cockpitType() === 'Torso-Mounted' || this.cockpitType() === 'Torso-Mounted Cockpit') {
+          const firstEmpty = layout.indexOf(null);
+          if (firstEmpty >= 0) layout[firstEmpty] = 'Life Support';
+        }
         return layout.map(s => s ? sys(s as MekSystemType) : EMPTY_SLOT);
       }
       case 'LA': case 'RA':

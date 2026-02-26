@@ -332,10 +332,11 @@ export function resolveArmorByName(
   isClan: boolean,
   equipmentDb: EquipmentMap,
 ): ArmorEquipment | null {
+  const normalizedName = displayName.trim();
   let best: ArmorEquipment | null = null;
   for (const eq of Object.values(equipmentDb)) {
     if (!(eq instanceof ArmorEquipment)) continue;
-    if (eq.name !== displayName) continue;
+    if (eq.name.trim() !== normalizedName) continue;
     // Prefer matching tech base
     if (isClan && eq.techBase === 'Clan') return eq;
     if (!isClan && eq.techBase !== 'Clan') return eq;
