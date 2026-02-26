@@ -51,6 +51,7 @@
  */
 
 import type { EngineType, HeatSinkType } from '../types';
+import { MEK_SLOTS_PER_LOCATION } from '../types';
 import { type GyroType, getGyro, normalizeGyroType } from './gyro';
 
 // ============================================================================
@@ -340,15 +341,14 @@ export function createMountedEngine(
 export function buildCTSystemLayout(
   engine: EngineComponent,
   gyroType: GyroType | string,
-  slotsPerLocation: number,
 ): (string | null)[] {
-  const layout: (string | null)[] = new Array(slotsPerLocation).fill(null);
+  const layout: (string | null)[] = new Array(MEK_SLOTS_PER_LOCATION).fill(null);
   const engineSlots = getEngineCTSlots(engine, gyroType);
   const gyro = getGyro(gyroType);
 
   // Place engine slots
   for (const idx of engineSlots) {
-    if (idx < slotsPerLocation) layout[idx] = 'Engine';
+    if (idx < MEK_SLOTS_PER_LOCATION) layout[idx] = 'Engine';
   }
 
   // Place gyro slots immediately after the first contiguous engine block
@@ -360,7 +360,7 @@ export function buildCTSystemLayout(
   }
   for (let i = 0; i < gyro.criticalSlots; i++) {
     const idx = gyroStart + i;
-    if (idx < slotsPerLocation) layout[idx] = 'Gyro';
+    if (idx < MEK_SLOTS_PER_LOCATION) layout[idx] = 'Gyro';
   }
 
   return layout;
@@ -371,12 +371,11 @@ export function buildCTSystemLayout(
  */
 export function buildSideTorsoSystemLayout(
   engine: EngineComponent,
-  slotsPerLocation: number,
 ): (string | null)[] {
-  const layout: (string | null)[] = new Array(slotsPerLocation).fill(null);
+  const layout: (string | null)[] = new Array(MEK_SLOTS_PER_LOCATION).fill(null);
   const slots = getEngineSideTorsoSlots(engine);
   for (const idx of slots) {
-    if (idx < slotsPerLocation) layout[idx] = 'Engine';
+    if (idx < MEK_SLOTS_PER_LOCATION) layout[idx] = 'Engine';
   }
   return layout;
 }

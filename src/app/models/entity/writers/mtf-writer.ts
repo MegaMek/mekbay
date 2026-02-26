@@ -41,6 +41,7 @@ import {
   CriticalSlotView,
   EntityMountedEquipment,
   EntityTechBase,
+  MEK_SLOTS_PER_LOCATION,
 } from '../types';
 import { WeaponEquipment } from '../../equipment.model';
 
@@ -278,9 +279,8 @@ function writeCriticals(
     lines.push(`${header}:`);
 
     const slots = grid.get(loc) ?? [];
-    const slotsPerLoc = entity.slotsPerLocation();
 
-    for (let i = 0; i < slotsPerLoc; i++) {
+    for (let i = 0; i < MEK_SLOTS_PER_LOCATION; i++) {
       const slot = slots[i];
       if (!slot || slot.type === 'empty') {
         lines.push('-Empty-');
@@ -326,19 +326,12 @@ function writeFluff(entity: MekEntity, lines: string[]): void {
   if (fluff.notes) lines.push(`notes:${fluff.notes}`);
 
   // Interleave systemmanufacturer and systemmodel per system key
-  // MegaMek outputs: systemmanufacturer:KEY:value then systemmode:KEY:value for each key in order
+  // MegaMek iterates System enum: CHASSIS, ENGINE, ARMOR, JUMP_JET, COMMUNICATIONS, TARGETING
   if (fluff.systemManufacturers || fluff.systemModels) {
     const mfr = fluff.systemManufacturers ?? {};
     const mdl = fluff.systemModels ?? {};
-    // Collect all system keys in insertion order (manufacturers first, then any model-only keys)
-    const allKeys: string[] = [];
-    for (const k of Object.keys(mfr)) {
-      if (!allKeys.includes(k)) allKeys.push(k);
-    }
-    for (const k of Object.keys(mdl)) {
-      if (!allKeys.includes(k)) allKeys.push(k);
-    }
-    for (const key of allKeys) {
+    const SYSTEM_ORDER = ['CHASSIS', 'ENGINE', 'ARMOR', 'JUMP_JET', 'COMMUNICATIONS', 'TARGETING'];
+    for (const key of SYSTEM_ORDER) {
       if (mfr[key]) lines.push(`systemmanufacturer:${key}:${mfr[key]}`);
       if (mdl[key]) lines.push(`systemmode:${key}:${mdl[key]}`);
     }
@@ -361,7 +354,8 @@ function formatEquipmentSlot(
   let name = mount.equipmentId;
   if (mount.rearMounted) name += ' (R)';
   if (mount.turretMounted) name += ' (T)';
-  if (slot.omniPod) name += ' (OMNIPOD)';
+  // For split slots with secondEquipmentId, (OMNIPOD) goes on the second part
+  if (slot.omniPod && !mount.secondEquipmentId) name += ' (OMNIPOD)';
   if (mount.facing !== undefined) name += ` (${facingLabel(mount.facing)})`;
   if (mount.size !== undefined) {
     // Preserve decimal point: MegaMek writes SIZE:1.0, SIZE:2.0 etc.
@@ -370,7 +364,11 @@ function formatEquipmentSlot(
   }
   // ARMORED goes after SIZE (MegaMek: "name:SIZE:1.0 (ARMORED)")
   if (slot.armored) name += ' (ARMORED)';
-  if (mount.secondEquipmentId) name += `|${mount.secondEquipmentId}`;
+  if (mount.secondEquipmentId) {
+    let second = mount.secondEquipmentId;
+    if (slot.omniPod) second += ' (OMNIPOD)';
+    name += `|${second}`;
+  }
   return name;
 }
 

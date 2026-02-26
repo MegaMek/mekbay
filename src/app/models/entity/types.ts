@@ -675,6 +675,9 @@ export const MEK_LOCATIONS = ['HD', 'LA', 'LT', 'CT', 'RT', 'RA', 'LL', 'RL'] as
 export const MEK_TRIPOD_LOCATIONS = [...MEK_LOCATIONS, 'CL'] as const;
 export const MEK_QUAD_LOCATIONS = ['HD', 'FLL', 'LT', 'CT', 'RT', 'FRL', 'RLL', 'RRL'] as const;
 
+/** Number of critical slots per location for all Mek types (including superheavy). */
+export const MEK_SLOTS_PER_LOCATION = 12;
+
 /** Mek locations that support rear armor */
 export const MEK_REAR_ARMOR_LOCATIONS: ReadonlySet<string> = new Set(['CT', 'LT', 'RT']);
 

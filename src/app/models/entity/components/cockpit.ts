@@ -39,6 +39,8 @@
  * They are NOT equipment from equipment2.json.
  */
 
+import { MEK_SLOTS_PER_LOCATION } from '../types';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -164,10 +166,9 @@ export function getAllCockpitTypes(): readonly string[] {
  */
 export function buildHeadSystemLayout(
   cockpit: CockpitComponent,
-  slotsPerLocation: number,
 ): (string | null)[] {
-  const layout: (string | null)[] = new Array(slotsPerLocation).fill(null);
-  for (let i = 0; i < cockpit.headLayout.length && i < slotsPerLocation; i++) {
+  const layout: (string | null)[] = new Array(MEK_SLOTS_PER_LOCATION).fill(null);
+  for (let i = 0; i < cockpit.headLayout.length && i < MEK_SLOTS_PER_LOCATION; i++) {
     layout[i] = cockpit.headLayout[i];
   }
   return layout;

@@ -50,6 +50,7 @@ import {
   HeatSinkType,
   MEK_INTERNAL_STRUCTURE,
   MEK_REAR_ARMOR_LOCATIONS,
+  MEK_SLOTS_PER_LOCATION,
   MekConfig,
   MekSystemType,
 } from '../../types';
@@ -101,7 +102,6 @@ export abstract class MekEntity extends BaseEntity {
   // ═══════════════════════════════════════════════════════════════════════════
 
   isSuperHeavy = computed(() => this.tonnage() > 100);
-  slotsPerLocation = computed(() => (this.isSuperHeavy() ? 24 : 12));
 
   heatSinkCount = computed(() =>
     this.equipment().reduce((sum, e) => {
@@ -144,7 +144,7 @@ export abstract class MekEntity extends BaseEntity {
    */
   criticalSlotGrid = computed<Map<string, CriticalSlotView[]>>(() => {
     const grid = new Map<string, CriticalSlotView[]>();
-    const slotsPerLoc = this.slotsPerLocation();
+    const slotsPerLoc = MEK_SLOTS_PER_LOCATION;
     const armoredSys = this.armoredSystemSlots();
 
     for (const loc of this.locationOrder) {
@@ -169,7 +169,7 @@ export abstract class MekEntity extends BaseEntity {
       if (!mount.placements) continue;
       for (const p of mount.placements) {
         const slots = grid.get(p.location);
-        if (slots && p.slotIndex >= 0 && p.slotIndex < slotsPerLoc) {
+        if (slots && p.slotIndex >= 0 && p.slotIndex < MEK_SLOTS_PER_LOCATION) {
           slots[p.slotIndex] = {
             type: 'equipment',
             mountId: mount.mountId,
@@ -248,13 +248,12 @@ export abstract class MekEntity extends BaseEntity {
     }
 
     // Crit slot overflow (derived grid vs slots-per-location)
-    const slotsPerLoc = this.slotsPerLocation();
     for (const [loc, slots] of this.criticalSlotGrid()) {
       const usedSlots = slots.filter(s => s.type !== 'empty').length;
-      if (usedSlots > slotsPerLoc) {
+      if (usedSlots > MEK_SLOTS_PER_LOCATION) {
         msgs.push({
           severity: 'error', category: 'crit', code: 'CRIT_SLOTS_OVERFLOW',
-          message: `${loc} has ${usedSlots} crit slots but max is ${slotsPerLoc}`,
+          message: `${loc} has ${usedSlots} crit slots but max is ${MEK_SLOTS_PER_LOCATION}`,
           location: loc,
         });
       }
@@ -288,24 +287,22 @@ export abstract class MekEntity extends BaseEntity {
   /**
    * Returns the system slots for a given location.
    * Entries at a given index mean "this slot is reserved for this system."
-   * Remaining indices (up to slotsPerLocation) are empty.
+   * Remaining indices (up to MEK_SLOTS_PER_LOCATION) are empty.
    */
   protected getSystemSlotsForLocation(loc: string): CriticalSlotView[] {
-    const slotsPerLoc = this.slotsPerLocation();
-
     switch (loc) {
       case 'HD': {
         const cockpit = getCockpit(this.cockpitType());
-        const layout = buildHeadSystemLayout(cockpit, slotsPerLoc);
+        const layout = buildHeadSystemLayout(cockpit);
         return layout.map(s => s ? sys(s as MekSystemType) : EMPTY_SLOT);
       }
       case 'CT': {
         const engine = this.mountedEngine().engine;
-        const layout = buildCTSystemLayout(engine, this.gyroType() as GyroType, slotsPerLoc);
+        const layout = buildCTSystemLayout(engine, this.gyroType() as GyroType);
         // Torso-Mounted cockpit adds Cockpit + Sensors to CT after engine/gyro
         if (this.cockpitType() === 'Torso-Mounted' || this.cockpitType() === 'Torso-Mounted Cockpit') {
           const firstEmpty = layout.indexOf(null);
-          if (firstEmpty >= 0 && firstEmpty + 1 < slotsPerLoc) {
+          if (firstEmpty >= 0 && firstEmpty + 1 < MEK_SLOTS_PER_LOCATION) {
             layout[firstEmpty] = 'Cockpit';
             layout[firstEmpty + 1] = 'Sensors';
           }
@@ -314,7 +311,7 @@ export abstract class MekEntity extends BaseEntity {
       }
       case 'LT': case 'RT': {
         const engine = this.mountedEngine().engine;
-        const layout = buildSideTorsoSystemLayout(engine, slotsPerLoc);
+        const layout = buildSideTorsoSystemLayout(engine);
         // Torso-Mounted cockpit adds Life Support to each side torso
         if (this.cockpitType() === 'Torso-Mounted' || this.cockpitType() === 'Torso-Mounted Cockpit') {
           const firstEmpty = layout.indexOf(null);

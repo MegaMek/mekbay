@@ -77,7 +77,7 @@ export function writeBlkBA(entity: BattleArmorEntity): string {
   const transporters = entity.transporters();
   if (transporters.length > 0) {
     const tLines = transporters.map(t =>
-      `${t.type}:${t.capacity}:${t.doors}` + (t.bayNumber ? `:${t.bayNumber}` : '')
+      `${t.type}:${t.capacity}:${t.doors}` + (t.bayNumber != null && t.bayNumber !== -1 ? `:${t.bayNumber}` : '')
     );
     w.addBlock('transporters', ...tLines);
   }

@@ -157,11 +157,19 @@ export function writeTransporters(w: BuildingBlockWriter, entity: BaseEntity): v
   const transporters = entity.transporters();
   if (transporters.length > 0) {
     const tLines = transporters.map(t => {
+      // Format: type:capacity:doors[:bayNumber[:platoonType[:facing[:bitmap]]]]
+      // Must always write all positional fields up to the last non-default one
+      // to prevent re-parse from misinterpreting shifted values.
+      const hasBitmap = t.bitmap != null;
+      const hasFacing = t.facing != null || hasBitmap;
+      const hasPlatoon = t.platoonType != null || hasFacing;
+      const hasBayNum = hasPlatoon || t.bayNumber !== -1;
+
       let line = `${t.type}:${t.capacity}:${t.doors}`;
-      if (t.bayNumber >= 0) line += `:${t.bayNumber}`;
-      if (t.platoonType != null) line += `:${t.platoonType}`;
-      if (t.facing != null) line += `:${t.facing}`;
-      if (t.bitmap != null) line += `:${t.bitmap}`;
+      if (hasBayNum) line += `:${t.bayNumber}`;
+      if (hasPlatoon) line += `:${t.platoonType ?? ''}`;
+      if (hasFacing) line += `:${t.facing ?? -1}`;
+      if (hasBitmap) line += `:${t.bitmap ?? 0}`;
       return line;
     });
     w.addBlock('transporters', ...tLines);
@@ -208,10 +216,14 @@ export function writeEngine(
   engineTypeToCode: Record<string, number>,
 ): void {
   w.addBlock('engine_type', engineTypeToCode[entity.engineType()] ?? 0);
-  // clan_engine: written when engine's clan flag differs from entity's clan flag
-  const isClanEntity = entity.techBase() === 'Clan';
+  // clan_engine: written when engine's clan flag differs from what the parser
+  // would infer from the type string alone.  The parser's getBlkEngineIsClan()
+  // falls back to checking whether the type string contains "clan" (case-
+  // insensitive), so the writer must use the same heuristic as its default.
+  const typeStr = (entity.techLevel() ?? '').toLowerCase();
+  const impliedClan = typeStr.includes('clan');
   const isClanEngine = entity.clanEngine();
-  if (isClanEngine !== isClanEntity) {
+  if (isClanEngine !== impliedClan) {
     w.addBlock('clan_engine', isClanEngine ? 1 : 0);
   }
 }

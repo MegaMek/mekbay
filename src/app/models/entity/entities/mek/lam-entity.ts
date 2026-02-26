@@ -53,8 +53,14 @@ export class LamEntity extends BipedMekEntity {
     const base = super.getSystemSlotsForLocation(loc);
 
     if (loc === 'HD') {
-      // LAM head has Avionics at slot 3 (replacing the empty slot in standard cockpit)
-      base[3] = sys('Avionics');
+      // LAM places Avionics at slot 3. For Small Cockpit (where slot 3 is
+      // already Sensors), place Avionics at the next empty slot instead.
+      if (base[3]?.type === 'system' && base[3]?.systemType === 'Sensors') {
+        const nextEmpty = base.findIndex((s, i) => i > 3 && s.type === 'empty');
+        if (nextEmpty >= 0) base[nextEmpty] = sys('Avionics');
+      } else {
+        base[3] = sys('Avionics');
+      }
     } else if (loc === 'CT') {
       // Add Landing Gear after engine/gyro in CT
       const firstEmpty = base.findIndex(s => s.type === 'empty');
