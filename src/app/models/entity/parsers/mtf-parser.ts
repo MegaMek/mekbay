@@ -332,7 +332,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       if (!addedToExisting) {
         // New mount
         const mountId = generateMountId();
-        const resolved = ctx.resolveEquipment(parsed.name, entity.techBase(), locCode);
+        const resolved = ctx.resolveEquipment(parsed.name, locCode);
 
         const mount: EntityMountedEquipment = {
           mountId,
@@ -350,7 +350,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
           size: parsed.variableSize,
           secondEquipmentId: parsed.secondEquipmentName,
           secondEquipment: parsed.secondEquipmentName
-            ? ctx.resolveEquipment(parsed.secondEquipmentName, entity.techBase(), locCode) ?? undefined
+            ? ctx.resolveEquipment(parsed.secondEquipmentName, locCode) ?? undefined
             : undefined,
         };
 
@@ -364,13 +364,13 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   if (armoredSystemSlots.size > 0) entity.armoredSystemSlots.set(armoredSystemSlots);
 
   // ── Nocrit equipment ──
-  for (const nocritName of header.nocritEquipment) {
-    const resolved = ctx.resolveEquipment(nocritName, entity.techBase(), 'nocrit');
+  for (const nocrit of header.nocritEquipment) {
+    const resolved = ctx.resolveEquipment(nocrit.name, 'nocrit');
     entity.addEquipment({
       mountId: generateMountId(),
-      equipmentId: nocritName,
+      equipmentId: nocrit.name,
       equipment: resolved ?? undefined,
-      location: 'None',
+      location: nocrit.location,
       rearMounted: false,
       turretMounted: false,
       omniPodMounted: false,
@@ -384,12 +384,12 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
     const laSlots = header.locationSlots.get('Left Arm:') ?? [];
     const raSlots = header.locationSlots.get('Right Arm:') ?? [];
     entity.hasLowerArmActuator.set({
-      left: laSlots.includes('Lower Arm Actuator'),
-      right: raSlots.includes('Lower Arm Actuator'),
+      left: laSlots.some(s => s.startsWith('Lower Arm Actuator')),
+      right: raSlots.some(s => s.startsWith('Lower Arm Actuator')),
     });
     entity.hasHandActuator.set({
-      left: laSlots.includes('Hand Actuator'),
-      right: raSlots.includes('Hand Actuator'),
+      left: laSlots.some(s => s.startsWith('Hand Actuator')),
+      right: raSlots.some(s => s.startsWith('Hand Actuator')),
     });
   }
 
@@ -443,7 +443,7 @@ interface MtfHeader {
   quirks: EntityQuirk[];
   weaponQuirks: EntityWeaponQuirk[];
   locationSlots: Map<string, string[]>;
-  nocritEquipment: string[];
+  nocritEquipment: { name: string; location: string }[];
   weaponsList: string[];
   fluff: EntityFluff;
   manualBV: number;
@@ -545,7 +545,19 @@ function parseHeader(lines: string[]): MtfHeader {
       case 'walk mp':                h.walkMP = parseInt(value, 10) || 0; break;
       case 'jump mp':                h.jumpMP = parseInt(value, 10) || 0; break;
       case 'armor':                   h.armorType = value; break;
-      case 'nocrit':                  h.nocritEquipment.push(value); break;
+      case 'nocrit': {
+        // Format: "EquipmentName:LocationAbbr" (e.g. "SmartRoboticControlSystem:None")
+        const ncLastColon = value.lastIndexOf(':');
+        if (ncLastColon > 0) {
+          h.nocritEquipment.push({
+            name: value.substring(0, ncLastColon).trim(),
+            location: value.substring(ncLastColon + 1).trim(),
+          });
+        } else {
+          h.nocritEquipment.push({ name: value, location: 'None' });
+        }
+        break;
+      }
 
       // Armor values — handle patchwork format "ArmorType(TechBase):number"
       case 'la armor': case 'ra armor': case 'lt armor': case 'rt armor':

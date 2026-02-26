@@ -264,7 +264,7 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
       if (!line) continue;
 
       const parsed = parseEquipmentLine(line);
-      const resolved = ctx.resolveEquipment(parsed.name, techBase, blkTag);
+      const resolved = ctx.resolveEquipment(parsed.name, blkTag);
 
       entity.addEquipment({
         mountId: generateMountId(),

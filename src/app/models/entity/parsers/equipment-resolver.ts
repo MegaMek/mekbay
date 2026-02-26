@@ -45,7 +45,6 @@ import { EntityTechBase } from '../types';
  */
 export function resolveEquipment(
   name: string,
-  techBase: EntityTechBase,
   equipmentDb: EquipmentMap,
   aliasMap?: EquipmentAliasMap,
 ): Equipment | null {

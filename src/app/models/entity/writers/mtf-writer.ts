@@ -196,6 +196,21 @@ function writeMovement(entity: MekEntity, lines: string[]): void {
   if (me.baseChassisHeatSinks >= 0) {
     lines.push(`base chassis heat sinks:${me.baseChassisHeatSinks}`);
   }
+  // Nocrit: misc equipment with 0 crit slots, excluding CASE, armor, and structure
+  // (matches MegaMek's Mek.getMtf() nocrit logic)
+  const nocritMounts = entity.equipment().filter(m => {
+    const eq = m.equipment;
+    if (!eq) return false;
+    if (eq.type !== 'misc') return false;
+    if (eq.stats.criticalSlots !== 0) return false;
+    if (eq.hasFlag('F_CASE')) return false;
+    if (eq.hasFlag('F_ARMOR')) return false;
+    if (eq.hasFlag('F_STRUCTURE')) return false;
+    return true;
+  });
+  for (const m of nocritMounts) {
+    lines.push(`nocrit:${m.equipmentId}:${m.location}`);
+  }
   lines.push(`walk mp:${entity.walkMP()}`);
   const jumpVal = entity.declaredJumpMP() >= 0 ? entity.declaredJumpMP() : entity.jumpMP();
   lines.push(`jump mp:${jumpVal}`);
@@ -294,13 +309,6 @@ function writeCriticals(
     }
     lines.push('');
   }
-
-  // Nocrit equipment (location: 'None')
-  const nocritMounts = entity.equipment().filter(m => m.location === 'None');
-  for (const m of nocritMounts) {
-    lines.push(`nocrit:${m.equipmentId}`);
-  }
-  if (nocritMounts.length > 0) lines.push('');
 }
 
 function writeQuirks(entity: MekEntity, lines: string[]): void {

@@ -196,7 +196,7 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
       if (isSystemSlotName(raw)) continue;
 
       const parsed = parseEquipmentLine(raw);
-      const resolved = ctx.resolveEquipment(parsed.name, techBase, critTag);
+      const resolved = ctx.resolveEquipment(parsed.name, critTag);
 
       equipmentList.push({
         mountId: generateMountId(),

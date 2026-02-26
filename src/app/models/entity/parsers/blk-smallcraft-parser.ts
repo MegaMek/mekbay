@@ -130,7 +130,7 @@ export function parseBlkSmallCraft(bb: BuildingBlock, ctx: ParseContext): SmallC
       if (!line) continue;
 
       const parsed = parseEquipmentLine(line);
-      const resolved = ctx.resolveEquipment(parsed.name, techBase, blkTag);
+      const resolved = ctx.resolveEquipment(parsed.name, blkTag);
 
       entity.addEquipment({
         mountId: generateMountId(),

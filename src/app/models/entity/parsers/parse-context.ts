@@ -79,7 +79,6 @@ export interface ParseDiagnostic {
  */
 export type EquipmentFallbackFn = (
   internalName: string,
-  techBase: EntityTechBase,
 ) => Equipment | null;
 
 // ============================================================================
@@ -214,18 +213,17 @@ export class ParseContext {
    */
   resolveEquipment(
     name: string,
-    techBase: EntityTechBase,
     field: string,
   ): Equipment | null {
     if (!name || name === '-Empty-') return null;
 
     // 1. Try local DB (uses alias index when available)
-    const local = resolveEquipment(name, techBase, this.equipmentDb, this.aliasMap);
+    const local = resolveEquipment(name, this.equipmentDb, this.aliasMap);
     if (local) return local;
 
     // 2. Try fallback (future: remote/UUID lookup)
     if (this.equipmentFallback) {
-      const fallback = this.equipmentFallback(name, techBase);
+      const fallback = this.equipmentFallback(name);
       if (fallback) return fallback;
     }
 
