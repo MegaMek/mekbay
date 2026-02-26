@@ -375,7 +375,7 @@ export function structureTypeToCode(name: string): number {
 // ============================================================================
 
 export const GYRO_TYPE_FROM_CODE: Record<number, string> = {
-  0: 'Standard', 1: 'XL', 2: 'Compact', 3: 'Heavy-Duty', 4: 'None', 5: 'Superheavy',
+  0: 'Standard', 1: 'XL', 2: 'Compact', 3: 'Heavy Duty', 4: 'None', 5: 'Superheavy',
 };
 
 export function gyroTypeFromCode(code: number): string {
@@ -497,6 +497,117 @@ export type MekSystemType =
   | 'Landing Gear' | 'Avionics';
 
 // ============================================================================
+// Location Topology
+//
+// Defines the physical connection graph between Mek locations: which
+// location damage transfers into, and which locations are destroyed as
+// dependents when a parent is lost.
+// ============================================================================
+
+/**
+ * Physical connection descriptor for a single Mek location.
+ *
+ * `transfersTo`  — next inward location for damage transfer when this
+ *                  location's internal structure is destroyed.
+ *                  `null` = terminal (CT destroyed → Mek destroyed).
+ *
+ * `dependents`   — locations physically attached to this one that are
+ *                  also destroyed when it is destroyed
+ *                  (e.g. losing RT also destroys RA).
+ */
+export interface LocTopology {
+  readonly transfersTo: MekLocation | null;
+  readonly dependents: readonly MekLocation[];
+}
+
+/**
+ * Biped / Tripod Mek location topology.
+ *
+ *            HD
+ *            │
+ *    LA─LT──CT──RT─RA
+ *        │       │
+ *       LL      RL
+ *       (CL)              ← Tripod only
+ */
+export const BIPED_TOPOLOGY: Readonly<Record<MekLocation, LocTopology>> = {
+  HD:  { transfersTo: 'CT',   dependents: [] },
+  CT:  { transfersTo: null,   dependents: [] },
+  RT:  { transfersTo: 'CT',   dependents: ['RA'] },
+  LT:  { transfersTo: 'CT',   dependents: ['LA'] },
+  RA:  { transfersTo: 'RT',   dependents: [] },
+  LA:  { transfersTo: 'LT',   dependents: [] },
+  RL:  { transfersTo: 'RT',   dependents: [] },
+  LL:  { transfersTo: 'LT',   dependents: [] },
+  CL:  { transfersTo: 'CT',   dependents: [] },   // Tripod only
+  // Quad keys — present but unused for bipeds
+  FLL: { transfersTo: 'LT',   dependents: [] },
+  FRL: { transfersTo: 'RT',   dependents: [] },
+  RLL: { transfersTo: 'LT',   dependents: [] },
+  RRL: { transfersTo: 'RT',   dependents: [] },
+};
+
+/**
+ * Quad Mek location topology.
+ *
+ *             HD
+ *             │
+ *   FLL─LT──CT──RT─FRL
+ *        │       │
+ *       RLL     RRL
+ */
+export const QUAD_TOPOLOGY: Readonly<Record<MekLocation, LocTopology>> = {
+  HD:  { transfersTo: 'CT',   dependents: [] },
+  CT:  { transfersTo: null,   dependents: [] },
+  RT:  { transfersTo: 'CT',   dependents: ['FRL', 'RRL'] },
+  LT:  { transfersTo: 'CT',   dependents: ['FLL', 'RLL'] },
+  FRL: { transfersTo: 'RT',   dependents: [] },
+  FLL: { transfersTo: 'LT',   dependents: [] },
+  RRL: { transfersTo: 'RT',   dependents: [] },
+  RLL: { transfersTo: 'LT',   dependents: [] },
+  // Biped keys — present but unused for quads
+  RA:  { transfersTo: 'RT',   dependents: [] },
+  LA:  { transfersTo: 'LT',   dependents: [] },
+  RL:  { transfersTo: 'RT',   dependents: [] },
+  LL:  { transfersTo: 'LT',   dependents: [] },
+  CL:  { transfersTo: 'CT',   dependents: [] },
+};
+
+/** Set of all leg-type location codes (biped + quad + tripod) */
+export const LEG_LOCATIONS: ReadonlySet<MekLocation> = new Set<MekLocation>(
+  ['LL', 'RL', 'CL', 'FRL', 'FLL', 'RRL', 'RLL'],
+);
+
+/** Set of quad-only leg location codes */
+export const FOUR_LEGGED_LOCATIONS: ReadonlySet<MekLocation> = new Set<MekLocation>(
+  ['FRL', 'FLL', 'RRL', 'RLL'],
+);
+
+/**
+ * The complete set of all canonical MekLocation values.
+ * Used internally by the `isMekLocation` type guard.
+ */
+const ALL_MEK_LOCATIONS: ReadonlySet<string> = new Set<MekLocation>([
+  'HD', 'CT', 'LT', 'RT', 'LA', 'RA', 'LL', 'RL',
+  'CL', 'FLL', 'FRL', 'RLL', 'RRL',
+]);
+
+/** Type guard: narrows an arbitrary string to `MekLocation`. */
+export function isMekLocation(s: string): s is MekLocation {
+  return ALL_MEK_LOCATIONS.has(s);
+}
+
+/** Returns the appropriate topology map for a set of location keys. */
+export function getTopologyFor(
+  locationKeys: Iterable<string>,
+): Readonly<Record<MekLocation, LocTopology>> {
+  for (const key of locationKeys) {
+    if (isMekLocation(key) && FOUR_LEGGED_LOCATIONS.has(key)) return QUAD_TOPOLOGY;
+  }
+  return BIPED_TOPOLOGY;
+}
+
+// ============================================================================
 // Infantry Specializations
 // ============================================================================
 
@@ -530,8 +641,8 @@ export const INFANTRY_SPECIALIZATION_TO_BIT: Record<InfantrySpecialization, numb
 /** Canonical Mek location codes */
 export type MekLocation =
   | 'HD' | 'CT' | 'LT' | 'RT' | 'LA' | 'RA' | 'LL' | 'RL'   // biped
-  | 'CL'                                                        // tripod extra
-  | 'FLL' | 'FRL' | 'RLL' | 'RRL';                              // quad
+  | 'CL'                                                    // tripod extra
+  | 'FLL' | 'FRL' | 'RLL' | 'RRL';                          // quad
 
 /** Canonical Aero armor/structure locations */
 export type AeroArmorLocation = 'Nose' | 'Left Wing' | 'Right Wing' | 'Aft';
@@ -553,6 +664,8 @@ export type SmallCraftEquipLocation =
 /** Canonical JumpShip / WarShip / SpaceStation locations */
 export type LargeCraftLocation = 'Nose' | 'FLS' | 'FRS' | 'ALS' | 'ARS' | 'Aft';
 
+export type Location = MekLocation | AeroArmorLocation | AeroEquipLocation | TankLocation | SmallCraftEquipLocation | LargeCraftLocation;
+
 // ============================================================================
 // Location Constant Arrays
 // ============================================================================
@@ -561,7 +674,7 @@ export const MEK_LOCATIONS = ['HD', 'LA', 'LT', 'CT', 'RT', 'RA', 'LL', 'RL'] as
 export const MEK_TRIPOD_LOCATIONS = [...MEK_LOCATIONS, 'CL'] as const;
 export const MEK_QUAD_LOCATIONS = ['HD', 'FLL', 'LT', 'CT', 'RT', 'FRL', 'RLL', 'RRL'] as const;
 
-/** Mek locations that support rear armor (front + rear ≤ 2 × IS) */
+/** Mek locations that support rear armor */
 export const MEK_REAR_ARMOR_LOCATIONS: ReadonlySet<string> = new Set(['CT', 'LT', 'RT']);
 
 export const AERO_LOCATIONS = ['Nose', 'Left Wing', 'Right Wing', 'Aft'] as const;

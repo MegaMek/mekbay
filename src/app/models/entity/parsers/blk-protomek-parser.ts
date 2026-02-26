@@ -39,6 +39,7 @@ import {
   locationArmor,
   resolveArmorEquipment,
 } from '../types';
+import { createEngine, createMountedEngine } from '../components';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
@@ -85,7 +86,12 @@ export function parseBlkProtoMek(bb: BuildingBlock, ctx: ParseContext): ProtoMek
   if (bb.exists('jumpingMP')) entity.jumpingMP.set(bb.getFirstInt('jumpingMP'));
 
   // ── Engine ──
-  if (bb.exists('engine_type')) entity.engineType.set(engineTypeFromCode(bb.getFirstInt('engine_type')));
+  if (bb.exists('engine_type')) {
+    const engineType = engineTypeFromCode(bb.getFirstInt('engine_type'));
+    const isClan = techBase === 'Clan';
+    const rating = entity.walkMP() * entity.tonnage();
+    entity.mountedEngine.set(createMountedEngine(createEngine(engineType, rating, isClan)));
+  }
 
   // ── ProtoMek-specific flags ──
   if (bb.exists('interface_cockpit')) entity.interfaceCockpit.set(bb.getFirstInt('interface_cockpit') === 1);

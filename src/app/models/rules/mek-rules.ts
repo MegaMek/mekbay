@@ -35,7 +35,7 @@ import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { MountedEquipment } from '../force-serialization';
 import { UnitTypeRules } from './unit-type-rules';
-import { linkedLocs, LEG_LOCATIONS, FOUR_LEGGED_LOCATIONS } from '../common.model';
+import { getTopologyFor, isMekLocation, LEG_LOCATIONS, FOUR_LEGGED_LOCATIONS } from '../entity/types';
 import { PSRCheck } from '../turn-state.model';
 import { type HeatScaleEntry, HeatManagement, getHeatEffects } from './heat-management';
 
@@ -62,14 +62,16 @@ export class MekRules implements UnitTypeRules {
     evaluateDestroyed(): void {
         // Build set of destroyed internal locations, including linked
         const locationsToDestroy = new Set<string>();
+        const topology = getTopologyFor(this.unit.locations?.internal?.keys() ?? []);
         this.unit.locations?.internal?.forEach((_value, loc) => {
+            if (!isMekLocation(loc)) return;
             if (this.unit.isInternalLocDestroyed(loc)) {
                 locationsToDestroy.add(loc);
-                const linked = linkedLocs[loc];
-                if (linked) {
-                    for (const linkedLoc of linked) {
-                        if (this.unit.locations?.internal?.has(linkedLoc)) {
-                            locationsToDestroy.add(linkedLoc);
+                const deps = topology[loc]?.dependents;
+                if (deps) {
+                    for (const dep of deps) {
+                        if (this.unit.locations?.internal?.has(dep)) {
+                            locationsToDestroy.add(dep);
                         }
                     }
                 }
@@ -237,6 +239,7 @@ export class MekRules implements UnitTypeRules {
         let undamagedLegs = true;
         // Calculate pre-existing leg destruction modifiers. If a leg is gone, is gone.
         this.unit.locations?.internal?.forEach((_value, loc) => {
+            if (!isMekLocation(loc)) return;
             if (!LEG_LOCATIONS.has(loc)) return; // Only consider leg locations
             if (!isFourLegged && FOUR_LEGGED_LOCATIONS.has(loc)) {
                 isFourLegged = true;
@@ -282,8 +285,8 @@ export class MekRules implements UnitTypeRules {
 
         // Calculate pre-existing modifiers for hips and leg actuators destroyed the previous turns
         const critSlots = this.unit.getCritSlots();
-        const hasAESinLegs = critSlots.some(slot => slot.name && slot.loc && !slot.destroyed && LEG_LOCATIONS.has(slot.loc) && slot.name.includes('AES'));
-        const hasAESinLegsDestroyed = critSlots.some(slot => slot.name && slot.loc && slot.destroyed && LEG_LOCATIONS.has(slot.loc) && slot.name.includes('AES'));
+        const hasAESinLegs = critSlots.some(slot => slot.name && slot.loc && !slot.destroyed && isMekLocation(slot.loc) && LEG_LOCATIONS.has(slot.loc) && slot.name.includes('AES'));
+        const hasAESinLegsDestroyed = critSlots.some(slot => slot.name && slot.loc && slot.destroyed && isMekLocation(slot.loc) && LEG_LOCATIONS.has(slot.loc) && slot.name.includes('AES'));
         if (hasAESinLegs && !hasAESinLegsDestroyed) {
             preExisting -= 2; // AES in legs intact gives -2 modifier
             modifiers.push({
@@ -321,7 +324,7 @@ export class MekRules implements UnitTypeRules {
                 reason: "'Mech mounts small or torso-mounted cockpit"
             });
         }
-        const destroyedHips = critSlots.filter(slot => slot.name && slot.loc && slot.destroyed && LEG_LOCATIONS.has(slot.loc) && !ignoreLeg.has(slot.loc) && slot.name.includes('Hip'));
+        const destroyedHips = critSlots.filter(slot => slot.name && slot.loc && slot.destroyed && isMekLocation(slot.loc) && LEG_LOCATIONS.has(slot.loc) && !ignoreLeg.has(slot.loc) && slot.name.includes('Hip'));
         for (const hip of destroyedHips) {
             if (!hip.loc) continue;
             preExisting += 2;
@@ -333,7 +336,7 @@ export class MekRules implements UnitTypeRules {
         }
         const relevantDestroyedLegActuatorsCount = critSlots.filter(slot => {
             if (!slot.loc || !slot.name || !slot.destroyed) return false;
-            if (!LEG_LOCATIONS.has(slot.loc)) return false;
+            if (!isMekLocation(slot.loc) || !LEG_LOCATIONS.has(slot.loc)) return false;
             if (ignoreLeg.has(slot.loc)) return false;
             if (!slot.name.includes('Foot') && !slot.name.includes('Leg')) return false;
             return true;

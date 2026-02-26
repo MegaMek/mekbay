@@ -134,7 +134,7 @@ export function writeBlkMek(entity: MekEntity): string {
   w.addBlock('internal_type', 0);  // TODO: map structureType to code
   if (entity.gyroType() !== 'Standard') {
     const gyroMap: Record<string, number> = {
-      'Standard': 0, 'XL': 1, 'Compact': 2, 'Heavy-Duty': 3, 'None': 4, 'Superheavy': 5,
+      'Standard': 0, 'XL': 1, 'Compact': 2, 'Heavy Duty': 3, 'None': 4, 'Superheavy': 5,
     };
     w.addBlock('gyro_type', gyroMap[entity.gyroType()] ?? 0);
   }

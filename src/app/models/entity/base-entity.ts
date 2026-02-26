@@ -34,6 +34,11 @@
 import { Signal, computed, signal } from '@angular/core';
 import { ArmorEquipment } from '../equipment.model';
 import {
+  createEngine,
+  createMountedEngine,
+  MountedEngine,
+} from './components';
+import {
   ArmorFace,
   ArmorType,
   ARMOR_TYPE_TO_CODE,
@@ -112,11 +117,21 @@ export abstract class BaseEntity {
   // ── Movement ──
   walkMP = signal<number>(0);
 
-  // ── Engine ──
-  engineType = signal<EngineType>('Fusion');
-  engineRating = signal<number>(0);
-  /** True when the engine's clan flag differs from the entity's clan flag (mixed-tech). */
-  clanEngine = signal<boolean>(false);
+  // ── Engine (via MountedEngine) ──
+  /**
+   * The mounted engine — single source of truth for engine type, rating,
+   * tech base, and engine-integrated heat sinks.
+   */
+  mountedEngine = signal<MountedEngine>(
+    createMountedEngine(createEngine('Fusion', 0, false)),
+  );
+
+  /** Convenience: engine type (delegates to mountedEngine) */
+  engineType = computed<EngineType>(() => this.mountedEngine().engine.type);
+  /** Convenience: engine rating (delegates to mountedEngine) */
+  engineRating = computed<number>(() => this.mountedEngine().engine.rating);
+  /** True when the engine uses Clan tech (mixed-tech relevant) */
+  clanEngine = computed<boolean>(() => this.mountedEngine().engine.isClan);
 
   // ── Weight ──
   tonnage = signal<number>(0);

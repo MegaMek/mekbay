@@ -153,6 +153,7 @@ export function writeMtf(entity: MekEntity): string {
 function writeIdentity(entity: MekEntity, lines: string[]): void {
   lines.push(`generator:MekBay ${APP_VERSION_STRING}`);
   lines.push(`chassis:${entity.chassis()}`);
+  if (entity.clanName()) lines.push(`clanname:${entity.clanName()}`);
   lines.push(`model:${entity.model()}`);
   if (entity.mulId() >= 0) lines.push(`mul id:${entity.mulId()}`);
   lines.push('');
@@ -170,6 +171,9 @@ function writeConfig(entity: MekEntity, lines: string[]): void {
 
 function writePhysical(entity: MekEntity, lines: string[]): void {
   lines.push(`mass:${entity.tonnage()}`);
+  if (entity instanceof LamEntity && entity.lamType()) {
+    lines.push(`lam:${entity.lamType()}`);
+  }
   lines.push(`engine:${formatEngineLine(entity)}`);
   lines.push(`structure:${getStructureString(entity)}`);
   lines.push(`myomer:${entity.myomerType()}`);
@@ -182,11 +186,10 @@ function writePhysical(entity: MekEntity, lines: string[]): void {
 }
 
 function writeMovement(entity: MekEntity, lines: string[]): void {
-  const hsCount = getTotalHeatSinks(entity);
-  const hsLabel = formatHeatSinkTypeLabel(entity);
-  lines.push(`heat sinks:${hsCount} ${hsLabel}`);
-  if (entity.baseChassisHeatSinks() >= 0) {
-    lines.push(`base chassis heat sinks:${entity.baseChassisHeatSinks()}`);
+  const me = entity.mountedEngine();
+  lines.push(`heat sinks:${me.totalHeatSinks} ${me.rawHeatSinkLabel}`);
+  if (me.baseChassisHeatSinks >= 0) {
+    lines.push(`base chassis heat sinks:${me.baseChassisHeatSinks}`);
   }
   lines.push(`walk mp:${entity.walkMP()}`);
   lines.push(`jump mp:${entity.jumpMP()}`);
@@ -220,6 +223,7 @@ function writeWeapons(entity: MekEntity, lines: string[]): void {
   const mounts = entity.equipment().filter(m => m.location !== 'None' && m.equipment instanceof WeaponEquipment);
   lines.push(`Weapons:${mounts.length}`);
   for (const m of mounts) {
+    // mount.location is already the primary (torso for split weapons)
     const locName = LOC_DISPLAY_NAMES[m.location] ?? m.location;
     const displayName = m.equipment?.name ?? m.equipmentId;
     lines.push(`${displayName}, ${locName}`);
@@ -285,16 +289,26 @@ function writeFluff(entity: MekEntity, lines: string[]): void {
   if (fluff.history) lines.push(`history:${fluff.history}`);
   if (fluff.manufacturer) lines.push(`manufacturer:${fluff.manufacturer}`);
   if (fluff.primaryFactory) lines.push(`primaryfactory:${fluff.primaryFactory}`);
-  if (fluff.systemManufacturers) {
-    for (const [k, v] of Object.entries(fluff.systemManufacturers)) {
-      lines.push(`systemmanufacturer:${k}:${v}`);
+
+  // Interleave systemmanufacturer and systemmodel per system key
+  // MegaMek outputs: systemmanufacturer:KEY:value then systemmode:KEY:value for each key in order
+  if (fluff.systemManufacturers || fluff.systemModels) {
+    const mfr = fluff.systemManufacturers ?? {};
+    const mdl = fluff.systemModels ?? {};
+    // Collect all system keys in insertion order (manufacturers first, then any model-only keys)
+    const allKeys: string[] = [];
+    for (const k of Object.keys(mfr)) {
+      if (!allKeys.includes(k)) allKeys.push(k);
+    }
+    for (const k of Object.keys(mdl)) {
+      if (!allKeys.includes(k)) allKeys.push(k);
+    }
+    for (const key of allKeys) {
+      if (mfr[key]) lines.push(`systemmanufacturer:${key}:${mfr[key]}`);
+      if (mdl[key]) lines.push(`systemmode:${key}:${mdl[key]}`);
     }
   }
-  if (fluff.systemModels) {
-    for (const [k, v] of Object.entries(fluff.systemModels)) {
-      lines.push(`systemmode:${k}:${v}`);
-    }
-  }
+
   if (entity.manualBV() > 0) lines.push(`bv:${entity.manualBV()}`);
 }
 
@@ -314,7 +328,6 @@ function formatEquipmentSlot(
   if (mount.turretMounted) name += ' (T)';
   if (slot.omniPod) name += ' (OMNIPOD)';
   if (slot.armored) name += ' (ARMORED)';
-  if (mount.isSplit) name += ' (SPLIT)';
   if (mount.facing !== undefined) name += ` (${facingLabel(mount.facing)})`;
   if (mount.size !== undefined) {
     // Preserve decimal point: MegaMek writes SIZE:1.0, SIZE:2.0 etc.
@@ -349,43 +362,6 @@ function formatTechBase(entity: MekEntity): string {
 
 function formatTechBaseLabel(tb: EntityTechBase): string {
   return tb === 'Clan' ? 'Clan' : tb === 'Mixed' ? 'Mixed' : 'Inner Sphere';
-}
-
-/**
- * Return the total heat sink count for the MTF `heat sinks:` line.
- *
- * If the entity was parsed from a file, `totalHeatSinks` carries the
- * original value.  Otherwise, fall back to computing from equipment
- * counts + engine capacity.
- */
-function getTotalHeatSinks(entity: MekEntity): number {
-  const stored = entity.totalHeatSinks();
-  if (stored >= 0) return stored;
-
-  // Fallback: engine can hold floor(rating/25); anything beyond that is mounted
-  const mounted = entity.heatSinkCount();
-  const engineCapacity = Math.floor(entity.engineRating() / 25);
-  return engineCapacity + mounted;
-}
-
-/**
- * Format the heat-sink type label for the MTF `heat sinks:` line.
- *
- * Convention: Single → "Single", IS Double → "IS Double",
- * Clan Double → "Clan Double", Compact → "Compact", Laser → "Laser".
- */
-function formatHeatSinkTypeLabel(entity: MekEntity): string {
-  // Prefer the raw parsed label for perfect round-trip fidelity
-  const raw = entity.rawHeatSinkLabel();
-  if (raw) return raw;
-
-  // Fallback: compute from structured fields
-  const type = entity.heatSinkType();
-  if (type === 'Double') {
-    if (entity.techBase() === 'Clan') return 'Clan Double';
-    return 'IS Double';
-  }
-  return type;
 }
 
 /**

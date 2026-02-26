@@ -34,6 +34,15 @@
 import { Signal, computed, signal } from '@angular/core';
 import { BaseEntity } from '../../base-entity';
 import {
+  buildCTSystemLayout,
+  buildHeadSystemLayout,
+  buildSideTorsoSystemLayout,
+  getCockpit,
+  getEngineIntegralCapacity,
+  getGyro,
+  GyroType,
+} from '../../components';
+import {
   CriticalSlotView,
   EngineFlag,
   EntityType,
@@ -62,17 +71,17 @@ export abstract class MekEntity extends BaseEntity {
   ejectionType = signal<string>('');
   heatSinkKit = signal<string>('');
 
-  heatSinkType = signal<HeatSinkType>('Single');
-  baseChassisHeatSinks = signal<number>(-1);
-  /** Raw heat-sink label from MTF parse for round-trip (e.g. \"Clan Double\", \"IS Double\") */
-  rawHeatSinkLabel = signal<string>('');
-
+  /** Convenience: heat sink type (delegates to mountedEngine) */
+  heatSinkType = computed<HeatSinkType>(() => this.mountedEngine().heatSinkType);
+  /** Base-chassis heat sinks from MTF/BLK (delegates to mountedEngine, -1 = unset) */
+  baseChassisHeatSinks = computed<number>(() => this.mountedEngine().baseChassisHeatSinks);
+  /** Raw heat-sink label from MTF for round-trip (e.g. "Clan Double", "IS Double") */
+  rawHeatSinkLabel = computed<string>(() => this.mountedEngine().rawHeatSinkLabel);
   /**
    * Total heat sink count as declared on the MTF/BLK `heat sinks:` line.
-   * This includes engine-integrated heat sinks (which don't occupy crit slots).
-   * A value of -1 means "not explicitly set — compute from equipment + engine".
+   * This includes BOTH engine-integrated and externally mounted heat sinks.
    */
-  totalHeatSinks = signal<number>(-1);
+  totalHeatSinks = computed<number>(() => this.mountedEngine().totalHeatSinks);
 
   // NOTE: No `criticalSlots` signal!  The crit grid is DERIVED — see
   // `criticalSlotGrid` computed below.  Equipment `placements` on each
@@ -99,12 +108,10 @@ export abstract class MekEntity extends BaseEntity {
     }, 0)
   );
 
-  integralHeatSinks = computed(() => {
-    const rating = this.engineRating();
-    return this.heatSinkType() === 'Compact'
-      ? Math.floor(rating / 25) * 2
-      : Math.floor(rating / 25);
-  });
+  /** Max heat sinks that fit inside the engine without crit slots */
+  integralHeatSinkCapacity = computed(() =>
+    getEngineIntegralCapacity(this.mountedEngine())
+  );
 
   override engineFlags = computed<Set<EngineFlag>>(() => {
     const flags = new Set<EngineFlag>();
@@ -257,6 +264,9 @@ export abstract class MekEntity extends BaseEntity {
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  SYSTEM TEMPLATE — generates fixed system slots per location
+  //
+  //  Delegates to system-components.ts for engine/gyro/cockpit layouts,
+  //  then converts the (string | null)[] layout to CriticalSlotView[].
   // ═══════════════════════════════════════════════════════════════════════════
 
   /**
@@ -265,107 +275,47 @@ export abstract class MekEntity extends BaseEntity {
    * Remaining indices (up to slotsPerLocation) are empty.
    */
   private getSystemSlotsForLocation(loc: string): CriticalSlotView[] {
-    const slots: CriticalSlotView[] = [];
+    const slotsPerLoc = this.slotsPerLocation();
 
     switch (loc) {
-      case 'HD':
-        this.applyHeadSystemSlots(slots);
-        break;
-      case 'CT':
-        this.applyCenterTorsoSystemSlots(slots);
-        break;
-      case 'LT': case 'RT':
-        this.applySideTorsoSystemSlots(slots);
-        break;
+      case 'HD': {
+        const cockpit = getCockpit(this.cockpitType());
+        const layout = buildHeadSystemLayout(cockpit, slotsPerLoc);
+        return layout.map(s => s ? sys(s as MekSystemType) : EMPTY_SLOT);
+      }
+      case 'CT': {
+        const engine = this.mountedEngine().engine;
+        const layout = buildCTSystemLayout(engine, this.gyroType() as GyroType, slotsPerLoc);
+        return layout.map(s => s ? sys(s as MekSystemType) : EMPTY_SLOT);
+      }
+      case 'LT': case 'RT': {
+        const engine = this.mountedEngine().engine;
+        const layout = buildSideTorsoSystemLayout(engine, slotsPerLoc);
+        return layout.map(s => s ? sys(s as MekSystemType) : EMPTY_SLOT);
+      }
       case 'LA': case 'RA':
-        this.applyArmSystemSlots(slots, loc);
-        break;
+        return this.getArmSystemSlots(loc);
       case 'FLL': case 'FRL':
       case 'LL': case 'RL':
       case 'RLL': case 'RRL':
       case 'CL':
-        this.applyLegSystemSlots(slots);
-        break;
-    }
-
-    return slots;
-  }
-
-  private applyHeadSystemSlots(slots: CriticalSlotView[]): void {
-    const cockpit = this.cockpitType();
-
-    switch (cockpit) {
-      case 'Small Cockpit':
-        // 4 system slots: Life Support, Sensors, Cockpit, Sensors
-        slots.push(sys('Life Support'), sys('Sensors'), sys('Cockpit'), sys('Sensors'));
-        break;
-
-      case 'Dual Cockpit':
-      case 'Interface':
-      case 'Command Console':
-        // 6 system slots: Life Support, Sensors, Cockpit, Cockpit, Sensors, Life Support
-        slots.push(
-          sys('Life Support'), sys('Sensors'), sys('Cockpit'),
-          sys('Cockpit'), sys('Sensors'), sys('Life Support'),
-        );
-        break;
-
+        return [
+          sys('Hip'), sys('Upper Leg Actuator'),
+          sys('Lower Leg Actuator'), sys('Foot Actuator'),
+        ];
       default:
-        // Standard and other: 5 system slots (slot 3 free)
-        slots.push(
-          sys('Life Support'), sys('Sensors'), sys('Cockpit'),
-          EMPTY_SLOT,
-          sys('Sensors'), sys('Life Support'),
-        );
-        break;
+        return [];
     }
   }
 
-  private applyCenterTorsoSystemSlots(slots: CriticalSlotView[]): void {
-    const engineBefore = this.engineType() === 'Compact' ? 3 : 3;
-    const gyroCrits = this.getGyroCritCount();
-    const engineAfter = this.engineType() === 'Compact' ? 0 : 3;
-
-    for (let i = 0; i < engineBefore; i++) slots.push(sys('Engine'));
-    for (let i = 0; i < gyroCrits; i++)    slots.push(sys('Gyro'));
-    for (let i = 0; i < engineAfter; i++)  slots.push(sys('Engine'));
-  }
-
-  private applySideTorsoSystemSlots(slots: CriticalSlotView[]): void {
-    const count = this.getSideTorsoEngineCrits();
-    for (let i = 0; i < count; i++) slots.push(sys('Engine'));
-  }
-
-  private applyArmSystemSlots(slots: CriticalSlotView[], loc: string): void {
-    slots.push(sys('Shoulder'), sys('Upper Arm Actuator'));
-    // MekWithArmsEntity overrides to add Lower Arm / Hand if present
+  private getArmSystemSlots(loc: string): CriticalSlotView[] {
+    const slots: CriticalSlotView[] = [sys('Shoulder'), sys('Upper Arm Actuator')];
     if (this instanceof MekWithArmsEntity) {
       const side = loc === 'LA' ? 'left' : 'right';
       if (this.hasLowerArmActuator()[side]) slots.push(sys('Lower Arm Actuator'));
       if (this.hasHandActuator()[side])     slots.push(sys('Hand Actuator'));
     }
-  }
-
-  private applyLegSystemSlots(slots: CriticalSlotView[]): void {
-    slots.push(sys('Hip'), sys('Upper Leg Actuator'), sys('Lower Leg Actuator'), sys('Foot Actuator'));
-  }
-
-  private getGyroCritCount(): number {
-    switch (this.gyroType()) {
-      case 'XL':       return 6;
-      case 'Compact':  return 2;
-      case 'None':     return 0;
-      default:         return 4;  // Standard, Heavy-Duty, Superheavy
-    }
-  }
-
-  private getSideTorsoEngineCrits(): number {
-    switch (this.engineType()) {
-      case 'XL':    return 3;
-      case 'XXL':   return 6;
-      case 'Light': return 2;
-      default:      return 0;
-    }
+    return slots;
   }
 }
 

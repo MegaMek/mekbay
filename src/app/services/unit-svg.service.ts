@@ -37,7 +37,7 @@ import { CriticalSlot, HeatProfile, MountedEquipment } from '../models/force-ser
 import { SheetService } from './sheet.service';
 import { UnitInitializerService } from './unit-initializer.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
-import { linkedLocs } from "../models/common.model";
+import { getTopologyFor, isMekLocation } from "../models/entity/types";
 import { LoggerService } from './logger.service';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { resolveHitModifier, computeLinkedModifiers } from '../models/rules/hit-modifier.util';
@@ -607,6 +607,8 @@ export class UnitSvgService {
             }
         });
 
+        const topology = getTopologyFor(this.unit.locations?.internal?.keys() ?? []);
+
         this.unit.locations?.internal.forEach(entry => {
             const el = svg.querySelector(`.unitLocation.structure[loc="${entry.loc}"]`);
             if (!el) return;
@@ -624,9 +626,11 @@ export class UnitSvgService {
                 critGroup?.classList.remove('locationDestroyed');
                 // Not needed to remove from armor, as it's handled before during the armor loop
             }
-            if (linkedLocs[entry.loc]) {
-                linkedLocs[entry.loc].forEach(linkedLoc => {
-                    const linkedEls = svg.querySelectorAll(`[loc="${linkedLoc}"]`);
+            if (!isMekLocation(entry.loc)) return;
+            const deps = topology[entry.loc]?.dependents;
+            if (deps?.length) {
+                deps.forEach(dep => {
+                    const linkedEls = svg.querySelectorAll(`[loc="${dep}"]`);
                     if (linkedEls) {
                         linkedEls.forEach(linkedEl => {
                             if (destroyed) {

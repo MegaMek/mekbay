@@ -47,6 +47,7 @@ import {
   resolveArmorEquipment,
   structureTypeFromCode,
 } from '../types';
+import { createEngine, createMountedEngine } from '../components';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
@@ -126,18 +127,35 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
   const techBase = getBlkTechBase(bb);
 
   // ── Engine ──
-  if (bb.exists('engine_type'))  entity.engineType.set(engineTypeFromCode(bb.getFirstInt('engine_type')));
-  if (bb.exists('walkingMP'))    entity.walkMP.set(bb.getFirstInt('walkingMP'));
-  entity.engineRating.set(
-    bb.exists('engine_rating') ? bb.getFirstInt('engine_rating') : entity.walkMP() * entity.tonnage()
-  );
+  {
+    const engineType = bb.exists('engine_type') ? engineTypeFromCode(bb.getFirstInt('engine_type')) : 'Fusion' as const;
+    const rating = bb.exists('engine_rating')
+      ? bb.getFirstInt('engine_rating')
+      : (bb.exists('walkingMP') ? bb.getFirstInt('walkingMP') * entity.tonnage() : 0);
+    const isClan = techBase === 'Clan';
+    const isSuperHeavy = entity.tonnage() > 100;
+    const engine = createEngine(engineType, rating, isClan, isSuperHeavy);
+
+    // Heat sinks
+    const sinkTypes: Record<number, HeatSinkType> = { 0: 'Single', 1: 'Double', 2: 'Compact', 3: 'Laser' };
+    const heatSinkType = bb.exists('sink_type') ? (sinkTypes[bb.getFirstInt('sink_type')] ?? 'Single') : 'Single';
+    const baseChassisHeatSinks = bb.exists('base chassis heat sinks') ? bb.getFirstInt('base chassis heat sinks') : -1;
+
+    entity.mountedEngine.set(createMountedEngine(engine, {
+      heatSinkType,
+      totalHeatSinks: 10,
+      rawHeatSinkLabel: heatSinkType,
+      baseChassisHeatSinks,
+    }));
+  }
+  if (bb.exists('walkingMP')) entity.walkMP.set(bb.getFirstInt('walkingMP'));
 
   // ── Structure / Gyro / Cockpit ──
   if (bb.exists('internal_type')) entity.structureType.set(structureTypeFromCode(bb.getFirstInt('internal_type')));
 
   if (bb.exists('gyro_type')) {
     const gyroNames: Record<number, string> = {
-      0: 'Standard', 1: 'XL', 2: 'Compact', 3: 'Heavy-Duty', 4: 'None', 5: 'Superheavy',
+      0: 'Standard', 1: 'XL', 2: 'Compact', 3: 'Heavy Duty', 4: 'None', 5: 'Superheavy',
     };
     entity.gyroType.set(gyroNames[bb.getFirstInt('gyro_type')] ?? 'Standard');
   }
@@ -150,15 +168,6 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
       11: 'Interface', 12: 'Virtual Reality Piloting Pod', 13: 'QuadVee',
     };
     entity.cockpitType.set(cpNames[bb.getFirstInt('cockpit_type')] ?? 'Standard');
-  }
-
-  // ── Heat Sinks ──
-  if (bb.exists('sink_type')) {
-    const sinkTypes: Record<number, HeatSinkType> = { 0: 'Single', 1: 'Double', 2: 'Compact', 3: 'Laser' };
-    entity.heatSinkType.set(sinkTypes[bb.getFirstInt('sink_type')] ?? 'Single');
-  }
-  if (bb.exists('base chassis heat sinks')) {
-    entity.baseChassisHeatSinks.set(bb.getFirstInt('base chassis heat sinks'));
   }
 
   // ── Armor (structured) ──

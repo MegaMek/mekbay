@@ -41,6 +41,7 @@ import {
   locationArmor,
   resolveArmorEquipment,
 } from '../types';
+import { createEngine, createMountedEngine } from '../components';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
@@ -83,14 +84,21 @@ export function parseBlkSmallCraft(bb: BuildingBlock, ctx: ParseContext): SmallC
   if (bb.exists('motion_type'))  entity.motionType.set(bb.getFirstString('motion_type'));
 
   // ── Engine ──
-  if (bb.exists('engine_type'))  entity.engineType.set(engineTypeFromCode(bb.getFirstInt('engine_type')));
-
-  // ── Heat sinks ──
-  if (bb.exists('sink_type')) {
+  {
+    const engineType = bb.exists('engine_type') ? engineTypeFromCode(bb.getFirstInt('engine_type')) : 'Fusion' as const;
+    const isClan = techBase === 'Clan';
+    const rating = entity.walkMP() * entity.tonnage();
     const sinkTypes: Record<number, HeatSinkType> = { 0: 'Single', 1: 'Double', 2: 'Compact', 3: 'Laser' };
-    entity.heatSinkType.set(sinkTypes[bb.getFirstInt('sink_type')] ?? 'Single');
+    const heatSinkType = bb.exists('sink_type') ? (sinkTypes[bb.getFirstInt('sink_type')] ?? 'Single') : 'Single';
+    const totalHeatSinks = bb.exists('heatsinks') ? bb.getFirstInt('heatsinks') : 10;
+    entity.mountedEngine.set(createMountedEngine(createEngine(engineType, rating, isClan), {
+      heatSinkType,
+      totalHeatSinks,
+      rawHeatSinkLabel: heatSinkType,
+    }));
+    entity.heatSinkType.set(heatSinkType);
+    if (bb.exists('heatsinks')) entity.heatSinkCount.set(totalHeatSinks);
   }
-  if (bb.exists('heatsinks')) entity.heatSinkCount.set(bb.getFirstInt('heatsinks'));
 
   // ── Structural integrity ──
   if (bb.exists('structural_integrity')) {

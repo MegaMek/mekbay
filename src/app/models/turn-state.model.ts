@@ -2,7 +2,7 @@ import { computed, signal } from "@angular/core";
 import { ForceUnitState } from "./force-unit-state.model";
 import { getMotiveModeMaxDistance, MotiveModes } from "./motiveModes.model";
 import { CriticalSlot } from "./force-serialization";
-import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "./common.model";
+import { FOUR_LEGGED_LOCATIONS, isMekLocation, LEG_LOCATIONS } from "./entity/types";
 import { CBTForceUnitState } from "./cbt-force-unit-state.model";
 import { MekRules } from "./rules/mek-rules";
 
@@ -163,6 +163,7 @@ export class TurnState {
                     let hasDamagedLeg = false;
                     unit.locations?.internal?.forEach((_value, loc) => {
                         if (hasDamagedLeg) return;
+                        if (!isMekLocation(loc)) return;
                         if (!LEG_LOCATIONS.has(loc)) return; // Only consider leg locations
                         if (unit.isInternalLocCommittedDestroyed(loc)) {
                             hasDamagedLeg = true;
@@ -170,7 +171,7 @@ export class TurnState {
                     });
                     const hasDamagedLegActuators = critSlots.some(slot => {
                             if (!slot.name || !slot.loc || !slot.destroyed) return false;
-                            if (!LEG_LOCATIONS.has(slot.loc)) return false;
+                            if (!isMekLocation(slot.loc) || !LEG_LOCATIONS.has(slot.loc)) return false;
                             return (slot.name.includes('Leg') || slot.name.includes('Foot') || slot.name.includes('Hip'));
                         });
                     if (moveMode === 'jump') {
@@ -203,7 +204,7 @@ export class TurnState {
                         } else if (hasDamagedLegActuators) {             
                             const hasDamagedHip = critSlots.some(slot => {
                                 if (!slot.name || !slot.loc || !slot.destroyed) return false;
-                                if (!LEG_LOCATIONS.has(slot.loc)) return false;
+                                if (!isMekLocation(slot.loc) || !LEG_LOCATIONS.has(slot.loc)) return false;
                                 return slot.name.includes('Hip');
                             });
                             if (hasDamagedHip) {
@@ -227,6 +228,7 @@ export class TurnState {
         let isFourLegged = false;
         // Calculate pre-existing leg destruction modifiers. If a leg is gone, is gone.
         unit.locations?.internal?.forEach((_value, loc) => {
+            if (!isMekLocation(loc)) return;
             if (!LEG_LOCATIONS.has(loc)) return; // Only consider leg locations
             if (!isFourLegged && FOUR_LEGGED_LOCATIONS.has(loc)) {
                 isFourLegged = true;
@@ -338,7 +340,7 @@ export class TurnState {
     }
 
     evaluateLegDestroyed(location: string, hits: number) {
-        if (!LEG_LOCATIONS.has(location)) return;
+        if (!isMekLocation(location) || !LEG_LOCATIONS.has(location)) return;
         const unit = this.unitState.unit;
         if (!unit) return;
         const destroyed = unit.isInternalLocDestroyed(location);
@@ -368,7 +370,7 @@ export class TurnState {
         let isPsrRelevant = false;
         const delta = (crit.destroying) ? 1 : -1;
         const psr = this.psrChecks();
-        if (LEG_LOCATIONS.has(crit.loc)) { // Leg location, check for leg/foot/hip hits
+        if (isMekLocation(crit.loc) && LEG_LOCATIONS.has(crit.loc)) { // Leg location, check for leg/foot/hip hits
             if (crit.name?.includes('Foot') || crit.name?.includes('Leg')) {
                 if (!psr.legActuators) {
                     psr.legActuators = new Map<string, number>();

@@ -37,6 +37,8 @@ import { MekEntity, MekWithArmsEntity } from '../entities/mek/mek-entity';
 import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import { QuadVeeEntity } from '../entities/mek/quad-vee-entity';
 import { TripodMekEntity } from '../entities/mek/tripod-mek-entity';
+import { createEngine, createMountedEngine } from '../components';
+import { WeaponEquipment } from '../../equipment.model';
 import {
   ArmorType,
   EntityFluff,
@@ -176,11 +178,24 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   // ── Physical properties ──
   entity.tonnage.set(header.mass);
 
-  if (header.engine) {
-    const engineInfo = parseMtfEngine(header.engine);
-    entity.engineType.set(engineInfo.type);
-    entity.engineRating.set(engineInfo.rating);
-    entity.clanEngine.set(engineInfo.clanTech);
+  // ── Engine + Heat Sinks → MountedEngine ──
+  {
+    const engineInfo = header.engine
+      ? parseMtfEngine(header.engine)
+      : { rating: 0, type: 'Fusion' as const, clanTech: false };
+    const isSuperHeavy = header.mass > 100;
+    const engine = createEngine(engineInfo.type, engineInfo.rating, engineInfo.clanTech, isSuperHeavy);
+
+    const hsInfo = header.heatSinks
+      ? parseHeatSinkLine(header.heatSinks)
+      : { count: 10, type: 'Single' as HeatSinkType, typeLabel: 'Single' };
+
+    entity.mountedEngine.set(createMountedEngine(engine, {
+      heatSinkType: hsInfo.type,
+      totalHeatSinks: hsInfo.count,
+      rawHeatSinkLabel: hsInfo.typeLabel,
+      baseChassisHeatSinks: header.baseChassisHeatSinks,
+    }));
   }
 
   entity.structureType.set(cleanStructureType(header.structure));
@@ -191,17 +206,6 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   if (header.cockpit) entity.cockpitType.set(header.cockpit);
   if (header.ejection) entity.ejectionType.set(header.ejection);
   if (header.heatSinkKit) entity.heatSinkKit.set(header.heatSinkKit);
-
-  if (header.heatSinks) {
-    const hsInfo = parseHeatSinkLine(header.heatSinks);
-    entity.heatSinkType.set(hsInfo.type);
-    entity.totalHeatSinks.set(hsInfo.count);
-    // Store just the type-label portion (strip the leading count)
-    entity.rawHeatSinkLabel.set(hsInfo.typeLabel);
-  }
-  if (header.baseChassisHeatSinks >= 0) {
-    entity.baseChassisHeatSinks.set(header.baseChassisHeatSinks);
-  }
 
   entity.walkMP.set(header.walkMP);
 
@@ -271,6 +275,29 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
             mount.criticalSlots = (mount.criticalSlots ?? 1) + 1;
             addedToExisting = true;
           }
+        }
+      }
+
+      // Cross-location split: weapons with 8+ crit slots may be split between
+      // two adjacent locations (e.g. AC/20: 8 crits in LA + 2 in LT).
+      // Only applies to weapons — spreadable misc equipment (TSM, Stealth,
+      // Partial Wing, etc.) gets separate mounts per location.
+      if (!addedToExisting) {
+        const incomplete = mountedEquipment.find(m =>
+          m.equipmentId === parsed.name
+          && m.equipment instanceof WeaponEquipment
+          && m.equipment.canSplit()
+          && (m.criticalSlots ?? 0) < m.equipment.critSlots
+          && m.location !== locCode
+          && areLocationsAdjacent(m.location, locCode),
+        );
+        if (incomplete) {
+          incomplete.placements = [...(incomplete.placements ?? []), { location: locCode, slotIndex: slotIdx }];
+          incomplete.criticalSlots = (incomplete.criticalSlots ?? 1) + 1;
+          incomplete.isSplit = true;
+          // Primary location is the more restrictive one (torso > arm)
+          incomplete.location = getSplitPrimaryLocation(incomplete.location, locCode);
+          addedToExisting = true;
         }
       }
 
@@ -642,7 +669,8 @@ function createMekEntity(config: string): MekEntity {
 
 function parseHeatSinkLine(hsLine: string): { count: number; type: HeatSinkType; typeLabel: string } {
   const parts = hsLine.split(/\s+/);
-  const count = parseInt(parts[0], 10) || 10;
+  const parsed = parseInt(parts[0], 10);
+  const count = Number.isNaN(parsed) ? 10 : parsed;
   // The type label is everything after the leading count number
   const typeLabel = parts.slice(1).join(' ') || 'Single';
   const lower = hsLine.toLowerCase();
@@ -655,4 +683,36 @@ function parseHeatSinkLine(hsLine: string): { count: number; type: HeatSinkType;
 
 function cleanStructureType(raw: string): string {
   return raw.replace(/^IS\s+/i, '').replace(/^Clan\s+/i, '').trim() || 'Standard';
+}
+
+/**
+ * For split weapons (spanning two adjacent locations), determine which
+ * location is the primary one.  Per TechManual rules, the weapon receives
+ * the more restrictive firing arc — that's always the torso side.
+ * LT > LA, RT > RA, CT > LT/RT.
+ */
+const TORSO_LOCATIONS = new Set(['CT', 'LT', 'RT']);
+
+/** Adjacent location pairs for split weapons (not including legs). */
+const ADJACENT_LOCATIONS = new Map<string, Set<string>>([
+  ['LA', new Set(['LT'])],
+  ['LT', new Set(['LA', 'CT'])],
+  ['RA', new Set(['RT'])],
+  ['RT', new Set(['RA', 'CT'])],
+  ['CT', new Set(['LT', 'RT'])],
+]);
+
+function areLocationsAdjacent(a: string, b: string): boolean {
+  return ADJACENT_LOCATIONS.get(a)?.has(b) ?? false;
+}
+
+function getSplitPrimaryLocation(locA: string, locB: string): string {
+  // Prefer the torso location as primary
+  if (TORSO_LOCATIONS.has(locB) && !TORSO_LOCATIONS.has(locA)) return locB;
+  if (TORSO_LOCATIONS.has(locA) && !TORSO_LOCATIONS.has(locB)) return locA;
+  // Both torsos (CT↔LT or CT↔RT) — CT is more restrictive
+  if (locA === 'CT') return locA;
+  if (locB === 'CT') return locB;
+  // Fallback: keep first
+  return locA;
 }
