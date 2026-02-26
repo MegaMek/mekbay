@@ -536,6 +536,10 @@ export class WeaponEquipment extends Equipment {
     isInfantryWeapon(): boolean {
         return this.hasFlag('F_INFANTRY') && this.infantry !== undefined;
     }
+
+    canSplit(): boolean {
+        return this.critSlots >= 8;
+    }
 }
 
 // ============================================================================
