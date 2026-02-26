@@ -145,7 +145,10 @@ export function getEngineCTSlots(engine: EngineComponent, gyroType: GyroType | s
 
   if (isLarge) {
     if (isSuperHeavy) {
-      // Large + SH: always the same regardless of gyro type
+      if (normalizedGyro === 'None') {
+        // Large + SH + no gyro: engine fills slots 0-3
+        return [0, 1, 2, 3];
+      }
       return [0, 1, 2, 5];
     }
     if (normalizedGyro === 'None') {
