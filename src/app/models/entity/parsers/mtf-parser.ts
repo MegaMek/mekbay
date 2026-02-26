@@ -259,6 +259,9 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   const locationMap = isQuad ? QUAD_LOCATION_MAP : BIPED_LOCATION_MAP;
   const mountedEquipment: EntityMountedEquipment[] = [];
 
+  // Superheavy meks halve equipment crit slots (rounded up)
+  const isSH = entity.isSuperHeavy();
+
   // Track multi-crit equipment: key "equipName@locCode" → mountId
   const multiCritMap = new Map<string, string>();
 
@@ -290,7 +293,8 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       if (existingId) {
         const mount = mountedEquipment.find(m => m.mountId === existingId);
         if (mount) {
-          const expectedCrits = mount.equipment?.critSlots ?? Infinity;
+          const baseCrits = mount.equipment?.critSlots ?? Infinity;
+          const expectedCrits = isSH ? Math.ceil(baseCrits / 2) : baseCrits;
           const lastPlacement = mount.placements?.[mount.placements.length - 1];
           const isConsecutive = lastPlacement?.location === locCode && lastPlacement.slotIndex === slotIdx - 1;
           if ((mount.criticalSlots ?? 0) < expectedCrits && isConsecutive) {
@@ -306,14 +310,15 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       // Only applies to weapons — spreadable misc equipment (TSM, Stealth,
       // Partial Wing, etc.) gets separate mounts per location.
       if (!addedToExisting) {
-        const incomplete = mountedEquipment.find(m =>
-          m.equipmentId === parsed.name
-          && m.equipment instanceof WeaponEquipment
-          && m.equipment.canSplit()
-          && (m.criticalSlots ?? 0) < m.equipment.critSlots
-          && m.location !== locCode
-          && areLocationsAdjacent(m.location, locCode),
-        );
+        const incomplete = mountedEquipment.find(m => {
+          if (m.equipmentId !== parsed.name) return false;
+          if (!(m.equipment instanceof WeaponEquipment) || !m.equipment.canSplit()) return false;
+          const baseCrits = m.equipment.critSlots;
+          const effectiveCrits = isSH ? Math.ceil(baseCrits / 2) : baseCrits;
+          return (m.criticalSlots ?? 0) < effectiveCrits
+            && m.location !== locCode
+            && areLocationsAdjacent(m.location, locCode);
+        });
         if (incomplete) {
           incomplete.placements = [...(incomplete.placements ?? []), { location: locCode, slotIndex: slotIdx }];
           incomplete.criticalSlots = (incomplete.criticalSlots ?? 1) + 1;
