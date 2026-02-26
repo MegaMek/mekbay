@@ -327,6 +327,26 @@ export interface EquipmentRawData {
 /** Equipment indexed by internal name */
 export type EquipmentMap = Record<string, Equipment>;
 
+/** Alias → Equipment lookup for O(1) alias resolution */
+export type EquipmentAliasMap = Map<string, Equipment>;
+
+/**
+ * Build an alias index from an EquipmentMap.
+ * Maps every alias string to its owning Equipment for O(1) lookup.
+ * Call once when the equipment DB is loaded.
+ */
+export function buildEquipmentAliasMap(equipmentDb: EquipmentMap): EquipmentAliasMap {
+    const aliasMap: EquipmentAliasMap = new Map();
+    for (const eq of Object.values(equipmentDb)) {
+        if (eq.aliases) {
+            for (const alias of eq.aliases) {
+                aliasMap.set(alias, eq);
+            }
+        }
+    }
+    return aliasMap;
+}
+
 /** Raw equipment indexed by internal name */
 export type RawEquipmentMap = Record<string, EquipmentRawData>;
 

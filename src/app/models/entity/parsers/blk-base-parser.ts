@@ -186,9 +186,7 @@ export function parseBaseBlk(
   if (bb.exists('primaryFactory')) fluff.primaryFactory = bb.getFirstString('primaryFactory');
   if (bb.exists('notes')) fluff.notes = bb.getDataAsString('notes').join('\n');
 
-  // System manufacturers - two formats:
-  // 1. Unified block: <systemManufacturers> with KEY:VALUE lines
-  // 2. Individual blocks: <systemManufacturer:KEY> VALUE </systemManufacturer:KEY>
+  // System manufacturers
   {
     const sysMfrs: Record<string, string> = {};
     // Format 1: unified block
@@ -206,17 +204,6 @@ export function parseBaseBlk(
         }
       }
     }
-    // Format 2: individual blocks (<systemManufacturer:KEY>)
-    for (const tag of bb.getTagNames()) {
-      if (tag.startsWith('systemmanufacturer:')) {
-        const rawKey = tag.substring('systemmanufacturer:'.length).toUpperCase();
-        const canonical = normalizeSystemManufacturerKey(rawKey);
-        if (!canonical) {
-          ctx.warn(tag, `Unknown system manufacturer key: "${rawKey}"`);
-        }
-        sysMfrs[canonical ?? rawKey] = bb.getFirstString(tag);
-      }
-    }
     if (Object.keys(sysMfrs).length > 0) {
       fluff.systemManufacturers = sysMfrs;
     }
@@ -224,7 +211,6 @@ export function parseBaseBlk(
 
   {
     const sysModels: Record<string, string> = {};
-    // Format 1: unified block
     if (bb.exists('systemModels')) {
       const modelLines = bb.getDataAsString('systemModels');
       for (const line of modelLines) {
@@ -237,17 +223,6 @@ export function parseBaseBlk(
           }
           sysModels[canonical ?? rawKey] = line.substring(colonIdx + 1);
         }
-      }
-    }
-    // Format 2: individual blocks (<systemModel:KEY>)
-    for (const tag of bb.getTagNames()) {
-      if (tag.startsWith('systemmodel:')) {
-        const rawKey = tag.substring('systemmodel:'.length).toUpperCase();
-        const canonical = normalizeSystemManufacturerKey(rawKey);
-        if (!canonical) {
-          ctx.warn(tag, `Unknown system model key: "${rawKey}"`);
-        }
-        sysModels[canonical ?? rawKey] = bb.getFirstString(tag);
       }
     }
     if (Object.keys(sysModels).length > 0) {

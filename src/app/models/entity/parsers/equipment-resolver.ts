@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Equipment, EquipmentMap } from '../../equipment.model';
+import { Equipment, EquipmentAliasMap, EquipmentMap } from '../../equipment.model';
 import { EntityTechBase } from '../types';
 
 /**
@@ -41,12 +41,13 @@ import { EntityTechBase } from '../types';
  * 1. Exact match on internal name
  * 2. Tech-prefix variants (IS/Clan)
  * 3. Opposite tech base
- * 4. Alias lookup
+ * 4. Alias lookup (O(1) via pre-built alias index)
  */
 export function resolveEquipment(
   name: string,
   techBase: EntityTechBase,
   equipmentDb: EquipmentMap,
+  aliasMap?: EquipmentAliasMap,
 ): Equipment | null {
   if (!name || name === '-Empty-') {
     return null;
@@ -57,29 +58,16 @@ export function resolveEquipment(
     return equipmentDb[name];
   }
 
-  // 2. Try with tech prefix matching entity's tech base
-  if (techBase === 'Clan') {
-    const clanName = equipmentDb['Clan ' + name] ?? equipmentDb['CL' + name];
-    if (clanName) return clanName;
+  // 4. Try alias lookup — O(1) when alias index is available
+  if (aliasMap) {
+    const aliased = aliasMap.get(name);
+    if (aliased) return aliased;
   } else {
-    const isName = equipmentDb['IS ' + name] ?? equipmentDb['IS' + name];
-    if (isName) return isName;
-  }
-
-  // 3. Try opposite tech base
-  if (techBase !== 'Clan') {
-    const clanName = equipmentDb['Clan ' + name] ?? equipmentDb['CL' + name];
-    if (clanName) return clanName;
-  }
-  if (techBase !== 'Inner Sphere') {
-    const isName = equipmentDb['IS ' + name] ?? equipmentDb['IS' + name];
-    if (isName) return isName;
-  }
-
-  // 4. Try alias lookup
-  for (const eq of Object.values(equipmentDb)) {
-    if (eq.aliases?.includes(name)) {
-      return eq;
+    // Fallback: linear scan (slow, used only when no alias index is provided)
+    for (const eq of Object.values(equipmentDb)) {
+      if (eq.aliases?.includes(name)) {
+        return eq;
+      }
     }
   }
 

@@ -171,6 +171,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
     entity.mixedTech.set(true);
     entity.techBase.set('Mixed');
   }
+  if (header.clanName) entity.clanName.set(header.clanName);
 
   // ── Physical properties ──
   entity.tonnage.set(header.mass);
@@ -179,9 +180,11 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
     const engineInfo = parseMtfEngine(header.engine);
     entity.engineType.set(engineInfo.type);
     entity.engineRating.set(engineInfo.rating);
+    entity.clanEngine.set(engineInfo.clanTech);
   }
 
   entity.structureType.set(cleanStructureType(header.structure));
+  entity.rawStructure.set(header.structure);
   entity.myomerType.set(header.myomer || 'Standard');
 
   if (header.gyro) entity.gyroType.set(header.gyro);
@@ -190,7 +193,11 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   if (header.heatSinkKit) entity.heatSinkKit.set(header.heatSinkKit);
 
   if (header.heatSinks) {
-    entity.heatSinkType.set(parseHeatSinkLine(header.heatSinks).type);
+    const hsInfo = parseHeatSinkLine(header.heatSinks);
+    entity.heatSinkType.set(hsInfo.type);
+    entity.totalHeatSinks.set(hsInfo.count);
+    // Store just the type-label portion (strip the leading count)
+    entity.rawHeatSinkLabel.set(hsInfo.typeLabel);
   }
   if (header.baseChassisHeatSinks >= 0) {
     entity.baseChassisHeatSinks.set(header.baseChassisHeatSinks);
@@ -252,14 +259,22 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       const dedupKey = `${parsed.name}@${locCode}`;
       const existingId = parsed.isSplit ? undefined : multiCritMap.get(dedupKey);
 
+      let addedToExisting = false;
       if (existingId) {
-        // Add another placement to existing mount
         const mount = mountedEquipment.find(m => m.mountId === existingId);
         if (mount) {
-          mount.placements = [...(mount.placements ?? []), { location: locCode, slotIndex: slotIdx }];
-          mount.criticalSlots = (mount.criticalSlots ?? 1) + 1;
+          const expectedCrits = mount.equipment?.critSlots ?? Infinity;
+          const lastPlacement = mount.placements?.[mount.placements.length - 1];
+          const isConsecutive = lastPlacement?.location === locCode && lastPlacement.slotIndex === slotIdx - 1;
+          if ((mount.criticalSlots ?? 0) < expectedCrits && isConsecutive) {
+            mount.placements = [...(mount.placements ?? []), { location: locCode, slotIndex: slotIdx }];
+            mount.criticalSlots = (mount.criticalSlots ?? 1) + 1;
+            addedToExisting = true;
+          }
         }
-      } else {
+      }
+
+      if (!addedToExisting) {
         // New mount
         const mountId = generateMountId();
         const resolved = ctx.resolveEquipment(parsed.name, entity.techBase(), locCode);
@@ -327,6 +342,14 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   if (header.manualBV > 0) entity.manualBV.set(header.manualBV);
   if (header.generator) entity.generator.set(header.generator);
 
+  // ── LAM / QuadVee specific fields ──
+  if (header.lamType && entity instanceof LamEntity) {
+    entity.lamType.set(header.lamType);
+  }
+  if (header.motiveType && entity instanceof QuadVeeEntity) {
+    entity.motiveType.set(header.motiveType);
+  }
+
   return entity;
 }
 
@@ -369,6 +392,10 @@ interface MtfHeader {
   fluff: EntityFluff;
   manualBV: number;
   generator: string;
+  clanName: string;
+  lamType: string;
+  motiveType: string;
+  rawHeatSinks: string;
 }
 
 function parseHeader(lines: string[]): MtfHeader {
@@ -383,6 +410,7 @@ function parseHeader(lines: string[]): MtfHeader {
     quirks: [], weaponQuirks: [],
     locationSlots: new Map(), nocritEquipment: [], weaponsList: [],
     fluff: {}, manualBV: 0, generator: '',
+    clanName: '', lamType: '', motiveType: '', rawHeatSinks: '',
   };
 
   let currentLocHeader: string | null = null;
@@ -456,7 +484,7 @@ function parseHeader(lines: string[]): MtfHeader {
       case 'cockpit':                 h.cockpit = value; break;
       case 'ejection':                h.ejection = value; break;
       case 'heat sink kit':          h.heatSinkKit = value; break;
-      case 'heat sinks':             h.heatSinks = value; break;
+      case 'heat sinks':             h.heatSinks = value; h.rawHeatSinks = value; break;
       case 'base chassis heat sinks': h.baseChassisHeatSinks = parseInt(value, 10) || -1; break;
       case 'walk mp':                h.walkMP = parseInt(value, 10) || 0; break;
       case 'jump mp':                h.jumpMP = parseInt(value, 10) || 0; break;
@@ -501,7 +529,7 @@ function parseHeader(lines: string[]): MtfHeader {
         }
         break;
       }
-      case 'systemmodel': {
+      case 'systemmode': {
         const i = value.indexOf(':');
         if (i > 0) {
           if (!h.fluff.systemModels) h.fluff.systemModels = {};
@@ -512,6 +540,9 @@ function parseHeader(lines: string[]): MtfHeader {
       }
       case 'bv':      h.manualBV = parseInt(value, 10) || 0; break;
       case 'weapons':  inWeaponsSection = true; break;
+      case 'clanname': h.clanName = value; break;
+      case 'lam':      h.lamType = value; break;
+      case 'motive':   h.motiveType = value; break;
       default: break;
     }
   }
@@ -609,15 +640,17 @@ function createMekEntity(config: string): MekEntity {
   return new BipedMekEntity();
 }
 
-function parseHeatSinkLine(hsLine: string): { count: number; type: HeatSinkType } {
+function parseHeatSinkLine(hsLine: string): { count: number; type: HeatSinkType; typeLabel: string } {
   const parts = hsLine.split(/\s+/);
   const count = parseInt(parts[0], 10) || 10;
+  // The type label is everything after the leading count number
+  const typeLabel = parts.slice(1).join(' ') || 'Single';
   const lower = hsLine.toLowerCase();
   let type: HeatSinkType = 'Single';
   if (lower.includes('double'))  type = 'Double';
   else if (lower.includes('compact')) type = 'Compact';
   else if (lower.includes('laser'))   type = 'Laser';
-  return { count, type };
+  return { count, type, typeLabel };
 }
 
 function cleanStructureType(raw: string): string {

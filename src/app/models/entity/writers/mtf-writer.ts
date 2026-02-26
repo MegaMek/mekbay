@@ -135,12 +135,12 @@ export function writeMtf(entity: MekEntity): string {
 
   writeIdentity(entity, lines);
   writeConfig(entity, lines);
+  writeQuirks(entity, lines);
   writePhysical(entity, lines);
   writeMovement(entity, lines);
   writeArmor(entity, lines, isQuad, isTripod);
   writeWeapons(entity, lines);
   writeCriticals(entity, lines, mountMap, isQuad, isTripod);
-  writeQuirks(entity, lines);
   writeFluff(entity, lines);
 
   return lines.join('\n');
@@ -170,23 +170,23 @@ function writeConfig(entity: MekEntity, lines: string[]): void {
 
 function writePhysical(entity: MekEntity, lines: string[]): void {
   lines.push(`mass:${entity.tonnage()}`);
-  lines.push(`engine:${entity.engineRating()} ${getEngineMtfName(entity.engineType())}(${tbMarker(entity.techBase())})`);
+  lines.push(`engine:${formatEngineLine(entity)}`);
   lines.push(`structure:${getStructureString(entity)}`);
   lines.push(`myomer:${entity.myomerType()}`);
 
-  if (entity.gyroType() !== 'Standard') lines.push(`gyro:${entity.gyroType()}`);
   if (entity.cockpitType() !== 'Standard') lines.push(`cockpit:${entity.cockpitType()}`);
+  if (entity.gyroType() !== 'Standard') lines.push(`gyro:${entity.gyroType()}`);
   if (entity.ejectionType()) lines.push(`ejection:${entity.ejectionType()}`);
   if (entity.heatSinkKit()) lines.push(`heat sink kit:${entity.heatSinkKit()}`);
   lines.push('');
 }
 
 function writeMovement(entity: MekEntity, lines: string[]): void {
-  const hsType = entity.heatSinkType();
-  const hsCount = entity.heatSinkCount();
-  lines.push(`heat sinks:${hsCount} ${hsType}`);
+  const hsCount = getTotalHeatSinks(entity);
+  const hsLabel = formatHeatSinkTypeLabel(entity);
+  lines.push(`heat sinks:${hsCount} ${hsLabel}`);
   if (entity.baseChassisHeatSinks() >= 0) {
-    lines.push(`Base Chassis Heat Sinks:${entity.baseChassisHeatSinks()}`);
+    lines.push(`base chassis heat sinks:${entity.baseChassisHeatSinks()}`);
   }
   lines.push(`walk mp:${entity.walkMP()}`);
   lines.push(`jump mp:${entity.jumpMP()}`);
@@ -200,9 +200,7 @@ function writeArmor(
   const armorType = entity.armorType();
   const armorTb = entity.armorTechBase();
   const armorDisplayName = entity.armorEquipment()?.name ?? 'Standard';
-  if (armorTb === 'Inner Sphere' && armorType === 'STANDARD') {
-    lines.push('armor:Standard Armor');
-  } else if (armorType === 'PATCHWORK') {
+  if (armorType === 'PATCHWORK') {
     lines.push('armor:Patchwork Armor');
   } else {
     lines.push(`armor:${armorDisplayName}(${formatTechBaseLabel(armorTb)})`);
@@ -223,7 +221,8 @@ function writeWeapons(entity: MekEntity, lines: string[]): void {
   lines.push(`Weapons:${mounts.length}`);
   for (const m of mounts) {
     const locName = LOC_DISPLAY_NAMES[m.location] ?? m.location;
-    lines.push(`${m.equipmentId}, ${locName}`);
+    const displayName = m.equipment?.name ?? m.equipmentId;
+    lines.push(`${displayName}, ${locName}`);
   }
   lines.push('');
 }
@@ -293,7 +292,7 @@ function writeFluff(entity: MekEntity, lines: string[]): void {
   }
   if (fluff.systemModels) {
     for (const [k, v] of Object.entries(fluff.systemModels)) {
-      lines.push(`systemmodel:${k}:${v}`);
+      lines.push(`systemmode:${k}:${v}`);
     }
   }
   if (entity.manualBV() > 0) lines.push(`bv:${entity.manualBV()}`);
@@ -312,11 +311,16 @@ function formatEquipmentSlot(
 
   let name = mount.equipmentId;
   if (mount.rearMounted) name += ' (R)';
+  if (mount.turretMounted) name += ' (T)';
   if (slot.omniPod) name += ' (OMNIPOD)';
   if (slot.armored) name += ' (ARMORED)';
   if (mount.isSplit) name += ' (SPLIT)';
   if (mount.facing !== undefined) name += ` (${facingLabel(mount.facing)})`;
-  if (mount.size !== undefined) name += `:SIZE:${mount.size}`;
+  if (mount.size !== undefined) {
+    // Preserve decimal point: MegaMek writes SIZE:1.0, SIZE:2.0 etc.
+    const sizeStr = Number.isInteger(mount.size) ? `${mount.size}.0` : `${mount.size}`;
+    name += `:SIZE:${sizeStr}`;
+  }
   if (mount.secondEquipmentId) name += `|${mount.secondEquipmentId}`;
   return name;
 }
@@ -347,26 +351,87 @@ function formatTechBaseLabel(tb: EntityTechBase): string {
   return tb === 'Clan' ? 'Clan' : tb === 'Mixed' ? 'Mixed' : 'Inner Sphere';
 }
 
-function tbMarker(tb: EntityTechBase): string {
-  return tb === 'Clan' ? 'Clan' : 'IS';
+/**
+ * Return the total heat sink count for the MTF `heat sinks:` line.
+ *
+ * If the entity was parsed from a file, `totalHeatSinks` carries the
+ * original value.  Otherwise, fall back to computing from equipment
+ * counts + engine capacity.
+ */
+function getTotalHeatSinks(entity: MekEntity): number {
+  const stored = entity.totalHeatSinks();
+  if (stored >= 0) return stored;
+
+  // Fallback: engine can hold floor(rating/25); anything beyond that is mounted
+  const mounted = entity.heatSinkCount();
+  const engineCapacity = Math.floor(entity.engineRating() / 25);
+  return engineCapacity + mounted;
 }
 
-function getEngineMtfName(engineType: string): string {
+/**
+ * Format the heat-sink type label for the MTF `heat sinks:` line.
+ *
+ * Convention: Single → "Single", IS Double → "IS Double",
+ * Clan Double → "Clan Double", Compact → "Compact", Laser → "Laser".
+ */
+function formatHeatSinkTypeLabel(entity: MekEntity): string {
+  // Prefer the raw parsed label for perfect round-trip fidelity
+  const raw = entity.rawHeatSinkLabel();
+  if (raw) return raw;
+
+  // Fallback: compute from structured fields
+  const type = entity.heatSinkType();
+  if (type === 'Double') {
+    if (entity.techBase() === 'Clan') return 'Clan Double';
+    return 'IS Double';
+  }
+  return type;
+}
+
+/**
+ * Format the full MTF engine line value.
+ *
+ * Conventions observed in MegaMek Suite 0.50.12 output:
+ * - Pure IS:  `<rating> <Type> Engine`           (no tech marker)
+ * - Pure Clan: `<rating> <Type> (Clan) Engine`   (`(Clan)` between type and Engine)
+ * - Mixed IS Chassis + IS engine: `<rating> <Type> Engine(IS)`
+ * - Mixed + Clan engine: `<rating> <Type> (Clan) Engine`
+ */
+function formatEngineLine(entity: MekEntity): string {
+  const rating = entity.engineRating();
+  const typeName = getEngineTypePrefix(entity.engineType());
+  const isClanEngine = entity.clanEngine();
+  const isMixed = entity.mixedTech();
+
+  if (isClanEngine) {
+    return `${rating} ${typeName} (Clan) Engine`;
+  } else if (isMixed) {
+    return `${rating} ${typeName} Engine(IS)`;
+  } else {
+    return `${rating} ${typeName} Engine`;
+  }
+}
+
+function getEngineTypePrefix(engineType: string): string {
   switch (engineType) {
-    case 'XL': return 'XL Fusion Engine';
-    case 'XXL': return 'XXL Fusion Engine';
-    case 'Light': return 'Light Fusion Engine';
-    case 'Compact': return 'Compact Fusion Engine';
-    case 'ICE': return 'I.C.E.';
-    case 'Fuel Cell': return 'Fuel Cell Engine';
-    case 'Fission': return 'Fission Engine';
-    default: return 'Fusion Engine';
+    case 'XL':        return 'XL';
+    case 'XXL':       return 'XXL';
+    case 'Light':     return 'Light';
+    case 'Compact':   return 'Compact';
+    case 'ICE':       return 'ICE';
+    case 'Fuel Cell': return 'Fuel Cell';
+    case 'Fission':   return 'Fission';
+    default:          return 'Fusion';
   }
 }
 
 function getStructureString(entity: MekEntity): string {
+  // Prefer the raw parsed string for perfect round-trip fidelity
+  const raw = entity.rawStructure();
+  if (raw) return raw;
+
+  // Fallback: compute from structured fields
   const type = entity.structureType();
-  if (type === 'Standard') return 'Standard';
   const prefix = entity.techBase() === 'Clan' ? 'Clan ' : 'IS ';
   return `${prefix}${type}`;
 }

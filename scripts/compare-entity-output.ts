@@ -52,7 +52,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
+import { createEquipment, buildEquipmentAliasMap, type EquipmentAliasMap, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { writeEntity } from '../src/app/models/entity/write-entity';
 import { resetMountIdCounter } from '../src/app/models/entity/utils/signal-helpers';
@@ -84,7 +84,7 @@ function getArg(name: string, defaultValue: string): string {
 }
 const hasFlag = (name: string) => args.includes(`--${name}`);
 
-const INPUT_DIR = path.resolve(getArg('input', path.join(__dirname, '..', '..', '..', 'mm-data', 'data', 'mekfiles')));
+const INPUT_DIR = path.resolve(getArg('input', String.raw`C:\Projects\megamek\svgexport\unitfiles`));
 const OUTPUT_DIR = path.resolve(getArg('output', String.raw`C:\Projects\megamek\svgexport\mbunitfiles`));
 const TYPE_FILTER = getArg('type', '');
 const FAIL_FAST = hasFlag('fail-fast');
@@ -94,7 +94,7 @@ const VERBOSE = hasFlag('verbose');
 // Equipment database loading
 // ═══════════════════════════════════════════════════════════════════════════
 
-function loadEquipmentDb(): EquipmentMap {
+function loadEquipmentDb(): { equipmentDb: EquipmentMap; aliasMap: EquipmentAliasMap } {
   const fixturesPath = path.join(__dirname, 'fixtures', 'equipment2.json');
   if (!fs.existsSync(fixturesPath)) {
     console.error(`Equipment file not found: ${fixturesPath}`);
@@ -116,8 +116,9 @@ function loadEquipmentDb(): EquipmentMap {
     }
   }
 
-  console.log(`Equipment DB: ${loaded} loaded, ${failed} failed\n`);
-  return equipmentDb;
+  const aliasMap = buildEquipmentAliasMap(equipmentDb);
+  console.log(`Equipment DB: ${loaded} loaded, ${failed} failed, ${aliasMap.size} aliases\n`);
+  return { equipmentDb, aliasMap };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -189,8 +190,20 @@ function matchesTypeFilter(filePath: string): boolean {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Strip comment lines (starting with #), the MTF generator: line, and
- * normalise whitespace for comparison purposes.
+ * Fluff field prefixes whose *values* should be trimmed for comparison.
+ * The originals sometimes have leading/trailing spaces in these fields;
+ * our writer correctly trims them, so we normalise both sides.
+ */
+const FLUFF_PREFIXES = [
+  'overview:', 'capabilities:', 'deployment:', 'history:',
+  'manufacturer:', 'primaryfactory:',
+  'systemmanufacturer:', 'systemmode:',
+  'notes:', 'use:',
+];
+
+/**
+ * Strip comment lines (starting with #), the MTF generator: line,
+ * trim fluff field values, and normalise whitespace for comparison.
  */
 function stripForComparison(text: string): string {
   const lines = text.split(/\r?\n/);
@@ -202,7 +215,23 @@ function stripForComparison(text: string): string {
     if (trimmed.startsWith('#')) continue;
     // Skip MTF generator line (e.g. "generator:MegaMek Suite 0.50.12 on 2026-02-25")
     if (trimmed.startsWith('generator:')) continue;
-    filtered.push(line.trimEnd());
+
+    // Trim values of fluff fields so whitespace differences are ignored
+    const lower = trimmed.toLowerCase();
+    let handled = false;
+    for (const prefix of FLUFF_PREFIXES) {
+      if (lower.startsWith(prefix)) {
+        const colonIdx = trimmed.indexOf(':');
+        const key = trimmed.substring(0, colonIdx + 1);
+        const value = trimmed.substring(colonIdx + 1).trim();
+        filtered.push(`${key}${value}`);
+        handled = true;
+        break;
+      }
+    }
+    if (!handled) {
+      filtered.push(line.trimEnd());
+    }
   }
 
   return filtered
@@ -229,6 +258,7 @@ interface CompareResult {
 function processFile(
   filePath: string,
   equipmentDb: EquipmentMap,
+  aliasMap: EquipmentAliasMap,
 ): CompareResult {
   const fileName = path.basename(filePath);
   const content = fs.readFileSync(filePath, 'utf-8');
@@ -239,7 +269,7 @@ function processFile(
   let entity;
   try {
     resetMountIdCounter();
-    entity = parseEntity(content, fileName, equipmentDb).entity;
+    entity = parseEntity(content, fileName, equipmentDb, null, aliasMap).entity;
   } catch (e: any) {
     return { file: filePath, status: 'parse-error', error: `Parse: ${e.message}` };
   }
@@ -309,7 +339,7 @@ function main(): void {
   console.log('');
 
   // Load equipment
-  const equipmentDb = loadEquipmentDb();
+  const { equipmentDb, aliasMap } = loadEquipmentDb();
 
   // Find files
   let files = findUnitFiles(INPUT_DIR);
@@ -354,7 +384,7 @@ function main(): void {
       }
     }
 
-    const result = processFile(file, equipmentDb);
+    const result = processFile(file, equipmentDb, aliasMap);
 
     const typeKey = result.entityType ?? 'unknown';
     if (!byType.has(typeKey)) byType.set(typeKey, { match: 0, diff: 0 });

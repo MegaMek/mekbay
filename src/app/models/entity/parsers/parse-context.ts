@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Equipment, EquipmentMap } from '../../equipment.model';
+import { Equipment, EquipmentAliasMap, EquipmentMap } from '../../equipment.model';
 import { EntityTechBase } from '../types';
 import { resolveEquipment } from './equipment-resolver';
 
@@ -103,6 +103,9 @@ export class ParseContext {
   /** Equipment database for name resolution */
   readonly equipmentDb: EquipmentMap;
 
+  /** Pre-built alias → Equipment index for O(1) alias lookups */
+  readonly aliasMap: EquipmentAliasMap | undefined;
+
   /** Optional fallback for custom/remote equipment lookup */
   readonly equipmentFallback: EquipmentFallbackFn | null;
 
@@ -113,9 +116,11 @@ export class ParseContext {
     fileName: string,
     equipmentDb: EquipmentMap,
     equipmentFallback?: EquipmentFallbackFn | null,
+    aliasMap?: EquipmentAliasMap,
   ) {
     this.fileName = fileName;
     this.equipmentDb = equipmentDb;
+    this.aliasMap = aliasMap;
     this.equipmentFallback = equipmentFallback ?? null;
   }
 
@@ -214,8 +219,8 @@ export class ParseContext {
   ): Equipment | null {
     if (!name || name === '-Empty-') return null;
 
-    // 1. Try local DB
-    const local = resolveEquipment(name, techBase, this.equipmentDb);
+    // 1. Try local DB (uses alias index when available)
+    const local = resolveEquipment(name, techBase, this.equipmentDb, this.aliasMap);
     if (local) return local;
 
     // 2. Try fallback (future: remote/UUID lookup)

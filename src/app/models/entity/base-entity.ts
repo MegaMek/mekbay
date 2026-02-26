@@ -93,6 +93,7 @@ export abstract class BaseEntity {
   // ── Identity ──
   chassis = signal<string>('');
   model = signal<string>('');
+  clanName = signal<string>('');
   mulId = signal<number>(-1);
 
   // ── Tech ──
@@ -148,6 +149,8 @@ export abstract class BaseEntity {
 
   // ── Internal Structure ──
   structureType = signal<string>('Standard');
+  /** Raw MTF structure string for round-trip (e.g. "IS Standard", "Clan Endo Steel") */
+  rawStructure = signal<string>('');
 
   // ── Equipment — SINGLE SOURCE OF TRUTH ──
   equipment = signal<EntityMountedEquipment[]>([]);

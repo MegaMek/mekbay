@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentMap } from '../equipment.model';
+import { EquipmentAliasMap, EquipmentMap } from '../equipment.model';
 import { BaseEntity } from './base-entity';
 import { BuildingBlock } from './parsers/building-block';
 import { EquipmentFallbackFn, ParseContext, ParseDiagnostic } from './parsers/parse-context';
@@ -71,8 +71,9 @@ export function parseEntity(
   fileName: string,
   equipmentDb: EquipmentMap,
   equipmentFallback?: EquipmentFallbackFn | null,
+  aliasMap?: EquipmentAliasMap,
 ): ParseResult {
-  const ctx = new ParseContext(fileName, equipmentDb, equipmentFallback);
+  const ctx = new ParseContext(fileName, equipmentDb, equipmentFallback, aliasMap);
   const lowerName = fileName.toLowerCase();
 
   let entity: BaseEntity;

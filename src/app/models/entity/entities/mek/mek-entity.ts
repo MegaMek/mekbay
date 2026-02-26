@@ -64,6 +64,15 @@ export abstract class MekEntity extends BaseEntity {
 
   heatSinkType = signal<HeatSinkType>('Single');
   baseChassisHeatSinks = signal<number>(-1);
+  /** Raw heat-sink label from MTF parse for round-trip (e.g. \"Clan Double\", \"IS Double\") */
+  rawHeatSinkLabel = signal<string>('');
+
+  /**
+   * Total heat sink count as declared on the MTF/BLK `heat sinks:` line.
+   * This includes engine-integrated heat sinks (which don't occupy crit slots).
+   * A value of -1 means "not explicitly set — compute from equipment + engine".
+   */
+  totalHeatSinks = signal<number>(-1);
 
   // NOTE: No `criticalSlots` signal!  The crit grid is DERIVED — see
   // `criticalSlotGrid` computed below.  Equipment `placements` on each
@@ -283,14 +292,33 @@ export abstract class MekEntity extends BaseEntity {
   }
 
   private applyHeadSystemSlots(slots: CriticalSlotView[]): void {
-    slots.push(
-      sys('Life Support'),
-      sys('Sensors'),
-      sys('Cockpit'),
-      EMPTY_SLOT,          // slot 3 — usually free (or 2nd cockpit for Dual)
-      sys('Sensors'),
-      sys('Life Support'),
-    );
+    const cockpit = this.cockpitType();
+
+    switch (cockpit) {
+      case 'Small Cockpit':
+        // 4 system slots: Life Support, Sensors, Cockpit, Sensors
+        slots.push(sys('Life Support'), sys('Sensors'), sys('Cockpit'), sys('Sensors'));
+        break;
+
+      case 'Dual Cockpit':
+      case 'Interface':
+      case 'Command Console':
+        // 6 system slots: Life Support, Sensors, Cockpit, Cockpit, Sensors, Life Support
+        slots.push(
+          sys('Life Support'), sys('Sensors'), sys('Cockpit'),
+          sys('Cockpit'), sys('Sensors'), sys('Life Support'),
+        );
+        break;
+
+      default:
+        // Standard and other: 5 system slots (slot 3 free)
+        slots.push(
+          sys('Life Support'), sys('Sensors'), sys('Cockpit'),
+          EMPTY_SLOT,
+          sys('Sensors'), sys('Life Support'),
+        );
+        break;
+    }
   }
 
   private applyCenterTorsoSystemSlots(slots: CriticalSlotView[]): void {

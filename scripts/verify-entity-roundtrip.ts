@@ -51,7 +51,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
+import { createEquipment, buildEquipmentAliasMap, type EquipmentAliasMap, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { writeEntity } from '../src/app/models/entity/write-entity';
 import { resetMountIdCounter } from '../src/app/models/entity/utils/signal-helpers';
@@ -93,7 +93,7 @@ const VERBOSE = hasFlag('verbose');
 // Equipment database loading
 // ═══════════════════════════════════════════════════════════════════════════
 
-function loadEquipmentDb(): EquipmentMap {
+function loadEquipmentDb(): { equipmentDb: EquipmentMap; aliasMap: EquipmentAliasMap } {
   const fixturesPath = path.join(__dirname, 'fixtures', 'equipment2.json');
   if (!fs.existsSync(fixturesPath)) {
     console.error(`Equipment file not found: ${fixturesPath}`);
@@ -115,8 +115,9 @@ function loadEquipmentDb(): EquipmentMap {
     }
   }
 
-  console.log(`Equipment DB: ${loaded} loaded, ${failed} failed\n`);
-  return equipmentDb;
+  const aliasMap = buildEquipmentAliasMap(equipmentDb);
+  console.log(`Equipment DB: ${loaded} loaded, ${failed} failed, ${aliasMap.size} aliases\n`);
+  return { equipmentDb, aliasMap };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -209,7 +210,7 @@ interface VerifyResult {
   write2?: string;
 }
 
-function verifyFile(filePath: string, equipmentDb: EquipmentMap): VerifyResult {
+function verifyFile(filePath: string, equipmentDb: EquipmentMap, aliasMap: EquipmentAliasMap): VerifyResult {
   const fileName = path.basename(filePath);
   const content = fs.readFileSync(filePath, 'utf-8');
   const ext = path.extname(fileName).toLowerCase();
@@ -221,7 +222,7 @@ function verifyFile(filePath: string, equipmentDb: EquipmentMap): VerifyResult {
   let entity1;
   try {
     resetMountIdCounter();
-    entity1 = parseEntity(content, fileName, equipmentDb).entity;
+    entity1 = parseEntity(content, fileName, equipmentDb, null, aliasMap).entity;
   } catch (e: any) {
     return { file: filePath, status: 'parse-error', error: `Pass1 parse: ${e.message}` };
   }
@@ -243,7 +244,7 @@ function verifyFile(filePath: string, equipmentDb: EquipmentMap): VerifyResult {
   try {
     resetMountIdCounter();
     const pass2Name = isMtf && entity1 instanceof MekEntity ? fileName : fileName.replace(/\.mtf$/i, '.blk');
-    entity2 = parseEntity(written1, pass2Name, equipmentDb).entity;
+    entity2 = parseEntity(written1, pass2Name, equipmentDb, null, aliasMap).entity;
   } catch (e: any) {
     return {
       file: filePath, status: 'parse-error', entityType: entity1.entityType,
@@ -308,7 +309,7 @@ function main(): void {
   console.log('');
 
   // Load equipment
-  const equipmentDb = loadEquipmentDb();
+  const { equipmentDb, aliasMap } = loadEquipmentDb();
 
   // Find files
   let files = findUnitFiles(INPUT_DIR);
@@ -356,7 +357,7 @@ function main(): void {
       }
     }
 
-    const result = verifyFile(file, equipmentDb);
+    const result = verifyFile(file, equipmentDb, aliasMap);
 
     const typeKey = result.entityType ?? 'unknown';
     if (!byType.has(typeKey)) byType.set(typeKey, { pass: 0, fail: 0 });
