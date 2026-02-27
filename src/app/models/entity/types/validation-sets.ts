@@ -38,30 +38,6 @@
 // signals. Keeps parser validation separate from entity domain types.
 // ============================================================================
 
-/** Valid vehicle motion types — derived from SUSPENSION_FACTOR_TABLE keys */
-export const VALID_VEHICLE_MOTION_TYPES = new Set([
-  'Tracked', 'Wheeled', 'Hover', 'WiGE',
-  'Naval', 'Submarine', 'Hydrofoil',
-  'VTOL',
-]);
-
-/** Valid infantry motion types */
-export const VALID_INFANTRY_MOTION_TYPES = new Set([
-  'Leg', 'Motorized', 'Jump', 'Mechanized', 'Submarine',
-  'Hover', 'Wheeled', 'Tracked', 'VTOL',
-]);
-
-/** Valid BA motion types */
-export const VALID_BA_MOTION_TYPES = new Set([
-  'Leg', 'Jump', 'VTOL', 'UMU',
-]);
-
-/** Valid aero motion types */
-export const VALID_AERO_MOTION_TYPES = new Set(['Aerodyne']);
-
-/** Valid DropShip / SmallCraft motion types */
-export const VALID_SPACECRAFT_MOTION_TYPES = new Set(['Aerodyne', 'Spheroid']);
-
 /** Valid fuel types for vehicles */
 export const VALID_FUEL_TYPES = new Set([
   'PETROCHEMICALS', 'ALCOHOL', 'NATURAL_GAS', 'COAL', 'WOOD',

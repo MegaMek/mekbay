@@ -36,6 +36,7 @@ import { BaseEntity } from '../../base-entity';
 import {
   EntityType,
   EntityValidationMessage,
+  MotiveType,
   PROTO_LOCATIONS,
   PROTO_LOCATIONS_WITH_MAIN_GUN,
   StructureType,
@@ -52,7 +53,7 @@ export class ProtoMekEntity extends BaseEntity {
   //  SIGNALS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  motionType = signal<string>('Biped');
+  override motiveType = signal<MotiveType>('Biped');
   jumpingMP = signal<number>(0);
   interfaceCockpit = signal<boolean>(false);
   isGlider = signal<boolean>(false);

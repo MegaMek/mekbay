@@ -37,6 +37,7 @@ import {
   BuildingBlockWriter,
   writeIdentity,
   writeYearTechMeta,
+  writeMotiveType,
   writeFluffBlocks,
   writeSource,
 } from './building-block-writer';
@@ -67,8 +68,8 @@ export function writeBlkInfantry(entity: InfantryEntity): string {
   // ── Section 2: Year / Tech / Meta (includes quirks) ──
   writeYearTechMeta(w, entity);
 
-  // ── Section 3: Motion type ──
-  if (entity.motionType()) w.addBlock('motion_type', entity.motionType());
+  // ── Section 3: Motion type (composed compound string via base motiveTypeAsString) ──
+  writeMotiveType(w, entity);
 
   // ── Section 4: Equipment per location ──
   // Java iterates entity.locations() which gives LOC_INFANTRY=0 then LOC_FIELD_GUNS=1

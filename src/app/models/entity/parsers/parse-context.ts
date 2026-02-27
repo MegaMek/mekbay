@@ -37,11 +37,11 @@ import { resolveEquipment } from './equipment-resolver';
 
 // Re-export validation sets so parsers can import from parse-context OR types
 export {
-  VALID_VEHICLE_MOTION_TYPES,
-  VALID_INFANTRY_MOTION_TYPES,
-  VALID_BA_MOTION_TYPES,
-  VALID_AERO_MOTION_TYPES,
-  VALID_SPACECRAFT_MOTION_TYPES,
+  VALID_VEHICLE_MOTIVE_TYPES,
+  VALID_INFANTRY_MOTIVE_TYPES,
+  VALID_BA_MOTIVE_TYPES,
+  VALID_AERO_MOTIVE_TYPES,
+  VALID_SPACECRAFT_MOTIVE_TYPES,
   VALID_FUEL_TYPES,
   VALID_SYSTEM_MANUFACTURER_KEYS,
   VALID_TECH_BASE_STRINGS,
@@ -156,7 +156,7 @@ export class ParseContext {
    * If invalid, records a warning (not error) since the file can still be loaded.
    * @returns true if valid
    */
-  validateEnum<T>(field: string, value: T, validSet: Set<T>, label: string): boolean {
+  validateEnum<T>(field: string, value: T, validSet: ReadonlySet<T>, label: string): boolean {
     if (!validSet.has(value)) {
       this.warn(field, `Unknown ${label}: "${value}"`);
       return false;

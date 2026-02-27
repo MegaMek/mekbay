@@ -37,6 +37,7 @@ import {
   LocationArmor,
   armorTypeFromCode,
   locationArmor,
+  parseMotiveType,
   resolveArmorEquipment,
 } from '../types';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
@@ -75,7 +76,7 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
   if (bb.exists('turret'))         entity.turretConfig.set(bb.getFirstString('turret'));
   if (bb.exists('exoskeleton'))    entity.isExoskeleton.set(bb.getFirstString('exoskeleton') === 'true');
   if (bb.exists('jumpingMP'))      entity.jumpingMP.set(bb.getFirstInt('jumpingMP'));
-  if (bb.exists('motion_type'))    entity.motionType.set(bb.getFirstString('motion_type'));
+  if (bb.exists('motion_type'))    entity.motiveType.set(parseMotiveType(bb.getFirstString('motion_type')));
 
   // cruiseMP → walkMP (BA movement)
   if (bb.exists('cruiseMP'))       entity.walkMP.set(bb.getFirstInt('cruiseMP'));

@@ -31,11 +31,14 @@
  * affiliated with Microsoft.
  */
 
-import { MEK_TRIPOD_LOCATIONS, MekConfig } from '../../types';
+import { signal } from '@angular/core';
+import { MEK_TRIPOD_LOCATIONS, MekConfig, MotiveType } from '../../types';
 import { MekWithArmsEntity } from './mek-entity';
 
 /** Tripod BattleMek — adds Center Leg location. */
 export class TripodMekEntity extends MekWithArmsEntity {
+  override motiveType = signal<MotiveType>('Tripod');
+
   get chassisConfig(): MekConfig {
     return 'Tripod';
   }

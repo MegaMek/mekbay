@@ -45,7 +45,7 @@ import {
   BuildingBlockWriter,
   writeIdentity,
   writeYearTechMeta,
-  writeMotionType,
+  writeMotiveType,
   writeTransporters,
   writeArmorBlocks,
   writeInternalType,
@@ -103,7 +103,7 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
   writeYearTechMeta(w, entity);
 
   // 3. motion_type
-  writeMotionType(w, entity);
+  writeMotiveType(w, entity);
 
   // 4. transporters
   writeTransporters(w, entity);

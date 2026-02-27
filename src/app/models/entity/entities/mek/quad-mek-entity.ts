@@ -31,11 +31,14 @@
  * affiliated with Microsoft.
  */
 
-import { MEK_QUAD_LOCATIONS, MekConfig } from '../../types';
+import { signal } from '@angular/core';
+import { MEK_QUAD_LOCATIONS, MekConfig, MotiveType } from '../../types';
 import { MekEntity } from './mek-entity';
 
 /** Quad BattleMek — no arm actuators, uses leg-based locations. */
 export class QuadMekEntity extends MekEntity {
+  override motiveType = signal<MotiveType>('Quad');
+
   get chassisConfig(): MekConfig {
     return 'Quad';
   }

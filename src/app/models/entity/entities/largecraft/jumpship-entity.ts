@@ -38,6 +38,7 @@ import {
   EntityValidationMessage,
   HeatSinkType,
   LARGE_CRAFT_LOCATIONS,
+  MotiveType,
   StructureType,
 } from '../../types';
 
@@ -60,6 +61,7 @@ export class JumpShipEntity extends BaseEntity {
   //  SIGNALS
   // ═══════════════════════════════════════════════════════════════════════════
 
+  override motiveType = signal<MotiveType>('Aerodyne');
   fuel = signal<number>(0);
   heatSinkType = signal<HeatSinkType>('Single');
   heatSinkCount = signal<number>(0);

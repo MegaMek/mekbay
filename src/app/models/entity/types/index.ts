@@ -45,6 +45,7 @@ export * from './armor';
 export * from './structure';
 export * from './locations';
 export * from './mek';
+export * from './motive';
 export * from './vehicle';
 export * from './infantry';
 export * from './equipment';

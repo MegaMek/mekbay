@@ -69,6 +69,16 @@ export class BattleArmorEntity extends InfantryEntity {
   squadEquipmentTag = signal<'Squad' | 'Point'>('Squad');
 
   // ═══════════════════════════════════════════════════════════════════════════
+  //  OVERRIDES — BA uses canonical motive values (no compound infantry strings)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** BA writes plain MotiveType (VTOL, UMU, etc.) — no infantry compound logic. */
+  override motiveTypeAsString(): string | null {
+    const m = this.motiveType();
+    return m === 'None' ? null : m;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   //  LOCATION OVERRIDES
   // ═══════════════════════════════════════════════════════════════════════════
 

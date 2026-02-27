@@ -31,6 +31,47 @@
  * affiliated with Microsoft.
  */
 
+import { MotiveType } from './motive';
+
+// ============================================================================
+// Beast Mount Types (see TO:AU&E p.106)
+// ============================================================================
+
+/** Beast size categories per TO:AU&E p.106 */
+export type BeastSize = 'Large' | 'Very Large' | 'Monstrous';
+
+/**
+ * Data for a beast mount used by beast-mounted infantry.
+ * Predefined mounts are loaded from infantry-mounts.json.
+ * Custom mounts are parsed from BLK `Beast:Custom:...` strings.
+ */
+export interface InfantryMount {
+  /** Name of the beast (e.g. "Tariq", "Horse", "Hipposaur") */
+  name: string;
+  /** Size category */
+  size: BeastSize;
+  /** Weight of each beast in tons */
+  weight: number;
+  /** Movement points using primary movement mode */
+  movementPoints: number;
+  /** Primary movement mode of the beast */
+  movementMode: MotiveType;
+  /** Number of damage dice for burst damage vs conventional infantry */
+  burstDamage: number;
+  /** Additional damage vs non-infantry units */
+  vehicleDamage: number;
+  /** Divisor applied to incoming damage */
+  damageDivisor: number;
+  /** Maximum water depth the beast can enter (-1 = unlimited) */
+  maxWaterDepth: number;
+  /** Secondary ground MP for beasts with non-ground primary mode */
+  secondaryGroundMP: number;
+  /** Turns the beast can stay underwater before surfacing */
+  uwEndurance: number;
+  /** Whether this is a custom (user-defined) mount */
+  custom?: boolean;
+}
+
 // ============================================================================
 // Infantry Specializations
 // ============================================================================

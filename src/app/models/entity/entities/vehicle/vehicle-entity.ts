@@ -36,6 +36,7 @@ import { BaseEntity } from '../../base-entity';
 import {
   EngineFlag,
   EntityValidationMessage,
+  MotiveType,
   SUSPENSION_FACTOR_TABLE,
   TANK_LOCATIONS,
   TANK_LOCATIONS_WITH_DUAL_TURRET,
@@ -53,7 +54,7 @@ export abstract class VehicleEntity extends BaseEntity {
   //  SIGNALS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  motionType = signal<string>('Tracked');
+  override motiveType = signal<MotiveType>('Tracked');
   hasTurret = signal<boolean>(false);
   hasDualTurret = signal<boolean>(false);
   baseChassisTurretWeight = signal<number>(-1);
@@ -73,7 +74,7 @@ export abstract class VehicleEntity extends BaseEntity {
 
   isSuperHeavy = computed(() => {
     const t = this.tonnage();
-    switch (this.motionType()) {
+    switch (this.motiveType()) {
       case 'Tracked':   return t > 100;
       case 'Wheeled':   return t > 80;
       case 'Hover':     return t > 50;
@@ -87,7 +88,7 @@ export abstract class VehicleEntity extends BaseEntity {
   });
 
   suspensionFactor = computed(() => {
-    const fn = SUSPENSION_FACTOR_TABLE[this.motionType()];
+    const fn = SUSPENSION_FACTOR_TABLE[this.motiveType()];
     return fn ? fn(this.tonnage()) : 0;
   });
 

@@ -39,7 +39,7 @@ import {
   BuildingBlockWriter,
   writeIdentity,
   writeYearTechMeta,
-  writeMotionType,
+  writeMotiveType,
   writeTransporters,
   writeEngine,
   writeArmorBlocks,
@@ -89,7 +89,7 @@ export function writeBlkProtoMek(entity: ProtoMekEntity): string {
   writeYearTechMeta(w, entity);
 
   // ── Section 3: Motion type ──
-  writeMotionType(w, entity);
+  writeMotiveType(w, entity);
 
   // ── Section 4: Transporters ──
   writeTransporters(w, entity);

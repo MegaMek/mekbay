@@ -39,6 +39,7 @@ import {
   BuildingBlockWriter,
   writeIdentity,
   writeYearTechMeta,
+  writeMotiveType,
   writeFluffBlocks,
   writeSource,
 } from './building-block-writer';
@@ -67,7 +68,7 @@ export function writeBlkBA(entity: BattleArmorEntity): string {
   writeYearTechMeta(w, entity);
 
   // ── Section 3: Motion / Movement ──
-  if (entity.motionType()) w.addBlock('motion_type', entity.motionType());
+  writeMotiveType(w, entity);
   w.addBlock('cruiseMP', entity.walkMP());
 
   // ── Section 4: Armor type (BA always writes both blocks) ──

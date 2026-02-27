@@ -44,9 +44,10 @@ import {
   ENGINE_TYPE_FROM_CODE,
   LocationArmor,
   VALID_FUEL_TYPES,
-  VALID_VEHICLE_MOTION_TYPES,
+  VALID_VEHICLE_MOTIVE_TYPES,
   armorTypeFromCode,
   locationArmor,
+  parseMotiveType,
   resolveArmorEquipment,
   structureTypeFromCode,
 } from '../types';
@@ -105,9 +106,9 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
 
   // ── Determine entity type ──
   // MegaMek stores naval vehicles as UnitType=Tank; we promote them based on motion_type.
-  const NAVAL_MOTION_TYPES = new Set(['Naval', 'Submarine', 'Hydrofoil']);
+  const NAVAL_MOTIVE_TYPES = new Set(['Naval', 'Submarine', 'Hydrofoil']);
   const unitType = bb.getFirstString('UnitType').trim();
-  const motionType = bb.exists('motion_type') ? bb.getFirstString('motion_type') : '';
+  const rawMotiveType = bb.exists('motion_type') ? bb.getFirstString('motion_type') : '';
   let entity: VehicleEntity;
 
   switch (unitType) {
@@ -117,7 +118,7 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
     case 'LargeSupportTank':  entity = new LargeSupportTankEntity(); break;
     case 'GunEmplacement':    entity = new GunEmplacementEntity(); break;
     default:
-      entity = NAVAL_MOTION_TYPES.has(motionType) ? new NavalEntity() : new TankEntity();
+      entity = NAVAL_MOTIVE_TYPES.has(rawMotiveType) ? new NavalEntity() : new TankEntity();
       break;
   }
 
@@ -125,10 +126,10 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
   parseBaseBlk(bb, entity, ctx);
   const techBase = getBlkTechBase(bb);
 
-  // ── Motion type ──
-  if (motionType) {
-    ctx.validateEnum('motion_type', motionType, VALID_VEHICLE_MOTION_TYPES, 'vehicle motion type');
-    entity.motionType.set(motionType);
+  // ── Motive type ──
+  if (rawMotiveType) {
+    ctx.validateEnum('motion_type', rawMotiveType, VALID_VEHICLE_MOTIVE_TYPES, 'vehicle motive type');
+    entity.motiveType.set(parseMotiveType(rawMotiveType));
   }
 
   // ── Movement ──

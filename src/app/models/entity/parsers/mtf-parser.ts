@@ -49,9 +49,11 @@ import {
   HeatSinkType,
   LocationArmor,
   MekSystemType,
+  MotiveType,
   MountPlacement,
   locationArmor,
   normalizeSystemManufacturerKey,
+  parseMotiveType,
   resolveArmorByName,
   structureTypeFromDisplayName,
   StructureType,
@@ -409,7 +411,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   if (header.lamType && entity instanceof LamEntity) {
     entity.lamType.set(header.lamType);
   }
-  if (header.motiveType && entity instanceof QuadVeeEntity) {
+  if (header.motiveType !== 'None' && entity instanceof QuadVeeEntity) {
     entity.motiveType.set(header.motiveType);
   }
 
@@ -457,7 +459,7 @@ interface MtfHeader {
   generator: string;
   clanName: string;
   lamType: string;
-  motiveType: string;
+  motiveType: MotiveType;
   rawHeatSinks: string;
 }
 
@@ -473,7 +475,7 @@ function parseHeader(lines: string[]): MtfHeader {
     quirks: [], weaponQuirks: [],
     locationSlots: new Map(), nocritEquipment: [], weaponsList: [],
     fluff: {}, manualBV: 0, generator: '',
-    clanName: '', lamType: '', motiveType: '', rawHeatSinks: '',
+    clanName: '', lamType: '', motiveType: 'None' as MotiveType, rawHeatSinks: '',
   };
 
   let currentLocHeader: string | null = null;
@@ -632,7 +634,7 @@ function parseHeader(lines: string[]): MtfHeader {
       case 'weapons':  inWeaponsSection = true; break;
       case 'clanname': h.clanName = value; break;
       case 'lam':      h.lamType = value; break;
-      case 'motive':   h.motiveType = value; break;
+      case 'motive':   h.motiveType = parseMotiveType(value); break;
       default: break;
     }
   }

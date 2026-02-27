@@ -40,6 +40,7 @@ import {
   armorTypeFromCode,
   locationArmor,
   LocationArmor,
+  parseMotiveType,
   resolveArmorEquipment,
 } from '../types';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
@@ -99,7 +100,7 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
   // ── Movement ──
   if (bb.exists('SafeThrust'))   entity.walkMP.set(bb.getFirstInt('SafeThrust'));
   if (bb.exists('fuel'))         entity.fuel.set(bb.getFirstInt('fuel'));
-  if (bb.exists('motion_type'))  entity.motionType.set(bb.getFirstString('motion_type'));
+  if (bb.exists('motion_type'))  entity.motiveType.set(parseMotiveType(bb.getFirstString('motion_type')));
 
   // ── Engine ──
   {

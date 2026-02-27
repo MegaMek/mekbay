@@ -44,6 +44,7 @@ import {
   BuildingBlockWriter,
   writeIdentity,
   writeYearTechMeta,
+  writeMotiveType,
   writeTransporters,
   writeArmorBlocks,
   writeInternalType,
@@ -100,8 +101,8 @@ export function writeBlkLargeCraft(entity: JumpShipEntity): string {
   // 2. Year/Tech/Meta (includes quirks, weaponQuirks)
   writeYearTechMeta(w, entity);
 
-  // 3. motion_type — all large craft are Aerodyne
-  w.addBlock('motion_type', 'Aerodyne');
+  // 3. motion_type
+  writeMotiveType(w, entity);
 
   // 4. transporters (includes docking collars)
   writeTransporters(w, entity);

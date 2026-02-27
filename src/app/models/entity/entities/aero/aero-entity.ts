@@ -37,6 +37,7 @@ import {
   EntityType,
   EntityValidationMessage,
   HeatSinkType,
+  MotiveType,
   StructureType,
 } from '../../types';
 
@@ -61,7 +62,7 @@ export abstract class AeroEntity extends BaseEntity {
   heatSinkCount = signal<number>(0);
   omnipodHeatSinkCount = signal<number>(0);
   structuralIntegrity = signal<number>(0);
-  motionType = signal<string>('Aerodyne');
+  override motiveType = signal<MotiveType>('Aerodyne');
 
   // walkMP doubles as safeThrust for aero entities
   get safeThrust() { return this.walkMP; }

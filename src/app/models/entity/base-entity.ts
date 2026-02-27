@@ -44,6 +44,7 @@ import {
   ARMOR_TYPE_TO_CODE,
   EngineFlag,
   EngineType,
+  MotiveType,
   StructureType,
   EntityFluff,
   EntityMountedEquipment,
@@ -114,7 +115,21 @@ export abstract class BaseEntity {
   omni = signal<boolean>(false);
 
   // ── Movement ──
+  motiveType = signal<MotiveType>('None');
   walkMP = signal<number>(0);
+
+  /**
+   * The motive type as a BLK-compatible string, or `null` if the
+   * entity should not write a `motion_type` block at all.
+   * Base implementation returns the canonical MotiveType value
+   * (or `null` when `'None'`).
+   * Subclasses (e.g. InfantryEntity) override to produce compound
+   * strings like `"Beast:Tariq"` or `"Motorized SCUBA"`.
+   */
+  motiveTypeAsString(): string | null {
+    const m = this.motiveType();
+    return m === 'None' ? null : m;
+  }
   /** Raw jump MP from the source file (for round-trip fidelity). -1 means not set. */
   declaredJumpMP = signal<number>(-1);
 

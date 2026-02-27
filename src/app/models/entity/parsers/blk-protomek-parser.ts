@@ -36,6 +36,7 @@ import {
   LocationArmor,
   armorTypeFromCode,
   locationArmor,
+  parseMotiveType,
   resolveArmorEquipment,
 } from '../types';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
@@ -76,8 +77,8 @@ export function parseBlkProtoMek(bb: BuildingBlock, ctx: ParseContext): ProtoMek
   parseBaseBlk(bb, entity, ctx);
   const techBase = getBlkTechBase(bb);
 
-  // ── Motion type ──
-  if (bb.exists('motion_type')) entity.motionType.set(bb.getFirstString('motion_type'));
+  // ── Motive type ──
+  if (bb.exists('motion_type')) entity.motiveType.set(parseMotiveType(bb.getFirstString('motion_type')));
 
   // ── Movement ──
   if (bb.exists('cruiseMP'))  entity.walkMP.set(bb.getFirstInt('cruiseMP'));

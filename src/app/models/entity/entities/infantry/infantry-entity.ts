@@ -36,7 +36,9 @@ import { BaseEntity } from '../../base-entity';
 import {
   EntityType,
   EntityValidationMessage,
+  InfantryMount,
   InfantrySpecialization,
+  MotiveType,
   StructureType,
 } from '../../types';
 
@@ -58,8 +60,15 @@ export class InfantryEntity extends BaseEntity {
   secondaryCount = signal<number>(0);
   armorDivisor = signal<number>(1);
   armorKit = signal<string>('');
-  motionType = signal<string>('Leg');
+  override motiveType = signal<MotiveType>('Leg');
   antimek = signal<boolean>(false);
+
+  // Infantry motive modifiers — these flag VTOL/SCUBA sub-variants
+  isMicrolite = signal<boolean>(false);
+  isMotorizedScuba = signal<boolean>(false);
+
+  // Beast mount data (only set when motiveType === 'Beast')
+  mount = signal<InfantryMount | null>(null);
 
   // Infantry-specific armor / stealth booleans
   encumberingArmor = signal<boolean>(false);
@@ -81,6 +90,44 @@ export class InfantryEntity extends BaseEntity {
   extraneousPair2 = signal<string>('');
 
   specializations = signal<Set<InfantrySpecialization>>(new Set());
+
+  /**
+   * Overrides base-entity to handle compound infantry motive strings:
+   *   - Beast-mounted: `"Beast:Tariq"` or `"Beast:Custom:csv..."`
+   *   - VTOL + microlite flag: `"Microlite"` (else `"Microcopter"`)
+   *   - UMU + motorized flag: `"Motorized SCUBA"` (else `"SCUBA"`)
+   *   - Everything else: the canonical MotiveType string
+   */
+  override motiveTypeAsString(): string {
+    const motive = this.motiveType();
+    const mountData = this.mount();
+
+    // Beast-mounted infantry
+    if (motive === 'Beast' && mountData) {
+      if (mountData.custom) {
+        const fields = [
+          mountData.name, mountData.size, mountData.weight, mountData.movementPoints,
+          mountData.movementMode, mountData.burstDamage, mountData.vehicleDamage,
+          mountData.damageDivisor, mountData.maxWaterDepth, mountData.secondaryGroundMP,
+          mountData.uwEndurance,
+        ];
+        return `Beast:Custom:${fields.join(',')}`;
+      }
+      return `Beast:${mountData.name}`;
+    }
+
+    // VTOL sub-variants (Microcopter / Microlite)
+    if (motive === 'VTOL') {
+      return this.isMicrolite() ? 'Microlite' : 'Microcopter';
+    }
+
+    // UMU sub-variants (SCUBA / Motorized SCUBA)
+    if (motive === 'UMU') {
+      return this.isMotorizedScuba() ? 'Motorized SCUBA' : 'SCUBA';
+    }
+
+    return motive;
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  LOCATION OVERRIDES

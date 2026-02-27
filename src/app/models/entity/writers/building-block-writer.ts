@@ -143,10 +143,14 @@ export function writeYearTechMeta(w: BuildingBlockWriter, entity: BaseEntity): v
 
 /**
  * Write the motion_type block (for entities that have it).
+ * Uses `motiveTypeAsString()` which produces compound strings for infantry
+ * (e.g. "Beast:Tariq", "Motorized SCUBA") and canonical MotiveType for others.
+ * When `motiveTypeAsString()` returns `null`, the block is omitted.
  */
-export function writeMotionType(w: BuildingBlockWriter, entity: { motionType?: () => string }): void {
-  if (entity.motionType?.()) {
-    w.addBlock('motion_type', entity.motionType!());
+export function writeMotiveType(w: BuildingBlockWriter, entity: BaseEntity): void {
+  const val = entity.motiveTypeAsString();
+  if (val !== null) {
+    w.addBlock('motion_type', val);
   }
 }
 

@@ -31,11 +31,14 @@
  * affiliated with Microsoft.
  */
 
-import { MEK_LOCATIONS, MekConfig } from '../../types';
+import { signal } from '@angular/core';
+import { MEK_LOCATIONS, MekConfig, MotiveType } from '../../types';
 import { MekWithArmsEntity } from './mek-entity';
 
 /** Standard biped BattleMek. */
 export class BipedMekEntity extends MekWithArmsEntity {
+  override motiveType = signal<MotiveType>('Biped');
+
   get chassisConfig(): MekConfig {
     return 'Biped';
   }
