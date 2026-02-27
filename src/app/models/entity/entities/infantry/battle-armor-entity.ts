@@ -73,7 +73,7 @@ export class BattleArmorEntity extends InfantryEntity {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /** BA writes plain MotiveType (VTOL, UMU, etc.) — no infantry compound logic. */
-  override motiveTypeAsString(): string | null {
+  override getMotiveTypeAsString(): string | null {
     const m = this.motiveType();
     return m === 'None' ? null : m;
   }

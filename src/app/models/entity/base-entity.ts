@@ -126,7 +126,7 @@ export abstract class BaseEntity {
    * Subclasses (e.g. InfantryEntity) override to produce compound
    * strings like `"Beast:Tariq"` or `"Motorized SCUBA"`.
    */
-  motiveTypeAsString(): string | null {
+  getMotiveTypeAsString(): string | null {
     const m = this.motiveType();
     return m === 'None' ? null : m;
   }

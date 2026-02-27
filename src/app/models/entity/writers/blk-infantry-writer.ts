@@ -68,7 +68,7 @@ export function writeBlkInfantry(entity: InfantryEntity): string {
   // ── Section 2: Year / Tech / Meta (includes quirks) ──
   writeYearTechMeta(w, entity);
 
-  // ── Section 3: Motion type (composed compound string via base motiveTypeAsString) ──
+  // ── Section 3: Motion type (composed compound string via base getMotiveTypeAsString) ──
   writeMotiveType(w, entity);
 
   // ── Section 4: Equipment per location ──

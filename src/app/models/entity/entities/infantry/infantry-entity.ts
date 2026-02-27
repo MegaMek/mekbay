@@ -98,7 +98,7 @@ export class InfantryEntity extends BaseEntity {
    *   - UMU + motorized flag: `"Motorized SCUBA"` (else `"SCUBA"`)
    *   - Everything else: the canonical MotiveType string
    */
-  override motiveTypeAsString(): string {
+  override getMotiveTypeAsString(): string | null {
     const motive = this.motiveType();
     const mountData = this.mount();
 
