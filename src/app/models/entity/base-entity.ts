@@ -162,6 +162,12 @@ export abstract class BaseEntity {
   armorValues = signal<Map<string, LocationArmor>>(new Map());
   /** Patchwork only: per-location armor type overrides */
   armorTypes = signal<Map<string, string>>(new Map());
+  /** Patchwork BLK only: per-location armor type code (key=locationName, value=int code) */
+  patchworkArmorCodes = signal<Map<string, number>>(new Map());
+  /** Patchwork BLK only: per-location armor tech string (e.g. "Inner Sphere", "Clan") */
+  patchworkArmorTech = signal<Map<string, string>>(new Map());
+  /** Patchwork BLK only: per-location armor tech rating (A=0…F=5) */
+  patchworkArmorTechRating = signal<Map<string, number>>(new Map());
 
   // ── Internal Structure ──
   structureType = signal<string>('Standard');

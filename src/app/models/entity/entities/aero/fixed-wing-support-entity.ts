@@ -39,6 +39,9 @@ import { AeroEntity } from './aero-entity';
 export class FixedWingSupportEntity extends AeroEntity {
   override readonly entityType: EntityType = 'FixedWingSupport';
 
+  /** VSTOL (Vertical/Short Take-Off and Landing) capability */
+  vstol = signal<boolean>(false);
+
   /** Battle Armor Rating */
   barRating = signal<number>(10);
 

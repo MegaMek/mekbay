@@ -62,8 +62,8 @@ const JUMPSHIP_EQUIP_TAGS: [string, string][] = [
 ];
 
 const WARSHIP_EXTRA_EQUIP_TAGS: [string, string][] = [
-  ['Left Broadside Equipment',        'Left Broadside'],
-  ['Right Broadside Equipment',       'Right Broadside'],
+  ['Left Broadsides Equipment',        'Left Broadside'],
+  ['Right Broadsides Equipment',       'Right Broadside'],
 ];
 
 // ============================================================================
@@ -80,9 +80,9 @@ export function parseBlkLargeCraft(bb: BuildingBlock, ctx: ParseContext): JumpSh
   const unitType = bb.getFirstString('UnitType').trim();
   let entity: JumpShipEntity;
 
-  switch (unitType) {
-    case 'WarShip':       entity = new WarShipEntity(); break;
-    case 'SpaceStation':  entity = new SpaceStationEntity(); break;
+  switch (unitType.toLowerCase()) {
+    case 'warship':       entity = new WarShipEntity(); break;
+    case 'spacestation':  entity = new SpaceStationEntity(); break;
     default:              entity = new JumpShipEntity(); break;
   }
 
@@ -115,6 +115,7 @@ export function parseBlkLargeCraft(bb: BuildingBlock, ctx: ParseContext): JumpSh
   if (bb.exists('docking_collar')) entity.dockingCollars.set(bb.getFirstInt('docking_collar'));
   if (bb.exists('lithium-fusion')) entity.lithiumFusion.set(bb.getFirstInt('lithium-fusion') === 1);
   if (bb.exists('hpg'))           entity.hpg.set(bb.getFirstInt('hpg') === 1);
+  if (bb.exists('jump_range'))    entity.jumpRange.set(bb.getFirstInt('jump_range'));
 
   if (bb.exists('grav_decks')) {
     entity.gravDecks.set(bb.getDataAsInt('grav_decks'));

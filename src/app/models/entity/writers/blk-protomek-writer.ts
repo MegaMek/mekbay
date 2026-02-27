@@ -112,22 +112,21 @@ export function writeBlkProtoMek(entity: ProtoMekEntity): string {
 
   // ── Section 9: Armor values array ──
   const armorMap = entity.armorValues();
-  // ProtoMek armor order: Head, Torso(front), Torso(rear), RA, LA, Legs, [MainGun]
+  // ProtoMek armor order: Head, Torso, RA, LA, Legs, [MainGun]  (NO rear armor)
   const armorInts: number[] = [
     armorMap.get('Head')?.front ?? 0,
     armorMap.get('Torso')?.front ?? 0,
-    armorMap.get('Torso')?.rear ?? 0,
     armorMap.get('Right Arm')?.front ?? 0,
     armorMap.get('Left Arm')?.front ?? 0,
     armorMap.get('Legs')?.front ?? 0,
   ];
-  if (entity.tonnage() > 9) {
+  if (entity.hasMainGun()) {
     armorInts.push(armorMap.get('Main Gun')?.front ?? 0);
   }
   w.addBlock('armor', ...armorInts);
 
   // ── Section 10: Equipment per location (always write all, even empty) ──
-  const equipTags = entity.tonnage() > 9
+  const equipTags = entity.hasMainGun()
     ? PROTO_EQUIP_TAGS
     : PROTO_EQUIP_TAGS.filter(([tag]) => tag !== 'Main Gun Equipment');
   writeEquipmentByLocation(w, entity, equipTags, encodeEquipmentLine, true);

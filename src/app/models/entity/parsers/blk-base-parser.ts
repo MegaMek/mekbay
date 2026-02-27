@@ -187,6 +187,15 @@ export function parseBaseBlk(
           bitmap: parts[6] ? parseInt(parts[6], 10) : undefined,
           omni: isOmni || undefined,
         });
+      } else if (parts.length === 1) {
+        // Bare transporter type (e.g., "dockingcollar") — no capacity/doors
+        transporters.push({
+          type: parts[0],
+          capacity: 0,
+          doors: 0,
+          bayNumber: -1,
+          bare: true,
+        });
       }
     }
     entity.transporters.set(transporters);
@@ -201,6 +210,10 @@ export function parseBaseBlk(
   if (bb.exists('manufacturer')) fluff.manufacturer = bb.getDataAsString('manufacturer').join('\n');
   if (bb.exists('primaryFactory')) fluff.primaryFactory = bb.getFirstString('primaryFactory');
   if (bb.exists('notes')) fluff.notes = bb.getDataAsString('notes').join('\n');
+  if (bb.exists('use')) fluff.use = bb.getFirstString('use');
+  if (bb.exists('length')) fluff.length = bb.getFirstString('length');
+  if (bb.exists('width')) fluff.width = bb.getFirstString('width');
+  if (bb.exists('height')) fluff.height = bb.getFirstString('height');
 
   // System manufacturers
   {

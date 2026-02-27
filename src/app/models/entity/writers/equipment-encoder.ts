@@ -64,8 +64,8 @@ export function encodeEquipmentLine(mount: EntityMountedEquipment, options?: Enc
     name = '(B) ' + name;
   }
 
-  // Rear mounted prefix (skip in BLK — location block implies direction)
-  if (mount.rearMounted && !blk) {
+  // Rear mounted prefix
+  if (mount.rearMounted) {
     name = '(R) ' + name;
   }
 

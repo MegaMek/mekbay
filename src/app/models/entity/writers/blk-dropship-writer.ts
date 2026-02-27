@@ -36,7 +36,6 @@ import {
   ENGINE_TYPE_TO_CODE,
   HEAT_SINK_TYPE_TO_CODE,
   HeatSinkType,
-  DROPSHIP_LOCATIONS,
 } from '../types';
 import {
   BuildingBlockWriter,
@@ -95,6 +94,11 @@ export function writeBlkDropShip(entity: DropShipEntity): string {
   // 5. SafeThrust
   w.addBlock('SafeThrust', entity.walkMP());
 
+  // 5a. Collar type (if present)
+  if (entity.collarType() >= 0) {
+    w.addBlock('collartype', entity.collarType());
+  }
+
   // 6. Heat sinks / Fuel
   w.addBlock('heatsinks', entity.heatSinkCount());
   w.addBlock('sink_type', HEAT_SINK_TYPE_TO_CODE[entity.heatSinkType() as HeatSinkType] ?? 0);
@@ -112,14 +116,14 @@ export function writeBlkDropShip(entity: DropShipEntity): string {
   // 10. omni
   writeOmni(w, entity);
 
-  // 11. Armor values
-  const armorLocs = [...DROPSHIP_LOCATIONS];
+  // 11. Armor values (4 locations: Nose, Left Side, Right Side, Aft)
   const armorMap = entity.armorValues();
-  const armorInts: number[] = armorLocs.map(loc => armorMap.get(loc)?.front ?? 0);
+  const dsArmorLocs = ['Nose', 'Left Side', 'Right Side', 'Aft'];
+  const armorInts: number[] = dsArmorLocs.map(loc => armorMap.get(loc)?.front ?? 0);
   w.addBlock('armor', ...armorInts);
 
   // 12. Equipment per location
-  writeEquipmentByLocation(w, entity, DS_EQUIP_TAGS, encodeEquipmentLine);
+  writeEquipmentByLocation(w, entity, DS_EQUIP_TAGS, encodeEquipmentLine, true);
 
   // 13. structural_integrity
   w.addBlock('structural_integrity', entity.structuralIntegrity());

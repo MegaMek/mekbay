@@ -33,7 +33,6 @@
 
 import { DropShipEntity } from '../entities/aero/dropship-entity';
 import {
-  DROPSHIP_LOCATIONS,
   LocationArmor,
   armorTypeFromCode,
   locationArmor,
@@ -101,6 +100,9 @@ export function parseBlkDropShip(bb: BuildingBlock, ctx: ParseContext): DropShip
   if (bb.exists('docking_collar')) {
     entity.dockingCollars.set(bb.getFirstInt('docking_collar'));
   }
+  if (bb.exists('collartype')) {
+    entity.collarType.set(bb.getFirstInt('collartype'));
+  }
   if (bb.exists('kf_boom')) {
     entity.kfBoomAttached.set(bb.getFirstInt('kf_boom') === 1);
   }
@@ -118,10 +120,11 @@ export function parseBlkDropShip(bb: BuildingBlock, ctx: ParseContext): DropShip
 
   if (bb.exists('armor')) {
     const ints = bb.getDataAsInt('armor');
-    const locs = [...DROPSHIP_LOCATIONS];
+    // BLK has 4 armor values: Nose, Left Side, Right Side, Aft
+    const dsArmorLocs = ['Nose', 'Left Side', 'Right Side', 'Aft'];
     const armorMap = new Map<string, LocationArmor>();
-    for (let i = 0; i < locs.length && i < ints.length; i++) {
-      armorMap.set(locs[i], locationArmor(ints[i]));
+    for (let i = 0; i < dsArmorLocs.length && i < ints.length; i++) {
+      armorMap.set(dsArmorLocs[i], locationArmor(ints[i]));
     }
     entity.armorValues.set(armorMap);
   }
@@ -159,8 +162,7 @@ export function parseBlkDropShip(bb: BuildingBlock, ctx: ParseContext): DropShip
   if (bb.exists('gunners'))     entity.gunners.set(bb.getFirstInt('gunners'));
   if (bb.exists('passengers'))  entity.passengers.set(bb.getFirstInt('passengers'));
   if (bb.exists('marines'))     entity.marines.set(bb.getFirstInt('marines'));
-  if (bb.exists('battlearmor')) entity.battleArmor.set(bb.getFirstInt('battlearmor'));
-  if (bb.exists('life_boat'))   entity.lifeboats.set(bb.getFirstInt('life_boat'));
+  if (bb.exists('battlearmor')) entity.battleArmor.set(bb.getFirstInt('battlearmor'));  if (bb.exists('otherpassenger')) entity.otherPassenger.set(bb.getFirstInt('otherpassenger'));  if (bb.exists('life_boat'))   entity.lifeboats.set(bb.getFirstInt('life_boat'));
   if (bb.exists('escape_pod'))  entity.escapePods.set(bb.getFirstInt('escape_pod'));
 
   return entity;

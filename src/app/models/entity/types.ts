@@ -855,6 +855,8 @@ export interface EntityTransporter {
   facing?: number;
   bitmap?: number;
   omni?: boolean;
+  /** True for bare transporter lines like "dockingcollar" (no capacity/doors) */
+  bare?: boolean;
 }
 
 export interface EntityWeaponBay {
@@ -917,6 +919,11 @@ export interface EntityFluff {
   systemManufacturers?: Record<string, string>;
   systemModels?: Record<string, string>;
   notes?: string;
+  /** Spacecraft-specific fluff fields */
+  use?: string;
+  length?: string;
+  width?: string;
+  height?: string;
 }
 
 // ============================================================================

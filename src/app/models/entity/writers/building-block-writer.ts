@@ -157,6 +157,9 @@ export function writeTransporters(w: BuildingBlockWriter, entity: BaseEntity): v
   const transporters = entity.transporters();
   if (transporters.length > 0) {
     const tLines = transporters.map(t => {
+      // Bare transporter type (e.g., "dockingcollar") — no capacity/doors
+      if (t.bare) return t.type;
+
       // Format: type:capacity:doors[:bayNumber[:platoonType[:facing[:bitmap]]]]
       // Must always write all positional fields up to the last non-default one
       // to prevent re-parse from misinterpreting shifted values.
@@ -192,8 +195,25 @@ export function writeTransporters(w: BuildingBlockWriter, entity: BaseEntity): v
  * explicitly set (-1), we derive from ArmorEquipment exactly as
  * MegaMek does.
  */
-export function writeArmorBlocks(w: BuildingBlockWriter, entity: BaseEntity): void {
+export function writeArmorBlocks(
+  w: BuildingBlockWriter,
+  entity: BaseEntity,
+  patchworkLocs?: string[],
+): void {
   w.addBlock('armor_type', entity.armorTypeCode());
+
+  // Patchwork armor: write per-location blocks instead of global tech rating/level
+  if (entity.armorType() === 'PATCHWORK' && patchworkLocs) {
+    const codes = entity.patchworkArmorCodes();
+    const techs = entity.patchworkArmorTech();
+    const ratings = entity.patchworkArmorTechRating();
+    for (const loc of patchworkLocs) {
+      if (codes.has(loc)) w.addBlock(`${loc}_armor_type`, codes.get(loc)!);
+      if (techs.has(loc)) w.addBlock(`${loc}_armor_tech`, techs.get(loc)!);
+      if (ratings.has(loc)) w.addBlock(`${loc}_armor_tech_rating`, ratings.get(loc)!);
+    }
+    return;
+  }
 
   let techRating = entity.armorTechRating();
   if (techRating < 0) {
@@ -322,6 +342,10 @@ export function writeFluffBlocks(w: BuildingBlockWriter, fluff: EntityFluff): vo
   }
 
   if (fluff.notes)         w.addBlock('notes', fluff.notes);
+  if (fluff.use)           w.addBlock('use', fluff.use);
+  if (fluff.length)        w.addBlock('length', fluff.length);
+  if (fluff.width)         w.addBlock('width', fluff.width);
+  if (fluff.height)        w.addBlock('height', fluff.height);
 }
 
 /**

@@ -58,7 +58,7 @@ const PROTO_EQUIP_TAGS: [string, string][] = [
   ['Main Gun Equipment',   'Main Gun'],
 ];
 
-/** Armor order: Head, Torso, Torso(rear), RA, LA, Legs, MainGun */
+/** Armor order: Head, Torso, RA, LA, Legs, [MainGun] (no rear armor) */
 const PROTO_ARMOR_LOCS = ['Head', 'Torso', 'Right Arm', 'Left Arm', 'Legs', 'Main Gun'] as const;
 
 // ============================================================================
@@ -113,17 +113,28 @@ export function parseBlkProtoMek(bb: BuildingBlock, ctx: ParseContext): ProtoMek
 
   if (bb.exists('armor')) {
     const ints = bb.getDataAsInt('armor');
+
+    // Determine hasMainGun from armor array length (Java approach).
+    // ProtoMek has 7 locations (Body..MainGun); armor skips Body.
+    // 6 values = has Main Gun, 5 values = no Main Gun.
+    entity.hasMainGun.set(ints.length >= 6);
+
     const armorMap = new Map<string, LocationArmor>();
 
-    // ProtoMek armor: Head, Torso(front), Torso(rear), RA, LA, Legs, [MainGun]
+    // ProtoMek armor: Head, Torso, RA, LA, Legs, [MainGun]  (NO rear armor)
     if (ints.length >= 1) armorMap.set('Head', locationArmor(ints[0]));
-    if (ints.length >= 3) armorMap.set('Torso', locationArmor(ints[1], ints[2]));
-    if (ints.length >= 4) armorMap.set('Right Arm', locationArmor(ints[3]));
-    if (ints.length >= 5) armorMap.set('Left Arm', locationArmor(ints[4]));
-    if (ints.length >= 6) armorMap.set('Legs', locationArmor(ints[5]));
-    if (ints.length >= 7) armorMap.set('Main Gun', locationArmor(ints[6]));
+    if (ints.length >= 2) armorMap.set('Torso', locationArmor(ints[1]));
+    if (ints.length >= 3) armorMap.set('Right Arm', locationArmor(ints[2]));
+    if (ints.length >= 4) armorMap.set('Left Arm', locationArmor(ints[3]));
+    if (ints.length >= 5) armorMap.set('Legs', locationArmor(ints[4]));
+    if (ints.length >= 6) armorMap.set('Main Gun', locationArmor(ints[5]));
 
     entity.armorValues.set(armorMap);
+  } else {
+    // Fallback: detect Main Gun from equipment blocks
+    if (bb.exists('Main Gun Equipment')) {
+      entity.hasMainGun.set(true);
+    }
   }
 
   // ── Equipment per location ──

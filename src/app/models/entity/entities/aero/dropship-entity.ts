@@ -51,6 +51,7 @@ export class DropShipEntity extends SmallCraftEntity {
 
   // ── DropShip-specific signals ──
   dockingCollars = signal<number>(0);
+  collarType = signal<number>(-1);
   kfBoomAttached = signal<boolean>(false);
 
   // ── Location overrides ──

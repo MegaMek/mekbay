@@ -32,7 +32,13 @@
  */
 
 import { HandheldWeaponEntity } from '../entities/misc/handheld-weapon-entity';
-import { BuildingBlockWriter, writeFluffBlocks } from './building-block-writer';
+import {
+  BuildingBlockWriter,
+  writeArmorBlocks,
+  writeFluffBlocks,
+  writeInternalType,
+  writeTonnage,
+} from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 
 // ============================================================================
@@ -58,6 +64,15 @@ export function writeBlkHandheld(entity: HandheldWeaponEntity): string {
   if (entity.originalBuildYear() >= 0) w.addBlock('originalBuildYear', entity.originalBuildYear());
   if (entity.techLevel()) w.addBlock('type', entity.techLevel());
 
+  // ── Armor ──
+  writeArmorBlocks(w, entity);
+  writeInternalType(w, entity);
+
+  // Armor values (single value for the whole unit)
+  const armorMap = entity.armorValues();
+  const armorVal = armorMap.get('Gun')?.front ?? armorMap.get('None')?.front ?? 0;
+  w.addBlock('armor', armorVal);
+
   // ── Equipment ──
   const equipLines = entity.equipment().map(m => encodeEquipmentLine(m, { blkMode: true }));
   if (equipLines.length > 0) {
@@ -69,7 +84,7 @@ export function writeBlkHandheld(entity: HandheldWeaponEntity): string {
 
   // ── Source / Tonnage ──
   if (entity.source()) w.addBlock('source', entity.source());
-  w.addBlock('tonnage', entity.tonnage());
+  writeTonnage(w, entity);
 
   return w.toString();
 }

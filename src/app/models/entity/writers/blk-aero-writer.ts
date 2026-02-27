@@ -117,7 +117,7 @@ export function writeBlkAero(entity: AeroEntity): string {
     const cpCode = cpType === 'Standard' ? 0 : parseInt(cpType.replace('Type ', ''), 10) || 0;
     w.addBlock('cockpit_type', cpCode);
   }
-  if (entity instanceof ConvFighterEntity && entity.vstol()) {
+  if ((entity instanceof ConvFighterEntity || entity instanceof FixedWingSupportEntity) && entity.vstol()) {
     w.addBlock('vstol', 1);
   }
 
@@ -132,8 +132,9 @@ export function writeBlkAero(entity: AeroEntity): string {
   // 8. Engine: engine_type, clan_engine
   writeEngine(w, entity, ENGINE_TYPE_TO_CODE);
 
-  // 9. Armor: armor_type, armor_tech_rating, armor_tech_level
-  writeArmorBlocks(w, entity);
+  // 9. Armor: armor_type, armor_tech_rating, armor_tech_level (or patchwork per-location)
+  const patchLocs = ['Left Wing', 'Right Wing', 'Aft', 'Wings', 'Fuselage'];
+  writeArmorBlocks(w, entity, patchLocs);
 
   // 10. internal_type
   writeInternalType(w, entity);

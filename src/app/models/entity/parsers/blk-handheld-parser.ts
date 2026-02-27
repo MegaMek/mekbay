@@ -37,6 +37,7 @@ import { BuildingBlock } from './building-block';
 import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
 import { parseEquipmentLine } from './equipment-resolver';
 import { ParseContext } from './parse-context';
+import { locationArmor } from '../types';
 
 // ============================================================================
 // Public API
@@ -55,6 +56,16 @@ export function parseBlkHandheld(bb: BuildingBlock, ctx: ParseContext): Handheld
   // ── Base parsing ──
   parseBaseBlk(bb, entity, ctx);
   const techBase = getBlkTechBase(bb);
+
+  // ── Armor ──
+  if (bb.exists('armor')) {
+    const ints = bb.getDataAsInt('armor');
+    if (ints.length >= 1) {
+      const armorMap = new Map();
+      armorMap.set('Gun', locationArmor(ints[0]));
+      entity.armorValues.set(armorMap);
+    }
+  }
 
   // ── Equipment ──
   if (bb.exists('Gun Equipment')) {
@@ -76,6 +87,7 @@ export function parseBlkHandheld(bb: BuildingBlock, ctx: ParseContext): Handheld
         omniPodMounted: false,
         armored: false,
         size: parsed.size,
+        shotsLeft: parsed.shots,
       });
     }
   }

@@ -67,6 +67,7 @@ export class JumpShipEntity extends BaseEntity {
   // ── JumpShip specifics ──
   designType = signal<number>(0);
   sail = signal<boolean>(true);
+  jumpRange = signal<number>(-1);
   dockingCollars = signal<number>(0);
   gravDecks = signal<number[]>([]);
   lithiumFusion = signal<boolean>(false);

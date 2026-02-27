@@ -65,15 +65,15 @@ const JUMPSHIP_EQUIP_TAGS: [string, string][] = [
   ['Nose Equipment',                  'Nose'],
   ['Left Front Side Equipment',       'FLS'],
   ['Right Front Side Equipment',      'FRS'],
+  ['Aft Equipment',                   'Aft'],
   ['Aft Left Side Equipment',         'ALS'],
   ['Aft Right Side Equipment',        'ARS'],
-  ['Aft Equipment',                   'Aft'],
   ['Hull Equipment',                  'Hull'],
 ];
 
 const WARSHIP_EXTRA_EQUIP_TAGS: [string, string][] = [
-  ['Left Broadside Equipment',        'Left Broadside'],
-  ['Right Broadside Equipment',       'Right Broadside'],
+  ['Left Broadsides Equipment',        'Left Broadside'],
+  ['Right Broadsides Equipment',       'Right Broadside'],
 ];
 
 // ============================================================================
@@ -137,7 +137,7 @@ export function writeBlkLargeCraft(entity: JumpShipEntity): string {
   if (entity instanceof WarShipEntity) {
     equipTags = [...equipTags, ...WARSHIP_EXTRA_EQUIP_TAGS];
   }
-  writeEquipmentByLocation(w, entity, equipTags, encodeEquipmentLine);
+  writeEquipmentByLocation(w, entity, equipTags, encodeEquipmentLine, true);
 
   // 13. structural_integrity
   w.addBlock('structural_integrity', entity.structuralIntegrity());
@@ -159,8 +159,9 @@ export function writeBlkLargeCraft(entity: JumpShipEntity): string {
     if (entity.kfCore() > 0) w.addBlock('kf_core', entity.kfCore());
   }
 
-  // 19. JumpShip-specific tail: lithium-fusion, sail, grav_decks
+  // 19. JumpShip-specific tail: lithium-fusion, jump_range, sail, grav_decks
   if (entity.lithiumFusion()) w.addBlock('lithium-fusion', 1);
+  if (entity.jumpRange() >= 0) w.addBlock('jump_range', entity.jumpRange());
   w.addBlock('sail', entity.sail() ? 1 : 0);
   const gravDecks = entity.gravDecks();
   if (gravDecks.length > 0) {

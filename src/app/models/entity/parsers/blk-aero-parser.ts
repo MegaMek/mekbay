@@ -134,6 +134,29 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
     if (code === 1) entity.armorTechBase.set('Clan');
     else if (code === 2) entity.armorTechBase.set('Mixed');
   }
+
+  // ── Patchwork armor: per-location armor type / tech / rating ──
+  if (entity.armorType() === 'PATCHWORK') {
+    const patchLocs = ['Left Wing', 'Right Wing', 'Aft', 'Wings', 'Fuselage'];
+    const codes = new Map<string, number>();
+    const techs = new Map<string, string>();
+    const ratings = new Map<string, number>();
+    for (const loc of patchLocs) {
+      if (bb.exists(`${loc}_armor_type`)) {
+        codes.set(loc, bb.getFirstInt(`${loc}_armor_type`));
+      }
+      if (bb.exists(`${loc}_armor_tech`)) {
+        techs.set(loc, bb.getFirstString(`${loc}_armor_tech`));
+      }
+      if (bb.exists(`${loc}_armor_tech_rating`)) {
+        ratings.set(loc, bb.getFirstInt(`${loc}_armor_tech_rating`));
+      }
+    }
+    entity.patchworkArmorCodes.set(codes);
+    entity.patchworkArmorTech.set(techs);
+    entity.patchworkArmorTechRating.set(ratings);
+  }
+
   entity.armorEquipment.set(
     resolveArmorEquipment(entity.armorType(), entity.armorTechBase() === 'Clan', ctx.equipmentDb)
   );
@@ -184,6 +207,7 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
   }
 
   if (entity instanceof FixedWingSupportEntity) {
+    if (bb.exists('vstol')) entity.vstol.set(bb.getFirstInt('vstol') === 1);
     if (bb.exists('barrating'))               entity.barRating.set(bb.getFirstInt('barrating'));
     if (bb.exists('structural_tech_rating'))   entity.structuralTechRating.set(bb.getFirstInt('structural_tech_rating'));
     if (bb.exists('engine_tech_rating'))       entity.engineTechRating.set(bb.getFirstInt('engine_tech_rating'));

@@ -119,7 +119,7 @@ export function writeBlkSmallCraft(entity: SmallCraftEntity): string {
   w.addBlock('armor', ...armorInts);
 
   // 12. Equipment per location
-  writeEquipmentByLocation(w, entity, SC_EQUIP_TAGS, encodeEquipmentLine);
+  writeEquipmentByLocation(w, entity, SC_EQUIP_TAGS, encodeEquipmentLine, true);
 
   // 13. structural_integrity
   w.addBlock('structural_integrity', entity.structuralIntegrity());
