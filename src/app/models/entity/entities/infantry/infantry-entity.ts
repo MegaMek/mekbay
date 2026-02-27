@@ -37,6 +37,7 @@ import {
   EntityType,
   EntityValidationMessage,
   InfantrySpecialization,
+  StructureType,
 } from '../../types';
 
 // ============================================================================
@@ -106,7 +107,7 @@ export class InfantryEntity extends BaseEntity {
   }
 
   protected override computeStructureValues(
-    _tonnage: number, _structureType: string,
+    _tonnage: number, _structureType: StructureType,
   ): Map<string, number> {
     const values = new Map<string, number>();
     values.set('Infantry', this.squadSize() * this.squadCount());

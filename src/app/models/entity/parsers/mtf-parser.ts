@@ -53,6 +53,8 @@ import {
   locationArmor,
   normalizeSystemManufacturerKey,
   resolveArmorByName,
+  structureTypeFromDisplayName,
+  StructureType,
 } from '../types';
 import { parseMtfArmor } from '../utils/armor-type-parser';
 import { parseMtfEngine } from '../utils/engine-type-parser';
@@ -742,8 +744,9 @@ function parseHeatSinkLine(hsLine: string): { count: number; type: HeatSinkType;
   return { count, type, typeLabel };
 }
 
-function cleanStructureType(raw: string): string {
-  return raw.replace(/^IS\s+/i, '').replace(/^Clan\s+/i, '').trim() || 'Standard';
+function cleanStructureType(raw: string): StructureType {
+  const displayName = raw.replace(/^IS\s+/i, '').replace(/^Clan\s+/i, '').trim() || 'Standard';
+  return structureTypeFromDisplayName(displayName);
 }
 
 /**

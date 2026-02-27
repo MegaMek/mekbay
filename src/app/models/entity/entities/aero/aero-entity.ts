@@ -37,6 +37,7 @@ import {
   EntityType,
   EntityValidationMessage,
   HeatSinkType,
+  StructureType,
 } from '../../types';
 
 // ============================================================================
@@ -93,7 +94,7 @@ export abstract class AeroEntity extends BaseEntity {
   }
 
   protected override computeStructureValues(
-    _tonnage: number, _structureType: string,
+    _tonnage: number, _structureType: StructureType,
   ): Map<string, number> {
     // For aero, each location gets the structural integrity value
     const values = new Map<string, number>();

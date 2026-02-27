@@ -35,6 +35,7 @@ import { Signal, computed, signal } from '@angular/core';
 import {
   EntityType,
   EntityValidationMessage,
+  StructureType,
 } from '../../types';
 import { InfantryEntity } from './infantry-entity';
 
@@ -88,7 +89,7 @@ export class BattleArmorEntity extends InfantryEntity {
   // ═══════════════════════════════════════════════════════════════════════════
 
   protected override computeStructureValues(
-    _tonnage: number, _structureType: string,
+    _tonnage: number, _structureType: StructureType,
   ): Map<string, number> {
     const values = new Map<string, number>();
     values.set('Squad', this.trooperCount());

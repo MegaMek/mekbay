@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { EntityFluff, TECH_RATING_TO_NUMBER, compoundTechLevel } from '../types';
+import { EntityFluff, structureTypeToCode, TECH_RATING_TO_NUMBER, compoundTechLevel } from '../types';
 import { BaseEntity } from '../base-entity';
 import { APP_VERSION_STRING } from '../../../build-meta';
 
@@ -238,12 +238,8 @@ export function writeInternalType(w: BuildingBlockWriter, entity: BaseEntity): v
   const rawCode = entity.rawInternalTypeCode();
   if (rawCode !== 0) {
     w.addBlock('internal_type', rawCode);
-  } else if (entity.structureType() !== 'Standard') {
-    let code = 0;
-    if (entity.structureType() === 'Endo Steel') code = 1;
-    else if (entity.structureType() === 'Composite') code = 2;
-    else if (entity.structureType() === 'Reinforced') code = 3;
-    w.addBlock('internal_type', code);
+  } else if (entity.structureType() !== 'STANDARD') {
+    w.addBlock('internal_type', structureTypeToCode(entity.structureType()));
   }
 }
 

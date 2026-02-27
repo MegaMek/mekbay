@@ -31,55 +31,50 @@
  * affiliated with Microsoft.
  */
 
-import { StructureType } from '../types';
-
-/**
- * Internal Structure system component.
- *
- * Structures are fundamental structural elements of every Mek, with statically
- * known properties (crit slot count, weight multiplier, etc.) initialised at
- * runtime.  They are NOT equipment from equipment2.json.
- */
-
 // ============================================================================
-// Structure Component
+// Transporters & Bays
 // ============================================================================
 
-export interface StructureComponent {
-  readonly type: StructureType;
-  /** Whether this is a Clan variant (affects crit slot count) */
-  readonly isClan: boolean;
-  /** Number of critical slots that structure occupies across all locations */
-  readonly criticalSlots: number;
+export interface EntityTransporter {
+  type: string;
+  capacity: number;
+  doors: number;
+  bayNumber: number;
+  platoonType?: string;
+  facing?: number;
+  bitmap?: number;
+  omni?: boolean;
+  /** True for bare transporter lines like "dockingcollar" (no capacity/doors) */
+  bare?: boolean;
+}
+
+export interface EntityWeaponBay {
+  weaponIndices: number[];
+  ammoIndices: number[];
+  location: string;
+  bayType: string;
+}
+
+export interface EntityTransportBay {
+  type: string;
+  capacity: number;
+  doors: number;
+  bayNumber: number;
 }
 
 // ============================================================================
-// Factory
+// Crew (SmallCraft / DropShip)
 // ============================================================================
 
-/**
- * Resolve a StructureComponent from type and clan flag.
- * Critical slot counts are derived from the structure type and tech base.
- */
-export function getStructure(type: StructureType, isClan: boolean): StructureComponent {
-  let critSlots = 0;
-  switch (type) {
-    case 'ENDO_STEEL':
-      critSlots = isClan ? 7 : 14;
-      break;
-    case 'ENDO_PROTOTYPE':
-      critSlots = 16;
-      break;
-    case 'ENDO_COMPOSITE':
-      critSlots = isClan ? 4 : 7;
-      break;
-    case 'COMPOSITE':
-    case 'REINFORCED':
-    case 'INDUSTRIAL':
-    case 'STANDARD':
-    default:
-      critSlots = 0;
-      break;
-  }
-  return { type, isClan, criticalSlots: critSlots };
+export interface SmallCraftCrew {
+  officers?: number;
+  gunners?: number;
+  crew?: number;
+  passengers?: number;
+  marines?: number;
+  battleArmorHandles?: number;
+  firstClassQuarters?: number;
+  secondClassQuarters?: number;
+  crewQuarters?: number;
+  steerage?: number;
 }

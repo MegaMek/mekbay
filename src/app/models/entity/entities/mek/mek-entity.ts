@@ -53,6 +53,7 @@ import {
   MEK_SLOTS_PER_LOCATION,
   MekConfig,
   MekSystemType,
+  StructureType,
 } from '../../types';
 
 // ============================================================================
@@ -102,6 +103,13 @@ export abstract class MekEntity extends BaseEntity {
   // ═══════════════════════════════════════════════════════════════════════════
 
   isSuperHeavy = computed(() => this.tonnage() > 100);
+
+  /**
+   * Whether this Mek has an Industrial structure type.
+   * Mirrors Java's `Mek.isIndustrial()` which checks
+   * `getStructureType() == EquipmentType.T_STRUCTURE_INDUSTRIAL`.
+   */
+  isIndustrial = computed(() => this.structureType() === 'INDUSTRIAL');
 
   heatSinkCount = computed(() =>
     this.equipment().reduce((sum, e) => {
@@ -199,7 +207,7 @@ export abstract class MekEntity extends BaseEntity {
     return this.walkMP() * this.tonnage();
   }
 
-  protected override computeStructureValues(tonnage: number, _structureType: string): Map<string, number> {
+  protected override computeStructureValues(tonnage: number, _structureType: StructureType): Map<string, number> {
     const values = new Map<string, number>();
     const entry = MEK_INTERNAL_STRUCTURE[tonnage];
     if (!entry) return values;

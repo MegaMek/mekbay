@@ -40,6 +40,7 @@ import {
   TANK_LOCATIONS,
   TANK_LOCATIONS_WITH_DUAL_TURRET,
   TANK_LOCATIONS_WITH_TURRET,
+  StructureType,
 } from '../../types';
 
 // ============================================================================
@@ -130,7 +131,7 @@ export abstract class VehicleEntity extends BaseEntity {
   }
 
   protected override computeStructureValues(
-    tonnage: number, _structureType: string,
+    tonnage: number, _structureType: StructureType,
   ): Map<string, number> {
     // Vehicles: each location gets IS = tonnage × 0.1 (simplified)
     const values = new Map<string, number>();

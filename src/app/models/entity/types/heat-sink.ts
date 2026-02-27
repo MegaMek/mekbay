@@ -31,38 +31,16 @@
  * affiliated with Microsoft.
  */
 
-import { signal } from '@angular/core';
-import { EntityType, StructureType } from '../../types';
-import { VehicleEntity } from './vehicle-entity';
+// ============================================================================
+// Heat Sink Types
+// ============================================================================
 
-/**
- * Gun Emplacement — a stationary turret with no movement.
- *
- * Only has a single Turret location. Internal structure is replaced by
- * Building CF (Construction Factor).
- */
-export class GunEmplacementEntity extends VehicleEntity {
-  override readonly entityType: EntityType = 'GunEmplacement';
+export type HeatSinkType = 'Single' | 'Double' | 'Compact' | 'Laser';
 
-  buildingCF = signal<number>(0);
+export const HEAT_SINK_TYPE_FROM_CODE: Record<number, HeatSinkType> = {
+  0: 'Single', 1: 'Double', 2: 'Compact', 3: 'Laser',
+};
 
-  override get locationOrder(): readonly string[] {
-    return ['Turret'];
-  }
-
-  override get validLocations(): ReadonlySet<string> {
-    return new Set(['Turret']);
-  }
-
-  protected override computeStructureValues(
-    _tonnage: number, _structureType: StructureType,
-  ): Map<string, number> {
-    const values = new Map<string, number>();
-    values.set('Turret', this.buildingCF());
-    return values;
-  }
-
-  protected override computeExpectedEngineRating(): number | null {
-    return null; // Gun emplacements have no engine
-  }
-}
+export const HEAT_SINK_TYPE_TO_CODE: Record<HeatSinkType, number> = {
+  'Single': 0, 'Double': 1, 'Compact': 2, 'Laser': 3,
+};

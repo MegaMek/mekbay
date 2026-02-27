@@ -36,6 +36,7 @@ import { BaseEntity } from '../../base-entity';
 import {
   EntityType,
   EntityValidationMessage,
+  StructureType,
 } from '../../types';
 
 // ============================================================================
@@ -70,7 +71,7 @@ export class HandheldWeaponEntity extends BaseEntity {
   }
 
   protected override computeStructureValues(
-    _tonnage: number, _structureType: string,
+    _tonnage: number, _structureType: StructureType,
   ): Map<string, number> {
     return new Map();
   }

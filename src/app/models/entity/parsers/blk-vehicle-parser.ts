@@ -48,6 +48,7 @@ import {
   armorTypeFromCode,
   locationArmor,
   resolveArmorEquipment,
+  structureTypeFromCode,
 } from '../types';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
@@ -268,9 +269,7 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
   if (bb.exists('internal_type')) {
     const isCode = bb.getFirstInt('internal_type');
     entity.rawInternalTypeCode.set(isCode);
-    if (isCode === 1) entity.structureType.set('Endo Steel');
-    else if (isCode === 2) entity.structureType.set('Composite');
-    else if (isCode === 3) entity.structureType.set('Reinforced');
+    entity.structureType.set(structureTypeFromCode(isCode));
   }
 
   // ── Gun Emplacement specifics ──

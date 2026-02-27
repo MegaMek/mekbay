@@ -61,7 +61,6 @@ export {
 } from './cockpit';
 
 export {
-  type StructureType,
   type StructureComponent,
   getStructure,
 } from './structure';

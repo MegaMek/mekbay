@@ -38,6 +38,7 @@ import {
   EntityValidationMessage,
   HeatSinkType,
   LARGE_CRAFT_LOCATIONS,
+  StructureType,
 } from '../../types';
 
 // ============================================================================
@@ -115,7 +116,7 @@ export class JumpShipEntity extends BaseEntity {
   }
 
   protected override computeStructureValues(
-    _tonnage: number, _structureType: string,
+    _tonnage: number, _structureType: StructureType,
   ): Map<string, number> {
     const values = new Map<string, number>();
     const si = this.structuralIntegrity();

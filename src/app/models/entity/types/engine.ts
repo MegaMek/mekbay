@@ -31,55 +31,35 @@
  * affiliated with Microsoft.
  */
 
-import { StructureType } from '../types';
-
-/**
- * Internal Structure system component.
- *
- * Structures are fundamental structural elements of every Mek, with statically
- * known properties (crit slot count, weight multiplier, etc.) initialised at
- * runtime.  They are NOT equipment from equipment2.json.
- */
-
 // ============================================================================
-// Structure Component
+// Engine Types
 // ============================================================================
 
-export interface StructureComponent {
-  readonly type: StructureType;
-  /** Whether this is a Clan variant (affects crit slot count) */
-  readonly isClan: boolean;
-  /** Number of critical slots that structure occupies across all locations */
-  readonly criticalSlots: number;
+export type EngineType =
+  | 'Fusion' | 'ICE' | 'XL' | 'XXL' | 'Light' | 'Compact'
+  | 'Fuel Cell' | 'Fission' | 'None' | 'Maglev' | 'Steam'
+  | 'Battery' | 'Solar' | 'External';
+
+/** Engine flags — derived from entity properties, not user-set */
+export type EngineFlag =
+  | 'clan' | 'tank' | 'large' | 'superheavy' | 'support-vee';
+
+export const ENGINE_TYPE_FROM_CODE: Record<number, EngineType> = {
+  0: 'Fusion', 1: 'ICE', 2: 'XL', 3: 'XXL', 4: 'Light', 5: 'Compact',
+  6: 'Fuel Cell', 7: 'Fission', 8: 'None', 9: 'Maglev', 10: 'Steam',
+  11: 'Battery', 12: 'Solar', 13: 'External',
+};
+
+export const ENGINE_TYPE_TO_CODE: Record<EngineType, number> = {
+  'Fusion': 0, 'ICE': 1, 'XL': 2, 'XXL': 3, 'Light': 4, 'Compact': 5,
+  'Fuel Cell': 6, 'Fission': 7, 'None': 8, 'Maglev': 9, 'Steam': 10,
+  'Battery': 11, 'Solar': 12, 'External': 13,
+};
+
+export function engineTypeFromCode(code: number): EngineType {
+  return ENGINE_TYPE_FROM_CODE[code] ?? 'Fusion';
 }
 
-// ============================================================================
-// Factory
-// ============================================================================
-
-/**
- * Resolve a StructureComponent from type and clan flag.
- * Critical slot counts are derived from the structure type and tech base.
- */
-export function getStructure(type: StructureType, isClan: boolean): StructureComponent {
-  let critSlots = 0;
-  switch (type) {
-    case 'ENDO_STEEL':
-      critSlots = isClan ? 7 : 14;
-      break;
-    case 'ENDO_PROTOTYPE':
-      critSlots = 16;
-      break;
-    case 'ENDO_COMPOSITE':
-      critSlots = isClan ? 4 : 7;
-      break;
-    case 'COMPOSITE':
-    case 'REINFORCED':
-    case 'INDUSTRIAL':
-    case 'STANDARD':
-    default:
-      critSlots = 0;
-      break;
-  }
-  return { type, isClan, criticalSlots: critSlots };
+export function engineTypeToCode(type: EngineType): number {
+  return ENGINE_TYPE_TO_CODE[type] ?? 0;
 }

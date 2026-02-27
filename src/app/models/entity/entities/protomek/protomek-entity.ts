@@ -38,6 +38,7 @@ import {
   EntityValidationMessage,
   PROTO_LOCATIONS,
   PROTO_LOCATIONS_WITH_MAIN_GUN,
+  StructureType,
 } from '../../types';
 
 // ============================================================================
@@ -89,7 +90,7 @@ export class ProtoMekEntity extends BaseEntity {
    * Head=1 for all, Torso/Legs scale with tonnage, Arms=1-2, Main Gun=1.
    */
   protected override computeStructureValues(
-    tonnage: number, _structureType: string,
+    tonnage: number, _structureType: StructureType,
   ): Map<string, number> {
     const values = new Map<string, number>();
     values.set('Head', 1 + Math.floor(tonnage / 5));

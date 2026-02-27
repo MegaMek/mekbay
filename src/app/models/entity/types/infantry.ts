@@ -31,38 +31,25 @@
  * affiliated with Microsoft.
  */
 
-import { signal } from '@angular/core';
-import { EntityType, StructureType } from '../../types';
-import { VehicleEntity } from './vehicle-entity';
+// ============================================================================
+// Infantry Specializations
+// ============================================================================
 
-/**
- * Gun Emplacement — a stationary turret with no movement.
- *
- * Only has a single Turret location. Internal structure is replaced by
- * Building CF (Construction Factor).
- */
-export class GunEmplacementEntity extends VehicleEntity {
-  override readonly entityType: EntityType = 'GunEmplacement';
+export type InfantrySpecialization =
+  | 'bridge-engineers' | 'demo-engineers' | 'fire-engineers' | 'mine-engineers'
+  | 'sensor-engineers' | 'trench-engineers' | 'marines' | 'mountain-troops'
+  | 'paramedics' | 'paratroops' | 'tag-troops' | 'xct' | 'scuba';
 
-  buildingCF = signal<number>(0);
+export const INFANTRY_SPECIALIZATION_FROM_BIT: Record<number, InfantrySpecialization> = {
+  0: 'bridge-engineers', 1: 'demo-engineers', 2: 'fire-engineers',
+  3: 'mine-engineers', 4: 'sensor-engineers', 5: 'trench-engineers',
+  6: 'marines', 7: 'mountain-troops', 8: 'paramedics',
+  9: 'paratroops', 10: 'tag-troops', 11: 'xct', 12: 'scuba',
+};
 
-  override get locationOrder(): readonly string[] {
-    return ['Turret'];
-  }
-
-  override get validLocations(): ReadonlySet<string> {
-    return new Set(['Turret']);
-  }
-
-  protected override computeStructureValues(
-    _tonnage: number, _structureType: StructureType,
-  ): Map<string, number> {
-    const values = new Map<string, number>();
-    values.set('Turret', this.buildingCF());
-    return values;
-  }
-
-  protected override computeExpectedEngineRating(): number | null {
-    return null; // Gun emplacements have no engine
-  }
-}
+export const INFANTRY_SPECIALIZATION_TO_BIT: Record<InfantrySpecialization, number> = {
+  'bridge-engineers': 0, 'demo-engineers': 1, 'fire-engineers': 2,
+  'mine-engineers': 3, 'sensor-engineers': 4, 'trench-engineers': 5,
+  'marines': 6, 'mountain-troops': 7, 'paramedics': 8,
+  'paratroops': 9, 'tag-troops': 10, 'xct': 11, 'scuba': 12,
+};

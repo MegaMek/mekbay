@@ -44,6 +44,7 @@ import {
   ARMOR_TYPE_TO_CODE,
   EngineFlag,
   EngineType,
+  StructureType,
   EntityFluff,
   EntityMountedEquipment,
   EntityQuirk,
@@ -90,7 +91,7 @@ export abstract class BaseEntity {
   abstract readonly entityType: EntityType;
 
   // ═══════════════════════════════════════════════════════════════════════════
-  //  SIGNALS — user / parser inputs
+  //  SIGNALS
   // ═══════════════════════════════════════════════════════════════════════════
 
   // ── Identity ──
@@ -170,7 +171,7 @@ export abstract class BaseEntity {
   patchworkArmorTechRating = signal<Map<string, number>>(new Map());
 
   // ── Internal Structure ──
-  structureType = signal<string>('Standard');
+  structureType = signal<StructureType>('STANDARD');
   /** Raw MTF structure string for round-trip (e.g. "IS Standard", "Clan Endo Steel") */
   rawStructure = signal<string>('');
   /** Raw BLK internal_type code for round-trip fidelity (-1 = Unknown, 0 = Standard, etc.) */
@@ -200,11 +201,20 @@ export abstract class BaseEntity {
   fluffImageEncoded = signal<string>('');
 
   // ═══════════════════════════════════════════════════════════════════════════
-  //  COMPUTED — derived from signals
+  //  COMPUTED
   // ═══════════════════════════════════════════════════════════════════════════
 
+  /**
+   * Full chassis name including the clan alternate name if present.
+   * E.g. "Black Hawk (Nova)"
+   */
+  fullChassis = computed(() => {
+    const clan = this.clanName();
+    return clan ? `${this.chassis()} (${clan})` : this.chassis();
+  });
+
   displayName = computed(() => {
-    const c = this.chassis();
+    const c = this.fullChassis();
     const m = this.model();
     return m ? `${c} ${m}`.trim() : c;
   });
@@ -335,7 +345,7 @@ export abstract class BaseEntity {
   /** Whether a given location supports rear armor */
   abstract hasRearArmor(loc: string): boolean;
 
-  protected abstract computeStructureValues(tonnage: number, structureType: string): Map<string, number>;
+  protected abstract computeStructureValues(tonnage: number, structureType: StructureType): Map<string, number>;
   protected abstract computeMaxArmor(structureValues: Map<string, number>): Map<string, number>;
   protected abstract computeExpectedEngineRating(): number | null;
 

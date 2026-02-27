@@ -31,38 +31,23 @@
  * affiliated with Microsoft.
  */
 
-import { signal } from '@angular/core';
-import { EntityType, StructureType } from '../../types';
-import { VehicleEntity } from './vehicle-entity';
-
 /**
- * Gun Emplacement — a stationary turret with no movement.
+ * Barrel re-export for entity type definitions.
  *
- * Only has a single Turret location. Internal structure is replaced by
- * Building CF (Construction Factor).
+ * Consumers can keep importing from `'../types'` (or `'./types'`), which
+ * resolves to this index.ts.  Each concern is in its own file for
+ * maintainability.
  */
-export class GunEmplacementEntity extends VehicleEntity {
-  override readonly entityType: EntityType = 'GunEmplacement';
-
-  buildingCF = signal<number>(0);
-
-  override get locationOrder(): readonly string[] {
-    return ['Turret'];
-  }
-
-  override get validLocations(): ReadonlySet<string> {
-    return new Set(['Turret']);
-  }
-
-  protected override computeStructureValues(
-    _tonnage: number, _structureType: StructureType,
-  ): Map<string, number> {
-    const values = new Map<string, number>();
-    values.set('Turret', this.buildingCF());
-    return values;
-  }
-
-  protected override computeExpectedEngineRating(): number | null {
-    return null; // Gun emplacements have no engine
-  }
-}
+export * from './entity';
+export * from './engine';
+export * from './heat-sink';
+export * from './armor';
+export * from './structure';
+export * from './locations';
+export * from './mek';
+export * from './vehicle';
+export * from './infantry';
+export * from './equipment';
+export * from './transport';
+export * from './common';
+export * from './validation-sets';

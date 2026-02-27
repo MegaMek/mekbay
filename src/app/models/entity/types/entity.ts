@@ -31,38 +31,32 @@
  * affiliated with Microsoft.
  */
 
-import { signal } from '@angular/core';
-import { EntityType, StructureType } from '../../types';
-import { VehicleEntity } from './vehicle-entity';
+// ============================================================================
+// Entity Identity
+// ============================================================================
 
-/**
- * Gun Emplacement — a stationary turret with no movement.
- *
- * Only has a single Turret location. Internal structure is replaced by
- * Building CF (Construction Factor).
- */
-export class GunEmplacementEntity extends VehicleEntity {
-  override readonly entityType: EntityType = 'GunEmplacement';
+/** Discriminant type for all entity subclasses */
+export type EntityType =
+  | 'Mek'
+  | 'Aero'
+  | 'ConvFighter'
+  | 'FixedWingSupport'
+  | 'SmallCraft'
+  | 'DropShip'
+  | 'JumpShip'
+  | 'WarShip'
+  | 'SpaceStation'
+  | 'Tank'
+  | 'Naval'
+  | 'VTOL'
+  | 'SupportTank'
+  | 'SupportVTOL'
+  | 'LargeSupportTank'
+  | 'GunEmplacement'
+  | 'Infantry'
+  | 'BattleArmor'
+  | 'ProtoMek'
+  | 'HandheldWeapon';
 
-  buildingCF = signal<number>(0);
-
-  override get locationOrder(): readonly string[] {
-    return ['Turret'];
-  }
-
-  override get validLocations(): ReadonlySet<string> {
-    return new Set(['Turret']);
-  }
-
-  protected override computeStructureValues(
-    _tonnage: number, _structureType: StructureType,
-  ): Map<string, number> {
-    const values = new Map<string, number>();
-    values.set('Turret', this.buildingCF());
-    return values;
-  }
-
-  protected override computeExpectedEngineRating(): number | null {
-    return null; // Gun emplacements have no engine
-  }
-}
+/** Tech base as stored in entity files */
+export type EntityTechBase = 'Inner Sphere' | 'Clan' | 'Mixed';
