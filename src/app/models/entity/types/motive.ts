@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -53,7 +53,7 @@
  *
  * | Value            | Used By                                     |
  * |------------------|---------------------------------------------|
- * | None             | Handheld weapons, buildings, immobile units  |
+ * | None             | Handheld weapons, buildings, immobile units |
  * | Biped            | Biped Meks                                  |
  * | Tripod           | Tripod Meks                                 |
  * | Quad             | Quad Meks                                   |
@@ -70,15 +70,15 @@
  * | Jump             | Jump infantry                               |
  * | UMU              | BA/infantry UMU, SCUBA, Motorized SCUBA     |
  * | Aerodyne         | Aerodyne ASF, SmallCraft, DropShips         |
- * | Spheroid         | Spheroid SmallCraft, DropShips               |
+ * | Spheroid         | Spheroid SmallCraft, DropShips              |
  * | Aerospace        | Alternate aerospace designation             |
  * | Airship          | Airship support vehicles                    |
  * | Station Keeping  | Satellites, space stations                  |
  * | Rail             | Rail vehicles                               |
  * | MagLev           | MagLev rail vehicles                        |
- * | Track            | QuadVee vehicle-mode track motive            |
- * | Wheel            | QuadVee vehicle-mode wheel motive            |
- * | Beast            | Beast-mounted infantry (TO:AU&E p.106)       |
+ * | Track            | QuadVee vehicle-mode track motive           |
+ * | Wheel            | QuadVee vehicle-mode wheel motive           |
+ * | Beast            | Beast-mounted infantry (TO:AU&E p.106)      |
  */
 export type MotiveType =
   | 'None'
