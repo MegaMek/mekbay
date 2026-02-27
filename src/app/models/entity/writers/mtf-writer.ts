@@ -42,7 +42,7 @@ import {
   EntityMountedEquipment,
   EntityTechBase,
   MEK_SLOTS_PER_LOCATION,
-  STRUCTURE_TYPE_DISPLAY_NAME,
+
 } from '../types';
 import { WeaponEquipment } from '../../equipment.model';
 
@@ -451,7 +451,7 @@ function getStructureString(entity: MekEntity): string {
   if (raw) return raw;
 
   // Fallback: compute from structured fields
-  const type = STRUCTURE_TYPE_DISPLAY_NAME[entity.structureType()] ?? 'Standard';
+  const type = entity.structureType();
   const prefix = entity.techBase() === 'Clan' ? 'Clan ' : 'IS ';
   return `${prefix}${type}`;
 }

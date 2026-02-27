@@ -186,7 +186,7 @@ export abstract class BaseEntity {
   patchworkArmorTechRating = signal<Map<string, number>>(new Map());
 
   // ── Internal Structure ──
-  structureType = signal<StructureType>('STANDARD');
+  structureType = signal<StructureType>('Standard');
   /** Raw MTF structure string for round-trip (e.g. "IS Standard", "Clan Endo Steel") */
   rawStructure = signal<string>('');
   /** Raw BLK internal_type code for round-trip fidelity (-1 = Unknown, 0 = Standard, etc.) */

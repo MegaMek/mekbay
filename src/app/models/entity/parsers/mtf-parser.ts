@@ -55,7 +55,7 @@ import {
   normalizeSystemManufacturerKey,
   parseMotiveType,
   resolveArmorByName,
-  structureTypeFromDisplayName,
+  parseStructureType,
   StructureType,
 } from '../types';
 import { parseMtfArmor } from '../utils/armor-type-parser';
@@ -748,7 +748,7 @@ function parseHeatSinkLine(hsLine: string): { count: number; type: HeatSinkType;
 
 function cleanStructureType(raw: string): StructureType {
   const displayName = raw.replace(/^IS\s+/i, '').replace(/^Clan\s+/i, '').trim() || 'Standard';
-  return structureTypeFromDisplayName(displayName);
+  return parseStructureType(displayName);
 }
 
 /**

@@ -34,7 +34,7 @@
 import { BaseEntity } from '../models/entity/base-entity';
 import { MekEntity } from '../models/entity/entities/mek/mek-entity';
 import { ASUnitTypeCode, Unit } from '../models/units.model';
-import { EntityType, STRUCTURE_TYPE_DISPLAY_NAME } from '../models/entity/types';
+import { EntityType } from '../models/entity/types';
 
 /**
  * Builds a `Partial<Unit>` metadata object from a parsed entity.
@@ -73,7 +73,7 @@ export class UnitMetadataBuilder {
       engine: entity.engineType() || null as any,
       engineRating: entity.engineRating(),
       armorType: this.buildArmorType(entity),
-      structureType: STRUCTURE_TYPE_DISPLAY_NAME[entity.structureType()] ?? entity.structureType(),
+      structureType: entity.structureType(),
       armor: entity.totalArmor(),
 
       // ── Phase 1: Movement (implement on entity first) ──────────────

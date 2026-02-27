@@ -64,19 +64,19 @@ export interface StructureComponent {
 export function getStructure(type: StructureType, isClan: boolean): StructureComponent {
   let critSlots = 0;
   switch (type) {
-    case 'ENDO_STEEL':
+    case 'Endo Steel':
       critSlots = isClan ? 7 : 14;
       break;
-    case 'ENDO_PROTOTYPE':
+    case 'Endo Steel Prototype':
       critSlots = 16;
       break;
-    case 'ENDO_COMPOSITE':
+    case 'Endo-Composite':
       critSlots = isClan ? 4 : 7;
       break;
-    case 'COMPOSITE':
-    case 'REINFORCED':
-    case 'INDUSTRIAL':
-    case 'STANDARD':
+    case 'Composite':
+    case 'Reinforced':
+    case 'Industrial':
+    case 'Standard':
     default:
       critSlots = 0;
       break;

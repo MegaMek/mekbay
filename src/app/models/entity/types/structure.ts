@@ -36,68 +36,45 @@
 // ============================================================================
 
 /**
- * Internal structure type enum, following the ArmorType pattern.
+ * Internal structure type, using display-name values directly.
  *
- * Matches Java's `EquipmentType.T_STRUCTURE_*` constants:
- *   STANDARD=0, INDUSTRIAL=1, ENDO_STEEL=2, ENDO_PROTOTYPE=3,
- *   REINFORCED=4, COMPOSITE=5, ENDO_COMPOSITE=6
+ * Corresponds to Java's `EquipmentType.T_STRUCTURE_*` constants:
+ *   Standard=0, Industrial=1, Endo Steel=2, Endo Steel Prototype=3,
+ *   Reinforced=4, Composite=5, Endo-Composite=6
  */
 export type StructureType =
-  | 'STANDARD'
-  | 'INDUSTRIAL'
-  | 'ENDO_STEEL'
-  | 'ENDO_PROTOTYPE'
-  | 'REINFORCED'
-  | 'COMPOSITE'
-  | 'ENDO_COMPOSITE';
+  | 'Standard'
+  | 'Industrial'
+  | 'Endo Steel'
+  | 'Endo Steel Prototype'
+  | 'Reinforced'
+  | 'Composite'
+  | 'Endo-Composite';
 
-/** Map from BLK internal_type code → StructureType enum */
+/** Map from BLK internal_type code → StructureType */
 export const STRUCTURE_TYPE_FROM_CODE: Record<number, StructureType> = {
-  0: 'STANDARD',
-  1: 'INDUSTRIAL',
-  2: 'ENDO_STEEL',
-  3: 'ENDO_PROTOTYPE',
-  4: 'REINFORCED',
-  5: 'COMPOSITE',
-  6: 'ENDO_COMPOSITE',
+  0: 'Standard',
+  1: 'Industrial',
+  2: 'Endo Steel',
+  3: 'Endo Steel Prototype',
+  4: 'Reinforced',
+  5: 'Composite',
+  6: 'Endo-Composite',
 };
 
-/** Reverse map from StructureType enum → BLK numeric code */
+/** Reverse map from StructureType → BLK numeric code */
 export const STRUCTURE_TYPE_TO_CODE: Record<StructureType, number> = {
-  'STANDARD': 0,
-  'INDUSTRIAL': 1,
-  'ENDO_STEEL': 2,
-  'ENDO_PROTOTYPE': 3,
-  'REINFORCED': 4,
-  'COMPOSITE': 5,
-  'ENDO_COMPOSITE': 6,
-};
-
-/** Map from display name (as used in MTF files) → StructureType enum */
-export const STRUCTURE_TYPE_BY_DISPLAY_NAME: Record<string, StructureType> = {
-  'Standard': 'STANDARD',
-  'Industrial': 'INDUSTRIAL',
-  'Endo Steel': 'ENDO_STEEL',
-  'Endo-Steel': 'ENDO_STEEL',
-  'Endo Steel Prototype': 'ENDO_PROTOTYPE',
-  'Reinforced': 'REINFORCED',
-  'Composite': 'COMPOSITE',
-  'Endo-Composite': 'ENDO_COMPOSITE',
-};
-
-/** Map from StructureType enum → display name string */
-export const STRUCTURE_TYPE_DISPLAY_NAME: Record<StructureType, string> = {
-  'STANDARD': 'Standard',
-  'INDUSTRIAL': 'Industrial',
-  'ENDO_STEEL': 'Endo Steel',
-  'ENDO_PROTOTYPE': 'Endo Steel Prototype',
-  'REINFORCED': 'Reinforced',
-  'COMPOSITE': 'Composite',
-  'ENDO_COMPOSITE': 'Endo-Composite',
+  'Standard': 0,
+  'Industrial': 1,
+  'Endo Steel': 2,
+  'Endo Steel Prototype': 3,
+  'Reinforced': 4,
+  'Composite': 5,
+  'Endo-Composite': 6,
 };
 
 export function structureTypeFromCode(code: number): StructureType {
-  return STRUCTURE_TYPE_FROM_CODE[code] ?? 'STANDARD';
+  return STRUCTURE_TYPE_FROM_CODE[code] ?? 'Standard';
 }
 
 export function structureTypeToCode(type: StructureType): number {
@@ -105,9 +82,13 @@ export function structureTypeToCode(type: StructureType): number {
 }
 
 /**
- * Convert a display name (e.g. from MTF header after stripping IS/Clan prefix)
- * to a StructureType enum value.
+ * Parse a display name string (e.g. from MTF header after stripping IS/Clan
+ * prefix) into a StructureType.  Since StructureType values ARE the display
+ * names, this is a validated cast.
  */
-export function structureTypeFromDisplayName(displayName: string): StructureType {
-  return STRUCTURE_TYPE_BY_DISPLAY_NAME[displayName] ?? 'STANDARD';
+export function parseStructureType(displayName: string): StructureType {
+  if ((displayName as StructureType) in STRUCTURE_TYPE_TO_CODE) {
+    return displayName as StructureType;
+  }
+  return 'Standard';
 }

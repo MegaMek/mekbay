@@ -242,7 +242,7 @@ export function writeInternalType(w: BuildingBlockWriter, entity: BaseEntity): v
   const rawCode = entity.rawInternalTypeCode();
   if (rawCode !== 0) {
     w.addBlock('internal_type', rawCode);
-  } else if (entity.structureType() !== 'STANDARD') {
+  } else if (entity.structureType() !== 'Standard') {
     w.addBlock('internal_type', structureTypeToCode(entity.structureType()));
   }
 }

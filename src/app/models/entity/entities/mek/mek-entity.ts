@@ -109,7 +109,7 @@ export abstract class MekEntity extends BaseEntity {
    * Mirrors Java's `Mek.isIndustrial()` which checks
    * `getStructureType() == EquipmentType.T_STRUCTURE_INDUSTRIAL`.
    */
-  isIndustrial = computed(() => this.structureType() === 'INDUSTRIAL');
+  isIndustrial = computed(() => this.structureType() === 'Industrial');
 
   heatSinkCount = computed(() =>
     this.equipment().reduce((sum, e) => {
