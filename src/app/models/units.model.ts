@@ -232,6 +232,7 @@ export interface Unit {
     _nameTags: string[]; // Tags assigned to this specific unit name
     _chassisTags: string[]; // Tags assigned to the chassis (applies to all variants)
     _publicTags?: PublicTagInfo[]; // Tags from other users (temporary or subscribed)
+    unitFile: string;
 }
 
 /** Information about a public tag from another user */
