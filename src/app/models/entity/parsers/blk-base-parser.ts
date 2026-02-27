@@ -115,8 +115,19 @@ export function parseBaseBlk(
   }
 
   // ── Armor type / tech rating / tech level ──
-  // Derived from ArmorEquipment (set by each type-specific parser after
-  // resolving the armor type + tech base against the equipment DB).
+  // Store raw values from BLK for round-trip fidelity.  When absent,
+  // the writer derives them from ArmorEquipment.
+  if (bb.exists('armor_tech_rating')) {
+    entity.armorTechRating.set(bb.getFirstInt('armor_tech_rating'));
+  }
+  if (bb.exists('armor_tech_level')) {
+    entity.armorTechLevel.set(bb.getFirstInt('armor_tech_level'));
+  }
+
+  // ── Internal structure type ──
+  if (bb.exists('internal_type')) {
+    entity.rawInternalTypeCode.set(bb.getFirstInt('internal_type'));
+  }
 
   // ── Quirks ──
   if (bb.exists('quirks')) {
@@ -157,17 +168,24 @@ export function parseBaseBlk(
       const trimmed = line.trim();
       if (!trimmed) continue;
 
-      // Format: baytype:size:doors[:bayNumber[:platoonType[:facing[:bitmap]]]]
-      const parts = trimmed.split(':');
-      if (parts.length >= 3) {
+      // Format: baytype:size[:doors[:bayNumber[:platoonType[:facing[:bitmap]]]]][:omni]
+      let parts = trimmed.split(':');
+      // Check for :omni suffix
+      let isOmni = false;
+      if (parts[parts.length - 1].toLowerCase() === 'omni') {
+        isOmni = true;
+        parts = parts.slice(0, -1);
+      }
+      if (parts.length >= 2) {
         transporters.push({
           type: parts[0],
           capacity: parseFloat(parts[1]),
-          doors: parseInt(parts[2], 10),
+          doors: parts.length >= 3 ? parseInt(parts[2], 10) : 0,
           bayNumber: parts.length >= 4 ? parseInt(parts[3], 10) : -1,
           platoonType: parts[4] || undefined,
           facing: parts[5] ? parseInt(parts[5], 10) : undefined,
           bitmap: parts[6] ? parseInt(parts[6], 10) : undefined,
+          omni: isOmni || undefined,
         });
       }
     }

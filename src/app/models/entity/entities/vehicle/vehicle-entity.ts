@@ -55,8 +55,9 @@ export abstract class VehicleEntity extends BaseEntity {
   motionType = signal<string>('Tracked');
   hasTurret = signal<boolean>(false);
   hasDualTurret = signal<boolean>(false);
-  baseChassisTurretWeight = signal<number>(0);
-  baseChassisTurret2Weight = signal<number>(0);
+  baseChassisTurretWeight = signal<number>(-1);
+  baseChassisTurret2Weight = signal<number>(-1);
+  baseChassisSponsonPintleWeight = signal<number>(-1);
   fuelType = signal<string>('');
   isTrailer = signal<boolean>(false);
   hasNoControlSystems = signal<boolean>(false);

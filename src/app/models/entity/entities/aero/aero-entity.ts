@@ -58,6 +58,7 @@ export abstract class AeroEntity extends BaseEntity {
   cockpitType = signal<string>('Standard');
   heatSinkType = signal<HeatSinkType>('Single');
   heatSinkCount = signal<number>(0);
+  omnipodHeatSinkCount = signal<number>(0);
   structuralIntegrity = signal<number>(0);
   motionType = signal<string>('Aerodyne');
 

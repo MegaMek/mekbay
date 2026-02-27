@@ -35,8 +35,12 @@ import { signal } from '@angular/core';
 import { EntityType } from '../../types';
 import { VtolEntity } from './vtol-entity';
 
-/** Support VTOL — adds BAR rating. */
+/** Support VTOL — adds BAR rating and support vehicle tech ratings. */
 export class SupportVtolEntity extends VtolEntity {
   override readonly entityType: EntityType = 'SupportVTOL';
-  barRating = signal<number>(10);
+  barRating = signal<number>(-1);
+  structuralTechRating = signal<number>(0);
+  engineTechRating = signal<number>(0);
+  fuel = signal<number>(0);
+  baseChassisFireConWeight = signal<number>(0);
 }

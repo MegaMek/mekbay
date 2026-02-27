@@ -93,7 +93,10 @@ export function parseBlkProtoMek(bb: BuildingBlock, ctx: ParseContext): ProtoMek
   }
 
   // ── ProtoMek-specific flags ──
-  if (bb.exists('interface_cockpit')) entity.interfaceCockpit.set(bb.getFirstInt('interface_cockpit') === 1);
+  if (bb.exists('interface_cockpit')) {
+    const val = bb.getFirstString('interface_cockpit');
+    entity.interfaceCockpit.set(val.toLowerCase() === 'true' || val === '1');
+  }
   if (bb.exists('isQuad'))   entity.isQuad.set(bb.getFirstInt('isQuad') === 1);
   if (bb.exists('isGlider')) entity.isGlider.set(bb.getFirstInt('isGlider') === 1);
 

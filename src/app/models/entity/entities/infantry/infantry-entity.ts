@@ -60,6 +60,25 @@ export class InfantryEntity extends BaseEntity {
   motionType = signal<string>('Leg');
   antimek = signal<boolean>(false);
 
+  // Infantry-specific armor / stealth booleans
+  encumberingArmor = signal<boolean>(false);
+  spaceSuit = signal<boolean>(false);
+  hasDEST = signal<boolean>(false);
+  sneakCamo = signal<boolean>(false);
+  sneakIR = signal<boolean>(false);
+  sneakECM = signal<boolean>(false);
+
+  // Manei Domini augmentations (pilot option names)
+  augmentations = signal<string[]>([]);
+
+  // Prosthetic Enhancement (Enhanced Limbs) — IO p.84
+  prostheticEnhancement1 = signal<string>('');
+  prostheticEnhancement1Count = signal<number>(0);
+  prostheticEnhancement2 = signal<string>('');
+  prostheticEnhancement2Count = signal<number>(0);
+  extraneousPair1 = signal<string>('');
+  extraneousPair2 = signal<string>('');
+
   specializations = signal<Set<InfantrySpecialization>>(new Set());
 
   // ═══════════════════════════════════════════════════════════════════════════

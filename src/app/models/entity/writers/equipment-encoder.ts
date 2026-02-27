@@ -69,31 +69,19 @@ export function encodeEquipmentLine(mount: EntityMountedEquipment, options?: Enc
     name = '(R) ' + name;
   }
 
-  // OmniPod suffix
-  if (mount.omniPodMounted) {
-    name += ':OMNI';
-  }
-
-  // Turret suffix (skip in BLK — location block implies turret)
+  // Turret suffix — standard (T) is implied by the BLK location block,
+  // but sponson (ST) and pintle (PT) appear in location blocks and need the suffix.
   if (!blk) {
     if (mount.turretType) {
       name += turretSuffix(mount.turretType);
     } else if (mount.turretMounted) {
       name += '(T)';
     }
+  } else if (mount.turretType && mount.turretType !== 'standard') {
+    name += turretSuffix(mount.turretType);
   }
 
-  // Variable-size equipment
-  if (mount.size !== undefined) {
-    name += `:SIZE:${mount.size}`;
-  }
-
-  // BA mount location
-  if (mount.baMountLocation) {
-    name += `:${mount.baMountLocation === 'Turret' ? 'TU' : mount.baMountLocation}`;
-  }
-
-  // BA mount types
+  // BA mount types (Java order: DWP → SSWM → APM → OMNI)
   if (mount.isDWP) {
     name += ':DWP';
   }
@@ -104,9 +92,22 @@ export function encodeEquipmentLine(mount: EntityMountedEquipment, options?: Enc
     name += ':APM';
   }
 
-  // Shot count
+  // OmniPod suffix
+  if (mount.omniPodMounted) {
+    name += ':OMNI';
+  }
+
+  // BA mount location
+  if (mount.baMountLocation) {
+    name += `:${mount.baMountLocation === 'Turret' ? 'TU' : mount.baMountLocation}`;
+  }
+
+  // Shot count (for BA/handheld ammo) or variable-size equipment (mutually exclusive)
   if (mount.shotsLeft !== undefined) {
     name += `:Shots${mount.shotsLeft}#`;
+  } else if (mount.size !== undefined) {
+    const sizeVal = Number.isInteger(mount.size) ? mount.size.toFixed(1) : String(mount.size);
+    name += `:SIZE:${sizeVal}`;
   }
 
   // VGL facing

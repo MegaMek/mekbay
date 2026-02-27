@@ -33,11 +33,22 @@
 
 import { ProtoMekEntity } from '../entities/protomek/protomek-entity';
 import {
-  ARMOR_TYPE_TO_CODE,
   ENGINE_TYPE_TO_CODE,
-  EngineType,
 } from '../types';
-import { BuildingBlockWriter, writeFluffBlocks } from './building-block-writer';
+import {
+  BuildingBlockWriter,
+  writeIdentity,
+  writeYearTechMeta,
+  writeMotionType,
+  writeTransporters,
+  writeEngine,
+  writeArmorBlocks,
+  writeInternalType,
+  writeEquipmentByLocation,
+  writeFluffBlocks,
+  writeSource,
+  writeTonnage,
+} from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 
 // ============================================================================
@@ -60,53 +71,46 @@ const PROTO_EQUIP_TAGS: [string, string][] = [
 
 /**
  * Serialize a ProtoMekEntity to BLK format.
+ *
+ * Block ordering matches Java BLKFile.encode():
+ *   identity → yearTechMeta → motion_type → cruiseMP → jumpingMP →
+ *   interface_cockpit → engine_type → clan_engine → armor_type →
+ *   armor_tech_rating → armor_tech_level → internal_type →
+ *   armor → Equipment per location → slotless_equipment →
+ *   fluff → source → tonnage
  */
 export function writeBlkProtoMek(entity: ProtoMekEntity): string {
   const w = new BuildingBlockWriter();
 
-  // ── Header ──
-  w.addBlock('UnitType', 'ProtoMek');
+  // ── Section 1: Identity ──
+  writeIdentity(w, entity, 'ProtoMek');
 
-  // ── Identity ──
-  w.addBlock('Name', entity.chassis());
-  w.addBlock('Model', entity.model());
-  if (entity.mulId() >= 0) w.addBlock('mul id:', entity.mulId());
+  // ── Section 2: Year / Tech / Meta (includes quirks) ──
+  writeYearTechMeta(w, entity);
 
-  // ── Year / Tech / Meta ──
-  w.addBlock('year', entity.year());
-  if (entity.originalBuildYear() >= 0) w.addBlock('originalBuildYear', entity.originalBuildYear());
-  if (entity.techLevel()) w.addBlock('type', entity.techLevel());
-  if (entity.role()) w.addBlock('role', entity.role());
+  // ── Section 3: Motion type ──
+  writeMotionType(w, entity);
 
-  // ── Transporters ──
-  const transporters = entity.transporters();
-  if (transporters.length > 0) {
-    const tLines = transporters.map(t =>
-      `${t.type}:${t.capacity}:${t.doors}` + (t.bayNumber >= 0 ? `:${t.bayNumber}` : '')
-    );
-    w.addBlock('transporters', ...tLines);
-  }
+  // ── Section 4: Transporters ──
+  writeTransporters(w, entity);
 
-  // ── Movement ──
+  // ── Section 5: Movement ──
   w.addBlock('cruiseMP', entity.walkMP());
+  // ProtoMeks always write jumpingMP (even 0)
+  w.addBlock('jumpingMP', entity.jumpingMP());
+  // ProtoMeks always write interface_cockpit as string
+  w.addBlock('interface_cockpit', entity.interfaceCockpit() ? 'true' : 'false');
 
-  // ── Engine ──
-  w.addBlock('engine_type', ENGINE_TYPE_TO_CODE[entity.engineType() as EngineType] ?? 0);
+  // ── Section 6: Engine ──
+  writeEngine(w, entity, ENGINE_TYPE_TO_CODE);
 
-  // ── ProtoMek-specific flags ──
-  if (entity.interfaceCockpit()) w.addBlock('interface_cockpit', 1);
-  if (entity.isQuad())   w.addBlock('isQuad', 1);
-  if (entity.isGlider()) w.addBlock('isGlider', 1);
+  // ── Section 7: Armor ──
+  writeArmorBlocks(w, entity);
 
-  // ── Armor ──
-  const armorType = entity.armorType();
-  if (armorType !== 'STANDARD') {
-    w.addBlock('armor_type', ARMOR_TYPE_TO_CODE[armorType] ?? 0);
-    const atb = entity.armorTechBase();
-    if (atb === 'Clan') w.addBlock('armor_tech', 1);
-    else if (atb === 'Mixed') w.addBlock('armor_tech', 2);
-  }
+  // ── Section 8: Internal type ──
+  writeInternalType(w, entity);
 
+  // ── Section 9: Armor values array ──
   const armorMap = entity.armorValues();
   // ProtoMek armor order: Head, Torso(front), Torso(rear), RA, LA, Legs, [MainGun]
   const armorInts: number[] = [
@@ -122,27 +126,24 @@ export function writeBlkProtoMek(entity: ProtoMekEntity): string {
   }
   w.addBlock('armor', ...armorInts);
 
-  // ── Equipment per location ──
-  const mountsByLoc = new Map<string, string[]>();
-  for (const m of entity.equipment()) {
-    let lines = mountsByLoc.get(m.location);
-    if (!lines) { lines = []; mountsByLoc.set(m.location, lines); }
-    lines.push(encodeEquipmentLine(m, { blkMode: true }));
-  }
+  // ── Section 10: Equipment per location (always write all, even empty) ──
+  const equipTags = entity.tonnage() > 9
+    ? PROTO_EQUIP_TAGS
+    : PROTO_EQUIP_TAGS.filter(([tag]) => tag !== 'Main Gun Equipment');
+  writeEquipmentByLocation(w, entity, equipTags, encodeEquipmentLine, true);
 
-  for (const [blkTag, locCode] of PROTO_EQUIP_TAGS) {
-    const lines = mountsByLoc.get(locCode) ?? [];
-    if (lines.length > 0) {
-      w.addBlock(blkTag, ...lines);
-    }
-  }
+  // ── Section 11: ProtoMek-specific flags ──
+  if (entity.isQuad())   w.addBlock('isQuad', 1);
+  if (entity.isGlider()) w.addBlock('isGlider', 1);
 
-  // ── Fluff ──
+  // ── Section 12: Fluff ──
   writeFluffBlocks(w, entity.fluff());
 
-  // ── Source / Tonnage ──
-  if (entity.source()) w.addBlock('source', entity.source());
-  w.addBlock('tonnage', entity.tonnage());
+  // ── Section 13: Source ──
+  writeSource(w, entity);
+
+  // ── Section 14: Tonnage ──
+  writeTonnage(w, entity);
 
   return w.toString();
 }

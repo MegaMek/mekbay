@@ -117,6 +117,11 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
     entity.cockpitType.set(cpCode === 0 ? 'Standard' : `Type ${cpCode}`);
   }
 
+  // ── OmniPod heat sinks ──
+  if (bb.exists('omnipodheatsinks')) {
+    entity.omnipodHeatSinkCount.set(bb.getFirstInt('omnipodheatsinks'));
+  }
+
   // ── Structural integrity ──
   if (bb.exists('structural_integrity')) {
     entity.structuralIntegrity.set(bb.getFirstInt('structural_integrity'));
@@ -183,6 +188,13 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
     if (bb.exists('structural_tech_rating'))   entity.structuralTechRating.set(bb.getFirstInt('structural_tech_rating'));
     if (bb.exists('engine_tech_rating'))       entity.engineTechRating.set(bb.getFirstInt('engine_tech_rating'));
     if (bb.exists('armor_tech_rating'))        entity.armorTechRating.set(bb.getFirstInt('armor_tech_rating'));
+    if (bb.exists('baseChassisFireConWeight')) entity.baseChassisFireConWeight.set(bb.getFirstDouble('baseChassisFireConWeight'));
+  }
+
+  // ── Internal type (round-trip) ──
+  if (bb.exists('internal_type')) {
+    const isCode = bb.getFirstInt('internal_type');
+    entity.rawInternalTypeCode.set(isCode);
   }
 
   return entity;

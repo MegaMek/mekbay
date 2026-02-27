@@ -854,6 +854,7 @@ export interface EntityTransporter {
   platoonType?: string;
   facing?: number;
   bitmap?: number;
+  omni?: boolean;
 }
 
 export interface EntityWeaponBay {

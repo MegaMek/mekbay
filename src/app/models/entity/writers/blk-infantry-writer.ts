@@ -33,7 +33,13 @@
 
 import { InfantryEntity } from '../entities/infantry/infantry-entity';
 import { INFANTRY_SPECIALIZATION_TO_BIT } from '../types';
-import { BuildingBlockWriter, writeFluffBlocks } from './building-block-writer';
+import {
+  BuildingBlockWriter,
+  writeIdentity,
+  writeYearTechMeta,
+  writeFluffBlocks,
+  writeSource,
+} from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 
 // ============================================================================
@@ -42,53 +48,81 @@ import { encodeEquipmentLine } from './equipment-encoder';
 
 /**
  * Serialize an InfantryEntity to BLK format.
+ *
+ * Block ordering matches Java BLKFile.encode():
+ *   identity → yearTechMeta → motion_type → Troopers Equipment →
+ *   Field Guns Equipment → slotless_equipment → fluff → source →
+ *   squad_size → squadn → secondn → Primary → Secondary →
+ *   armordivisor → encumberingarmor → spacesuit → dest →
+ *   sneakcamo → sneakir → sneakecm → specialization
+ *
+ * NOTE: No tonnage, no cruiseMP, no armor blocks for conventional infantry.
  */
 export function writeBlkInfantry(entity: InfantryEntity): string {
   const w = new BuildingBlockWriter();
 
-  // ── Header ──
-  w.addBlock('UnitType', 'Infantry');
+  // ── Section 1: Identity ──
+  writeIdentity(w, entity, 'Infantry');
 
-  // ── Identity ──
-  w.addBlock('Name', entity.chassis());
-  w.addBlock('Model', entity.model());
-  if (entity.mulId() >= 0) w.addBlock('mul id:', entity.mulId());
+  // ── Section 2: Year / Tech / Meta (includes quirks) ──
+  writeYearTechMeta(w, entity);
 
-  // ── Year / Tech / Meta ──
-  w.addBlock('year', entity.year());
-  if (entity.originalBuildYear() >= 0) w.addBlock('originalBuildYear', entity.originalBuildYear());
-  if (entity.techLevel()) w.addBlock('type', entity.techLevel());
-  if (entity.role()) w.addBlock('role', entity.role());
+  // ── Section 3: Motion type ──
+  if (entity.motionType()) w.addBlock('motion_type', entity.motionType());
 
-  // ── Motion type ──
-  w.addBlock('motion_type', entity.motionType());
-
-  // ── Transporters ──
-  const transporters = entity.transporters();
-  if (transporters.length > 0) {
-    const tLines = transporters.map(t =>
-      `${t.type}:${t.capacity}:${t.doors}` + (t.bayNumber != null && t.bayNumber !== -1 ? `:${t.bayNumber}` : '')
-    );
-    w.addBlock('transporters', ...tLines);
+  // ── Section 4: Equipment per location ──
+  // Java iterates entity.locations() which gives LOC_INFANTRY=0 then LOC_FIELD_GUNS=1
+  // producing "Troopers Equipment" and "Field Guns Equipment", always, even if empty.
+  const mountsByLoc = new Map<string, string[]>();
+  for (const m of entity.equipment()) {
+    let lines = mountsByLoc.get(m.location);
+    if (!lines) { lines = []; mountsByLoc.set(m.location, lines); }
+    lines.push(encodeEquipmentLine(m, { blkMode: true }));
   }
 
-  // ── Squad ──
+  // Troopers Equipment (always written, even if empty)
+  const trooperEquip = mountsByLoc.get('Infantry') ?? [];
+  w.addBlock('Troopers Equipment', ...trooperEquip);
+
+  // Field Guns Equipment (always written, even if empty)
+  const fieldGunEquip = mountsByLoc.get('Field Guns') ?? [];
+  w.addBlock('Field Guns Equipment', ...fieldGunEquip);
+
+  // Slotless Equipment
+  const slotlessEquip = mountsByLoc.get('None') ?? [];
+  if (slotlessEquip.length > 0) {
+    w.addBlock('slotless_equipment', ...slotlessEquip);
+  }
+
+  // ── Section 5: Fluff ──
+  writeFluffBlocks(w, entity.fluff());
+
+  // ── Section 6: Source ──
+  writeSource(w, entity);
+
+  // ── Section 7: Infantry-specific tail fields ──
   w.addBlock('squad_size', entity.squadSize());
   w.addBlock('squadn', entity.squadCount());
+  if (entity.secondaryCount() > 0) w.addBlock('secondn', entity.secondaryCount());
 
-  // ── Weapons ──
   if (entity.primaryWeapon())   w.addBlock('Primary', entity.primaryWeapon());
   if (entity.secondaryWeapon()) w.addBlock('Secondary', entity.secondaryWeapon());
-  if (entity.secondaryCount())  w.addBlock('secondn', entity.secondaryCount());
 
-  // ── Armor ──
-  if (entity.armorDivisor() !== 1) w.addBlock('armorDivisor', entity.armorDivisor());
-  if (entity.armorKit())            w.addBlock('armorKit', entity.armorKit());
+  // Armor divisor — Java uses Double.toString() which always writes ".0" for integers
+  if (entity.armorDivisor() !== 1) {
+    const d = entity.armorDivisor();
+    w.addBlock('armordivisor', Number.isInteger(d) ? d.toFixed(1) : String(d));
+  }
 
-  // ── Anti-mek ──
-  if (entity.antimek()) w.addBlock('antimek', 1);
+  // Boolean flags — only written when true, value is always "true"
+  if (entity.encumberingArmor()) w.addBlock('encumberingarmor', 'true');
+  if (entity.spaceSuit())        w.addBlock('spacesuit', 'true');
+  if (entity.hasDEST())          w.addBlock('dest', 'true');
+  if (entity.sneakCamo())        w.addBlock('sneakcamo', 'true');
+  if (entity.sneakIR())          w.addBlock('sneakir', 'true');
+  if (entity.sneakECM())         w.addBlock('sneakecm', 'true');
 
-  // ── Specializations (bitmap) ──
+  // Specializations (bitmap)
   const specs = entity.specializations();
   if (specs.size > 0) {
     let bitmap = 0;
@@ -99,19 +133,29 @@ export function writeBlkInfantry(entity: InfantryEntity): string {
     w.addBlock('specialization', bitmap);
   }
 
-  // ── Field Guns ──
-  const fieldGuns = entity.equipment().filter(m => m.location === 'Field Guns');
-  if (fieldGuns.length > 0) {
-    const lines = fieldGuns.map(m => encodeEquipmentLine(m, { blkMode: true }));
-    w.addBlock('Field Guns Equipment', ...lines);
+  // Augmentations (Manei Domini)
+  const augs = entity.augmentations();
+  if (augs.length > 0) {
+    w.addBlock('augmentation', ...augs);
   }
 
-  // ── Fluff ──
-  writeFluffBlocks(w, entity.fluff());
+  // Prosthetic Enhancement (Enhanced Limbs — IO p.84)
+  if (entity.prostheticEnhancement1()) {
+    w.addBlock('prostheticEnhancement1', entity.prostheticEnhancement1());
+    if (entity.prostheticEnhancement1Count() > 0) {
+      w.addBlock('prostheticEnhancement1Count', entity.prostheticEnhancement1Count());
+    }
+  }
+  if (entity.prostheticEnhancement2()) {
+    w.addBlock('prostheticEnhancement2', entity.prostheticEnhancement2());
+    if (entity.prostheticEnhancement2Count() > 0) {
+      w.addBlock('prostheticEnhancement2Count', entity.prostheticEnhancement2Count());
+    }
+  }
+  if (entity.extraneousPair1()) w.addBlock('extraneousPair1', entity.extraneousPair1());
+  if (entity.extraneousPair2()) w.addBlock('extraneousPair2', entity.extraneousPair2());
 
-  // ── Source / Tonnage ──
-  if (entity.source()) w.addBlock('source', entity.source());
-  w.addBlock('tonnage', entity.tonnage());
+  // NOTE: No tonnage block for conventional infantry — matches Java reference output
 
   return w.toString();
 }

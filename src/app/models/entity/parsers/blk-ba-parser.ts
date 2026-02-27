@@ -53,9 +53,9 @@ import { ParseContext } from './parse-context';
  * Parse a BLK file for a BattleArmor entity.
  *
  * BLK layout for BA:
- *   - `Point Equipment` → Squad location (shared equipment)
+ *   - `Squad Equipment` (or legacy `Point Equipment`) → Squad location (shared equipment)
  *   - `Trooper 1 Equipment` … `Trooper N Equipment` → per-trooper equipment
- *   - Equipment lines may have `:Body`, `:LA`, `:RA`, `:Turret` suffixes for BA mount location
+ *   - Equipment lines may have `:Body`, `:LA`, `:RA`, `:TU` suffixes for BA mount location
  */
 export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEntity {
   resetMountIdCounter();
@@ -66,18 +66,28 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
   const techBase = getBlkTechBase(bb);
 
   // ── BA-specific fields ──
-  if (bb.exists('troopercount'))   entity.trooperCount.set(bb.getFirstInt('troopercount'));
+  // Trooper Count can appear as 'Trooper Count' (with space) or 'troopercount'
+  if (bb.exists('Trooper Count'))       entity.trooperCount.set(bb.getFirstInt('Trooper Count'));
+  else if (bb.exists('troopercount'))   entity.trooperCount.set(bb.getFirstInt('troopercount'));
+
   if (bb.exists('weightclass'))    entity.weightClass.set(bb.getFirstString('weightclass'));
   if (bb.exists('chassis'))        entity.chassisType.set(bb.getFirstString('chassis'));
+  if (bb.exists('turret'))         entity.turretConfig.set(bb.getFirstString('turret'));
+  if (bb.exists('exoskeleton'))    entity.isExoskeleton.set(bb.getFirstString('exoskeleton') === 'true');
   if (bb.exists('jumpingMP'))      entity.jumpingMP.set(bb.getFirstInt('jumpingMP'));
   if (bb.exists('motion_type'))    entity.motionType.set(bb.getFirstString('motion_type'));
+
+  // cruiseMP → walkMP (BA movement)
+  if (bb.exists('cruiseMP'))       entity.walkMP.set(bb.getFirstInt('cruiseMP'));
 
   // ── Armor ──
   if (bb.exists('armor_type')) entity.armorType.set(armorTypeFromCode(bb.getFirstInt('armor_type')));
   if (bb.exists('armor_tech')) {
     const code = bb.getFirstInt('armor_tech');
-    if (code === 1) entity.armorTechBase.set('Clan');
-    else if (code === 2) entity.armorTechBase.set('Mixed');
+    entity.armorTechCode.set(code);
+    // Also set semantic tech base from TechConstants ranges
+    if (code >= 5 && code <= 8) entity.armorTechBase.set('Clan');
+    else if (code >= 9) entity.armorTechBase.set('Mixed');
   }
   entity.armorEquipment.set(
     resolveArmorEquipment(entity.armorType(), entity.armorTechBase() === 'Clan', ctx.equipmentDb)
@@ -86,10 +96,14 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
   if (bb.exists('armor')) {
     const ints = bb.getDataAsInt('armor');
     const armorMap = new Map<string, LocationArmor>();
-    // BA armor: one value per trooper, plus possibly one for squad
-    for (let i = 0; i < ints.length; i++) {
-      const loc = i === 0 ? 'Squad' : `Trooper ${i}`;
-      armorMap.set(loc, locationArmor(ints[i]));
+    // BA armor: single value = squad armor (same for all troopers)
+    if (ints.length === 1) {
+      armorMap.set('Squad', locationArmor(ints[0]));
+    } else {
+      for (let i = 0; i < ints.length; i++) {
+        const loc = i === 0 ? 'Squad' : `Trooper ${i}`;
+        armorMap.set(loc, locationArmor(ints[i]));
+      }
     }
     entity.armorValues.set(armorMap);
   }
@@ -109,8 +123,13 @@ function parseBaEquipment(
   techBase: EntityTechBase,
   ctx: ParseContext,
 ): void {
-  // Point Equipment → Squad
-  parseLocationEquipment(bb, entity, 'Point Equipment', 'Squad', techBase, ctx);
+  // Squad Equipment (or legacy Point Equipment) → Squad
+  if (bb.exists('Squad Equipment')) {
+    parseLocationEquipment(bb, entity, 'Squad Equipment', 'Squad', techBase, ctx);
+  } else if (bb.exists('Point Equipment')) {
+    entity.squadEquipmentTag.set('Point');
+    parseLocationEquipment(bb, entity, 'Point Equipment', 'Squad', techBase, ctx);
+  }
 
   // Trooper N Equipment
   for (let i = 1; i <= 6; i++) {
@@ -137,23 +156,9 @@ function parseLocationEquipment(
     const line = raw.trim();
     if (!line) continue;
 
-    // Check for BA mount location suffix (:Body, :LA, :RA, :Turret)
-    let baMountLocation: 'Body' | 'LA' | 'RA' | 'Turret' | undefined;
-    let isDWP = false;
-    let isSSWM = false;
-    let isAPM = false;
-    let equipLine = line;
-
-    if (equipLine.endsWith(':Body'))   { baMountLocation = 'Body'; equipLine = equipLine.slice(0, -5); }
-    else if (equipLine.endsWith(':LA'))     { baMountLocation = 'LA'; equipLine = equipLine.slice(0, -3); }
-    else if (equipLine.endsWith(':RA'))     { baMountLocation = 'RA'; equipLine = equipLine.slice(0, -3); }
-    else if (equipLine.endsWith(':Turret')) { baMountLocation = 'Turret'; equipLine = equipLine.slice(0, -7); }
-
-    if (equipLine.endsWith(':DWP'))  { isDWP = true; equipLine = equipLine.slice(0, -4); }
-    if (equipLine.endsWith(':SSWM')) { isSSWM = true; equipLine = equipLine.slice(0, -5); }
-    if (equipLine.endsWith(':APM'))  { isAPM = true; equipLine = equipLine.slice(0, -4); }
-
-    const parsed = parseEquipmentLine(equipLine);
+    // parseEquipmentLine handles all colon-separated suffixes in any order:
+    // :DWP, :SSWM, :APM, :OMNI, :Body, :LA, :RA, :TU, :ShotsN#, :SIZE:N
+    const parsed = parseEquipmentLine(line);
     const resolved = ctx.resolveEquipment(parsed.name, blkTag);
 
     entity.addEquipment({
@@ -166,10 +171,11 @@ function parseLocationEquipment(
       omniPodMounted: parsed.omniPod,
       armored: false,
       size: parsed.size,
-      baMountLocation,
-      isDWP,
-      isSSWM,
-      isAPM,
+      baMountLocation: parsed.baMountLocation,
+      isDWP: parsed.isDWP,
+      isSSWM: parsed.isSSWM,
+      isAPM: parsed.isAPM,
+      shotsLeft: parsed.shots,
     });
   }
 }

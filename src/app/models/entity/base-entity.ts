@@ -42,8 +42,6 @@ import {
   ArmorFace,
   ArmorType,
   ARMOR_TYPE_TO_CODE,
-  TECH_RATING_TO_NUMBER,
-  compoundTechLevel,
   EngineFlag,
   EngineType,
   EntityFluff,
@@ -145,16 +143,17 @@ export abstract class BaseEntity {
   armorEquipment = signal<ArmorEquipment | null>(null);
   /** BLK armor type code, derived from `armorType`. */
   armorTypeCode = computed(() => ARMOR_TYPE_TO_CODE[this.armorType()] ?? 0);
-  /** Tech-rating index (A=0 … F=5), derived from ArmorEquipment tech data. */
-  armorTechRating = computed(() => {
-    const eq = this.armorEquipment();
-    return eq ? (TECH_RATING_TO_NUMBER[eq.rating] ?? 3) : 3;
-  });
-  /** Compound tech level for BLK output, derived from ArmorEquipment tech data. */
-  armorTechLevel = computed(() => {
-    const eq = this.armorEquipment();
-    return eq ? compoundTechLevel(eq.level, this.techBase() === 'Clan') : 0;
-  });
+  /**
+   * Tech-rating index (A=0 … F=5).  Parsers set this directly from the BLK
+   * `armor_tech_rating` block for round-trip fidelity.  When not explicitly
+   * set (-1), the writer can derive it from ArmorEquipment.
+   */
+  armorTechRating = signal<number>(-1);
+  /**
+   * Compound tech level for BLK output.  Parsers set this directly from the
+   * BLK `armor_tech_level` block for round-trip fidelity.
+   */
+  armorTechLevel = signal<number>(-1);
   /**
    * Armor per location.  Keys are canonical location IDs ("CT", "LT", etc.).
    * Each value is `{ front, rear }`.  For locations without rear armour the
@@ -168,6 +167,8 @@ export abstract class BaseEntity {
   structureType = signal<string>('Standard');
   /** Raw MTF structure string for round-trip (e.g. "IS Standard", "Clan Endo Steel") */
   rawStructure = signal<string>('');
+  /** Raw BLK internal_type code for round-trip fidelity (-1 = Unknown, 0 = Standard, etc.) */
+  rawInternalTypeCode = signal<number>(0);
 
   // ── Equipment — SINGLE SOURCE OF TRUTH ──
   equipment = signal<EntityMountedEquipment[]>([]);

@@ -56,13 +56,14 @@ export class ProtoMekEntity extends BaseEntity {
   interfaceCockpit = signal<boolean>(false);
   isGlider = signal<boolean>(false);
   isQuad = signal<boolean>(false);
+  hasMainGun = signal<boolean>(false);
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  LOCATION OVERRIDES
   // ═══════════════════════════════════════════════════════════════════════════
 
   get locationOrder(): readonly string[] {
-    return this.tonnage() > 9
+    return this.hasMainGun()
       ? PROTO_LOCATIONS_WITH_MAIN_GUN
       : PROTO_LOCATIONS;
   }

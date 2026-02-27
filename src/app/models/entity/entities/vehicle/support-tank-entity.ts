@@ -35,8 +35,12 @@ import { signal } from '@angular/core';
 import { EntityType } from '../../types';
 import { VehicleEntity } from './vehicle-entity';
 
-/** Support Tank — adds BAR rating. */
+/** Support Tank — adds BAR rating and support vehicle tech ratings. */
 export class SupportTankEntity extends VehicleEntity {
   override readonly entityType: EntityType = 'SupportTank';
-  barRating = signal<number>(10);
+  barRating = signal<number>(-1);
+  structuralTechRating = signal<number>(0);
+  engineTechRating = signal<number>(0);
+  fuel = signal<number>(0);
+  baseChassisFireConWeight = signal<number>(0);
 }

@@ -62,34 +62,29 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
     entity.motionType.set(bb.getFirstString('motion_type'));
   }
 
-  // ── Squad configuration ──
-  if (bb.exists('squad_size')) entity.squadSize.set(bb.getFirstInt('squad_size'));
-  if (bb.exists('squadn'))    entity.squadCount.set(bb.getFirstInt('squadn'));
+  // ── Troopers Equipment (armor kits, etc. — stored in 'Infantry' location) ──
+  if (bb.exists('Troopers Equipment')) {
+    const lines = bb.getDataAsString('Troopers Equipment');
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line) continue;
 
-  // ── Weapons ──
-  if (bb.exists('Primary'))      entity.primaryWeapon.set(bb.getFirstString('Primary'));
-  if (bb.exists('Secondary'))    entity.secondaryWeapon.set(bb.getFirstString('Secondary'));
-  if (bb.exists('secondn'))      entity.secondaryCount.set(bb.getFirstInt('secondn'));
+      const parsed = parseEquipmentLine(line);
+      const resolved = ctx.resolveEquipment(parsed.name, 'Troopers Equipment');
 
-  // ── Armor ──
-  if (bb.exists('armorDivisor')) entity.armorDivisor.set(bb.getFirstDouble('armorDivisor'));
-  if (bb.exists('armorKit'))     entity.armorKit.set(bb.getFirstString('armorKit'));
-
-  // ── Anti-mek ──
-  if (bb.exists('antimek')) {
-    entity.antimek.set(bb.getFirstInt('antimek') === 1 || bb.getFirstString('antimek').toLowerCase() === 'true');
-  }
-
-  // ── Specializations (bitmap) ──
-  if (bb.exists('specialization')) {
-    const bitmap = bb.getFirstInt('specialization');
-    const specs = new Set<InfantrySpecialization>();
-    for (const [bit, spec] of Object.entries(INFANTRY_SPECIALIZATION_FROM_BIT)) {
-      if (bitmap & (1 << parseInt(bit, 10))) {
-        specs.add(spec);
-      }
+      entity.addEquipment({
+        mountId: generateMountId(),
+        equipmentId: parsed.name,
+        equipment: resolved ?? undefined,
+        location: 'Infantry',
+        rearMounted: false,
+        turretMounted: false,
+        omniPodMounted: false,
+        armored: false,
+        size: parsed.size,
+        shotsLeft: parsed.shots,
+      });
     }
-    entity.specializations.set(specs);
   }
 
   // ── Field Guns ──
@@ -112,8 +107,82 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
         omniPodMounted: false,
         armored: false,
         size: parsed.size,
+        shotsLeft: parsed.shots,
       });
     }
+  }
+
+  // ── Squad configuration ──
+  if (bb.exists('squad_size')) entity.squadSize.set(bb.getFirstInt('squad_size'));
+  if (bb.exists('squadn'))    entity.squadCount.set(bb.getFirstInt('squadn'));
+
+  // ── Weapons ──
+  if (bb.exists('Primary'))      entity.primaryWeapon.set(bb.getFirstString('Primary'));
+  if (bb.exists('Secondary'))    entity.secondaryWeapon.set(bb.getFirstString('Secondary'));
+  if (bb.exists('secondn'))      entity.secondaryCount.set(bb.getFirstInt('secondn'));
+
+  // ── Armor ──
+  // lowercase 'armordivisor' matches Java BLKFile output
+  if (bb.exists('armordivisor')) entity.armorDivisor.set(bb.getFirstDouble('armordivisor'));
+  // legacy uppercase form
+  else if (bb.exists('armorDivisor')) entity.armorDivisor.set(bb.getFirstDouble('armorDivisor'));
+  if (bb.exists('armorKit'))     entity.armorKit.set(bb.getFirstString('armorKit'));
+
+  // ── Infantry-specific boolean fields (Java uses existence check, value is "true") ──
+  if (bb.exists('encumberingarmor')) entity.encumberingArmor.set(true);
+  if (bb.exists('spacesuit'))       entity.spaceSuit.set(true);
+  if (bb.exists('dest'))            entity.hasDEST.set(true);
+  if (bb.exists('sneakcamo'))       entity.sneakCamo.set(true);
+  if (bb.exists('sneakir'))         entity.sneakIR.set(true);
+  if (bb.exists('sneakecm'))        entity.sneakECM.set(true);
+
+  // ── Anti-mek ──
+  if (bb.exists('antimek')) {
+    entity.antimek.set(bb.getFirstInt('antimek') === 1 || bb.getFirstString('antimek').toLowerCase() === 'true');
+  }
+
+  // ── Specializations (bitmap) ──
+  if (bb.exists('specialization')) {
+    const bitmap = bb.getFirstInt('specialization');
+    const specs = new Set<InfantrySpecialization>();
+    for (const [bit, spec] of Object.entries(INFANTRY_SPECIALIZATION_FROM_BIT)) {
+      if (bitmap & (1 << parseInt(bit, 10))) {
+        specs.add(spec);
+      }
+    }
+    entity.specializations.set(specs);
+  }
+
+  // ── Augmentations (Manei Domini) ──
+  if (bb.exists('augmentation')) {
+    const augs = bb.getDataAsString('augmentation').map(s => s.trim()).filter(s => s.length > 0);
+    if (augs.length > 0) entity.augmentations.set(augs);
+  }
+
+  // ── Prosthetic Enhancements (Enhanced Limbs — IO p.84) ──
+  if (bb.exists('prostheticEnhancement1')) {
+    entity.prostheticEnhancement1.set(bb.getFirstString('prostheticEnhancement1'));
+    if (bb.exists('prostheticEnhancement1Count')) {
+      entity.prostheticEnhancement1Count.set(bb.getFirstInt('prostheticEnhancement1Count'));
+    }
+  } else if (bb.exists('prostheticEnhancement')) {
+    // Legacy single-slot format
+    entity.prostheticEnhancement1.set(bb.getFirstString('prostheticEnhancement'));
+    if (bb.exists('prostheticEnhancementCount')) {
+      entity.prostheticEnhancement1Count.set(bb.getFirstInt('prostheticEnhancementCount'));
+    }
+  }
+  if (bb.exists('prostheticEnhancement2')) {
+    entity.prostheticEnhancement2.set(bb.getFirstString('prostheticEnhancement2'));
+    if (bb.exists('prostheticEnhancement2Count')) {
+      entity.prostheticEnhancement2Count.set(bb.getFirstInt('prostheticEnhancement2Count'));
+    }
+  }
+  if (bb.exists('extraneousPair1')) {
+    entity.extraneousPair1.set(bb.getFirstString('extraneousPair1'));
+  }
+  if (bb.exists('extraneousPair2')) {
+    entity.extraneousPair2.set(bb.getFirstString('extraneousPair2'));
   }
 
   return entity;

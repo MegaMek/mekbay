@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { EntityFluff } from '../types';
+import { EntityFluff, TECH_RATING_TO_NUMBER, compoundTechLevel } from '../types';
 import { BaseEntity } from '../base-entity';
 import { APP_VERSION_STRING } from '../../../build-meta';
 
@@ -165,11 +165,18 @@ export function writeTransporters(w: BuildingBlockWriter, entity: BaseEntity): v
       const hasPlatoon = t.platoonType != null || hasFacing;
       const hasBayNum = hasPlatoon || t.bayNumber !== -1;
 
-      let line = `${t.type}:${t.capacity}:${t.doors}`;
+      // TroopSpace uses simplified 2-part format: type:capacity
+      // Java uses double for TroopSpace/Bays (prints .0) but int for BattleArmorHandles (prints -1)
+      const cap = (Number.isInteger(t.capacity) && t.capacity >= 0) ? t.capacity.toFixed(1) : String(t.capacity);
+      const needsDoors = t.doors > 0 || hasBayNum;
+      let line = needsDoors
+        ? `${t.type}:${cap}:${t.doors}`
+        : `${t.type}:${cap}`;
       if (hasBayNum) line += `:${t.bayNumber}`;
       if (hasPlatoon) line += `:${t.platoonType ?? ''}`;
       if (hasFacing) line += `:${t.facing ?? -1}`;
       if (hasBitmap) line += `:${t.bitmap ?? 0}`;
+      if (t.omni) line += ':omni';
       return line;
     });
     w.addBlock('transporters', ...tLines);
@@ -180,18 +187,38 @@ export function writeTransporters(w: BuildingBlockWriter, entity: BaseEntity): v
  * Write armor type / tech rating / tech level blocks.
  * MegaMek ALWAYS writes these for non-infantry, non-GE entities
  * (even code 0 for Standard).
+ *
+ * Values come from the raw signals set during parsing.  When not
+ * explicitly set (-1), we derive from ArmorEquipment exactly as
+ * MegaMek does.
  */
 export function writeArmorBlocks(w: BuildingBlockWriter, entity: BaseEntity): void {
   w.addBlock('armor_type', entity.armorTypeCode());
-  w.addBlock('armor_tech_rating', entity.armorTechRating());
-  w.addBlock('armor_tech_level', entity.armorTechLevel());
+
+  let techRating = entity.armorTechRating();
+  if (techRating < 0) {
+    const eq = entity.armorEquipment();
+    techRating = eq ? (TECH_RATING_TO_NUMBER[eq.rating] ?? 3) : 0;
+  }
+  w.addBlock('armor_tech_rating', techRating);
+
+  let techLevel = entity.armorTechLevel();
+  if (techLevel < 0) {
+    const eq = entity.armorEquipment();
+    techLevel = eq ? compoundTechLevel(eq.level, entity.techBase() === 'Clan') : 0;
+  }
+  w.addBlock('armor_tech_level', techLevel);
 }
 
 /**
  * Write internal_type block (only when NOT Standard, i.e. code != 0).
  */
 export function writeInternalType(w: BuildingBlockWriter, entity: BaseEntity): void {
-  if (entity.structureType() !== 'Standard') {
+  // Use raw BLK code if available (supports round-trip of -1 = Unknown)
+  const rawCode = entity.rawInternalTypeCode();
+  if (rawCode !== 0) {
+    w.addBlock('internal_type', rawCode);
+  } else if (entity.structureType() !== 'Standard') {
     let code = 0;
     if (entity.structureType() === 'Endo Steel') code = 1;
     else if (entity.structureType() === 'Composite') code = 2;
@@ -224,7 +251,7 @@ export function writeEngine(
   const impliedClan = typeStr.includes('clan');
   const isClanEngine = entity.clanEngine();
   if (isClanEngine !== impliedClan) {
-    w.addBlock('clan_engine', isClanEngine ? 1 : 0);
+    w.addBlock('clan_engine', isClanEngine ? 'true' : 'false');
   }
 }
 
@@ -305,10 +332,12 @@ export function writeSource(w: BuildingBlockWriter, entity: BaseEntity): void {
 }
 
 /**
- * Write tonnage block.
+ * Write tonnage block.  Java uses Double.toString() which always
+ * includes a decimal point, so we format integer tonnages with `.0`.
  */
 export function writeTonnage(w: BuildingBlockWriter, entity: BaseEntity): void {
-  w.addBlock('tonnage', entity.tonnage());
+  const t = entity.tonnage();
+  w.addBlock('tonnage', Number.isInteger(t) ? t.toFixed(1) : String(t));
 }
 
 /**

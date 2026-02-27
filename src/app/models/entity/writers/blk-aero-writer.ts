@@ -112,8 +112,10 @@ export function writeBlkAero(entity: AeroEntity): string {
   w.addBlock('SafeThrust', entity.walkMP());
 
   // 6. Cockpit / vstol
-  if (!(entity instanceof FixedWingSupportEntity)) {
-    w.addBlock('cockpit_type', 0); // TODO: map cockpit type to code
+  {
+    const cpType = entity.cockpitType();
+    const cpCode = cpType === 'Standard' ? 0 : parseInt(cpType.replace('Type ', ''), 10) || 0;
+    w.addBlock('cockpit_type', cpCode);
   }
   if (entity instanceof ConvFighterEntity && entity.vstol()) {
     w.addBlock('vstol', 1);
@@ -122,6 +124,9 @@ export function writeBlkAero(entity: AeroEntity): string {
   // 7. Heat sinks / Fuel
   w.addBlock('heatsinks', entity.heatSinkCount());
   w.addBlock('sink_type', HEAT_SINK_TYPE_TO_CODE[entity.heatSinkType() as HeatSinkType] ?? 0);
+  if (entity.omnipodHeatSinkCount() > 0) {
+    w.addBlock('omnipodheatsinks', entity.omnipodHeatSinkCount());
+  }
   w.addBlock('fuel', entity.fuel());
 
   // 8. Engine: engine_type, clan_engine
@@ -169,6 +174,12 @@ export function writeBlkAero(entity: AeroEntity): string {
 
   // 19. Manual BV
   writeManualBV(w, entity);
+
+  // 20. Fire control weight (FWS omni)
+  if (entity instanceof FixedWingSupportEntity && entity.omni()) {
+    const fcw = entity.baseChassisFireConWeight();
+    w.addBlock('baseChassisFireConWeight', Number.isInteger(fcw) ? fcw.toFixed(1) : String(fcw));
+  }
 
   return w.toString();
 }

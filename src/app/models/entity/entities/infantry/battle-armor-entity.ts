@@ -58,6 +58,15 @@ export class BattleArmorEntity extends InfantryEntity {
   sswmCapacity = signal<number>(0);
   costKC = signal<number>(0);
 
+  /** Quad BA turret config, e.g. "Modular:3" or "Standard:2" */
+  turretConfig = signal<string>('');
+  /** Whether this unit is an exoskeleton */
+  isExoskeleton = signal<boolean>(false);
+  /** Raw armor_tech code (TechConstants value) for BLK round-trip */
+  armorTechCode = signal<number>(0);
+  /** Squad equipment tag: 'Squad' (modern) or 'Point' (legacy) for BLK round-trip */
+  squadEquipmentTag = signal<'Squad' | 'Point'>('Squad');
+
   // ═══════════════════════════════════════════════════════════════════════════
   //  LOCATION OVERRIDES
   // ═══════════════════════════════════════════════════════════════════════════
