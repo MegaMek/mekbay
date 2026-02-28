@@ -127,7 +127,8 @@ export function writeBlkMek(entity: MekEntity): string {
   // ── Chassis / Engine ──
   const chassisType = isQuad ? 'Quad' : 'Biped';
   w.addBlock('chassis_type', chassisType);
-  w.addBlock('engine_type', ENGINE_TYPE_TO_CODE[entity.engineType() as EngineType] ?? 0);
+  const engine = entity.mountedEngine()?.engine;
+  w.addBlock('engine_type', ENGINE_TYPE_TO_CODE[engine?.type] ?? 0);
   w.addBlock('walkingMP', entity.walkMP());
 
   // ── Structure / Gyro / Cockpit ──
@@ -195,7 +196,7 @@ function slotToBlkString(
       return '-1';
     case 'system':
       return slot.systemType === 'Engine'
-        ? getBlkEngineName(entity.engineType())
+        ? getBlkEngineName(entity.mountedEngine()?.engine?.type)
         : slot.systemType ?? '-1';
     case 'equipment': {
       const mount = slot.mountId ? mountMap.get(slot.mountId) : undefined;
@@ -204,7 +205,7 @@ function slotToBlkString(
   }
 }
 
-function getBlkEngineName(engineType: string): string {
+function getBlkEngineName(engineType: string | undefined): string {
   switch (engineType) {
     case 'XL': return 'XL Fusion Engine';
     case 'XXL': return 'XXL Fusion Engine';
