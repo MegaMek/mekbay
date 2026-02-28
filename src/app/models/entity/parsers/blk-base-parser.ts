@@ -39,6 +39,7 @@ import {
   createPatchworkArmor,
   type MountedEngine,
 } from '../components';
+import { AeroEntity } from '../entities/aero/aero-entity';
 import {
   ArmorType,
   EntityFluff,
@@ -565,7 +566,7 @@ export function parseBlkArmorValues(
  */
 export function parseBlkAeroEngine(
   bb: BuildingBlock,
-  entity: BaseEntity,
+  entity: AeroEntity,
   opts?: BlkEngineOpts,
 ): void {
   const result = parseBlkEngine(bb, entity, opts);

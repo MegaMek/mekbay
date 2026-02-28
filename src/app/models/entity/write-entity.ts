@@ -32,8 +32,10 @@
  */
 
 import { BaseEntity } from './base-entity';
-import { AeroEntity } from './entities/aero/aero-entity';
+import { AeroSpaceFighterEntity } from './entities/aero/aero-space-fighter-entity';
+import { ConvFighterEntity } from './entities/aero/conv-fighter-entity';
 import { DropShipEntity } from './entities/aero/dropship-entity';
+import { FixedWingSupportEntity } from './entities/aero/fixed-wing-support-entity';
 import { SmallCraftEntity } from './entities/aero/small-craft-entity';
 import { BattleArmorEntity } from './entities/infantry/battle-armor-entity';
 import { InfantryEntity } from './entities/infantry/infantry-entity';
@@ -90,9 +92,6 @@ function writeBlk(entity: BaseEntity): string {
   if (entity instanceof DropShipEntity) return writeBlkDropShip(entity);
   if (entity instanceof SmallCraftEntity) return writeBlkSmallCraft(entity);
 
-  // AeroEntity is abstract parent of fighters
-  if (entity instanceof AeroEntity) return writeBlkAero(entity);
-
   // JumpShip is parent of WarShip/SpaceStation
   if (entity instanceof JumpShipEntity) return writeBlkLargeCraft(entity);
 
@@ -105,6 +104,11 @@ function writeBlk(entity: BaseEntity): string {
   if (entity instanceof ProtoMekEntity) return writeBlkProtoMek(entity);
 
   if (entity instanceof HandheldWeaponEntity) return writeBlkHandheld(entity);
+
+  // Fighters
+  if (entity instanceof AeroSpaceFighterEntity) return writeBlkAero(entity);
+  if (entity instanceof ConvFighterEntity) return writeBlkAero(entity);
+  if (entity instanceof FixedWingSupportEntity) return writeBlkAero(entity);
 
   throw new Error(`Unsupported entity type for BLK writing: ${entity.entityType}`);
 }

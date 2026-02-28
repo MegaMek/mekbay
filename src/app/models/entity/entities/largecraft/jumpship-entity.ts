@@ -32,13 +32,11 @@
  */
 
 import { Signal, computed, signal } from '@angular/core';
-import { BaseEntity } from '../../base-entity';
+import { AeroEntity } from '../aero/aero-entity';
 import {
   EntityType,
   EntityValidationMessage,
-  HeatSinkType,
   LARGE_CRAFT_LOCATIONS,
-  MotiveType,
   StructureType,
 } from '../../types';
 
@@ -54,18 +52,12 @@ const JUMPSHIP_EQUIP_LOCS = [
 // JumpShipEntity — KF-drive capital ships
 // ============================================================================
 
-export class JumpShipEntity extends BaseEntity {
+export class JumpShipEntity extends AeroEntity {
   override readonly entityType: EntityType = 'JumpShip';
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  SIGNALS
   // ═══════════════════════════════════════════════════════════════════════════
-
-  override motiveType = signal<MotiveType>('Aerodyne');
-  fuel = signal<number>(0);
-  heatSinkType = signal<HeatSinkType>('Single');
-  heatSinkCount = signal<number>(0);
-  structuralIntegrity = signal<number>(0);
 
   // ── JumpShip specifics ──
   designType = signal<number>(0);
@@ -85,9 +77,6 @@ export class JumpShipEntity extends BaseEntity {
   battleArmor = signal<number>(0);
   lifeboats = signal<number>(0);
   escapePods = signal<number>(0);
-
-  // walkMP = Safe thrust for JumpShips (usually 0 or 1)
-  get safeThrust() { return this.walkMP; }
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  LOCATION OVERRIDES
