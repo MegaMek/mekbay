@@ -36,12 +36,14 @@ import { ArmorEquipment } from '../equipment.model';
 import {
   createEngine,
   createMountedEngine,
+  createMountedArmor,
   MountedEngine,
+  MountedArmor,
+  getArmorTypeCode,
 } from './components';
 import {
   ArmorFace,
   ArmorType,
-  ARMOR_TYPE_TO_CODE,
   EngineFlag,
   EngineType,
   MotiveType,
@@ -142,48 +144,31 @@ export abstract class BaseEntity {
     createMountedEngine(createEngine('Fusion', 0, false)),
   );
 
-  /** Convenience: engine type (delegates to mountedEngine) */
-  engineType = computed<EngineType>(() => this.mountedEngine().engine.type);
-  /** Convenience: engine rating (delegates to mountedEngine) */
-  engineRating = computed<number>(() => this.mountedEngine().engine.rating);
-  /** True when the engine uses Clan tech (mixed-tech relevant) */
-  clanEngine = computed<boolean>(() => this.mountedEngine().engine.isClan);
-
   // ── Weight ──
   tonnage = signal<number>(0);
 
-  // ── Armor (structured: each location stores { front, rear }) ──
-  armorType = signal<ArmorType>('STANDARD');
-  armorTechBase = signal<EntityTechBase>('Inner Sphere');
-  /** Resolved ArmorEquipment from the equipment DB (set by parser). */
-  armorEquipment = signal<ArmorEquipment | null>(null);
-  /** BLK armor type code, derived from `armorType`. */
-  armorTypeCode = computed(() => ARMOR_TYPE_TO_CODE[this.armorType()] ?? 0);
+  // ── Armor (metadata via MountedArmor, values separate for mutation) ──
   /**
-   * Tech-rating index (A=0 … F=5).  Parsers set this directly from the BLK
-   * `armor_tech_rating` block for round-trip fidelity.  When not explicitly
-   * set (-1), the writer can derive it from ArmorEquipment.
+   * The mounted armor — single source of truth for armor type, tech base,
+   * equipment, tech overrides, and patchwork data.
    */
-  armorTechRating = signal<number>(-1);
-  /**
-   * Compound tech level for BLK output.  Parsers set this directly from the
-   * BLK `armor_tech_level` block for round-trip fidelity.
-   */
-  armorTechLevel = signal<number>(-1);
+  mountedArmor = signal<MountedArmor>(createMountedArmor());
+
+  /** Convenience: armor type (delegates to mountedArmor) */
+  armorType = computed<ArmorType>(() => this.mountedArmor().type);
+  /** Convenience: armor tech base (delegates to mountedArmor) */
+  armorTechBase = computed<EntityTechBase>(() => this.mountedArmor().techBase);
+  /** Convenience: resolved ArmorEquipment (delegates to mountedArmor) */
+  armorEquipment = computed<ArmorEquipment | null>(() => this.mountedArmor().equipment);
+  /** BLK armor type code, derived from mounted armor type */
+  armorTypeCode = computed(() => getArmorTypeCode(this.mountedArmor()));
+
   /**
    * Armor per location.  Keys are canonical location IDs ("CT", "LT", etc.).
    * Each value is `{ front, rear }`.  For locations without rear armour the
    * `rear` field is 0.
    */
   armorValues = signal<Map<string, LocationArmor>>(new Map());
-  /** Patchwork only: per-location armor type overrides */
-  armorTypes = signal<Map<string, string>>(new Map());
-  /** Patchwork BLK only: per-location armor type code (key=locationName, value=int code) */
-  patchworkArmorCodes = signal<Map<string, number>>(new Map());
-  /** Patchwork BLK only: per-location armor tech string (e.g. "Inner Sphere", "Clan") */
-  patchworkArmorTech = signal<Map<string, string>>(new Map());
-  /** Patchwork BLK only: per-location armor tech rating (A=0…F=5) */
-  patchworkArmorTechRating = signal<Map<string, number>>(new Map());
 
   // ── Internal Structure ──
   structureType = signal<StructureType>('Standard');
@@ -237,7 +222,7 @@ export abstract class BaseEntity {
   engineFlags = computed<Set<EngineFlag>>(() => {
     const flags = new Set<EngineFlag>();
     if (this.techBase() === 'Clan' && !this.mixedTech()) flags.add('clan');
-    if (this.engineRating() > 400) flags.add('large');
+    if (this.mountedEngine().engine.rating > 400) flags.add('large');
     return flags;
   });
 
@@ -295,10 +280,10 @@ export abstract class BaseEntity {
   protected engineValidation = computed<EntityValidationMessage[]>(() => {
     const msgs: EntityValidationMessage[] = [];
     const expected = this.computeExpectedEngineRating();
-    if (expected !== null && this.engineRating() !== expected) {
+    if (expected !== null && this.mountedEngine().engine.rating !== expected) {
       msgs.push({
         severity: 'warning', category: 'engine', code: 'ENGINE_RATING_MISMATCH',
-        message: `Engine rating ${this.engineRating()} ≠ expected ${expected} `
+        message: `Engine rating ${this.mountedEngine().engine.rating} ≠ expected ${expected} `
           + `(walkMP=${this.walkMP()} × tonnage=${this.tonnage()})`,
       });
     }

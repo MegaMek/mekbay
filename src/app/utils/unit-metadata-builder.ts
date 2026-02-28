@@ -199,7 +199,7 @@ export class UnitMetadataBuilder {
   /** Armor type string as it appears in units.json. */
   private buildArmorType(entity: BaseEntity): string {
     // TODO: handle patchwork armor
-    const armorType = entity.armorType();
+    const armorType = entity.mountedArmor().type;
     return ARMOR_TYPE_DISPLAY_NAME[armorType] ?? armorType;
   }
 }

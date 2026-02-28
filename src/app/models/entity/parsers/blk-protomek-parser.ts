@@ -34,14 +34,12 @@
 import { ProtoMekEntity } from '../entities/protomek/protomek-entity';
 import {
   LocationArmor,
-  armorTypeFromCode,
   locationArmor,
   parseMotiveType,
-  resolveArmorEquipment,
 } from '../types';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
-import { getBlkTechBase, parseBaseBlk, parseBlkEngine } from './blk-base-parser';
+import { getBlkTechBase, parseBaseBlk, parseBlkArmor, parseBlkEngine } from './blk-base-parser';
 import { parseEquipmentLine } from './equipment-resolver';
 import { ParseContext } from './parse-context';
 
@@ -102,15 +100,7 @@ export function parseBlkProtoMek(bb: BuildingBlock, ctx: ParseContext): ProtoMek
   if (bb.exists('isGlider')) entity.isGlider.set(bb.getFirstInt('isGlider') === 1);
 
   // ── Armor ──
-  if (bb.exists('armor_type')) entity.armorType.set(armorTypeFromCode(bb.getFirstInt('armor_type')));
-  if (bb.exists('armor_tech')) {
-    const code = bb.getFirstInt('armor_tech');
-    if (code === 1) entity.armorTechBase.set('Clan');
-    else if (code === 2) entity.armorTechBase.set('Mixed');
-  }
-  entity.armorEquipment.set(
-    resolveArmorEquipment(entity.armorType(), entity.armorTechBase() === 'Clan', ctx.equipmentDb)
-  );
+  parseBlkArmor(bb, entity, ctx);
 
   if (bb.exists('armor')) {
     const ints = bb.getDataAsInt('armor');

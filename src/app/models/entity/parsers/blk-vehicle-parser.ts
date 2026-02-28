@@ -40,20 +40,17 @@ import { SupportVtolEntity } from '../entities/vehicle/support-vtol-entity';
 import { LargeSupportTankEntity } from '../entities/vehicle/large-support-tank-entity';
 import { GunEmplacementEntity } from '../entities/vehicle/gun-emplacement-entity';
 import {
-  ARMOR_TYPE_FROM_CODE,
   ENGINE_TYPE_FROM_CODE,
   LocationArmor,
   VALID_FUEL_TYPES,
   VALID_VEHICLE_MOTIVE_TYPES,
-  armorTypeFromCode,
   locationArmor,
   parseMotiveType,
-  resolveArmorEquipment,
   structureTypeFromCode,
 } from '../types';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
-import { getBlkTechBase, parseBaseBlk, parseBlkEngine } from './blk-base-parser';
+import { getBlkTechBase, parseBaseBlk, parseBlkArmor, parseBlkEngine } from './blk-base-parser';
 import { parseEquipmentLine } from './equipment-resolver';
 import { ParseContext } from './parse-context';
 
@@ -199,20 +196,7 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
   }
 
   // ── Armor ──
-  if (bb.exists('armor_type')) {
-    const armorCode = bb.getFirstInt('armor_type');
-    ctx.validateCode('armor_type', armorCode, ARMOR_TYPE_FROM_CODE);
-    entity.armorType.set(armorTypeFromCode(armorCode));
-  }
-  if (bb.exists('armor_tech')) {
-    const code = bb.getFirstInt('armor_tech');
-    if (code === 1) entity.armorTechBase.set('Clan');
-    else if (code === 2) entity.armorTechBase.set('Mixed');
-    else if (code !== 0) ctx.warn('armor_tech', `Unknown armor_tech code: ${code}`);
-  }
-  entity.armorEquipment.set(
-    resolveArmorEquipment(entity.armorType(), entity.armorTechBase() === 'Clan', ctx.equipmentDb)
-  );
+  parseBlkArmor(bb, entity, ctx);
 
   if (bb.exists('armor')) {
     const ints = bb.getDataAsInt('armor');

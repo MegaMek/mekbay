@@ -33,6 +33,7 @@
 
 import { BattleArmorEntity } from '../entities/infantry/battle-armor-entity';
 import {
+  ArmorType,
   EntityTechBase,
   LocationArmor,
   armorTypeFromCode,
@@ -40,6 +41,7 @@ import {
   parseMotiveType,
   resolveArmorEquipment,
 } from '../types';
+import { createMountedArmor } from '../components';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
@@ -82,17 +84,20 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
   if (bb.exists('cruiseMP'))       entity.walkMP.set(bb.getFirstInt('cruiseMP'));
 
   // ── Armor ──
-  if (bb.exists('armor_type')) entity.armorType.set(armorTypeFromCode(bb.getFirstInt('armor_type')));
-  if (bb.exists('armor_tech')) {
-    const code = bb.getFirstInt('armor_tech');
-    entity.armorTechCode.set(code);
-    // Also set semantic tech base from TechConstants ranges
-    if (code >= 5 && code <= 8) entity.armorTechBase.set('Clan');
-    else if (code >= 9) entity.armorTechBase.set('Mixed');
+  {
+    const type = bb.exists('armor_type') ? armorTypeFromCode(bb.getFirstInt('armor_type')) : 'STANDARD' as ArmorType;
+    let techBase: EntityTechBase = 'Inner Sphere';
+    let rawTechCode = 0;
+    if (bb.exists('armor_tech')) {
+      rawTechCode = bb.getFirstInt('armor_tech');
+      // BA uses TechConstants ranges for tech base
+      if (rawTechCode >= 5 && rawTechCode <= 8) techBase = 'Clan';
+      else if (rawTechCode >= 9) techBase = 'Mixed';
+    }
+    const equipment = resolveArmorEquipment(type, techBase === 'Clan', ctx.equipmentDb);
+    const existing = entity.mountedArmor();
+    entity.mountedArmor.set(createMountedArmor({ ...existing, type, techBase, equipment, rawTechCode }));
   }
-  entity.armorEquipment.set(
-    resolveArmorEquipment(entity.armorType(), entity.armorTechBase() === 'Clan', ctx.equipmentDb)
-  );
 
   if (bb.exists('armor')) {
     const ints = bb.getDataAsInt('armor');

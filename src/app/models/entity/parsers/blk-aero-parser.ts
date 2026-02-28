@@ -36,16 +36,16 @@ import { AeroSpaceFighterEntity } from '../entities/aero/aero-space-fighter-enti
 import { ConvFighterEntity } from '../entities/aero/conv-fighter-entity';
 import { FixedWingSupportEntity } from '../entities/aero/fixed-wing-support-entity';
 import {
+  AERO_EQUIP_LOCATIONS,
   AERO_LOCATIONS,
-  armorTypeFromCode,
   locationArmor,
   LocationArmor,
   parseMotiveType,
-  resolveArmorEquipment,
 } from '../types';
+import { createMountedArmor } from '../components';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
-import { getBlkTechBase, parseBaseBlk, parseBlkEngine } from './blk-base-parser';
+import { getBlkTechBase, parseBaseBlk, parseBlkArmor, parseBlkEngine } from './blk-base-parser';
 import { parseEquipmentLine } from './equipment-resolver';
 import { ParseContext } from './parse-context';
 
@@ -129,38 +129,9 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
   }
 
   // ── Armor ──
-  if (bb.exists('armor_type'))  entity.armorType.set(armorTypeFromCode(bb.getFirstInt('armor_type')));
-  if (bb.exists('armor_tech')) {
-    const code = bb.getFirstInt('armor_tech');
-    if (code === 1) entity.armorTechBase.set('Clan');
-    else if (code === 2) entity.armorTechBase.set('Mixed');
-  }
-
-  // ── Patchwork armor: per-location armor type / tech / rating ──
-  if (entity.armorType() === 'PATCHWORK') {
-    const patchLocs = ['Left Wing', 'Right Wing', 'Aft', 'Wings', 'Fuselage'];
-    const codes = new Map<string, number>();
-    const techs = new Map<string, string>();
-    const ratings = new Map<string, number>();
-    for (const loc of patchLocs) {
-      if (bb.exists(`${loc}_armor_type`)) {
-        codes.set(loc, bb.getFirstInt(`${loc}_armor_type`));
-      }
-      if (bb.exists(`${loc}_armor_tech`)) {
-        techs.set(loc, bb.getFirstString(`${loc}_armor_tech`));
-      }
-      if (bb.exists(`${loc}_armor_tech_rating`)) {
-        ratings.set(loc, bb.getFirstInt(`${loc}_armor_tech_rating`));
-      }
-    }
-    entity.patchworkArmorCodes.set(codes);
-    entity.patchworkArmorTech.set(techs);
-    entity.patchworkArmorTechRating.set(ratings);
-  }
-
-  entity.armorEquipment.set(
-    resolveArmorEquipment(entity.armorType(), entity.armorTechBase() === 'Clan', ctx.equipmentDb)
-  );
+  parseBlkArmor(bb, entity, ctx, {
+    patchworkLocs: AERO_EQUIP_LOCATIONS,
+  });
 
   if (bb.exists('armor')) {
     const ints = bb.getDataAsInt('armor');
@@ -212,7 +183,11 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
     if (bb.exists('barrating'))               entity.barRating.set(bb.getFirstInt('barrating'));
     if (bb.exists('structural_tech_rating'))   entity.structuralTechRating.set(bb.getFirstInt('structural_tech_rating'));
     if (bb.exists('engine_tech_rating'))       entity.engineTechRating.set(bb.getFirstInt('engine_tech_rating'));
-    if (bb.exists('armor_tech_rating'))        entity.armorTechRating.set(bb.getFirstInt('armor_tech_rating'));
+    // FWS armor_tech_rating: default 0 for FWS (not the standard -1)
+    if (entity.mountedArmor().techRating < 0) {
+      const armor = entity.mountedArmor();
+      entity.mountedArmor.set(createMountedArmor({ ...armor, techRating: 0 }));
+    }
     if (bb.exists('baseChassisFireConWeight')) entity.baseChassisFireConWeight.set(bb.getFirstDouble('baseChassisFireConWeight'));
   }
 

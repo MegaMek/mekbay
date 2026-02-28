@@ -63,8 +63,6 @@ export class BattleArmorEntity extends InfantryEntity {
   turretConfig = signal<string>('');
   /** Whether this unit is an exoskeleton */
   isExoskeleton = signal<boolean>(false);
-  /** Raw armor_tech code (TechConstants value) for BLK round-trip */
-  armorTechCode = signal<number>(0);
   /** Squad equipment tag: 'Squad' (modern) or 'Point' (legacy) for BLK round-trip */
   squadEquipmentTag = signal<'Squad' | 'Point'>('Squad');
 

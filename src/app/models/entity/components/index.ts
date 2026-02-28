@@ -66,6 +66,16 @@ export {
 } from './structure';
 
 export {
+  type PatchworkArmor,
+  type MountedArmor,
+  createMountedArmor,
+  createPatchworkArmor,
+  getArmorTypeCode,
+  getEffectiveArmorTechRating,
+  getEffectiveArmorTechLevel,
+} from './armor';
+
+export {
   type EngineComponent,
   type MountedEngine,
   createEngine,

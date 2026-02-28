@@ -37,7 +37,7 @@ import { MekEntity, MekWithArmsEntity } from '../entities/mek/mek-entity';
 import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import { QuadVeeEntity } from '../entities/mek/quad-vee-entity';
 import { TripodMekEntity } from '../entities/mek/tripod-mek-entity';
-import { createEngine, createMountedEngine } from '../components';
+import { createEngine, createMountedEngine, createMountedArmor, createPatchworkArmor } from '../components';
 import { WeaponEquipment } from '../../equipment.model';
 import {
   ArmorType,
@@ -220,19 +220,42 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   if (header.jumpMP >= 0) entity.declaredJumpMP.set(header.jumpMP);
 
   // ── Armor (structured { front, rear }) ──
-  if (header.armorType) {
-    const armorInfo = parseMtfArmor(header.armorType);
-    const isClan = armorInfo.clanTech;
-    if (isClan) entity.armorTechBase.set('Clan');
-    if (armorInfo.patchwork) {
-      entity.armorType.set('PATCHWORK');
-    } else {
-      const armorEquip = resolveArmorByName(armorInfo.type, isClan, ctx.equipmentDb);
-      if (armorEquip) {
-        entity.armorType.set(armorEquip.armorType as ArmorType);
-        entity.armorEquipment.set(armorEquip);
+  {
+    let armorType: ArmorType = 'STANDARD';
+    let armorTechBase: EntityTechBase = 'Inner Sphere';
+    let armorEquipment: import('../../equipment.model').ArmorEquipment | null = null;
+
+    if (header.armorType) {
+      const armorInfo = parseMtfArmor(header.armorType);
+      if (armorInfo.clanTech) armorTechBase = 'Clan';
+      if (armorInfo.patchwork) {
+        armorType = 'PATCHWORK';
+      } else {
+        const eq = resolveArmorByName(armorInfo.type, armorInfo.clanTech, ctx.equipmentDb);
+        if (eq) {
+          armorType = eq.armorType as ArmorType;
+          armorEquipment = eq;
+        }
       }
     }
+
+    // Patchwork per-location types
+    let patchwork = null;
+    if (header.patchworkTypes.size > 0) {
+      const types = new Map<string, string>();
+      for (const [label, typeStr] of header.patchworkTypes) {
+        const mapping = ARMOR_LABEL_MAP[label.toLowerCase()];
+        if (mapping) types.set(mapping.loc, typeStr);
+      }
+      patchwork = createPatchworkArmor({ types });
+    }
+
+    entity.mountedArmor.set(createMountedArmor({
+      type: armorType,
+      techBase: armorTechBase,
+      equipment: armorEquipment,
+      patchwork,
+    }));
   }
 
   const armorMap = new Map<string, LocationArmor>();
@@ -243,16 +266,6 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
     armorMap.set(mapping.loc, { ...prev, [mapping.face]: value });
   }
   entity.armorValues.set(armorMap);
-
-  // ── Patchwork per-location armor types ──
-  if (header.patchworkTypes.size > 0) {
-    const patchMap = new Map<string, string>();
-    for (const [label, typeStr] of header.patchworkTypes) {
-      const mapping = ARMOR_LABEL_MAP[label.toLowerCase()];
-      if (mapping) patchMap.set(mapping.loc, typeStr);
-    }
-    entity.armorTypes.set(patchMap);
-  }
 
   // ── Quirks ──
   entity.quirks.set(header.quirks);

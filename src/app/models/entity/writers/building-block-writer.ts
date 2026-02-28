@@ -31,7 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { EntityFluff, structureTypeToCode, TECH_RATING_TO_NUMBER, compoundTechLevel } from '../types';
+import { EntityFluff, structureTypeToCode } from '../types';
+import { getArmorTypeCode, getEffectiveArmorTechRating, getEffectiveArmorTechLevel } from '../components';
 import { BaseEntity } from '../base-entity';
 import { APP_VERSION_STRING } from '../../../build-meta';
 
@@ -195,22 +196,21 @@ export function writeTransporters(w: BuildingBlockWriter, entity: BaseEntity): v
  * MegaMek ALWAYS writes these for non-infantry, non-GE entities
  * (even code 0 for Standard).
  *
- * Values come from the raw signals set during parsing.  When not
+ * Values come from MountedArmor.  When techRating/techLevel are not
  * explicitly set (-1), we derive from ArmorEquipment exactly as
  * MegaMek does.
  */
 export function writeArmorBlocks(
   w: BuildingBlockWriter,
   entity: BaseEntity,
-  patchworkLocs?: string[],
+  patchworkLocs?: readonly string[],
 ): void {
-  w.addBlock('armor_type', entity.armorTypeCode());
+  const armor = entity.mountedArmor();
+  w.addBlock('armor_type', getArmorTypeCode(armor));
 
   // Patchwork armor: write per-location blocks instead of global tech rating/level
-  if (entity.armorType() === 'PATCHWORK' && patchworkLocs) {
-    const codes = entity.patchworkArmorCodes();
-    const techs = entity.patchworkArmorTech();
-    const ratings = entity.patchworkArmorTechRating();
+  if (armor.type === 'PATCHWORK' && patchworkLocs && armor.patchwork) {
+    const { codes, techs, ratings } = armor.patchwork;
     for (const loc of patchworkLocs) {
       if (codes.has(loc)) w.addBlock(`${loc}_armor_type`, codes.get(loc)!);
       if (techs.has(loc)) w.addBlock(`${loc}_armor_tech`, techs.get(loc)!);
@@ -219,19 +219,8 @@ export function writeArmorBlocks(
     return;
   }
 
-  let techRating = entity.armorTechRating();
-  if (techRating < 0) {
-    const eq = entity.armorEquipment();
-    techRating = eq ? (TECH_RATING_TO_NUMBER[eq.rating] ?? 3) : 0;
-  }
-  w.addBlock('armor_tech_rating', techRating);
-
-  let techLevel = entity.armorTechLevel();
-  if (techLevel < 0) {
-    const eq = entity.armorEquipment();
-    techLevel = eq ? compoundTechLevel(eq.level, entity.techBase() === 'Clan') : 0;
-  }
-  w.addBlock('armor_tech_level', techLevel);
+  w.addBlock('armor_tech_rating', getEffectiveArmorTechRating(armor));
+  w.addBlock('armor_tech_level', getEffectiveArmorTechLevel(armor, entity.techBase() === 'Clan'));
 }
 
 /**
@@ -262,16 +251,20 @@ export function writeEngine(
   entity: BaseEntity,
   engineTypeToCode: Record<string, number>,
 ): void {
-  w.addBlock('engine_type', engineTypeToCode[entity.engineType()] ?? 0);
+  const engine = entity.mountedEngine()?.engine;
+  if (!engine) {
+    w.addBlock('engine_type', 0); // "None" engine type code
+    return;
+  }
+  w.addBlock('engine_type', engineTypeToCode[engine.type] ?? 0);
   // clan_engine: written when engine's clan flag differs from what the parser
   // would infer from the type string alone.  The parser's getBlkEngineIsClan()
   // falls back to checking whether the type string contains "clan" (case-
   // insensitive), so the writer must use the same heuristic as its default.
   const typeStr = (entity.techLevel() ?? '').toLowerCase();
   const impliedClan = typeStr.includes('clan');
-  const isClanEngine = entity.clanEngine();
-  if (isClanEngine !== impliedClan) {
-    w.addBlock('clan_engine', isClanEngine ? 'true' : 'false');
+  if (engine.isClan !== impliedClan) {
+    w.addBlock('clan_engine', engine.isClan ? 'true' : 'false');
   }
 }
 

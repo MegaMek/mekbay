@@ -133,7 +133,7 @@ export abstract class MekEntity extends BaseEntity {
   override engineFlags = computed<Set<EngineFlag>>(() => {
     const flags = new Set<EngineFlag>();
     if (this.techBase() === 'Clan' && !this.mixedTech()) flags.add('clan');
-    if (this.engineRating() > 400) flags.add('large');
+    if (this.mountedEngine()?.engine?.rating > 400) flags.add('large');
     if (this.isSuperHeavy()) flags.add('superheavy');
     return flags;
   });
@@ -248,10 +248,11 @@ export abstract class MekEntity extends BaseEntity {
     }
 
     // Engine rating ≥ 10
-    if (this.engineRating() > 0 && this.engineRating() < 10) {
+    const engine = this.mountedEngine()?.engine;
+    if (engine && engine.rating > 0 && engine.rating < 10) {
       msgs.push({
         severity: 'error', category: 'engine', code: 'ENGINE_RATING_TOO_LOW',
-        message: `Engine rating must be at least 10 (has ${this.engineRating()})`,
+        message: `Engine rating must be at least 10 (has ${engine.rating})`,
       });
     }
 

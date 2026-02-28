@@ -35,6 +35,7 @@ import { AeroEntity } from '../entities/aero/aero-entity';
 import { ConvFighterEntity } from '../entities/aero/conv-fighter-entity';
 import { FixedWingSupportEntity } from '../entities/aero/fixed-wing-support-entity';
 import {
+  AERO_EQUIP_LOCATIONS,
   ENGINE_TYPE_TO_CODE,
   HEAT_SINK_TYPE_TO_CODE,
   HeatSinkType,
@@ -133,8 +134,7 @@ export function writeBlkAero(entity: AeroEntity): string {
   writeEngine(w, entity, ENGINE_TYPE_TO_CODE);
 
   // 9. Armor: armor_type, armor_tech_rating, armor_tech_level (or patchwork per-location)
-  const patchLocs = ['Left Wing', 'Right Wing', 'Aft', 'Wings', 'Fuselage'];
-  writeArmorBlocks(w, entity, patchLocs);
+  writeArmorBlocks(w, entity, AERO_EQUIP_LOCATIONS);
 
   // 10. internal_type
   writeInternalType(w, entity);

@@ -40,14 +40,12 @@ import { TripodMekEntity } from '../entities/mek/tripod-mek-entity';
 import {
   EntityMountedEquipment,
   LocationArmor,
-  armorTypeFromCode,
   locationArmor,
-  resolveArmorEquipment,
   structureTypeFromCode,
 } from '../types';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
-import { getBlkTechBase, parseBaseBlk, parseBlkEngine } from './blk-base-parser';
+import { getBlkTechBase, parseBaseBlk, parseBlkArmor, parseBlkEngine } from './blk-base-parser';
 import { parseEquipmentLine } from './equipment-resolver';
 import { ParseContext } from './parse-context';
 
@@ -155,15 +153,7 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
   }
 
   // ── Armor (structured) ──
-  if (bb.exists('armor_type')) entity.armorType.set(armorTypeFromCode(bb.getFirstInt('armor_type')));
-  if (bb.exists('armor_tech')) {
-    const code = bb.getFirstInt('armor_tech');
-    if (code === 1) entity.armorTechBase.set('Clan');
-    else if (code === 2) entity.armorTechBase.set('Mixed');
-  }
-  entity.armorEquipment.set(
-    resolveArmorEquipment(entity.armorType(), entity.armorTechBase() === 'Clan', ctx.equipmentDb)
-  );
+  parseBlkArmor(bb, entity, ctx);
 
   if (bb.exists('armor')) {
     const ints = bb.getDataAsInt('armor');

@@ -32,9 +32,7 @@
  */
 
 import { BattleArmorEntity } from '../entities/infantry/battle-armor-entity';
-import {
-  ARMOR_TYPE_TO_CODE,
-} from '../types';
+import { getArmorTypeCode } from '../components';
 import {
   BuildingBlockWriter,
   writeIdentity,
@@ -72,9 +70,9 @@ export function writeBlkBA(entity: BattleArmorEntity): string {
   w.addBlock('cruiseMP', entity.walkMP());
 
   // ── Section 4: Armor type (BA always writes both blocks) ──
-  const armorType = entity.armorType();
-  w.addBlock('armor_type', ARMOR_TYPE_TO_CODE[armorType] ?? 0);
-  w.addBlock('armor_tech', entity.armorTechCode());
+  const armor = entity.mountedArmor();
+  w.addBlock('armor_type', getArmorTypeCode(armor));
+  w.addBlock('armor_tech', armor.rawTechCode);
 
   // ── Section 5: Equipment per location ──
   const mountsByLoc = new Map<string, string[]>();

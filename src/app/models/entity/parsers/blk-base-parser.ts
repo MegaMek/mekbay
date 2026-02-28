@@ -32,8 +32,15 @@
  */
 
 import { BaseEntity } from '../base-entity';
-import { createEngine, createMountedEngine, type MountedEngine } from '../components';
 import {
+  createEngine,
+  createMountedEngine,
+  createMountedArmor,
+  createPatchworkArmor,
+  type MountedEngine,
+} from '../components';
+import {
+  ArmorType,
   EntityFluff,
   EntityQuirk,
   EntityTechBase,
@@ -42,8 +49,10 @@ import {
   HEAT_SINK_TYPE_FROM_CODE,
   HeatSinkType,
   VALID_TECH_BASE_STRINGS,
+  armorTypeFromCode,
   engineTypeFromCode,
   normalizeSystemManufacturerKey,
+  resolveArmorEquipment,
 } from '../types';
 import { parseTechLevel } from '../utils/tech-level-parser';
 import { BuildingBlock } from './building-block';
@@ -112,16 +121,6 @@ export function parseBaseBlk(
       ctx.warn('tonnage', `Invalid tonnage: ${tonnage}`);
     }
     entity.tonnage.set(tonnage);
-  }
-
-  // ── Armor type / tech rating / tech level ──
-  // Store raw values from BLK for round-trip fidelity.  When absent,
-  // the writer derives them from ArmorEquipment.
-  if (bb.exists('armor_tech_rating')) {
-    entity.armorTechRating.set(bb.getFirstInt('armor_tech_rating'));
-  }
-  if (bb.exists('armor_tech_level')) {
-    entity.armorTechLevel.set(bb.getFirstInt('armor_tech_level'));
   }
 
   // ── Internal structure type ──
@@ -418,4 +417,61 @@ export function parseBlkEngine(
     : createMountedEngine(engine);
 
   return { mountedEngine, heatSinkType, totalHeatSinks };
+}
+
+// ============================================================================
+// Shared BLK armor parsing
+// ============================================================================
+
+/**
+ * Parse BLK armor type, tech base, equipment, tech overrides, and patchwork
+ * into a single MountedArmor and set it on the entity.
+ *
+ * Called by entity-specific BLK parsers after `parseBaseBlk()`.
+ * **Not used by** BA (different tech-code thresholds + `rawTechCode`),
+ * infantry (uses `armorDivisor` / `armorKit`), or handheld (no armor type).
+ */
+export function parseBlkArmor(
+  bb: BuildingBlock,
+  entity: BaseEntity,
+  ctx: ParseContext,
+  opts?: { patchworkLocs?: readonly string[] },
+): void {
+  // ── Armor type ──
+  const type: ArmorType = bb.exists('armor_type')
+    ? armorTypeFromCode(bb.getFirstInt('armor_type'))
+    : 'STANDARD';
+
+  // ── Armor-specific tech base ──
+  let techBase: EntityTechBase = 'Inner Sphere';
+  if (bb.exists('armor_tech')) {
+    const code = bb.getFirstInt('armor_tech');
+    if (code === 1) techBase = 'Clan';
+    else if (code === 2) techBase = 'Mixed';
+  }
+
+  // ── Patchwork per-location data ──
+  let patchwork = null;
+  if (type === 'PATCHWORK' && opts?.patchworkLocs) {
+    const codes = new Map<string, number>();
+    const techs = new Map<string, string>();
+    const ratings = new Map<string, number>();
+    for (const loc of opts.patchworkLocs) {
+      if (bb.exists(`${loc}_armor_type`))        codes.set(loc, bb.getFirstInt(`${loc}_armor_type`));
+      if (bb.exists(`${loc}_armor_tech`))         techs.set(loc, bb.getFirstString(`${loc}_armor_tech`));
+      if (bb.exists(`${loc}_armor_tech_rating`))  ratings.set(loc, bb.getFirstInt(`${loc}_armor_tech_rating`));
+    }
+    patchwork = createPatchworkArmor({ codes, techs, ratings });
+  }
+
+  // ── Tech rating / level overrides (round-trip fidelity) ──
+  const techRating = bb.exists('armor_tech_rating') ? bb.getFirstInt('armor_tech_rating') : -1;
+  const techLevel  = bb.exists('armor_tech_level')  ? bb.getFirstInt('armor_tech_level')  : -1;
+
+  // ── Resolve equipment from DB ──
+  const equipment = resolveArmorEquipment(type, techBase === 'Clan', ctx.equipmentDb);
+
+  entity.mountedArmor.set(createMountedArmor({
+    type, techBase, equipment, patchwork, techRating, techLevel,
+  }));
 }

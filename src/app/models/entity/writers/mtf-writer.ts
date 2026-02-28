@@ -222,18 +222,17 @@ function writeArmor(
   entity: MekEntity, lines: string[],
   isQuad: boolean, isTripod: boolean,
 ): void {
-  const armorType = entity.armorType();
-  const armorTb = entity.armorTechBase();
-  const armorDisplayName = entity.armorEquipment()?.name ?? 'Standard';
-  if (armorType === 'PATCHWORK') {
+  const armor = entity.mountedArmor();
+  const armorDisplayName = armor.equipment?.name ?? 'Standard';
+  if (armor.type === 'PATCHWORK') {
     lines.push('armor:Patchwork');
   } else {
-    lines.push(`armor:${armorDisplayName}(${formatTechBaseLabel(armorTb)})`);
+    lines.push(`armor:${armorDisplayName}(${formatTechBaseLabel(armor.techBase)})`);
   }
 
   const order = isTripod ? ARMOR_ORDER_TRIPOD : isQuad ? ARMOR_ORDER_QUAD : ARMOR_ORDER_BIPED;
   const armorMap = entity.armorValues();
-  const patchTypes = armorType === 'PATCHWORK' ? entity.armorTypes() : undefined;
+  const patchTypes = armor.type === 'PATCHWORK' ? armor.patchwork?.types : undefined;
   for (const entry of order) {
     const la = armorMap.get(entry.loc);
     const value = la ? la[entry.face] : 0;
@@ -417,13 +416,14 @@ function formatTechBaseLabel(tb: EntityTechBase): string {
  * - Mixed + Clan engine: `<rating> <Type> (Clan) Engine`
  */
 function formatEngineLine(entity: MekEntity): string {
-  const rating = entity.engineRating();
-  const typeName = getEngineTypePrefix(entity.engineType());
-  const isClanEngine = entity.clanEngine();
+  const engine = entity.mountedEngine()?.engine;
+  if (!engine) return 'None';
+  const rating = engine.rating;
+  const typeName = getEngineTypePrefix(engine.type);
   const isMixed = entity.mixedTech();
   const large = rating > 400 ? 'Large ' : '';
 
-  if (isClanEngine) {
+  if (engine.isClan) {
     return `${rating} ${large}${typeName} (Clan) Engine`;
   } else if (isMixed) {
     return `${rating} ${large}${typeName} Engine(IS)`;
