@@ -43,36 +43,26 @@ import {
 } from '../types';
 import {
   BuildingBlockWriter,
-  writeIdentity,
-  writeYearTechMeta,
-  writeMotiveType,
-  writeTransporters,
   writeArmorBlocks,
-  writeInternalType,
-  writeOmni,
+  writeBlkPreamble,
   writeEngine,
   writeEquipmentByLocation,
   writeFluffBlocks,
+  writeInternalType,
+  writeManualBV,
+  writeOmni,
   writeSource,
   writeTonnage,
-  writeManualBV,
+  writeTransporters,
 } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
-
-// ============================================================================
-// Equipment location BLK tags
-// ============================================================================
-
-const GE_EQUIP_TAGS: [string, string][] = [
-  ['Guns Equipment',  'Turret'],
-  ['Body Equipment',  'Body'],
-];
-
-/** BLK armor array ordering per vehicle type (positional index → location name) */
-const VEHICLE_ARMOR_LOCS = ['Front', 'Right', 'Left', 'Rear', 'Turret', 'Rear Turret'] as const;
-const VTOL_ARMOR_LOCS = ['Front', 'Right', 'Left', 'Rear', 'Rotor', 'Turret'] as const;
-const SUPERHEAVY_ARMOR_LOCS = ['Front', 'Front Right', 'Front Left', 'Rear Right', 'Rear Left', 'Rear'] as const;
-const LST_ARMOR_LOCS = ['Front', 'Front Right', 'Front Left', 'Rear Right', 'Rear Left', 'Rear'] as const;
+import {
+  GE_EQUIP_TAGS,
+  LST_ARMOR_LOCS,
+  SUPERHEAVY_ARMOR_LOCS,
+  VEHICLE_ARMOR_LOCS,
+  VTOL_ARMOR_LOCS,
+} from '../parsers/blk-constants';
 
 // ============================================================================
 // Public API
@@ -96,16 +86,8 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
   else if (entity instanceof NavalEntity)             unitType = 'Tank';
   else                                                unitType = 'Tank';
 
-  // 1. Identity: UnitType, Name, Model, mul id
-  writeIdentity(w, entity, unitType);
-
-  // 2. Year/Tech/Meta: year, originalBuildYear, type, role, quirks, weaponQuirks
-  writeYearTechMeta(w, entity);
-
-  // 3. motion_type
-  writeMotiveType(w, entity);
-
-  // 4. transporters
+  // 1-4. Identity / Year+Tech / motion_type / transporters
+  writeBlkPreamble(w, entity, unitType);
   writeTransporters(w, entity);
 
   // 5. Movement: cruiseMP
@@ -132,7 +114,7 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
     w.addBlock('armor', turretArmor);
   } else if (entity instanceof LargeSupportTankEntity) {
     // LST: Front, Front Right, Front Left, Rear Right, Rear Left, Rear[, Turret]
-    const base: number[] = LST_ARMOR_LOCS.map(loc => armorMap.get(loc)?.front ?? 0);
+    const base: number[] = LST_ARMOR_LOCS.slice(0, 6).map(loc => armorMap.get(loc)?.front ?? 0);
     if (entity.hasTurret()) {
       base.push(armorMap.get('Turret')?.front ?? 0);
     }
@@ -146,7 +128,7 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
     w.addBlock('armor', ...base);
   } else if (entity.isSuperHeavy() && !(entity instanceof VtolEntity)) {
     // Superheavy Tank: Front, Front Right, Front Left, Rear Right, Rear Left, Rear[, Turret[, Rear Turret]]
-    const base: number[] = SUPERHEAVY_ARMOR_LOCS.map(loc => armorMap.get(loc)?.front ?? 0);
+    const base: number[] = SUPERHEAVY_ARMOR_LOCS.slice(0, 6).map(loc => armorMap.get(loc)?.front ?? 0);
     if (entity.hasTurret()) {
       base.push(armorMap.get('Turret')?.front ?? 0);
     }
@@ -238,16 +220,10 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
     w.addBlock('engine_tech_rating', sv.engineTechRating());
   }
 
-  // 14. Fluff blocks
+  // 14-17. Fluff / source / tonnage / Manual BV
   writeFluffBlocks(w, entity.fluff());
-
-  // 15. source
   writeSource(w, entity);
-
-  // 16. tonnage
   writeTonnage(w, entity);
-
-  // 17. Manual BV
   writeManualBV(w, entity);
 
   // 18. Omni chassis weights (after tonnage, only for Omni vehicles)

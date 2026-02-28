@@ -48,14 +48,18 @@ import {
   EntityWeaponQuirk,
   HEAT_SINK_TYPE_FROM_CODE,
   HeatSinkType,
+  LocationArmor,
   VALID_TECH_BASE_STRINGS,
   armorTypeFromCode,
   engineTypeFromCode,
+  locationArmor,
   normalizeSystemManufacturerKey,
   resolveArmorEquipment,
 } from '../types';
+import { generateMountId } from '../utils/signal-helpers';
 import { parseTechLevel } from '../utils/tech-level-parser';
 import { BuildingBlock } from './building-block';
+import { parseEquipmentLine } from './equipment-resolver';
 import { ParseContext } from './parse-context';
 
 /**
@@ -284,6 +288,55 @@ export function getBlkEquipmentLines(bb: BuildingBlock, locationTag: string): st
 }
 
 /**
+ * Parse BLK equipment blocks for a set of location tags and add them
+ * to the entity.
+ *
+ * Covers the common equipment-loading loop shared by aero, smallcraft,
+ * dropship, largecraft, protomek, and vehicle parsers.
+ *
+ * For vehicles, pass `computeTurretMounted` to derive the turret flag
+ * from the location code, and `includeTurretType: true` to forward the
+ * parsed turret-type modifier.
+ */
+export function parseBlkEquipment(
+  bb: BuildingBlock,
+  entity: BaseEntity,
+  ctx: ParseContext,
+  equipTags: readonly (readonly [string, string])[],
+  opts?: {
+    computeTurretMounted?: (locCode: string) => boolean;
+    includeTurretType?: boolean;
+  },
+): void {
+  for (const [blkTag, locCode] of equipTags) {
+    if (!bb.exists(blkTag)) continue;
+    const lines = bb.getDataAsString(blkTag);
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line) continue;
+
+      const parsed = parseEquipmentLine(line);
+      const resolved = ctx.resolveEquipment(parsed.name, blkTag);
+
+      entity.addEquipment({
+        mountId: generateMountId(),
+        equipmentId: parsed.name,
+        equipment: resolved ?? undefined,
+        location: locCode,
+        rearMounted: parsed.rearMounted,
+        turretMounted: opts?.computeTurretMounted?.(locCode) ?? false,
+        turretType: opts?.includeTurretType ? parsed.turretType : undefined,
+        omniPodMounted: parsed.omniPod,
+        isNewBay: parsed.isNewBay,
+        armored: false,
+        size: parsed.size,
+        facing: parsed.facing,
+      });
+    }
+  }
+}
+
+/**
  * Extract tech base from BLK type string for equipment resolution.
  */
 export function getBlkTechBase(bb: BuildingBlock): EntityTechBase {
@@ -468,10 +521,98 @@ export function parseBlkArmor(
   const techRating = bb.exists('armor_tech_rating') ? bb.getFirstInt('armor_tech_rating') : -1;
   const techLevel  = bb.exists('armor_tech_level')  ? bb.getFirstInt('armor_tech_level')  : -1;
 
-  // ── Resolve equipment from DB ──
-  const equipment = resolveArmorEquipment(type, techBase === 'Clan', ctx.equipmentDb);
+  // ── Resolve armor from DB ──
+  const armor = resolveArmorEquipment(type, techBase === 'Clan', ctx.equipmentDb);
 
   entity.mountedArmor.set(createMountedArmor({
-    type, techBase, equipment, patchwork, techRating, techLevel,
+    type, techBase, armor, patchwork, techRating, techLevel,
   }));
+}
+
+// ============================================================================
+// Shared BLK armor values
+// ============================================================================
+
+/**
+ * Parse the `armor` BLK block into a map of location → armor points
+ * and set it on the entity.
+ *
+ * Shared by aero, smallcraft, dropship, and largecraft parsers.
+ */
+export function parseBlkArmorValues(
+  bb: BuildingBlock,
+  entity: BaseEntity,
+  locations: readonly string[],
+): void {
+  if (!bb.exists('armor')) return;
+  const ints = bb.getDataAsInt('armor');
+  const armorMap = new Map<string, LocationArmor>();
+  for (let i = 0; i < locations.length && i < ints.length; i++) {
+    armorMap.set(locations[i], locationArmor(ints[i]));
+  }
+  entity.armorValues.set(armorMap);
+}
+
+// ============================================================================
+// Shared aero engine + heat-sink assignment
+// ============================================================================
+
+/**
+ * Parse the engine block and assign engine, heat-sink type, and heat-sink
+ * count on the entity.
+ *
+ * Shared by aero, smallcraft, dropship, and largecraft parsers.
+ */
+export function parseBlkAeroEngine(
+  bb: BuildingBlock,
+  entity: BaseEntity,
+  opts?: BlkEngineOpts,
+): void {
+  const result = parseBlkEngine(bb, entity, opts);
+  if (result) {
+    entity.mountedEngine.set(result.mountedEngine);
+    entity.heatSinkType.set(result.heatSinkType);
+    if (bb.exists('heatsinks')) entity.heatSinkCount.set(result.totalHeatSinks);
+  }
+}
+
+// ============================================================================
+// Shared crew block parsing
+// ============================================================================
+
+/**
+ * Entity with crew-related signals.
+ * Covers SmallCraftEntity (+ DropShip) and JumpShipEntity (+ WarShip/SpaceStation).
+ */
+export interface CrewEntity extends BaseEntity {
+  crew: { set(v: number): void };
+  officers: { set(v: number): void };
+  gunners: { set(v: number): void };
+  passengers: { set(v: number): void };
+  marines: { set(v: number): void };
+  battleArmor: { set(v: number): void };
+  otherPassenger?: { set(v: number): void };
+  lifeboats: { set(v: number): void };
+  escapePods: { set(v: number): void };
+}
+
+/**
+ * Parse common crew blocks from BLK data and set them on the entity.
+ *
+ * Shared by smallcraft, dropship, and largecraft parsers.
+ * `otherpassenger` is only read if the entity has that signal
+ * (SmallCraft/DropShip do, JumpShip does not).
+ */
+export function parseBlkCrew(bb: BuildingBlock, entity: CrewEntity): void {
+  if (bb.exists('crew'))            entity.crew.set(bb.getFirstInt('crew'));
+  if (bb.exists('officers'))        entity.officers.set(bb.getFirstInt('officers'));
+  if (bb.exists('gunners'))         entity.gunners.set(bb.getFirstInt('gunners'));
+  if (bb.exists('passengers'))      entity.passengers.set(bb.getFirstInt('passengers'));
+  if (bb.exists('marines'))         entity.marines.set(bb.getFirstInt('marines'));
+  if (bb.exists('battlearmor'))     entity.battleArmor.set(bb.getFirstInt('battlearmor'));
+  if (entity.otherPassenger && bb.exists('otherpassenger')) {
+    entity.otherPassenger.set(bb.getFirstInt('otherpassenger'));
+  }
+  if (bb.exists('life_boat'))       entity.lifeboats.set(bb.getFirstInt('life_boat'));
+  if (bb.exists('escape_pod'))      entity.escapePods.set(bb.getFirstInt('escape_pod'));
 }

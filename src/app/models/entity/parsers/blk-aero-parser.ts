@@ -38,40 +38,14 @@ import { FixedWingSupportEntity } from '../entities/aero/fixed-wing-support-enti
 import {
   AERO_EQUIP_LOCATIONS,
   AERO_LOCATIONS,
-  locationArmor,
-  LocationArmor,
   parseMotiveType,
 } from '../types';
 import { createMountedArmor } from '../components';
-import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
+import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
-import { getBlkTechBase, parseBaseBlk, parseBlkArmor, parseBlkEngine } from './blk-base-parser';
-import { parseEquipmentLine } from './equipment-resolver';
+import { FIGHTER_EQUIP_TAGS, FWS_EQUIP_TAGS } from './blk-constants';
+import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkEquipment } from './blk-base-parser';
 import { ParseContext } from './parse-context';
-
-// ============================================================================
-// BLK equipment location tags per entity type
-// ============================================================================
-
-/** Standard ASF / ConvFighter equipment location blocks */
-const FIGHTER_EQUIP_TAGS: [string, string][] = [
-  ['Nose Equipment',       'Nose'],
-  ['Left Wing Equipment',  'Left Wing'],
-  ['Right Wing Equipment', 'Right Wing'],
-  ['Aft Equipment',        'Aft'],
-  ['Wings Equipment',      'Wings'],
-  ['Fuselage Equipment',   'Fuselage'],
-];
-
-/** FixedWingSupport uses 'Body' instead of 'Fuselage' */
-const FWS_EQUIP_TAGS: [string, string][] = [
-  ['Nose Equipment',       'Nose'],
-  ['Left Wing Equipment',  'Left Wing'],
-  ['Right Wing Equipment', 'Right Wing'],
-  ['Aft Equipment',        'Aft'],
-  ['Wings Equipment',      'Wings'],
-  ['Body Equipment',       'Body'],
-];
 
 // ============================================================================
 // Public API
@@ -103,14 +77,7 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
   if (bb.exists('motion_type'))  entity.motiveType.set(parseMotiveType(bb.getFirstString('motion_type')));
 
   // ── Engine ──
-  {
-    const result = parseBlkEngine(bb, entity);
-    if (result) {
-      entity.mountedEngine.set(result.mountedEngine);
-      entity.heatSinkType.set(result.heatSinkType);
-      if (bb.exists('heatsinks')) entity.heatSinkCount.set(result.totalHeatSinks);
-    }
-  }
+  parseBlkAeroEngine(bb, entity);
 
   // ── Cockpit ──
   if (bb.exists('cockpit_type')) {
@@ -133,44 +100,11 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
     patchworkLocs: AERO_EQUIP_LOCATIONS,
   });
 
-  if (bb.exists('armor')) {
-    const ints = bb.getDataAsInt('armor');
-    const locs = [...AERO_LOCATIONS];
-    const armorMap = new Map<string, LocationArmor>();
-    for (let i = 0; i < locs.length && i < ints.length; i++) {
-      armorMap.set(locs[i], locationArmor(ints[i]));
-    }
-    entity.armorValues.set(armorMap);
-  }
+  parseBlkArmorValues(bb, entity, AERO_LOCATIONS);
 
   // ── Equipment per location ──
   const equipTags = entity instanceof FixedWingSupportEntity ? FWS_EQUIP_TAGS : FIGHTER_EQUIP_TAGS;
-
-  for (const [blkTag, locCode] of equipTags) {
-    if (!bb.exists(blkTag)) continue;
-    const lines = bb.getDataAsString(blkTag);
-    for (const raw of lines) {
-      const line = raw.trim();
-      if (!line) continue;
-
-      const parsed = parseEquipmentLine(line);
-      const resolved = ctx.resolveEquipment(parsed.name, blkTag);
-
-      entity.addEquipment({
-        mountId: generateMountId(),
-        equipmentId: parsed.name,
-        equipment: resolved ?? undefined,
-        location: locCode,
-        rearMounted: parsed.rearMounted,
-        turretMounted: false,
-        omniPodMounted: parsed.omniPod,
-        isNewBay: parsed.isNewBay,
-        armored: false,
-        size: parsed.size,
-        facing: parsed.facing,
-      });
-    }
-  }
+  parseBlkEquipment(bb, entity, ctx, equipTags);
 
   // ── Type-specific fields ──
 

@@ -102,6 +102,8 @@ export abstract class BaseEntity {
   model = signal<string>('');
   clanName = signal<string>('');
   mulId = signal<number>(-1);
+  role = signal<string>('');
+  omni = signal<boolean>(false);
 
   // ── Tech ──
   year = signal<number>(3025);
@@ -112,13 +114,17 @@ export abstract class BaseEntity {
   mixedTech = signal<boolean>(false);
 
   // ── Meta ──
-  role = signal<string>('');
   source = signal<string>('');
-  omni = signal<boolean>(false);
+  generator?: string; // software who created the file
+
+  // ── Weight ──
+  tonnage = signal<number>(0);
 
   // ── Movement ──
   motiveType = signal<MotiveType>('None');
   walkMP = signal<number>(0);
+  /** TODO: Raw jump MP from the source file (for round-trip fidelity). -1 means not set. */
+  declaredJumpMP = signal<number>(-1);
 
   /**
    * The motive type as a BLK-compatible string, or `null` if the
@@ -132,37 +138,14 @@ export abstract class BaseEntity {
     const m = this.motiveType();
     return m === 'None' ? null : m;
   }
-  /** Raw jump MP from the source file (for round-trip fidelity). -1 means not set. */
-  declaredJumpMP = signal<number>(-1);
 
-  // ── Engine (via MountedEngine) ──
-  /**
-   * The mounted engine — single source of truth for engine type, rating,
-   * tech base, and engine-integrated heat sinks.
-   */
+  // ── Engine ──
   mountedEngine = signal<MountedEngine>(
     createMountedEngine(createEngine('Fusion', 0, false)),
   );
 
-  // ── Weight ──
-  tonnage = signal<number>(0);
-
-  // ── Armor (metadata via MountedArmor, values separate for mutation) ──
-  /**
-   * The mounted armor — single source of truth for armor type, tech base,
-   * equipment, tech overrides, and patchwork data.
-   */
+  // ── Armor ──
   mountedArmor = signal<MountedArmor>(createMountedArmor());
-
-  /** Convenience: armor type (delegates to mountedArmor) */
-  armorType = computed<ArmorType>(() => this.mountedArmor().type);
-  /** Convenience: armor tech base (delegates to mountedArmor) */
-  armorTechBase = computed<EntityTechBase>(() => this.mountedArmor().techBase);
-  /** Convenience: resolved ArmorEquipment (delegates to mountedArmor) */
-  armorEquipment = computed<ArmorEquipment | null>(() => this.mountedArmor().equipment);
-  /** BLK armor type code, derived from mounted armor type */
-  armorTypeCode = computed(() => getArmorTypeCode(this.mountedArmor()));
-
   /**
    * Armor per location.  Keys are canonical location IDs ("CT", "LT", etc.).
    * Each value is `{ front, rear }`.  For locations without rear armour the
@@ -189,9 +172,6 @@ export abstract class BaseEntity {
 
   // ── Fluff ──
   fluff = signal<EntityFluff>({});
-
-  // ── Generator (MTF metadata — tool that created the file) ──
-  generator?: string;
 
   // ── BV Override ──
   manualBV = signal<number>(0);

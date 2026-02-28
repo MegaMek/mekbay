@@ -37,33 +37,18 @@ import {
 } from '../types';
 import {
   BuildingBlockWriter,
-  writeIdentity,
-  writeYearTechMeta,
-  writeMotiveType,
-  writeTransporters,
-  writeEngine,
   writeArmorBlocks,
-  writeInternalType,
+  writeBlkPreamble,
+  writeEngine,
   writeEquipmentByLocation,
   writeFluffBlocks,
+  writeInternalType,
   writeSource,
   writeTonnage,
+  writeTransporters,
 } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
-
-// ============================================================================
-// Equipment location BLK tags
-// ============================================================================
-
-const PROTO_EQUIP_TAGS: [string, string][] = [
-  ['Body Equipment',       'Body'],
-  ['Head Equipment',       'Head'],
-  ['Torso Equipment',      'Torso'],
-  ['Right Arm Equipment',  'Right Arm'],
-  ['Left Arm Equipment',   'Left Arm'],
-  ['Legs Equipment',       'Legs'],
-  ['Main Gun Equipment',   'Main Gun'],
-];
+import { PROTO_EQUIP_TAGS } from '../parsers/blk-constants';
 
 // ============================================================================
 // Public API
@@ -82,16 +67,8 @@ const PROTO_EQUIP_TAGS: [string, string][] = [
 export function writeBlkProtoMek(entity: ProtoMekEntity): string {
   const w = new BuildingBlockWriter();
 
-  // ── Section 1: Identity ──
-  writeIdentity(w, entity, 'ProtoMek');
-
-  // ── Section 2: Year / Tech / Meta (includes quirks) ──
-  writeYearTechMeta(w, entity);
-
-  // ── Section 3: Motion type ──
-  writeMotiveType(w, entity);
-
-  // ── Section 4: Transporters ──
+  // ── Section 1-4: Identity / Year+Tech / Motion type / Transporters ──
+  writeBlkPreamble(w, entity, 'ProtoMek');
   writeTransporters(w, entity);
 
   // ── Section 5: Movement ──
@@ -135,14 +112,10 @@ export function writeBlkProtoMek(entity: ProtoMekEntity): string {
   if (entity.isQuad())   w.addBlock('isQuad', 1);
   if (entity.isGlider()) w.addBlock('isGlider', 1);
 
-  // ── Section 12: Fluff ──
+  // ── Section 12-14: Fluff / Source / Tonnage ──
   writeFluffBlocks(w, entity.fluff());
-
-  // ── Section 13: Source ──
   writeSource(w, entity);
-
-  // ── Section 14: Tonnage ──
   writeTonnage(w, entity);
-
+  
   return w.toString();
 }

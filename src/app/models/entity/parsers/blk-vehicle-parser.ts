@@ -48,47 +48,19 @@ import {
   parseMotiveType,
   structureTypeFromCode,
 } from '../types';
-import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
+import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
-import { getBlkTechBase, parseBaseBlk, parseBlkArmor, parseBlkEngine } from './blk-base-parser';
-import { parseEquipmentLine } from './equipment-resolver';
+import {
+  GE_EQUIP_TAGS,
+  LST_EXTRA_EQUIP_TAGS,
+  LST_ARMOR_LOCS,
+  SUPERHEAVY_ARMOR_LOCS,
+  VEHICLE_ARMOR_LOCS,
+  VEHICLE_EQUIP_TAGS,
+  VTOL_ARMOR_LOCS,
+} from './blk-constants';
+import { getBlkTechBase, parseBaseBlk, parseBlkArmor, parseBlkEngine, parseBlkEquipment } from './blk-base-parser';
 import { ParseContext } from './parse-context';
-
-// ============================================================================
-// Equipment location tags for vehicles
-// ============================================================================
-
-const VEHICLE_EQUIP_TAGS: [string, string][] = [
-  ['Body Equipment',            'Body'],
-  ['Front Equipment',           'Front'],
-  ['Right Equipment',           'Right'],
-  ['Left Equipment',            'Left'],
-  ['Rear Equipment',            'Rear'],
-  ['Turret Equipment',          'Turret'],
-  ['Front Turret Equipment',    'Front Turret'],
-  ['Rear Turret Equipment',     'Rear Turret'],
-  ['Rotor Equipment',           'Rotor'],
-];
-
-/** Large Support Tank additional locations */
-const LST_EXTRA_EQUIP_TAGS: [string, string][] = [
-  ['Front Right Equipment',     'Front Right'],
-  ['Front Left Equipment',      'Front Left'],
-  ['Rear Right Equipment',      'Rear Right'],
-  ['Rear Left Equipment',       'Rear Left'],
-];
-
-/** Gun Emplacement uses a specific tag */
-const GE_EQUIP_TAGS: [string, string][] = [
-  ['Guns Equipment',  'Turret'],
-  ['Body Equipment',  'Body'],
-];
-
-/** BLK armor array ordering per vehicle type (positional index → location name) */
-const VEHICLE_ARMOR_LOCS = ['Front', 'Right', 'Left', 'Rear', 'Turret', 'Rear Turret'] as const;
-const VTOL_ARMOR_LOCS = ['Front', 'Right', 'Left', 'Rear', 'Rotor', 'Turret'] as const;
-const SUPERHEAVY_ARMOR_LOCS = ['Front', 'Front Right', 'Front Left', 'Rear Right', 'Rear Left', 'Rear', 'Turret', 'Rear Turret'] as const;
-const LST_ARMOR_LOCS = ['Front', 'Front Right', 'Front Left', 'Rear Right', 'Rear Left', 'Rear', 'Turret'] as const;
 
 // ============================================================================
 // Public API
@@ -296,32 +268,10 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
     equipTags = VEHICLE_EQUIP_TAGS;
   }
 
-  for (const [blkTag, locCode] of equipTags) {
-    if (!bb.exists(blkTag)) continue;
-    const lines = bb.getDataAsString(blkTag);
-    for (const raw of lines) {
-      const line = raw.trim();
-      if (!line) continue;
-
-      const parsed = parseEquipmentLine(line);
-      const resolved = ctx.resolveEquipment(parsed.name, blkTag);
-
-      entity.addEquipment({
-        mountId: generateMountId(),
-        equipmentId: parsed.name,
-        equipment: resolved ?? undefined,
-        location: locCode,
-        rearMounted: parsed.rearMounted,
-        turretMounted: locCode === 'Turret' || locCode === 'Front Turret' || locCode === 'Rear Turret',
-        turretType: parsed.turretType,
-        omniPodMounted: parsed.omniPod,
-        isNewBay: parsed.isNewBay,
-        armored: false,
-        size: parsed.size,
-        facing: parsed.facing,
-      });
-    }
-  }
+  parseBlkEquipment(bb, entity, ctx, equipTags, {
+    computeTurretMounted: loc => loc === 'Turret' || loc === 'Front Turret' || loc === 'Rear Turret',
+    includeTurretType: true,
+  });
 
   return entity;
 }

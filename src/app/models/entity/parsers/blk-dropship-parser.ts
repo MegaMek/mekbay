@@ -33,27 +33,13 @@
 
 import { DropShipEntity } from '../entities/aero/dropship-entity';
 import {
-  LocationArmor,
-  locationArmor,
   parseMotiveType,
 } from '../types';
-import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
+import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
-import { getBlkTechBase, parseBaseBlk, parseBlkArmor, parseBlkEngine } from './blk-base-parser';
-import { parseEquipmentLine } from './equipment-resolver';
+import { DS_ARMOR_LOCS, DS_EQUIP_TAGS } from './blk-constants';
+import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkCrew, parseBlkEquipment } from './blk-base-parser';
 import { ParseContext } from './parse-context';
-
-// ============================================================================
-// Equipment location tags
-// ============================================================================
-
-const DS_EQUIP_TAGS: [string, string][] = [
-  ['Nose Equipment',        'Nose'],
-  ['Left Side Equipment',   'Left Side'],
-  ['Right Side Equipment',  'Right Side'],
-  ['Aft Equipment',         'Aft'],
-  ['Hull Equipment',        'Hull'],
-];
 
 // ============================================================================
 // Public API
@@ -76,14 +62,7 @@ export function parseBlkDropShip(bb: BuildingBlock, ctx: ParseContext): DropShip
   if (bb.exists('motion_type'))  entity.motiveType.set(parseMotiveType(bb.getFirstString('motion_type')));
 
   // ── Engine ──
-  {
-    const result = parseBlkEngine(bb, entity);
-    if (result) {
-      entity.mountedEngine.set(result.mountedEngine);
-      entity.heatSinkType.set(result.heatSinkType);
-      if (bb.exists('heatsinks')) entity.heatSinkCount.set(result.totalHeatSinks);
-    }
-  }
+  parseBlkAeroEngine(bb, entity);
 
   // ── Structural integrity ──
   if (bb.exists('structural_integrity')) {
@@ -108,53 +87,13 @@ export function parseBlkDropShip(bb: BuildingBlock, ctx: ParseContext): DropShip
 
   // ── Armor ──
   parseBlkArmor(bb, entity, ctx);
-
-  if (bb.exists('armor')) {
-    const ints = bb.getDataAsInt('armor');
-    // BLK has 4 armor values: Nose, Left Side, Right Side, Aft
-    const dsArmorLocs = ['Nose', 'Left Side', 'Right Side', 'Aft'];
-    const armorMap = new Map<string, LocationArmor>();
-    for (let i = 0; i < dsArmorLocs.length && i < ints.length; i++) {
-      armorMap.set(dsArmorLocs[i], locationArmor(ints[i]));
-    }
-    entity.armorValues.set(armorMap);
-  }
+  parseBlkArmorValues(bb, entity, DS_ARMOR_LOCS);
 
   // ── Equipment per location ──
-  for (const [blkTag, locCode] of DS_EQUIP_TAGS) {
-    if (!bb.exists(blkTag)) continue;
-    const lines = bb.getDataAsString(blkTag);
-    for (const raw of lines) {
-      const line = raw.trim();
-      if (!line) continue;
-
-      const parsed = parseEquipmentLine(line);
-      const resolved = ctx.resolveEquipment(parsed.name, blkTag);
-
-      entity.addEquipment({
-        mountId: generateMountId(),
-        equipmentId: parsed.name,
-        equipment: resolved ?? undefined,
-        location: locCode,
-        rearMounted: parsed.rearMounted,
-        turretMounted: false,
-        omniPodMounted: parsed.omniPod,
-        isNewBay: parsed.isNewBay,
-        armored: false,
-        size: parsed.size,
-        facing: parsed.facing,
-      });
-    }
-  }
+  parseBlkEquipment(bb, entity, ctx, DS_EQUIP_TAGS);
 
   // ── Crew ──
-  if (bb.exists('crew'))        entity.crew.set(bb.getFirstInt('crew'));
-  if (bb.exists('officers'))    entity.officers.set(bb.getFirstInt('officers'));
-  if (bb.exists('gunners'))     entity.gunners.set(bb.getFirstInt('gunners'));
-  if (bb.exists('passengers'))  entity.passengers.set(bb.getFirstInt('passengers'));
-  if (bb.exists('marines'))     entity.marines.set(bb.getFirstInt('marines'));
-  if (bb.exists('battlearmor')) entity.battleArmor.set(bb.getFirstInt('battlearmor'));  if (bb.exists('otherpassenger')) entity.otherPassenger.set(bb.getFirstInt('otherpassenger'));  if (bb.exists('life_boat'))   entity.lifeboats.set(bb.getFirstInt('life_boat'));
-  if (bb.exists('escape_pod'))  entity.escapePods.set(bb.getFirstInt('escape_pod'));
+  parseBlkCrew(bb, entity);
 
   return entity;
 }

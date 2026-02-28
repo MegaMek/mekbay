@@ -222,17 +222,17 @@ function writeArmor(
   entity: MekEntity, lines: string[],
   isQuad: boolean, isTripod: boolean,
 ): void {
-  const armor = entity.mountedArmor();
-  const armorDisplayName = armor.equipment?.name ?? 'Standard';
-  if (armor.type === 'PATCHWORK') {
+  const mountedArmor = entity.mountedArmor();
+  const armorDisplayName = mountedArmor.armor?.name ?? 'Standard';
+  if (mountedArmor.type === 'PATCHWORK') {
     lines.push('armor:Patchwork');
   } else {
-    lines.push(`armor:${armorDisplayName}(${formatTechBaseLabel(armor.techBase)})`);
+    lines.push(`armor:${armorDisplayName}(${formatTechBaseLabel(mountedArmor.techBase)})`);
   }
 
   const order = isTripod ? ARMOR_ORDER_TRIPOD : isQuad ? ARMOR_ORDER_QUAD : ARMOR_ORDER_BIPED;
   const armorMap = entity.armorValues();
-  const patchTypes = armor.type === 'PATCHWORK' ? armor.patchwork?.types : undefined;
+  const patchTypes = mountedArmor.type === 'PATCHWORK' ? mountedArmor.patchwork?.types : undefined;
   for (const entry of order) {
     const la = armorMap.get(entry.loc);
     const value = la ? la[entry.face] : 0;

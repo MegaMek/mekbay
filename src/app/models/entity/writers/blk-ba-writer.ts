@@ -35,11 +35,9 @@ import { BattleArmorEntity } from '../entities/infantry/battle-armor-entity';
 import { getArmorTypeCode } from '../components';
 import {
   BuildingBlockWriter,
-  writeIdentity,
-  writeYearTechMeta,
-  writeMotiveType,
   writeFluffBlocks,
   writeSource,
+  writeBlkPreamble,
 } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 
@@ -60,13 +58,8 @@ export function writeBlkBA(entity: BattleArmorEntity): string {
   const w = new BuildingBlockWriter();
 
   // ── Section 1: Identity ──
-  writeIdentity(w, entity, 'BattleArmor');
+  writeBlkPreamble(w, entity, 'BattleArmor');
 
-  // ── Section 2: Year / Tech / Meta (includes quirks) ──
-  writeYearTechMeta(w, entity);
-
-  // ── Section 3: Motion / Movement ──
-  writeMotiveType(w, entity);
   w.addBlock('cruiseMP', entity.walkMP());
 
   // ── Section 4: Armor type (BA always writes both blocks) ──

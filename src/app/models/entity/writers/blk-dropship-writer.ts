@@ -39,33 +39,21 @@ import {
 } from '../types';
 import {
   BuildingBlockWriter,
-  writeIdentity,
-  writeYearTechMeta,
-  writeMotiveType,
-  writeTransporters,
   writeArmorBlocks,
-  writeInternalType,
-  writeOmni,
+  writeBlkCrew,
+  writeBlkPreamble,
   writeEngine,
   writeEquipmentByLocation,
   writeFluffBlocks,
+  writeInternalType,
+  writeManualBV,
+  writeOmni,
   writeSource,
   writeTonnage,
-  writeManualBV,
+  writeTransporters,
 } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
-
-// ============================================================================
-// Equipment location tags
-// ============================================================================
-
-const DS_EQUIP_TAGS: [string, string][] = [
-  ['Nose Equipment',        'Nose'],
-  ['Left Side Equipment',   'Left Side'],
-  ['Right Side Equipment',  'Right Side'],
-  ['Aft Equipment',         'Aft'],
-  ['Hull Equipment',        'Hull'],
-];
+import { DS_EQUIP_TAGS } from '../parsers/blk-constants';
 
 // ============================================================================
 // Public API
@@ -79,16 +67,8 @@ const DS_EQUIP_TAGS: [string, string][] = [
 export function writeBlkDropShip(entity: DropShipEntity): string {
   const w = new BuildingBlockWriter();
 
-  // 1. Identity
-  writeIdentity(w, entity, 'Dropship');
-
-  // 2. Year/Tech/Meta (includes quirks, weaponQuirks)
-  writeYearTechMeta(w, entity);
-
-  // 3. motion_type
-  writeMotiveType(w, entity);
-
-  // 4. transporters
+  // 1-4. Identity / Year+Tech / motion_type
+  writeBlkPreamble(w, entity, 'Dropship');
   writeTransporters(w, entity);
 
   // 5. SafeThrust
@@ -128,29 +108,15 @@ export function writeBlkDropShip(entity: DropShipEntity): string {
   // 13. structural_integrity
   w.addBlock('structural_integrity', entity.structuralIntegrity());
 
-  // 14. Fluff
+  // 14-17. Fluff / source / tonnage / Manual BV
   writeFluffBlocks(w, entity.fluff());
-
-  // 15. source
   writeSource(w, entity);
-
-  // 16. tonnage
   writeTonnage(w, entity);
-
-  // 17. Manual BV
   writeManualBV(w, entity);
 
   // 18. SmallCraft crew block
   w.addBlock('designtype', entity.designType() === 'Aerodyne' ? 1 : 0);
-  w.addBlock('crew', entity.crew());
-  w.addBlock('officers', entity.officers());
-  w.addBlock('gunners', entity.gunners());
-  w.addBlock('passengers', entity.passengers());
-  w.addBlock('marines', entity.marines());
-  w.addBlock('battlearmor', entity.battleArmor());
-  w.addBlock('otherpassenger', entity.otherPassenger());
-  w.addBlock('life_boat', entity.lifeboats());
-  w.addBlock('escape_pod', entity.escapePods());
+  writeBlkCrew(w, entity);
 
   return w.toString();
 }

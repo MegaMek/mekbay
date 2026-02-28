@@ -94,9 +94,9 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
       if (rawTechCode >= 5 && rawTechCode <= 8) techBase = 'Clan';
       else if (rawTechCode >= 9) techBase = 'Mixed';
     }
-    const equipment = resolveArmorEquipment(type, techBase === 'Clan', ctx.equipmentDb);
+    const armor = resolveArmorEquipment(type, techBase === 'Clan', ctx.equipmentDb);
     const existing = entity.mountedArmor();
-    entity.mountedArmor.set(createMountedArmor({ ...existing, type, techBase, equipment, rawTechCode }));
+    entity.mountedArmor.set(createMountedArmor({ ...existing, type, techBase, armor, rawTechCode }));
   }
 
   if (bb.exists('armor')) {

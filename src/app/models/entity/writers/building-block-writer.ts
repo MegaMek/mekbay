@@ -363,3 +363,50 @@ export function writeTonnage(w: BuildingBlockWriter, entity: BaseEntity): void {
 export function writeManualBV(w: BuildingBlockWriter, entity: BaseEntity): void {
   if (entity.manualBV() > 0) w.addBlock('bv', entity.manualBV());
 }
+
+// ============================================================================
+// Composite helpers — preamble / postamble / crew
+// ============================================================================
+
+/**
+ * Write the standard opening blocks shared by most BLK writers:
+ * identity → yearTechMeta → motiveType → transporters.
+ */
+export function writeBlkPreamble(w: BuildingBlockWriter, entity: BaseEntity, unitType: string): void {
+  writeIdentity(w, entity, unitType);
+  writeYearTechMeta(w, entity);
+  writeMotiveType(w, entity);
+}
+
+/**
+ * Entity with crew-related read accessors for writing.
+ */
+export interface CrewWriteEntity extends BaseEntity {
+  crew(): number;
+  officers(): number;
+  gunners(): number;
+  passengers(): number;
+  marines(): number;
+  battleArmor(): number;
+  otherPassenger?: () => number;
+  lifeboats(): number;
+  escapePods(): number;
+}
+
+/**
+ * Write crew blocks shared by smallcraft, dropship, and largecraft writers.
+ *
+ * `otherpassenger` is only written if the entity has that accessor
+ * (SmallCraft/DropShip do, JumpShip does not).
+ */
+export function writeBlkCrew(w: BuildingBlockWriter, entity: CrewWriteEntity): void {
+  w.addBlock('crew', entity.crew());
+  w.addBlock('officers', entity.officers());
+  w.addBlock('gunners', entity.gunners());
+  w.addBlock('passengers', entity.passengers());
+  w.addBlock('marines', entity.marines());
+  w.addBlock('battlearmor', entity.battleArmor());
+  if (entity.otherPassenger) w.addBlock('otherpassenger', entity.otherPassenger());
+  w.addBlock('life_boat', entity.lifeboats());
+  w.addBlock('escape_pod', entity.escapePods());
+}

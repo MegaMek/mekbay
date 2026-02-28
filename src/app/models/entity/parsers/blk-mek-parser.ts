@@ -45,55 +45,15 @@ import {
 } from '../types';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
+import {
+  BLK_ARMOR_BIPED,
+  BLK_ARMOR_QUAD,
+  BLK_CRIT_BIPED,
+  BLK_CRIT_QUAD,
+} from './blk-constants';
 import { getBlkTechBase, parseBaseBlk, parseBlkArmor, parseBlkEngine } from './blk-base-parser';
 import { parseEquipmentLine } from './equipment-resolver';
 import { ParseContext } from './parse-context';
-
-// ============================================================================
-// BLK Armor Array Order
-// ============================================================================
-
-const BLK_ARMOR_BIPED: { loc: string; face: 'front' | 'rear' }[] = [
-  { loc: 'HD',  face: 'front' },
-  { loc: 'LA',  face: 'front' },
-  { loc: 'LT',  face: 'front' },
-  { loc: 'LT',  face: 'rear'  },
-  { loc: 'CT',  face: 'front' },
-  { loc: 'CT',  face: 'rear'  },
-  { loc: 'RT',  face: 'front' },
-  { loc: 'RT',  face: 'rear'  },
-  { loc: 'RA',  face: 'front' },
-  { loc: 'LL',  face: 'front' },
-  { loc: 'RL',  face: 'front' },
-];
-
-const BLK_ARMOR_QUAD: { loc: string; face: 'front' | 'rear' }[] = [
-  { loc: 'HD',  face: 'front' },
-  { loc: 'FLL', face: 'front' },
-  { loc: 'LT',  face: 'front' },
-  { loc: 'LT',  face: 'rear'  },
-  { loc: 'CT',  face: 'front' },
-  { loc: 'CT',  face: 'rear'  },
-  { loc: 'RT',  face: 'front' },
-  { loc: 'RT',  face: 'rear'  },
-  { loc: 'FRL', face: 'front' },
-  { loc: 'RLL', face: 'front' },
-  { loc: 'RRL', face: 'front' },
-];
-
-// ============================================================================
-// BLK crit location tags
-// ============================================================================
-
-const BLK_CRIT_BIPED = [
-  ['hd', 'HD'], ['la', 'LA'], ['ra', 'RA'], ['ll', 'LL'], ['rl', 'RL'],
-  ['lt', 'LT'], ['rt', 'RT'], ['ct', 'CT'],
-] as const;
-
-const BLK_CRIT_QUAD = [
-  ['hd', 'HD'], ['fll', 'FLL'], ['frl', 'FRL'], ['rll', 'RLL'], ['rrl', 'RRL'],
-  ['lt', 'LT'], ['rt', 'RT'], ['ct', 'CT'],
-] as const;
 
 // ============================================================================
 // Public API

@@ -42,43 +42,20 @@ import {
 } from '../types';
 import {
   BuildingBlockWriter,
-  writeIdentity,
-  writeYearTechMeta,
-  writeMotiveType,
-  writeTransporters,
   writeArmorBlocks,
-  writeInternalType,
-  writeOmni,
+  writeBlkPreamble,
   writeEngine,
   writeEquipmentByLocation,
   writeFluffBlocks,
+  writeInternalType,
+  writeManualBV,
+  writeOmni,
   writeSource,
   writeTonnage,
-  writeManualBV,
+  writeTransporters,
 } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
-
-// ============================================================================
-// Equipment location BLK tags
-// ============================================================================
-
-const FIGHTER_EQUIP_TAGS: [string, string][] = [
-  ['Nose Equipment',       'Nose'],
-  ['Left Wing Equipment',  'Left Wing'],
-  ['Right Wing Equipment', 'Right Wing'],
-  ['Aft Equipment',        'Aft'],
-  ['Wings Equipment',      'Wings'],
-  ['Fuselage Equipment',   'Fuselage'],
-];
-
-const FWS_EQUIP_TAGS: [string, string][] = [
-  ['Nose Equipment',       'Nose'],
-  ['Left Wing Equipment',  'Left Wing'],
-  ['Right Wing Equipment', 'Right Wing'],
-  ['Aft Equipment',        'Aft'],
-  ['Wings Equipment',      'Wings'],
-  ['Body Equipment',       'Body'],
-];
+import { FIGHTER_EQUIP_TAGS, FWS_EQUIP_TAGS } from '../parsers/blk-constants';
 
 // ============================================================================
 // Public API
@@ -97,16 +74,7 @@ export function writeBlkAero(entity: AeroEntity): string {
   if (entity instanceof FixedWingSupportEntity)  unitType = 'FixedWingSupport';
   else if (entity instanceof ConvFighterEntity)  unitType = 'ConvFighter';
 
-  // 1. Identity
-  writeIdentity(w, entity, unitType);
-
-  // 2. Year/Tech/Meta (includes quirks, weaponQuirks)
-  writeYearTechMeta(w, entity);
-
-  // 3. motion_type
-  writeMotiveType(w, entity);
-
-  // 4. transporters
+  writeBlkPreamble(w, entity, unitType);
   writeTransporters(w, entity);
 
   // 5. SafeThrust
@@ -164,17 +132,11 @@ export function writeBlkAero(entity: AeroEntity): string {
     w.addBlock('structural_integrity', entity.structuralIntegrity());
   }
 
-  // 16. Fluff
-  writeFluffBlocks(w, entity.fluff());
-
-  // 17. source
-  writeSource(w, entity);
-
-  // 18. tonnage
-  writeTonnage(w, entity);
-
-  // 19. Manual BV
-  writeManualBV(w, entity);
+  // 16-19. Fluff / source / tonnage / Manual BV
+    writeFluffBlocks(w, entity.fluff());
+    writeSource(w, entity);
+    writeTonnage(w, entity);
+    writeManualBV(w, entity);
 
   // 20. Fire control weight (FWS omni)
   if (entity instanceof FixedWingSupportEntity && entity.omni()) {

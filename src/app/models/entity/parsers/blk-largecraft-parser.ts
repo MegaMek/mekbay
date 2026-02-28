@@ -36,33 +36,12 @@ import { WarShipEntity } from '../entities/largecraft/warship-entity';
 import { SpaceStationEntity } from '../entities/largecraft/space-station-entity';
 import {
   LARGE_CRAFT_LOCATIONS,
-  LocationArmor,
-  locationArmor,
 } from '../types';
-import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
+import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
-import { getBlkTechBase, parseBaseBlk, parseBlkArmor, parseBlkEngine } from './blk-base-parser';
-import { parseEquipmentLine } from './equipment-resolver';
+import { JUMPSHIP_EQUIP_TAGS, WARSHIP_EXTRA_EQUIP_TAGS } from './blk-constants';
+import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkCrew, parseBlkEquipment } from './blk-base-parser';
 import { ParseContext } from './parse-context';
-
-// ============================================================================
-// Equipment location tags
-// ============================================================================
-
-const JUMPSHIP_EQUIP_TAGS: [string, string][] = [
-  ['Nose Equipment',                  'Nose'],
-  ['Left Front Side Equipment',       'FLS'],
-  ['Right Front Side Equipment',      'FRS'],
-  ['Aft Left Side Equipment',         'ALS'],
-  ['Aft Right Side Equipment',        'ARS'],
-  ['Aft Equipment',                   'Aft'],
-  ['Hull Equipment',                  'Hull'],
-];
-
-const WARSHIP_EXTRA_EQUIP_TAGS: [string, string][] = [
-  ['Left Broadsides Equipment',        'Left Broadside'],
-  ['Right Broadsides Equipment',       'Right Broadside'],
-];
 
 // ============================================================================
 // Public API
@@ -93,14 +72,7 @@ export function parseBlkLargeCraft(bb: BuildingBlock, ctx: ParseContext): JumpSh
   if (bb.exists('fuel'))       entity.fuel.set(bb.getFirstInt('fuel'));
 
   // ── Engine ──
-  {
-    const result = parseBlkEngine(bb, entity, { defaultTotalHeatSinks: 0 });
-    if (result) {
-      entity.mountedEngine.set(result.mountedEngine);
-      entity.heatSinkType.set(result.heatSinkType);
-      if (bb.exists('heatsinks')) entity.heatSinkCount.set(result.totalHeatSinks);
-    }
-  }
+  parseBlkAeroEngine(bb, entity, { defaultTotalHeatSinks: 0 });
 
   // ── Structural integrity ──
   if (bb.exists('structural_integrity')) {
@@ -126,58 +98,16 @@ export function parseBlkLargeCraft(bb: BuildingBlock, ctx: ParseContext): JumpSh
 
   // ── Armor ──
   parseBlkArmor(bb, entity, ctx);
-
-  if (bb.exists('armor')) {
-    const ints = bb.getDataAsInt('armor');
-    const locs = [...LARGE_CRAFT_LOCATIONS];
-    const armorMap = new Map<string, LocationArmor>();
-    for (let i = 0; i < locs.length && i < ints.length; i++) {
-      armorMap.set(locs[i], locationArmor(ints[i]));
-    }
-    entity.armorValues.set(armorMap);
-  }
+  parseBlkArmorValues(bb, entity, LARGE_CRAFT_LOCATIONS);
 
   // ── Equipment per location ──
-  let equipTags = [...JUMPSHIP_EQUIP_TAGS];
-  if (entity instanceof WarShipEntity) {
-    equipTags = [...equipTags, ...WARSHIP_EXTRA_EQUIP_TAGS];
-  }
-
-  for (const [blkTag, locCode] of equipTags) {
-    if (!bb.exists(blkTag)) continue;
-    const lines = bb.getDataAsString(blkTag);
-    for (const raw of lines) {
-      const line = raw.trim();
-      if (!line) continue;
-
-      const parsed = parseEquipmentLine(line);
-      const resolved = ctx.resolveEquipment(parsed.name, blkTag);
-
-      entity.addEquipment({
-        mountId: generateMountId(),
-        equipmentId: parsed.name,
-        equipment: resolved ?? undefined,
-        location: locCode,
-        rearMounted: parsed.rearMounted,
-        turretMounted: false,
-        omniPodMounted: parsed.omniPod,
-        isNewBay: parsed.isNewBay,
-        armored: false,
-        size: parsed.size,
-        facing: parsed.facing,
-      });
-    }
-  }
+  const equipTags = entity instanceof WarShipEntity
+    ? [...JUMPSHIP_EQUIP_TAGS, ...WARSHIP_EXTRA_EQUIP_TAGS]
+    : JUMPSHIP_EQUIP_TAGS;
+  parseBlkEquipment(bb, entity, ctx, equipTags);
 
   // ── Crew ──
-  if (bb.exists('crew'))        entity.crew.set(bb.getFirstInt('crew'));
-  if (bb.exists('officers'))    entity.officers.set(bb.getFirstInt('officers'));
-  if (bb.exists('gunners'))     entity.gunners.set(bb.getFirstInt('gunners'));
-  if (bb.exists('passengers'))  entity.passengers.set(bb.getFirstInt('passengers'));
-  if (bb.exists('marines'))     entity.marines.set(bb.getFirstInt('marines'));
-  if (bb.exists('battlearmor')) entity.battleArmor.set(bb.getFirstInt('battlearmor'));
-  if (bb.exists('life_boat'))   entity.lifeboats.set(bb.getFirstInt('life_boat'));
-  if (bb.exists('escape_pod'))  entity.escapePods.set(bb.getFirstInt('escape_pod'));
+  parseBlkCrew(bb, entity);
 
   return entity;
 }

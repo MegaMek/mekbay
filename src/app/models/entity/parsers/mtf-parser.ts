@@ -38,7 +38,7 @@ import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import { QuadVeeEntity } from '../entities/mek/quad-vee-entity';
 import { TripodMekEntity } from '../entities/mek/tripod-mek-entity';
 import { createEngine, createMountedEngine, createMountedArmor, createPatchworkArmor } from '../components';
-import { WeaponEquipment } from '../../equipment.model';
+import { ArmorEquipment, WeaponEquipment } from '../../equipment.model';
 import {
   ArmorType,
   EntityFluff,
@@ -223,7 +223,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   {
     let armorType: ArmorType = 'STANDARD';
     let armorTechBase: EntityTechBase = 'Inner Sphere';
-    let armorEquipment: import('../../equipment.model').ArmorEquipment | null = null;
+    let armorEquipment: ArmorEquipment | null = null;
 
     if (header.armorType) {
       const armorInfo = parseMtfArmor(header.armorType);
@@ -253,7 +253,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
     entity.mountedArmor.set(createMountedArmor({
       type: armorType,
       techBase: armorTechBase,
-      equipment: armorEquipment,
+      armor: armorEquipment,
       patchwork,
     }));
   }

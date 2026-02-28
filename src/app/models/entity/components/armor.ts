@@ -87,8 +87,7 @@ export interface PatchworkArmor {
  * MountedArmor wraps all armor-type configuration for an entity.
  *
  * This does NOT include per-location armor point values (`armorValues`),
- * which remain a separate signal on BaseEntity because they are mutated
- * independently by setArmorValue().
+ * which remain a separate signal on BaseEntity.
  */
 export interface MountedArmor {
   /** ArmorType enum value (e.g. 'STANDARD', 'FERRO_FIBROUS', 'PATCHWORK') */
@@ -98,7 +97,7 @@ export interface MountedArmor {
   readonly techBase: EntityTechBase;
 
   /** Resolved ArmorEquipment from the equipment DB, or null for PATCHWORK / unknown */
-  readonly equipment: ArmorEquipment | null;
+  readonly armor: ArmorEquipment | null;
 
   /**
    * Explicit tech rating override (A=0 … F=5).
@@ -138,7 +137,7 @@ export function createMountedArmor(
   return {
     type: opts?.type ?? 'STANDARD',
     techBase: opts?.techBase ?? 'Inner Sphere',
-    equipment: opts?.equipment ?? null,
+    armor: opts?.armor ?? null,
     techRating: opts?.techRating ?? -1,
     techLevel: opts?.techLevel ?? -1,
     patchwork: opts?.patchwork ?? null,
@@ -178,7 +177,7 @@ export function getArmorTypeCode(armor: MountedArmor): number {
  */
 export function getEffectiveArmorTechRating(armor: MountedArmor): number {
   if (armor.techRating >= 0) return armor.techRating;
-  if (armor.equipment) return TECH_RATING_TO_NUMBER[armor.equipment.rating] ?? 3;
+  if (armor.armor) return TECH_RATING_TO_NUMBER[armor.armor.rating] ?? 3;
   return 0;
 }
 
@@ -188,6 +187,6 @@ export function getEffectiveArmorTechRating(armor: MountedArmor): number {
  */
 export function getEffectiveArmorTechLevel(armor: MountedArmor, entityIsClan: boolean): number {
   if (armor.techLevel >= 0) return armor.techLevel;
-  if (armor.equipment) return compoundTechLevel(armor.equipment.level, entityIsClan);
+  if (armor.armor) return compoundTechLevel(armor.armor.level, entityIsClan);
   return 0;
 }

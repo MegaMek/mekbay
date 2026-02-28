@@ -37,28 +37,11 @@ import {
   locationArmor,
   parseMotiveType,
 } from '../types';
-import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
+import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
-import { getBlkTechBase, parseBaseBlk, parseBlkArmor, parseBlkEngine } from './blk-base-parser';
-import { parseEquipmentLine } from './equipment-resolver';
+import { PROTO_EQUIP_TAGS } from './blk-constants';
+import { getBlkTechBase, parseBaseBlk, parseBlkArmor, parseBlkEngine, parseBlkEquipment } from './blk-base-parser';
 import { ParseContext } from './parse-context';
-
-// ============================================================================
-// Equipment location tags
-// ============================================================================
-
-const PROTO_EQUIP_TAGS: [string, string][] = [
-  ['Body Equipment',       'Body'],
-  ['Head Equipment',       'Head'],
-  ['Torso Equipment',      'Torso'],
-  ['Right Arm Equipment',  'Right Arm'],
-  ['Left Arm Equipment',   'Left Arm'],
-  ['Legs Equipment',       'Legs'],
-  ['Main Gun Equipment',   'Main Gun'],
-];
-
-/** Armor order: Head, Torso, RA, LA, Legs, [MainGun] (no rear armor) */
-const PROTO_ARMOR_LOCS = ['Head', 'Torso', 'Right Arm', 'Left Arm', 'Legs', 'Main Gun'] as const;
 
 // ============================================================================
 // Public API
@@ -129,30 +112,7 @@ export function parseBlkProtoMek(bb: BuildingBlock, ctx: ParseContext): ProtoMek
   }
 
   // ── Equipment per location ──
-  for (const [blkTag, locCode] of PROTO_EQUIP_TAGS) {
-    if (!bb.exists(blkTag)) continue;
-    const lines = bb.getDataAsString(blkTag);
-    for (const raw of lines) {
-      const line = raw.trim();
-      if (!line) continue;
-
-      const parsed = parseEquipmentLine(line);
-      const resolved = ctx.resolveEquipment(parsed.name, blkTag);
-
-      entity.addEquipment({
-        mountId: generateMountId(),
-        equipmentId: parsed.name,
-        equipment: resolved ?? undefined,
-        location: locCode,
-        rearMounted: parsed.rearMounted,
-        turretMounted: false,
-        omniPodMounted: parsed.omniPod,
-        armored: false,
-        size: parsed.size,
-        facing: parsed.facing,
-      });
-    }
-  }
+  parseBlkEquipment(bb, entity, ctx, PROTO_EQUIP_TAGS);
 
   return entity;
 }

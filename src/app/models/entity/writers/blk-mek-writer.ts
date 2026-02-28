@@ -44,52 +44,12 @@ import {
 } from '../types';
 import { BuildingBlockWriter } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
-
-// ============================================================================
-// BLK Armor Array Order (must match parser)
-// ============================================================================
-
-const BLK_ARMOR_BIPED: { loc: string; face: 'front' | 'rear' }[] = [
-  { loc: 'HD',  face: 'front' },
-  { loc: 'LA',  face: 'front' },
-  { loc: 'LT',  face: 'front' },
-  { loc: 'LT',  face: 'rear'  },
-  { loc: 'CT',  face: 'front' },
-  { loc: 'CT',  face: 'rear'  },
-  { loc: 'RT',  face: 'front' },
-  { loc: 'RT',  face: 'rear'  },
-  { loc: 'RA',  face: 'front' },
-  { loc: 'LL',  face: 'front' },
-  { loc: 'RL',  face: 'front' },
-];
-
-const BLK_ARMOR_QUAD: { loc: string; face: 'front' | 'rear' }[] = [
-  { loc: 'HD',  face: 'front' },
-  { loc: 'FLL', face: 'front' },
-  { loc: 'LT',  face: 'front' },
-  { loc: 'LT',  face: 'rear'  },
-  { loc: 'CT',  face: 'front' },
-  { loc: 'CT',  face: 'rear'  },
-  { loc: 'RT',  face: 'front' },
-  { loc: 'RT',  face: 'rear'  },
-  { loc: 'FRL', face: 'front' },
-  { loc: 'RLL', face: 'front' },
-  { loc: 'RRL', face: 'front' },
-];
-
-// ============================================================================
-// BLK crit location tags
-// ============================================================================
-
-const BLK_CRIT_BIPED: [string, string][] = [
-  ['hd', 'HD'], ['la', 'LA'], ['ra', 'RA'], ['ll', 'LL'], ['rl', 'RL'],
-  ['lt', 'LT'], ['rt', 'RT'], ['ct', 'CT'],
-];
-
-const BLK_CRIT_QUAD: [string, string][] = [
-  ['hd', 'HD'], ['fll', 'FLL'], ['frl', 'FRL'], ['rll', 'RLL'], ['rrl', 'RRL'],
-  ['lt', 'LT'], ['rt', 'RT'], ['ct', 'CT'],
-];
+import {
+  BLK_ARMOR_BIPED,
+  BLK_ARMOR_QUAD,
+  BLK_CRIT_BIPED,
+  BLK_CRIT_QUAD,
+} from '../parsers/blk-constants';
 
 // ============================================================================
 // Public API

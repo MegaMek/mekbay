@@ -35,11 +35,9 @@ import { InfantryEntity } from '../entities/infantry/infantry-entity';
 import { INFANTRY_SPECIALIZATION_TO_BIT } from '../types';
 import {
   BuildingBlockWriter,
-  writeIdentity,
-  writeYearTechMeta,
-  writeMotiveType,
   writeFluffBlocks,
   writeSource,
+  writeBlkPreamble,
 } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 
@@ -63,13 +61,7 @@ export function writeBlkInfantry(entity: InfantryEntity): string {
   const w = new BuildingBlockWriter();
 
   // ── Section 1: Identity ──
-  writeIdentity(w, entity, 'Infantry');
-
-  // ── Section 2: Year / Tech / Meta (includes quirks) ──
-  writeYearTechMeta(w, entity);
-
-  // ── Section 3: Motion type (composed compound string via base getMotiveTypeAsString) ──
-  writeMotiveType(w, entity);
+  writeBlkPreamble(w, entity, 'Infantry');
 
   // ── Section 4: Equipment per location ──
   // Java iterates entity.locations() which gives LOC_INFANTRY=0 then LOC_FIELD_GUNS=1

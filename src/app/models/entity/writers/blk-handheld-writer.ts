@@ -37,6 +37,7 @@ import {
   writeArmorBlocks,
   writeFluffBlocks,
   writeInternalType,
+  writeSource,
   writeTonnage,
 } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
@@ -83,7 +84,7 @@ export function writeBlkHandheld(entity: HandheldWeaponEntity): string {
   writeFluffBlocks(w, entity.fluff());
 
   // ── Source / Tonnage ──
-  if (entity.source()) w.addBlock('source', entity.source());
+  writeSource(w, entity);
   writeTonnage(w, entity);
 
   return w.toString();
