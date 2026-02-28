@@ -31,7 +31,6 @@
  * affiliated with Microsoft.
  */
 
-import { min } from '@angular/forms/signals';
 import { ForceUnit } from '../models/force-unit.model';
 
 /*
@@ -110,12 +109,21 @@ function getForceComposition(units: ForceUnit[]): ForceComposition {
     return comp;
 }
 
+/**
+ * Named modifier for a force size level. Each modifier has a display name
+ * ('' for regular/default) and a nominal point value.
+ */
+type ForceModifier = {
+    name: string;   // '' for regular, 'Short', 'Under-Strength', 'Reinforced', etc.
+    pts: number;    // nominal point value for this modifier level
+};
+
 type ForceTypeRule = {
     type: ForceType;
-    minPts: number;
-    maxPts: number;
+    modifiers: ForceModifier[];  // sorted ascending by pts
     commandRank?: string;
     strict?: boolean;
+    filter?: (comp: ForceComposition) => boolean;
     customMatch?: (comp: ForceComposition) => number;
 };
 
@@ -145,88 +153,133 @@ function getClanPointRange(comp: ForceComposition): PointRange {
 }
 
 const CLAN_RULES: ForceTypeRule[] = [
-    { type: 'Nova', minPts: 10, maxPts: 10, commandRank: 'Nova Commander', strict: true, customMatch: (comp) => {
-        const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25);
-        if (comp.BM === 0 || infPoints === 0) return Infinity;
-        const otherPoints = (comp.PM / 5) + (comp.CV / 2) + (comp.AF / 2) + comp.other;
-        return Math.abs(comp.BM - 5) + Math.abs(infPoints - 5) + otherPoints;
+    { type: 'Nova', modifiers: [{ name: '', pts: 10 }], commandRank: 'Nova Commander', strict: true,
+        filter: (comp) => comp.BM > 0 && ((comp.BA_troopers / 5) + (comp.CI_troopers / 25)) > 0,
+        customMatch: (comp) => {
+            const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25);
+            const otherPoints = (comp.PM / 5) + (comp.CV / 2) + (comp.AF / 2) + comp.other;
+            return Math.abs(comp.BM - 5) + Math.abs(infPoints - 5) + otherPoints;
     }},
-    { type: 'Supernova Binary', minPts: 20, maxPts: 20, commandRank: 'Nova Captain', strict: true, customMatch: (comp) => {
-        const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25);
-        if (comp.BM === 0 || infPoints === 0) return Infinity;
-        const otherPoints = (comp.PM / 5) + (comp.CV / 2) + (comp.AF / 2) + comp.other;
-        return Math.abs(comp.BM - 10) + Math.abs(infPoints - 10) + otherPoints;
+    { type: 'Supernova Binary', modifiers: [{ name: '', pts: 20 }], commandRank: 'Nova Captain', strict: true,
+        filter: (comp) => comp.BM > 0 && ((comp.BA_troopers / 5) + (comp.CI_troopers / 25)) > 0,
+        customMatch: (comp) => {
+            const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25);
+            const otherPoints = (comp.PM / 5) + (comp.CV / 2) + (comp.AF / 2) + comp.other;
+            return Math.abs(comp.BM - 10) + Math.abs(infPoints - 10) + otherPoints;
     }},
-    { type: 'Supernova Trinary', minPts: 30, maxPts: 30, commandRank: 'Nova Captain', strict: true, customMatch: (comp) => {
-        const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25);
-        if (comp.BM === 0 || infPoints === 0) return Infinity;
-        const otherPoints = (comp.PM / 5) + (comp.CV / 2) + (comp.AF / 2) + comp.other;
-        return Math.abs(comp.BM - 15) + Math.abs(infPoints - 15) + otherPoints;
+    { type: 'Supernova Trinary', modifiers: [{ name: '', pts: 30 }], commandRank: 'Nova Captain', strict: true,
+        filter: (comp) => comp.BM > 0 && ((comp.BA_troopers / 5) + (comp.CI_troopers / 25)) > 0,
+        customMatch: (comp) => {
+            const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25);
+            const otherPoints = (comp.PM / 5) + (comp.CV / 2) + (comp.AF / 2) + comp.other;
+            return Math.abs(comp.BM - 15) + Math.abs(infPoints - 15) + otherPoints;
     }},
-    { type: 'Point', minPts: 1, maxPts: 1, commandRank: 'Point Commander' },
-    { type: 'Star', minPts: 5, maxPts: 5, commandRank: 'Star Commander' },
-    { type: 'Binary', minPts: 10, maxPts: 10, commandRank: 'Star Captain' },
-    { type: 'Trinary', minPts: 15, maxPts: 15, commandRank: 'Star Captain' },
-    { type: 'Cluster', minPts: 30, maxPts: 75, commandRank: 'Star Colonel' },
-    { type: 'Galaxy', minPts: 90, maxPts: 375, commandRank: 'Galaxy Commander' }
+    { type: 'Point', modifiers: [{ name: '', pts: 1 }], commandRank: 'Point Commander' },
+    { type: 'Star', modifiers: [
+        { name: 'Half', pts: 2 },
+        { name: 'Short', pts: 3 },
+        { name: 'Under-Strength', pts: 4 },
+        { name: '', pts: 5 },
+        { name: 'Reinforced', pts: 6 },
+        { name: 'Fortified', pts: 7 },
+    ], commandRank: 'Star Commander' },
+    { type: 'Binary', modifiers: [{ name: '', pts: 10 }], commandRank: 'Star Captain' },
+    { type: 'Trinary', modifiers: [{ name: '', pts: 15 }], commandRank: 'Star Captain' },
+    { type: 'Cluster', modifiers: [
+        { name: 'Under-Strength', pts: 30 },
+        { name: '', pts: 45 },
+        { name: 'Reinforced', pts: 60 },
+        { name: 'Strong', pts: 75 },
+    ], commandRank: 'Star Colonel' },
+    { type: 'Galaxy', modifiers: [
+        { name: 'Under-Strength', pts: 90 },
+        { name: '', pts: 135 },
+        { name: 'Reinforced', pts: 180 },
+        { name: 'Strong', pts: 225 },
+    ], commandRank: 'Galaxy Commander' },
 ];
 
 function getISPointRange(comp: ForceComposition): PointRange {
-    let minPts = comp.BM + 
-           (comp.BA_troopers / 4) + 
-           comp.PM + 
-           comp.CV + 
+    const fixed = comp.BM +
+           (comp.BA_troopers / 4) +
+           comp.PM +
+           comp.CV +
            comp.AF +
            comp.other;
-    let maxPts = minPts;
-    minPts += comp.CI_troopers / 21;
-    maxPts += comp.CI_troopers / 28;
-    return { min: minPts, max: maxPts };
+    // IS infantry platoon = 21-28 troopers per point
+    // Dividing by 28 = minimum pts; dividing by 21 = maximum pts
+    return {
+        min: fixed + comp.CI_troopers / 28,
+        max: fixed + comp.CI_troopers / 21,
+    };
 }
 
 function isPureAero(comp: ForceComposition): boolean {
     return comp.AF > 0 && comp.BM === 0 && comp.CV === 0 && comp.BA_troopers === 0 && comp.CI_troopers === 0 && comp.PM === 0 && comp.other === 0;
 }
 
+function isPureInfantry(comp: ForceComposition): boolean {
+    return comp.BM === 0 && comp.CV === 0 && comp.AF === 0 && comp.PM === 0 && comp.other === 0 &&
+           (comp.BA_troopers > 0 || comp.CI_troopers > 0);
+}
+
 const IS_RULES: ForceTypeRule[] = [
-    { type: 'Flight', minPts: 2, maxPts: 2, commandRank: 'Lieutenant', customMatch: (comp) => {
-        if (!isPureAero(comp)) return Infinity;
-        return Math.abs(comp.AF - 2);
+    { type: 'Flight', modifiers: [{ name: '', pts: 2 }], commandRank: 'Lieutenant',
+        filter: (comp) => isPureAero(comp) },
+    { type: 'Squadron', modifiers: [{ name: '', pts: 6 }], commandRank: 'Captain',
+        filter: (comp) => isPureAero(comp) },
+    { type: 'Wing', modifiers: [
+        { name: 'Under-Strength', pts: 18 },
+        { name: '', pts: 21 },
+        { name: 'Reinforced', pts: 24 },
+    ], commandRank: 'Major',
+        filter: (comp) => isPureAero(comp) },
+    { type: 'Squad', modifiers: [{ name: '', pts: 1 }], commandRank: 'Sergeant',
+        filter: (comp) => isPureInfantry(comp),
+        customMatch: (comp) => {
+            if (comp.BA_troopers > 0 && comp.CI_troopers === 0) return Math.abs(comp.BA_troopers - 4) / 4;
+            if (comp.CI_troopers > 0 && comp.BA_troopers === 0) {
+                if (comp.CI_troopers >= 2 && comp.CI_troopers <= 8) return 0;
+                if (comp.CI_troopers < 2) return (2 - comp.CI_troopers) / 7;
+                return (comp.CI_troopers - 8) / 7;
+            }
+            return Infinity;
     }},
-    { type: 'Squadron', minPts: 6, maxPts: 6, commandRank: 'Captain', customMatch: (comp) => {
-        if (!isPureAero(comp)) return Infinity;
-        return Math.abs(comp.AF - 6);
-    }},
-    { type: 'Wing', minPts: 18, maxPts: 24, commandRank: 'Major', customMatch: (comp) => {
-        if (!isPureAero(comp)) return Infinity;
-        if (comp.AF >= 18 && comp.AF <= 24) return 0;
-        if (comp.AF < 18) return 18 - comp.AF;
-        return comp.AF - 24;
-    }},
-    { type: 'Squad', minPts: 1, maxPts: 1, commandRank: 'Sergeant', customMatch: (comp) => {
-        if (comp.BM > 0 || comp.CV > 0 || comp.AF > 0 || comp.PM > 0 || comp.other > 0) return Infinity;
-        if (comp.BA_troopers > 0 && comp.CI_troopers === 0) return Math.abs(comp.BA_troopers - 4) / 4;
-        if (comp.CI_troopers > 0 && comp.BA_troopers === 0) {
-            if (comp.CI_troopers >= 2 && comp.CI_troopers <= 8) return 0;
-            if (comp.CI_troopers < 2) return (2 - comp.CI_troopers) / 7;
-            return (comp.CI_troopers - 8) / 7;
-        }
-        return Infinity;
-    }},
-    { type: 'Platoon', minPts: 3, maxPts: 4, commandRank: 'Sergeant', customMatch: (comp) => {
-        if (comp.BM > 0 || comp.CV > 0 || comp.AF > 0 || comp.PM > 0 || comp.other > 0) return Infinity;
-        if (comp.CI_troopers > 0 && comp.BA_troopers === 0) {
+    { type: 'Platoon', modifiers: [{ name: '', pts: 1 }], commandRank: 'Sergeant',
+        filter: (comp) => isPureInfantry(comp) && comp.CI_troopers > 0 && comp.BA_troopers === 0,
+        customMatch: (comp) => {
             if (comp.CI_troopers >= 6 && comp.CI_troopers <= 32) return 0;
             if (comp.CI_troopers < 6) return (6 - comp.CI_troopers) / 28;
             return (comp.CI_troopers - 32) / 28;
-        }
-        return Infinity;
     }},
-    { type: 'Lance', minPts: 4, maxPts: 4, commandRank: 'Lieutenant', customMatch: (comp) => isPureAero(comp) ? Infinity : -1 },
-    { type: 'Company', minPts: 12, maxPts: 16, commandRank: 'Captain', customMatch: (comp) => isPureAero(comp) ? Infinity : -1 },
-    { type: 'Battalion', minPts: 36, maxPts: 64, commandRank: 'Major', customMatch: (comp) => isPureAero(comp) ? Infinity : -1 },
-    { type: 'Regiment', minPts: 108, maxPts: 256, commandRank: 'Colonel', customMatch: (comp) => isPureAero(comp) ? Infinity : -1 },
-    { type: 'Brigade', minPts: 324, maxPts: 1536, commandRank: 'General', customMatch: (comp) => isPureAero(comp) ? Infinity : -1 }
+    { type: 'Lance', modifiers: [
+        { name: 'Short', pts: 2 },
+        { name: 'Under-Strength', pts: 3 },
+        { name: '', pts: 4 },
+        { name: 'Reinforced', pts: 5 },
+        { name: 'Fortified', pts: 6 },
+    ], commandRank: 'Lieutenant', filter: (comp) => !isPureAero(comp) },
+    { type: 'Company', modifiers: [
+        { name: 'Under-Strength', pts: 8 },
+        { name: '', pts: 12 },
+        { name: 'Reinforced', pts: 16 },
+    ], commandRank: 'Captain', filter: (comp) => !isPureAero(comp) },
+    { type: 'Battalion', modifiers: [
+        { name: 'Under-Strength', pts: 24 },
+        { name: '', pts: 36 },
+        { name: 'Reinforced', pts: 48 },
+    ], commandRank: 'Major', filter: (comp) => !isPureAero(comp) },
+    { type: 'Regiment', modifiers: [
+        { name: 'Under-Strength', pts: 72 },
+        { name: '', pts: 108 },
+        { name: 'Reinforced', pts: 144 },
+        { name: 'Strong', pts: 180 },
+    ], commandRank: 'Colonel', filter: (comp) => !isPureAero(comp) },
+    { type: 'Brigade', modifiers: [
+        { name: 'Under-Strength', pts: 216 },
+        { name: '', pts: 324 },
+        { name: 'Reinforced', pts: 432 },
+    ], commandRank: 'General', filter: (comp) => !isPureAero(comp) },
 ];
 
 function getComStarPointRange(comp: ForceComposition): PointRange {
@@ -254,11 +307,32 @@ function getComStarPointRange(comp: ForceComposition): PointRange {
 }
 
 const COMSTAR_RULES: ForceTypeRule[] = [
-    { type: 'Level I', minPts: 1, maxPts: 1, commandRank: 'Acolyte'},
-    { type: 'Level II', minPts: 6, maxPts: 6, commandRank: 'Adept' },
-    { type: 'Level III', minPts: 36, maxPts: 36, commandRank: 'Adept (Demi-Precentor)' },
-    { type: 'Level IV', minPts: 216, maxPts: 216, commandRank: 'Precentor' },
-    { type: 'Level V', minPts: 1296, maxPts: 1296, commandRank: 'Precentor' }
+    { type: 'Level I', modifiers: [{ name: '', pts: 1 }], commandRank: 'Acolyte' },
+    { type: 'Level II', modifiers: [
+        { name: 'Thin', pts: 2 },
+        { name: 'Half', pts: 3 },
+        { name: 'Short', pts: 4 },
+        { name: 'Under-Strength', pts: 5 },
+        { name: '', pts: 6 },
+        { name: 'Reinforced', pts: 7 },
+        { name: 'Fortified', pts: 8 },
+        { name: 'Heavy', pts: 9 },
+    ], commandRank: 'Adept' },
+    { type: 'Level III', modifiers: [
+        { name: 'Under-Strength', pts: 30 },
+        { name: '', pts: 36 },
+        { name: 'Reinforced', pts: 42 },
+    ], commandRank: 'Adept (Demi-Precentor)' },
+    { type: 'Level IV', modifiers: [
+        { name: 'Under-Strength', pts: 180 },
+        { name: '', pts: 216 },
+        { name: 'Reinforced', pts: 252 },
+    ], commandRank: 'Precentor' },
+    { type: 'Level V', modifiers: [
+        { name: 'Under-Strength', pts: 1080 },
+        { name: '', pts: 1296 },
+        { name: 'Reinforced', pts: 1512 },
+    ], commandRank: 'Precentor' },
 ];
 
 function getSocietyPointRange(comp: ForceComposition): PointRange {
@@ -273,78 +347,111 @@ function getSocietyPointRange(comp: ForceComposition): PointRange {
 }
 
 const SOCIETY_RULES: ForceTypeRule[] = [
-    { type: 'Un', minPts: 1, maxPts: 1 },
-    { type: 'Trey', minPts: 3, maxPts: 3 },
-    { type: 'Sept', minPts: 7, maxPts: 7 }
+    { type: 'Un', modifiers: [{ name: '', pts: 1 }] },
+    { type: 'Trey', modifiers: [{ name: '', pts: 3 }] },
+    { type: 'Sept', modifiers: [{ name: '', pts: 7 }] },
 ];
 
-function evaluateForce(comp: ForceComposition, rules: ForceTypeRule[], getPointRange: (comp: ForceComposition) => PointRange): string {
+/**
+ * Distance from a point range to a single point.
+ * Returns 0 if the point is within the range.
+ */
+function rangeDistToPoint(range: PointRange, point: number): number {
+    if (point >= range.min && point <= range.max) return 0;
+    if (point < range.min) return range.min - point;
+    return point - range.max;
+}
+
+/**
+ * Find the best modifier name for a given point range against a rule's modifiers.
+ * Picks the modifier whose nominal pts is closest to (or within) the range.
+ * For single-modifier rules with name='', generates 'Under-Strength' or
+ * 'Reinforced' if the force range doesn't cover the nominal value.
+ */
+function getModifierName(range: PointRange, modifiers: ForceModifier[]): string {
+    let closest = modifiers[0];
+    let closestDist = rangeDistToPoint(range, modifiers[0].pts);
+    for (let i = 1; i < modifiers.length; i++) {
+        const d = rangeDistToPoint(range, modifiers[i].pts);
+        if (d < closestDist) {
+            closestDist = d;
+            closest = modifiers[i];
+        }
+    }
+
+    // If the closest modifier is the regular one ('') and the range doesn't
+    // cover it, fall back to generic Under-Strength / Reinforced
+    if (closestDist > 0 && closest.name === '') {
+        const mid = (range.min + range.max) / 2;
+        if (mid < closest.pts) return 'Under-Strength';
+        return 'Reinforced';
+    }
+
+    return closest.name;
+}
+
+function evaluateForce(
+    comp: ForceComposition,
+    rules: ForceTypeRule[],
+    getPointRange: (comp: ForceComposition) => PointRange
+): string {
     const range = getPointRange(comp);
     const midPts = (range.min + range.max) / 2;
 
     if (range.max === 0) return 'Force';
 
     let bestType = 'Force';
-    let minDistance = Infinity;
-    let modifier = '';
+    let bestDist = Infinity;
+    let bestModName = '';
 
     for (const rule of rules) {
+        // Composition filter — skip rules that don't apply to this force type
+        if (rule.filter && !rule.filter(comp)) continue;
+
         let dist = -1;
         if (rule.customMatch) {
-            dist = rule.customMatch(comp);
-        }
-
-        if (dist === -1) {
-            // Check overlap between point range [range.min, range.max] and rule [rule.minPts, rule.maxPts]
-            if (range.max >= rule.minPts && range.min <= rule.maxPts) {
-                dist = 0; // Ranges overlap — exact match
-            } else if (range.max < rule.minPts) {
-                dist = rule.minPts - range.max; // Force is below the rule
-            } else {
-                dist = range.min - rule.maxPts; // Force is above the rule
+            const customDist = rule.customMatch(comp);
+            if (customDist === Infinity) continue;
+            if (customDist >= 0) {
+                if (rule.strict && customDist !== 0) continue;
+                if (customDist < bestDist) {
+                    bestDist = customDist;
+                    bestType = rule.type;
+                    // Perfect custom match = regular; otherwise derive from modifier table
+                    bestModName = customDist === 0
+                        ? ''
+                        : getModifierName(range, rule.modifiers);
+                }
+                continue;
             }
+            // customDist === -1: fall through to range-based evaluation
         }
 
-        // Strict rules only match on an exact fit (dist === 0)
+        // Rule range from first to last modifier nominal pts
+        const ruleMin = rule.modifiers[0].pts;
+        const ruleMax = rule.modifiers[rule.modifiers.length - 1].pts;
+
+        // Check overlap between force point range and rule modifier range
+        if (range.max >= ruleMin && range.min <= ruleMax) {
+            dist = 0;
+        } else if (range.max < ruleMin) {
+            dist = ruleMin - range.max;
+        } else {
+            dist = range.min - ruleMax;
+        }
+
         if (rule.strict && dist !== 0) continue;
 
-        if (dist !== Infinity && dist < minDistance) {
-            minDistance = dist;
+        if (dist < bestDist) {
+            bestDist = dist;
             bestType = rule.type;
-            if (dist === 0) {
-                modifier = '';
-            } else {
-                // Determine if understrength or reinforced based on midpoint
-                if (midPts < rule.minPts) modifier = 'Understrength ';
-                else modifier = 'Reinforced ';
-            }
-        }
-    }
-
-    if (minDistance > 0 && minDistance !== Infinity) {
-        for (const rule of rules) {
-            // Strict rules cannot have Demi- modifier
-            if (rule.strict) continue;
-
-            // If the rule has a custom match, we shouldn't blindly apply Demi- based on points
-            // For example, a pure Aero force shouldn't become a Demi-Company
-            if (rule.customMatch) {
-                const dist = rule.customMatch(comp);
-                if (dist === Infinity) continue;
-            }
-
-            // Check if doubling the point range overlaps with the rule
-            const doubleMin = range.min * 2;
-            const doubleMax = range.max * 2;
-            if (doubleMax >= rule.minPts && doubleMin <= rule.maxPts) {
-                return 'Demi-' + rule.type;
-            }
+            bestModName = getModifierName(range, rule.modifiers);
         }
     }
 
     const maxAllowedDistance = Math.max(2, midPts * 0.2);
-    if (minDistance <= maxAllowedDistance) {
-        return modifier + bestType;
+    if (bestDist <= maxAllowedDistance) {
+        return bestModName ? bestModName + ' ' + bestType : bestType;
     }
 
     return 'Force';
