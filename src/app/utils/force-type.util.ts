@@ -79,7 +79,6 @@ interface ForceComposition {
     CV: number;
     AF: number;
     other: number;
-    totalUnits: number;
 }
 
 function getForceComposition(units: ForceUnit[]): ForceComposition {
@@ -91,7 +90,6 @@ function getForceComposition(units: ForceUnit[]): ForceComposition {
         CV: 0,
         AF: 0,
         other: 0,
-        totalUnits: units.length
     };
 
     for (const fu of units) {
@@ -111,21 +109,92 @@ function getForceComposition(units: ForceUnit[]): ForceComposition {
 
 /**
  * Named modifier for a force size level. Each modifier has a display name
- * ('' for regular/default) and a nominal point value.
+ * ('' for regular/default) and a count of sub-units.
+ *
+ * For leaf rules (no composedOf), count equals absolute pts.
+ * For composed rules, resolved pts = count x nominal pts of the base rule.
  */
 type ForceModifier = {
-    name: string;   // '' for regular, 'Short', 'Under-Strength', 'Reinforced', etc.
-    pts: number;    // nominal point value for this modifier level
+    prefix: string;   // '' for regular, Short, Under-Strength, Reinforced, etc.
+    count: number;  // number of sub-units (or absolute pts for leaf rules)
 };
 
-type ForceTypeRule = {
-    type: ForceType;
-    modifiers: ForceModifier[];  // sorted ascending by pts
-    commandRank?: string;
-    strict?: boolean;
-    filter?: (comp: ForceComposition) => boolean;
-    customMatch?: (comp: ForceComposition) => number;
-};
+class ForceTypeRule {
+    readonly type: ForceType;
+    readonly modifiers: ForceModifier[];
+    readonly composedOf?: ForceTypeRule;
+    readonly commandRank?: string;
+    readonly strict?: boolean;
+    readonly filter?: (comp: ForceComposition) => boolean;
+    readonly customMatch?: (comp: ForceComposition) => number;
+    private readonly _nominalPts: number; // Cached nominal pts
+
+    constructor(config: {
+        type: ForceType;
+        modifiers: ForceModifier[];
+        composedOf?: ForceTypeRule;
+        commandRank?: string;
+        strict?: boolean;
+        filter?: (comp: ForceComposition) => boolean;
+        customMatch?: (comp: ForceComposition) => number;
+    }) {
+        this.type = config.type;
+        // Ensure modifiers are sorted ascending by count
+        this.modifiers = [...config.modifiers].sort((a, b) => a.count - b.count);
+        this.composedOf = config.composedOf;
+        this.commandRank = config.commandRank;
+        this.strict = config.strict;
+        this.filter = config.filter;
+        this.customMatch = config.customMatch;
+
+        const regularMod = this.modifiers.find(m => m.prefix === '') ?? this.modifiers[0];
+        this._nominalPts = this.composedOf
+            ? regularMod.count * this.composedOf.nominalPts
+            : regularMod.count;
+    }
+
+    /** Nominal pts for this rule's "regular" modifier, recursively resolved */
+    get nominalPts(): number {
+        return this._nominalPts;
+    }
+
+    /** Resolve a modifier's absolute pts through the composition chain */
+    resolveModPts(mod: ForceModifier): number {
+        if (!this.composedOf) return mod.count;
+        return mod.count * this.composedOf.nominalPts;
+    }
+
+    /**
+     * Find the best modifier prefix for a given point range.
+     * Resolves each modifier's pts from the composition chain, then picks the one
+     * whose resolved pts is closest to (or within) the range.
+     */
+    getModifierPrefix(range: PointRange): string {
+        let closest = this.modifiers[0];
+        let closestPts = this.resolveModPts(this.modifiers[0]);
+        let closestDist = rangeDistToPoint(range, closestPts);
+
+        for (let i = 1; i < this.modifiers.length; i++) {
+            const pts = this.resolveModPts(this.modifiers[i]);
+            const d = rangeDistToPoint(range, pts);
+            if (d < closestDist) {
+                closestDist = d;
+                closest = this.modifiers[i];
+                closestPts = pts;
+            }
+        }
+
+        // If the closest modifier is the regular one ('') and the range doesn't
+        // cover it, fall back to generic Under-Strength / Reinforced
+        if (closestDist > 0 && closest.prefix === '') {
+            const mid = (range.min + range.max) / 2;
+            if (mid < closestPts) return 'Under-Strength ';
+            return 'Reinforced ';
+        }
+
+        return closest.prefix;
+    }
+}
 
 /**
  * A point range accounts for variable-size base units (e.g. ComStar Level I
@@ -140,79 +209,96 @@ interface PointRange {
     max: number;
 }
 
-function getClanPointRange(comp: ForceComposition): PointRange {
-    // Clan Points are exact: 5 BA per Point, 25 CI per Point
-    const pts = comp.BM + 
-           (comp.BA_troopers / 5) + 
-           (comp.CI_troopers / 25) + 
-           (comp.PM / 5) + 
-           (comp.CV / 2) + 
-           (comp.AF / 2) + 
-           comp.other;
-    return { min: pts, max: pts };
-}
+class ClanOrg {
+    static getPointRange(comp: ForceComposition): PointRange {
+        // Clan Points are exact: 5 BA per Point, 25 CI per Point
+        const pts = comp.BM +
+            (comp.BA_troopers / 5) +
+            (comp.CI_troopers / 25) +
+            (comp.PM / 5) +
+            (comp.CV / 2) +
+            (comp.AF / 2) +
+            comp.other;
+        return { min: pts, max: pts };
+    }
 
-const CLAN_RULES: ForceTypeRule[] = [
-    { type: 'Nova', modifiers: [{ name: '', pts: 10 }], commandRank: 'Nova Commander', strict: true,
+    static readonly NOVA = new ForceTypeRule({
+        type: 'Nova', strict: true, modifiers: [{ prefix: '', count: 10 }], commandRank: 'Nova Commander',
         filter: (comp) => comp.BM > 0 && ((comp.BA_troopers / 5) + (comp.CI_troopers / 25)) > 0,
         customMatch: (comp) => {
             const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25);
             const otherPoints = (comp.PM / 5) + (comp.CV / 2) + (comp.AF / 2) + comp.other;
             return Math.abs(comp.BM - 5) + Math.abs(infPoints - 5) + otherPoints;
-    }},
-    { type: 'Supernova Binary', modifiers: [{ name: '', pts: 20 }], commandRank: 'Nova Captain', strict: true,
+        },
+    });
+    static readonly SUPERNOVA_BINARY = new ForceTypeRule({
+        type: 'Supernova Binary', strict: true, modifiers: [{ prefix: '', count: 20 }], commandRank: 'Nova Captain',
         filter: (comp) => comp.BM > 0 && ((comp.BA_troopers / 5) + (comp.CI_troopers / 25)) > 0,
         customMatch: (comp) => {
             const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25);
             const otherPoints = (comp.PM / 5) + (comp.CV / 2) + (comp.AF / 2) + comp.other;
             return Math.abs(comp.BM - 10) + Math.abs(infPoints - 10) + otherPoints;
-    }},
-    { type: 'Supernova Trinary', modifiers: [{ name: '', pts: 30 }], commandRank: 'Nova Captain', strict: true,
+        },
+    });
+    static readonly SUPERNOVA_TRINARY = new ForceTypeRule({
+        type: 'Supernova Trinary', strict: true, modifiers: [{ prefix: '', count: 30 }], commandRank: 'Nova Captain',
         filter: (comp) => comp.BM > 0 && ((comp.BA_troopers / 5) + (comp.CI_troopers / 25)) > 0,
         customMatch: (comp) => {
             const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25);
             const otherPoints = (comp.PM / 5) + (comp.CV / 2) + (comp.AF / 2) + comp.other;
             return Math.abs(comp.BM - 15) + Math.abs(infPoints - 15) + otherPoints;
-    }},
-    { type: 'Point', modifiers: [{ name: '', pts: 1 }], commandRank: 'Point Commander' },
-    { type: 'Star', modifiers: [
-        { name: 'Half', pts: 2 },
-        { name: 'Short', pts: 3 },
-        { name: 'Under-Strength', pts: 4 },
-        { name: '', pts: 5 },
-        { name: 'Reinforced', pts: 6 },
-        { name: 'Fortified', pts: 7 },
-    ], commandRank: 'Star Commander' },
-    { type: 'Binary', modifiers: [{ name: '', pts: 10 }], commandRank: 'Star Captain' },
-    { type: 'Trinary', modifiers: [{ name: '', pts: 15 }], commandRank: 'Star Captain' },
-    { type: 'Cluster', modifiers: [
-        { name: 'Under-Strength', pts: 30 },
-        { name: '', pts: 45 },
-        { name: 'Reinforced', pts: 60 },
-        { name: 'Strong', pts: 75 },
-    ], commandRank: 'Star Colonel' },
-    { type: 'Galaxy', modifiers: [
-        { name: 'Under-Strength', pts: 90 },
-        { name: '', pts: 135 },
-        { name: 'Reinforced', pts: 180 },
-        { name: 'Strong', pts: 225 },
-    ], commandRank: 'Galaxy Commander' },
-];
-
-function getISPointRange(comp: ForceComposition): PointRange {
-    const fixed = comp.BM +
-           (comp.BA_troopers / 4) +
-           comp.PM +
-           comp.CV +
-           comp.AF +
-           comp.other;
-    // IS infantry platoon = 21-28 troopers per point
-    // Dividing by 28 = minimum pts; dividing by 21 = maximum pts
-    return {
-        min: fixed + comp.CI_troopers / 28,
-        max: fixed + comp.CI_troopers / 21,
-    };
+        },
+    });
+    static readonly POINT = new ForceTypeRule({
+        type: 'Point', modifiers: [{ prefix: '', count: 1 }], commandRank: 'Point Commander',
+    });
+    // Star = N Points
+    static readonly STAR = new ForceTypeRule({
+        type: 'Star', composedOf: ClanOrg.POINT, modifiers: [
+            { prefix: 'Half ', count: 2 },
+            { prefix: 'Short ', count: 3 },
+            { prefix: 'Under-Strength ', count: 4 },
+            { prefix: '', count: 5 },
+            { prefix: 'Reinforced ', count: 6 },
+            { prefix: 'Fortified ', count: 7 },
+        ], commandRank: 'Star Commander',
+    });
+    // Binary = 2 Stars
+    static readonly BINARY = new ForceTypeRule({
+        type: 'Binary', composedOf: ClanOrg.STAR,
+        modifiers: [{ prefix: '', count: 2 }], commandRank: 'Star Captain',
+    });
+    // Trinary = 3 Stars
+    static readonly TRINARY = new ForceTypeRule({
+        type: 'Trinary', composedOf: ClanOrg.STAR,
+        modifiers: [{ prefix: '', count: 3 }], commandRank: 'Star Captain',
+    });
+    // Cluster = N Trinaries (can also be Binaries/Supernovas in practice)
+    static readonly CLUSTER = new ForceTypeRule({
+        type: 'Cluster', composedOf: ClanOrg.TRINARY, modifiers: [
+            { prefix: 'Under-Strength ', count: 2 },
+            { prefix: '', count: 3 },
+            { prefix: 'Reinforced ', count: 4 },
+            { prefix: 'Strong ', count: 5 },
+        ], commandRank: 'Star Colonel',
+    });
+    // Galaxy = N Clusters
+    static readonly GALAXY = new ForceTypeRule({
+        type: 'Galaxy', composedOf: ClanOrg.CLUSTER, modifiers: [
+            { prefix: 'Under-Strength ', count: 2 },
+            { prefix: '', count: 3 },
+            { prefix: 'Reinforced ', count: 4 },
+            { prefix: 'Strong ', count: 5 },
+        ], commandRank: 'Galaxy Commander',
+    });
+    static readonly ALL: ForceTypeRule[] = [
+        ClanOrg.NOVA, ClanOrg.SUPERNOVA_BINARY, ClanOrg.SUPERNOVA_TRINARY,
+        ClanOrg.POINT, ClanOrg.STAR, ClanOrg.BINARY, ClanOrg.TRINARY,
+        ClanOrg.CLUSTER, ClanOrg.GALAXY,
+    ];
 }
+
+
 
 function isPureAero(comp: ForceComposition): boolean {
     return comp.AF > 0 && comp.BM === 0 && comp.CV === 0 && comp.BA_troopers === 0 && comp.CI_troopers === 0 && comp.PM === 0 && comp.other === 0;
@@ -223,18 +309,39 @@ function isPureInfantry(comp: ForceComposition): boolean {
            (comp.BA_troopers > 0 || comp.CI_troopers > 0);
 }
 
-const IS_RULES: ForceTypeRule[] = [
-    { type: 'Flight', modifiers: [{ name: '', pts: 2 }], commandRank: 'Lieutenant',
-        filter: (comp) => isPureAero(comp) },
-    { type: 'Squadron', modifiers: [{ name: '', pts: 6 }], commandRank: 'Captain',
-        filter: (comp) => isPureAero(comp) },
-    { type: 'Wing', modifiers: [
-        { name: 'Under-Strength', pts: 18 },
-        { name: '', pts: 21 },
-        { name: 'Reinforced', pts: 24 },
-    ], commandRank: 'Major',
-        filter: (comp) => isPureAero(comp) },
-    { type: 'Squad', modifiers: [{ name: '', pts: 1 }], commandRank: 'Sergeant',
+class ISOrg {
+    static getPointRange(comp: ForceComposition): PointRange {
+        const fixed = comp.BM +
+            (comp.BA_troopers / 4) +
+            comp.PM +
+            comp.CV +
+            comp.AF +
+            comp.other;
+        // IS infantry platoon = 21-28 troopers per point
+        // Dividing by 28 = minimum pts; dividing by 21 = maximum pts
+        return {
+            min: fixed + comp.CI_troopers / 28,
+            max: fixed + comp.CI_troopers / 21,
+        };
+    }
+    static readonly FLIGHT = new ForceTypeRule({
+        type: 'Flight', modifiers: [{ prefix: '', count: 2 }], commandRank: 'Lieutenant',
+        filter: (comp) => isPureAero(comp),
+    });
+    static readonly SQUADRON = new ForceTypeRule({
+        type: 'Squadron', modifiers: [{ prefix: '', count: 6 }], commandRank: 'Captain',
+        filter: (comp) => isPureAero(comp),
+    });
+    static readonly WING = new ForceTypeRule({
+        type: 'Wing', modifiers: [
+            { prefix: 'Under-Strength ', count: 18 },
+            { prefix: '', count: 21 },
+            { prefix: 'Reinforced ', count: 24 },
+        ], commandRank: 'Major',
+        filter: (comp) => isPureAero(comp),
+    });
+    static readonly SQUAD = new ForceTypeRule({
+        type: 'Squad', modifiers: [{ prefix: '', count: 1 }], commandRank: 'Sergeant',
         filter: (comp) => isPureInfantry(comp),
         customMatch: (comp) => {
             if (comp.BA_troopers > 0 && comp.CI_troopers === 0) return Math.abs(comp.BA_troopers - 4) / 4;
@@ -244,113 +351,166 @@ const IS_RULES: ForceTypeRule[] = [
                 return (comp.CI_troopers - 8) / 7;
             }
             return Infinity;
-    }},
-    { type: 'Platoon', modifiers: [{ name: '', pts: 1 }], commandRank: 'Sergeant',
+        },
+    });
+    static readonly PLATOON = new ForceTypeRule({
+        type: 'Platoon', modifiers: [{ prefix: '', count: 1 }], commandRank: 'Sergeant',
         filter: (comp) => isPureInfantry(comp) && comp.CI_troopers > 0 && comp.BA_troopers === 0,
         customMatch: (comp) => {
             if (comp.CI_troopers >= 6 && comp.CI_troopers <= 32) return 0;
             if (comp.CI_troopers < 6) return (6 - comp.CI_troopers) / 28;
             return (comp.CI_troopers - 32) / 28;
-    }},
-    { type: 'Lance', modifiers: [
-        { name: 'Short', pts: 2 },
-        { name: 'Under-Strength', pts: 3 },
-        { name: '', pts: 4 },
-        { name: 'Reinforced', pts: 5 },
-        { name: 'Fortified', pts: 6 },
-    ], commandRank: 'Lieutenant', filter: (comp) => !isPureAero(comp) },
-    { type: 'Company', modifiers: [
-        { name: 'Under-Strength', pts: 8 },
-        { name: '', pts: 12 },
-        { name: 'Reinforced', pts: 16 },
-    ], commandRank: 'Captain', filter: (comp) => !isPureAero(comp) },
-    { type: 'Battalion', modifiers: [
-        { name: 'Under-Strength', pts: 24 },
-        { name: '', pts: 36 },
-        { name: 'Reinforced', pts: 48 },
-    ], commandRank: 'Major', filter: (comp) => !isPureAero(comp) },
-    { type: 'Regiment', modifiers: [
-        { name: 'Under-Strength', pts: 72 },
-        { name: '', pts: 108 },
-        { name: 'Reinforced', pts: 144 },
-        { name: 'Strong', pts: 180 },
-    ], commandRank: 'Colonel', filter: (comp) => !isPureAero(comp) },
-    { type: 'Brigade', modifiers: [
-        { name: 'Under-Strength', pts: 216 },
-        { name: '', pts: 324 },
-        { name: 'Reinforced', pts: 432 },
-    ], commandRank: 'General', filter: (comp) => !isPureAero(comp) },
-];
-
-function getComStarPointRange(comp: ForceComposition): PointRange {
-    // ComStar/WoB Level I = 1 mech/vehicle/aero/proto, or 30-36 CI, or 6 BA
-    const fixed = comp.BM + comp.PM + comp.CV + comp.AF + comp.other;
-    let minPts = fixed;
-    let maxPts = fixed;
-
-    if (comp.CI_troopers > 0) {
-        // Level I of CI infantry = 30-36 troopers
-        // Dividing by the max (36) gives the minimum possible Level I count,
-        // dividing by the min (30) gives the maximum possible Level I count.
-        // This ensures 180 troopers (6x30) through 216 (6x36) all qualify as Level II.
-        minPts += comp.CI_troopers / 36;
-        maxPts += comp.CI_troopers / 30;
-    }
-    if (comp.BA_troopers > 0) {
-        // Level I of BA = 6 troopers (exact, no range)
-        const ba = comp.BA_troopers / 6;
-        minPts += ba;
-        maxPts += ba;
-    }
-
-    return { min: minPts, max: maxPts };
+        },
+    });
+    static readonly SINGLE = new ForceTypeRule({
+        type: 'Single', modifiers: [{ prefix: '', count: 1 }],
+        filter: (comp) => !isPureAero(comp) && !isPureInfantry(comp),
+    });
+    static readonly LANCE = new ForceTypeRule({
+        type: 'Lance', composedOf: ISOrg.SINGLE,  modifiers: [
+            { prefix: 'Short ', count: 2 },
+            { prefix: 'Under-Strength ', count: 3 },
+            { prefix: '', count: 4 },
+            { prefix: 'Reinforced ', count: 5 },
+            { prefix: 'Fortified ', count: 6 },
+        ], commandRank: 'Lieutenant', filter: (comp) => !isPureAero(comp),
+    });
+    // Company = N Lances
+    static readonly COMPANY = new ForceTypeRule({
+        type: 'Company', composedOf: ISOrg.LANCE, modifiers: [
+            { prefix: 'Under-Strength ', count: 2 },
+            { prefix: '', count: 3 },
+            { prefix: 'Reinforced ', count: 4 },
+        ], commandRank: 'Captain', filter: (comp) => !isPureAero(comp),
+    });
+    // Battalion = N Companies
+    static readonly BATTALION = new ForceTypeRule({
+        type: 'Battalion', composedOf: ISOrg.COMPANY, modifiers: [
+            { prefix: 'Under-Strength ', count: 2 },
+            { prefix: '', count: 3 },
+            { prefix: 'Reinforced ', count: 4 },
+        ], commandRank: 'Major', filter: (comp) => !isPureAero(comp),
+    });
+    // Regiment = N Battalions
+    static readonly REGIMENT = new ForceTypeRule({
+        type: 'Regiment', composedOf: ISOrg.BATTALION, modifiers: [
+            { prefix: 'Under-Strength ', count: 2 },
+            { prefix: '', count: 3 },
+            { prefix: 'Reinforced ', count: 4 },
+            { prefix: 'Strong ', count: 5 },
+        ], commandRank: 'Colonel', filter: (comp) => !isPureAero(comp),
+    });
+    // Brigade = N Regiments
+    static readonly BRIGADE = new ForceTypeRule({
+        type: 'Brigade', composedOf: ISOrg.REGIMENT, modifiers: [
+            { prefix: 'Under-Strength ', count: 2 },
+            { prefix: '', count: 3 },
+            { prefix: 'Reinforced ', count: 4 },
+        ], commandRank: 'General', filter: (comp) => !isPureAero(comp),
+    });
+    static readonly ALL: ForceTypeRule[] = [
+        ISOrg.FLIGHT, ISOrg.SQUADRON, ISOrg.WING,
+        ISOrg.SQUAD, ISOrg.PLATOON,
+        ISOrg.SINGLE, ISOrg.LANCE, ISOrg.COMPANY, ISOrg.BATTALION, ISOrg.REGIMENT, ISOrg.BRIGADE,
+    ];
 }
 
-const COMSTAR_RULES: ForceTypeRule[] = [
-    { type: 'Level I', modifiers: [{ name: '', pts: 1 }], commandRank: 'Acolyte' },
-    { type: 'Level II', modifiers: [
-        { name: 'Thin', pts: 2 },
-        { name: 'Half', pts: 3 },
-        { name: 'Short', pts: 4 },
-        { name: 'Under-Strength', pts: 5 },
-        { name: '', pts: 6 },
-        { name: 'Reinforced', pts: 7 },
-        { name: 'Fortified', pts: 8 },
-        { name: 'Heavy', pts: 9 },
-    ], commandRank: 'Adept' },
-    { type: 'Level III', modifiers: [
-        { name: 'Under-Strength', pts: 30 },
-        { name: '', pts: 36 },
-        { name: 'Reinforced', pts: 42 },
-    ], commandRank: 'Adept (Demi-Precentor)' },
-    { type: 'Level IV', modifiers: [
-        { name: 'Under-Strength', pts: 180 },
-        { name: '', pts: 216 },
-        { name: 'Reinforced', pts: 252 },
-    ], commandRank: 'Precentor' },
-    { type: 'Level V', modifiers: [
-        { name: 'Under-Strength', pts: 1080 },
-        { name: '', pts: 1296 },
-        { name: 'Reinforced', pts: 1512 },
-    ], commandRank: 'Precentor' },
-];
+class ComStarOrg {
+    static getPointRange(comp: ForceComposition): PointRange {
+        // ComStar/WoB Level I = 1 mech/vehicle/aero/proto, or 30-36 CI, or 6 BA
+        const fixed = comp.BM + comp.PM + comp.CV + comp.AF + comp.other;
+        let minPts = fixed;
+        let maxPts = fixed;
 
-function getSocietyPointRange(comp: ForceComposition): PointRange {
-    const pts = comp.BM + 
-           (comp.BA_troopers / 9) + 
-           (comp.CI_troopers / 75) + 
-           (comp.PM / 3) + 
-           (comp.CV / 7) + 
-           (comp.AF / 3) + 
-           comp.other;
-    return { min: pts, max: pts };
+        if (comp.CI_troopers > 0) {
+            // Level I of CI infantry = 30-36 troopers
+            // Dividing by the max (36) gives the minimum possible Level I count,
+            // dividing by the min (30) gives the maximum possible Level I count.
+            // This ensures 180 troopers (6x30) through 216 (6x36) all qualify as Level II.
+            minPts += comp.CI_troopers / 36;
+            maxPts += comp.CI_troopers / 30;
+        }
+        if (comp.BA_troopers > 0) {
+            // Level I of BA = 6 troopers (exact, no range)
+            const ba = comp.BA_troopers / 6;
+            minPts += ba;
+            maxPts += ba;
+        }
+
+        return { min: minPts, max: maxPts };
+    }
+
+    static readonly LEVEL_I = new ForceTypeRule({
+        type: 'Level I', modifiers: [{ prefix: 'Demi-', count: 0.5 }, { prefix: '', count: 1 }], commandRank: 'Acolyte',
+    });
+    // Level II = N Level Is
+    static readonly LEVEL_II = new ForceTypeRule({
+        type: 'Level II', composedOf: ComStarOrg.LEVEL_I, modifiers: [
+            { prefix: 'Thin ', count: 2 },
+            { prefix: 'Half ', count: 3 },
+            { prefix: 'Short ', count: 4 },
+            { prefix: 'Under-Strength ', count: 5 },
+            { prefix: '', count: 6 },
+            { prefix: 'Reinforced ', count: 7 },
+            { prefix: 'Fortified ', count: 8 },
+            { prefix: 'Heavy ', count: 9 },
+        ], commandRank: 'Adept',
+    });
+    // Level III = N Level IIs
+    static readonly LEVEL_III = new ForceTypeRule({
+        type: 'Level III', composedOf: ComStarOrg.LEVEL_II, modifiers: [
+            { prefix: 'Under-Strength ', count: 5 },
+            { prefix: '', count: 6 },
+            { prefix: 'Reinforced ', count: 7 },
+        ], commandRank: 'Adept (Demi-Precentor)',
+    });
+    // Level IV = N Level IIIs
+    static readonly LEVEL_IV = new ForceTypeRule({
+        type: 'Level IV', composedOf: ComStarOrg.LEVEL_III, modifiers: [
+            { prefix: 'Under-Strength ', count: 5 },
+            { prefix: '', count: 6 },
+            { prefix: 'Reinforced ', count: 7 },
+        ], commandRank: 'Precentor',
+    });
+    // Level V = N Level IVs
+    static readonly LEVEL_V = new ForceTypeRule({
+        type: 'Level V', composedOf: ComStarOrg.LEVEL_IV, modifiers: [
+            { prefix: 'Under-Strength ', count: 5 },
+            { prefix: '', count: 6 },
+            { prefix: 'Reinforced ', count: 7 },
+        ], commandRank: 'Precentor',
+    });
+    static readonly ALL: ForceTypeRule[] = [
+        ComStarOrg.LEVEL_I, ComStarOrg.LEVEL_II, ComStarOrg.LEVEL_III,
+        ComStarOrg.LEVEL_IV, ComStarOrg.LEVEL_V,
+    ];
 }
 
-const SOCIETY_RULES: ForceTypeRule[] = [
-    { type: 'Un', modifiers: [{ name: '', pts: 1 }] },
-    { type: 'Trey', modifiers: [{ name: '', pts: 3 }] },
-    { type: 'Sept', modifiers: [{ name: '', pts: 7 }] },
-];
+class SocietyOrg {
+    static getPointRange(comp: ForceComposition): PointRange {
+        const pts = comp.BM +
+            (comp.BA_troopers / 9) +
+            (comp.CI_troopers / 75) +
+            (comp.PM / 3) +
+            (comp.CV / 7) +
+            (comp.AF / 3) +
+            comp.other;
+        return { min: pts, max: pts };
+    }
+
+    static readonly UN = new ForceTypeRule({
+        type: 'Un', modifiers: [{ prefix: '', count: 1 }],
+    });
+    static readonly TREY = new ForceTypeRule({
+        type: 'Trey', modifiers: [{ prefix: '', count: 3 }],
+    });
+    static readonly SEPT = new ForceTypeRule({
+        type: 'Sept', modifiers: [{ prefix: '', count: 7 }],
+    });
+    static readonly ALL: ForceTypeRule[] = [
+        SocietyOrg.UN, SocietyOrg.TREY, SocietyOrg.SEPT,
+    ];
+}
 
 /**
  * Distance from a point range to a single point.
@@ -360,34 +520,6 @@ function rangeDistToPoint(range: PointRange, point: number): number {
     if (point >= range.min && point <= range.max) return 0;
     if (point < range.min) return range.min - point;
     return point - range.max;
-}
-
-/**
- * Find the best modifier name for a given point range against a rule's modifiers.
- * Picks the modifier whose nominal pts is closest to (or within) the range.
- * For single-modifier rules with name='', generates 'Under-Strength' or
- * 'Reinforced' if the force range doesn't cover the nominal value.
- */
-function getModifierName(range: PointRange, modifiers: ForceModifier[]): string {
-    let closest = modifiers[0];
-    let closestDist = rangeDistToPoint(range, modifiers[0].pts);
-    for (let i = 1; i < modifiers.length; i++) {
-        const d = rangeDistToPoint(range, modifiers[i].pts);
-        if (d < closestDist) {
-            closestDist = d;
-            closest = modifiers[i];
-        }
-    }
-
-    // If the closest modifier is the regular one ('') and the range doesn't
-    // cover it, fall back to generic Under-Strength / Reinforced
-    if (closestDist > 0 && closest.name === '') {
-        const mid = (range.min + range.max) / 2;
-        if (mid < closest.pts) return 'Under-Strength';
-        return 'Reinforced';
-    }
-
-    return closest.name;
 }
 
 function evaluateForce(
@@ -402,6 +534,7 @@ function evaluateForce(
 
     let bestType = 'Force';
     let bestDist = Infinity;
+    let bestNominal = 0;
     let bestModName = '';
 
     for (const rule of rules) {
@@ -416,20 +549,21 @@ function evaluateForce(
                 if (rule.strict && customDist !== 0) continue;
                 if (customDist < bestDist) {
                     bestDist = customDist;
+                    bestNominal = rule.nominalPts;
                     bestType = rule.type;
                     // Perfect custom match = regular; otherwise derive from modifier table
                     bestModName = customDist === 0
                         ? ''
-                        : getModifierName(range, rule.modifiers);
+                        : rule.getModifierPrefix(range);
                 }
                 continue;
             }
             // customDist === -1: fall through to range-based evaluation
         }
 
-        // Rule range from first to last modifier nominal pts
-        const ruleMin = rule.modifiers[0].pts;
-        const ruleMax = rule.modifiers[rule.modifiers.length - 1].pts;
+        // Rule range from first to last modifier resolved pts
+        const ruleMin = rule.resolveModPts(rule.modifiers[0]);
+        const ruleMax = rule.resolveModPts(rule.modifiers[rule.modifiers.length - 1]);
 
         // Check overlap between force point range and rule modifier range
         if (range.max >= ruleMin && range.min <= ruleMax) {
@@ -442,16 +576,18 @@ function evaluateForce(
 
         if (rule.strict && dist !== 0) continue;
 
-        if (dist < bestDist) {
+        // On equal distance, prefer the larger formation (higher nominalPts)
+        if (dist < bestDist || (dist === bestDist && rule.nominalPts > bestNominal)) {
             bestDist = dist;
+            bestNominal = rule.nominalPts;
             bestType = rule.type;
-            bestModName = getModifierName(range, rule.modifiers);
+            bestModName = rule.getModifierPrefix(range);
         }
     }
 
     const maxAllowedDistance = Math.max(2, midPts * 0.2);
     if (bestDist <= maxAllowedDistance) {
-        return bestModName ? bestModName + ' ' + bestType : bestType;
+        return bestModName ? bestModName + bestType : bestType;
     }
 
     return 'Force';
@@ -467,12 +603,12 @@ export function getForceSizeName(units: ForceUnit[], techBase: string, factionNa
     const comp = getForceComposition(units);
 
     if (factionName === 'ComStar' || factionName === 'Word of Blake') {
-        return evaluateForce(comp, COMSTAR_RULES, getComStarPointRange);
+        return evaluateForce(comp, ComStarOrg.ALL, ComStarOrg.getPointRange);
     } else if (factionName === 'Society') {
-        return evaluateForce(comp, SOCIETY_RULES, getSocietyPointRange);
+        return evaluateForce(comp, SocietyOrg.ALL, SocietyOrg.getPointRange);
     } else if (factionName.includes('Clan') || techBase === 'Clan') {
-        return evaluateForce(comp, CLAN_RULES, getClanPointRange);
+        return evaluateForce(comp, ClanOrg.ALL, ClanOrg.getPointRange);
     } else {
-        return evaluateForce(comp, IS_RULES, getISPointRange);
+        return evaluateForce(comp, ISOrg.ALL, ISOrg.getPointRange);
     }
 }

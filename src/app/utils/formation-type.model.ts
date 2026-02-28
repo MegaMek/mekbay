@@ -102,7 +102,8 @@ export interface FormationTypeDefinition {
     requirements?: (gameSystem: GameSystem) => string;
     idealRole?: string;
     techBase?: 'Inner Sphere' | 'Clan' | 'Special';
-    minUnits?: number;
+    minUnits: number;
+    maxUnits?: number;
     exclusiveFaction?: string;
     /** Multiple rulebook references (e.g. CO p.62, AS:CE p.117). */
     rulesRef?: RulesReference[];
@@ -126,6 +127,7 @@ export const NO_FORMATION_ID = '-';
 export const NO_FORMATION: FormationTypeDefinition = {
     id: NO_FORMATION_ID,
     name: 'No Formation',
+    minUnits: 0,
     description: 'Explicitly opt out of any formation assignment.',
 };
 

@@ -86,6 +86,9 @@ export class LanceTypeIdentifierUtil {
             if (definition.minUnits && units.length < definition.minUnits) {
                 return false;
             }
+            if (definition.maxUnits && units.length > definition.maxUnits) {
+                return false;
+            }
             // If all units match the ideal role, skip the full validator
             if (definition.idealRole) {
                 const allMatchIdeal = units.every(u => u.getUnit().role === definition.idealRole);
