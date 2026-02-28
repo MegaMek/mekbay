@@ -266,7 +266,7 @@ class ClanOrg {
     // Binary = 2 Stars
     static readonly BINARY = new ForceTypeRule({
         type: 'Binary', composedOf: ClanOrg.STAR,
-        modifiers: [{ prefix: '', count: 2 }], commandRank: 'Star Captain',
+        modifiers: [{ prefix: 'Under-Strength ', count: 1.8 }, { prefix: '', count: 2 }], commandRank: 'Star Captain',
     });
     // Trinary = 3 Stars
     static readonly TRINARY = new ForceTypeRule({
