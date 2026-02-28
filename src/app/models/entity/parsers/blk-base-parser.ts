@@ -105,7 +105,6 @@ export function parseBaseBlk(
     entity.techBase.set(parsed.techBase);
     entity.techLevel.set(techStr);
     entity.rulesLevel.set(parsed.rulesLevel);
-    entity.mixedTech.set(parsed.mixedTech);
   }
 
   // ── Meta ──

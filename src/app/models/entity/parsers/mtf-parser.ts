@@ -179,7 +179,6 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   entity.techBase.set(header.techBase);
   entity.techLevel.set(header.techBaseRaw);
   if (header.techBaseRaw.toLowerCase().includes('mixed')) {
-    entity.mixedTech.set(true);
     entity.techBase.set('Mixed');
   }
   if (header.clanName) entity.clanName.set(header.clanName);

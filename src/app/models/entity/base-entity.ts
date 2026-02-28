@@ -111,7 +111,6 @@ export abstract class BaseEntity {
   techBase = signal<EntityTechBase>('Inner Sphere');
   techLevel = signal<string>('');
   rulesLevel = signal<number>(2);
-  mixedTech = signal<boolean>(false);
 
   // ── Meta ──
   source = signal<string>('');
@@ -197,6 +196,20 @@ export abstract class BaseEntity {
     const c = this.fullChassis();
     const m = this.model();
     return m ? `${c} ${m}`.trim() : c;
+  });
+
+  
+  mixedTech = computed<boolean>(() => {
+    // check tech of all entity components; if any are mixed, the whole entity is mixed
+    if (this.techBase() === 'Mixed') return true;
+    let currentTech: EntityTechBase = this.mountedEngine().engine.isClan ? 'Clan' : 'Inner Sphere';
+    for (const m of this.equipment()) {
+      if (m.equipment?.techBase === 'All') continue; // "All" tech is compatible with everything
+      if (m.equipment?.techBase == 'Clan' && currentTech !== 'Inner Sphere') {
+        return true; // mismatch between components => mixed tech
+      }
+    }
+    return false;
   });
 
   engineFlags = computed<Set<EngineFlag>>(() => {
