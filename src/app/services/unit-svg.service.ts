@@ -653,7 +653,7 @@ export class UnitSvgService {
     protected getGlobalFireModifier(): number { return 0; }
 
     /** Render hit modifier badge for a single inventory entry. Pure presentation. */
-    protected renderHitModEntry(entry: MountedEquipment, hitModifier: number | 'Vs' | null) {
+    protected renderHitModEntry(entry: MountedEquipment, hitModifier: number | 'Vs' | '*' | null) {
         if (!entry.el) return;
         const hitModRect = entry.el.querySelector(`:scope > .hitMod-rect`);
         const hitModText = entry.el.querySelector(`:scope > .hitMod-text`);
@@ -665,11 +665,10 @@ export class UnitSvgService {
             entry.el.classList.remove('weakenedHitMod');
             return;
         }
-
-        if (hitModifier === 'Vs') {
+        if (hitModifier === 'Vs' || hitModifier === '*') {
             hitModRect.setAttribute('display', 'block');
             hitModText.setAttribute('display', 'block');
-            hitModText.textContent = 'Vs';
+            hitModText.textContent = hitModifier;
             entry.el.classList.remove('weakenedHitMod');
             return;
         }
