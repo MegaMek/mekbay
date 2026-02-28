@@ -31,6 +31,7 @@
  * affiliated with Microsoft.
  */
 
+import { min } from '@angular/forms/signals';
 import { ForceUnit } from '../models/force-unit.model';
 
 /*
@@ -118,14 +119,29 @@ type ForceTypeRule = {
     customMatch?: (comp: ForceComposition) => number;
 };
 
-function getClanPoints(comp: ForceComposition): number {
-    return comp.BM + 
+/**
+ * A point range accounts for variable-size base units (e.g. ComStar Level I
+ * of CI infantry = 30-36 troopers). Instead of a single divisor that under-
+ * or over-counts, we track the minimum and maximum possible point values.
+ *
+ * When min === max the range is degenerate (exact), which is the default for
+ * unit types with fixed sizes (mechs, vehicles, aero, etc.).
+ */
+interface PointRange {
+    min: number;
+    max: number;
+}
+
+function getClanPointRange(comp: ForceComposition): PointRange {
+    // Clan Points are exact: 5 BA per Point, 25 CI per Point
+    const pts = comp.BM + 
            (comp.BA_troopers / 5) + 
            (comp.CI_troopers / 25) + 
            (comp.PM / 5) + 
            (comp.CV / 2) + 
            (comp.AF / 2) + 
            comp.other;
+    return { min: pts, max: pts };
 }
 
 const CLAN_RULES: ForceTypeRule[] = [
@@ -155,14 +171,17 @@ const CLAN_RULES: ForceTypeRule[] = [
     { type: 'Galaxy', minPts: 90, maxPts: 375, commandRank: 'Galaxy Commander' }
 ];
 
-function getISPoints(comp: ForceComposition): number {
-    return comp.BM + 
+function getISPointRange(comp: ForceComposition): PointRange {
+    let minPts = comp.BM + 
            (comp.BA_troopers / 4) + 
-           (comp.CI_troopers / 28) + 
            comp.PM + 
            comp.CV + 
            comp.AF +
            comp.other;
+    let maxPts = minPts;
+    minPts += comp.CI_troopers / 21;
+    maxPts += comp.CI_troopers / 28;
+    return { min: minPts, max: maxPts };
 }
 
 function isPureAero(comp: ForceComposition): boolean {
@@ -210,44 +229,47 @@ const IS_RULES: ForceTypeRule[] = [
     { type: 'Brigade', minPts: 324, maxPts: 1536, commandRank: 'General', customMatch: (comp) => isPureAero(comp) ? Infinity : -1 }
 ];
 
-function getComStarPoints(comp: ForceComposition): number {
-    return comp.BM + 
-           (comp.BA_troopers / 6) + 
-           (comp.CI_troopers / 36) + 
-           comp.PM + 
-           comp.CV + 
-           comp.AF + 
-           comp.other;
+function getComStarPointRange(comp: ForceComposition): PointRange {
+    // ComStar/WoB Level I = 1 mech/vehicle/aero/proto, or 30-36 CI, or 6 BA
+    const fixed = comp.BM + comp.PM + comp.CV + comp.AF + comp.other;
+    let minPts = fixed;
+    let maxPts = fixed;
+
+    if (comp.CI_troopers > 0) {
+        // Level I of CI infantry = 30-36 troopers
+        // Dividing by the max (36) gives the minimum possible Level I count,
+        // dividing by the min (30) gives the maximum possible Level I count.
+        // This ensures 180 troopers (6x30) through 216 (6x36) all qualify as Level II.
+        minPts += comp.CI_troopers / 36;
+        maxPts += comp.CI_troopers / 30;
+    }
+    if (comp.BA_troopers > 0) {
+        // Level I of BA = 6 troopers (exact, no range)
+        const ba = comp.BA_troopers / 6;
+        minPts += ba;
+        maxPts += ba;
+    }
+
+    return { min: minPts, max: maxPts };
 }
 
 const COMSTAR_RULES: ForceTypeRule[] = [
-    { type: 'Level I', minPts: 1, maxPts: 1, commandRank: 'Acolyte', customMatch: (comp) => {
-        if (comp.BM === 0 && comp.CV === 0 && comp.AF === 0 && comp.PM === 0 && comp.other === 0) {
-            if (comp.CI_troopers > 0 && comp.BA_troopers === 0) {
-                if (comp.CI_troopers >= 30 && comp.CI_troopers <= 36) return 0;
-                if (comp.CI_troopers < 30) return (30 - comp.CI_troopers) / 36;
-                return (comp.CI_troopers - 36) / 36;
-            }
-            if (comp.BA_troopers > 0 && comp.CI_troopers === 0) {
-                return Math.abs(comp.BA_troopers - 6) / 6;
-            }
-        }
-        return -1;
-    }},
+    { type: 'Level I', minPts: 1, maxPts: 1, commandRank: 'Acolyte'},
     { type: 'Level II', minPts: 6, maxPts: 6, commandRank: 'Adept' },
     { type: 'Level III', minPts: 36, maxPts: 36, commandRank: 'Adept (Demi-Precentor)' },
     { type: 'Level IV', minPts: 216, maxPts: 216, commandRank: 'Precentor' },
     { type: 'Level V', minPts: 1296, maxPts: 1296, commandRank: 'Precentor' }
 ];
 
-function getSocietyPoints(comp: ForceComposition): number {
-    return comp.BM + 
+function getSocietyPointRange(comp: ForceComposition): PointRange {
+    const pts = comp.BM + 
            (comp.BA_troopers / 9) + 
            (comp.CI_troopers / 75) + 
            (comp.PM / 3) + 
            (comp.CV / 7) + 
            (comp.AF / 3) + 
            comp.other;
+    return { min: pts, max: pts };
 }
 
 const SOCIETY_RULES: ForceTypeRule[] = [
@@ -256,10 +278,11 @@ const SOCIETY_RULES: ForceTypeRule[] = [
     { type: 'Sept', minPts: 7, maxPts: 7 }
 ];
 
-function evaluateForce(comp: ForceComposition, rules: ForceTypeRule[], getPoints: (comp: ForceComposition) => number): string {
-    const pts = getPoints(comp);
-    
-    if (pts === 0) return 'Force';
+function evaluateForce(comp: ForceComposition, rules: ForceTypeRule[], getPointRange: (comp: ForceComposition) => PointRange): string {
+    const range = getPointRange(comp);
+    const midPts = (range.min + range.max) / 2;
+
+    if (range.max === 0) return 'Force';
 
     let bestType = 'Force';
     let minDistance = Infinity;
@@ -270,14 +293,15 @@ function evaluateForce(comp: ForceComposition, rules: ForceTypeRule[], getPoints
         if (rule.customMatch) {
             dist = rule.customMatch(comp);
         }
-        
+
         if (dist === -1) {
-            if (pts >= rule.minPts && pts <= rule.maxPts) {
-                dist = 0;
-            } else if (pts < rule.minPts) {
-                dist = rule.minPts - pts;
+            // Check overlap between point range [range.min, range.max] and rule [rule.minPts, rule.maxPts]
+            if (range.max >= rule.minPts && range.min <= rule.maxPts) {
+                dist = 0; // Ranges overlap — exact match
+            } else if (range.max < rule.minPts) {
+                dist = rule.minPts - range.max; // Force is below the rule
             } else {
-                dist = pts - rule.maxPts;
+                dist = range.min - rule.maxPts; // Force is above the rule
             }
         }
 
@@ -290,9 +314,8 @@ function evaluateForce(comp: ForceComposition, rules: ForceTypeRule[], getPoints
             if (dist === 0) {
                 modifier = '';
             } else {
-                // For custom matches, we need to determine if it's understrength or reinforced
-                // based on the points relative to the rule's min/max points
-                if (pts < rule.minPts) modifier = 'Understrength ';
+                // Determine if understrength or reinforced based on midpoint
+                if (midPts < rule.minPts) modifier = 'Understrength ';
                 else modifier = 'Reinforced ';
             }
         }
@@ -309,14 +332,17 @@ function evaluateForce(comp: ForceComposition, rules: ForceTypeRule[], getPoints
                 const dist = rule.customMatch(comp);
                 if (dist === Infinity) continue;
             }
-            
-            if (rule.minPts === pts * 2) {
+
+            // Check if doubling the point range overlaps with the rule
+            const doubleMin = range.min * 2;
+            const doubleMax = range.max * 2;
+            if (doubleMax >= rule.minPts && doubleMin <= rule.maxPts) {
                 return 'Demi-' + rule.type;
             }
         }
     }
 
-    const maxAllowedDistance = Math.max(2, pts * 0.2);
+    const maxAllowedDistance = Math.max(2, midPts * 0.2);
     if (minDistance <= maxAllowedDistance) {
         return modifier + bestType;
     }
@@ -334,12 +360,12 @@ export function getForceSizeName(units: ForceUnit[], techBase: string, factionNa
     const comp = getForceComposition(units);
 
     if (factionName === 'ComStar' || factionName === 'Word of Blake') {
-        return evaluateForce(comp, COMSTAR_RULES, getComStarPoints);
+        return evaluateForce(comp, COMSTAR_RULES, getComStarPointRange);
     } else if (factionName === 'Society') {
-        return evaluateForce(comp, SOCIETY_RULES, getSocietyPoints);
+        return evaluateForce(comp, SOCIETY_RULES, getSocietyPointRange);
     } else if (factionName.includes('Clan') || techBase === 'Clan') {
-        return evaluateForce(comp, CLAN_RULES, getClanPoints);
+        return evaluateForce(comp, CLAN_RULES, getClanPointRange);
     } else {
-        return evaluateForce(comp, IS_RULES, getISPoints);
+        return evaluateForce(comp, IS_RULES, getISPointRange);
     }
 }

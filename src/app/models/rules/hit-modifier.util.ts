@@ -74,9 +74,9 @@ export function computeLinkedModifiers(entry: MountedEquipment): number {
  * @param entry             - the mounted equipment entry
  * @param additionalModifiers - pre-computed modifiers to add (global fire mod, linked mods, etc.)
  */
-export function resolveHitModifier(entry: MountedEquipment, additionalModifiers: number): number | 'Vs' | null {
-    if (entry.baseHitMod === 'Vs') {
-        return 'Vs';
+export function resolveHitModifier(entry: MountedEquipment, additionalModifiers: number): number | 'Vs' | '*' | null {
+    if (entry.baseHitMod === 'Vs' || entry.baseHitMod === '*') {
+        return entry.baseHitMod;
     }
     if (!entry.equipment && !entry.physical) {
         return null;
