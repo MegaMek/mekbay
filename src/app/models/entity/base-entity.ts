@@ -206,7 +206,7 @@ export abstract class BaseEntity {
   fluff = signal<EntityFluff>({});
 
   // ── Generator (MTF metadata — tool that created the file) ──
-  generator = signal<string>('');
+  generator?: string;
 
   // ── BV Override ──
   manualBV = signal<number>(0);

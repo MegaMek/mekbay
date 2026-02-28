@@ -405,7 +405,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   // ── Fluff & BV ──
   entity.fluff.set(header.fluff);
   if (header.manualBV > 0) entity.manualBV.set(header.manualBV);
-  if (header.generator) entity.generator.set(header.generator);
+  if (header.generator) entity.generator = header.generator;
 
   // ── LAM / QuadVee specific fields ──
   if (header.lamType && entity instanceof LamEntity) {
@@ -456,7 +456,7 @@ interface MtfHeader {
   weaponsList: string[];
   fluff: EntityFluff;
   manualBV: number;
-  generator: string;
+  generator?: string;
   clanName: string;
   lamType: string;
   motiveType: MotiveType;
@@ -474,7 +474,7 @@ function parseHeader(lines: string[]): MtfHeader {
     armorType: 'Standard', armorValues: new Map(), patchworkTypes: new Map(),
     quirks: [], weaponQuirks: [],
     locationSlots: new Map(), nocritEquipment: [], weaponsList: [],
-    fluff: {}, manualBV: 0, generator: '',
+    fluff: {}, manualBV: 0, generator: undefined,
     clanName: '', lamType: '', motiveType: 'None' as MotiveType, rawHeatSinks: '',
   };
 

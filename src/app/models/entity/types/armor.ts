@@ -267,11 +267,7 @@ export function resolveArmorByName(
 }
 
 // ============================================================================
-// Armor — structured face model
-//
-// Replaces the old "CT-rear" string-key convention with a typed structure.
-// Every location stores { front, rear }.  For locations without rear armor,
-// `rear` is always 0.
+// Armor structured face model
 // ============================================================================
 
 /** Which face of armor we are referencing */
