@@ -35,7 +35,7 @@ import { signal } from '@angular/core';
 import { AERO_LOCATIONS, EntityType, FIXED_WING_EQUIP_LOCATIONS } from '../../types';
 import { AeroEntity } from './aero-entity';
 
-/** Fixed Wing Support vehicle — uses BAR rating and tech ratings. */
+/** Fixed Wing Support vehicle - uses BAR rating and tech ratings. */
 export class FixedWingSupportEntity extends AeroEntity {
   override readonly entityType: EntityType = 'FixedWingSupport';
 

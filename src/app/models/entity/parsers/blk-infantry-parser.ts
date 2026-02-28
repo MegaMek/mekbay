@@ -171,7 +171,7 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
     parseInfantryMotionType(bb.getFirstString('motion_type'), entity, ctx);
   }
 
-  // ── Troopers Equipment (armor kits, etc. — stored in 'Infantry' location) ──
+  // ── Troopers Equipment (armor kits, etc. - stored in 'Infantry' location) ──
   if (bb.exists('Troopers Equipment')) {
     const lines = bb.getDataAsString('Troopers Equipment');
     for (const raw of lines) {
@@ -268,7 +268,7 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
     if (augs.length > 0) entity.augmentations.set(augs);
   }
 
-  // ── Prosthetic Enhancements (Enhanced Limbs — IO p.84) ──
+  // ── Prosthetic Enhancements (Enhanced Limbs - IO p.84) ──
   if (bb.exists('prostheticEnhancement1')) {
     entity.prostheticEnhancement1.set(bb.getFirstString('prostheticEnhancement1'));
     if (bb.exists('prostheticEnhancement1Count')) {

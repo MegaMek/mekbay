@@ -42,7 +42,7 @@ import { SmallCraftEntity } from './small-craft-entity';
 /**
  * DropShip entity (200+ tons, up to 100,000 tons).
  *
- * Extends SmallCraft — shares crew, design type, fuel, structural integrity.
+ * Extends SmallCraft - shares crew, design type, fuel, structural integrity.
  * Uses 6-location armor layout (Nose/LF/RF/LBS/RBS/Aft) but the same
  * equipment locations as SmallCraft (Nose/Left Side/Right Side/Aft/Hull).
  */

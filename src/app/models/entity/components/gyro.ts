@@ -71,7 +71,7 @@ const GYRO_DEFINITIONS: Record<GyroType, GyroComponent> = {
 
 /**
  * Normalize raw gyro type strings from MTF files.
- * MegaMek writes "XL Gyro", "Compact Gyro", etc. — we strip the " Gyro" suffix.
+ * MegaMek writes "XL Gyro", "Compact Gyro", etc. we strip the " Gyro" suffix.
  */
 export function normalizeGyroType(raw: string): GyroType {
   let s = raw.replace(/\s+Gyro$/i, '').trim();

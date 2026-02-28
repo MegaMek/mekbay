@@ -227,7 +227,7 @@ export class ParseContext {
       if (fallback) return fallback;
     }
 
-    // 3. Not found — record error
+    // 3. Not found - record error
     this.error(field, `Equipment not found: "${name}"`);
     return null;
   }

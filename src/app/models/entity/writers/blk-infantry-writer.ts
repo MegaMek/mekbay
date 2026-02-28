@@ -101,13 +101,13 @@ export function writeBlkInfantry(entity: InfantryEntity): string {
   if (entity.primaryWeapon())   w.addBlock('Primary', entity.primaryWeapon());
   if (entity.secondaryWeapon()) w.addBlock('Secondary', entity.secondaryWeapon());
 
-  // Armor divisor — Java uses Double.toString() which always writes ".0" for integers
+  // Armor divisor - Java uses Double.toString() which always writes ".0" for integers
   if (entity.armorDivisor() !== 1) {
     const d = entity.armorDivisor();
     w.addBlock('armordivisor', Number.isInteger(d) ? d.toFixed(1) : String(d));
   }
 
-  // Boolean flags — only written when true, value is always "true"
+  // Boolean flags - only written when true, value is always "true"
   if (entity.encumberingArmor()) w.addBlock('encumberingarmor', 'true');
   if (entity.spaceSuit())        w.addBlock('spacesuit', 'true');
   if (entity.hasDEST())          w.addBlock('dest', 'true');
@@ -132,7 +132,7 @@ export function writeBlkInfantry(entity: InfantryEntity): string {
     w.addBlock('augmentation', ...augs);
   }
 
-  // Prosthetic Enhancement (Enhanced Limbs — IO p.84)
+  // Prosthetic Enhancement (Enhanced Limbs - IO p.84)
   if (entity.prostheticEnhancement1()) {
     w.addBlock('prostheticEnhancement1', entity.prostheticEnhancement1());
     if (entity.prostheticEnhancement1Count() > 0) {
@@ -148,7 +148,7 @@ export function writeBlkInfantry(entity: InfantryEntity): string {
   if (entity.extraneousPair1()) w.addBlock('extraneousPair1', entity.extraneousPair1());
   if (entity.extraneousPair2()) w.addBlock('extraneousPair2', entity.extraneousPair2());
 
-  // NOTE: No tonnage block for conventional infantry — matches Java reference output
+  // NOTE: No tonnage block for conventional infantry - matches Java reference output
 
   return w.toString();
 }

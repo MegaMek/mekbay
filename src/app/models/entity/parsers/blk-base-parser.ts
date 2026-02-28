@@ -64,7 +64,7 @@ import { parseEquipmentLine } from './equipment-resolver';
 import { ParseContext } from './parse-context';
 
 /**
- * Common BLK parsing — reads universal blocks that apply to all unit types.
+ * Common BLK parsing - reads universal blocks that apply to all unit types.
  *
  * Each type-specific parser calls `parseBaseBlk(bb, entity, ctx)` first,
  * then handles its own type-specific blocks.
@@ -192,7 +192,7 @@ export function parseBaseBlk(
           omni: isOmni || undefined,
         });
       } else if (parts.length === 1) {
-        // Bare transporter type (e.g., "dockingcollar") — no capacity/doors
+        // Bare transporter type (e.g., "dockingcollar") - no capacity/doors
         transporters.push({
           type: parts[0],
           capacity: 0,
@@ -371,7 +371,7 @@ export function getBlkEngineIsClan(bb: BuildingBlock): boolean {
 /**
  * Options controlling how `parseBlkEngine` reads the BLK data.
  *
- * Every field is optional — sensible defaults are derived from the BLK
+ * Every field is optional - sensible defaults are derived from the BLK
  * blocks themselves.
  */
 export interface BlkEngineOpts {
@@ -393,7 +393,7 @@ export interface BlkEngineOpts {
   defaultTotalHeatSinks?: number;
 
   /**
-   * When `true`, the engine_type block is mandatory — the function returns
+   * When `true`, the engine_type block is mandatory - the function returns
    * `undefined` when it is missing.  Used by vehicles and ProtoMeks whose
    * files always specify engine_type.
    */
@@ -436,7 +436,7 @@ export function parseBlkEngine(
     ? engineTypeFromCode(bb.getFirstInt('engine_type'))
     : 'Fusion' as const;
 
-  // ── Rating (always walkMP × tonnage — callers must set walkMP first) ──
+  // ── Rating (always walkMP × tonnage - callers must set walkMP first) ──
   const rating = entity.walkMP() * entity.tonnage();
 
   // ── Clan flag (respects clan_engine override for mixed-tech) ──

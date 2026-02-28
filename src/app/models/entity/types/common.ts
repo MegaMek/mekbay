@@ -68,7 +68,7 @@ export interface EntityFluff {
 }
 
 // ============================================================================
-// Validation — tiered slices
+// Validation - tiered slices
 //
 // Validation is split into independent computed slices (engine, armor,
 // equipment, type-specific) so that changing armour doesn't recompute the

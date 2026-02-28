@@ -67,8 +67,8 @@ import { generateMountId, removeMountById, updateMap } from './utils/signal-help
  * Abstract base class for all entity types.
  *
  * Properties are categorised as:
- * - **signal** — user-editable inputs (designer's choices or parser values)
- * - **computed** — derived automatically from signals; reactive and read-only
+ * - **signal** - user-editable inputs (designer's choices or parser values)
+ * - **computed** - derived automatically from signals; reactive and read-only
  *
  * === Architectural invariants ===
  *
@@ -160,7 +160,7 @@ export abstract class BaseEntity {
   /** Raw BLK internal_type code for round-trip fidelity (-1 = Unknown, 0 = Standard, etc.) */
   rawInternalTypeCode = signal<number>(0);
 
-  // ── Equipment — SINGLE SOURCE OF TRUTH ──
+  // ── Equipment - SINGLE SOURCE OF TRUTH ──
   equipment = signal<EntityMountedEquipment[]>([]);
 
   // ── Transporters / Bays ──
@@ -236,7 +236,7 @@ export abstract class BaseEntity {
 
   // ── Derived indexes (reused across validators) ─────────────────────────
 
-  /** Equipment grouped by location — rebuilt only when equipment changes */
+  /** Equipment grouped by location - rebuilt only when equipment changes */
   protected mountsByLocation = computed(() => {
     const idx = new Map<string, EntityMountedEquipment[]>();
     for (const m of this.equipment()) {
@@ -247,13 +247,13 @@ export abstract class BaseEntity {
     return idx;
   });
 
-  /** Set of unresolved mount IDs — rebuilt only when equipment changes */
+  /** Set of unresolved mount IDs - rebuilt only when equipment changes */
   protected unresolvedMounts = computed(() =>
     this.equipment().filter(m => !m.equipment)
   );
 
   // ═══════════════════════════════════════════════════════════════════════════
-  //  TIERED VALIDATION — independent computed slices
+  //  TIERED VALIDATION - independent computed slices
   // ═══════════════════════════════════════════════════════════════════════════
 
   /** Engine rating cross-check */
@@ -316,7 +316,7 @@ export abstract class BaseEntity {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
-  //  ABSTRACT — implemented by each entity type
+  //  ABSTRACT - implemented by each entity type
   // ═══════════════════════════════════════════════════════════════════════════
 
   abstract get locationOrder(): readonly string[];
@@ -330,7 +330,7 @@ export abstract class BaseEntity {
   protected abstract computeExpectedEngineRating(): number | null;
 
   // ═══════════════════════════════════════════════════════════════════════════
-  //  METHODS — immutable equipment management
+  //  METHODS - immutable equipment management
   // ═══════════════════════════════════════════════════════════════════════════
 
   /** Get all equipment at a specific location */

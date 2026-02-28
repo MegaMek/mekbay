@@ -55,7 +55,7 @@ import { MEK_SLOTS_PER_LOCATION } from '../types';
 import { type GyroType, getGyro, normalizeGyroType } from './gyro';
 
 // ============================================================================
-// Engine Component — static definition
+// Engine Component static definition
 // ============================================================================
 
 export interface EngineComponent {
@@ -126,7 +126,7 @@ export function getIntegralHeatSinkCapacity(rating: number, compact: boolean): n
 }
 
 // ============================================================================
-// Critical slot layout — Center Torso
+// Critical slot layout - Center Torso
 // ============================================================================
 
 /**
@@ -158,7 +158,7 @@ export function getEngineCTSlots(engine: EngineComponent, gyroType: GyroType | s
     if (normalizedGyro === 'Compact') {
       return [0, 1, 2, 5, 6, 7, 8, 9];
     }
-    // Standard/Heavy Duty/XL/Superheavy gyro — all use default layout
+    // Standard/Heavy Duty/XL/Superheavy gyro - all use default layout
     return [0, 1, 2, 7, 8, 9, 10, 11];
   }
 
@@ -178,7 +178,7 @@ export function getEngineCTSlots(engine: EngineComponent, gyroType: GyroType | s
 }
 
 // ============================================================================
-// Critical slot layout — Side Torsos
+// Critical slot layout - Side Torsos
 // ============================================================================
 
 /**
@@ -204,7 +204,7 @@ export function getEngineSideTorsoSlots(engine: EngineComponent): number[] {
     // IS XXL
     return isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 3, 4, 5];
   }
-  // Fusion, Compact, ICE, etc. — no side torso crits
+  // Fusion, Compact, ICE, etc. - no side torso crits
   return [];
 }
 
@@ -238,7 +238,7 @@ export function getEngineBaseWeight(rating: number): number {
 }
 
 // ============================================================================
-// MountedEngine — wraps engine + heat sinks for an entity
+// MountedEngine - wraps engine + heat sinks for an entity
 // ============================================================================
 
 /**
@@ -278,7 +278,7 @@ export interface MountedEngine {
 }
 
 // ============================================================================
-// MountedEngine — derived queries
+// MountedEngine - derived queries
 // ============================================================================
 
 /**
@@ -309,7 +309,7 @@ export function getExternalHeatSinks(me: MountedEngine): number {
 }
 
 // ============================================================================
-// MountedEngine — factory
+// MountedEngine - factory
 // ============================================================================
 
 /**

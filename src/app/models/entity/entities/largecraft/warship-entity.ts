@@ -47,7 +47,7 @@ const WARSHIP_EQUIP_LOCS = [
 ] as const;
 
 // ============================================================================
-// WarShipEntity — KF-drive capital warships with broadside arcs
+// WarShipEntity - KF-drive capital warships with broadside arcs
 // ============================================================================
 
 export class WarShipEntity extends JumpShipEntity {

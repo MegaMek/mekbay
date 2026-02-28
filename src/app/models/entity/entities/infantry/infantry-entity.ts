@@ -43,7 +43,7 @@ import {
 } from '../../types';
 
 // ============================================================================
-// InfantryEntity — conventional infantry platoons
+// InfantryEntity - conventional infantry platoons
 // ============================================================================
 
 export class InfantryEntity extends BaseEntity {
@@ -63,7 +63,7 @@ export class InfantryEntity extends BaseEntity {
   override motiveType = signal<MotiveType>('Leg');
   antimek = signal<boolean>(false);
 
-  // Infantry motive modifiers — these flag VTOL/SCUBA sub-variants
+  // Infantry motive modifiers - these flag VTOL/SCUBA sub-variants
   isMicrolite = signal<boolean>(false);
   isMotorizedScuba = signal<boolean>(false);
 
@@ -81,7 +81,7 @@ export class InfantryEntity extends BaseEntity {
   // Manei Domini augmentations (pilot option names)
   augmentations = signal<string[]>([]);
 
-  // Prosthetic Enhancement (Enhanced Limbs) — IO p.84
+  // Prosthetic Enhancement (Enhanced Limbs) - IO p.84
   prostheticEnhancement1 = signal<string>('');
   prostheticEnhancement1Count = signal<number>(0);
   prostheticEnhancement2 = signal<string>('');

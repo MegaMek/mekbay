@@ -48,7 +48,7 @@ import { EntityMountedEquipment } from '../types';
  *
  * @param sig    The signal to update
  * @param mutate A callback that receives a fresh **copy** of the current Map.
- *               Mutate the copy in-place — the helper will set it back.
+ *               Mutate the copy in-place - the helper will set it back.
  */
 export function updateMap<K, V>(
   sig: WritableSignal<Map<K, V>>,

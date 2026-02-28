@@ -64,7 +64,7 @@ import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { ParseContext } from './parse-context';
 
 // ============================================================================
-// Location normalization — raw MTF strings → canonical location IDs
+// Location normalization - raw MTF strings → canonical location IDs
 // ============================================================================
 
 const BIPED_LOCATION_MAP: Record<string, string> = {
@@ -92,7 +92,7 @@ const QUAD_LOCATION_MAP: Record<string, string> = {
 
 /**
  * Armor label → { canonical location, face }.
- * This is the single ingress normalization point — the rest of the code
+ * This is the single ingress normalization point - the rest of the code
  * uses canonical IDs and ArmorFace only.
  */
 const ARMOR_LABEL_MAP: Record<string, { loc: string; face: 'front' | 'rear' }> = {
@@ -142,7 +142,7 @@ const ENGINE_SLOT_NAMES = [
   // Large engine variants (rating > 400)
   'Large Fusion Engine', 'Large XL Engine', 'Large XXL Engine',
   'Large Light Engine', 'Large Compact Engine',
-  // Full MTF names (robustness — some files may use the full label)
+  // Full MTF names (robustness - some files may use the full label)
   'XL Fusion Engine', 'XXL Fusion Engine', 'Light Fusion Engine',
   'Compact Fusion Engine',
   'Large XL Fusion Engine', 'Large XXL Fusion Engine',
@@ -157,7 +157,7 @@ const ENGINE_SLOT_NAMES = [
  * Parse an MTF file into a MekEntity.
  *
  * Equipment mounts are the single canonical model.  Crit-slot positions are
- * stored as `placements` on each mount — the entity's `criticalSlotGrid`
+ * stored as `placements` on each mount - the entity's `criticalSlotGrid`
  * computed derives the full grid from these placements + system template.
  */
 export function parseMtf(content: string, ctx: ParseContext): MekEntity {
@@ -295,14 +295,14 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
 
       const parsed = parseCritSlotLine(raw);
 
-      // System slots are skipped — they're derived from configuration,
+      // System slots are skipped - they're derived from configuration,
       // but we still capture the ARMORED flag for round-trip fidelity.
       if (SYSTEM_NAMES[parsed.name] || isEngineSlot(parsed.name)) {
         if (parsed.armored) armoredSystemSlots.add(`${locCode}:${slotIdx}`);
         continue;
       }
 
-      // Equipment slot — find existing multi-crit mount or create new one
+      // Equipment slot - find existing multi-crit mount or create new one
       const dedupKey = `${parsed.name}@${locCode}`;
       const existingId = parsed.isSplit ? undefined : multiCritMap.get(dedupKey);
 
@@ -324,7 +324,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
 
       // Cross-location split: weapons with 8+ crit slots may be split between
       // two adjacent locations (e.g. AC/20: 8 crits in LA + 2 in LT).
-      // Only applies to weapons — spreadable misc equipment (TSM, Stealth,
+      // Only applies to weapons - spreadable misc equipment (TSM, Stealth,
       // Partial Wing, etc.) gets separate mounts per location.
       if (!addedToExisting) {
         const incomplete = mountedEquipment.find(m => {
@@ -581,7 +581,7 @@ function parseHeader(lines: string[]): MtfHeader {
         break;
       }
 
-      // Armor values — handle patchwork format "ArmorType(TechBase):number"
+      // Armor values - handle patchwork format "ArmorType(TechBase):number"
       case 'la armor': case 'ra armor': case 'lt armor': case 'rt armor':
       case 'ct armor': case 'hd armor': case 'll armor': case 'rl armor':
       case 'cl armor': case 'fll armor': case 'frl armor':
@@ -767,7 +767,7 @@ function cleanStructureType(raw: string): StructureType {
 /**
  * For split weapons (spanning two adjacent locations), determine which
  * location is the primary one.  Per TechManual rules, the weapon receives
- * the more restrictive firing arc — that's always the torso side.
+ * the more restrictive firing arc - that's always the torso side.
  * LT > LA, RT > RA, CT > LT/RT.
  */
 const TORSO_LOCATIONS = new Set(['CT', 'LT', 'RT']);
@@ -789,7 +789,7 @@ function getSplitPrimaryLocation(locA: string, locB: string): string {
   // Prefer the torso location as primary
   if (TORSO_LOCATIONS.has(locB) && !TORSO_LOCATIONS.has(locA)) return locB;
   if (TORSO_LOCATIONS.has(locA) && !TORSO_LOCATIONS.has(locB)) return locA;
-  // Both torsos (CT↔LT or CT↔RT) — CT is more restrictive
+  // Both torsos (CT↔LT or CT↔RT) - CT is more restrictive
   if (locA === 'CT') return locA;
   if (locB === 'CT') return locB;
   // Fallback: keep first

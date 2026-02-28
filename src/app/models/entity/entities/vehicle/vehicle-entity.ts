@@ -45,7 +45,7 @@ import {
 } from '../../types';
 
 // ============================================================================
-// VehicleEntity — abstract base for all combat-vehicle entities
+// VehicleEntity - abstract base for all combat-vehicle entities
 // ============================================================================
 
 export abstract class VehicleEntity extends BaseEntity {

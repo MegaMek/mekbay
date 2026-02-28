@@ -34,7 +34,7 @@
 import { Equipment } from '../../equipment.model';
 
 // ============================================================================
-// Mount Placement — Mek crit slot positions
+// Mount Placement - Mek crit slot positions
 //
 // Each placement anchors one crit of an equipment mount to a specific
 // (location, slot-index) pair.  Together with the system template, these
@@ -48,7 +48,7 @@ export interface MountPlacement {
 }
 
 // ============================================================================
-// Mounted Equipment — the single canonical equipment model
+// Mounted Equipment - the single canonical equipment model
 //
 // The entity's `equipment` signal is the sole source of truth for what is
 // installed.  Mek critical-slot grids and location inventories are DERIVED
@@ -59,7 +59,7 @@ export interface EntityMountedEquipment {
   /** Stable unique identifier within this entity */
   readonly mountId: string;
 
-  /** Internal name — lookup key into the equipment DB */
+  /** Internal name - lookup key into the equipment DB */
   equipmentId: string;
 
   /** Resolved reference (set after parse / on equipment DB load) */
@@ -126,7 +126,7 @@ export interface EntityMountedEquipment {
   /** Starts a new weapon bay (large craft) */
   isNewBay?: boolean;
 
-  /** Combined slot — second equipment in same slot (superheavy Mek) */
+  /** Combined slot - second equipment in same slot (superheavy Mek) */
   secondEquipmentId?: string;
   secondEquipment?: Equipment;
 }

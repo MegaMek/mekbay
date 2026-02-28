@@ -108,18 +108,18 @@ export function writeBlkBA(entity: BattleArmorEntity): string {
 
   w.addBlock('jumpingMP', entity.jumpingMP());
 
-  // Armor — single squad armor value (not per-trooper)
+  // Armor - single squad armor value (not per-trooper)
   const armorMap = entity.armorValues();
   const squadArmor = armorMap.get('Squad')?.front ?? 0;
   w.addBlock('armor', squadArmor);
 
-  // Trooper Count (with space, capitalized — matches Java)
+  // Trooper Count (with space, capitalized - matches Java)
   w.addBlock('Trooper Count', entity.trooperCount());
 
   // Weight class (numeric code)
   w.addBlock('weightclass', entity.weightClass());
 
-  // NOTE: No tonnage block for BattleArmor — matches Java reference output
+  // NOTE: No tonnage block for BattleArmor - matches Java reference output
 
   return w.toString();
 }

@@ -39,7 +39,7 @@ import {
 import { SupportTankEntity } from './support-tank-entity';
 
 /**
- * Large Support Tank — up to 300 tons, uses expanded location set
+ * Large Support Tank - up to 300 tons, uses expanded location set
  * (Front Right, Front Left, Rear Right, Rear Left).
  */
 export class LargeSupportTankEntity extends SupportTankEntity {

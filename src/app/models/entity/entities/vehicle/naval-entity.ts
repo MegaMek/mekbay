@@ -35,7 +35,7 @@ import { EntityType } from '../../types';
 import { VehicleEntity } from './vehicle-entity';
 
 /**
- * Naval — combat vehicle with Naval, Submarine, or Hydrofoil motion type.
+ * Naval - combat vehicle with Naval, Submarine, or Hydrofoil motion type.
  */
 export class NavalEntity extends VehicleEntity {
   override readonly entityType: EntityType = 'Naval';

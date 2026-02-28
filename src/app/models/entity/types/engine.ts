@@ -40,7 +40,7 @@ export type EngineType =
   | 'Fuel Cell' | 'Fission' | 'None' | 'Maglev' | 'Steam'
   | 'Battery' | 'Solar' | 'External';
 
-/** Engine flags — derived from entity properties, not user-set */
+/** Engine flags - derived from entity properties, not user-set */
 export type EngineFlag =
   | 'clan' | 'tank' | 'large' | 'superheavy' | 'support-vee';
 

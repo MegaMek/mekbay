@@ -58,7 +58,7 @@ import { resetMountIdCounter } from '../src/app/models/entity/utils/signal-helpe
 import { MekEntity } from '../src/app/models/entity/entities/mek/mek-entity';
 
 /**
- * UnitTypes explicitly skipped — these entity types are not yet supported.
+ * UnitTypes explicitly skipped - these entity types are not yet supported.
  * Files with these types are counted separately and do NOT count as failures.
  */
 const SKIPPED_UNIT_TYPES = new Set([

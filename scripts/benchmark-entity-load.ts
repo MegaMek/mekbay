@@ -53,7 +53,7 @@ import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { resetMountIdCounter } from '../src/app/models/entity/utils/signal-helpers';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Unsupported UnitTypes — skipped without counting as failures
+// Unsupported UnitTypes - skipped without counting as failures
 // ═══════════════════════════════════════════════════════════════════════════
 
 const SKIPPED_UNIT_TYPES = new Set([

@@ -153,7 +153,7 @@ export const GE_EQUIP_TAGS: [string, string][] = [
 ];
 
 // ============================================================================
-// Mek — Armor array order
+// Mek - Armor array order
 // ============================================================================
 
 export const BLK_ARMOR_BIPED: { loc: string; face: 'front' | 'rear' }[] = [
@@ -185,7 +185,7 @@ export const BLK_ARMOR_QUAD: { loc: string; face: 'front' | 'rear' }[] = [
 ];
 
 // ============================================================================
-// Mek — Crit location tags
+// Mek - Crit location tags
 // ============================================================================
 
 export const BLK_CRIT_BIPED: readonly (readonly [string, string])[] = [
@@ -199,7 +199,7 @@ export const BLK_CRIT_QUAD: readonly (readonly [string, string])[] = [
 ];
 
 // ============================================================================
-// Vehicle — Armor location arrays
+// Vehicle - Armor location arrays
 // ============================================================================
 
 export const VEHICLE_ARMOR_LOCS = ['Front', 'Right', 'Left', 'Rear', 'Turret', 'Rear Turret'] as const;

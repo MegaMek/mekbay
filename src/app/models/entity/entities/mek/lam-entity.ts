@@ -40,7 +40,7 @@ function sys(systemType: string): CriticalSlotView {
   return { type: 'system', systemType: systemType as any, armored: false, omniPod: false };
 }
 
-/** Land-Air Mek — a biped Mek with LAM-specific fields. */
+/** Land-Air Mek - a biped Mek with LAM-specific fields. */
 export class LamEntity extends BipedMekEntity {
   /** Standard or Bimodal LAM */
   lamType = signal<string>('Standard');

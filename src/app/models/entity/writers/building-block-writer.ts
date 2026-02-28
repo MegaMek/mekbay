@@ -162,7 +162,7 @@ export function writeTransporters(w: BuildingBlockWriter, entity: BaseEntity): v
   const transporters = entity.transporters();
   if (transporters.length > 0) {
     const tLines = transporters.map(t => {
-      // Bare transporter type (e.g., "dockingcollar") — no capacity/doors
+      // Bare transporter type (e.g., "dockingcollar") - no capacity/doors
       if (t.bare) return t.type;
 
       // Format: type:capacity:doors[:bayNumber[:platoonType[:facing[:bitmap]]]]
@@ -365,7 +365,7 @@ export function writeManualBV(w: BuildingBlockWriter, entity: BaseEntity): void 
 }
 
 // ============================================================================
-// Composite helpers — preamble / postamble / crew
+// Composite helpers - preamble / postamble / crew
 // ============================================================================
 
 /**

@@ -35,7 +35,7 @@ import { signal } from '@angular/core';
 import { MEK_TRIPOD_LOCATIONS, MekConfig, MotiveType } from '../../types';
 import { MekWithArmsEntity } from './mek-entity';
 
-/** Tripod BattleMek — adds Center Leg location. */
+/** Tripod BattleMek - adds Center Leg location. */
 export class TripodMekEntity extends MekWithArmsEntity {
   override motiveType = signal<MotiveType>('Tripod');
 

@@ -63,7 +63,7 @@ import { writeMtf } from './writers/mtf-writer';
  * parameter). All other entity types are always written as BLK.
  *
  * @param entity  The entity to serialize
- * @param format  Output format — 'mtf' or 'blk' (default). Only Meks support MTF.
+ * @param format  Output formats: 'mtf' or 'blk' (default). Only Meks support MTF.
  * @returns The serialized file content as a string
  * @throws Error if the entity type is unsupported
  */

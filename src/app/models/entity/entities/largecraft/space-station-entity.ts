@@ -35,7 +35,7 @@ import { EntityType } from '../../types';
 import { JumpShipEntity } from './jumpship-entity';
 
 /**
- * Space Station — a stationary JumpShip variant (no KF drive, no thrust).
+ * Space Station - a stationary JumpShip variant (no KF drive, no thrust).
  */
 export class SpaceStationEntity extends JumpShipEntity {
   override readonly entityType: EntityType = 'SpaceStation';

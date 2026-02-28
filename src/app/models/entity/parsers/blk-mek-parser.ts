@@ -62,7 +62,7 @@ import { ParseContext } from './parse-context';
 /**
  * Parse a BLK file for a Mek-type entity.
  *
- * Equipment mounts are the single canonical model — crit positions are
+ * Equipment mounts are the single canonical model - crit positions are
  * stored as `placements` on each mount.
  */
 export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
@@ -81,7 +81,7 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
   parseBaseBlk(bb, entity, ctx);
   const techBase = getBlkTechBase(bb);
 
-  // ── Movement (must precede engine — rating = walkMP × tonnage) ──
+  // ── Movement (must precede engine - rating = walkMP × tonnage) ──
   if (bb.exists('walkingMP')) entity.walkMP.set(bb.getFirstInt('walkingMP'));
 
   // ── Engine ──

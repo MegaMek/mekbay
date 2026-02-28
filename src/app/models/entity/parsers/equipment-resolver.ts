@@ -57,7 +57,7 @@ export function resolveEquipment(
     return equipmentDb[name];
   }
 
-  // 4. Try alias lookup — O(1) when alias index is available
+  // 4. Try alias lookup - O(1) when alias index is available
   if (aliasMap) {
     const aliased = aliasMap.get(name);
     if (aliased) return aliased;
@@ -128,13 +128,13 @@ export function parseEquipmentLine(line: string): EquipmentLineModifiers {
 
   let name = line.trim();
 
-  // (B) prefix — new weapon bay marker
+  // (B) prefix - new weapon bay marker
   if (name.startsWith('(B)')) {
     result.isNewBay = true;
     name = name.substring(3).trim();
   }
 
-  // (R) prefix — rear mounted (BLK format)
+  // (R) prefix - rear mounted (BLK format)
   if (name.startsWith('(R)')) {
     result.rearMounted = true;
     name = name.substring(3).trim();

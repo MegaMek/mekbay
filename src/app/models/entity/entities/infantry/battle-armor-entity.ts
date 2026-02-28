@@ -40,7 +40,7 @@ import {
 import { InfantryEntity } from './infantry-entity';
 
 // ============================================================================
-// BattleArmorEntity — powered-armor squads (Elemental, etc.)
+// BattleArmorEntity - powered-armor squads (Elemental, etc.)
 // ============================================================================
 
 export class BattleArmorEntity extends InfantryEntity {
@@ -67,10 +67,10 @@ export class BattleArmorEntity extends InfantryEntity {
   squadEquipmentTag = signal<'Squad' | 'Point'>('Squad');
 
   // ═══════════════════════════════════════════════════════════════════════════
-  //  OVERRIDES — BA uses canonical motive values (no compound infantry strings)
+  //  OVERRIDES - BA uses canonical motive values (no compound infantry strings)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /** BA writes plain MotiveType (VTOL, UMU, etc.) — no infantry compound logic. */
+  /** BA writes plain MotiveType (VTOL, UMU, etc.) - no infantry compound logic. */
   override getMotiveTypeAsString(): string | null {
     const m = this.motiveType();
     return m === 'None' ? null : m;

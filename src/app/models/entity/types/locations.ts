@@ -35,7 +35,7 @@
 // Typed Location IDs
 //
 // Canonical identifiers for every location family. Parser normalization maps
-// convert raw MTF/BLK strings to these IDs at ingress — the rest of the
+// convert raw MTF/BLK strings to these IDs at ingress - the rest of the
 // codebase ONLY uses these canonical IDs.
 // ============================================================================
 

@@ -36,7 +36,7 @@ import { EntityType, StructureType } from '../../types';
 import { VehicleEntity } from './vehicle-entity';
 
 /**
- * Gun Emplacement — a stationary turret with no movement.
+ * Gun Emplacement - a stationary turret with no movement.
  *
  * Only has a single Turret location. Internal structure is replaced by
  * Building CF (Construction Factor).

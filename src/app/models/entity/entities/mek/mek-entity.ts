@@ -57,14 +57,14 @@ import {
 } from '../../types';
 
 // ============================================================================
-// MekEntity — abstract base for all Mek-type entities
+// MekEntity - abstract base for all Mek-type entities
 // ============================================================================
 
 export abstract class MekEntity extends BaseEntity {
   override readonly entityType: EntityType = 'Mek';
 
   // ═══════════════════════════════════════════════════════════════════════════
-  //  SIGNALS — user / parser inputs
+  //  SIGNALS - user / parser inputs
   // ═══════════════════════════════════════════════════════════════════════════
 
   gyroType = signal<string>('Standard');
@@ -94,12 +94,12 @@ export abstract class MekEntity extends BaseEntity {
    */
   totalHeatSinks = computed<number>(() => this.mountedEngine().totalHeatSinks);
 
-  // NOTE: No `criticalSlots` signal!  The crit grid is DERIVED — see
+  // NOTE: No `criticalSlots` signal!  The crit grid is DERIVED - see
   // `criticalSlotGrid` computed below.  Equipment `placements` on each
   // mount are the single source of truth for slot assignments.
 
   // ═══════════════════════════════════════════════════════════════════════════
-  //  COMPUTED — derived from signals
+  //  COMPUTED - derived from signals
   // ═══════════════════════════════════════════════════════════════════════════
 
   isSuperHeavy = computed(() => this.tonnage() > 100);
@@ -287,7 +287,7 @@ export abstract class MekEntity extends BaseEntity {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
-  //  SYSTEM TEMPLATE — generates fixed system slots per location
+  //  SYSTEM TEMPLATE - generates fixed system slots per location
   //
   //  Delegates to system-components.ts for engine/gyro/cockpit layouts,
   //  then converts the (string | null)[] layout to CriticalSlotView[].
@@ -358,7 +358,7 @@ export abstract class MekEntity extends BaseEntity {
 }
 
 // ============================================================================
-// MekWithArmsEntity — abstract, adds arm actuator management
+// MekWithArmsEntity - abstract, adds arm actuator management
 // ============================================================================
 
 export abstract class MekWithArmsEntity extends MekEntity {

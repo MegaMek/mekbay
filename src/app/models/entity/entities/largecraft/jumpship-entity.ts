@@ -49,7 +49,7 @@ const JUMPSHIP_EQUIP_LOCS = [
 ] as const;
 
 // ============================================================================
-// JumpShipEntity — KF-drive capital ships
+// JumpShipEntity - KF-drive capital ships
 // ============================================================================
 
 export class JumpShipEntity extends AeroEntity {

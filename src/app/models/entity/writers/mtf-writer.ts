@@ -248,7 +248,7 @@ function writeArmor(
 }
 
 /**
- * Location order for sorting weapons — matches MegaMek's descending location-
+ * Location order for sorting weapons - matches MegaMek's descending location-
  * index order (LOC_LLEG=7 first … LOC_HEAD=0 last).
  */
 const WEAPON_LOC_ORDER: Record<string, number> = {
@@ -303,7 +303,7 @@ function writeCriticals(
         const name = slot.systemType === 'Engine' ? 'Fusion Engine' : slot.systemType!;
         lines.push(slot.armored ? `${name} (ARMORED)` : name);
       } else {
-        // Equipment — look up mount for name and modifiers
+        // Equipment - look up mount for name and modifiers
         lines.push(formatEquipmentSlot(slot, mountMap));
       }
     }

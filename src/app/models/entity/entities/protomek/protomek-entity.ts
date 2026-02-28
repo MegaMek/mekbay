@@ -43,7 +43,7 @@ import {
 } from '../../types';
 
 // ============================================================================
-// ProtoMekEntity — ProtoMech units (2-15 tons)
+// ProtoMekEntity - ProtoMech units (2-15 tons)
 // ============================================================================
 
 export class ProtoMekEntity extends BaseEntity {

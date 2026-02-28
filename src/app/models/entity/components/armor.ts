@@ -80,7 +80,7 @@ export interface PatchworkArmor {
 }
 
 // ============================================================================
-// MountedArmor — interface
+// MountedArmor - interface
 // ============================================================================
 
 /**
@@ -101,13 +101,13 @@ export interface MountedArmor {
 
   /**
    * Explicit tech rating override (A=0 … F=5).
-   * -1 means not explicitly set — writer derives from equipment.
+   * -1 means not explicitly set - writer derives from equipment.
    */
   readonly techRating: number;
 
   /**
    * Explicit compound tech level override for BLK output.
-   * -1 means not explicitly set — writer derives from equipment.
+   * -1 means not explicitly set - writer derives from equipment.
    */
   readonly techLevel: number;
 
@@ -124,7 +124,7 @@ export interface MountedArmor {
 }
 
 // ============================================================================
-// MountedArmor — factory
+// MountedArmor - factory
 // ============================================================================
 
 /**
@@ -160,7 +160,7 @@ export function createPatchworkArmor(
 }
 
 // ============================================================================
-// MountedArmor — derived queries
+// MountedArmor - derived queries
 // ============================================================================
 
 /**

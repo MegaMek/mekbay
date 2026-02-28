@@ -88,7 +88,7 @@ interface FieldMismatch {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Checked-fields registry — grows as we implement more fields
+// Checked-fields registry - grows as we implement more fields
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**

@@ -35,7 +35,7 @@ import { signal } from '@angular/core';
 import { MekConfig, MotiveType } from '../../types';
 import { QuadMekEntity } from './quad-mek-entity';
 
-/** QuadVee — a Quad Mek with a vehicle motive type (Track or Wheel). */
+/** QuadVee - a Quad Mek with a vehicle motive type (Track or Wheel). */
 export class QuadVeeEntity extends QuadMekEntity {
   /** Vehicle-mode motive type: Track or Wheel */
   override motiveType = signal<MotiveType>('Track');

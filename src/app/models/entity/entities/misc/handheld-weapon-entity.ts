@@ -40,7 +40,7 @@ import {
 } from '../../types';
 
 // ============================================================================
-// HandheldWeaponEntity — standalone handheld weapons (for BA / Mek carry)
+// HandheldWeaponEntity - standalone handheld weapons (for BA / Mek carry)
 // ============================================================================
 
 export class HandheldWeaponEntity extends BaseEntity {

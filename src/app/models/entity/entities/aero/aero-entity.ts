@@ -42,10 +42,10 @@ import {
 } from '../../types';
 
 // ============================================================================
-// AeroEntity — abstract base for all aero-type entities
+// AeroEntity - abstract base for all aero-type entities
 //
 // Covers ASF, ConvFighter, FixedWingSupport, SmallCraft, DropShip, etc.
-// Non-Mek units have no critical-slot grid — equipment is simply associated
+// Non-Mek units have no critical-slot grid - equipment is simply associated
 // with a location string.
 // ============================================================================
 
@@ -53,7 +53,7 @@ export abstract class AeroEntity extends BaseEntity {
   override readonly entityType: EntityType = 'Aero';
 
   // ═══════════════════════════════════════════════════════════════════════════
-  //  SIGNALS — user / parser inputs
+  //  SIGNALS - user / parser inputs
   // ═══════════════════════════════════════════════════════════════════════════
 
   fuel = signal<number>(0);
@@ -74,7 +74,7 @@ export abstract class AeroEntity extends BaseEntity {
   maxThrust = computed(() => Math.ceil(this.walkMP() * 1.5));
 
   // ═══════════════════════════════════════════════════════════════════════════
-  //  ABSTRACT — subclasses define locations
+  //  ABSTRACT - subclasses define locations
   // ═══════════════════════════════════════════════════════════════════════════
 
   /** All equipment locations (superset of armor locations) */

@@ -90,11 +90,11 @@ export function mekCockpitTypeFromCode(code: number): string {
 /**
  * Physical connection descriptor for a single Mek location.
  *
- * `transfersTo`  — next inward location for damage transfer when this
+ * `transfersTo`  - next inward location for damage transfer when this
  *                  location's internal structure is destroyed.
  *                  `null` = terminal (CT destroyed → Mek destroyed).
  *
- * `dependents`   — locations physically attached to this one that are
+ * `dependents`   - locations physically attached to this one that are
  *                  also destroyed when it is destroyed
  *                  (e.g. losing RT also destroys RA).
  */
@@ -123,7 +123,7 @@ export const BIPED_TOPOLOGY: Readonly<Record<MekLocation, LocTopology>> = {
   RL:  { transfersTo: 'RT',   dependents: [] },
   LL:  { transfersTo: 'LT',   dependents: [] },
   CL:  { transfersTo: 'CT',   dependents: [] },   // Tripod only
-  // Quad keys — present but unused for bipeds
+  // Quad keys - present but unused for bipeds
   FLL: { transfersTo: 'LT',   dependents: [] },
   FRL: { transfersTo: 'RT',   dependents: [] },
   RLL: { transfersTo: 'LT',   dependents: [] },
@@ -148,7 +148,7 @@ export const QUAD_TOPOLOGY: Readonly<Record<MekLocation, LocTopology>> = {
   FLL: { transfersTo: 'LT',   dependents: [] },
   RRL: { transfersTo: 'RT',   dependents: [] },
   RLL: { transfersTo: 'LT',   dependents: [] },
-  // Biped keys — present but unused for quads
+  // Biped keys - present but unused for quads
   RA:  { transfersTo: 'RT',   dependents: [] },
   LA:  { transfersTo: 'LT',   dependents: [] },
   RL:  { transfersTo: 'RT',   dependents: [] },
@@ -191,7 +191,7 @@ export function getTopologyFor(
 }
 
 // ============================================================================
-// Critical Slot View — derived, read-only grid cell
+// Critical Slot View - derived, read-only grid cell
 //
 // The Mek crit grid is a COMPUTED view, never a writable signal.
 // Writers and UI read this view; mutations go through the equipment list.
@@ -200,7 +200,7 @@ export function getTopologyFor(
 export interface CriticalSlotView {
   readonly type: 'system' | 'equipment' | 'empty';
   readonly systemType?: MekSystemType;
-  /** References EntityMountedEquipment.mountId — not an array index */
+  /** References EntityMountedEquipment.mountId - not an array index */
   readonly mountId?: string;
   readonly armored: boolean;
   readonly omniPod: boolean;

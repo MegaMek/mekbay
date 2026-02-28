@@ -69,7 +69,7 @@ export function encodeEquipmentLine(mount: EntityMountedEquipment, options?: Enc
     name = '(R) ' + name;
   }
 
-  // Turret suffix — standard (T) is implied by the BLK location block,
+  // Turret suffix - standard (T) is implied by the BLK location block,
   // but sponson (ST) and pintle (PT) appear in location blocks and need the suffix.
   if (!blk) {
     if (mount.turretType) {

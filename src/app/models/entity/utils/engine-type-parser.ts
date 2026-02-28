@@ -35,7 +35,7 @@
  * MTF-specific engine parsing and formatting.
  *
  * Code tables (ENGINE_TYPE_FROM_CODE, ENGINE_TYPE_TO_CODE) and their
- * convenience functions live in ../types.ts — re-exported here for
+ * convenience functions live in ../types.ts - re-exported here for
  * backwards compatibility.
  */
 
