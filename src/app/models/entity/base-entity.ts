@@ -106,7 +106,7 @@ export abstract class BaseEntity {
   omni = signal<boolean>(false);
 
   // ── Tech ──
-  year = signal<number>(3025);
+  year = signal<number>(3145);
   originalBuildYear = signal<number>(-1);
   techBase = signal<EntityTechBase>('Inner Sphere');
   techLevel = signal<string>('');
@@ -198,7 +198,6 @@ export abstract class BaseEntity {
     return m ? `${c} ${m}`.trim() : c;
   });
 
-  
   mixedTech = computed<boolean>(() => {
     // check tech of all entity components; if any are mixed, the whole entity is mixed
     if (this.techBase() === 'Mixed') return true;
