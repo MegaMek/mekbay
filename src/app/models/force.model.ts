@@ -47,6 +47,7 @@ import { Faction } from './factions.model';
 import { FormationTypeDefinition, FormationMatch, isNoFormation } from '../utils/formation-type.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
+import { GroupSizeResult } from '../utils/force-type.util';
 
 /*
  * Author: Drake
@@ -134,8 +135,13 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
         return this.force.addUnit(unit, this as UnitGroup);
     }
 
+    /** Structural evaluation result for this group (name + matched ForceType). */
+    sizeResult = computed<GroupSizeResult>(() => {
+        return FormationNamerUtil.getFormationSizeResult(this);
+    });
+
     sizeName = computed(() => {
-        return FormationNamerUtil.getFormationSizeName(this);
+        return this.sizeResult().name;
     });
 
     activeFormation = computed<FormationTypeDefinition | null>(() => {

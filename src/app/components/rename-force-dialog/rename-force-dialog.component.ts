@@ -44,7 +44,7 @@ import { Faction, FACTION_MERCENARY } from '../../models/factions.model';
 import { ForceNamerUtil, FactionDisplayInfo } from '../../utils/force-namer.util';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { FactionDropdownPanelComponent } from './faction-dropdown-panel.component';
-import { getForceSizeName } from '../../utils/force-type.util';
+import { getForceSizeName, GroupSizeResult } from '../../utils/force-type.util';
 
 
 /*
@@ -348,7 +348,10 @@ export class RenameForceDialogComponent {
         const factionName = this.selectedFaction()?.name ?? 'Mercenary';
         const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
         const techBase = isComStarOrWoB ? '' : this.data.force.techBase();
-        return getForceSizeName(units, techBase, factionName).toUpperCase();
+        const groupResults: GroupSizeResult[] = this.data.force.groups()
+            .filter(g => g.units().length > 0)
+            .map(g => g.sizeResult());
+        return getForceSizeName(units, techBase, factionName, groupResults).toUpperCase();
     });
     
     /** Placeholder name based force size. */
