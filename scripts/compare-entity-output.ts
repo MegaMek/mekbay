@@ -46,6 +46,7 @@
  *   --input  PATH   Root directory of unit files (default: C:\Projects\megamek\svgexport\unitfiles)
  *   --output PATH   Directory to write generated files (default: C:\Projects\megamek\svgexport\mbunitfiles)
  *   --type   TYPE   Filter by entity type: meks|fighters|vehicles|battlearmor|infantry|protomeks|dropships|smallcraft|jumpships|warship|spacestation|ge|handheld|convfighter
+ *   --name   TEXT   Filter by chassis/model name (space-separated tokens, all must match, case-insensitive)
  *   --fail-fast      Stop on the first failure
  *   --verbose        Print every file result, not just failures
  */
@@ -57,6 +58,7 @@ import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { writeEntity } from '../src/app/models/entity/write-entity';
 import { resetMountIdCounter } from '../src/app/models/entity/utils/signal-helpers';
 import { MekEntity } from '../src/app/models/entity/entities/mek/mek-entity';
+import { BaseEntity } from '../src/app/models/entity/base-entity';
 
 /**
  * UnitTypes explicitly skipped - these entity types are not yet supported.
@@ -87,6 +89,10 @@ const hasFlag = (name: string) => args.includes(`--${name}`);
 const INPUT_DIR = path.resolve(getArg('input', String.raw`C:\Projects\megamek\svgexport\unitfiles`));
 const OUTPUT_DIR = path.resolve(getArg('output', String.raw`C:\Projects\megamek\svgexport\mbunitfiles`));
 const TYPE_FILTER = getArg('type', '');
+const NAME_FILTER = getArg('name', '');
+const NAME_TOKENS = NAME_FILTER
+  ? NAME_FILTER.toLowerCase().split(/\s+/).filter(Boolean)
+  : [];
 const FAIL_FAST = hasFlag('fail-fast');
 const VERBOSE = hasFlag('verbose');
 
@@ -253,6 +259,18 @@ interface CompareResult {
   firstDiffLine?: number;
   expectedLine?: string;
   actualLine?: string;
+  /** The parsed entity, available for diagnostic inspection on diff. */
+  entity?: BaseEntity;
+}
+
+/**
+ * Check whether a file path matches all NAME_TOKENS (checked against the filename).
+ * Returns true when there is no name filter or all tokens are found.
+ */
+function matchesNameFilter(filePath: string): boolean {
+  if (NAME_TOKENS.length === 0) return true;
+  const haystack = path.basename(filePath, path.extname(filePath)).toLowerCase();
+  return NAME_TOKENS.every(token => haystack.includes(token));
 }
 
 function processFile(
@@ -317,12 +335,13 @@ function processFile(
         firstDiffLine: i,
         expectedLine: oLine,
         actualLine: wLine,
+        entity,
       };
     }
   }
 
   // Should not reach here, but just in case
-  return { file: filePath, status: 'diff', entityType: entity.entityType };
+  return { file: filePath, status: 'diff', entityType: entity.entityType, entity };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -336,6 +355,7 @@ function main(): void {
   console.log(`Input:  ${INPUT_DIR}`);
   console.log(`Output: ${OUTPUT_DIR}`);
   if (TYPE_FILTER) console.log(`Filter: ${TYPE_FILTER}`);
+  if (NAME_FILTER) console.log(`Name:   ${NAME_FILTER}`);
   console.log('');
 
   // Load equipment
@@ -371,6 +391,12 @@ function main(): void {
   for (const file of files) {
     stats.total++;
 
+    // ── Skip by name filter (filename check, no parsing needed) ──
+    if (!matchesNameFilter(file)) {
+      stats.skipped++;
+      continue;
+    }
+
     // ── Skip unsupported UnitTypes before parsing ──
     if (file.toLowerCase().endsWith('.blk')) {
       const raw = fs.readFileSync(file, 'utf-8');
@@ -404,6 +430,12 @@ function main(): void {
         console.log(`  ✗ DIFF   ${path.relative(INPUT_DIR, file)}  (line ${result.firstDiffLine})`);
         console.log(`           expected: ${truncate(result.expectedLine ?? '', 100)}`);
         console.log(`           actual:   ${truncate(result.actualLine ?? '', 100)}`);
+        if (result.entity) {
+          const reasons = result.entity.mixedTechReasons();
+          if (reasons.length > 0) {
+            console.log(`           mixedTech: ${reasons.join('; ')}`);
+          }
+        }
         break;
       case 'parse-error':
         stats.parseError++;

@@ -55,7 +55,7 @@ export class UnitMetadataBuilder {
    * Use the compare-unit-output script to validate against units.json.
    */
   build(entity: BaseEntity): Partial<Unit> {
-    const engine = entity.mountedEngine()?.engine;
+    const me = entity.mountedEngine();
     return {
       // ── Phase 0: Identity ──────────────────────────────────────────
       name: this.buildName(entity),
@@ -71,8 +71,8 @@ export class UnitMetadataBuilder {
 
       // ── Phase 0: Direct signals ────────────────────────────────────
       techBase: this.buildTechBase(entity),
-      engine: engine?.type || null as any,
-      engineRating: engine?.rating || null as any,
+      engine: me?.type() || null as any,
+      engineRating: me?.rating || null as any,
       armorType: this.buildArmorType(entity),
       structureType: entity.structureType(),
       armor: entity.totalArmor(),

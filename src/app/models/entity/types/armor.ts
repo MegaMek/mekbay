@@ -31,7 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { ArmorEquipment, EquipmentMap, TechLevel } from '../../equipment.model';
+import { ArmorEquipment, EquipmentMap } from '../../equipment.model';
+import { ComponentTechLevel } from './tech';
 
 // ============================================================================
 // Armor Types
@@ -187,7 +188,7 @@ export const TECH_RATING_TO_NUMBER: Record<string, number> = {
  * | Advanced       |  5 |    6 |
  * | Experimental   |  7 |    8 |
  */
-export function compoundTechLevel(level: TechLevel | undefined, isClan: boolean): number {
+export function compoundTechLevel(level: ComponentTechLevel | undefined, isClan: boolean): number {
   switch (level) {
     case 'Introductory':  return 0;
     case 'Standard':      return isClan ? 2 : 1;

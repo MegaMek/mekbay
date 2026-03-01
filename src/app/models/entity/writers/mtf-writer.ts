@@ -184,8 +184,12 @@ function writePhysical(entity: MekEntity, lines: string[]): void {
     lines.push(`motive:${entity.motiveType()}`);
   }
 
-  if (entity.cockpitType() !== 'Standard') lines.push(`cockpit:${entity.cockpitType()}`);
-  if (entity.gyroType() !== 'Standard') lines.push(`gyro:${entity.gyroType()}`);
+  // MegaMek only omits both lines when cockpit AND gyro are both Standard
+  const standard = entity.cockpitType() === 'Standard' && entity.gyroType() === 'Standard';
+  if (!standard) {
+    lines.push(`cockpit:${entity.mountedCockpit().fullName}`);
+    lines.push(`gyro:${entity.gyroType()}`);
+  }
   if (entity.ejectionType()) lines.push(`ejection:${entity.ejectionType()}`);
   if (entity.heatSinkKit()) lines.push(`heat sink kit:${entity.heatSinkKit()}`);
   lines.push('');
@@ -193,7 +197,7 @@ function writePhysical(entity: MekEntity, lines: string[]): void {
 
 function writeMovement(entity: MekEntity, lines: string[]): void {
   const me = entity.mountedEngine();
-  lines.push(`heat sinks:${me.totalHeatSinks} ${me.rawHeatSinkLabel}`);
+  lines.push(`heat sinks:${me.installedHeatSinksCount()} ${me.rawHeatSinkLabel}`);
   if (me.baseChassisHeatSinks >= 0) {
     lines.push(`base chassis heat sinks:${me.baseChassisHeatSinks}`);
   }
@@ -413,14 +417,14 @@ function formatTechBaseLabel(tb: EquipmentTechBase): string {
  * - Mixed + Clan engine: `<rating> <Type> (Clan) Engine`
  */
 function formatEngineLine(entity: MekEntity): string {
-  const engine = entity.mountedEngine()?.engine;
-  if (!engine) return 'None';
-  const rating = engine.rating;
-  const typeName = getEngineTypePrefix(engine.type);
+  const me = entity.mountedEngine();
+  if (!me) return 'None';
+  const rating = me.rating;
+  const typeName = getEngineTypePrefix(me.type());
   const isMixed = entity.mixedTech();
   const large = rating > 400 ? 'Large ' : '';
 
-  if (engine.techBase === 'Clan') {
+  if (me.techBase === 'Clan') {
     return `${rating} ${large}${typeName} (Clan) Engine`;
   } else if (isMixed) {
     return `${rating} ${large}${typeName} Engine(IS)`;

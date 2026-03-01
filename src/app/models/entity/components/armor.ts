@@ -48,7 +48,7 @@
  * - Raw tech code for BA BLK round-trip (TechConstants encoding)
  */
 
-import { ArmorEquipment, TechLevel } from '../../equipment.model';
+import { ArmorEquipment } from '../../equipment.model';
 import {
   ArmorType,
   ARMOR_TYPE_TO_CODE,
@@ -71,7 +71,7 @@ import {
 export interface PatchworkArmor {
   /** BLK: per-location armor type code (e.g. `{ 'Nose': 2, 'Left Wing': 1 }`) */
   readonly codes: Map<string, number>;
-  /** BLK: per-location armor tech string (e.g. `{ 'Nose': 'Inner Sphere' }`) */
+  /** BLK: per-location armor tech string (e.g. `{ 'Nose': 'IS' }`) */
   readonly techs: Map<string, string>;
   /** BLK: per-location armor tech rating (A=0 … F=5) */
   readonly ratings: Map<string, number>;
@@ -136,7 +136,7 @@ export function createMountedArmor(
 ): MountedArmor {
   return {
     type: opts?.type ?? 'STANDARD',
-    techBase: opts?.techBase ?? 'Inner Sphere',
+    techBase: opts?.techBase ?? 'IS',
     armor: opts?.armor ?? null,
     techRating: opts?.techRating ?? -1,
     techLevel: opts?.techLevel ?? -1,

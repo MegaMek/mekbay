@@ -39,8 +39,8 @@ import { SupportTankEntity } from '../entities/vehicle/support-tank-entity';
 import { SupportVtolEntity } from '../entities/vehicle/support-vtol-entity';
 import { LargeSupportTankEntity } from '../entities/vehicle/large-support-tank-entity';
 import { GunEmplacementEntity } from '../entities/vehicle/gun-emplacement-entity';
+import { ENGINE_TYPE_FROM_CODE } from '../components';
 import {
-  ENGINE_TYPE_FROM_CODE,
   LocationArmor,
   VALID_FUEL_TYPES,
   VALID_VEHICLE_MOTIVE_TYPES,

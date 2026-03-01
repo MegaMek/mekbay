@@ -32,9 +32,7 @@
  */
 
 import { ProtoMekEntity } from '../entities/protomek/protomek-entity';
-import {
-  ENGINE_TYPE_TO_CODE,
-} from '../types';
+
 import {
   BuildingBlockWriter,
   writeArmorBlocks,
@@ -79,7 +77,7 @@ export function writeBlkProtoMek(entity: ProtoMekEntity): string {
   w.addBlock('interface_cockpit', entity.interfaceCockpit() ? 'true' : 'false');
 
   // ── Section 6: Engine ──
-  writeEngine(w, entity, ENGINE_TYPE_TO_CODE);
+  writeEngine(w, entity);
 
   // ── Section 7: Armor ──
   writeArmorBlocks(w, entity);

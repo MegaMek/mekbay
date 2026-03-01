@@ -43,23 +43,3 @@ export type EngineType =
 /** Engine flags - derived from entity properties, not user-set */
 export type EngineFlag =
   | 'clan' | 'tank' | 'large' | 'superheavy' | 'support-vee';
-
-export const ENGINE_TYPE_FROM_CODE: Record<number, EngineType> = {
-  0: 'Fusion', 1: 'ICE', 2: 'XL', 3: 'XXL', 4: 'Light', 5: 'Compact',
-  6: 'Fuel Cell', 7: 'Fission', 8: 'None', 9: 'Maglev', 10: 'Steam',
-  11: 'Battery', 12: 'Solar', 13: 'External',
-};
-
-export const ENGINE_TYPE_TO_CODE: Record<EngineType, number> = {
-  'Fusion': 0, 'ICE': 1, 'XL': 2, 'XXL': 3, 'Light': 4, 'Compact': 5,
-  'Fuel Cell': 6, 'Fission': 7, 'None': 8, 'Maglev': 9, 'Steam': 10,
-  'Battery': 11, 'Solar': 12, 'External': 13,
-};
-
-export function engineTypeFromCode(code: number): EngineType {
-  return ENGINE_TYPE_FROM_CODE[code] ?? 'Fusion';
-}
-
-export function engineTypeToCode(type: EngineType): number {
-  return ENGINE_TYPE_TO_CODE[type] ?? 0;
-}

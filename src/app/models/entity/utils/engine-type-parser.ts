@@ -39,13 +39,13 @@
  * backwards compatibility.
  */
 
-// Re-export code tables and convenience functions from types.ts
+// Re-export code tables and convenience functions from components.
 export {
   ENGINE_TYPE_FROM_CODE,
   ENGINE_TYPE_TO_CODE,
   engineTypeFromCode,
   engineTypeToCode,
-} from '../types';
+} from '../components';
 
 import type { EngineType, EntityTechBase } from '../types';
 
@@ -71,7 +71,7 @@ export function parseMtfEngine(mtfEngine: string): MtfEngineInfo {
   const result: MtfEngineInfo = {
     rating: 0,
     type: 'Fusion',
-    techBase: 'Inner Sphere',
+    techBase: 'IS',
   };
 
   const trimmed = mtfEngine.trim();

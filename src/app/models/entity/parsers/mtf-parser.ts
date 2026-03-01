@@ -37,7 +37,7 @@ import { MekEntity, MekWithArmsEntity } from '../entities/mek/mek-entity';
 import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import { QuadVeeEntity } from '../entities/mek/quad-vee-entity';
 import { TripodMekEntity } from '../entities/mek/tripod-mek-entity';
-import { createEngine, createMountedEngine, createMountedArmor, createPatchworkArmor } from '../components';
+import { MountedEngine, createMountedArmor, createPatchworkArmor, normalizeCockpitType } from '../components';
 import { ArmorEquipment, WeaponEquipment } from '../../equipment.model';
 import {
   ArmorType,
@@ -187,15 +187,18 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   {
     const engineInfo = header.engine
       ? parseMtfEngine(header.engine)
-      : { rating: 0, type: 'Fusion' as const, techBase: 'Inner Sphere' as const };
+      : { rating: 0, type: 'Fusion' as const, techBase: 'IS' as const };
     const isSuperHeavy = header.mass > 100;
-    const engine = createEngine(engineInfo.type, engineInfo.rating, engineInfo.techBase, isSuperHeavy);
 
     const hsInfo = header.heatSinks
       ? parseHeatSinkLine(header.heatSinks)
       : { count: 10, type: 'Single' as HeatSinkType, typeLabel: 'Single' };
 
-    entity.mountedEngine.set(createMountedEngine(engine, {
+    entity.mountedEngine.set(new MountedEngine({
+      type: engineInfo.type,
+      rating: engineInfo.rating,
+      techBase: engineInfo.techBase,
+      isSuperHeavy,
       heatSinkType: hsInfo.type,
       totalHeatSinks: hsInfo.count,
       rawHeatSinkLabel: hsInfo.typeLabel,
@@ -208,7 +211,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   entity.myomerType.set(header.myomer || 'Standard');
 
   if (header.gyro) entity.gyroType.set(header.gyro);
-  if (header.cockpit) entity.cockpitType.set(header.cockpit);
+  if (header.cockpit) entity.cockpitType.set(normalizeCockpitType(header.cockpit));
   if (header.ejection) entity.ejectionType.set(header.ejection);
   if (header.heatSinkKit) entity.heatSinkKit.set(header.heatSinkKit);
 
@@ -218,7 +221,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   // ── Armor (structured { front, rear }) ──
   {
     let armorType: ArmorType = 'STANDARD';
-    let armorTechBase: EntityTechBase = 'Inner Sphere';
+    let armorTechBase: EntityTechBase = 'IS';
     let armorEquipment: ArmorEquipment | null = null;
 
     if (header.armorType) {
@@ -475,7 +478,7 @@ interface MtfHeader {
 function parseHeader(lines: string[]): MtfHeader {
   const h: MtfHeader = {
     chassis: '', model: '', mulId: -1, config: 'Biped',
-    techBase: 'Inner Sphere', techBaseRaw: 'Inner Sphere',
+    techBase: 'IS', techBaseRaw: 'IS',
     era: 3025, source: '', rulesLevel: 2, role: '', isOmni: false,
     mass: 0, engine: '', structure: 'Standard', myomer: 'Standard',
     gyro: '', cockpit: '', ejection: '', heatSinkKit: '',
@@ -543,7 +546,7 @@ function parseHeader(lines: string[]): MtfHeader {
       case 'techbase':
         h.techBaseRaw = value;
         if (value.toLowerCase().includes('clan'))       h.techBase = 'Clan';
-        else                                            h.techBase = 'Inner Sphere';
+        else                                            h.techBase = 'IS';
         break;
       case 'era':                     h.era = parseInt(value, 10) || 3025; break;
       case 'source':                  h.source = value; break;

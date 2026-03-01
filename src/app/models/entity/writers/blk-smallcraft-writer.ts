@@ -33,7 +33,6 @@
 
 import { SmallCraftEntity } from '../entities/aero/small-craft-entity';
 import {
-  ENGINE_TYPE_TO_CODE,
   HEAT_SINK_TYPE_TO_CODE,
   HeatSinkType,
   SMALL_CRAFT_ARMOR_LOCATIONS,
@@ -81,7 +80,7 @@ export function writeBlkSmallCraft(entity: SmallCraftEntity): string {
   w.addBlock('fuel', entity.fuel());
 
   // 7. Engine: engine_type, clan_engine
-  writeEngine(w, entity, ENGINE_TYPE_TO_CODE);
+  writeEngine(w, entity);
 
   // 8. Armor: armor_type, armor_tech_rating, armor_tech_level
   writeArmorBlocks(w, entity);

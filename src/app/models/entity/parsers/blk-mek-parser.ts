@@ -43,6 +43,7 @@ import {
   locationArmor,
   structureTypeFromCode,
 } from '../types';
+import { cockpitTypeFromCode } from '../components';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import {
@@ -103,13 +104,7 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
   }
 
   if (bb.exists('cockpit_type')) {
-    const cpNames: Record<number, string> = {
-      0: 'Standard', 1: 'Small', 2: 'Command Console', 3: 'Torso-Mounted',
-      4: 'Dual', 5: 'Industrial', 6: 'Primitive', 7: 'Primitive Industrial',
-      8: 'Superheavy', 9: 'Superheavy Tripod', 10: 'Tripod',
-      11: 'Interface', 12: 'Virtual Reality Piloting Pod', 13: 'QuadVee',
-    };
-    entity.cockpitType.set(cpNames[bb.getFirstInt('cockpit_type')] ?? 'Standard');
+    entity.cockpitType.set(cockpitTypeFromCode(bb.getFirstInt('cockpit_type')));
   }
 
   // ── Armor (structured) ──

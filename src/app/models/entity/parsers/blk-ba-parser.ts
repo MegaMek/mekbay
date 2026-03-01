@@ -87,7 +87,7 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
   // ── Armor ──
   {
     const type = bb.exists('armor_type') ? armorTypeFromCode(bb.getFirstInt('armor_type')) : 'STANDARD' as ArmorType;
-    let techBase: EquipmentTechBase = 'Inner Sphere';
+    let techBase: EquipmentTechBase = 'IS';
     let rawTechCode = 0;
     if (bb.exists('armor_tech')) {
       rawTechCode = bb.getFirstInt('armor_tech');

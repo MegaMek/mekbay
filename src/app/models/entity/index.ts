@@ -35,7 +35,7 @@
 export * from './types';
 
 // ── Base Entity ──
-export { BaseEntity } from './base-entity';
+export { BaseEntity, type MixedTechResult } from './base-entity';
 
 // ── Parsers ──
 export { BuildingBlock } from './parsers/building-block';

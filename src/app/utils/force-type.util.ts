@@ -194,6 +194,31 @@ class ForceTypeRule {
 
         return closest.prefix;
     }
+
+    /**
+     * Find the best modifier prefix by comparing raw modifier counts (not resolved
+     * through the composedOf chain). Used by group-based force evaluation where
+     * the "points" are the number of sub-groups rather than unit points.
+     */
+    getModifierPrefixByRawCount(count: number): string {
+        let closest = this.modifiers[0];
+        let closestDist = Math.abs(count - closest.count);
+
+        for (let i = 1; i < this.modifiers.length; i++) {
+            const d = Math.abs(count - this.modifiers[i].count);
+            if (d < closestDist) {
+                closestDist = d;
+                closest = this.modifiers[i];
+            }
+        }
+
+        if (closestDist > 0 && closest.prefix === '') {
+            if (count < closest.count) return 'Under-Strength ';
+            return 'Reinforced ';
+        }
+
+        return closest.prefix;
+    }
 }
 
 /**
@@ -522,20 +547,42 @@ function rangeDistToPoint(range: PointRange, point: number): number {
     return point - range.max;
 }
 
-function evaluateForce(
+/** Internal result of a force evaluation, carrying the distance for comparison. */
+interface EvaluationResult {
+    name: string;
+    dist: number;
+    matchedRule: ForceTypeRule | null;
+}
+
+/**
+ * Exported result of a group-level size evaluation.
+ * Carries the matched ForceType so force-level evaluation can
+ * count groups by type without re-evaluating them.
+ */
+export interface GroupSizeResult {
+    name: string;
+    type: ForceType | null;
+}
+
+/**
+ * Core evaluation: given a composition, find the best-matching rule and modifier.
+ * Returns the full result including distance so callers can compare approaches.
+ */
+function evaluateForceDetailed(
     comp: ForceComposition,
     rules: ForceTypeRule[],
     getPointRange: (comp: ForceComposition) => PointRange
-): string {
+): EvaluationResult {
     const range = getPointRange(comp);
     const midPts = (range.min + range.max) / 2;
 
-    if (range.max === 0) return 'Force';
+    if (range.max === 0) return { name: 'Force', dist: Infinity, matchedRule: null };
 
-    let bestType = 'Force';
+    let bestType: string = 'Force';
     let bestDist = Infinity;
     let bestNominal = 0;
     let bestModName = '';
+    let bestRule: ForceTypeRule | null = null;
 
     for (const rule of rules) {
         // Composition filter — skip rules that don't apply to this force type
@@ -551,6 +598,7 @@ function evaluateForce(
                     bestDist = customDist;
                     bestNominal = rule.nominalPts;
                     bestType = rule.type;
+                    bestRule = rule;
                     // Perfect custom match = regular; otherwise derive from modifier table
                     bestModName = customDist === 0
                         ? ''
@@ -581,34 +629,140 @@ function evaluateForce(
             bestDist = dist;
             bestNominal = rule.nominalPts;
             bestType = rule.type;
+            bestRule = rule;
             bestModName = rule.getModifierPrefix(range);
         }
     }
 
     const maxAllowedDistance = Math.max(2, midPts * 0.2);
     if (bestDist <= maxAllowedDistance) {
-        return bestModName ? bestModName + bestType : bestType;
+        const name = bestModName ? bestModName + bestType : bestType;
+        return { name, dist: bestDist, matchedRule: bestRule };
     }
 
-    return 'Force';
+    return { name: 'Force', dist: Infinity, matchedRule: null };
+}
+
+function evaluateForce(
+    comp: ForceComposition,
+    rules: ForceTypeRule[],
+    getPointRange: (comp: ForceComposition) => PointRange
+): string {
+    return evaluateForceDetailed(comp, rules, getPointRange).name;
+}
+
+/**
+ * Group-based force evaluation.
+ *
+ * Instead of flattening all units, this evaluates each group individually,
+ * then counts how many groups matched each rule type. It looks for higher-level
+ * rules whose `composedOf` type equals a group type and matches the group count
+ * against the rule's raw modifier counts (without the composedOf multiplication).
+ *
+ * Example: 6 groups each identified as "Level II" → Level III has
+ * composedOf = Level II and modifier count 6 → "Level III".
+ */
+function evaluateForceByGroups(
+    groupResults: GroupSizeResult[],
+    rules: ForceTypeRule[],
+): EvaluationResult {
+    // 1. Count groups by matched rule type (already pre-computed)
+    const typeCounts = new Map<ForceType, number>();
+    for (const result of groupResults) {
+        if (result.type) {
+            typeCounts.set(result.type, (typeCounts.get(result.type) ?? 0) + 1);
+        }
+    }
+
+    // 3. Match group counts against higher-level rules using raw modifier counts
+    let best: EvaluationResult = { name: 'Force', dist: Infinity, matchedRule: null };
+
+    for (const rule of rules) {
+        if (!rule.composedOf) continue;
+        if (rule.strict) continue;
+
+        const count = typeCounts.get(rule.composedOf.type) ?? 0;
+        if (count === 0) continue;
+
+        // Compare group count against raw modifier counts (not resolved through composedOf)
+        const rawMin = rule.modifiers[0].count;
+        const rawMax = rule.modifiers[rule.modifiers.length - 1].count;
+
+        let dist: number;
+        if (count >= rawMin && count <= rawMax) {
+            dist = 0;
+        } else if (count < rawMin) {
+            dist = rawMin - count;
+        } else {
+            dist = count - rawMax;
+        }
+
+        if (dist < best.dist || (dist === best.dist && rule.nominalPts > (best.matchedRule?.nominalPts ?? 0))) {
+            const modPrefix = rule.getModifierPrefixByRawCount(count);
+            best = {
+                name: modPrefix ? modPrefix + rule.type : rule.type,
+                dist,
+                matchedRule: rule,
+            };
+        }
+    }
+
+    // Tolerance: allow at most 1 group off, or 25% of total group count
+    const maxAllowed = Math.max(1, groupResults.length * 0.25);
+    if (best.dist <= maxAllowed) {
+        return best;
+    }
+
+    return { name: 'Force', dist: Infinity, matchedRule: null };
 }
 
 /**
  * Determine the force organizational type (Lance, Company, Star, etc.)
  * based on the number of units, their composition, average tech base, and faction.
  */
-export function getForceSizeName(units: ForceUnit[], techBase: string, factionName: string): string {
+/**
+ * Resolve the org rules and point-range function for the given tech base / faction.
+ */
+function resolveOrg(techBase: string, factionName: string): { rules: ForceTypeRule[]; getPointRange: (comp: ForceComposition) => PointRange } {
+    if (factionName === 'ComStar' || factionName === 'Word of Blake') {
+        return { rules: ComStarOrg.ALL, getPointRange: ComStarOrg.getPointRange };
+    } else if (factionName === 'Society') {
+        return { rules: SocietyOrg.ALL, getPointRange: SocietyOrg.getPointRange };
+    } else if (factionName.includes('Clan') || techBase === 'Clan') {
+        return { rules: ClanOrg.ALL, getPointRange: ClanOrg.getPointRange };
+    } else {
+        return { rules: ISOrg.ALL, getPointRange: ISOrg.getPointRange };
+    }
+}
+
+/**
+ * Evaluate a single group of units and return the structural result
+ * (name + matched ForceType). This is the data each UnitGroup can cache
+ * in a computed signal so the force-level evaluator doesn't redo it.
+ */
+export function getGroupSizeResult(units: ForceUnit[], techBase: string, factionName: string): GroupSizeResult {
+    if (units.length === 0) return { name: 'Force', type: null };
+    const { rules, getPointRange } = resolveOrg(techBase, factionName);
+    const comp = getForceComposition(units);
+    const result = evaluateForceDetailed(comp, rules, getPointRange);
+    return { name: result.name, type: result.matchedRule?.type ?? null };
+}
+
+export function getForceSizeName(units: ForceUnit[], techBase: string, factionName: string, groupResults?: GroupSizeResult[]): string {
     if (units.length === 0) return 'Force';
 
+    const { rules, getPointRange } = resolveOrg(techBase, factionName);
     const comp = getForceComposition(units);
+    const flatResult = evaluateForceDetailed(comp, rules, getPointRange);
 
-    if (factionName === 'ComStar' || factionName === 'Word of Blake') {
-        return evaluateForce(comp, ComStarOrg.ALL, ComStarOrg.getPointRange);
-    } else if (factionName === 'Society') {
-        return evaluateForce(comp, SocietyOrg.ALL, SocietyOrg.getPointRange);
-    } else if (factionName.includes('Clan') || techBase === 'Clan') {
-        return evaluateForce(comp, ClanOrg.ALL, ClanOrg.getPointRange);
-    } else {
-        return evaluateForce(comp, ISOrg.ALL, ISOrg.getPointRange);
+    // When pre-computed group results are provided with >1 group, also try group-based evaluation
+    if (groupResults && groupResults.length > 1) {
+        const groupResult = evaluateForceByGroups(groupResults, rules);
+        // Prefer group-based on tie (<=)
+        if (groupResult.dist <= flatResult.dist) {
+            return groupResult.name;
+        }
     }
+
+    return flatResult.name;
 }

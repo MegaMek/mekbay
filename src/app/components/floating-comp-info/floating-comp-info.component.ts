@@ -37,6 +37,7 @@ import { UnitComponent } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
 import { Unit } from '../../models/units.model';
 import { Equipment, WeaponEquipment } from '../../models/equipment.model';
+import { TechDate, TechDates, techDateYear, formatTechDate } from '../../models/entity';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
 
 /*
@@ -146,34 +147,23 @@ export class FloatingCompInfoComponent {
         if (!unit) return [];
         const eq = this.equipment();
         if (!eq) return [];
-        const parseYear = (val: any): number | null => {
-            if (typeof val === 'string') {
-                if (val === 'ES') return 1950;
-                if (val === 'PS') return 2100;
-                const digits = val.replace(/\D/g, '');
-                return digits ? parseInt(digits, 10) : null;
-            }
-            if (typeof val === 'number') return val;
-            return null;
-        };
-
-        // Helper to pick earliest date from two options
-        const earliest = (a?: string, b?: string): string | undefined => {
-            const aY = parseYear(a), bY = parseYear(b);
-            if (aY === null) return b;
-            if (bY === null) return a;
+        // Helper to pick earliest TechDate from two options
+        const earliest = (a: TechDate, b: TechDate): TechDate => {
+            const aY = techDateYear(a), bY = techDateYear(b);
+            if (aY == null) return b;
+            if (bY == null) return a;
             return aY <= bY ? a : b;
         };
 
-        // Helper to pick latest date from two options
-        const latest = (a?: string, b?: string): string | undefined => {
-            const aY = parseYear(a), bY = parseYear(b);
-            if (aY === null) return b;
-            if (bY === null) return a;
+        // Helper to pick latest TechDate from two options
+        const latest = (a: TechDate, b: TechDate): TechDate => {
+            const aY = techDateYear(a), bY = techDateYear(b);
+            if (aY == null) return b;
+            if (bY == null) return a;
             return aY >= bY ? a : b;
         };
 
-        let dates: { prototype?: string; production?: string; common?: string; extinct?: string; reintroduced?: string };
+        let dates: TechDates;
         switch (unit.techBase) {
             case 'Clan':
                 dates = eq.tech.advancement?.clan ?? {};
@@ -182,22 +172,22 @@ export class FloatingCompInfoComponent {
                 const is = eq.tech.advancement?.is;
                 const clan = eq.tech.advancement?.clan;
                 // For mixed: earliest for most dates, latest for extinction
-                let extinct: string | undefined;
-                let reintroduced: string | undefined;
-                
+                let extinct: TechDate;
+                let reintroduced: TechDate;
+
                 // Only show extinction if BOTH have it (otherwise tech was still available)
                 const bothHaveExtinction = is?.extinct && clan?.extinct;
                 if (bothHaveExtinction) {
                     extinct = latest(is?.extinct, clan?.extinct);
                     reintroduced = earliest(is?.reintroduced, clan?.reintroduced);
                     // If extinction is at or beyond reintroduction, there's no real gap
-                    const extY = parseYear(extinct), reintY = parseYear(reintroduced);
-                    if (extY !== null && reintY !== null && extY >= reintY) {
+                    const extY = techDateYear(extinct), reintY = techDateYear(reintroduced);
+                    if (extY != null && reintY != null && extY >= reintY) {
                         extinct = undefined;
                         reintroduced = undefined;
                     }
                 }
-                
+
                 dates = {
                     prototype: earliest(is?.prototype, clan?.prototype),
                     production: earliest(is?.production, clan?.production),
@@ -214,18 +204,18 @@ export class FloatingCompInfoComponent {
         }
 
         const historyItems: Array<{ label: string, value: string }> = [
-            { label: 'Prototype', value: dates?.prototype },
-            { label: 'Production', value: dates?.production },
-            { label: 'Common', value: dates?.common },
-            { label: 'Extinction', value: dates?.extinct },
-            { label: 'Reintroduction', value: dates?.reintroduced },
-        ].filter((item): item is { label: string, value: string } => 
-            item.value !== undefined && item.value !== null && item.value !== '' && item.value !== '-')
+            { label: 'Prototype', value: formatTechDate(dates?.prototype) },
+            { label: 'Production', value: formatTechDate(dates?.production) },
+            { label: 'Common', value: formatTechDate(dates?.common) },
+            { label: 'Extinction', value: formatTechDate(dates?.extinct) },
+            { label: 'Reintroduction', value: formatTechDate(dates?.reintroduced) },
+        ].filter((item): item is { label: string, value: string } =>
+            item.value !== undefined && item.value !== null && item.value !== '')
         .sort((a, b) => {
-            const aYear = parseYear(a.value);
-            const bYear = parseYear(b.value);
-            if (aYear === null) return 1;
-            if (bYear === null) return -1;
+            const aYear = parseInt(a.value.replace(/^~/, ''), 10);
+            const bYear = parseInt(b.value.replace(/^~/, ''), 10);
+            if (isNaN(aYear)) return 1;
+            if (isNaN(bYear)) return -1;
             return aYear - bYear;
         });
 

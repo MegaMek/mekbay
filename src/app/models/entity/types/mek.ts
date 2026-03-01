@@ -65,19 +65,21 @@ export function gyroTypeFromCode(code: number): string {
 }
 
 // ============================================================================
-// Cockpit Types (Mek / Aero)
+// Cockpit Types (Mek)
 // ============================================================================
 
-export const MEK_COCKPIT_TYPE_FROM_CODE: Record<number, string> = {
-  0: 'Standard', 1: 'Small', 2: 'Command Console', 3: 'Torso-Mounted',
-  4: 'Dual', 5: 'Industrial', 6: 'Primitive', 7: 'Primitive Industrial',
-  8: 'Superheavy', 9: 'Superheavy Tripod', 10: 'Tripod',
-  11: 'Interface', 12: 'Virtual Reality Piloting Pod', 13: 'QuadVee',
-};
-
-export function mekCockpitTypeFromCode(code: number): string {
-  return MEK_COCKPIT_TYPE_FROM_CODE[code] ?? 'Standard';
-}
+/**
+ * Union of all known Mek cockpit type strings.
+ * Matches MegaMek `Mek.COCKPIT_*` short strings (COCKPIT_SHORT_STRING[]).
+ */
+export type CockpitType =
+  | 'Standard' | 'Small' | 'Command Console' | 'Torso-Mounted'
+  | 'Dual' | 'Industrial' | 'Primitive' | 'Primitive Industrial'
+  | 'Superheavy' | 'Superheavy Tripod' | 'Tripod'
+  | 'Interface' | 'Virtual Reality Piloting Pod' | 'QuadVee'
+  | 'Superheavy Industrial' | 'Superheavy Command Console'
+  | 'Small Command Console' | 'Tripod Industrial'
+  | 'Superheavy Tripod Industrial';
 
 // ============================================================================
 // Location Topology

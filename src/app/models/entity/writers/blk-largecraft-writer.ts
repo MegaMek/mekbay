@@ -35,7 +35,6 @@ import { JumpShipEntity } from '../entities/largecraft/jumpship-entity';
 import { WarShipEntity } from '../entities/largecraft/warship-entity';
 import { SpaceStationEntity } from '../entities/largecraft/space-station-entity';
 import {
-  ENGINE_TYPE_TO_CODE,
   HEAT_SINK_TYPE_TO_CODE,
   HeatSinkType,
   LARGE_CRAFT_LOCATIONS,
@@ -89,7 +88,7 @@ export function writeBlkLargeCraft(entity: JumpShipEntity): string {
   w.addBlock('fuel', entity.fuel());
 
   // 7. Engine: engine_type, clan_engine
-  writeEngine(w, entity, ENGINE_TYPE_TO_CODE);
+  writeEngine(w, entity);
 
   // 8. Armor: armor_type, armor_tech_rating, armor_tech_level
   writeArmorBlocks(w, entity);

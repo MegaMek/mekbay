@@ -36,7 +36,6 @@ import { ConvFighterEntity } from '../entities/aero/conv-fighter-entity';
 import { FixedWingSupportEntity } from '../entities/aero/fixed-wing-support-entity';
 import {
   AERO_EQUIP_LOCATIONS,
-  ENGINE_TYPE_TO_CODE,
   HEAT_SINK_TYPE_TO_CODE,
   HeatSinkType,
 } from '../types';
@@ -99,7 +98,7 @@ export function writeBlkAero(entity: AeroEntity): string {
   w.addBlock('fuel', entity.fuel());
 
   // 8. Engine: engine_type, clan_engine
-  writeEngine(w, entity, ENGINE_TYPE_TO_CODE);
+  writeEngine(w, entity);
 
   // 9. Armor: armor_type, armor_tech_rating, armor_tech_level (or patchwork per-location)
   writeArmorBlocks(w, entity, AERO_EQUIP_LOCATIONS);

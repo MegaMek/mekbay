@@ -32,7 +32,7 @@
  */
 
 /**
- * Engine system component & MountedEngine wrapper.
+ * MountedEngine - the single class for engine + heat-sink state.
  *
  * The engine is the most complex system component:
  * - It spans multiple locations (CT + side torsos for XL/XXL/Light)
@@ -40,8 +40,9 @@
  * - It integrates heat sinks (weight-free, crit-free up to a capacity)
  * - Its weight depends on the type, rating, and various flags
  *
- * **MountedEngine** wraps the engine together with its heat-sink
- * configuration so that all engine-related data lives in one place.
+ * **MountedEngine** combines the engine definition (type, rating, tech base)
+ * with its heat-sink configuration and auto-resolves the descriptor from
+ * `ENGINE_DATA` so that all engine-related data lives in one place.
  *
  * In MegaMek, engine-integrated heat sinks are stored as "misc" equipment
  * with negative slot indices.  Here we track them as a count on the
@@ -50,166 +51,278 @@
  * These are NOT equipment from equipment2.json.
  */
 
-import type { EngineType, EntityTechBase, HeatSinkType } from '../types';
+import { signal, computed, WritableSignal } from '@angular/core';
+import type { EngineType, EntityTechBase, HeatSinkType, TechAdvancement } from '../types';
 import { MEK_SLOTS_PER_LOCATION } from '../types';
 import { type GyroType, getGyro, normalizeGyroType } from './gyro';
+import {
+  ENGINE_DATA,
+  type EngineTypeDescriptor,
+  type EnginePowerSource,
+  type EngineMovementHeat,
+  getEngineTechAdvancement,
+} from './engine-data';
+
+// Re-export engine-data symbols for barrel convenience
+export { ENGINE_DATA, type EngineTypeDescriptor, type EnginePowerSource, type EngineMovementHeat } from './engine-data';
+export { getEngineTechAdvancement } from './engine-data';
+export {
+  ENGINE_TYPE_FROM_CODE, ENGINE_TYPE_TO_CODE,
+  engineTypeFromCode, engineTypeToCode,
+} from './engine-data';
 
 // ============================================================================
-// Engine Component static definition
+// MountedEngine init & class
 // ============================================================================
 
-export interface EngineComponent {
+/**
+ * Initialiser object for `new MountedEngine(...)`.
+ * Only `type`, `rating`, and `techBase` are required; heat-sink
+ * fields default to Single / 10 / -1 when omitted.
+ */
+export interface MountedEngineInit {
   readonly type: EngineType;
   readonly rating: number;
   readonly techBase: EntityTechBase;
-  readonly isLarge: boolean;
+  readonly isSuperHeavy?: boolean;
+  readonly heatSinkType?: HeatSinkType;
+  readonly totalHeatSinks?: number;
+  readonly rawHeatSinkLabel?: string;
+  readonly baseChassisHeatSinks?: number;
+}
+
+/**
+ * MountedEngine contains all engine-related data for an entity:
+ * - The engine definition (type, rating, tech base, large/superheavy)
+ * - A reference to the engine-type descriptor from `ENGINE_DATA`
+ * - The heat-sink configuration (type, total count, integral vs. external)
+ */
+export class MountedEngine {
+  // -- Core identity --
+  type: WritableSignal<EngineType>;
+  readonly rating: number;
+  readonly techBase: EntityTechBase;
   readonly isSuperHeavy: boolean;
-}
 
-/**
- * Create an EngineComponent from parsed values.
- */
-export function createEngine(
-  type: EngineType,
-  rating: number,
-  techBase: EntityTechBase,
-  isSuperHeavy = false,
-): EngineComponent {
-  return {
-    type,
-    rating,
-    techBase,
-    isLarge: rating > 400,
-    isSuperHeavy,
-  };
-}
+  // -- Heat-sink configuration --
+  /** Type of heat sinks installed (Single, Double, Compact, Laser). */
+  heatSinkType: WritableSignal<HeatSinkType>;
+  /**
+   * Total heat sink count as declared in the file (MTF `heat sinks:` line).
+   * Includes BOTH engine-integrated and externally mounted heat sinks.
+   */
+  installedHeatSinksCount: WritableSignal<number>;
+  /**
+   * Raw heat-sink type label from the file for round-trip fidelity.
+   * e.g. "Single", "IS Double", "Clan Double", "Compact", "Laser"
+   */
+  readonly rawHeatSinkLabel: string;
+  /**
+   * Base chassis heat sinks (from BLK/MTF `base chassis heat sinks:` line).
+   * -1 means not specified.
+   */
+  readonly baseChassisHeatSinks: number;
 
-// ============================================================================
-// Engine classification helpers
-// ============================================================================
+  constructor(init: MountedEngineInit) {
+    this.type = signal<EngineType>(init.type);
+    this.rating = init.rating;
+    this.techBase = init.techBase;
+    this.isSuperHeavy = init.isSuperHeavy ?? false;
 
-/**
- * True if this engine type is a fusion engine (produces heat sinks).
- * Matches MegaMek Engine.isFusion().
- */
-export function isFusionEngine(type: EngineType): boolean {
-  return type !== 'ICE' && type !== 'Fission' && type !== 'Fuel Cell'
-    && type !== 'None' && type !== 'Battery' && type !== 'Solar'
-    && type !== 'Steam' && type !== 'Maglev' && type !== 'External';
-}
-
-// ============================================================================
-// Heat sink integration
-// ============================================================================
-
-/**
- * Number of weight-free heat sinks the engine provides.
- * Matches MegaMek Engine.getWeightFreeEngineHeatSinks().
- */
-export function getWeightFreeHeatSinks(type: EngineType): number {
-  if (isFusionEngine(type)) return 10;
-  if (type === 'Fission') return 5;
-  if (type === 'Fuel Cell') return 1;
-  return 0;
-}
-
-/**
- * Maximum number of heat sinks that can be integrated into the engine
- * (i.e. don't require critical slots).
- * Matches MegaMek Engine.integralHeatSinkCapacity().
- */
-export function getIntegralHeatSinkCapacity(rating: number, compact: boolean): number {
-  if (compact) {
-    return Math.floor(rating / 25) * 2;
+    this.heatSinkType = signal<HeatSinkType>(init.heatSinkType ?? 'Single');
+    this.installedHeatSinksCount = signal<number>(init.totalHeatSinks ?? 0);
+    this.rawHeatSinkLabel = init.rawHeatSinkLabel ?? this.heatSinkType();
+    this.baseChassisHeatSinks = init.baseChassisHeatSinks ?? -1;
   }
-  return Math.floor(rating / 25);
+
+  descriptor = computed<EngineTypeDescriptor>(() => ENGINE_DATA[this.type()]);
+
+  // ========================================================================
+  //  Heat sinks
+  // ========================================================================
+
+  /** Number of weight-free heat sinks the engine provides. */
+  get weightFreeHeatSinks(): number { return this.descriptor().weightFreeHeatSinks; }
+
+  /** Base movement heat for BattleMeks with this engine type. */
+  get movementHeat(): EngineMovementHeat { return this.descriptor().movementHeat; }
+
+  /**
+   * Maximum number of heat sinks that can be integrated into the engine
+   * (i.e. don't require critical slots).
+   * Matches MegaMek Engine.integralHeatSinkCapacity().
+   */
+  integralHeatSinkCapacity = computed<number>(() => {
+    if (this.heatSinkType() === 'Compact') {
+      return Math.floor(this.rating / 25) * 2;
+    }
+    return Math.floor(this.rating / 25);
+  });
+
+  // ========================================================================
+  //  Weight
+  // ========================================================================
+
+  /** Base engine weight from the weight table for this rating. */
+  get baseWeight(): number { return getEngineBaseWeight(this.rating); }
+
+  /** Whether this is a large engine (rating > 400). */
+  get isLarge() { return this.rating > 400; }
+
+  // ========================================================================
+  //  Cost
+  // ========================================================================
+
+  /** Base cost per engine rating point (large engines double this). */
+  get baseCost(): number { return this.descriptor().baseCost; }
+
+  // ========================================================================
+  //  Classification (delegated to descriptor)
+  // ========================================================================
+
+  /** Mutually exclusive power source of this engine type. */
+  get powerSource(): EnginePowerSource { return this.descriptor().powerSource; }
+
+  /** True if this engine type is a fusion engine (produces free heat sinks). */
+  get isFusion(): boolean { return this.descriptor().powerSource === 'fusion'; }
+
+  /** True if this engine type is a fission engine. */
+  get isFission(): boolean { return this.descriptor().powerSource === 'fission'; }
+
+  /** True if this engine type is an internal-combustion engine. */
+  get isICE(): boolean { return this.descriptor().powerSource === 'combustion'; }
+
+  /** True when the engine type is not `None`. */
+  get hasEngine(): boolean { return this.descriptor().powerSource !== 'none'; }
+
+  // ========================================================================
+  //  Weight
+  // ========================================================================
+
+  /**
+   * Compute the actual engine weight in tons, applying type multiplier,
+   * minimum weight, large-engine doubling, and optional tank multiplier.
+   * Rounds up to the nearest half-ton.
+   *
+   * Mirrors MegaMek `Engine.getEngineWeight()` / `getEngineTankWeight()`.
+   */
+  getWeight(flags?: { tank?: boolean }): number {
+    const desc = this.descriptor();
+    let weight = this.baseWeight * desc.weightMultiplier;
+    weight = Math.max(weight, desc.minWeight);
+    if (this.isLarge) weight *= 2;
+    weight = Math.ceil(weight * 2) / 2; // round up to nearest half-ton
+    if (flags?.tank) {
+      weight *= desc.tankWeightMultiplier;
+      weight = Math.ceil(weight * 2) / 2;
+    }
+    return weight;
+  }
+
+  // ========================================================================
+  //  Tech advancement
+  // ========================================================================
+
+  /**
+   * Resolve the correct `TechAdvancement` for this engine, selecting among
+   * standard / clan / large / support variants.
+   *
+   * Defaults are derived from instance state (`techBase`, `isLarge`);
+   * pass explicit flags to override.
+   */
+  getTechAdvancement(flags?: {
+    clan?: boolean;
+    large?: boolean;
+    supportVee?: boolean;
+  }): TechAdvancement {
+    return getEngineTechAdvancement(this.type(), {
+      clan: flags?.clan ?? (this.techBase === 'Clan'),
+      large: flags?.large ?? this.isLarge,
+      supportVee: flags?.supportVee,
+    });
+  }
+
+  // ========================================================================
+  //  Critical slot layout
+  // ========================================================================
+
+  /**
+   * Get the engine CT critical slot indices, given gyro type.
+   * Matches MegaMek Engine.getCenterTorsoCriticalSlots().
+   *
+   * Returns an array of 0-based slot indices in the CT that the engine occupies.
+   */
+  getCTSlots(gyroType: GyroType | string): number[] {
+    return getEngineCTSlots(this, gyroType);
+  }
+
+  /**
+   * Get the engine side-torso critical slot indices.
+   * Returns an array of 0-based slot indices in each side torso.
+   */
+  getSideTorsoSlots(): number[] {
+    return getEngineSideTorsoSlots(this);
+  }
 }
 
 // ============================================================================
-// Critical slot layout - Center Torso
+// Mek-specific critical slot helpers (free functions)
 // ============================================================================
 
 /**
- * Get the engine CT critical slot indices, given gyro type.
- * Matches MegaMek Engine.getCenterTorsoCriticalSlots().
- *
- * Returns an array of 0-based slot indices in the CT that the engine occupies.
+ * Compute the CT critical slot indices occupied by the engine.
+ * Mirrors MegaMek `Engine.getCenterTorsoCriticalSlots()`.
  */
-export function getEngineCTSlots(engine: EngineComponent, gyroType: GyroType | string): number[] {
-  const { type, isLarge, isSuperHeavy } = engine;
+function getEngineCTSlots(engine: MountedEngine, gyroType: GyroType | string): number[] {
   const normalizedGyro = normalizeGyroType(gyroType as string);
 
-  if (type === 'Compact') {
-    return isSuperHeavy ? [0, 1] : [0, 1, 2];
+  if (engine.type() === 'Compact') {
+    return engine.isSuperHeavy ? [0, 1] : [0, 1, 2];
   }
 
-  if (isLarge) {
-    if (isSuperHeavy) {
-      if (normalizedGyro === 'None') {
-        // Large + SH + no gyro: engine fills slots 0-3
-        return [0, 1, 2, 3];
-      }
+  if (engine.isLarge) {
+    if (engine.isSuperHeavy) {
+      if (normalizedGyro === 'None') return [0, 1, 2, 3];
       return [0, 1, 2, 5];
     }
-    if (normalizedGyro === 'None') {
-      // No gyro → engine fills contiguous slots
-      return [0, 1, 2, 3, 4, 5, 6, 7];
-    }
-    if (normalizedGyro === 'Compact') {
-      return [0, 1, 2, 5, 6, 7, 8, 9];
-    }
-    // Standard/Heavy Duty/XL/Superheavy gyro - all use default layout
+    if (normalizedGyro === 'None') return [0, 1, 2, 3, 4, 5, 6, 7];
+    if (normalizedGyro === 'Compact') return [0, 1, 2, 5, 6, 7, 8, 9];
     return [0, 1, 2, 7, 8, 9, 10, 11];
   }
 
   // Normal-sized engine
   if (normalizedGyro === 'None') {
-    // No gyro → engine fills 6 contiguous slots
-    return isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 3, 4, 5];
+    return engine.isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 3, 4, 5];
   }
   if (normalizedGyro === 'Compact') {
-    return isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 5, 6, 7];
+    return engine.isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 5, 6, 7];
   }
   if (normalizedGyro === 'XL') {
-    return isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 9, 10, 11];
+    return engine.isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 9, 10, 11];
   }
-  // Standard/Heavy Duty/Superheavy gyro
-  return isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 7, 8, 9];
+  // Standard / Heavy Duty / Superheavy gyro
+  return engine.isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 7, 8, 9];
 }
-
-// ============================================================================
-// Critical slot layout - Side Torsos
-// ============================================================================
 
 /**
- * Get the engine side-torso critical slot indices.
- * Matches MegaMek Engine.getSideTorsoCriticalSlots().
- *
- * Returns an array of 0-based slot indices in each side torso.
+ * Compute the side-torso critical slot indices occupied by the engine.
+ * Mirrors MegaMek `Engine.getSideTorsoCriticalSlots()`.
  */
-export function getEngineSideTorsoSlots(engine: EngineComponent): number[] {
-  const { type, techBase, isSuperHeavy } = engine;
+function getEngineSideTorsoSlots(engine: MountedEngine): number[] {
+  const desc = engine.descriptor();
+  if (!desc.sideTorsoSlots) return [];
 
-  if (type === 'Light' || (type === 'XL' && techBase === 'Clan')) {
-    return isSuperHeavy ? [0] : [0, 1];
-  }
-  if (type === 'XL') {
-    // IS XL
-    return isSuperHeavy ? [0, 1] : [0, 1, 2];
-  }
-  if (type === 'XXL' && techBase === 'Clan' /* Clan XXL */) {
-    return isSuperHeavy ? [0, 1] : [0, 1, 2, 3];
-  }
-  if (type === 'XXL') {
-    // IS XXL
-    return isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 3, 4, 5];
-  }
-  // Fusion, Compact, ICE, etc. - no side torso crits
-  return [];
+  const count = engine.isSuperHeavy
+    ? (engine.techBase === 'Clan' ? desc.sideTorsoSlots.clanSH : desc.sideTorsoSlots.isSH)
+    : engine.techBase === 'Clan'
+      ? desc.sideTorsoSlots.clan
+      : desc.sideTorsoSlots.is;
+
+  return Array.from({ length: count }, (_, i) => i);
 }
 
 // ============================================================================
-// Engine weight
+// Engine weight table
 // ============================================================================
 
 /** Engine weight lookup table, indexed by ceil(rating / 5). */
@@ -238,99 +351,6 @@ export function getEngineBaseWeight(rating: number): number {
 }
 
 // ============================================================================
-// MountedEngine - wraps engine + heat sinks for an entity
-// ============================================================================
-
-/**
- * MountedEngine contains all engine-related data for an entity:
- * - The engine component itself (type, rating, tech base)
- * - The heat sink configuration (type, total count, how many are
- *   integrated vs. externally mounted)
- *
- * In MegaMek, engine-integrated heat sinks are stored as "misc" equipment
- * with negative slot indices.  Here we track them as a count on the
- * MountedEngine, which is simpler and sufficient for round-trip fidelity.
- */
-export interface MountedEngine {
-  /** The engine component */
-  readonly engine: EngineComponent;
-
-  /** Type of heat sinks installed (Single, Double, Compact, Laser) */
-  readonly heatSinkType: HeatSinkType;
-
-  /**
-   * Total heat sink count as declared in the file (MTF `heat sinks:` line).
-   * This includes BOTH engine-integrated and externally mounted heat sinks.
-   */
-  readonly totalHeatSinks: number;
-
-  /**
-   * The raw heat-sink type label from the file for round-trip fidelity.
-   * e.g. "Single", "IS Double", "Clan Double", "Compact", "Laser"
-   */
-  readonly rawHeatSinkLabel: string;
-
-  /**
-   * Base chassis heat sinks (from BLK/MTF `base chassis heat sinks:` line).
-   * -1 means not specified.
-   */
-  readonly baseChassisHeatSinks: number;
-}
-
-// ============================================================================
-// MountedEngine - derived queries
-// ============================================================================
-
-/**
- * Get the maximum number of heat sinks that can be integrated into
- * this mounted engine (don't require crit slots).
- */
-export function getEngineIntegralCapacity(me: MountedEngine): number {
-  return getIntegralHeatSinkCapacity(
-    me.engine.rating,
-    me.heatSinkType === 'Compact',
-  );
-}
-
-/**
- * Get the number of heat sinks actually integrated into the engine.
- * This is min(totalHeatSinks, integralCapacity).
- */
-export function getEngineIntegratedHeatSinks(me: MountedEngine): number {
-  return Math.min(me.totalHeatSinks, getEngineIntegralCapacity(me));
-}
-
-/**
- * Get the number of externally mounted heat sinks (those that need crit slots).
- * total - integrated = external
- */
-export function getExternalHeatSinks(me: MountedEngine): number {
-  return Math.max(0, me.totalHeatSinks - getEngineIntegralCapacity(me));
-}
-
-// ============================================================================
-// MountedEngine - factory
-// ============================================================================
-
-/**
- * Create a MountedEngine from an engine component + optional heat sink config.
- */
-export function createMountedEngine(
-  engine: EngineComponent,
-  opts?: Partial<Pick<MountedEngine, 'heatSinkType' | 'totalHeatSinks' | 'rawHeatSinkLabel' | 'baseChassisHeatSinks'>>,
-): MountedEngine {
-  const heatSinkType = opts?.heatSinkType ?? 'Single';
-  const totalHeatSinks = opts?.totalHeatSinks ?? 10;
-  return {
-    engine,
-    heatSinkType,
-    totalHeatSinks,
-    rawHeatSinkLabel: opts?.rawHeatSinkLabel ?? heatSinkType,
-    baseChassisHeatSinks: opts?.baseChassisHeatSinks ?? -1,
-  };
-}
-
-// ============================================================================
 // CT / Side-Torso system layout builders
 // ============================================================================
 
@@ -343,11 +363,11 @@ export function createMountedEngine(
  * Mek.getGyroCrits() combined layout.
  */
 export function buildCTSystemLayout(
-  engine: EngineComponent,
+  engine: MountedEngine,
   gyroType: GyroType | string,
 ): (string | null)[] {
   const layout: (string | null)[] = new Array(MEK_SLOTS_PER_LOCATION).fill(null);
-  const engineSlots = getEngineCTSlots(engine, gyroType);
+  const engineSlots = engine.getCTSlots(gyroType);
   const gyro = getGyro(gyroType);
 
   // Place engine slots
@@ -356,7 +376,6 @@ export function buildCTSystemLayout(
   }
 
   // Place gyro slots immediately after the first contiguous engine block
-  // Find the first gap in engine slots to determine gyro start position
   let gyroStart = 0;
   for (const idx of engineSlots) {
     if (idx === gyroStart) gyroStart = idx + 1;
@@ -374,10 +393,10 @@ export function buildCTSystemLayout(
  * Build the side-torso system slot layout for one side torso.
  */
 export function buildSideTorsoSystemLayout(
-  engine: EngineComponent,
+  engine: MountedEngine,
 ): (string | null)[] {
   const layout: (string | null)[] = new Array(MEK_SLOTS_PER_LOCATION).fill(null);
-  const slots = getEngineSideTorsoSlots(engine);
+  const slots = engine.getSideTorsoSlots();
   for (const idx of slots) {
     if (idx < MEK_SLOTS_PER_LOCATION) layout[idx] = 'Engine';
   }

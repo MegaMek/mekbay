@@ -249,22 +249,21 @@ export function writeOmni(w: BuildingBlockWriter, entity: BaseEntity): void {
 export function writeEngine(
   w: BuildingBlockWriter,
   entity: BaseEntity,
-  engineTypeToCode: Record<string, number>,
 ): void {
-  const engine = entity.mountedEngine()?.engine;
-  if (!engine) {
+  const me = entity.mountedEngine();
+  if (!me) {
     w.addBlock('engine_type', 0); // "None" engine type code
     return;
   }
-  w.addBlock('engine_type', engineTypeToCode[engine.type] ?? 0);
+  w.addBlock('engine_type', me.descriptor().code);
   // clan_engine: written when engine's clan flag differs from what the parser
   // would infer from the type string alone.  The parser's getBlkEngineIsClan()
   // falls back to checking whether the type string contains "clan" (case-
   // insensitive), so the writer must use the same heuristic as its default.
   const typeStr = (entity.techLevel() ?? '').toLowerCase();
   const impliedClan = typeStr.includes('clan');
-  if (engine.techBase === 'Clan' !== impliedClan) {
-    w.addBlock('clan_engine', engine.techBase === 'Clan' ? 'true' : 'false');
+  if (me.techBase === 'Clan' !== impliedClan) {
+    w.addBlock('clan_engine', me.techBase === 'Clan' ? 'true' : 'false');
   }
 }
 

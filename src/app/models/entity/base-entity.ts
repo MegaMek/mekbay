@@ -34,10 +34,8 @@
 import { Signal, computed, signal } from '@angular/core';
 import { ArmorEquipment } from '../equipment.model';
 import {
-  createEngine,
-  createMountedEngine,
-  createMountedArmor,
   MountedEngine,
+  createMountedArmor,
   MountedArmor,
   getArmorTypeCode,
 } from './components';
@@ -57,11 +55,19 @@ import {
   EntityValidationMessage,
   EntityValidationResult,
   EntityWeaponQuirk,
+  isTechAvailableForBase,
   LocationArmor,
   locationArmor,
   MountPlacement,
 } from './types';
 import { generateMountId, removeMountById, updateMap } from './utils/signal-helpers';
+
+/** Result of mixed-tech detection, with diagnostic reasons. */
+export interface MixedTechResult {
+  readonly mixed: boolean;
+  /** Human-readable reasons explaining why mixed tech was detected. */
+  readonly reasons: readonly string[];
+}
 
 /**
  * Abstract base class for all entity types.
@@ -108,7 +114,7 @@ export abstract class BaseEntity {
   // ── Tech ──
   year = signal<number>(3145);
   originalBuildYear = signal<number>(-1);
-  techBase = signal<EntityTechBase>('Inner Sphere');
+  techBase = signal<EntityTechBase>('IS');
   techLevel = signal<string>('');
   rulesLevel = signal<number>(2);
 
@@ -140,7 +146,7 @@ export abstract class BaseEntity {
 
   // ── Engine ──
   mountedEngine = signal<MountedEngine>(
-    createMountedEngine(createEngine('Fusion', 0, 'Inner Sphere')),
+    new MountedEngine({ type: 'Fusion', rating: 0, techBase: 'IS' }),
   );
 
   // ── Armor ──
@@ -198,25 +204,96 @@ export abstract class BaseEntity {
     return m ? `${c} ${m}`.trim() : c;
   });
 
-  mixedTech = computed<boolean>(() => {
+  /** Full mixed-tech result including diagnostic reasons. */
+  private mixedTechResult = computed<MixedTechResult>(() => this.computeMixedTech());
+
+  /** Whether the entity uses mixed (IS + Clan) technology. */
+  mixedTech = computed<boolean>(() => this.mixedTechResult().mixed);
+
+  /** Diagnostic reasons explaining why mixed tech was detected (empty when not mixed). */
+  mixedTechReasons = computed<readonly string[]>(() => this.mixedTechResult().reasons);
+
+  /**
+   * Core mixed-tech detection: engine tech base, engine advancement dates,
+   * and equipment tech bases / advancement dates.
+   *
+   * Returns a result with `mixed` flag and human-readable `reasons`.
+   * Subclasses override this, call `super.computeMixedTech()`, and
+   * append their own checks (e.g. cockpit for Meks).
+   */
+  protected computeMixedTech(): MixedTechResult {
+    const reasons: string[] = [];
     const chassisTechBase = this.techBase();
-    const engineTechBase = this.mountedEngine().engine.techBase;
-    if (chassisTechBase != engineTechBase) return true;
-    // check tech of all entity components; if any are mixed, the whole entity is mixed
-    for (const m of this.equipment()) {
-      if (m.equipment?.techBase === 'All') continue; // "All" tech is compatible with everything
-      if ((m.equipment?.techBase === 'Clan' && chassisTechBase === 'Inner Sphere') ||
-          (m.equipment?.techBase === 'IS' && chassisTechBase === 'Clan')) {
-        return true; // mismatch between components => mixed tech
+    const year = this.year();
+    const isClan = chassisTechBase === 'Clan';
+    const oppositeBase = isClan ? 'IS' : 'Clan';
+
+    // ── Engine tech-base mismatch ──────────────────────────────────────
+    const engine = this.mountedEngine();
+    if (chassisTechBase !== engine.techBase) {
+      reasons.push(`Engine tech base ${engine.techBase} ≠ chassis ${chassisTechBase}`);
+      return { mixed: true, reasons };
+    }
+
+    // ── Engine advancement-date check ──────────────────────────────────
+    // Only for universal ('All') engine types: if the engine's advancement
+    // dates aren't available for the chassis tech base at the entity's year
+    // but ARE available for the opposite tech base, the unit must be using
+    // the other tech base's variant => mixed.
+    // Engines with explicit IS or Clan tech entries (XL, XXL, etc.) already
+    // have their tech base determined by engine.techBase — dates don't
+    // change which variant is installed.
+    const engineTech = engine.getTechAdvancement({ clan: isClan, large: engine.isLarge });
+    if (engineTech.techBase === 'All') {
+      if (!isTechAvailableForBase(engineTech.dates, chassisTechBase, year)) {
+        const oppositeEngTech = engine.getTechAdvancement({ clan: !isClan, large: engine.isLarge });
+        if (isTechAvailableForBase(oppositeEngTech.dates, oppositeBase, year)) {
+          reasons.push(
+            `Engine ${engine.type} (techBase All): not available for ${chassisTechBase} at year ${year}, ` +
+            `but available for ${oppositeBase}`,
+          );
+          return { mixed: true, reasons };
+        }
       }
     }
-    return false;
-  });
+
+    // ── Equipment tech-base & advancement checks ──────────────────────
+    for (const m of this.equipment()) {
+      if (!m.equipment) continue;
+      if ((m.equipment.techBase === 'Clan' && chassisTechBase === 'IS') ||
+          (m.equipment.techBase === 'IS' && chassisTechBase === 'Clan')) {
+        reasons.push(
+          `Equipment "${m.equipment.name}" tech base ${m.equipment.techBase} ≠ chassis ${chassisTechBase}`,
+        );
+        return { mixed: true, reasons };
+      }
+      if (m.equipment.techBase === 'All') {
+        // 'All' tech base equipment may have different IS/Clan advancement
+        // timelines.  If the equipment is not yet available for the chassis
+        // tech base at the entity's year, but IS available for the opposite
+        // tech base, the unit must be using the other side's variant => mixed.
+        const adv = m.equipment.tech.advancement;
+        if (adv.is && adv.clan) {
+          const chassisSide = isClan ? adv.clan : adv.is;
+          const oppositeSide = isClan ? adv.is : adv.clan;
+          if (!isTechAvailableForBase(chassisSide, chassisTechBase, year) &&
+              isTechAvailableForBase(oppositeSide, oppositeBase, year)) {
+            reasons.push(
+              `Equipment "${m.equipment.name}" (techBase All): not available for ${chassisTechBase} ` +
+              `at year ${year}, but available for ${oppositeBase}`,
+            );
+            return { mixed: true, reasons };
+          }
+        }
+      }
+    }
+    return { mixed: false, reasons };
+  }
 
   engineFlags = computed<Set<EngineFlag>>(() => {
     const flags = new Set<EngineFlag>();
     if (this.techBase() === 'Clan' && !this.mixedTech()) flags.add('clan');
-    if (this.mountedEngine().engine.rating > 400) flags.add('large');
+    if (this.mountedEngine().rating > 400) flags.add('large');
     return flags;
   });
 
@@ -274,10 +351,10 @@ export abstract class BaseEntity {
   protected engineValidation = computed<EntityValidationMessage[]>(() => {
     const msgs: EntityValidationMessage[] = [];
     const expected = this.computeExpectedEngineRating();
-    if (expected !== null && this.mountedEngine().engine.rating !== expected) {
+    if (expected !== null && this.mountedEngine().rating !== expected) {
       msgs.push({
         severity: 'warning', category: 'engine', code: 'ENGINE_RATING_MISMATCH',
-        message: `Engine rating ${this.mountedEngine().engine.rating} ≠ expected ${expected} `
+        message: `Engine rating ${this.mountedEngine().rating} ≠ expected ${expected} `
           + `(walkMP=${this.walkMP()} × tonnage=${this.tonnage()})`,
       });
     }

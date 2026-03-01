@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2025-2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -31,130 +31,50 @@
  * affiliated with Microsoft.
  */
 
-/**
- * Cockpit system component.
- *
- * Cockpits are fundamental structural elements of every Mek, with statically
- * known properties (head slot layout, etc.) initialised at runtime.
- * They are NOT equipment from equipment2.json.
- */
-
+import type { CockpitType, TechAdvancement } from '../types';
 import { MEK_SLOTS_PER_LOCATION } from '../types';
+import {
+  COCKPIT_DATA,
+  type CockpitTypeDescriptor,
+  type CockpitCrewType,
+  type CockpitHeadLayout,
+} from './cockpit-data';
+
+// Re-export cockpit-data symbols for barrel convenience
+export {
+  COCKPIT_DATA,
+  type CockpitTypeDescriptor,
+  type CockpitCrewType,
+  type CockpitHeadLayout,
+  getCockpitTechAdvancement,
+  COCKPIT_TYPE_FROM_CODE,
+  COCKPIT_TYPE_TO_CODE,
+  cockpitTypeFromCode,
+  cockpitTypeToCode,
+} from './cockpit-data';
 
 // ============================================================================
-// Types
+// Lookup helpers
 // ============================================================================
 
-export type CockpitType =
-  | 'Standard' | 'Small' | 'Small Cockpit' | 'Command Console' | 'Torso-Mounted'
-  | 'Dual' | 'Dual Cockpit' | 'Industrial' | 'Primitive' | 'Primitive Industrial'
-  | 'Superheavy' | 'Superheavy Tripod' | 'Tripod'
-  | 'Interface' | 'Virtual Reality Piloting Pod' | 'QuadVee';
-
-// ============================================================================
-// Cockpit Component
-// ============================================================================
-
-export interface CockpitComponent {
-  readonly type: string;
-  /**
-   * Head slot layout for this cockpit type.
-   * Each entry is the system type for that slot index.
-   * `null` means the slot is empty/available for equipment.
-   */
-  readonly headLayout: readonly (string | null)[];
+/** All known cockpit types (keys of COCKPIT_DATA). */
+export function getAllCockpitTypes(): readonly CockpitType[] {
+  return Object.keys(COCKPIT_DATA) as CockpitType[];
 }
-
-const COCKPIT_DEFINITIONS: Record<string, CockpitComponent> = {
-  'Standard': {
-    type: 'Standard',
-    headLayout: ['Life Support', 'Sensors', 'Cockpit', null, 'Sensors', 'Life Support'],
-  },
-  'Small': {
-    type: 'Small',
-    headLayout: ['Life Support', 'Sensors', 'Cockpit', 'Sensors', null, null],
-  },
-  'Small Cockpit': {
-    type: 'Small Cockpit',
-    headLayout: ['Life Support', 'Sensors', 'Cockpit', 'Sensors', null, null],
-  },
-  'Command Console': {
-    type: 'Command Console',
-    headLayout: ['Life Support', 'Sensors', 'Cockpit', 'Cockpit', 'Sensors', 'Life Support'],
-  },
-  'Torso-Mounted': {
-    type: 'Torso-Mounted',
-    headLayout: ['Sensors', 'Sensors', null, null, null, null],
-  },
-  'Dual': {
-    type: 'Dual',
-    headLayout: ['Life Support', 'Sensors', 'Cockpit', 'Cockpit', 'Sensors', 'Life Support'],
-  },
-  'Dual Cockpit': {
-    type: 'Dual Cockpit',
-    headLayout: ['Life Support', 'Sensors', 'Cockpit', 'Cockpit', 'Sensors', 'Life Support'],
-  },
-  'Industrial': {
-    type: 'Industrial',
-    headLayout: ['Life Support', 'Sensors', 'Cockpit', null, 'Sensors', 'Life Support'],
-  },
-  'Primitive': {
-    type: 'Primitive',
-    headLayout: ['Life Support', 'Sensors', 'Cockpit', null, 'Sensors', 'Life Support'],
-  },
-  'Primitive Industrial': {
-    type: 'Primitive Industrial',
-    headLayout: ['Life Support', 'Sensors', 'Cockpit', null, 'Sensors', 'Life Support'],
-  },
-  'Superheavy': {
-    type: 'Superheavy',
-    headLayout: ['Life Support', 'Sensors', 'Cockpit', null, 'Sensors', 'Life Support'],
-  },
-  'Superheavy Tripod': {
-    type: 'Superheavy Tripod',
-    headLayout: ['Life Support', 'Sensors', 'Cockpit', null, 'Sensors', 'Life Support'],
-  },
-  'Tripod': {
-    type: 'Tripod',
-    headLayout: ['Life Support', 'Sensors', 'Cockpit', null, 'Sensors', 'Life Support'],
-  },
-  'Interface': {
-    type: 'Interface',
-    headLayout: ['Life Support', 'Sensors', 'Cockpit', 'Cockpit', 'Sensors', 'Life Support'],
-  },
-  'Virtual Reality Piloting Pod': {
-    type: 'Virtual Reality Piloting Pod',
-    headLayout: ['Life Support', 'Sensors', 'Cockpit', null, 'Sensors', 'Life Support'],
-  },
-  'QuadVee': {
-    type: 'QuadVee',
-    headLayout: ['Life Support', 'Sensors', 'Cockpit', 'Cockpit', 'Sensors', 'Life Support'],
-  },
-};
-
-// ============================================================================
-// Lookup
-// ============================================================================
 
 /**
  * Normalize a raw cockpit-type string (e.g. "Standard Cockpit") to the
- * canonical form used as lookup key (e.g. "Standard").
+ * canonical `CockpitType` key.
  */
-function normalizeCockpitType(raw: string): string {
-  if (raw in COCKPIT_DEFINITIONS) return raw;
+export function normalizeCockpitType(raw: string): CockpitType {
+  if (raw in COCKPIT_DATA) return raw as CockpitType;
+  // Strip trailing " Cockpit" suffix
   const stripped = raw.replace(/\s+Cockpit$/i, '').trim();
-  if (stripped in COCKPIT_DEFINITIONS) return stripped;
+  if (stripped in COCKPIT_DATA) return stripped as CockpitType;
+  // Handle "Torso Mounted" → "Torso-Mounted"
+  const hyphenated = stripped.replace(/\s+/g, '-');
+  if (hyphenated in COCKPIT_DATA) return hyphenated as CockpitType;
   return 'Standard';
-}
-
-/** Resolve a CockpitComponent by type name. Falls back to Standard. */
-export function getCockpit(type: string): CockpitComponent {
-  return COCKPIT_DEFINITIONS[normalizeCockpitType(type)];
-}
-
-/** Get all known cockpit types. */
-export function getAllCockpitTypes(): readonly string[] {
-  return Object.keys(COCKPIT_DEFINITIONS);
 }
 
 // ============================================================================
@@ -162,14 +82,17 @@ export function getAllCockpitTypes(): readonly string[] {
 // ============================================================================
 
 /**
- * Build the head system slot layout from a cockpit component.
+ * Build the head system slot layout from a CockpitTypeDescriptor.
+ * Returns an array of length `MEK_SLOTS_PER_LOCATION` where each entry is
+ * a system type string or null (empty).
  */
 export function buildHeadSystemLayout(
-  cockpit: CockpitComponent,
+  cockpit: CockpitTypeDescriptor,
 ): (string | null)[] {
   const layout: (string | null)[] = new Array(MEK_SLOTS_PER_LOCATION).fill(null);
-  for (let i = 0; i < cockpit.headLayout.length && i < MEK_SLOTS_PER_LOCATION; i++) {
-    layout[i] = cockpit.headLayout[i];
+  const headLayout = cockpit.headLayout;
+  for (let i = 0; i < headLayout.length && i < MEK_SLOTS_PER_LOCATION; i++) {
+    layout[i] = headLayout[i];
   }
   return layout;
 }

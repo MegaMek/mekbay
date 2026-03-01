@@ -31,6 +31,7 @@
  * affiliated with Microsoft.
  */
 
+import { ComponentTechLevel, EquipmentTechBase, SplitTechDates, TechDates, parseTechDate } from './entity';
 import { Unit } from './units.model';
 
 /*
@@ -41,9 +42,7 @@ import { Unit } from './units.model';
 // Type Definitions
 // ============================================================================
 
-export type TechBase = 'IS' | 'Clan' | 'All';
 export type EquipmentType = 'weapon' | 'ammo' | 'misc' | 'armor';
-export type TechLevel = 'Introductory' | 'Standard' | 'Advanced' | 'Experimental' | 'Unofficial';
 export type RangeBrackets = 'short' | 'medium' | 'long' | 'extreme';
 
 // ============================================================================
@@ -206,25 +205,37 @@ export interface TechAvailability {
     da?: string;      // Dark Age
 }
 
-export interface TechAdvancementDates {
-    prototype?: string;
-    production?: string;
-    common?: string;
-    extinct?: string;
-    reintroduced?: string;
+/** Wire-format tech dates (strings from JSON: "2439" or "~2430"). */
+export interface RawTechDates {
+    readonly prototype?: string;
+    readonly production?: string;
+    readonly common?: string;
+    readonly extinct?: string;
+    readonly reintroduced?: string;
 }
 
-export interface TechAdvancement {
-    is?: TechAdvancementDates;
-    clan?: TechAdvancementDates;
+/** Wire-format split tech dates from equipment JSON. */
+export interface RawSplitTechDates {
+    readonly is?: RawTechDates;
+    readonly clan?: RawTechDates;
 }
 
-export interface TechData {
-    base: TechBase;
+/** Wire-format tech data as it arrives from the equipment JSON. */
+export interface RawTechData {
+    base: EquipmentTechBase;
     rating: string;
-    level: TechLevel;
+    level: ComponentTechLevel;
     availability: TechAvailability;
-    advancement: TechAdvancement;
+    advancement: RawSplitTechDates;
+}
+
+/** Effective tech data with parsed `TechDate` values. */
+export interface TechData {
+    base: EquipmentTechBase;
+    rating: string;
+    level: ComponentTechLevel;
+    availability: TechAvailability;
+    advancement: SplitTechDates;
 }
 
 export interface EquipmentStats {
@@ -313,7 +324,7 @@ export interface EquipmentRawData {
     rulesRefs?: string;
     aliases?: string[];
     stats?: Partial<EquipmentStats>;
-    tech?: Partial<TechData>;
+    tech?: Partial<RawTechData>;
     type: EquipmentType;
     flags?: string[];
     modes?: string[];
@@ -350,7 +361,7 @@ export function buildEquipmentAliasMap(equipmentDb: EquipmentMap): EquipmentAlia
 /** Raw equipment indexed by internal name */
 export type RawEquipmentMap = Record<string, EquipmentRawData>;
 
-/** Equipment data structure (matches JSON format) */
+/** Equipment data structure */
 export interface EquipmentData {
     version: string;
     etag?: string;
@@ -416,7 +427,7 @@ const ARMOR_DEFAULTS: ArmorData = {
     weightPerPointSV: {}
 };
 
-const TECH_DEFAULTS: TechData = {
+const RAW_TECH_DEFAULTS: RawTechData = {
     base: 'IS', rating: 'C', level: 'Standard', availability: {}, advancement: {}
 };
 
@@ -441,6 +452,32 @@ function merge<T extends object>(defaults: T, partial?: Partial<T>): T {
         }
     }
     return result;
+}
+
+/** Convert wire-format `RawTechDates` → effective `TechDates`. */
+function parseRawTechDates(raw: RawTechDates | undefined): TechDates | undefined {
+    if (!raw) return undefined;
+    return {
+        prototype:    parseTechDate(raw.prototype),
+        production:   parseTechDate(raw.production),
+        common:       parseTechDate(raw.common),
+        extinct:      parseTechDate(raw.extinct),
+        reintroduced: parseTechDate(raw.reintroduced),
+    };
+}
+
+/** Convert wire-format `RawTechData` → effective `TechData` with parsed dates. */
+function parseTechData(raw: RawTechData): TechData {
+    return {
+        base: raw.base,
+        rating: raw.rating,
+        level: raw.level,
+        availability: raw.availability,
+        advancement: {
+            is:   parseRawTechDates(raw.advancement.is),
+            clan: parseRawTechDates(raw.advancement.clan),
+        },
+    };
 }
 
 // ============================================================================
@@ -472,7 +509,7 @@ export class Equipment {
         this.type = data.type;
         this.modes = data.modes ?? [];
         this.stats = merge(STATS_DEFAULTS[data.type], data.stats);
-        this.tech = merge(TECH_DEFAULTS, data.tech);
+        this.tech = parseTechData(merge(RAW_TECH_DEFAULTS, data.tech));
         this.flags = new Set(data.flags ?? []);
     }
 
@@ -484,8 +521,8 @@ export class Equipment {
     get critSlots(): number { return this.stats.criticalSlots; }
     get svSlots(): number { return this.stats.svSlots; }
     get tankSlots(): number { return this.stats.tankSlots; }
-    get techBase(): TechBase { return this.tech.base; }
-    get level(): TechLevel { return this.tech.level; }
+    get techBase(): EquipmentTechBase { return this.tech.base; }
+    get level(): ComponentTechLevel { return this.tech.level; }
     get rating(): string { return this.tech.rating; }
     get availability(): String { return [this.tech.availability.sl??'X', this.tech.availability.sw??'X', this.tech.availability.clan??'X', this.tech.availability.da??'X'].join('-'); }
 

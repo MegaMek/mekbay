@@ -95,7 +95,7 @@ export abstract class VehicleEntity extends BaseEntity {
   override engineFlags = computed<Set<EngineFlag>>(() => {
     const flags = new Set<EngineFlag>();
     if (this.techBase() === 'Clan' && !this.mixedTech()) flags.add('clan');
-    if (this.mountedEngine()?.engine?.rating > 400) flags.add('large');
+    if (this.mountedEngine()?.rating > 400) flags.add('large');
     flags.add('tank');
     if (this.isSuperHeavy()) flags.add('superheavy');
     return flags;

@@ -38,9 +38,7 @@ import { SupportTankEntity } from '../entities/vehicle/support-tank-entity';
 import { SupportVtolEntity } from '../entities/vehicle/support-vtol-entity';
 import { LargeSupportTankEntity } from '../entities/vehicle/large-support-tank-entity';
 import { GunEmplacementEntity } from '../entities/vehicle/gun-emplacement-entity';
-import {
-  ENGINE_TYPE_TO_CODE,
-} from '../types';
+
 import {
   BuildingBlockWriter,
   writeArmorBlocks,
@@ -94,7 +92,7 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
   w.addBlock('cruiseMP', entity.walkMP());
 
   // 6. Engine: engine_type, clan_engine
-  writeEngine(w, entity, ENGINE_TYPE_TO_CODE);
+  writeEngine(w, entity);
 
   // 7. Armor: armor_type, armor_tech_rating, armor_tech_level
   if (!(entity instanceof GunEmplacementEntity)) {

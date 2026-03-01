@@ -57,7 +57,3 @@ export type EntityType =
   | 'BattleArmor'
   | 'ProtoMek'
   | 'HandheldWeapon';
-
-/** Tech base as stored in entity files */
-export type EntityTechBase = 'Inner Sphere' | 'Clan';
-export type EquipmentTechBase = EntityTechBase | 'All';

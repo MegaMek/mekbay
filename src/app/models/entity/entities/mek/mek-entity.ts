@@ -32,22 +32,23 @@
  */
 
 import { Signal, computed, signal } from '@angular/core';
-import { BaseEntity } from '../../base-entity';
+import { BaseEntity, MixedTechResult } from '../../base-entity';
 import {
   buildCTSystemLayout,
   buildHeadSystemLayout,
   buildSideTorsoSystemLayout,
-  getCockpit,
-  getEngineIntegralCapacity,
-  getGyro,
   GyroType,
+  CockpitTypeDescriptor,
+  COCKPIT_DATA,
 } from '../../components';
 import {
+  CockpitType,
   CriticalSlotView,
   EngineFlag,
   EntityType,
   EntityValidationMessage,
   HeatSinkType,
+  isTechAvailableForBase,
   MEK_INTERNAL_STRUCTURE,
   MEK_REAR_ARMOR_LOCATIONS,
   MEK_SLOTS_PER_LOCATION,
@@ -68,7 +69,8 @@ export abstract class MekEntity extends BaseEntity {
   // ═══════════════════════════════════════════════════════════════════════════
 
   gyroType = signal<string>('Standard');
-  cockpitType = signal<string>('Standard');
+  cockpitType = signal<CockpitType>('Standard');
+  mountedCockpit = computed<CockpitTypeDescriptor>(() =>  COCKPIT_DATA[this.cockpitType()] ?? COCKPIT_DATA['Standard']);
   myomerType = signal<string>('Standard');
   ejectionType = signal<string>('');
   heatSinkKit = signal<string>('');
@@ -83,7 +85,7 @@ export abstract class MekEntity extends BaseEntity {
   armoredSystemSlots = signal<Set<string>>(new Set());
 
   /** Convenience: heat sink type (delegates to mountedEngine) */
-  heatSinkType = computed<HeatSinkType>(() => this.mountedEngine().heatSinkType);
+  heatSinkType = computed<HeatSinkType>(() => this.mountedEngine().heatSinkType());
   /** Base-chassis heat sinks from MTF/BLK (delegates to mountedEngine, -1 = unset) */
   baseChassisHeatSinks = computed<number>(() => this.mountedEngine().baseChassisHeatSinks);
   /** Raw heat-sink label from MTF for round-trip (e.g. "Clan Double", "IS Double") */
@@ -92,7 +94,7 @@ export abstract class MekEntity extends BaseEntity {
    * Total heat sink count as declared on the MTF/BLK `heat sinks:` line.
    * This includes BOTH engine-integrated and externally mounted heat sinks.
    */
-  totalHeatSinks = computed<number>(() => this.mountedEngine().totalHeatSinks);
+  totalHeatSinks = computed<number>(() => this.mountedEngine().installedHeatSinksCount());
 
   // NOTE: No `criticalSlots` signal!  The crit grid is DERIVED - see
   // `criticalSlotGrid` computed below.  Equipment `placements` on each
@@ -125,18 +127,60 @@ export abstract class MekEntity extends BaseEntity {
     }, 0)
   );
 
-  /** Max heat sinks that fit inside the engine without crit slots */
-  integralHeatSinkCapacity = computed(() =>
-    getEngineIntegralCapacity(this.mountedEngine())
-  );
-
   override engineFlags = computed<Set<EngineFlag>>(() => {
     const flags = new Set<EngineFlag>();
     if (this.techBase() === 'Clan' && !this.mixedTech()) flags.add('clan');
-    if (this.mountedEngine()?.engine?.rating > 400) flags.add('large');
+    if (this.mountedEngine()?.rating > 400) flags.add('large');
     if (this.isSuperHeavy()) flags.add('superheavy');
     return flags;
   });
+
+  /**
+   * Override mixedTech to also check cockpit tech-base availability.
+   *
+   * A cockpit with `techBase: 'All'` may have different availability
+   * timelines for IS and Clan (e.g. Small Cockpit: IS from 3061, Clan from
+   * 3081).  If the cockpit is not yet available for the chassis tech base
+   * at the entity's year, the unit must be using the other tech base's
+   * variant — making it mixed tech.
+   *
+   * Cockpits with `techBase: 'IS'` on a Clan chassis (or vice
+   * versa) are also mixed, but that case is handled by the base class
+   * equipment loop.
+   */
+  protected override computeMixedTech(): MixedTechResult {
+    const base = super.computeMixedTech();
+    if (base.mixed) return base;
+
+    const reasons = [...base.reasons];
+
+    // ── Cockpit advancement-date check ────────────────────────────────
+    // A cockpit with techBase 'All' may have different IS/Clan availability
+    // timelines (e.g. Small Cockpit: IS from 3061, Clan from 3081).
+    const chassisTechBase = this.techBase();
+    const year = this.year();
+    const cockpit = this.mountedCockpit();
+    const cockpitTech = cockpit.tech;
+    if (cockpitTech.techBase === 'All') {
+      if (!isTechAvailableForBase(cockpitTech.dates, chassisTechBase, year)) {
+        const oppositeBase = chassisTechBase === 'Clan' ? 'IS' : 'Clan';
+        if (isTechAvailableForBase(cockpitTech.dates, oppositeBase, year)) {
+          reasons.push(
+            `Cockpit "${cockpit.fullName}" (techBase All): not available for ${chassisTechBase} ` +
+            `at year ${year}, but available for ${oppositeBase}`,
+          );
+          return { mixed: true, reasons };
+        }
+      }
+    } else if (cockpitTech.techBase !== chassisTechBase) {
+      reasons.push(
+        `Cockpit "${cockpit.fullName}" tech base ${cockpitTech.techBase} ≠ chassis ${chassisTechBase}`,
+      );
+      return { mixed: true, reasons };
+    }
+
+    return { mixed: false, reasons };
+  }
 
   // ── Derived crit-slot grid ────────────────────────────────────────────
 
@@ -248,7 +292,7 @@ export abstract class MekEntity extends BaseEntity {
     }
 
     // Engine rating ≥ 10
-    const engine = this.mountedEngine()?.engine;
+    const engine = this.mountedEngine();
     if (engine && engine.rating > 0 && engine.rating < 10) {
       msgs.push({
         severity: 'error', category: 'engine', code: 'ENGINE_RATING_TOO_LOW',
@@ -301,15 +345,14 @@ export abstract class MekEntity extends BaseEntity {
   protected getSystemSlotsForLocation(loc: string): CriticalSlotView[] {
     switch (loc) {
       case 'HD': {
-        const cockpit = getCockpit(this.cockpitType());
-        const layout = buildHeadSystemLayout(cockpit);
+        const layout = buildHeadSystemLayout(this.mountedCockpit());
         return layout.map(s => s ? sys(s as MekSystemType) : EMPTY_SLOT);
       }
       case 'CT': {
-        const engine = this.mountedEngine().engine;
-        const layout = buildCTSystemLayout(engine, this.gyroType() as GyroType);
-        // Torso-Mounted cockpit adds Cockpit + Sensors to CT after engine/gyro
-        if (this.cockpitType() === 'Torso-Mounted' || this.cockpitType() === 'Torso-Mounted Cockpit') {
+        const me = this.mountedEngine();
+        const layout = buildCTSystemLayout(me, this.gyroType() as GyroType);
+        // Torso-Mounted / VRRP cockpit adds Cockpit + Sensors to CT after engine/gyro
+        if (this.mountedCockpit().hasTorsoSlots) {
           const firstEmpty = layout.indexOf(null);
           if (firstEmpty >= 0 && firstEmpty + 1 < MEK_SLOTS_PER_LOCATION) {
             layout[firstEmpty] = 'Cockpit';
@@ -319,12 +362,12 @@ export abstract class MekEntity extends BaseEntity {
         return layout.map(s => s ? sys(s as MekSystemType) : EMPTY_SLOT);
       }
       case 'LT': case 'RT': {
-        const engine = this.mountedEngine().engine;
-        const layout = buildSideTorsoSystemLayout(engine);
-        // Torso-Mounted cockpit adds Life Support at slot 0 of each side torso,
+        const me = this.mountedEngine();
+        const layout = buildSideTorsoSystemLayout(me);
+        // Torso-Mounted / VRRP cockpit adds Life Support at slot 0 of each side torso,
         // shifting engine slots down by 1. Matches Java's addTorsoMountedCockpit()
         // which explicitly does setCritical(LOC_*_TORSO, 0, LIFE_SUPPORT).
-        if (this.cockpitType() === 'Torso-Mounted' || this.cockpitType() === 'Torso-Mounted Cockpit') {
+        if (this.mountedCockpit().hasTorsoSlots) {
           // Shift everything down by 1 (drop last null) and insert Life Support at 0
           layout.pop();
           layout.unshift('Life Support');

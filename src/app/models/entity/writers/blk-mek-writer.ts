@@ -35,7 +35,6 @@ import { MekEntity } from '../entities/mek/mek-entity';
 import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import {
   CriticalSlotView,
-  ENGINE_TYPE_TO_CODE,
   EntityMountedEquipment,
   EngineType,
   HEAT_SINK_TYPE_TO_CODE,
@@ -87,8 +86,8 @@ export function writeBlkMek(entity: MekEntity): string {
   // ── Chassis / Engine ──
   const chassisType = isQuad ? 'Quad' : 'Biped';
   w.addBlock('chassis_type', chassisType);
-  const engine = entity.mountedEngine()?.engine;
-  w.addBlock('engine_type', ENGINE_TYPE_TO_CODE[engine?.type] ?? 0);
+  const me = entity.mountedEngine();
+  w.addBlock('engine_type', me?.descriptor().code ?? 0);
   w.addBlock('walkingMP', entity.walkMP());
 
   // ── Structure / Gyro / Cockpit ──
@@ -100,13 +99,7 @@ export function writeBlkMek(entity: MekEntity): string {
     w.addBlock('gyro_type', gyroMap[entity.gyroType()] ?? 0);
   }
   if (entity.cockpitType() !== 'Standard') {
-    const cpMap: Record<string, number> = {
-      'Standard': 0, 'Small': 1, 'Command Console': 2, 'Torso-Mounted': 3,
-      'Dual': 4, 'Industrial': 5, 'Primitive': 6, 'Primitive Industrial': 7,
-      'Superheavy': 8, 'Superheavy Tripod': 9, 'Tripod': 10,
-      'Interface': 11, 'Virtual Reality Piloting Pod': 12, 'QuadVee': 13,
-    };
-    w.addBlock('cockpit_type', cpMap[entity.cockpitType()] ?? 0);
+    w.addBlock('cockpit_type', entity.mountedCockpit().code);
   }
 
   // ── Heat sinks ──
@@ -156,7 +149,7 @@ function slotToBlkString(
       return '-1';
     case 'system':
       return slot.systemType === 'Engine'
-        ? getBlkEngineName(entity.mountedEngine()?.engine?.type)
+        ? getBlkEngineName(entity.mountedEngine()?.type())
         : slot.systemType ?? '-1';
     case 'equipment': {
       const mount = slot.mountId ? mountMap.get(slot.mountId) : undefined;

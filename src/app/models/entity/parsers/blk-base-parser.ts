@@ -33,11 +33,10 @@
 
 import { BaseEntity } from '../base-entity';
 import {
-  createEngine,
-  createMountedEngine,
+  MountedEngine,
   createMountedArmor,
   createPatchworkArmor,
-  type MountedEngine,
+  engineTypeFromCode,
 } from '../components';
 import { AeroEntity } from '../entities/aero/aero-entity';
 import {
@@ -52,7 +51,6 @@ import {
   LocationArmor,
   VALID_TECH_BASE_STRINGS,
   armorTypeFromCode,
-  engineTypeFromCode,
   locationArmor,
   normalizeSystemManufacturerKey,
   resolveArmorEquipment,
@@ -344,7 +342,7 @@ export function getBlkTechBase(bb: BuildingBlock): EntityTechBase {
     const typeStr = bb.getFirstString('type').toLowerCase();
     if (typeStr.includes('clan')) return 'Clan';
   }
-  return 'Inner Sphere';
+  return 'IS';
 }
 
 /**
@@ -357,7 +355,7 @@ export function getBlkTechBase(bb: BuildingBlock): EntityTechBase {
 export function getBlkEngineIsClan(bb: BuildingBlock): EntityTechBase {
   if (bb.exists('clan_engine')) {
     const val = bb.getFirstString('clan_engine');
-    return val.toLowerCase() === 'true' || val === '1' ? 'Clan' : 'Inner Sphere';
+    return val.toLowerCase() === 'true' || val === '1' ? 'Clan' : 'IS';
   }
   return getBlkTechBase(bb);
 }
@@ -379,7 +377,7 @@ export interface BlkEngineOpts {
   /**
    * When `true` (the default), heat-sink fields (`sink_type`, `heatsinks`,
    * `base chassis heat sinks`) are read from the BLK and forwarded to
-   * `createMountedEngine`.  Set to `false` for unit types that never carry
+   * `MountedEngine`.  Set to `false` for unit types that never carry
    * heat sinks (vehicles, ProtoMeks).
    */
   includeHeatSinks?: boolean;
@@ -440,8 +438,6 @@ export function parseBlkEngine(
   // ── Clan flag (respects clan_engine override for mixed-tech) ──
   const engineTechBase = getBlkEngineIsClan(bb);
 
-  const engine = createEngine(engineType, rating, engineTechBase, isSuperHeavy);
-
   // ── Heat sinks ──
   let heatSinkType: HeatSinkType = 'Single';
   let totalHeatSinks = defaultTotalHeatSinks;
@@ -459,14 +455,18 @@ export function parseBlkEngine(
     }
   }
 
-  const mountedEngine = includeHeatSinks
-    ? createMountedEngine(engine, {
-        heatSinkType,
-        totalHeatSinks,
-        rawHeatSinkLabel: heatSinkType,
-        baseChassisHeatSinks,
-      })
-    : createMountedEngine(engine);
+  const mountedEngine = new MountedEngine({
+    type: engineType,
+    rating,
+    techBase: engineTechBase,
+    isSuperHeavy,
+    ...(includeHeatSinks ? {
+      heatSinkType,
+      totalHeatSinks,
+      rawHeatSinkLabel: heatSinkType,
+      baseChassisHeatSinks,
+    } : {}),
+  });
 
   return { mountedEngine, heatSinkType, totalHeatSinks };
 }
@@ -495,7 +495,7 @@ export function parseBlkArmor(
     : 'STANDARD';
 
   // ── Armor-specific tech base ──
-  let techBase: EntityTechBase = 'Inner Sphere';
+  let techBase: EntityTechBase = 'IS';
   if (bb.exists('armor_tech')) {
     const code = bb.getFirstInt('armor_tech');
     if (code === 1 || code === 2) techBase = 'Clan';

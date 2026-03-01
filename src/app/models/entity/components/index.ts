@@ -38,11 +38,6 @@
  * (Gyro, Cockpit, Engine, Structure).  They are NOT equipment from
  * equipment2.json — the only system element from the equipment database is
  * Armor, which is handled separately via ArmorEquipment.
- *
- * Each component lives in its own file for clarity and maintainability.
- * Import from this barrel:
- *
- *   import { getGyro, createEngine, getCockpit } from './components';
  */
 
 export {
@@ -54,10 +49,18 @@ export {
 } from './gyro';
 
 export {
-  type CockpitType,
-  type CockpitComponent,
-  getCockpit,
+  type CockpitTypeDescriptor,
+  type CockpitCrewType,
+  type CockpitHeadLayout,
+  COCKPIT_DATA,
   getAllCockpitTypes,
+  normalizeCockpitType,
+  getCockpitTechAdvancement,
+  COCKPIT_TYPE_FROM_CODE,
+  COCKPIT_TYPE_TO_CODE,
+  cockpitTypeFromCode,
+  cockpitTypeToCode,
+  buildHeadSystemLayout,
 } from './cockpit';
 
 export {
@@ -76,24 +79,19 @@ export {
 } from './armor';
 
 export {
-  type EngineComponent,
-  type MountedEngine,
-  createEngine,
-  createMountedEngine,
-  isFusionEngine,
-  getWeightFreeHeatSinks,
-  getIntegralHeatSinkCapacity,
-  getEngineCTSlots,
-  getEngineSideTorsoSlots,
+  MountedEngine,
+  type MountedEngineInit,
+  type EnginePowerSource,
+  type EngineMovementHeat,
+  type EngineTypeDescriptor,
+  ENGINE_DATA,
+  ENGINE_TYPE_FROM_CODE,
+  ENGINE_TYPE_TO_CODE,
+  engineTypeFromCode,
+  engineTypeToCode,
+  getEngineTechAdvancement,
   getEngineBaseWeight,
-  getEngineIntegralCapacity,
-  getEngineIntegratedHeatSinks,
-  getExternalHeatSinks,
   buildCTSystemLayout,
   buildSideTorsoSystemLayout,
   ENGINE_WEIGHT_TABLE,
 } from './engine';
-
-// Also re-export the head layout builder (lives in cockpit but uses
-// cockpit component data, so it's a convenience to have here)
-export { buildHeadSystemLayout } from './cockpit';

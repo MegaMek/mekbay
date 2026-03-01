@@ -31,8 +31,6 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentTechBase } from "./entity";
-
 /**
  * Engine type descriptor data — single source of truth.
  *
@@ -42,6 +40,10 @@ import { EquipmentTechBase } from "./entity";
  *
  * Data sourced from MegaMek Engine.java and BattleTech TM / TO rules.
  */
+
+/** Tech base as stored in entity files */
+export type EntityTechBase = 'IS' | 'Clan';
+export type EquipmentTechBase = EntityTechBase | 'All';
 
 /** Tech rating:  A (primitive) → F (cutting-edge). */
 export type TechRating = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
@@ -83,9 +85,9 @@ export interface ApproxDate {
 
 /**
  * A technology date value.
- * - `number` — exact year
- * - `ApproxDate` — approximate year (displayed as ~year, range checks use year − APPROXIMATE_MARGIN)
- * - `undefined` — not applicable / never
+ * - `number`: exact year
+ * - `ApproxDate`: approximate year (displayed as ~year, range checks use year - APPROXIMATE_MARGIN)
+ * - `undefined`: not applicable / never
  */
 export type TechDate = number | ApproxDate | undefined;
 
@@ -136,20 +138,106 @@ export function formatTechDate(date: TechDate): string | undefined {
   return `~${date.year}`;
 }
 
+/**
+ * Parse a wire-format date string into a `TechDate`.
+ * - `"2439"` => `2439` (exact)
+ * - `"~2430"` => `{ year: 2430, approximate: true }` (approximate)
+ * - `undefined` / empty => `undefined` (DATE_NONE)
+ */
+export function parseTechDate(value: string | undefined): TechDate {
+  if (!value) return undefined;
+  if (value.startsWith('~')) return approx(parseInt(value.slice(1), 10));
+  return parseInt(value, 10);
+}
+
 // ============================================================================
 // Tech advancement types
 // ============================================================================
 
 /**
- * Technology advancement dates for one engine variant.
+ * Technology advancement dates for one tech variant.
  * Each date is a `TechDate`: a plain year, `approx(year)`, or `undefined`.
  */
 export interface TechDates {
-  readonly prototype: TechDate;
-  readonly production: TechDate;
-  readonly common: TechDate;
+  readonly prototype?: TechDate;
+  readonly production?: TechDate;
+  readonly common?: TechDate;
   readonly extinct?: TechDate;
   readonly reintroduced?: TechDate;
+}
+
+/**
+ * Per-tech-base dates for components that have different IS and Clan
+ * availability timelines (e.g. Small Cockpit: IS from 3061, Clan from 3081).
+ *
+ * Matches MegaMek's `TechAdvancement` which stores `isAdvancement` and
+ * `clanAdvancement` separately.
+ */
+export interface SplitTechDates {
+  readonly is?: TechDates;
+  readonly clan?: TechDates;
+}
+
+/** Type guard: is the dates value a per-tech-base split? */
+export function isSplitTechDates(dates: TechDates | SplitTechDates): dates is SplitTechDates {
+  return 'is' in dates;
+}
+
+/**
+ * Resolve `TechDates` for a specific tech base.
+ *
+ * If the dates are per-tech-base (`SplitTechDates`), returns the dates
+ * for the requested tech base.  Otherwise returns the unified `TechDates`.
+ */
+export function resolveTechDates(
+  dates: TechDates | SplitTechDates,
+  techBase: EquipmentTechBase = 'IS',
+): TechDates | undefined {
+  if (isSplitTechDates(dates)) {
+    return techBase === 'Clan' ? dates['clan'] : dates['is'];
+  }
+  return dates;
+}
+
+/**
+ * Check whether a technology is available (at least prototype level)
+ * for a given tech base at a given year.
+ *
+ * Returns `true` if the resolved prototype or production date for
+ * `techBase` is defined and ≤ `year`.
+ */
+export function isTechAvailableForBase(
+  dates: TechDates | SplitTechDates,
+  techBase: EquipmentTechBase,
+  year: number,
+): boolean {
+  const resolved = resolveTechDates(dates, techBase);
+  if (!resolved) {
+    throw new Error(`Invalid tech dates: ${JSON.stringify(dates)}`);
+  }
+
+  // Must have at least prototype, production, or common date ≤ year to be available
+  const protoYear = effectiveTechDateYear(resolved.prototype);
+  const prodYear = effectiveTechDateYear(resolved.production);
+  const commonYear = effectiveTechDateYear(resolved.common);
+  const introduced = (protoYear != null && year >= protoYear)
+                  || (prodYear != null && year >= prodYear)
+                  || (commonYear != null && year >= commonYear);
+  if (!introduced) return false;
+
+  // Check extinction: if extinct date exists and year >= extinct, tech is gone
+  // (approximate extinction dates are shifted forward by APPROXIMATE_MARGIN)
+  const extinctYear = effectiveTechDateYear(resolved.extinct, true);
+  if (extinctYear != null && year >= extinctYear) {
+    // Unless reintroduced after the extinction
+    const reintroYear = effectiveTechDateYear(resolved.reintroduced);
+    if (reintroYear != null && reintroYear > extinctYear && year >= reintroYear) {
+      return true;
+    }
+    return false;
+  }
+
+  return true;
 }
 
 /** Faction codes for tech-advancement milestones. */
@@ -160,15 +248,21 @@ export interface TechFactions {
 }
 
 /**
- * Complete tech advancement for one engine variant.
+ * Complete tech advancement for one component variant.
  *
  * Availability eras (tuple indices): [Star League, Succession Wars, Clan Invasion, Dark Age].
+ *
+ * The `dates` field can be either:
+ * - `TechDates` — single set of dates (used when IS & Clan share the same timeline,
+ *   or when `techBase` is IS-only / Clan-only)
+ * - `SplitTechDates` — per-tech-base dates (used when IS & Clan have different
+ *   availability timelines, e.g. Small Cockpit)
  */
 export interface TechAdvancement {
   readonly techBase: EquipmentTechBase;
   readonly rating: TechRating;
   readonly availability: readonly [AvailabilityCode, AvailabilityCode, AvailabilityCode, AvailabilityCode];
   readonly level: ComponentTechLevel;
-  readonly dates: TechDates;
+  readonly dates: TechDates | SplitTechDates;
   readonly factions?: TechFactions;
 }

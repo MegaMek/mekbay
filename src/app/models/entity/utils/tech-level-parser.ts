@@ -53,16 +53,16 @@ export interface ParsedTechLevel {
  * Parse a BLK tech level string into structured data.
  *
  * Examples:
- * - "IS Level 1"            → { techBase: 'Inner Sphere', rulesLevel: 1 }
- * - "IS Level 2"            → { techBase: 'Inner Sphere', rulesLevel: 2 }
+ * - "IS Level 1"            → { techBase: 'IS', rulesLevel: 1 }
+ * - "IS Level 2"            → { techBase: 'IS', rulesLevel: 2 }
  * - "Clan Level 3"          → { techBase: 'Clan', rulesLevel: 3 }
- * - "Mixed (IS Chassis)"    → { techBase: 'Inner Sphere', mixedTech: true, rulesLevel: 3 }
+ * - "Mixed (IS Chassis)"    → { techBase: 'IS', mixedTech: true, rulesLevel: 3 }
  * - "Mixed (Clan Chassis)"  → { techBase: 'Clan', mixedTech: true, rulesLevel: 3 }
- * - "IS Level 2 Advanced"   → { techBase: 'Inner Sphere', rulesLevel: 3 }
+ * - "IS Level 2 Advanced"   → { techBase: 'IS', rulesLevel: 3 }
  */
 export function parseTechLevel(raw: string): ParsedTechLevel {
   const result: ParsedTechLevel = {
-    techBase: 'Inner Sphere',
+    techBase: 'IS',
     rulesLevel: 2,
     mixedTech: false,
     raw: raw.trim(),
@@ -78,7 +78,7 @@ export function parseTechLevel(raw: string): ParsedTechLevel {
     if (str.includes('Clan Chassis') || str.includes('Clan chassis')) {
       result.techBase = 'Clan';
     } else {
-      result.techBase = 'Inner Sphere';
+      result.techBase = 'IS';
     }
 
     // Default mixed to rules level 3 (Advanced)
