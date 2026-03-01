@@ -56,8 +56,8 @@ export interface ParsedTechLevel {
  * - "IS Level 1"            → { techBase: 'Inner Sphere', rulesLevel: 1 }
  * - "IS Level 2"            → { techBase: 'Inner Sphere', rulesLevel: 2 }
  * - "Clan Level 3"          → { techBase: 'Clan', rulesLevel: 3 }
- * - "Mixed (IS Chassis)"    → { techBase: 'Mixed', mixedTech: true, rulesLevel: 3 }
- * - "Mixed (Clan Chassis)"  → { techBase: 'Mixed', mixedTech: true, rulesLevel: 3 }
+ * - "Mixed (IS Chassis)"    → { techBase: 'Inner Sphere', mixedTech: true, rulesLevel: 3 }
+ * - "Mixed (Clan Chassis)"  → { techBase: 'Clan', mixedTech: true, rulesLevel: 3 }
  * - "IS Level 2 Advanced"   → { techBase: 'Inner Sphere', rulesLevel: 3 }
  */
 export function parseTechLevel(raw: string): ParsedTechLevel {
@@ -73,10 +73,12 @@ export function parseTechLevel(raw: string): ParsedTechLevel {
   // Mixed tech
   if (str.toLowerCase().startsWith('mixed')) {
     result.mixedTech = true;
-    result.techBase = 'Mixed';
 
+    // Determine the chassis tech base (IS or Clan)
     if (str.includes('Clan Chassis') || str.includes('Clan chassis')) {
-      result.techBase = 'Mixed';
+      result.techBase = 'Clan';
+    } else {
+      result.techBase = 'Inner Sphere';
     }
 
     // Default mixed to rules level 3 (Advanced)

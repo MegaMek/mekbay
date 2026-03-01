@@ -54,7 +54,7 @@ import {
   ARMOR_TYPE_TO_CODE,
   TECH_RATING_TO_NUMBER,
   compoundTechLevel,
-  EntityTechBase,
+  EquipmentTechBase,
 } from '../types';
 
 // ============================================================================
@@ -94,7 +94,7 @@ export interface MountedArmor {
   readonly type: ArmorType;
 
   /** Armor-specific tech base (may differ from entity tech base in mixed-tech) */
-  readonly techBase: EntityTechBase;
+  readonly techBase: EquipmentTechBase;
 
   /** Resolved ArmorEquipment from the equipment DB, or null for PATCHWORK / unknown */
   readonly armor: ArmorEquipment | null;

@@ -343,7 +343,6 @@ export function getBlkTechBase(bb: BuildingBlock): EntityTechBase {
   if (bb.exists('type')) {
     const typeStr = bb.getFirstString('type').toLowerCase();
     if (typeStr.includes('clan')) return 'Clan';
-    if (typeStr.includes('mixed')) return 'Mixed';
   }
   return 'Inner Sphere';
 }
@@ -355,12 +354,12 @@ export function getBlkTechBase(bb: BuildingBlock): EntityTechBase {
  * from the chassis tech base). This is essential for mixed-tech units where
  * the engine tech base differs from the chassis.
  */
-export function getBlkEngineIsClan(bb: BuildingBlock): boolean {
+export function getBlkEngineIsClan(bb: BuildingBlock): EntityTechBase {
   if (bb.exists('clan_engine')) {
     const val = bb.getFirstString('clan_engine');
-    return val.toLowerCase() === 'true' || val === '1';
+    return val.toLowerCase() === 'true' || val === '1' ? 'Clan' : 'Inner Sphere';
   }
-  return getBlkTechBase(bb) === 'Clan';
+  return getBlkTechBase(bb);
 }
 
 // ============================================================================
@@ -439,9 +438,9 @@ export function parseBlkEngine(
   const rating = entity.walkMP() * entity.tonnage();
 
   // ── Clan flag (respects clan_engine override for mixed-tech) ──
-  const isClan = getBlkEngineIsClan(bb);
+  const engineTechBase = getBlkEngineIsClan(bb);
 
-  const engine = createEngine(engineType, rating, isClan, isSuperHeavy);
+  const engine = createEngine(engineType, rating, engineTechBase, isSuperHeavy);
 
   // ── Heat sinks ──
   let heatSinkType: HeatSinkType = 'Single';
@@ -499,8 +498,7 @@ export function parseBlkArmor(
   let techBase: EntityTechBase = 'Inner Sphere';
   if (bb.exists('armor_tech')) {
     const code = bb.getFirstInt('armor_tech');
-    if (code === 1) techBase = 'Clan';
-    else if (code === 2) techBase = 'Mixed';
+    if (code === 1 || code === 2) techBase = 'Clan';
   }
 
   // ── Patchwork per-location data ──

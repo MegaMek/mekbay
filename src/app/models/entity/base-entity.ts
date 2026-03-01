@@ -140,7 +140,7 @@ export abstract class BaseEntity {
 
   // ── Engine ──
   mountedEngine = signal<MountedEngine>(
-    createMountedEngine(createEngine('Fusion', 0, false)),
+    createMountedEngine(createEngine('Fusion', 0, 'Inner Sphere')),
   );
 
   // ── Armor ──
@@ -199,12 +199,14 @@ export abstract class BaseEntity {
   });
 
   mixedTech = computed<boolean>(() => {
+    const chassisTechBase = this.techBase();
+    const engineTechBase = this.mountedEngine().engine.techBase;
+    if (chassisTechBase != engineTechBase) return true;
     // check tech of all entity components; if any are mixed, the whole entity is mixed
-    if (this.techBase() === 'Mixed') return true;
-    let currentTech: EntityTechBase = this.mountedEngine().engine.isClan ? 'Clan' : 'Inner Sphere';
     for (const m of this.equipment()) {
       if (m.equipment?.techBase === 'All') continue; // "All" tech is compatible with everything
-      if (m.equipment?.techBase == 'Clan' && currentTech !== 'Inner Sphere') {
+      if ((m.equipment?.techBase === 'Clan' && chassisTechBase === 'Inner Sphere') ||
+          (m.equipment?.techBase === 'IS' && chassisTechBase === 'Clan')) {
         return true; // mismatch between components => mixed tech
       }
     }

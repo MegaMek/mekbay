@@ -263,8 +263,8 @@ export function writeEngine(
   // insensitive), so the writer must use the same heuristic as its default.
   const typeStr = (entity.techLevel() ?? '').toLowerCase();
   const impliedClan = typeStr.includes('clan');
-  if (engine.isClan !== impliedClan) {
-    w.addBlock('clan_engine', engine.isClan ? 'true' : 'false');
+  if (engine.techBase === 'Clan' !== impliedClan) {
+    w.addBlock('clan_engine', engine.techBase === 'Clan' ? 'true' : 'false');
   }
 }
 

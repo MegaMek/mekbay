@@ -178,9 +178,6 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
 
   entity.techBase.set(header.techBase);
   entity.techLevel.set(header.techBaseRaw);
-  if (header.techBaseRaw.toLowerCase().includes('mixed')) {
-    entity.techBase.set('Mixed');
-  }
   if (header.clanName) entity.clanName.set(header.clanName);
 
   // ── Physical properties ──
@@ -190,9 +187,9 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   {
     const engineInfo = header.engine
       ? parseMtfEngine(header.engine)
-      : { rating: 0, type: 'Fusion' as const, clanTech: false };
+      : { rating: 0, type: 'Fusion' as const, techBase: 'Inner Sphere' as const };
     const isSuperHeavy = header.mass > 100;
-    const engine = createEngine(engineInfo.type, engineInfo.rating, engineInfo.clanTech, isSuperHeavy);
+    const engine = createEngine(engineInfo.type, engineInfo.rating, engineInfo.techBase, isSuperHeavy);
 
     const hsInfo = header.heatSinks
       ? parseHeatSinkLine(header.heatSinks)
@@ -546,7 +543,6 @@ function parseHeader(lines: string[]): MtfHeader {
       case 'techbase':
         h.techBaseRaw = value;
         if (value.toLowerCase().includes('clan'))       h.techBase = 'Clan';
-        else if (value.toLowerCase().includes('mixed')) h.techBase = 'Mixed';
         else                                            h.techBase = 'Inner Sphere';
         break;
       case 'era':                     h.era = parseInt(value, 10) || 3025; break;

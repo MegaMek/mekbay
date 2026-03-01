@@ -50,7 +50,7 @@
  * These are NOT equipment from equipment2.json.
  */
 
-import type { EngineType, HeatSinkType } from '../types';
+import type { EngineType, EntityTechBase, HeatSinkType } from '../types';
 import { MEK_SLOTS_PER_LOCATION } from '../types';
 import { type GyroType, getGyro, normalizeGyroType } from './gyro';
 
@@ -61,7 +61,7 @@ import { type GyroType, getGyro, normalizeGyroType } from './gyro';
 export interface EngineComponent {
   readonly type: EngineType;
   readonly rating: number;
-  readonly isClan: boolean;
+  readonly techBase: EntityTechBase;
   readonly isLarge: boolean;
   readonly isSuperHeavy: boolean;
 }
@@ -72,13 +72,13 @@ export interface EngineComponent {
 export function createEngine(
   type: EngineType,
   rating: number,
-  isClan: boolean,
+  techBase: EntityTechBase,
   isSuperHeavy = false,
 ): EngineComponent {
   return {
     type,
     rating,
-    isClan,
+    techBase,
     isLarge: rating > 400,
     isSuperHeavy,
   };
@@ -188,16 +188,16 @@ export function getEngineCTSlots(engine: EngineComponent, gyroType: GyroType | s
  * Returns an array of 0-based slot indices in each side torso.
  */
 export function getEngineSideTorsoSlots(engine: EngineComponent): number[] {
-  const { type, isClan, isSuperHeavy } = engine;
+  const { type, techBase, isSuperHeavy } = engine;
 
-  if (type === 'Light' || (type === 'XL' && isClan)) {
+  if (type === 'Light' || (type === 'XL' && techBase === 'Clan')) {
     return isSuperHeavy ? [0] : [0, 1];
   }
   if (type === 'XL') {
     // IS XL
     return isSuperHeavy ? [0, 1] : [0, 1, 2];
   }
-  if (type === 'XXL' && isClan) {
+  if (type === 'XXL' && techBase === 'Clan' /* Clan XXL */) {
     return isSuperHeavy ? [0, 1] : [0, 1, 2, 3];
   }
   if (type === 'XXL') {

@@ -35,6 +35,7 @@ import { BattleArmorEntity } from '../entities/infantry/battle-armor-entity';
 import {
   ArmorType,
   EntityTechBase,
+  EquipmentTechBase,
   LocationArmor,
   armorTypeFromCode,
   locationArmor,
@@ -86,13 +87,11 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
   // ── Armor ──
   {
     const type = bb.exists('armor_type') ? armorTypeFromCode(bb.getFirstInt('armor_type')) : 'STANDARD' as ArmorType;
-    let techBase: EntityTechBase = 'Inner Sphere';
+    let techBase: EquipmentTechBase = 'Inner Sphere';
     let rawTechCode = 0;
     if (bb.exists('armor_tech')) {
       rawTechCode = bb.getFirstInt('armor_tech');
-      // BA uses TechConstants ranges for tech base
       if (rawTechCode >= 5 && rawTechCode <= 8) techBase = 'Clan';
-      else if (rawTechCode >= 9) techBase = 'Mixed';
     }
     const armor = resolveArmorEquipment(type, techBase === 'Clan', ctx.equipmentDb);
     const existing = entity.mountedArmor();

@@ -47,7 +47,7 @@ export {
   engineTypeToCode,
 } from '../types';
 
-import type { EngineType } from '../types';
+import type { EngineType, EntityTechBase } from '../types';
 
 /**
  * Parse an engine type from an MTF string.
@@ -64,21 +64,21 @@ import type { EngineType } from '../types';
 export interface MtfEngineInfo {
   rating: number;
   type: EngineType;
-  clanTech: boolean;
+  techBase: EntityTechBase;
 }
 
 export function parseMtfEngine(mtfEngine: string): MtfEngineInfo {
   const result: MtfEngineInfo = {
     rating: 0,
     type: 'Fusion',
-    clanTech: false,
+    techBase: 'Inner Sphere',
   };
 
   const trimmed = mtfEngine.trim();
 
   // Check for (Clan) suffix
   if (trimmed.includes('(Clan)')) {
-    result.clanTech = true;
+    result.techBase = 'Clan';
   }
 
   // Extract rating (first number)

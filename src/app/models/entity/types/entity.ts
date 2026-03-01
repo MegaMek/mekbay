@@ -59,4 +59,5 @@ export type EntityType =
   | 'HandheldWeapon';
 
 /** Tech base as stored in entity files */
-export type EntityTechBase = 'Inner Sphere' | 'Clan' | 'Mixed';
+export type EntityTechBase = 'Inner Sphere' | 'Clan';
+export type EquipmentTechBase = EntityTechBase | 'All';

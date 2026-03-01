@@ -40,7 +40,7 @@ import { LamEntity } from '../entities/mek/lam-entity';
 import {
   CriticalSlotView,
   EntityMountedEquipment,
-  EntityTechBase,
+  EquipmentTechBase,
   MEK_SLOTS_PER_LOCATION,
 
 } from '../types';
@@ -393,17 +393,14 @@ function getConfigString(entity: MekEntity): string {
 
 function formatTechBase(entity: MekEntity): string {
   const tb = entity.techBase();
-  if (tb === 'Mixed') {
-    // Reconstruct the full mixed chassis string from the tech level
-    const tl = entity.techLevel();
-    if (tl.includes('Clan Chassis')) return 'Mixed (Clan Chassis)';
-    return 'Mixed (IS Chassis)';
+  if (entity.mixedTech()) {
+    return tb === 'Clan' ? 'Mixed (Clan Chassis)' : 'Mixed (IS Chassis)';
   }
   return tb === 'Clan' ? 'Clan' : 'Inner Sphere';
 }
 
-function formatTechBaseLabel(tb: EntityTechBase): string {
-  return tb === 'Clan' ? 'Clan' : tb === 'Mixed' ? 'Mixed' : 'Inner Sphere';
+function formatTechBaseLabel(tb: EquipmentTechBase): string {
+  return tb === 'Clan' ? 'Clan' : 'Inner Sphere';
 }
 
 /**
@@ -423,7 +420,7 @@ function formatEngineLine(entity: MekEntity): string {
   const isMixed = entity.mixedTech();
   const large = rating > 400 ? 'Large ' : '';
 
-  if (engine.isClan) {
+  if (engine.techBase === 'Clan') {
     return `${rating} ${large}${typeName} (Clan) Engine`;
   } else if (isMixed) {
     return `${rating} ${large}${typeName} Engine(IS)`;
