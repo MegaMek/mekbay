@@ -38,6 +38,7 @@
  * resolves to this index.ts.  Each concern is in its own file for
  * maintainability.
  */
+export * from './tech';
 export * from './entity';
 export * from './engine';
 export * from './heat-sink';
