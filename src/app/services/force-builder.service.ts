@@ -1464,67 +1464,11 @@ export class ForceBuilderService {
      * Used during URL-based initialization (no unsaved-changes prompt).
      */
     private async loadOperationFromUrl(operationId: string): Promise<boolean> {
-        const entry = await this.dataService.getOperation(operationId);
-        if (!entry) return false;
-
-        let loadedAny = false;
-        const failedForces: string[] = [];
-
-        for (const forceInfo of entry.forces) {
-            const force = await this.dataService.getForce(forceInfo.instanceId);
-            if (force) {
-                this.addLoadedForce(force, forceInfo.alignment, { activate: !loadedAny });
-                loadedAny = true;
-            } else {
-                failedForces.push(forceInfo.name || forceInfo.instanceId);
-            }
+        const loaded = await this.loadOperation(operationId, { skipPrompts: true });
+        if (loaded) {
+            this.restoreSelectionFromUrl(this.urlStateService.initialState.params);
         }
-
-        if (failedForces.length > 0) {
-            this.toastService.showToast(
-                `Could not find force(s): ${failedForces.join(', ')}`,
-                'error'
-            );
-        }
-
-        if (!loadedAny) {
-            this.toastService.showToast('No forces from this operation could be loaded.', 'error');
-            return false;
-        }
-
-        // Offer to switch sides when:
-        // a) we don't own the operation
-        // b) we own at least one force
-        // c) ALL our owned forces are on the enemy side
-        if (!entry.owned) {
-            const slots = this.loadedForces();
-            const ownedSlots = slots.filter(s => s.force.owned());
-            if (ownedSlots.length > 0 && ownedSlots.every(s => s.alignment === 'enemy')) {
-                const switchSides = await this.dialogsService.requestConfirmation(
-                    'Your forces are currently assigned to the opposing side in this operation. Would you like to switch sides?',
-                    'Switch Sides?',
-                    'info'
-                );
-                if (switchSides) {
-                    this.loadedForces.update(slots =>
-                        slots.map(s => ({
-                            ...s,
-                            alignment: s.alignment === 'friendly' ? 'enemy' as ForceAlignment : 'friendly' as ForceAlignment
-                        }))
-                    );
-                }
-            }
-        }
-
-        // Load all units across all loaded forces
-        const allForces = this.loadedForces().map(s => s.force);
-        this.loadAllUnitsWithOverlay(allForces);
-
-        // Restore selected unit from URL
-        this.restoreSelectionFromUrl(this.urlStateService.initialState.params);
-
-        this.currentOperation.set(entry);
-        return true;
+        return loaded;
     }
 
     /**
@@ -1651,7 +1595,7 @@ export class ForceBuilderService {
 
         // Handle operation loading (multi-force composition)
         if (mode === 'operation' && result instanceof LoadOperationEntry) {
-            await this.loadOperation(result);
+            await this.loadOperation(result.operationId);
             return;
         }
 
@@ -2259,19 +2203,29 @@ export class ForceBuilderService {
      * from the operation with its saved alignment.
      * Falls back to local storage if cloud doesn't have a force.
      */
-    async loadOperation(entry: LoadOperationEntry): Promise<boolean> {
-        // Reloading the same operation: skip prompts, just reload
-        const currentOp = this.currentOperation();
-        const isSameOp = currentOp && currentOp.operationId === entry.operationId;
-
-        if (!isSameOp) {
-            // Prompt to save operation changes before switching
-            const opProceed = await this.promptSaveOperationIfNeeded();
-            if (!opProceed) return false;
-
-            const shouldContinue = await this.checkAllForcesPromptSaveForceIfNeeded();
-            if (!shouldContinue) return false;
+    /**
+     * Loads an operation by ID: fetches it (syncing to cloud if needed),
+     * loads all its forces, offers side-switching for non-owned operations,
+     * and sets it as the current operation.
+     */
+    async loadOperation(
+        operationId: string,
+        options: { skipPrompts?: boolean } = {}
+    ): Promise<boolean> {
+        if (!options.skipPrompts) {
+            const currentOp = this.currentOperation();
+            const isSameOp = currentOp && currentOp.operationId === operationId;
+            if (!isSameOp) {
+                const opProceed = await this.promptSaveOperationIfNeeded();
+                if (!opProceed) return false;
+                const shouldContinue = await this.checkAllForcesPromptSaveForceIfNeeded();
+                if (!shouldContinue) return false;
+            }
         }
+
+        // Fetch operation (also syncs local-only operations/forces to cloud)
+        const entry = await this.dataService.getOperation(operationId);
+        if (!entry) return false;
 
         this.urlStateInitialized.set(false);
         try {
@@ -2307,11 +2261,34 @@ export class ForceBuilderService {
                 return false;
             }
 
+            // Offer to switch sides when:
+            // a) we don't own the operation
+            // b) we own at least one force
+            // c) ALL our owned forces are on the enemy side
+            if (!entry.owned) {
+                const slots = this.loadedForces();
+                const ownedSlots = slots.filter(s => s.force.owned());
+                if (ownedSlots.length > 0 && ownedSlots.every(s => s.alignment === 'enemy')) {
+                    const switchSides = await this.dialogsService.requestConfirmation(
+                        'Your forces are currently assigned to the opposing side in this operation. Would you like to switch sides?',
+                        'Switch Sides?',
+                        'info'
+                    );
+                    if (switchSides) {
+                        this.loadedForces.update(slots =>
+                            slots.map(s => ({
+                                ...s,
+                                alignment: s.alignment === 'friendly' ? 'enemy' as ForceAlignment : 'friendly' as ForceAlignment
+                            }))
+                        );
+                    }
+                }
+            }
+
             // Load all units across all loaded forces
             const allForces = this.loadedForces().map(s => s.force);
             this.loadAllUnitsWithOverlay(allForces);
 
-            // Track the loaded operation
             this.currentOperation.set(entry);
             return true;
         } finally {

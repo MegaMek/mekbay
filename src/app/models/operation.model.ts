@@ -107,6 +107,10 @@ export class LoadOperationEntry {
     cloud: boolean;
     local: boolean;
     owned: boolean;
+    /** Timestamp from local storage (0 if not found locally) */
+    localTimestamp: number;
+    /** Timestamp from cloud (0 if cloud wasn't reached or entry not found) */
+    cloudTimestamp: number;
 
     constructor(data: Partial<LoadOperationEntry>) {
         this.operationId = data.operationId ?? '';
@@ -117,6 +121,8 @@ export class LoadOperationEntry {
         this.cloud = data.cloud ?? false;
         this.local = data.local ?? false;
         this.owned = data.owned ?? true;
+        this.localTimestamp = data.localTimestamp ?? 0;
+        this.cloudTimestamp = data.cloudTimestamp ?? 0;
     }
 
     /** Force infos grouped by alignment */

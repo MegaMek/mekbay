@@ -972,6 +972,12 @@ export class DataService {
             result = cloud || local || null;
         }
 
+        // If we reached cloud but the force only exists locally, push it up
+        if (triedCloud && local && !cloud) {
+            this.logger.info(`Force "${local.name}" exists locally but not in cloud: pushing to cloud.`);
+            this.saveForceCloud(local);
+        }
+
         // Fix any duplicate group/unit IDs that may have been persisted.
         if (result && result.deduplicateIds()) {
             this.logger.warn(`Force "${result.name}" had duplicate IDs — fixed and re-saving.`);
@@ -1115,23 +1121,31 @@ export class DataService {
 
         const localEntry = await localPromise;
 
+        // Pick the best result
+        let result: LoadOperationEntry | null;
         if (localEntry && cloudEntry) {
-            // Keep the newer one, but always use cloud's owned flag
-            const result = cloudEntry.timestamp > localEntry.timestamp ? cloudEntry : localEntry;
+            result = cloudEntry.timestamp > localEntry.timestamp ? cloudEntry : localEntry;
             result.owned = cloudEntry.owned;
-            return result;
         } else if (!triedCloud && localEntry) {
-            return localEntry;
-        } else if (triedCloud && localEntry && !cloudEntry) {
-            // Local-only operation: push to cloud so others can access it via shared links
-            const serialized = await this.dbService.getOperation(operationId);
-            if (serialized) {
-                this.saveOperationCloud(serialized);
-            }
-            return localEntry;
+            result = localEntry;
         } else {
-            return cloudEntry || localEntry || null;
+            result = cloudEntry || localEntry || null;
         }
+
+        if (result) {
+            result.localTimestamp = localEntry?.timestamp ?? 0;
+            result.cloudTimestamp = triedCloud ? (cloudEntry?.timestamp ?? 0) : 0;
+
+            // Push to cloud when we reached it and local is newer (or cloud is missing)
+            if (triedCloud && result.localTimestamp > result.cloudTimestamp) {
+                const serialized = await this.dbService.getOperation(operationId);
+                if (serialized) {
+                    this.saveOperationCloud(serialized);
+                }
+            }
+        }
+
+        return result;
     }
 
     /**
