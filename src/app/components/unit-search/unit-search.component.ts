@@ -1441,11 +1441,7 @@ export class UnitSearchComponent {
             if (this.forceBuilderService.hasForces()) {
                 this.closeAllPanels();
                 this.blurInput();
-            } else {
-                this.focusInput();
             }
-        } else {
-            this.focusInput();
         }
         this.expandedView.set(!isExpanded);
     }
@@ -1686,9 +1682,5 @@ export class UnitSearchComponent {
             }
         }
         this.filtersService.applySerializedSearchFilter(fav);
-        // Focus search input after applying
-        afterNextRender(() => {
-            this.focusInput();
-        }, { injector: this.injector });
     }
 }
