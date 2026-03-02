@@ -123,14 +123,16 @@ interface SidebarMemberVm {
     networkVm?: SidebarNetworkVm;
     /** Base BV (pilot adjusted) */
     baseBv?: number;
+    /** Tag BV for this unit */
+    tagBv?: number;
     /** C3 BV for this unit */
     c3Bv?: number;
     /** External Stores BV for this unit */
     externalStoresBv?: number;
     /** Pilot Skills BV for this unit */
     pilotBv?: number;
-    /** Tag BV for this unit */
-    tagBv?: number;
+    /** Adjusted BV for this unit */
+    adjustedBv?: number;
 }
 
 interface Vec2 {
