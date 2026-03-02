@@ -204,7 +204,7 @@ export class ASForceUnit extends ForceUnit {
      */
     setPendingHeat(delta: number): void {
         this.state.pendingHeat.set(delta);
-        this.force.emitChanged();
+        this.setModified();
     }
 
     /**
@@ -212,7 +212,7 @@ export class ASForceUnit extends ForceUnit {
      */
     setPendingDamage(totalDamage: number): void {
         this.state.setPendingDamage(totalDamage);
-        this.force.emitChanged();
+        this.setModified();
     }
 
     /**
@@ -225,7 +225,7 @@ export class ASForceUnit extends ForceUnit {
         // Clamp to valid range: can't heal more than committed, can't damage beyond max
         const clamped = Math.max(-committed, Math.min(maxArmor - committed, damage));
         this.state.pendingArmor.set(clamped);
-        this.force.emitChanged();
+        this.setModified();
     }
 
     /**
@@ -238,7 +238,7 @@ export class ASForceUnit extends ForceUnit {
         // Clamp to valid range: can't heal more than committed, can't damage beyond max
         const clamped = Math.max(-committed, Math.min(maxInternal - committed, damage));
         this.state.pendingInternal.set(clamped);
-        this.force.emitChanged();
+        this.setModified();
     }
 
     /**
@@ -250,7 +250,7 @@ export class ASForceUnit extends ForceUnit {
         // Update destroyed signal based on computed destruction state
         this.state.destroyed.set(this.isDestroyed());
         
-        this.force.emitChanged();
+        this.setModified();
     }
 
     /**
@@ -258,7 +258,7 @@ export class ASForceUnit extends ForceUnit {
      */
     discardPending(): void {
         this.state.discardPending();
-        this.force.emitChanged();
+        this.setModified();
     }
 
     repairAll(): void {
@@ -287,7 +287,7 @@ export class ASForceUnit extends ForceUnit {
      */
     setPendingCritHits(key: string, delta: number): void {
         this.state.setPendingCritHits(key, delta);
-        this.force.emitChanged();
+        this.setModified();
     }
 
     /**
@@ -296,7 +296,7 @@ export class ASForceUnit extends ForceUnit {
      */
     setPendingConsumedDelta(abilityKey: string, delta: number): void {
         this.state.setPendingConsumedDelta(abilityKey, delta);
-        this.force.emitChanged();
+        this.setModified();
     }
 
     /**
@@ -304,7 +304,7 @@ export class ASForceUnit extends ForceUnit {
      */
     setPendingExhaust(abilityKey: string): void {
         this.state.setPendingExhaust(abilityKey);
-        this.force.emitChanged();
+        this.setModified();
     }
 
     /**
@@ -312,7 +312,7 @@ export class ASForceUnit extends ForceUnit {
      */
     setPendingRestore(abilityKey: string): void {
         this.state.setPendingRestore(abilityKey);
-        this.force.emitChanged();
+        this.setModified();
     }
 
     setPilotName(name: string | undefined): void {
@@ -339,6 +339,9 @@ export class ASForceUnit extends ForceUnit {
     });
 
     public override update(data: ASSerializedUnit) {
+        if (data.updatedTs !== undefined) {
+            this.updatedTs = data.updatedTs;
+        }
         // Update pilot name/alias
         if (data.alias !== this.alias()) {
             this._pilotName.set(data.alias);
@@ -392,11 +395,12 @@ export class ASForceUnit extends ForceUnit {
                   ] 
                 : undefined,
         };
-        const data = {
+        const data: ASSerializedUnit = {
             id: this.id,
             state: stateObj,
             unit: this.getUnit().name, // Serialize only the name,
             alias: this.alias(),
+            updatedTs: this.updatedTs || undefined,
             skill: this._pilotSkill(),
             abilities: this._pilotAbilities()
         };
@@ -472,6 +476,9 @@ export class ASForceUnit extends ForceUnit {
         }
         if (sanitizedData.abilities !== undefined) {
             fu._pilotAbilities.set(sanitizedData.abilities);
+        }
+        if (sanitizedData.updatedTs !== undefined) {
+            fu.updatedTs = sanitizedData.updatedTs;
         }
         fu.deserializeState(sanitizedData.state);
         return fu;

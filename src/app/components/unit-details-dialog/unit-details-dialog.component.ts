@@ -378,7 +378,7 @@ export class UnitDetailsDialogComponent {
     }
 
 
-    async onAdd() {
+    async onAdd(event?: MouseEvent) {
         if (this.data.selectMode) return;
         const selectedUnit = (this.unit instanceof ForceUnit) ? this.unit.getUnit() : this.unit;
         let gunnery;
@@ -402,7 +402,9 @@ export class UnitDetailsDialogComponent {
             this.toastService.showToast(`${selectedUnit.chassis} ${selectedUnit.model} added to the force.`, 'success');
             this.add.emit(selectedUnit);
         }
-        this.onClose();
+        if (!event?.ctrlKey) {
+            this.onClose();
+        }
     }
 
     async onChange() {

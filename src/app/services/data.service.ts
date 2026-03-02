@@ -1121,6 +1121,13 @@ export class DataService {
             return result;
         } else if (!triedCloud && localEntry) {
             return localEntry;
+        } else if (triedCloud && localEntry && !cloudEntry) {
+            // Local-only operation: push to cloud so others can access it via shared links
+            const serialized = await this.dbService.getOperation(operationId);
+            if (serialized) {
+                this.saveOperationCloud(serialized);
+            }
+            return localEntry;
         } else {
             return cloudEntry || localEntry || null;
         }

@@ -661,6 +661,20 @@ hr {
     &:active {
         background-color: var(--background-highlight-bright);
     }
+    
+    &.active {
+        color: var(--bt-yellow);
+        background-image:
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+            linear-gradient(var(--bt-yellow), var(--bt-yellow));
+        background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
+    }
 
     &[disabled],
     &.disabled {

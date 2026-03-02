@@ -248,6 +248,10 @@ export class SidebarFooterComponent {
         this.forceBuilderService.requestCloneForce(force);
     }
 
+    toggleFollowLastModified() {
+        this.forceBuilderService.followLastModifiedUnit.update(v => !v);
+    }
+
     shareForce() {
         this.forceBuilderService.shareForce();
     }

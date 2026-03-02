@@ -96,7 +96,7 @@
                                 }
                             </div>
                             <div class="group-footer">
-                                <span class="group-bv">{{ slotForce.gameSystem === 'as' ? 'PV' : 'BV' }}: {{ group.totalBV() | number }}</span>
+                                <span class="group-bv"><span class="muted">{{ group.units().length }} Unit{{ group.units().length !== 1 ? 's' : '' }} · </span>{{ slotForce.gameSystem === 'as' ? 'PV' : 'BV' }}: {{ group.totalBV() | number }}</span>
                             </div>
                             @if (!isReadOnly) {
                             <button class="btn-remove group-remove" (click)="removeGroup($event, group)" title="Remove group">

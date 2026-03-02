@@ -82,6 +82,14 @@
     }
 }
 
+.follow-modified-btn {
+    opacity: 0.5;
+
+    &.active {
+        opacity: 1;
+    }
+}
+
 .alignment-filter-btn {
     transition: color 0.2s, background-color 0.2s;
 

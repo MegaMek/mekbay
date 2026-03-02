@@ -138,12 +138,6 @@ export class CBTForceUnit extends ForceUnit {
         return this._svgService;
     }
 
-    override setModified() {
-        if (this.disabledSaving) return;
-        this.state.modified.set(true);
-        this.force.emitChanged();
-    }
-
     public async load() {
         if (this.isLoaded()) return;
         if (this.loadingPromise) {
@@ -745,6 +739,9 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     public override update(data: CBTSerializedUnit) {
+        if (data.updatedTs !== undefined) {
+            this.updatedTs = data.updatedTs;
+        }
         if (data.alias !== this.alias()) {
             const pilot = this.getCrewMember(0);
             pilot?.setName(data.alias ?? '');
@@ -766,10 +763,11 @@ export class CBTForceUnit extends ForceUnit {
             c3Position: this.state.c3Position() ?? undefined,
             inventory: this.state.inventoryForSerialization()
         };
-        const data = {
+        const data: CBTSerializedUnit = {
             id: this.id,
             state: stateObj,
             alias: this.alias(),
+            updatedTs: this.updatedTs || undefined,
             unit: this.getUnit().name // Serialize only the name
         };
         return data;
@@ -808,6 +806,9 @@ export class CBTForceUnit extends ForceUnit {
         }
         const fu = new CBTForceUnit(unit, force, dataService, unitInitializer, injector);
         fu.id = data.id;
+        if (data.updatedTs !== undefined) {
+            fu.updatedTs = data.updatedTs;
+        }
         fu.deserializeState(data.state);
         return fu;
     }

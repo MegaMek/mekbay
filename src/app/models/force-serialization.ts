@@ -99,6 +99,7 @@ export interface SerializedUnit {
     model?: string;
     chassis?: string;
     alias?: string;
+    updatedTs?: number;
     state: SerializedState;
 }
 export interface ASSerializedUnit extends SerializedUnit {
@@ -368,6 +369,7 @@ export const CBT_SERIALIZED_UNIT_SCHEMA = Sanitizer.schema<CBTSerializedUnit>()
     .string('model')
     .string('chassis')
     .string('alias')
+    .number('updatedTs')
     .custom('state', (value: unknown) => {
         if (!value || typeof value !== 'object') {
             return Sanitizer.sanitize({}, CBT_SERIALIZED_STATE_SCHEMA);
@@ -513,6 +515,7 @@ export const AS_SERIALIZED_UNIT_SCHEMA = Sanitizer.schema<ASSerializedUnit>()
     .string('model')
     .string('chassis')
     .string('alias')
+    .number('updatedTs')
     .number('skill', { default: DEFAULT_GUNNERY_SKILL, min: 0, max: 8 })
     .custom('abilities', (value: unknown) => {
         if (!Array.isArray(value)) return [];

@@ -133,7 +133,7 @@
         <button class="modal-btn bt-button" (click)="onSelect()">SELECT</button>
         } @else if (!data.hideAddButton) {
         <button [disabled]="this.forceBuilderService.smartCurrentForce()?.readOnly()" class="modal-btn bt-button"
-            (click)="onAdd()">ADD</button>
+            (click)="onAdd($event)">ADD</button>
         }
         @if (isChangeMode()) {
         <button [disabled]="isChangeDisabled()" class="modal-btn bt-button"
