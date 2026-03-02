@@ -46,11 +46,12 @@ import {
   EntityQuirk,
   EntityTechBase,
   EntityWeaponQuirk,
+  FactionCode,
   HeatSinkType,
   LocationArmor,
   MekSystemType,
   MotiveType,
-  MountPlacement,
+  factionFromAbbr,
   locationArmor,
   normalizeSystemManufacturerKey,
   parseMotiveType,
@@ -266,6 +267,19 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   }
   entity.armorValues.set(armorMap);
 
+  // ── Faction ──
+  if (header.faction !== 'None') entity.faction.set(header.faction);
+
+  // ── Clan CASE opt-out ──
+  if (header.clanCaseOptOut) {
+    const optOutLocs = new Set<string>();
+    for (const loc of header.clanCaseOptOut.split(',')) {
+      const trimmed = loc.trim();
+      if (trimmed) optOutLocs.add(trimmed);
+    }
+    if (optOutLocs.size > 0) entity.clanCaseOptOutLocations.set(optOutLocs);
+  }
+
   // ── Quirks ──
   entity.quirks.set(header.quirks);
   entity.weaponQuirks.set(header.weaponQuirks);
@@ -466,6 +480,8 @@ interface MtfHeader {
   locationSlots: Map<string, string[]>;
   nocritEquipment: { name: string; location: string }[];
   weaponsList: string[];
+  faction: FactionCode;
+  clanCaseOptOut: string;
   fluff: EntityFluff;
   manualBV: number;
   generator?: string;
@@ -486,6 +502,7 @@ function parseHeader(lines: string[]): MtfHeader {
     armorType: 'Standard', armorValues: new Map(), patchworkTypes: new Map(),
     quirks: [], weaponQuirks: [],
     locationSlots: new Map(), nocritEquipment: [], weaponsList: [],
+    faction: 'None', clanCaseOptOut: '',
     fluff: {}, manualBV: 0, generator: undefined,
     clanName: '', lamType: '', motiveType: 'None' as MotiveType, rawHeatSinks: '',
   };
@@ -646,6 +663,8 @@ function parseHeader(lines: string[]): MtfHeader {
       case 'clanname': h.clanName = value; break;
       case 'lam':      h.lamType = value; break;
       case 'motive':   h.motiveType = parseMotiveType(value); break;
+      case 'faction':  h.faction = factionFromAbbr(value); break;
+      case 'clancaseoptedoutlocs': h.clanCaseOptOut = value; break;
       default: break;
     }
   }

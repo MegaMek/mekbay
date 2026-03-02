@@ -84,6 +84,13 @@ export abstract class MekEntity extends BaseEntity {
    */
   armoredSystemSlots = signal<Set<string>>(new Set());
 
+  /**
+   * Locations where Clan CASE has been explicitly opted out.
+   * Stores canonical location IDs (e.g. "LA", "RT").
+   * When auto-adding Clan CASE to explosive locations, opted-out locations are skipped.
+   */
+  clanCaseOptOutLocations = signal<Set<string>>(new Set());
+
   /** Convenience: heat sink type (delegates to mountedEngine) */
   heatSinkType = computed<HeatSinkType>(() => this.mountedEngine().heatSinkType());
   /** Base-chassis heat sinks from MTF/BLK (delegates to mountedEngine, -1 = unset) */

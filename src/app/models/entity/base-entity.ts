@@ -32,18 +32,15 @@
  */
 
 import { Signal, computed, signal } from '@angular/core';
-import { ArmorEquipment } from '../equipment.model';
 import {
   MountedEngine,
   createMountedArmor,
   MountedArmor,
-  getArmorTypeCode,
 } from './components';
 import {
   ArmorFace,
-  ArmorType,
   EngineFlag,
-  EngineType,
+  FactionCode,
   MotiveType,
   StructureType,
   EntityFluff,
@@ -121,6 +118,9 @@ export abstract class BaseEntity {
   // ── Meta ──
   source = signal<string>('');
   generator?: string; // software who created the file
+
+  /** Tech faction code (e.g. "DC", "FW", "TH"). 'None' = unset. */
+  faction = signal<FactionCode>('None');
 
   // ── Weight ──
   tonnage = signal<number>(0);

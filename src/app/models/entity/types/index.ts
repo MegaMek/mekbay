@@ -53,3 +53,4 @@ export * from './equipment';
 export * from './transport';
 export * from './common';
 export * from './validation-sets';
+export * from './faction';

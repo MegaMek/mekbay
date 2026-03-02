@@ -168,6 +168,7 @@ function writeConfig(entity: MekEntity, lines: string[]): void {
   if (entity.source()) lines.push(`source:${entity.source()}`);
   lines.push(`rules level:${entity.rulesLevel()}`);
   if (entity.role()) lines.push(`role:${entity.role()}`);
+  if (entity.faction() !== 'None') lines.push(`faction:${entity.faction()}`);
   lines.push('');
 }
 
@@ -350,6 +351,12 @@ function writeFluff(entity: MekEntity, lines: string[]): void {
   }
 
   if (entity.manualBV() > 0) lines.push(`bv:${entity.manualBV()}`);
+
+  // ── Clan CASE opt-out ──
+  const clanCaseOptOut = entity.clanCaseOptOutLocations();
+  if (clanCaseOptOut.size > 0) {
+    lines.push(`clancaseoptedoutlocs:${[...clanCaseOptOut].join(',')}`);
+  }
 }
 
 // ============================================================================
