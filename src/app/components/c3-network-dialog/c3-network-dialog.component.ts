@@ -123,8 +123,14 @@ interface SidebarMemberVm {
     networkVm?: SidebarNetworkVm;
     /** Base BV (pilot adjusted) */
     baseBv?: number;
-    /** C3 tax for this unit */
-    c3Tax?: number;
+    /** C3 BV for this unit */
+    c3Bv?: number;
+    /** External Stores BV for this unit */
+    externalStoresBv?: number;
+    /** Pilot Skills BV for this unit */
+    pilotBv?: number;
+    /** Tag BV for this unit */
+    tagBv?: number;
 }
 
 interface Vec2 {
@@ -683,9 +689,9 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const collectTaxes = (vm: { members: SidebarMemberVm[], subNetworks: { members: SidebarMemberVm[], subNetworks: any[] }[] }, seen: Set<string>): number => {
                     let sum = 0;
                     for (const m of vm.members) {
-                        if (!m.isSelfConnection && m.c3Tax !== undefined && !seen.has(m.id)) {
+                        if (!m.isSelfConnection && m.c3Bv !== undefined && !seen.has(m.id)) {
                             seen.add(m.id);
-                            sum += m.c3Tax;
+                            sum += m.c3Bv;
                         }
                     }
                     for (const sub of vm.subNetworks) {
