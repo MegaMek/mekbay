@@ -126,7 +126,7 @@
         <p>Use <code>OR</code> and <code>AND</code> keywords with parentheses for complex queries:</p>
         <div class="examples">
             <div class="example"><code class="allow-select" (click)="appendToSearch('type=BM pv>50')">type=BM pv>50</code><span class="desc">→ Meks AND pv>50 (implicit AND)</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('crab or ares')">crab or ares</code><span class="desc">→ Meks OR Ares</span></div>
+            <div class="example"><code class="allow-select" (click)="appendToSearch('crab or ares')">crab or ares</code><span class="desc">→ all units with "chassis" or "model" containing Crab OR Ares</span></div>
             <div class="example"><code class="allow-select" (click)="appendToSearch('(type=BM pv>50) OR (type=CV pv<10)')">(type=BM pv>50) OR (type=CV pv<10)</code><span class="desc">→ Meks with pv &gt; 50 OR Vehicles with pv &lt; 10</span></div>
         </div>
         <p class="note"><strong>Note:</strong> Filters at the same level are AND'd by default. Use <code>OR</code> to combine groups.</p>
