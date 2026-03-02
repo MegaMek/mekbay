@@ -260,6 +260,16 @@ interface PointRange {
 }
 
 class ClanOrg {
+    /** Flat evaluation: max allowed distance as a fraction of midPts before falling back to "Force". */
+    static readonly DISTANCE_FACTOR = 0.2;
+    /** Flat evaluation: floor for the max allowed distance (pts). */
+    static readonly MIN_DISTANCE = 2;
+
+    /** Group evaluation: max allowed distance as a fraction of total group count before falling back to "Force". */
+    static readonly GROUP_DISTANCE_FACTOR = 0.25;
+    /** Group evaluation: floor for the max allowed distance (groups). */
+    static readonly GROUP_MIN_DISTANCE = 1;
+
     static getPointRange(comp: ForceComposition): PointRange {
         // Clan Points are exact: 5 BA per Point, 25 CI per Point
         const pts = comp.BM +
@@ -365,6 +375,16 @@ function isPureInfantry(comp: ForceComposition): boolean {
 }
 
 class ISOrg {
+    /** Flat evaluation: max allowed distance as a fraction of midPts before falling back to "Force". */
+    static readonly DISTANCE_FACTOR = 0.2;
+    /** Flat evaluation: floor for the max allowed distance (pts). */
+    static readonly MIN_DISTANCE = 2;
+    
+    /** Group evaluation: max allowed distance as a fraction of total group count before falling back to "Force". */
+    static readonly GROUP_DISTANCE_FACTOR = 0.25;
+    /** Group evaluation: floor for the max allowed distance (groups). */
+    static readonly GROUP_MIN_DISTANCE = 1;
+
     static getPointRange(comp: ForceComposition): PointRange {
         const fixed = comp.BM +
             (comp.BA_troopers / 4) +
@@ -471,6 +491,16 @@ class ISOrg {
 }
 
 class ComStarOrg {
+    /** Flat evaluation: max allowed distance as a fraction of midPts before falling back to "Force". */
+    static readonly DISTANCE_FACTOR = 0.2;
+    /** Flat evaluation: floor for the max allowed distance (pts). */
+    static readonly MIN_DISTANCE = 2;
+    
+    /** Group evaluation: max allowed distance as a fraction of total group count before falling back to "Force". */
+    static readonly GROUP_DISTANCE_FACTOR = 0.25;
+    /** Group evaluation: floor for the max allowed distance (groups). */
+    static readonly GROUP_MIN_DISTANCE = 1;
+
     static getPointRange(comp: ForceComposition): PointRange {
         // ComStar/WoB Level I = 1 mech/vehicle/aero/proto, or 30-36 CI, or 6 BA
         const fixed = comp.BM + comp.PM + comp.CV + comp.AF + comp.other;
@@ -542,6 +572,16 @@ class ComStarOrg {
 }
 
 class SocietyOrg {
+    /** Flat evaluation: max allowed distance as a fraction of midPts before falling back to "Force". */
+    static readonly DISTANCE_FACTOR = 0.2;
+    /** Flat evaluation: floor for the max allowed distance (pts). */
+    static readonly MIN_DISTANCE = 2;
+    
+    /** Group evaluation: max allowed distance as a fraction of total group count before falling back to "Force". */
+    static readonly GROUP_DISTANCE_FACTOR = 0.25;
+    /** Group evaluation: floor for the max allowed distance (groups). */
+    static readonly GROUP_MIN_DISTANCE = 1;
+
     static getPointRange(comp: ForceComposition): PointRange {
         const pts = comp.BM +
             (comp.BA_troopers / 9) +
@@ -603,7 +643,9 @@ export interface GroupSizeResult {
 function evaluateForceDetailed(
     comp: ForceComposition,
     rules: ForceTypeRule[],
-    getPointRange: (comp: ForceComposition) => PointRange
+    getPointRange: (comp: ForceComposition) => PointRange,
+    minDistance = 2,
+    distanceFactor = 0.2,
 ): EvaluationResult {
     const range = getPointRange(comp);
     const midPts = (range.min + range.max) / 2;
@@ -666,21 +708,13 @@ function evaluateForceDetailed(
         }
     }
 
-    const maxAllowedDistance = Math.max(2, midPts * 0.2);
+    const maxAllowedDistance = Math.max(minDistance, midPts * distanceFactor);
     if (bestDist <= maxAllowedDistance) {
         const name = bestModName ? bestModName + bestType : bestType;
         return { name, dist: bestDist, matchedRule: bestRule };
     }
 
     return { name: 'Force', dist: Infinity, matchedRule: null };
-}
-
-function evaluateForce(
-    comp: ForceComposition,
-    rules: ForceTypeRule[],
-    getPointRange: (comp: ForceComposition) => PointRange
-): string {
-    return evaluateForceDetailed(comp, rules, getPointRange).name;
 }
 
 /**
@@ -697,6 +731,8 @@ function evaluateForce(
 function evaluateForceByGroups(
     groupResults: GroupSizeResult[],
     rules: ForceTypeRule[],
+    groupMinDistance = 1,
+    groupDistanceFactor = 0.25,
 ): EvaluationResult {
     let best: EvaluationResult = { name: 'Force', dist: Infinity, matchedRule: null };
 
@@ -756,8 +792,7 @@ function evaluateForceByGroups(
         }
     }
 
-    // Tolerance: allow at most 1 group off, or 25% of total group count
-    const maxAllowed = Math.max(1, groupResults.length * 0.25);
+    const maxAllowed = Math.max(groupMinDistance, groupResults.length * groupDistanceFactor);
     if (best.dist <= maxAllowed) {
         return best;
     }
@@ -860,15 +895,24 @@ function trySplitEvaluation(
 /**
  * Resolve the org rules and point-range function for the given tech base / faction.
  */
-function resolveOrg(techBase: string, factionName: string): { rules: ForceTypeRule[]; getPointRange: (comp: ForceComposition) => PointRange } {
+interface OrgConfig {
+    rules: ForceTypeRule[];
+    getPointRange: (comp: ForceComposition) => PointRange;
+    minDistance: number;
+    distanceFactor: number;
+    groupMinDistance: number;
+    groupDistanceFactor: number;
+}
+
+function resolveOrg(techBase: string, factionName: string): OrgConfig {
     if (factionName === 'ComStar' || factionName === 'Word of Blake') {
-        return { rules: ComStarOrg.ALL, getPointRange: ComStarOrg.getPointRange };
+        return { rules: ComStarOrg.ALL, getPointRange: ComStarOrg.getPointRange, minDistance: ComStarOrg.MIN_DISTANCE, distanceFactor: ComStarOrg.DISTANCE_FACTOR, groupMinDistance: ComStarOrg.GROUP_MIN_DISTANCE, groupDistanceFactor: ComStarOrg.GROUP_DISTANCE_FACTOR };
     } else if (factionName === 'Society') {
-        return { rules: SocietyOrg.ALL, getPointRange: SocietyOrg.getPointRange };
+        return { rules: SocietyOrg.ALL, getPointRange: SocietyOrg.getPointRange, minDistance: SocietyOrg.MIN_DISTANCE, distanceFactor: SocietyOrg.DISTANCE_FACTOR, groupMinDistance: SocietyOrg.GROUP_MIN_DISTANCE, groupDistanceFactor: SocietyOrg.GROUP_DISTANCE_FACTOR };
     } else if (factionName.includes('Clan') || techBase === 'Clan') {
-        return { rules: ClanOrg.ALL, getPointRange: ClanOrg.getPointRange };
+        return { rules: ClanOrg.ALL, getPointRange: ClanOrg.getPointRange, minDistance: ClanOrg.MIN_DISTANCE, distanceFactor: ClanOrg.DISTANCE_FACTOR, groupMinDistance: ClanOrg.GROUP_MIN_DISTANCE, groupDistanceFactor: ClanOrg.GROUP_DISTANCE_FACTOR };
     } else {
-        return { rules: ISOrg.ALL, getPointRange: ISOrg.getPointRange };
+        return { rules: ISOrg.ALL, getPointRange: ISOrg.getPointRange, minDistance: ISOrg.MIN_DISTANCE, distanceFactor: ISOrg.DISTANCE_FACTOR, groupMinDistance: ISOrg.GROUP_MIN_DISTANCE, groupDistanceFactor: ISOrg.GROUP_DISTANCE_FACTOR };
     }
 }
 
@@ -879,9 +923,9 @@ function resolveOrg(techBase: string, factionName: string): { rules: ForceTypeRu
  */
 export function getGroupSizeResult(units: ForceUnit[], techBase: string, factionName: string): GroupSizeResult {
     if (units.length === 0) return { name: 'Force', type: null, countsAsType: null };
-    const { rules, getPointRange } = resolveOrg(techBase, factionName);
+    const { rules, getPointRange, minDistance, distanceFactor } = resolveOrg(techBase, factionName);
     const comp = getForceComposition(units);
-    let result = evaluateForceDetailed(comp, rules, getPointRange);
+    let result = evaluateForceDetailed(comp, rules, getPointRange, minDistance, distanceFactor);
 
     // Virtual split fallback: if flat evaluation didn't find a match,
     // try splitting points into equal sub-groups to find a composed formation.
@@ -907,13 +951,13 @@ export function getGroupSizeResult(units: ForceUnit[], techBase: string, faction
 export function getForceSizeName(units: ForceUnit[], techBase: string, factionName: string, groupResults?: GroupSizeResult[]): string {
     if (units.length === 0) return 'Force';
 
-    const { rules, getPointRange } = resolveOrg(techBase, factionName);
+    const { rules, getPointRange, minDistance, distanceFactor, groupMinDistance, groupDistanceFactor } = resolveOrg(techBase, factionName);
     const comp = getForceComposition(units);
-    const flatResult = evaluateForceDetailed(comp, rules, getPointRange);
+    const flatResult = evaluateForceDetailed(comp, rules, getPointRange, minDistance, distanceFactor);
 
     // When pre-computed group results are provided with >1 group, also try group-based evaluation
     if (groupResults && groupResults.length > 1) {
-        const groupResult = evaluateForceByGroups(groupResults, rules);
+        const groupResult = evaluateForceByGroups(groupResults, rules, groupMinDistance, groupDistanceFactor);
         // Prefer group-based on tie, unless the flat result was a strict match
         // (strict rules like Supernova Trinary are very specific and should not
         // be overridden by a generic aliased group match at equal distance)
