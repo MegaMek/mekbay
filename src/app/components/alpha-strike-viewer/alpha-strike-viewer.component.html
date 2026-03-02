@@ -60,7 +60,7 @@
     }
 
     <div class="toggle-buttons screen-only">
-        <button class="bt-button square" [class.active]="useHex()" (click)="toggleHexMode()" title="Toggle Hex/Inches">
+        <button class="bt-button square" (click)="toggleHexMode()" title="Toggle Hex/Inches">
             @if (!useHex()) {
             <svg fill="currentColor" width="24px" height="24px" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
                 <path
@@ -76,7 +76,7 @@
                 </svg>
             }
         </button>
-        <button class="bt-button square" [class.active]="cardStyle() === 'colored'" (click)="toggleCardStyle()"
+        <button class="bt-button square" (click)="toggleCardStyle()"
             title="Toggle Dark/Light Card Theme">
             @if (cardStyle() !== 'colored') {
                 <svg fill="currentColor" width="24px" height="24px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
