@@ -125,6 +125,7 @@ export class ForceBuilderService {
 
     /** Remembers the last selected unit per filter mode so switching back restores it. */
     private savedSelectionByFilter = new Map<'friendly' | 'enemy' | 'all', string | null>();
+    followLastModifiedUnit = signal(false); // If true, selection will follow the last modified unit
 
     /** True when loaded forces have a mix of friendly and enemy alignments (>1 slot). */
     hasMixedAlignments = computed<boolean>(() => {
@@ -560,8 +561,22 @@ export class ForceBuilderService {
                 : -1;
             targetForce.update(serializedForce);
             this.dataService.saveSerializedForceToLocalStorage(serializedForce);
-            // Restore selected unit if it was in this force
-            if (wasInThisForce) {
+
+            // If follow mode is on, jump to the most recently modified unit
+            if (this.followLastModifiedUnit()) {
+                const allUnits = targetForce.units();
+                if (allUnits.length > 0) {
+                    for (const unit of allUnits) {
+                        console.log(`Unit ${unit.getUnit().name} (ID: ${unit.id}) updatedTs: ${unit.updatedTs}`);
+                    }
+                    const latest = allUnits.reduce((best, u) =>
+                        (u.updatedTs ?? 0) > (best.updatedTs ?? 0) ? u : best, allUnits[0]);
+                    if ((latest.updatedTs ?? 0) > 0) {
+                        this.selectUnit(latest);
+                    }
+                }
+            } else if (wasInThisForce) {
+                // Restore selected unit if it was in this force
                 const newSelectedUnit = targetForce.units().find(u => u.id === selectedUnitId);
                 this.selectUnit(newSelectedUnit || targetForce.units()[selectedIndex] || targetForce.units()[0] || null);
             }

@@ -29,17 +29,6 @@
     display: flex;
 }
 
-.adv-btn.active {
-    color: var(--bt-yellow);
-    background-image:
-        linear-gradient(var(--bt-yellow), var(--bt-yellow)), linear-gradient(var(--bt-yellow), var(--bt-yellow)),
-        linear-gradient(var(--bt-yellow), var(--bt-yellow)), linear-gradient(var(--bt-yellow), var(--bt-yellow)),
-        linear-gradient(var(--bt-yellow), var(--bt-yellow)), linear-gradient(var(--bt-yellow), var(--bt-yellow)),
-        linear-gradient(var(--bt-yellow), var(--bt-yellow)), linear-gradient(var(--bt-yellow), var(--bt-yellow));
-    background-size: 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%, 100% 1px, 1px 100%;
-    background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
-}
-
 .adv-panel {
     position: absolute;
     box-sizing: border-box;

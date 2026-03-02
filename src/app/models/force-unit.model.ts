@@ -48,6 +48,7 @@ export abstract class ForceUnit {
     protected unit: Unit; // Original unit data
     private _forceRef = signal<Force>(null!);
     id: string;
+    updatedTs: number = 0;
     initialized = false;
 
     /**
@@ -103,6 +104,7 @@ export abstract class ForceUnit {
     setModified() {
         if (this.disabledSaving) return;
         this.state.modified.set(true);
+        this.updatedTs = Date.now();
         this.force.emitChanged();
     }
 
