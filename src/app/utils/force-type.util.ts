@@ -766,6 +766,94 @@ function evaluateForceByGroups(
 }
 
 /**
+ * Evaluate a virtual point value against rules, skipping filter/customMatch.
+ * Only matches when the point falls within a rule's modifier range (dist === 0).
+ * Used by the virtual split fallback to identify what type a sub-group of
+ * a given size would be without knowing the actual unit composition.
+ */
+function evaluateVirtualGroup(
+    pts: number,
+    rules: ForceTypeRule[],
+    comp: ForceComposition,
+): EvaluationResult {
+    let bestRule: ForceTypeRule | null = null;
+    let bestNominal = 0;
+
+    for (const rule of rules) {
+        // Skip rules requiring per-sub-group composition (e.g. Nova's BM+BA split)
+        if (rule.customMatch) continue;
+
+        // Apply composition filters so we don't match e.g. Lance for pure-aero groups
+        if (rule.filter && !rule.filter(comp)) continue;
+
+        const ruleMin = rule.resolveModPts(rule.modifiers[0]);
+        const ruleMax = rule.resolveModPts(rule.modifiers[rule.modifiers.length - 1]);
+
+        // Only accept when the point falls within the modifier range
+        if (pts < ruleMin || pts > ruleMax) continue;
+
+        // Prefer the rule with higher nominalPts (larger formation)
+        if (!bestRule || rule.nominalPts > bestNominal) {
+            bestNominal = rule.nominalPts;
+            bestRule = rule;
+        }
+    }
+
+    if (bestRule) {
+        return { name: bestRule.type, dist: 0, matchedRule: bestRule };
+    }
+    return { name: 'Force', dist: Infinity, matchedRule: null };
+}
+
+/**
+ * Virtual split fallback: when flat evaluation fails to identify a group,
+ * try splitting the total points into K equal sub-groups and check if those
+ * virtual sub-groups form a recognized composed formation.
+ *
+ * Example: 11 Clan pts → K=2 → 5.5 each → Star (within 2–7) → 2 Stars → Binary.
+ * Example: 16 Clan pts → K=2 → 8 each → no match; K=3 → 5.33 → Star → 3 Stars → Trinary.
+ */
+function trySplitEvaluation(
+    pts: number,
+    rules: ForceTypeRule[],
+    comp: ForceComposition,
+): EvaluationResult {
+    let best: EvaluationResult = { name: 'Force', dist: Infinity, matchedRule: null };
+
+    for (let k = 2; k <= 5; k++) {
+        const subPts = pts / k;
+        if (subPts < 1) break; // Sub-groups too small to match anything meaningful
+
+        const subResult = evaluateVirtualGroup(subPts, rules, comp);
+        if (!subResult.matchedRule) continue;
+
+        // Build K identical virtual group results
+        const virtualResults: GroupSizeResult[] = [];
+        for (let i = 0; i < k; i++) {
+            virtualResults.push({
+                name: subResult.name,
+                type: subResult.matchedRule.type,
+                countsAsType: subResult.matchedRule.countsAs?.type ?? null,
+            });
+        }
+
+        // Check if K groups of this type match a composed rule
+        const groupResult = evaluateForceByGroups(virtualResults, rules);
+        if (groupResult.matchedRule &&
+            (groupResult.dist < best.dist ||
+             (groupResult.dist === best.dist &&
+              (groupResult.matchedRule.nominalPts) > (best.matchedRule?.nominalPts ?? 0)))) {
+            best = groupResult;
+        }
+
+        // Prefer fewer, larger sub-groups: stop on first perfect match
+        if (best.dist === 0) break;
+    }
+
+    return best;
+}
+
+/**
  * Determine the force organizational type (Lance, Company, Star, etc.)
  * based on the number of units, their composition, average tech base, and faction.
  */
@@ -793,7 +881,22 @@ export function getGroupSizeResult(units: ForceUnit[], techBase: string, faction
     if (units.length === 0) return { name: 'Force', type: null, countsAsType: null };
     const { rules, getPointRange } = resolveOrg(techBase, factionName);
     const comp = getForceComposition(units);
-    const result = evaluateForceDetailed(comp, rules, getPointRange);
+    let result = evaluateForceDetailed(comp, rules, getPointRange);
+
+    // Virtual split fallback: if flat evaluation didn't find a match,
+    // try splitting points into equal sub-groups to find a composed formation.
+    // E.g. 11 Clan pts → 2 × 5.5 → 2 Stars → Binary.
+    if (!result.matchedRule) {
+        const range = getPointRange(comp);
+        const midPts = (range.min + range.max) / 2;
+        if (midPts > 0) {
+            const splitResult = trySplitEvaluation(midPts, rules, comp);
+            if (splitResult.matchedRule) {
+                result = splitResult;
+            }
+        }
+    }
+
     return {
         name: result.name,
         type: result.matchedRule?.type ?? null,
