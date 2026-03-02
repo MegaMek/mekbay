@@ -133,7 +133,8 @@
         <button class="modal-btn bt-button" (click)="onSelect()">SELECT</button>
         } @else if (!data.hideAddButton) {
         <button [disabled]="this.forceBuilderService.smartCurrentForce()?.readOnly()" class="modal-btn bt-button"
-            (click)="onAdd($event)">ADD</button>
+            longPress (shortPress)="onAdd($event)" (longPress)="onAddLongPress()"
+            [longPressDuration]=1000 title="Hold to add without closing">ADD</button>
         }
         @if (isChangeMode()) {
         <button [disabled]="isChangeDisabled()" class="modal-btn bt-button"
