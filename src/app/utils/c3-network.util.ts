@@ -1160,18 +1160,15 @@ export class C3NetworkUtil {
     ): number {
         const c3Comps = this.getC3Components(unit.getUnit());
         if (c3Comps.some(c => c.networkType === C3NetworkType.NOVA)) {
-            let novaNetworkTotalBv = 0;
-            let unitsCount = 0;
-            for (const u of allUnits) {
-                const unitC3Comps = this.getC3Components(u.getUnit());
-                if (!unitC3Comps.some(c => c.networkType === C3NetworkType.NOVA)) continue;
-                novaNetworkTotalBv += u.getBaseBv() + u.tagBV();
-                unitsCount += 1;
-            }
-            if (unitsCount < 2) return 0;
-            let taxRate = unitsCount * C3_TAX_RATE;
+            const unitsCountWithNovaCews = allUnits.filter(u => 
+                this.getC3Components(u.getUnit()).some(c => c.networkType === C3NetworkType.NOVA)
+            ).length;
+            if (unitsCountWithNovaCews < 2) return 0; // No tax if less than 2 units with Nova C3
+            const baseForceBV = allUnits.reduce((sum, u) => sum + u.getBaseBv() + u.tagBV(), 0);
+            let taxRate = unitsCountWithNovaCews * C3_TAX_RATE;
             if (taxRate > NOVA_MAX_TAX_RATE) taxRate = NOVA_MAX_TAX_RATE;
-            return Math.round(novaNetworkTotalBv * taxRate);
+            // We tax the entire force base BV based on the number of Nova CEWS, to a max of 35% tax.
+            return Math.round((baseForceBV * taxRate) / unitsCountWithNovaCews); // Tax is distributed among all Nova-connected units for UI purpose.
         }
 
         const participatingNets = this.findNetworksContainingUnit(unit.id, networks);
