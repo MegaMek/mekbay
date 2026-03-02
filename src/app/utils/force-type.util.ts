@@ -139,6 +139,13 @@ class ForceTypeRule {
      * E.g. a Nova also counts as a Star, so 2 Stars + 1 Nova = 3 Stars = Trinary.
      */
     readonly countsAs?: ForceTypeRule;
+    /**
+     * Explicit tie-breaker for group-based evaluation. Higher priority wins
+     * when two rules match the same groups at equal distance. Defaults to 0.
+     * E.g. Supernova Trinary (priority 1) beats Trinary (priority 0) when
+     * both match 3 groups at dist 0.
+     */
+    readonly priority: number;
     private readonly _nominalPts: number; // Cached nominal pts
 
     constructor(config: {
@@ -151,6 +158,7 @@ class ForceTypeRule {
         filter?: (comp: ForceComposition) => boolean;
         customMatch?: (comp: ForceComposition) => number;
         countsAs?: ForceTypeRule;
+        priority?: number;
     }) {
         this.type = config.type;
         // Ensure modifiers are sorted ascending by count
@@ -162,6 +170,7 @@ class ForceTypeRule {
         this.filter = config.filter;
         this.customMatch = config.customMatch;
         this.countsAs = config.countsAs;
+        this.priority = config.priority ?? 0;
 
         const regularMod = this.modifiers.find(m => m.prefix === '') ?? this.modifiers[0];
         this._nominalPts = this.composedOf
@@ -279,12 +288,12 @@ class ClanOrg {
     });
     // Binary = 2 Stars
     static readonly BINARY = new ForceTypeRule({
-        type: 'Binary', composedOf: ClanOrg.STAR,
-        modifiers: [{ prefix: 'Under-Strength ', count: 1.8 }, { prefix: '', count: 2 }], commandRank: 'Star Captain',
+        type: 'Binary', strict: true, composedOf: ClanOrg.STAR,
+        modifiers: [{ prefix: '', count: 2 }], commandRank: 'Star Captain',
     });
     // Trinary = 3 Stars
     static readonly TRINARY = new ForceTypeRule({
-        type: 'Trinary', composedOf: ClanOrg.STAR,
+        type: 'Trinary', strict: true, composedOf: ClanOrg.STAR,
         modifiers: [{ prefix: '', count: 3 }], commandRank: 'Star Captain',
     });
     // Nova = Star of Mechs + Star of Infantry (counts as Star for force composition)
@@ -299,7 +308,7 @@ class ClanOrg {
     });
     // Supernova Binary = 2 Novas (counts as Binary for force composition)
     static readonly SUPERNOVA_BINARY = new ForceTypeRule({
-        type: 'Supernova Binary', strict: true, countsAs: ClanOrg.BINARY, composedOf: ClanOrg.NOVA, modifiers: [{ prefix: '', count: 2 }], commandRank: 'Nova Captain',
+        type: 'Supernova Binary', strict: true, priority: 1, countsAs: ClanOrg.BINARY, composedOf: ClanOrg.NOVA, modifiers: [{ prefix: '', count: 2 }], commandRank: 'Nova Captain',
         filter: (comp) => comp.BM > 0 && ((comp.BA_troopers / 5) + (comp.CI_troopers / 25)) > 0,
         customMatch: (comp) => {
             const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25);
@@ -309,7 +318,7 @@ class ClanOrg {
     });
     // Supernova Trinary = 3 Novas (counts as Trinary for force composition)
     static readonly SUPERNOVA_TRINARY = new ForceTypeRule({
-        type: 'Supernova Trinary', strict: true, countsAs: ClanOrg.TRINARY, composedOf: ClanOrg.NOVA, modifiers: [{ prefix: '', count: 3 }], commandRank: 'Nova Captain',
+        type: 'Supernova Trinary', strict: true, priority: 1, countsAs: ClanOrg.TRINARY, composedOf: ClanOrg.NOVA, modifiers: [{ prefix: '', count: 3 }], commandRank: 'Nova Captain',
         filter: (comp) => comp.BM > 0 && ((comp.BA_troopers / 5) + (comp.CI_troopers / 25)) > 0,
         customMatch: (comp) => {
             const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25);
@@ -734,7 +743,10 @@ function evaluateForceByGroups(
         const unmatchedCount = groupResults.length - count;
         dist += unmatchedCount;
 
-        if (dist < best.dist || (dist === best.dist && rule.nominalPts > (best.matchedRule?.nominalPts ?? 0))) {
+        const bestPriority = best.matchedRule?.priority ?? 0;
+        if (dist < best.dist ||
+            (dist === best.dist && rule.priority > bestPriority) ||
+            (dist === best.dist && rule.priority === bestPriority && rule.nominalPts > (best.matchedRule?.nominalPts ?? 0))) {
             const modPrefix = rule.getModifierPrefixByRawCount(count);
             best = {
                 name: modPrefix ? modPrefix + rule.type : rule.type,
