@@ -130,6 +130,21 @@ export class UnitDetailsGeneralTabComponent {
     private baysForArea = computed(() => this.matrixData().baysForArea);
     private compsForArea = computed(() => this.matrixData().compsForArea);
 
+    /** Map of normalized location code -> '[CASE]' or '[CASE II]' for locations that have CASE equipment */
+    caseByLocation = computed<Map<string, string>>(() => {
+        const u = this.unit();
+        const result = new Map<string, string>();
+        if (!u?.comp) return result;
+        for (const comp of u.comp) {
+            if (!comp.eq || !comp.l) continue;
+            let label: string | undefined;
+            if (comp.eq.hasFlag('F_CASE_II')) label = '[CASE II]';
+            else if (comp.eq.hasFlag('F_CASE') || comp.eq.hasFlag('F_CASE_P')) label = '[CASE]';
+            if (label) result.set(this.normalizeLoc(comp.l), label);
+        }
+        return result;
+    });
+
     /** Force packs that contain the current unit's chassis|type */
     forcePacks = computed<string[]>(() => {
         const u = this.unit();
@@ -241,6 +256,13 @@ export class UnitDetailsGeneralTabComponent {
 
     areaHasBays(areaName: string): boolean {
         return (this.baysForArea().get(areaName)?.length || 0) > 0;
+    }
+
+    getCaseLabelForArea(areaName: string): string {
+        const caseMap = this.caseByLocation();
+        const codes = this.areaNameToCodes().get(areaName) ?? [areaName];
+        const code = codes.find(c => caseMap.has(c));
+        return code ? caseMap.get(code)! : '';
     }
 
     features = computed<string[]>(() => {
