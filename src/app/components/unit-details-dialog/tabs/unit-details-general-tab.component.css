@@ -256,12 +256,13 @@
 }
 
 .comp-loc {
+    position: relative;
     background: #141414A0;
     width: 60px;
     max-width: 60px;
     min-width: 60px;
     display: flex;
-    flex-direction: column;
+    gap: 0px 4px;
     align-items: center;
     justify-content: center;
     flex-wrap: wrap;
@@ -272,8 +273,8 @@
     z-index: 1;
 }
 
-.comp-loc.has-case {
-    border-right: 2px solid #e8a64a;
+.components-matrix .comp-loc {
+    flex-direction: column;
 }
 
 .case-label {
@@ -282,6 +283,18 @@
     color: #e8a64a;
     font-weight: bold;
     letter-spacing: 0.03em;
+}
+
+.case-bracket {
+    color: #e8a64a;
+    position: absolute;
+    font-size: 1.5em;
+    left: 4px;
+}
+
+.case-bracket:last-child {
+    left: auto;
+    right: 4px;
 }
 
 /* Matrix layout */

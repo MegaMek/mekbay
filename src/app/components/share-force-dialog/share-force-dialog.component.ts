@@ -40,7 +40,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { ToastService } from '../../services/toast.service';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { Force } from '../../models/force.model';
-import { buildForceQueryParams, buildProtocolShareUrlFromWebUrl, buildShareTextPayload } from '../../utils/force-url.util';
+import { buildForceQueryParams } from '../../utils/force-url.util';
 import { firstValueFrom } from 'rxjs';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForcePreviewComponent } from '../force-preview/force-preview.component';
@@ -288,22 +288,19 @@ export class ShareForceDialogComponent {
     }
 
     async share(url: string) {
-        const appUrl = buildProtocolShareUrlFromWebUrl(url);
         const shareTitle = this.force.name || 'Shared MekBay Force';
-        const shareText = buildShareTextPayload(shareTitle, url, appUrl);
 
         if (navigator.share) {
             navigator.share({
                 title: shareTitle,
-                text: shareText,
                 url: url
             }).catch(() => {
                 // fallback if user cancels or error
-                copyTextToClipboard(shareText);
+                copyTextToClipboard(url);
                 this.toastService.showToast('Links copied to clipboard.', 'success');
             });
         } else {
-            copyTextToClipboard(shareText);
+            copyTextToClipboard(url);
             this.toastService.showToast('Links copied to clipboard.', 'success');
         }
     }

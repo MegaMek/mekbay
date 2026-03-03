@@ -265,6 +265,11 @@ export class UnitDetailsGeneralTabComponent {
         return code ? caseMap.get(code)! : '';
     }
 
+    /** Returns the CASE label for a raw location string */
+    getCaseLabel(loc: string): string {
+        return this.caseByLocation().get(this.normalizeLoc(loc)) ?? '';
+    }
+
     features = computed<string[]>(() => {
         const u = this.unit();
         if (!u) return [];

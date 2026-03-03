@@ -123,7 +123,7 @@ unit().moveType }}</strong></div>
 <div class="components-container">
 @for (group of groupedBays(); let i = $index; track group.l) {
     <div class="component-rect">
-        <div class="comp-loc">{{ group.l }}</div>
+        <div class="comp-loc" [class.has-case]="getCaseLabel(group.l)">@if (getCaseLabel(group.l); as caseType) {<span class="case-bracket">[</span>}{{ group.l }}@if (getCaseLabel(group.l); as caseType) {<span class="case-bracket">]</span>}</div>
         <div class="bay">
             @for (bay of group.bays; let j = $index; track j) {
                 <unit-component-item [unit]="unit()" [comp]="bay" displayStyle="small"></unit-component-item>
@@ -136,7 +136,7 @@ unit().moveType }}</strong></div>
 <div class="components-container">
 @for (comp of components(); let i = $index; track i) {
     <div class="component-rect">
-        <div class="comp-loc">{{ comp.l }}</div>
+        <div class="comp-loc" [class.has-case]="getCaseLabel(comp.l)">@if (getCaseLabel(comp.l); as caseType) {<span class="case-bracket">[</span>}{{ comp.l }}@if (getCaseLabel(comp.l); as caseType) {<span class="case-bracket">]</span>}</div>
         <div class="comp-list">
             <unit-component-item [unit]="unit()" [comp]="comp" displayStyle="normal"></unit-component-item>
         </div>

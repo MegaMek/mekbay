@@ -67,22 +67,6 @@ export interface UnitShareLinks {
     appUrl: string;
 }
 
-export function buildProtocolShareUrlFromWebUrl(webUrl: string): string | null {
-    try {
-        const parsed = new URL(webUrl);
-        return `web+mekbay://share?${parsed.searchParams.toString()}`;
-    } catch {
-        return null;
-    }
-}
-
-export function buildShareTextPayload(title: string, httpsUrl: string, appUrl?: string | null): string {
-    // if (appUrl) {
-    //     return `${title}\nWeb: ${httpsUrl}\nApp: ${appUrl}`;
-    // }
-    return `${title}\n${httpsUrl}`;
-}
-
 export function buildUnitShareLinks(
     origin: string,
     pathname: string,
