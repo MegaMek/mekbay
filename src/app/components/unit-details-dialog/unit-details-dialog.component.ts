@@ -61,7 +61,7 @@ import { TaggingService } from '../../services/tagging.service';
 import { UrlStateService } from '../../services/url-state.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { LayoutService } from '../../services/layout.service';
-import { buildShareTextPayload, buildUnitShareLinks } from '../../utils/force-url.util';
+import { buildUnitShareLinks } from '../../utils/force-url.util';
 
 /*
  * Author: Drake
@@ -453,19 +453,17 @@ export class UnitDetailsDialogComponent {
             this.activeTab(),
         );
         const shareTitle = `${this.unit.chassis} ${this.unit.model}`;
-        const shareText = buildShareTextPayload(shareTitle, httpsUrl, appUrl);
         if (navigator.share) {
             navigator.share({
                 title: shareTitle,
-                text: shareText,
                 url: httpsUrl,
             }).catch(() => {
                 // fallback if user cancels or error
-                copyTextToClipboard(shareText);
+                copyTextToClipboard(httpsUrl);
                 this.toastService.showToast('Unit links copied to clipboard.', 'success');
             });
         } else {
-            copyTextToClipboard(shareText);
+            copyTextToClipboard(httpsUrl);
             this.toastService.showToast('Unit links copied to clipboard.', 'success');
         }
     }
