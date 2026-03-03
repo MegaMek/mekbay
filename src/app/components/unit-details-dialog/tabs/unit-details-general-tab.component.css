@@ -287,12 +287,19 @@
 
 .case-bracket {
     color: #e8a64a;
+    font-size: 1.4em;
+    line-height: 0.8em;
+    vertical-align: -2px;
+}
+
+.comp-loc .case-bracket {
+    vertical-align: middle;
     position: absolute;
     font-size: 1.5em;
     left: 4px;
 }
 
-.case-bracket:last-child {
+.comp-loc .case-bracket:last-child {
     left: auto;
     right: 4px;
 }
