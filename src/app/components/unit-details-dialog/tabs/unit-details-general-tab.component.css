@@ -261,6 +261,7 @@
     max-width: 60px;
     min-width: 60px;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     flex-wrap: wrap;
@@ -269,6 +270,18 @@
     overflow: hidden;
     text-overflow: clip;
     z-index: 1;
+}
+
+.comp-loc.has-case {
+    border-right: 2px solid #e8a64a;
+}
+
+.case-label {
+    display: block;
+    font-size: 0.7em;
+    color: #e8a64a;
+    font-weight: bold;
+    letter-spacing: 0.03em;
 }
 
 /* Matrix layout */

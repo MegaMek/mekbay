@@ -153,7 +153,6 @@ export class UnitSearchComponent {
     private viewport = viewChild(CdkVirtualScrollViewport);
 
     gameSystem = computed(() => this.gameService.currentGameSystem());
-    autoFocus = input(false);
     buttonOnly = signal(false);
     expandedView = this.filtersService.expandedView;
     advOpen = this.filtersService.advOpen;
@@ -445,12 +444,11 @@ export class UnitSearchComponent {
             pendingFocusRef?.destroy();
             pendingFocusRef = null;
 
-            if (this.autoFocus() &&
-                this.filtersService.isDataReady() &&
+            if (this.filtersService.isDataReady() &&
                 this.syntaxInput()) {
                 pendingFocusRef = afterNextRender(() => {
                     pendingFocusRef = null;
-                    this.syntaxInput()?.focus();
+                    this.focusInput();
                 }, { injector: this.injector });
             }
         });
@@ -758,9 +756,7 @@ export class UnitSearchComponent {
 
     toggleAdv() {
         this.advOpen.set(!this.advOpen());
-        if (!this.advOpen()) {
-            this.syntaxInput()?.focus();
-        } else {
+        if (this.advOpen()) {
             this.focused.set(true);
         }
     }
@@ -908,7 +904,7 @@ export class UnitSearchComponent {
             event.stopPropagation();
             if (this.advOpen()) {
                 this.closeAdvPanel();
-                this.syntaxInput()?.focus();
+                this.focusInput();
                 return;
             } else {
                 if (this.expandedView()) {
@@ -939,7 +935,7 @@ export class UnitSearchComponent {
                         this.scrollToIndex(prevIndex);
                     } else {
                         this.activeIndex.set(null);
-                        this.syntaxInput()?.focus();
+                        this.focusInput();
                     }
                     break;
                 case 'Enter':
@@ -1441,11 +1437,7 @@ export class UnitSearchComponent {
             if (this.forceBuilderService.hasForces()) {
                 this.closeAllPanels();
                 this.blurInput();
-            } else {
-                this.focusInput();
             }
-        } else {
-            this.focusInput();
         }
         this.expandedView.set(!isExpanded);
     }
@@ -1686,9 +1678,5 @@ export class UnitSearchComponent {
             }
         }
         this.filtersService.applySerializedSearchFilter(fav);
-        // Focus search input after applying
-        afterNextRender(() => {
-            this.focusInput();
-        }, { injector: this.injector });
     }
 }

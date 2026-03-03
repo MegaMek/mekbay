@@ -123,8 +123,16 @@ interface SidebarMemberVm {
     networkVm?: SidebarNetworkVm;
     /** Base BV (pilot adjusted) */
     baseBv?: number;
-    /** C3 tax for this unit */
-    c3Tax?: number;
+    /** Tag BV for this unit */
+    tagBv?: number;
+    /** C3 BV for this unit */
+    c3Bv?: number;
+    /** External Stores BV for this unit */
+    externalStoresBv?: number;
+    /** Pilot Skills BV for this unit */
+    pilotBv?: number;
+    /** Adjusted BV for this unit */
+    adjustedBv?: number;
 }
 
 interface Vec2 {
@@ -581,7 +589,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         const isClassic = this.isClassicGame();
         const allUnits = isClassic ? this.nodes().map(n => n.unit as CBTForceUnit) : [];
 
-        const getUnitBvData = (node: C3Node | null): { baseBv?: number; c3Tax?: number } => {
+        const getUnitBvData = (node: C3Node | null): { baseBv?: number; tagBv?: number; c3Bv?: number; externalStoresBv?: number; pilotBv?: number, adjustedBv?: number } => {
             if (!isClassic || !node) return {};
             const cbtUnit = node.unit as CBTForceUnit;
             const unit = cbtUnit.getUnit();
@@ -591,7 +599,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             const externalStoresBv = cbtUnit.externalStoresBv();
             const preSkillAdjustedBv = baseBv + tagBv + c3Bv + externalStoresBv;
             const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, preSkillAdjustedBv, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
-            return { baseBv: (adjustedBv-c3Bv), c3Tax: c3Bv };
+            const pilotBv = adjustedBv - preSkillAdjustedBv;
+            return { baseBv: baseBv, tagBv, c3Bv, externalStoresBv, pilotBv, adjustedBv };
         };
 
         const buildNetworkVm = (network: SerializedC3NetworkGroup, isTopLevel: boolean): SidebarNetworkVm | null => {
@@ -682,9 +691,9 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const collectTaxes = (vm: { members: SidebarMemberVm[], subNetworks: { members: SidebarMemberVm[], subNetworks: any[] }[] }, seen: Set<string>): number => {
                     let sum = 0;
                     for (const m of vm.members) {
-                        if (!m.isSelfConnection && m.c3Tax !== undefined && !seen.has(m.id)) {
+                        if (!m.isSelfConnection && m.c3Bv !== undefined && !seen.has(m.id)) {
                             seen.add(m.id);
-                            sum += m.c3Tax;
+                            sum += m.c3Bv;
                         }
                     }
                     for (const sub of vm.subNetworks) {
@@ -709,23 +718,30 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         const allUnits = nodes.map(n => n.unit as CBTForceUnit);
         
         let totalBaseBv = 0;
-        let totalFinalBv = 0;
-        let totalTax = 0;
+        let totalTagBv = 0;
+        let totalC3Bv = 0;
+        let totalExternalStoresBv = 0;
+        let totalPilotSkillsBv = 0;
+        let grandTotal = 0;
         
         for (const node of nodes) {
             const cbtUnit = node.unit as CBTForceUnit;
             const unit = cbtUnit.getUnit();
+            const baseBv = cbtUnit.getBaseBv();
             const tagBv = cbtUnit.tagBV();
             const c3Bv = C3NetworkUtil.calculateUnitC3Tax(cbtUnit, networks, allUnits);
             const externalStoresBv = cbtUnit.externalStoresBv();
-            const preSkillAdjustedBv = cbtUnit.getBaseBv() + tagBv + c3Bv + externalStoresBv;
+            const preSkillAdjustedBv = baseBv + tagBv + c3Bv + externalStoresBv;
             const finalBv = BVCalculatorUtil.calculateAdjustedBV(unit, preSkillAdjustedBv, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
-            totalBaseBv += finalBv - c3Bv;
-            totalTax += c3Bv;
-            totalFinalBv += finalBv;
+            totalBaseBv += baseBv;
+            totalTagBv += tagBv;
+            totalC3Bv += c3Bv;
+            totalExternalStoresBv += externalStoresBv;
+            totalPilotSkillsBv += finalBv - baseBv - tagBv - c3Bv - externalStoresBv;
+            grandTotal += finalBv;
         }
         
-        return { totalBaseBv: totalFinalBv, totalTax, grandTotal: totalFinalBv };
+        return { totalBaseBv, totalTagBv, totalC3Bv, totalExternalStoresBv, totalPilotSkillsBv, grandTotal };
     });
 
     protected pinConnectionState = computed(() => {

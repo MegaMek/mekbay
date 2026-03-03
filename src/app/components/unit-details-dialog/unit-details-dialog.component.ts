@@ -44,6 +44,7 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { FloatingOverlayService } from '../../services/floating-overlay.service';
 import { SwipeDirective, SwipeEndEvent, SwipeMoveEvent, SwipeStartEvent } from '../../directives/swipe.directive';
+import { LongPressDirective } from '../../directives/long-press.directive';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
@@ -80,7 +81,7 @@ export interface UnitDetailsDialogData {
 @Component({
     selector: 'unit-details-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, SwipeDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitDetailsVariantsTabComponent, UnitTagsComponent],
+    imports: [CommonModule, BaseDialogComponent, SwipeDirective, LongPressDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitDetailsVariantsTabComponent, UnitTagsComponent],
     templateUrl: './unit-details-dialog.component.html',
     styleUrls: ['./unit-details-dialog.component.css'],
     host: {
@@ -379,6 +380,14 @@ export class UnitDetailsDialogComponent {
 
 
     async onAdd(event?: MouseEvent) {
+        this._addUnit(event?.ctrlKey ?? false);
+    }
+
+    async onAddLongPress() {
+        this._addUnit(true);
+    }
+
+    private async _addUnit(keepOpen: boolean) {
         if (this.data.selectMode) return;
         const selectedUnit = (this.unit instanceof ForceUnit) ? this.unit.getUnit() : this.unit;
         let gunnery;
@@ -402,7 +411,7 @@ export class UnitDetailsDialogComponent {
             this.toastService.showToast(`${selectedUnit.chassis} ${selectedUnit.model} added to the force.`, 'success');
             this.add.emit(selectedUnit);
         }
-        if (!event?.ctrlKey) {
+        if (!keepOpen) {
             this.onClose();
         }
     }

@@ -96,7 +96,9 @@ unit().moveType }}</strong></div>
 <div class="components-matrix" [style.grid-template-areas]="gridAreas()">
 @for (area of matrixAreaCodes(); let i = $index; track i) {
     <div class="component-rect" [style.grid-area]="area">
-        <div class="comp-loc">{{ getAreaLabel(area) }}</div>
+        <div class="comp-loc" [class.has-case]="getCaseLabelForArea(area)">{{ getAreaLabel(area) }}@if (getCaseLabelForArea(area); as caseLabel) {
+            <span class="case-label">{{ caseLabel }}</span>
+        }</div>
         <div class="comp-list">
             <!-- Bays (matrix) -->
             @if (areaHasBays(area)) {

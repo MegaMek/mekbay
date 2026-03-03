@@ -801,7 +801,72 @@ function evaluateForceByGroups(
 }
 
 /**
- * Evaluate a virtual point value against rules, skipping filter/customMatch.
+ * Hierarchical group split: when direct group evaluation doesn't find a good
+ * match, try splitting groups into K sub-batches, evaluate each batch to find
+ * an intermediate formation, then see if K intermediate formations compose
+ * into a higher-level formation.
+ *
+ * Example: 4 Novas => K=2 => [Nova,Nova] + [Nova,Nova]
+ *   => each batch = Supernova Binary (2 Novas) => 2 x SN Binary
+ *   => SN Binary countsAs Binary => Under-Strength Cluster (2 Binaries).
+ */
+function trySplitGroupEvaluation(
+    groupResults: GroupSizeResult[],
+    rules: ForceTypeRule[],
+    groupMinDistance: number,
+    groupDistanceFactor: number,
+): EvaluationResult {
+    let best: EvaluationResult = { name: 'Force', dist: Infinity, matchedRule: null };
+
+    for (let k = 2; k <= 5; k++) {
+        if (groupResults.length < k * 2) break; // Need at least 2 groups per batch
+
+        const batchSize = Math.floor(groupResults.length / k);
+        const remainder = groupResults.length % k;
+
+        // Split into K batches
+        const batches: GroupSizeResult[][] = [];
+        let offset = 0;
+        for (let i = 0; i < k; i++) {
+            const size = batchSize + (i < remainder ? 1 : 0);
+            batches.push(groupResults.slice(offset, offset + size));
+            offset += size;
+        }
+
+        // Evaluate each batch via group-based evaluation
+        const batchResults: GroupSizeResult[] = [];
+        let allMatched = true;
+        for (const batch of batches) {
+            const result = evaluateForceByGroups(batch, rules, groupMinDistance, groupDistanceFactor);
+            if (!result.matchedRule) {
+                allMatched = false;
+                break;
+            }
+            batchResults.push({
+                name: result.name,
+                type: result.matchedRule.type,
+                countsAsType: result.matchedRule.countsAs?.type ?? null,
+            });
+        }
+        if (!allMatched) continue;
+
+        // Evaluate the batch results as a higher-level grouping
+        const higherResult = evaluateForceByGroups(batchResults, rules, groupMinDistance, groupDistanceFactor);
+        if (higherResult.matchedRule &&
+            (higherResult.dist < best.dist ||
+             (higherResult.dist === best.dist &&
+              (higherResult.matchedRule.nominalPts) > (best.matchedRule?.nominalPts ?? 0)))) {
+            best = higherResult;
+        }
+
+        if (best.dist === 0) break;
+    }
+
+    return best;
+}
+
+/**
+ * Evaluate a virtual point value against rules, skipping customMatch.
  * Only matches when the point falls within a rule's modifier range (dist === 0).
  * Used by the virtual split fallback to identify what type a sub-group of
  * a given size would be without knowing the actual unit composition.
@@ -957,7 +1022,19 @@ export function getForceSizeName(units: ForceUnit[], techBase: string, factionNa
 
     // When pre-computed group results are provided with >1 group, also try group-based evaluation
     if (groupResults && groupResults.length > 1) {
-        const groupResult = evaluateForceByGroups(groupResults, rules, groupMinDistance, groupDistanceFactor);
+        let groupResult = evaluateForceByGroups(groupResults, rules, groupMinDistance, groupDistanceFactor);
+
+        // Try hierarchical split: bundle groups into intermediate formations
+        // E.g. 4 Novas → 2 × (2 Novas = SN Binary) → Under-Strength Cluster
+        if (groupResults.length >= 4) {
+            const splitResult = trySplitGroupEvaluation(groupResults, rules, groupMinDistance, groupDistanceFactor);
+            if (splitResult.dist < groupResult.dist ||
+                (splitResult.dist === groupResult.dist &&
+                 (splitResult.matchedRule?.nominalPts ?? 0) > (groupResult.matchedRule?.nominalPts ?? 0))) {
+                groupResult = splitResult;
+            }
+        }
+
         // Prefer group-based on tie, unless the flat result was a strict match
         // (strict rules like Supernova Trinary are very specific and should not
         // be overridden by a generic aliased group match at equal distance)
