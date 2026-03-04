@@ -1024,6 +1024,11 @@ export function getForceSizeName(units: ForceUnit[], techBase: string, factionNa
     if (groupResults && groupResults.length > 1) {
         let groupResult = evaluateForceByGroups(groupResults, rules, groupMinDistance, groupDistanceFactor);
 
+        if (groupResult.dist === 0) {
+            // If we have a perfect group-based match, prefer it over the flat result even if the flat result was also a perfect custom match.
+            return groupResult.name;
+        }
+
         // Try hierarchical split: bundle groups into intermediate formations
         // E.g. 4 Novas → 2 × (2 Novas = SN Binary) → Under-Strength Cluster
         if (groupResults.length >= 4) {
