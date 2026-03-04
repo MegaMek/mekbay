@@ -239,10 +239,10 @@ export interface TechData {
 }
 
 export interface EquipmentStats {
-    tonnage: number;
-    cost: number;
-    bv: number;
-    criticalSlots: number;
+    tonnage: number | "variable";
+    cost: number | "variable";
+    bv: number | "variable";
+    criticalSlots: number | "variable";
     tankSlots: number;
     svSlots: number; // if 
     hittable: boolean;
@@ -515,10 +515,10 @@ export class Equipment {
 
     // Convenience accessors for common stats
     get internalName(): string { return this.id; }
-    get tonnage(): number { return this.stats.tonnage; }
-    get cost(): number { return this.stats.cost; }
-    get bv(): number { return this.stats.bv; }
-    get critSlots(): number { return this.stats.criticalSlots; }
+    get tonnage(): number | "variable" { return this.stats.tonnage; }
+    get cost(): number | "variable" { return this.stats.cost; }
+    get bv(): number | "variable" { return this.stats.bv; }
+    get critSlots(): number | "variable" { return this.stats.criticalSlots; }
     get svSlots(): number { return this.stats.svSlots; }
     get tankSlots(): number { return this.stats.tankSlots; }
     get techBase(): EquipmentTechBase { return this.tech.base; }
@@ -575,7 +575,7 @@ export class WeaponEquipment extends Equipment {
     }
 
     canSplit(): boolean {
-        return this.critSlots >= 8;
+        return typeof this.stats.criticalSlots === 'number' && this.stats.criticalSlots >= 8;
     }
 }
 
