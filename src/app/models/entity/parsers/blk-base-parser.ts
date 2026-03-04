@@ -432,7 +432,7 @@ export function parseBlkEngine(
     ? engineTypeFromCode(bb.getFirstInt('engine_type'))
     : 'Fusion' as const;
 
-  // ── Rating (always walkMP × tonnage - callers must set walkMP first) ──
+  // ── Rating (always walkMP x tonnage - callers must set walkMP first) ──
   const rating = entity.walkMP() * entity.tonnage();
 
   // ── Clan flag (respects clan_engine override for mixed-tech) ──

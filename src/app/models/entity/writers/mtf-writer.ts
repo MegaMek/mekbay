@@ -189,7 +189,7 @@ function writePhysical(entity: MekEntity, lines: string[]): void {
   const standard = entity.cockpitType() === 'Standard' && entity.gyroType() === 'Standard';
   if (!standard) {
     lines.push(`cockpit:${entity.mountedCockpit().fullName}`);
-    lines.push(`gyro:${entity.gyroType()}`);
+    lines.push(`gyro:${entity.mountedGyro().fullName}`);
   }
   if (entity.ejectionType()) lines.push(`ejection:${entity.ejectionType()}`);
   if (entity.heatSinkKit()) lines.push(`heat sink kit:${entity.heatSinkKit()}`);

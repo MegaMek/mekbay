@@ -42,10 +42,15 @@
 
 export {
   type GyroType,
+  type GyroTypeDescriptor,
   type GyroComponent,
+  GYRO_DATA,
   getGyro,
   getAllGyroTypes,
   normalizeGyroType,
+  getGyroTechAdvancement,
+  GYRO_TYPE_FROM_CODE,
+  gyroTypeFromCode,
 } from './gyro';
 
 export {
@@ -57,9 +62,7 @@ export {
   normalizeCockpitType,
   getCockpitTechAdvancement,
   COCKPIT_TYPE_FROM_CODE,
-  COCKPIT_TYPE_TO_CODE,
   cockpitTypeFromCode,
-  cockpitTypeToCode,
   buildHeadSystemLayout,
 } from './cockpit';
 

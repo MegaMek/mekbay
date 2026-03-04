@@ -178,12 +178,12 @@ const HEAD_SMALL: CockpitHeadLayout = [
   'Life Support', 'Sensors', 'Cockpit', 'Sensors', null, null,
 ];
 
-/** Dual / Command Console / Interface / QuadVee / Superheavy Command: 2× cockpit crits */
+/** Dual / Command Console / Interface / QuadVee / Superheavy Command: 2x cockpit crits */
 const HEAD_DUAL: CockpitHeadLayout = [
   'Life Support', 'Sensors', 'Cockpit', 'Cockpit', 'Sensors', 'Life Support',
 ];
 
-/** Small Command Console: small cockpit with 2× cockpit crits */
+/** Small Command Console: small cockpit with 2x cockpit crits */
 const HEAD_SMALL_COMMAND: CockpitHeadLayout = [
   'Life Support', 'Sensors', 'Cockpit', 'Cockpit', 'Sensors', null,
 ];
@@ -239,10 +239,7 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
       techBase: 'All', rating: 'D',
       availability: ['C', 'C', 'C', 'C'],
       level: 'Introductory',
-      dates: {
-        is: { prototype: 2464, production: 2471, common: 2488 },
-        clan: { prototype: DATE_NONE, production: 2808, common: 2808 },
-      },
+      dates: { prototype: approx(2468), production: 2470, common: 2487 },
     },
   },
 
@@ -271,8 +268,8 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
       availability: ['X', 'X', 'E', 'D'],
       level: 'Standard',
       dates: {
-        is: { prototype: 3061, production: 3068, common: 3081 },
-        clan: { prototype: DATE_NONE, production: 3081, common: DATE_NONE },
+        is: { prototype: approx(3060), production: 3067, common: 3080 },
+        clan: { prototype: DATE_NONE, production: 3080, common: 3080 },
       },
     },
   },
@@ -302,8 +299,8 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
       availability: ['C', 'F', 'E', 'D'],
       level: 'Advanced',
       dates: {
-        is: { prototype: 2621, production: 2632, common: DATE_NONE, extinct: 2846, reintroduced: 3026 },
-        clan: { prototype: DATE_NONE, production: 2808, common: DATE_NONE },
+        is: { prototype: approx(2625), production: 2631, common: DATE_NONE, extinct: approx(2850), reintroduced: approx(3030) },
+        clan: { prototype: approx(2625), production: 2631, common: DATE_NONE },
       },
     },
   },
@@ -333,8 +330,8 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
       availability: ['X', 'X', 'F', 'F'],
       level: 'Experimental',
       dates: {
-        is: { prototype: 3053, production: 3071, common: DATE_NONE },
-        clan: { prototype: 3056, production: 3070, common: DATE_NONE },
+        is: { prototype: 3053, production: approx(3080), common: 3100 },
+        clan: { prototype: 3055, production: approx(3080), common: 3100 },
       },
     },
   },
@@ -391,10 +388,7 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
       techBase: 'All', rating: 'C',
       availability: ['B', 'C', 'C', 'B'],
       level: 'Standard',
-      dates: {
-        is: { prototype: 2465, production: 2471, common: 2491 },
-        clan: { prototype: DATE_NONE, production: 2808, common: 2808 },
-      },
+      dates: { prototype: approx(2469), production: 2470, common: 2490 },
     },
     advancedFireControlTech: ADV_FIRE_CONTROL_TECH,
   },
@@ -423,10 +417,7 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
       techBase: 'All', rating: 'D',
       availability: ['D', 'X', 'X', 'F'],
       level: 'Advanced',
-      dates: {
-        is: { prototype: 2426, production: 2440, common: DATE_NONE },
-        clan: { prototype: DATE_NONE, production: 2808, common: DATE_NONE },
-      },
+      dates: { prototype: approx(2430), production: 2439, common: DATE_NONE },
     },
   },
 
@@ -454,10 +445,7 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
       techBase: 'All', rating: 'C',
       availability: ['C', 'X', 'X', 'F'],
       level: 'Advanced',
-      dates: {
-        is: { prototype: 2296, production: 2351, common: DATE_NONE, extinct: 2520 },
-        clan: { prototype: DATE_NONE, production: DATE_NONE, common: DATE_NONE },
-      },
+      dates: { prototype: approx(2300), production: 2350, common: DATE_NONE, extinct: 2520 },
     },
     advancedFireControlTech: ADV_FIRE_CONTROL_TECH,
   },
@@ -571,8 +559,8 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
       availability: ['X', 'X', 'F', 'F'],
       level: 'Experimental',
       dates: {
-        is: { prototype: 3070, production: DATE_NONE, common: DATE_NONE },
-        clan: { prototype: 3079, production: DATE_NONE, common: DATE_NONE },
+        is: { prototype: approx(3074), production: DATE_NONE, common: DATE_NONE },
+        clan: { prototype: approx(3083), production: DATE_NONE, common: DATE_NONE },
       },
     },
   },
@@ -715,8 +703,8 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
       availability: ['X', 'X', 'E', 'D'],
       level: 'Advanced',
       dates: {
-        is: { prototype: 3061, production: 3068, common: 3081 },
-        clan: { prototype: DATE_NONE, production: 3081, common: DATE_NONE },
+        is: { prototype: approx(3060), production: 3067, common: 3080 },
+        clan: { prototype: DATE_NONE, production: 3080, common: 3080 },
       },
     },
   },
@@ -805,22 +793,7 @@ export const COCKPIT_TYPE_FROM_CODE: Record<number, CockpitType> =
       .map(([name, desc]) => [desc.code, name]),
   ) as Record<number, CockpitType>;
 
-/**
- * Forward lookup: CockpitType string → numeric code.
- * Derived from the `code` field on each `CockpitTypeDescriptor`.
- */
-export const COCKPIT_TYPE_TO_CODE: Record<CockpitType, number> =
-  Object.fromEntries(
-    (Object.entries(COCKPIT_DATA) as [CockpitType, CockpitTypeDescriptor][])
-      .map(([name, desc]) => [name, desc.code]),
-  ) as Record<CockpitType, number>;
-
 /** Convert a numeric cockpit code (from BLK files) to a CockpitType string. */
 export function cockpitTypeFromCode(code: number): CockpitType {
   return COCKPIT_TYPE_FROM_CODE[code] ?? 'Standard';
-}
-
-/** Convert a CockpitType string to its numeric code (for BLK output). */
-export function cockpitTypeToCode(type: CockpitType): number {
-  return COCKPIT_TYPE_TO_CODE[type] ?? 0;
 }

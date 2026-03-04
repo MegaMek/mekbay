@@ -90,7 +90,7 @@ export abstract class AeroEntity extends BaseEntity {
   }
 
   protected override computeExpectedEngineRating(): number | null {
-    // Aero engine rating is not simply walkMP × tonnage
+    // Aero engine rating is not simply walkMP x tonnage
     return null;
   }
 

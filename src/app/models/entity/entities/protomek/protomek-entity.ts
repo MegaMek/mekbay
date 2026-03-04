@@ -108,7 +108,7 @@ export class ProtoMekEntity extends BaseEntity {
   ): Map<string, number> {
     const maxArmor = new Map<string, number>();
     for (const [loc, isVal] of structureValues) {
-      // Torso can have front + rear (max = IS × 2 total)
+      // Torso can have front + rear (max = IS x 2 total)
       maxArmor.set(loc, loc === 'Torso' ? isVal * 2 : isVal * 2);
     }
     return maxArmor;

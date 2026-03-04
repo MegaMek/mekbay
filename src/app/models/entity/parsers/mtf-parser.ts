@@ -37,7 +37,7 @@ import { MekEntity, MekWithArmsEntity } from '../entities/mek/mek-entity';
 import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import { QuadVeeEntity } from '../entities/mek/quad-vee-entity';
 import { TripodMekEntity } from '../entities/mek/tripod-mek-entity';
-import { MountedEngine, createMountedArmor, createPatchworkArmor, normalizeCockpitType } from '../components';
+import { MountedEngine, createMountedArmor, createPatchworkArmor, normalizeCockpitType, normalizeGyroType } from '../components';
 import { ArmorEquipment, WeaponEquipment } from '../../equipment.model';
 import {
   ArmorType,
@@ -211,7 +211,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   entity.rawStructure.set(header.structure);
   entity.myomerType.set(header.myomer || 'Standard');
 
-  if (header.gyro) entity.gyroType.set(header.gyro);
+  if (header.gyro) entity.gyroType.set(normalizeGyroType(header.gyro));
   if (header.cockpit) entity.cockpitType.set(normalizeCockpitType(header.cockpit));
   if (header.ejection) entity.ejectionType.set(header.ejection);
   if (header.heatSinkKit) entity.heatSinkKit.set(header.heatSinkKit);

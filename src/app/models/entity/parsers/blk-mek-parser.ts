@@ -43,7 +43,7 @@ import {
   locationArmor,
   structureTypeFromCode,
 } from '../types';
-import { cockpitTypeFromCode } from '../components';
+import { cockpitTypeFromCode, gyroTypeFromCode } from '../components';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import {
@@ -82,7 +82,7 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
   parseBaseBlk(bb, entity, ctx);
   const techBase = getBlkTechBase(bb);
 
-  // ── Movement (must precede engine - rating = walkMP × tonnage) ──
+  // ── Movement (must precede engine - rating = walkMP x tonnage) ──
   if (bb.exists('walkingMP')) entity.walkMP.set(bb.getFirstInt('walkingMP'));
 
   // ── Engine ──
@@ -97,14 +97,13 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
   if (bb.exists('internal_type')) entity.structureType.set(structureTypeFromCode(bb.getFirstInt('internal_type')));
 
   if (bb.exists('gyro_type')) {
-    const gyroNames: Record<number, string> = {
-      0: 'Standard', 1: 'XL', 2: 'Compact', 3: 'Heavy Duty', 4: 'None', 5: 'Superheavy',
-    };
-    entity.gyroType.set(gyroNames[bb.getFirstInt('gyro_type')] ?? 'Standard');
+    const gyroCode = bb.getFirstInt('gyro_type');
+    entity.gyroType.set(gyroTypeFromCode(gyroCode));
   }
 
   if (bb.exists('cockpit_type')) {
-    entity.cockpitType.set(cockpitTypeFromCode(bb.getFirstInt('cockpit_type')));
+    const cockpitCode = bb.getFirstInt('cockpit_type');
+    entity.cockpitType.set(cockpitTypeFromCode(cockpitCode));
   }
 
   // ── Armor (structured) ──

@@ -48,9 +48,7 @@ export {
   type CockpitHeadLayout,
   getCockpitTechAdvancement,
   COCKPIT_TYPE_FROM_CODE,
-  COCKPIT_TYPE_TO_CODE,
   cockpitTypeFromCode,
-  cockpitTypeToCode,
 } from './cockpit-data';
 
 // ============================================================================

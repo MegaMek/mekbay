@@ -134,7 +134,7 @@ export abstract class VehicleEntity extends BaseEntity {
   protected override computeStructureValues(
     tonnage: number, _structureType: StructureType,
   ): Map<string, number> {
-    // Vehicles: each location gets IS = tonnage × 0.1 (simplified)
+    // Vehicles: each location gets IS = tonnage x 0.1 (simplified)
     const values = new Map<string, number>();
     const is = Math.ceil(tonnage * 0.1);
     for (const loc of this.locationOrder) {

@@ -37,8 +37,10 @@ import {
   buildCTSystemLayout,
   buildHeadSystemLayout,
   buildSideTorsoSystemLayout,
-  GyroType,
-  CockpitTypeDescriptor,
+  type GyroType,
+  type GyroTypeDescriptor,
+  GYRO_DATA,
+  type CockpitTypeDescriptor,
   COCKPIT_DATA,
 } from '../../components';
 import {
@@ -68,7 +70,8 @@ export abstract class MekEntity extends BaseEntity {
   //  SIGNALS - user / parser inputs
   // ═══════════════════════════════════════════════════════════════════════════
 
-  gyroType = signal<string>('Standard');
+  gyroType = signal<GyroType>('Standard');
+  mountedGyro = computed<GyroTypeDescriptor>(() => GYRO_DATA[this.gyroType()] ?? GYRO_DATA['Standard']);
   cockpitType = signal<CockpitType>('Standard');
   mountedCockpit = computed<CockpitTypeDescriptor>(() =>  COCKPIT_DATA[this.cockpitType()] ?? COCKPIT_DATA['Standard']);
   myomerType = signal<string>('Standard');
@@ -278,8 +281,8 @@ export abstract class MekEntity extends BaseEntity {
   protected override computeMaxArmor(structureValues: Map<string, number>): Map<string, number> {
     const maxArmor = new Map<string, number>();
     for (const [loc, isVal] of structureValues) {
-      // Head: flat cap (9 normal, 12 superheavy). Torsos: 2×IS (combined front+rear).
-      // Arms/legs: 2×IS (front only, no rear).
+      // Head: flat cap (9 normal, 12 superheavy). Torsos: 2xIS (combined front+rear).
+      // Arms/legs: 2xIS (front only, no rear).
       maxArmor.set(loc, loc === 'HD' ? (this.isSuperHeavy() ? 12 : 9) : isVal * 2);
     }
     return maxArmor;
@@ -357,7 +360,7 @@ export abstract class MekEntity extends BaseEntity {
       }
       case 'CT': {
         const me = this.mountedEngine();
-        const layout = buildCTSystemLayout(me, this.gyroType() as GyroType);
+        const layout = buildCTSystemLayout(me, this.gyroType());
         // Torso-Mounted / VRRP cockpit adds Cockpit + Sensors to CT after engine/gyro
         if (this.mountedCockpit().hasTorsoSlots) {
           const firstEmpty = layout.indexOf(null);

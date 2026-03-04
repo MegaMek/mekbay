@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2025-2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -32,59 +32,63 @@
  */
 
 /**
- * Gyro system component.
+ * Gyro system component — runtime helpers.
  *
- * Gyros are fundamental structural elements of every Mek, with statically
- * known properties (crit slots, weight, etc.) initialised at runtime.
- * They are NOT equipment from equipment2.json.
+ * Delegates all static per-type data to `gyro-data.ts`.
+ * Re-exports data symbols for barrel convenience.
  */
 
+import type { GyroType } from './gyro-data';
+import {
+  GYRO_DATA,
+} from './gyro-data';
+
+// Re-export gyro-data symbols for barrel convenience
+export {
+  GYRO_DATA,
+  type GyroType,
+  type GyroTypeDescriptor,
+  getGyroTechAdvancement,
+  GYRO_TYPE_FROM_CODE,
+  gyroTypeFromCode,
+} from './gyro-data';
+
 // ============================================================================
-// Types
+// Legacy GyroComponent interface (kept for engine.ts compatibility)
 // ============================================================================
 
-export type GyroType =
-  | 'None' | 'Standard' | 'XL' | 'Compact' | 'Heavy Duty' | 'Superheavy';
-
-// ============================================================================
-// Gyro Component
-// ============================================================================
-
+/**
+ * Lightweight gyro component view used by `buildCTSystemLayout`.
+ * Derived from `GyroTypeDescriptor` for backwards compatibility.
+ */
 export interface GyroComponent {
   readonly type: GyroType;
   /** Number of critical slots the gyro occupies in the Center Torso */
   readonly criticalSlots: number;
 }
 
-const GYRO_DEFINITIONS: Record<GyroType, GyroComponent> = {
-  'None':       { type: 'None',       criticalSlots: 0 },
-  'Standard':   { type: 'Standard',   criticalSlots: 4 },
-  'XL':         { type: 'XL',         criticalSlots: 6 },
-  'Compact':    { type: 'Compact',    criticalSlots: 2 },
-  'Heavy Duty': { type: 'Heavy Duty', criticalSlots: 4 },
-  'Superheavy': { type: 'Superheavy', criticalSlots: 4 },
-};
+// ============================================================================
+// Lookup helpers
+// ============================================================================
 
-// ============================================================================
-// Lookup
-// ============================================================================
+/** All known gyro types (keys of GYRO_DATA). */
+export function getAllGyroTypes(): readonly GyroType[] {
+  return Object.keys(GYRO_DATA) as GyroType[];
+}
 
 /**
  * Normalize raw gyro type strings from MTF files.
- * MegaMek writes "XL Gyro", "Compact Gyro", etc. we strip the " Gyro" suffix.
+ * MegaMek writes "XL Gyro", "Compact Gyro", etc. — we strip the " Gyro" suffix.
  */
 export function normalizeGyroType(raw: string): GyroType {
-  let s = raw.replace(/\s+Gyro$/i, '').trim();
-  if (s in GYRO_DEFINITIONS) return s as GyroType;
+  if (raw in GYRO_DATA) return raw as GyroType;
+  const stripped = raw.replace(/\s+Gyro$/i, '').trim();
+  if (stripped in GYRO_DATA) return stripped as GyroType;
   return 'Standard';
 }
 
 /** Resolve a GyroComponent by type name. Falls back to Standard. */
 export function getGyro(type: string): GyroComponent {
-  return GYRO_DEFINITIONS[normalizeGyroType(type)];
-}
-
-/** Get all known gyro types. */
-export function getAllGyroTypes(): readonly GyroType[] {
-  return Object.keys(GYRO_DEFINITIONS) as GyroType[];
+  const desc = GYRO_DATA[normalizeGyroType(type)];
+  return { type: desc.shortName as GyroType, criticalSlots: desc.criticalSlots };
 }

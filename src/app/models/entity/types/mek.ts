@@ -54,15 +54,11 @@ export const MEK_REAR_ARMOR_LOCATIONS: ReadonlySet<string> = new Set(['CT', 'LT'
 
 // ============================================================================
 // Gyro Types (Mek)
+//
+// Canonical gyro type data now lives in components/gyro-data.ts.
+// The GYRO_TYPE_FROM_CODE map and gyroTypeFromCode() function are
+// re-exported from components/gyro.ts via the components barrel.
 // ============================================================================
-
-export const GYRO_TYPE_FROM_CODE: Record<number, string> = {
-  0: 'Standard', 1: 'XL', 2: 'Compact', 3: 'Heavy Duty', 4: 'None', 5: 'Superheavy',
-};
-
-export function gyroTypeFromCode(code: number): string {
-  return GYRO_TYPE_FROM_CODE[code] ?? 'Standard';
-}
 
 // ============================================================================
 // Cockpit Types (Mek)

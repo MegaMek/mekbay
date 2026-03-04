@@ -994,7 +994,7 @@ export function getGroupSizeResult(units: ForceUnit[], techBase: string, faction
 
     // Virtual split fallback: if flat evaluation didn't find a match,
     // try splitting points into equal sub-groups to find a composed formation.
-    // E.g. 11 Clan pts → 2 × 5.5 → 2 Stars → Binary.
+    // E.g. 11 Clan pts → 2 x 5.5 → 2 Stars → Binary.
     if (!result.matchedRule) {
         const range = getPointRange(comp);
         const midPts = (range.min + range.max) / 2;
@@ -1030,7 +1030,7 @@ export function getForceSizeName(units: ForceUnit[], techBase: string, factionNa
         }
 
         // Try hierarchical split: bundle groups into intermediate formations
-        // E.g. 4 Novas → 2 × (2 Novas = SN Binary) → Under-Strength Cluster
+        // E.g. 4 Novas → 2 x (2 Novas = SN Binary) → Under-Strength Cluster
         if (groupResults.length >= 4) {
             const splitResult = trySplitGroupEvaluation(groupResults, rules, groupMinDistance, groupDistanceFactor);
             if (splitResult.dist < groupResult.dist ||

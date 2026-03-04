@@ -93,10 +93,7 @@ export function writeBlkMek(entity: MekEntity): string {
   // ── Structure / Gyro / Cockpit ──
   w.addBlock('internal_type', structureTypeToCode(entity.structureType()));
   if (entity.gyroType() !== 'Standard') {
-    const gyroMap: Record<string, number> = {
-      'Standard': 0, 'XL': 1, 'Compact': 2, 'Heavy Duty': 3, 'None': 4, 'Superheavy': 5,
-    };
-    w.addBlock('gyro_type', gyroMap[entity.gyroType()] ?? 0);
+    w.addBlock('gyro_type', entity.mountedGyro().code);
   }
   if (entity.cockpitType() !== 'Standard') {
     w.addBlock('cockpit_type', entity.mountedCockpit().code);

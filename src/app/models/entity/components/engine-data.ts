@@ -153,7 +153,7 @@ export interface EngineTypeDescriptor {
 
   /** Base cost in C-bills per rating point (large engines double this). */
   readonly baseCost: number;
-  /** Support-vehicle cost multiplier (tonnage × 5,000 × this). */
+  /** Support-vehicle cost multiplier (tonnage x 5,000 x this). */
   readonly svCostMultiplier: number;
 
   // ── Critical slots ──
