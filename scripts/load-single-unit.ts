@@ -124,7 +124,7 @@ function main() {
           : [['LL', '', 'RL'] as [string, string, string]]),
     ];
 
-    const COL_W = 28;
+    const COL_W = 32;
 
     function slotLabel(loc: string, i: number): string {
       const slots = grid.get(loc);
