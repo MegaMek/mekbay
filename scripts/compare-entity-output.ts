@@ -428,8 +428,8 @@ function main(): void {
         byType.get(typeKey)!.diff++;
         failures.push(result);
         console.log(`  ✗ DIFF   ${path.relative(INPUT_DIR, file)}  (line ${result.firstDiffLine})`);
-        console.log(`           expected: ${truncate(result.expectedLine ?? '', 100)}`);
-        console.log(`           actual:   ${truncate(result.actualLine ?? '', 100)}`);
+        console.log(`           megamek: ${truncate(result.expectedLine ?? '', 100)}`);
+        console.log(`           mekbay:   ${truncate(result.actualLine ?? '', 100)}`);
         if (result.entity) {
           const reasons = result.entity.mixedTechReasons();
           if (reasons.length > 0) {
