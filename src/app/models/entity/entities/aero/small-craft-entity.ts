@@ -37,6 +37,7 @@ import {
   SMALL_CRAFT_ARMOR_LOCATIONS,
   SMALL_CRAFT_EQUIP_LOCATIONS,
   SmallCraftCrew,
+  WeightClass,
 } from '../../types';
 import { AeroEntity } from './aero-entity';
 
@@ -66,6 +67,11 @@ export class SmallCraftEntity extends AeroEntity {
 
   /** Structured crew data (alternative to individual signals) */
   crewConfig = signal<SmallCraftCrew>({});
+
+  /** Small Craft has a single weight class. */
+  protected override computeWeightClass(): WeightClass {
+    return 'Small Craft';
+  }
 
   // ── Location overrides ──
 

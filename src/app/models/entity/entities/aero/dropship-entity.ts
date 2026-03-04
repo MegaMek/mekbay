@@ -34,8 +34,11 @@
 import { signal } from '@angular/core';
 import {
   DROPSHIP_LOCATIONS,
+  DROPSHIP_WEIGHT_LIMITS,
   EntityType,
+  resolveWeightClass,
   SMALL_CRAFT_EQUIP_LOCATIONS,
+  WeightClass,
 } from '../../types';
 import { SmallCraftEntity } from './small-craft-entity';
 
@@ -53,6 +56,10 @@ export class DropShipEntity extends SmallCraftEntity {
   dockingCollars = signal<number>(0);
   collarType = signal<number>(-1);
   kfBoomAttached = signal<boolean>(false);
+
+  protected override computeWeightClass(): WeightClass {
+    return resolveWeightClass(this.tonnage(), DROPSHIP_WEIGHT_LIMITS);
+  }
 
   // ── Location overrides ──
 

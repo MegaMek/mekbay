@@ -32,7 +32,7 @@
  */
 
 import { Signal, computed, signal } from '@angular/core';
-import { BaseEntity, MixedTechResult } from '../../base-entity';
+import { BaseEntity, COLLECT_ALL_MIXED_TECH_REASONS, MixedTechResult } from '../../base-entity';
 import {
   buildCTSystemLayout,
   buildHeadSystemLayout,
@@ -146,23 +146,23 @@ export abstract class MekEntity extends BaseEntity {
   });
 
   /**
-   * Override mixedTech to also check cockpit tech-base availability.
+   * Override mixedTech to also check cockpit and gyro tech-base availability.
    *
-   * A cockpit with `techBase: 'All'` may have different availability
+   * A cockpit/gyro with `techBase: 'All'` may have different availability
    * timelines for IS and Clan (e.g. Small Cockpit: IS from 3061, Clan from
-   * 3081).  If the cockpit is not yet available for the chassis tech base
+   * 3081).  If the component is not yet available for the chassis tech base
    * at the entity's year, the unit must be using the other tech base's
    * variant — making it mixed tech.
    *
-   * Cockpits with `techBase: 'IS'` on a Clan chassis (or vice
-   * versa) are also mixed, but that case is handled by the base class
-   * equipment loop.
+   * Components with `techBase: 'IS'` on a Clan chassis (or vice versa)
+   * are also mixed (e.g. Compact Gyro is IS-only).
    */
   protected override computeMixedTech(): MixedTechResult {
     const base = super.computeMixedTech();
-    if (base.mixed) return base;
+    if (base.mixed && !COLLECT_ALL_MIXED_TECH_REASONS) return base;
 
     const reasons = [...base.reasons];
+    let mixed = base.mixed;
 
     // ── Cockpit advancement-date check ────────────────────────────────
     // A cockpit with techBase 'All' may have different IS/Clan availability
@@ -179,17 +179,45 @@ export abstract class MekEntity extends BaseEntity {
             `Cockpit "${cockpit.fullName}" (techBase All): not available for ${chassisTechBase} ` +
             `at year ${year}, but available for ${oppositeBase}`,
           );
-          return { mixed: true, reasons };
+          if (!COLLECT_ALL_MIXED_TECH_REASONS) return { mixed: true, reasons };
+          mixed = true;
         }
       }
     } else if (cockpitTech.techBase !== chassisTechBase) {
       reasons.push(
         `Cockpit "${cockpit.fullName}" tech base ${cockpitTech.techBase} ≠ chassis ${chassisTechBase}`,
       );
-      return { mixed: true, reasons };
+      if (!COLLECT_ALL_MIXED_TECH_REASONS) return { mixed: true, reasons };
+      mixed = true;
     }
 
-    return { mixed: false, reasons };
+    // ── Gyro advancement-date check ──────────────────────────────────
+    // Same logic as cockpit: a gyro with techBase 'All' may have split
+    // IS/Clan availability timelines, and IS-only gyros (e.g. Compact)
+    // on a Clan chassis are mixed.
+    const gyro = this.mountedGyro();
+    const gyroTech = gyro.tech;
+    if (gyroTech.techBase === 'All') {
+      if (!isTechAvailableForBase(gyroTech.dates, chassisTechBase, year)) {
+        const oppositeBase = chassisTechBase === 'Clan' ? 'IS' : 'Clan';
+        if (isTechAvailableForBase(gyroTech.dates, oppositeBase, year)) {
+          reasons.push(
+            `Gyro "${gyro.fullName}" (techBase All): not available for ${chassisTechBase} ` +
+            `at year ${year}, but available for ${oppositeBase}`,
+          );
+          if (!COLLECT_ALL_MIXED_TECH_REASONS) return { mixed: true, reasons };
+          mixed = true;
+        }
+      }
+    } else if (gyroTech.techBase !== chassisTechBase) {
+      reasons.push(
+        `Gyro "${gyro.fullName}" tech base ${gyroTech.techBase} ≠ chassis ${chassisTechBase}`,
+      );
+      if (!COLLECT_ALL_MIXED_TECH_REASONS) return { mixed: true, reasons };
+      mixed = true;
+    }
+
+    return { mixed, reasons };
   }
 
   // ── Derived crit-slot grid ────────────────────────────────────────────

@@ -40,6 +40,7 @@ import {
   InfantrySpecialization,
   MotiveType,
   StructureType,
+  WeightClass,
 } from '../../types';
 
 // ============================================================================
@@ -143,6 +144,10 @@ export class InfantryEntity extends BaseEntity {
 
   override hasRearArmor(_loc: string): boolean {
     return false;
+  }
+
+  protected override computeWeightClass(): WeightClass {
+    return 'Light';
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

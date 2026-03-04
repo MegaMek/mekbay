@@ -40,6 +40,7 @@
  */
 export * from './tech';
 export * from './entity';
+export * from './weight';
 export * from './engine';
 export * from './heat-sink';
 export * from './armor';

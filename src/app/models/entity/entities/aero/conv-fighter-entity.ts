@@ -32,7 +32,7 @@
  */
 
 import { signal } from '@angular/core';
-import { AERO_EQUIP_LOCATIONS, AERO_LOCATIONS, EntityType } from '../../types';
+import { AERO_EQUIP_LOCATIONS, AERO_LOCATIONS, EntityType, WeightClass } from '../../types';
 import { AeroEntity } from './aero-entity';
 
 /** Conventional Fighter - ICE-powered, limited tech, optional VSTOL. */
@@ -41,6 +41,11 @@ export class ConvFighterEntity extends AeroEntity {
 
   /** VSTOL (Vertical/Short Take-Off and Landing) capability */
   vstol = signal<boolean>(false);
+
+  /** Conventional fighters always return Light. */
+  protected override computeWeightClass(): WeightClass {
+    return 'Light';
+  }
 
   get locationOrder(): readonly string[] {
     return AERO_LOCATIONS;

@@ -42,6 +42,9 @@ import {
   TANK_LOCATIONS_WITH_DUAL_TURRET,
   TANK_LOCATIONS_WITH_TURRET,
   StructureType,
+  VEHICLE_WEIGHT_LIMITS,
+  WeightClass,
+  resolveWeightClass,
 } from '../../types';
 
 // ============================================================================
@@ -100,6 +103,10 @@ export abstract class VehicleEntity extends BaseEntity {
     if (this.isSuperHeavy()) flags.add('superheavy');
     return flags;
   });
+
+  protected override computeWeightClass(): WeightClass {
+    return resolveWeightClass(this.tonnage(), VEHICLE_WEIGHT_LIMITS);
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  LOCATION OVERRIDES

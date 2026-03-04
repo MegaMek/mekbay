@@ -34,6 +34,7 @@
 import { BattleArmorEntity } from '../entities/infantry/battle-armor-entity';
 import {
   ArmorType,
+  BA_WEIGHT_CLASS_BY_CODE,
   EntityTechBase,
   EquipmentTechBase,
   LocationArmor,
@@ -74,7 +75,7 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
   if (bb.exists('Trooper Count'))       entity.trooperCount.set(bb.getFirstInt('Trooper Count'));
   else if (bb.exists('troopercount'))   entity.trooperCount.set(bb.getFirstInt('troopercount'));
 
-  if (bb.exists('weightclass'))    entity.weightClass.set(bb.getFirstString('weightclass'));
+  if (bb.exists('weightclass'))    entity.declaredWeightClass.set(BA_WEIGHT_CLASS_BY_CODE[bb.getFirstInt('weightclass')] ?? 'Medium');
   if (bb.exists('chassis'))        entity.chassisType.set(bb.getFirstString('chassis'));
   if (bb.exists('turret'))         entity.turretConfig.set(bb.getFirstString('turret'));
   if (bb.exists('exoskeleton'))    entity.isExoskeleton.set(bb.getFirstString('exoskeleton') === 'true');

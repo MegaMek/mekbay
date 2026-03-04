@@ -289,9 +289,6 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   const locationMap = isQuad ? QUAD_LOCATION_MAP : BIPED_LOCATION_MAP;
   const mountedEquipment: EntityMountedEquipment[] = [];
 
-  // Superheavy meks halve equipment crit slots (rounded up)
-  const isSH = entity.isSuperHeavy();
-
   // Track multi-crit equipment: key "equipName@locCode" → mountId
   const multiCritMap = new Map<string, string>();
 
@@ -323,11 +320,11 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       if (existingId) {
         const mount = mountedEquipment.find(m => m.mountId === existingId);
         if (mount) {
-          const baseCrits = mount.equipment?.critSlots ?? Infinity;
-          const expectedCrits = isSH ? Math.ceil(baseCrits / 2) : baseCrits;
+          // Resolve expected crit count via entity context
+          const criticalSlots = mount.equipment?.getNumCriticalSlots(entity, mount.size ?? 0) ?? Infinity;
           const lastPlacement = mount.placements?.[mount.placements.length - 1];
           const isConsecutive = lastPlacement?.location === locCode && lastPlacement.slotIndex === slotIdx - 1;
-          if ((mount.criticalSlots ?? 0) < expectedCrits && isConsecutive) {
+          if ((mount.criticalSlots ?? 0) < criticalSlots && isConsecutive) {
             mount.placements = [...(mount.placements ?? []), { location: locCode, slotIndex: slotIdx }];
             mount.criticalSlots = (mount.criticalSlots ?? 1) + 1;
             addedToExisting = true;
@@ -335,17 +332,35 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
         }
       }
 
+      // Spreadable equipment: items like Ferro-Fibrous, Endo Steel, and
+      // Fuel Cell Power Generator have crits spread across multiple
+      // (possibly non-adjacent) locations.  All crits merge into one mount
+      // as long as it hasn't reached its expected crit count yet.
+      if (!addedToExisting) {
+        const existingSpreadable = mountedEquipment.find(m => {
+          if (m.equipmentId !== parsed.name) return false;
+          const eq = m.equipment;
+          if (!eq?.isSpreadable) return false;
+          const expectedCrits = eq.getNumCriticalSlots(entity, m.size ?? 0) ?? Infinity;
+          return (m.criticalSlots ?? 0) < expectedCrits;
+        });
+        if (existingSpreadable) {
+          existingSpreadable.placements = [...(existingSpreadable.placements ?? []), { location: locCode, slotIndex: slotIdx }];
+          existingSpreadable.criticalSlots = (existingSpreadable.criticalSlots ?? 1) + 1;
+          addedToExisting = true;
+        }
+      }
+
       // Cross-location split: weapons with 8+ crit slots may be split between
       // two adjacent locations (e.g. AC/20: 8 crits in LA + 2 in LT).
-      // Only applies to weapons - spreadable misc equipment (TSM, Stealth,
-      // Partial Wing, etc.) gets separate mounts per location.
       if (!addedToExisting) {
         const incomplete = mountedEquipment.find(m => {
           if (m.equipmentId !== parsed.name) return false;
           if (!(m.equipment instanceof WeaponEquipment) || !m.equipment.canSplit()) return false;
-          const baseCrits = m.equipment.critSlots;
-          const effectiveCrits = isSH ? Math.ceil(baseCrits / 2) : baseCrits;
-          return (m.criticalSlots ?? 0) < effectiveCrits
+          // Weapons always have fixed (numeric) critSlots
+          const criticalSlots = m.equipment.getNumCriticalSlots(entity);
+          if (criticalSlots == null) return false;
+          return (m.criticalSlots ?? 0) < criticalSlots
             && m.location !== locCode
             && areLocationsAdjacent(m.location, locCode);
         });

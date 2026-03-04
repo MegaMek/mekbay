@@ -32,7 +32,7 @@
  */
 
 import { signal } from '@angular/core';
-import { AERO_LOCATIONS, EntityType, FIXED_WING_EQUIP_LOCATIONS } from '../../types';
+import { AERO_LOCATIONS, EntityType, FIXED_WING_EQUIP_LOCATIONS, SUPPORT_VEHICLE_WEIGHT_LIMITS, WeightClass, resolveWeightClass } from '../../types';
 import { AeroEntity } from './aero-entity';
 
 /** Fixed Wing Support vehicle - uses BAR rating and tech ratings. */
@@ -49,6 +49,10 @@ export class FixedWingSupportEntity extends AeroEntity {
   structuralTechRating = signal<number>(0);
   engineTechRating = signal<number>(0);
   baseChassisFireConWeight = signal<number>(0);
+
+  protected override computeWeightClass(): WeightClass {
+    return resolveWeightClass(this.tonnage(), SUPPORT_VEHICLE_WEIGHT_LIMITS['Aerodyne']);
+  }
 
   get locationOrder(): readonly string[] {
     return AERO_LOCATIONS;

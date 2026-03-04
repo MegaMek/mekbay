@@ -512,6 +512,9 @@ export class CBTForceUnit extends ForceUnit {
                     if (originalAmmo) {
                         const originalBv = originalAmmo.bv;
                         const currentBv = crit.eq.bv;
+                        if (originalBv === "variable" || currentBv === "variable") {
+                            continue; // Skip variable BV. TODO: need to be handle when we have BaseEntity
+                        }
                         bvVariation += currentBv - originalBv;
                     }
                 }
@@ -524,6 +527,9 @@ export class CBTForceUnit extends ForceUnit {
                     if (customAmmo) {
                         const originalBv = item.equipment.bv;
                         const currentBv = customAmmo.bv;
+                        if (originalBv === "variable" || currentBv === "variable") {
+                            continue; // Skip variable BV. TODO: need to be handle when we have BaseEntity
+                        }
                         bvVariation += currentBv - originalBv;
                     }
                 }
@@ -577,6 +583,7 @@ export class CBTForceUnit extends ForceUnit {
                             !c.rear
                         );
                         const multiplier = hasNonRearWeapon ? 1 : 0.5;
+                        if (crit.eq.bv === "variable") continue; // Skip variable BV. TODO: need to be handle when we have BaseEntity
                         totalSemiGuidedBV += Math.round(multiplier * crit.eq.bv);
                     }
                 }
@@ -585,6 +592,7 @@ export class CBTForceUnit extends ForceUnit {
                 const inventory = forceUnit.getInventory();
                 for (const item of inventory) {
                     if (item.equipment instanceof AmmoEquipment && item.equipment.hasMunitionType('M_SEMIGUIDED')) {
+                        if (item.equipment.bv === "variable") continue; // Skip variable BV ammo. TODO: need to be handle when we have BaseEntity
                         totalSemiGuidedBV += item.equipment.bv;
                     }
                 }

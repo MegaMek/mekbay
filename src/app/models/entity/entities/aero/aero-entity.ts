@@ -34,11 +34,14 @@
 import { Signal, computed, signal } from '@angular/core';
 import { BaseEntity } from '../../base-entity';
 import {
+  ASF_WEIGHT_LIMITS,
   EntityType,
   EntityValidationMessage,
   HeatSinkType,
   MotiveType,
+  resolveWeightClass,
   StructureType,
+  WeightClass,
 } from '../../types';
 
 // ============================================================================
@@ -72,6 +75,10 @@ export abstract class AeroEntity extends BaseEntity {
   // ═══════════════════════════════════════════════════════════════════════════
 
   maxThrust = computed(() => Math.ceil(this.walkMP() * 1.5));
+
+  protected override computeWeightClass(): WeightClass {
+    return resolveWeightClass(this.tonnage(), ASF_WEIGHT_LIMITS);
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  ABSTRACT - subclasses define locations

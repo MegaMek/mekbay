@@ -40,6 +40,7 @@ import {
   writeBlkPreamble,
 } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
+import { weightClassOrdinal } from '../types';
 
 // ============================================================================
 // Public API
@@ -117,7 +118,7 @@ export function writeBlkBA(entity: BattleArmorEntity): string {
   w.addBlock('Trooper Count', entity.trooperCount());
 
   // Weight class (numeric code)
-  w.addBlock('weightclass', entity.weightClass());
+  w.addBlock('weightclass', weightClassOrdinal(entity.weightClass()));
 
   // NOTE: No tonnage block for BattleArmor - matches Java reference output
 

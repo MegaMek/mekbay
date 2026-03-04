@@ -31,7 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { ComponentTechLevel, EquipmentTechBase, SplitTechDates, TechDates, parseTechDate } from './entity';
+import { BaseEntity, ComponentTechLevel, EquipmentTechBase, SplitTechDates, TechDates, parseTechDate } from './entity';
+import { getNumCriticalSlots } from './entity/utils/equipment-helpers';
 import { Unit } from './units.model';
 
 /*
@@ -515,21 +516,25 @@ export class Equipment {
 
     // Convenience accessors for common stats
     get internalName(): string { return this.id; }
-    get tonnage(): number | "variable" { return this.stats.tonnage; }
-    get cost(): number | "variable" { return this.stats.cost; }
-    get bv(): number | "variable" { return this.stats.bv; }
-    get critSlots(): number | "variable" { return this.stats.criticalSlots; }
-    get svSlots(): number { return this.stats.svSlots; }
-    get tankSlots(): number { return this.stats.tankSlots; }
     get techBase(): EquipmentTechBase { return this.tech.base; }
     get level(): ComponentTechLevel { return this.tech.level; }
     get rating(): string { return this.tech.rating; }
     get availability(): String { return [this.tech.availability.sl??'X', this.tech.availability.sw??'X', this.tech.availability.clan??'X', this.tech.availability.da??'X'].join('-'); }
+    get isSpreadable(): boolean { return this.stats.spreadable; }
+
+    //TODO: convert to methods like getNumCriticalSlots that take entity context to handle variable cases
+    get tonnage(): number | "variable" { return this.stats.tonnage; }
+    get cost(): number | "variable" { return this.stats.cost; }
+    get bv(): number | "variable" { return this.stats.bv; }
 
     hasFlag(flag: string): boolean { return this.flags.has(flag); }
     hasAnyFlag(flags: string[]): boolean { return flags.some(f => this.flags.has(f)); }
     hasAllFlags(flags: string[]): boolean { return flags.every(f => this.flags.has(f)); }
     hasMode(mode: string): boolean { return this.modes.includes(mode); }
+    getNumCriticalSlots(entity: BaseEntity, size: number = 1): number | undefined {
+        return getNumCriticalSlots(entity, this, size);
+    }
+
 }
 
 // ============================================================================
@@ -692,6 +697,10 @@ export class ArmorEquipment extends Equipment {
     get pptDropship(): number[] { return this.armor.pptDropship; }
     get pptCapital(): number[] { return this.armor.pptCapital; }
     get weightPerPointSV(): Record<string, number> { return this.armor.weightPerPointSV; }
+
+    override get isSpreadable(): boolean {
+        return true;
+    }
 }
 
 // ============================================================================

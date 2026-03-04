@@ -127,6 +127,9 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
   const critLocs = isQuad ? BLK_CRIT_QUAD : BLK_CRIT_BIPED;
   const equipmentList: EntityMountedEquipment[] = [];
 
+  // Track spreadable equipment: equipmentId → index in equipmentList
+  const spreadableMap = new Map<string, number>();
+
   for (const [blkLoc, locCode] of critLocs) {
     const critTag = `${blkLoc} criticalSlots`;
     if (!bb.exists(critTag)) continue;
@@ -142,6 +145,21 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
       const parsed = parseEquipmentLine(raw);
       const resolved = ctx.resolveEquipment(parsed.name, critTag);
 
+      // Spreadable equipment merges all crits into one mount while incomplete
+      if (resolved?.isSpreadable) {
+        const existingIdx = spreadableMap.get(parsed.name);
+        if (existingIdx !== undefined) {
+          const existing = equipmentList[existingIdx];
+          const expectedCrits = existing.equipment?.getNumCriticalSlots(entity, existing.size ?? 0) ?? Infinity;
+          if ((existing.criticalSlots ?? 0) < expectedCrits) {
+            existing.placements = [...(existing.placements ?? []), { location: locCode, slotIndex: slotIdx }];
+            existing.criticalSlots = (existing.criticalSlots ?? 1) + 1;
+            continue;
+          }
+        }
+      }
+
+      const idx = equipmentList.length;
       equipmentList.push({
         mountId: generateMountId(),
         equipmentId: parsed.name,
@@ -156,6 +174,8 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
         size: parsed.size,
         facing: parsed.facing,
       });
+
+      if (resolved?.isSpreadable) spreadableMap.set(parsed.name, idx);
     }
   }
 

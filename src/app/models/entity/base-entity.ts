@@ -41,8 +41,11 @@ import {
   ArmorFace,
   EngineFlag,
   FactionCode,
+  MEK_WEIGHT_LIMITS,
   MotiveType,
+  resolveWeightClass,
   StructureType,
+  WeightClass,
   EntityFluff,
   EntityMountedEquipment,
   EntityQuirk,
@@ -58,6 +61,12 @@ import {
   MountPlacement,
 } from './types';
 import { generateMountId, removeMountById, updateMap } from './utils/signal-helpers';
+
+/**
+ * Set to `true` to make `computeMixedTech` collect ALL mixed-tech reasons
+ * instead of returning at the first detection.  Useful for debugging.
+ */
+export const COLLECT_ALL_MIXED_TECH_REASONS = true;
 
 /** Result of mixed-tech detection, with diagnostic reasons. */
 export interface MixedTechResult {
@@ -204,6 +213,21 @@ export abstract class BaseEntity {
     return m ? `${c} ${m}`.trim() : c;
   });
 
+  /**
+   * Weight class for this entity, derived from tonnage.
+   * Subclasses override `computeWeightClass()` to use appropriate limits.
+   */
+  weightClass = computed<WeightClass>(() => this.computeWeightClass());
+
+  /**
+   * Resolve the weight class from tonnage using the appropriate limit table.
+   * Default implementation uses Mek limits (mirrors Java fallback).
+   * Subclasses override for entity-specific tables.
+   */
+  protected computeWeightClass(): WeightClass {
+    return resolveWeightClass(this.tonnage(), MEK_WEIGHT_LIMITS);
+  }
+
   /** Full mixed-tech result including diagnostic reasons. */
   private mixedTechResult = computed<MixedTechResult>(() => this.computeMixedTech());
 
@@ -227,12 +251,14 @@ export abstract class BaseEntity {
     const year = this.year();
     const isClan = chassisTechBase === 'Clan';
     const oppositeBase = isClan ? 'IS' : 'Clan';
+    let mixed = false;
 
     // ── Engine tech-base mismatch ──────────────────────────────────────
     const engine = this.mountedEngine();
     if (chassisTechBase !== engine.techBase) {
       reasons.push(`Engine tech base ${engine.techBase} ≠ chassis ${chassisTechBase}`);
-      return { mixed: true, reasons };
+      if (!COLLECT_ALL_MIXED_TECH_REASONS) return { mixed: true, reasons };
+      mixed = true;
     }
 
     // ── Engine advancement-date check ──────────────────────────────────
@@ -252,7 +278,8 @@ export abstract class BaseEntity {
             `Engine ${engine.type} (techBase All): not available for ${chassisTechBase} at year ${year}, ` +
             `but available for ${oppositeBase}`,
           );
-          return { mixed: true, reasons };
+          if (!COLLECT_ALL_MIXED_TECH_REASONS) return { mixed: true, reasons };
+          mixed = true;
         }
       }
     }
@@ -265,7 +292,8 @@ export abstract class BaseEntity {
         reasons.push(
           `Equipment "${m.equipment.name}" tech base ${m.equipment.techBase} ≠ chassis ${chassisTechBase}`,
         );
-        return { mixed: true, reasons };
+        if (!COLLECT_ALL_MIXED_TECH_REASONS) return { mixed: true, reasons };
+        mixed = true;
       }
       if (m.equipment.techBase === 'All') {
         // 'All' tech base equipment may have different IS/Clan advancement
@@ -282,12 +310,13 @@ export abstract class BaseEntity {
               `Equipment "${m.equipment.name}" (techBase All): not available for ${chassisTechBase} ` +
               `at year ${year}, but available for ${oppositeBase}`,
             );
-            return { mixed: true, reasons };
+            if (!COLLECT_ALL_MIXED_TECH_REASONS) return { mixed: true, reasons };
+            mixed = true;
           }
         }
       }
     }
-    return { mixed: false, reasons };
+    return { mixed, reasons };
   }
 
   engineFlags = computed<Set<EngineFlag>>(() => {

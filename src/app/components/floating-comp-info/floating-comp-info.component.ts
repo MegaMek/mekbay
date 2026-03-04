@@ -219,22 +219,15 @@ export class FloatingCompInfoComponent {
             return aYear - bYear;
         });
 
-        let slots = eq.critSlots;
-        if (eq.svSlots > -1) {
-            slots = eq.svSlots;
-        } else if (eq.tankSlots > -1) {
-            slots = eq.tankSlots;
-        }
-
         const ratingString = `${eq.techBase} | ${eq.rating}/${eq.availability}`;
         const result = [
             {
                 group: 'General',
                 items: [
-                    { label: 'BV', value: eq.bv },
-                    { label: 'Cost', value: eq.cost },
-                    { label: 'Tonnage', value: eq.tonnage },
-                    { label: 'Criticals', value: slots },
+                    { label: 'BV', value: eq.stats.bv },
+                    { label: 'Cost', value: eq.stats.cost },
+                    { label: 'Tonnage', value: eq.stats.tonnage },
+                    { label: 'Criticals', value: eq.stats.criticalSlots },
                     { label: 'Reference', value: eq.rulesRefs }
                 ]
             },

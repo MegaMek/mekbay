@@ -39,7 +39,10 @@ import {
   MotiveType,
   PROTO_LOCATIONS,
   PROTO_LOCATIONS_WITH_MAIN_GUN,
+  PROTOMEK_WEIGHT_LIMITS,
+  resolveWeightClass,
   StructureType,
+  WeightClass,
 } from '../../types';
 
 // ============================================================================
@@ -76,6 +79,10 @@ export class ProtoMekEntity extends BaseEntity {
 
   override hasRearArmor(loc: string): boolean {
     return loc === 'Torso';
+  }
+
+  protected override computeWeightClass(): WeightClass {
+    return resolveWeightClass(this.tonnage(), PROTOMEK_WEIGHT_LIMITS);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

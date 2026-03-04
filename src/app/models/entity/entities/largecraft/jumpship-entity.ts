@@ -34,10 +34,13 @@
 import { Signal, computed, signal } from '@angular/core';
 import { AeroEntity } from '../aero/aero-entity';
 import {
+  CAPITAL_SHIP_WEIGHT_LIMITS,
   EntityType,
   EntityValidationMessage,
   LARGE_CRAFT_LOCATIONS,
+  resolveWeightClass,
   StructureType,
+  WeightClass,
 } from '../../types';
 
 // ============================================================================
@@ -96,6 +99,10 @@ export class JumpShipEntity extends AeroEntity {
 
   override hasRearArmor(_loc: string): boolean {
     return false;
+  }
+
+  protected override computeWeightClass(): WeightClass {
+    return resolveWeightClass(this.tonnage(), CAPITAL_SHIP_WEIGHT_LIMITS);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

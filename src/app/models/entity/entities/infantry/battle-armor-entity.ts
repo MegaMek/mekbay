@@ -36,6 +36,7 @@ import {
   EntityType,
   EntityValidationMessage,
   StructureType,
+  WeightClass,
 } from '../../types';
 import { InfantryEntity } from './infantry-entity';
 
@@ -51,7 +52,7 @@ export class BattleArmorEntity extends InfantryEntity {
   // ═══════════════════════════════════════════════════════════════════════════
 
   trooperCount = signal<number>(4);
-  weightClass = signal<string>('Medium');
+  declaredWeightClass = signal<WeightClass>('Medium');
   chassisType = signal<string>('Biped');
   jumpingMP = signal<number>(0);
   apMounts = signal<number>(0);
@@ -69,6 +70,10 @@ export class BattleArmorEntity extends InfantryEntity {
   // ═══════════════════════════════════════════════════════════════════════════
   //  OVERRIDES - BA uses canonical motive values (no compound infantry strings)
   // ═══════════════════════════════════════════════════════════════════════════
+
+  protected override computeWeightClass(): WeightClass {
+    return this.declaredWeightClass();
+  }
 
   /** BA writes plain MotiveType (VTOL, UMU, etc.) - no infantry compound logic. */
   override getMotiveTypeAsString(): string | null {
@@ -111,8 +116,8 @@ export class BattleArmorEntity extends InfantryEntity {
     _structureValues: Map<string, number>,
   ): Map<string, number> {
     // BA armor points depend on weight class
-    const maxPerTrooper: Record<string, number> = {
-      'PA(L)': 2, 'Light': 5, 'Medium': 8, 'Heavy': 10, 'Assault': 14,
+    const maxPerTrooper: Partial<Record<WeightClass, number>> = {
+      'Ultra Light': 2, 'Light': 5, 'Medium': 8, 'Heavy': 10, 'Assault': 14,
     };
     const mx = maxPerTrooper[this.weightClass()] ?? 8;
     const maxArmor = new Map<string, number>();

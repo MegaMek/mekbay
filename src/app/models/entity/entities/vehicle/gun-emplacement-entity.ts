@@ -32,7 +32,7 @@
  */
 
 import { signal } from '@angular/core';
-import { EntityType, StructureType } from '../../types';
+import { EntityType, StructureType, GUN_EMPLACEMENT_WEIGHT_LIMITS, WeightClass, resolveWeightClass } from '../../types';
 import { VehicleEntity } from './vehicle-entity';
 
 /**
@@ -64,5 +64,9 @@ export class GunEmplacementEntity extends VehicleEntity {
 
   protected override computeExpectedEngineRating(): number | null {
     return null; // Gun emplacements have no engine
+  }
+
+  protected override computeWeightClass(): WeightClass {
+    return resolveWeightClass(this.tonnage(), GUN_EMPLACEMENT_WEIGHT_LIMITS);
   }
 }
