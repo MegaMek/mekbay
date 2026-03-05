@@ -40,6 +40,11 @@ import { ForceUnit } from '../models/force-unit.model';
  */
 
 export type ForceType =
+    // Generic
+    | 'Force'
+    | 'Mercenary'
+
+    // IS-specific types
     | 'Squad'
     | 'Platoon'
     | 'Flight'
@@ -51,6 +56,8 @@ export type ForceType =
     | 'Battalion'
     | 'Regiment'
     | 'Brigade'
+
+    // Clan-specific types
     | 'Point'
     | 'Star'
     | 'Nova'
@@ -60,16 +67,25 @@ export type ForceType =
     | 'Supernova Trinary'
     | 'Cluster'
     | 'Galaxy'
+
+    // ComStar/WoB-specific types
     | 'Level I'
     | 'Level II'
     | 'Level III'
     | 'Level IV'
     | 'Level V'
+
+    // Society-specific types
     | 'Un'
     | 'Trey'
     | 'Sept'
-    | 'Force'
-    | 'Mercenary';
+    
+    // MH-specific types
+    | 'Contubernium'
+    | 'Century'
+    | 'Maniple'
+    | 'Cohort'
+    | 'Legion';
 
 interface ForceComposition {
     BM: number;
@@ -607,6 +623,79 @@ class SocietyOrg {
     ];
 }
 
+
+
+class MHOrg {
+    /** Flat evaluation: max allowed distance as a fraction of midPts before falling back to "Force". */
+    static readonly DISTANCE_FACTOR = 0.2;
+    /** Flat evaluation: floor for the max allowed distance (pts). */
+    static readonly MIN_DISTANCE = 2;
+    
+    /** Group evaluation: max allowed distance as a fraction of total group count before falling back to "Force". */
+    static readonly GROUP_DISTANCE_FACTOR = 0.25;
+    /** Group evaluation: floor for the max allowed distance (groups). */
+    static readonly GROUP_MIN_DISTANCE = 1;
+
+    static getPointRange(comp: ForceComposition): PointRange {
+        const fixed = comp.BM +
+            (comp.BA_troopers / 5) +
+            comp.PM +
+            comp.CV +
+            comp.AF +
+            comp.other;
+        // MH infantry platoon = 5-10 troopers per point
+        // Dividing by 10 = minimum pts; dividing by 5 = maximum pts
+        return {
+            min: fixed + comp.CI_troopers / 10,
+            max: fixed + comp.CI_troopers / 5,
+        };
+    }
+    static readonly POINT = new ForceTypeRule({
+        type: 'Contubernium', modifiers: [{ prefix: '', count: 1 }], commandRank: 'Miles probatus',
+    });
+    // Star = N Points
+    static readonly STAR = new ForceTypeRule({
+        type: 'Century', composedOf: MHOrg.POINT, modifiers: [
+            { prefix: 'Half ', count: 2 },
+            { prefix: 'Short ', count: 3 },
+            { prefix: 'Under-Strength ', count: 4 },
+            { prefix: '', count: 5 },
+            { prefix: 'Reinforced ', count: 6 },
+            { prefix: 'Fortified ', count: 7 },
+        ], commandRank: 'Centurion',
+    });
+    // Binary = 2 Stars
+    static readonly BINARY = new ForceTypeRule({
+        type: 'Maniple', strict: true, composedOf: MHOrg.STAR, modifiers: [
+			{ prefix: '', count: 2 },
+			{ prefix: 'Reinforced ', count: 3 },
+		], commandRank: 'Principes',
+    });
+    // Cluster = N Binaries, Trinaries, or Supernovas (can mix and match)
+    static readonly CLUSTER = new ForceTypeRule({
+        type: 'Cohort', composedOf: MHOrg.BINARY, // for flat point-based evaluation
+        modifiers: [
+            { prefix: 'Under-Strength ', count: 2 },
+            { prefix: '', count: 3 },
+            { prefix: 'Reinforced ', count: 4 },
+            { prefix: 'Strong ', count: 5 },
+        ], commandRank: 'Legatus',
+    });
+    // Galaxy = N Clusters
+    static readonly GALAXY = new ForceTypeRule({
+        type: 'Legion', composedOf: MHOrg.CLUSTER, modifiers: [
+            { prefix: 'Under-Strength ', count: 2 },
+            { prefix: '', count: 3 },
+            { prefix: 'Reinforced ', count: 4 },
+            { prefix: 'Strong ', count: 5 },
+        ], commandRank: 'General',
+    }); 
+    static readonly ALL: ForceTypeRule[] = [
+        MHOrg.POINT, MHOrg.STAR, MHOrg.BINARY, MHOrg.CLUSTER, MHOrg.GALAXY,
+    ];
+}
+
+
 /**
  * Distance from a point range to a single point.
  * Returns 0 if the point is within the range.
@@ -976,6 +1065,8 @@ function resolveOrg(techBase: string, factionName: string): OrgConfig {
         return { rules: SocietyOrg.ALL, getPointRange: SocietyOrg.getPointRange, minDistance: SocietyOrg.MIN_DISTANCE, distanceFactor: SocietyOrg.DISTANCE_FACTOR, groupMinDistance: SocietyOrg.GROUP_MIN_DISTANCE, groupDistanceFactor: SocietyOrg.GROUP_DISTANCE_FACTOR };
     } else if (factionName.includes('Clan') || techBase === 'Clan') {
         return { rules: ClanOrg.ALL, getPointRange: ClanOrg.getPointRange, minDistance: ClanOrg.MIN_DISTANCE, distanceFactor: ClanOrg.DISTANCE_FACTOR, groupMinDistance: ClanOrg.GROUP_MIN_DISTANCE, groupDistanceFactor: ClanOrg.GROUP_DISTANCE_FACTOR };
+    } else if (factionName.includes('Marian Hegemony')) {
+        return { rules: MHOrg.ALL, getPointRange: MHOrg.getPointRange, minDistance: MHOrg.MIN_DISTANCE, distanceFactor: MHOrg.DISTANCE_FACTOR, groupMinDistance: MHOrg.GROUP_MIN_DISTANCE, groupDistanceFactor: MHOrg.GROUP_DISTANCE_FACTOR };
     } else {
         return { rules: ISOrg.ALL, getPointRange: ISOrg.getPointRange, minDistance: ISOrg.MIN_DISTANCE, distanceFactor: ISOrg.DISTANCE_FACTOR, groupMinDistance: ISOrg.GROUP_MIN_DISTANCE, groupDistanceFactor: ISOrg.GROUP_DISTANCE_FACTOR };
     }
