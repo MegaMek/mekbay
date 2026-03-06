@@ -740,6 +740,7 @@ export class AlphaStrikeCardComponent {
         
         const unitType = unit.getUnit().as.TP;
         if (unitType === 'CI') return; // Skip conventional infantry
+        if (unitType === 'BA') return; // Skip battle armor
         
         const newPendingInternal = unit.getState().pendingInternal();
         const tookStructureDamage = newPendingInternal > previousPendingInternal;
