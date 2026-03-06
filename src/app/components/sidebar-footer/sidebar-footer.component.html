@@ -311,6 +311,11 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                     <path d="M13 15C13 13.8954 13.8954 13 15 13H19C20.1046 13 21 13.8954 21 15V19C21 20.1046 20.1046 21 19 21H15C13.8954 21 13 20.1046 13 19V15Z"/>
                 </svg></span> Overview...
             </button>
+            <button class="menu-item" cdkMenuItem (click)="showForceOrgDialog()">
+                <span class="icon"><svg width="32px" height="32px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M3 3h7v7H3V3zm0 11h7v7H3v-7zm11-11h7v7h-7V3zm3.5 11a3.5 3.5 0 110 7 3.5 3.5 0 010-7z"/>
+                </svg></span> Organization...
+            </button>
             @if (hasC3Units()) {
             <button class="menu-item" cdkMenuItem (click)="showC3NetworkDialog()">
                 <span class="icon"><svg fill="currentColor" width="32px" height="32px" viewBox="0 -2 31 31" version="1.1"

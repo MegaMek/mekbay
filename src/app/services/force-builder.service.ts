@@ -1232,6 +1232,17 @@ export class ForceBuilderService {
         this.openC3Network(force, force.readOnly());
     }
 
+    public async showForceOrgDialog(): Promise<void> {
+        const { ForceOrgDialogComponent } = await import('../components/force-org-dialog/force-org-dialog.component');
+        this.dialogsService.createDialog(ForceOrgDialogComponent, {
+            width: '100dvw',
+            height: '100dvh',
+            maxWidth: '100dvw',
+            maxHeight: '100dvh',
+            panelClass: 'force-org-dialog-panel'
+        });
+    }
+
     public printAll(): void {
         const currentForce = this.currentForce();
         if (!currentForce) return;
