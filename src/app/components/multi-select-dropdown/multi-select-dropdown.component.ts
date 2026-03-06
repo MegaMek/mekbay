@@ -132,6 +132,21 @@ export class MultiSelectDropdownComponent {
         return (this.selected() as readonly string[] || []).map((name: string) => ({ name, state: 'or' as MultiState, count: 1 }));
     });
 
+    /** When more than 5 pills, compress into summary pills grouped by state */
+    private static readonly COMPRESS_THRESHOLD = 5;
+    compressedPills = computed<{ state: MultiState; count: number }[] | null>(() => {
+        const opts = this.selectedOptions();
+        if (opts.length <= MultiSelectDropdownComponent.COMPRESS_THRESHOLD) return null;
+        const counts = new Map<MultiState, number>();
+        for (const o of opts) {
+            counts.set(o.state, (counts.get(o.state) || 0) + 1);
+        }
+        const order: MultiState[] = ['or', 'and', 'not'];
+        return order
+            .filter(s => counts.has(s))
+            .map(s => ({ state: s, count: counts.get(s)! }));
+    });
+
     maxHeightOptions = computed(() => {
         const windowHeight = this.layoutService.windowHeight();
         const isOpen = this.isOpen();

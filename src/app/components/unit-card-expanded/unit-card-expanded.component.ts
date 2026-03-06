@@ -221,6 +221,9 @@ export class UnitCardExpandedComponent {
     /** Whether to show the info button */
     showInfoButton = input(true);
 
+    /** Whether to show a select checkbox */
+    showSelectCheckbox = input(false);
+
     /** Card style for alpha-strike card view */
     cardStyle = input<'colored' | 'monochrome'>('monochrome');
 
@@ -229,6 +232,9 @@ export class UnitCardExpandedComponent {
 
     /** Emitted when the card is clicked */
     cardClick = output<void>();
+
+    /** Emitted when the select button is clicked */
+    selectClick = output<void>();
 
     /** Emitted when the tag button is clicked */
     tagClick = output<TagClickEvent>();
@@ -330,6 +336,11 @@ export class UnitCardExpandedComponent {
     onInfoClick(event: Event): void {
         event.stopPropagation();
         this.infoClick.emit();
+    }
+
+    onSelectClick(event: Event): void {
+        event.stopPropagation();
+        this.selectClick.emit();
     }
 
     /** Handle pilot info click - emits pilotClick if this is a ForceUnit */
