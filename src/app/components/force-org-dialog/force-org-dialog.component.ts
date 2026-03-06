@@ -185,7 +185,7 @@ export class ForceOrgDialogComponent {
                 if (!tokens.every(t => hay.indexOf(t) !== -1)) return false;
             }
             return true;
-        });
+        }).sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
     });
 
     protected svgTransform = computed(() => {
