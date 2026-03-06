@@ -50,8 +50,8 @@ import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import { FormationNamerUtil } from '../../utils/formation-namer.util';
 import { GameSystem } from '../../models/common.model';
 
-const MIN_ZOOM = 0.1;
-const MAX_ZOOM = 3.0;
+const MIN_ZOOM = 0.2;
+const MAX_ZOOM = 2.0;
 
 const CARD_WIDTH = 220;
 const CARD_HEIGHT = 70;
