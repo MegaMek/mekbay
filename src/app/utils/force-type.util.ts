@@ -1062,7 +1062,7 @@ const ORG_REGISTRY: { match: (techBase: string, factionName: string) => boolean;
     { match: (_, f) => f === 'ComStar' || f === 'Word of Blake', org: ComStarOrg },
     { match: (_, f) => f === 'Society',                          org: SocietyOrg },
     { match: (t, f) => f.includes('Clan') || t === 'Clan',       org: ClanOrg },
-    { match: (_, f) => f.includes('Marian Hegemony'),             org: MHOrg },
+    { match: (_, f) => f.includes('Marian Hegemony'),            org: MHOrg },
     // ISOrg is the default fallback if no other org matches
 ];
 
