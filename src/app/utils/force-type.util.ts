@@ -667,8 +667,7 @@ class MHOrg {
     // Binary = 2 Stars
     static readonly BINARY = new ForceTypeRule({
         type: 'Maniple', strict: true, composedOf: MHOrg.STAR, modifiers: [
-			{ prefix: '', count: 2 },
-			{ prefix: 'Reinforced ', count: 3 },
+			{ prefix: '', count: 2 }
 		], commandRank: 'Principes',
     });
     // Cluster = N Binaries, Trinaries, or Supernovas (can mix and match)
