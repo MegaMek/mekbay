@@ -1264,7 +1264,7 @@ export class ForceOrgDialogComponent {
                         dropWorld.y < parent.y || dropWorld.y > parent.y + parent.height
                     );
                     if (parent && pointerOutside) {
-                        dragEndGroup.parentGroupId = parent.parentGroupId;
+                        dragEndGroup.parentGroupId = null;
                         this.groups.set([...this.groups()]);
                         // Re-layout old parent (and clean up if empty)
                         this.recalcGroupBounds(parent);
