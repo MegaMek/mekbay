@@ -1043,12 +1043,30 @@ function trySplitEvaluation(
 }
 
 /**
- * Determine the force organizational type (Lance, Company, Star, etc.)
- * based on the number of units, their composition, average tech base, and faction.
+ * Shared shape for all org classes (ClanOrg, ISOrg, ComStarOrg, etc.).
  */
+interface OrgDefinition {
+    readonly ALL: ForceTypeRule[];
+    readonly DISTANCE_FACTOR: number;
+    readonly MIN_DISTANCE: number;
+    readonly GROUP_DISTANCE_FACTOR: number;
+    readonly GROUP_MIN_DISTANCE: number;
+    getPointRange(comp: ForceComposition): PointRange;
+}
+
 /**
- * Resolve the org rules and point-range function for the given tech base / faction.
+ * Registry of org definitions with faction/tech-base matchers.
+ * Order matters: first match wins. IS is the default fallback.
+ * To add a new org, append one entry here.
  */
+const ORG_REGISTRY: { match: (techBase: string, factionName: string) => boolean; org: OrgDefinition }[] = [
+    { match: (_, f) => f === 'ComStar' || f === 'Word of Blake', org: ComStarOrg },
+    { match: (_, f) => f === 'Society',                          org: SocietyOrg },
+    { match: (t, f) => f.includes('Clan') || t === 'Clan',       org: ClanOrg },
+    { match: (_, f) => f.includes('Marian Hegemony'),             org: MHOrg },
+    // ISOrg is the default fallback if no other org matches
+];
+
 interface OrgConfig {
     rules: ForceTypeRule[];
     getPointRange: (comp: ForceComposition) => PointRange;
@@ -1058,18 +1076,23 @@ interface OrgConfig {
     groupDistanceFactor: number;
 }
 
+function toOrgConfig(org: OrgDefinition): OrgConfig {
+    return {
+        rules: org.ALL,
+        getPointRange: org.getPointRange,
+        minDistance: org.MIN_DISTANCE,
+        distanceFactor: org.DISTANCE_FACTOR,
+        groupMinDistance: org.GROUP_MIN_DISTANCE,
+        groupDistanceFactor: org.GROUP_DISTANCE_FACTOR,
+    };
+}
+
+/**
+ * Resolve the org rules and point-range function for the given tech base / faction.
+ */
 function resolveOrg(techBase: string, factionName: string): OrgConfig {
-    if (factionName === 'ComStar' || factionName === 'Word of Blake') {
-        return { rules: ComStarOrg.ALL, getPointRange: ComStarOrg.getPointRange, minDistance: ComStarOrg.MIN_DISTANCE, distanceFactor: ComStarOrg.DISTANCE_FACTOR, groupMinDistance: ComStarOrg.GROUP_MIN_DISTANCE, groupDistanceFactor: ComStarOrg.GROUP_DISTANCE_FACTOR };
-    } else if (factionName === 'Society') {
-        return { rules: SocietyOrg.ALL, getPointRange: SocietyOrg.getPointRange, minDistance: SocietyOrg.MIN_DISTANCE, distanceFactor: SocietyOrg.DISTANCE_FACTOR, groupMinDistance: SocietyOrg.GROUP_MIN_DISTANCE, groupDistanceFactor: SocietyOrg.GROUP_DISTANCE_FACTOR };
-    } else if (factionName.includes('Clan') || techBase === 'Clan') {
-        return { rules: ClanOrg.ALL, getPointRange: ClanOrg.getPointRange, minDistance: ClanOrg.MIN_DISTANCE, distanceFactor: ClanOrg.DISTANCE_FACTOR, groupMinDistance: ClanOrg.GROUP_MIN_DISTANCE, groupDistanceFactor: ClanOrg.GROUP_DISTANCE_FACTOR };
-    } else if (factionName.includes('Marian Hegemony')) {
-        return { rules: MHOrg.ALL, getPointRange: MHOrg.getPointRange, minDistance: MHOrg.MIN_DISTANCE, distanceFactor: MHOrg.DISTANCE_FACTOR, groupMinDistance: MHOrg.GROUP_MIN_DISTANCE, groupDistanceFactor: MHOrg.GROUP_DISTANCE_FACTOR };
-    } else {
-        return { rules: ISOrg.ALL, getPointRange: ISOrg.getPointRange, minDistance: ISOrg.MIN_DISTANCE, distanceFactor: ISOrg.DISTANCE_FACTOR, groupMinDistance: ISOrg.GROUP_MIN_DISTANCE, groupDistanceFactor: ISOrg.GROUP_DISTANCE_FACTOR };
-    }
+    const org = ORG_REGISTRY.find(e => e.match(techBase, factionName))?.org ?? ISOrg;
+    return toOrgConfig(org);
 }
 
 /**
