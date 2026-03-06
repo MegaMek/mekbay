@@ -216,8 +216,18 @@
     <!-- Sidebar: Hangar forces -->
     <div class="forces-sidebar framed-borders" [class.overlay]="layoutService.isMobile()"
         [class.hidden]="layoutService.isMobile() && !sidebarOpen()" [class.animate]="sidebarAnimated()">
-        <div class="sidebar-header">
-            <h3>Hangar</h3>
+
+        <div class="sidebar-filters">
+            <input class="bt-input sidebar-search-input" type="text" placeholder="Search..."
+                [value]="sidebarSearchText()" (input)="onSidebarSearch($any($event.target).value)" />
+            <div class="sidebar-filter-bar">
+                <button class="filter-btn" [class.active]="sidebarGameTypeFilter() === 'all'"
+                    (click)="onSidebarGameTypeFilter('all')">All</button>
+                <button class="filter-btn" [class.active]="sidebarGameTypeFilter() === GameSystem.CLASSIC"
+                    (click)="onSidebarGameTypeFilter(GameSystem.CLASSIC)">BattleTech</button>
+                <button class="filter-btn" [class.active]="sidebarGameTypeFilter() === GameSystem.ALPHA_STRIKE"
+                    (click)="onSidebarGameTypeFilter(GameSystem.ALPHA_STRIKE)">Alpha Strike</button>
+            </div>
         </div>
 
         <div class="forces-list">

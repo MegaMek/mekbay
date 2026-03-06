@@ -48,6 +48,7 @@ import { DialogsService } from '../../services/dialogs.service';
 import { LayoutService } from '../../services/layout.service';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import { FormationNamerUtil } from '../../utils/formation-namer.util';
+import { GameSystem } from '../../models/common.model';
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 3.0;
@@ -116,9 +117,12 @@ export class ForceOrgDialogComponent {
     protected readonly CARD_HEIGHT = CARD_HEIGHT;
     protected readonly GROUP_PADDING = GROUP_PADDING;
     protected readonly GROUP_HEADER_HEIGHT = GROUP_HEADER_HEIGHT;
+    protected readonly GameSystem = GameSystem;
 
     // Sidebar
     protected sidebarOpen = signal(false);
+    protected sidebarSearchText = signal('');
+    protected sidebarGameTypeFilter = signal<'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE>('all');
     protected sidebarAnimated = signal(false);
     protected loading = signal(true);
 
@@ -171,7 +175,17 @@ export class ForceOrgDialogComponent {
     /** Forces available in sidebar (not yet placed) */
     protected sidebarForces = computed(() => {
         const placedIds = new Set(this.placedForces().map(p => p.force.instanceId));
-        return this.allForces().filter(f => !placedIds.has(f.instanceId));
+        const typeFilter = this.sidebarGameTypeFilter();
+        const tokens = this.sidebarSearchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
+        return this.allForces().filter(f => {
+            if (placedIds.has(f.instanceId)) return false;
+            if (typeFilter !== 'all' && (f.type || GameSystem.CLASSIC) !== typeFilter) return false;
+            if (tokens.length > 0) {
+                const hay = f._searchText || '';
+                if (!tokens.every(t => hay.indexOf(t) !== -1)) return false;
+            }
+            return true;
+        }).sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
     });
 
     protected svgTransform = computed(() => {
@@ -319,6 +333,9 @@ export class ForceOrgDialogComponent {
         this.loading.set(true);
         try {
             const result = await this.dataService.listForces();
+            for (const f of result || []) {
+                f._searchText = this.computeSearchText(f);
+            }
             this.allForces.set(result || []);
         } catch {
             // Error loading forces; allForces remains empty
@@ -332,6 +349,30 @@ export class ForceOrgDialogComponent {
     protected toggleSidebar(): void {
         this.sidebarAnimated.set(true);
         this.sidebarOpen.set(!this.sidebarOpen());
+    }
+
+    protected onSidebarSearch(text: string): void {
+        this.sidebarSearchText.set(text);
+    }
+
+    protected onSidebarGameTypeFilter(type: 'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE): void {
+        this.sidebarGameTypeFilter.set(type);
+    }
+
+    private computeSearchText(force: LoadForceEntry): string {
+        let s = '';
+        if (force.name) s += force.name + ' ';
+        for (const g of (force.groups || [])) {
+            if (g.name) s += g.name + ' ';
+            for (const ue of (g.units || [])) {
+                if (ue.alias) s += ue.alias + ' ';
+                if (ue.unit) {
+                    if (ue.unit.model) s += ue.unit.model + ' ';
+                    if (ue.unit.chassis) s += ue.unit.chassis + ' ';
+                }
+            }
+        }
+        return s.trim().toLowerCase();
     }
 
     private getFactionName(factionId: number | undefined): string {
