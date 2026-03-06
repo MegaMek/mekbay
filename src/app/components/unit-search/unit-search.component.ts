@@ -436,25 +436,8 @@ export class UnitSearchComponent {
             }
         });
         // Track pending afterNextRender callbacks to cancel on effect re-run or destroy
-        let pendingFocusRef: { destroy: () => void } | null = null;
         let pendingResizeObserverRef: { destroy: () => void } | null = null;
 
-        let firstOpening = true;
-        effect(() => {
-            pendingFocusRef?.destroy();
-            pendingFocusRef = null;
-
-            if (firstOpening 
-                && !this.forceBuilderService.hasForces() 
-                && this.filtersService.isDataReady() 
-                && this.syntaxInput()) {
-                firstOpening = false;
-                pendingFocusRef = afterNextRender(() => {
-                    pendingFocusRef = null;
-                    this.focusInput();
-                }, { injector: this.injector });
-            }
-        });
         pendingResizeObserverRef = afterNextRender(() => {
             pendingResizeObserverRef = null;
             // We use a ResizeObserver to track changes to the search bar container size,
@@ -492,7 +475,6 @@ export class UnitSearchComponent {
         }
         this.setupItemHeightTracking();
         inject(DestroyRef).onDestroy(() => {
-            pendingFocusRef?.destroy();
             pendingResizeObserverRef?.destroy();
             if (this.searchDebounceTimer) {
                 clearTimeout(this.searchDebounceTimer);
