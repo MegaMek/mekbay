@@ -31,74 +31,102 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
-import { Force } from '../../models/force.model';
-import { GameSystem } from '../../models/common.model';
-import { UnitIconComponent } from '../unit-icon/unit-icon.component';
-import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
-import { OptionsService } from '../../services/options.service';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
+import { LoadForceEntry, LoadForceGroup } from '../../models/load-force-entry.model';
+import { FactionImgPipe } from '../../pipes/faction-img.pipe';
+import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
+import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { OptionsService } from '../../services/options.service';
+import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
+import { NO_FORMATION_ID } from '../../utils/formation-type.model';
 
-/*
+export interface ForceEntryPreviewDialogData {
+    force: LoadForceEntry;
+}
+
+/**
  * Author: Drake
- *
- * Reusable force preview component that displays a force's header (name, faction icon,
- * game type badge, BV/PV) and a scrollable row of unit thumbnails grouped by unit group.
+ * 
+ * Dialog component that shows a detailed preview of a force entry, including its name, faction icon,
+ * and other relevant details.
  */
 @Component({
-    selector: 'force-preview',
+    selector: 'force-entry-preview-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, UnitIconComponent, CleanModelStringPipe],
+    imports: [CommonModule, FactionImgPipe, CleanModelStringPipe, UnitIconComponent],
+    host: {
+        class: 'fullscreen-dialog-host glass'
+    },
     template: `
     @let unitDisplayName = optionsService.options().unitDisplayName;
-    @let f = force();
-    <div class="force-preview-header">
-        <div class="faction-name-wrapper">
-            @if (factionImg(); as factionImgUrl) {
-                <img [src]="factionImgUrl" class="faction-icon" />
-            }
-            <span class="force-preview-name">{{ f.displayName() }}</span>
-        </div>
-        <span class="force-preview-info">
-            <span class="game-type-badge" [class.as]="f.gameSystem === GameSystem.ALPHA_STRIKE">
-                {{ f.gameSystem === GameSystem.ALPHA_STRIKE ? 'AS' : 'CBT' }}
-            </span>
-            @if (f.gameSystem === GameSystem.ALPHA_STRIKE) {
-                <span class="force-bv">PV: {{ f.totalBv() | number }}</span>
-            } @else {
-                <span class="force-bv">BV: {{ f.totalBv() | number }}</span>
-            }
-        </span>
-    </div>
-    <div class="unit-scroll">
-        @for (group of f.groups(); track group.id) {
-            <div class="unit-group">
-                <div class="group-name">{{ group.groupDisplayName() }}</div>
-                <div class="units">
-                    @for (fu of group.units(); track fu.id) {
-                        <div class="unit-square compact-mode" [class.destroyed]="fu.destroyed">
-                            <unit-icon [unit]="fu.getUnit()" [size]="32"></unit-icon>
-                            @if (unitDisplayName === 'chassisModel'
-                                || unitDisplayName === 'both'
-                                || !fu.alias()) {
-                                <div class="unit-model">{{ fu.getUnit().model | cleanModelString }}</div>
-                                <div class="unit-chassis">{{ fu.getUnit().chassis }}</div>
+    <div class="wide-dialog">
+        <h2 class="wide-dialog-title">FORCE DETAILS</h2>
+        <div class="wide-dialog-body">
+            <div class="force-preview">
+                <div class="force-preview-header">
+                    <div class="faction-name-wrapper">
+                        @if (force.factionId | factionImg; as factionImgUrl) {
+                            <img [src]="factionImgUrl" class="faction-icon" />
+                        }
+                        <span class="force-preview-name">{{ force.name }}</span>
+                    </div>
+                    <span class="force-preview-info">
+                        <span class="game-type-badge" [class.as]="force.type === 'as'">
+                            {{ force.type === 'as' ? 'AS' : 'CBT' }}
+                        </span>
+                        @if (force.type === 'as') {
+                            @if (force.pv && force.pv > 0) {
+                                <span class="force-bv">PV: {{ force.pv | number }}</span>
                             }
-                            @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
-                                <div class="unit-alias"
-                                    [class.thin]="unitDisplayName === 'both'">{{ fu.alias() }}</div>
+                        } @else {
+                            @if (force.bv && force.bv > 0) {
+                                <span class="force-bv">BV: {{ force.bv | number }}</span>
+                            }
+                        }
+                    </span>
+                </div>
+                <div class="unit-scroll">
+                    @for (group of force.groups; let gi = $index; track gi) {
+                    <div class="unit-group">
+                        <div class="group-name">{{ getGroupName(group) }}
+                            @if (getGroupFormationName(group); as fName) {
+                                <span class="group-formation">{{ fName }}</span>
                             }
                         </div>
+                        <div class="units">
+                            @for (unitEntry of group.units; let i = $index; track i) {
+                            <div class="unit-square compact-mode"
+                                [class.destroyed]="unitEntry.destroyed"
+                                [class.missing]="!unitEntry.unit">
+                                <unit-icon [unit]="unitEntry.unit" [size]="32"></unit-icon>
+                                @if (unitDisplayName === 'chassisModel'
+                                    || unitDisplayName === 'both'
+                                    || !unitEntry.alias) {
+                                <div class="unit-model">{{ unitEntry.unit?.model | cleanModelString }}</div>
+                                <div class="unit-chassis">{{ unitEntry.unit?.chassis }}</div>
+                                }
+                                @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
+                                <div class="unit-alias"
+                                    [class.thin]="unitDisplayName === 'both'">{{ unitEntry.alias }}</div>
+                                }
+                            </div>
+                            }
+                        </div>
+                    </div>
                     }
                 </div>
             </div>
-        }
+        </div>
+        <div class="wide-dialog-actions">
+            <button class="bt-button" (click)="close()">DISMISS</button>
+        </div>
     </div>
     `,
     styles: [`
-        :host {
-            display: block;
+        .force-preview {
             width: 100%;
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid var(--border-color, #333);
@@ -132,7 +160,6 @@ import { CommonModule } from '@angular/common';
         .force-preview-name {
             font-weight: 600;
             font-size: 1em;
-            text-align: left;
         }
 
         .force-preview-info {
@@ -189,6 +216,16 @@ import { CommonModule } from '@angular/common';
             text-align: left;
         }
 
+        .group-formation {
+            font-weight: 400;
+            color: var(--text-color-secondary);
+
+            &::before {
+                content: '·';
+                margin-right: 4px;
+            }
+        }
+
         .unit-group .units {
             display: flex;
             flex-direction: row;
@@ -217,6 +254,10 @@ import { CommonModule } from '@angular/common';
                 #300A 12px,
                 #300A 24px
             );
+        }
+
+        .unit-square.compact-mode.missing {
+            background-color: #F003;
         }
 
         .unit-square.compact-mode.destroyed unit-icon {
@@ -258,15 +299,35 @@ import { CommonModule } from '@angular/common';
         }
     `]
 })
-export class ForcePreviewComponent {
+export class ForceEntryPreviewDialogComponent {
+    private dialogRef = inject(DialogRef<void>);
+    private data: ForceEntryPreviewDialogData = inject(DIALOG_DATA);
     optionsService = inject(OptionsService);
-    readonly GameSystem = GameSystem;
+    force: LoadForceEntry;
 
-    /** The force to display. */
-    force = input.required<Force>();
+    constructor() {
+        this.force = this.data.force;
+    }
 
-    /** Resolved faction image URL, if available. */
-    factionImg = computed<string | undefined>(() => {
-        return this.force().faction()?.img || undefined;
-    });
+    getGroupName(group: LoadForceGroup): string {
+        if (!group.name) {
+            return LanceTypeIdentifierUtil.getFormationName(group.formationId) || '';
+        }
+        return group.name;
+    }
+
+    getGroupFormationName(group: LoadForceGroup): string | null {
+        if (!group.formationId) return null;
+        if (group.formationId === NO_FORMATION_ID) return null;
+        if (!group.name) return null;
+        const formationName = LanceTypeIdentifierUtil.getFormationName(group.formationId);
+        if (formationName && group.name.includes(formationName)) {
+            return null;
+        }
+        return formationName;
+    }
+
+    close(): void {
+        this.dialogRef.close();
+    }
 }

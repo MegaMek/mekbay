@@ -76,7 +76,6 @@ import { TagClickEvent } from '../unit-tags/unit-tags.component';
             max-width: 100%;
             box-sizing: border-box;
             overflow-y: auto;
-            scrollbar-width: thin;
             display: flex;
             flex-direction: column;
             gap: 4px;

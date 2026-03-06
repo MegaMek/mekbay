@@ -62,7 +62,6 @@
     padding: 8px;
     gap: 4px;
     overflow-y: auto;
-    scrollbar-width: thin;
 }
 
 /* When panel is open, constrain unit list width */

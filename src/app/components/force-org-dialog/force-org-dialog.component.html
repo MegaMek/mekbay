@@ -65,6 +65,7 @@
             <!-- Groups layer (rendered below forces) -->
             @for (group of sortedGroups(); track group.id) {
             <g class="group-container" [class.parent-group]="isParentGroup(group)"
+                [class.drop-target]="dropTargetGroupId() === group.id"
                 [attr.transform]="'translate(' + group.x + ',' + group.y + ')'"
                 (pointerdown)="onGroupPointerDown($event, group)">
                 <!-- Group background -->
@@ -75,20 +76,32 @@
 
                 <!-- Group header bar -->
                 <rect class="group-header-bg" x="0" y="0" [attr.width]="group.width" [attr.height]="GROUP_HEADER_HEIGHT" />
-                <!-- Bottom corners of header (clip rounded corners) -->
-                <rect class="group-header-bg" x="0" [attr.y]="GROUP_HEADER_HEIGHT - 6" [attr.width]="group.width"
-                    height="6" />
 
-                <!-- Group name -->
-                <foreignObject x="8" y="0" [attr.width]="group.width - 56" [attr.height]="GROUP_HEADER_HEIGHT"
+                <!-- Group faction icon -->
+                @if (orgGroupFactionIds().get(group.id) | factionImg; as factionImgUrl) {
+                <image [attr.href]="factionImgUrl" x="8" y="10" width="28" height="28"
+                    preserveAspectRatio="xMidYMid meet" />
+                }
+
+                <!-- Group header info -->
+                <foreignObject [attr.x]="orgGroupFactionIds().has(group.id) ? 40 : 8" y="0"
+                    [attr.width]="group.width - (orgGroupFactionIds().has(group.id) ? 88 : 56)" [attr.height]="GROUP_HEADER_HEIGHT"
                     class="group-name-fo">
-                    <div xmlns="http://www.w3.org/1999/xhtml" class="group-name"
-                        (click)="renameGroup(group)"
-                        title="Click to rename">
-                        {{ group.name }}
-                        @if (orgGroupOrgNames().get(group.id); as orgName) {
-                        <span class="group-org-name">({{ orgName }})</span>
-                        }
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="group-header-info">
+                        <div class="group-name"
+                            (click)="renameGroup(group)"
+                            title="Click to rename">
+                            {{ group.name || previewGroupInfo().get(group.id)?.orgName || orgGroupOrgNames().get(group.id) }}
+                        </div>
+                        <div class="group-data">
+                            @if (group.name && (previewGroupInfo().get(group.id)?.orgName || orgGroupOrgNames().get(group.id)); as orgName) {
+                            <span class="group-org-name">{{ orgName }}</span>
+                            }
+                            @if (previewGroupInfo().get(group.id)?.totals || orgGroupTotals().get(group.id); as totals) {
+                            @if (group.name && (previewGroupInfo().has(group.id) || orgGroupOrgNames().has(group.id))) { · }
+                            <span class="group-totals">{{ totals }}</span>
+                            }
+                        </div>
                     </div>
                 </foreignObject>
 
@@ -102,6 +115,37 @@
                                 <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
                             </svg>
                         </button>
+                    </div>
+                </foreignObject>
+            </g>
+            }
+
+            <!-- Drop preview: faint group outline showing where a new group would form -->
+            @if (dropPreviewRect(); as pr) {
+            <g pointer-events="none">
+                <rect class="drop-preview-group"
+                    [attr.x]="pr.x" [attr.y]="pr.y"
+                    [attr.width]="pr.width" [attr.height]="pr.height" />
+                <rect class="drop-preview-header"
+                    [attr.x]="pr.x" [attr.y]="pr.y"
+                    [attr.width]="pr.width" [attr.height]="GROUP_HEADER_HEIGHT" />
+
+                <!-- Preview faction icon -->
+                @if (pr.factionId | factionImg; as factionImgUrl) {
+                <image [attr.href]="factionImgUrl" [attr.x]="pr.x + 8" [attr.y]="pr.y + 10" width="28" height="28"
+                    preserveAspectRatio="xMidYMid meet" opacity="0.7" />
+                }
+
+                <foreignObject [attr.x]="pr.factionId !== undefined ? pr.x + 40 : pr.x + 8" [attr.y]="pr.y"
+                    [attr.width]="pr.width - (pr.factionId !== undefined ? 48 : 16)" [attr.height]="GROUP_HEADER_HEIGHT"
+                    class="group-name-fo">
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="group-header-info drop-preview-info">
+                        @if (pr.orgName) {
+                        <span class="group-org-name">{{ pr.orgName }}</span>
+                        }
+                        @if (pr.totals) {
+                        <span class="group-totals">{{ pr.totals }}</span>
+                        }
                     </div>
                 </foreignObject>
             </g>
@@ -126,30 +170,38 @@
                 @if (pf.force.factionId | factionImg; as factionImgUrl) {
                 <image [attr.href]="factionImgUrl" x="12" y="12" width="32" height="32"
                     preserveAspectRatio="xMidYMid meet" />
-                } @else {
-                <rect class="no-faction-icon" x="12" y="16" width="28" height="28" />
                 }
 
                 <!-- Force name -->
                 <foreignObject x="50" y="6" [attr.width]="CARD_WIDTH - 82" height="36" class="force-name-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-name">
-                        {{ pf.force.name }}
+                        {{ pf.force.name || forceOrgNames().get(pf.force.instanceId) }}
                     </div>
+                    @if (pf.force.name) {
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-org">
                         {{ forceOrgNames().get(pf.force.instanceId) }}
                     </div>
+                    }
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-value">
-                        @if (getForceValue(pf.force); as val) {
+                        @if (forceValues().get(pf.force.instanceId); as val) {
                         {{ val }}
                         }
                     </div>
                 </foreignObject>
 
-                <!-- Remove button (visible on hover) -->
+                <!-- Action buttons (visible on hover) -->
                 @if (hoveredForceId() === pf.force.instanceId) {
-                <foreignObject [attr.x]="CARD_WIDTH - 28" y="4" width="24" height="24" class="remove-fo">
-                    <div xmlns="http://www.w3.org/1999/xhtml">
-                        <button class="force-remove-btn" (click)="removeForce(pf); $event.stopPropagation()"
+                <foreignObject [attr.x]="CARD_WIDTH - 52" y="4" width="48" height="24" class="remove-fo">
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-action-buttons">
+                        <button class="force-action-btn preview" (click)="previewForce(pf.force); $event.stopPropagation()"
+                            (pointerdown)="$event.stopPropagation()"
+                            title="View details">
+                            <svg stroke="currentColor" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M15.8053 15.8013L21 21M10.5 7.5V13.5M7.5 10.5H13.5M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                        </button>
+                        <button class="force-action-btn remove" (click)="removeForce(pf); $event.stopPropagation()"
+                            (pointerdown)="$event.stopPropagation()"
                             title="Remove from canvas">
                             <svg width="12" height="12" fill="currentColor" viewBox="0 0 1200 1200" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
@@ -183,13 +235,14 @@
                 <div class="sidebar-force-icon">
                     @if (force.factionId | factionImg; as factionImgUrl) {
                     <img [src]="factionImgUrl" class="sidebar-faction-img" alt="" />
-                    } @else {
-                    <div class="sidebar-faction-placeholder"></div>
                     }
                 </div>
                 <div class="sidebar-force-info">
-                    <div class="sidebar-force-name">{{ force.name }}</div>
-                    <div class="sidebar-force-value">{{ getForceValue(force) }}</div>
+                    <div class="sidebar-force-name">{{ force.name || forceOrgNames().get(force.instanceId) }}</div>
+                    @if (force.name) {
+                    <div class="sidebar-force-org">{{ forceOrgNames().get(force.instanceId) }}</div>
+                    }
+                    <div class="sidebar-force-value">{{ forceValues().get(force.instanceId) }}</div>
                 </div>
             </div>
             }
@@ -199,8 +252,20 @@
 
     <!-- Floating drag ghost for sidebar drag -->
     @if (sidebarDragActive() && sidebarDragForce()) {
-    <div class="drag-ghost" [style.left.px]="sidebarDragPos().x - 100" [style.top.px]="sidebarDragPos().y - 25">
-        {{ sidebarDragForce()?.name }}
+    <div class="drag-ghost" [style.left.px]="sidebarDragPos().x - CARD_WIDTH / 2" [style.top.px]="sidebarDragPos().y - CARD_HEIGHT / 2"
+        [style.width.px]="CARD_WIDTH" [style.height.px]="CARD_HEIGHT">
+        <div class="drag-ghost-icon">
+            @if (sidebarDragForce()!.factionId | factionImg; as factionImgUrl) {
+            <img [src]="factionImgUrl" class="drag-ghost-faction-img" alt="" />
+            }
+        </div>
+        <div class="drag-ghost-info">
+            <div class="drag-ghost-name">{{ sidebarDragForce()!.name || forceOrgNames().get(sidebarDragForce()!.instanceId) }}</div>
+            @if (sidebarDragForce()!.name) {
+            <div class="drag-ghost-org">{{ forceOrgNames().get(sidebarDragForce()!.instanceId) }}</div>
+            }
+            <div class="drag-ghost-value">{{ forceValues().get(sidebarDragForce()!.instanceId) }}</div>
+        </div>
     </div>
     }
 </div>

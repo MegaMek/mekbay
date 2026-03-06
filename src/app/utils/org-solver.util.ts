@@ -187,6 +187,9 @@ function evaluateForceByGroups(
                 : [];
         if (acceptedTypes.length === 0) continue;
 
+        // Group-level filter: skip rules that don't apply to this set of groups
+        if (rule.groupFilter && !rule.groupFilter(groupResults)) continue;
+
         // Count groups matching any accepted type (each group counted at most once).
         // A group matches if its direct type OR its countsAs alias is in the accepted set.
         const acceptedTypeSet = new Set(acceptedTypes.map(r => r.type));
