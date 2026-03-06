@@ -285,18 +285,20 @@
                     } @else {
                         <!-- Compact View Card -->
                         <unit-card-expanded
+                            longPress
+                            (shortPress)="onUnitCardClick(unit, $event)"
+                            (longPress)="multiSelectUnit(unit, $event)"
                             [unit]="unit"
                             [gunnery]="gunnery"
                             [piloting]="piloting"
                             [expandedView]="false"
-                            [showInfoButton]="true"
+                            [showSelectCheckbox]="true"
                             [isSelected]="isUnitSelected(unit)"
                             [sortKey]="currentSortKey()"
                             [sortSlotLabel]="currentSortSlotLabel()"
                             [searchTokens]="this.filtersService.searchTokens()"
                             (tagClick)="onAddTag($event)"
-                            (infoClick)="onUnitInfoClick(unit)"
-                            (click)="multiSelectUnit(unit, $event)">
+                            (selectClick)="multiSelectUnit(unit)">
                         </unit-card-expanded>
                     }
                 </div>

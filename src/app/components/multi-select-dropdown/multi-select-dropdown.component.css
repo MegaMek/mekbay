@@ -32,6 +32,8 @@
     gap: 4px;
     flex: 1;
     margin-top: 6px;
+    max-height: 100px;
+    overflow-y: auto;
 }
 
 .placeholder {
