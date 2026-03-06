@@ -243,12 +243,6 @@
     color: var(--text-color-secondary);
 }
 
-.expanded-components,
-.expanded-specials {
-    max-height: 400px;
-    overflow-y: auto;
-}
-
 .components-pills,
 .specials-pills {
     display: flex;
