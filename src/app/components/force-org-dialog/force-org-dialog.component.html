@@ -173,7 +173,7 @@
                 }
 
                 <!-- Force name -->
-                <foreignObject x="50" y="6" [attr.width]="CARD_WIDTH - 82" height="36" class="force-name-fo">
+                <foreignObject x="50" y="6" [attr.width]="CARD_WIDTH - 90" height="36" class="force-name-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-name">
                         {{ pf.force.name || forceOrgNames().get(pf.force.instanceId) }}
                     </div>
@@ -189,17 +189,9 @@
                     </div>
                 </foreignObject>
 
-                <!-- Action buttons (visible on hover) -->
-                @if (hoveredForceId() === pf.force.instanceId) {
-                <foreignObject [attr.x]="CARD_WIDTH - 52" y="4" width="48" height="24" class="remove-fo">
-                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-action-buttons">
-                        <button class="force-action-btn preview" (click)="previewForce(pf.force); $event.stopPropagation()"
-                            (pointerdown)="$event.stopPropagation()"
-                            title="View details">
-                            <svg stroke="currentColor" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M15.8053 15.8013L21 21M10.5 7.5V13.5M7.5 10.5H13.5M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                            </svg>
-                        </button>
+                <!-- Action buttons (always visible, right side, vertically stacked) -->
+                <foreignObject [attr.x]="CARD_WIDTH - 30" y="0" width="30" [attr.height]="CARD_HEIGHT" class="force-actions-fo">
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-action-column">
                         <button class="force-action-btn remove" (click)="removeForce(pf); $event.stopPropagation()"
                             (pointerdown)="$event.stopPropagation()"
                             title="Remove from canvas">
@@ -207,9 +199,15 @@
                                 <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
                             </svg>
                         </button>
+                        <button class="force-action-btn preview" (click)="previewForce(pf.force); $event.stopPropagation()"
+                            (pointerdown)="$event.stopPropagation()"
+                            title="View details">
+                            <svg stroke="currentColor" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M15.8053 15.8013L21 21M10.5 7.5V13.5M7.5 10.5H13.5M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                        </button>
                     </div>
                 </foreignObject>
-                }
             </g>
             }
         </g>
@@ -244,6 +242,12 @@
                     }
                     <div class="sidebar-force-value">{{ forceValues().get(force.instanceId) }}</div>
                 </div>
+                <button class="sidebar-info-btn" (click)="previewForce(force); $event.stopPropagation()"
+                    (pointerdown)="$event.stopPropagation()" title="View details">
+                    <svg stroke="currentColor" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M15.8053 15.8013L21 21M10.5 7.5V13.5M7.5 10.5H13.5M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                </button>
             </div>
             }
             }
