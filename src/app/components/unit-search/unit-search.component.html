@@ -215,16 +215,16 @@
                     [class.selected]="isUnitSelected(unit)"
                     [class.active]="activeIndex() === i"
                     [class.panel-selected]="showInlinePanel() && inlinePanelUnit()?.name === unit.name"
-                    (pointerenter)="activeIndex.set(i)"
-                    longPress
-                    (shortPress)="onUnitCardClick(unit, $event)"
-                    (longPress)="multiSelectUnit(unit)">
+                    (pointerenter)="activeIndex.set(i)">
 
                     @if (this.expandedView()) {
                         <!-- Expanded View Cards -->
                         @if (gameService.isAlphaStrike()) {
                         <!-- AS Expanded Card (hidden at >= 1200px, replaced by table row) -->
                         <unit-card-expanded class="as-card-view"
+                            longPress
+                            (shortPress)="onUnitCardClick(unit, $event)"
+                            (longPress)="multiSelectUnit(unit, $event)"
                             [unit]="unit"
                             [gunnery]="gunnery"
                             [useHex]="useHex()"
@@ -235,7 +235,10 @@
                             (tagClick)="onAddTag($event)">
                         </unit-card-expanded>
                         <!-- AS Table Row View (visible at >= 1200px) -->
-                        <div class="as-table-row">
+                        <div class="as-table-row"
+                            longPress
+                            (shortPress)="onUnitCardClick(unit, $event)"
+                            (longPress)="multiSelectUnit(unit, $event)">
                             <div class="as-td as-td-icon"><unit-icon [unit]="unit" [size]="36"></unit-icon></div>
                             <div class="as-td as-td-name">
                                 <span class="as-td-model" [innerHTML]="highlight(unit.model)"></span>
@@ -266,6 +269,9 @@
                         } @else {
                         <!-- BT Expanded Card -->
                         <unit-card-expanded
+                            longPress
+                            (shortPress)="onUnitCardClick(unit, $event)"
+                            (longPress)="multiSelectUnit(unit, $event)"
                             [unit]="unit"
                             [gunnery]="gunnery"
                             [piloting]="piloting"
@@ -283,11 +289,14 @@
                             [gunnery]="gunnery"
                             [piloting]="piloting"
                             [expandedView]="false"
+                            [showInfoButton]="true"
                             [isSelected]="isUnitSelected(unit)"
                             [sortKey]="currentSortKey()"
                             [sortSlotLabel]="currentSortSlotLabel()"
                             [searchTokens]="this.filtersService.searchTokens()"
-                            (tagClick)="onAddTag($event)">
+                            (tagClick)="onAddTag($event)",
+                            (infoClick)="onUnitInfoClick(unit)",
+                            (click)="multiSelectUnit(unit, $event)">
                         </unit-card-expanded>
                     }
                 </div>

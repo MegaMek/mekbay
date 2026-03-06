@@ -1291,7 +1291,8 @@ export class UnitSearchComponent {
         window.removeEventListener('pointercancel', this.onAdvPanelDragEnd);
     };
 
-    multiSelectUnit(unit: Unit) {
+    multiSelectUnit(unit: Unit, event?: MouseEvent) {
+        event?.stopPropagation();
         const selected = new Set(this.selectedUnits());
         if (selected.has(unit.name)) {
             selected.delete(unit.name);
@@ -1302,18 +1303,11 @@ export class UnitSearchComponent {
     }
 
     // Multi-select logic: click with Ctrl/Cmd or Shift to select multiple units
-    onUnitCardClick(unit: Unit, event: MouseEvent) {
+    onUnitCardClick(unit: Unit, event?: MouseEvent) {
         const multiSelect = event ? (event.ctrlKey || event.metaKey || event.shiftKey) : false;
         if (event && multiSelect) {
             // Multi-select logic
-            const selected = new Set(this.selectedUnits());
-            if (selected.has(unit.name)) {
-                selected.delete(unit.name);
-            } else {
-                selected.add(unit.name);
-            }
-            this.selectedUnits.set(selected);
-            event.stopPropagation();
+            this.multiSelectUnit(unit, event);
             return;
         }
         // Single click: show inline panel if available, otherwise open dialog
@@ -1328,6 +1322,10 @@ export class UnitSearchComponent {
         } else {
             this.showUnitDetails(unit);
         }
+    }
+
+    onUnitInfoClick(unit: Unit) {
+        this.showUnitDetails(unit);
     }
 
     /** Handle unit added from inline panel */
