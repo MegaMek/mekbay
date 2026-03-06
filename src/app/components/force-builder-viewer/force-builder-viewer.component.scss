@@ -20,8 +20,11 @@
         overflow-y: auto;
         min-height: 0;
         overscroll-behavior: none;
-        scrollbar-width: none;
         touch-action: pan-y;
+    }
+
+    &.mini-mode .scrollable-content {
+        scrollbar-width: none;
     }
 }
 

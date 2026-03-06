@@ -47,7 +47,7 @@ import { Faction } from './factions.model';
 import { FormationTypeDefinition, FormationMatch, isNoFormation } from '../utils/formation-type.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
-import { GroupSizeResult } from '../utils/force-type.util';
+import { GroupSizeResult } from '../utils/org-solver.util';
 
 /*
  * Author: Drake

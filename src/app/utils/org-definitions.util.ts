@@ -36,10 +36,18 @@ import { ForceUnit } from '../models/force-unit.model';
 /*
  * Author: Drake
  *
- * Force type identification: shared between force size naming and group size naming.
+ * Force org definitions: ForceType, ForceTypeRule, and all org classes
+ * (ClanOrg, ISOrg, ComStarOrg, SocietyOrg, MHOrg).
+ *
+ * Solver logic lives in org-solver.util.ts.
  */
 
 export type ForceType =
+    // Generic
+    | 'Force'
+    | 'Mercenary'
+
+    // IS-specific types
     | 'Squad'
     | 'Platoon'
     | 'Flight'
@@ -51,6 +59,8 @@ export type ForceType =
     | 'Battalion'
     | 'Regiment'
     | 'Brigade'
+
+    // Clan-specific types
     | 'Point'
     | 'Star'
     | 'Nova'
@@ -60,18 +70,27 @@ export type ForceType =
     | 'Supernova Trinary'
     | 'Cluster'
     | 'Galaxy'
+
+    // ComStar/WoB-specific types
     | 'Level I'
     | 'Level II'
     | 'Level III'
     | 'Level IV'
     | 'Level V'
+
+    // Society-specific types
     | 'Un'
     | 'Trey'
     | 'Sept'
-    | 'Force'
-    | 'Mercenary';
+    
+    // MH-specific types
+    | 'Contubernium'
+    | 'Century'
+    | 'Maniple'
+    | 'Cohort'
+    | 'Legion';
 
-interface ForceComposition {
+export interface ForceComposition {
     BM: number;
     BA_troopers: number;
     CI_troopers: number;
@@ -81,7 +100,7 @@ interface ForceComposition {
     other: number;
 }
 
-function getForceComposition(units: ForceUnit[]): ForceComposition {
+export function getForceComposition(units: ForceUnit[]): ForceComposition {
     const comp: ForceComposition = {
         BM: 0,
         BA_troopers: 0,
@@ -114,12 +133,35 @@ function getForceComposition(units: ForceUnit[]): ForceComposition {
  * For leaf rules (no composedOf), count equals absolute pts.
  * For composed rules, resolved pts = count x nominal pts of the base rule.
  */
-type ForceModifier = {
+export type ForceModifier = {
     prefix: string;   // '' for regular, Short, Under-Strength, Reinforced, etc.
     count: number;  // number of sub-units (or absolute pts for leaf rules)
 };
 
-class ForceTypeRule {
+/**
+ * A point range accounts for variable-size base units (e.g. ComStar Level I
+ * of CI infantry = 30-36 troopers). Instead of a single divisor that under-
+ * or over-counts, we track the minimum and maximum possible point values.
+ *
+ * When min === max the range is degenerate (exact), which is the default for
+ * unit types with fixed sizes (mechs, vehicles, aero, etc.).
+ */
+export interface PointRange {
+    min: number;
+    max: number;
+}
+
+/**
+ * Distance from a point range to a single point.
+ * Returns 0 if the point is within the range.
+ */
+export function rangeDistToPoint(range: PointRange, point: number): number {
+    if (point >= range.min && point <= range.max) return 0;
+    if (point < range.min) return range.min - point;
+    return point - range.max;
+}
+
+export class ForceTypeRule {
     readonly type: ForceType;
     readonly modifiers: ForceModifier[];
     readonly composedOf?: ForceTypeRule;
@@ -246,18 +288,7 @@ class ForceTypeRule {
     }
 }
 
-/**
- * A point range accounts for variable-size base units (e.g. ComStar Level I
- * of CI infantry = 30-36 troopers). Instead of a single divisor that under-
- * or over-counts, we track the minimum and maximum possible point values.
- *
- * When min === max the range is degenerate (exact), which is the default for
- * unit types with fixed sizes (mechs, vehicles, aero, etc.).
- */
-interface PointRange {
-    min: number;
-    max: number;
-}
+// ─── Org Definitions ───────────────────────────────────────────────────────────
 
 class ClanOrg {
     /** Flat evaluation: max allowed distance as a fraction of midPts before falling back to "Force". */
@@ -362,8 +393,6 @@ class ClanOrg {
         ClanOrg.CLUSTER, ClanOrg.GALAXY,
     ];
 }
-
-
 
 function isPureAero(comp: ForceComposition): boolean {
     return comp.AF > 0 && comp.BM === 0 && comp.CV === 0 && comp.BA_troopers === 0 && comp.CI_troopers === 0 && comp.PM === 0 && comp.other === 0;
@@ -607,447 +636,111 @@ class SocietyOrg {
     ];
 }
 
-/**
- * Distance from a point range to a single point.
- * Returns 0 if the point is within the range.
- */
-function rangeDistToPoint(range: PointRange, point: number): number {
-    if (point >= range.min && point <= range.max) return 0;
-    if (point < range.min) return range.min - point;
-    return point - range.max;
-}
+class MHOrg {
+    /** Flat evaluation: max allowed distance as a fraction of midPts before falling back to "Force". */
+    static readonly DISTANCE_FACTOR = 0.2;
+    /** Flat evaluation: floor for the max allowed distance (pts). */
+    static readonly MIN_DISTANCE = 2;
+    
+    /** Group evaluation: max allowed distance as a fraction of total group count before falling back to "Force". */
+    static readonly GROUP_DISTANCE_FACTOR = 0.5;
+    /** Group evaluation: floor for the max allowed distance (groups). */
+    static readonly GROUP_MIN_DISTANCE = 1;
 
-/** Internal result of a force evaluation, carrying the distance for comparison. */
-interface EvaluationResult {
-    name: string;
-    dist: number;
-    matchedRule: ForceTypeRule | null;
-}
-
-/**
- * Exported result of a group-level size evaluation.
- * Carries the matched ForceType so force-level evaluation can
- * count groups by type without re-evaluating them.
- */
-export interface GroupSizeResult {
-    name: string;
-    type: ForceType | null;
-    /** Alias type for group-based counting (e.g. Nova also counts as Star). */
-    countsAsType: ForceType | null;
-}
-
-/**
- * Core evaluation: given a composition, find the best-matching rule and modifier.
- * Returns the full result including distance so callers can compare approaches.
- */
-function evaluateForceDetailed(
-    comp: ForceComposition,
-    rules: ForceTypeRule[],
-    getPointRange: (comp: ForceComposition) => PointRange,
-    minDistance = 2,
-    distanceFactor = 0.2,
-): EvaluationResult {
-    const range = getPointRange(comp);
-    const midPts = (range.min + range.max) / 2;
-
-    if (range.max === 0) return { name: 'Force', dist: Infinity, matchedRule: null };
-
-    let bestType: string = 'Force';
-    let bestDist = Infinity;
-    let bestNominal = 0;
-    let bestModName = '';
-    let bestRule: ForceTypeRule | null = null;
-
-    for (const rule of rules) {
-        // Composition filter — skip rules that don't apply to this force type
-        if (rule.filter && !rule.filter(comp)) continue;
-
-        let dist = -1;
-        if (rule.customMatch) {
-            const customDist = rule.customMatch(comp);
-            if (customDist === Infinity) continue;
-            if (customDist >= 0) {
-                if (rule.strict && customDist !== 0) continue;
-                if (customDist < bestDist) {
-                    bestDist = customDist;
-                    bestNominal = rule.nominalPts;
-                    bestType = rule.type;
-                    bestRule = rule;
-                    // Perfect custom match = regular; otherwise derive from modifier table
-                    bestModName = customDist === 0
-                        ? ''
-                        : rule.getModifierPrefix(range);
-                }
-                continue;
-            }
-            // customDist === -1: fall through to range-based evaluation
-        }
-
-        // Rule range from first to last modifier resolved pts
-        const ruleMin = rule.resolveModPts(rule.modifiers[0]);
-        const ruleMax = rule.resolveModPts(rule.modifiers[rule.modifiers.length - 1]);
-
-        // Check overlap between force point range and rule modifier range
-        if (range.max >= ruleMin && range.min <= ruleMax) {
-            dist = 0;
-        } else if (range.max < ruleMin) {
-            dist = ruleMin - range.max;
-        } else {
-            dist = range.min - ruleMax;
-        }
-
-        if (rule.strict && dist !== 0) continue;
-
-        // On equal distance, prefer the larger formation (higher nominalPts)
-        if (dist < bestDist || (dist === bestDist && rule.nominalPts > bestNominal)) {
-            bestDist = dist;
-            bestNominal = rule.nominalPts;
-            bestType = rule.type;
-            bestRule = rule;
-            bestModName = rule.getModifierPrefix(range);
-        }
+    static getPointRange(comp: ForceComposition): PointRange {
+        const fixed = comp.BM +
+            (comp.BA_troopers / 5) +
+            comp.PM +
+            comp.CV +
+            comp.AF +
+            comp.other;
+        // MH infantry platoon = 5-10 troopers per point
+        // Dividing by 10 = minimum pts; dividing by 5 = maximum pts
+        return {
+            min: fixed + comp.CI_troopers / 10,
+            max: fixed + comp.CI_troopers / 5,
+        };
     }
+    static readonly CONTUBERNIUM = new ForceTypeRule({
+        type: 'Contubernium', modifiers: [{ prefix: '', count: 1 }], commandRank: 'Miles probatus',
+    });
+    // Century = N Contubernii
+    static readonly CENTURY = new ForceTypeRule({
+        type: 'Century', composedOf: MHOrg.CONTUBERNIUM, modifiers: [
+            { prefix: 'Half ', count: 2 },
+            { prefix: 'Short ', count: 3 },
+            { prefix: 'Under-Strength ', count: 4 },
+            { prefix: '', count: 5 },
+            { prefix: 'Reinforced ', count: 6 },
+            { prefix: 'Fortified ', count: 7 },
+        ], commandRank: 'Centurion',
+        filter: (comp) => !isPureInfantry(comp),
+    });
+    // Century (Infantry) = 4-10 CI infantry Points
+    static readonly CENTURY_INF = new ForceTypeRule({
+        type: 'Century', composedOf: MHOrg.CONTUBERNIUM, modifiers: [
+            { prefix: '', count: 4 },
+            { prefix: '', count: 10 },
+        ], commandRank: 'Centurion',
+        filter: (comp) => isPureInfantry(comp),
+    });
+    // Maniple = 2 Century
+    static readonly MANIPLE = new ForceTypeRule({
+        type: 'Maniple', strict: true, 
+        composedOf: MHOrg.CENTURY, composedOfAny: [MHOrg.CENTURY, MHOrg.CENTURY_INF], modifiers: [
+			{ prefix: '', count: 2 }
+		], commandRank: 'Principes',
+    });
+    // Cohort = N Maniples
+    static readonly COHORT = new ForceTypeRule({
+        type: 'Cohort', composedOf: MHOrg.MANIPLE,
+        modifiers: [
+            { prefix: 'Under-Strength ', count: 2 },
+            { prefix: '', count: 3 },
+            { prefix: 'Reinforced ', count: 4 },
+            { prefix: 'Strong ', count: 5 },
+        ], commandRank: 'Legatus',
+    });
+    // Legion = N Cohorts
+    static readonly LEGION = new ForceTypeRule({
+        type: 'Legion', composedOf: MHOrg.COHORT, modifiers: [
+            { prefix: 'Under-Strength ', count: 2 },
+            { prefix: '', count: 3 },
+            { prefix: 'Reinforced ', count: 4 },
+            { prefix: 'Strong ', count: 5 },
+        ], commandRank: 'General',
+    }); 
+    static readonly ALL: ForceTypeRule[] = [
+        MHOrg.CONTUBERNIUM, MHOrg.CENTURY, MHOrg.CENTURY_INF,
+        MHOrg.MANIPLE, MHOrg.COHORT, MHOrg.LEGION,
+    ];
+}
 
-    const maxAllowedDistance = Math.max(minDistance, midPts * distanceFactor);
-    if (bestDist <= maxAllowedDistance) {
-        const name = bestModName ? bestModName + bestType : bestType;
-        return { name, dist: bestDist, matchedRule: bestRule };
-    }
+// ─── Org Resolution ────────────────────────────────────────────────────────────
 
-    return { name: 'Force', dist: Infinity, matchedRule: null };
+/**
+ * Shared shape for all org classes (ClanOrg, ISOrg, ComStarOrg, etc.).
+ */
+export interface OrgDefinition {
+    readonly ALL: ForceTypeRule[];
+    readonly DISTANCE_FACTOR: number;
+    readonly MIN_DISTANCE: number;
+    readonly GROUP_DISTANCE_FACTOR: number;
+    readonly GROUP_MIN_DISTANCE: number;
+    getPointRange(comp: ForceComposition): PointRange;
 }
 
 /**
- * Group-based force evaluation.
- *
- * Instead of flattening all units, this evaluates each group individually,
- * then counts how many groups matched each rule type. It looks for higher-level
- * rules whose `composedOf` type equals a group type and matches the group count
- * against the rule's raw modifier counts (without the composedOf multiplication).
- *
- * Example: 6 groups each identified as "Level II" → Level III has
- * composedOf = Level II and modifier count 6 → "Level III".
+ * Registry of org definitions with faction/tech-base matchers.
+ * Order matters: first match wins. IS is the default fallback.
+ * To add a new org, append one entry here.
  */
-function evaluateForceByGroups(
-    groupResults: GroupSizeResult[],
-    rules: ForceTypeRule[],
-    groupMinDistance = 1,
-    groupDistanceFactor = 0.25,
-): EvaluationResult {
-    let best: EvaluationResult = { name: 'Force', dist: Infinity, matchedRule: null };
+export const ORG_REGISTRY: { match: (techBase: string, factionName: string) => boolean; org: OrgDefinition }[] = [
+    { match: (_, f) => f === 'ComStar' || f === 'Word of Blake', org: ComStarOrg },
+    { match: (_, f) => f === 'Society',                          org: SocietyOrg },
+    { match: (t, f) => f.includes('Clan') || t === 'Clan',       org: ClanOrg },
+    { match: (_, f) => f.includes('Marian Hegemony'),            org: MHOrg },
+    // ISOrg is the default fallback if no other org matches
+];
 
-    for (const rule of rules) {
-        // Determine which types this rule accepts as sub-units for group-based evaluation.
-        // composedOfAny takes precedence (e.g. Cluster accepts Binaries OR Trinaries),
-        // otherwise fall back to the single composedOf type.
-        const acceptedTypes = rule.composedOfAny
-            ? rule.composedOfAny
-            : rule.composedOf
-                ? [rule.composedOf]
-                : [];
-        if (acceptedTypes.length === 0) continue;
-
-        // Count groups matching any accepted type (each group counted at most once).
-        // A group matches if its direct type OR its countsAs alias is in the accepted set.
-        const acceptedTypeSet = new Set(acceptedTypes.map(r => r.type));
-        let count = 0;
-        for (const result of groupResults) {
-            if (result.type && acceptedTypeSet.has(result.type)) {
-                count++;
-            } else if (result.countsAsType && acceptedTypeSet.has(result.countsAsType)) {
-                count++;
-            }
-        }
-        if (count === 0) continue;
-
-        // Compare group count against raw modifier counts (not resolved through composedOf)
-        const rawMin = rule.modifiers[0].count;
-        const rawMax = rule.modifiers[rule.modifiers.length - 1].count;
-
-        let dist: number;
-        if (count >= rawMin && count <= rawMax) {
-            dist = 0;
-        } else if (count < rawMin) {
-            dist = rawMin - count;
-        } else {
-            dist = count - rawMax;
-        }
-
-        // Penalize for groups not accounted for by this rule.
-        // E.g. Supernova Binary expects 2 Novas — if there's also a Binary group,
-        // that unmatched group adds 1 to the distance so more inclusive rules can win.
-        const unmatchedCount = groupResults.length - count;
-        dist += unmatchedCount;
-
-        const bestPriority = best.matchedRule?.priority ?? 0;
-        if (dist < best.dist ||
-            (dist === best.dist && rule.priority > bestPriority) ||
-            (dist === best.dist && rule.priority === bestPriority && rule.nominalPts > (best.matchedRule?.nominalPts ?? 0))) {
-            const modPrefix = rule.getModifierPrefixByRawCount(count);
-            best = {
-                name: modPrefix ? modPrefix + rule.type : rule.type,
-                dist,
-                matchedRule: rule,
-            };
-        }
-    }
-
-    const maxAllowed = Math.max(groupMinDistance, groupResults.length * groupDistanceFactor);
-    if (best.dist <= maxAllowed) {
-        return best;
-    }
-
-    return { name: 'Force', dist: Infinity, matchedRule: null };
-}
-
-/**
- * Hierarchical group split: when direct group evaluation doesn't find a good
- * match, try splitting groups into K sub-batches, evaluate each batch to find
- * an intermediate formation, then see if K intermediate formations compose
- * into a higher-level formation.
- *
- * Example: 4 Novas => K=2 => [Nova,Nova] + [Nova,Nova]
- *   => each batch = Supernova Binary (2 Novas) => 2 x SN Binary
- *   => SN Binary countsAs Binary => Under-Strength Cluster (2 Binaries).
- */
-function trySplitGroupEvaluation(
-    groupResults: GroupSizeResult[],
-    rules: ForceTypeRule[],
-    groupMinDistance: number,
-    groupDistanceFactor: number,
-): EvaluationResult {
-    let best: EvaluationResult = { name: 'Force', dist: Infinity, matchedRule: null };
-
-    for (let k = 2; k <= 5; k++) {
-        if (groupResults.length < k * 2) break; // Need at least 2 groups per batch
-
-        const batchSize = Math.floor(groupResults.length / k);
-        const remainder = groupResults.length % k;
-
-        // Split into K batches
-        const batches: GroupSizeResult[][] = [];
-        let offset = 0;
-        for (let i = 0; i < k; i++) {
-            const size = batchSize + (i < remainder ? 1 : 0);
-            batches.push(groupResults.slice(offset, offset + size));
-            offset += size;
-        }
-
-        // Evaluate each batch via group-based evaluation
-        const batchResults: GroupSizeResult[] = [];
-        let allMatched = true;
-        for (const batch of batches) {
-            const result = evaluateForceByGroups(batch, rules, groupMinDistance, groupDistanceFactor);
-            if (!result.matchedRule) {
-                allMatched = false;
-                break;
-            }
-            batchResults.push({
-                name: result.name,
-                type: result.matchedRule.type,
-                countsAsType: result.matchedRule.countsAs?.type ?? null,
-            });
-        }
-        if (!allMatched) continue;
-
-        // Evaluate the batch results as a higher-level grouping
-        const higherResult = evaluateForceByGroups(batchResults, rules, groupMinDistance, groupDistanceFactor);
-        if (higherResult.matchedRule &&
-            (higherResult.dist < best.dist ||
-             (higherResult.dist === best.dist &&
-              (higherResult.matchedRule.nominalPts) > (best.matchedRule?.nominalPts ?? 0)))) {
-            best = higherResult;
-        }
-
-        if (best.dist === 0) break;
-    }
-
-    return best;
-}
-
-/**
- * Evaluate a virtual point value against rules, skipping customMatch.
- * Only matches when the point falls within a rule's modifier range (dist === 0).
- * Used by the virtual split fallback to identify what type a sub-group of
- * a given size would be without knowing the actual unit composition.
- */
-function evaluateVirtualGroup(
-    pts: number,
-    rules: ForceTypeRule[],
-    comp: ForceComposition,
-): EvaluationResult {
-    let bestRule: ForceTypeRule | null = null;
-    let bestNominal = 0;
-
-    for (const rule of rules) {
-        // Skip rules requiring per-sub-group composition (e.g. Nova's BM+BA split)
-        if (rule.customMatch) continue;
-
-        // Apply composition filters so we don't match e.g. Lance for pure-aero groups
-        if (rule.filter && !rule.filter(comp)) continue;
-
-        const ruleMin = rule.resolveModPts(rule.modifiers[0]);
-        const ruleMax = rule.resolveModPts(rule.modifiers[rule.modifiers.length - 1]);
-
-        // Only accept when the point falls within the modifier range
-        if (pts < ruleMin || pts > ruleMax) continue;
-
-        // Prefer the rule with higher nominalPts (larger formation)
-        if (!bestRule || rule.nominalPts > bestNominal) {
-            bestNominal = rule.nominalPts;
-            bestRule = rule;
-        }
-    }
-
-    if (bestRule) {
-        return { name: bestRule.type, dist: 0, matchedRule: bestRule };
-    }
-    return { name: 'Force', dist: Infinity, matchedRule: null };
-}
-
-/**
- * Virtual split fallback: when flat evaluation fails to identify a group,
- * try splitting the total points into K equal sub-groups and check if those
- * virtual sub-groups form a recognized composed formation.
- *
- * Example: 11 Clan pts → K=2 → 5.5 each → Star (within 2–7) → 2 Stars → Binary.
- * Example: 16 Clan pts → K=2 → 8 each → no match; K=3 → 5.33 → Star → 3 Stars → Trinary.
- */
-function trySplitEvaluation(
-    pts: number,
-    rules: ForceTypeRule[],
-    comp: ForceComposition,
-): EvaluationResult {
-    let best: EvaluationResult = { name: 'Force', dist: Infinity, matchedRule: null };
-
-    for (let k = 2; k <= 5; k++) {
-        const subPts = pts / k;
-        if (subPts < 1) break; // Sub-groups too small to match anything meaningful
-
-        const subResult = evaluateVirtualGroup(subPts, rules, comp);
-        if (!subResult.matchedRule) continue;
-
-        // Build K identical virtual group results
-        const virtualResults: GroupSizeResult[] = [];
-        for (let i = 0; i < k; i++) {
-            virtualResults.push({
-                name: subResult.name,
-                type: subResult.matchedRule.type,
-                countsAsType: subResult.matchedRule.countsAs?.type ?? null,
-            });
-        }
-
-        // Check if K groups of this type match a composed rule
-        const groupResult = evaluateForceByGroups(virtualResults, rules);
-        if (groupResult.matchedRule &&
-            (groupResult.dist < best.dist ||
-             (groupResult.dist === best.dist &&
-              (groupResult.matchedRule.nominalPts) > (best.matchedRule?.nominalPts ?? 0)))) {
-            best = groupResult;
-        }
-
-        // Prefer fewer, larger sub-groups: stop on first perfect match
-        if (best.dist === 0) break;
-    }
-
-    return best;
-}
-
-/**
- * Determine the force organizational type (Lance, Company, Star, etc.)
- * based on the number of units, their composition, average tech base, and faction.
- */
-/**
- * Resolve the org rules and point-range function for the given tech base / faction.
- */
-interface OrgConfig {
-    rules: ForceTypeRule[];
-    getPointRange: (comp: ForceComposition) => PointRange;
-    minDistance: number;
-    distanceFactor: number;
-    groupMinDistance: number;
-    groupDistanceFactor: number;
-}
-
-function resolveOrg(techBase: string, factionName: string): OrgConfig {
-    if (factionName === 'ComStar' || factionName === 'Word of Blake') {
-        return { rules: ComStarOrg.ALL, getPointRange: ComStarOrg.getPointRange, minDistance: ComStarOrg.MIN_DISTANCE, distanceFactor: ComStarOrg.DISTANCE_FACTOR, groupMinDistance: ComStarOrg.GROUP_MIN_DISTANCE, groupDistanceFactor: ComStarOrg.GROUP_DISTANCE_FACTOR };
-    } else if (factionName === 'Society') {
-        return { rules: SocietyOrg.ALL, getPointRange: SocietyOrg.getPointRange, minDistance: SocietyOrg.MIN_DISTANCE, distanceFactor: SocietyOrg.DISTANCE_FACTOR, groupMinDistance: SocietyOrg.GROUP_MIN_DISTANCE, groupDistanceFactor: SocietyOrg.GROUP_DISTANCE_FACTOR };
-    } else if (factionName.includes('Clan') || techBase === 'Clan') {
-        return { rules: ClanOrg.ALL, getPointRange: ClanOrg.getPointRange, minDistance: ClanOrg.MIN_DISTANCE, distanceFactor: ClanOrg.DISTANCE_FACTOR, groupMinDistance: ClanOrg.GROUP_MIN_DISTANCE, groupDistanceFactor: ClanOrg.GROUP_DISTANCE_FACTOR };
-    } else {
-        return { rules: ISOrg.ALL, getPointRange: ISOrg.getPointRange, minDistance: ISOrg.MIN_DISTANCE, distanceFactor: ISOrg.DISTANCE_FACTOR, groupMinDistance: ISOrg.GROUP_MIN_DISTANCE, groupDistanceFactor: ISOrg.GROUP_DISTANCE_FACTOR };
-    }
-}
-
-/**
- * Evaluate a single group of units and return the structural result
- * (name + matched ForceType). This is the data each UnitGroup can cache
- * in a computed signal so the force-level evaluator doesn't redo it.
- */
-export function getGroupSizeResult(units: ForceUnit[], techBase: string, factionName: string): GroupSizeResult {
-    if (units.length === 0) return { name: 'Force', type: null, countsAsType: null };
-    const { rules, getPointRange, minDistance, distanceFactor } = resolveOrg(techBase, factionName);
-    const comp = getForceComposition(units);
-    let result = evaluateForceDetailed(comp, rules, getPointRange, minDistance, distanceFactor);
-
-    // Virtual split fallback: if flat evaluation didn't find a match,
-    // try splitting points into equal sub-groups to find a composed formation.
-    // E.g. 11 Clan pts → 2 x 5.5 → 2 Stars → Binary.
-    if (!result.matchedRule) {
-        const range = getPointRange(comp);
-        const midPts = (range.min + range.max) / 2;
-        if (midPts > 0) {
-            const splitResult = trySplitEvaluation(midPts, rules, comp);
-            if (splitResult.matchedRule) {
-                result = splitResult;
-            }
-        }
-    }
-
-    return {
-        name: result.name,
-        type: result.matchedRule?.type ?? null,
-        countsAsType: result.matchedRule?.countsAs?.type ?? null,
-    };
-}
-
-export function getForceSizeName(units: ForceUnit[], techBase: string, factionName: string, groupResults?: GroupSizeResult[]): string {
-    if (units.length === 0) return 'Force';
-
-    const { rules, getPointRange, minDistance, distanceFactor, groupMinDistance, groupDistanceFactor } = resolveOrg(techBase, factionName);
-    const comp = getForceComposition(units);
-    const flatResult = evaluateForceDetailed(comp, rules, getPointRange, minDistance, distanceFactor);
-
-    // When pre-computed group results are provided with >1 group, also try group-based evaluation
-    if (groupResults && groupResults.length > 1) {
-        let groupResult = evaluateForceByGroups(groupResults, rules, groupMinDistance, groupDistanceFactor);
-
-        if (groupResult.dist === 0) {
-            // If we have a perfect group-based match, prefer it over the flat result even if the flat result was also a perfect custom match.
-            return groupResult.name;
-        }
-
-        // Try hierarchical split: bundle groups into intermediate formations
-        // E.g. 4 Novas → 2 x (2 Novas = SN Binary) → Under-Strength Cluster
-        if (groupResults.length >= 4) {
-            const splitResult = trySplitGroupEvaluation(groupResults, rules, groupMinDistance, groupDistanceFactor);
-            if (splitResult.dist < groupResult.dist ||
-                (splitResult.dist === groupResult.dist &&
-                 (splitResult.matchedRule?.nominalPts ?? 0) > (groupResult.matchedRule?.nominalPts ?? 0))) {
-                groupResult = splitResult;
-            }
-        }
-
-        // Prefer group-based on tie, unless the flat result was a strict match
-        // (strict rules like Supernova Trinary are very specific and should not
-        // be overridden by a generic aliased group match at equal distance)
-        if (groupResult.dist < flatResult.dist ||
-            (groupResult.dist === flatResult.dist && !flatResult.matchedRule?.strict)) {
-            return groupResult.name;
-        }
-    }
-
-    return flatResult.name;
-}
+export const DEFAULT_ORG: OrgDefinition = ISOrg;

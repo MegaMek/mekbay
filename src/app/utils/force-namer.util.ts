@@ -47,7 +47,7 @@ import {
  * Adapted from MekHQ's RandomCompanyNameGenerator / BackgroundsController.
  *
  * Formation (group-level) naming lives in formation-namer.util.ts.
- * ForceType / getForceType lives in force-type.util.ts.
+ * ForceType lives in org-definitions.util.ts, solver in org-solver.util.ts.
  */
 
 // ─── Public Types ──────────────────────────────────────────────────────────────

@@ -218,8 +218,14 @@ export class UnitCardExpandedComponent {
     /** Whether to show alpha-strike card view (renders the actual AS card) */
     cardView = input(false);
 
+    /** Whether to show the info button */
+    showInfoButton = input(true);
+
     /** Card style for alpha-strike card view */
     cardStyle = input<'colored' | 'monochrome'>('monochrome');
+
+    /** Emitted when the info button is clicked */
+    infoClick = output<void>();
 
     /** Emitted when the card is clicked */
     cardClick = output<void>();
@@ -319,6 +325,11 @@ export class UnitCardExpandedComponent {
 
     onTagClick(event: TagClickEvent): void {
         this.tagClick.emit(event);
+    }
+
+    onInfoClick(event: Event): void {
+        event.stopPropagation();
+        this.infoClick.emit();
     }
 
     /** Handle pilot info click - emits pilotClick if this is a ForceUnit */

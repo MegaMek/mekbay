@@ -243,12 +243,6 @@
     color: var(--text-color-secondary);
 }
 
-.expanded-components,
-.expanded-specials {
-    max-height: 400px;
-    overflow-y: auto;
-}
-
 .components-pills,
 .specials-pills {
     display: flex;
@@ -349,6 +343,31 @@
     background-color: var(--bt-yellow-background);
 }
 
+/* Info button */
+.info-btn {
+    background: transparent;
+    border: none;
+    border-left: 1px solid var(--border-color);
+    color: var(--text-color-secondary);
+    cursor: pointer;
+    padding: 4px 4px 4px 8px;
+    margin-left: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    align-self: stretch;
+    transition: color 0.2s;
+    flex-shrink: 0;
+}
+
+.info-btn:hover {
+    color: var(--text-color);
+}
+
+.info-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
 
 /* =============================================
    Media Queries

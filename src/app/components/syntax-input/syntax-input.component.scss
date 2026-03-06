@@ -70,8 +70,8 @@
     z-index: 1;
     pointer-events: none;
     background: transparent;
-    overflow: hidden; // Don't show scrollbar on pre
-
+    overflow: hidden;
+    
     code {
         display: block;
         font: inherit;

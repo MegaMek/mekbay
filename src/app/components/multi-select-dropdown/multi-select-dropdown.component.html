@@ -1,5 +1,5 @@
 <div class="multi-select-container corner-borders" [class.open]="isOpen()" [class.disabled]="semanticOnly()" [class.semantic-only]="semanticOnly()">
-    <div class="display-area" (click)="toggleDropdown()">
+    <div class="display-area" (pointerdown)="onPointerDown($event)" (click)="toggleDropdown($event)">
         <span class="label" [class.semantic-only]="semanticOnly()">{{ label() }}</span>
         <div class="pills-container">
             @if (semanticOnly() && displayItems()?.length) {

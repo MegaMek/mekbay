@@ -84,6 +84,7 @@ export class MultiSelectDropdownComponent {
     private layoutService = inject(LayoutService);
     private destroyRef = inject(DestroyRef);
     private destroyed = false;
+    private lastPointerType = '';
     filterInput = viewChild<ElementRef<HTMLInputElement>>('filterInput');
     optionsEl = viewChild<ElementRef<HTMLDivElement>>('optionsEl');
     optionsDropdownEl = viewChild<ElementRef<HTMLDivElement>>('optionsDropdown');
@@ -230,8 +231,14 @@ export class MultiSelectDropdownComponent {
         });
     }
 
-    toggleDropdown() {
+    onPointerDown(event: PointerEvent) {
+        this.lastPointerType = event.pointerType;
+    }
+
+    toggleDropdown(event?: MouseEvent) {
         if (this.semanticOnly()) return;
+        const wasMouse = this.lastPointerType === 'mouse';
+        this.lastPointerType = '';
         this.isOpen.set(!this.isOpen());
         if (this.isOpen()) {
             // notify other instances
@@ -243,9 +250,11 @@ export class MultiSelectDropdownComponent {
             if (this.isOpen()) {
                 // Bump layout version to recalculate max height now that dropdown is visible
                 this.layoutVersion.update(v => v + 1);
-                const inputEl = this.filterInput()?.nativeElement;
-                if (inputEl) {
-                    inputEl.focus();
+                if (wasMouse) {
+                    const inputEl = this.filterInput()?.nativeElement;
+                    if (inputEl) {
+                        inputEl.focus();
+                    }
                 }
             }
         }, { injector: this.injector });
