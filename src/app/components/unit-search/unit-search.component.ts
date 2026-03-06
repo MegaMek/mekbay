@@ -439,13 +439,16 @@ export class UnitSearchComponent {
         let pendingFocusRef: { destroy: () => void } | null = null;
         let pendingResizeObserverRef: { destroy: () => void } | null = null;
 
+        let firstOpening = true;
         effect(() => {
-            // Cancel any previous pending focus callback
             pendingFocusRef?.destroy();
             pendingFocusRef = null;
 
-            if (this.filtersService.isDataReady() &&
-                this.syntaxInput()) {
+            if (firstOpening 
+                && !this.forceBuilderService.hasForces() 
+                && this.filtersService.isDataReady() 
+                && this.syntaxInput()) {
+                firstOpening = false;
                 pendingFocusRef = afterNextRender(() => {
                     pendingFocusRef = null;
                     this.focusInput();
