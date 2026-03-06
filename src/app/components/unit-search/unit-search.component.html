@@ -294,8 +294,8 @@
                             [sortKey]="currentSortKey()"
                             [sortSlotLabel]="currentSortSlotLabel()"
                             [searchTokens]="this.filtersService.searchTokens()"
-                            (tagClick)="onAddTag($event)",
-                            (infoClick)="onUnitInfoClick(unit)",
+                            (tagClick)="onAddTag($event)"
+                            (infoClick)="onUnitInfoClick(unit)"
                             (click)="multiSelectUnit(unit, $event)">
                         </unit-card-expanded>
                     }
