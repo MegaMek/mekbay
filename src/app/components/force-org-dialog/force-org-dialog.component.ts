@@ -157,6 +157,8 @@ export class ForceOrgDialogComponent {
     protected sidebarDragForce = signal<LoadForceEntry | null>(null);
     protected sidebarDragActive = signal(false);
     protected sidebarDragPos = signal({ x: 0, y: 0 });
+    private sidebarHoldTimer: ReturnType<typeof setTimeout> | null = null;
+    private sidebarHoldPointerId: number | null = null;
 
     // Drag state for groups
     private draggedGroup = signal<OrgGroup | null>(null);
@@ -411,13 +413,88 @@ export class ForceOrgDialogComponent {
 
     // ==================== Sidebar Drag ====================
 
+    private pendingSidebarForce: LoadForceEntry | null = null;
+    private sidebarHoldStartPos: { x: number; y: number } | null = null;
+    private preventTouchScroll = false;
+
     protected onSidebarForcePointerDown(event: PointerEvent, force: LoadForceEntry): void {
+        if (event.pointerType === 'touch') {
+            // Touch: hold-to-drag (like force-builder-viewer cdkDragStartDelay)
+            this.cancelSidebarHoldTimer();
+            this.pendingSidebarForce = force;
+            this.sidebarHoldStartPos = { x: event.clientX, y: event.clientY };
+            this.sidebarHoldPointerId = event.pointerId;
+            document.addEventListener('pointermove', this.onSidebarHoldMove, { passive: false });
+            document.addEventListener('pointerup', this.onSidebarHoldEnd);
+            document.addEventListener('pointercancel', this.onSidebarHoldEnd);
+            this.sidebarHoldTimer = setTimeout(() => {
+                this.sidebarHoldTimer = null;
+                this.removeSidebarHoldListeners();
+                // Block touchmove to prevent browser scroll/pointercancel
+                this.preventTouchScroll = true;
+                document.addEventListener('touchmove', this.onBlockTouchMove, { passive: false });
+                // Hold complete — activate drag
+                this.sidebarDragForce.set(this.pendingSidebarForce);
+                this.sidebarDragActive.set(true);
+                this.sidebarDragPos.set(this.sidebarHoldStartPos!);
+                this.pendingSidebarForce = null;
+                this.sidebarHoldStartPos = null;
+                this.addGlobalPointerListeners();
+            }, 200);
+            return;
+        }
+        // Mouse: start immediately
         event.preventDefault();
         event.stopPropagation();
         this.sidebarDragForce.set(force);
         this.sidebarDragActive.set(true);
         this.sidebarDragPos.set({ x: event.clientX, y: event.clientY });
         this.addGlobalPointerListeners();
+    }
+
+    private onBlockTouchMove = (event: TouchEvent): void => {
+        if (this.preventTouchScroll) event.preventDefault();
+    };
+
+    private stopBlockingTouchScroll(): void {
+        this.preventTouchScroll = false;
+        document.removeEventListener('touchmove', this.onBlockTouchMove);
+    }
+
+    private onSidebarHoldMove = (event: PointerEvent): void => {
+        if (event.pointerId !== this.sidebarHoldPointerId) return;
+        const dx = event.clientX - this.sidebarHoldStartPos!.x;
+        const dy = event.clientY - this.sidebarHoldStartPos!.y;
+        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+            // Finger moved too much — cancel hold, let browser scroll
+            this.cancelSidebarHoldTimer();
+        } else {
+            // Finger still within threshold — prevent browser from cancelling touch
+            event.preventDefault();
+        }
+    };
+
+    private onSidebarHoldEnd = (event: PointerEvent): void => {
+        if (event.pointerId !== this.sidebarHoldPointerId) return;
+        this.cancelSidebarHoldTimer();
+    };
+
+    private cancelSidebarHoldTimer(): void {
+        if (this.sidebarHoldTimer) {
+            clearTimeout(this.sidebarHoldTimer);
+            this.sidebarHoldTimer = null;
+        }
+        this.sidebarHoldPointerId = null;
+        this.pendingSidebarForce = null;
+        this.sidebarHoldStartPos = null;
+        this.stopBlockingTouchScroll();
+        this.removeSidebarHoldListeners();
+    }
+
+    private removeSidebarHoldListeners(): void {
+        document.removeEventListener('pointermove', this.onSidebarHoldMove);
+        document.removeEventListener('pointerup', this.onSidebarHoldEnd);
+        document.removeEventListener('pointercancel', this.onSidebarHoldEnd);
     }
 
     // ==================== Canvas Force Drag ====================
@@ -1051,8 +1128,9 @@ export class ForceOrgDialogComponent {
 
     private addGlobalPointerListeners(): void {
         if (this.hasGlobalPointerListeners) return;
-        document.addEventListener('pointermove', this.onGlobalPointerMove);
+        document.addEventListener('pointermove', this.onGlobalPointerMove, { passive: false });
         document.addEventListener('pointerup', this.onGlobalPointerUp);
+        document.addEventListener('pointercancel', this.onGlobalPointerCancel);
         this.hasGlobalPointerListeners = true;
     }
 
@@ -1061,6 +1139,7 @@ export class ForceOrgDialogComponent {
             cancelAnimationFrame(this.moveRafId);
             this.moveRafId = null;
         }
+        this.cancelSidebarHoldTimer();
         this.pendingMoveEvent = null;
         this.activeTouches.clear();
         this.lastPanPoint = null;
@@ -1074,6 +1153,7 @@ export class ForceOrgDialogComponent {
         if (this.hasGlobalPointerListeners) {
             document.removeEventListener('pointermove', this.onGlobalPointerMove);
             document.removeEventListener('pointerup', this.onGlobalPointerUp);
+            document.removeEventListener('pointercancel', this.onGlobalPointerCancel);
             this.hasGlobalPointerListeners = false;
         }
     }
@@ -1084,7 +1164,18 @@ export class ForceOrgDialogComponent {
         } catch { /* best-effort */ }
     }
 
+    private onGlobalPointerCancel = (event: PointerEvent): void => {
+        this.activeTouches.delete(event.pointerId);
+        // Treat cancel same as pointer up to clean state
+        this.onGlobalPointerUp(event);
+    };
+
     private onGlobalPointerMove = (event: PointerEvent): void => {
+        // Prevent browser from stealing touch during active drag
+        if (event.pointerType === 'touch' && (this.sidebarDragActive() || this.draggedForce() || this.draggedGroup())) {
+            event.preventDefault();
+        }
+
         this.activeTouches.set(event.pointerId, event);
 
         // Cancel drags on multi-touch
@@ -1094,6 +1185,7 @@ export class ForceOrgDialogComponent {
             this.sidebarDragForce.set(null);
             this.sidebarDragActive.set(false);
             this.isDragging.set(false);
+            this.stopBlockingTouchScroll();
             this.startPinchGesture();
             this.lastPanPoint = this.getEffectivePanPoint();
         }
@@ -1117,16 +1209,24 @@ export class ForceOrgDialogComponent {
     private processPointerMove(event: PointerEvent): void {
         // Sidebar drag
         if (this.sidebarDragActive()) {
+            const sidebarForce = this.sidebarDragForce();
+            if (!sidebarForce) return;
             this.sidebarDragPos.set({ x: event.clientX, y: event.clientY });
-            // Show drop preview for sidebar drag
-            const worldPos = this.screenToWorld(event.clientX, event.clientY);
-            const sidebarRect: Rect = {
-                x: worldPos.x - CARD_WIDTH / 2,
-                y: worldPos.y - CARD_HEIGHT / 2,
-                width: CARD_WIDTH,
-                height: CARD_HEIGHT,
-            };
-            this.updateSidebarDragPreview(sidebarRect, this.sidebarDragForce()!);
+            // Only show drop preview when cursor is over the canvas, not the sidebar
+            const elementUnderCursor = document.elementFromPoint(event.clientX, event.clientY);
+            const isOverSidebar = elementUnderCursor?.closest('.forces-sidebar') != null;
+            if (isOverSidebar) {
+                this.clearDropPreview();
+            } else {
+                const worldPos = this.screenToWorld(event.clientX, event.clientY);
+                const sidebarRect: Rect = {
+                    x: worldPos.x - CARD_WIDTH / 2,
+                    y: worldPos.y - CARD_HEIGHT / 2,
+                    width: CARD_WIDTH,
+                    height: CARD_HEIGHT,
+                };
+                this.updateSidebarDragPreview(sidebarRect, sidebarForce);
+            }
             return;
         }
 
@@ -1258,6 +1358,7 @@ export class ForceOrgDialogComponent {
             }
             this.sidebarDragForce.set(null);
             this.sidebarDragActive.set(false);
+            this.stopBlockingTouchScroll();
         }
 
         // Handle canvas force drag end
