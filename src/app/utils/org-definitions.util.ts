@@ -643,7 +643,7 @@ class MHOrg {
     static readonly MIN_DISTANCE = 2;
     
     /** Group evaluation: max allowed distance as a fraction of total group count before falling back to "Force". */
-    static readonly GROUP_DISTANCE_FACTOR = 0.25;
+    static readonly GROUP_DISTANCE_FACTOR = 0.5;
     /** Group evaluation: floor for the max allowed distance (groups). */
     static readonly GROUP_MIN_DISTANCE = 1;
 
@@ -661,12 +661,12 @@ class MHOrg {
             max: fixed + comp.CI_troopers / 5,
         };
     }
-    static readonly POINT = new ForceTypeRule({
+    static readonly CONTUBERNIUM = new ForceTypeRule({
         type: 'Contubernium', modifiers: [{ prefix: '', count: 1 }], commandRank: 'Miles probatus',
     });
-    // Star = N Points
-    static readonly STAR = new ForceTypeRule({
-        type: 'Century', composedOf: MHOrg.POINT, modifiers: [
+    // Century = N Contubernii
+    static readonly CENTURY = new ForceTypeRule({
+        type: 'Century', composedOf: MHOrg.CONTUBERNIUM, modifiers: [
             { prefix: 'Half ', count: 2 },
             { prefix: 'Short ', count: 3 },
             { prefix: 'Under-Strength ', count: 4 },
@@ -674,16 +674,26 @@ class MHOrg {
             { prefix: 'Reinforced ', count: 6 },
             { prefix: 'Fortified ', count: 7 },
         ], commandRank: 'Centurion',
+        filter: (comp) => !isPureInfantry(comp),
     });
-    // Binary = 2 Stars
-    static readonly BINARY = new ForceTypeRule({
-        type: 'Maniple', strict: true, composedOf: MHOrg.STAR, modifiers: [
+    // Century (Infantry) = 4-10 CI infantry Points
+    static readonly CENTURY_INF = new ForceTypeRule({
+        type: 'Century', composedOf: MHOrg.CONTUBERNIUM, modifiers: [
+            { prefix: '', count: 4 },
+            { prefix: '', count: 10 },
+        ], commandRank: 'Centurion',
+        filter: (comp) => isPureInfantry(comp),
+    });
+    // Maniple = 2 Century
+    static readonly MANIPLE = new ForceTypeRule({
+        type: 'Maniple', strict: true, 
+        composedOf: MHOrg.CENTURY, composedOfAny: [MHOrg.CENTURY, MHOrg.CENTURY_INF], modifiers: [
 			{ prefix: '', count: 2 }
 		], commandRank: 'Principes',
     });
-    // Cluster = N Binaries, Trinaries, or Supernovas (can mix and match)
-    static readonly CLUSTER = new ForceTypeRule({
-        type: 'Cohort', composedOf: MHOrg.BINARY, // for flat point-based evaluation
+    // Cohort = N Maniples
+    static readonly COHORT = new ForceTypeRule({
+        type: 'Cohort', composedOf: MHOrg.MANIPLE,
         modifiers: [
             { prefix: 'Under-Strength ', count: 2 },
             { prefix: '', count: 3 },
@@ -691,9 +701,9 @@ class MHOrg {
             { prefix: 'Strong ', count: 5 },
         ], commandRank: 'Legatus',
     });
-    // Galaxy = N Clusters
-    static readonly GALAXY = new ForceTypeRule({
-        type: 'Legion', composedOf: MHOrg.CLUSTER, modifiers: [
+    // Legion = N Cohorts
+    static readonly LEGION = new ForceTypeRule({
+        type: 'Legion', composedOf: MHOrg.COHORT, modifiers: [
             { prefix: 'Under-Strength ', count: 2 },
             { prefix: '', count: 3 },
             { prefix: 'Reinforced ', count: 4 },
@@ -701,7 +711,8 @@ class MHOrg {
         ], commandRank: 'General',
     }); 
     static readonly ALL: ForceTypeRule[] = [
-        MHOrg.POINT, MHOrg.STAR, MHOrg.BINARY, MHOrg.CLUSTER, MHOrg.GALAXY,
+        MHOrg.CONTUBERNIUM, MHOrg.CENTURY, MHOrg.CENTURY_INF,
+        MHOrg.MANIPLE, MHOrg.COHORT, MHOrg.LEGION,
     ];
 }
 
