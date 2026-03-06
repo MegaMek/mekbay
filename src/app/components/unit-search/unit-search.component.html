@@ -289,14 +289,14 @@
                             [gunnery]="gunnery"
                             [piloting]="piloting"
                             [expandedView]="false"
-                            [showInfoButton]="true"
+                            [showSelectCheckbox]="true"
                             [isSelected]="isUnitSelected(unit)"
                             [sortKey]="currentSortKey()"
                             [sortSlotLabel]="currentSortSlotLabel()"
                             [searchTokens]="this.filtersService.searchTokens()"
                             (tagClick)="onAddTag($event)"
-                            (infoClick)="onUnitInfoClick(unit)"
-                            (click)="multiSelectUnit(unit, $event)">
+                            (selectClick)="multiSelectUnit(unit)"
+                            (click)="onUnitInfoClick(unit)">
                         </unit-card-expanded>
                     }
                 </div>
