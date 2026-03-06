@@ -32,6 +32,7 @@
  */
 
 import { ForceUnit } from '../models/force-unit.model';
+import { Unit } from '../models/units.model';
 
 /*
  * Author: Drake
@@ -113,6 +114,31 @@ export function getForceComposition(units: ForceUnit[]): ForceComposition {
 
     for (const fu of units) {
         const u = fu.getUnit();
+        if (u.type === 'Mek') comp.BM++;
+        else if (u.type === 'Infantry') {
+            if (u.subtype === 'Battle Armor') comp.BA_troopers += (u.internal || 0);
+            else comp.CI_troopers += (u.internal || 0);
+        }
+        else if (u.type === 'ProtoMek') comp.PM++;
+        else if (u.type === 'Tank' || u.type === 'VTOL' || u.type === 'Naval') comp.CV++;
+        else if (u.type === 'Aero') comp.AF++;
+        else comp.other++;
+    }
+    return comp;
+}
+
+export function getForceCompositionFromRawUnits(units: Unit[]): ForceComposition {
+    const comp: ForceComposition = {
+        BM: 0,
+        BA_troopers: 0,
+        CI_troopers: 0,
+        PM: 0,
+        CV: 0,
+        AF: 0,
+        other: 0,
+    };
+
+    for (const u of units) {
         if (u.type === 'Mek') comp.BM++;
         else if (u.type === 'Infantry') {
             if (u.subtype === 'Battle Armor') comp.BA_troopers += (u.internal || 0);

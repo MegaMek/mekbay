@@ -140,6 +140,10 @@ export class SidebarFooterComponent {
         this.forceBuilderService.showC3Network(force);
     }
 
+    showForceOrgDialog(): void {
+        this.forceBuilderService.showForceOrgDialog();
+    }
+
     showLoadForceDialog(): void {
         this.forceBuilderService.showLoadForceDialog();
     }

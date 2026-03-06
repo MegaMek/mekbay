@@ -1,0 +1,210 @@
+<!--
+ * MekBay - A BattleTech MegaMek unit management system.
+ * Copyright (C) 2025 - present The MegaMek Team
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
+ * for more details.
+-->
+
+<div class="org-dialog-header">
+    <h2>Organization</h2>
+    <div class="org-dialog-header-actions">
+        @if (layoutService.isMobile()) {
+        <button class="bt-button square" type="button" (click)="toggleSidebar()" [class.active]="sidebarOpen()"
+            aria-label="Toggle forces sidebar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true">
+                <path d="M4 6H20M4 12H20M4 18H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            </svg>
+        </button>
+        }
+    </div>
+</div>
+
+<div class="org-dialog-content">
+    <!-- SVG Canvas -->
+    <svg #svgCanvas class="svg-canvas" (wheel)="onWheel($event)" (pointerdown)="onCanvasPointerDown($event)">
+        <defs>
+            <!-- Hex grid pattern (same as C3 dialog) -->
+            <path id="orgFlatHex" d="M-20 0 L-10 17.32 L10 17.32 L20 0 L10 -17.32 L-10 -17.32 Z" />
+            <line id="orgLine" x1="0" y1="-3" x2="10" y2="-3" />
+            <line id="orgLine2" x1="48" y1="-3" x2="60" y2="-3" />
+            <pattern id="orgFlatHexGrid" width="60" height="34.64" patternUnits="userSpaceOnUse">
+                <g fill="none" stroke="#222" stroke-width="2">
+                    <use href="#orgLine" x="0" y="20" />
+                    <use href="#orgLine2" x="0" y="20" />
+                    <use href="#orgFlatHex" x="30" y="17.32" />
+                </g>
+            </pattern>
+
+            <!-- Card shadow filter -->
+            <filter id="card-shadow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="rgba(0,0,0,0.5)" />
+            </filter>
+            <filter id="card-drag-shadow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="rgba(0,0,0,0.6)" />
+            </filter>
+            <filter id="group-shadow" x="-10%" y="-10%" width="120%" height="120%">
+                <feDropShadow dx="0" dy="2" stdDeviation="6" flood-color="rgba(0,0,0,0.4)" />
+            </filter>
+        </defs>
+
+        <!-- Main transform group for pan/zoom -->
+        <g [attr.transform]="svgTransform()">
+            <!-- Hex grid background -->
+            <rect x="-20000" y="-20000" width="40000" height="40000" fill="url(#orgFlatHexGrid)"
+                pointer-events="none" />
+
+            <!-- Groups layer (rendered below forces) -->
+            @for (group of sortedGroups(); track group.id) {
+            <g class="group-container" [class.parent-group]="isParentGroup(group)"
+                [attr.transform]="'translate(' + group.x + ',' + group.y + ')'"
+                (pointerdown)="onGroupPointerDown($event, group)">
+                <!-- Group background -->
+                <rect class="group-bg" x="0" y="0" [attr.width]="group.width" [attr.height]="group.height" filter="url(#group-shadow)" />
+
+                <!-- Group border -->
+                <rect class="group-border" x="0" y="0" [attr.width]="group.width" [attr.height]="group.height" />
+
+                <!-- Group header bar -->
+                <rect class="group-header-bg" x="0" y="0" [attr.width]="group.width" [attr.height]="GROUP_HEADER_HEIGHT" />
+                <!-- Bottom corners of header (clip rounded corners) -->
+                <rect class="group-header-bg" x="0" [attr.y]="GROUP_HEADER_HEIGHT - 6" [attr.width]="group.width"
+                    height="6" />
+
+                <!-- Group name -->
+                <foreignObject x="8" y="0" [attr.width]="group.width - 56" [attr.height]="GROUP_HEADER_HEIGHT"
+                    class="group-name-fo">
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="group-name"
+                        (click)="renameGroup(group)"
+                        title="Click to rename">
+                        {{ group.name }}
+                        @if (orgGroupOrgNames().get(group.id); as orgName) {
+                        <span class="group-org-name">({{ orgName }})</span>
+                        }
+                    </div>
+                </foreignObject>
+
+                <!-- Group remove button -->
+                <foreignObject [attr.x]="group.width - 40" y="4" width="32" height="28" class="group-actions-fo">
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="group-actions">
+                        <button class="group-remove-btn"
+                            (click)="removeGroup(group)"
+                            title="Disband group">
+                            <svg width="12" height="12" fill="currentColor" viewBox="0 0 1200 1200" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
+                            </svg>
+                        </button>
+                    </div>
+                </foreignObject>
+            </g>
+            }
+
+            <!-- Forces layer -->
+            @for (pf of sortedPlacedForces(); track pf.force.instanceId) {
+            <g class="force-card" [attr.data-force-id]="pf.force.instanceId"
+                [attr.transform]="'translate(' + pf.x + ',' + pf.y + ')'"
+                (pointerdown)="onForcePointerDown($event, pf)"
+                (pointerenter)="hoveredForceId.set(pf.force.instanceId)"
+                (pointerleave)="hoveredForceId.set(null)">
+
+                <!-- Card background -->
+                <rect class="card-bg" x="0" y="0" [attr.width]="CARD_WIDTH" [attr.height]="CARD_HEIGHT"
+                    [attr.filter]="draggedForce() === pf ? 'url(#card-drag-shadow)' : 'url(#card-shadow)'" />
+
+                <!-- Card border -->
+                <rect class="card-border" x="0" y="0" [attr.width]="CARD_WIDTH" [attr.height]="CARD_HEIGHT" />
+
+                <!-- Faction icon -->
+                @if (pf.force.factionId | factionImg; as factionImgUrl) {
+                <image [attr.href]="factionImgUrl" x="12" y="12" width="32" height="32"
+                    preserveAspectRatio="xMidYMid meet" />
+                } @else {
+                <rect class="no-faction-icon" x="12" y="16" width="28" height="28" />
+                }
+
+                <!-- Force name -->
+                <foreignObject x="50" y="6" [attr.width]="CARD_WIDTH - 82" height="36" class="force-name-fo">
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-name">
+                        {{ pf.force.name }}
+                    </div>
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-org">
+                        {{ forceOrgNames().get(pf.force.instanceId) }}
+                    </div>
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-value">
+                        @if (getForceValue(pf.force); as val) {
+                        {{ val }}
+                        }
+                    </div>
+                </foreignObject>
+
+                <!-- Remove button (visible on hover) -->
+                @if (hoveredForceId() === pf.force.instanceId) {
+                <foreignObject [attr.x]="CARD_WIDTH - 28" y="4" width="24" height="24" class="remove-fo">
+                    <div xmlns="http://www.w3.org/1999/xhtml">
+                        <button class="force-remove-btn" (click)="removeForce(pf); $event.stopPropagation()"
+                            title="Remove from canvas">
+                            <svg width="12" height="12" fill="currentColor" viewBox="0 0 1200 1200" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
+                            </svg>
+                        </button>
+                    </div>
+                </foreignObject>
+                }
+            </g>
+            }
+        </g>
+    </svg>
+
+    <!-- Sidebar: Hangar forces -->
+    <div class="forces-sidebar framed-borders" [class.overlay]="layoutService.isMobile()"
+        [class.hidden]="layoutService.isMobile() && !sidebarOpen()" [class.animate]="sidebarAnimated()">
+        <div class="sidebar-header">
+            <h3>Hangar</h3>
+        </div>
+
+        <div class="forces-list">
+            @if (loading()) {
+            <div class="sidebar-empty">Loading forces...</div>
+            } @else if (sidebarForces().length === 0 && placedForces().length === 0) {
+            <div class="sidebar-empty">No saved forces found.</div>
+            } @else if (sidebarForces().length === 0) {
+            <div class="sidebar-empty">All forces placed.<br>Drag them back here to remove.</div>
+            } @else {
+            @for (force of sidebarForces(); track force.instanceId) {
+            <div class="sidebar-force-item" (pointerdown)="onSidebarForcePointerDown($event, force)">
+                <div class="sidebar-force-icon">
+                    @if (force.factionId | factionImg; as factionImgUrl) {
+                    <img [src]="factionImgUrl" class="sidebar-faction-img" alt="" />
+                    } @else {
+                    <div class="sidebar-faction-placeholder"></div>
+                    }
+                </div>
+                <div class="sidebar-force-info">
+                    <div class="sidebar-force-name">{{ force.name }}</div>
+                    <div class="sidebar-force-value">{{ getForceValue(force) }}</div>
+                </div>
+            </div>
+            }
+            }
+        </div>
+    </div>
+
+    <!-- Floating drag ghost for sidebar drag -->
+    @if (sidebarDragActive() && sidebarDragForce()) {
+    <div class="drag-ghost" [style.left.px]="sidebarDragPos().x - 100" [style.top.px]="sidebarDragPos().y - 25">
+        {{ sidebarDragForce()?.name }}
+    </div>
+    }
+</div>
+
+<div class="org-dialog-footer">
+    <button class="modal-btn bt-button" (click)="close()">CLOSE</button>
+</div>
