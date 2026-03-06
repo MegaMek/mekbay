@@ -591,36 +591,57 @@ export class ForceOrgDialogComponent {
     }
 
     /** Detect what would happen if the dragged force were dropped now. */
-    private detectForceDrop(pf: PlacedForce): ForceDropAction | null {
+    private detectForceDrop(pf: PlacedForce, cursorWorld: { x: number; y: number }): ForceDropAction | null {
         const pfRect = this.forceRect(pf);
-        // Check overlap with existing groups (except own)
+
+        // If the force belongs to a group, check cursor vs own group first
+        if (pf.groupId) {
+            const ownGroup = this.groups().find(g => g.id === pf.groupId);
+            if (ownGroup) {
+                const cursorInside = cursorWorld.x >= ownGroup.x && cursorWorld.x <= ownGroup.x + ownGroup.width &&
+                                     cursorWorld.y >= ownGroup.y && cursorWorld.y <= ownGroup.y + ownGroup.height;
+                if (cursorInside) {
+                    // Cursor is still inside own group — stay in group, just re-layout
+                    return null;
+                }
+                // Cursor is outside own group — leaving
+                // Check overlap with ungrouped forces for possible new group
+                for (const other of this.placedForces()) {
+                    if (other === pf || other.groupId) continue;
+                    if (this.rectsOverlap(pfRect, this.forceRect(other))) {
+                        return { type: 'new-group', other };
+                    }
+                }
+                return { type: 'leave-group' };
+            }
+        }
+
+        // Ungrouped force: check overlap with existing groups
         for (const group of this.groups()) {
-            if (pf.groupId === group.id) continue;
             if (this.rectsOverlap(pfRect, group)) {
                 return { type: 'join-group', groupId: group.id };
             }
         }
-        // Check if leaving own group
-        const leavingGroup = pf.groupId
-            ? (() => { const g = this.groups().find(g => g.id === pf.groupId); return g && !this.rectsOverlap(pfRect, g); })()
-            : false;
-        // Check overlap with ungrouped forces (always, not just when ungrouped)
-        if (!pf.groupId || leavingGroup) {
-            for (const other of this.placedForces()) {
-                if (other === pf || other.groupId) continue;
-                if (this.rectsOverlap(pfRect, this.forceRect(other))) {
-                    return { type: 'new-group', other };
-                }
+        // Check overlap with other ungrouped forces
+        for (const other of this.placedForces()) {
+            if (other === pf || other.groupId) continue;
+            if (this.rectsOverlap(pfRect, this.forceRect(other))) {
+                return { type: 'new-group', other };
             }
-        }
-        if (leavingGroup) {
-            return { type: 'leave-group' };
         }
         return null;
     }
 
     /** Detect what would happen if the dragged group were dropped now. */
-    private detectGroupDrop(grp: OrgGroup): GroupDropAction | null {
+    private detectGroupDrop(grp: OrgGroup, cursorWorld: { x: number; y: number }): GroupDropAction | null {
+        // If the group has a parent and the cursor is outside it, treat as leaving
+        if (grp.parentGroupId) {
+            const parent = this.groups().find(g => g.id === grp.parentGroupId);
+            if (parent && (cursorWorld.x < parent.x || cursorWorld.x > parent.x + parent.width ||
+                           cursorWorld.y < parent.y || cursorWorld.y > parent.y + parent.height)) {
+                return null; // Will be handled as leave-parent in pointerUp
+            }
+        }
         for (const other of this.groups()) {
             if (other.id === grp.id) continue;
             if (this.isDescendantOf(other, grp.id)) continue;
@@ -740,8 +761,8 @@ export class ForceOrgDialogComponent {
     }
 
     /** Execute the force drop action detected by detectForceDrop. */
-    private tryFormGroup(draggedPf: PlacedForce): void {
-        const action = this.detectForceDrop(draggedPf);
+    private tryFormGroup(draggedPf: PlacedForce, cursorWorld: { x: number; y: number }): void {
+        const action = this.detectForceDrop(draggedPf, cursorWorld);
         const placed = this.placedForces();
 
         switch (action?.type) {
@@ -919,8 +940,8 @@ export class ForceOrgDialogComponent {
     }
 
     /** Execute the group drop action detected by detectGroupDrop. */
-    private tryMergeGroups(draggedGrp: OrgGroup): void {
-        const action = this.detectGroupDrop(draggedGrp);
+    private tryMergeGroups(draggedGrp: OrgGroup, cursorWorld: { x: number; y: number }): void {
+        const action = this.detectGroupDrop(draggedGrp, cursorWorld);
 
         switch (action?.type) {
             case 'join-parent': {
@@ -1118,7 +1139,8 @@ export class ForceOrgDialogComponent {
             dragged.y = this.forceStartPos.y + dy;
             this.placedForces.set([...this.placedForces()]);
             // Update drop preview
-            const forceAction = this.detectForceDrop(dragged);
+            const cursorWorld = this.screenToWorld(event.clientX, event.clientY);
+            const forceAction = this.detectForceDrop(dragged, cursorWorld);
             const otherRect = forceAction?.type === 'new-group' ? this.forceRect(forceAction.other) : undefined;
             const entries = forceAction?.type === 'new-group'
                 ? [dragged.force, forceAction.other.force]
@@ -1145,7 +1167,8 @@ export class ForceOrgDialogComponent {
             this.groups.set([...this.groups()]);
             this.placedForces.set([...this.placedForces()]);
             // Update drop preview
-            const grpAction = this.detectGroupDrop(draggedGrp);
+            const grpCursorWorld = this.screenToWorld(event.clientX, event.clientY);
+            const grpAction = this.detectGroupDrop(draggedGrp, grpCursorWorld);
             const grpOtherRect = grpAction?.type === 'create-parent' ? grpAction.other as Rect : undefined;
             const grpEntries = grpAction?.type === 'create-parent'
                 ? [...this.collectDescendantForces(draggedGrp.id, this.placedForces(), this.groups()), ...this.collectDescendantForces(grpAction.other.id, this.placedForces(), this.groups())]
@@ -1224,7 +1247,7 @@ export class ForceOrgDialogComponent {
                             };
                             this.placedForces.set([...this.placedForces(), newPlaced]);
                             // Try grouping with nearby forces
-                            this.tryFormGroup(newPlaced);
+                            this.tryFormGroup(newPlaced, worldPos);
                             if (newPlaced.groupId) {
                                 const group = this.groups().find(g => g.id === newPlaced.groupId);
                                 if (group) this.layoutGroup(group);
@@ -1241,7 +1264,8 @@ export class ForceOrgDialogComponent {
         const dragged = this.draggedForce();
         if (dragged) {
             if (this.forceDragged) {
-                this.tryFormGroup(dragged);
+                const forceCursorWorld = this.screenToWorld(event.clientX, event.clientY);
+                this.tryFormGroup(dragged, forceCursorWorld);
                 if (dragged.groupId) {
                     const group = this.groups().find(g => g.id === dragged.groupId);
                     if (group) this.layoutGroup(group);
@@ -1270,10 +1294,11 @@ export class ForceOrgDialogComponent {
                         this.recalcGroupBounds(parent);
                         this.cleanupEmptyGroups();
                     } else {
-                        this.tryMergeGroups(dragEndGroup);
+                        this.tryMergeGroups(dragEndGroup, dropWorld);
                     }
                 } else {
-                    this.tryMergeGroups(dragEndGroup);
+                    const dropWorldRoot = this.screenToWorld(event.clientX, event.clientY);
+                    this.tryMergeGroups(dragEndGroup, dropWorldRoot);
                 }
                 // Re-layout parent if it still has one
                 if (dragEndGroup.parentGroupId) {
