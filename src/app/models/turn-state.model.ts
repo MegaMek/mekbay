@@ -245,6 +245,8 @@ export class TurnState {
     });
 
     getTargetModifierAsAttacker = computed<number>(() => {
+        const baseUnit = this.unitState.unit.getUnit();
+        if (baseUnit.type === 'Infantry') return 0;
         let mod = 0;
         const moveMode = this.moveMode();
         if (moveMode === 'walk') {

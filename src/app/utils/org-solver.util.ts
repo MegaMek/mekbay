@@ -32,11 +32,13 @@
  */
 
 import { ForceUnit } from '../models/force-unit.model';
+import { Unit } from '../models/units.model';
 import {
     ForceComposition,
     ForceType,
     ForceTypeRule,
     getForceComposition,
+    getForceCompositionFromRawUnits,
     OrgDefinition,
     ORG_REGISTRY,
     DEFAULT_ORG,
@@ -184,6 +186,9 @@ function evaluateForceByGroups(
                 ? [rule.composedOf]
                 : [];
         if (acceptedTypes.length === 0) continue;
+
+        // Group-level filter: skip rules that don't apply to this set of groups
+        if (rule.groupFilter && !rule.groupFilter(groupResults)) continue;
 
         // Count groups matching any accepted type (each group counted at most once).
         // A group matches if its direct type OR its countsAs alias is in the accepted set.
@@ -453,6 +458,82 @@ export function getGroupSizeResult(units: ForceUnit[], techBase: string, faction
         type: result.matchedRule?.type ?? null,
         countsAsType: result.matchedRule?.countsAs?.type ?? null,
     };
+}
+
+/**
+ * Evaluate a single group of raw Unit objects and return the structural result.
+ * Equivalent to getGroupSizeResult but works with Unit[] instead of ForceUnit[].
+ */
+export function getGroupSizeResultForUnits(units: Unit[], techBase: string, factionName: string): GroupSizeResult {
+    if (units.length === 0) return { name: 'Force', type: null, countsAsType: null };
+    const { rules, getPointRange, minDistance, distanceFactor } = resolveOrg(techBase, factionName);
+    const comp = getForceCompositionFromRawUnits(units);
+    let result = evaluateForceDetailed(comp, rules, getPointRange, minDistance, distanceFactor);
+
+    if (!result.matchedRule) {
+        const range = getPointRange(comp);
+        const midPts = (range.min + range.max) / 2;
+        if (midPts > 0) {
+            const splitResult = trySplitEvaluation(midPts, rules, comp);
+            if (splitResult.matchedRule) {
+                result = splitResult;
+            }
+        }
+    }
+
+    return {
+        name: result.name,
+        type: result.matchedRule?.type ?? null,
+        countsAsType: result.matchedRule?.countsAs?.type ?? null,
+    };
+}
+
+export function getForceSizeResultForUnits(units: Unit[], techBase: string, factionName: string, groupResults?: GroupSizeResult[]): GroupSizeResult {
+    if (units.length === 0) return { name: 'Force', type: null, countsAsType: null };
+
+    const { rules, getPointRange, minDistance, distanceFactor, groupMinDistance, groupDistanceFactor } = resolveOrg(techBase, factionName);
+    const comp = getForceCompositionFromRawUnits(units);
+    const flatResult = evaluateForceDetailed(comp, rules, getPointRange, minDistance, distanceFactor);
+
+    if (groupResults && groupResults.length > 1) {
+        let groupResult = evaluateForceByGroups(groupResults, rules, groupMinDistance, groupDistanceFactor);
+
+        if (groupResult.dist === 0) {
+            return {
+                name: groupResult.name,
+                type: groupResult.matchedRule?.type ?? null,
+                countsAsType: groupResult.matchedRule?.countsAs?.type ?? null,
+            };
+        }
+
+        if (groupResults.length >= 4) {
+            const splitResult = trySplitGroupEvaluation(groupResults, rules, groupMinDistance, groupDistanceFactor);
+            if (splitResult.dist < groupResult.dist ||
+                (splitResult.dist === groupResult.dist &&
+                 (splitResult.matchedRule?.nominalPts ?? 0) > (groupResult.matchedRule?.nominalPts ?? 0))) {
+                groupResult = splitResult;
+            }
+        }
+
+        if (groupResult.dist < flatResult.dist ||
+            (groupResult.dist === flatResult.dist && !flatResult.matchedRule?.strict)) {
+            return {
+                name: groupResult.name,
+                type: groupResult.matchedRule?.type ?? null,
+                countsAsType: groupResult.matchedRule?.countsAs?.type ?? null,
+            };
+        }
+    }
+
+    return {
+        name: flatResult.name,
+        type: flatResult.matchedRule?.type ?? null,
+        countsAsType: flatResult.matchedRule?.countsAs?.type ?? null,
+    };
+}
+
+export function getForceSizeNameForUnits(units: Unit[], techBase: string, factionName: string, groupResults?: GroupSizeResult[]): string {
+    return getForceSizeResultForUnits(units, techBase, factionName, groupResults).name;
 }
 
 export function getForceSizeName(units: ForceUnit[], techBase: string, factionName: string, groupResults?: GroupSizeResult[]): string {

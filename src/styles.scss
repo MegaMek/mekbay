@@ -57,31 +57,22 @@
     --enemy-color: 220, 80, 80;
 }
 
-/* --- Firefox & Chrome --- */
-* {
-    scrollbar-width: thin;
-    scrollbar-color: #666 transparent;
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
 }
 
-/* --- Old Safari / WebKit --- */
-@supports not (scrollbar-color: auto) {
-    ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-    }
+::-webkit-scrollbar-track {
+    background: transparent;
+}
 
-    ::-webkit-scrollbar-track {
-        background: transparent;
-    }
+::-webkit-scrollbar-thumb {
+    background: #666;
+    border-radius: 4px;
+}
 
-    ::-webkit-scrollbar-thumb {
-        background: #666;
-        border-radius: 4px;
-    }
-
-    ::-webkit-scrollbar-thumb:hover {
-        background: #888;
-    }
+::-webkit-scrollbar-thumb:hover {
+    background: #888;
 }
 
 html {
