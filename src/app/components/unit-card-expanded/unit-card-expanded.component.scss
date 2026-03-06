@@ -381,10 +381,43 @@
     flex-shrink: 0;
 
     input[type="checkbox"] {
-        cursor: pointer;
-        width: 18px;
-        height: 18px;
-        accent-color: var(--bt-yellow);
+        opacity: 0;
+        width: 0;
+        height: 0;
+        position: absolute;
+    }
+
+    .custom-checkbox {
+        position: relative;
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        background-color: transparent;
+        border: 1px solid silver;
+        border-radius: 2px;
+        flex-shrink: 0;
+        transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+        text-align: center;
+        font-size: 1em;
+        line-height: 16px;
+
+        &.checked {
+            background-color: var(--bt-yellow);
+            border-color: var(--bt-yellow);
+            color: #fff;
+        }
+    }
+
+    .checkbox-mark {
+        position: absolute;
+        left: 2px;
+        top: 0px;
+        width: 12px;
+        height: 16px;
+        font-size: 1em;
+        line-height: 16px;
+        text-align: center;
+        pointer-events: none;
     }
 }
 

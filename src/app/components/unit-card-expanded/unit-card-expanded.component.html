@@ -334,6 +334,9 @@
     @if (showSelectCheckbox()) {
         <label class="select-btn" (click)="$event.stopPropagation()" title="Select unit">
             <input type="checkbox" [checked]="isSelected()" (change)="onSelectClick($event)" />
+            <span class="custom-checkbox" [class.checked]="isSelected()">
+                @if (isSelected()) { <span class="checkbox-mark">&#10003;</span> }
+            </span>
         </label>
     } @else if (showInfoButton()) {
         <button class="info-btn" (click)="onInfoClick($event)" title="Unit info">

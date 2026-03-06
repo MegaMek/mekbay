@@ -17,6 +17,20 @@
                 <span class="semantic-display-text">✓ {{ displayText() }}</span>
             } @else if (selectedOptions().length === 0) {
                 <span class="placeholder">Any</span>
+            } @else if (compressedPills(); as compressed) {
+                @for (cp of compressed; track cp.state) {
+                    <span class="pill"
+                          [ngClass]="{
+                            'pill-or': cp.state === 'or',
+                            'pill-and': cp.state === 'and',
+                            'pill-not': cp.state === 'not'
+                          }">
+                        @if (cp.state === 'or') { ✓ }
+                        @else if (cp.state === 'and') { &amp; }
+                        @else if (cp.state === 'not') { ! }
+                        {{ cp.count }}
+                    </span>
+                }
             } @else {
                 @for (option of selectedOptions(); track option.name) {
                     <span class="pill"
