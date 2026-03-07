@@ -1112,6 +1112,17 @@ export class UnitSearchComponent {
      * Check if the current sort key matches any of the provided keys or groups.
      * Use in templates: [class.sort-slot]="isSortActive('as.PV')" or isSortActive('as.damage')
      */
+    onHeaderSort(sortKey: string, groupKey?: string): void {
+        const isActive = groupKey ? this.isSortActive(groupKey) : this.isSortActive(sortKey);
+        if (isActive) {
+            const current = this.filtersService.selectedSortDirection();
+            this.filtersService.setSortDirection(current === 'asc' ? 'desc' : 'asc');
+        } else {
+            this.filtersService.setSortOrder(sortKey);
+            this.filtersService.setSortDirection('asc');
+        }
+    }
+
     isSortActive(...keysOrGroups: string[]): boolean {
         const currentSort = this.filtersService.selectedSort();
         if (!currentSort) return false;
