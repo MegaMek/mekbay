@@ -1304,6 +1304,7 @@ hr.divider {
     .interactive {
         cursor: pointer;
         touch-action: none;
+        pointer-events: all;
     }
 
     .critGroup.locationDestroyed text {
