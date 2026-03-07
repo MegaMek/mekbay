@@ -20,20 +20,22 @@
         (cdkDropListDropped)="dropGroup($event)">
         <!-- Table Header for AS Table View -->
         @if (isTableMode()) {
-            <div class="as-table-header">
+            <div class="as-table-header"
+                 [class.sort-asc]="selectedSortDirection() === 'asc'"
+                 [class.sort-desc]="selectedSortDirection() === 'desc'">
                 <div class="as-th as-th-icon"></div>
-                <div class="as-th as-th-name">Name</div>
-                <div class="as-th as-th-type">Type</div>
-                <div class="as-th as-th-role">Role</div>
-                <div class="as-th as-th-pv">PV</div>
+                <div class="as-th as-th-name as-th-sortable" [class.sort-active]="isSortActive('name')" (click)="onHeaderSort('name')">Name</div>
+                <div class="as-th as-th-type as-th-sortable" [class.sort-active]="isSortActive('as.TP')" (click)="onHeaderSort('as.TP')">Type</div>
+                <div class="as-th as-th-role as-th-sortable" [class.sort-active]="isSortActive('role')" (click)="onHeaderSort('role')">Role</div>
+                <div class="as-th as-th-pv as-th-sortable" [class.sort-active]="isSortActive('as.PV')" (click)="onHeaderSort('as.PV')">PV</div>
                 <div class="as-th as-th-skill">Skill</div>
-                <div class="as-th as-th-sz">SZ</div>
-                <div class="as-th as-th-mv">MV</div>
-                <div class="as-th as-th-tmm">TMM</div>
-                <div class="as-th as-th-dmg">S/M/L</div>
-                <div class="as-th as-th-arm">A</div>
-                <div class="as-th as-th-str">S</div>
-                <div class="as-th as-th-ov">OV</div>
+                <div class="as-th as-th-sz as-th-sortable" [class.sort-active]="isSortActive('as.SZ')" (click)="onHeaderSort('as.SZ')">SZ</div>
+                <div class="as-th as-th-mv as-th-sortable" [class.sort-active]="isSortActive('as._mv')" (click)="onHeaderSort('as._mv')">MV</div>
+                <div class="as-th as-th-tmm as-th-sortable" [class.sort-active]="isSortActive('as.TMM')" (click)="onHeaderSort('as.TMM')">TMM</div>
+                <div class="as-th as-th-dmg as-th-sortable" [class.sort-active]="isSortActive('as.damage')" (click)="onHeaderSort('as.dmg._dmgS', 'as.damage')">S/M/L</div>
+                <div class="as-th as-th-arm as-th-sortable" [class.sort-active]="isSortActive('as.Arm')" (click)="onHeaderSort('as.Arm')">A</div>
+                <div class="as-th as-th-str as-th-sortable" [class.sort-active]="isSortActive('as.Str')" (click)="onHeaderSort('as.Str')">S</div>
+                <div class="as-th as-th-ov as-th-sortable" [class.sort-active]="isSortActive('as.OV')" (click)="onHeaderSort('as.OV')">OV</div>
                 @if (asTableSortSlotHeader(); as sortHeader) {
                     <div class="as-th as-th-sort-slot">{{ sortHeader }}</div>
                 }

@@ -138,8 +138,11 @@ function evaluateForceDetailed(
 
         if (rule.strict && dist !== 0) continue;
 
-        // On equal distance, prefer the larger formation (higher nominalPts)
-        if (dist < bestDist || (dist === bestDist && rule.nominalPts > bestNominal)) {
+        // On equal distance, prefer strict rules (exact designed matches) over
+        // non-strict rules, then fall back to larger formation (higher nominalPts)
+        const strictUpgrade = dist === bestDist && rule.strict && !bestRule?.strict;
+        if (dist < bestDist || strictUpgrade ||
+            (dist === bestDist && !(!rule.strict && bestRule?.strict) && rule.nominalPts > bestNominal)) {
             bestDist = dist;
             bestNominal = rule.nominalPts;
             bestType = rule.type;

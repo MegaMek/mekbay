@@ -118,11 +118,11 @@ export class FormationNamerUtil {
     }
 
     /**
-     * Evaluate the org name for an OrgGroup — a collection of LoadForceEntry instances
+     * Evaluate the org size result for an OrgGroup: a collection of LoadForceEntry instances
      * treated as sub-groups under one umbrella formation.
      */
-    public static getOrgGroupSizeName(entries: LoadForceEntry[], factionName: string): string {
-        if (entries.length === 0) return 'Force';
+    public static getOrgGroupSizeResult(entries: LoadForceEntry[], factionName: string): GroupSizeResult {
+        if (entries.length === 0) return { name: 'Force', type: null, countsAsType: null };
         const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
         const allUnits = entries
             .flatMap(e => e.groups.flatMap(g => g.units))
@@ -131,7 +131,36 @@ export class FormationNamerUtil {
         const techBase = isComStarOrWoB ? '' : FormationNamerUtil.deriveTechBase(allUnits);
         const forceResults = entries
             .map(e => FormationNamerUtil.getForceSizeResult(e, factionName));
-        return getForceSizeNameForUnits(allUnits, techBase, factionName, forceResults);
+        return getForceSizeResultForUnits(allUnits, techBase, factionName, forceResults);
+    }
+
+    /**
+     * Evaluate the org name for an OrgGroup: a collection of LoadForceEntry instances
+     * treated as sub-groups under one umbrella formation.
+     */
+    public static getOrgGroupSizeName(entries: LoadForceEntry[], factionName: string): string {
+        return FormationNamerUtil.getOrgGroupSizeResult(entries, factionName).name;
+    }
+
+    /**
+     * Evaluate the org name for a parent OrgGroup that contains child OrgGroups
+     * and/or direct forces. Uses child group evaluations as intermediate
+     * groupResults so that, e.g., 3 Companies => Battalion rather than
+     * treating all descendant forces as individual Lances.
+     */
+    public static getOrgGroupSizeNameHierarchical(
+        allEntries: LoadForceEntry[],
+        childGroupResults: GroupSizeResult[],
+        factionName: string,
+    ): string {
+        if (allEntries.length === 0) return 'Force';
+        const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
+        const allUnits = allEntries
+            .flatMap(e => e.groups.flatMap(g => g.units))
+            .filter((u): u is typeof u & { unit: Unit } => u.unit !== undefined)
+            .map(u => u.unit);
+        const techBase = isComStarOrWoB ? '' : FormationNamerUtil.deriveTechBase(allUnits);
+        return getForceSizeNameForUnits(allUnits, techBase, factionName, childGroupResults);
     }
 
     /**
@@ -195,7 +224,7 @@ export class FormationNamerUtil {
     }
 
     /** Derive the majority tech base from a set of raw Unit objects. */
-    private static deriveTechBase(units: Unit[]): string {
+    static deriveTechBase(units: Unit[]): string {
         const counts: Record<string, number> = {};
         for (const u of units) {
             if (u.techBase === 'Mixed') {

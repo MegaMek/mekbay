@@ -270,13 +270,55 @@
                 </div>
             }
         }
+        @if (activeTab() === 'TO&E') {
+            @if (organizationsLoading()) {
+                <div class="loading-spinner">Loading organizations...</div>
+            } @else if (filteredOrganizations().length === 0) {
+                <div class="empty-state">No saved organizations found.</div>
+            } @else {
+                <div class="force-list">
+                    @for (org of filteredOrganizations(); track org.organizationId) {
+                    <div class="force-entry organization-entry" [class.selected]="selectedOrganization() === org" (click)="selectOrganization(org)" tabindex="0">
+                        <div class="force-header">
+                            <div class="faction-name-wrapper">
+                                @if (org.factionId | factionImg; as factionImgUrl) {
+                                    <img [src]="factionImgUrl" class="faction-icon" />
+                                }
+                                <div class="force-name">{{ org.name || 'Unnamed Organization' }}</div>
+                            </div>
+                            <div class="force-info">
+                                <span class="force-timestamp">
+                                    @if (org.local) {
+                                        <img src="/images/floppy.svg" class="save-state-icon" alt="Saved locally" title="Stored locally" />
+                                    }
+                                    <img [src]="org.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'" class="save-state-icon" alt="Cloud status" [title]="org.cloud ? 'Stored online' : 'Not stored online'" />
+                                    {{ org.timestamp | formatTimestamp }}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="organization-summary">
+                            <span>{{ org.forceCount }} force{{ org.forceCount !== 1 ? 's' : '' }}</span>
+                            <span>{{ org.groupCount }} group{{ org.groupCount !== 1 ? 's' : '' }}</span>
+                        </div>
+                    </div>
+                    }
+                </div>
+            }
+        }
     </div>
     <div dialog-footer class="footer">
-        <button class="modal-btn bt-button" (click)="onLoad();" [disabled]="activeTab() === 'Operations' ? !selectedOperation() : (!selectedForce() && !selectedPack())">LOAD</button>
-        @if (forceBuilderService.loadedForces().length > 0 && activeTab() !== 'Operations') {
-            <button class="modal-btn bt-button" (click)="onAdd();" [disabled]="(!selectedForce() && !selectedPack()) || isSelectedForceLoaded()">ADD</button>
+        @if (activeTab() === 'TO&E') {
+            <button class="modal-btn bt-button" (click)="onNewOrganization();">NEW</button>
+            <button class="modal-btn bt-button" (click)="onOpenOrganization();" [disabled]="!selectedOrganization()">OPEN</button>
+            <button class="modal-btn bt-button danger" (click)="onDeleteOrganization();" [disabled]="!selectedOrganization()">DELETE</button>
+            <button class="modal-btn bt-button" (click)="onClose();">DISMISS</button>
+        } @else {
+            <button class="modal-btn bt-button" (click)="onLoad();" [disabled]="activeTab() === 'Operations' ? !selectedOperation() : (!selectedForce() && !selectedPack())">LOAD</button>
+            @if (forceBuilderService.loadedForces().length > 0 && activeTab() !== 'Operations') {
+                <button class="modal-btn bt-button" (click)="onAdd();" [disabled]="(!selectedForce() && !selectedPack()) || isSelectedForceLoaded()">ADD</button>
+            }
+            <button class="modal-btn bt-button danger" (click)="onDelete();" [disabled]="activeTab() === 'Operations' ? !selectedOperation() : !selectedForce()">DELETE</button>
+            <button class="modal-btn bt-button" (click)="onClose();">DISMISS</button>
         }
-        <button class="modal-btn bt-button danger" (click)="onDelete();" [disabled]="activeTab() === 'Operations' ? !selectedOperation() : !selectedForce()">DELETE</button>
-        <button class="modal-btn bt-button" (click)="onClose();">DISMISS</button>
     </div>
 </base-dialog>

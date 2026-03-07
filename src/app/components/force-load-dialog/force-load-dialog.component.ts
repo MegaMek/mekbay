@@ -31,10 +31,11 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, viewChild, ElementRef } from '@angular/core';
+import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, viewChild, ElementRef, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, map, race } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -42,6 +43,7 @@ import { Pipe, PipeTransform } from "@angular/core";
 import { LoadForceEntry, LoadForceGroup } from '../../models/load-force-entry.model';
 import { LoadOperationEntry } from '../../models/operation.model';
 import { SerializedOperation } from '../../models/operation.model';
+import { LoadOrganizationEntry } from '../../models/organization.model';
 import { SaveOperationDialogComponent, OperationDialogData, OperationDialogResult } from '../save-operation-dialog/save-operation-dialog.component';
 import { OpPreviewComponent } from '../op-preview/op-preview.component';
 import { OptionsService } from '../../services/options.service';
@@ -101,6 +103,7 @@ export class ForceLoadDialogComponent {
     private dialogRef = inject(DialogRef<ForceLoadDialogResult>);
     private dialogData: ForceLoadDialogData | null = inject(DIALOG_DATA, { optional: true });
     private dataService = inject(DataService);
+    private destroyRef = inject(DestroyRef);
     forceBuilderService = inject(ForceBuilderService);
     optionsService = inject(OptionsService);
     gameService = inject(GameService);
@@ -142,7 +145,7 @@ export class ForceLoadDialogComponent {
     selectedForce = signal<LoadForceEntry | null>(null);
     loading = signal<boolean>(true);
 
-    tabs = ['Hangar', 'Force Packs', 'Operations'];
+    tabs = ['Hangar', 'Force Packs', 'Operations', 'TO&E'];
     activeTab = signal(this.dialogData?.initialTab ?? this.tabs[0]);
 
     searchText = signal<string>('');
@@ -200,6 +203,12 @@ export class ForceLoadDialogComponent {
     selectedOperation = signal<LoadOperationEntry | null>(null);
     operationsLoading = signal<boolean>(false);
     private operationsLoaded = signal<boolean>(false);
+
+    // Organizations
+    organizations = signal<LoadOrganizationEntry[]>([]);
+    selectedOrganization = signal<LoadOrganizationEntry | null>(null);
+    organizationsLoading = signal<boolean>(false);
+    private organizationsLoaded = signal<boolean>(false);
     filteredOperations = computed<LoadOperationEntry[]>(() => {
         const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
         const typeFilter = this.gameTypeFilter();
@@ -233,6 +242,13 @@ export class ForceLoadDialogComponent {
         effect(() => {
             if (this.activeTab() === 'Operations' && !this.operationsLoaded() && !this.operationsLoading()) {
                 this.loadOperations();
+            }
+        });
+
+        // Load organizations when tab changes to Organizations
+        effect(() => {
+            if (this.activeTab() === 'TO&E' && !this.organizationsLoaded() && !this.organizationsLoading()) {
+                this.loadOrganizations();
             }
         });
     }
@@ -349,7 +365,15 @@ export class ForceLoadDialogComponent {
     selectOperation(op: LoadOperationEntry) {
         this.selectedForce.set(null);
         this.selectedPack.set(null);
+        this.selectedOrganization.set(null);
         this.selectedOperation.set(op);
+    }
+
+    selectOrganization(org: LoadOrganizationEntry) {
+        this.selectedForce.set(null);
+        this.selectedPack.set(null);
+        this.selectedOperation.set(null);
+        this.selectedOrganization.set(org);
     }
 
     onSearch(text: string) {
@@ -462,6 +486,10 @@ export class ForceLoadDialogComponent {
     async onLoad() {
         if (this.activeTab() === 'Operations') {
             await this.onLoadOperation();
+            return;
+        }
+        if (this.activeTab() === 'TO&E') {
+            this.onOpenOrganization();
             return;
         }
         await this.closeWithMode('load', 'friendly');
@@ -595,6 +623,10 @@ export class ForceLoadDialogComponent {
             await this.onDeleteOperation();
             return;
         }
+        if (this.activeTab() === 'TO&E') {
+            await this.onDeleteOrganization();
+            return;
+        }
         const force = this.selectedForce();
         if (!force) return;
         if (!force.instanceId) return;
@@ -615,5 +647,87 @@ export class ForceLoadDialogComponent {
 
     onClose() {
         this.dialogRef.close();
+    }
+
+    // ==================== Organizations ====================
+
+    private async loadOrganizations(): Promise<void> {
+        this.organizationsLoading.set(true);
+        try {
+            const result = await this.dataService.listOrganizations();
+            this.organizations.set(result || []);
+        } finally {
+            this.organizationsLoading.set(false);
+            this.organizationsLoaded.set(true);
+        }
+    }
+
+    filteredOrganizations = computed<LoadOrganizationEntry[]>(() => {
+        const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
+        return this.organizations().filter(org => {
+            if (tokens.length === 0) return true;
+            const hay = (org.name || '').toLowerCase();
+            return tokens.every(t => hay.indexOf(t) !== -1);
+        });
+    });
+
+    async onOpenOrganization() {
+        const org = this.selectedOrganization();
+        if (!org) return;
+        const ref = await this.forceBuilderService.showForceOrgDialog(org.organizationId);
+        await this.awaitOrgDialogOrForceLoad(ref);
+    }
+
+    async onNewOrganization() {
+        const ref = await this.forceBuilderService.showForceOrgDialog();
+        await this.awaitOrgDialogOrForceLoad(ref);
+    }
+
+    /**
+     * Waits for the org dialog to close, but also closes the load dialog
+     * immediately if a force is loaded/added while the org dialog is open.
+     */
+    private async awaitOrgDialogOrForceLoad(ref: { closed: import('rxjs').Observable<any> }): Promise<void> {
+        const reason = await firstValueFrom(
+            race([
+                ref.closed.pipe(map(() => 'closed' as const)),
+                this.forceBuilderService.forceLoaded$.pipe(map(() => 'loaded' as const)),
+            ]).pipe(takeUntilDestroyed(this.destroyRef))
+        ).catch(() => null);
+        // If forceLoaded$ fired, close the load dialog so the user
+        // lands on the loaded forces when the org dialog is dismissed.
+        if (reason === 'loaded') {
+            this.dialogRef.close(null);
+            return;
+        }
+        if (reason === 'closed') {
+            await this.reloadOrganizations();
+        }
+    }
+
+    async onDeleteOrganization() {
+        const org = this.selectedOrganization();
+        if (!org) return;
+        const confirmed = await this.dialogsService.requestConfirmation(
+            `Are you sure you want to delete "${org.name || 'Unnamed Organization'}"? This action cannot be undone.`,
+            'Delete Organization',
+            'danger'
+        );
+        if (confirmed) {
+            await this.dataService.deleteOrganization(org.organizationId);
+            this.organizations.set(this.organizations().filter(o => o !== org));
+            this.selectedOrganization.set(null);
+        }
+    }
+
+    private async reloadOrganizations(): Promise<void> {
+        this.organizationsLoading.set(true);
+        try {
+            const result = await this.dataService.listOrganizations();
+            this.organizations.set(result || []);
+            this.selectedOrganization.set(null);
+        } finally {
+            this.organizationsLoading.set(false);
+        }
     }
 }

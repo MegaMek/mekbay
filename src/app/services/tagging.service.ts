@@ -56,12 +56,12 @@ export const TAG_MAX_LENGTH = 16;
  * Allowed characters in tag names.
  * These are safe for URL serialization (don't conflict with ,|.:!~() delimiters).
  */
-export const TAG_ALLOWED_PATTERN = /^[a-zA-Z0-9 \-_'=><]+$/;
+export const TAG_ALLOWED_PATTERN = /^[a-zA-Z0-9 \-_'=><+]+$/;
 
 /**
  * List of allowed symbols for display in error messages.
  */
-export const TAG_ALLOWED_SYMBOLS = "- _ ' = > <";
+export const TAG_ALLOWED_SYMBOLS = "- _ ' = > < +";
 
 /**
  * Validate a tag name for allowed characters and length.

@@ -37,6 +37,31 @@
         font-weight: 500;
         color: var(--text-color, #fff);
     }
+
+    .org-name {
+        cursor: pointer;
+        border-bottom: 1px dashed rgba(255, 255, 255, 0.3);
+        padding-bottom: 2px;
+        transition: border-color 0.2s;
+
+        &:hover {
+            border-color: var(--accent-color, rgba(255, 255, 255, 0.7));
+        }
+    }
+
+    .org-title-wrapper {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    .org-faction-icon {
+        width: 28px;
+        height: 28px;
+        object-fit: contain;
+        flex-shrink: 0;
+    }
 }
 
 .org-dialog-header-actions {
@@ -67,6 +92,27 @@
     }
 }
 
+// ==================== Empty Canvas Overlay ====================
+
+.canvas-empty-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    color: rgba(255, 255, 255, 0.35);
+    gap: 12px;
+    font-size: 1rem;
+    text-align: center;
+    padding: 24px;
+
+    p {
+        margin: 0;
+    }
+}
+
 // ==================== Force Cards ====================
 
 .force-card {
@@ -84,6 +130,33 @@
     stroke: var(--border-color, #555);
     stroke-width: 1.5;
     transition: stroke 0.2s;
+}
+
+.force-card.highlighted-selected .card-border {
+    stroke: #f0c040;
+    stroke-width: 2.5;
+}
+
+.force-card.highlighted-selected .card-bg {
+    fill: #3a3520;
+}
+
+.force-card.highlighted-friendly .card-border {
+    stroke: rgb(var(--friendly-color));
+    stroke-width: 2;
+}
+
+.force-card.highlighted-friendly .card-bg {
+    fill: rgba(var(--friendly-color), 0.08);
+}
+
+.force-card.highlighted-enemy .card-border {
+    stroke: rgb(var(--enemy-color));
+    stroke-width: 2;
+}
+
+.force-card.highlighted-enemy .card-bg {
+    fill: rgba(var(--enemy-color), 0.08);
 }
 
 .force-name-fo,
@@ -515,6 +588,54 @@
     line-height: 1.6;
 }
 
+// ==================== Sidebar Sort Footer ====================
+
+.sidebar-sort-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 4px;
+    border-top: 1px solid var(--border-color, #444);
+    flex: 0 0 auto;
+}
+
+.sort-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.sort-select {
+    height: 28px;
+    padding: 0 6px;
+    font-size: 0.75rem;
+}
+
+.sort-select option {
+    background-color: #222;
+    color: #fff;
+}
+
+.sort-direction-btn {
+    height: 28px;
+    width: 28px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #bbb;
+    cursor: pointer;
+
+    &:hover {
+        color: white;
+    }
+
+    svg {
+        width: 16px;
+        height: 16px;
+    }
+}
+
 // ==================== Drag Ghost ====================
 
 .drag-ghost {
@@ -589,6 +710,7 @@
 .org-dialog-footer {
     display: flex;
     justify-content: space-around;
+    align-items: center;
     padding: 8px;
     background-color: var(--background-color-menu);
     border-top: 2px solid var(--border-color);

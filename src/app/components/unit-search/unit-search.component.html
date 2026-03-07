@@ -139,19 +139,21 @@
             @if (this.filtersService.filteredUnits().length > 0) {
             <!-- Table Header for AS Table View (expanded only, not in card or compact view) -->
             @if (this.expandedView() && gameService.isAlphaStrike() && viewMode() === 'list') {
-            <div class="as-table-header">
+            <div class="as-table-header"
+                 [class.sort-asc]="filtersService.selectedSortDirection() === 'asc'"
+                 [class.sort-desc]="filtersService.selectedSortDirection() === 'desc'">
                 <div class="as-th as-th-icon"></div>
-                <div class="as-th as-th-name">Name</div>
-                <div class="as-th as-th-type">Type</div>
-                <div class="as-th as-th-role">Role</div>
-                <div class="as-th as-th-pv">PV</div>
-                <div class="as-th as-th-sz">SZ</div>
-                <div class="as-th as-th-mv">MV</div>
-                <div class="as-th as-th-tmm">TMM</div>
-                <div class="as-th as-th-dmg">S/M/L</div>
-                <div class="as-th as-th-arm">A</div>
-                <div class="as-th as-th-str">S</div>
-                <div class="as-th as-th-ov">OV</div>
+                <div class="as-th as-th-name as-th-sortable" [class.sort-active]="isSortActive('name')" (click)="onHeaderSort('name')">Name</div>
+                <div class="as-th as-th-type as-th-sortable" [class.sort-active]="isSortActive('as.TP')" (click)="onHeaderSort('as.TP')">Type</div>
+                <div class="as-th as-th-role as-th-sortable" [class.sort-active]="isSortActive('role')" (click)="onHeaderSort('role')">Role</div>
+                <div class="as-th as-th-pv as-th-sortable" [class.sort-active]="isSortActive('as.PV')" (click)="onHeaderSort('as.PV')">PV</div>
+                <div class="as-th as-th-sz as-th-sortable" [class.sort-active]="isSortActive('as.SZ')" (click)="onHeaderSort('as.SZ')">SZ</div>
+                <div class="as-th as-th-mv as-th-sortable" [class.sort-active]="isSortActive('as._mv')" (click)="onHeaderSort('as._mv')">MV</div>
+                <div class="as-th as-th-tmm as-th-sortable" [class.sort-active]="isSortActive('as.TMM')" (click)="onHeaderSort('as.TMM')">TMM</div>
+                <div class="as-th as-th-dmg as-th-sortable" [class.sort-active]="isSortActive('as.damage')" (click)="onHeaderSort('as.dmg._dmgS', 'as.damage')">S/M/L</div>
+                <div class="as-th as-th-arm as-th-sortable" [class.sort-active]="isSortActive('as.Arm')" (click)="onHeaderSort('as.Arm')">A</div>
+                <div class="as-th as-th-str as-th-sortable" [class.sort-active]="isSortActive('as.Str')" (click)="onHeaderSort('as.Str')">S</div>
+                <div class="as-th as-th-ov as-th-sortable" [class.sort-active]="isSortActive('as.OV')" (click)="onHeaderSort('as.OV')">OV</div>
                 @if (asTableSortSlotHeader(); as sortHeader) {
                 <div class="as-th as-th-sort-slot">{{ sortHeader }}</div>
                 }
@@ -388,7 +390,7 @@
     [style.width]="advPanelStyle().width"
     [style.height]="advPanelStyle().height"
     [class.docked]="advPanelDocked()" [class.docked-left]="advPanelDocked() && filtersOnLeft()">
-    <div class="adv-panel-header" [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
+    <div class="adv-panel-header" [class.two-columns]="advPanelStyle().columnsCount === 2">
         <button (click)="clearAdvFilters()" type="button" class="bt-button clear-btn">RESET FILTERS</button>
         <div class="pilot-skills-section framed-borders">
             <div class="pilot-skills-controls">
@@ -425,6 +427,26 @@
                         <option [value]="n" [selected]="n === piloting">{{ n }}</option>
                         }
                     </select>
+                </div>
+                }
+            </div>
+            <div class="bv-limit-controls">
+                @let bvPvLimit = this.filtersService.bvPvLimit();
+                @let forceTotal = this.filtersService.forceTotalBvPv();
+                @let limitLabel = gameService.isAlphaStrike() ? 'PV' : 'BV';
+                <div class="limit-control">
+                    <label for="bv-pv-limit">{{ limitLabel }} Limit:</label>
+                    <input id="bv-pv-limit" type="number" class="bt-input limit-input"
+                        [class.active]="bvPvLimit > 0"
+                        [value]="bvPvLimit || ''"
+                        min="0"
+                        placeholder="None"
+                        (input)="setBvPvLimit(+$any($event.target).value || 0)">
+                </div>
+                @if (bvPvLimit > 0) {
+                <div class="limit-info" [class.over-limit]="forceTotal > bvPvLimit">
+                    <span class="limit-remaining-label">Remaining:</span>
+                    <span class="limit-remaining-value">{{ (bvPvLimit - forceTotal) | number }}</span>
                 </div>
                 }
             </div>

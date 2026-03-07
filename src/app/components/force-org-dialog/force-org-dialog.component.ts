@@ -41,14 +41,17 @@ import {
     signal,
     viewChild,
 } from '@angular/core';
-import { DialogRef } from '@angular/cdk/dialog';
+import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
+import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import { FormationNamerUtil } from '../../utils/formation-namer.util';
+import { GroupSizeResult } from '../../utils/org-solver.util';
 import { GameSystem } from '../../models/common.model';
+import { SerializedOrganization, OrgPlacedForce, OrgGroupData, LoadOrganizationEntry } from '../../models/organization.model';
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2.0;
@@ -95,6 +98,11 @@ interface OrgGroup {
     anchorY: number;
 }
 
+/** Dialog input data for loading a saved organization */
+export interface ForceOrgDialogData {
+    organizationId?: string;
+}
+
 @Component({
     selector: 'force-org-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -109,9 +117,11 @@ export class ForceOrgDialogComponent {
     private dialogRef = inject(DialogRef<void>);
     private dataService = inject(DataService);
     private dialogsService = inject(DialogsService);
+    private forceBuilderService = inject(ForceBuilderService);
     private destroyRef = inject(DestroyRef);
     protected layoutService = inject(LayoutService);
     private svgCanvas = viewChild<ElementRef<SVGSVGElement>>('svgCanvas');
+    private dialogData: ForceOrgDialogData | null = inject(DIALOG_DATA, { optional: true });
 
     protected readonly CARD_WIDTH = CARD_WIDTH;
     protected readonly CARD_HEIGHT = CARD_HEIGHT;
@@ -119,12 +129,51 @@ export class ForceOrgDialogComponent {
     protected readonly GROUP_HEADER_HEIGHT = GROUP_HEADER_HEIGHT;
     protected readonly GameSystem = GameSystem;
 
+    // Organization state
+    protected organizationId = signal<string | null>(null);
+    protected organizationName = signal('Unnamed Organization');
+    protected saving = signal(false);
+    protected dirty = signal(false);
+
+    /** Instance ID of the currently selected force in ForceBuilderService. */
+    protected selectedForceInstanceId = computed(() => {
+        const unit = this.forceBuilderService.selectedUnit();
+        return unit?.force?.instanceId() ?? null;
+    });
+
+    /** Map of loaded force instanceId → alignment ('friendly' | 'enemy'). */
+    protected loadedForceAlignments = computed(() => {
+        const map = new Map<string, 'friendly' | 'enemy'>();
+        for (const slot of this.forceBuilderService.loadedForces()) {
+            const id = slot.force.instanceId();
+            if (id) map.set(id, slot.alignment);
+        }
+        return map;
+    });
+
+    /** Dominant faction ID computed from all placed forces. */
+    protected organizationFactionId = computed(() => {
+        const entries = this.placedForces().map(pf => pf.force);
+        return this.getDominantFactionId(entries);
+    });
+
     // Sidebar
     protected sidebarOpen = signal(false);
     protected sidebarSearchText = signal('');
     protected sidebarGameTypeFilter = signal<'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE>('all');
     protected sidebarAnimated = signal(false);
     protected loading = signal(true);
+
+    // Sidebar sort
+    protected readonly SORT_OPTIONS: { key: string; label: string }[] = [
+        { key: 'timestamp', label: 'Date' },
+        { key: 'name', label: 'Name' },
+        { key: 'value', label: 'Value' },
+        { key: 'faction', label: 'Faction' },
+        { key: 'size', label: 'Size' },
+    ];
+    protected sidebarSort = signal<string>('timestamp');
+    protected sidebarSortDirection = signal<'asc' | 'desc'>('desc');
 
     // All forces from hangar
     protected allForces = signal<LoadForceEntry[]>([]);
@@ -157,6 +206,8 @@ export class ForceOrgDialogComponent {
     protected sidebarDragForce = signal<LoadForceEntry | null>(null);
     protected sidebarDragActive = signal(false);
     protected sidebarDragPos = signal({ x: 0, y: 0 });
+    private sidebarHoldTimer: ReturnType<typeof setTimeout> | null = null;
+    private sidebarHoldPointerId: number | null = null;
 
     // Drag state for groups
     private draggedGroup = signal<OrgGroup | null>(null);
@@ -177,7 +228,9 @@ export class ForceOrgDialogComponent {
         const placedIds = new Set(this.placedForces().map(p => p.force.instanceId));
         const typeFilter = this.sidebarGameTypeFilter();
         const tokens = this.sidebarSearchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
-        return this.allForces().filter(f => {
+        const sortKey = this.sidebarSort();
+        const sortDir = this.sidebarSortDirection();
+        const filtered = this.allForces().filter(f => {
             if (placedIds.has(f.instanceId)) return false;
             if (typeFilter !== 'all' && (f.type || GameSystem.CLASSIC) !== typeFilter) return false;
             if (tokens.length > 0) {
@@ -185,7 +238,8 @@ export class ForceOrgDialogComponent {
                 if (!tokens.every(t => hay.indexOf(t) !== -1)) return false;
             }
             return true;
-        }).sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+        });
+        return this.sortForces(filtered, sortKey, sortDir);
     });
 
     protected svgTransform = computed(() => {
@@ -256,6 +310,8 @@ export class ForceOrgDialogComponent {
     /** Org size name for each OrgGroup, keyed by group id. */
     protected orgGroupOrgNames = computed(() => {
         const descendants = this.descendantForcesMap();
+        const groups = this.groups();
+        const placed = this.placedForces();
         const result = new Map<string, string>();
         for (const [groupId, entries] of descendants) {
             if (entries.length === 0) continue;
@@ -263,7 +319,7 @@ export class ForceOrgDialogComponent {
                 entries,
                 (id) => this.getFactionName(id),
             );
-            result.set(groupId, FormationNamerUtil.getOrgGroupSizeName(entries, factionName));
+            result.set(groupId, this.computeHierarchicalOrgName(groupId, entries, groups, placed, factionName));
         }
         return result;
     });
@@ -319,12 +375,47 @@ export class ForceOrgDialogComponent {
         return this.groups().some(g => g.parentGroupId === group.id);
     }
 
+    /**
+     * Compute the org size name for a group, using child OrgGroup evaluations
+     * as intermediate groupResults when the group contains child groups.
+     * This ensures that e.g. 3 Companies → Battalion, rather than flattening
+     * all descendant forces into individual Lances and losing the hierarchy.
+     */
+    private computeHierarchicalOrgName(
+        groupId: string,
+        allEntries: LoadForceEntry[],
+        groups: OrgGroup[],
+        placed: PlacedForce[],
+        factionName: string,
+    ): string {
+        const childGroups = groups.filter(g => g.parentGroupId === groupId);
+        if (childGroups.length === 0) {
+            return FormationNamerUtil.getOrgGroupSizeName(allEntries, factionName);
+        }
+        // Build groupResults from child OrgGroup evaluations + direct forces
+        const childGroupResults: GroupSizeResult[] = [];
+        for (const child of childGroups) {
+            const childEntries = this.collectDescendantForces(child.id, placed, groups);
+            if (childEntries.length === 0) continue;
+            childGroupResults.push(FormationNamerUtil.getOrgGroupSizeResult(childEntries, factionName));
+        }
+        const directForces = placed.filter(pf => pf.groupId === groupId);
+        for (const pf of directForces) {
+            childGroupResults.push(FormationNamerUtil.getForceSizeResult(pf.force, factionName));
+        }
+        return FormationNamerUtil.getOrgGroupSizeNameHierarchical(allEntries, childGroupResults, factionName);
+    }
+
     private nextZIndex = 0;
     private nextGroupZIndex = 0;
 
     constructor() {
         this.destroyRef.onDestroy(() => this.cleanupGlobalPointerState());
-        this.loadForces();
+        if (this.dialogData?.organizationId) {
+            this.loadOrganization(this.dialogData.organizationId);
+        } else {
+            this.loadForces();
+        }
     }
 
     // ==================== Data Loading ====================
@@ -337,6 +428,9 @@ export class ForceOrgDialogComponent {
                 f._searchText = this.computeSearchText(f);
             }
             this.allForces.set(result || []);
+            if (this.layoutService.isMobile() && this.placedForces().length === 0) {
+                this.sidebarOpen.set(true);
+            }
         } catch {
             // Error loading forces; allForces remains empty
         } finally {
@@ -357,6 +451,42 @@ export class ForceOrgDialogComponent {
 
     protected onSidebarGameTypeFilter(type: 'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE): void {
         this.sidebarGameTypeFilter.set(type);
+    }
+
+    protected setSidebarSort(key: string): void {
+        this.sidebarSort.set(key);
+    }
+
+    protected setSidebarSortDirection(dir: 'asc' | 'desc'): void {
+        this.sidebarSortDirection.set(dir);
+    }
+
+    private sortForces(items: LoadForceEntry[], sortKey: string, sortDir: 'asc' | 'desc'): LoadForceEntry[] {
+        const dir = sortDir === 'asc' ? 1 : -1;
+        return [...items].sort((a, b) => {
+            switch (sortKey) {
+                case 'name':
+                    return dir * (a.name || '').localeCompare(b.name || '');
+                case 'value': {
+                    const aVal = (a.type === GameSystem.ALPHA_STRIKE) ? (a.pv ?? 0) : (a.bv ?? 0);
+                    const bVal = (b.type === GameSystem.ALPHA_STRIKE) ? (b.pv ?? 0) : (b.bv ?? 0);
+                    return dir * (aVal - bVal);
+                }
+                case 'faction': {
+                    const aFaction = a.factionId != null ? this.getFactionName(a.factionId) : '';
+                    const bFaction = b.factionId != null ? this.getFactionName(b.factionId) : '';
+                    return dir * aFaction.localeCompare(bFaction);
+                }
+                case 'size': {
+                    const aSize = a.groups ? a.groups.reduce((sum, g) => sum + (g.units?.length || 0), 0) : 0;
+                    const bSize = b.groups ? b.groups.reduce((sum, g) => sum + (g.units?.length || 0), 0) : 0;
+                    return dir * (aSize - bSize);
+                }
+                case 'timestamp':
+                default:
+                    return dir * ((a.timestamp || '').localeCompare(b.timestamp || ''));
+            }
+        });
     }
 
     private computeSearchText(force: LoadForceEntry): string {
@@ -411,13 +541,88 @@ export class ForceOrgDialogComponent {
 
     // ==================== Sidebar Drag ====================
 
+    private pendingSidebarForce: LoadForceEntry | null = null;
+    private sidebarHoldStartPos: { x: number; y: number } | null = null;
+    private preventTouchScroll = false;
+
     protected onSidebarForcePointerDown(event: PointerEvent, force: LoadForceEntry): void {
+        if (event.pointerType === 'touch') {
+            // Touch: hold-to-drag (like force-builder-viewer cdkDragStartDelay)
+            this.cancelSidebarHoldTimer();
+            this.pendingSidebarForce = force;
+            this.sidebarHoldStartPos = { x: event.clientX, y: event.clientY };
+            this.sidebarHoldPointerId = event.pointerId;
+            document.addEventListener('pointermove', this.onSidebarHoldMove, { passive: false });
+            document.addEventListener('pointerup', this.onSidebarHoldEnd);
+            document.addEventListener('pointercancel', this.onSidebarHoldEnd);
+            this.sidebarHoldTimer = setTimeout(() => {
+                this.sidebarHoldTimer = null;
+                this.removeSidebarHoldListeners();
+                // Block touchmove to prevent browser scroll/pointercancel
+                this.preventTouchScroll = true;
+                document.addEventListener('touchmove', this.onBlockTouchMove, { passive: false });
+                // Hold complete — activate drag
+                this.sidebarDragForce.set(this.pendingSidebarForce);
+                this.sidebarDragActive.set(true);
+                this.sidebarDragPos.set(this.sidebarHoldStartPos!);
+                this.pendingSidebarForce = null;
+                this.sidebarHoldStartPos = null;
+                this.addGlobalPointerListeners();
+            }, 200);
+            return;
+        }
+        // Mouse: start immediately
         event.preventDefault();
         event.stopPropagation();
         this.sidebarDragForce.set(force);
         this.sidebarDragActive.set(true);
         this.sidebarDragPos.set({ x: event.clientX, y: event.clientY });
         this.addGlobalPointerListeners();
+    }
+
+    private onBlockTouchMove = (event: TouchEvent): void => {
+        if (this.preventTouchScroll) event.preventDefault();
+    };
+
+    private stopBlockingTouchScroll(): void {
+        this.preventTouchScroll = false;
+        document.removeEventListener('touchmove', this.onBlockTouchMove);
+    }
+
+    private onSidebarHoldMove = (event: PointerEvent): void => {
+        if (event.pointerId !== this.sidebarHoldPointerId) return;
+        const dx = event.clientX - this.sidebarHoldStartPos!.x;
+        const dy = event.clientY - this.sidebarHoldStartPos!.y;
+        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+            // Finger moved too much — cancel hold, let browser scroll
+            this.cancelSidebarHoldTimer();
+        } else {
+            // Finger still within threshold — prevent browser from cancelling touch
+            event.preventDefault();
+        }
+    };
+
+    private onSidebarHoldEnd = (event: PointerEvent): void => {
+        if (event.pointerId !== this.sidebarHoldPointerId) return;
+        this.cancelSidebarHoldTimer();
+    };
+
+    private cancelSidebarHoldTimer(): void {
+        if (this.sidebarHoldTimer) {
+            clearTimeout(this.sidebarHoldTimer);
+            this.sidebarHoldTimer = null;
+        }
+        this.sidebarHoldPointerId = null;
+        this.pendingSidebarForce = null;
+        this.sidebarHoldStartPos = null;
+        this.stopBlockingTouchScroll();
+        this.removeSidebarHoldListeners();
+    }
+
+    private removeSidebarHoldListeners(): void {
+        document.removeEventListener('pointermove', this.onSidebarHoldMove);
+        document.removeEventListener('pointerup', this.onSidebarHoldEnd);
+        document.removeEventListener('pointercancel', this.onSidebarHoldEnd);
     }
 
     // ==================== Canvas Force Drag ====================
@@ -443,6 +648,7 @@ export class ForceOrgDialogComponent {
         pf.zIndex = forces.length - 1;
         this.nextZIndex = forces.length;
         this.placedForces.set([...forces]);
+        this.dirty.set(true);
     }
 
     // ==================== Group Drag ====================
@@ -469,6 +675,7 @@ export class ForceOrgDialogComponent {
         this.placedForces.set(this.placedForces().filter(f => f !== pf));
         // Clean up empty groups
         this.cleanupEmptyGroups();
+        this.dirty.set(true);
     }
 
     // ==================== Group Management ====================
@@ -483,6 +690,7 @@ export class ForceOrgDialogComponent {
         if (newName !== null) {
             group.name = newName.trim();
             this.groups.set([...this.groups()]);
+            this.dirty.set(true);
         }
     }
 
@@ -507,6 +715,7 @@ export class ForceOrgDialogComponent {
             const parent = this.groups().find(g => g.id === group.parentGroupId);
             if (parent) this.layoutGroup(parent);
         }
+        this.dirty.set(true);
     }
 
     private cleanupEmptyGroups(): void {
@@ -591,36 +800,57 @@ export class ForceOrgDialogComponent {
     }
 
     /** Detect what would happen if the dragged force were dropped now. */
-    private detectForceDrop(pf: PlacedForce): ForceDropAction | null {
+    private detectForceDrop(pf: PlacedForce, cursorWorld: { x: number; y: number }): ForceDropAction | null {
         const pfRect = this.forceRect(pf);
-        // Check overlap with existing groups (except own)
+
+        // If the force belongs to a group, check cursor vs own group first
+        if (pf.groupId) {
+            const ownGroup = this.groups().find(g => g.id === pf.groupId);
+            if (ownGroup) {
+                const cursorInside = cursorWorld.x >= ownGroup.x && cursorWorld.x <= ownGroup.x + ownGroup.width &&
+                                     cursorWorld.y >= ownGroup.y && cursorWorld.y <= ownGroup.y + ownGroup.height;
+                if (cursorInside) {
+                    // Cursor is still inside own group — stay in group, just re-layout
+                    return null;
+                }
+                // Cursor is outside own group — leaving
+                // Check overlap with ungrouped forces for possible new group
+                for (const other of this.placedForces()) {
+                    if (other === pf || other.groupId) continue;
+                    if (this.rectsOverlap(pfRect, this.forceRect(other))) {
+                        return { type: 'new-group', other };
+                    }
+                }
+                return { type: 'leave-group' };
+            }
+        }
+
+        // Ungrouped force: check overlap with existing groups
         for (const group of this.groups()) {
-            if (pf.groupId === group.id) continue;
             if (this.rectsOverlap(pfRect, group)) {
                 return { type: 'join-group', groupId: group.id };
             }
         }
-        // Check if leaving own group
-        const leavingGroup = pf.groupId
-            ? (() => { const g = this.groups().find(g => g.id === pf.groupId); return g && !this.rectsOverlap(pfRect, g); })()
-            : false;
-        // Check overlap with ungrouped forces (always, not just when ungrouped)
-        if (!pf.groupId || leavingGroup) {
-            for (const other of this.placedForces()) {
-                if (other === pf || other.groupId) continue;
-                if (this.rectsOverlap(pfRect, this.forceRect(other))) {
-                    return { type: 'new-group', other };
-                }
+        // Check overlap with other ungrouped forces
+        for (const other of this.placedForces()) {
+            if (other === pf || other.groupId) continue;
+            if (this.rectsOverlap(pfRect, this.forceRect(other))) {
+                return { type: 'new-group', other };
             }
-        }
-        if (leavingGroup) {
-            return { type: 'leave-group' };
         }
         return null;
     }
 
     /** Detect what would happen if the dragged group were dropped now. */
-    private detectGroupDrop(grp: OrgGroup): GroupDropAction | null {
+    private detectGroupDrop(grp: OrgGroup, cursorWorld: { x: number; y: number }): GroupDropAction | null {
+        // If the group has a parent and the cursor is outside it, treat as leaving
+        if (grp.parentGroupId) {
+            const parent = this.groups().find(g => g.id === grp.parentGroupId);
+            if (parent && (cursorWorld.x < parent.x || cursorWorld.x > parent.x + parent.width ||
+                           cursorWorld.y < parent.y || cursorWorld.y > parent.y + parent.height)) {
+                return null; // Will be handled as leave-parent in pointerUp
+            }
+        }
         for (const other of this.groups()) {
             if (other.id === grp.id) continue;
             if (this.isDescendantOf(other, grp.id)) continue;
@@ -670,7 +900,7 @@ export class ForceOrgDialogComponent {
             if (entries.length === 0) break;
 
             const factionName = FormationNamerUtil.getDominantFactionName(entries, id => this.getFactionName(id));
-            const orgName = FormationNamerUtil.getOrgGroupSizeName(entries, factionName);
+            const orgName = this.computeHierarchicalOrgName(currentId, entries, groups, placed, factionName);
             const factionId = this.getDominantFactionId(entries);
             let totalBv = 0, totalPv = 0;
             for (const e of entries) {
@@ -740,8 +970,8 @@ export class ForceOrgDialogComponent {
     }
 
     /** Execute the force drop action detected by detectForceDrop. */
-    private tryFormGroup(draggedPf: PlacedForce): void {
-        const action = this.detectForceDrop(draggedPf);
+    private tryFormGroup(draggedPf: PlacedForce, cursorWorld: { x: number; y: number }): void {
+        const action = this.detectForceDrop(draggedPf, cursorWorld);
         const placed = this.placedForces();
 
         switch (action?.type) {
@@ -919,8 +1149,8 @@ export class ForceOrgDialogComponent {
     }
 
     /** Execute the group drop action detected by detectGroupDrop. */
-    private tryMergeGroups(draggedGrp: OrgGroup): void {
-        const action = this.detectGroupDrop(draggedGrp);
+    private tryMergeGroups(draggedGrp: OrgGroup, cursorWorld: { x: number; y: number }): void {
+        const action = this.detectGroupDrop(draggedGrp, cursorWorld);
 
         switch (action?.type) {
             case 'join-parent': {
@@ -1030,8 +1260,9 @@ export class ForceOrgDialogComponent {
 
     private addGlobalPointerListeners(): void {
         if (this.hasGlobalPointerListeners) return;
-        document.addEventListener('pointermove', this.onGlobalPointerMove);
+        document.addEventListener('pointermove', this.onGlobalPointerMove, { passive: false });
         document.addEventListener('pointerup', this.onGlobalPointerUp);
+        document.addEventListener('pointercancel', this.onGlobalPointerCancel);
         this.hasGlobalPointerListeners = true;
     }
 
@@ -1040,6 +1271,7 @@ export class ForceOrgDialogComponent {
             cancelAnimationFrame(this.moveRafId);
             this.moveRafId = null;
         }
+        this.cancelSidebarHoldTimer();
         this.pendingMoveEvent = null;
         this.activeTouches.clear();
         this.lastPanPoint = null;
@@ -1053,6 +1285,7 @@ export class ForceOrgDialogComponent {
         if (this.hasGlobalPointerListeners) {
             document.removeEventListener('pointermove', this.onGlobalPointerMove);
             document.removeEventListener('pointerup', this.onGlobalPointerUp);
+            document.removeEventListener('pointercancel', this.onGlobalPointerCancel);
             this.hasGlobalPointerListeners = false;
         }
     }
@@ -1063,7 +1296,18 @@ export class ForceOrgDialogComponent {
         } catch { /* best-effort */ }
     }
 
+    private onGlobalPointerCancel = (event: PointerEvent): void => {
+        this.activeTouches.delete(event.pointerId);
+        // Treat cancel same as pointer up to clean state
+        this.onGlobalPointerUp(event);
+    };
+
     private onGlobalPointerMove = (event: PointerEvent): void => {
+        // Prevent browser from stealing touch during active drag
+        if (event.pointerType === 'touch' && (this.sidebarDragActive() || this.draggedForce() || this.draggedGroup())) {
+            event.preventDefault();
+        }
+
         this.activeTouches.set(event.pointerId, event);
 
         // Cancel drags on multi-touch
@@ -1073,6 +1317,7 @@ export class ForceOrgDialogComponent {
             this.sidebarDragForce.set(null);
             this.sidebarDragActive.set(false);
             this.isDragging.set(false);
+            this.stopBlockingTouchScroll();
             this.startPinchGesture();
             this.lastPanPoint = this.getEffectivePanPoint();
         }
@@ -1096,16 +1341,24 @@ export class ForceOrgDialogComponent {
     private processPointerMove(event: PointerEvent): void {
         // Sidebar drag
         if (this.sidebarDragActive()) {
+            const sidebarForce = this.sidebarDragForce();
+            if (!sidebarForce) return;
             this.sidebarDragPos.set({ x: event.clientX, y: event.clientY });
-            // Show drop preview for sidebar drag
-            const worldPos = this.screenToWorld(event.clientX, event.clientY);
-            const sidebarRect: Rect = {
-                x: worldPos.x - CARD_WIDTH / 2,
-                y: worldPos.y - CARD_HEIGHT / 2,
-                width: CARD_WIDTH,
-                height: CARD_HEIGHT,
-            };
-            this.updateSidebarDragPreview(sidebarRect, this.sidebarDragForce()!);
+            // Only show drop preview when cursor is over the canvas, not the sidebar
+            const elementUnderCursor = document.elementFromPoint(event.clientX, event.clientY);
+            const isOverSidebar = elementUnderCursor?.closest('.forces-sidebar') != null;
+            if (isOverSidebar) {
+                this.clearDropPreview();
+            } else {
+                const worldPos = this.screenToWorld(event.clientX, event.clientY);
+                const sidebarRect: Rect = {
+                    x: worldPos.x - CARD_WIDTH / 2,
+                    y: worldPos.y - CARD_HEIGHT / 2,
+                    width: CARD_WIDTH,
+                    height: CARD_HEIGHT,
+                };
+                this.updateSidebarDragPreview(sidebarRect, sidebarForce);
+            }
             return;
         }
 
@@ -1118,7 +1371,8 @@ export class ForceOrgDialogComponent {
             dragged.y = this.forceStartPos.y + dy;
             this.placedForces.set([...this.placedForces()]);
             // Update drop preview
-            const forceAction = this.detectForceDrop(dragged);
+            const cursorWorld = this.screenToWorld(event.clientX, event.clientY);
+            const forceAction = this.detectForceDrop(dragged, cursorWorld);
             const otherRect = forceAction?.type === 'new-group' ? this.forceRect(forceAction.other) : undefined;
             const entries = forceAction?.type === 'new-group'
                 ? [dragged.force, forceAction.other.force]
@@ -1145,7 +1399,8 @@ export class ForceOrgDialogComponent {
             this.groups.set([...this.groups()]);
             this.placedForces.set([...this.placedForces()]);
             // Update drop preview
-            const grpAction = this.detectGroupDrop(draggedGrp);
+            const grpCursorWorld = this.screenToWorld(event.clientX, event.clientY);
+            const grpAction = this.detectGroupDrop(draggedGrp, grpCursorWorld);
             const grpOtherRect = grpAction?.type === 'create-parent' ? grpAction.other as Rect : undefined;
             const grpEntries = grpAction?.type === 'create-parent'
                 ? [...this.collectDescendantForces(draggedGrp.id, this.placedForces(), this.groups()), ...this.collectDescendantForces(grpAction.other.id, this.placedForces(), this.groups())]
@@ -1224,28 +1479,32 @@ export class ForceOrgDialogComponent {
                             };
                             this.placedForces.set([...this.placedForces(), newPlaced]);
                             // Try grouping with nearby forces
-                            this.tryFormGroup(newPlaced);
+                            this.tryFormGroup(newPlaced, worldPos);
                             if (newPlaced.groupId) {
                                 const group = this.groups().find(g => g.id === newPlaced.groupId);
                                 if (group) this.layoutGroup(group);
                             }
+                            this.dirty.set(true);
                         }
                     }
                 }
             }
             this.sidebarDragForce.set(null);
             this.sidebarDragActive.set(false);
+            this.stopBlockingTouchScroll();
         }
 
         // Handle canvas force drag end
         const dragged = this.draggedForce();
         if (dragged) {
             if (this.forceDragged) {
-                this.tryFormGroup(dragged);
+                const forceCursorWorld = this.screenToWorld(event.clientX, event.clientY);
+                this.tryFormGroup(dragged, forceCursorWorld);
                 if (dragged.groupId) {
                     const group = this.groups().find(g => g.id === dragged.groupId);
                     if (group) this.layoutGroup(group);
                 }
+                this.dirty.set(true);
             }
             this.draggedForce.set(null);
             this.isDragging.set(false);
@@ -1270,16 +1529,18 @@ export class ForceOrgDialogComponent {
                         this.recalcGroupBounds(parent);
                         this.cleanupEmptyGroups();
                     } else {
-                        this.tryMergeGroups(dragEndGroup);
+                        this.tryMergeGroups(dragEndGroup, dropWorld);
                     }
                 } else {
-                    this.tryMergeGroups(dragEndGroup);
+                    const dropWorldRoot = this.screenToWorld(event.clientX, event.clientY);
+                    this.tryMergeGroups(dragEndGroup, dropWorldRoot);
                 }
                 // Re-layout parent if it still has one
                 if (dragEndGroup.parentGroupId) {
                     const parent = this.groups().find(g => g.id === dragEndGroup.parentGroupId);
                     if (parent) this.layoutGroup(parent);
                 }
+                this.dirty.set(true);
             }
             this.draggedGroup.set(null);
         }
@@ -1289,7 +1550,188 @@ export class ForceOrgDialogComponent {
 
     // ==================== Dialog Actions ====================
 
+    protected async renameOrganization(): Promise<void> {
+        const newName = await this.dialogsService.prompt(
+            'Enter a name for this organization:',
+            'Rename Organization',
+            this.organizationName()
+        );
+        if (newName !== null) {
+            this.organizationName.set(newName.trim() || 'Unnamed Organization');
+            this.dirty.set(true);
+        }
+    }
+
+    protected async saveOrganization(): Promise<void> {
+        if (this.saving()) return;
+        this.saving.set(true);
+        try {
+            const orgId = this.organizationId() ?? crypto.randomUUID();
+            this.organizationId.set(orgId);
+
+            const serialized: SerializedOrganization = {
+                organizationId: orgId,
+                name: this.organizationName(),
+                timestamp: Date.now(),
+                factionId: this.organizationFactionId(),
+                forces: this.placedForces().map(pf => ({
+                    instanceId: pf.force.instanceId,
+                    x: pf.x,
+                    y: pf.y,
+                    zIndex: pf.zIndex,
+                    groupId: pf.groupId,
+                } as OrgPlacedForce)),
+                groups: this.groups().map(g => ({
+                    id: g.id,
+                    name: g.name,
+                    x: g.x,
+                    y: g.y,
+                    width: g.width,
+                    height: g.height,
+                    zIndex: g.zIndex,
+                    parentGroupId: g.parentGroupId,
+                    anchorX: g.anchorX,
+                    anchorY: g.anchorY,
+                } as OrgGroupData)),
+            };
+
+            await this.dataService.saveOrganization(serialized);
+            this.dirty.set(false);
+        } finally {
+            this.saving.set(false);
+        }
+    }
+
+    private async loadOrganization(organizationId: string): Promise<void> {
+        this.loading.set(true);
+        try {
+            const org = await this.dataService.getOrganization(organizationId);
+            if (!org) {
+                await this.dialogsService.showError('Organization not found.', 'Load Error');
+                await this.loadForces();
+                return;
+            }
+
+            // Load all forces first
+            const result = await this.dataService.listForces();
+            for (const f of result || []) {
+                f._searchText = this.computeSearchText(f);
+            }
+            this.allForces.set(result || []);
+
+            // Build a lookup map
+            const forceMap = new Map<string, LoadForceEntry>();
+            for (const f of (result || [])) {
+                forceMap.set(f.instanceId, f);
+            }
+
+            // Restore placed forces (skip any whose force no longer exists)
+            const placed: PlacedForce[] = [];
+            for (const pf of org.forces) {
+                const force = forceMap.get(pf.instanceId);
+                if (force) {
+                    placed.push({
+                        force,
+                        x: pf.x,
+                        y: pf.y,
+                        zIndex: pf.zIndex,
+                        groupId: pf.groupId,
+                    });
+                }
+            }
+            this.placedForces.set(placed);
+
+            // Restore groups
+            const groups: OrgGroup[] = org.groups.map(g => ({
+                id: g.id,
+                name: g.name,
+                x: g.x,
+                y: g.y,
+                width: g.width,
+                height: g.height,
+                zIndex: g.zIndex,
+                parentGroupId: g.parentGroupId,
+                anchorX: g.anchorX,
+                anchorY: g.anchorY,
+            }));
+            this.groups.set(groups);
+
+            // Restore state
+            this.organizationId.set(org.organizationId);
+            this.organizationName.set(org.name);
+
+            // Update zIndex counters
+            this.nextZIndex = placed.reduce((max, pf) => Math.max(max, pf.zIndex + 1), 0);
+            this.nextGroupZIndex = groups.reduce((max, g) => Math.max(max, g.zIndex + 1), 0);
+
+            // Auto-fit viewport to show all content centered
+            requestAnimationFrame(() => this.autoFitView());
+        } catch {
+            await this.dialogsService.showError('Failed to load organization.', 'Load Error');
+            await this.loadForces();
+        } finally {
+            this.loading.set(false);
+        }
+    }
+
     protected close(): void {
         this.dialogRef.close();
+    }
+
+    /**
+     * Auto-fit the viewport so all placed forces and groups are centered
+     * in the SVG canvas. Zoom is capped at 1.0 (no zoom-in past 100%).
+     */
+    private autoFitView(): void {
+        const svg = this.svgCanvas()?.nativeElement;
+        if (!svg) return;
+
+        const forces = this.placedForces();
+        const groups = this.groups();
+        if (forces.length === 0 && groups.length === 0) {
+            this.viewOffset.set({ x: 0, y: 0 });
+            this.zoom.set(1);
+            return;
+        }
+
+        // Calculate bounding box of all content
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const pf of forces) {
+            minX = Math.min(minX, pf.x);
+            minY = Math.min(minY, pf.y);
+            maxX = Math.max(maxX, pf.x + CARD_WIDTH);
+            maxY = Math.max(maxY, pf.y + CARD_HEIGHT);
+        }
+        for (const g of groups) {
+            minX = Math.min(minX, g.x);
+            minY = Math.min(minY, g.y);
+            maxX = Math.max(maxX, g.x + g.width);
+            maxY = Math.max(maxY, g.y + g.height);
+        }
+
+        const contentWidth = maxX - minX;
+        const contentHeight = maxY - minY;
+        if (contentWidth <= 0 || contentHeight <= 0) return;
+
+        const svgRect = svg.getBoundingClientRect();
+        const padding = 40;
+        const availableWidth = svgRect.width - padding * 2;
+        const availableHeight = svgRect.height - padding * 2;
+        if (availableWidth <= 0 || availableHeight <= 0) return;
+
+        // Scale to fit, but never zoom in above 1.0
+        const scaleX = availableWidth / contentWidth;
+        const scaleY = availableHeight / contentHeight;
+        const fitZoom = Math.min(scaleX, scaleY, 1.0);
+        const clampedZoom = Math.max(MIN_ZOOM, fitZoom);
+
+        // Center content in the viewport
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        const offsetX = svgRect.width / 2 - centerX * clampedZoom;
+        const offsetY = svgRect.height / 2 - centerY * clampedZoom;
+
+        this.zoom.set(clampedZoom);
+        this.viewOffset.set({ x: offsetX, y: offsetY });
     }
 }
