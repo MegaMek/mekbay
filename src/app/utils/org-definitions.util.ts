@@ -863,12 +863,14 @@ class WDOrg {
         type: 'Binary', strict: true, countsAs: WDOrg.COMPANY, composedOf: WDOrg.STAR,
         modifiers: [{ prefix: '', count: 2 }], 
         commandRank: 'Captain',
+        filter: (comp) => !isPureAero(comp),
     });
     // Trinary = 3 Stars
     static readonly TRINARY = new ForceTypeRule({
         type: 'Trinary', strict: true, countsAs: WDOrg.COMPANY, composedOf: WDOrg.STAR,
         modifiers: [{ prefix: '', count: 3 }], 
         commandRank: 'Captain',
+        filter: (comp) => !isPureAero(comp),
     });
     // Supernova Binary = 2 Novas (counts as Binary for force composition)
     static readonly SUPERNOVA_BINARY = new ForceTypeRule({
