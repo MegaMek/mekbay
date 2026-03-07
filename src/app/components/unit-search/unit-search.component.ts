@@ -403,6 +403,12 @@ export class UnitSearchComponent {
                 }
             });
         });
+        // Keep the filters service in sync with the current force total BV/PV
+        effect(() => {
+            const force = this.forceBuilderService.smartCurrentForce();
+            const total = force ? force.totalBv() : 0;
+            untracked(() => this.filtersService.forceTotalBvPv.set(total));
+        });
         // Auto-refresh favorites overlay when saved searches change (e.g., from cloud sync)
         effect(() => {
             this.savedSearchesService.version(); // Subscribe to changes
@@ -1245,6 +1251,11 @@ export class UnitSearchComponent {
             this.filtersService.setPilotSkills(currentGunnery, value);
         }
 
+        this.activeIndex.set(null);
+    }
+
+    setBvPvLimit(value: number) {
+        this.filtersService.bvPvLimit.set(value >= 0 ? value : 0);
         this.activeIndex.set(null);
     }
 
