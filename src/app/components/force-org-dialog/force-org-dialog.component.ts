@@ -49,6 +49,7 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import { FormationNamerUtil } from '../../utils/formation-namer.util';
+import { GroupSizeResult } from '../../utils/org-solver.util';
 import { GameSystem } from '../../models/common.model';
 import { SerializedOrganization, OrgPlacedForce, OrgGroupData, LoadOrganizationEntry } from '../../models/organization.model';
 
@@ -309,6 +310,8 @@ export class ForceOrgDialogComponent {
     /** Org size name for each OrgGroup, keyed by group id. */
     protected orgGroupOrgNames = computed(() => {
         const descendants = this.descendantForcesMap();
+        const groups = this.groups();
+        const placed = this.placedForces();
         const result = new Map<string, string>();
         for (const [groupId, entries] of descendants) {
             if (entries.length === 0) continue;
@@ -316,7 +319,7 @@ export class ForceOrgDialogComponent {
                 entries,
                 (id) => this.getFactionName(id),
             );
-            result.set(groupId, FormationNamerUtil.getOrgGroupSizeName(entries, factionName));
+            result.set(groupId, this.computeHierarchicalOrgName(groupId, entries, groups, placed, factionName));
         }
         return result;
     });
@@ -370,6 +373,37 @@ export class ForceOrgDialogComponent {
 
     protected isParentGroup(group: OrgGroup): boolean {
         return this.groups().some(g => g.parentGroupId === group.id);
+    }
+
+    /**
+     * Compute the org size name for a group, using child OrgGroup evaluations
+     * as intermediate groupResults when the group contains child groups.
+     * This ensures that e.g. 3 Companies → Battalion, rather than flattening
+     * all descendant forces into individual Lances and losing the hierarchy.
+     */
+    private computeHierarchicalOrgName(
+        groupId: string,
+        allEntries: LoadForceEntry[],
+        groups: OrgGroup[],
+        placed: PlacedForce[],
+        factionName: string,
+    ): string {
+        const childGroups = groups.filter(g => g.parentGroupId === groupId);
+        if (childGroups.length === 0) {
+            return FormationNamerUtil.getOrgGroupSizeName(allEntries, factionName);
+        }
+        // Build groupResults from child OrgGroup evaluations + direct forces
+        const childGroupResults: GroupSizeResult[] = [];
+        for (const child of childGroups) {
+            const childEntries = this.collectDescendantForces(child.id, placed, groups);
+            if (childEntries.length === 0) continue;
+            childGroupResults.push(FormationNamerUtil.getOrgGroupSizeResult(childEntries, factionName));
+        }
+        const directForces = placed.filter(pf => pf.groupId === groupId);
+        for (const pf of directForces) {
+            childGroupResults.push(FormationNamerUtil.getForceSizeResult(pf.force, factionName));
+        }
+        return FormationNamerUtil.getOrgGroupSizeNameHierarchical(allEntries, childGroupResults, factionName);
     }
 
     private nextZIndex = 0;
@@ -866,7 +900,7 @@ export class ForceOrgDialogComponent {
             if (entries.length === 0) break;
 
             const factionName = FormationNamerUtil.getDominantFactionName(entries, id => this.getFactionName(id));
-            const orgName = FormationNamerUtil.getOrgGroupSizeName(entries, factionName);
+            const orgName = this.computeHierarchicalOrgName(currentId, entries, groups, placed, factionName);
             const factionId = this.getDominantFactionId(entries);
             let totalBv = 0, totalPv = 0;
             for (const e of entries) {
