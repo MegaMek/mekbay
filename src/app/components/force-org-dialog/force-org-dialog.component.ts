@@ -339,6 +339,9 @@ export class ForceOrgDialogComponent {
                 f._searchText = this.computeSearchText(f);
             }
             this.allForces.set(result || []);
+            if (this.layoutService.isMobile() && this.placedForces().length === 0) {
+                this.sidebarOpen.set(true);
+            }
         } catch {
             // Error loading forces; allForces remains empty
         } finally {

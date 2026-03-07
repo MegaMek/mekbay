@@ -67,6 +67,27 @@
     }
 }
 
+// ==================== Empty Canvas Overlay ====================
+
+.canvas-empty-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    color: rgba(255, 255, 255, 0.35);
+    gap: 12px;
+    font-size: 1rem;
+    text-align: center;
+    padding: 24px;
+
+    p {
+        margin: 0;
+    }
+}
+
 // ==================== Force Cards ====================
 
 .force-card {
