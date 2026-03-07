@@ -878,7 +878,7 @@ export class UnitSearchComponent {
 
     isAdvActive() {
         const state = this.filtersService.filterState();
-        return Object.values(state).some(s => s.interactedWith);
+        return Object.values(state).some(s => s.interactedWith) || this.filtersService.bvPvLimit() > 0;
     }
 
     onKeydown(event: KeyboardEvent) {
