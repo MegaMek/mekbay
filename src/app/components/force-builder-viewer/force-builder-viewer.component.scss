@@ -108,6 +108,13 @@
     gap: 2px;
     padding: 4px 2px;
 
+    // Override CDK's inline touch-action:none on cdkDragHandle so native
+    // vertical scrolling works on touch. Removed during drag to avoid
+    // interfering with CDK's gesture handling.
+    .force-view:not(.dragging) & {
+        touch-action: pan-y !important;
+    }
+
     .friendly & {
         background-color: color-mix(in srgb, var(--background-color-menu) 85%, rgb(var(--friendly-color)));
     }
@@ -216,6 +223,10 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+
+    .force-view:not(.dragging) & {
+        touch-action: pan-y !important;
+    }
 
     .friendly & {
         background-color: color-mix(in srgb, var(--background-highlight) 85%, rgb(var(--friendly-color)));
