@@ -6,8 +6,8 @@
                 <img [src]="factionImgUrl" class="faction-icon" />
             }
             <div class="force-name-block">
-                <span class="force-preview-name">{{ force.name }}</span>
-                @if (forceOrgName) {
+                <span class="force-preview-name">{{ force.name || forceOrgName }}</span>
+                @if (force.name && forceOrgName) {
                     <span class="force-org-name">{{ forceOrgName }}</span>
                 }
             </div>

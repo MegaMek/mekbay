@@ -1,4 +1,4 @@
-<div id="force-view" class="force-view" [class.dragging]="isUnitDragging() || isGroupDragging()" [class.mini-mode]="miniMode()">
+<div id="force-view" class="force-view" [class.dragging]="isUnitDragging() || isGroupDragging() || isForceDragging()" [class.mini-mode]="miniMode()">
     <div #scrollableContent class="scrollable-content" cdkScrollable>
         <div class="forces-drop-list"
             cdkDropList
