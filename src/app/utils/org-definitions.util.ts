@@ -534,7 +534,7 @@ class ISOrg {
     });
     // Regiment = N Battalions
     static readonly REGIMENT = new ForceTypeRule({
-        type: 'Regiment', composedOf: ISOrg.BATTALION, modifiers: [
+        type: 'Regiment', composedOf: ISOrg.BATTALION, composedOfAny: [ISOrg.BATTALION, ISOrg.WING], modifiers: [
             { prefix: 'Under-Strength ', count: 2 },
             { prefix: '', count: 3 },
             { prefix: 'Reinforced ', count: 4 },
@@ -918,7 +918,7 @@ class WDOrg {
     // Regiment = N Battalions
     static readonly REGIMENT = new ForceTypeRule({
         type: 'Regiment', composedOf: WDOrg.BATTALION,
-        composedOfAny: [WDOrg.BATTALION, WDOrg.CLUSTER],
+        composedOfAny: [WDOrg.BATTALION, WDOrg.CLUSTER, WDOrg.WING],
         modifiers: [
             { prefix: 'Under-Strength ', count: 2 },
             { prefix: '', count: 3 },
