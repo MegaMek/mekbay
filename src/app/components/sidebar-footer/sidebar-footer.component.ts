@@ -1,5 +1,5 @@
 
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, computed, input, signal, ElementRef, viewChildren } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, computed, input, signal, effect, ElementRef, viewChildren } from '@angular/core';
 import { Subscription, firstValueFrom } from 'rxjs';
 import { LayoutService } from '../../services/layout.service';
 import { OptionsDialogComponent } from '../options-dialog/options-dialog.component';
@@ -14,6 +14,7 @@ import { C3NetworkUtil } from '../../utils/c3-network.util';
 import { CommonModule } from '@angular/common';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import { ForceSlot } from '../../models/force-slot.model';
+import { LoadOrganizationEntry } from '../../models/organization.model';
 
 /*
  * Sidebar footer component
@@ -105,6 +106,18 @@ export class SidebarFooterComponent {
             this.remoteUpdateSub?.unsubscribe();
             if (this.blinkTimeout) clearTimeout(this.blinkTimeout);
         });
+
+        // Refresh org membership when the current force changes
+        effect(() => {
+            const force = this.forceBuilderService.currentForce();
+            const instanceId = force?.instanceId();
+            if (instanceId) {
+                this.refreshForceOrganizations();
+            } else {
+                this.forceOrgEntries = [];
+                this.forceHasOrganizations.set(false);
+            }
+        });
     }
     
     toggleCompactMode() {
@@ -138,6 +151,62 @@ export class SidebarFooterComponent {
         const force = this.forceBuilderService.currentForce();
         if (!force) { return; }
         this.forceBuilderService.showC3Network(force);
+    }
+
+    /** Cached org entries for the current force. */
+    private forceOrgEntries: LoadOrganizationEntry[] = [];
+    /** Whether the current force belongs to at least one saved organization. */
+    forceHasOrganizations = signal(false);
+
+    async refreshForceOrganizations(): Promise<void> {
+        const force = this.forceBuilderService.currentForce();
+        const instanceId = force?.instanceId();
+        if (!instanceId) {
+            this.forceOrgEntries = [];
+            this.forceHasOrganizations.set(false);
+            return;
+        }
+        this.forceOrgEntries = await this.dataService.findOrganizationsForForce(instanceId);
+        this.forceHasOrganizations.set(this.forceOrgEntries.length > 0);
+    }
+
+    async showForceOrgDialog(): Promise<void> {
+        const force = this.forceBuilderService.currentForce();
+        const instanceId = force?.instanceId();
+        if (!instanceId) return;
+
+        // Refresh in case orgs changed
+        await this.refreshForceOrganizations();
+        const orgs = this.forceOrgEntries;
+
+        if (orgs.length === 0) return;
+
+        if (orgs.length === 1) {
+            const ref = await this.forceBuilderService.showForceOrgDialog(orgs[0].organizationId);
+            await firstValueFrom(ref.closed);
+            await this.refreshForceOrganizations();
+            return;
+        }
+
+        // Multiple orgs — show selection dialog
+        const factionImages = new Map<string, string | undefined>();
+        for (const org of orgs) {
+            if (org.factionId != null) {
+                const faction = this.dataService.getFactionById(org.factionId);
+                factionImages.set(org.organizationId, faction?.img || undefined);
+            }
+        }
+
+        const { OrgSelectDialogComponent } = await import('../org-select-dialog/org-select-dialog.component');
+        const ref = this.dialogsService.createDialog<LoadOrganizationEntry | null>(OrgSelectDialogComponent, {
+            data: { organizations: orgs, factionImages },
+        });
+        const selected = await firstValueFrom(ref.closed);
+        if (selected) {
+            const orgRef = await this.forceBuilderService.showForceOrgDialog(selected.organizationId);
+            await firstValueFrom(orgRef.closed);
+            await this.refreshForceOrganizations();
+        }
     }
 
     showLoadForceDialog(): void {

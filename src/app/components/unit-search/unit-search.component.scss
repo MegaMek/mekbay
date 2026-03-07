@@ -440,10 +440,36 @@
 }
 
 .adv-panel-header {
-    display: grid;
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
     gap: 16px;
     margin-bottom: 16px;
+
+    &.two-columns {
+        flex-direction: row;
+        align-items: stretch;
+
+        .clear-btn {
+            white-space: wrap;
+            line-height: 1.5;
+        }
+
+        .pilot-skills-section {
+            flex: 1 1 auto;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .pilot-skills-controls {
+            flex-wrap: nowrap;
+        }
+
+        .bv-limit-controls {
+            margin-top: 0;
+        }
+    }
 }
 
 .clear-btn {
@@ -549,11 +575,64 @@
 
 .skill-select {
     height: 32px;
+    min-width: 48px;
     padding: 0 4px;
     background-color: #222;
-    flex: 1;
+    flex: 1 0 auto;
     text-align: center;
     font-size: 1em;
+}
+
+/* BV/PV limit */
+.bv-limit-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 8px;
+}
+
+
+.limit-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+.limit-control label {
+    color: var(--text-color-secondary);
+    white-space: nowrap;
+    font-size: 0.9em;
+}
+
+.limit-input {
+    height: 32px;
+    padding: 0 4px;
+    background-color: #222;
+    text-align: center;
+    font-size: 1em;
+    width: 72px;
+    flex: 1 0 auto;
+    -moz-appearance: textfield;
+    &::-webkit-outer-spin-button,
+    &::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+}
+
+.limit-info {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    font-size: 0.75em;
+    line-height: 1.2;
+    color: var(--text-color-secondary);
+
+    &.over-limit {
+        color: var(--color-error, #f44);
+    }
 }
 
 /* Special pill for AS table view */
@@ -718,6 +797,43 @@
 
     .as-td.sort-slot {
         color: var(--bt-yellow);
+    }
+
+    .as-th-sortable {
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+        overflow: visible;
+
+        &:hover {
+            color: var(--text-color-primary, #fff);
+        }
+
+        &.sort-active {
+            color: var(--bt-yellow);
+        }
+
+        /* Arrow appears after text with 4px gap but takes zero layout width
+           (negative margin-right cancels the space) so text-align centering is unaffected */
+        &.sort-active::after {
+            content: '';
+            display: inline-block;
+            vertical-align: middle;
+            width: 0;
+            height: 0;
+            margin-left: 2px;
+            margin-right: -12px;
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+        }
+
+        .sort-asc &.sort-active::after {
+            border-bottom: 5px solid currentColor;
+        }
+
+        .sort-desc &.sort-active::after {
+            border-top: 5px solid currentColor;
+        }
     }
 
     /* Adjust row items in table view (only when AS table row is visible) */

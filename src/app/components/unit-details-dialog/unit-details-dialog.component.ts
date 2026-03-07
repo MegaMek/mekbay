@@ -76,6 +76,8 @@ export interface UnitDetailsDialogData {
     selectMode?: boolean;
     /** When set, show CHANGE button that replaces the original unit with the selected variant */
     originalForceUnit?: ForceUnit;
+    /** Override game system (used when the unit list has no ForceUnit context). */
+    gameSystem?: GameSystem;
 }
 
 @Component({
@@ -138,7 +140,7 @@ export class UnitDetailsDialogComponent {
         if (item instanceof ForceUnit) {
             return item.force.gameSystem;
         }
-        return this.gameService.currentGameSystem();
+        return this.data.gameSystem ?? this.gameService.currentGameSystem();
     });
 
     isAlphaStrike = computed<boolean>(() => {
@@ -222,6 +224,9 @@ export class UnitDetailsDialogComponent {
         const item = list[this.data.unitIndex];
         if (item instanceof ForceUnit) {
             return item.force.gameSystem === GameSystem.ALPHA_STRIKE;
+        }
+        if (this.data.gameSystem) {
+            return this.data.gameSystem === GameSystem.ALPHA_STRIKE;
         }
         return this.gameService.isAlphaStrike();
     }

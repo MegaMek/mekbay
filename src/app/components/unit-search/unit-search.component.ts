@@ -403,6 +403,12 @@ export class UnitSearchComponent {
                 }
             });
         });
+        // Keep the filters service in sync with the current force total BV/PV
+        effect(() => {
+            const force = this.forceBuilderService.smartCurrentForce();
+            const total = force ? force.totalBv() : 0;
+            untracked(() => this.filtersService.forceTotalBvPv.set(total));
+        });
         // Auto-refresh favorites overlay when saved searches change (e.g., from cloud sync)
         effect(() => {
             this.savedSearchesService.version(); // Subscribe to changes
@@ -1112,6 +1118,17 @@ export class UnitSearchComponent {
      * Check if the current sort key matches any of the provided keys or groups.
      * Use in templates: [class.sort-slot]="isSortActive('as.PV')" or isSortActive('as.damage')
      */
+    onHeaderSort(sortKey: string, groupKey?: string): void {
+        const isActive = groupKey ? this.isSortActive(groupKey) : this.isSortActive(sortKey);
+        if (isActive) {
+            const current = this.filtersService.selectedSortDirection();
+            this.filtersService.setSortDirection(current === 'asc' ? 'desc' : 'asc');
+        } else {
+            this.filtersService.setSortOrder(sortKey);
+            this.filtersService.setSortDirection('asc');
+        }
+    }
+
     isSortActive(...keysOrGroups: string[]): boolean {
         const currentSort = this.filtersService.selectedSort();
         if (!currentSort) return false;
@@ -1132,7 +1149,7 @@ export class UnitSearchComponent {
      * Keys always visible in the AS table row.
      * Used by both asTableSortSlotHeader and getAsTableSortSlot.
      */
-    private static readonly AS_TABLE_VISIBLE_KEYS = ['as.TP', 'role', 'as.PV', 'as.SZ', 'as._mv', 'as.TMM', 'as.Arm', 'as.Str', 'as.OV'];
+    private static readonly AS_TABLE_VISIBLE_KEYS = ['name', 'as.TP', 'role', 'as.PV', 'as.SZ', 'as._mv', 'as.TMM', 'as.Arm', 'as.Str', 'as.OV'];
     private static readonly AS_TABLE_VISIBLE_GROUPS = ['as.damage'];
 
     /**
@@ -1234,6 +1251,11 @@ export class UnitSearchComponent {
             this.filtersService.setPilotSkills(currentGunnery, value);
         }
 
+        this.activeIndex.set(null);
+    }
+
+    setBvPvLimit(value: number) {
+        this.filtersService.bvPvLimit.set(value >= 0 ? value : 0);
         this.activeIndex.set(null);
     }
 

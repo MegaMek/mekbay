@@ -438,6 +438,10 @@ export class UnitSearchFiltersService {
     
     pilotGunnerySkill = signal(4);
     pilotPilotingSkill = signal(5);
+    /** BV/PV budget limit. 0 means no limit. */
+    bvPvLimit = signal(0);
+    /** Current force total BV/PV, fed from the component layer. */
+    forceTotalBvPv = signal(0);
     searchText = signal('');
     filterState = signal<FilterState>({});
     selectedSort = signal<string>('');
@@ -1365,6 +1369,18 @@ export class UnitSearchFiltersService {
             results = this.applyFilters(results, uiOnlyFilterState);
         }
 
+        // Apply BV/PV budget limit filter
+        const limit = this.bvPvLimit();
+        if (limit > 0) {
+            const forceTotal = this.forceTotalBvPv();
+            const remaining = limit - forceTotal;
+            const isAS = this.gameService.currentGameSystem() === GameSystem.ALPHA_STRIKE;
+            results = results.filter(unit => {
+                const unitValue = isAS ? this.getAdjustedPV(unit) : this.getAdjustedBV(unit);
+                return unitValue <= remaining;
+            });
+        }
+
         const sortKey = this.selectedSort();
         const sortDirection = this.selectedSortDirection();
 
@@ -2211,6 +2227,15 @@ export class UnitSearchFiltersService {
                 this.pilotPilotingSkill.set(piloting);
             }
         }
+
+        // BV/PV limit
+        const bvLimitParam = params.get('bvLimit');
+        if (bvLimitParam) {
+            const bvLimit = parseInt(bvLimitParam);
+            if (!isNaN(bvLimit) && bvLimit > 0) {
+                this.bvPvLimit.set(bvLimit);
+            }
+        }
     }
 
     private getAvailableDropdownValues(conf: AdvFilterConfig): Set<string> {
@@ -2296,6 +2321,10 @@ export class UnitSearchFiltersService {
         // Add pilot skills if not default
         queryParams.gunnery = (gunnery !== 4) ? gunnery : null;
         queryParams.piloting = (piloting !== 5) ? piloting : null;
+
+        // BV/PV limit
+        const bvLimit = this.bvPvLimit();
+        queryParams.bvLimit = (bvLimit > 0) ? bvLimit : null;
 
         queryParams.expanded = (expanded ? 'true' : null);
         return queryParams;
@@ -2889,6 +2918,7 @@ export class UnitSearchFiltersService {
         this.selectedSortDirection.set('asc');
         this.pilotGunnerySkill.set(4);
         this.pilotPilotingSkill.set(5);
+        this.bvPvLimit.set(0);
     }
 
     /**

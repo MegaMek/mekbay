@@ -167,7 +167,6 @@ import { CommonModule } from '@angular/common';
             flex-direction: row;
             gap: 4px;
             overflow-x: auto;
-            scrollbar-width: thin;
         }
 
         .unit-group {

@@ -321,6 +321,14 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                     </svg></span> Configure C3 Network...
             </button>
             }
+            @if (forceHasOrganizations()) {
+            <button class="menu-item" cdkMenuItem (click)="showForceOrgDialog()">
+                <span class="icon"><svg width="32px" height="32px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M3 3h7v7H3V3zm0 11h7v7H3v-7zm11-11h7v7h-7V3zm3.5 11a3.5 3.5 0 110 7 3.5 3.5 0 010-7z"/>
+                </svg></span> Open Organization...
+            </button>
+            }
+
             <hr class="divider"/>
             <button class="menu-item" cdkMenuItem (click)="showOptionsDialog()">
                 <span class="icon"><svg fill="currentColor" width="32px" height="32px" viewBox="0 0 1920 1920"

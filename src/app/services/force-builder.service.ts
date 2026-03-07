@@ -45,7 +45,7 @@ import { firstValueFrom, Subject } from 'rxjs';
 import { RenameForceDialogComponent, RenameForceDialogData, RenameForceDialogResult } from '../components/rename-force-dialog/rename-force-dialog.component';
 import { RenameGroupDialogComponent, RenameGroupDialogData, RenameGroupDialogResult } from '../components/rename-group-dialog/rename-group-dialog.component';
 import { UnitInitializerService } from './unit-initializer.service';
-import { DialogsService } from './dialogs.service';
+import { DialogsService, DialogRef } from './dialogs.service';
 import { generateUUID, WsService } from './ws.service';
 import { ToastService } from './toast.service';
 import { LoggerService } from './logger.service';
@@ -104,6 +104,9 @@ export class ForceBuilderService {
 
     public selectedUnit = signal<ForceUnit | null>(null, { equal: () => false });
     public loadedForces = signal<ForceSlot[]>([]);
+
+    /** Emits whenever a force is successfully loaded via loadForceEntry. */
+    public readonly forceLoaded$ = new Subject<void>();
 
     /** Derived from selectedUnit: the force that owns the currently selected unit. */
     public currentForce = computed<Force | null>(() => {
@@ -610,15 +613,53 @@ export class ForceBuilderService {
      * Adds a force to the loaded forces without replacing existing ones.
      * Unlike loadForce(), this preserves currently loaded forces.
      */
-    async addForce(force: Force, alignment: ForceAlignment = 'friendly'): Promise<boolean> {
+    async addForce(force: Force, alignment: ForceAlignment = 'friendly', { activate = true }: { activate?: boolean } = {}): Promise<boolean> {
         this.urlStateInitialized.set(false);
         try {
-            this.addLoadedForce(force, alignment);
+            this.addLoadedForce(force, alignment, { activate });
             this.loadAllUnitsWithOverlay([force]);
         } finally {
             this.urlStateInitialized.set(true);
         }
         return true;
+    }
+
+    /**
+     * Loads or adds a force from a LoadForceEntry.
+     * @param entry The saved force entry to load
+     * @param mode 'load' replaces all forces, 'add' adds alongside, 'insert' copies into current force
+     * @param alignment Alignment when adding (default: 'friendly')
+     */
+    async loadForceEntry(entry: LoadForceEntry, mode: 'load' | 'add' | 'insert', alignment: ForceAlignment = 'friendly', { activate = true }: { activate?: boolean } = {}): Promise<boolean> {
+        if (mode === 'insert') {
+            const targetForce = this.smartCurrentForce();
+            if (!targetForce || targetForce.readOnly()) {
+                this.toastService.showToast('No editable force to insert into.', 'error');
+                return false;
+            }
+            const sourceForce = await this.dataService.getForce(entry.instanceId, true);
+            if (!sourceForce) {
+                this.toastService.showToast('Failed to load force.', 'error');
+                return false;
+            }
+            const inserted = await this.insertForceInto(sourceForce, targetForce);
+            if (inserted) this.forceLoaded$.next();
+            return inserted;
+        }
+
+        const requestedForce = await this.dataService.getForce(entry.instanceId, true);
+        if (!requestedForce) {
+            this.toastService.showToast('Failed to load force.', 'error');
+            return false;
+        }
+        let result: boolean;
+        if (mode === 'add') {
+            result = await this.addForce(requestedForce, alignment, { activate });
+        } else {
+            result = await this.loadForce(requestedForce);
+        }
+        if (result) this.forceLoaded$.next();
+        return result;
     }
 
     private clearForceUrlParams() {
@@ -1230,6 +1271,18 @@ export class ForceBuilderService {
     public showC3Network(force: Force): void {
         if (!force) return;
         this.openC3Network(force, force.readOnly());
+    }
+
+    public async showForceOrgDialog(organizationId?: string): Promise<DialogRef> {
+        const { ForceOrgDialogComponent } = await import('../components/force-org-dialog/force-org-dialog.component');
+        return this.dialogsService.createDialog(ForceOrgDialogComponent, {
+            data: organizationId ? { organizationId } : undefined,
+            width: '100dvw',
+            height: '100dvh',
+            maxWidth: '100dvw',
+            maxHeight: '100dvh',
+            panelClass: 'force-org-dialog-panel'
+        });
     }
 
     public printAll(): void {

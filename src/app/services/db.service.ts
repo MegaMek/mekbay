@@ -49,13 +49,14 @@ import { SerializedSearchFilter } from './unit-search-filters.service';
 import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
 import { LoggerService } from './logger.service';
 import { SerializedOperation } from '../models/operation.model';
+import { SerializedOrganization } from '../models/organization.model';
 
 
 /*
  * Author: Drake
  */
 const DB_NAME = 'mekbay';
-const DB_VERSION = 11;
+const DB_VERSION = 12;
 const DB_STORE = 'store';
 const UNITS_KEY = 'units';
 const EQUIPMENT_KEY = 'equipment';
@@ -69,6 +70,7 @@ const FORCE_STORE = 'forceStore';
 const TAGS_STORE = 'tagsStore';
 const SAVED_SEARCHES_STORE = 'savedSearchesStore';
 const PUBLIC_TAGS_STORE = 'publicTagsStore';
+const ORGANIZATIONS_STORE = 'organizationsStore';
 const OPTIONS_KEY = 'options';
 const USER_KEY = 'user';
 const QUIRKS_KEY = 'quirks';
@@ -353,6 +355,7 @@ export class DbService {
                 this.createStoreIfMissing(db, transaction, CANVAS_STORE);
                 this.createStoreIfMissing(db, transaction, PUBLIC_TAGS_STORE);
                 this.createStoreIfMissing(db, transaction, OPERATIONS_STORE);
+                this.createStoreIfMissing(db, transaction, ORGANIZATIONS_STORE);
             };
 
             request.onsuccess = (event) => resolve((event.target as IDBOpenDBRequest).result);
@@ -1091,6 +1094,44 @@ export class DbService {
                 } else {
                     ops.sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
                     resolve(ops);
+                }
+            };
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    /* ----------------------------------------------------------
+     * Organizations (force org-chart layouts)
+     */
+
+    public async saveOrganization(org: SerializedOrganization): Promise<void> {
+        return await this.saveDataToStore(org, org.organizationId, ORGANIZATIONS_STORE);
+    }
+
+    public async getOrganization(organizationId: string): Promise<SerializedOrganization | null> {
+        return await this.getDataFromStore<SerializedOrganization>(organizationId, ORGANIZATIONS_STORE);
+    }
+
+    public async deleteOrganization(organizationId: string): Promise<void> {
+        return await this.deleteDataFromStore(organizationId, ORGANIZATIONS_STORE);
+    }
+
+    public async listOrganizations(): Promise<SerializedOrganization[]> {
+        const db = await this.dbPromise;
+        if (!db) return [];
+        return new Promise<SerializedOrganization[]>((resolve, reject) => {
+            const transaction = db.transaction(ORGANIZATIONS_STORE, 'readonly');
+            const store = transaction.objectStore(ORGANIZATIONS_STORE);
+            const request = store.openCursor();
+            const orgs: SerializedOrganization[] = [];
+            request.onsuccess = () => {
+                const cursor = request.result;
+                if (cursor) {
+                    orgs.push(cursor.value);
+                    cursor.continue();
+                } else {
+                    orgs.sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
+                    resolve(orgs);
                 }
             };
             request.onerror = () => reject(request.error);

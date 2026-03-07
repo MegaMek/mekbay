@@ -1,0 +1,717 @@
+/*
+ * MekBay - A BattleTech MegaMek unit management system.
+ * Copyright (C) 2025 - present The MegaMek Team
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
+ * for more details.
+ */
+
+:host {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0;
+    background: var(--background-color);
+}
+
+// ==================== Header ====================
+
+.org-dialog-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 8px 8px 16px;
+    background-color: var(--background-color-menu);
+    border-bottom: 2px solid var(--border-color);
+
+    h2 {
+        margin: 0;
+        font-size: 1.25rem;
+        font-weight: 500;
+        color: var(--text-color, #fff);
+    }
+
+    .org-name {
+        cursor: pointer;
+        border-bottom: 1px dashed rgba(255, 255, 255, 0.3);
+        padding-bottom: 2px;
+        transition: border-color 0.2s;
+
+        &:hover {
+            border-color: var(--accent-color, rgba(255, 255, 255, 0.7));
+        }
+    }
+
+    .org-title-wrapper {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    .org-faction-icon {
+        width: 28px;
+        height: 28px;
+        object-fit: contain;
+        flex-shrink: 0;
+    }
+}
+
+.org-dialog-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+// ==================== Content ====================
+
+.org-dialog-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+// ==================== SVG Canvas ====================
+
+.svg-canvas {
+    flex: 1;
+    cursor: grab;
+    touch-action: none;
+    background: var(--background-color);
+
+    &:active {
+        cursor: grabbing;
+    }
+}
+
+// ==================== Empty Canvas Overlay ====================
+
+.canvas-empty-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    color: rgba(255, 255, 255, 0.35);
+    gap: 12px;
+    font-size: 1rem;
+    text-align: center;
+    padding: 24px;
+
+    p {
+        margin: 0;
+    }
+}
+
+// ==================== Force Cards ====================
+
+.force-card {
+    cursor: move;
+    transition: opacity 0.15s;
+}
+
+.card-bg {
+    fill: #2a2a2a;
+    transition: filter 0.2s;
+}
+
+.card-border {
+    fill: none;
+    stroke: var(--border-color, #555);
+    stroke-width: 1.5;
+    transition: stroke 0.2s;
+}
+
+.force-card.highlighted-selected .card-border {
+    stroke: #f0c040;
+    stroke-width: 2.5;
+}
+
+.force-card.highlighted-selected .card-bg {
+    fill: #3a3520;
+}
+
+.force-card.highlighted-friendly .card-border {
+    stroke: rgb(var(--friendly-color));
+    stroke-width: 2;
+}
+
+.force-card.highlighted-friendly .card-bg {
+    fill: rgba(var(--friendly-color), 0.08);
+}
+
+.force-card.highlighted-enemy .card-border {
+    stroke: rgb(var(--enemy-color));
+    stroke-width: 2;
+}
+
+.force-card.highlighted-enemy .card-bg {
+    fill: rgba(var(--enemy-color), 0.08);
+}
+
+.force-name-fo,
+.remove-fo {
+    overflow: visible;
+    pointer-events: none;
+}
+
+.force-name {
+    color: var(--text-color);
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.force-org {
+    color: var(--text-color-secondary);
+    font-size: 0.7rem;
+    font-weight: 600;
+
+}
+
+.force-value {
+    color: var(--bt-yellow);
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.no-faction-icon {
+    fill: #3a3a3a;
+    stroke: #555;
+    stroke-width: 1;
+}
+
+.force-remove-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 50%;
+    color: #aaa;
+    cursor: pointer;
+    pointer-events: all;
+    transition: color 0.2s, background 0.2s;
+    padding: 0;
+
+    &:hover {
+        color: #ff4444;
+        background: rgba(255, 0, 0, 0.15);
+    }
+}
+
+.force-actions-fo {
+    overflow: visible;
+    pointer-events: none;
+}
+
+.force-action-column {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-around;
+    height: 100%;
+    gap: 4px;
+    pointer-events: all;
+    border-left: 1px solid var(--border-color, #555);
+}
+
+.force-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: none;
+    color: #aaa;
+    cursor: pointer;
+    pointer-events: all;
+    transition: color 0.2s;
+    padding: 0;
+
+    &.preview:hover {
+        color: #fff;
+    }
+
+    &.remove:hover {
+        color: #ff4444;
+    }
+}
+
+// ==================== Groups ====================
+
+.group-container {
+    cursor: move;
+}
+
+.group-bg {
+    fill: rgba(180, 180, 180, 0.06);
+}
+
+.group-border {
+    fill: none;
+    stroke: #888;
+    stroke-width: 1.5;
+    stroke-dasharray: 6, 4;
+    opacity: 0.5;
+}
+
+.drop-target {
+    .group-border {
+        stroke: var(--bt-yellow, #EAAE3F);
+        stroke-width: 2.5;
+        stroke-dasharray: none;
+        opacity: 0.9;
+    }
+}
+
+.drop-preview-group {
+    fill: rgba(234, 174, 63, 0.06);
+    stroke: var(--bt-yellow, #EAAE3F);
+    stroke-width: 1.5;
+    stroke-dasharray: 6, 4;
+    opacity: 0.6;
+}
+
+.drop-preview-header {
+    fill: rgba(234, 174, 63, 0.1);
+    stroke: none;
+    opacity: 0.6;
+}
+
+.drop-preview-info {
+    opacity: 0.7;
+    font-size: 0.7rem;
+    gap: 4px;
+}
+
+.parent-group {
+    .group-bg {
+        fill: rgba(180, 180, 180, 0.03);
+    }
+
+    .group-border {
+        stroke-dasharray: 12, 6;
+        opacity: 0.35;
+    }
+
+    &.drop-target .group-border {
+        stroke: var(--bt-yellow, #EAAE3F);
+        stroke-width: 2.5;
+        stroke-dasharray: none;
+        opacity: 0.9;
+    }
+
+    .group-header-bg {
+        fill: rgba(180, 180, 180, 0.08);
+    }
+}
+
+.group-header-bg {
+    fill: rgba(180, 180, 180, 0.12);
+    transition: fill 0.2s;
+
+    &:hover {
+        fill: rgba(180, 180, 180, 0.2);
+    }
+}
+
+.group-name-fo {
+    overflow: visible;
+}
+
+.group-header-info {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    height: 48px;
+    gap: 1px;
+}
+
+.group-name {
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1.2;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &:hover {
+        text-decoration: underline;
+        text-decoration-style: dashed;
+    }
+}
+
+.group-data {
+    font-size: 0.7rem;
+    font-weight: 500;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.group-org-name {
+    color: var(--text-color-secondary, #888);
+}
+
+.group-totals {
+    color: var(--bt-yellow, #EAAE3F);
+}
+
+.group-actions-fo {
+    overflow: visible;
+}
+
+.group-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    height: 28px;
+}
+
+.group-remove-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    background: none;
+    border: none;
+    border-radius: 50%;
+    color: #888;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+    padding: 0;
+
+    &:hover {
+        color: #ff4444;
+    }
+}
+
+// ==================== Sidebar ====================
+
+.forces-sidebar {
+    width: 280px;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--background-color-menu);
+    overflow: hidden;
+
+    &.overlay {
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 100%;
+        max-width: 280px;
+        box-shadow: -2px 0 8px rgba(0, 0, 0, 0.5);
+        z-index: 200;
+    }
+
+    &.animate {
+        transition: transform 0.2s ease-in-out;
+    }
+
+    &.hidden {
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        transform: translateX(100%);
+        z-index: 100;
+    }
+}
+
+.sidebar-filters {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px;
+    border-bottom: 1px solid var(--border-color, #444);
+}
+
+.sidebar-search-input {
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 0.8rem;
+}
+
+.sidebar-filter-bar {
+    display: flex;
+    gap: 4px;
+}
+
+.filter-btn {
+    background: #0003;
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    padding: 2px 10px;
+    cursor: pointer;
+    font-size: 0.75em;
+    transition: background 0.2s, border-color 0.2s;
+    flex: 1;
+
+    &:hover {
+        background: var(--background-highlight);
+    }
+
+    &.active {
+        background: var(--bt-yellow-background);
+        border-color: var(--bt-yellow);
+        color: var(--bt-yellow);
+    }
+}
+
+.forces-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px;
+}
+
+.sidebar-force-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0px 8px 8px;
+    cursor: grab;
+    border: 1px solid transparent;
+    transition: background 0.15s, border-color 0.15s;
+    user-select: none;
+
+    &:hover {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: var(--border-color, #555);
+    }
+
+    &:active {
+        cursor: grabbing;
+        background: rgba(234, 174, 63, 0.08);
+        border-color: var(--bt-yellow, #EAAE3F);
+    }
+}
+
+.sidebar-force-icon {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sidebar-faction-img {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+}
+
+.sidebar-faction-placeholder {
+    width: 24px;
+    height: 24px;
+    background: #3a3a3a;
+    border: 1px solid #555;
+}
+
+.sidebar-force-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.sidebar-force-name {
+    color: var(--text-color, #fff);
+    font-size: 0.78rem;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sidebar-force-org {
+    color: var(--text-color-secondary, #888);
+    font-size: 0.68rem;
+    font-weight: 600;
+    margin-top: 1px;
+}
+
+.sidebar-force-value {
+    color: var(--bt-yellow, #EAAE3F);
+    font-size: 0.68rem;
+    font-weight: 600;
+    margin-top: 2px;
+}
+
+.sidebar-info-btn {
+    background: transparent;
+    border: none;
+    border-left: 1px solid var(--border-color, #555);
+    color: var(--text-color-secondary, #888);
+    cursor: pointer;
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    align-self: stretch;
+    transition: color 0.2s;
+    flex-shrink: 0;
+
+    &:hover {
+        color: var(--text-color, #fff);
+    }
+}
+
+.sidebar-empty {
+    text-align: center;
+    color: var(--text-color-secondary, #888);
+    font-size: 0.8rem;
+    padding: 20px;
+    line-height: 1.6;
+}
+
+// ==================== Sidebar Sort Footer ====================
+
+.sidebar-sort-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 4px;
+    border-top: 1px solid var(--border-color, #444);
+    flex: 0 0 auto;
+}
+
+.sort-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.sort-select {
+    height: 28px;
+    padding: 0 6px;
+    font-size: 0.75rem;
+}
+
+.sort-select option {
+    background-color: #222;
+    color: #fff;
+}
+
+.sort-direction-btn {
+    height: 28px;
+    width: 28px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #bbb;
+    cursor: pointer;
+
+    &:hover {
+        color: white;
+    }
+
+    svg {
+        width: 16px;
+        height: 16px;
+    }
+}
+
+// ==================== Drag Ghost ====================
+
+.drag-ghost {
+    position: fixed;
+    pointer-events: none;
+    z-index: 10000;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    background: #2a2a2a;
+    border: 1.5px solid var(--border-color, #555);
+    opacity: 0.9;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.6);
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.drag-ghost-icon {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    margin: 12px 0 0 12px;
+}
+
+.drag-ghost-faction-img {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+}
+
+.drag-ghost-faction-placeholder {
+    width: 28px;
+    height: 28px;
+    background: #3a3a3a;
+    border: 1px solid #555;
+    margin-top: 4px;
+}
+
+.drag-ghost-info {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px 6px 0;
+}
+
+.drag-ghost-name {
+    color: var(--text-color, #fff);
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.drag-ghost-org {
+    color: var(--text-color-secondary, #888);
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.drag-ghost-value {
+    color: var(--bt-yellow, #EAAE3F);
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+// ==================== Footer ====================
+
+.org-dialog-footer {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: 8px;
+    background-color: var(--background-color-menu);
+    border-top: 2px solid var(--border-color);
+}
