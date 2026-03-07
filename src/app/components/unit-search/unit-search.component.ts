@@ -1019,6 +1019,12 @@ export class UnitSearchComponent {
         let newValues = await firstValueFrom(ref.closed);
         if (newValues === undefined || newValues === null) return;
 
+        // Unset: both null means user explicitly cleared the filter
+        if (newValues.from === null && newValues.to === null) {
+            this.filtersService.unsetFilter(filterKey);
+            return;
+        }
+
         let newFrom = newValues.from ?? 0;
         let newTo = newValues.to ?? Number.MAX_SAFE_INTEGER;
         if (newFrom < totalRange[0]) {

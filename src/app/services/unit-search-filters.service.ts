@@ -2674,6 +2674,34 @@ export class UnitSearchFiltersService {
     }
 
     /**
+     * Explicitly unset a filter, removing it from the filter state regardless
+     * of boundary matching. Used when the user explicitly clears a range filter.
+     */
+    unsetFilter(key: string) {
+        const conf = ADVANCED_FILTERS.find(f => f.key === key);
+        if (!conf) return;
+
+        const shouldSyncToText = this.autoConvertToSemantic() || this.semanticFilterKeys().has(key);
+
+        if (shouldSyncToText) {
+            // Remove the semantic token for this filter by passing non-interacted.
+            // Use the available range as the value so boundary checks produce no token text.
+            const availableRange = this.advOptions()[key]?.options as [number, number] | undefined;
+            const resetValue = conf.type === AdvFilterType.RANGE
+                ? (availableRange || this.totalRangesCache[key] || [0, 0])
+                : [];
+            this.updateSemanticTextForFilter(key, resetValue, false, conf);
+        } else {
+            // Remove from filterState
+            this.filterState.update(current => {
+                const updated = { ...current };
+                delete updated[key];
+                return updated;
+            });
+        }
+    }
+
+    /**
      * Update the semantic text to reflect a filter value change.
      * This replaces/adds/removes the token for the specified filter key.
      */
