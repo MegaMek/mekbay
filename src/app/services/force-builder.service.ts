@@ -105,6 +105,9 @@ export class ForceBuilderService {
     public selectedUnit = signal<ForceUnit | null>(null, { equal: () => false });
     public loadedForces = signal<ForceSlot[]>([]);
 
+    /** Emits whenever a force is successfully loaded via loadForceEntry. */
+    public readonly forceLoaded$ = new Subject<void>();
+
     /** Derived from selectedUnit: the force that owns the currently selected unit. */
     public currentForce = computed<Force | null>(() => {
         return this.selectedUnit()?.force ?? null;
@@ -639,7 +642,9 @@ export class ForceBuilderService {
                 this.toastService.showToast('Failed to load force.', 'error');
                 return false;
             }
-            return this.insertForceInto(sourceForce, targetForce);
+            const inserted = await this.insertForceInto(sourceForce, targetForce);
+            if (inserted) this.forceLoaded$.next();
+            return inserted;
         }
 
         const requestedForce = await this.dataService.getForce(entry.instanceId, true);
@@ -647,10 +652,14 @@ export class ForceBuilderService {
             this.toastService.showToast('Failed to load force.', 'error');
             return false;
         }
+        let result: boolean;
         if (mode === 'add') {
-            return this.addForce(requestedForce, alignment, { activate });
+            result = await this.addForce(requestedForce, alignment, { activate });
+        } else {
+            result = await this.loadForce(requestedForce);
         }
-        return this.loadForce(requestedForce);
+        if (result) this.forceLoaded$.next();
+        return result;
     }
 
     private clearForceUrlParams() {

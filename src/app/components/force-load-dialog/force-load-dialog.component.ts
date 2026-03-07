@@ -31,10 +31,11 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, viewChild, ElementRef } from '@angular/core';
+import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, viewChild, ElementRef, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, map, race } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -102,6 +103,7 @@ export class ForceLoadDialogComponent {
     private dialogRef = inject(DialogRef<ForceLoadDialogResult>);
     private dialogData: ForceLoadDialogData | null = inject(DIALOG_DATA, { optional: true });
     private dataService = inject(DataService);
+    private destroyRef = inject(DestroyRef);
     forceBuilderService = inject(ForceBuilderService);
     optionsService = inject(OptionsService);
     gameService = inject(GameService);
@@ -673,14 +675,34 @@ export class ForceLoadDialogComponent {
         const org = this.selectedOrganization();
         if (!org) return;
         const ref = await this.forceBuilderService.showForceOrgDialog(org.organizationId);
-        await firstValueFrom(ref.closed);
-        await this.reloadOrganizations();
+        await this.awaitOrgDialogOrForceLoad(ref);
     }
 
     async onNewOrganization() {
         const ref = await this.forceBuilderService.showForceOrgDialog();
-        await firstValueFrom(ref.closed);
-        await this.reloadOrganizations();
+        await this.awaitOrgDialogOrForceLoad(ref);
+    }
+
+    /**
+     * Waits for the org dialog to close, but also closes the load dialog
+     * immediately if a force is loaded/added while the org dialog is open.
+     */
+    private async awaitOrgDialogOrForceLoad(ref: { closed: import('rxjs').Observable<any> }): Promise<void> {
+        const reason = await firstValueFrom(
+            race([
+                ref.closed.pipe(map(() => 'closed' as const)),
+                this.forceBuilderService.forceLoaded$.pipe(map(() => 'loaded' as const)),
+            ]).pipe(takeUntilDestroyed(this.destroyRef))
+        ).catch(() => null);
+        // If forceLoaded$ fired, close the load dialog so the user
+        // lands on the loaded forces when the org dialog is dismissed.
+        if (reason === 'loaded') {
+            this.dialogRef.close(null);
+            return;
+        }
+        if (reason === 'closed') {
+            await this.reloadOrganizations();
+        }
     }
 
     async onDeleteOrganization() {
