@@ -14,7 +14,12 @@
 -->
 
 <div class="org-dialog-header">
-    <h2>Organization</h2>
+    <div class="org-title-wrapper">
+        @if (organizationFactionId() | factionImg; as factionImgUrl) {
+        <img [src]="factionImgUrl" class="org-faction-icon" alt="" />
+        }
+        <h2 class="org-name" (click)="renameOrganization()" title="Click to rename">{{ organizationName() }}</h2>
+    </div>
     <div class="org-dialog-header-actions">
         @if (layoutService.isMobile()) {
         <button class="bt-button square" type="button" (click)="toggleSidebar()" [class.active]="sidebarOpen()"
@@ -69,13 +74,15 @@
                 [attr.transform]="'translate(' + group.x + ',' + group.y + ')'"
                 (pointerdown)="onGroupPointerDown($event, group)">
                 <!-- Group background -->
-                <rect class="group-bg" x="0" y="0" [attr.width]="group.width" [attr.height]="group.height" filter="url(#group-shadow)" />
+                <rect class="group-bg" x="0" y="0" [attr.width]="group.width" [attr.height]="group.height"
+                    filter="url(#group-shadow)" />
 
                 <!-- Group border -->
                 <rect class="group-border" x="0" y="0" [attr.width]="group.width" [attr.height]="group.height" />
 
                 <!-- Group header bar -->
-                <rect class="group-header-bg" x="0" y="0" [attr.width]="group.width" [attr.height]="GROUP_HEADER_HEIGHT" />
+                <rect class="group-header-bg" x="0" y="0" [attr.width]="group.width"
+                    [attr.height]="GROUP_HEADER_HEIGHT" />
 
                 <!-- Group faction icon -->
                 @if (orgGroupFactionIds().get(group.id) | factionImg; as factionImgUrl) {
@@ -85,20 +92,22 @@
 
                 <!-- Group header info -->
                 <foreignObject [attr.x]="orgGroupFactionIds().has(group.id) ? 40 : 8" y="0"
-                    [attr.width]="group.width - (orgGroupFactionIds().has(group.id) ? 88 : 56)" [attr.height]="GROUP_HEADER_HEIGHT"
-                    class="group-name-fo">
+                    [attr.width]="group.width - (orgGroupFactionIds().has(group.id) ? 88 : 56)"
+                    [attr.height]="GROUP_HEADER_HEIGHT" class="group-name-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="group-header-info">
-                        <div class="group-name"
-                            (click)="renameGroup(group)"
-                            title="Click to rename">
-                            {{ group.name || previewGroupInfo().get(group.id)?.orgName || orgGroupOrgNames().get(group.id) }}
+                        <div class="group-name" (click)="renameGroup(group)" title="Click to rename">
+                            {{ group.name || previewGroupInfo().get(group.id)?.orgName ||
+                            orgGroupOrgNames().get(group.id) }}
                         </div>
                         <div class="group-data">
-                            @if (group.name && (previewGroupInfo().get(group.id)?.orgName || orgGroupOrgNames().get(group.id)); as orgName) {
+                            @if (group.name && (previewGroupInfo().get(group.id)?.orgName ||
+                            orgGroupOrgNames().get(group.id)); as orgName) {
                             <span class="group-org-name">{{ orgName }}</span>
                             }
-                            @if (previewGroupInfo().get(group.id)?.totals || orgGroupTotals().get(group.id); as totals) {
-                            @if (group.name && (previewGroupInfo().has(group.id) || orgGroupOrgNames().has(group.id))) { · }
+                            @if (previewGroupInfo().get(group.id)?.totals || orgGroupTotals().get(group.id); as totals)
+                            {
+                            @if (group.name && (previewGroupInfo().has(group.id) || orgGroupOrgNames().has(group.id))) {
+                            · }
                             <span class="group-totals">{{ totals }}</span>
                             }
                         </div>
@@ -108,11 +117,11 @@
                 <!-- Group remove button -->
                 <foreignObject [attr.x]="group.width - 40" y="4" width="32" height="28" class="group-actions-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="group-actions">
-                        <button class="group-remove-btn"
-                            (click)="removeGroup(group)"
-                            title="Disband group">
-                            <svg width="12" height="12" fill="currentColor" viewBox="0 0 1200 1200" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
+                        <button class="group-remove-btn" (click)="removeGroup(group)" title="Disband group">
+                            <svg width="12" height="12" fill="currentColor" viewBox="0 0 1200 1200"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
                             </svg>
                         </button>
                     </div>
@@ -123,12 +132,10 @@
             <!-- Drop preview: faint group outline showing where a new group would form -->
             @if (dropPreviewRect(); as pr) {
             <g pointer-events="none">
-                <rect class="drop-preview-group"
-                    [attr.x]="pr.x" [attr.y]="pr.y"
-                    [attr.width]="pr.width" [attr.height]="pr.height" />
-                <rect class="drop-preview-header"
-                    [attr.x]="pr.x" [attr.y]="pr.y"
-                    [attr.width]="pr.width" [attr.height]="GROUP_HEADER_HEIGHT" />
+                <rect class="drop-preview-group" [attr.x]="pr.x" [attr.y]="pr.y" [attr.width]="pr.width"
+                    [attr.height]="pr.height" />
+                <rect class="drop-preview-header" [attr.x]="pr.x" [attr.y]="pr.y" [attr.width]="pr.width"
+                    [attr.height]="GROUP_HEADER_HEIGHT" />
 
                 <!-- Preview faction icon -->
                 @if (pr.factionId | factionImg; as factionImgUrl) {
@@ -153,11 +160,10 @@
 
             <!-- Forces layer -->
             @for (pf of sortedPlacedForces(); track pf.force.instanceId) {
-            <g class="force-card" [attr.data-force-id]="pf.force.instanceId"
-                [attr.transform]="'translate(' + pf.x + ',' + pf.y + ')'"
-                (pointerdown)="onForcePointerDown($event, pf)"
-                (pointerenter)="hoveredForceId.set(pf.force.instanceId)"
-                (pointerleave)="hoveredForceId.set(null)">
+            <g class="force-card" [class.highlighted]="highlightInstanceId() === pf.force.instanceId"
+                [attr.data-force-id]="pf.force.instanceId"
+                [attr.transform]="'translate(' + pf.x + ',' + pf.y + ')'" (pointerdown)="onForcePointerDown($event, pf)"
+                (pointerenter)="hoveredForceId.set(pf.force.instanceId)" (pointerleave)="hoveredForceId.set(null)">
 
                 <!-- Card background -->
                 <rect class="card-bg" x="0" y="0" [attr.width]="CARD_WIDTH" [attr.height]="CARD_HEIGHT"
@@ -190,20 +196,25 @@
                 </foreignObject>
 
                 <!-- Action buttons (always visible, right side, vertically stacked) -->
-                <foreignObject [attr.x]="CARD_WIDTH - 30" y="0" width="30" [attr.height]="CARD_HEIGHT" class="force-actions-fo">
+                <foreignObject [attr.x]="CARD_WIDTH - 30" y="0" width="30" [attr.height]="CARD_HEIGHT"
+                    class="force-actions-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-action-column">
                         <button class="force-action-btn remove" (click)="removeForce(pf); $event.stopPropagation()"
-                            (pointerdown)="$event.stopPropagation()"
-                            title="Remove from canvas">
-                            <svg width="12" height="12" fill="currentColor" viewBox="0 0 1200 1200" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
+                            (pointerdown)="$event.stopPropagation()" title="Remove from canvas">
+                            <svg width="12" height="12" fill="currentColor" viewBox="0 0 1200 1200"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
                             </svg>
                         </button>
-                        <button class="force-action-btn preview" (click)="previewForce(pf.force); $event.stopPropagation()"
-                            (pointerdown)="$event.stopPropagation()"
-                            title="View details">
-                            <svg stroke="currentColor" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M15.8053 15.8013L21 21M10.5 7.5V13.5M7.5 10.5H13.5M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        <button class="force-action-btn preview"
+                            (click)="previewForce(pf.force); $event.stopPropagation()"
+                            (pointerdown)="$event.stopPropagation()" title="View details">
+                            <svg stroke="currentColor" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M15.8053 15.8013L21 21M10.5 7.5V13.5M7.5 10.5H13.5M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z"
+                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                             </svg>
                         </button>
                     </div>
@@ -216,7 +227,8 @@
     <!-- Empty canvas overlay -->
     @if (!loading() && placedForces().length === 0) {
     <div class="canvas-empty-overlay">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true">
             <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
         </svg>
         <p>Drag forces here to create organization structures</p>
@@ -264,8 +276,11 @@
                 </div>
                 <button class="sidebar-info-btn" (click)="previewForce(force); $event.stopPropagation()"
                     (pointerdown)="$event.stopPropagation()" title="View details">
-                    <svg stroke="currentColor" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M15.8053 15.8013L21 21M10.5 7.5V13.5M7.5 10.5H13.5M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    <svg stroke="currentColor" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                        xmlns="http://www.w3.org/2000/svg">
+                        <path
+                            d="M15.8053 15.8013L21 21M10.5 7.5V13.5M7.5 10.5H13.5M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                     </svg>
                 </button>
             </div>
@@ -276,15 +291,17 @@
 
     <!-- Floating drag ghost for sidebar drag -->
     @if (sidebarDragActive() && sidebarDragForce()) {
-    <div class="drag-ghost" [style.left.px]="sidebarDragPos().x - CARD_WIDTH / 2" [style.top.px]="sidebarDragPos().y - CARD_HEIGHT / 2"
-        [style.width.px]="CARD_WIDTH" [style.height.px]="CARD_HEIGHT">
+    <div class="drag-ghost" [style.left.px]="sidebarDragPos().x - CARD_WIDTH / 2"
+        [style.top.px]="sidebarDragPos().y - CARD_HEIGHT / 2" [style.width.px]="CARD_WIDTH"
+        [style.height.px]="CARD_HEIGHT">
         <div class="drag-ghost-icon">
             @if (sidebarDragForce()!.factionId | factionImg; as factionImgUrl) {
             <img [src]="factionImgUrl" class="drag-ghost-faction-img" alt="" />
             }
         </div>
         <div class="drag-ghost-info">
-            <div class="drag-ghost-name">{{ sidebarDragForce()!.name || forceOrgNames().get(sidebarDragForce()!.instanceId) }}</div>
+            <div class="drag-ghost-name">{{ sidebarDragForce()!.name ||
+                forceOrgNames().get(sidebarDragForce()!.instanceId) }}</div>
             @if (sidebarDragForce()!.name) {
             <div class="drag-ghost-org">{{ forceOrgNames().get(sidebarDragForce()!.instanceId) }}</div>
             }
@@ -295,5 +312,8 @@
 </div>
 
 <div class="org-dialog-footer">
-    <button class="modal-btn bt-button" (click)="close()">CLOSE</button>
+    <button class="modal-btn bt-button" [class.primary]="dirty()" (click)="saveOrganization()" [disabled]="saving() || !dirty()" title="Save Organization">
+        {{ saving() ? 'SAVING...' : 'COMMIT' }}
+    </button>
+    <button class="modal-btn bt-button" (click)="close()">DISMISS</button>
 </div>

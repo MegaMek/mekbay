@@ -37,6 +37,31 @@
         font-weight: 500;
         color: var(--text-color, #fff);
     }
+
+    .org-name {
+        cursor: pointer;
+        border-bottom: 1px dashed rgba(255, 255, 255, 0.3);
+        padding-bottom: 2px;
+        transition: border-color 0.2s;
+
+        &:hover {
+            border-color: var(--accent-color, rgba(255, 255, 255, 0.7));
+        }
+    }
+
+    .org-title-wrapper {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    .org-faction-icon {
+        width: 28px;
+        height: 28px;
+        object-fit: contain;
+        flex-shrink: 0;
+    }
 }
 
 .org-dialog-header-actions {
@@ -105,6 +130,15 @@
     stroke: var(--border-color, #555);
     stroke-width: 1.5;
     transition: stroke 0.2s;
+}
+
+.force-card.highlighted .card-border {
+    stroke: #f0c040;
+    stroke-width: 2.5;
+}
+
+.force-card.highlighted .card-bg {
+    fill: #3a3520;
 }
 
 .force-name-fo,
@@ -610,6 +644,7 @@
 .org-dialog-footer {
     display: flex;
     justify-content: space-around;
+    align-items: center;
     padding: 8px;
     background-color: var(--background-color-menu);
     border-top: 2px solid var(--border-color);

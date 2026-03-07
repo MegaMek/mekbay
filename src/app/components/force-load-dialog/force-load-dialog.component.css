@@ -431,3 +431,13 @@
 .op-edit-btn:hover {
     color: var(--bt-yellow);
 }
+
+/* ── Organizations tab ── */
+
+.organization-summary {
+    display: flex;
+    gap: 12px;
+    font-size: 0.85em;
+    color: var(--text-color-secondary);
+    margin-top: 4px;
+}

@@ -41,7 +41,7 @@ import {
     signal,
     viewChild,
 } from '@angular/core';
-import { DialogRef } from '@angular/cdk/dialog';
+import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -49,6 +49,7 @@ import { LayoutService } from '../../services/layout.service';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import { FormationNamerUtil } from '../../utils/formation-namer.util';
 import { GameSystem } from '../../models/common.model';
+import { SerializedOrganization, OrgPlacedForce, OrgGroupData, LoadOrganizationEntry } from '../../models/organization.model';
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2.0;
@@ -95,6 +96,13 @@ interface OrgGroup {
     anchorY: number;
 }
 
+/** Dialog input data for loading a saved organization */
+export interface ForceOrgDialogData {
+    organizationId?: string;
+    /** If set, the force with this instanceId will be highlighted on the canvas. */
+    highlightInstanceId?: string;
+}
+
 @Component({
     selector: 'force-org-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -112,12 +120,26 @@ export class ForceOrgDialogComponent {
     private destroyRef = inject(DestroyRef);
     protected layoutService = inject(LayoutService);
     private svgCanvas = viewChild<ElementRef<SVGSVGElement>>('svgCanvas');
+    private dialogData: ForceOrgDialogData | null = inject(DIALOG_DATA, { optional: true });
 
     protected readonly CARD_WIDTH = CARD_WIDTH;
     protected readonly CARD_HEIGHT = CARD_HEIGHT;
     protected readonly GROUP_PADDING = GROUP_PADDING;
     protected readonly GROUP_HEADER_HEIGHT = GROUP_HEADER_HEIGHT;
     protected readonly GameSystem = GameSystem;
+
+    // Organization state
+    protected organizationId = signal<string | null>(null);
+    protected organizationName = signal('Unnamed Organization');
+    protected saving = signal(false);
+    protected dirty = signal(false);
+    protected highlightInstanceId = signal<string | null>(null);
+
+    /** Dominant faction ID computed from all placed forces. */
+    protected organizationFactionId = computed(() => {
+        const entries = this.placedForces().map(pf => pf.force);
+        return this.getDominantFactionId(entries);
+    });
 
     // Sidebar
     protected sidebarOpen = signal(false);
@@ -326,7 +348,14 @@ export class ForceOrgDialogComponent {
 
     constructor() {
         this.destroyRef.onDestroy(() => this.cleanupGlobalPointerState());
-        this.loadForces();
+        if (this.dialogData?.highlightInstanceId) {
+            this.highlightInstanceId.set(this.dialogData.highlightInstanceId);
+        }
+        if (this.dialogData?.organizationId) {
+            this.loadOrganization(this.dialogData.organizationId);
+        } else {
+            this.loadForces();
+        }
     }
 
     // ==================== Data Loading ====================
@@ -523,6 +552,7 @@ export class ForceOrgDialogComponent {
         pf.zIndex = forces.length - 1;
         this.nextZIndex = forces.length;
         this.placedForces.set([...forces]);
+        this.dirty.set(true);
     }
 
     // ==================== Group Drag ====================
@@ -549,6 +579,7 @@ export class ForceOrgDialogComponent {
         this.placedForces.set(this.placedForces().filter(f => f !== pf));
         // Clean up empty groups
         this.cleanupEmptyGroups();
+        this.dirty.set(true);
     }
 
     // ==================== Group Management ====================
@@ -563,6 +594,7 @@ export class ForceOrgDialogComponent {
         if (newName !== null) {
             group.name = newName.trim();
             this.groups.set([...this.groups()]);
+            this.dirty.set(true);
         }
     }
 
@@ -587,6 +619,7 @@ export class ForceOrgDialogComponent {
             const parent = this.groups().find(g => g.id === group.parentGroupId);
             if (parent) this.layoutGroup(parent);
         }
+        this.dirty.set(true);
     }
 
     private cleanupEmptyGroups(): void {
@@ -1355,6 +1388,7 @@ export class ForceOrgDialogComponent {
                                 const group = this.groups().find(g => g.id === newPlaced.groupId);
                                 if (group) this.layoutGroup(group);
                             }
+                            this.dirty.set(true);
                         }
                     }
                 }
@@ -1374,6 +1408,7 @@ export class ForceOrgDialogComponent {
                     const group = this.groups().find(g => g.id === dragged.groupId);
                     if (group) this.layoutGroup(group);
                 }
+                this.dirty.set(true);
             }
             this.draggedForce.set(null);
             this.isDragging.set(false);
@@ -1409,6 +1444,7 @@ export class ForceOrgDialogComponent {
                     const parent = this.groups().find(g => g.id === dragEndGroup.parentGroupId);
                     if (parent) this.layoutGroup(parent);
                 }
+                this.dirty.set(true);
             }
             this.draggedGroup.set(null);
         }
@@ -1418,7 +1454,188 @@ export class ForceOrgDialogComponent {
 
     // ==================== Dialog Actions ====================
 
+    protected async renameOrganization(): Promise<void> {
+        const newName = await this.dialogsService.prompt(
+            'Enter a name for this organization:',
+            'Rename Organization',
+            this.organizationName()
+        );
+        if (newName !== null) {
+            this.organizationName.set(newName.trim() || 'Unnamed Organization');
+            this.dirty.set(true);
+        }
+    }
+
+    protected async saveOrganization(): Promise<void> {
+        if (this.saving()) return;
+        this.saving.set(true);
+        try {
+            const orgId = this.organizationId() ?? crypto.randomUUID();
+            this.organizationId.set(orgId);
+
+            const serialized: SerializedOrganization = {
+                organizationId: orgId,
+                name: this.organizationName(),
+                timestamp: Date.now(),
+                factionId: this.organizationFactionId(),
+                forces: this.placedForces().map(pf => ({
+                    instanceId: pf.force.instanceId,
+                    x: pf.x,
+                    y: pf.y,
+                    zIndex: pf.zIndex,
+                    groupId: pf.groupId,
+                } as OrgPlacedForce)),
+                groups: this.groups().map(g => ({
+                    id: g.id,
+                    name: g.name,
+                    x: g.x,
+                    y: g.y,
+                    width: g.width,
+                    height: g.height,
+                    zIndex: g.zIndex,
+                    parentGroupId: g.parentGroupId,
+                    anchorX: g.anchorX,
+                    anchorY: g.anchorY,
+                } as OrgGroupData)),
+            };
+
+            await this.dataService.saveOrganization(serialized);
+            this.dirty.set(false);
+        } finally {
+            this.saving.set(false);
+        }
+    }
+
+    private async loadOrganization(organizationId: string): Promise<void> {
+        this.loading.set(true);
+        try {
+            const org = await this.dataService.getOrganization(organizationId);
+            if (!org) {
+                await this.dialogsService.showError('Organization not found.', 'Load Error');
+                await this.loadForces();
+                return;
+            }
+
+            // Load all forces first
+            const result = await this.dataService.listForces();
+            for (const f of result || []) {
+                f._searchText = this.computeSearchText(f);
+            }
+            this.allForces.set(result || []);
+
+            // Build a lookup map
+            const forceMap = new Map<string, LoadForceEntry>();
+            for (const f of (result || [])) {
+                forceMap.set(f.instanceId, f);
+            }
+
+            // Restore placed forces (skip any whose force no longer exists)
+            const placed: PlacedForce[] = [];
+            for (const pf of org.forces) {
+                const force = forceMap.get(pf.instanceId);
+                if (force) {
+                    placed.push({
+                        force,
+                        x: pf.x,
+                        y: pf.y,
+                        zIndex: pf.zIndex,
+                        groupId: pf.groupId,
+                    });
+                }
+            }
+            this.placedForces.set(placed);
+
+            // Restore groups
+            const groups: OrgGroup[] = org.groups.map(g => ({
+                id: g.id,
+                name: g.name,
+                x: g.x,
+                y: g.y,
+                width: g.width,
+                height: g.height,
+                zIndex: g.zIndex,
+                parentGroupId: g.parentGroupId,
+                anchorX: g.anchorX,
+                anchorY: g.anchorY,
+            }));
+            this.groups.set(groups);
+
+            // Restore state
+            this.organizationId.set(org.organizationId);
+            this.organizationName.set(org.name);
+
+            // Update zIndex counters
+            this.nextZIndex = placed.reduce((max, pf) => Math.max(max, pf.zIndex + 1), 0);
+            this.nextGroupZIndex = groups.reduce((max, g) => Math.max(max, g.zIndex + 1), 0);
+
+            // Auto-fit viewport to show all content centered
+            requestAnimationFrame(() => this.autoFitView());
+        } catch {
+            await this.dialogsService.showError('Failed to load organization.', 'Load Error');
+            await this.loadForces();
+        } finally {
+            this.loading.set(false);
+        }
+    }
+
     protected close(): void {
         this.dialogRef.close();
+    }
+
+    /**
+     * Auto-fit the viewport so all placed forces and groups are centered
+     * in the SVG canvas. Zoom is capped at 1.0 (no zoom-in past 100%).
+     */
+    private autoFitView(): void {
+        const svg = this.svgCanvas()?.nativeElement;
+        if (!svg) return;
+
+        const forces = this.placedForces();
+        const groups = this.groups();
+        if (forces.length === 0 && groups.length === 0) {
+            this.viewOffset.set({ x: 0, y: 0 });
+            this.zoom.set(1);
+            return;
+        }
+
+        // Calculate bounding box of all content
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const pf of forces) {
+            minX = Math.min(minX, pf.x);
+            minY = Math.min(minY, pf.y);
+            maxX = Math.max(maxX, pf.x + CARD_WIDTH);
+            maxY = Math.max(maxY, pf.y + CARD_HEIGHT);
+        }
+        for (const g of groups) {
+            minX = Math.min(minX, g.x);
+            minY = Math.min(minY, g.y);
+            maxX = Math.max(maxX, g.x + g.width);
+            maxY = Math.max(maxY, g.y + g.height);
+        }
+
+        const contentWidth = maxX - minX;
+        const contentHeight = maxY - minY;
+        if (contentWidth <= 0 || contentHeight <= 0) return;
+
+        const svgRect = svg.getBoundingClientRect();
+        const padding = 40;
+        const availableWidth = svgRect.width - padding * 2;
+        const availableHeight = svgRect.height - padding * 2;
+        if (availableWidth <= 0 || availableHeight <= 0) return;
+
+        // Scale to fit, but never zoom in above 1.0
+        const scaleX = availableWidth / contentWidth;
+        const scaleY = availableHeight / contentHeight;
+        const fitZoom = Math.min(scaleX, scaleY, 1.0);
+        const clampedZoom = Math.max(MIN_ZOOM, fitZoom);
+
+        // Center content in the viewport
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        const offsetX = svgRect.width / 2 - centerX * clampedZoom;
+        const offsetY = svgRect.height / 2 - centerY * clampedZoom;
+
+        this.zoom.set(clampedZoom);
+        this.viewOffset.set({ x: offsetX, y: offsetY });
     }
 }

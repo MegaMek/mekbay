@@ -45,7 +45,7 @@ import { firstValueFrom, Subject } from 'rxjs';
 import { RenameForceDialogComponent, RenameForceDialogData, RenameForceDialogResult } from '../components/rename-force-dialog/rename-force-dialog.component';
 import { RenameGroupDialogComponent, RenameGroupDialogData, RenameGroupDialogResult } from '../components/rename-group-dialog/rename-group-dialog.component';
 import { UnitInitializerService } from './unit-initializer.service';
-import { DialogsService } from './dialogs.service';
+import { DialogsService, DialogRef } from './dialogs.service';
 import { generateUUID, WsService } from './ws.service';
 import { ToastService } from './toast.service';
 import { LoggerService } from './logger.service';
@@ -1232,9 +1232,10 @@ export class ForceBuilderService {
         this.openC3Network(force, force.readOnly());
     }
 
-    public async showForceOrgDialog(): Promise<void> {
+    public async showForceOrgDialog(organizationId?: string, highlightInstanceId?: string): Promise<DialogRef> {
         const { ForceOrgDialogComponent } = await import('../components/force-org-dialog/force-org-dialog.component');
-        this.dialogsService.createDialog(ForceOrgDialogComponent, {
+        return this.dialogsService.createDialog(ForceOrgDialogComponent, {
+            data: (organizationId || highlightInstanceId) ? { organizationId, highlightInstanceId } : undefined,
             width: '100dvw',
             height: '100dvh',
             maxWidth: '100dvw',
