@@ -45,6 +45,7 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
+import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import { FormationNamerUtil } from '../../utils/formation-namer.util';
@@ -99,8 +100,6 @@ interface OrgGroup {
 /** Dialog input data for loading a saved organization */
 export interface ForceOrgDialogData {
     organizationId?: string;
-    /** If set, the force with this instanceId will be highlighted on the canvas. */
-    highlightInstanceId?: string;
 }
 
 @Component({
@@ -117,6 +116,7 @@ export class ForceOrgDialogComponent {
     private dialogRef = inject(DialogRef<void>);
     private dataService = inject(DataService);
     private dialogsService = inject(DialogsService);
+    private forceBuilderService = inject(ForceBuilderService);
     private destroyRef = inject(DestroyRef);
     protected layoutService = inject(LayoutService);
     private svgCanvas = viewChild<ElementRef<SVGSVGElement>>('svgCanvas');
@@ -133,7 +133,22 @@ export class ForceOrgDialogComponent {
     protected organizationName = signal('Unnamed Organization');
     protected saving = signal(false);
     protected dirty = signal(false);
-    protected highlightInstanceId = signal<string | null>(null);
+
+    /** Instance ID of the currently selected force in ForceBuilderService. */
+    protected selectedForceInstanceId = computed(() => {
+        const unit = this.forceBuilderService.selectedUnit();
+        return unit?.force?.instanceId() ?? null;
+    });
+
+    /** Map of loaded force instanceId → alignment ('friendly' | 'enemy'). */
+    protected loadedForceAlignments = computed(() => {
+        const map = new Map<string, 'friendly' | 'enemy'>();
+        for (const slot of this.forceBuilderService.loadedForces()) {
+            const id = slot.force.instanceId();
+            if (id) map.set(id, slot.alignment);
+        }
+        return map;
+    });
 
     /** Dominant faction ID computed from all placed forces. */
     protected organizationFactionId = computed(() => {
@@ -348,9 +363,6 @@ export class ForceOrgDialogComponent {
 
     constructor() {
         this.destroyRef.onDestroy(() => this.cleanupGlobalPointerState());
-        if (this.dialogData?.highlightInstanceId) {
-            this.highlightInstanceId.set(this.dialogData.highlightInstanceId);
-        }
         if (this.dialogData?.organizationId) {
             this.loadOrganization(this.dialogData.organizationId);
         } else {

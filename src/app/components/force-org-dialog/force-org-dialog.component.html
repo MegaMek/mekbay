@@ -160,7 +160,10 @@
 
             <!-- Forces layer -->
             @for (pf of sortedPlacedForces(); track pf.force.instanceId) {
-            <g class="force-card" [class.highlighted]="highlightInstanceId() === pf.force.instanceId"
+            <g class="force-card"
+                [class.highlighted-selected]="selectedForceInstanceId() === pf.force.instanceId"
+                [class.highlighted-friendly]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'friendly'"
+                [class.highlighted-enemy]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'enemy'"
                 [attr.data-force-id]="pf.force.instanceId"
                 [attr.transform]="'translate(' + pf.x + ',' + pf.y + ')'" (pointerdown)="onForcePointerDown($event, pf)"
                 (pointerenter)="hoveredForceId.set(pf.force.instanceId)" (pointerleave)="hoveredForceId.set(null)">

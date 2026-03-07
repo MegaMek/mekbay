@@ -1,0 +1,79 @@
+@let unitDisplayName = optionsService.options().unitDisplayName;
+<div class="wide-dialog">
+    <h2 class="wide-dialog-title">FORCE DETAILS</h2>
+    <div class="wide-dialog-body">
+        <div class="force-preview">
+            <div class="force-preview-header">
+                <div class="faction-name-wrapper">
+                    @if (force.factionId | factionImg; as factionImgUrl) {
+                        <img [src]="factionImgUrl" class="faction-icon" />
+                    }
+                    <div class="force-name-block">
+                        <span class="force-preview-name">{{ force.name }}</span>
+                        @if (forceOrgName) {
+                            <span class="force-org-name">{{ forceOrgName }}</span>
+                        }
+                    </div>
+                </div>
+                <span class="force-preview-info">
+                    <span class="game-type-badge" [class.as]="force.type === 'as'">
+                        {{ force.type === 'as' ? 'AS' : 'CBT' }}
+                    </span>
+                    @if (force.type === 'as') {
+                        @if (force.pv && force.pv > 0) {
+                            <span class="force-bv">PV: {{ force.pv | number }}</span>
+                        }
+                    } @else {
+                        @if (force.bv && force.bv > 0) {
+                            <span class="force-bv">BV: {{ force.bv | number }}</span>
+                        }
+                    }
+                </span>
+            </div>
+            <div class="unit-scroll">
+                @for (gd of groupDisplayData; track gd.group) {
+                <div class="unit-group">
+                    <div class="group-name">{{ gd.name }}
+                        @if (gd.formationName; as fName) {
+                            @if (gd.name) { <span class="group-sep">·</span> }
+                            <span class="group-formation">{{ fName }}</span>
+                        }
+                        @if (gd.orgName; as orgName) {
+                            @if (gd.name || gd.formationName) { <span class="group-sep">·</span> }
+                            <span class="group-org">{{ orgName }}</span>
+                        }
+                    </div>
+                    <div class="units">
+                        @for (unitEntry of gd.group.units; let i = $index; track i) {
+                        <div class="unit-square compact-mode"
+                            [class.destroyed]="unitEntry.destroyed"
+                            [class.missing]="!unitEntry.unit"
+                            [class.clickable]="!!unitEntry.unit"
+                            (click)="onUnitClick(unitEntry.unit)">
+                            <unit-icon [unit]="unitEntry.unit" [size]="32"></unit-icon>
+                            @if (unitDisplayName === 'chassisModel'
+                                || unitDisplayName === 'both'
+                                || !unitEntry.alias) {
+                            <div class="unit-model">{{ unitEntry.unit?.model | cleanModelString }}</div>
+                            <div class="unit-chassis">{{ unitEntry.unit?.chassis }}</div>
+                            }
+                            @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
+                            <div class="unit-alias"
+                                [class.thin]="unitDisplayName === 'both'">{{ unitEntry.alias }}</div>
+                            }
+                        </div>
+                        }
+                    </div>
+                </div>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="wide-dialog-actions">
+        @if (!isForceLoaded()) {
+            <button class="bt-button primary" (click)="onLoad()">LOAD</button>
+            <button class="bt-button" (click)="onAdd()">ADD</button>
+        }
+        <button class="bt-button" (click)="close()">DISMISS</button>
+    </div>
+</div>

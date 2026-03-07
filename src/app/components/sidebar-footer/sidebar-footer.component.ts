@@ -182,7 +182,7 @@ export class SidebarFooterComponent {
         if (orgs.length === 0) return;
 
         if (orgs.length === 1) {
-            const ref = await this.forceBuilderService.showForceOrgDialog(orgs[0].organizationId, instanceId);
+            const ref = await this.forceBuilderService.showForceOrgDialog(orgs[0].organizationId);
             await firstValueFrom(ref.closed);
             await this.refreshForceOrganizations();
             return;
@@ -203,7 +203,7 @@ export class SidebarFooterComponent {
         });
         const selected = await firstValueFrom(ref.closed);
         if (selected) {
-            const orgRef = await this.forceBuilderService.showForceOrgDialog(selected.organizationId, instanceId);
+            const orgRef = await this.forceBuilderService.showForceOrgDialog(selected.organizationId);
             await firstValueFrom(orgRef.closed);
             await this.refreshForceOrganizations();
         }

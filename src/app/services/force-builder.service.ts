@@ -610,15 +610,47 @@ export class ForceBuilderService {
      * Adds a force to the loaded forces without replacing existing ones.
      * Unlike loadForce(), this preserves currently loaded forces.
      */
-    async addForce(force: Force, alignment: ForceAlignment = 'friendly'): Promise<boolean> {
+    async addForce(force: Force, alignment: ForceAlignment = 'friendly', { activate = true }: { activate?: boolean } = {}): Promise<boolean> {
         this.urlStateInitialized.set(false);
         try {
-            this.addLoadedForce(force, alignment);
+            this.addLoadedForce(force, alignment, { activate });
             this.loadAllUnitsWithOverlay([force]);
         } finally {
             this.urlStateInitialized.set(true);
         }
         return true;
+    }
+
+    /**
+     * Loads or adds a force from a LoadForceEntry.
+     * @param entry The saved force entry to load
+     * @param mode 'load' replaces all forces, 'add' adds alongside, 'insert' copies into current force
+     * @param alignment Alignment when adding (default: 'friendly')
+     */
+    async loadForceEntry(entry: LoadForceEntry, mode: 'load' | 'add' | 'insert', alignment: ForceAlignment = 'friendly', { activate = true }: { activate?: boolean } = {}): Promise<boolean> {
+        if (mode === 'insert') {
+            const targetForce = this.smartCurrentForce();
+            if (!targetForce || targetForce.readOnly()) {
+                this.toastService.showToast('No editable force to insert into.', 'error');
+                return false;
+            }
+            const sourceForce = await this.dataService.getForce(entry.instanceId, true);
+            if (!sourceForce) {
+                this.toastService.showToast('Failed to load force.', 'error');
+                return false;
+            }
+            return this.insertForceInto(sourceForce, targetForce);
+        }
+
+        const requestedForce = await this.dataService.getForce(entry.instanceId, true);
+        if (!requestedForce) {
+            this.toastService.showToast('Failed to load force.', 'error');
+            return false;
+        }
+        if (mode === 'add') {
+            return this.addForce(requestedForce, alignment, { activate });
+        }
+        return this.loadForce(requestedForce);
     }
 
     private clearForceUrlParams() {
@@ -1232,10 +1264,10 @@ export class ForceBuilderService {
         this.openC3Network(force, force.readOnly());
     }
 
-    public async showForceOrgDialog(organizationId?: string, highlightInstanceId?: string): Promise<DialogRef> {
+    public async showForceOrgDialog(organizationId?: string): Promise<DialogRef> {
         const { ForceOrgDialogComponent } = await import('../components/force-org-dialog/force-org-dialog.component');
         return this.dialogsService.createDialog(ForceOrgDialogComponent, {
-            data: (organizationId || highlightInstanceId) ? { organizationId, highlightInstanceId } : undefined,
+            data: organizationId ? { organizationId } : undefined,
             width: '100dvw',
             height: '100dvh',
             maxWidth: '100dvw',

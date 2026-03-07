@@ -132,13 +132,31 @@
     transition: stroke 0.2s;
 }
 
-.force-card.highlighted .card-border {
+.force-card.highlighted-selected .card-border {
     stroke: #f0c040;
     stroke-width: 2.5;
 }
 
-.force-card.highlighted .card-bg {
+.force-card.highlighted-selected .card-bg {
     fill: #3a3520;
+}
+
+.force-card.highlighted-friendly .card-border {
+    stroke: rgb(var(--friendly-color));
+    stroke-width: 2;
+}
+
+.force-card.highlighted-friendly .card-bg {
+    fill: rgba(var(--friendly-color), 0.08);
+}
+
+.force-card.highlighted-enemy .card-border {
+    stroke: rgb(var(--enemy-color));
+    stroke-width: 2;
+}
+
+.force-card.highlighted-enemy .card-bg {
+    fill: rgba(var(--enemy-color), 0.08);
 }
 
 .force-name-fo,
