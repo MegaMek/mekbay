@@ -195,7 +195,7 @@ export class FormationNamerUtil {
     }
 
     /** Derive the majority tech base from a set of raw Unit objects. */
-    private static deriveTechBase(units: Unit[]): string {
+    static deriveTechBase(units: Unit[]): string {
         const counts: Record<string, number> = {};
         for (const u of units) {
             if (u.techBase === 'Mixed') {

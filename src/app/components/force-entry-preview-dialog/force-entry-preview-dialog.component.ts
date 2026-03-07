@@ -41,6 +41,11 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { OptionsService } from '../../services/options.service';
 import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
 import { NO_FORMATION_ID } from '../../utils/formation-type.model';
+import { DialogsService } from '../../services/dialogs.service';
+import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
+import { Unit } from '../../models/units.model';
+import { DataService } from '../../services/data.service';
+import { FormationNamerUtil } from '../../utils/formation-namer.util';
 
 export interface ForceEntryPreviewDialogData {
     force: LoadForceEntry;
@@ -71,7 +76,12 @@ export interface ForceEntryPreviewDialogData {
                         @if (force.factionId | factionImg; as factionImgUrl) {
                             <img [src]="factionImgUrl" class="faction-icon" />
                         }
-                        <span class="force-preview-name">{{ force.name }}</span>
+                        <div class="force-name-block">
+                            <span class="force-preview-name">{{ force.name }}</span>
+                            @if (forceOrgName) {
+                                <span class="force-org-name">{{ forceOrgName }}</span>
+                            }
+                        </div>
                     </div>
                     <span class="force-preview-info">
                         <span class="game-type-badge" [class.as]="force.type === 'as'">
@@ -89,18 +99,25 @@ export interface ForceEntryPreviewDialogData {
                     </span>
                 </div>
                 <div class="unit-scroll">
-                    @for (group of force.groups; let gi = $index; track gi) {
+                    @for (gd of groupDisplayData; track gd.group) {
                     <div class="unit-group">
-                        <div class="group-name">{{ getGroupName(group) }}
-                            @if (getGroupFormationName(group); as fName) {
+                        <div class="group-name">{{ gd.name }}
+                            @if (gd.formationName; as fName) {
+                                @if (gd.name) { <span class="group-sep">·</span> }
                                 <span class="group-formation">{{ fName }}</span>
+                            }
+                            @if (gd.orgName; as orgName) {
+                                @if (gd.name || gd.formationName) { <span class="group-sep">·</span> }
+                                <span class="group-org">{{ orgName }}</span>
                             }
                         </div>
                         <div class="units">
-                            @for (unitEntry of group.units; let i = $index; track i) {
+                            @for (unitEntry of gd.group.units; let i = $index; track i) {
                             <div class="unit-square compact-mode"
                                 [class.destroyed]="unitEntry.destroyed"
-                                [class.missing]="!unitEntry.unit">
+                                [class.missing]="!unitEntry.unit"
+                                [class.clickable]="!!unitEntry.unit"
+                                (click)="onUnitClick(unitEntry.unit)">
                                 <unit-icon [unit]="unitEntry.unit" [size]="32"></unit-icon>
                                 @if (unitDisplayName === 'chassisModel'
                                     || unitDisplayName === 'both'
@@ -157,9 +174,20 @@ export interface ForceEntryPreviewDialogData {
             align-self: flex-start;
         }
 
+        .force-name-block {
+            display: flex;
+            flex-direction: column;
+            text-align: left;
+        }
+
         .force-preview-name {
             font-weight: 600;
             font-size: 1em;
+        }
+
+        .force-org-name {
+            font-size: 0.75em;
+            color: var(--text-color-secondary);
         }
 
         .force-preview-info {
@@ -216,14 +244,19 @@ export interface ForceEntryPreviewDialogData {
             text-align: left;
         }
 
+        .group-sep {
+            color: var(--text-color-secondary);
+            margin: 0 2px;
+        }
+
+        .group-org {
+            font-weight: 400;
+            color: var(--text-color-secondary);
+        }
+
         .group-formation {
             font-weight: 400;
             color: var(--text-color-secondary);
-
-            &::before {
-                content: '·';
-                margin-right: 4px;
-            }
         }
 
         .unit-group .units {
@@ -258,6 +291,14 @@ export interface ForceEntryPreviewDialogData {
 
         .unit-square.compact-mode.missing {
             background-color: #F003;
+        }
+
+        .unit-square.compact-mode.clickable {
+            cursor: pointer;
+        }
+
+        .unit-square.compact-mode.clickable:hover {
+            background: #fff1;
         }
 
         .unit-square.compact-mode.destroyed unit-icon {
@@ -302,29 +343,66 @@ export interface ForceEntryPreviewDialogData {
 export class ForceEntryPreviewDialogComponent {
     private dialogRef = inject(DialogRef<void>);
     private data: ForceEntryPreviewDialogData = inject(DIALOG_DATA);
+    private dialogsService = inject(DialogsService);
+    private dataService = inject(DataService);
     optionsService = inject(OptionsService);
     force: LoadForceEntry;
+    forceOrgName: string | null = null;
+    groupDisplayData: { group: LoadForceGroup; name: string; orgName: string | null; formationName: string | null }[];
+    private allUnits: Unit[];
 
     constructor() {
         this.force = this.data.force;
+        this.allUnits = this.force.groups
+            .flatMap(g => g.units)
+            .map(u => u.unit)
+            .filter((u): u is Unit => !!u);
+
+        const factionName = this.force.factionId !== undefined
+            ? (this.dataService.getFactionById(this.force.factionId)?.name ?? 'Mercenary')
+            : 'Mercenary';
+        const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
+        const techBase = isComStarOrWoB ? '' : FormationNamerUtil.deriveTechBase(this.allUnits);
+
+        this.groupDisplayData = this.force.groups.map(group => {
+            const sizeResult = FormationNamerUtil.getFormationSizeResult(group, factionName, techBase);
+            const orgName = (sizeResult.name && sizeResult.name !== 'Force') ? sizeResult.name : null;
+
+            let name: string;
+            if (!group.name) {
+                name = LanceTypeIdentifierUtil.getFormationName(group.formationId) || '';
+            } else {
+                name = group.name;
+            }
+
+            let formationName: string | null = null;
+            if (group.formationId && group.formationId !== NO_FORMATION_ID && group.name) {
+                const fName = LanceTypeIdentifierUtil.getFormationName(group.formationId);
+                if (fName && !group.name.includes(fName)) {
+                    formationName = fName;
+                }
+            }
+
+            return { group, name, orgName, formationName };
+        });
+
+        const forceResult = FormationNamerUtil.getForceSizeName(this.force, factionName);
+        if (forceResult && forceResult !== 'Force') {
+            this.forceOrgName = forceResult;
+        }
     }
 
-    getGroupName(group: LoadForceGroup): string {
-        if (!group.name) {
-            return LanceTypeIdentifierUtil.getFormationName(group.formationId) || '';
-        }
-        return group.name;
-    }
-
-    getGroupFormationName(group: LoadForceGroup): string | null {
-        if (!group.formationId) return null;
-        if (group.formationId === NO_FORMATION_ID) return null;
-        if (!group.name) return null;
-        const formationName = LanceTypeIdentifierUtil.getFormationName(group.formationId);
-        if (formationName && group.name.includes(formationName)) {
-            return null;
-        }
-        return formationName;
+    onUnitClick(unit: Unit | undefined): void {
+        if (!unit) return;
+        const unitIndex = this.allUnits.findIndex(u => u.name === unit.name);
+        this.dialogsService.createDialog(UnitDetailsDialogComponent, {
+            data: {
+                unitList: this.allUnits,
+                unitIndex: unitIndex >= 0 ? unitIndex : 0,
+                hideAddButton: true,
+                gameSystem: this.force.type
+            } as UnitDetailsDialogData
+        });
     }
 
     close(): void {
