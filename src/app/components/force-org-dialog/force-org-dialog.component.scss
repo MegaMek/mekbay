@@ -588,6 +588,54 @@
     line-height: 1.6;
 }
 
+// ==================== Sidebar Sort Footer ====================
+
+.sidebar-sort-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 4px;
+    border-top: 1px solid var(--border-color, #444);
+    flex: 0 0 auto;
+}
+
+.sort-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.sort-select {
+    height: 28px;
+    padding: 0 6px;
+    font-size: 0.75rem;
+}
+
+.sort-select option {
+    background-color: #222;
+    color: #fff;
+}
+
+.sort-direction-btn {
+    height: 28px;
+    width: 28px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #bbb;
+    cursor: pointer;
+
+    &:hover {
+        color: white;
+    }
+
+    svg {
+        width: 16px;
+        height: 16px;
+    }
+}
+
 // ==================== Drag Ghost ====================
 
 .drag-ghost {

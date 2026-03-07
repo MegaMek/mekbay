@@ -163,6 +163,17 @@ export class ForceOrgDialogComponent {
     protected sidebarAnimated = signal(false);
     protected loading = signal(true);
 
+    // Sidebar sort
+    protected readonly SORT_OPTIONS: { key: string; label: string }[] = [
+        { key: 'timestamp', label: 'Date' },
+        { key: 'name', label: 'Name' },
+        { key: 'value', label: 'Value' },
+        { key: 'faction', label: 'Faction' },
+        { key: 'size', label: 'Size' },
+    ];
+    protected sidebarSort = signal<string>('timestamp');
+    protected sidebarSortDirection = signal<'asc' | 'desc'>('desc');
+
     // All forces from hangar
     protected allForces = signal<LoadForceEntry[]>([]);
 
@@ -216,7 +227,9 @@ export class ForceOrgDialogComponent {
         const placedIds = new Set(this.placedForces().map(p => p.force.instanceId));
         const typeFilter = this.sidebarGameTypeFilter();
         const tokens = this.sidebarSearchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
-        return this.allForces().filter(f => {
+        const sortKey = this.sidebarSort();
+        const sortDir = this.sidebarSortDirection();
+        const filtered = this.allForces().filter(f => {
             if (placedIds.has(f.instanceId)) return false;
             if (typeFilter !== 'all' && (f.type || GameSystem.CLASSIC) !== typeFilter) return false;
             if (tokens.length > 0) {
@@ -224,7 +237,8 @@ export class ForceOrgDialogComponent {
                 if (!tokens.every(t => hay.indexOf(t) !== -1)) return false;
             }
             return true;
-        }).sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+        });
+        return this.sortForces(filtered, sortKey, sortDir);
     });
 
     protected svgTransform = computed(() => {
@@ -403,6 +417,42 @@ export class ForceOrgDialogComponent {
 
     protected onSidebarGameTypeFilter(type: 'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE): void {
         this.sidebarGameTypeFilter.set(type);
+    }
+
+    protected setSidebarSort(key: string): void {
+        this.sidebarSort.set(key);
+    }
+
+    protected setSidebarSortDirection(dir: 'asc' | 'desc'): void {
+        this.sidebarSortDirection.set(dir);
+    }
+
+    private sortForces(items: LoadForceEntry[], sortKey: string, sortDir: 'asc' | 'desc'): LoadForceEntry[] {
+        const dir = sortDir === 'asc' ? 1 : -1;
+        return [...items].sort((a, b) => {
+            switch (sortKey) {
+                case 'name':
+                    return dir * (a.name || '').localeCompare(b.name || '');
+                case 'value': {
+                    const aVal = (a.type === GameSystem.ALPHA_STRIKE) ? (a.pv ?? 0) : (a.bv ?? 0);
+                    const bVal = (b.type === GameSystem.ALPHA_STRIKE) ? (b.pv ?? 0) : (b.bv ?? 0);
+                    return dir * (aVal - bVal);
+                }
+                case 'faction': {
+                    const aFaction = a.factionId != null ? this.getFactionName(a.factionId) : '';
+                    const bFaction = b.factionId != null ? this.getFactionName(b.factionId) : '';
+                    return dir * aFaction.localeCompare(bFaction);
+                }
+                case 'size': {
+                    const aSize = a.groups ? a.groups.reduce((sum, g) => sum + (g.units?.length || 0), 0) : 0;
+                    const bSize = b.groups ? b.groups.reduce((sum, g) => sum + (g.units?.length || 0), 0) : 0;
+                    return dir * (aSize - bSize);
+                }
+                case 'timestamp':
+                default:
+                    return dir * ((a.timestamp || '').localeCompare(b.timestamp || ''));
+            }
+        });
     }
 
     private computeSearchText(force: LoadForceEntry): string {

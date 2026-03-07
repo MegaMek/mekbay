@@ -290,6 +290,36 @@
             }
             }
         </div>
+
+        <div class="sidebar-sort-footer">
+            <div class="sort-controls">
+                <select class="bt-input sort-select"
+                    (change)="setSidebarSort($any($event.target).value)">
+                    @for (opt of SORT_OPTIONS; track opt.key) {
+                        <option [value]="opt.key" [selected]="opt.key === sidebarSort()">{{ opt.label }}</option>
+                    }
+                </select>
+                <button type="button" class="bt-button sort-direction-btn"
+                    (click)="setSidebarSortDirection(sidebarSortDirection() === 'asc' ? 'desc' : 'asc')"
+                    [title]="sidebarSortDirection() === 'asc' ? 'Ascending' : 'Descending'">
+                    @if (sidebarSortDirection() === 'asc') {
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M4 16L13 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            <path d="M6 11H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            <path d="M8 6L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            <path d="M17 4L17 20L20 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    } @else {
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M4 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            <path d="M6 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            <path d="M8 18H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            <path d="M17 20V4L20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    }
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- Floating drag ghost for sidebar drag -->
