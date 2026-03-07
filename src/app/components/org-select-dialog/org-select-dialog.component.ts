@@ -58,7 +58,7 @@ export interface OrgSelectDialogData {
     },
     template: `
         <div class="wide-dialog">
-            <h2 class="wide-dialog-title">Select Organization</h2>
+            <h2 class="wide-dialog-title">Select TO&amp;E</h2>
             <div class="wide-dialog-body">
                 <div class="org-list">
                     @for (org of data.organizations; track org.organizationId) {

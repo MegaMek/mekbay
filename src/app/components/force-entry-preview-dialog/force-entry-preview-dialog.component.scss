@@ -10,7 +10,6 @@
     display: flex;
     justify-content: space-between;
     align-items: first baseline;
-    margin-bottom: 8px;
 }
 
 .faction-name-wrapper {
@@ -74,22 +73,21 @@
 
 .unit-scroll {
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     gap: 4px;
-    overflow-x: auto;
+    overflow-y: auto;
 }
 
 .unit-group {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    border-right: 2px solid var(--border-color, #333);
-    padding-right: 4px;
-    justify-content: flex-end;
+    border-bottom: 1px solid var(--border-color, #333);
+    padding-bottom: 4px;
 
     &:last-child {
-        border-right: none;
-        padding-right: 0;
+        border-bottom: none;
+        padding-bottom: 0;
     }
 
     .group-name {
@@ -101,6 +99,7 @@
     .units {
         display: flex;
         flex-direction: row;
+        flex-wrap: wrap;
         gap: 2px;
     }
 }
@@ -192,6 +191,15 @@
             font-weight: normal;
         }
     }
+}
+
+.hint {
+    font-size: 0.7em;
+    color: var(--text-color-secondary);
+    text-align: center;
+    padding-top: 6px;
+    opacity: 0.7;
+    font-style: italic;
 }
 
 .wide-dialog-actions {

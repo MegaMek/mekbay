@@ -270,7 +270,7 @@
                 </div>
             }
         }
-        @if (activeTab() === 'Organizations') {
+        @if (activeTab() === 'TO&E') {
             @if (organizationsLoading()) {
                 <div class="loading-spinner">Loading organizations...</div>
             } @else if (filteredOrganizations().length === 0) {
@@ -307,7 +307,7 @@
         }
     </div>
     <div dialog-footer class="footer">
-        @if (activeTab() === 'Organizations') {
+        @if (activeTab() === 'TO&E') {
             <button class="modal-btn bt-button" (click)="onNewOrganization();">NEW</button>
             <button class="modal-btn bt-button" (click)="onOpenOrganization();" [disabled]="!selectedOrganization()">OPEN</button>
             <button class="modal-btn bt-button danger" (click)="onDeleteOrganization();" [disabled]="!selectedOrganization()">DELETE</button>

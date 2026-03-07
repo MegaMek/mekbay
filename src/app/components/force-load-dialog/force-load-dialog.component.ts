@@ -145,7 +145,7 @@ export class ForceLoadDialogComponent {
     selectedForce = signal<LoadForceEntry | null>(null);
     loading = signal<boolean>(true);
 
-    tabs = ['Hangar', 'Force Packs', 'Operations', 'Organizations'];
+    tabs = ['Hangar', 'Force Packs', 'Operations', 'TO&E'];
     activeTab = signal(this.dialogData?.initialTab ?? this.tabs[0]);
 
     searchText = signal<string>('');
@@ -247,7 +247,7 @@ export class ForceLoadDialogComponent {
 
         // Load organizations when tab changes to Organizations
         effect(() => {
-            if (this.activeTab() === 'Organizations' && !this.organizationsLoaded() && !this.organizationsLoading()) {
+            if (this.activeTab() === 'TO&E' && !this.organizationsLoaded() && !this.organizationsLoading()) {
                 this.loadOrganizations();
             }
         });
@@ -488,7 +488,7 @@ export class ForceLoadDialogComponent {
             await this.onLoadOperation();
             return;
         }
-        if (this.activeTab() === 'Organizations') {
+        if (this.activeTab() === 'TO&E') {
             this.onOpenOrganization();
             return;
         }
@@ -623,7 +623,7 @@ export class ForceLoadDialogComponent {
             await this.onDeleteOperation();
             return;
         }
-        if (this.activeTab() === 'Organizations') {
+        if (this.activeTab() === 'TO&E') {
             await this.onDeleteOrganization();
             return;
         }
