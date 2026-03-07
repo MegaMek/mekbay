@@ -904,6 +904,7 @@ class WDOrg {
             { prefix: 'Reinforced ', count: 4 },
             { prefix: 'Strong ', count: 5 },
         ], commandRank: 'Major',
+        filter: (comp) => !isPureAero(comp),
     });
     // Battalion = N Companies
     static readonly BATTALION = new ForceTypeRule({

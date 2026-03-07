@@ -723,6 +723,17 @@
     .as-th-sortable {
         cursor: pointer;
         user-select: none;
+        white-space: nowrap;
+
+        /* Always reserve space for the sort arrow so the label never shifts */
+        &::after {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 5px;
+            margin-left: 4px;
+            vertical-align: middle;
+        }
 
         &:hover {
             color: var(--text-color-primary, #fff);
@@ -733,12 +744,8 @@
         }
 
         &.sort-active::after {
-            content: '';
-            display: inline-block;
             width: 0;
             height: 0;
-            margin-left: 4px;
-            vertical-align: middle;
             border-left: 4px solid transparent;
             border-right: 4px solid transparent;
         }
