@@ -419,6 +419,41 @@
     top: 0;
     z-index: 3;
     height: 34px;
+
+    .as-th-sortable {
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+        overflow: visible;
+
+        &:hover {
+            color: var(--text-color-primary, #fff);
+        }
+
+        &.sort-active {
+            color: var(--bt-yellow);
+        }
+
+        &.sort-active::after {
+            content: '';
+            display: inline-block;
+            vertical-align: middle;
+            width: 0;
+            height: 0;
+            margin-left: 2px;
+            margin-right: -12px;
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+        }
+    }
+
+    &.sort-asc .as-th-sortable.sort-active::after {
+        border-bottom: 5px solid currentColor;
+    }
+
+    &.sort-desc .as-th-sortable.sort-active::after {
+        border-top: 5px solid currentColor;
+    }
 }
 
 .as-table-row {

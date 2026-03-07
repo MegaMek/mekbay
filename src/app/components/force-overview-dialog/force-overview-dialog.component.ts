@@ -176,7 +176,7 @@ export class ForceOverviewDialogComponent {
     readonly useHex = computed(() => this.optionsService.options().ASUseHex);
 
     /** Keys always visible in the AS table row */
-    private readonly AS_TABLE_VISIBLE_KEYS = ['as.PV', 'as.TP', 'role', 'as.SZ', 'as._mv', 'as.TMM', 'as.damage', 'as.Arm', 'as.Str', 'as.OV'];
+    private readonly AS_TABLE_VISIBLE_KEYS = ['name', 'as.PV', 'as.TP', 'role', 'as.SZ', 'as._mv', 'as.TMM', 'as.damage', 'as.Arm', 'as.Str', 'as.OV'];
 
     /** Keys that are grouped together in the UI display */
     private readonly SORT_KEY_GROUPS: Record<string, string[]> = {
@@ -624,6 +624,17 @@ export class ForceOverviewDialogComponent {
     }
 
     // --- AS Table View Helpers ---
+
+    /** Handle header click: toggle direction if already active, otherwise activate with asc */
+    onHeaderSort(sortKey: string, groupKey?: string): void {
+        const isActive = groupKey ? this.isSortActive(groupKey) : this.isSortActive(sortKey);
+        if (isActive) {
+            this.selectedSortDirection.update(d => d === 'asc' ? 'desc' : 'asc');
+        } else {
+            this.selectedSort.set(sortKey);
+            this.selectedSortDirection.set('asc');
+        }
+    }
 
     /** Check if the current sort key matches any of the provided keys or groups */
     isSortActive(...keysOrGroups: string[]): boolean {
