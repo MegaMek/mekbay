@@ -724,16 +724,7 @@
         cursor: pointer;
         user-select: none;
         white-space: nowrap;
-
-        /* Always reserve space for the sort arrow so the label never shifts */
-        &::after {
-            content: '';
-            display: inline-block;
-            width: 8px;
-            height: 5px;
-            margin-left: 4px;
-            vertical-align: middle;
-        }
+        overflow: visible;
 
         &:hover {
             color: var(--text-color-primary, #fff);
@@ -743,18 +734,25 @@
             color: var(--bt-yellow);
         }
 
+        /* Arrow appears after text with 4px gap but takes zero layout width
+           (negative margin-right cancels the space) so text-align centering is unaffected */
         &.sort-active::after {
+            content: '';
+            display: inline-block;
+            vertical-align: middle;
             width: 0;
             height: 0;
+            margin-left: 4px;
+            margin-right: -12px;
             border-left: 4px solid transparent;
             border-right: 4px solid transparent;
         }
 
-        &.sort-active.sort-asc::after {
+        .sort-asc &.sort-active::after {
             border-bottom: 5px solid currentColor;
         }
 
-        &.sort-active.sort-desc::after {
+        .sort-desc &.sort-active::after {
             border-top: 5px solid currentColor;
         }
     }

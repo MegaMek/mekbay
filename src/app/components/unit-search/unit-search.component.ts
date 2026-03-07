@@ -1143,7 +1143,7 @@ export class UnitSearchComponent {
      * Keys always visible in the AS table row.
      * Used by both asTableSortSlotHeader and getAsTableSortSlot.
      */
-    private static readonly AS_TABLE_VISIBLE_KEYS = ['as.TP', 'role', 'as.PV', 'as.SZ', 'as._mv', 'as.TMM', 'as.Arm', 'as.Str', 'as.OV'];
+    private static readonly AS_TABLE_VISIBLE_KEYS = ['name', 'as.TP', 'role', 'as.PV', 'as.SZ', 'as._mv', 'as.TMM', 'as.Arm', 'as.Str', 'as.OV'];
     private static readonly AS_TABLE_VISIBLE_GROUPS = ['as.damage'];
 
     /**

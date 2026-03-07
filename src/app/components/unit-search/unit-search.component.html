@@ -139,63 +139,21 @@
             @if (this.filtersService.filteredUnits().length > 0) {
             <!-- Table Header for AS Table View (expanded only, not in card or compact view) -->
             @if (this.expandedView() && gameService.isAlphaStrike() && viewMode() === 'list') {
-            <div class="as-table-header">
+            <div class="as-table-header"
+                 [class.sort-asc]="filtersService.selectedSortDirection() === 'asc'"
+                 [class.sort-desc]="filtersService.selectedSortDirection() === 'desc'">
                 <div class="as-th as-th-icon"></div>
-                <div class="as-th as-th-name as-th-sortable"
-                     [class.sort-active]="isSortActive('name')"
-                     [class.sort-asc]="filtersService.selectedSortDirection() === 'asc'"
-                     [class.sort-desc]="filtersService.selectedSortDirection() === 'desc'"
-                     (click)="onHeaderSort('name')">Name</div>
-                <div class="as-th as-th-type as-th-sortable"
-                     [class.sort-active]="isSortActive('as.TP')"
-                     [class.sort-asc]="filtersService.selectedSortDirection() === 'asc'"
-                     [class.sort-desc]="filtersService.selectedSortDirection() === 'desc'"
-                     (click)="onHeaderSort('as.TP')">Type</div>
-                <div class="as-th as-th-role as-th-sortable"
-                     [class.sort-active]="isSortActive('role')"
-                     [class.sort-asc]="filtersService.selectedSortDirection() === 'asc'"
-                     [class.sort-desc]="filtersService.selectedSortDirection() === 'desc'"
-                     (click)="onHeaderSort('role')">Role</div>
-                <div class="as-th as-th-pv as-th-sortable"
-                     [class.sort-active]="isSortActive('as.PV')"
-                     [class.sort-asc]="filtersService.selectedSortDirection() === 'asc'"
-                     [class.sort-desc]="filtersService.selectedSortDirection() === 'desc'"
-                     (click)="onHeaderSort('as.PV')">PV</div>
-                <div class="as-th as-th-sz as-th-sortable"
-                     [class.sort-active]="isSortActive('as.SZ')"
-                     [class.sort-asc]="filtersService.selectedSortDirection() === 'asc'"
-                     [class.sort-desc]="filtersService.selectedSortDirection() === 'desc'"
-                     (click)="onHeaderSort('as.SZ')">SZ</div>
-                <div class="as-th as-th-mv as-th-sortable"
-                     [class.sort-active]="isSortActive('as._mv')"
-                     [class.sort-asc]="filtersService.selectedSortDirection() === 'asc'"
-                     [class.sort-desc]="filtersService.selectedSortDirection() === 'desc'"
-                     (click)="onHeaderSort('as._mv')">MV</div>
-                <div class="as-th as-th-tmm as-th-sortable"
-                     [class.sort-active]="isSortActive('as.TMM')"
-                     [class.sort-asc]="filtersService.selectedSortDirection() === 'asc'"
-                     [class.sort-desc]="filtersService.selectedSortDirection() === 'desc'"
-                     (click)="onHeaderSort('as.TMM')">TMM</div>
-                <div class="as-th as-th-dmg as-th-sortable"
-                     [class.sort-active]="isSortActive('as.damage')"
-                     [class.sort-asc]="filtersService.selectedSortDirection() === 'asc'"
-                     [class.sort-desc]="filtersService.selectedSortDirection() === 'desc'"
-                     (click)="onHeaderSort('as.dmg._dmgS', 'as.damage')">S/M/L</div>
-                <div class="as-th as-th-arm as-th-sortable"
-                     [class.sort-active]="isSortActive('as.Arm')"
-                     [class.sort-asc]="filtersService.selectedSortDirection() === 'asc'"
-                     [class.sort-desc]="filtersService.selectedSortDirection() === 'desc'"
-                     (click)="onHeaderSort('as.Arm')">A</div>
-                <div class="as-th as-th-str as-th-sortable"
-                     [class.sort-active]="isSortActive('as.Str')"
-                     [class.sort-asc]="filtersService.selectedSortDirection() === 'asc'"
-                     [class.sort-desc]="filtersService.selectedSortDirection() === 'desc'"
-                     (click)="onHeaderSort('as.Str')">S</div>
-                <div class="as-th as-th-ov as-th-sortable"
-                     [class.sort-active]="isSortActive('as.OV')"
-                     [class.sort-asc]="filtersService.selectedSortDirection() === 'asc'"
-                     [class.sort-desc]="filtersService.selectedSortDirection() === 'desc'"
-                     (click)="onHeaderSort('as.OV')">OV</div>
+                <div class="as-th as-th-name as-th-sortable" [class.sort-active]="isSortActive('name')" (click)="onHeaderSort('name')">Name</div>
+                <div class="as-th as-th-type as-th-sortable" [class.sort-active]="isSortActive('as.TP')" (click)="onHeaderSort('as.TP')">Type</div>
+                <div class="as-th as-th-role as-th-sortable" [class.sort-active]="isSortActive('role')" (click)="onHeaderSort('role')">Role</div>
+                <div class="as-th as-th-pv as-th-sortable" [class.sort-active]="isSortActive('as.PV')" (click)="onHeaderSort('as.PV')">PV</div>
+                <div class="as-th as-th-sz as-th-sortable" [class.sort-active]="isSortActive('as.SZ')" (click)="onHeaderSort('as.SZ')">SZ</div>
+                <div class="as-th as-th-mv as-th-sortable" [class.sort-active]="isSortActive('as._mv')" (click)="onHeaderSort('as._mv')">MV</div>
+                <div class="as-th as-th-tmm as-th-sortable" [class.sort-active]="isSortActive('as.TMM')" (click)="onHeaderSort('as.TMM')">TMM</div>
+                <div class="as-th as-th-dmg as-th-sortable" [class.sort-active]="isSortActive('as.damage')" (click)="onHeaderSort('as.dmg._dmgS', 'as.damage')">S/M/L</div>
+                <div class="as-th as-th-arm as-th-sortable" [class.sort-active]="isSortActive('as.Arm')" (click)="onHeaderSort('as.Arm')">A</div>
+                <div class="as-th as-th-str as-th-sortable" [class.sort-active]="isSortActive('as.Str')" (click)="onHeaderSort('as.Str')">S</div>
+                <div class="as-th as-th-ov as-th-sortable" [class.sort-active]="isSortActive('as.OV')" (click)="onHeaderSort('as.OV')">OV</div>
                 @if (asTableSortSlotHeader(); as sortHeader) {
                 <div class="as-th as-th-sort-slot">{{ sortHeader }}</div>
                 }
