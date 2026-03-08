@@ -152,10 +152,49 @@ export class ForceOrgDialogComponent {
         return map;
     });
 
-    /** Dominant faction ID computed from all placed forces. */
+    /** Dominant faction ID computed hierarchically from top-level groups + ungrouped forces. */
     protected organizationFactionId = computed(() => {
-        const entries = this.placedForces().map(pf => pf.force);
-        return this.getDominantFactionId(entries);
+        const placed = this.placedForces();
+        const groups = this.groups();
+        const groupFactions = this.orgGroupFactionIds();
+        const descendantsMap = this.descendantForcesMap();
+        const valueSums = new Map<number, number>();
+        const counts = new Map<number, number>();
+
+        // Top-level groups as single entities
+        for (const group of groups) {
+            if (group.parentGroupId !== null) continue;
+            const fid = groupFactions.get(group.id);
+            if (fid === undefined) continue;
+            let totalValue = 0;
+            for (const e of descendantsMap.get(group.id) ?? []) {
+                totalValue += (e.bv && e.bv > 0) ? e.bv : (e.pv ?? 0);
+            }
+            valueSums.set(fid, (valueSums.get(fid) ?? 0) + totalValue);
+            counts.set(fid, (counts.get(fid) ?? 0) + 1);
+        }
+
+        // Ungrouped forces
+        for (const pf of placed) {
+            if (pf.groupId !== null) continue;
+            const fid = pf.force.factionId;
+            if (fid === undefined) continue;
+            const v = (pf.force.bv && pf.force.bv > 0) ? pf.force.bv : (pf.force.pv ?? 0);
+            valueSums.set(fid, (valueSums.get(fid) ?? 0) + v);
+            counts.set(fid, (counts.get(fid) ?? 0) + 1);
+        }
+
+        if (valueSums.size === 0 && counts.size === 0) return undefined;
+        let bestValue = -1, bestId: number | undefined;
+        for (const [fid, total] of valueSums) {
+            if (total > bestValue) { bestValue = total; bestId = fid; }
+        }
+        if (bestValue > 0 && bestId !== undefined) return bestId;
+        let maxCount = 0, mostFreqId: number | undefined;
+        for (const [fid, count] of counts) {
+            if (count > maxCount) { maxCount = count; mostFreqId = fid; }
+        }
+        return mostFreqId;
     });
 
     // Sidebar
@@ -327,11 +366,12 @@ export class ForceOrgDialogComponent {
 
     /** Dominant faction ID for each OrgGroup, keyed by group id. */
     protected orgGroupFactionIds = computed(() => {
-        const descendants = this.descendantForcesMap();
+        const groups = this.groups();
+        const placed = this.placedForces();
+        const descendantsMap = this.descendantForcesMap();
         const result = new Map<string, number | undefined>();
-        for (const [groupId, entries] of descendants) {
-            if (entries.length === 0) continue;
-            result.set(groupId, this.getDominantFactionId(entries));
+        for (const group of groups) {
+            this.computeGroupFactionId(group.id, placed, groups, descendantsMap, result);
         }
         return result;
     });
@@ -536,6 +576,73 @@ export class ForceOrgDialogComponent {
             if (count > maxCount) { maxCount = count; mostFreqId = fid; }
         }
         return mostFreqId ?? withFaction[0].factionId;
+    }
+
+    /**
+     * Compute the dominant faction ID for a group hierarchically.
+     * Direct forces contribute their own factionId + value.
+     * Child groups contribute as single entities with their computed factionId + total value.
+     */
+    private computeGroupFactionId(
+        groupId: string,
+        placed: PlacedForce[],
+        groups: OrgGroup[],
+        descendantsMap: Map<string, LoadForceEntry[]>,
+        cache: Map<string, number | undefined>,
+        extraForces: LoadForceEntry[] = [],
+    ): number | undefined {
+        if (cache.has(groupId)) return cache.get(groupId);
+
+        const childGroups = groups.filter(g => g.parentGroupId === groupId);
+        const valueSums = new Map<number, number>();
+        const counts = new Map<number, number>();
+
+        // Direct forces in this group
+        for (const pf of placed) {
+            if (pf.groupId !== groupId) continue;
+            const fid = pf.force.factionId;
+            if (fid === undefined) continue;
+            const v = (pf.force.bv && pf.force.bv > 0) ? pf.force.bv : (pf.force.pv ?? 0);
+            valueSums.set(fid, (valueSums.get(fid) ?? 0) + v);
+            counts.set(fid, (counts.get(fid) ?? 0) + 1);
+        }
+
+        // Extra forces (for preview computations)
+        for (const e of extraForces) {
+            if (e.factionId === undefined) continue;
+            const v = (e.bv && e.bv > 0) ? e.bv : (e.pv ?? 0);
+            valueSums.set(e.factionId, (valueSums.get(e.factionId) ?? 0) + v);
+            counts.set(e.factionId, (counts.get(e.factionId) ?? 0) + 1);
+        }
+
+        // Child groups as single entities
+        for (const child of childGroups) {
+            const childFactionId = this.computeGroupFactionId(child.id, placed, groups, descendantsMap, cache);
+            if (childFactionId === undefined) continue;
+            const childEntries = descendantsMap.get(child.id) ?? [];
+            let totalValue = 0;
+            for (const e of childEntries) {
+                totalValue += (e.bv && e.bv > 0) ? e.bv : (e.pv ?? 0);
+            }
+            valueSums.set(childFactionId, (valueSums.get(childFactionId) ?? 0) + totalValue);
+            counts.set(childFactionId, (counts.get(childFactionId) ?? 0) + 1);
+        }
+
+        let bestValue = -1, bestId: number | undefined;
+        for (const [fid, total] of valueSums) {
+            if (total > bestValue) { bestValue = total; bestId = fid; }
+        }
+        if (bestValue > 0 && bestId !== undefined) {
+            cache.set(groupId, bestId);
+            return bestId;
+        }
+        let maxCount = 0, mostFreqId: number | undefined;
+        for (const [fid, count] of counts) {
+            if (count > maxCount) { maxCount = count; mostFreqId = fid; }
+        }
+        const factionId = mostFreqId;
+        cache.set(groupId, factionId);
+        return factionId;
     }
 
     protected async previewForce(force: LoadForceEntry): Promise<void> {
@@ -896,17 +1003,44 @@ export class ForceOrgDialogComponent {
         const placed = this.placedForces();
         const visited = new Set<string>();
 
-        // Walk the chain from the target group upward
+        // Collect the chain from target upward
+        const chain: string[] = [];
         let currentId: string | null = targetGroupId;
         while (currentId && !visited.has(currentId)) {
             visited.add(currentId);
-            // Extra entries added to the target bubble up through ancestors naturally
-            const entries = [...this.collectDescendantForces(currentId, placed, groups), ...extraEntries];
-            if (entries.length === 0) break;
+            chain.push(currentId);
+            const group = groups.find(g => g.id === currentId);
+            currentId = group?.parentGroupId ?? null;
+        }
+
+        // Build a preview descendantsMap that includes extra entries for chain groups
+        const descendantsMap = this.descendantForcesMap();
+        const previewDescendants = new Map(descendantsMap);
+        for (const groupId of chain) {
+            const existing = previewDescendants.get(groupId) ?? [];
+            previewDescendants.set(groupId, [...existing, ...extraEntries]);
+        }
+
+        // Pre-populate faction cache with committed factions for groups NOT in the chain
+        const chainSet = new Set(chain);
+        const committedFactions = this.orgGroupFactionIds();
+        const factionCache = new Map<string, number | undefined>();
+        for (const [id, fid] of committedFactions) {
+            if (!chainSet.has(id)) factionCache.set(id, fid);
+        }
+
+        // Process bottom-up through the chain (target first, then ancestors)
+        for (const groupId of chain) {
+            const entries = previewDescendants.get(groupId) ?? [];
+            if (entries.length === 0) continue;
+
+            // Compute faction hierarchically, adding extra entries as direct forces at the target
+            const extras = groupId === targetGroupId ? extraEntries : [];
+            this.computeGroupFactionId(groupId, placed, groups, previewDescendants, factionCache, extras);
+            const factionId = factionCache.get(groupId);
 
             const factionName = FormationNamerUtil.getDominantFactionName(entries, id => this.getFactionName(id));
-            const orgName = this.computeHierarchicalOrgName(currentId, entries, groups, placed, factionName);
-            const factionId = this.getDominantFactionId(entries);
+            const orgName = this.computeHierarchicalOrgName(groupId, entries, groups, placed, factionName);
             let totalBv = 0, totalPv = 0;
             for (const e of entries) {
                 if (e.bv && e.bv > 0) totalBv += e.bv;
@@ -915,10 +1049,7 @@ export class ForceOrgDialogComponent {
             const parts: string[] = [];
             if (totalBv > 0) parts.push(`BV: ${totalBv.toLocaleString()}`);
             if (totalPv > 0) parts.push(`PV: ${totalPv.toLocaleString()}`);
-            result.set(currentId, { orgName, totals: parts.join(' · '), factionId });
-
-            const group = groups.find(g => g.id === currentId);
-            currentId = group?.parentGroupId ?? null;
+            result.set(groupId, { orgName, totals: parts.join(' · '), factionId });
         }
         return result;
     }
