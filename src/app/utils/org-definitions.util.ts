@@ -466,18 +466,26 @@ class ISOrg {
         };
     }
     static readonly FLIGHT = new ForceTypeRule({
-        type: 'Flight', modifiers: [{ prefix: '', count: 2 }], commandRank: 'Lieutenant',
+        type: 'Flight', modifiers: [
+            { prefix: 'Under-Strength ', count: 1 },
+            { prefix: '', count: 2 },
+            { prefix: 'Reinforced ', count: 3 },
+        ], commandRank: 'Lieutenant',
         filter: (comp) => isPureAero(comp),
     });
     static readonly SQUADRON = new ForceTypeRule({
-        type: 'Squadron', modifiers: [{ prefix: '', count: 6 }], commandRank: 'Captain',
+        type: 'Squadron', composedOf: ISOrg.FLIGHT, modifiers: [
+            { prefix: 'Under-Strength ', count: 2 },
+            { prefix: '', count: 3 },
+            { prefix: 'Reinforced ', count: 4 },
+        ], commandRank: 'Captain',
         filter: (comp) => isPureAero(comp),
     });
     static readonly WING = new ForceTypeRule({
-        type: 'Wing', modifiers: [
-            { prefix: 'Under-Strength ', count: 18 },
-            { prefix: '', count: 21 },
-            { prefix: 'Reinforced ', count: 24 },
+        type: 'Wing', composedOf: ISOrg.SQUADRON, modifiers: [
+            { prefix: 'Under-Strength ', count: 2 },
+            { prefix: '', count: 3 },
+            { prefix: 'Reinforced ', count: 4 },
         ], commandRank: 'Major',
         filter: (comp) => isPureAero(comp),
     });
@@ -494,15 +502,6 @@ class ISOrg {
             return Infinity;
         },
     });
-    static readonly PLATOON = new ForceTypeRule({
-        type: 'Platoon', modifiers: [{ prefix: '', count: 1 }], commandRank: 'Sergeant',
-        filter: (comp) => isPureInfantry(comp) && comp.CI_troopers > 0 && comp.BA_troopers === 0,
-        customMatch: (comp) => {
-            if (comp.CI_troopers >= 6 && comp.CI_troopers <= 32) return 0;
-            if (comp.CI_troopers < 6) return (6 - comp.CI_troopers) / 28;
-            return (comp.CI_troopers - 32) / 28;
-        },
-    });
     static readonly SINGLE = new ForceTypeRule({
         type: 'Single', modifiers: [{ prefix: '', count: 1 }],
         filter: (comp) => !isPureAero(comp) && !isPureInfantry(comp),
@@ -514,7 +513,16 @@ class ISOrg {
             { prefix: '', count: 4 },
             { prefix: 'Reinforced ', count: 5 },
             { prefix: 'Fortified ', count: 6 },
-        ], commandRank: 'Lieutenant', filter: (comp) => !isPureAero(comp),
+        ], commandRank: 'Lieutenant', filter: (comp) => !isPureAero(comp) && !isPureInfantry(comp),
+    });
+    static readonly PLATOON = new ForceTypeRule({
+        type: 'Platoon', countsAs: ISOrg.LANCE, priority: 1, modifiers: [{ prefix: '', count: 1 }], commandRank: 'Lieutenant',
+        filter: (comp) => isPureInfantry(comp),
+        customMatch: (comp) => {
+            if (comp.CI_troopers >= 6 && comp.CI_troopers <= 32) return 0;
+            if (comp.CI_troopers < 6) return (6 - comp.CI_troopers) / 28;
+            return (comp.CI_troopers - 32) / 28;
+        },
     });
     // Company = N Lances
     static readonly COMPANY = new ForceTypeRule({
@@ -753,7 +761,6 @@ class MHOrg {
     ];
 }
 
-
 class WDOrg {
     /** Flat evaluation: max allowed distance as a fraction of midPts before falling back to "Force". */
     static readonly DISTANCE_FACTOR = 0.2;
@@ -779,39 +786,15 @@ class WDOrg {
             max: fixed + comp.CI_troopers / 21,
         };
     }
-    static readonly FLIGHT = new ForceTypeRule({
-        type: 'Flight', priority: 1, modifiers: [{ prefix: '', count: 2 }], commandRank: 'Lieutenant',
-        filter: (comp) => isPureAero(comp),
-    });
+    static readonly FLIGHT = ISOrg.FLIGHT;
     static readonly SQUADRON = new ForceTypeRule({
-        type: 'Squadron', priority: 1, modifiers: [{ prefix: '', count: 6 }], commandRank: 'Captain',
-        filter: (comp) => isPureAero(comp),
+        ...ISOrg.SQUADRON, composedOf: WDOrg.FLIGHT,
     });
     static readonly WING = new ForceTypeRule({
-        type: 'Wing', priority: 1, modifiers: [
-            { prefix: 'Under-Strength ', count: 18 },
-            { prefix: '', count: 21 },
-            { prefix: 'Reinforced ', count: 24 },
-        ], commandRank: 'Major',
-        filter: (comp) => isPureAero(comp),
+        ...ISOrg.WING, composedOf: WDOrg.SQUADRON,
     });
     static readonly SQUAD = new ForceTypeRule({
-        type: 'Squad', priority: 1, modifiers: [{ prefix: '', count: 1 }], commandRank: 'Sergeant',
-        filter: (comp) => comp.CI_troopers > 0 && comp.BA_troopers === 0 && comp.BM === 0 && comp.CV === 0 && comp.AF === 0 && comp.PM === 0 && comp.other === 0,
-        customMatch: (comp) => {
-            if (comp.CI_troopers >= 2 && comp.CI_troopers <= 8) return 0;
-            if (comp.CI_troopers < 2) return (2 - comp.CI_troopers) / 7;
-            return (comp.CI_troopers - 8) / 7;
-        },
-    });
-    static readonly PLATOON = new ForceTypeRule({
-        type: 'Platoon', priority: 1, modifiers: [{ prefix: '', count: 1 }], commandRank: 'Lieutenant',
-        filter: (comp) => comp.CI_troopers > 0 && comp.BA_troopers === 0 && comp.BM === 0 && comp.CV === 0 && comp.AF === 0 && comp.PM === 0 && comp.other === 0,
-        customMatch: (comp) => {
-            if (comp.CI_troopers >= 6 && comp.CI_troopers <= 32) return 0;
-            if (comp.CI_troopers < 6) return (6 - comp.CI_troopers) / 28;
-            return (comp.CI_troopers - 32) / 28;
-        },
+        ...ISOrg.SQUAD, filter: (comp) => comp.BA_troopers === 0,
     });
     static readonly POINT = new ForceTypeRule({
         type: 'Point', modifiers: [{ prefix: '', count: 1 }], commandRank: 'Sergeant',
@@ -826,6 +809,9 @@ class WDOrg {
             { prefix: 'Fortified ', count: 6 },
         ], commandRank: 'Lieutenant', filter: (comp) => !isPureAero(comp) && comp.BA_troopers === 0 && comp.BM <= 4, // BA can only be part of Stars, 2-4 BM are part of Lances
     });
+    static readonly PLATOON = new ForceTypeRule({
+        ...ISOrg.PLATOON, countsAs: WDOrg.LANCE, filter: (comp) => comp.BA_troopers === 0,
+    });
     // Star = N Points
     static readonly STAR = new ForceTypeRule({
         type: 'Star', composedOf: WDOrg.POINT, modifiers: [
@@ -839,7 +825,8 @@ class WDOrg {
     });
     // Nova = Star of Mechs + Star of Infantry (counts as Star for force composition)
     static readonly NOVA = new ForceTypeRule({
-        type: 'Nova', strict: true, countsAs: WDOrg.STAR, composedOf: WDOrg.POINT, modifiers: [{ prefix: '', count: 10 }], commandRank: 'Lieutenant', // Added composedOf to filter out AF and CI
+        ...ClanOrg.NOVA, countsAs: WDOrg.STAR, composedOf: WDOrg.POINT, commandRank: 'Lieutenant',
+         // Added composedOf to filter out AF and CI
         filter: (comp) => comp.BM > 0 && (comp.BA_troopers / 5) > 0,
         customMatch: (comp) => {
             const infPoints = (comp.BA_troopers / 5);
@@ -848,34 +835,24 @@ class WDOrg {
         },
     });
     static readonly COMPANY = new ForceTypeRule({
-        type: 'Company', composedOf: WDOrg.LANCE,
+        ...ISOrg.COMPANY, composedOf: WDOrg.LANCE,
         composedOfAny: [WDOrg.LANCE, WDOrg.STAR], // allowed Stars (and Novas) to be part of a company if there is at least 1 Lance
-        modifiers: [
-            { prefix: 'Under-Strength ', count: 2 },
-            { prefix: '', count: 3 },
-            { prefix: 'Reinforced ', count: 4 },
-        ], commandRank: 'Captain',
-        filter: (comp) => !isPureAero(comp),
         groupFilter: (groups) => groups.some(g => g.type === 'Lance' || g.countsAsType === 'Lance'),
     });
     // Binary = 2 Stars
     static readonly BINARY = new ForceTypeRule({
-        type: 'Binary', strict: true, countsAs: WDOrg.COMPANY, composedOf: WDOrg.STAR,
-        modifiers: [{ prefix: '', count: 2 }], 
-        commandRank: 'Captain',
+        ...ClanOrg.BINARY, countsAs: WDOrg.COMPANY, composedOf: WDOrg.STAR, commandRank: 'Captain',
         filter: (comp) => !isPureAero(comp),
     });
     // Trinary = 3 Stars
     static readonly TRINARY = new ForceTypeRule({
-        type: 'Trinary', strict: true, countsAs: WDOrg.COMPANY, composedOf: WDOrg.STAR,
-        modifiers: [{ prefix: '', count: 3 }], 
+        ...ClanOrg.TRINARY, countsAs: WDOrg.COMPANY, composedOf: WDOrg.STAR,
         commandRank: 'Captain',
         filter: (comp) => !isPureAero(comp),
     });
     // Supernova Binary = 2 Novas (counts as Binary for force composition)
     static readonly SUPERNOVA_BINARY = new ForceTypeRule({
-        type: 'Supernova Binary', strict: true, priority: 1, countsAs: WDOrg.BINARY, composedOf: WDOrg.NOVA, 
-        modifiers: [{ prefix: '', count: 2 }], 
+        ...ClanOrg.SUPERNOVA_BINARY, countsAs: WDOrg.BINARY, composedOf: WDOrg.NOVA,
         commandRank: 'Captain',
         filter: (comp) => comp.BM > 0 && (comp.BA_troopers / 5) > 0,
         customMatch: (comp) => {
@@ -886,7 +863,7 @@ class WDOrg {
     });
     // Supernova Trinary = 3 Novas (counts as Trinary for force composition)
     static readonly SUPERNOVA_TRINARY = new ForceTypeRule({
-        type: 'Supernova Trinary', strict: true, priority: 1, countsAs: WDOrg.TRINARY, composedOf: WDOrg.NOVA, modifiers: [{ prefix: '', count: 3 }], commandRank: 'Captain',
+        ...ClanOrg.SUPERNOVA_TRINARY, countsAs: WDOrg.TRINARY, composedOf: WDOrg.NOVA, commandRank: 'Captain',
         filter: (comp) => comp.BM > 0 && (comp.BA_troopers / 5) > 0,
         customMatch: (comp) => {
             const infPoints = (comp.BA_troopers / 5);
@@ -894,40 +871,23 @@ class WDOrg {
             return Math.abs(comp.BM - 15) + Math.abs(infPoints - 15) + otherPoints;
         },
     });
-    // Cluster = N Binaries, Trinaries, or Supernovas (can mix and match)
-    static readonly CLUSTER = new ForceTypeRule({
-        type: 'Cluster', composedOf: WDOrg.BINARY, // for flat point-based evaluation
-        composedOfAny: [WDOrg.BINARY, WDOrg.TRINARY], // for group-based: accepts any Binary/Trinary-tier
-        modifiers: [
-            { prefix: 'Under-Strength ', count: 2 },
-            { prefix: '', count: 3 },
-            { prefix: 'Reinforced ', count: 4 },
-            { prefix: 'Strong ', count: 5 },
-        ], commandRank: 'Major',
-        filter: (comp) => !isPureAero(comp),
-    });
     // Battalion = N Companies
     static readonly BATTALION = new ForceTypeRule({
-        type: 'Battalion', composedOf: WDOrg.COMPANY,
+        ...ISOrg.BATTALION, composedOf: WDOrg.COMPANY,
         composedOfAny: [WDOrg.COMPANY, WDOrg.BINARY, WDOrg.TRINARY], // allowed Binaries and Trinaries (and Supernovas) to be part of a Battalion if there is at least 1 Company
-        modifiers: [
-            { prefix: 'Under-Strength ', count: 2 },
-            { prefix: '', count: 3 },
-            { prefix: 'Reinforced ', count: 4 },
-        ], commandRank: 'Major',
         filter: (comp) => !isPureAero(comp),
         groupFilter: (groups) => groups.some(g => g.type === 'Company' || g.countsAsType === 'Company'),
     });
+    // Cluster = N Binaries, Trinaries, or Supernovas (can mix and match)
+    static readonly CLUSTER = new ForceTypeRule({
+        ...ClanOrg.CLUSTER, priority: 1, composedOf: WDOrg.BINARY, // for flat point-based evaluation
+        countsAs:WDOrg.BATTALION, commandRank: 'Major',
+        filter: (comp) => !isPureAero(comp),
+    });
     // Regiment = N Battalions
     static readonly REGIMENT = new ForceTypeRule({
-        type: 'Regiment', composedOf: WDOrg.BATTALION,
-        composedOfAny: [WDOrg.BATTALION, WDOrg.CLUSTER, WDOrg.WING],
-        modifiers: [
-            { prefix: 'Under-Strength ', count: 2 },
-            { prefix: '', count: 3 },
-            { prefix: 'Reinforced ', count: 4 },
-            { prefix: 'Strong ', count: 5 },
-        ], commandRank: 'Colonel',
+        ...ISOrg.REGIMENT, composedOf: WDOrg.BATTALION,
+        composedOfAny: [WDOrg.BATTALION, WDOrg.WING],
     });
     static readonly ALL: ForceTypeRule[] = [
         WDOrg.FLIGHT, WDOrg.SQUADRON, WDOrg.WING,
@@ -962,7 +922,8 @@ export const ORG_REGISTRY: { match: (techBase: string, factionName: string) => b
     { match: (_, f) => f === 'Society', org: SocietyOrg },
     { match: (_, f) => f.includes('Marian Hegemony'), org: MHOrg },
     { match: (_, f) => f.includes('Dragoons'), org: WDOrg },
-    { match: (t, f) => f.includes('Clan') || t === 'Clan', org: ClanOrg },
+    { match: (_, f) => f.includes('Clan'), org: ClanOrg },
+    { match: (_, f) => f.includes('Rasalhague Dominion') || f.includes('Wolf Empire') || f.includes('Escorpion') || f.includes('Scorpion Empire'), org: ClanOrg },
     // ISOrg is the default fallback if no other org matches
 ];
 
