@@ -407,7 +407,7 @@ class ClanOrg {
     // Cluster = N Binaries, Trinaries, or Supernovas (can mix and match)
     static readonly CLUSTER = new OrgTypeRule({
         type: 'Cluster', composedOf: ClanOrg.BINARY, // for flat point-based evaluation
-        composedOfAny: ['Binary', 'Trinary', 'Supernova Binary'], // for group-based: accepts any Binary/Trinary-tier
+        composedOfAny: ['Binary', 'Trinary'], // for group-based: accepts any Binary/Trinary-tier
         modifiers: [
             { prefix: 'Under-Strength ', count: 2 },
             { prefix: '', count: 3 },
@@ -482,7 +482,7 @@ class ISOrg {
         filter: (comp) => isPureAero(comp),
     });
     static readonly WING = new OrgTypeRule({
-        type: 'Wing', composedOf: ISOrg.SQUADRON, modifiers: [
+        type: 'Wing', composedOf: ISOrg.SQUADRON, countsAs: 'Battalion', modifiers: [
             { prefix: 'Under-Strength ', count: 2 },
             { prefix: '', count: 3 },
             { prefix: 'Reinforced ', count: 4 },
@@ -542,7 +542,7 @@ class ISOrg {
     });
     // Regiment = N Battalions
     static readonly REGIMENT = new OrgTypeRule({
-        type: 'Regiment', composedOf: ISOrg.BATTALION, composedOfAny: ['Battalion', 'Wing'], modifiers: [
+        type: 'Regiment', composedOf: ISOrg.BATTALION, modifiers: [
             { prefix: 'Under-Strength ', count: 2 },
             { prefix: '', count: 3 },
             { prefix: 'Reinforced ', count: 4 },
@@ -732,7 +732,7 @@ class MHOrg {
     // Maniple = 2 Century
     static readonly MANIPLE = new OrgTypeRule({
         type: 'Maniple', strict: true,
-        composedOf: MHOrg.CENTURY, composedOfAny: ['Century'], modifiers: [
+        composedOf: MHOrg.CENTURY, modifiers: [
             { prefix: '', count: 2 }
         ], commandRank: 'Principes',
     });
@@ -887,7 +887,6 @@ class WDOrg {
     // Regiment = N Battalions
     static readonly REGIMENT = new OrgTypeRule({
         ...ISOrg.REGIMENT, composedOf: WDOrg.BATTALION,
-        composedOfAny: ['Battalion', 'Wing'],
     });
     static readonly ALL: OrgTypeRule[] = [
         WDOrg.FLIGHT, WDOrg.SQUADRON, WDOrg.WING,
