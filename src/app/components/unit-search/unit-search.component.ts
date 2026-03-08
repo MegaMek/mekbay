@@ -168,7 +168,7 @@ export class UnitSearchComponent {
         // Both
         { key: 'y', filterKey: 'year' },
     ];
-    static resolveChordBinding(key: string, gameSystem: GameSystem): { key: string; filterKey: string } | undefined {
+    private resolveChordBinding(key: string, gameSystem: GameSystem): { key: string; filterKey: string } | undefined {
         return UnitSearchComponent.FILTER_CHORD_BINDINGS.find(b => {
             if (b.key !== key) return false;
             const config = RANGE_FILTERS.find(f => f.key === b.filterKey);
@@ -176,7 +176,7 @@ export class UnitSearchComponent {
         });
     }
 
-    private filterChordActive = false;
+    readonly filterChordActive = signal(false);
     private filterChordTimer: any;
     /** Reference to the favorites overlay component for in-place updates. */
     private favoritesCompRef: ComponentRef<SearchFavoritesMenuComponent> | null = null;
@@ -534,6 +534,7 @@ export class UnitSearchComponent {
             if (this.heightTrackingDebounceTimer) {
                 clearTimeout(this.heightTrackingDebounceTimer);
             }
+            clearTimeout(this.filterChordTimer);
             this.resizeObserver?.disconnect();
             this.overlayManager.closeAllManagedOverlays();
         });
@@ -931,20 +932,20 @@ export class UnitSearchComponent {
         // FILTER Chord
         if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === UnitSearchComponent.CHORD_ACTIVATE_KEY) {
             event.preventDefault();
-            this.filterChordActive = true;
+            this.filterChordActive.set(true);
             clearTimeout(this.filterChordTimer);
-            this.filterChordTimer = setTimeout(() => this.filterChordActive = false, UnitSearchComponent.CHORD_TIMEOUT_MS);
+            this.filterChordTimer = setTimeout(() => this.filterChordActive.set(false), UnitSearchComponent.CHORD_TIMEOUT_MS);
             return;
         }
 
         // FILTER second key press
-        if (this.filterChordActive) {
-            this.filterChordActive = false;
+        if (this.filterChordActive()) {
+            this.filterChordActive.set(false);
             clearTimeout(this.filterChordTimer);
 
             if (event.ctrlKey || event.metaKey || event.altKey) return;
 
-            const binding = UnitSearchComponent.resolveChordBinding(event.key.toLowerCase(), this.gameSystem());
+            const binding = this.resolveChordBinding(event.key.toLowerCase(), this.gameSystem());
             if (!binding) return;
 
             event.preventDefault();
