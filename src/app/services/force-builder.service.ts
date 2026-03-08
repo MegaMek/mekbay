@@ -59,12 +59,11 @@ import { EditPilotDialogComponent, EditPilotDialogData, EditPilotResult } from '
 import { EditASPilotDialogComponent, EditASPilotDialogData, EditASPilotResult } from '../components/edit-as-pilot-dialog/edit-as-pilot-dialog.component';
 import { ShareForceDialogComponent } from '../components/share-force-dialog/share-force-dialog.component';
 import { FormationInfoDialogComponent, FormationInfoDialogData } from '../components/formation-info-dialog/formation-info-dialog.component';
-import { CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
+import { CrewMember } from '../models/crew-member.model';
 import { GameSystem } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
 import { ASForceUnit } from '../models/as-force-unit.model';
-import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
 import { canAntiMech } from '../utils/infantry.util';
