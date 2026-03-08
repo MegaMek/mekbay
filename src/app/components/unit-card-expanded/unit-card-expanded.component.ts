@@ -54,6 +54,7 @@ import { FilterAmmoPipe } from '../../pipes/filter-ammo.pipe';
 import { ExpandedComponentsPipe } from '../../pipes/expanded-components.pipe';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { SearchTokensGroup, highlightMatches } from '../../utils/search.util';
+import { AS_TYPE_DISPLAY_NAMES } from '../../services/unit-search-filters.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
 import { formatMovement, isAerospace } from '../../utils/as-common.util';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
@@ -88,6 +89,7 @@ export class UnitCardExpandedComponent {
     gameService = inject(GameService);
     private dialogsService = inject(DialogsService);
     private abilityLookup = inject(AsAbilityLookupService);
+    readonly unitTypeDisplayNames = AS_TYPE_DISPLAY_NAMES;
 
     /** 
      * The unit to display. Can be either a Unit or a ForceUnit.

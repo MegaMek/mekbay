@@ -135,7 +135,7 @@ export type AdvFilterOptions = DropdownFilterOptions | RangeFilterOptions;
 
 const DEFAULT_FILTER_CURVE = 0;
 
-/** 
+/**
  * Alpha Strike movement mode display names.
  * Keys are the movement mode codes from MVm, values are human-readable names.
  * Empty string "" represents standard/ground movement.
@@ -191,7 +191,7 @@ export const AS_TYPE_DISPLAY_NAMES: Record<string, string> = {
  * Normalize a motive value to its display name (case-insensitive).
  * Accepts a code ('j', 'J') or display name ('jump', 'JUMP', 'Jump', etc.).
  * Returns the canonical display name or the original value if not recognized.
- * 
+ *
  * O(n) but n≈20, so negligible vs Map overhead.
  */
 export function normalizeMotiveValue(value: string): string {
