@@ -69,6 +69,7 @@ import { SyntaxInputComponent } from '../syntax-input/syntax-input.component';
 import { SavedSearchesService } from '../../services/saved-searches.service';
 import { generateUUID } from '../../services/ws.service';
 import { GameSystem } from '../../models/common.model';
+import { RANGE_FILTERS } from '../../services/unit-search-filters.model';
 import { UnitDetailsPanelComponent } from '../unit-details-panel/unit-details-panel.component';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
@@ -98,7 +99,8 @@ export interface ChassisGroup {
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.scss',
     host: {
-        '(keydown)': 'onKeydown($event)'
+        '(keydown)': 'onKeydown($event)',
+        '(document:keydown)': 'onDocumentKeydown($event)'
     }
 })
 export class UnitSearchComponent {
@@ -132,6 +134,50 @@ export class UnitSearchComponent {
     private searchDebounceTimer: any;
     private heightTrackingDebounceTimer: any;
     private readonly SEARCH_DEBOUNCE_MS = 300;
+
+    private static readonly CHORD_ACTIVATE_KEY = 'f';
+    private static readonly CHORD_TIMEOUT_MS = 1500;
+    private static readonly FILTER_CHORD_BINDINGS: { key: string; filterKey: string }[] = [
+        // Alpha Strike
+        { key: 'p', filterKey: 'as.PV' },
+        { key: 'm', filterKey: 'as._mv' },
+        { key: 't', filterKey: 'as.TMM' },
+        { key: 'o', filterKey: 'as.OV' },
+        { key: 'a', filterKey: 'as.Arm' },
+        { key: 's', filterKey: 'as.Str' },
+        { key: 'z', filterKey: 'as.SZ' },
+        { key: 'h', filterKey: 'as.Th' },
+        { key: '1', filterKey: 'as.dmg._dmgS' },
+        { key: '2', filterKey: 'as.dmg._dmgM' },
+        { key: '3', filterKey: 'as.dmg._dmgL' },
+        // Classic
+        { key: 'b', filterKey: 'bv' },
+        { key: 't', filterKey: 'tons' },
+        { key: 'a', filterKey: 'armor' },
+        { key: 's', filterKey: 'internal' },
+        { key: 'f', filterKey: '_mdSumNoPhysical' },
+        { key: 'd', filterKey: 'dpt' },
+        { key: 'h', filterKey: 'heat' },
+        { key: 'i', filterKey: 'dissipation' },
+        { key: 'e', filterKey: '_dissipationEfficiency' },
+        { key: 'r', filterKey: '_maxRange' },
+        { key: 'w', filterKey: 'walk' },
+        { key: 'u', filterKey: 'run' },
+        { key: 'j', filterKey: 'jump' },
+        { key: 'c', filterKey: 'cost' },
+        // Both
+        { key: 'y', filterKey: 'year' },
+    ];
+    private resolveChordBinding(key: string, gameSystem: GameSystem): { key: string; filterKey: string } | undefined {
+        return UnitSearchComponent.FILTER_CHORD_BINDINGS.find(b => {
+            if (b.key !== key) return false;
+            const config = RANGE_FILTERS.find(f => f.key === b.filterKey);
+            return config && (!config.game || config.game === gameSystem);
+        });
+    }
+
+    readonly filterChordActive = signal(false);
+    private filterChordTimer: any;
     /** Reference to the favorites overlay component for in-place updates. */
     private favoritesCompRef: ComponentRef<SearchFavoritesMenuComponent> | null = null;
     /** Flag to track when a favorites dialog (rename/delete) is in progress. */
@@ -488,6 +534,7 @@ export class UnitSearchComponent {
             if (this.heightTrackingDebounceTimer) {
                 clearTimeout(this.heightTrackingDebounceTimer);
             }
+            clearTimeout(this.filterChordTimer);
             this.resizeObserver?.disconnect();
             this.overlayManager.closeAllManagedOverlays();
         });
@@ -881,6 +928,37 @@ export class UnitSearchComponent {
         return Object.values(state).some(s => s.interactedWith) || this.filtersService.bvPvLimit() > 0;
     }
 
+    onDocumentKeydown(event: KeyboardEvent) {
+        // FILTER Chord
+        if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === UnitSearchComponent.CHORD_ACTIVATE_KEY) {
+            event.preventDefault();
+            this.filterChordActive.set(true);
+            clearTimeout(this.filterChordTimer);
+            this.filterChordTimer = setTimeout(() => this.filterChordActive.set(false), UnitSearchComponent.CHORD_TIMEOUT_MS);
+            return;
+        }
+
+        // FILTER second key press
+        if (this.filterChordActive()) {
+            this.filterChordActive.set(false);
+            clearTimeout(this.filterChordTimer);
+
+            if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+            const binding = this.resolveChordBinding(event.key.toLowerCase(), this.gameSystem());
+            if (!binding) return;
+
+            event.preventDefault();
+            this.expandedView.set(true);
+            this.advOpen.set(true);
+            const currentFilter = this.filtersService.advOptions()[binding.filterKey];
+            if (currentFilter && currentFilter.type === 'range') {
+                this.openRangeValueDialog(binding.filterKey, currentFilter.value, currentFilter.totalRange);
+            }
+            return;
+        }
+    }
+
     onKeydown(event: KeyboardEvent) {
         // SELECT ALL
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
@@ -1114,7 +1192,7 @@ export class UnitSearchComponent {
         'movement': ['walk', 'run', 'jump', 'umu'],
     };
 
-    /** 
+    /**
      * Check if the current sort key matches any of the provided keys or groups.
      * Use in templates: [class.sort-slot]="isSortActive('as.PV')" or isSortActive('as.damage')
      */
@@ -1145,7 +1223,7 @@ export class UnitSearchComponent {
         return false;
     }
 
-    /** 
+    /**
      * Keys always visible in the AS table row.
      * Used by both asTableSortSlotHeader and getAsTableSortSlot.
      */

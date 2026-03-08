@@ -85,6 +85,56 @@ npm run build
 
 This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
 
+## Keyboard Shortcuts
+
+### Unit Search
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+A` / `Cmd+A` | Select all units |
+| `Escape` | Clear selection / close dialogs |
+
+### Filter Chord Hotkeys
+
+Press `Ctrl+Shift+F` (or `Cmd+Shift+F` on Mac) to activate Filter hotkeys, then press a second key to open the corresponding filter dialog.
+
+Alpha Strike:
+
+| Key | Filter |
+| ----- | -------- |
+| `p` | PV |
+| `m` | Movement |
+| `t` | TMM |
+| `o` | Overheat Value |
+| `a` | Armor |
+| `s` | Structure |
+| `y` | Year |
+| `z` | Size |
+| `h` | Threshold |
+| `1` | Damage (Short) |
+| `2` | Damage (Medium) |
+| `3` | Damage (Long) |
+
+Classic:
+
+| Key | Filter |
+| ----- | -------- |
+| `b` | BV |
+| `t` | Tons |
+| `a` | Armor |
+| `s` | Structure |
+| `f` | Firepower |
+| `d` | Damage/Turn |
+| `h` | Heat |
+| `i` | Dissipation |
+| `e` | Heat Efficiency |
+| `r` | Range |
+| `w` | Walk MP |
+| `u` | Run MP |
+| `j` | Jump MP |
+| `c` | Cost |
+| `y` | Year |
+
 ## Support
 
 For questions, issues, or feature requests, please:

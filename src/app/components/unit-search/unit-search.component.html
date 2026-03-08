@@ -5,6 +5,13 @@
     [hidden]="!this.filtersService.isDataReady() || !overlayVisible()" (click)="onOverlayClick()">
 </div>
 
+@if (filterChordActive()) {
+<div class="chord-indicator">
+    <span class="chord-indicator-key">Ctrl+Shift+F</span>
+    <span class="chord-indicator-text">Press a filter key…</span>
+</div>
+}
+
 <div class="searchbar-container" [class.expanded]="this.expandedView()">
     @if (buttonOnly() && !this.expandedView()) {
     <button type="button" class="bt-button expand-btn square-large" (click)="toggleExpandedView()" title="Toggle Expanded View">

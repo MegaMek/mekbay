@@ -35,7 +35,6 @@ import { EquipmentInteractionHandler, HandlerContext } from '../services/equipme
 import { MountedEquipment } from '../models/force-serialization';
 import { PickerChoice } from '../components/picker/picker.interface';
 import { ALL_C3_FLAGS } from '../models/c3-network.model';
-import { C3NetworkDialogComponent, C3NetworkDialogData, C3NetworkDialogResult } from '../components/c3-network-dialog/c3-network-dialog.component';
 import { firstValueFrom } from 'rxjs';
 
 export class C3Handler extends EquipmentInteractionHandler {
@@ -60,6 +59,9 @@ export class C3Handler extends EquipmentInteractionHandler {
         const force = equipment.owner.force;
         if (!force) return true;
 
+        const { C3NetworkDialogComponent } = await import('../components/c3-network-dialog/c3-network-dialog.component');
+        type C3NetworkDialogData = import('../components/c3-network-dialog/c3-network-dialog.component').C3NetworkDialogData;
+        type C3NetworkDialogResult = import('../components/c3-network-dialog/c3-network-dialog.component').C3NetworkDialogResult;
         const ref = context.dialogsService.createDialog<C3NetworkDialogResult>(C3NetworkDialogComponent, {
             data: <C3NetworkDialogData>{
                 force: force,

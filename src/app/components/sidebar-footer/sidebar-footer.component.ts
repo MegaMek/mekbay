@@ -15,6 +15,7 @@ import { CommonModule } from '@angular/common';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import { ForceSlot } from '../../models/force-slot.model';
 import { LoadOrganizationEntry } from '../../models/organization.model';
+import { AlignmentPickerDialogComponent, AlignmentPickerResult } from '../alignment-picker-dialog/alignment-picker-dialog.component';
 
 /*
  * Sidebar footer component
@@ -241,8 +242,6 @@ export class SidebarFooterComponent {
         }
 
         // Show alignment picker with force preview
-        const { AlignmentPickerDialogComponent } = await import('../alignment-picker-dialog/alignment-picker-dialog.component');
-        type AlignmentPickerResult = import('../alignment-picker-dialog/alignment-picker-dialog.component').AlignmentPickerResult;
         const ref = this.dialogsService.createDialog<AlignmentPickerResult | null>(AlignmentPickerDialogComponent, {
             data: { force }
         });

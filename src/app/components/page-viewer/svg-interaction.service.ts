@@ -51,6 +51,7 @@ import { HandlerChoice, HandlerContext } from '../../services/equipment-interact
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { ChoicePickerStyle, PickerFactoryService } from '../../services/picker-factory.service';
+import { canAntiMech } from '../../utils/infantry.util';
 
 /*
  * Author: Drake
@@ -1133,6 +1134,8 @@ export class SvgInteractionService {
 
     private setupSkillInteractions(svg: SVGSVGElement, signal: AbortSignal) {
         const unit = this.unit()!;
+        const baseUnit = unit.getUnit();
+        const disablePiloting = baseUnit.type === 'ProtoMek' || ((baseUnit.type === 'Infantry') && (!canAntiMech(baseUnit)));
         svg.querySelectorAll('.crewSkillButton').forEach(el => {
             const svgEl = el as SVGElement;
             svgEl.style.cursor = 'pointer';
@@ -1142,6 +1145,7 @@ export class SvgInteractionService {
                 const skill = svgEl.getAttribute('skill') as SkillType;
                 const asf = svgEl.getAttribute('asf') === 'true';
                 if (!skill) return;
+                if (skill === 'piloting' && disablePiloting) return;
                 const crewMember = unit.getCrewMember(crewId);
                 const currentValue = crewMember.getSkill(skill, asf);
 

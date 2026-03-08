@@ -40,7 +40,6 @@ import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-me
 import { GameSystem } from '../models/common.model';
 import { ForceSlot } from '../models/force-slot.model';
 import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
-import { isNoFormation } from './formation-type.model';
 
 /**
  * Minimal logger interface for URL parsing warnings.
