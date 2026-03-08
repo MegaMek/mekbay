@@ -2519,7 +2519,7 @@ export class ForceBuilderService {
             }
             pilot = crewMembers[0];
         }
-        const disablePiloting = baseUnit.type === 'ProtoMek' || ((baseUnit.type === 'Infantry' && baseUnit.subtype != 'Battle Armor') && (!canAntiMech(baseUnit)));
+        const disablePiloting = baseUnit.type === 'ProtoMek' || ((baseUnit.type === 'Infantry') && (!canAntiMech(baseUnit)));
         let labelPiloting;
         if (baseUnit.type === 'Infantry') {
             labelPiloting = 'Anti-Mech';
