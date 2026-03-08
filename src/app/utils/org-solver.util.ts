@@ -183,10 +183,10 @@ function evaluateForceByGroups(
         // Determine which types this rule accepts as sub-units for group-based evaluation.
         // composedOfAny takes precedence (e.g. Cluster accepts Binaries OR Trinaries),
         // otherwise fall back to the single composedOf type.
-        const acceptedTypes = rule.composedOfAny
+        const acceptedTypes: OrgType[] = rule.composedOfAny
             ? rule.composedOfAny
             : rule.composedOf
-                ? [rule.composedOf]
+                ? [rule.composedOf.type]
                 : [];
         if (acceptedTypes.length === 0) continue;
 
@@ -195,7 +195,7 @@ function evaluateForceByGroups(
 
         // Count groups matching any accepted type (each group counted at most once).
         // A group matches if its direct type OR its countsAs alias is in the accepted set.
-        const acceptedTypeSet = new Set(acceptedTypes.map(r => r.type));
+        const acceptedTypeSet = new Set(acceptedTypes);
         let count = 0;
         for (const result of groupResults) {
             if (result.type && acceptedTypeSet.has(result.type)) {
@@ -291,7 +291,7 @@ function trySplitGroupEvaluation(
             batchResults.push({
                 name: result.name,
                 type: result.matchedRule.type,
-                countsAsType: result.matchedRule.countsAs?.type ?? null,
+                countsAsType: result.matchedRule.countsAs ?? null,
             });
         }
         if (!allMatched) continue;
@@ -379,7 +379,7 @@ function trySplitEvaluation(
             virtualResults.push({
                 name: subResult.name,
                 type: subResult.matchedRule.type,
-                countsAsType: subResult.matchedRule.countsAs?.type ?? null,
+                countsAsType: subResult.matchedRule.countsAs ?? null,
             });
         }
 
@@ -459,7 +459,7 @@ export function getGroupSizeResult(units: ForceUnit[], techBase: string, faction
     return {
         name: result.name,
         type: result.matchedRule?.type ?? null,
-        countsAsType: result.matchedRule?.countsAs?.type ?? null,
+        countsAsType: result.matchedRule?.countsAs ?? null,
     };
 }
 
@@ -487,7 +487,7 @@ export function getGroupSizeResultForUnits(units: Unit[], techBase: string, fact
     return {
         name: result.name,
         type: result.matchedRule?.type ?? null,
-        countsAsType: result.matchedRule?.countsAs?.type ?? null,
+        countsAsType: result.matchedRule?.countsAs ?? null,
     };
 }
 
@@ -505,7 +505,7 @@ export function getForceSizeResultForUnits(units: Unit[], techBase: string, fact
             return {
                 name: groupResult.name,
                 type: groupResult.matchedRule?.type ?? null,
-                countsAsType: groupResult.matchedRule?.countsAs?.type ?? null,
+                countsAsType: groupResult.matchedRule?.countsAs ?? null,
             };
         }
 
@@ -523,7 +523,7 @@ export function getForceSizeResultForUnits(units: Unit[], techBase: string, fact
             return {
                 name: groupResult.name,
                 type: groupResult.matchedRule?.type ?? null,
-                countsAsType: groupResult.matchedRule?.countsAs?.type ?? null,
+                countsAsType: groupResult.matchedRule?.countsAs ?? null,
             };
         }
     }
@@ -531,7 +531,7 @@ export function getForceSizeResultForUnits(units: Unit[], techBase: string, fact
     return {
         name: flatResult.name,
         type: flatResult.matchedRule?.type ?? null,
-        countsAsType: flatResult.matchedRule?.countsAs?.type ?? null,
+        countsAsType: flatResult.matchedRule?.countsAs ?? null,
     };
 }
 
