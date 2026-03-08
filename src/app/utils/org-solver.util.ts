@@ -35,8 +35,8 @@ import { ForceUnit } from '../models/force-unit.model';
 import { Unit } from '../models/units.model';
 import {
     ForceComposition,
-    ForceType,
-    ForceTypeRule,
+    OrgType,
+    OrgTypeRule,
     getForceComposition,
     getForceCompositionFromRawUnits,
     OrgDefinition,
@@ -51,29 +51,29 @@ import {
  * Org solver: force type identification shared between force size naming
  * and group size naming.
  *
- * Org definitions (ForceType, ForceTypeRule, org classes) live in
+ * Org definitions (OrgType, OrgTypeRule, org classes) live in
  * org-definitions.util.ts.
  */
 
-export type { ForceType } from './org-definitions.util';
+export type { OrgType } from './org-definitions.util';
 
 /** Internal result of a force evaluation, carrying the distance for comparison. */
 interface EvaluationResult {
     name: string;
     dist: number;
-    matchedRule: ForceTypeRule | null;
+    matchedRule: OrgTypeRule | null;
 }
 
 /**
  * Exported result of a group-level size evaluation.
- * Carries the matched ForceType so force-level evaluation can
+ * Carries the matched OrgType so force-level evaluation can
  * count groups by type without re-evaluating them.
  */
 export interface GroupSizeResult {
     name: string;
-    type: ForceType | null;
+    type: OrgType | null;
     /** Alias type for group-based counting (e.g. Nova also counts as Star). */
-    countsAsType: ForceType | null;
+    countsAsType: OrgType | null;
 }
 
 /**
@@ -82,7 +82,7 @@ export interface GroupSizeResult {
  */
 function evaluateForceDetailed(
     comp: ForceComposition,
-    rules: ForceTypeRule[],
+    rules: OrgTypeRule[],
     getPointRange: (comp: ForceComposition) => PointRange,
     minDistance = 2,
     distanceFactor = 0.2,
@@ -92,11 +92,11 @@ function evaluateForceDetailed(
 
     if (range.max === 0) return { name: 'Force', dist: Infinity, matchedRule: null };
 
-    let bestType: string = 'Force';
+    let bestType: OrgType = 'Force';
     let bestDist = Infinity;
     let bestNominal = 0;
     let bestModName = '';
-    let bestRule: ForceTypeRule | null = null;
+    let bestRule: OrgTypeRule | null = null;
 
     for (const rule of rules) {
         // Composition filter — skip rules that don't apply to this force type
@@ -173,7 +173,7 @@ function evaluateForceDetailed(
  */
 function evaluateForceByGroups(
     groupResults: GroupSizeResult[],
-    rules: ForceTypeRule[],
+    rules: OrgTypeRule[],
     groupMinDistance = 1,
     groupDistanceFactor = 0.25,
 ): EvaluationResult {
@@ -258,7 +258,7 @@ function evaluateForceByGroups(
  */
 function trySplitGroupEvaluation(
     groupResults: GroupSizeResult[],
-    rules: ForceTypeRule[],
+    rules: OrgTypeRule[],
     groupMinDistance: number,
     groupDistanceFactor: number,
 ): EvaluationResult {
@@ -319,10 +319,10 @@ function trySplitGroupEvaluation(
  */
 function evaluateVirtualGroup(
     pts: number,
-    rules: ForceTypeRule[],
+    rules: OrgTypeRule[],
     comp: ForceComposition,
 ): EvaluationResult {
-    let bestRule: ForceTypeRule | null = null;
+    let bestRule: OrgTypeRule | null = null;
     let bestNominal = 0;
 
     for (const rule of rules) {
@@ -361,7 +361,7 @@ function evaluateVirtualGroup(
  */
 function trySplitEvaluation(
     pts: number,
-    rules: ForceTypeRule[],
+    rules: OrgTypeRule[],
     comp: ForceComposition,
 ): EvaluationResult {
     let best: EvaluationResult = { name: 'Force', dist: Infinity, matchedRule: null };
@@ -402,7 +402,7 @@ function trySplitEvaluation(
 // ─── Org Resolution ────────────────────────────────────────────────────────────
 
 interface OrgConfig {
-    rules: ForceTypeRule[];
+    rules: OrgTypeRule[];
     getPointRange: (comp: ForceComposition) => PointRange;
     minDistance: number;
     distanceFactor: number;
@@ -433,7 +433,7 @@ function resolveOrg(techBase: string, factionName: string): OrgConfig {
 
 /**
  * Evaluate a single group of units and return the structural result
- * (name + matched ForceType). This is the data each UnitGroup can cache
+ * (name + matched OrgType). This is the data each UnitGroup can cache
  * in a computed signal so the force-level evaluator doesn't redo it.
  */
 export function getGroupSizeResult(units: ForceUnit[], techBase: string, factionName: string): GroupSizeResult {
