@@ -511,21 +511,26 @@ export class ForceOrgDialogComponent {
         return this.dataService.getFactionById(factionId)?.name ?? 'Mercenary';
     }
 
-    /** Get the dominant faction ID from a set of entries (by value, then frequency). */
+    /** Get the dominant faction ID from a set of entries (by total value, then frequency). */
     private getDominantFactionId(entries: LoadForceEntry[]): number | undefined {
         const withFaction = entries.filter(e => e.factionId !== undefined);
         if (withFaction.length === 0) return undefined;
-        let bestValue = -1, bestId: number | undefined;
-        for (const e of withFaction) {
-            const v = (e.bv && e.bv > 0) ? e.bv : (e.pv ?? 0);
-            if (v > bestValue) { bestValue = v; bestId = e.factionId; }
-        }
-        if (bestValue > 0 && bestId !== undefined) {
-            const tied = withFaction.filter(e => ((e.bv && e.bv > 0) ? e.bv : (e.pv ?? 0)) === bestValue);
-            if (tied.length === 1) return bestId;
-        }
+        // Sum values per faction
+        const valueSums = new Map<number, number>();
         const counts = new Map<number, number>();
-        for (const e of withFaction) counts.set(e.factionId!, (counts.get(e.factionId!) ?? 0) + 1);
+        for (const e of withFaction) {
+            const fid = e.factionId!;
+            const v = (e.bv && e.bv > 0) ? e.bv : (e.pv ?? 0);
+            valueSums.set(fid, (valueSums.get(fid) ?? 0) + v);
+            counts.set(fid, (counts.get(fid) ?? 0) + 1);
+        }
+        // Pick the faction with the highest total value
+        let bestValue = -1, bestId: number | undefined;
+        for (const [fid, total] of valueSums) {
+            if (total > bestValue) { bestValue = total; bestId = fid; }
+        }
+        if (bestValue > 0 && bestId !== undefined) return bestId;
+        // Fallback: most frequent faction
         let maxCount = 0, mostFreqId: number | undefined;
         for (const [fid, count] of counts) {
             if (count > maxCount) { maxCount = count; mostFreqId = fid; }
