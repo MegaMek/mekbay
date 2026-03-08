@@ -36,10 +36,12 @@ import {
     Component,
     computed,
     DestroyRef,
+    effect,
     ElementRef,
     inject,
     signal,
     viewChild,
+    WritableSignal,
 } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
@@ -48,11 +50,11 @@ import { DialogsService } from '../../services/dialogs.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
-import { FormationNamerUtil } from '../../utils/formation-namer.util';
 import { GroupSizeResult } from '../../utils/org-solver.util';
 import { GameSystem } from '../../models/common.model';
-import { SerializedOrganization, OrgPlacedForce, OrgGroupData, LoadOrganizationEntry } from '../../models/organization.model';
+import { SerializedOrganization, OrgPlacedForce, OrgGroupData } from '../../models/organization.model';
 import { ForceEntryPreviewDialogComponent } from '../force-entry-preview-dialog/force-entry-preview-dialog.component';
+import { OrgNamerUtil } from '../../utils/org-namer.util';
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2.0;
@@ -62,6 +64,19 @@ const CARD_HEIGHT = 70;
 const CARD_GAP = 12;
 const GROUP_PADDING = 24;
 const GROUP_HEADER_HEIGHT = 48;
+
+/** Format BV/PV totals for a set of entries as a display string. */
+function formatTotals(entries: LoadForceEntry[]): string {
+    let totalBv = 0, totalPv = 0;
+    for (const e of entries) {
+        if (e.bv && e.bv > 0) totalBv += e.bv;
+        if (e.pv && e.pv > 0) totalPv += e.pv;
+    }
+    const parts: string[] = [];
+    if (totalBv > 0) parts.push(`BV: ${totalBv.toLocaleString()}`);
+    if (totalPv > 0) parts.push(`PV: ${totalPv.toLocaleString()}`);
+    return parts.join(' · ');
+}
 
 interface Rect { x: number; y: number; width: number; height: number }
 interface GroupPreview extends Rect { orgName: string; totals: string; factionId: number | undefined }
@@ -79,29 +94,73 @@ type GroupDropAction =
 /** A force card placed in the main canvas */
 interface PlacedForce {
     force: LoadForceEntry;
-    x: number;
-    y: number;
-    zIndex: number;
+    x: WritableSignal<number>;
+    y: WritableSignal<number>;
+    zIndex: WritableSignal<number>;
     groupId: string | null;
 }
 
 /** An organizational group containing forces or other groups */
-interface OrgGroup {
-    id: string;
-    name: string;
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    zIndex: number;
+class OrgGroup {
+    readonly id: string;
+    readonly name: WritableSignal<string>;
+    readonly x: WritableSignal<number>;
+    readonly y: WritableSignal<number>;
+    readonly width: WritableSignal<number>;
+    readonly height: WritableSignal<number>;
+    readonly zIndex: WritableSignal<number>;
     parentGroupId: string | null;
-    anchorX: number;
-    anchorY: number;
+    readonly anchorX: WritableSignal<number>;
+    readonly anchorY: WritableSignal<number>;
+
+    /** Descendant forces — set externally, drives totals computation. */
+    readonly descendants = signal<LoadForceEntry[]>([]);
+    /** Computed org size name (not serialized). */
+    readonly orgName = signal('');
+    /** Computed dominant faction ID (not serialized). */
+    readonly factionId = signal<number | undefined>(undefined);
+    /** Computed dominant faction name (not serialized). */
+    readonly factionName = signal('');
+    /** Computed BV/PV totals string (not serialized). */
+    readonly totals = computed(() => {
+        const desc = this.descendants();
+        return desc.length > 0 ? formatTotals(desc) : '';
+    });
+
+    constructor(params: {
+        id?: string;
+        name?: string;
+        x?: number;
+        y?: number;
+        width?: number;
+        height?: number;
+        zIndex: number;
+        parentGroupId?: string | null;
+        anchorX?: number;
+        anchorY?: number;
+    }) {
+        this.id = params.id ?? crypto.randomUUID();
+        this.name = signal(params.name ?? '');
+        this.x = signal(params.x ?? 0);
+        this.y = signal(params.y ?? 0);
+        this.width = signal(params.width ?? 0);
+        this.height = signal(params.height ?? 0);
+        this.zIndex = signal(params.zIndex);
+        this.parentGroupId = params.parentGroupId ?? null;
+        this.anchorX = signal(params.anchorX ?? 0);
+        this.anchorY = signal(params.anchorY ?? 0);
+    }
 }
 
 /** Dialog input data for loading a saved organization */
 export interface ForceOrgDialogData {
     organizationId?: string;
+}
+
+interface ForceMetadata {
+    factionName: string;
+    org: GroupSizeResult;
+    bvString: string;
 }
 
 @Component({
@@ -143,7 +202,7 @@ export class ForceOrgDialogComponent {
     });
 
     /** Map of loaded force instanceId → alignment ('friendly' | 'enemy'). */
-    protected loadedForceAlignments = computed(() => {
+    protected loadedForceAlignments = computed<Map<string, 'friendly' | 'enemy'>>(() => {
         const map = new Map<string, 'friendly' | 'enemy'>();
         for (const slot of this.forceBuilderService.loadedForces()) {
             const id = slot.force.instanceId();
@@ -153,10 +212,10 @@ export class ForceOrgDialogComponent {
     });
 
     /** Dominant faction ID computed hierarchically from top-level groups + ungrouped forces. */
-    protected organizationFactionId = computed(() => {
+    protected organizationFactionId = computed<number | undefined>(() => {
         const placed = this.placedForces();
         const groups = this.groups();
-        const groupFactions = this.orgGroupFactionIds();
+        const factionIds = this.groupFactionIds();
         const descendantsMap = this.descendantForcesMap();
         const valueSums = new Map<number, number>();
         const counts = new Map<number, number>();
@@ -164,7 +223,7 @@ export class ForceOrgDialogComponent {
         // Top-level groups as single entities
         for (const group of groups) {
             if (group.parentGroupId !== null) continue;
-            const fid = groupFactions.get(group.id);
+            const fid = factionIds.get(group.id);
             if (fid === undefined) continue;
             let totalValue = 0;
             for (const e of descendantsMap.get(group.id) ?? []) {
@@ -261,7 +320,11 @@ export class ForceOrgDialogComponent {
     // Drop preview state
     protected dropTargetGroupId = signal<string | null>(null);
     protected dropPreviewRect = signal<GroupPreview | null>(null);
-    protected previewGroupInfo = signal<Map<string, { orgName: string; totals: string; factionId: number | undefined }>>(new Map());
+    private previewExtraForces = signal<{ targetGroupId: string; entries: LoadForceEntry[] } | null>(null);
+    /** Identity of the "other" target in the current new-group/create-parent preview. */
+    private previewOtherId: string | null = null;
+    /** Cached org metadata for the current preview (orgName, totals, factionId). */
+    private previewOrgCache: { orgName: string; totals: string; factionId: number | undefined } | null = null;
 
     /** Forces available in sidebar (not yet placed) */
     protected sidebarForces = computed(() => {
@@ -288,7 +351,7 @@ export class ForceOrgDialogComponent {
     });
 
     protected sortedPlacedForces = computed(() =>
-        [...this.placedForces()].sort((a, b) => a.zIndex - b.zIndex)
+        [...this.placedForces()].sort((a, b) => a.zIndex() - b.zIndex())
     );
 
     protected sortedGroups = computed(() => {
@@ -308,36 +371,27 @@ export class ForceOrgDialogComponent {
         };
         return groups.sort((a, b) => {
             const da = depth(a), db = depth(b);
-            return da !== db ? da - db : a.zIndex - b.zIndex;
+            return da !== db ? da - db : a.zIndex() - b.zIndex();
         });
     });
 
     /** Org size name for each LoadForceEntry, keyed by instanceId. */
-    protected forceOrgNames = computed(() => {
+    protected forcesData = computed<Map<string, ForceMetadata>>(() => {
         const all = this.allForces();
-        const result = new Map<string, string>();
+        const result = new Map<string, ForceMetadata>();
         for (const force of all) {
             const factionName = this.getFactionName(force.factionId);
-            result.set(force.instanceId, FormationNamerUtil.getForceSizeName(force, factionName));
-        }
-        return result;
-    });
-
-    /** BV/PV display value for each LoadForceEntry, keyed by instanceId. */
-    protected forceValues = computed(() => {
-        const result = new Map<string, string>();
-        for (const force of this.allForces()) {
-            if (force.type === 'as' && force.pv && force.pv > 0) {
-                result.set(force.instanceId, `PV: ${force.pv}`);
-            } else if (force.bv && force.bv > 0) {
-                result.set(force.instanceId, `BV: ${force.bv.toLocaleString()}`);
-            }
+            result.set(force.instanceId, {
+                factionName: factionName,
+                org: OrgNamerUtil.getOrgFromForce(force, factionName),
+                bvString: (force.bv && force.bv > 0) ? `BV: ${force.bv.toLocaleString()}` : (force.pv && force.pv > 0) ? `PV: ${force.pv.toLocaleString()}` : '',
+            });
         }
         return result;
     });
 
     /** Descendant forces for each OrgGroup, keyed by group id. */
-    private descendantForcesMap = computed(() => {
+    private descendantForcesMap = computed<Map<string, LoadForceEntry[]>>(() => {
         const placed = this.placedForces();
         const groups = this.groups();
         const map = new Map<string, LoadForceEntry[]>();
@@ -347,53 +401,84 @@ export class ForceOrgDialogComponent {
         return map;
     });
 
-    /** Org size name for each OrgGroup, keyed by group id. */
-    protected orgGroupOrgNames = computed(() => {
-        const descendants = this.descendantForcesMap();
+    /** Faction IDs for all groups, computed as a signal. */
+    private groupFactionIds = computed<Map<string, number | undefined>>(() =>
+        this.computeAllGroupFactionIds(this.placedForces(), this.groups(), this.descendantForcesMap()),
+    );
+
+    /** Preview descendants map: augments base with extra entries along the chain. */
+    private previewDescendantsMap = computed<Map<string, LoadForceEntry[]>>(() => {
+        const extra = this.previewExtraForces();
+        if (!extra) return this.descendantForcesMap();
         const groups = this.groups();
-        const placed = this.placedForces();
-        const result = new Map<string, string>();
-        for (const [groupId, entries] of descendants) {
-            if (entries.length === 0) continue;
-            const factionName = FormationNamerUtil.getDominantFactionName(
-                entries,
-                (id) => this.getFactionName(id),
-            );
-            result.set(groupId, this.computeHierarchicalOrgName(groupId, entries, groups, placed, factionName));
+        const result = new Map(this.descendantForcesMap());
+        const visited = new Set<string>();
+        let currentId: string | null = extra.targetGroupId;
+        while (currentId && !visited.has(currentId)) {
+            visited.add(currentId);
+            const existing = result.get(currentId) ?? [];
+            result.set(currentId, [...existing, ...extra.entries]);
+            const group = groups.find(g => g.id === currentId);
+            currentId = group?.parentGroupId ?? null;
         }
         return result;
     });
 
-    /** Dominant faction ID for each OrgGroup, keyed by group id. */
-    protected orgGroupFactionIds = computed(() => {
-        const groups = this.groups();
-        const placed = this.placedForces();
-        const descendantsMap = this.descendantForcesMap();
-        const result = new Map<string, number | undefined>();
-        for (const group of groups) {
-            this.computeGroupFactionId(group.id, placed, groups, descendantsMap, result);
-        }
-        return result;
+    /** Preview faction IDs: includes extra forces from drag preview. */
+    private previewFactionIds = computed<Map<string, number | undefined>>(() => {
+        const extra = this.previewExtraForces();
+        if (!extra) return this.groupFactionIds();
+        return this.computeAllGroupFactionIds(
+            this.placedForces(), this.groups(), this.previewDescendantsMap(), extra,
+        );
     });
 
-    /** Total BV/PV for each OrgGroup, keyed by group id. */
-    protected orgGroupTotals = computed(() => {
-        const descendants = this.descendantForcesMap();
-        const result = new Map<string, string>();
-        for (const [groupId, entries] of descendants) {
-            if (entries.length === 0) continue;
-            let totalBv = 0;
-            let totalPv = 0;
-            for (const e of entries) {
-                if (e.bv && e.bv > 0) totalBv += e.bv;
-                if (e.pv && e.pv > 0) totalPv += e.pv;
+    /** Preview group info for the target group and its ancestor chain. */
+    protected previewGroupInfo = computed<Map<string, { orgName: string; totals: string; factionId: number | undefined }>>(() => {
+        const extra = this.previewExtraForces();
+        if (!extra) return new Map();
+        const groups = this.groups();
+        const placed = this.placedForces();
+        const previewDescendants = this.previewDescendantsMap();
+        const previewFactions = this.previewFactionIds();
+        const result = new Map<string, { orgName: string; totals: string; factionId: number | undefined }>();
+        const visited = new Set<string>();
+        let currentId: string | null = extra.targetGroupId;
+        while (currentId && !visited.has(currentId)) {
+            visited.add(currentId);
+            const entries = previewDescendants.get(currentId) ?? [];
+            const group = groups.find(g => g.id === currentId);
+            if (entries.length > 0 && group) {
+                const orgResult = this.computeHierarchicalOrgResult(group, entries, groups, placed, previewDescendants);
+                result.set(currentId, { orgName: orgResult.name, totals: formatTotals(entries), factionId: previewFactions.get(currentId) });
             }
-            const parts: string[] = [];
-            if (totalBv > 0) parts.push(`BV: ${totalBv.toLocaleString()}`);
-            if (totalPv > 0) parts.push(`PV: ${totalPv.toLocaleString()}`);
-            if (parts.length > 0) result.set(groupId, parts.join(' · '));
+            currentId = group?.parentGroupId ?? null;
         }
         return result;
+    });
+
+    /** Effect that syncs computed org metadata onto each OrgGroup's signals. */
+    private orgGroupDataEffect = effect(() => {
+        const placed = this.placedForces();
+        const groups = this.groups();
+        const descendantsMap = this.descendantForcesMap();
+        const factionIds = this.groupFactionIds();
+
+        // First pass: set descendants and factionIds on all groups
+        for (const group of groups) {
+            group.descendants.set(descendantsMap.get(group.id) ?? []);
+            const fid = factionIds.get(group.id);
+            group.factionId.set(fid);
+            group.factionName.set(fid !== undefined ? this.getFactionName(fid) : '');
+        }
+
+        // Second pass: compute orgNames (uses group.factionId() which is now set)
+        for (const group of groups) {
+            const descendants = group.descendants();
+            group.orgName.set(descendants.length > 0
+                ? this.computeHierarchicalOrgResult(group, descendants, groups, placed).name
+                : '');
+        }
     });
 
     /** Collect all forces that are descendants of a group (direct + through child groups). */
@@ -416,35 +501,39 @@ export class ForceOrgDialogComponent {
         return this.groups().some(g => g.parentGroupId === group.id);
     }
 
-    /**
-     * Compute the org size name for a group, using child OrgGroup evaluations
-     * as intermediate groupResults when the group contains child groups.
-     * This ensures that e.g. 3 Companies → Battalion, rather than flattening
-     * all descendant forces into individual Lances and losing the hierarchy.
-     */
-    private computeHierarchicalOrgName(
-        groupId: string,
+    /** Recursively compute the org size result for a group using pre-computed faction IDs. */
+    private computeHierarchicalOrgResult(
+        group: OrgGroup,
         allEntries: LoadForceEntry[],
         groups: OrgGroup[],
         placed: PlacedForce[],
-        factionName: string,
-    ): string {
-        const childGroups = groups.filter(g => g.parentGroupId === groupId);
-        if (childGroups.length === 0) {
-            return FormationNamerUtil.getOrgGroupSizeName(allEntries, factionName);
-        }
-        // Build groupResults from child OrgGroup evaluations + direct forces
+        descendantsOverride?: Map<string, LoadForceEntry[]>,
+    ): GroupSizeResult {
+        const childGroups = groups.filter(g => g.parentGroupId === group.id);
+        const factionName = group.factionName() ?? 'Mercenary';
+
         const childGroupResults: GroupSizeResult[] = [];
         for (const child of childGroups) {
-            const childEntries = this.collectDescendantForces(child.id, placed, groups);
+            const childEntries = descendantsOverride?.get(child.id)
+                ?? this.collectDescendantForces(child.id, placed, groups);
             if (childEntries.length === 0) continue;
-            childGroupResults.push(FormationNamerUtil.getOrgGroupSizeResult(childEntries, factionName));
+            childGroupResults.push(
+                this.computeHierarchicalOrgResult(child, childEntries, groups, placed, descendantsOverride),
+            );
         }
-        const directForces = placed.filter(pf => pf.groupId === groupId);
+
+        // Evaluate direct forces with the determined faction
+        const directForces = placed.filter(pf => pf.groupId === group.id);
         for (const pf of directForces) {
-            childGroupResults.push(FormationNamerUtil.getForceSizeResult(pf.force, factionName));
+            childGroupResults.push(OrgNamerUtil.getOrgFromForce(pf.force, factionName));
         }
-        return FormationNamerUtil.getOrgGroupSizeNameHierarchical(allEntries, childGroupResults, factionName);
+
+        // Leaf case: no child groups
+        if (childGroups.length === 0) {
+            return OrgNamerUtil.getOrgFromForceCollection(allEntries, factionName);
+        }
+
+        return OrgNamerUtil.getOrgFromForceCollection(allEntries, factionName, childGroupResults);
     }
 
     private nextZIndex = 0;
@@ -551,98 +640,98 @@ export class ForceOrgDialogComponent {
         return this.dataService.getFactionById(factionId)?.name ?? 'Mercenary';
     }
 
-    /** Get the dominant faction ID from a set of entries (by total value, then frequency). */
-    private getDominantFactionId(entries: LoadForceEntry[]): number | undefined {
-        const withFaction = entries.filter(e => e.factionId !== undefined);
-        if (withFaction.length === 0) return undefined;
-        // Sum values per faction
-        const valueSums = new Map<number, number>();
-        const counts = new Map<number, number>();
-        for (const e of withFaction) {
-            const fid = e.factionId!;
-            const v = (e.bv && e.bv > 0) ? e.bv : (e.pv ?? 0);
-            valueSums.set(fid, (valueSums.get(fid) ?? 0) + v);
-            counts.set(fid, (counts.get(fid) ?? 0) + 1);
-        }
-        // Pick the faction with the highest total value
-        let bestValue = -1, bestId: number | undefined;
-        for (const [fid, total] of valueSums) {
-            if (total > bestValue) { bestValue = total; bestId = fid; }
-        }
-        if (bestValue > 0 && bestId !== undefined) return bestId;
-        // Fallback: most frequent faction
-        let maxCount = 0, mostFreqId: number | undefined;
-        for (const [fid, count] of counts) {
-            if (count > maxCount) { maxCount = count; mostFreqId = fid; }
-        }
-        return mostFreqId ?? withFaction[0].factionId;
-    }
+
 
     /**
-     * Compute the dominant faction ID for a group hierarchically.
-     * Direct forces contribute their own factionId + value.
-     * Child groups contribute as single entities with their computed factionId + total value.
+     * Compute dominant faction IDs for all groups.
+     * Direct forces contribute their own factionId + BV/PV value.
+     * Child groups contribute as single entities with their recursively-computed factionId + total value.
      */
-    private computeGroupFactionId(
-        groupId: string,
+    private computeAllGroupFactionIds(
         placed: PlacedForce[],
         groups: OrgGroup[],
         descendantsMap: Map<string, LoadForceEntry[]>,
-        cache: Map<string, number | undefined>,
-        extraForces: LoadForceEntry[] = [],
-    ): number | undefined {
-        if (cache.has(groupId)) return cache.get(groupId);
+        extraForces?: { targetGroupId: string; entries: LoadForceEntry[] },
+    ): Map<string, number | undefined> {
+        const result = new Map<string, number | undefined>();
 
-        const childGroups = groups.filter(g => g.parentGroupId === groupId);
-        const valueSums = new Map<number, number>();
-        const counts = new Map<number, number>();
-
-        // Direct forces in this group
-        for (const pf of placed) {
-            if (pf.groupId !== groupId) continue;
-            const fid = pf.force.factionId;
-            if (fid === undefined) continue;
-            const v = (pf.force.bv && pf.force.bv > 0) ? pf.force.bv : (pf.force.pv ?? 0);
-            valueSums.set(fid, (valueSums.get(fid) ?? 0) + v);
-            counts.set(fid, (counts.get(fid) ?? 0) + 1);
+        // Pre-build lookup maps to avoid repeated full-array scans
+        const childGroupsMap = new Map<string, OrgGroup[]>();
+        const directForcesMap = new Map<string, PlacedForce[]>();
+        for (const group of groups) {
+            childGroupsMap.set(group.id, []);
+            directForcesMap.set(group.id, []);
         }
-
-        // Extra forces (for preview computations)
-        for (const e of extraForces) {
-            if (e.factionId === undefined) continue;
-            const v = (e.bv && e.bv > 0) ? e.bv : (e.pv ?? 0);
-            valueSums.set(e.factionId, (valueSums.get(e.factionId) ?? 0) + v);
-            counts.set(e.factionId, (counts.get(e.factionId) ?? 0) + 1);
-        }
-
-        // Child groups as single entities
-        for (const child of childGroups) {
-            const childFactionId = this.computeGroupFactionId(child.id, placed, groups, descendantsMap, cache);
-            if (childFactionId === undefined) continue;
-            const childEntries = descendantsMap.get(child.id) ?? [];
-            let totalValue = 0;
-            for (const e of childEntries) {
-                totalValue += (e.bv && e.bv > 0) ? e.bv : (e.pv ?? 0);
+        for (const group of groups) {
+            if (group.parentGroupId !== null) {
+                childGroupsMap.get(group.parentGroupId)?.push(group);
             }
-            valueSums.set(childFactionId, (valueSums.get(childFactionId) ?? 0) + totalValue);
-            counts.set(childFactionId, (counts.get(childFactionId) ?? 0) + 1);
+        }
+        for (const pf of placed) {
+            if (pf.groupId !== null) {
+                directForcesMap.get(pf.groupId)?.push(pf);
+            }
         }
 
-        let bestValue = -1, bestId: number | undefined;
-        for (const [fid, total] of valueSums) {
-            if (total > bestValue) { bestValue = total; bestId = fid; }
+        const resolve = (groupId: string): number | undefined => {
+            if (result.has(groupId)) return result.get(groupId);
+
+            const valueSums = new Map<number, number>();
+            const counts = new Map<number, number>();
+
+            // Direct forces in this group
+            for (const pf of directForcesMap.get(groupId) ?? []) {
+                const fid = pf.force.factionId;
+                if (fid === undefined) continue;
+                const v = (pf.force.bv && pf.force.bv > 0) ? pf.force.bv : (pf.force.pv ?? 0);
+                valueSums.set(fid, (valueSums.get(fid) ?? 0) + v);
+                counts.set(fid, (counts.get(fid) ?? 0) + 1);
+            }
+
+            // Extra forces (preview: only at the target group)
+            if (extraForces && groupId === extraForces.targetGroupId) {
+                for (const e of extraForces.entries) {
+                    if (e.factionId === undefined) continue;
+                    const v = (e.bv && e.bv > 0) ? e.bv : (e.pv ?? 0);
+                    valueSums.set(e.factionId, (valueSums.get(e.factionId) ?? 0) + v);
+                    counts.set(e.factionId, (counts.get(e.factionId) ?? 0) + 1);
+                }
+            }
+
+            // Child groups as single entities
+            for (const child of childGroupsMap.get(groupId) ?? []) {
+                const childFactionId = resolve(child.id);
+                if (childFactionId === undefined) continue;
+                const childEntries = descendantsMap.get(child.id) ?? [];
+                let totalValue = 0;
+                for (const e of childEntries) {
+                    totalValue += (e.bv && e.bv > 0) ? e.bv : (e.pv ?? 0);
+                }
+                valueSums.set(childFactionId, (valueSums.get(childFactionId) ?? 0) + totalValue);
+                counts.set(childFactionId, (counts.get(childFactionId) ?? 0) + 1);
+            }
+
+            let bestValue = -1, bestId: number | undefined;
+            for (const [fid, total] of valueSums) {
+                if (total > bestValue) { bestValue = total; bestId = fid; }
+            }
+            if (bestValue > 0 && bestId !== undefined) {
+                result.set(groupId, bestId);
+                return bestId;
+            }
+            let maxCount = 0, mostFreqId: number | undefined;
+            for (const [fid, count] of counts) {
+                if (count > maxCount) { maxCount = count; mostFreqId = fid; }
+            }
+            const factionId = mostFreqId;
+            result.set(groupId, factionId);
+            return factionId;
+        };
+
+        for (const group of groups) {
+            resolve(group.id);
         }
-        if (bestValue > 0 && bestId !== undefined) {
-            cache.set(groupId, bestId);
-            return bestId;
-        }
-        let maxCount = 0, mostFreqId: number | undefined;
-        for (const [fid, count] of counts) {
-            if (count > maxCount) { maxCount = count; mostFreqId = fid; }
-        }
-        const factionId = mostFreqId;
-        cache.set(groupId, factionId);
-        return factionId;
+        return result;
     }
 
     protected async previewForce(force: LoadForceEntry): Promise<void> {
@@ -746,18 +835,18 @@ export class ForceOrgDialogComponent {
         this.isDragging.set(true);
         this.forceDragged = false;
         this.dragStartPos = { x: event.clientX, y: event.clientY };
-        this.forceStartPos = { x: pf.x, y: pf.y };
+        this.forceStartPos = { x: pf.x(), y: pf.y() };
         this.bringForceToFront(pf);
         this.addGlobalPointerListeners();
     }
 
     private bringForceToFront(pf: PlacedForce): void {
         const forces = this.placedForces();
-        const currentZ = pf.zIndex;
+        const currentZ = pf.zIndex();
         for (const f of forces) {
-            if (f.zIndex > currentZ) f.zIndex--;
+            if (f.zIndex() > currentZ) f.zIndex.update(v => v - 1);
         }
-        pf.zIndex = forces.length - 1;
+        pf.zIndex.set(forces.length - 1);
         this.nextZIndex = forces.length;
         this.placedForces.set([...forces]);
         this.dirty.set(true);
@@ -771,7 +860,7 @@ export class ForceOrgDialogComponent {
         this.draggedGroup.set(group);
         this.groupDragged = false;
         this.groupDragStartPos = { x: event.clientX, y: event.clientY };
-        this.groupStartPos = { x: group.x, y: group.y };
+        this.groupStartPos = { x: group.x(), y: group.y() };
         this.addGlobalPointerListeners();
     }
 
@@ -797,10 +886,10 @@ export class ForceOrgDialogComponent {
         const newName = await this.dialogsService.prompt(
             'Enter a name for this group:',
             'Rename Group',
-            group.name
+            group.name()
         );
         if (newName !== null) {
-            group.name = newName.trim();
+            group.name.set(newName.trim());
             this.groups.set([...this.groups()]);
             this.dirty.set(true);
         }
@@ -850,23 +939,22 @@ export class ForceOrgDialogComponent {
 
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         for (const m of members) {
-            minX = Math.min(minX, m.x);
-            minY = Math.min(minY, m.y);
-            maxX = Math.max(maxX, m.x + CARD_WIDTH);
-            maxY = Math.max(maxY, m.y + CARD_HEIGHT);
+            minX = Math.min(minX, m.x());
+            minY = Math.min(minY, m.y());
+            maxX = Math.max(maxX, m.x() + CARD_WIDTH);
+            maxY = Math.max(maxY, m.y() + CARD_HEIGHT);
         }
         for (const cg of childGroups) {
-            minX = Math.min(minX, cg.x);
-            minY = Math.min(minY, cg.y);
-            maxX = Math.max(maxX, cg.x + cg.width);
-            maxY = Math.max(maxY, cg.y + cg.height);
+            minX = Math.min(minX, cg.x());
+            minY = Math.min(minY, cg.y());
+            maxX = Math.max(maxX, cg.x() + cg.width());
+            maxY = Math.max(maxY, cg.y() + cg.height());
         }
 
-        group.x = minX - GROUP_PADDING;
-        group.y = minY - GROUP_PADDING - GROUP_HEADER_HEIGHT;
-        group.width = (maxX - minX) + GROUP_PADDING * 2;
-        group.height = (maxY - minY) + GROUP_PADDING * 2 + GROUP_HEADER_HEIGHT;
-        this.groups.set([...this.groups()]);
+        group.x.set(minX - GROUP_PADDING);
+        group.y.set(minY - GROUP_PADDING - GROUP_HEADER_HEIGHT);
+        group.width.set((maxX - minX) + GROUP_PADDING * 2);
+        group.height.set((maxY - minY) + GROUP_PADDING * 2 + GROUP_HEADER_HEIGHT);
 
         // Recurse up: re-layout parent so siblings are repositioned
         if (group.parentGroupId) {
@@ -881,33 +969,35 @@ export class ForceOrgDialogComponent {
     }
 
     private forceRect(pf: PlacedForce): Rect {
-        return { x: pf.x, y: pf.y, width: CARD_WIDTH, height: CARD_HEIGHT };
+        return { x: pf.x(), y: pf.y(), width: CARD_WIDTH, height: CARD_HEIGHT };
+    }
+
+    private groupRect(group: OrgGroup): Rect {
+        return { x: group.x(), y: group.y(), width: group.width(), height: group.height() };
     }
 
     /** Compute the preview rect + header info for a new group encompassing two rects. */
-    private computeGroupPreview(a: Rect, b: Rect, entries: LoadForceEntry[]): GroupPreview {
+    /** Compute full preview including org metadata (used on first overlap). */
+    private computeGroupPreview(a: Rect, b: Rect, entries: LoadForceEntry[], childGroupResults?: GroupSizeResult[]): GroupPreview {
+        const factionName = OrgNamerUtil.getDominantFactionName(entries, id => this.getFactionName(id));
+        const orgName = OrgNamerUtil.getOrgFromForceCollection(entries, factionName, childGroupResults).name;
+        const totals = formatTotals(entries);
+        const factionId = OrgNamerUtil.getDominantFactionId(entries);
+        this.previewOrgCache = { orgName, totals, factionId };
+        return { ...this.computeGroupPreviewRect(a, b), orgName, totals, factionId };
+    }
+
+    /** Compute only the rect geometry for the preview (used on subsequent frames with same target). */
+    private computeGroupPreviewRect(a: Rect, b: Rect): Rect {
         const minX = Math.min(a.x, b.x);
         const minY = Math.min(a.y, b.y);
         const maxX = Math.max(a.x + a.width, b.x + b.width);
         const maxY = Math.max(a.y + a.height, b.y + b.height);
-        const factionName = FormationNamerUtil.getDominantFactionName(entries, id => this.getFactionName(id));
-        const orgName = FormationNamerUtil.getOrgGroupSizeName(entries, factionName);
-        let totalBv = 0, totalPv = 0;
-        for (const e of entries) {
-            if (e.bv && e.bv > 0) totalBv += e.bv;
-            if (e.pv && e.pv > 0) totalPv += e.pv;
-        }
-        const parts: string[] = [];
-        if (totalBv > 0) parts.push(`BV: ${totalBv.toLocaleString()}`);
-        if (totalPv > 0) parts.push(`PV: ${totalPv.toLocaleString()}`);
         return {
             x: minX - GROUP_PADDING,
             y: minY - GROUP_PADDING - GROUP_HEADER_HEIGHT,
             width: (maxX - minX) + GROUP_PADDING * 2,
             height: (maxY - minY) + GROUP_PADDING * 2 + GROUP_HEADER_HEIGHT,
-            orgName,
-            totals: parts.join(' · '),
-            factionId: this.getDominantFactionId(entries),
         };
     }
 
@@ -919,8 +1009,8 @@ export class ForceOrgDialogComponent {
         if (pf.groupId) {
             const ownGroup = this.groups().find(g => g.id === pf.groupId);
             if (ownGroup) {
-                const cursorInside = cursorWorld.x >= ownGroup.x && cursorWorld.x <= ownGroup.x + ownGroup.width &&
-                                     cursorWorld.y >= ownGroup.y && cursorWorld.y <= ownGroup.y + ownGroup.height;
+                const cursorInside = cursorWorld.x >= ownGroup.x() && cursorWorld.x <= ownGroup.x() + ownGroup.width() &&
+                                     cursorWorld.y >= ownGroup.y() && cursorWorld.y <= ownGroup.y() + ownGroup.height();
                 if (cursorInside) {
                     // Cursor is still inside own group — stay in group, just re-layout
                     return null;
@@ -939,7 +1029,7 @@ export class ForceOrgDialogComponent {
 
         // Ungrouped force: check overlap with existing groups
         for (const group of this.groups()) {
-            if (this.rectsOverlap(pfRect, group)) {
+            if (this.rectsOverlap(pfRect, this.groupRect(group))) {
                 return { type: 'join-group', groupId: group.id };
             }
         }
@@ -958,16 +1048,17 @@ export class ForceOrgDialogComponent {
         // If the group has a parent and the cursor is outside it, treat as leaving
         if (grp.parentGroupId) {
             const parent = this.groups().find(g => g.id === grp.parentGroupId);
-            if (parent && (cursorWorld.x < parent.x || cursorWorld.x > parent.x + parent.width ||
-                           cursorWorld.y < parent.y || cursorWorld.y > parent.y + parent.height)) {
+            if (parent && (cursorWorld.x < parent.x() || cursorWorld.x > parent.x() + parent.width() ||
+                           cursorWorld.y < parent.y() || cursorWorld.y > parent.y() + parent.height())) {
                 return null; // Will be handled as leave-parent in pointerUp
             }
         }
+        const grpRect = this.groupRect(grp);
         for (const other of this.groups()) {
             if (other.id === grp.id) continue;
             if (this.isDescendantOf(other, grp.id)) continue;
             if (other.id === grp.parentGroupId) continue;
-            if (!this.rectsOverlap(grp, other)) continue;
+            if (!this.rectsOverlap(grpRect, this.groupRect(other))) continue;
             const otherHasChildren = this.groups().some(g => g.parentGroupId === other.id);
             if (otherHasChildren && grp.parentGroupId !== other.id) {
                 return { type: 'join-parent', groupId: other.id };
@@ -978,7 +1069,7 @@ export class ForceOrgDialogComponent {
             if (other.parentGroupId !== grp.parentGroupId) continue;
             if (this.isDescendantOf(other, grp.id)) continue;
             if (this.isDescendantOf(grp, other.id)) continue;
-            if (!this.rectsOverlap(grp, other)) continue;
+            if (!this.rectsOverlap(grpRect, this.groupRect(other))) continue;
             if (grp.parentGroupId !== null) {
                 return { type: 'rearrange', parentId: grp.parentGroupId };
             }
@@ -988,88 +1079,36 @@ export class ForceOrgDialogComponent {
     }
 
     private clearDropPreview(): void {
-        this.dropTargetGroupId.set(null);
-        this.dropPreviewRect.set(null);
-        this.previewGroupInfo.set(new Map());
-    }
-
-    /**
-     * Compute preview org names, totals and faction IDs for a target group and all its
-     * ancestors, as if extraEntries were added to the target group.
-     */
-    private computeGroupChainPreview(targetGroupId: string, extraEntries: LoadForceEntry[]): Map<string, { orgName: string; totals: string; factionId: number | undefined }> {
-        const result = new Map<string, { orgName: string; totals: string; factionId: number | undefined }>();
-        const groups = this.groups();
-        const placed = this.placedForces();
-        const visited = new Set<string>();
-
-        // Collect the chain from target upward
-        const chain: string[] = [];
-        let currentId: string | null = targetGroupId;
-        while (currentId && !visited.has(currentId)) {
-            visited.add(currentId);
-            chain.push(currentId);
-            const group = groups.find(g => g.id === currentId);
-            currentId = group?.parentGroupId ?? null;
-        }
-
-        // Build a preview descendantsMap that includes extra entries for chain groups
-        const descendantsMap = this.descendantForcesMap();
-        const previewDescendants = new Map(descendantsMap);
-        for (const groupId of chain) {
-            const existing = previewDescendants.get(groupId) ?? [];
-            previewDescendants.set(groupId, [...existing, ...extraEntries]);
-        }
-
-        // Pre-populate faction cache with committed factions for groups NOT in the chain
-        const chainSet = new Set(chain);
-        const committedFactions = this.orgGroupFactionIds();
-        const factionCache = new Map<string, number | undefined>();
-        for (const [id, fid] of committedFactions) {
-            if (!chainSet.has(id)) factionCache.set(id, fid);
-        }
-
-        // Process bottom-up through the chain (target first, then ancestors)
-        for (const groupId of chain) {
-            const entries = previewDescendants.get(groupId) ?? [];
-            if (entries.length === 0) continue;
-
-            // Compute faction hierarchically, adding extra entries as direct forces at the target
-            const extras = groupId === targetGroupId ? extraEntries : [];
-            this.computeGroupFactionId(groupId, placed, groups, previewDescendants, factionCache, extras);
-            const factionId = factionCache.get(groupId);
-
-            const factionName = FormationNamerUtil.getDominantFactionName(entries, id => this.getFactionName(id));
-            const orgName = this.computeHierarchicalOrgName(groupId, entries, groups, placed, factionName);
-            let totalBv = 0, totalPv = 0;
-            for (const e of entries) {
-                if (e.bv && e.bv > 0) totalBv += e.bv;
-                if (e.pv && e.pv > 0) totalPv += e.pv;
-            }
-            const parts: string[] = [];
-            if (totalBv > 0) parts.push(`BV: ${totalBv.toLocaleString()}`);
-            if (totalPv > 0) parts.push(`PV: ${totalPv.toLocaleString()}`);
-            result.set(groupId, { orgName, totals: parts.join(' · '), factionId });
-        }
-        return result;
+        if (this.dropTargetGroupId() !== null) this.dropTargetGroupId.set(null);
+        if (this.dropPreviewRect() !== null) this.dropPreviewRect.set(null);
+        if (this.previewExtraForces() !== null) this.previewExtraForces.set(null);
+        this.previewOtherId = null;
+        this.previewOrgCache = null;
     }
 
     /** Update preview state for a sidebar drag at the given world-space rect. */
     private updateSidebarDragPreview(rect: Rect, sidebarForce: LoadForceEntry): void {
         for (const group of this.groups()) {
-            if (this.rectsOverlap(rect, group)) {
+            if (this.rectsOverlap(rect, this.groupRect(group))) {
+                // Skip if already previewing the same group
+                if (this.dropTargetGroupId() === group.id) return;
                 this.dropTargetGroupId.set(group.id);
                 this.dropPreviewRect.set(null);
-                this.previewGroupInfo.set(this.computeGroupChainPreview(group.id, [sidebarForce]));
+                this.previewExtraForces.set({ targetGroupId: group.id, entries: [sidebarForce] });
                 return;
             }
         }
         for (const pf of this.placedForces()) {
             if (pf.groupId) continue;
             if (this.rectsOverlap(rect, this.forceRect(pf))) {
-                this.dropTargetGroupId.set(null);
-                this.dropPreviewRect.set(this.computeGroupPreview(rect, this.forceRect(pf), [sidebarForce, pf.force]));
-                this.previewGroupInfo.set(new Map());
+                if (this.dropTargetGroupId() !== null) this.dropTargetGroupId.set(null);
+                if (this.previewExtraForces() !== null) this.previewExtraForces.set(null);
+                if (this.previewOtherId === pf.force.instanceId && this.previewOrgCache) {
+                    this.dropPreviewRect.set({ ...this.computeGroupPreviewRect(rect, this.forceRect(pf)), ...this.previewOrgCache });
+                } else {
+                    this.previewOtherId = pf.force.instanceId;
+                    this.dropPreviewRect.set(this.computeGroupPreview(rect, this.forceRect(pf), [sidebarForce, pf.force]));
+                }
                 return;
             }
         }
@@ -1077,7 +1116,7 @@ export class ForceOrgDialogComponent {
     }
 
     /** Update preview for a force or group drag action. */
-    private updateDropPreview(action: ForceDropAction | GroupDropAction | null, draggedRect: Rect, otherRect?: Rect, entries?: LoadForceEntry[]): void {
+    private updateDropPreview(action: ForceDropAction | GroupDropAction | null, draggedRect: Rect, otherRect?: Rect, entries?: LoadForceEntry[], childGroupResults?: GroupSizeResult[]): void {
         if (!action) {
             this.clearDropPreview();
             return;
@@ -1085,21 +1124,37 @@ export class ForceOrgDialogComponent {
         switch (action.type) {
             case 'join-group':
             case 'join-parent':
+                // Skip if already previewing the same group
+                if (this.dropTargetGroupId() === action.groupId) break;
+                this.previewOtherId = null;
+                this.previewOrgCache = null;
                 this.dropTargetGroupId.set(action.groupId);
                 this.dropPreviewRect.set(null);
-                this.previewGroupInfo.set(this.computeGroupChainPreview(action.groupId, entries ?? []));
+                this.previewExtraForces.set({ targetGroupId: action.groupId, entries: entries ?? [] });
                 break;
             case 'rearrange':
+                this.previewOtherId = null;
+                this.previewOrgCache = null;
                 this.dropTargetGroupId.set(action.parentId);
                 this.dropPreviewRect.set(null);
-                this.previewGroupInfo.set(new Map());
+                this.previewExtraForces.set(null);
                 break;
             case 'new-group':
-            case 'create-parent':
-                this.dropTargetGroupId.set(null);
-                this.dropPreviewRect.set(this.computeGroupPreview(draggedRect, otherRect!, entries ?? []));
-                this.previewGroupInfo.set(new Map());
+            case 'create-parent': {
+                const otherId = action.type === 'new-group'
+                    ? (action as { type: 'new-group'; other: PlacedForce }).other.force.instanceId
+                    : (action as { type: 'create-parent'; other: OrgGroup }).other.id;
+                if (this.dropTargetGroupId() !== null) this.dropTargetGroupId.set(null);
+                if (this.previewExtraForces() !== null) this.previewExtraForces.set(null);
+                if (this.previewOtherId === otherId && this.previewOrgCache) {
+                    // Same target — only update geometry
+                    this.dropPreviewRect.set({ ...this.computeGroupPreviewRect(draggedRect, otherRect!), ...this.previewOrgCache });
+                } else {
+                    this.previewOtherId = otherId;
+                    this.dropPreviewRect.set(this.computeGroupPreview(draggedRect, otherRect!, entries ?? [], childGroupResults));
+                }
                 break;
+            }
             default:
                 this.clearDropPreview();
         }
@@ -1125,18 +1180,13 @@ export class ForceOrgDialogComponent {
             }
             case 'new-group': {
                 const oldGroup = draggedPf.groupId ? this.groups().find(g => g.id === draggedPf.groupId) : null;
-                const anchorX = Math.min(draggedPf.x, action.other.x);
-                const anchorY = Math.min(draggedPf.y, action.other.y);
-                const group: OrgGroup = {
-                    id: crypto.randomUUID(),
-                    name: '',
-                    x: 0, y: 0,
-                    width: 0, height: 0,
+                const anchorX = Math.min(draggedPf.x(), action.other.x());
+                const anchorY = Math.min(draggedPf.y(), action.other.y());
+                const group = new OrgGroup({
                     zIndex: this.nextGroupZIndex++,
-                    parentGroupId: null,
                     anchorX,
                     anchorY,
-                };
+                });
                 draggedPf.groupId = group.id;
                 action.other.groupId = group.id;
                 this.groups.set([...this.groups(), group]);
@@ -1170,34 +1220,34 @@ export class ForceOrgDialogComponent {
         const items: { x: number; y: number; w: number; h: number; apply: (x: number, y: number) => void }[] = [];
         // Direct force members
         for (const pf of this.placedForces().filter(f => f.groupId === group.id)) {
-            items.push({ x: pf.x, y: pf.y, w: CARD_WIDTH, h: CARD_HEIGHT, apply: (nx, ny) => { pf.x = nx; pf.y = ny; } });
+            items.push({ x: pf.x(), y: pf.y(), w: CARD_WIDTH, h: CARD_HEIGHT, apply: (nx, ny) => { pf.x.set(nx); pf.y.set(ny); } });
         }
         // Direct child groups
         for (const cg of this.groups().filter(g => g.parentGroupId === group.id)) {
             const capturedGroup = cg;
-            items.push({ x: cg.x, y: cg.y, w: cg.width, h: cg.height, apply: (nx, ny) => { this.moveGroupTo(capturedGroup, nx, ny); } });
+            items.push({ x: cg.x(), y: cg.y(), w: cg.width(), h: cg.height(), apply: (nx, ny) => { this.moveGroupTo(capturedGroup, nx, ny); } });
         }
         return items;
     }
 
     /** Move a group and all its descendants by the delta from old to new position. */
     private moveGroupTo(group: OrgGroup, newX: number, newY: number): void {
-        const dx = newX - group.x;
-        const dy = newY - group.y;
+        const dx = newX - group.x();
+        const dy = newY - group.y();
         if (dx === 0 && dy === 0) return;
         this.translateGroupRecursive(group, dx, dy);
     }
 
     /** Recursively translate a group and all descendants. */
     private translateGroupRecursive(group: OrgGroup, dx: number, dy: number): void {
-        group.x += dx;
-        group.y += dy;
-        group.anchorX += dx;
-        group.anchorY += dy;
+        group.x.update(v => v + dx);
+        group.y.update(v => v + dy);
+        group.anchorX.update(v => v + dx);
+        group.anchorY.update(v => v + dy);
         for (const pf of this.placedForces()) {
             if (pf.groupId === group.id) {
-                pf.x += dx;
-                pf.y += dy;
+                pf.x.update(v => v + dx);
+                pf.y.update(v => v + dy);
             }
         }
         for (const child of this.groups()) {
@@ -1251,8 +1301,8 @@ export class ForceOrgDialogComponent {
         }
 
         // Use group anchor as layout origin
-        const anchorX = group.anchorX;
-        const anchorY = group.anchorY;
+        const anchorX = group.anchorX();
+        const anchorY = group.anchorY();
 
         // Assign grid positions row by row
         let currentY = anchorY;
@@ -1267,7 +1317,6 @@ export class ForceOrgDialogComponent {
             currentY += maxH + CARD_GAP;
         }
 
-        this.placedForces.set([...this.placedForces()]);
         this.recalcGroupBounds(group);
     }
 
@@ -1309,18 +1358,14 @@ export class ForceOrgDialogComponent {
                 return;
             }
             case 'create-parent': {
-                const anchorX = Math.min(draggedGrp.x, action.other.x) + GROUP_PADDING;
-                const anchorY = Math.min(draggedGrp.y, action.other.y) + GROUP_PADDING + GROUP_HEADER_HEIGHT;
-                const parentGroup: OrgGroup = {
-                    id: crypto.randomUUID(),
-                    name: '',
-                    x: 0, y: 0,
-                    width: 0, height: 0,
+                const anchorX = Math.min(draggedGrp.x(), action.other.x()) + GROUP_PADDING;
+                const anchorY = Math.min(draggedGrp.y(), action.other.y()) + GROUP_PADDING + GROUP_HEADER_HEIGHT;
+                const parentGroup = new OrgGroup({
                     zIndex: this.nextGroupZIndex++,
                     parentGroupId: draggedGrp.parentGroupId,
                     anchorX,
                     anchorY,
-                };
+                });
                 draggedGrp.parentGroupId = parentGroup.id;
                 action.other.parentGroupId = parentGroup.id;
                 this.groups.set([...this.groups(), parentGroup]);
@@ -1378,18 +1423,6 @@ export class ForceOrgDialogComponent {
             touches[1].clientY - touches[0].clientY
         );
         this.pinchStartZoom = this.zoom();
-    }
-
-    private screenToWorld(screenX: number, screenY: number): { x: number; y: number } {
-        const svg = this.svgCanvas()?.nativeElement;
-        if (!svg) return { x: screenX, y: screenY };
-        const rect = svg.getBoundingClientRect();
-        const offset = this.viewOffset();
-        const scale = this.zoom();
-        return {
-            x: (screenX - rect.left - offset.x) / scale,
-            y: (screenY - rect.top - offset.y) / scale
-        };
     }
 
     // ==================== Global Pointer Handlers ====================
@@ -1466,14 +1499,6 @@ export class ForceOrgDialogComponent {
         });
     };
 
-    private getScaledDelta(event: PointerEvent, startPos: { x: number; y: number }): { dx: number; dy: number } {
-        const scale = this.zoom();
-        return {
-            dx: (event.clientX - startPos.x) / scale,
-            dy: (event.clientY - startPos.y) / scale,
-        };
-    }
-
     private processPointerMove(event: PointerEvent): void {
         // Sidebar drag
         if (this.sidebarDragActive()) {
@@ -1503,18 +1528,24 @@ export class ForceOrgDialogComponent {
         if (dragged) {
             const { dx, dy } = this.getScaledDelta(event, this.dragStartPos);
             if (Math.abs(dx) > 3 || Math.abs(dy) > 3) this.forceDragged = true;
-            dragged.x = this.forceStartPos.x + dx;
-            dragged.y = this.forceStartPos.y + dy;
-            this.placedForces.set([...this.placedForces()]);
+            dragged.x.set(this.forceStartPos.x + dx);
+            dragged.y.set(this.forceStartPos.y + dy);
             // Update drop preview
             const cursorWorld = this.screenToWorld(event.clientX, event.clientY);
             const forceAction = this.detectForceDrop(dragged, cursorWorld);
             const otherRect = forceAction?.type === 'new-group' ? this.forceRect(forceAction.other) : undefined;
-            const entries = forceAction?.type === 'new-group'
-                ? [dragged.force, forceAction.other.force]
-                : forceAction?.type === 'join-group'
-                    ? [dragged.force]
-                    : undefined;
+            // Skip building entries if still overlapping the same target
+            const forceOtherId = forceAction?.type === 'new-group' ? forceAction.other.force.instanceId
+                : forceAction?.type === 'join-group' ? forceAction.groupId
+                : null;
+            let entries: LoadForceEntry[] | undefined;
+            if (forceOtherId !== this.previewOtherId || !this.previewOrgCache) {
+                entries = forceAction?.type === 'new-group'
+                    ? [dragged.force, forceAction.other.force]
+                    : forceAction?.type === 'join-group'
+                        ? [dragged.force]
+                        : undefined;
+            }
             this.updateDropPreview(forceAction, this.forceRect(dragged), otherRect, entries);
             return;
         }
@@ -1526,24 +1557,44 @@ export class ForceOrgDialogComponent {
             if (Math.abs(dx) > 3 || Math.abs(dy) > 3) this.groupDragged = true;
             const newX = this.groupStartPos.x + dx;
             const newY = this.groupStartPos.y + dy;
-            const moveDx = newX - draggedGrp.x;
-            const moveDy = newY - draggedGrp.y;
+            const moveDx = newX - draggedGrp.x();
+            const moveDy = newY - draggedGrp.y();
 
             // Move group and all descendants
             this.translateGroupRecursive(draggedGrp, moveDx, moveDy);
 
-            this.groups.set([...this.groups()]);
-            this.placedForces.set([...this.placedForces()]);
             // Update drop preview
             const grpCursorWorld = this.screenToWorld(event.clientX, event.clientY);
             const grpAction = this.detectGroupDrop(draggedGrp, grpCursorWorld);
-            const grpOtherRect = grpAction?.type === 'create-parent' ? grpAction.other as Rect : undefined;
-            const grpEntries = grpAction?.type === 'create-parent'
-                ? [...this.collectDescendantForces(draggedGrp.id, this.placedForces(), this.groups()), ...this.collectDescendantForces(grpAction.other.id, this.placedForces(), this.groups())]
-                : (grpAction?.type === 'join-parent'
-                    ? this.collectDescendantForces(draggedGrp.id, this.placedForces(), this.groups())
-                    : undefined);
-            this.updateDropPreview(grpAction, draggedGrp, grpOtherRect, grpEntries);
+            const grpOtherRect = grpAction?.type === 'create-parent' ? this.groupRect(grpAction.other) : undefined;
+            // Skip expensive org computation if still overlapping the same target
+            const grpOtherId = grpAction?.type === 'create-parent' ? grpAction.other.id
+                : grpAction?.type === 'join-parent' ? grpAction.groupId
+                : null;
+            let grpEntries: LoadForceEntry[] | undefined;
+            let grpChildGroupResults: GroupSizeResult[] | undefined;
+            const needsOrgRecompute = grpOtherId !== this.previewOtherId || !this.previewOrgCache;
+            if (needsOrgRecompute) {
+                const currentPlaced = this.placedForces();
+                const currentGroups = this.groups();
+                grpEntries = grpAction?.type === 'create-parent'
+                    ? [...this.collectDescendantForces(draggedGrp.id, currentPlaced, currentGroups), ...this.collectDescendantForces(grpAction.other.id, currentPlaced, currentGroups)]
+                    : (grpAction?.type === 'join-parent'
+                        ? this.collectDescendantForces(draggedGrp.id, currentPlaced, currentGroups)
+                        : undefined);
+                if (grpAction?.type === 'create-parent') {
+                    const draggedEntries = this.collectDescendantForces(draggedGrp.id, currentPlaced, currentGroups);
+                    const otherEntries = this.collectDescendantForces(grpAction.other.id, currentPlaced, currentGroups);
+                    grpChildGroupResults = [];
+                    if (draggedEntries.length > 0) {
+                        grpChildGroupResults.push(this.computeHierarchicalOrgResult(draggedGrp, draggedEntries, currentGroups, currentPlaced));
+                    }
+                    if (otherEntries.length > 0) {
+                        grpChildGroupResults.push(this.computeHierarchicalOrgResult(grpAction.other, otherEntries, currentGroups, currentPlaced));
+                    }
+                }
+            }
+            this.updateDropPreview(grpAction, this.groupRect(draggedGrp), grpOtherRect, grpEntries, grpChildGroupResults);
             return;
         }
 
@@ -1608,9 +1659,9 @@ export class ForceOrgDialogComponent {
                             event.clientY >= rect.top && event.clientY <= rect.bottom) {
                             const newPlaced: PlacedForce = {
                                 force,
-                                x: worldPos.x - CARD_WIDTH / 2,
-                                y: worldPos.y - CARD_HEIGHT / 2,
-                                zIndex: this.nextZIndex++,
+                                x: signal(worldPos.x - CARD_WIDTH / 2),
+                                y: signal(worldPos.y - CARD_HEIGHT / 2),
+                                zIndex: signal(this.nextZIndex++),
                                 groupId: null
                             };
                             this.placedForces.set([...this.placedForces(), newPlaced]);
@@ -1655,8 +1706,8 @@ export class ForceOrgDialogComponent {
                     const parent = this.groups().find(g => g.id === dragEndGroup.parentGroupId);
                     const dropWorld = this.screenToWorld(event.clientX, event.clientY);
                     const pointerOutside = parent && (
-                        dropWorld.x < parent.x || dropWorld.x > parent.x + parent.width ||
-                        dropWorld.y < parent.y || dropWorld.y > parent.y + parent.height
+                        dropWorld.x < parent.x() || dropWorld.x > parent.x() + parent.width() ||
+                        dropWorld.y < parent.y() || dropWorld.y > parent.y() + parent.height()
                     );
                     if (parent && pointerOutside) {
                         dragEndGroup.parentGroupId = null;
@@ -1712,22 +1763,22 @@ export class ForceOrgDialogComponent {
                 factionId: this.organizationFactionId(),
                 forces: this.placedForces().map(pf => ({
                     instanceId: pf.force.instanceId,
-                    x: pf.x,
-                    y: pf.y,
-                    zIndex: pf.zIndex,
+                    x: pf.x(),
+                    y: pf.y(),
+                    zIndex: pf.zIndex(),
                     groupId: pf.groupId,
                 } as OrgPlacedForce)),
                 groups: this.groups().map(g => ({
                     id: g.id,
-                    name: g.name,
-                    x: g.x,
-                    y: g.y,
-                    width: g.width,
-                    height: g.height,
-                    zIndex: g.zIndex,
+                    name: g.name(),
+                    x: g.x(),
+                    y: g.y(),
+                    width: g.width(),
+                    height: g.height(),
+                    zIndex: g.zIndex(),
                     parentGroupId: g.parentGroupId,
-                    anchorX: g.anchorX,
-                    anchorY: g.anchorY,
+                    anchorX: g.anchorX(),
+                    anchorY: g.anchorY(),
                 } as OrgGroupData)),
             };
 
@@ -1768,9 +1819,9 @@ export class ForceOrgDialogComponent {
                 if (force) {
                     placed.push({
                         force,
-                        x: pf.x,
-                        y: pf.y,
-                        zIndex: pf.zIndex,
+                        x: signal(pf.x),
+                        y: signal(pf.y),
+                        zIndex: signal(pf.zIndex),
                         groupId: pf.groupId,
                     });
                 }
@@ -1778,7 +1829,7 @@ export class ForceOrgDialogComponent {
             this.placedForces.set(placed);
 
             // Restore groups
-            const groups: OrgGroup[] = org.groups.map(g => ({
+            const groups: OrgGroup[] = org.groups.map(g => new OrgGroup({
                 id: g.id,
                 name: g.name,
                 x: g.x,
@@ -1797,8 +1848,8 @@ export class ForceOrgDialogComponent {
             this.organizationName.set(org.name);
 
             // Update zIndex counters
-            this.nextZIndex = placed.reduce((max, pf) => Math.max(max, pf.zIndex + 1), 0);
-            this.nextGroupZIndex = groups.reduce((max, g) => Math.max(max, g.zIndex + 1), 0);
+            this.nextZIndex = placed.reduce((max, pf) => Math.max(max, pf.zIndex() + 1), 0);
+            this.nextGroupZIndex = groups.reduce((max, g) => Math.max(max, g.zIndex() + 1), 0);
 
             // Auto-fit viewport to show all content centered
             requestAnimationFrame(() => this.autoFitView());
@@ -1833,16 +1884,16 @@ export class ForceOrgDialogComponent {
         // Calculate bounding box of all content
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         for (const pf of forces) {
-            minX = Math.min(minX, pf.x);
-            minY = Math.min(minY, pf.y);
-            maxX = Math.max(maxX, pf.x + CARD_WIDTH);
-            maxY = Math.max(maxY, pf.y + CARD_HEIGHT);
+            minX = Math.min(minX, pf.x());
+            minY = Math.min(minY, pf.y());
+            maxX = Math.max(maxX, pf.x() + CARD_WIDTH);
+            maxY = Math.max(maxY, pf.y() + CARD_HEIGHT);
         }
         for (const g of groups) {
-            minX = Math.min(minX, g.x);
-            minY = Math.min(minY, g.y);
-            maxX = Math.max(maxX, g.x + g.width);
-            maxY = Math.max(maxY, g.y + g.height);
+            minX = Math.min(minX, g.x());
+            minY = Math.min(minY, g.y());
+            maxX = Math.max(maxX, g.x() + g.width());
+            maxY = Math.max(maxY, g.y() + g.height());
         }
 
         const contentWidth = maxX - minX;
@@ -1869,5 +1920,27 @@ export class ForceOrgDialogComponent {
 
         this.zoom.set(clampedZoom);
         this.viewOffset.set({ x: offsetX, y: offsetY });
+    }
+
+    // ==================== Utility ====================
+
+    private getScaledDelta(event: PointerEvent, startPos: { x: number; y: number }): { dx: number; dy: number } {
+        const scale = this.zoom();
+        return {
+            dx: (event.clientX - startPos.x) / scale,
+            dy: (event.clientY - startPos.y) / scale,
+        };
+    }
+
+    private screenToWorld(screenX: number, screenY: number): { x: number; y: number } {
+        const svg = this.svgCanvas()?.nativeElement;
+        if (!svg) return { x: screenX, y: screenY };
+        const rect = svg.getBoundingClientRect();
+        const offset = this.viewOffset();
+        const scale = this.zoom();
+        return {
+            x: (screenX - rect.left - offset.x) / scale,
+            y: (screenY - rect.top - offset.y) / scale
+        };
     }
 }

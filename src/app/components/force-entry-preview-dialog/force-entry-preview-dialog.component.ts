@@ -45,11 +45,11 @@ import { DialogsService } from '../../services/dialogs.service';
 import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { Unit } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
-import { FormationNamerUtil } from '../../utils/formation-namer.util';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { ToastService } from '../../services/toast.service';
 import { ForceAddModePickerData, ForceAddModePickerDialogComponent, ForceAddModePickerResult } from '../force-add-mode-picker-dialog/force-add-mode-picker-dialog.component';
 import { firstValueFrom } from 'rxjs';
+import { OrgNamerUtil } from '../../utils/org-namer.util';
 
 export interface ForceEntryPreviewDialogData {
     force: LoadForceEntry;
@@ -98,10 +98,10 @@ export class ForceEntryPreviewDialogComponent {
             ? (this.dataService.getFactionById(this.force.factionId)?.name ?? 'Mercenary')
             : 'Mercenary';
         const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
-        const techBase = isComStarOrWoB ? '' : FormationNamerUtil.deriveTechBase(this.allUnits);
+        const techBase = isComStarOrWoB ? '' : OrgNamerUtil.deriveTechBase(this.allUnits);
 
         this.groupDisplayData = this.force.groups.map(group => {
-            const sizeResult = FormationNamerUtil.getFormationSizeResult(group, factionName, techBase);
+            const sizeResult = OrgNamerUtil.getOrgFromGroup(group, factionName, techBase);
             const orgName = (sizeResult.name && sizeResult.name !== 'Force') ? sizeResult.name : null;
 
             let name: string;
@@ -122,9 +122,9 @@ export class ForceEntryPreviewDialogComponent {
             return { group, name, orgName, formationName };
         });
 
-        const forceResult = FormationNamerUtil.getForceSizeName(this.force, factionName);
-        if (forceResult && forceResult !== 'Force') {
-            this.forceOrgName = forceResult;
+        const forceResult = OrgNamerUtil.getOrgFromForce(this.force, factionName);
+        if (forceResult && forceResult.type) {
+            this.forceOrgName = forceResult.name;
         }
 
         this.isForceLoaded.set(

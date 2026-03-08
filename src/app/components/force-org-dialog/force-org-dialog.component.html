@@ -71,42 +71,45 @@
             @for (group of sortedGroups(); track group.id) {
             <g class="group-container" [class.parent-group]="isParentGroup(group)"
                 [class.drop-target]="dropTargetGroupId() === group.id"
-                [attr.transform]="'translate(' + group.x + ',' + group.y + ')'"
+                [attr.transform]="'translate(' + group.x() + ',' + group.y() + ')'"
                 (pointerdown)="onGroupPointerDown($event, group)">
                 <!-- Group background -->
-                <rect class="group-bg" x="0" y="0" [attr.width]="group.width" [attr.height]="group.height"
+                <rect class="group-bg" x="0" y="0" [attr.width]="group.width()" [attr.height]="group.height()"
                     filter="url(#group-shadow)" />
 
                 <!-- Group border -->
-                <rect class="group-border" x="0" y="0" [attr.width]="group.width" [attr.height]="group.height" />
+                <rect class="group-border" x="0" y="0" [attr.width]="group.width()" [attr.height]="group.height()" />
 
                 <!-- Group header bar -->
-                <rect class="group-header-bg" x="0" y="0" [attr.width]="group.width"
+                <rect class="group-header-bg" x="0" y="0" [attr.width]="group.width()"
                     [attr.height]="GROUP_HEADER_HEIGHT" />
 
                 <!-- Group faction icon -->
-                @if (orgGroupFactionIds().get(group.id) | factionImg; as factionImgUrl) {
+                @if (group.factionId() | factionImg; as factionImgUrl) {
                 <image [attr.href]="factionImgUrl" x="8" y="10" width="28" height="28"
                     preserveAspectRatio="xMidYMid meet" />
                 }
 
                 <!-- Group header info -->
-                <foreignObject [attr.x]="orgGroupFactionIds().has(group.id) ? 40 : 8" y="0"
-                    [attr.width]="group.width - (orgGroupFactionIds().has(group.id) ? 88 : 56)"
+                <foreignObject [attr.x]="group.factionId() !== undefined ? 40 : 8" y="0"
+                    [attr.width]="group.width() - (group.factionId() !== undefined ? 88 : 56)"
                     [attr.height]="GROUP_HEADER_HEIGHT" class="group-name-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="group-header-info">
                         <div class="group-name" (click)="renameGroup(group)" title="Click to rename">
-                            {{ group.name || previewGroupInfo().get(group.id)?.orgName ||
-                            orgGroupOrgNames().get(group.id) }}
+                            {{ group.name() || previewGroupInfo().get(group.id)?.orgName ||
+                            group.orgName() }}
+                            @if (group.factionName(); as fn) {
+                            <span> · {{ fn }}</span>
+                            }
                         </div>
                         <div class="group-data">
-                            @if (group.name && (previewGroupInfo().get(group.id)?.orgName ||
-                            orgGroupOrgNames().get(group.id)); as orgName) {
+                            @if (group.name() && (previewGroupInfo().get(group.id)?.orgName ||
+                            group.orgName()); as orgName) {
                             <span class="group-org-name">{{ orgName }}</span>
                             }
-                            @if (previewGroupInfo().get(group.id)?.totals || orgGroupTotals().get(group.id); as totals)
+                            @if (previewGroupInfo().get(group.id)?.totals || group.totals(); as totals)
                             {
-                            @if (group.name && (previewGroupInfo().has(group.id) || orgGroupOrgNames().has(group.id))) {
+                            @if (group.name() && (previewGroupInfo().has(group.id) || group.totals())) {
                             · }
                             <span class="group-totals">{{ totals }}</span>
                             }
@@ -115,7 +118,7 @@
                 </foreignObject>
 
                 <!-- Group remove button -->
-                <foreignObject [attr.x]="group.width - 40" y="4" width="32" height="28" class="group-actions-fo">
+                <foreignObject [attr.x]="group.width() - 40" y="4" width="32" height="28" class="group-actions-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="group-actions">
                         <button class="group-remove-btn" (click)="removeGroup(group)" title="Disband group">
                             <svg width="12" height="12" fill="currentColor" viewBox="0 0 1200 1200"
@@ -160,12 +163,13 @@
 
             <!-- Forces layer -->
             @for (pf of sortedPlacedForces(); track pf.force.instanceId) {
+            @let metadata = forcesData().get(pf.force.instanceId);
             <g class="force-card"
                 [class.highlighted-selected]="selectedForceInstanceId() === pf.force.instanceId"
                 [class.highlighted-friendly]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'friendly'"
                 [class.highlighted-enemy]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'enemy'"
                 [attr.data-force-id]="pf.force.instanceId"
-                [attr.transform]="'translate(' + pf.x + ',' + pf.y + ')'" (pointerdown)="onForcePointerDown($event, pf)"
+                [attr.transform]="'translate(' + pf.x() + ',' + pf.y() + ')'" (pointerdown)="onForcePointerDown($event, pf)"
                 (pointerenter)="hoveredForceId.set(pf.force.instanceId)" (pointerleave)="hoveredForceId.set(null)">
 
                 <!-- Card background -->
@@ -184,15 +188,15 @@
                 <!-- Force name -->
                 <foreignObject x="50" y="6" [attr.width]="CARD_WIDTH - 90" height="36" class="force-name-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-name">
-                        {{ pf.force.name || forceOrgNames().get(pf.force.instanceId) }}
+                        {{ pf.force.name || metadata?.org?.name }}
                     </div>
                     @if (pf.force.name) {
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-org">
-                        {{ forceOrgNames().get(pf.force.instanceId) }}
+                        {{ metadata?.org?.name }}
                     </div>
                     }
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-value">
-                        @if (forceValues().get(pf.force.instanceId); as val) {
+                        @if (metadata?.bvString; as val) {
                         {{ val }}
                         }
                     </div>
@@ -264,6 +268,7 @@
             <div class="sidebar-empty">All forces placed.<br>Drag them back here to remove.</div>
             } @else {
             @for (force of sidebarForces(); track force.instanceId) {
+            @let metadata = forcesData().get(force.instanceId);
             <div class="sidebar-force-item" (pointerdown)="onSidebarForcePointerDown($event, force)">
                 <div class="sidebar-force-icon">
                     @if (force.factionId | factionImg; as factionImgUrl) {
@@ -271,11 +276,11 @@
                     }
                 </div>
                 <div class="sidebar-force-info">
-                    <div class="sidebar-force-name">{{ force.name || forceOrgNames().get(force.instanceId) }}</div>
+                    <div class="sidebar-force-name">{{ force.name || metadata?.org?.name }}</div>
                     @if (force.name) {
-                    <div class="sidebar-force-org">{{ forceOrgNames().get(force.instanceId) }}</div>
+                    <div class="sidebar-force-org">{{ metadata?.org?.name }}</div>
                     }
-                    <div class="sidebar-force-value">{{ forceValues().get(force.instanceId) }}</div>
+                    <div class="sidebar-force-value">{{ metadata?.bvString }}</div>
                 </div>
                 <button class="sidebar-info-btn" (click)="previewForce(force); $event.stopPropagation()"
                     (pointerdown)="$event.stopPropagation()" title="View details">
@@ -324,6 +329,7 @@
 
     <!-- Floating drag ghost for sidebar drag -->
     @if (sidebarDragActive() && sidebarDragForce()) {
+    @let metatada = forcesData().get(sidebarDragForce()!.instanceId);
     <div class="drag-ghost" [style.left.px]="sidebarDragPos().x - CARD_WIDTH / 2"
         [style.top.px]="sidebarDragPos().y - CARD_HEIGHT / 2" [style.width.px]="CARD_WIDTH"
         [style.height.px]="CARD_HEIGHT">
@@ -334,11 +340,11 @@
         </div>
         <div class="drag-ghost-info">
             <div class="drag-ghost-name">{{ sidebarDragForce()!.name ||
-                forceOrgNames().get(sidebarDragForce()!.instanceId) }}</div>
+                metatada?.org?.name }}</div>
             @if (sidebarDragForce()!.name) {
-            <div class="drag-ghost-org">{{ forceOrgNames().get(sidebarDragForce()!.instanceId) }}</div>
+            <div class="drag-ghost-org">{{ metatada?.org?.name }}</div>
             }
-            <div class="drag-ghost-value">{{ forceValues().get(sidebarDragForce()!.instanceId) }}</div>
+            <div class="drag-ghost-value">{{ metatada?.bvString }}</div>
         </div>
     </div>
     }
