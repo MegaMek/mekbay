@@ -52,6 +52,7 @@ import { FormationNamerUtil } from '../../utils/formation-namer.util';
 import { GroupSizeResult } from '../../utils/org-solver.util';
 import { GameSystem } from '../../models/common.model';
 import { SerializedOrganization, OrgPlacedForce, OrgGroupData, LoadOrganizationEntry } from '../../models/organization.model';
+import { ForceEntryPreviewDialogComponent } from '../force-entry-preview-dialog/force-entry-preview-dialog.component';
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2.0;
@@ -533,7 +534,6 @@ export class ForceOrgDialogComponent {
     }
 
     protected async previewForce(force: LoadForceEntry): Promise<void> {
-        const { ForceEntryPreviewDialogComponent } = await import('../force-entry-preview-dialog/force-entry-preview-dialog.component');
         this.dialogsService.createDialog(ForceEntryPreviewDialogComponent, {
             data: { force }
         });
