@@ -466,18 +466,26 @@ class ISOrg {
         };
     }
     static readonly FLIGHT = new ForceTypeRule({
-        type: 'Flight', modifiers: [{ prefix: '', count: 2 }], commandRank: 'Lieutenant',
+        type: 'Flight', modifiers: [
+            { prefix: 'Under-Strength ', count: 1 },
+            { prefix: '', count: 2 },
+            { prefix: 'Reinforced ', count: 3 },
+        ], commandRank: 'Lieutenant',
         filter: (comp) => isPureAero(comp),
     });
     static readonly SQUADRON = new ForceTypeRule({
-        type: 'Squadron', modifiers: [{ prefix: '', count: 6 }], commandRank: 'Captain',
+        type: 'Squadron', composedOf: ISOrg.FLIGHT, modifiers: [
+            { prefix: 'Under-Strength ', count: 2 },
+            { prefix: '', count: 3 },
+            { prefix: 'Reinforced ', count: 4 },
+        ], commandRank: 'Captain',
         filter: (comp) => isPureAero(comp),
     });
     static readonly WING = new ForceTypeRule({
-        type: 'Wing', modifiers: [
-            { prefix: 'Under-Strength ', count: 18 },
-            { prefix: '', count: 21 },
-            { prefix: 'Reinforced ', count: 24 },
+        type: 'Wing', composedOf: ISOrg.SQUADRON, modifiers: [
+            { prefix: 'Under-Strength ', count: 2 },
+            { prefix: '', count: 3 },
+            { prefix: 'Reinforced ', count: 4 },
         ], commandRank: 'Major',
         filter: (comp) => isPureAero(comp),
     });
