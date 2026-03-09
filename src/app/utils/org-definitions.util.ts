@@ -294,11 +294,16 @@ const CLAN_STAR: OrgTypeRule = {
 };
 const CLAN_NOVA: OrgTypeRule = {
     type: 'Nova', strict: true, priority: 1, countsAs: 'Star', modifiers: { '': 10 }, commandRank: 'Nova Commander', tier: 1.5,
-    filter: (comp) => comp.BM > 0 && (comp.BA + (comp.CI_troopers / 25)) > 0,
+    filter: (comp) => comp.BA > 0 && comp.PM === 0 && comp.CI === 0 && comp.other === 0
+        && (comp.BM > 0 || comp.CV > 0 || comp.AF > 0),
     customMatch: (comp) => {
-        const infPoints = (comp.BA) + (comp.CI_troopers / 25);
-        const otherPoints = (comp.PM / 5) + (comp.CV / 2) + (comp.AF / 2) + comp.other;
-        return Math.abs(comp.BM - 5) + Math.abs(infPoints - 5) + otherPoints;
+        // Standard Nova: 5 BM + 5 BA
+        const bmDist = Math.abs(comp.BM - 5) + Math.abs(comp.BA - 5) + comp.CV + comp.AF;
+        // Vehicle Nova: 5 CV + 5 BA
+        const cvDist = Math.abs(comp.CV - 5) + Math.abs(comp.BA - 5) + comp.BM + comp.AF;
+        // Aero Nova: 5 AF + 5 BA
+        const afDist = Math.abs(comp.AF - 5) + Math.abs(comp.BA - 5) + comp.BM + comp.CV;
+        return Math.min(bmDist, cvDist, afDist);
     },
 };
 const CLAN_BINARY: OrgTypeRule = {
@@ -644,16 +649,8 @@ const WDOrg: OrgDefinition = {
         IS_FLIGHT, IS_SQUADRON, IS_WING,
         { ...IS_SQUAD, filter: (comp: ForceComposition) => comp.BA_troopers === 0 },
         { ...IS_PLATOON, filter: (comp: ForceComposition) => comp.BA_troopers === 0 },
-        // WD Nova (modified Clan Nova)
-        {
-            ...CLAN_NOVA, commandRank: 'Lieutenant',
-            filter: (comp: ForceComposition) => comp.BM > 0 && (comp.BA_troopers / 5) > 0,
-            customMatch: (comp: ForceComposition) => {
-                const infPoints = (comp.BA_troopers / 5);
-                const otherPoints = (comp.PM / 5) + comp.CV + comp.other;
-                return Math.abs(comp.BM - 5) + Math.abs(infPoints - 5) + otherPoints;
-            },
-        },
+        // WD Nova (modified Clan Nova — BM only, no CV/AF variants)
+        { ...CLAN_NOVA, commandRank: 'Lieutenant' },
         { ...CLAN_SUPERNOVA_BINARY, commandRank: 'Captain' },
         { ...CLAN_SUPERNOVA_TRINARY, commandRank: 'Captain' },
         // WD Point (excludes aero and conventional infantry)
