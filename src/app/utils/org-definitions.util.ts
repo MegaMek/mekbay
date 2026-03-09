@@ -707,9 +707,21 @@ const CCOrg: OrgDefinition = {
         IS_FLIGHT, IS_SQUADRON, IS_WING, IS_SQUAD, IS_PLATOON, IS_SINGLE, IS_LANCE, IS_COMPANY, IS_BATTALION, IS_REGIMENT,
         // CC Augmented Lance
         {
-            type: 'Augmented Lance', strict: true, composedOfAny: ['Single', 'Squad'],
+            type: 'Augmented Lance', strict: true, priority: 1, countsAs: 'Lance',
             modifiers: { '': 6 }, commandRank: 'Lieutenant', tier: 1,
-            filter: (comp) => (comp.AF === 0 && (comp.BM === 4 && (comp.CV === 2 || comp.BA_troopers === 8) || (comp.CV === 4 && (comp.BM === 2 || comp.BA_troopers === 16)))),
+            filter: (comp) => comp.AF === 0 && comp.CI === 0 && comp.PM === 0 && comp.other === 0
+                && ((comp.BM > 0 && (comp.CV > 0 || comp.BA > 0)) || (comp.CV > 0 && comp.BA > 0)),
+            customMatch: (comp) => {
+                // 4 BM + 2 CV
+                const dist1 = Math.abs(comp.BM - 4) + Math.abs(comp.CV - 2) + comp.BA;
+                // 4 BM + 2 BA
+                const dist2 = Math.abs(comp.BM - 4) + Math.abs(comp.BA - 2) + comp.CV;
+                // 2 BM + 4 CV
+                const dist3 = Math.abs(comp.BM - 2) + Math.abs(comp.CV - 4) + comp.BA;
+                // 4 CV + 4 BA
+                const dist4 = Math.abs(comp.CV - 4) + Math.abs(comp.BA - 4) + comp.BM;
+                return Math.min(dist1, dist2, dist3, dist4);
+            },
         },
         // CC Augmented Company (Reinforced Augmented Company is not canonically listed, but seems reasonable to allow in the app)
         {
