@@ -251,6 +251,11 @@ function isPureInfantry(comp: ForceComposition): boolean {
         (comp.BA_troopers > 0 || comp.CI_troopers > 0 || comp.CI_mechanized_troopers > 0);
 }
 
+function isPureCI(comp: ForceComposition): boolean {
+    return comp.BM === 0 && comp.CV === 0 && comp.AF === 0 && comp.PM === 0 && comp.other === 0 && comp.BA_troopers === 0 &&
+        (comp.CI_troopers > 0 || comp.CI_mechanized_troopers > 0);
+}
+
 // Shared Rules 
 // Rules reused across org definitions (e.g. WDOrg extends Clan + IS rules).
 
@@ -535,14 +540,14 @@ const MHOrg: OrgDefinition = {
             type: 'Century', composedOfAny: ['Contubernium'], modifiers: {
                 'Half ': 2, 'Short ': 3, 'Under-Strength ': 4, '': 5, 'Reinforced ': 6, 'Fortified ': 7,
             }, commandRank: 'Centurion', tier: 1,
-            filter: (comp) => comp.CI_troopers === 0 && comp.CI_mechanized_troopers === 0,
+            filter: (comp) => !isPureCI(comp),
         },
         // Century (Infantry) = 4-10 CI infantry Points
         {
             type: 'Century', composedOfAny: ['Contubernium'], modifiers: {
                 'Under-Strength ': 4, '': 7, 'Reinforced ': 10,
             }, commandRank: 'Centurion', tier: 1,
-            filter: (comp) => isPureInfantry(comp) && comp.BA_troopers === 0,
+            filter: (comp) => isPureCI(comp),
         },
         {
             type: 'Maniple', strict: true, composedOfAny: ['Century'],
