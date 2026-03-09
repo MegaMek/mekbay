@@ -714,6 +714,113 @@ hr {
     }
 }
 
+/* Split button: a single bt-button frame with two clickable halves.
+ * Usage:
+ *   <div class="bt-split-button">
+ *     <button class="bt-split-part">ADD</button>
+ *     <button class="bt-split-part">+</button>
+ *   </div>
+ */
+.bt-split-button {
+    cursor: pointer;
+    white-space: nowrap;
+    touch-action: none;
+    display: inline-flex;
+    align-items: stretch;
+    background: var(--background-input);
+    box-sizing: border-box;
+    border: 2px solid transparent;
+    transition: all 0.2s ease-in-out;
+    min-height: 32px;
+    background-repeat: no-repeat;
+    background-origin: border-box;
+    background-image:
+        linear-gradient(#666, #666), linear-gradient(#666, #666),
+        linear-gradient(#666, #666), linear-gradient(#666, #666),
+        linear-gradient(#666, #666), linear-gradient(#666, #666),
+        linear-gradient(#666, #666), linear-gradient(#666, #666);
+    background-size: 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
+    background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+
+    &:hover {
+        border-color: transparent;
+        background-color: var(--background-highlight);
+        background-image:
+            linear-gradient(white, white), linear-gradient(white, white),
+            linear-gradient(white, white), linear-gradient(white, white),
+            linear-gradient(white, white), linear-gradient(white, white),
+            linear-gradient(white, white), linear-gradient(white, white);
+        background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
+        background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+    }
+
+    &[disabled],
+    &.disabled {
+        cursor: not-allowed;
+        pointer-events: none;
+        color: #444;
+
+        .bt-split-part {
+            color: #444;
+            cursor: not-allowed;
+        }
+    }
+
+    .bt-split-part {
+        all: unset;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-weight: bold;
+        color: #bbb;
+        transition: color 0.2s ease-in-out;
+        box-sizing: border-box;
+
+        &:hover {
+            color: white;
+        }
+
+        &:active {
+            color: white;
+            background-color: var(--background-highlight-bright);
+        }
+
+        /* Thin vertical divider between parts */
+        & + .bt-split-part {
+            border-left: 1px solid #555;
+        }
+    }
+
+    &:hover .bt-split-part + .bt-split-part {
+        border-left-color: #999;
+    }
+
+    /* When used with modal-btn, the wrapper padding is handled by the inner parts */
+    &.modal-btn {
+        padding: 0;
+
+        .split-main {
+            padding: 8px 28px;
+            flex: 1;
+        }
+
+        .split-extra {
+            padding: 8px 10px;
+        }
+
+        @media screen and (max-width: 600px) {
+            .split-main {
+                padding: 8px 16px;
+            }
+
+            .split-extra {
+                padding: 8px 8px;
+            }
+        }
+    }
+}
+
 .form-fields {
     display: flex;
     flex-direction: column;

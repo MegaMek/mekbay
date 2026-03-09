@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, computed, Injector, ElementRef, effect, inject, ChangeDetectionStrategy, viewChild, viewChildren, input, signal, afterNextRender, DestroyRef } from '@angular/core';
+import { Component, computed, Injector, ElementRef, effect, inject, ChangeDetectionStrategy, viewChild, viewChildren, input, signal, afterNextRender, DestroyRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subscription } from 'rxjs';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -159,6 +159,7 @@ export class ForceBuilderViewerComponent {
     public readonly isUnitDragging = signal<boolean>(false); // Flag for unit drag/sorting
     public readonly isGroupDragging = signal<boolean>(false); // Flag for group drag/reorder
     public readonly isForceDragging = signal<boolean>(false); // Flag for force-slot reorder
+    public readonly ctrlHeld = signal<boolean>(false);
     private headerResizeObserver?: ResizeObserver;
 
     //Units autoscroll
@@ -226,6 +227,21 @@ export class ForceBuilderViewerComponent {
         });
     }
 
+    @HostListener('window:keydown', ['$event'])
+    onKeyDown(event: KeyboardEvent) {
+        if (event.key === 'Control') this.ctrlHeld.set(true);
+    }
+
+    @HostListener('window:keyup', ['$event'])
+    onKeyUp(event: KeyboardEvent) {
+        if (event.key === 'Control') this.ctrlHeld.set(false);
+    }
+
+    @HostListener('window:blur')
+    onWindowBlur() {
+        this.ctrlHeld.set(false);
+    }
+
     onUnitKeydown(event: KeyboardEvent, _index: number) {
         // Build a flat list of all visible units across all filtered forces
         const slots = this.loadedSlots();
@@ -263,11 +279,16 @@ export class ForceBuilderViewerComponent {
 
     async removeUnit(event: MouseEvent, unit: ForceUnit) {
         event.stopPropagation();
-        await this.forceBuilderService.removeUnit(unit);
+        await this.forceBuilderService.removeUnit(unit, event.ctrlKey);
         // If this was the last unit, close the menu (offcanvas OFF mode)
         if (!this.forceBuilderService.hasForces()) {
             this.layoutService.closeMenu();
         }
+    }
+
+    async cloneUnit(event: MouseEvent, unit: ForceUnit) {
+        event.stopPropagation();
+        await this.forceBuilderService.cloneUnit(unit);
     }
 
     async repairUnit(event: MouseEvent, unit: ForceUnit) {

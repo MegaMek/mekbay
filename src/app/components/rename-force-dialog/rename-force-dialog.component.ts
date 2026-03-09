@@ -44,7 +44,7 @@ import { Faction, FACTION_MERCENARY } from '../../models/factions.model';
 import { ForceNamerUtil, FactionDisplayInfo } from '../../utils/force-namer.util';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { FactionDropdownPanelComponent } from './faction-dropdown-panel.component';
-import { getForceSizeName, GroupSizeResult } from '../../utils/org-solver.util';
+import { resolveFromGroups, GroupSizeResult } from '../../utils/org-solver.util';
 
 
 /*
@@ -342,7 +342,7 @@ export class RenameForceDialogComponent {
         );
     });
 
-    forceSizeName = computed(() => {
+    forceSizeResult = computed<GroupSizeResult | null>(() => {
         const units = this.data.force.units();
         if (units.length === 0) return null;
         const factionName = this.selectedFaction()?.name ?? 'Mercenary';
@@ -351,7 +351,11 @@ export class RenameForceDialogComponent {
         const groupResults: GroupSizeResult[] = this.data.force.groups()
             .filter(g => g.units().length > 0)
             .map(g => g.sizeResult());
-        return getForceSizeName(units, techBase, factionName, groupResults).toUpperCase();
+        return resolveFromGroups(techBase, factionName, groupResults);
+    });
+
+    forceSizeName = computed<string>(() => {
+        return this.forceSizeResult()?.name.toUpperCase() ?? 'FORCE';
     });
     
     /** Placeholder name based force size. */

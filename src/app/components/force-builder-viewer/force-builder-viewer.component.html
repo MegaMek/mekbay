@@ -145,11 +145,13 @@
                             cdkDragLockAxis="y" cdkDragBoundary=".scrollable-content"
                             [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                             <unit-block class="selectable" [forceUnit]="unit" [compactMode]="compactMode() || miniMode()"
+                                [ctrlHeld]="ctrlHeld()"
                                 [class.miniMode]="miniMode()"
                                 [class.friendly]="showAlignment && slot.alignment === 'friendly'"
                                 [class.enemy]="showAlignment && slot.alignment === 'enemy'"
                                 [class.selected]="unit.id === forceBuilderService.selectedUnit()?.id"
                                 (onRemoveUnit)="removeUnit($event, unit)" (onInfo)="showUnitInfo($event, unit)"
+                                (onCloneUnit)="cloneUnit($event, unit)"
                                 (onRepairUnit)="repairUnit($event, unit)"
                                 (onEditPilot)="editPilot($event, unit)"
                                 (onOpenC3Network)="openC3Network($event, unit)"></unit-block>

@@ -64,6 +64,7 @@ export function getEffectivePilotingSkill(unit: Unit, pilotingSkill: number): nu
         if (unit.subtype.includes('Conventional Infantry')) {
             return NO_ANTIMEK_SKILL;
         }
+        return DEFAULT_PILOTING_SKILL; // Default for other infantry types without anti-Mech capability (BA!)
     }
     return pilotingSkill;
 }

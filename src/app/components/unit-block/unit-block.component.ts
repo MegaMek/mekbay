@@ -65,7 +65,9 @@ export class UnitBlockComponent {
     optionsService = inject(OptionsService);
     forceUnit = input<ForceUnit>();
     compactMode = input<boolean>(false);
+    ctrlHeld = input<boolean>(false);
     onInfo = output<MouseEvent>();
+    onCloneUnit = output<MouseEvent>();
     onRemoveUnit = output<MouseEvent>();
     onOpenC3Network = output<MouseEvent>();
     onRepairUnit = output<MouseEvent>();
@@ -320,7 +322,11 @@ export class UnitBlockComponent {
 
     clickInfo(event: MouseEvent): void {
         event.stopPropagation();
-        this.onInfo.emit(event);
+        if (this.ctrlHeld()) {
+            this.onCloneUnit.emit(event);
+        } else {
+            this.onInfo.emit(event);
+        }
     }
 
     repairUnit(event: MouseEvent): void {

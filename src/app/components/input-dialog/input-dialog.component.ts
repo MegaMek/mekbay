@@ -113,6 +113,10 @@ export interface InputDialogData {
             appearance: textfield;
         }
 
+        .form-fields {
+            align-items: center;
+        }
+
         input[type="number"].field-input::-webkit-outer-spin-button,
         input[type="number"].field-input::-webkit-inner-spin-button {
             -webkit-appearance: none;

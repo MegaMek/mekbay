@@ -107,6 +107,10 @@ export interface ConfirmDialogData<T = any> {
             padding: 8px;
             min-width: 100px;
         }
+
+        [dialog-actions] button.square {
+            min-width: unset;
+        }
     `]
 })
 export class ConfirmDialogComponent<T = any> {

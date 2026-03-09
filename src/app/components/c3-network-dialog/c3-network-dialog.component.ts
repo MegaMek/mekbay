@@ -1484,8 +1484,9 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         return this.pinConnectionState().get(`${node.unit.id}:${compIndex}`)?.roleLabel ?? '?';
     }
 
-    protected getNetworkTypeLabel(type: C3NetworkType): string {
-        return C3NetworkUtil.getNetworkTypeName(type);
+    protected getNetworkTypeLabel(type: C3NetworkType, boosted?: boolean): string {
+        const name = C3NetworkUtil.getNetworkTypeName(type);
+        return boosted && type === C3NetworkType.C3 ? name + '(B)' : name;
     }
 
     protected removeUnitFromNetwork(network: SerializedC3NetworkGroup, unitId: string, memberStr?: string) {

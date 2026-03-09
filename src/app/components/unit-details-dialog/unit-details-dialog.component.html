@@ -132,9 +132,15 @@
         @if (data.selectMode) {
         <button class="modal-btn bt-button" (click)="onSelect()">SELECT</button>
         } @else if (!data.hideAddButton) {
-        <button [disabled]="this.forceBuilderService.smartCurrentForce()?.readOnly()" class="modal-btn bt-button"
-            longPress (shortPress)="onAdd($event)" (longPress)="onAddLongPress()"
-            [longPressDuration]=1000 title="Hold to add without closing">ADD</button>
+        <div class="modal-btn bt-split-button" [class.disabled]="this.forceBuilderService.smartCurrentForce()?.readOnly()">
+            <button class="bt-split-part split-main"
+                [disabled]="this.forceBuilderService.smartCurrentForce()?.readOnly()"
+                longPress (shortPress)="onAdd($event)" (longPress)="onAddLongPress()"
+                [longPressDuration]=1000 title="Hold to add without closing">ADD</button>
+            <button class="bt-split-part split-extra"
+                [disabled]="this.forceBuilderService.smartCurrentForce()?.readOnly()"
+                (click)="onAddMultiple()" title="Add multiple copies">+</button>
+        </div>
         }
         @if (isChangeMode()) {
         <button [disabled]="isChangeDisabled()" class="modal-btn bt-button"

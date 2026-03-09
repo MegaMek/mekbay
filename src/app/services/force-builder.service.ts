@@ -57,16 +57,13 @@ import { ForcePackDialogComponent, ForcePackDialogResult } from '../components/f
 import { SerializedForce } from '../models/force-serialization';
 import { EditPilotDialogComponent, EditPilotDialogData, EditPilotResult } from '../components/edit-pilot-dialog/edit-pilot-dialog.component';
 import { EditASPilotDialogComponent, EditASPilotDialogData, EditASPilotResult } from '../components/edit-as-pilot-dialog/edit-as-pilot-dialog.component';
-import { C3NetworkDialogComponent, C3NetworkDialogData, C3NetworkDialogResult } from '../components/c3-network-dialog/c3-network-dialog.component';
 import { ShareForceDialogComponent } from '../components/share-force-dialog/share-force-dialog.component';
-import { ForceOverviewDialogComponent } from '../components/force-overview-dialog/force-overview-dialog.component';
 import { FormationInfoDialogComponent, FormationInfoDialogData } from '../components/formation-info-dialog/formation-info-dialog.component';
-import { CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
+import { CrewMember } from '../models/crew-member.model';
 import { GameSystem } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
 import { ASForceUnit } from '../models/as-force-unit.model';
-import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
 import { canAntiMech } from '../utils/infantry.util';
@@ -673,7 +670,7 @@ export class ForceBuilderService {
         });
     }
 
-    async createNewForce(name: string = 'New Force'): Promise<Force | null> {
+    async createNewForce(name: string = ''): Promise<Force | null> {
         // Lazy inject GameService to avoid circular dependency
         const gameService = this.injector.get(GameService);
         const gameSystem = gameService.currentGameSystem();
@@ -757,6 +754,35 @@ export class ForceBuilderService {
         this.selectedUnit.set(unit);
     }
 
+    /**
+     * Clones a unit and inserts the clone immediately after the original unit
+     * in the same group. Pilot/crew data is not copied.
+     */
+    async cloneUnit(sourceUnit: ForceUnit): Promise<ForceUnit | null> {
+        const force = sourceUnit.force;
+        if (!force || force.readOnly()) return null;
+        const unitData = sourceUnit.getUnit();
+        if (!unitData) return null;
+
+        const group = sourceUnit.getGroup();
+        if (!group) return null;
+
+        const units = group.units();
+        const sourceIndex = units.findIndex(u => u.id === sourceUnit.id);
+        if (sourceIndex === -1) return null;
+
+        const newForceUnit = force.addUnit(unitData, group);
+        // addUnit appends to end — move it to right after the source
+        const updatedUnits = group.units();
+        const newIndex = updatedUnits.findIndex(u => u.id === newForceUnit.id);
+        if (newIndex !== sourceIndex + 1) {
+            group.reorderUnit(newIndex, sourceIndex + 1);
+        }
+
+        this.selectUnit(newForceUnit);
+        return newForceUnit;
+    }
+
     getNextUnit(forceUnit: ForceUnit | null): ForceUnit | null {
         if (!forceUnit?.force) {
             return null;
@@ -810,12 +836,12 @@ export class ForceBuilderService {
      * it selects the previous unit in the list.
      * @param unitToRemove The unit to remove.
      */
-    async removeUnit(unitToRemove: ForceUnit) {
+    async removeUnit(unitToRemove: ForceUnit, skipConfirmation = false) {
         const targetForce = unitToRemove.force;
         if (!targetForce) {
             return;
         }
-        if (unitToRemove.modified) {
+        if (unitToRemove.modified && !skipConfirmation) {
             const unitName = (unitToRemove.getUnit().chassis + ' ' + unitToRemove.getUnit().model).trim();
             const dialogRef = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
                 panelClass: 'danger',
@@ -1261,8 +1287,9 @@ export class ForceBuilderService {
         });
     }
 
-    public showForceOverview(force: Force): void {
+    public async showForceOverview(force: Force): Promise<void> {
         if (!force) return;
+        const { ForceOverviewDialogComponent } = await import('../components/force-overview-dialog/force-overview-dialog.component');
         this.dialogsService.createDialog(ForceOverviewDialogComponent, {
             data: { force }
         });
@@ -1575,9 +1602,9 @@ export class ForceBuilderService {
             const gameSystemParam = params.get('gs') ?? GameSystem.CLASSIC;
             let newForce: Force;
             if (gameSystemParam === GameSystem.ALPHA_STRIKE) {
-                newForce = new ASForce('New Force', this.dataService, this.unitInitializer, this.injector);
+                newForce = new ASForce('', this.dataService, this.unitInitializer, this.injector);
             } else {
-                newForce = new CBTForce('New Force', this.dataService, this.unitInitializer, this.injector);
+                newForce = new CBTForce('', this.dataService, this.unitInitializer, this.injector);
             }
             newForce.loading = true;
             try {
@@ -1700,9 +1727,9 @@ export class ForceBuilderService {
                     const gameSystem = gameService.currentGameSystem();
                     let newForce: Force;
                     if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                        newForce = new ASForce('New Force', this.dataService, this.unitInitializer, this.injector);
+                        newForce = new ASForce('', this.dataService, this.unitInitializer, this.injector);
                     } else {
-                        newForce = new CBTForce('New Force', this.dataService, this.unitInitializer, this.injector);
+                        newForce = new CBTForce('', this.dataService, this.unitInitializer, this.injector);
                     }
                     await this.addForce(newForce, addAlignment);
                     const group = newForce.addGroup();
@@ -2521,7 +2548,7 @@ export class ForceBuilderService {
             }
             pilot = crewMembers[0];
         }
-        const disablePiloting = baseUnit.type === 'ProtoMek' || ((baseUnit.type === 'Infantry' && baseUnit.subtype != 'Battle Armor') && (!canAntiMech(baseUnit)));
+        const disablePiloting = baseUnit.type === 'ProtoMek' || ((baseUnit.type === 'Infantry') && (!canAntiMech(baseUnit)));
         let labelPiloting;
         if (baseUnit.type === 'Infantry') {
             labelPiloting = 'Anti-Mech';
@@ -2614,6 +2641,9 @@ export class ForceBuilderService {
      * @param readOnly Whether the dialog should be read-only
      */
     public async openC3Network(force: Force, readOnly: boolean = false): Promise<void> {
+        const { C3NetworkDialogComponent, } = await import('../components/c3-network-dialog/c3-network-dialog.component');
+        type C3NetworkDialogData = import('../components/c3-network-dialog/c3-network-dialog.component').C3NetworkDialogData;
+        type C3NetworkDialogResult = import('../components/c3-network-dialog/c3-network-dialog.component').C3NetworkDialogResult;
         const ref = this.dialogsService.createDialog<C3NetworkDialogResult>(C3NetworkDialogComponent, {
             data: <C3NetworkDialogData>{
                 force: force,

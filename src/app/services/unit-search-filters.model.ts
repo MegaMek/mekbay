@@ -69,6 +69,7 @@ export interface AdvFilterConfig {
     stepSize?: number; // for range sliders, defines the step size
     semanticKey?: string; // Simplified key for semantic filter mode (e.g., 'tmm' instead of 'as.TMM')
     valueNormalizer?: (value: string) => string; // Optional function to normalize semantic filter values
+    displayNameFn?: (value: string) => string; // Optional function to map a raw option value to a human-readable display name
 }
 
 // Use SemanticFilterState from semantic-filter.util as our FilterState
@@ -83,7 +84,7 @@ export interface SemanticDisplayItem {
 export type DropdownFilterOptions = {
     type: 'dropdown';
     label: string;
-    options: { name: string, img?: string, displayName?: string }[];
+    options: { name: string, img?: string, displayName?: string, available?: boolean }[];
     value: string[];
     interacted: boolean;
     semanticOnly?: boolean;  // True if this filter has semantic-only constraints (values not in options)
@@ -162,6 +163,30 @@ export const AS_MOVEMENT_MODE_DISPLAY_NAMES: Record<string, string> = {
     'm': 'Motorized',
 };
 
+/** 
+ * Alpha Strike type display names.
+ * Keys are the type codes from TP, values are human-readable names.
+ */
+export const AS_TYPE_DISPLAY_NAMES: Record<string, string> = {
+    'BM': 'BattleMek',
+    'IM': 'IndustrialMek',
+    'CV': 'Combat Vehicle',
+    'SV': 'Support Vehicle',
+    'PM': 'ProtoMek',
+    'BA': 'Battle Armor',
+    'CI': 'Conventional Infantry',
+    'AF': 'Aerospace Fighter',
+    'CF': 'Conventional Fighter',
+    'SC': 'Small Craft',
+    'WS': 'WarShip',
+    'SS': 'Space Station',
+    'JS': 'JumpShip',
+    'DA': 'DropShip (Aerodyne)',
+    'DS': 'DropShip (Spheroid)',
+    'MS': 'Mobile Structure',
+    'BD': 'Battle Emplacement',
+};
+
 /**
  * Normalize a motive value to its display name (case-insensitive).
  * Accepts a code ('j', 'J') or display name ('jump', 'JUMP', 'Jump', etc.).
@@ -193,6 +218,8 @@ export interface DropdownFilterConfig {
     countable?: boolean;
     /** Optional function to normalize semantic filter values (e.g., motive code 'j' -> 'Jump') */
     valueNormalizer?: (value: string) => string;
+    /** Optional function to map a raw option value to a human-readable display name (e.g., 'TR:3050' -> 'Technical Readout: 3050') */
+    displayNameFn?: (value: string) => string;
 }
 
 /** Range filter configuration */
@@ -218,7 +245,7 @@ export const DROPDOWN_FILTERS: readonly DropdownFilterConfig[] = Object.freeze([
     { key: 'era', semanticKey: 'era', label: 'Era', external: true },
     { key: 'faction', semanticKey: 'faction', label: 'Faction', external: true, multistate: true },
     { key: 'type', semanticKey: 'type', label: 'Type', game: GameSystem.CLASSIC },
-    { key: 'as.TP', semanticKey: 'type', label: 'Type', game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.TP', semanticKey: 'type', label: 'Type', game: GameSystem.ALPHA_STRIKE, displayNameFn: (v: string) => AS_TYPE_DISPLAY_NAMES[v] ? `${v} - ${AS_TYPE_DISPLAY_NAMES[v]}` : v },
     { key: 'subtype', semanticKey: 'subtype', label: 'Subtype', game: GameSystem.CLASSIC },
     { key: 'techBase', semanticKey: 'tech', label: 'Tech', sortOptions: ['Inner Sphere', 'Clan', 'Mixed'] },
     { key: 'role', semanticKey: 'role', label: 'Role' },

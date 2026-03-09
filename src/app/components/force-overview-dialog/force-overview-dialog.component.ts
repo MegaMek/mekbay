@@ -353,7 +353,7 @@ export class ForceOverviewDialogComponent {
     /** Handle remove unit */
     async removeUnit(event: MouseEvent, forceUnit: ForceUnit): Promise<void> {
         event.stopPropagation();
-        await this.forceBuilderService.removeUnit(forceUnit);
+        await this.forceBuilderService.removeUnit(forceUnit, event.ctrlKey);
     }
 
     /** Handle repair unit */
