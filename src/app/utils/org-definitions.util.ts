@@ -297,13 +297,14 @@ const CLAN_NOVA: OrgTypeRule = {
     filter: (comp) => comp.BA > 0 && comp.PM === 0 && comp.CI === 0 && comp.other === 0
         && (comp.BM > 0 || comp.CV > 0 || comp.AF > 0),
     customMatch: (comp) => {
-        // Standard Nova: 5 BM + 5 BA
-        const bmDist = Math.abs(comp.BM - 5) + Math.abs(comp.BA - 5) + comp.CV + comp.AF;
-        // Vehicle Nova: 5 CV + 5 BA
-        const cvDist = Math.abs(comp.CV - 5) + Math.abs(comp.BA - 5) + comp.BM + comp.AF;
-        // Aero Nova: 5 AF + 5 BA
-        const afDist = Math.abs(comp.AF - 5) + Math.abs(comp.BA - 5) + comp.BM + comp.CV;
-        return Math.min(bmDist, cvDist, afDist);
+        const configs = [
+            { bm: 5, cv: 0, af: 0, ba: 5 }, // Standard Nova: 5 BM + 5 BA
+            { bm: 0, cv: 5, af: 0, ba: 5 }, // Vehicle Nova: 5 CV + 5 BA
+            { bm: 0, cv: 0, af: 5, ba: 5 }, // Aero Nova: 5 AF + 5 BA
+        ];
+        return Math.min(...configs.map(cfg =>
+            Math.abs(comp.BM - cfg.bm) + Math.abs(comp.CV - cfg.cv) + Math.abs(comp.AF - cfg.af) + Math.abs(comp.BA - cfg.ba)
+        ));
     },
 };
 const CLAN_BINARY: OrgTypeRule = {
@@ -649,7 +650,6 @@ const WDOrg: OrgDefinition = {
         IS_FLIGHT, IS_SQUADRON, IS_WING,
         { ...IS_SQUAD, filter: (comp: ForceComposition) => comp.BA_troopers === 0 },
         { ...IS_PLATOON, filter: (comp: ForceComposition) => comp.BA_troopers === 0 },
-        // WD Nova (modified Clan Nova — BM only, no CV/AF variants)
         { ...CLAN_NOVA, commandRank: 'Lieutenant' },
         { ...CLAN_SUPERNOVA_BINARY, commandRank: 'Captain' },
         { ...CLAN_SUPERNOVA_TRINARY, commandRank: 'Captain' },
@@ -707,9 +707,21 @@ const CCOrg: OrgDefinition = {
         IS_FLIGHT, IS_SQUADRON, IS_WING, IS_SQUAD, IS_PLATOON, IS_SINGLE, IS_LANCE, IS_COMPANY, IS_BATTALION, IS_REGIMENT,
         // CC Augmented Lance
         {
-            type: 'Augmented Lance', strict: true, composedOfAny: ['Single', 'Squad'],
+            type: 'Augmented Lance', strict: true, priority: 1, countsAs: 'Lance',
             modifiers: { '': 6 }, commandRank: 'Lieutenant', tier: 1,
-            filter: (comp) => (comp.AF === 0 && (comp.BM === 4 && (comp.CV === 2 || comp.BA_troopers === 8) || (comp.CV === 4 && (comp.BM === 2 || comp.BA_troopers === 16)))),
+            filter: (comp) => comp.AF === 0 && comp.CI === 0 && comp.PM === 0 && comp.other === 0
+                && ((comp.BM > 0 && (comp.CV > 0 || comp.BA > 0)) || (comp.CV > 0 && comp.BA > 0)),
+            customMatch: (comp) => {
+                const configs = [
+                    { bm: 4, cv: 2, ba: 0 },
+                    { bm: 4, cv: 0, ba: 2 },
+                    { bm: 2, cv: 4, ba: 0 },
+                    { bm: 0, cv: 4, ba: 4 },
+                ];
+                return Math.min(...configs.map(cfg =>
+                    Math.abs(comp.BM - cfg.bm) + Math.abs(comp.CV - cfg.cv) + Math.abs(comp.BA - cfg.ba)
+                ));
+            },
         },
         // CC Augmented Company (Reinforced Augmented Company is not canonically listed, but seems reasonable to allow in the app)
         {

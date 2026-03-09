@@ -253,7 +253,7 @@
                                 <span class="as-td-model" [innerHTML]="highlight(unit.model)"></span>
                                 <span class="as-td-chassis" [innerHTML]="highlight(unit.chassis)"></span>
                             </div>
-                            <div class="as-td as-td-type" [class.sort-slot]="isSortActive('as.TP')">{{ unit.as.TP }}</div>
+                            <div class="as-td as-td-type" [class.sort-slot]="isSortActive('as.TP')" [tooltip]="unitTypeDisplayNames[unit.as.TP]">{{ unit.as.TP }}</div>
                             <div class="as-td as-td-role" [class.sort-slot]="isSortActive('role')">{{ unit.role !== 'None' ? unit.role : '' }}</div>
                             <div class="as-td as-td-pv" [class.sort-slot]="isSortActive('as.PV')">{{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:false }}</div>
                             <div class="as-td as-td-sz" [class.sort-slot]="isSortActive('as.SZ')">{{ unit.as.SZ }}</div>
