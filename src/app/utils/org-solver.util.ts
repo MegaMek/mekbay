@@ -731,7 +731,6 @@ function trySplitEvaluation(
 
         // Recursively build up: evaluate groups → get next level → divide → repeat
         let lastResult: EvaluationResult | null = null;
-        let lastSubUnitCount = 0; // sub-unit count before the last nextCount>=2 step
 
         for (let depth = 0; depth < 10; depth++) { // safety limit
             if (currentGroups.length < 2) break;
@@ -761,7 +760,6 @@ function trySplitEvaluation(
             // For now, carry the remainder as extra distance
             if (nextCount >= 2) {
                 // Save this level as a candidate: we might go higher
-                lastSubUnitCount = currentGroups.length;
                 currentGroups = nextGroups;
                 lastResult = {
                     name: nextRule.type,
@@ -795,33 +793,6 @@ function trySplitEvaluation(
                 (!lastResult?.matchedRule || isBetterMatch(finalUp, lastResult))) {
                 lastResult = finalUp;
             }
-            if (currentGroups.length >= 4) {
-                const splitUp = trySplitGroupEvaluation(currentGroups, filteredRules,
-                    groupMinDistance ?? 1, groupDistanceFactor ?? 0.25);
-                if (splitUp.matchedRule &&
-                    (!lastResult?.matchedRule || isBetterMatch(splitUp, lastResult))) {
-                    lastResult = splitUp;
-                }
-            }
-        }
-
-        // If we topped out, the depth loop produced multiple groups at the
-        // highest level but nothing composes them, the lastResult still has
-        // the bare type name (e.g. "Brigade" instead of "Reinforced Brigade").
-        // Recompute with the proper modifier cap based on the sub-unit count.
-        if (lastSubUnitCount > 0 && lastResult?.matchedRule &&
-            lastResult.name === lastResult.matchedRule.type) {
-            const rule = lastResult.matchedRule;
-            const modPrefix = getModifierPrefix(rule, lastSubUnitCount);
-            let modDist = Infinity;
-            for (const count of Object.values(rule.modifiers)) {
-                modDist = Math.min(modDist, Math.abs(lastSubUnitCount - count));
-            }
-            lastResult = {
-                name: modPrefix ? modPrefix + rule.type : rule.type,
-                dist: modDist,
-                matchedRule: rule,
-            };
         }
 
         if (lastResult?.matchedRule && isBetterMatch(lastResult, best)) {
@@ -1083,10 +1054,13 @@ function findBestNextLevel(
         const minMod = Math.min(...modCounts);
         const maxMod = Math.max(...modCounts);
 
-        // If the remainder can form a valid (possibly under-strength) group,
-        // add one more group. E.g. 8 Flights / 3 (Squadron reg) = 2 r2,
-        // but remainder 2 >= minMod 2 → 3 Squadrons [3][3][2].
-        if (remainder > 0 && remainder >= minMod) {
+        // Only promote when there are genuine leftovers: i.e. the total
+        // sub-units exceed a single group's max modifier count.  When all
+        // sub-units fit within [minMod, maxMod], a single modified group is
+        // the correct answer and no breakdown is needed.
+        // E.g. 14 Points / 5 (Star reg) = 2 r4, 14 > maxMod(7) → 3 Stars.
+        //      7 Points / 5 (Star reg) = 1 r2, 7 ≤ maxMod(7) → stay at 1.
+        if (remainder > 0 && remainder >= minMod && matchingCount > maxMod) {
             nextGroupCount++;
             remainder = 0;
         }
