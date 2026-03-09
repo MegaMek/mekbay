@@ -670,7 +670,7 @@ export class ForceBuilderService {
         });
     }
 
-    async createNewForce(name: string = 'New Force'): Promise<Force | null> {
+    async createNewForce(name: string = ''): Promise<Force | null> {
         // Lazy inject GameService to avoid circular dependency
         const gameService = this.injector.get(GameService);
         const gameSystem = gameService.currentGameSystem();
@@ -1573,9 +1573,9 @@ export class ForceBuilderService {
             const gameSystemParam = params.get('gs') ?? GameSystem.CLASSIC;
             let newForce: Force;
             if (gameSystemParam === GameSystem.ALPHA_STRIKE) {
-                newForce = new ASForce('New Force', this.dataService, this.unitInitializer, this.injector);
+                newForce = new ASForce('', this.dataService, this.unitInitializer, this.injector);
             } else {
-                newForce = new CBTForce('New Force', this.dataService, this.unitInitializer, this.injector);
+                newForce = new CBTForce('', this.dataService, this.unitInitializer, this.injector);
             }
             newForce.loading = true;
             try {
@@ -1698,9 +1698,9 @@ export class ForceBuilderService {
                     const gameSystem = gameService.currentGameSystem();
                     let newForce: Force;
                     if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                        newForce = new ASForce('New Force', this.dataService, this.unitInitializer, this.injector);
+                        newForce = new ASForce('', this.dataService, this.unitInitializer, this.injector);
                     } else {
-                        newForce = new CBTForce('New Force', this.dataService, this.unitInitializer, this.injector);
+                        newForce = new CBTForce('', this.dataService, this.unitInitializer, this.injector);
                     }
                     await this.addForce(newForce, addAlignment);
                     const group = newForce.addGroup();
