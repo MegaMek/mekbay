@@ -448,7 +448,7 @@ const ClanOrg: OrgDefinition = {
     },
     rules: [
         CLAN_NOVA, CLAN_SUPERNOVA_BINARY, CLAN_SUPERNOVA_TRINARY,
-        CLAN_POINT, 
+        CLAN_POINT,
         CLAN_STAR,
         CLAN_BINARY, CLAN_TRINARY,
         CLAN_CLUSTER, CLAN_GALAXY,
@@ -654,11 +654,11 @@ const WDOrg: OrgDefinition = {
         { ...CLAN_SUPERNOVA_BINARY, commandRank: 'Captain' },
         { ...CLAN_SUPERNOVA_TRINARY, commandRank: 'Captain' },
         // WD Point (excludes aero and conventional infantry)
-        { ...CLAN_POINT, commandRank: 'Sergeant', filter: (comp: ForceComposition) => comp.AF === 0 && comp.CI_troopers === 0},
+        { ...CLAN_POINT, commandRank: 'Sergeant', filter: (comp: ForceComposition) => comp.AF === 0 && comp.CI_troopers === 0 },
         // WD Lance (composedOf Point, not Single; limited to 2-4 BM non-BA)
-        { ...IS_LANCE, filter: (comp: ForceComposition) => !isPureAero(comp) && comp.BA_troopers === 0 && comp.BM <= 4},
+        { ...IS_LANCE, filter: (comp: ForceComposition) => !isPureAero(comp) && comp.BA_troopers === 0 && comp.BM <= 4 },
         // WD Star (composedOf Point; for BA or 5+ BM non-vehicle)
-        { ...CLAN_STAR, commandRank: 'Lieutenant', filter: (comp: ForceComposition) => comp.CV === 0 && (comp.BA_troopers > 0 || comp.BM > 4)},
+        { ...CLAN_STAR, commandRank: 'Lieutenant', filter: (comp: ForceComposition) => comp.CV === 0 && (comp.BA_troopers > 0 || comp.BM > 4) },
         { ...CLAN_BINARY, countsAs: 'Company' as OrgType, commandRank: 'Captain', filter: (comp: ForceComposition) => !isPureAero(comp) },
         { ...CLAN_TRINARY, countsAs: 'Company' as OrgType, commandRank: 'Captain', filter: (comp: ForceComposition) => !isPureAero(comp) },
         { ...CLAN_CLUSTER, priority: 1, countsAs: 'Battalion' as OrgType, commandRank: 'Major', filter: (comp: ForceComposition) => !isPureAero(comp) },
@@ -719,12 +719,12 @@ const CCOrg: OrgDefinition = {
         // CC Augmented Battalion (Short, Under-Strength, and Strong variants are not canonically listed, but seem reasonable to allow in the app)
         {
             type: 'Augmented Battalion', composedOfAny: ['Augmented Company'],
-            modifiers: {'Short ': 2, 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'Major', tier: 3,
+            modifiers: { 'Short ': 2, 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'Major', tier: 3,
         },
         // CC Augmented Regiment
         {
             type: 'Augmented Regiment', composedOfAny: ['Augmented Battalion', 'Battalion', 'Wing'],
-            modifiers: {'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'General', tier: 4,
+            modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'General', tier: 4,
             groupFilter: (groups: ReadonlyArray<GroupSizeResult>) => groups.some(g => g.type === 'Augmented Battalion'),
         },
     ],
