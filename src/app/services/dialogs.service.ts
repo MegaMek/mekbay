@@ -76,7 +76,8 @@ export class DialogsService {
             height: opts?.height,
             maxWidth: opts?.maxWidth ?? '100dvw',
             maxHeight: opts?.maxHeight ?? '100dvh',
-            autoFocus: 'first-tabbable'
+            autoFocus: 'first-tabbable',
+            restoreFocus: false
         });
 
         return {
