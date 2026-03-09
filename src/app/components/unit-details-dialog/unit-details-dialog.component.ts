@@ -62,6 +62,7 @@ import { UrlStateService } from '../../services/url-state.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { LayoutService } from '../../services/layout.service';
 import { buildUnitShareLinks } from '../../utils/force-url.util';
+import { ConfirmDialogComponent, ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
 
 /*
  * Author: Drake
@@ -418,6 +419,52 @@ export class UnitDetailsDialogComponent {
         }
         if (!keepOpen) {
             this.onClose();
+        }
+    }
+
+    async onAddMultiple() {
+        if (this.data.selectMode) return;
+        const ref = this.dialogsService.createDialog<number | undefined>(ConfirmDialogComponent, {
+            data: <ConfirmDialogData<number>>{
+                title: 'Add Multiple',
+                message: `How many copies of ${this.unit.chassis} ${this.unit.model}?`,
+                buttons: [
+                    { label: '1', value: 1, class: 'square' },
+                    { label: '2', value: 2, class: 'square' },
+                    { label: '3', value: 3, class: 'square' },
+                    { label: '4', value: 4, class: 'square' },
+                    { label: '5', value: 5, class: 'square' },
+                ]
+            }
+        });
+        const count = await firstValueFrom(ref.closed);
+        if (count == null) return;
+
+        const selectedUnit = (this.unit instanceof ForceUnit) ? this.unit.getUnit() : this.unit;
+        let gunnery: number | undefined;
+        let piloting: number | undefined;
+        const currentUnit = this.unit;
+        if (currentUnit instanceof CBTForceUnit) {
+            gunnery = currentUnit.getCrewMember(0).getSkill('gunnery');
+            piloting = currentUnit.getCrewMember(0).getSkill('piloting');
+        } else if (currentUnit instanceof ASForceUnit) {
+            gunnery = currentUnit.getPilotSkill();
+            piloting = currentUnit.getPilotSkill();
+        } else {
+            gunnery = this.gunnerySkill();
+            piloting = this.pilotingSkill();
+        }
+
+        let addedCount = 0;
+        for (let i = 0; i < count; i++) {
+            const added = await this.forceBuilderService.addUnit(selectedUnit, gunnery, piloting);
+            if (added) addedCount++;
+        }
+        if (addedCount > 0) {
+            this.toastService.showToast(
+                `${addedCount}x ${selectedUnit.chassis} ${selectedUnit.model} added to the force.`,
+                'success'
+            );
         }
     }
 
