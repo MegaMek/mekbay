@@ -3,11 +3,12 @@
     bottom: calc(24px + env(safe-area-inset-bottom));
     right: calc(24px + env(safe-area-inset-right));
     gap: 12px;
-    z-index: 10000;
+    z-index: 100000;
     display: flex;
     align-items: flex-end;
     justify-content: flex-end;
     max-width: calc( 100% - 48px );
+    pointer-events: auto;
 }
 
 @media print {
