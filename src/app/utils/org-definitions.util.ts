@@ -293,10 +293,10 @@ const CLAN_STAR: OrgTypeRule = {
     }, commandRank: 'Star Commander', tier: 1,
 };
 const CLAN_NOVA: OrgTypeRule = {
-    type: 'Nova', strict: true, countsAs: 'Star', modifiers: { '': 10 }, commandRank: 'Nova Commander', tier: 1,
-    filter: (comp) => comp.BM > 0 && ((comp.BA_troopers / 5) + (comp.CI_troopers / 25)) > 0,
+    type: 'Nova', strict: true, priority: 1, countsAs: 'Star', modifiers: { '': 10 }, commandRank: 'Nova Commander', tier: 1.5,
+    filter: (comp) => comp.BM > 0 && (comp.BA + (comp.CI_troopers / 25)) > 0,
     customMatch: (comp) => {
-        const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25);
+        const infPoints = (comp.BA) + (comp.CI_troopers / 25);
         const otherPoints = (comp.PM / 5) + (comp.CV / 2) + (comp.AF / 2) + comp.other;
         return Math.abs(comp.BM - 5) + Math.abs(infPoints - 5) + otherPoints;
     },
@@ -311,11 +311,11 @@ const CLAN_TRINARY: OrgTypeRule = {
 };
 const CLAN_SUPERNOVA_BINARY: OrgTypeRule = {
     type: 'Supernova Binary', strict: true, priority: 2, countsAs: 'Binary',
-    composedOfAny: ['Nova'], modifiers: { '': 2 }, commandRank: 'Nova Captain', tier: 2,
+    composedOfAny: ['Nova'], modifiers: { '': 2 }, commandRank: 'Nova Captain', tier: 2.5,
 };
 const CLAN_SUPERNOVA_TRINARY: OrgTypeRule = {
     type: 'Supernova Trinary', strict: true, priority: 1, countsAs: 'Trinary',
-    composedOfAny: ['Nova'], modifiers: { '': 3 }, commandRank: 'Nova Captain', tier: 2,
+    composedOfAny: ['Nova'], modifiers: { '': 3 }, commandRank: 'Nova Captain', tier: 2.5,
 };
 const CLAN_CLUSTER: OrgTypeRule = {
     type: 'Cluster',
