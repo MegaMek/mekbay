@@ -78,15 +78,15 @@ function isBetterMatch(candidate: EvaluationResult, current: EvaluationResult): 
     if (!candidate.matchedRule) return false;
     if (candidate.dist < current.dist) return true;
     if (candidate.dist > current.dist) return false;
-    // Same distance — higher priority wins
+    // Same distance: higher priority wins
     const candPriority = candidate.matchedRule.priority ?? 0;
     const currPriority = current.matchedRule?.priority ?? 0;
     if (candPriority !== currPriority) return candPriority > currPriority;
-    // Same priority — higher tier wins (prefer the highest organizational level)
+    // Same priority: higher tier wins (prefer the highest organizational level)
     const candTier = candidate.matchedRule.tier;
     const currTier = current.matchedRule?.tier ?? 0;
     if (candTier !== currTier) return candTier > currTier;
-    // Same tier — higher regularCount wins
+    // Same tier: higher regularCount wins
     return getRegularCount(candidate.matchedRule) > (current.matchedRule ? getRegularCount(current.matchedRule) : 0);
 }
 
@@ -94,7 +94,7 @@ function isBetterMatch(candidate: EvaluationResult, current: EvaluationResult): 
 
 /**
  * Find the best-matching leaf rule for a composition.
- * Leaf rules have no composedOfAny — they match raw points directly.
+ * Leaf rules have no composedOfAny: they match raw points directly.
  * Also matches customMatch rules (Nova, Squad, Platoon, etc.).
  *
  * Returns the matched rule + the pts value from getPointRange.
@@ -381,7 +381,7 @@ function normalizeGroupsToOrg(groupResults: GroupSizeResult[], rules: OrgTypeRul
                           (g.countsAsType && knownTypes.has(g.countsAsType));
         if (typeKnown) return g;
 
-        // Foreign type — find equivalent rule by closest tier
+        // Foreign type: find equivalent rule by closest tier
         const equiv = findClosestTierRule(g.tier, tierMap, sortedTiers);
         if (!equiv) return g;
 
@@ -475,7 +475,7 @@ function tryAbsorbIntoHigherTier(
  * up the composition hierarchy, then evaluates the result.
  *
  * Algorithm:
- * 1. Find the highest-tier group — that's the floor (minimum result)
+ * 1. Find the highest-tier group: that's the floor (minimum result)
  * 2. Separate lowest-tier groups from higher-tier groups
  * 3. Promote lowest-tier groups via evaluateForceByGroups / trySplitGroupEvaluation
  * 4. Merge promoted result with remaining groups
@@ -731,6 +731,7 @@ function trySplitEvaluation(
 
         // Recursively build up: evaluate groups → get next level → divide → repeat
         let lastResult: EvaluationResult | null = null;
+        let lastSubUnitCount = 0; // sub-unit count before the last nextCount>=2 step
 
         for (let depth = 0; depth < 10; depth++) { // safety limit
             if (currentGroups.length < 2) break;
@@ -759,7 +760,8 @@ function trySplitEvaluation(
             // If there's a remainder, check if it can be accounted for at a higher level
             // For now, carry the remainder as extra distance
             if (nextCount >= 2) {
-                // Save this level as a candidate — we might go higher
+                // Save this level as a candidate: we might go higher
+                lastSubUnitCount = currentGroups.length;
                 currentGroups = nextGroups;
                 lastResult = {
                     name: nextRule.type,
@@ -767,7 +769,7 @@ function trySplitEvaluation(
                     matchedRule: nextRule,
                 };
             } else {
-                // Only 1 group at next level — this is our final level
+                // Only 1 group at next level: this is our final level
                 // Apply modifier and compute distance from nearest modifier count
                 const totalSubGroups = currentGroups.length;
                 const modPrefix = getModifierPrefix(nextRule, totalSubGroups);
@@ -803,6 +805,25 @@ function trySplitEvaluation(
             }
         }
 
+        // If we topped out, the depth loop produced multiple groups at the
+        // highest level but nothing composes them, the lastResult still has
+        // the bare type name (e.g. "Brigade" instead of "Reinforced Brigade").
+        // Recompute with the proper modifier cap based on the sub-unit count.
+        if (lastSubUnitCount > 0 && lastResult?.matchedRule &&
+            lastResult.name === lastResult.matchedRule.type) {
+            const rule = lastResult.matchedRule;
+            const modPrefix = getModifierPrefix(rule, lastSubUnitCount);
+            let modDist = Infinity;
+            for (const count of Object.values(rule.modifiers)) {
+                modDist = Math.min(modDist, Math.abs(lastSubUnitCount - count));
+            }
+            lastResult = {
+                name: modPrefix ? modPrefix + rule.type : rule.type,
+                dist: modDist,
+                matchedRule: rule,
+            };
+        }
+
         if (lastResult?.matchedRule && isBetterMatch(lastResult, best)) {
             best = lastResult;
         }
@@ -814,17 +835,17 @@ function trySplitEvaluation(
     //
     // Three strategies for detecting customMatch formations (Nova, Platoon, etc.):
     //
-    // Strategy 1 — Uniform integer partition:
+    // Strategy 1: Uniform integer partition:
     //   Split comp into N integer sub-compositions (floor/ceil), evaluate each
     //   independently against the customMatch rule. All must match.
     //
-    // Strategy 2 — Greedy ideal-packing with residual:
+    // Strategy 2: Greedy ideal-packing with residual:
     //   Probe to find a sub-composition where the customMatch returns low
     //   distance. Pack K copies, then evaluate the leftover composition
     //   against all rules (leaf + customMatch). This finds mixed formations
     //   like "1 Nova + 1 Star" that uniform partition cannot.
     //
-    // Strategy 3 — Heterogeneous partition:
+    // Strategy 3: Heterogeneous partition:
     //   Split comp into N integer sub-groups, let each sub-group independently
     //   match its best rule (leaf or customMatch). Detects formations composed
     //   of different sub-unit types from a flat unit list.
@@ -928,7 +949,7 @@ function trySplitEvaluation(
             }));
 
             if (!isNonEmptyComp(remainder)) {
-                // No residual — all units accounted for by k copies of this rule
+                // No residual: all units accounted for by k copies of this rule
                 if (k < 2) continue; // single match handled by evaluateLeaf
                 const cmResult = evaluateForceByGroups(matchedGroups, filteredRules);
                 if (cmResult.matchedRule && isBetterMatch(cmResult, best)) best = cmResult;
