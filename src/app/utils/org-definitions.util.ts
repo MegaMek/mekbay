@@ -397,13 +397,11 @@ const IS_REGIMENT: OrgTypeRule = {
     type: 'Regiment', composedOfAny: ['Battalion', 'Wing'],
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4, 'Strong ': 5 },
     commandRank: 'Colonel', tier: 4,
-    filter: (comp) => !isPureAero(comp),
 };
 const IS_BRIGADE: OrgTypeRule = {
     type: 'Brigade', composedOfAny: ['Regiment'],
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
     commandRank: 'General', tier: 5,
-    filter: (comp) => !isPureAero(comp),
 };
 
 //  Org Definitions 
