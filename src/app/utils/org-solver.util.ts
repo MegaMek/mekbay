@@ -31,7 +31,6 @@
  * affiliated with Microsoft.
  */
 
-import { ForceUnit } from '../models/force-unit.model';
 import { Unit } from '../models/units.model';
 import {
     ForceComposition,
@@ -317,6 +316,33 @@ function getRuleTier(type: OrgType, rules: OrgTypeRule[]): number {
 // ─── Foreign-type normalization ────────────────────────────────────────────────
 
 /**
+ * Find the closest tier in the tierMap to the target tier.
+ * When tiers are floating-point (e.g. 1.2) and the map only has
+ * e.g. [1, 2, 3], finds the nearest neighbor(s) and picks the one
+ * with the smallest absolute distance. Ties go to the lower tier.
+ */
+function findClosestTierRule(targetTier: number, tierMap: Map<number, OrgTypeRule>, sortedTiers: number[]): OrgTypeRule | undefined {
+    const exact = tierMap.get(targetTier);
+    if (exact) return exact;
+    if (sortedTiers.length === 0) return undefined;
+
+    let lower: number | undefined;
+    let upper: number | undefined;
+    for (const t of sortedTiers) {
+        if (t <= targetTier) lower = t;
+        if (t >= targetTier && upper === undefined) upper = t;
+    }
+
+    if (lower === undefined && upper === undefined) return undefined;
+    if (lower === undefined) return tierMap.get(upper!);
+    if (upper === undefined) return tierMap.get(lower);
+
+    const distLower = Math.abs(targetTier - lower);
+    const distUpper = Math.abs(upper - targetTier);
+    return distLower <= distUpper ? tierMap.get(lower) : tierMap.get(upper);
+}
+
+/**
  * Map GroupSizeResults whose types don't exist in the target org's rules
  * to their tier-equivalent types in the target org.
  *
@@ -327,6 +353,9 @@ function getRuleTier(type: OrgType, rules: OrgTypeRule[]): number {
  * Only remaps when the type is truly foreign (not in any rule). Keeps
  * the original name prefix (e.g. "Reinforced") by replacing only the
  * type suffix in the display name.
+ *
+ * When tiers are floating-point, finds the closest available tier
+ * (ties go to the lower neighbor).
  */
 function normalizeGroupsToOrg(groupResults: GroupSizeResult[], rules: OrgTypeRule[]): GroupSizeResult[] {
     const knownTypes = new Set(rules.map(r => r.type));
@@ -340,14 +369,15 @@ function normalizeGroupsToOrg(groupResults: GroupSizeResult[], rules: OrgTypeRul
     for (const r of rules) {
         if (!tierMap.has(r.tier)) tierMap.set(r.tier, r);
     }
+    const sortedTiers = Array.from(tierMap.keys()).sort((a, b) => a - b);
 
     return groupResults.map(g => {
         const typeKnown = (g.type && knownTypes.has(g.type)) ||
                           (g.countsAsType && knownTypes.has(g.countsAsType));
         if (typeKnown) return g;
 
-        // Foreign type — find equivalent rule by tier
-        const equiv = tierMap.get(g.tier);
+        // Foreign type — find equivalent rule by closest tier
+        const equiv = findClosestTierRule(g.tier, tierMap, sortedTiers);
         if (!equiv) return g;
 
         // Rebuild name: extract modifier prefix from original, apply to new type
@@ -692,6 +722,15 @@ function trySplitEvaluation(
         } // end leafCount loop
     }
 
+    // Scale every numeric field in a ForceComposition by a factor.
+    const scaleComp = (c: ForceComposition, factor: number): ForceComposition => {
+        const scaled = {} as ForceComposition;
+        for (const key of Object.keys(c) as (keyof ForceComposition)[]) {
+            scaled[key] = c[key] * factor;
+        }
+        return scaled;
+    };
+
     // Try customMatch rules as virtual group generators.
     // E.g. 10 BM + 50 BA_troopers can be split into 2 Novas → Supernova Binary.
     for (const cmRule of filteredRules) {
@@ -704,16 +743,7 @@ function trySplitEvaluation(
         const maxN = Math.min(10, Math.ceil(midPts / ruleRegular) + 1);
         for (let n = 2; n <= maxN; n++) {
             // Divide composition evenly into n sub-compositions
-            const subComp: ForceComposition = {
-                BM: comp.BM / n,
-                BA_troopers: comp.BA_troopers / n,
-                CI_mechanized_troopers: comp.CI_mechanized_troopers / n,
-                CI_troopers: comp.CI_troopers / n,
-                PM: comp.PM / n,
-                CV: comp.CV / n,
-                AF: comp.AF / n,
-                other: comp.other / n,
-            };
+            const subComp = scaleComp(comp, 1 / n);
 
             if (cmRule.filter && !cmRule.filter(subComp)) continue;
 

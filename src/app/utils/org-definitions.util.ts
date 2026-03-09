@@ -101,33 +101,61 @@ export type OrgType =
 
 export interface ForceComposition {
     BM: number;
-    BA_troopers: number;
-    CI_mechanized_troopers: number;
-    CI_troopers: number;
+    BA: number;
+    CI: number;
     PM: number;
     CV: number;
     AF: number;
     other: number;
+    BA_troopers: number;
+    CI_troopers: number;
+    CI_troopers_mechanized: number;
+    CI_troopers_legs: number;
+    CI_troopers_jump: number;
+    CI_troopers_wheeled: number;
+    CI_troopers_tracked: number;
+    CI_troopers_hover: number;
 }
 
 export function getForceCompositionFromUnits(units: Unit[]): ForceComposition {
     const comp: ForceComposition = {
         BM: 0,
-        BA_troopers: 0,
-        CI_mechanized_troopers: 0,
-        CI_troopers: 0,
+        BA: 0,
+        CI: 0,
         PM: 0,
         CV: 0,
         AF: 0,
         other: 0,
+        BA_troopers: 0,
+        CI_troopers: 0,
+        CI_troopers_mechanized: 0,
+        CI_troopers_legs: 0,
+        CI_troopers_jump: 0,
+        CI_troopers_wheeled: 0,
+        CI_troopers_tracked: 0,
+        CI_troopers_hover: 0,
     };
 
     for (const u of units) {
         if (u.type === 'Mek') comp.BM++;
         else if (u.type === 'Infantry') {
-            if (u.subtype === 'Battle Armor') comp.BA_troopers += (u.internal || 0);
-            else if (u.subtype === 'Mechanized Conventional Infantry') comp.CI_mechanized_troopers += (u.internal || 0);
-            else comp.CI_troopers += (u.internal || 0);
+            if (u.subtype === 'Battle Armor') {
+                comp.BA++;
+                comp.BA_troopers += (u.internal || 0);
+            } else {
+                comp.CI++;
+                comp.CI_troopers += (u.internal || 0);
+                if (u.subtype === 'Mechanized Conventional Infantry') {
+                    if (u.moveType === 'Wheeled' || u.moveType === 'Tracked') comp.CI_troopers_mechanized += (u.internal || 0);
+                }
+                switch (u.moveType) {
+                    case 'Leg': comp.CI_troopers_legs += (u.internal || 0); break;
+                    case 'Jump': comp.CI_troopers_jump += (u.internal || 0); break;
+                    case 'Hover': comp.CI_troopers_hover += (u.internal || 0); break;
+                    case 'Wheeled': comp.CI_troopers_wheeled += (u.internal || 0); break;
+                    case 'Tracked': comp.CI_troopers_tracked += (u.internal || 0); break;
+                }
+            }
         }
         else if (u.type === 'ProtoMek') comp.PM++;
         else if (u.type === 'Tank' || u.type === 'VTOL' || u.type === 'Naval') comp.CV++;
@@ -243,17 +271,15 @@ export function getModifierPrefix(rule: OrgTypeRule, count: number): string {
 //  Helpers 
 
 function isPureAero(comp: ForceComposition): boolean {
-    return comp.AF > 0 && comp.BM === 0 && comp.CV === 0 && comp.BA_troopers === 0 && comp.CI_troopers === 0 && comp.CI_mechanized_troopers === 0 && comp.PM === 0 && comp.other === 0;
+    return comp.BM === 0 && comp.CV === 0 && comp.AF > 0 && comp.PM === 0 && comp.other === 0 && comp.BA === 0 && comp.CI === 0;
 }
 
 function isPureInfantry(comp: ForceComposition): boolean {
-    return comp.BM === 0 && comp.CV === 0 && comp.AF === 0 && comp.PM === 0 && comp.other === 0 &&
-        (comp.BA_troopers > 0 || comp.CI_troopers > 0 || comp.CI_mechanized_troopers > 0);
+    return comp.BM === 0 && comp.CV === 0 && comp.AF === 0 && comp.PM === 0 && comp.other === 0 && (comp.BA > 0 || comp.CI > 0);
 }
 
 function isPureCI(comp: ForceComposition): boolean {
-    return comp.BM === 0 && comp.CV === 0 && comp.AF === 0 && comp.PM === 0 && comp.other === 0 && comp.BA_troopers === 0 &&
-        (comp.CI_troopers > 0 || comp.CI_mechanized_troopers > 0);
+    return comp.BM === 0 && comp.CV === 0 && comp.AF === 0 && comp.PM === 0 && comp.other === 0 && comp.BA === 0 && (comp.CI > 0);
 }
 
 // Shared Rules 
@@ -268,9 +294,9 @@ const CLAN_STAR: OrgTypeRule = {
 };
 const CLAN_NOVA: OrgTypeRule = {
     type: 'Nova', strict: true, countsAs: 'Star', modifiers: { '': 10 }, commandRank: 'Nova Commander', tier: 1,
-    filter: (comp) => comp.BM > 0 && ((comp.BA_troopers / 5) + (comp.CI_troopers / 25) + (comp.CI_mechanized_troopers / 25)) > 0,
+    filter: (comp) => comp.BM > 0 && ((comp.BA_troopers / 5) + (comp.CI_troopers / 25)) > 0,
     customMatch: (comp) => {
-        const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25) + (comp.CI_mechanized_troopers / 25);
+        const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25);
         const otherPoints = (comp.PM / 5) + (comp.CV / 2) + (comp.AF / 2) + comp.other;
         return Math.abs(comp.BM - 5) + Math.abs(infPoints - 5) + otherPoints;
     },
@@ -325,9 +351,9 @@ const IS_SQUAD: OrgTypeRule = {
     type: 'Squad', modifiers: { '': 1 }, commandRank: 'Sergeant', tier: 0,
     filter: (comp) => isPureInfantry(comp),
     customMatch: (comp) => {
-        if (comp.BA_troopers > 0 && comp.CI_troopers === 0 && comp.CI_mechanized_troopers === 0) return Math.abs(comp.BA_troopers - 4) / 4;
-        if ((comp.CI_troopers > 0 || comp.CI_mechanized_troopers > 0) && comp.BA_troopers === 0) {
-            const ciTroopers = comp.CI_troopers + comp.CI_mechanized_troopers;
+        if (comp.BA_troopers > 0 && comp.CI_troopers === 0) return Math.abs(comp.BA_troopers - 4) / 4;
+        if ((comp.CI_troopers > 0) && comp.BA_troopers === 0) {
+            const ciTroopers = comp.CI_troopers;
             if (ciTroopers >= 2 && ciTroopers <= 8) return 0;
             if (ciTroopers < 2) return (2 - ciTroopers) / 7;
             return (ciTroopers - 8) / 7;
@@ -349,7 +375,7 @@ const IS_PLATOON: OrgTypeRule = {
     type: 'Platoon', countsAs: 'Lance', priority: 1, modifiers: { '': 1 }, commandRank: 'Lieutenant', tier: 1,
     filter: (comp) => isPureInfantry(comp),
     customMatch: (comp) => {
-        const ciTroopers = comp.CI_troopers + comp.CI_mechanized_troopers;
+        const ciTroopers = comp.CI_troopers;
         if (ciTroopers >= 6 && ciTroopers <= 32) return 0;
         if (ciTroopers < 6) return (6 - ciTroopers) / 28;
         return (ciTroopers - 32) / 28;
@@ -400,15 +426,22 @@ const ClanOrg: OrgDefinition = {
     groupDistanceFactor: 0.25,
     groupMinDistance: 1,
     getPointRange(comp: ForceComposition): PointRange {
-        const pts = comp.BM +
+        const fixed = comp.BM +
             (comp.BA_troopers / 5) +
-            (comp.CI_troopers / 25) +
-            (comp.CI_mechanized_troopers / 25) +
             (comp.PM / 5) +
             (comp.CV / 2) +
             (comp.AF / 2) +
             comp.other;
-        return { min: pts, max: pts };
+        let minPts = fixed;
+        let maxPts = fixed;
+        if (comp.CI_troopers > 0) {
+            minPts += (comp.CI_troopers) / 25;
+            maxPts += (comp.CI_troopers) / 25;
+        }
+        return {
+            min: minPts,
+            max: maxPts,
+        };
     },
     rules: [
         CLAN_NOVA, CLAN_SUPERNOVA_BINARY, CLAN_SUPERNOVA_TRINARY,
@@ -431,9 +464,15 @@ const ISOrg: OrgDefinition = {
             comp.CV +
             comp.AF +
             comp.other;
+        let minPts = fixed;
+        let maxPts = fixed;
+        if (comp.CI_troopers > 0) {
+            minPts += (comp.CI_troopers) / 28;
+            maxPts += (comp.CI_troopers) / 21;
+        }
         return {
-            min: fixed + ((comp.CI_troopers + comp.CI_mechanized_troopers) / 28),
-            max: fixed + ((comp.CI_troopers + comp.CI_mechanized_troopers) / 21),
+            min: minPts,
+            max: maxPts,
         };
     },
     rules: [
@@ -453,8 +492,8 @@ const ComStarOrg: OrgDefinition = {
         let minPts = fixed;
         let maxPts = fixed;
         if (comp.CI_troopers > 0) {
-            minPts += (comp.CI_troopers + comp.CI_mechanized_troopers) / 36;
-            maxPts += (comp.CI_troopers + comp.CI_mechanized_troopers) / 30;
+            minPts += (comp.CI_troopers) / 36;
+            maxPts += (comp.CI_troopers) / 30;
         }
         if (comp.BA_troopers > 0) {
             const ba = comp.BA_troopers / 6;
@@ -499,14 +538,22 @@ const SocietyOrg: OrgDefinition = {
     groupDistanceFactor: 0.5,
     groupMinDistance: 1,
     getPointRange(comp: ForceComposition): PointRange {
-        const pts = comp.BM +
+        const fixed = comp.BM +
             (comp.BA_troopers / 9) +
-            ((comp.CI_troopers + comp.CI_mechanized_troopers) / 75) +
             (comp.PM / 3) +
             (comp.CV / 7) +
             (comp.AF / 3) +
             comp.other;
-        return { min: pts, max: pts };
+        let minPts = fixed;
+        let maxPts = fixed;
+        if (comp.CI_troopers > 0) {
+            minPts += (comp.CI_troopers) / 75;
+            maxPts += (comp.CI_troopers) / 75;
+        }
+        return {
+            min: minPts,
+            max: maxPts,
+        };
     },
     rules: [
         { type: 'Un', modifiers: { '': 1 }, tier: 0 },
@@ -523,15 +570,21 @@ const MHOrg: OrgDefinition = {
     getPointRange(comp: ForceComposition): PointRange {
         const fixed = comp.BM +
             (comp.BA_troopers / 5) +
-            (comp.CI_troopers / 10) +
-            (comp.CI_mechanized_troopers / 5) +
             comp.PM +
             comp.CV +
             comp.AF +
             comp.other;
+        let minPts = fixed;
+        let maxPts = fixed;
+        if (comp.CI_troopers > 0) {
+            let CI_points = ((comp.CI_troopers - comp.CI_troopers_mechanized) / 10);
+            CI_points += (comp.CI_troopers_mechanized / 5);
+            minPts += CI_points;
+            maxPts += CI_points;
+        }
         return {
-            min: fixed,
-            max: fixed,
+            min: minPts,
+            max: maxPts,
         };
     },
     rules: [
@@ -578,9 +631,15 @@ const WDOrg: OrgDefinition = {
             comp.CV +
             comp.AF +
             comp.other;
+        let minPts = fixed;
+        let maxPts = fixed;
+        if (comp.CI_troopers > 0) {
+            minPts += (comp.CI_troopers) / 28;
+            maxPts += (comp.CI_troopers) / 21;
+        }
         return {
-            min: fixed + (comp.CI_troopers + comp.CI_mechanized_troopers) / 28,
-            max: fixed + (comp.CI_troopers + comp.CI_mechanized_troopers) / 21,
+            min: minPts,
+            max: maxPts,
         };
     },
     rules: [
@@ -600,7 +659,7 @@ const WDOrg: OrgDefinition = {
         { ...CLAN_SUPERNOVA_BINARY, commandRank: 'Captain' },
         { ...CLAN_SUPERNOVA_TRINARY, commandRank: 'Captain' },
         // WD Point (excludes aero and conventional infantry)
-        { ...CLAN_POINT, commandRank: 'Sergeant', filter: (comp: ForceComposition) => comp.AF === 0 && comp.CI_troopers === 0 && comp.CI_mechanized_troopers === 0},
+        { ...CLAN_POINT, commandRank: 'Sergeant', filter: (comp: ForceComposition) => comp.AF === 0 && comp.CI_troopers === 0},
         // WD Lance (composedOf Point, not Single; limited to 2-4 BM non-BA)
         { ...IS_LANCE, filter: (comp: ForceComposition) => !isPureAero(comp) && comp.BA_troopers === 0 && comp.BM <= 4},
         // WD Star (composedOf Point; for BA or 5+ BM non-vehicle)
@@ -638,9 +697,15 @@ const CCOrg: OrgDefinition = {
             comp.CV +
             comp.AF +
             comp.other;
+        let minPts = fixed;
+        let maxPts = fixed;
+        if (comp.CI_troopers > 0) {
+            minPts += (comp.CI_troopers) / 28;
+            maxPts += (comp.CI_troopers) / 21;
+        }
         return {
-            min: fixed + (comp.CI_troopers + comp.CI_mechanized_troopers) / 28,
-            max: fixed + (comp.CI_troopers + comp.CI_mechanized_troopers) / 21,
+            min: minPts,
+            max: maxPts,
         };
     },
     rules: [
