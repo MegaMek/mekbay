@@ -602,7 +602,7 @@
 
 .limit-control label {
     color: var(--text-color-secondary);
-    white-space: nowrap;
+    width: 60px;
     font-size: 0.9em;
 }
 
@@ -625,7 +625,7 @@
 .limit-info {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
+    align-items: flex-end;
     font-size: 0.75em;
     line-height: 1.2;
     color: var(--text-color-secondary);
