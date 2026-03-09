@@ -423,6 +423,11 @@ export class UnitSearchFiltersService {
     private tagsService = inject(TagsService);
 
     ADVANCED_FILTERS = ADVANCED_FILTERS;
+
+    /** Display name resolvers that need service dependencies (can't be defined in static config) */
+    private readonly displayNameFns: Partial<Record<string, (v: string) => string>> = {
+        'source': (v) => this.dataService.getSourcebookTitle(v),
+    };
     
     /** Dropdown filter configs for current game system */
     readonly dropdownConfigs = computed((): readonly DropdownFilterConfig[] => {
@@ -602,7 +607,7 @@ export class UnitSearchFiltersService {
     constructor() {
         // Register as a URL state consumer - must call markConsumerReady when done reading URL
         this.urlStateService.registerConsumer('unit-search-filters');
-        
+
         effect(() => {
             if (this.isDataReady()) {
                 this.calculateTotalRanges();
@@ -1343,14 +1348,10 @@ export class UnitSearchFiltersService {
                 return values;
             },
             // Display name lookup (allows matching by both key and display name)
-            // Add additional filter lookups here as needed
             getDisplayName: (filterKey: string, value: string) => {
-                switch (filterKey) {
-                    case 'source':
-                        return this.dataService.getSourcebookTitle(value);
-                    default:
-                        return undefined;
-                }
+                const conf = ADVANCED_FILTERS.find(f => f.key === filterKey);
+                const fn = conf?.displayNameFn ?? this.displayNameFns[filterKey];
+                return fn?.(value);
             }
         };
         let results = filterUnitsWithAST(this.units, ast.ast, context);
@@ -1857,15 +1858,11 @@ export class UnitSearchFiltersService {
                     const allOptions = Array.from(optionSet);
                     const sortedOptions = sortAvailableDropdownOptions(allOptions, conf.sortOptions);
                     
-                    // For source filter, add displayName from sourcebook lookup
-                    if (conf.key === 'source') {
-                        availableOptions = sortedOptions.map(name => ({
-                            name,
-                            displayName: this.dataService.getSourcebookTitle(name)
-                        }));
-                    } else {
-                        availableOptions = sortedOptions.map(name => ({ name }));
-                    }
+                    const displayNameFn = conf.displayNameFn ?? this.displayNameFns[conf.key];
+                    availableOptions = sortedOptions.map(name => ({
+                        name,
+                        ...(displayNameFn ? { displayName: displayNameFn(name) } : {})
+                    }));
                 }
                 
                 // Get the filter state value
