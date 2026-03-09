@@ -71,6 +71,8 @@ interface EvaluationResult {
     name: string;
     dist: number;
     matchedRule: OrgTypeRule | null;
+    /** Number of sub-groups at the matched level (used to prefer bigger formations on tie). */
+    subGroupCount?: number;
 }
 
 /** Returns true if candidate is a better match than current (lower dist, or same dist with higher tier/regularCount). */
@@ -87,7 +89,11 @@ function isBetterMatch(candidate: EvaluationResult, current: EvaluationResult): 
     const currTier = current.matchedRule?.tier ?? 0;
     if (candTier !== currTier) return candTier > currTier;
     // Same tier: higher regularCount wins
-    return getRegularCount(candidate.matchedRule) > (current.matchedRule ? getRegularCount(current.matchedRule) : 0);
+    const candRegCount = getRegularCount(candidate.matchedRule);
+    const currRegCount = current.matchedRule ? getRegularCount(current.matchedRule) : 0;
+    if (candRegCount !== currRegCount) return candRegCount > currRegCount;
+    // Same regularCount: prefer more sub-groups (bigger formation better represents force size)
+    return (candidate.subGroupCount ?? 0) > (current.subGroupCount ?? 0);
 }
 
 // ─── Leaf evaluation ───────────────────────────────────────────────────────────
@@ -244,6 +250,7 @@ function evaluateForceByGroups(
                 name: modPrefix ? modPrefix + rule.type : rule.type,
                 dist,
                 matchedRule: rule,
+                subGroupCount: count,
             };
         }
     }
@@ -729,73 +736,11 @@ function trySplitEvaluation(
             });
         }
 
-        // Recursively build up: evaluate groups → get next level → divide → repeat
-        let lastResult: EvaluationResult | null = null;
+        // Recursively build the hierarchy, trying ALL viable paths at each
+        // level (e.g. both Binary and Trinary) and picking the best result.
+        const lastResult = buildHierarchy(currentGroups, filteredRules, 10);
 
-        for (let depth = 0; depth < 10; depth++) { // safety limit
-            if (currentGroups.length < 2) break;
-
-            // Try to find the best one-level-up rule using only regular ('') counts.
-            // We do this by finding which rule's regularCount evenly (or nearly) divides
-            // the current group count, producing the most groups at the next level.
-            const nextLevel = findBestNextLevel(currentGroups, filteredRules);
-            if (!nextLevel) break;
-
-            const { rule: nextRule, groupCount: nextCount, remainder } = nextLevel;
-
-            if (nextCount < 1) break;
-
-            // Build next-level groups
-            const nextGroups: GroupSizeResult[] = [];
-            for (let i = 0; i < nextCount; i++) {
-                nextGroups.push({
-                    name: nextRule.type,
-                    type: nextRule.type,
-                    countsAsType: nextRule.countsAs ?? null,
-                    tier: nextRule.tier,
-                });
-            }
-
-            // If there's a remainder, check if it can be accounted for at a higher level
-            // For now, carry the remainder as extra distance
-            if (nextCount >= 2) {
-                // Save this level as a candidate: we might go higher
-                currentGroups = nextGroups;
-                lastResult = {
-                    name: nextRule.type,
-                    dist: remainder,
-                    matchedRule: nextRule,
-                };
-            } else {
-                // Only 1 group at next level: this is our final level
-                // Apply modifier and compute distance from nearest modifier count
-                const totalSubGroups = currentGroups.length;
-                const modPrefix = getModifierPrefix(nextRule, totalSubGroups);
-                let modDist = Infinity;
-                for (const count of Object.values(nextRule.modifiers)) {
-                    modDist = Math.min(modDist, Math.abs(totalSubGroups - count));
-                }
-                lastResult = {
-                    name: modPrefix ? modPrefix + nextRule.type : nextRule.type,
-                    dist: modDist,
-                    matchedRule: nextRule,
-                };
-                break;
-            }
-        }
-
-        // Try group-based evaluation on current groups to find a match with modifiers.
-        // This handles cases like 3 Points → "Short Star" (count 3 within Star's 2–7 range)
-        // where findBestNextLevel fails because regularCount (5) doesn't divide evenly.
-        if (currentGroups.length >= 2) {
-            const finalUp = evaluateForceByGroups(currentGroups, filteredRules);
-            if (finalUp.matchedRule &&
-                (!lastResult?.matchedRule || isBetterMatch(finalUp, lastResult))) {
-                lastResult = finalUp;
-            }
-        }
-
-        if (lastResult?.matchedRule && isBetterMatch(lastResult, best)) {
+        if (lastResult.matchedRule && isBetterMatch(lastResult, best)) {
             best = lastResult;
         }
         if (best.dist === 0) break;
@@ -1016,18 +961,16 @@ function trySplitEvaluation(
 }
 
 /**
- * Find the best next-level rule for a set of groups.
- * Returns the rule whose composedOfAny accepts the group types,
- * along with how many groups of that rule type we can form using
- * its regular ('') count, and the remainder.
- *
- * Uses priority to break ties (higher priority wins).
+ * Find ALL viable next-level rules for a set of groups.
+ * Returns every rule whose composedOfAny accepts the group types,
+ * along with how many groups of that rule type we can form and the remainder.
+ * The caller tries every candidate path and picks the best overall result.
  */
-function findBestNextLevel(
+function findNextLevelCandidates(
     groups: GroupSizeResult[],
     rules: OrgTypeRule[],
-): { rule: OrgTypeRule; groupCount: number; remainder: number } | null {
-    let best: { rule: OrgTypeRule; groupCount: number; remainder: number } | null = null;
+): { rule: OrgTypeRule; groupCount: number; remainder: number }[] {
+    const candidates: { rule: OrgTypeRule; groupCount: number; remainder: number }[] = [];
 
     for (const rule of rules) {
         if (!rule.composedOfAny || rule.composedOfAny.length === 0) continue;
@@ -1058,8 +1001,6 @@ function findBestNextLevel(
         // sub-units exceed a single group's max modifier count.  When all
         // sub-units fit within [minMod, maxMod], a single modified group is
         // the correct answer and no breakdown is needed.
-        // E.g. 14 Points / 5 (Star reg) = 2 r4, 14 > maxMod(7) → 3 Stars.
-        //      7 Points / 5 (Star reg) = 1 r2, 7 ≤ maxMod(7) → stay at 1.
         if (remainder > 0 && remainder >= minMod && matchingCount > maxMod) {
             nextGroupCount++;
             remainder = 0;
@@ -1067,30 +1008,92 @@ function findBestNextLevel(
 
         // When regularCount-based division gives < 2 groups, try using the
         // full modifier range to form multiple variable-size groups.
-        // E.g. 5 Flights with Squadron (reg=3, range [2,4]): floor(5/3)=1,
-        // but 2 Squadrons of 3+2 Flights is valid → nextGroupCount=2.
         if (nextGroupCount < 2) {
-            // Minimum groups where each group ≤ maxMod sub-units
             let altGroups = Math.ceil(matchingCount / maxMod);
-            // Ensure enough sub-units to fill each group to at least minMod
             if (matchingCount < altGroups * minMod) {
                 altGroups = Math.floor(matchingCount / minMod);
             }
             if (altGroups > nextGroupCount && altGroups > 0 && matchingCount <= altGroups * maxMod) {
                 nextGroupCount = altGroups;
-                remainder = 0; // all sub-units fit within valid modifier-range groups
+                remainder = 0;
             }
         }
 
         if (nextGroupCount < 1) continue;
 
-        // Prefer: lower remainder first, then more groups at next level, then higher priority
-        if (!best ||
-            remainder < best.remainder ||
-            (remainder === best.remainder && nextGroupCount > best.groupCount) ||
-            (remainder === best.remainder && nextGroupCount === best.groupCount && (rule.priority ?? 0) > (best.rule.priority ?? 0))) {
-            best = { rule, groupCount: nextGroupCount, remainder };
+        candidates.push({ rule, groupCount: nextGroupCount, remainder });
+    }
+
+    return candidates;
+}
+
+/**
+ * Recursively build the organizational hierarchy from a set of groups.
+ * Tries ALL viable next-level rules at each step and picks the path that
+ * produces the best top-level result.  This avoids the greedy single-path
+ * problem where e.g. 9 Stars → 3 Trinaries → "Cluster" is preferred over
+ * 9 Stars → 4 Binaries → "Reinforced Cluster" just because Trinary has
+ * zero remainder at tier 2.
+ */
+function buildHierarchy(
+    currentGroups: GroupSizeResult[],
+    rules: OrgTypeRule[],
+    maxDepth: number,
+): EvaluationResult {
+    if (currentGroups.length < 2 || maxDepth <= 0) {
+        return { name: 'Force', dist: Infinity, matchedRule: null };
+    }
+
+    let best: EvaluationResult = { name: 'Force', dist: Infinity, matchedRule: null };
+
+    const candidates = findNextLevelCandidates(currentGroups, rules);
+
+    for (const { rule, groupCount, remainder } of candidates) {
+        let result: EvaluationResult;
+
+        if (groupCount >= 2) {
+            // Build next-level groups and recurse
+            const nextGroups: GroupSizeResult[] = [];
+            for (let i = 0; i < groupCount; i++) {
+                nextGroups.push({
+                    name: rule.type,
+                    type: rule.type,
+                    countsAsType: rule.countsAs ?? null,
+                    tier: rule.tier,
+                });
+            }
+            result = buildHierarchy(nextGroups, rules, maxDepth - 1);
+
+            // If recursion didn't find a higher level, this level is the result
+            if (!result.matchedRule) {
+                result = { name: rule.type, dist: remainder, matchedRule: rule, subGroupCount: groupCount };
+            }
+        } else {
+            // groupCount === 1: final level: apply modifier
+            const totalSubGroups = currentGroups.length;
+            const modPrefix = getModifierPrefix(rule, totalSubGroups);
+            let modDist = Infinity;
+            for (const count of Object.values(rule.modifiers)) {
+                modDist = Math.min(modDist, Math.abs(totalSubGroups - count));
+            }
+            result = {
+                name: modPrefix ? modPrefix + rule.type : rule.type,
+                dist: modDist,
+                matchedRule: rule,
+                subGroupCount: totalSubGroups,
+            };
         }
+
+        if (result.matchedRule && isBetterMatch(result, best)) {
+            best = result;
+        }
+    }
+
+    // Also try evaluateForceByGroups directly (catches modifier-range matches
+    // that the regular-count division misses, e.g. 3 Points → "Short Star").
+    const directEval = evaluateForceByGroups(currentGroups, rules);
+    if (directEval.matchedRule && isBetterMatch(directEval, best)) {
+        best = directEval;
     }
 
     return best;
