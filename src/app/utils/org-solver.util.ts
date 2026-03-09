@@ -73,7 +73,7 @@ interface EvaluationResult {
     matchedRule: OrgTypeRule | null;
 }
 
-/** Returns true if candidate is a better match than current (lower dist, or same dist with higher regularCount). */
+/** Returns true if candidate is a better match than current (lower dist, or same dist with higher tier/regularCount). */
 function isBetterMatch(candidate: EvaluationResult, current: EvaluationResult): boolean {
     if (!candidate.matchedRule) return false;
     if (candidate.dist < current.dist) return true;
@@ -82,7 +82,11 @@ function isBetterMatch(candidate: EvaluationResult, current: EvaluationResult): 
     const candPriority = candidate.matchedRule.priority ?? 0;
     const currPriority = current.matchedRule?.priority ?? 0;
     if (candPriority !== currPriority) return candPriority > currPriority;
-    // Same priority — higher regularCount wins
+    // Same priority — higher tier wins (prefer the highest organizational level)
+    const candTier = candidate.matchedRule.tier;
+    const currTier = current.matchedRule?.tier ?? 0;
+    if (candTier !== currTier) return candTier > currTier;
+    // Same tier — higher regularCount wins
     return getRegularCount(candidate.matchedRule) > (current.matchedRule ? getRegularCount(current.matchedRule) : 0);
 }
 
@@ -584,6 +588,76 @@ function promotiveGroupEvaluation(
     return result;
 }
 
+// ─── Composition arithmetic ────────────────────────────────────────────────────
+
+const COMP_KEYS: readonly (keyof ForceComposition)[] = [
+    'BM', 'CI', 'BA', 'PM', 'CV', 'AF', 'other',
+    'BA_troopers', 'CI_troopers', 'CI_troopers_mechanized',
+    'CI_troopers_legs', 'CI_troopers_jump', 'CI_troopers_hover',
+    'CI_troopers_tracked', 'CI_troopers_wheeled',
+];
+
+/** Subtract composition b from a. Returns null if any field would go negative. */
+function subtractComp(a: ForceComposition, b: ForceComposition): ForceComposition | null {
+    const result = {} as ForceComposition;
+    for (const key of COMP_KEYS) {
+        result[key] = a[key] - b[key];
+        if (result[key] < -1e-9) return null;
+    }
+    // Clamp tiny floating-point negatives to 0
+    for (const key of COMP_KEYS) {
+        if (result[key] < 0) result[key] = 0;
+    }
+    return result;
+}
+
+/** True if any field is positive. */
+function isNonEmptyComp(c: ForceComposition): boolean {
+    return COMP_KEYS.some(k => c[k] > 0);
+}
+
+/**
+ * Partition a ForceComposition into n integer sub-compositions.
+ *
+ * Uses floor-division with deterministic remainder distribution: for each
+ * field, the first (value % n) groups get ceil(value/n), the rest get
+ * floor(value/n). Every sub-composition has integer values and the sum
+ * across all groups equals the original.
+ */
+function partitionComposition(comp: ForceComposition, n: number): ForceComposition[] {
+    const parts: ForceComposition[] = [];
+    for (let i = 0; i < n; i++) {
+        const sub = {} as ForceComposition;
+        for (const key of COMP_KEYS) {
+            const base = Math.floor(comp[key] / n);
+            const rem = comp[key] % n;
+            sub[key] = base + (i < rem ? 1 : 0);
+        }
+        parts.push(sub);
+    }
+    return parts;
+}
+
+/**
+ * Deduplicate an array of ForceCompositions. Returns unique compositions
+ * with their frequency counts.
+ */
+function deduplicateCompositions(parts: ForceComposition[]): { comp: ForceComposition; count: number }[] {
+    const result: { comp: ForceComposition; count: number }[] = [];
+    outer:
+    for (const part of parts) {
+        for (const entry of result) {
+            let same = true;
+            for (const key of COMP_KEYS) {
+                if (entry.comp[key] !== part[key]) { same = false; break; }
+            }
+            if (same) { entry.count++; continue outer; }
+        }
+        result.push({ comp: part, count: 1 });
+    }
+    return result;
+}
+
 // ─── Recursive bottom-up split ─────────────────────────────────────────────────
 
 /**
@@ -621,6 +695,9 @@ function trySplitEvaluation(
     range: PointRange,
     rules: OrgTypeRule[],
     comp: ForceComposition,
+    getPointRange: (comp: ForceComposition) => PointRange,
+    minDistance: number,
+    distanceFactor: number,
     groupMinDistance?: number,
     groupDistanceFactor?: number,
 ): EvaluationResult {
@@ -690,12 +767,16 @@ function trySplitEvaluation(
                 };
             } else {
                 // Only 1 group at next level — this is our final level
-                // Apply modifier
+                // Apply modifier and compute distance from nearest modifier count
                 const totalSubGroups = currentGroups.length;
                 const modPrefix = getModifierPrefix(nextRule, totalSubGroups);
+                let modDist = Infinity;
+                for (const count of Object.values(nextRule.modifiers)) {
+                    modDist = Math.min(modDist, Math.abs(totalSubGroups - count));
+                }
                 lastResult = {
                     name: modPrefix ? modPrefix + nextRule.type : nextRule.type,
-                    dist: 0,
+                    dist: modDist,
                     matchedRule: nextRule,
                 };
                 break;
@@ -708,10 +789,7 @@ function trySplitEvaluation(
         if (currentGroups.length >= 2) {
             const finalUp = evaluateForceByGroups(currentGroups, filteredRules);
             if (finalUp.matchedRule &&
-                (!lastResult?.matchedRule ||
-                 finalUp.dist < lastResult.dist ||
-                 (finalUp.dist === lastResult.dist &&
-                  getRegularCount(finalUp.matchedRule) > getRegularCount(lastResult.matchedRule)))) {
+                (!lastResult?.matchedRule || isBetterMatch(finalUp, lastResult))) {
                 lastResult = finalUp;
             }
         }
@@ -722,62 +800,202 @@ function trySplitEvaluation(
         } // end leafCount loop
     }
 
-    // Scale every numeric field in a ForceComposition by a factor.
-    const scaleComp = (c: ForceComposition, factor: number): ForceComposition => {
-        const scaled = {} as ForceComposition;
-        for (const key of Object.keys(c) as (keyof ForceComposition)[]) {
-            scaled[key] = c[key] * factor;
-        }
-        return scaled;
-    };
+    // ── Combinatorial partition: customMatch with integer partitioning ──────
+    //
+    // Three strategies for detecting customMatch formations (Nova, Platoon, etc.):
+    //
+    // Strategy 1 — Uniform integer partition:
+    //   Split comp into N integer sub-compositions (floor/ceil), evaluate each
+    //   independently against the customMatch rule. All must match.
+    //
+    // Strategy 2 — Greedy ideal-packing with residual:
+    //   Probe to find a sub-composition where the customMatch returns low
+    //   distance. Pack K copies, then evaluate the leftover composition
+    //   against all rules (leaf + customMatch). This finds mixed formations
+    //   like "1 Nova + 1 Star" that uniform partition cannot.
+    //
+    // Strategy 3 — Heterogeneous partition:
+    //   Split comp into N integer sub-groups, let each sub-group independently
+    //   match its best rule (leaf or customMatch). Detects formations composed
+    //   of different sub-unit types from a flat unit list.
 
-    // Try customMatch rules as virtual group generators.
-    // E.g. 10 BM + 50 BA_troopers can be split into 2 Novas → Supernova Binary.
-    for (const cmRule of filteredRules) {
-        if (!cmRule.customMatch) continue;
+    const cmRules = filteredRules.filter(r => r.customMatch);
+    const midPts = (range.min + range.max) / 2;
 
-        const midPts = (range.min + range.max) / 2;
+    // ── Strategy 1: Uniform integer partition per customMatch rule ──
+
+    for (const cmRule of cmRules) {
         const ruleRegular = getRegularCount(cmRule);
         if (ruleRegular <= 0) continue;
 
         const maxN = Math.min(10, Math.ceil(midPts / ruleRegular) + 1);
         for (let n = 2; n <= maxN; n++) {
-            // Divide composition evenly into n sub-compositions
-            const subComp = scaleComp(comp, 1 / n);
+            const parts = partitionComposition(comp, n);
+            const distinct = deduplicateCompositions(parts);
 
-            if (cmRule.filter && !cmRule.filter(subComp)) continue;
-
-            const customDist = cmRule.customMatch(subComp);
-            if (customDist === Infinity) continue;
-            if (cmRule.strict && customDist !== 0) continue;
-            if (customDist > 1) continue;
+            // Every distinct sub-composition must pass the rule
+            let allMatch = true;
+            let worstDist = 0;
+            for (const { comp: sub } of distinct) {
+                if (cmRule.filter && !cmRule.filter(sub)) { allMatch = false; break; }
+                const d = cmRule.customMatch!(sub);
+                if (d === Infinity) { allMatch = false; break; }
+                if (cmRule.strict && d !== 0) { allMatch = false; break; }
+                if (d > worstDist) worstDist = d;
+            }
+            if (!allMatch || worstDist > 1) continue;
 
             // Create n virtual groups of this customMatch type
-            const virtualGroups: GroupSizeResult[] = [];
-            for (let i = 0; i < n; i++) {
-                virtualGroups.push({
-                    name: cmRule.type,
-                    type: cmRule.type,
-                    countsAsType: cmRule.countsAs ?? null,
-                    tier: cmRule.tier,
-                });
-            }
+            const virtualGroups: GroupSizeResult[] = Array.from({ length: n }, () => ({
+                name: cmRule.type,
+                type: cmRule.type,
+                countsAsType: cmRule.countsAs ?? null,
+                tier: cmRule.tier,
+            }));
 
-            // Direct group evaluation (handles 2 Novas → SN Binary, 3 → SN Trinary)
             let cmResult = evaluateForceByGroups(virtualGroups, filteredRules);
-
-            // For larger counts, try hierarchical split (e.g. 6 Novas → 2 SN Trinaries → ...)
             if (n >= 4) {
                 const split = trySplitGroupEvaluation(virtualGroups, filteredRules,
                     groupMinDistance ?? 1, groupDistanceFactor ?? 0.25);
-                if (isBetterMatch(split, cmResult)) {
-                    cmResult = split;
+                if (isBetterMatch(split, cmResult)) cmResult = split;
+            }
+            if (cmResult.matchedRule && isBetterMatch(cmResult, best)) best = cmResult;
+        }
+    }
+
+    // ── Strategy 2: Greedy ideal-packing with residual ──
+    //
+    // For each customMatch rule, find the largest K where K copies of its
+    // ideal sub-composition fit within comp, then evaluate the leftover
+    // against all rules. Enables mixed-rule formations.
+
+    for (const cmRule of cmRules) {
+        const ruleRegular = getRegularCount(cmRule);
+        if (ruleRegular <= 0) continue;
+
+        const maxK = Math.min(10, Math.ceil(midPts / ruleRegular));
+
+        // Probe: find the sub-composition at K=1 that gives the best distance.
+        // Use the floor partition of comp/1 (= comp itself) as starting point,
+        // then try comp/(K+1) partitions to find a single-group ideal.
+        for (let k = 1; k <= maxK; k++) {
+            // Use the "richest" partition slot (index 0) as the candidate sub-comp.
+            // At partition size (k+1), slot 0 gets ceil values, giving the largest
+            // single sub-group that leaves room for at least k copies.
+            const probeN = k + 1;
+            if (probeN > 11) break;
+            const probeParts = partitionComposition(comp, probeN);
+            const idealCandidate = probeParts[0]; // richest sub-comp
+
+            if (cmRule.filter && !cmRule.filter(idealCandidate)) continue;
+            const idealDist = cmRule.customMatch!(idealCandidate);
+            if (idealDist === Infinity || idealDist > 0.5) continue;
+            if (cmRule.strict && idealDist !== 0) continue;
+
+            // Subtract k copies of idealCandidate from the total composition
+            let remainder = comp as ForceComposition | null;
+            for (let i = 0; i < k && remainder; i++) {
+                remainder = subtractComp(remainder!, idealCandidate);
+            }
+            if (!remainder) continue;
+
+            // Build virtual groups for the k matched copies
+            const matchedGroups: GroupSizeResult[] = Array.from({ length: k }, () => ({
+                name: cmRule.type,
+                type: cmRule.type,
+                countsAsType: cmRule.countsAs ?? null,
+                tier: cmRule.tier,
+            }));
+
+            if (!isNonEmptyComp(remainder)) {
+                // No residual — all units accounted for by k copies of this rule
+                if (k < 2) continue; // single match handled by evaluateLeaf
+                const cmResult = evaluateForceByGroups(matchedGroups, filteredRules);
+                if (cmResult.matchedRule && isBetterMatch(cmResult, best)) best = cmResult;
+                continue;
+            }
+
+            // Evaluate the residual composition against leaf and customMatch rules
+            const residualLeaf = evaluateLeaf(remainder, rules, getPointRange, minDistance, distanceFactor);
+            let residualResult: EvaluationResult = residualLeaf;
+
+            // Also try customMatch rules on the residual
+            for (const otherRule of cmRules) {
+                if (otherRule.filter && !otherRule.filter(remainder)) continue;
+                const d = otherRule.customMatch!(remainder);
+                if (d === Infinity) continue;
+                if (otherRule.strict && d !== 0) continue;
+                if (d < residualResult.dist) {
+                    residualResult = { name: otherRule.type, dist: d, matchedRule: otherRule };
                 }
             }
 
-            if (cmResult.matchedRule && isBetterMatch(cmResult, best)) {
-                best = cmResult;
+            if (!residualResult.matchedRule) continue;
+
+            // Combine matched groups + residual group and evaluate the formation
+            const combinedGroups: GroupSizeResult[] = [
+                ...matchedGroups,
+                {
+                    name: residualResult.name,
+                    type: residualResult.matchedRule.type,
+                    countsAsType: residualResult.matchedRule.countsAs ?? null,
+                    tier: residualResult.matchedRule.tier,
+                },
+            ];
+
+            let cmResult = evaluateForceByGroups(combinedGroups, filteredRules);
+            if (combinedGroups.length >= 4) {
+                const split = trySplitGroupEvaluation(combinedGroups, filteredRules,
+                    groupMinDistance ?? 1, groupDistanceFactor ?? 0.25);
+                if (isBetterMatch(split, cmResult)) cmResult = split;
             }
+            if (cmResult.matchedRule && isBetterMatch(cmResult, best)) best = cmResult;
+        }
+    }
+
+    // ── Strategy 3: Heterogeneous partition ──
+    //
+    // Split comp into N integer sub-groups, let each independently match its
+    // best leaf or customMatch rule. This catches formations where different
+    // sub-groups are different types (e.g. mix of Stars and Novas).
+
+    if (cmRules.length > 0) {
+        const maxHetN = Math.min(6, Math.ceil(midPts / Math.max(1, ...cmRules.map(r => getRegularCount(r)))));
+        for (let n = 2; n <= maxHetN; n++) {
+            const parts = partitionComposition(comp, n);
+            const groupResults: GroupSizeResult[] = [];
+            let allMatched = true;
+
+            for (const part of parts) {
+                // Find the best match for this sub-composition across all rules
+                let bestSub = evaluateLeaf(part, rules, getPointRange, minDistance, distanceFactor);
+
+                for (const cmRule of cmRules) {
+                    if (cmRule.filter && !cmRule.filter(part)) continue;
+                    const d = cmRule.customMatch!(part);
+                    if (d === Infinity) continue;
+                    if (cmRule.strict && d !== 0) continue;
+                    const candidate: EvaluationResult = { name: cmRule.type, dist: d, matchedRule: cmRule };
+                    if (isBetterMatch(candidate, bestSub)) bestSub = candidate;
+                }
+
+                if (!bestSub.matchedRule) { allMatched = false; break; }
+                groupResults.push({
+                    name: bestSub.name,
+                    type: bestSub.matchedRule.type,
+                    countsAsType: bestSub.matchedRule.countsAs ?? null,
+                    tier: bestSub.matchedRule.tier,
+                });
+            }
+            if (!allMatched) continue;
+
+            let hetResult = evaluateForceByGroups(groupResults, filteredRules);
+            if (n >= 4) {
+                const split = trySplitGroupEvaluation(groupResults, filteredRules,
+                    groupMinDistance ?? 1, groupDistanceFactor ?? 0.25);
+                if (isBetterMatch(split, hetResult)) hetResult = split;
+            }
+            if (hetResult.matchedRule && isBetterMatch(hetResult, best)) best = hetResult;
         }
     }
 
@@ -816,8 +1034,37 @@ function findBestNextLevel(
         const regCount = getRegularCount(rule);
         if (regCount < 1) continue;
 
-        const nextGroupCount = Math.floor(matchingCount / regCount);
-        const remainder = matchingCount % regCount;
+        let nextGroupCount = Math.floor(matchingCount / regCount);
+        let remainder = matchingCount % regCount;
+
+        const modCounts = Object.values(rule.modifiers);
+        const minMod = Math.min(...modCounts);
+        const maxMod = Math.max(...modCounts);
+
+        // If the remainder can form a valid (possibly under-strength) group,
+        // add one more group. E.g. 8 Flights / 3 (Squadron reg) = 2 r2,
+        // but remainder 2 >= minMod 2 → 3 Squadrons [3][3][2].
+        if (remainder > 0 && remainder >= minMod) {
+            nextGroupCount++;
+            remainder = 0;
+        }
+
+        // When regularCount-based division gives < 2 groups, try using the
+        // full modifier range to form multiple variable-size groups.
+        // E.g. 5 Flights with Squadron (reg=3, range [2,4]): floor(5/3)=1,
+        // but 2 Squadrons of 3+2 Flights is valid → nextGroupCount=2.
+        if (nextGroupCount < 2) {
+            // Minimum groups where each group ≤ maxMod sub-units
+            let altGroups = Math.ceil(matchingCount / maxMod);
+            // Ensure enough sub-units to fill each group to at least minMod
+            if (matchingCount < altGroups * minMod) {
+                altGroups = Math.floor(matchingCount / minMod);
+            }
+            if (altGroups > nextGroupCount && altGroups > 0 && matchingCount <= altGroups * maxMod) {
+                nextGroupCount = altGroups;
+                remainder = Math.abs(matchingCount - nextGroupCount * regCount);
+            }
+        }
 
         if (nextGroupCount < 1) continue;
 
@@ -861,7 +1108,7 @@ export function resolveFromUnits(units: Unit[], techBase: string, factionName: s
 
     const range = getPointRange(comp);
     if (range.max > 0) {
-        const splitResult = trySplitEvaluation(range, rules, comp, groupMinDistance, groupDistanceFactor);
+        const splitResult = trySplitEvaluation(range, rules, comp, getPointRange, minDistance, distanceFactor, groupMinDistance, groupDistanceFactor);
         if (isBetterMatch(splitResult, result)) {
             result = splitResult;
         }
