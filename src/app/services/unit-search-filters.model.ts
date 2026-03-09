@@ -84,7 +84,7 @@ export interface SemanticDisplayItem {
 export type DropdownFilterOptions = {
     type: 'dropdown';
     label: string;
-    options: { name: string, img?: string, displayName?: string }[];
+    options: { name: string, img?: string, displayName?: string, available?: boolean }[];
     value: string[];
     interacted: boolean;
     semanticOnly?: boolean;  // True if this filter has semantic-only constraints (values not in options)

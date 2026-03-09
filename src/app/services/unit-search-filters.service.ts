@@ -1514,8 +1514,9 @@ export class UnitSearchFiltersService {
             const contextState = { ...state };
             delete contextState[conf.key];
             let contextUnits = this.applyFilters(baseUnits, contextState);
-            let availableOptions: { name: string, img?: string }[] = [];
+            let availableOptions: { name: string, img?: string, displayName?: string, available?: boolean }[] = [];
             if (conf.type === AdvFilterType.DROPDOWN) {
+                const displayNameFn = conf.displayNameFn ?? this.displayNameFns[conf.key];
                 if (conf.external) {
                     const contextUnitIds = new Set(contextUnits.filter(u => u.id !== -1).map(u => u.id));
                     if (conf.key === 'era') {
@@ -1858,7 +1859,6 @@ export class UnitSearchFiltersService {
                     const allOptions = Array.from(optionSet);
                     const sortedOptions = sortAvailableDropdownOptions(allOptions, conf.sortOptions);
                     
-                    const displayNameFn = conf.displayNameFn ?? this.displayNameFns[conf.key];
                     availableOptions = sortedOptions.map(name => ({
                         name,
                         ...(displayNameFn ? { displayName: displayNameFn(name) } : {})
@@ -1891,12 +1891,7 @@ export class UnitSearchFiltersService {
                         const activeSelections = Object.entries(selection)
                             .filter(([_, sel]) => sel.state !== false);
                         
-                        // Only check unavailability if there ARE available options
-                        // If availableOptionNames is empty, it means no units match current filters,
-                        // not that the selected values are invalid
-                        const unavailableSelections = availableOptionNames.size > 0
-                            ? activeSelections.filter(([name, _]) => !availableOptionNames.has(name))
-                            : [];
+                        const unavailableSelections = activeSelections.filter(([name, _]) => !availableOptionNames.has(name));
                         
                         // Check for quantity constraints that can't be shown in UI
                         // UI can only represent: no operator (implicit >=1) or >= operator
@@ -1907,8 +1902,20 @@ export class UnitSearchFiltersService {
                             return false;
                         });
                         
-                        if ((unavailableSelections.length > 0 && unavailableSelections.length === activeSelections.length) || hasAdvancedQuantity) {
-                            // Semantic only mode - either unavailable values or advanced quantity constraints
+                        // Add unavailable selected values back to the options list so the
+                        // user can still deselect them (prevents the dropdown from locking).
+                        if (unavailableSelections.length > 0) {
+                            for (const [name] of unavailableSelections) {
+                                availableOptions.push({
+                                    name,
+                                    available: false,
+                                    ...(displayNameFn ? { displayName: displayNameFn(name) } : {})
+                                });
+                            }
+                        }
+
+                        if (hasAdvancedQuantity) {
+                            // Semantic only mode for advanced quantity constraints
                             semanticOnly = true;
                             displayText = activeSelections.map(([name, sel]) => {
                                 const prefix = sel.state === 'not' ? '!' : '';
@@ -1964,15 +1971,15 @@ export class UnitSearchFiltersService {
                     // For regular dropdowns, check string array
                     const selectedValues = filterValue as string[];
                     if (selectedValues && Array.isArray(selectedValues) && selectedValues.length > 0) {
-                        // Only check unavailability if there ARE available options
-                        // If availableOptionNames is empty, it means no units match current filters,
-                        // not that the selected values are invalid
-                        if (availableOptionNames.size > 0) {
-                            const unavailableValues = selectedValues.filter(v => !availableOptionNames.has(v));
-                            if (unavailableValues.length > 0 && unavailableValues.length === selectedValues.length) {
-                                // All selected values are unavailable - semantic only mode
-                                semanticOnly = true;
-                                displayText = unavailableValues.join(', ');
+                        // Add unavailable selected values back to the options list so the
+                        // user can still deselect them (prevents the dropdown from locking).
+                        for (const v of selectedValues) {
+                            if (!availableOptionNames.has(v)) {
+                                availableOptions.push({
+                                    name: v,
+                                    available: false,
+                                    ...(displayNameFn ? { displayName: displayNameFn(v) } : {})
+                                });
                             }
                         }
                     }
