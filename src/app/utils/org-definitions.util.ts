@@ -301,7 +301,7 @@ const CLAN_GALAXY: OrgTypeRule = {
 // IS rules
 const IS_FLIGHT: OrgTypeRule = {
     type: 'Flight', modifiers: { 'Under-Strength ': 1, '': 2, 'Reinforced ': 3 },
-    commandRank: 'Lieutenant', tier: 1,
+    commandRank: 'Lieutenant', tier: 1, priority: 1,
     filter: (comp) => isPureAero(comp),
 };
 const IS_SQUADRON: OrgTypeRule = {
