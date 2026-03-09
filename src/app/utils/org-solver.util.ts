@@ -228,9 +228,12 @@ function evaluateForceByGroups(
         dist += unmatchedCount;
 
         const bestPriority = best.matchedRule?.priority ?? 0;
+        const bestTier = best.matchedRule?.tier ?? 0;
+        const rulePriority = rule.priority ?? 0;
         if (dist < best.dist ||
-            (dist === best.dist && (rule.priority ?? 0) > bestPriority) ||
-            (dist === best.dist && (rule.priority ?? 0) === bestPriority && getRegularCount(rule) > (best.matchedRule ? getRegularCount(best.matchedRule) : 0))) {
+            (dist === best.dist && rulePriority > bestPriority) ||
+            (dist === best.dist && rulePriority === bestPriority && rule.tier > bestTier) ||
+            (dist === best.dist && rulePriority === bestPriority && rule.tier === bestTier && getRegularCount(rule) > (best.matchedRule ? getRegularCount(best.matchedRule) : 0))) {
             const modPrefix = getModifierPrefix(rule, count);
             best = {
                 name: modPrefix ? modPrefix + rule.type : rule.type,
@@ -308,13 +311,6 @@ function trySplitGroupEvaluation(
     }
 
     return best;
-}
-
-// ─── Promotive group evaluation ────────────────────────────────────────────────
-
-/** Look up the tier for an OrgType from the rules array. */
-function getRuleTier(type: OrgType, rules: OrgTypeRule[]): number {
-    return rules.find(r => r.type === type)?.tier ?? 0;
 }
 
 // ─── Foreign-type normalization ────────────────────────────────────────────────
@@ -885,7 +881,17 @@ function trySplitEvaluation(
             const probeN = k + 1;
             if (probeN > 11) break;
             const probeParts = partitionComposition(comp, probeN);
-            const idealCandidate = probeParts[0]; // richest sub-comp
+            // Probe both the richest (index 0, gets ceil values) and leanest
+            // (last index, gets floor values) partition slots as candidates.
+            const candidates = [probeParts[0]];
+            if (probeN > 1) {
+                const last = probeParts[probeN - 1];
+                // Only add if different from first
+                const isDifferent = COMP_KEYS.some(key => last[key] !== probeParts[0][key]);
+                if (isDifferent) candidates.push(last);
+            }
+
+            for (const idealCandidate of candidates) {
 
             if (cmRule.filter && !cmRule.filter(idealCandidate)) continue;
             const idealDist = cmRule.customMatch!(idealCandidate);
@@ -950,6 +956,7 @@ function trySplitEvaluation(
                 if (isBetterMatch(split, cmResult)) cmResult = split;
             }
             if (cmResult.matchedRule && isBetterMatch(cmResult, best)) best = cmResult;
+            } // end idealCandidate loop
         }
     }
 
@@ -1062,17 +1069,17 @@ function findBestNextLevel(
             }
             if (altGroups > nextGroupCount && altGroups > 0 && matchingCount <= altGroups * maxMod) {
                 nextGroupCount = altGroups;
-                remainder = Math.abs(matchingCount - nextGroupCount * regCount);
+                remainder = 0; // all sub-units fit within valid modifier-range groups
             }
         }
 
         if (nextGroupCount < 1) continue;
 
-        // Prefer: more groups at next level, then higher priority, then higher regularCount
+        // Prefer: lower remainder first, then more groups at next level, then higher priority
         if (!best ||
-            nextGroupCount > best.groupCount ||
-            (nextGroupCount === best.groupCount && (rule.priority ?? 0) > (best.rule.priority ?? 0)) ||
-            (nextGroupCount === best.groupCount && (rule.priority ?? 0) === (best.rule.priority ?? 0) && remainder < best.remainder)) {
+            remainder < best.remainder ||
+            (remainder === best.remainder && nextGroupCount > best.groupCount) ||
+            (remainder === best.remainder && nextGroupCount === best.groupCount && (rule.priority ?? 0) > (best.rule.priority ?? 0))) {
             best = { rule, groupCount: nextGroupCount, remainder };
         }
     }
