@@ -279,7 +279,7 @@ export class ForceBuilderViewerComponent {
 
     async removeUnit(event: MouseEvent, unit: ForceUnit) {
         event.stopPropagation();
-        await this.forceBuilderService.removeUnit(unit);
+        await this.forceBuilderService.removeUnit(unit, event.ctrlKey);
         // If this was the last unit, close the menu (offcanvas OFF mode)
         if (!this.forceBuilderService.hasForces()) {
             this.layoutService.closeMenu();

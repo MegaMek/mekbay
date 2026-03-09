@@ -836,12 +836,12 @@ export class ForceBuilderService {
      * it selects the previous unit in the list.
      * @param unitToRemove The unit to remove.
      */
-    async removeUnit(unitToRemove: ForceUnit) {
+    async removeUnit(unitToRemove: ForceUnit, skipConfirmation = false) {
         const targetForce = unitToRemove.force;
         if (!targetForce) {
             return;
         }
-        if (unitToRemove.modified) {
+        if (unitToRemove.modified && !skipConfirmation) {
             const unitName = (unitToRemove.getUnit().chassis + ' ' + unitToRemove.getUnit().model).trim();
             const dialogRef = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
                 panelClass: 'danger',
