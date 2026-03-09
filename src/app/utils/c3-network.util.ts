@@ -1177,12 +1177,12 @@ export class C3NetworkUtil {
         const networkedUnits = this.getNetworkTreeUnits(rootNet, networks, allUnits);
         if (networkedUnits.length < 2) return 0; // No tax for single unit
 
-        const hasBoosted = networkedUnits.some(u => 
-            this.getC3Components(u.getUnit()).some(c => c.boosted)
-        );
-        const taxRate = hasBoosted ? C3_BOOSTED_TAX_RATE : C3_TAX_RATE;
-        const networkTotalBv = networkedUnits.reduce((sum, u) => sum + u.getBaseBv() + u.tagBV(), 0);
-        return Math.round(networkTotalBv * taxRate);
+        const networkTotalTax = networkedUnits.reduce((sum, u) => {
+            const baseBvForC3 = u.getBaseBv() + u.tagBV();
+            const isBoosted = this.getC3Components(u.getUnit()).some(c => c.boosted);
+            return sum + baseBvForC3 * (isBoosted ? C3_BOOSTED_TAX_RATE : C3_TAX_RATE);
+        }, 0);
+        return Math.round(networkTotalTax);
     }
 
     /** Get all unique units in a network tree (including sub-networks) */
