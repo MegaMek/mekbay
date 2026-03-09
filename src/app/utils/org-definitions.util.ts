@@ -33,6 +33,7 @@
 
 import { ForceUnit } from '../models/force-unit.model';
 import { Unit } from '../models/units.model';
+import { compareUnitsByName } from './sort.util';
 
 /*
  * Author: Drake
@@ -90,7 +91,13 @@ export type OrgType =
     | 'Century'
     | 'Maniple'
     | 'Cohort'
-    | 'Legion';
+    | 'Legion'
+
+    // CC-specific types
+    | 'Augmented Lance'
+    | 'Augmented Company'
+    | 'Augmented Battalion'
+    | 'Augmented Regiment';
 
 export interface ForceComposition {
     BM: number;
@@ -244,7 +251,7 @@ function isPureInfantry(comp: ForceComposition): boolean {
         (comp.BA_troopers > 0 || comp.CI_troopers > 0 || comp.CI_mechanized_troopers > 0);
 }
 
-//  Shared Rules 
+// Shared Rules 
 // Rules reused across org definitions (e.g. WDOrg extends Clan + IS rules).
 
 // Clan rules
@@ -294,7 +301,7 @@ const CLAN_GALAXY: OrgTypeRule = {
 // IS rules
 const IS_FLIGHT: OrgTypeRule = {
     type: 'Flight', modifiers: { 'Under-Strength ': 1, '': 2, 'Reinforced ': 3 },
-    commandRank: 'Lieutenant', tier: 1,
+    commandRank: 'Lieutenant', tier: 1, priority: 1,
     filter: (comp) => isPureAero(comp),
 };
 const IS_SQUADRON: OrgTypeRule = {
@@ -476,7 +483,7 @@ const ComStarOrg: OrgDefinition = {
         {
             type: 'Level VI', composedOfAny: ['Level V'], modifiers: {
                 'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
-            }, commandRank: 'Precentor', tier: 5,
+            }, commandRank: 'Precentor Martial', tier: 5,
         },
     ],
 };
@@ -528,14 +535,14 @@ const MHOrg: OrgDefinition = {
             type: 'Century', composedOfAny: ['Contubernium'], modifiers: {
                 'Half ': 2, 'Short ': 3, 'Under-Strength ': 4, '': 5, 'Reinforced ': 6, 'Fortified ': 7,
             }, commandRank: 'Centurion', tier: 1,
-            filter: (comp) => !isPureInfantry(comp),
+            filter: (comp) => comp.CI_troopers === 0 && comp.CI_mechanized_troopers === 0,
         },
         // Century (Infantry) = 4-10 CI infantry Points
         {
             type: 'Century', composedOfAny: ['Contubernium'], modifiers: {
                 'Under-Strength ': 4, '': 7, 'Reinforced ': 10,
             }, commandRank: 'Centurion', tier: 1,
-            filter: (comp) => isPureInfantry(comp),
+            filter: (comp) => isPureInfantry(comp) && comp.BA_troopers === 0,
         },
         {
             type: 'Maniple', strict: true, composedOfAny: ['Century'],
@@ -614,6 +621,50 @@ const WDOrg: OrgDefinition = {
     ],
 };
 
+const CCOrg: OrgDefinition = {
+    distanceFactor: 0.2,
+    minDistance: 2,
+    groupDistanceFactor: 0.25,
+    groupMinDistance: 1,
+    getPointRange(comp: ForceComposition): PointRange {
+        const fixed = comp.BM +
+            (comp.BA_troopers / 4) +
+            comp.PM +
+            comp.CV +
+            comp.AF +
+            comp.other;
+        return {
+            min: fixed + (comp.CI_troopers + comp.CI_mechanized_troopers) / 28,
+            max: fixed + (comp.CI_troopers + comp.CI_mechanized_troopers) / 21,
+        };
+    },
+    rules: [
+        IS_FLIGHT, IS_SQUADRON, IS_WING, IS_SQUAD, IS_PLATOON, IS_SINGLE, IS_LANCE, IS_COMPANY, IS_BATTALION, IS_REGIMENT,
+        // CC Augmented Lance
+        {
+            type: 'Augmented Lance', strict: true, composedOfAny: ['Single', 'Squad'],
+            modifiers: { '': 6 }, commandRank: 'Lieutenant', tier: 1,
+            filter: (comp) => (comp.AF === 0 && (comp.BM === 4 && (comp.CV === 2 || comp.BA_troopers === 8) || (comp.CV === 4 && (comp.BM === 2 || comp.BA_troopers === 16)))),
+        },
+        // CC Augmented Company (Reinforced Augmented Company is not canonically listed, but seems reasonable to allow in the app)
+        {
+            type: 'Augmented Company', composedOfAny: ['Augmented Lance'],
+            modifiers: { '': 2, 'Reinforced ': 3 }, commandRank: 'Captain', tier: 2,
+        },
+        // CC Augmented Battalion (Short, Under-Strength, and Strong variants are not canonically listed, but seem reasonable to allow in the app)
+        {
+            type: 'Augmented Battalion', composedOfAny: ['Augmented Company'],
+            modifiers: {'Short ': 2, 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'Major', tier: 3,
+        },
+        // CC Augmented Regiment
+        {
+            type: 'Augmented Regiment', composedOfAny: ['Augmented Battalion', 'Battalion', 'Wing'],
+            modifiers: {'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'General', tier: 4,
+            groupFilter: (groups: ReadonlyArray<GroupSizeResult>) => groups.some(g => g.type === 'Augmented Battalion'),
+        },
+    ],
+};
+
 //  Org Resolution 
 
 /**
@@ -626,6 +677,7 @@ export const ORG_REGISTRY: { match: (techBase: string, factionName: string) => b
     { match: (_, f) => f === 'Society', org: SocietyOrg },
     { match: (_, f) => f.includes('Marian Hegemony'), org: MHOrg },
     { match: (_, f) => f.includes('Dragoons'), org: WDOrg },
+    { match: (_, f) => f.includes('Capellan Confederation'), org: CCOrg },
     { match: (_, f) => f.includes('Clan'), org: ClanOrg },
     { match: (_, f) => f.includes('Rasalhague Dominion') || f.includes('Wolf Empire') || f.includes('Escorpion') || f.includes('Scorpion Empire'), org: ClanOrg },
     // ISOrg is the default fallback if no other org matches
