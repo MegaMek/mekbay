@@ -65,17 +65,71 @@ const CARD_GAP = 12;
 const GROUP_PADDING = 24;
 const GROUP_HEADER_HEIGHT = 48;
 
+/** Compute total BV and PV for a force by summing base unit values.
+ *  Only sums BV for Classic forces and PV for Alpha Strike forces. */
+function computeForceUnitTotals(force: LoadForceEntry): { totalBv: number; totalPv: number } {
+    let totalBv = 0, totalPv = 0;
+    const isAS = force.type === GameSystem.ALPHA_STRIKE;
+    for (const g of force.groups ?? []) {
+        for (const ue of g.units ?? []) {
+            if (ue.unit) {
+                if (isAS) {
+                    totalPv += ue.unit.pv ?? 0;
+                } else {
+                    totalBv += ue.unit.bv ?? 0;
+                }
+            }
+        }
+    }
+    return { totalBv, totalPv };
+}
+
+/** Get the dominance value for a force by summing unit.bv (common scale across game systems). */
+function getForceValue(force: LoadForceEntry): number {
+    let total = 0;
+    for (const g of force.groups ?? []) {
+        for (const ue of g.units ?? []) {
+            if (ue.unit) total += ue.unit.bv ?? 0;
+        }
+    }
+    return total;
+}
+
 /** Format BV/PV totals for a set of entries as a display string. */
 function formatTotals(entries: LoadForceEntry[]): string {
     let totalBv = 0, totalPv = 0;
     for (const e of entries) {
-        if (e.bv && e.bv > 0) totalBv += e.bv;
-        if (e.pv && e.pv > 0) totalPv += e.pv;
+        const t = computeForceUnitTotals(e);
+        totalBv += t.totalBv;
+        totalPv += t.totalPv;
     }
     const parts: string[] = [];
     if (totalBv > 0) parts.push(`BV: ${totalBv.toLocaleString()}`);
     if (totalPv > 0) parts.push(`PV: ${totalPv.toLocaleString()}`);
     return parts.join(' · ');
+}
+
+/** Determine the dominant faction ID from a set of entries, using computed unit totals. */
+function getDominantFactionId(entries: LoadForceEntry[]): number | undefined {
+    const withFaction = entries.filter(e => e.factionId !== undefined);
+    if (withFaction.length === 0) return undefined;
+    const valueSums = new Map<number, number>();
+    const counts = new Map<number, number>();
+    for (const e of withFaction) {
+        const fid = e.factionId!;
+        valueSums.set(fid, (valueSums.get(fid) ?? 0) + getForceValue(e));
+        counts.set(fid, (counts.get(fid) ?? 0) + 1);
+    }
+    let bestValue = -1, bestId: number | undefined;
+    for (const [fid, total] of valueSums) {
+        if (total > bestValue) { bestValue = total; bestId = fid; }
+    }
+    if (bestValue > 0 && bestId !== undefined) return bestId;
+    let maxCount = 0, mostFreqId: number | undefined;
+    for (const [fid, count] of counts) {
+        if (count > maxCount) { maxCount = count; mostFreqId = fid; }
+    }
+    return mostFreqId ?? withFaction[0].factionId;
 }
 
 interface Rect { x: number; y: number; width: number; height: number }
@@ -161,6 +215,8 @@ interface ForceMetadata {
     factionName: string;
     org: GroupSizeResult;
     bvString: string;
+    totalBv: number;
+    totalPv: number;
 }
 
 @Component({
@@ -227,7 +283,7 @@ export class ForceOrgDialogComponent {
             if (fid === undefined) continue;
             let totalValue = 0;
             for (const e of descendantsMap.get(group.id) ?? []) {
-                totalValue += (e.bv && e.bv > 0) ? e.bv : (e.pv ?? 0);
+                totalValue += getForceValue(e);
             }
             valueSums.set(fid, (valueSums.get(fid) ?? 0) + totalValue);
             counts.set(fid, (counts.get(fid) ?? 0) + 1);
@@ -238,8 +294,7 @@ export class ForceOrgDialogComponent {
             if (pf.groupId !== null) continue;
             const fid = pf.force.factionId;
             if (fid === undefined) continue;
-            const v = (pf.force.bv && pf.force.bv > 0) ? pf.force.bv : (pf.force.pv ?? 0);
-            valueSums.set(fid, (valueSums.get(fid) ?? 0) + v);
+            valueSums.set(fid, (valueSums.get(fid) ?? 0) + getForceValue(pf.force));
             counts.set(fid, (counts.get(fid) ?? 0) + 1);
         }
 
@@ -381,10 +436,30 @@ export class ForceOrgDialogComponent {
         const result = new Map<string, ForceMetadata>();
         for (const force of all) {
             const factionName = this.getFactionName(force.factionId);
+            let totalBv = 0;
+            let totalPv = 0;
+            for (const g of force.groups ?? []) {
+                for (const ue of g.units ?? []) {
+                    if (ue.unit) {
+                        totalBv += ue.unit.bv ?? 0;
+                        totalPv += ue.unit.as.PV ?? 0;
+                    }
+                }
+            }
+            let bvString = '';
+            if (force.bv && force.bv > 0) {
+                bvString = `BV: ${force.bv.toLocaleString()}`;
+                if (totalBv > 0 && totalBv !== force.bv) bvString += ` (${totalBv.toLocaleString()})`;
+            } else if (force.pv && force.pv > 0) {
+                bvString = `PV: ${force.pv.toLocaleString()}`;
+                if (totalPv > 0 && totalPv !== force.pv) bvString += ` (${totalPv.toLocaleString()})`;
+            }
             result.set(force.instanceId, {
-                factionName: factionName,
+                factionName,
                 org: OrgNamerUtil.getOrgFromForce(force, factionName),
-                bvString: (force.bv && force.bv > 0) ? `BV: ${force.bv.toLocaleString()}` : (force.pv && force.pv > 0) ? `PV: ${force.pv.toLocaleString()}` : '',
+                bvString,
+                totalBv,
+                totalPv,
             });
         }
         return result;
@@ -683,8 +758,7 @@ export class ForceOrgDialogComponent {
             for (const pf of directForcesMap.get(groupId) ?? []) {
                 const fid = pf.force.factionId;
                 if (fid === undefined) continue;
-                const v = (pf.force.bv && pf.force.bv > 0) ? pf.force.bv : (pf.force.pv ?? 0);
-                valueSums.set(fid, (valueSums.get(fid) ?? 0) + v);
+                valueSums.set(fid, (valueSums.get(fid) ?? 0) + getForceValue(pf.force));
                 counts.set(fid, (counts.get(fid) ?? 0) + 1);
             }
 
@@ -692,8 +766,7 @@ export class ForceOrgDialogComponent {
             if (extraForces && groupId === extraForces.targetGroupId) {
                 for (const e of extraForces.entries) {
                     if (e.factionId === undefined) continue;
-                    const v = (e.bv && e.bv > 0) ? e.bv : (e.pv ?? 0);
-                    valueSums.set(e.factionId, (valueSums.get(e.factionId) ?? 0) + v);
+                    valueSums.set(e.factionId, (valueSums.get(e.factionId) ?? 0) + getForceValue(e));
                     counts.set(e.factionId, (counts.get(e.factionId) ?? 0) + 1);
                 }
             }
@@ -705,7 +778,7 @@ export class ForceOrgDialogComponent {
                 const childEntries = descendantsMap.get(child.id) ?? [];
                 let totalValue = 0;
                 for (const e of childEntries) {
-                    totalValue += (e.bv && e.bv > 0) ? e.bv : (e.pv ?? 0);
+                    totalValue += getForceValue(e);
                 }
                 valueSums.set(childFactionId, (valueSums.get(childFactionId) ?? 0) + totalValue);
                 counts.set(childFactionId, (counts.get(childFactionId) ?? 0) + 1);
@@ -979,10 +1052,10 @@ export class ForceOrgDialogComponent {
     /** Compute the preview rect + header info for a new group encompassing two rects. */
     /** Compute full preview including org metadata (used on first overlap). */
     private computeGroupPreview(a: Rect, b: Rect, entries: LoadForceEntry[], childGroupResults?: GroupSizeResult[]): GroupPreview {
-        const factionName = OrgNamerUtil.getDominantFactionName(entries, id => this.getFactionName(id));
+        const factionId = getDominantFactionId(entries);
+        const factionName = factionId !== undefined ? this.getFactionName(factionId) : 'Mercenary';
         const orgName = OrgNamerUtil.getOrgFromForceCollection(entries, factionName, childGroupResults).name;
         const totals = formatTotals(entries);
-        const factionId = OrgNamerUtil.getDominantFactionId(entries);
         this.previewOrgCache = { orgName, totals, factionId };
         return { ...this.computeGroupPreviewRect(a, b), orgName, totals, factionId };
     }

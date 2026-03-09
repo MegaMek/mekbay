@@ -102,46 +102,6 @@ export class OrgNamerUtil {
 
     // ===== Utility methods =====
 
-    /**
-     * Determine the dominant faction ID from a set of LoadForceEntry instances.
-     * Priority: highest total BV/PV sum per faction, then most frequent, then first.
-     */
-    public static getDominantFactionId(entries: LoadForceEntry[]): number | undefined {
-        const withFaction = entries.filter(e => e.factionId !== undefined);
-        if (withFaction.length === 0) return undefined;
-        const valueSums = new Map<number, number>();
-        const counts = new Map<number, number>();
-        for (const e of withFaction) {
-            const fid = e.factionId!;
-            const v = (e.bv && e.bv > 0) ? e.bv : (e.pv ?? 0);
-            valueSums.set(fid, (valueSums.get(fid) ?? 0) + v);
-            counts.set(fid, (counts.get(fid) ?? 0) + 1);
-        }
-        let bestValue = -1, bestId: number | undefined;
-        for (const [fid, total] of valueSums) {
-            if (total > bestValue) { bestValue = total; bestId = fid; }
-        }
-        if (bestValue > 0 && bestId !== undefined) return bestId;
-        let maxCount = 0, mostFreqId: number | undefined;
-        for (const [fid, count] of counts) {
-            if (count > maxCount) { maxCount = count; mostFreqId = fid; }
-        }
-        return mostFreqId ?? withFaction[0].factionId;
-    }
-
-    /**
-     * Determine the dominant faction name for a set of LoadForceEntry instances.
-     * Priority: highest total BV/PV sum per faction, then most frequent, then first.
-     */
-    public static getDominantFactionName(
-        entries: LoadForceEntry[],
-        getFactionName: (factionId: number) => string | undefined,
-    ): string {
-        const factionId = this.getDominantFactionId(entries);
-        if (factionId === undefined) return 'Mercenary';
-        return getFactionName(factionId) ?? 'Mercenary';
-    }
-
     /** Derive the majority tech base from a set of raw Unit objects. */
     static deriveTechBase(units: Unit[]): string {
         const counts: Record<string, number> = {};
