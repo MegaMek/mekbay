@@ -51,6 +51,7 @@ import { DialogsService } from '../../services/dialogs.service';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { AdjustedPV } from '../../pipes/adjusted-pv.pipe';
 import { LongPressDirective } from '../../directives/long-press.directive';
+import { TooltipDirective } from '../../directives/tooltip.directive';
 import { SearchFavoritesMenuComponent } from '../search-favorites-menu/search-favorites-menu.component';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { ShareSearchDialogComponent } from './share-search.component';
@@ -69,7 +70,7 @@ import { SyntaxInputComponent } from '../syntax-input/syntax-input.component';
 import { SavedSearchesService } from '../../services/saved-searches.service';
 import { generateUUID } from '../../services/ws.service';
 import { GameSystem } from '../../models/common.model';
-import { RANGE_FILTERS } from '../../services/unit-search-filters.model';
+import { AS_TYPE_DISPLAY_NAMES, RANGE_FILTERS } from '../../services/unit-search-filters.model';
 import { UnitDetailsPanelComponent } from '../unit-details-panel/unit-details-panel.component';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
@@ -95,7 +96,7 @@ export interface ChassisGroup {
 @Component({
     selector: 'unit-search',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, MultiSelectDropdownComponent, AdjustedPV, FormatNumberPipe, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, SemanticGuideComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent],
+    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, TooltipDirective, MultiSelectDropdownComponent, AdjustedPV, FormatNumberPipe, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, SemanticGuideComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.scss',
     host: {
@@ -127,6 +128,7 @@ export class UnitSearchComponent {
     readonly filtersOnLeft = computed(() => this.optionsService.options().unitSearchExpandedViewLayout === 'filters-list-panel');
 
     public readonly SORT_OPTIONS = SORT_OPTIONS;
+    readonly unitTypeDisplayNames = AS_TYPE_DISPLAY_NAMES;
 
     readonly dropdownFilters = this.filtersService.dropdownConfigs;
     readonly rangeFilters = this.filtersService.rangeConfigs;

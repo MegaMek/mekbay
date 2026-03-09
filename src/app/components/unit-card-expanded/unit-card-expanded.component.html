@@ -27,7 +27,7 @@
             <div class="subtitle-line role" [class.sort-slot]="isSortActive('role')">{{ u.role }}</div>
             }
             <div class="subtitle-line">
-                <span [class.sort-slot]="isSortActive('as.TP')">{{ u.as.TP }}</span>
+                <span [class.sort-slot]="isSortActive('as.TP')" [tooltip]="unitTypeDisplayNames[u.as.TP]">{{ u.as.TP }}</span>
                 <span> • {{ u.weightClass }}</span>
             </div>
             <div class="subtitle-line">
