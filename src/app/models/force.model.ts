@@ -48,6 +48,7 @@ import { FormationTypeDefinition, FormationMatch, isNoFormation } from '../utils
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
 import { GroupSizeResult } from '../utils/org-solver.util';
+import { OrgNamerUtil } from '../utils/org-namer.util';
 
 /*
  * Author: Drake
@@ -137,7 +138,7 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
 
     /** Structural evaluation result for this group (name + matched ForceType). */
     sizeResult = computed<GroupSizeResult>(() => {
-        return FormationNamerUtil.getFormationSizeResult(this);
+        return OrgNamerUtil.getOrgFromGroup(this);
     });
 
     sizeName = computed(() => {
@@ -260,7 +261,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     }
 
     sizeName = computed(() => {
-        return FormationNamerUtil.getForceSizeName(this);
+        return OrgNamerUtil.getOrgFromForce(this).name;
     });
 
     techBase = computed((): string => {

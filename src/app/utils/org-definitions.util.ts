@@ -33,13 +33,12 @@
 
 import { ForceUnit } from '../models/force-unit.model';
 import { Unit } from '../models/units.model';
-import { GroupSizeResult } from './org-solver.util';
 
 /*
  * Author: Drake
  *
- * Force org definitions: OrgType, OrgTypeRule, and all org classes
- * (ClanOrg, ISOrg, ComStarOrg, SocietyOrg, MHOrg).
+ * Force org definitions: OrgType, OrgTypeRule, and all org definitions
+ * (ClanOrg, ISOrg, ComStarOrg, SocietyOrg, MHOrg, WDOrg).
  *
  * Solver logic lives in org-solver.util.ts.
  */
@@ -79,6 +78,7 @@ export type OrgType =
     | 'Level III'
     | 'Level IV'
     | 'Level V'
+    | 'Level VI'
 
     // Society-specific types
     | 'Un'
@@ -95,6 +95,7 @@ export type OrgType =
 export interface ForceComposition {
     BM: number;
     BA_troopers: number;
+    CI_mechanized_troopers: number;
     CI_troopers: number;
     PM: number;
     CV: number;
@@ -102,36 +103,11 @@ export interface ForceComposition {
     other: number;
 }
 
-export function getForceComposition(units: ForceUnit[]): ForceComposition {
+export function getForceCompositionFromUnits(units: Unit[]): ForceComposition {
     const comp: ForceComposition = {
         BM: 0,
         BA_troopers: 0,
-        CI_troopers: 0,
-        PM: 0,
-        CV: 0,
-        AF: 0,
-        other: 0,
-    };
-
-    for (const fu of units) {
-        const u = fu.getUnit();
-        if (u.type === 'Mek') comp.BM++;
-        else if (u.type === 'Infantry') {
-            if (u.subtype === 'Battle Armor') comp.BA_troopers += (u.internal || 0);
-            else comp.CI_troopers += (u.internal || 0);
-        }
-        else if (u.type === 'ProtoMek') comp.PM++;
-        else if (u.type === 'Tank' || u.type === 'VTOL' || u.type === 'Naval') comp.CV++;
-        else if (u.type === 'Aero') comp.AF++;
-        else comp.other++;
-    }
-    return comp;
-}
-
-export function getForceCompositionFromRawUnits(units: Unit[]): ForceComposition {
-    const comp: ForceComposition = {
-        BM: 0,
-        BA_troopers: 0,
+        CI_mechanized_troopers: 0,
         CI_troopers: 0,
         PM: 0,
         CV: 0,
@@ -143,6 +119,7 @@ export function getForceCompositionFromRawUnits(units: Unit[]): ForceComposition
         if (u.type === 'Mek') comp.BM++;
         else if (u.type === 'Infantry') {
             if (u.subtype === 'Battle Armor') comp.BA_troopers += (u.internal || 0);
+            else if (u.subtype === 'Mechanized Conventional Infantry') comp.CI_mechanized_troopers += (u.internal || 0);
             else comp.CI_troopers += (u.internal || 0);
         }
         else if (u.type === 'ProtoMek') comp.PM++;
@@ -152,18 +129,6 @@ export function getForceCompositionFromRawUnits(units: Unit[]): ForceComposition
     }
     return comp;
 }
-
-/**
- * Named modifier for a force size level. Each modifier has a display name
- * ('' for regular/default) and a count of sub-units.
- *
- * For leaf rules (no composedOf), count equals absolute pts.
- * For composed rules, resolved pts = count x nominal pts of the base rule.
- */
-export type ForceModifier = {
-    prefix: string;   // '' for regular, Short, Under-Strength, Reinforced, etc.
-    count: number;  // number of sub-units (or absolute pts for leaf rules)
-};
 
 /**
  * A point range accounts for variable-size base units (e.g. ComStar Level I
@@ -188,728 +153,468 @@ export function rangeDistToPoint(range: PointRange, point: number): number {
     return point - range.max;
 }
 
-export class OrgTypeRule {
+//  GroupSizeResult 
+
+/**
+ * Result of a group-level size evaluation.
+ * Carries the matched OrgType so force-level evaluation can
+ * count groups by type without re-evaluating them.
+ */
+export interface GroupSizeResult {
+    name: string;
+    type: OrgType | null;
+    /** Alias type for group-based counting (e.g. Nova also counts as Star). */
+    countsAsType: OrgType | null;
+    /** Hierarchy depth from the matched rule (0 = leaf). */
+    tier: number;
+}
+
+//  OrgTypeRule 
+
+/**
+ * Describes a force organization type at one level of the hierarchy.
+ *
+ * `modifiers` maps a display prefix ('' for regular) to the sub-unit count.
+ * Leaf rules (no composedOfAny) use counts as absolute point values.
+ * Composed rules use counts as number of sub-units.
+ */
+export interface OrgTypeRule {
     readonly type: OrgType;
-    readonly modifiers: ForceModifier[];
-    readonly composedOf?: OrgTypeRule;
+    /** Prefix -> count mapping. '' prefix = regular/default count. */
+    readonly modifiers: Record<string, number>;
     /**
-     * For group-based force evaluation: accept groups matching ANY of these types.
-     * E.g. Cluster accepts Binaries, Trinaries, or Supernovas (via countsAs aliases).
-     * When set, this takes precedence over `composedOf` for group-based evaluation.
-     * `composedOf` is still used for flat point-based evaluation.
+     * Which sub-unit types this rule is composed of.
+     * E.g. Cluster's composedOfAny = ['Binary', 'Trinary'].
+     * Leaf rules (Point, Single, Flight, etc.) leave this undefined.
      */
     readonly composedOfAny?: OrgType[];
     readonly commandRank?: string;
     readonly strict?: boolean;
+    readonly tier: number;
     readonly filter?: (comp: ForceComposition) => boolean;
     readonly customMatch?: (comp: ForceComposition) => number;
-    /**
-     * For group-based force evaluation: this type also counts as another type.
-     * E.g. a Nova also counts as a Star, so 2 Stars + 1 Nova = 3 Stars = Trinary.
-     */
+    /** For group-based force evaluation: this type also counts as another type. */
     readonly countsAs?: OrgType;
     /**
      * Explicit tie-breaker for group-based evaluation. Higher priority wins
      * when two rules match the same groups at equal distance. Defaults to 0.
-     * E.g. Supernova Trinary (priority 1) beats Trinary (priority 0) when
-     * both match 3 groups at dist 0.
      */
-    readonly priority: number;
+    readonly priority?: number;
     /**
      * Group-level filter for group-based force evaluation.
-     * Checked in evaluateForceByGroups — receives the array of group results
-     * and returns false to skip this rule.  Use when a composed rule accepts
-     * multiple group types (composedOfAny) but requires at least one group
-     * of a specific type (e.g. Company requires at least 1 Lance).
+     * Checked in evaluateForceByGroups - receives the array of group results
+     * and returns false to skip this rule.
      */
     readonly groupFilter?: (groups: ReadonlyArray<GroupSizeResult>) => boolean;
-    private readonly _nominalPts: number; // Cached nominal pts
-
-    constructor(config: {
-        type: OrgType;
-        modifiers: ForceModifier[];
-        composedOf?: OrgTypeRule;
-        composedOfAny?: OrgType[];
-        commandRank?: string;
-        strict?: boolean;
-        filter?: (comp: ForceComposition) => boolean;
-        customMatch?: (comp: ForceComposition) => number;
-        countsAs?: OrgType;
-        priority?: number;
-        groupFilter?: (groups: ReadonlyArray<GroupSizeResult>) => boolean;
-    }) {
-        this.type = config.type;
-        // Ensure modifiers are sorted ascending by count
-        this.modifiers = [...config.modifiers].sort((a, b) => a.count - b.count);
-        this.composedOf = config.composedOf;
-        this.composedOfAny = config.composedOfAny;
-        this.commandRank = config.commandRank;
-        this.strict = config.strict;
-        this.filter = config.filter;
-        this.customMatch = config.customMatch;
-        this.countsAs = config.countsAs;
-        this.priority = config.priority ?? 0;
-        this.groupFilter = config.groupFilter;
-
-        const regularMod = this.modifiers.find(m => m.prefix === '') ?? this.modifiers[0];
-        this._nominalPts = this.composedOf
-            ? regularMod.count * this.composedOf.nominalPts
-            : regularMod.count;
-    }
-
-    /** Nominal pts for this rule's "regular" modifier, recursively resolved */
-    get nominalPts(): number {
-        return this._nominalPts;
-    }
-
-    /** Resolve a modifier's absolute pts through the composition chain */
-    resolveModPts(mod: ForceModifier): number {
-        if (!this.composedOf) return mod.count;
-        return mod.count * this.composedOf.nominalPts;
-    }
-
-    /**
-     * Find the best modifier prefix for a given point range.
-     * Resolves each modifier's pts from the composition chain, then picks the one
-     * whose resolved pts is closest to (or within) the range.
-     */
-    getModifierPrefix(range: PointRange): string {
-        let closest = this.modifiers[0];
-        let closestPts = this.resolveModPts(this.modifiers[0]);
-        let closestDist = rangeDistToPoint(range, closestPts);
-
-        for (let i = 1; i < this.modifiers.length; i++) {
-            const pts = this.resolveModPts(this.modifiers[i]);
-            const d = rangeDistToPoint(range, pts);
-            if (d < closestDist) {
-                closestDist = d;
-                closest = this.modifiers[i];
-                closestPts = pts;
-            }
-        }
-
-        // If the closest modifier is the regular one ('') and the range doesn't
-        // cover it, fall back to generic Under-Strength / Reinforced
-        if (closestDist > 0 && closest.prefix === '') {
-            const mid = (range.min + range.max) / 2;
-            if (mid < closestPts) return 'Under-Strength ';
-            return 'Reinforced ';
-        }
-
-        return closest.prefix;
-    }
-
-    /**
-     * Find the best modifier prefix by comparing raw modifier counts (not resolved
-     * through the composedOf chain). Used by group-based force evaluation where
-     * the "points" are the number of sub-groups rather than unit points.
-     */
-    getModifierPrefixByRawCount(count: number): string {
-        let closest = this.modifiers[0];
-        let closestDist = Math.abs(count - closest.count);
-
-        for (let i = 1; i < this.modifiers.length; i++) {
-            const d = Math.abs(count - this.modifiers[i].count);
-            if (d < closestDist) {
-                closestDist = d;
-                closest = this.modifiers[i];
-            }
-        }
-
-        if (closestDist > 0 && closest.prefix === '') {
-            if (count < closest.count) return 'Under-Strength ';
-            return 'Reinforced ';
-        }
-
-        return closest.prefix;
-    }
 }
 
-// ─── Org Definitions ───────────────────────────────────────────────────────────
+/** The regular ('') modifier's count, or the first modifier if no regular exists. */
+export function getRegularCount(rule: OrgTypeRule): number {
+    return rule.modifiers[''] ?? Object.values(rule.modifiers)[0];
+}
 
-class ClanOrg {
-    /** Flat evaluation: max allowed distance as a fraction of midPts before falling back to "Force". */
-    static readonly DISTANCE_FACTOR = 0.2;
-    /** Flat evaluation: floor for the max allowed distance (pts). */
-    static readonly MIN_DISTANCE = 2;
+/** Find the best modifier prefix for the given sub-unit count. */
+export function getModifierPrefix(rule: OrgTypeRule, count: number): string {
+    let bestPrefix = '';
+    let bestDist = Infinity;
+    for (const [prefix, modCount] of Object.entries(rule.modifiers)) {
+        const d = Math.abs(count - modCount);
+        if (d < bestDist) {
+            bestDist = d;
+            bestPrefix = prefix;
+        }
+    }
+    if (bestDist > 0 && bestPrefix === '') {
+        const regular = rule.modifiers[''];
+        if (regular !== undefined) {
+            return count < regular ? 'Under-Strength ' : 'Reinforced ';
+        }
+    }
+    return bestPrefix;
+}
 
-    /** Group evaluation: max allowed distance as a fraction of total group count before falling back to "Force". */
-    static readonly GROUP_DISTANCE_FACTOR = 0.25;
-    /** Group evaluation: floor for the max allowed distance (groups). */
-    static readonly GROUP_MIN_DISTANCE = 1;
+//  Helpers 
 
-    static getPointRange(comp: ForceComposition): PointRange {
-        // Clan Points are exact: 5 BA per Point, 25 CI per Point
+function isPureAero(comp: ForceComposition): boolean {
+    return comp.AF > 0 && comp.BM === 0 && comp.CV === 0 && comp.BA_troopers === 0 && comp.CI_troopers === 0 && comp.CI_mechanized_troopers === 0 && comp.PM === 0 && comp.other === 0;
+}
+
+function isPureInfantry(comp: ForceComposition): boolean {
+    return comp.BM === 0 && comp.CV === 0 && comp.AF === 0 && comp.PM === 0 && comp.other === 0 &&
+        (comp.BA_troopers > 0 || comp.CI_troopers > 0 || comp.CI_mechanized_troopers > 0);
+}
+
+//  Shared Rules 
+// Rules reused across org definitions (e.g. WDOrg extends Clan + IS rules).
+
+// Clan rules
+const CLAN_POINT: OrgTypeRule = { type: 'Point', modifiers: { '': 1 }, commandRank: 'Point Commander', tier: 0 };
+const CLAN_STAR: OrgTypeRule = {
+    type: 'Star', composedOfAny: ['Point'], modifiers: {
+        'Half ': 2, 'Short ': 3, 'Under-Strength ': 4, '': 5, 'Reinforced ': 6, 'Fortified ': 7,
+    }, commandRank: 'Star Commander', tier: 1,
+};
+const CLAN_NOVA: OrgTypeRule = {
+    type: 'Nova', strict: true, countsAs: 'Star', modifiers: { '': 10 }, commandRank: 'Nova Commander', tier: 1,
+    filter: (comp) => comp.BM > 0 && ((comp.BA_troopers / 5) + (comp.CI_troopers / 25) + (comp.CI_mechanized_troopers / 25)) > 0,
+    customMatch: (comp) => {
+        const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25) + (comp.CI_mechanized_troopers / 25);
+        const otherPoints = (comp.PM / 5) + (comp.CV / 2) + (comp.AF / 2) + comp.other;
+        return Math.abs(comp.BM - 5) + Math.abs(infPoints - 5) + otherPoints;
+    },
+};
+const CLAN_BINARY: OrgTypeRule = {
+    type: 'Binary', strict: true, composedOfAny: ['Star'],
+    modifiers: { '': 2 }, commandRank: 'Star Captain', tier: 2,
+};
+const CLAN_TRINARY: OrgTypeRule = {
+    type: 'Trinary', strict: true, composedOfAny: ['Star'],
+    modifiers: { '': 3 }, commandRank: 'Star Captain', tier: 2,
+};
+const CLAN_SUPERNOVA_BINARY: OrgTypeRule = {
+    type: 'Supernova Binary', strict: true, priority: 2, countsAs: 'Binary',
+    composedOfAny: ['Nova'], modifiers: { '': 2 }, commandRank: 'Nova Captain', tier: 2,
+};
+const CLAN_SUPERNOVA_TRINARY: OrgTypeRule = {
+    type: 'Supernova Trinary', strict: true, priority: 1, countsAs: 'Trinary',
+    composedOfAny: ['Nova'], modifiers: { '': 3 }, commandRank: 'Nova Captain', tier: 2,
+};
+const CLAN_CLUSTER: OrgTypeRule = {
+    type: 'Cluster',
+    composedOfAny: ['Binary', 'Trinary'],
+    modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4, 'Strong ': 5 },
+    commandRank: 'Star Colonel', tier: 3,
+};
+const CLAN_GALAXY: OrgTypeRule = {
+    type: 'Galaxy', composedOfAny: ['Cluster'], modifiers: {
+        'Under-Strength ': 2, '': 3, 'Reinforced ': 4, 'Strong ': 5,
+    }, commandRank: 'Galaxy Commander', tier: 4,
+};
+
+// IS rules
+const IS_FLIGHT: OrgTypeRule = {
+    type: 'Flight', modifiers: { 'Under-Strength ': 1, '': 2, 'Reinforced ': 3 },
+    commandRank: 'Lieutenant', tier: 1,
+    filter: (comp) => isPureAero(comp),
+};
+const IS_SQUADRON: OrgTypeRule = {
+    type: 'Squadron', composedOfAny: ['Flight'],
+    modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
+    commandRank: 'Captain', tier: 2,
+    filter: (comp) => isPureAero(comp),
+};
+const IS_WING: OrgTypeRule = {
+    type: 'Wing', composedOfAny: ['Squadron'],
+    modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
+    commandRank: 'Major', tier: 3,
+    filter: (comp) => isPureAero(comp),
+};
+const IS_SQUAD: OrgTypeRule = {
+    type: 'Squad', modifiers: { '': 1 }, commandRank: 'Sergeant', tier: 0,
+    filter: (comp) => isPureInfantry(comp),
+    customMatch: (comp) => {
+        if (comp.BA_troopers > 0 && comp.CI_troopers === 0 && comp.CI_mechanized_troopers === 0) return Math.abs(comp.BA_troopers - 4) / 4;
+        if ((comp.CI_troopers > 0 || comp.CI_mechanized_troopers > 0) && comp.BA_troopers === 0) {
+            const ciTroopers = comp.CI_troopers + comp.CI_mechanized_troopers;
+            if (ciTroopers >= 2 && ciTroopers <= 8) return 0;
+            if (ciTroopers < 2) return (2 - ciTroopers) / 7;
+            return (ciTroopers - 8) / 7;
+        }
+        return Infinity;
+    },
+};
+const IS_SINGLE: OrgTypeRule = {
+    type: 'Single', modifiers: { '': 1 }, tier: 0,
+    filter: (comp) => !isPureAero(comp) && !isPureInfantry(comp),
+};
+const IS_LANCE: OrgTypeRule = {
+    type: 'Lance', composedOfAny: ['Single'], tier: 1,
+    modifiers: { 'Short ': 2, 'Under-Strength ': 3, '': 4, 'Reinforced ': 5, 'Fortified ': 6 },
+    commandRank: 'Lieutenant',
+    filter: (comp) => !isPureAero(comp) && !isPureInfantry(comp),
+};
+const IS_PLATOON: OrgTypeRule = {
+    type: 'Platoon', countsAs: 'Lance', priority: 1, modifiers: { '': 1 }, commandRank: 'Lieutenant', tier: 1,
+    filter: (comp) => isPureInfantry(comp),
+    customMatch: (comp) => {
+        const ciTroopers = comp.CI_troopers + comp.CI_mechanized_troopers;
+        if (ciTroopers >= 6 && ciTroopers <= 32) return 0;
+        if (ciTroopers < 6) return (6 - ciTroopers) / 28;
+        return (ciTroopers - 32) / 28;
+    },
+};
+const IS_COMPANY: OrgTypeRule = {
+    type: 'Company', composedOfAny: ['Lance'],
+    modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
+    commandRank: 'Captain', tier: 2,
+    filter: (comp) => !isPureAero(comp),
+};
+const IS_BATTALION: OrgTypeRule = {
+    type: 'Battalion', composedOfAny: ['Company'],
+    modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
+    commandRank: 'Major', tier: 3,
+    filter: (comp) => !isPureAero(comp),
+};
+const IS_REGIMENT: OrgTypeRule = {
+    type: 'Regiment', composedOfAny: ['Battalion', 'Wing'],
+    modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4, 'Strong ': 5 },
+    commandRank: 'Colonel', tier: 4,
+    filter: (comp) => !isPureAero(comp),
+};
+const IS_BRIGADE: OrgTypeRule = {
+    type: 'Brigade', composedOfAny: ['Regiment'],
+    modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
+    commandRank: 'General', tier: 5,
+    filter: (comp) => !isPureAero(comp),
+};
+
+//  Org Definitions 
+
+/**
+ * Shared shape for all org definitions (ClanOrg, ISOrg, ComStarOrg, etc.).
+ */
+export interface OrgDefinition {
+    readonly rules: OrgTypeRule[];
+    readonly distanceFactor: number;
+    readonly minDistance: number;
+    readonly groupDistanceFactor: number;
+    readonly groupMinDistance: number;
+    getPointRange(comp: ForceComposition): PointRange;
+}
+
+const ClanOrg: OrgDefinition = {
+    distanceFactor: 0.2,
+    minDistance: 2,
+    groupDistanceFactor: 0.25,
+    groupMinDistance: 1,
+    getPointRange(comp: ForceComposition): PointRange {
         const pts = comp.BM +
             (comp.BA_troopers / 5) +
             (comp.CI_troopers / 25) +
+            (comp.CI_mechanized_troopers / 25) +
             (comp.PM / 5) +
             (comp.CV / 2) +
             (comp.AF / 2) +
             comp.other;
         return { min: pts, max: pts };
-    }
+    },
+    rules: [
+        CLAN_NOVA, CLAN_SUPERNOVA_BINARY, CLAN_SUPERNOVA_TRINARY,
+        CLAN_POINT, 
+        CLAN_STAR,
+        CLAN_BINARY, CLAN_TRINARY,
+        CLAN_CLUSTER, CLAN_GALAXY,
+    ],
+};
 
-    static readonly POINT = new OrgTypeRule({
-        type: 'Point', modifiers: [{ prefix: '', count: 1 }], commandRank: 'Point Commander',
-    });
-    // Star = N Points
-    static readonly STAR = new OrgTypeRule({
-        type: 'Star', composedOf: ClanOrg.POINT, modifiers: [
-            { prefix: 'Half ', count: 2 },
-            { prefix: 'Short ', count: 3 },
-            { prefix: 'Under-Strength ', count: 4 },
-            { prefix: '', count: 5 },
-            { prefix: 'Reinforced ', count: 6 },
-            { prefix: 'Fortified ', count: 7 },
-        ], commandRank: 'Star Commander',
-    });
-    // Binary = 2 Stars
-    static readonly BINARY = new OrgTypeRule({
-        type: 'Binary', strict: true, composedOf: ClanOrg.STAR,
-        modifiers: [{ prefix: '', count: 2 }], commandRank: 'Star Captain',
-    });
-    // Trinary = 3 Stars
-    static readonly TRINARY = new OrgTypeRule({
-        type: 'Trinary', strict: true, composedOf: ClanOrg.STAR,
-        modifiers: [{ prefix: '', count: 3 }], commandRank: 'Star Captain',
-    });
-    // Nova = Star of Mechs + Star of Infantry (counts as Star for force composition)
-    static readonly NOVA = new OrgTypeRule({
-        type: 'Nova', strict: true, countsAs: 'Star', modifiers: [{ prefix: '', count: 10 }], commandRank: 'Nova Commander',
-        filter: (comp) => comp.BM > 0 && ((comp.BA_troopers / 5) + (comp.CI_troopers / 25)) > 0,
-        customMatch: (comp) => {
-            const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25);
-            const otherPoints = (comp.PM / 5) + (comp.CV / 2) + (comp.AF / 2) + comp.other;
-            return Math.abs(comp.BM - 5) + Math.abs(infPoints - 5) + otherPoints;
-        },
-    });
-    // Supernova Binary = 2 Novas (counts as Binary for force composition)
-    static readonly SUPERNOVA_BINARY = new OrgTypeRule({
-        type: 'Supernova Binary', strict: true, priority: 1, countsAs: 'Binary', composedOf: ClanOrg.NOVA, modifiers: [{ prefix: '', count: 2 }], commandRank: 'Nova Captain',
-        filter: (comp) => comp.BM > 0 && ((comp.BA_troopers / 5) + (comp.CI_troopers / 25)) > 0,
-        customMatch: (comp) => {
-            const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25);
-            const otherPoints = (comp.PM / 5) + (comp.CV / 2) + (comp.AF / 2) + comp.other;
-            return Math.abs(comp.BM - 10) + Math.abs(infPoints - 10) + otherPoints;
-        },
-    });
-    // Supernova Trinary = 3 Novas (counts as Trinary for force composition)
-    static readonly SUPERNOVA_TRINARY = new OrgTypeRule({
-        type: 'Supernova Trinary', strict: true, priority: 1, countsAs: 'Trinary', composedOf: ClanOrg.NOVA, modifiers: [{ prefix: '', count: 3 }], commandRank: 'Nova Captain',
-        filter: (comp) => comp.BM > 0 && ((comp.BA_troopers / 5) + (comp.CI_troopers / 25)) > 0,
-        customMatch: (comp) => {
-            const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25);
-            const otherPoints = (comp.PM / 5) + (comp.CV / 2) + (comp.AF / 2) + comp.other;
-            return Math.abs(comp.BM - 15) + Math.abs(infPoints - 15) + otherPoints;
-        },
-    });
-    // Cluster = N Binaries, Trinaries, or Supernovas (can mix and match)
-    static readonly CLUSTER = new OrgTypeRule({
-        type: 'Cluster', composedOf: ClanOrg.BINARY, // for flat point-based evaluation
-        composedOfAny: ['Binary', 'Trinary'], // for group-based: accepts any Binary/Trinary-tier
-        modifiers: [
-            { prefix: 'Under-Strength ', count: 2 },
-            { prefix: '', count: 3 },
-            { prefix: 'Reinforced ', count: 4 },
-            { prefix: 'Strong ', count: 5 },
-        ], commandRank: 'Star Colonel',
-    });
-    // Galaxy = N Clusters
-    static readonly GALAXY = new OrgTypeRule({
-        type: 'Galaxy', composedOf: ClanOrg.CLUSTER, modifiers: [
-            { prefix: 'Under-Strength ', count: 2 },
-            { prefix: '', count: 3 },
-            { prefix: 'Reinforced ', count: 4 },
-            { prefix: 'Strong ', count: 5 },
-        ], commandRank: 'Galaxy Commander',
-    });
-    static readonly ALL: OrgTypeRule[] = [
-        ClanOrg.NOVA, ClanOrg.SUPERNOVA_BINARY, ClanOrg.SUPERNOVA_TRINARY,
-        ClanOrg.POINT, ClanOrg.STAR, ClanOrg.BINARY, ClanOrg.TRINARY,
-        ClanOrg.CLUSTER, ClanOrg.GALAXY,
-    ];
-}
-
-function isPureAero(comp: ForceComposition): boolean {
-    return comp.AF > 0 && comp.BM === 0 && comp.CV === 0 && comp.BA_troopers === 0 && comp.CI_troopers === 0 && comp.PM === 0 && comp.other === 0;
-}
-
-function isPureInfantry(comp: ForceComposition): boolean {
-    return comp.BM === 0 && comp.CV === 0 && comp.AF === 0 && comp.PM === 0 && comp.other === 0 &&
-        (comp.BA_troopers > 0 || comp.CI_troopers > 0);
-}
-
-class ISOrg {
-    /** Flat evaluation: max allowed distance as a fraction of midPts before falling back to "Force". */
-    static readonly DISTANCE_FACTOR = 0.2;
-    /** Flat evaluation: floor for the max allowed distance (pts). */
-    static readonly MIN_DISTANCE = 2;
-
-    /** Group evaluation: max allowed distance as a fraction of total group count before falling back to "Force". */
-    static readonly GROUP_DISTANCE_FACTOR = 0.25;
-    /** Group evaluation: floor for the max allowed distance (groups). */
-    static readonly GROUP_MIN_DISTANCE = 1;
-
-    static getPointRange(comp: ForceComposition): PointRange {
+const ISOrg: OrgDefinition = {
+    distanceFactor: 0.2,
+    minDistance: 2,
+    groupDistanceFactor: 0.25,
+    groupMinDistance: 1,
+    getPointRange(comp: ForceComposition): PointRange {
         const fixed = comp.BM +
             (comp.BA_troopers / 4) +
             comp.PM +
             comp.CV +
             comp.AF +
             comp.other;
-        // IS infantry platoon = 21-28 troopers per point
-        // Dividing by 28 = minimum pts; dividing by 21 = maximum pts
         return {
-            min: fixed + comp.CI_troopers / 28,
-            max: fixed + comp.CI_troopers / 21,
+            min: fixed + ((comp.CI_troopers + comp.CI_mechanized_troopers) / 28),
+            max: fixed + ((comp.CI_troopers + comp.CI_mechanized_troopers) / 21),
         };
-    }
-    static readonly FLIGHT = new OrgTypeRule({
-        type: 'Flight', modifiers: [
-            { prefix: 'Under-Strength ', count: 1 },
-            { prefix: '', count: 2 },
-            { prefix: 'Reinforced ', count: 3 },
-        ], commandRank: 'Lieutenant',
-        filter: (comp) => isPureAero(comp),
-    });
-    static readonly SQUADRON = new OrgTypeRule({
-        type: 'Squadron', composedOf: ISOrg.FLIGHT, modifiers: [
-            { prefix: 'Under-Strength ', count: 2 },
-            { prefix: '', count: 3 },
-            { prefix: 'Reinforced ', count: 4 },
-        ], commandRank: 'Captain',
-        filter: (comp) => isPureAero(comp),
-    });
-    static readonly WING = new OrgTypeRule({
-        type: 'Wing', composedOf: ISOrg.SQUADRON, countsAs: 'Battalion', modifiers: [
-            { prefix: 'Under-Strength ', count: 2 },
-            { prefix: '', count: 3 },
-            { prefix: 'Reinforced ', count: 4 },
-        ], commandRank: 'Major',
-        filter: (comp) => isPureAero(comp),
-    });
-    static readonly SQUAD = new OrgTypeRule({
-        type: 'Squad', modifiers: [{ prefix: '', count: 1 }], commandRank: 'Sergeant',
-        filter: (comp) => isPureInfantry(comp),
-        customMatch: (comp) => {
-            if (comp.BA_troopers > 0 && comp.CI_troopers === 0) return Math.abs(comp.BA_troopers - 4) / 4;
-            if (comp.CI_troopers > 0 && comp.BA_troopers === 0) {
-                if (comp.CI_troopers >= 2 && comp.CI_troopers <= 8) return 0;
-                if (comp.CI_troopers < 2) return (2 - comp.CI_troopers) / 7;
-                return (comp.CI_troopers - 8) / 7;
-            }
-            return Infinity;
-        },
-    });
-    static readonly SINGLE = new OrgTypeRule({
-        type: 'Single', modifiers: [{ prefix: '', count: 1 }],
-        filter: (comp) => !isPureAero(comp) && !isPureInfantry(comp),
-    });
-    static readonly LANCE = new OrgTypeRule({
-        type: 'Lance', composedOf: ISOrg.SINGLE, modifiers: [
-            { prefix: 'Short ', count: 2 },
-            { prefix: 'Under-Strength ', count: 3 },
-            { prefix: '', count: 4 },
-            { prefix: 'Reinforced ', count: 5 },
-            { prefix: 'Fortified ', count: 6 },
-        ], commandRank: 'Lieutenant', filter: (comp) => !isPureAero(comp) && !isPureInfantry(comp),
-    });
-    static readonly PLATOON = new OrgTypeRule({
-        type: 'Platoon', countsAs: 'Lance', priority: 1, modifiers: [{ prefix: '', count: 1 }], commandRank: 'Lieutenant',
-        filter: (comp) => isPureInfantry(comp),
-        customMatch: (comp) => {
-            if (comp.CI_troopers >= 6 && comp.CI_troopers <= 32) return 0;
-            if (comp.CI_troopers < 6) return (6 - comp.CI_troopers) / 28;
-            return (comp.CI_troopers - 32) / 28;
-        },
-    });
-    // Company = N Lances
-    static readonly COMPANY = new OrgTypeRule({
-        type: 'Company', composedOf: ISOrg.LANCE, modifiers: [
-            { prefix: 'Under-Strength ', count: 2 },
-            { prefix: '', count: 3 },
-            { prefix: 'Reinforced ', count: 4 },
-        ], commandRank: 'Captain', filter: (comp) => !isPureAero(comp),
-    });
-    // Battalion = N Companies
-    static readonly BATTALION = new OrgTypeRule({
-        type: 'Battalion', composedOf: ISOrg.COMPANY, modifiers: [
-            { prefix: 'Under-Strength ', count: 2 },
-            { prefix: '', count: 3 },
-            { prefix: 'Reinforced ', count: 4 },
-        ], commandRank: 'Major', filter: (comp) => !isPureAero(comp),
-    });
-    // Regiment = N Battalions
-    static readonly REGIMENT = new OrgTypeRule({
-        type: 'Regiment', composedOf: ISOrg.BATTALION, modifiers: [
-            { prefix: 'Under-Strength ', count: 2 },
-            { prefix: '', count: 3 },
-            { prefix: 'Reinforced ', count: 4 },
-            { prefix: 'Strong ', count: 5 },
-        ], commandRank: 'Colonel', filter: (comp) => !isPureAero(comp),
-    });
-    // Brigade = N Regiments
-    static readonly BRIGADE = new OrgTypeRule({
-        type: 'Brigade', composedOf: ISOrg.REGIMENT, modifiers: [
-            { prefix: 'Under-Strength ', count: 2 },
-            { prefix: '', count: 3 },
-            { prefix: 'Reinforced ', count: 4 },
-        ], commandRank: 'General', filter: (comp) => !isPureAero(comp),
-    });
-    static readonly ALL: OrgTypeRule[] = [
-        ISOrg.FLIGHT, ISOrg.SQUADRON, ISOrg.WING,
-        ISOrg.SQUAD, ISOrg.PLATOON,
-        ISOrg.SINGLE, ISOrg.LANCE, ISOrg.COMPANY, ISOrg.BATTALION, ISOrg.REGIMENT, ISOrg.BRIGADE,
-    ];
-}
+    },
+    rules: [
+        IS_FLIGHT, IS_SQUADRON, IS_WING,
+        IS_SQUAD, IS_PLATOON,
+        IS_SINGLE, IS_LANCE, IS_COMPANY, IS_BATTALION, IS_REGIMENT, IS_BRIGADE,
+    ],
+};
 
-class ComStarOrg {
-    /** Flat evaluation: max allowed distance as a fraction of midPts before falling back to "Force". */
-    static readonly DISTANCE_FACTOR = 0.2;
-    /** Flat evaluation: floor for the max allowed distance (pts). */
-    static readonly MIN_DISTANCE = 2;
-
-    /** Group evaluation: max allowed distance as a fraction of total group count before falling back to "Force". */
-    static readonly GROUP_DISTANCE_FACTOR = 0.25;
-    /** Group evaluation: floor for the max allowed distance (groups). */
-    static readonly GROUP_MIN_DISTANCE = 1;
-
-    static getPointRange(comp: ForceComposition): PointRange {
-        // ComStar/WoB Level I = 1 mech/vehicle/aero/proto, or 30-36 CI, or 6 BA
+const ComStarOrg: OrgDefinition = {
+    distanceFactor: 0.2,
+    minDistance: 2,
+    groupDistanceFactor: 0.25,
+    groupMinDistance: 1,
+    getPointRange(comp: ForceComposition): PointRange {
         const fixed = comp.BM + comp.PM + comp.CV + comp.AF + comp.other;
         let minPts = fixed;
         let maxPts = fixed;
-
         if (comp.CI_troopers > 0) {
-            // Level I of CI infantry = 30-36 troopers
-            // Dividing by the max (36) gives the minimum possible Level I count,
-            // dividing by the min (30) gives the maximum possible Level I count.
-            // This ensures 180 troopers (6x30) through 216 (6x36) all qualify as Level II.
-            minPts += comp.CI_troopers / 36;
-            maxPts += comp.CI_troopers / 30;
+            minPts += (comp.CI_troopers + comp.CI_mechanized_troopers) / 36;
+            maxPts += (comp.CI_troopers + comp.CI_mechanized_troopers) / 30;
         }
         if (comp.BA_troopers > 0) {
-            // Level I of BA = 6 troopers (exact, no range)
             const ba = comp.BA_troopers / 6;
             minPts += ba;
             maxPts += ba;
         }
-
         return { min: minPts, max: maxPts };
-    }
+    },
+    rules: [
+        { type: 'Level I', modifiers: { 'Demi-': 0.5, '': 1 }, commandRank: 'Acolyte', tier: 0 },
+        {
+            type: 'Level II', composedOfAny: ['Level I'], modifiers: {
+                'Thin ': 2, 'Half ': 3, 'Short ': 4, 'Under-Strength ': 5, '': 6, 'Reinforced ': 7, 'Fortified ': 8, 'Heavy ': 9,
+            }, commandRank: 'Adept', tier: 1,
+        },
+        {
+            type: 'Level III', composedOfAny: ['Level II'], modifiers: {
+                'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
+            }, commandRank: 'Adept (Demi-Precentor)', tier: 2,
+        },
+        {
+            type: 'Level IV', composedOfAny: ['Level III'], modifiers: {
+                'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
+            }, commandRank: 'Precentor', tier: 3,
+        },
+        {
+            type: 'Level V', composedOfAny: ['Level IV'], modifiers: {
+                'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
+            }, commandRank: 'Precentor', tier: 4,
+        },
+        {
+            type: 'Level VI', composedOfAny: ['Level V'], modifiers: {
+                'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
+            }, commandRank: 'Precentor', tier: 5,
+        },
+    ],
+};
 
-    static readonly LEVEL_I = new OrgTypeRule({
-        type: 'Level I', modifiers: [{ prefix: 'Demi-', count: 0.5 }, { prefix: '', count: 1 }], commandRank: 'Acolyte',
-    });
-    // Level II = N Level Is
-    static readonly LEVEL_II = new OrgTypeRule({
-        type: 'Level II', composedOf: ComStarOrg.LEVEL_I, modifiers: [
-            { prefix: 'Thin ', count: 2 },
-            { prefix: 'Half ', count: 3 },
-            { prefix: 'Short ', count: 4 },
-            { prefix: 'Under-Strength ', count: 5 },
-            { prefix: '', count: 6 },
-            { prefix: 'Reinforced ', count: 7 },
-            { prefix: 'Fortified ', count: 8 },
-            { prefix: 'Heavy ', count: 9 },
-        ], commandRank: 'Adept',
-    });
-    // Level III = N Level IIs
-    static readonly LEVEL_III = new OrgTypeRule({
-        type: 'Level III', composedOf: ComStarOrg.LEVEL_II, modifiers: [
-            { prefix: 'Under-Strength ', count: 5 },
-            { prefix: '', count: 6 },
-            { prefix: 'Reinforced ', count: 7 },
-        ], commandRank: 'Adept (Demi-Precentor)',
-    });
-    // Level IV = N Level IIIs
-    static readonly LEVEL_IV = new OrgTypeRule({
-        type: 'Level IV', composedOf: ComStarOrg.LEVEL_III, modifiers: [
-            { prefix: 'Under-Strength ', count: 5 },
-            { prefix: '', count: 6 },
-            { prefix: 'Reinforced ', count: 7 },
-        ], commandRank: 'Precentor',
-    });
-    // Level V = N Level IVs
-    static readonly LEVEL_V = new OrgTypeRule({
-        type: 'Level V', composedOf: ComStarOrg.LEVEL_IV, modifiers: [
-            { prefix: 'Under-Strength ', count: 5 },
-            { prefix: '', count: 6 },
-            { prefix: 'Reinforced ', count: 7 },
-        ], commandRank: 'Precentor',
-    });
-    static readonly ALL: OrgTypeRule[] = [
-        ComStarOrg.LEVEL_I, ComStarOrg.LEVEL_II, ComStarOrg.LEVEL_III,
-        ComStarOrg.LEVEL_IV, ComStarOrg.LEVEL_V,
-    ];
-}
-
-class SocietyOrg {
-    /** Flat evaluation: max allowed distance as a fraction of midPts before falling back to "Force". */
-    static readonly DISTANCE_FACTOR = 0.2;
-    /** Flat evaluation: floor for the max allowed distance (pts). */
-    static readonly MIN_DISTANCE = 2;
-
-    /** Group evaluation: max allowed distance as a fraction of total group count before falling back to "Force". */
-    static readonly GROUP_DISTANCE_FACTOR = 0.25;
-    /** Group evaluation: floor for the max allowed distance (groups). */
-    static readonly GROUP_MIN_DISTANCE = 1;
-
-    static getPointRange(comp: ForceComposition): PointRange {
+const SocietyOrg: OrgDefinition = {
+    distanceFactor: 0.2,
+    minDistance: 2,
+    groupDistanceFactor: 0.5,
+    groupMinDistance: 1,
+    getPointRange(comp: ForceComposition): PointRange {
         const pts = comp.BM +
             (comp.BA_troopers / 9) +
-            (comp.CI_troopers / 75) +
+            ((comp.CI_troopers + comp.CI_mechanized_troopers) / 75) +
             (comp.PM / 3) +
             (comp.CV / 7) +
             (comp.AF / 3) +
             comp.other;
         return { min: pts, max: pts };
-    }
+    },
+    rules: [
+        { type: 'Un', modifiers: { '': 1 }, tier: 0 },
+        { type: 'Trey', modifiers: { '': 3 }, tier: 1 },
+        { type: 'Sept', modifiers: { '': 7 }, tier: 2 },
+    ],
+};
 
-    static readonly UN = new OrgTypeRule({
-        type: 'Un', modifiers: [{ prefix: '', count: 1 }],
-    });
-    static readonly TREY = new OrgTypeRule({
-        type: 'Trey', modifiers: [{ prefix: '', count: 3 }],
-    });
-    static readonly SEPT = new OrgTypeRule({
-        type: 'Sept', modifiers: [{ prefix: '', count: 7 }],
-    });
-    static readonly ALL: OrgTypeRule[] = [
-        SocietyOrg.UN, SocietyOrg.TREY, SocietyOrg.SEPT,
-    ];
-}
+const MHOrg: OrgDefinition = {
+    distanceFactor: 0.2,
+    minDistance: 2,
+    groupDistanceFactor: 0.5,
+    groupMinDistance: 1,
+    getPointRange(comp: ForceComposition): PointRange {
+        const fixed = comp.BM +
+            (comp.BA_troopers / 5) +
+            (comp.CI_troopers / 10) +
+            (comp.CI_mechanized_troopers / 5) +
+            comp.PM +
+            comp.CV +
+            comp.AF +
+            comp.other;
+        return {
+            min: fixed,
+            max: fixed,
+        };
+    },
+    rules: [
+        { type: 'Contubernium', modifiers: { '': 1 }, commandRank: 'Miles probatus', tier: 0 },
+        {
+            type: 'Century', composedOfAny: ['Contubernium'], modifiers: {
+                'Half ': 2, 'Short ': 3, 'Under-Strength ': 4, '': 5, 'Reinforced ': 6, 'Fortified ': 7,
+            }, commandRank: 'Centurion', tier: 1,
+            filter: (comp) => !isPureInfantry(comp),
+        },
+        // Century (Infantry) = 4-10 CI infantry Points
+        {
+            type: 'Century', composedOfAny: ['Contubernium'], modifiers: {
+                'Under-Strength ': 4, '': 7, 'Reinforced ': 10,
+            }, commandRank: 'Centurion', tier: 1,
+            filter: (comp) => isPureInfantry(comp),
+        },
+        {
+            type: 'Maniple', strict: true, composedOfAny: ['Century'],
+            modifiers: { '': 2 }, commandRank: 'Principes', tier: 2,
+        },
+        {
+            type: 'Cohort', composedOfAny: ['Maniple'], modifiers: {
+                'Under-Strength ': 2, '': 3, 'Reinforced ': 4, 'Strong ': 5,
+            }, commandRank: 'Legatus', tier: 3,
+        },
+        {
+            type: 'Legion', composedOfAny: ['Cohort'], modifiers: {
+                'Under-Strength ': 2, '': 3, 'Reinforced ': 4, 'Strong ': 5,
+            }, commandRank: 'General', tier: 4,
+        },
+    ],
+};
 
-class MHOrg {
-    /** Flat evaluation: max allowed distance as a fraction of midPts before falling back to "Force". */
-    static readonly DISTANCE_FACTOR = 0.2;
-    /** Flat evaluation: floor for the max allowed distance (pts). */
-    static readonly MIN_DISTANCE = 2;
-
-    /** Group evaluation: max allowed distance as a fraction of total group count before falling back to "Force". */
-    static readonly GROUP_DISTANCE_FACTOR = 0.5;
-    /** Group evaluation: floor for the max allowed distance (groups). */
-    static readonly GROUP_MIN_DISTANCE = 1;
-
-    static getPointRange(comp: ForceComposition): PointRange {
+const WDOrg: OrgDefinition = {
+    distanceFactor: 0.2,
+    minDistance: 2,
+    groupDistanceFactor: 0.25,
+    groupMinDistance: 1,
+    getPointRange(comp: ForceComposition): PointRange {
         const fixed = comp.BM +
             (comp.BA_troopers / 5) +
             comp.PM +
             comp.CV +
             comp.AF +
             comp.other;
-        // MH infantry platoon = 5-10 troopers per point
-        // Dividing by 10 = minimum pts; dividing by 5 = maximum pts
         return {
-            min: fixed + comp.CI_troopers / 10,
-            max: fixed + comp.CI_troopers / 5,
+            min: fixed + (comp.CI_troopers + comp.CI_mechanized_troopers) / 28,
+            max: fixed + (comp.CI_troopers + comp.CI_mechanized_troopers) / 21,
         };
-    }
-    static readonly CONTUBERNIUM = new OrgTypeRule({
-        type: 'Contubernium', modifiers: [{ prefix: '', count: 1 }], commandRank: 'Miles probatus',
-    });
-    // Century = N Contubernii
-    static readonly CENTURY = new OrgTypeRule({
-        type: 'Century', composedOf: MHOrg.CONTUBERNIUM, modifiers: [
-            { prefix: 'Half ', count: 2 },
-            { prefix: 'Short ', count: 3 },
-            { prefix: 'Under-Strength ', count: 4 },
-            { prefix: '', count: 5 },
-            { prefix: 'Reinforced ', count: 6 },
-            { prefix: 'Fortified ', count: 7 },
-        ], commandRank: 'Centurion',
-        filter: (comp) => !isPureInfantry(comp),
-    });
-    // Century (Infantry) = 4-10 CI infantry Points
-    static readonly CENTURY_INF = new OrgTypeRule({
-        type: 'Century', composedOf: MHOrg.CONTUBERNIUM, modifiers: [
-            { prefix: '', count: 4 },
-            { prefix: '', count: 10 },
-        ], commandRank: 'Centurion',
-        filter: (comp) => isPureInfantry(comp),
-    });
-    // Maniple = 2 Century
-    static readonly MANIPLE = new OrgTypeRule({
-        type: 'Maniple', strict: true,
-        composedOf: MHOrg.CENTURY, modifiers: [
-            { prefix: '', count: 2 }
-        ], commandRank: 'Principes',
-    });
-    // Cohort = N Maniples
-    static readonly COHORT = new OrgTypeRule({
-        type: 'Cohort', composedOf: MHOrg.MANIPLE,
-        modifiers: [
-            { prefix: 'Under-Strength ', count: 2 },
-            { prefix: '', count: 3 },
-            { prefix: 'Reinforced ', count: 4 },
-            { prefix: 'Strong ', count: 5 },
-        ], commandRank: 'Legatus',
-    });
-    // Legion = N Cohorts
-    static readonly LEGION = new OrgTypeRule({
-        type: 'Legion', composedOf: MHOrg.COHORT, modifiers: [
-            { prefix: 'Under-Strength ', count: 2 },
-            { prefix: '', count: 3 },
-            { prefix: 'Reinforced ', count: 4 },
-            { prefix: 'Strong ', count: 5 },
-        ], commandRank: 'General',
-    });
-    static readonly ALL: OrgTypeRule[] = [
-        MHOrg.CONTUBERNIUM, MHOrg.CENTURY, MHOrg.CENTURY_INF,
-        MHOrg.MANIPLE, MHOrg.COHORT, MHOrg.LEGION,
-    ];
-}
-
-class WDOrg {
-    /** Flat evaluation: max allowed distance as a fraction of midPts before falling back to "Force". */
-    static readonly DISTANCE_FACTOR = 0.2;
-    /** Flat evaluation: floor for the max allowed distance (pts). */
-    static readonly MIN_DISTANCE = 2;
-
-    /** Group evaluation: max allowed distance as a fraction of total group count before falling back to "Force". */
-    static readonly GROUP_DISTANCE_FACTOR = 0.25;
-    /** Group evaluation: floor for the max allowed distance (groups). */
-    static readonly GROUP_MIN_DISTANCE = 1;
-
-    static getPointRange(comp: ForceComposition): PointRange {
-        const fixed = comp.BM +
-            (comp.BA_troopers / 5) +
-            comp.PM +
-            comp.CV +
-            comp.AF +
-            comp.other;
-        // IS infantry platoon = 21-28 troopers per point
-        // Dividing by 28 = minimum pts; dividing by 21 = maximum pts
-        return {
-            min: fixed + comp.CI_troopers / 28,
-            max: fixed + comp.CI_troopers / 21,
-        };
-    }
-    static readonly FLIGHT = ISOrg.FLIGHT;
-    static readonly SQUADRON = new OrgTypeRule({
-        ...ISOrg.SQUADRON, composedOf: WDOrg.FLIGHT,
-    });
-    static readonly WING = new OrgTypeRule({
-        ...ISOrg.WING, composedOf: WDOrg.SQUADRON,
-    });
-    static readonly SQUAD = new OrgTypeRule({
-        ...ISOrg.SQUAD, filter: (comp) => comp.BA_troopers === 0,
-    });
-    static readonly POINT = new OrgTypeRule({
-        type: 'Point', modifiers: [{ prefix: '', count: 1 }], commandRank: 'Sergeant',
-        filter: (comp) => comp.AF === 0 && comp.CI_troopers === 0, // excluded Aero (Flights) and Conventional Infantry (Squads)
-    });
-    static readonly LANCE = new OrgTypeRule({
-        type: 'Lance', composedOf: WDOrg.POINT, modifiers: [
-            { prefix: 'Short ', count: 2 },
-            { prefix: 'Under-Strength ', count: 3 },
-            { prefix: '', count: 4 },
-            { prefix: 'Reinforced ', count: 5 },
-            { prefix: 'Fortified ', count: 6 },
-        ], commandRank: 'Lieutenant', filter: (comp) => !isPureAero(comp) && comp.BA_troopers === 0 && comp.BM <= 4, // BA can only be part of Stars, 2-4 BM are part of Lances
-    });
-    static readonly PLATOON = new OrgTypeRule({
-        ...ISOrg.PLATOON, countsAs: 'Lance', filter: (comp) => comp.BA_troopers === 0,
-    });
-    // Star = N Points
-    static readonly STAR = new OrgTypeRule({
-        type: 'Star', composedOf: WDOrg.POINT, modifiers: [
-            { prefix: 'Half ', count: 2 },
-            { prefix: 'Short ', count: 3 },
-            { prefix: 'Under-Strength ', count: 4 },
-            { prefix: '', count: 5 },
-            { prefix: 'Reinforced ', count: 6 },
-            { prefix: 'Fortified ', count: 7 },
-        ], commandRank: 'Lieutenant', filter: (comp) => comp.CV === 0 && (comp.BA_troopers > 0 || comp.BM > 4), // Vehicles can only be part of Lances, 5-7 BM are part of Stars
-    });
-    // Nova = Star of Mechs + Star of Infantry (counts as Star for force composition)
-    static readonly NOVA = new OrgTypeRule({
-        ...ClanOrg.NOVA, countsAs: 'Star', composedOf: WDOrg.POINT, commandRank: 'Lieutenant',
-         // Added composedOf to filter out AF and CI
-        filter: (comp) => comp.BM > 0 && (comp.BA_troopers / 5) > 0,
-        customMatch: (comp) => {
-            const infPoints = (comp.BA_troopers / 5);
-            const otherPoints = (comp.PM / 5) + comp.CV + comp.other;
-            return Math.abs(comp.BM - 5) + Math.abs(infPoints - 5) + otherPoints;
+    },
+    rules: [
+        IS_FLIGHT, IS_SQUADRON, IS_WING,
+        { ...IS_SQUAD, filter: (comp: ForceComposition) => comp.BA_troopers === 0 },
+        { ...IS_PLATOON, filter: (comp: ForceComposition) => comp.BA_troopers === 0 },
+        // WD Nova (modified Clan Nova)
+        {
+            ...CLAN_NOVA, commandRank: 'Lieutenant',
+            filter: (comp: ForceComposition) => comp.BM > 0 && (comp.BA_troopers / 5) > 0,
+            customMatch: (comp: ForceComposition) => {
+                const infPoints = (comp.BA_troopers / 5);
+                const otherPoints = (comp.PM / 5) + comp.CV + comp.other;
+                return Math.abs(comp.BM - 5) + Math.abs(infPoints - 5) + otherPoints;
+            },
         },
-    });
-    static readonly COMPANY = new OrgTypeRule({
-        ...ISOrg.COMPANY, composedOf: WDOrg.LANCE,
-        composedOfAny: ['Lance', 'Star'], // allowed Stars (and Novas) to be part of a company if there is at least 1 Lance
-        groupFilter: (groups) => groups.some(g => g.type === 'Lance' || g.countsAsType === 'Lance'),
-    });
-    // Binary = 2 Stars
-    static readonly BINARY = new OrgTypeRule({
-        ...ClanOrg.BINARY, countsAs: 'Company', composedOf: WDOrg.STAR, commandRank: 'Captain',
-        filter: (comp) => !isPureAero(comp),
-    });
-    // Trinary = 3 Stars
-    static readonly TRINARY = new OrgTypeRule({
-        ...ClanOrg.TRINARY, countsAs: 'Company', composedOf: WDOrg.STAR,
-        commandRank: 'Captain',
-        filter: (comp) => !isPureAero(comp),
-    });
-    // Supernova Binary = 2 Novas (counts as Binary for force composition)
-    static readonly SUPERNOVA_BINARY = new OrgTypeRule({
-        ...ClanOrg.SUPERNOVA_BINARY, countsAs: 'Binary', composedOf: WDOrg.NOVA,
-        commandRank: 'Captain',
-        filter: (comp) => comp.BM > 0 && (comp.BA_troopers / 5) > 0,
-        customMatch: (comp) => {
-            const infPoints = (comp.BA_troopers / 5);
-            const otherPoints = (comp.PM / 5) + comp.CV + comp.other;
-            return Math.abs(comp.BM - 10) + Math.abs(infPoints - 10) + otherPoints;
+        { ...CLAN_SUPERNOVA_BINARY, commandRank: 'Captain' },
+        { ...CLAN_SUPERNOVA_TRINARY, commandRank: 'Captain' },
+        // WD Point (excludes aero and conventional infantry)
+        { ...CLAN_POINT, commandRank: 'Sergeant', filter: (comp: ForceComposition) => comp.AF === 0 && comp.CI_troopers === 0 && comp.CI_mechanized_troopers === 0},
+        // WD Lance (composedOf Point, not Single; limited to 2-4 BM non-BA)
+        { ...IS_LANCE, filter: (comp: ForceComposition) => !isPureAero(comp) && comp.BA_troopers === 0 && comp.BM <= 4},
+        // WD Star (composedOf Point; for BA or 5+ BM non-vehicle)
+        { ...CLAN_STAR, commandRank: 'Lieutenant', filter: (comp: ForceComposition) => comp.CV === 0 && (comp.BA_troopers > 0 || comp.BM > 4)},
+        { ...CLAN_BINARY, countsAs: 'Company' as OrgType, commandRank: 'Captain', filter: (comp: ForceComposition) => !isPureAero(comp) },
+        { ...CLAN_TRINARY, countsAs: 'Company' as OrgType, commandRank: 'Captain', filter: (comp: ForceComposition) => !isPureAero(comp) },
+        { ...CLAN_CLUSTER, priority: 1, countsAs: 'Battalion' as OrgType, commandRank: 'Major', filter: (comp: ForceComposition) => !isPureAero(comp) },
+        // WD Company (accepts Lance + Star, requires at least 1 Lance)
+        {
+            ...IS_COMPANY,
+            composedOfAny: ['Lance', 'Star'] as OrgType[],
+            groupFilter: (groups: ReadonlyArray<GroupSizeResult>) => groups.some(g => g.type === 'Lance' || g.countsAsType === 'Lance'),
         },
-    });
-    // Supernova Trinary = 3 Novas (counts as Trinary for force composition)
-    static readonly SUPERNOVA_TRINARY = new OrgTypeRule({
-        ...ClanOrg.SUPERNOVA_TRINARY, countsAs: 'Trinary', composedOf: WDOrg.NOVA, commandRank: 'Captain',
-        filter: (comp) => comp.BM > 0 && (comp.BA_troopers / 5) > 0,
-        customMatch: (comp) => {
-            const infPoints = (comp.BA_troopers / 5);
-            const otherPoints = (comp.PM / 5) + comp.CV + comp.other;
-            return Math.abs(comp.BM - 15) + Math.abs(infPoints - 15) + otherPoints;
+        // WD Battalion (accepts Company + Binary + Trinary, requires at least 1 Company)
+        {
+            ...IS_BATTALION,
+            composedOfAny: ['Company', 'Binary', 'Trinary'] as OrgType[],
+            filter: (comp: ForceComposition) => !isPureAero(comp),
+            groupFilter: (groups: ReadonlyArray<GroupSizeResult>) => groups.some(g => g.type === 'Company' || g.countsAsType === 'Company'),
         },
-    });
-    // Battalion = N Companies
-    static readonly BATTALION = new OrgTypeRule({
-        ...ISOrg.BATTALION, composedOf: WDOrg.COMPANY,
-        composedOfAny: ['Company', 'Binary', 'Trinary'], // allowed Binaries and Trinaries (and Supernovas) to be part of a Battalion if there is at least 1 Company
-        filter: (comp) => !isPureAero(comp),
-        groupFilter: (groups) => groups.some(g => g.type === 'Company' || g.countsAsType === 'Company'),
-    });
-    // Cluster = N Binaries, Trinaries, or Supernovas (can mix and match)
-    static readonly CLUSTER = new OrgTypeRule({
-        ...ClanOrg.CLUSTER, priority: 1, composedOf: WDOrg.BINARY, // for flat point-based evaluation
-        countsAs: 'Battalion', commandRank: 'Major',
-        filter: (comp) => !isPureAero(comp),
-    });
-    // Regiment = N Battalions
-    static readonly REGIMENT = new OrgTypeRule({
-        ...ISOrg.REGIMENT, composedOf: WDOrg.BATTALION,
-    });
-    static readonly ALL: OrgTypeRule[] = [
-        WDOrg.FLIGHT, WDOrg.SQUADRON, WDOrg.WING,
-        WDOrg.SQUAD, WDOrg.PLATOON,
-        WDOrg.NOVA, WDOrg.SUPERNOVA_BINARY, WDOrg.SUPERNOVA_TRINARY,
-        WDOrg.POINT, WDOrg.LANCE, WDOrg.STAR, WDOrg.BINARY, WDOrg.TRINARY,
-        WDOrg.CLUSTER, WDOrg.COMPANY, WDOrg.BATTALION, WDOrg.REGIMENT,
-    ];
-}
+        // WD Regiment
+        { ...IS_REGIMENT, composedOfAny: ['Battalion', 'Wing'] as OrgType[] },
+    ],
+};
 
-// ─── Org Resolution ────────────────────────────────────────────────────────────
-
-/**
- * Shared shape for all org classes (ClanOrg, ISOrg, ComStarOrg, etc.).
- */
-export interface OrgDefinition {
-    readonly ALL: OrgTypeRule[];
-    readonly DISTANCE_FACTOR: number;
-    readonly MIN_DISTANCE: number;
-    readonly GROUP_DISTANCE_FACTOR: number;
-    readonly GROUP_MIN_DISTANCE: number;
-    getPointRange(comp: ForceComposition): PointRange;
-}
+//  Org Resolution 
 
 /**
  * Registry of org definitions with faction/tech-base matchers.
