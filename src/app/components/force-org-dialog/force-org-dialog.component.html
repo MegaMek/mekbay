@@ -98,9 +98,6 @@
                         <div class="group-name" (click)="renameGroup(group)" title="Click to rename">
                             {{ group.name() || previewGroupInfo().get(group.id)?.orgName ||
                             group.orgName() }}
-                            @if (group.factionName(); as fn) {
-                            <span> · {{ fn }}</span>
-                            }
                         </div>
                         <div class="group-data">
                             @if (group.name() && (previewGroupInfo().get(group.id)?.orgName ||
