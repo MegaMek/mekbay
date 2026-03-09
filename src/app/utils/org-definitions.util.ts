@@ -297,13 +297,14 @@ const CLAN_NOVA: OrgTypeRule = {
     filter: (comp) => comp.BA > 0 && comp.PM === 0 && comp.CI === 0 && comp.other === 0
         && (comp.BM > 0 || comp.CV > 0 || comp.AF > 0),
     customMatch: (comp) => {
-        // Standard Nova: 5 BM + 5 BA
-        const bmDist = Math.abs(comp.BM - 5) + Math.abs(comp.BA - 5) + comp.CV + comp.AF;
-        // Vehicle Nova: 5 CV + 5 BA
-        const cvDist = Math.abs(comp.CV - 5) + Math.abs(comp.BA - 5) + comp.BM + comp.AF;
-        // Aero Nova: 5 AF + 5 BA
-        const afDist = Math.abs(comp.AF - 5) + Math.abs(comp.BA - 5) + comp.BM + comp.CV;
-        return Math.min(bmDist, cvDist, afDist);
+        const configs = [
+            { bm: 5, cv: 0, af: 0, ba: 5 }, // Standard Nova: 5 BM + 5 BA
+            { bm: 0, cv: 5, af: 0, ba: 5 }, // Vehicle Nova: 5 CV + 5 BA
+            { bm: 0, cv: 0, af: 5, ba: 5 }, // Aero Nova: 5 AF + 5 BA
+        ];
+        return Math.min(...configs.map(cfg =>
+            Math.abs(comp.BM - cfg.bm) + Math.abs(comp.CV - cfg.cv) + Math.abs(comp.AF - cfg.af) + Math.abs(comp.BA - cfg.ba)
+        ));
     },
 };
 const CLAN_BINARY: OrgTypeRule = {
