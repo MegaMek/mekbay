@@ -35,7 +35,7 @@ import { Injectable, signal, computed, effect, inject, untracked } from '@angula
 import { Unit } from '../models/units.model';
 import { Era } from '../models/eras.model';
 import { DataService } from './data.service';
-import { CountOperator, MultiState, MultiStateSelection, MultiStateOption } from '../components/multi-select-dropdown/multi-select-dropdown.component';
+import { MultiState, MultiStateSelection, MultiStateOption } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { getForcePacks } from '../models/forcepacks.model';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { computeRelevanceScore, naturalCompare, compareUnitsByName } from '../utils/sort.util';
