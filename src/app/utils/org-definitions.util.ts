@@ -650,7 +650,6 @@ const WDOrg: OrgDefinition = {
         IS_FLIGHT, IS_SQUADRON, IS_WING,
         { ...IS_SQUAD, filter: (comp: ForceComposition) => comp.BA_troopers === 0 },
         { ...IS_PLATOON, filter: (comp: ForceComposition) => comp.BA_troopers === 0 },
-        // WD Nova (modified Clan Nova — BM only, no CV/AF variants)
         { ...CLAN_NOVA, commandRank: 'Lieutenant' },
         { ...CLAN_SUPERNOVA_BINARY, commandRank: 'Captain' },
         { ...CLAN_SUPERNOVA_TRINARY, commandRank: 'Captain' },
