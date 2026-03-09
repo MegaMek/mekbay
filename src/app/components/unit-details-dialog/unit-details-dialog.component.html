@@ -132,7 +132,7 @@
         @if (data.selectMode) {
         <button class="modal-btn bt-button" (click)="onSelect()">SELECT</button>
         } @else if (!data.hideAddButton) {
-        <div class="bt-split-button" [class.disabled]="this.forceBuilderService.smartCurrentForce()?.readOnly()">
+        <div class="modal-btn bt-split-button" [class.disabled]="this.forceBuilderService.smartCurrentForce()?.readOnly()">
             <button class="bt-split-part split-main"
                 [disabled]="this.forceBuilderService.smartCurrentForce()?.readOnly()"
                 longPress (shortPress)="onAdd($event)" (longPress)="onAddLongPress()"

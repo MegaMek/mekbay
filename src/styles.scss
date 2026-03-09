@@ -795,6 +795,30 @@ hr {
     &:hover .bt-split-part + .bt-split-part {
         border-left-color: #999;
     }
+
+    /* When used with modal-btn, the wrapper padding is handled by the inner parts */
+    &.modal-btn {
+        padding: 0;
+
+        .split-main {
+            padding: 8px 28px;
+            flex: 1;
+        }
+
+        .split-extra {
+            padding: 8px 10px;
+        }
+
+        @media screen and (max-width: 600px) {
+            .split-main {
+                padding: 8px 16px;
+            }
+
+            .split-extra {
+                padding: 8px 8px;
+            }
+        }
+    }
 }
 
 .form-fields {

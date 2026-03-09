@@ -293,12 +293,17 @@ const CLAN_STAR: OrgTypeRule = {
     }, commandRank: 'Star Commander', tier: 1,
 };
 const CLAN_NOVA: OrgTypeRule = {
-    type: 'Nova', strict: true, countsAs: 'Star', modifiers: { '': 10 }, commandRank: 'Nova Commander', tier: 1,
-    filter: (comp) => comp.BM > 0 && ((comp.BA_troopers / 5) + (comp.CI_troopers / 25)) > 0,
+    type: 'Nova', strict: true, priority: 1, countsAs: 'Star', modifiers: { '': 10 }, commandRank: 'Nova Commander', tier: 1.5,
+    filter: (comp) => comp.BA > 0 && comp.PM === 0 && comp.CI === 0 && comp.other === 0
+        && (comp.BM > 0 || comp.CV > 0 || comp.AF > 0),
     customMatch: (comp) => {
-        const infPoints = (comp.BA_troopers / 5) + (comp.CI_troopers / 25);
-        const otherPoints = (comp.PM / 5) + (comp.CV / 2) + (comp.AF / 2) + comp.other;
-        return Math.abs(comp.BM - 5) + Math.abs(infPoints - 5) + otherPoints;
+        // Standard Nova: 5 BM + 5 BA
+        const bmDist = Math.abs(comp.BM - 5) + Math.abs(comp.BA - 5) + comp.CV + comp.AF;
+        // Vehicle Nova: 5 CV + 5 BA
+        const cvDist = Math.abs(comp.CV - 5) + Math.abs(comp.BA - 5) + comp.BM + comp.AF;
+        // Aero Nova: 5 AF + 5 BA
+        const afDist = Math.abs(comp.AF - 5) + Math.abs(comp.BA - 5) + comp.BM + comp.CV;
+        return Math.min(bmDist, cvDist, afDist);
     },
 };
 const CLAN_BINARY: OrgTypeRule = {
@@ -311,11 +316,11 @@ const CLAN_TRINARY: OrgTypeRule = {
 };
 const CLAN_SUPERNOVA_BINARY: OrgTypeRule = {
     type: 'Supernova Binary', strict: true, priority: 2, countsAs: 'Binary',
-    composedOfAny: ['Nova'], modifiers: { '': 2 }, commandRank: 'Nova Captain', tier: 2,
+    composedOfAny: ['Nova'], modifiers: { '': 2 }, commandRank: 'Nova Captain', tier: 2.5,
 };
 const CLAN_SUPERNOVA_TRINARY: OrgTypeRule = {
     type: 'Supernova Trinary', strict: true, priority: 1, countsAs: 'Trinary',
-    composedOfAny: ['Nova'], modifiers: { '': 3 }, commandRank: 'Nova Captain', tier: 2,
+    composedOfAny: ['Nova'], modifiers: { '': 3 }, commandRank: 'Nova Captain', tier: 2.5,
 };
 const CLAN_CLUSTER: OrgTypeRule = {
     type: 'Cluster',
@@ -443,7 +448,7 @@ const ClanOrg: OrgDefinition = {
     },
     rules: [
         CLAN_NOVA, CLAN_SUPERNOVA_BINARY, CLAN_SUPERNOVA_TRINARY,
-        CLAN_POINT, 
+        CLAN_POINT,
         CLAN_STAR,
         CLAN_BINARY, CLAN_TRINARY,
         CLAN_CLUSTER, CLAN_GALAXY,
@@ -644,24 +649,16 @@ const WDOrg: OrgDefinition = {
         IS_FLIGHT, IS_SQUADRON, IS_WING,
         { ...IS_SQUAD, filter: (comp: ForceComposition) => comp.BA_troopers === 0 },
         { ...IS_PLATOON, filter: (comp: ForceComposition) => comp.BA_troopers === 0 },
-        // WD Nova (modified Clan Nova)
-        {
-            ...CLAN_NOVA, commandRank: 'Lieutenant',
-            filter: (comp: ForceComposition) => comp.BM > 0 && (comp.BA_troopers / 5) > 0,
-            customMatch: (comp: ForceComposition) => {
-                const infPoints = (comp.BA_troopers / 5);
-                const otherPoints = (comp.PM / 5) + comp.CV + comp.other;
-                return Math.abs(comp.BM - 5) + Math.abs(infPoints - 5) + otherPoints;
-            },
-        },
+        // WD Nova (modified Clan Nova — BM only, no CV/AF variants)
+        { ...CLAN_NOVA, commandRank: 'Lieutenant' },
         { ...CLAN_SUPERNOVA_BINARY, commandRank: 'Captain' },
         { ...CLAN_SUPERNOVA_TRINARY, commandRank: 'Captain' },
         // WD Point (excludes aero and conventional infantry)
-        { ...CLAN_POINT, commandRank: 'Sergeant', filter: (comp: ForceComposition) => comp.AF === 0 && comp.CI_troopers === 0},
+        { ...CLAN_POINT, commandRank: 'Sergeant', filter: (comp: ForceComposition) => comp.AF === 0 && comp.CI_troopers === 0 },
         // WD Lance (composedOf Point, not Single; limited to 2-4 BM non-BA)
-        { ...IS_LANCE, filter: (comp: ForceComposition) => !isPureAero(comp) && comp.BA_troopers === 0 && comp.BM <= 4},
+        { ...IS_LANCE, filter: (comp: ForceComposition) => !isPureAero(comp) && comp.BA_troopers === 0 && comp.BM <= 4 },
         // WD Star (composedOf Point; for BA or 5+ BM non-vehicle)
-        { ...CLAN_STAR, commandRank: 'Lieutenant', filter: (comp: ForceComposition) => comp.CV === 0 && (comp.BA_troopers > 0 || comp.BM > 4)},
+        { ...CLAN_STAR, commandRank: 'Lieutenant', filter: (comp: ForceComposition) => comp.CV === 0 && (comp.BA_troopers > 0 || comp.BM > 4) },
         { ...CLAN_BINARY, countsAs: 'Company' as OrgType, commandRank: 'Captain', filter: (comp: ForceComposition) => !isPureAero(comp) },
         { ...CLAN_TRINARY, countsAs: 'Company' as OrgType, commandRank: 'Captain', filter: (comp: ForceComposition) => !isPureAero(comp) },
         { ...CLAN_CLUSTER, priority: 1, countsAs: 'Battalion' as OrgType, commandRank: 'Major', filter: (comp: ForceComposition) => !isPureAero(comp) },
@@ -722,12 +719,12 @@ const CCOrg: OrgDefinition = {
         // CC Augmented Battalion (Short, Under-Strength, and Strong variants are not canonically listed, but seem reasonable to allow in the app)
         {
             type: 'Augmented Battalion', composedOfAny: ['Augmented Company'],
-            modifiers: {'Short ': 2, 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'Major', tier: 3,
+            modifiers: { 'Short ': 2, 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'Major', tier: 3,
         },
         // CC Augmented Regiment
         {
             type: 'Augmented Regiment', composedOfAny: ['Augmented Battalion', 'Battalion', 'Wing'],
-            modifiers: {'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'General', tier: 4,
+            modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'General', tier: 4,
             groupFilter: (groups: ReadonlyArray<GroupSizeResult>) => groups.some(g => g.type === 'Augmented Battalion'),
         },
     ],

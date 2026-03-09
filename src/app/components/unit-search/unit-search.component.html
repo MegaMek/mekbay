@@ -442,7 +442,7 @@
                 @let forceTotal = this.filtersService.forceTotalBvPv();
                 @let limitLabel = gameService.isAlphaStrike() ? 'PV' : 'BV';
                 <div class="limit-control">
-                    <label for="bv-pv-limit">{{ limitLabel }} Limit:</label>
+                    <label for="bv-pv-limit">Force<br/>{{ limitLabel }} Limit:</label>
                     <input id="bv-pv-limit" type="number" class="bt-input limit-input"
                         [class.active]="bvPvLimit > 0"
                         [value]="bvPvLimit || ''"
@@ -452,7 +452,7 @@
                 </div>
                 @if (bvPvLimit > 0) {
                 <div class="limit-info" [class.over-limit]="forceTotal > bvPvLimit">
-                    <span class="limit-remaining-label">Remaining:</span>
+                    <span class="limit-remaining-label">Remaining</span>
                     <span class="limit-remaining-value">{{ (bvPvLimit - forceTotal) | number }}</span>
                 </div>
                 }

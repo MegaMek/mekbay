@@ -2,6 +2,7 @@
     width: 100%;
     display: flex;
     justify-content: space-between;
+    align-items: center;
     flex-direction: row;
     gap: 8px;
 }
@@ -199,33 +200,6 @@
     font-weight: bold;
     font-size: 20px;
     line-height: 16px;
-}
-
-/* Split button sizing in footer */
-.footer .bt-split-button {
-    font-size: 1.1em;
-}
-
-.footer .bt-split-button .split-main {
-    padding: 8px 28px;
-}
-
-.footer .bt-split-button .split-extra {
-    padding: 8px 10px;
-}
-
-@media screen and (max-width: 600px) {
-    .footer .bt-split-button {
-        font-size: 1em;
-    }
-
-    .footer .bt-split-button .split-main {
-        padding: 8px 16px;
-    }
-
-    .footer .bt-split-button .split-extra {
-        padding: 8px 8px;
-    }
 }
 
 .nav-arrow {
