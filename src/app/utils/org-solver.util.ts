@@ -124,8 +124,11 @@ function evaluateLeaf(
             if (customDist === Infinity) continue;
             if (customDist >= 0) {
                 if (rule.strict && customDist !== 0) continue;
-                if (customDist < bestDist ||
-                    (customDist === bestDist && rule.strict && !bestRule?.strict)) {
+                const strictUpgradeCM = customDist === bestDist && rule.strict && !bestRule?.strict;
+                const strictDowngradeCM = customDist === bestDist && !rule.strict && bestRule?.strict;
+                const candidateCM: EvaluationResult = { name: '', dist: customDist, matchedRule: rule };
+                const currentCM: EvaluationResult = { name: '', dist: bestDist, matchedRule: bestRule };
+                if (strictUpgradeCM || (!strictDowngradeCM && isBetterMatch(candidateCM, currentCM))) {
                     bestDist = customDist;
                     bestRule = rule;
                     bestModName = customDist === 0
@@ -157,8 +160,10 @@ function evaluateLeaf(
         if (rule.strict && dist !== 0) continue;
 
         const strictUpgrade = dist === bestDist && rule.strict && !bestRule?.strict;
-        if (dist < bestDist || strictUpgrade ||
-            (dist === bestDist && !(!rule.strict && bestRule?.strict) && getRegularCount(rule) > (bestRule ? getRegularCount(bestRule) : 0))) {
+        const strictDowngrade = dist === bestDist && !rule.strict && bestRule?.strict;
+        const candidateLeaf: EvaluationResult = { name: '', dist, matchedRule: rule };
+        const currentLeaf: EvaluationResult = { name: '', dist: bestDist, matchedRule: bestRule };
+        if (strictUpgrade || (!strictDowngrade && isBetterMatch(candidateLeaf, currentLeaf))) {
             bestDist = dist;
             bestRule = rule;
             bestModName = getModifierPrefix(rule, midPts);
@@ -788,11 +793,20 @@ function trySplitEvaluation(
                 (!lastResult?.matchedRule || isBetterMatch(finalUp, lastResult))) {
                 lastResult = finalUp;
             }
+            if (currentGroups.length >= 4) {
+                const splitUp = trySplitGroupEvaluation(currentGroups, filteredRules,
+                    groupMinDistance ?? 1, groupDistanceFactor ?? 0.25);
+                if (splitUp.matchedRule &&
+                    (!lastResult?.matchedRule || isBetterMatch(splitUp, lastResult))) {
+                    lastResult = splitUp;
+                }
+            }
         }
 
         if (lastResult?.matchedRule && isBetterMatch(lastResult, best)) {
             best = lastResult;
         }
+        if (best.dist === 0) break;
         } // end leafCount loop
     }
 
