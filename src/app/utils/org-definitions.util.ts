@@ -712,15 +712,15 @@ const CCOrg: OrgDefinition = {
             filter: (comp) => comp.AF === 0 && comp.CI === 0 && comp.PM === 0 && comp.other === 0
                 && ((comp.BM > 0 && (comp.CV > 0 || comp.BA > 0)) || (comp.CV > 0 && comp.BA > 0)),
             customMatch: (comp) => {
-                // 4 BM + 2 CV
-                const dist1 = Math.abs(comp.BM - 4) + Math.abs(comp.CV - 2) + comp.BA;
-                // 4 BM + 2 BA
-                const dist2 = Math.abs(comp.BM - 4) + Math.abs(comp.BA - 2) + comp.CV;
-                // 2 BM + 4 CV
-                const dist3 = Math.abs(comp.BM - 2) + Math.abs(comp.CV - 4) + comp.BA;
-                // 4 CV + 4 BA
-                const dist4 = Math.abs(comp.CV - 4) + Math.abs(comp.BA - 4) + comp.BM;
-                return Math.min(dist1, dist2, dist3, dist4);
+                const configs = [
+                    { bm: 4, cv: 2, ba: 0 },
+                    { bm: 4, cv: 0, ba: 2 },
+                    { bm: 2, cv: 4, ba: 0 },
+                    { bm: 0, cv: 4, ba: 4 },
+                ];
+                return Math.min(...configs.map(cfg =>
+                    Math.abs(comp.BM - cfg.bm) + Math.abs(comp.CV - cfg.cv) + Math.abs(comp.BA - cfg.ba)
+                ));
             },
         },
         // CC Augmented Company (Reinforced Augmented Company is not canonically listed, but seems reasonable to allow in the app)
