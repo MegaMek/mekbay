@@ -644,7 +644,7 @@ const CCOrg: OrgDefinition = {
         {
             type: 'Augmented Lance', strict: true, composedOfAny: ['Single', 'Squad'],
             modifiers: { '': 6 }, commandRank: 'Lieutenant', tier: 1,
-            filter: (comp) => (comp.AF === 0 && comp.BM === 4 && ( comp.CV === 2 || comp.BA_troopers === 8 )) || (comp.CV === 4 && (comp.BM === 2 || comp.BA_troopers === 16)),
+            filter: (comp) => (comp.AF === 0 && (comp.BM === 4 && (comp.CV === 2 || comp.BA_troopers === 8) || (comp.CV === 4 && (comp.BM === 2 || comp.BA_troopers === 16)))),
         },
         // CC Augmented Company (Reinforced Augmented Company is not canonically listed, but seems reasonable to allow in the app)
         {
