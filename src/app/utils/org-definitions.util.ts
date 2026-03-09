@@ -146,7 +146,7 @@ export function getForceCompositionFromUnits(units: Unit[]): ForceComposition {
                 comp.CI++;
                 comp.CI_troopers += (u.internal || 0);
                 if (u.subtype === 'Mechanized Conventional Infantry') {
-                    if (u.moveType === 'Wheeled' || u.moveType === 'Tracked') comp.CI_troopers_mechanized += (u.internal || 0);
+                    comp.CI_troopers_mechanized += (u.internal || 0);
                 }
                 switch (u.moveType) {
                     case 'Leg': comp.CI_troopers_legs += (u.internal || 0); break;
