@@ -275,7 +275,7 @@ export class SidebarComponent {
     }
 
     public shouldBlockSwipe = () => {
-        if (this.unitSearchComponent()?.resultsVisible()) {
+        if (this.unitSearchComponent()?.resultsVisible() || this.unitSearchComponent()?.advOpen()) {
             return true;
         }
         if (this.forceBuilderViewer()?.isUnitDragging() 
