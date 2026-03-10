@@ -169,10 +169,13 @@
         }
     }
 
-    .tab-button:focus-visible:not(.active),
     .tab-button:hover {
         color: var(--text-color);
         border-bottom-color: silver;
+    }
+
+    .tab-button:focus-visible:not(.active) {
+        color: var(--text-color);
     }
 
     .tab-button.active {
