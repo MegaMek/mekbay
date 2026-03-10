@@ -38,8 +38,8 @@ import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { SkillDropdownPanelComponent, SkillPreviewEntry } from '../skill-dropdown-panel/skill-dropdown-panel.component';
+import { SkillMatrixPanelComponent, SkillMatrixCell } from '../skill-dropdown-panel/skill-matrix-panel.component';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
-import { getEffectivePilotingSkill } from '../../utils/cbt-common.util';
 import { Unit } from '../../models/units.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
 
@@ -103,6 +103,21 @@ export interface EditPilotResult {
         </div>
         <div class="wide-dialog-actions">
             <button (click)="submit()" class="bt-button">CONFIRM</button>
+            @if (!data.disablePiloting && hasBvPreview) {
+            <button #matrixTrigger class="bt-button square" title="Skill Matrix" (click)="toggleMatrixView()">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="1" y="1" width="4" height="4" rx="0.5"/>
+                    <rect x="6" y="1" width="4" height="4" rx="0.5"/>
+                    <rect x="11" y="1" width="4" height="4" rx="0.5"/>
+                    <rect x="1" y="6" width="4" height="4" rx="0.5"/>
+                    <rect x="6" y="6" width="4" height="4" rx="0.5"/>
+                    <rect x="11" y="6" width="4" height="4" rx="0.5"/>
+                    <rect x="1" y="11" width="4" height="4" rx="0.5"/>
+                    <rect x="6" y="11" width="4" height="4" rx="0.5"/>
+                    <rect x="11" y="11" width="4" height="4" rx="0.5"/>
+                </svg>
+            </button>
+            }
             <button (click)="close()" class="bt-button">DISMISS</button>
         </div>
     </div>
@@ -133,7 +148,15 @@ export class EditPilotDialogComponent {
     currentGunnery = signal<number>(this.data.gunnery);
     currentPiloting = signal<number>(this.data.piloting);
 
-    private readonly hasBvPreview = !!(this.data.preSkillBv != null && this.data.unit);
+    readonly hasBvPreview = !!(this.data.preSkillBv != null && this.data.unit);
+
+    /** 9x9 BV matrix: matrix[gunnery][piloting] = adjusted BV */
+    bvMatrix = computed<number[][]>(() => {
+        if (!this.hasBvPreview) return [];
+        return [0, 1, 2, 3, 4, 5, 6, 7, 8].map(g =>
+            [0, 1, 2, 3, 4, 5, 6, 7, 8].map(p => this.calculateBv(g, p))
+        );
+    });
 
     gunneryEntries = computed<SkillPreviewEntry[]>(() => {
         const piloting = this.currentPiloting();
@@ -155,6 +178,7 @@ export class EditPilotDialogComponent {
         this.destroyRef.onDestroy(() => {
             this.overlayManager.closeManagedOverlay('skill-gunnery-dropdown');
             this.overlayManager.closeManagedOverlay('skill-piloting-dropdown');
+            this.overlayManager.closeManagedOverlay('skill-matrix');
         });
     }
 
@@ -179,6 +203,33 @@ export class EditPilotDialogComponent {
             (skill) => this.currentPiloting.set(skill),
             this.data.labelPiloting || 'Piloting Skill'
         );
+    }
+
+    toggleMatrixView(): void {
+        this.overlayManager.closeManagedOverlay('skill-matrix');
+
+        const portal = new ComponentPortal(SkillMatrixPanelComponent, null, this.injector);
+
+        const { componentRef } = this.overlayManager.createManagedOverlay(
+            'skill-matrix',
+            null,
+            portal,
+            {
+                closeOnOutsideClick: true
+            }
+        );
+
+        componentRef.setInput('matrix', this.bvMatrix());
+        componentRef.setInput('selectedGunnery', this.currentGunnery());
+        componentRef.setInput('selectedPiloting', this.currentPiloting());
+
+        outputToObservable(componentRef.instance.selected)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((cell: SkillMatrixCell) => {
+                this.currentGunnery.set(cell.gunnery);
+                this.currentPiloting.set(cell.piloting);
+                this.overlayManager.closeManagedOverlay('skill-matrix');
+            });
     }
 
     private openSkillDropdown(
