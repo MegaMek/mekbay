@@ -151,28 +151,38 @@ export class CBTForceUnitState extends ForceUnitState {
             this.c3Position.set(Sanitizer.sanitize(data.c3Position, C3_POSITION_SCHEMA));
         }
 
-        // We update it only if changed
-        if (data.locations) {
+        // Incoming locations are sparse: only locations with non-zero damage.
+        // Locations not in the incoming data are reset to pristine.
+        if (data.locations !== undefined) {
             const currentLocations = this.locations();
             const incomingLocations = data.locations;
+            const incomingKeys = new Set(Object.keys(incomingLocations));
             let locationsChanged = false;
 
-            const currentKeys = Object.keys(currentLocations);
-            const incomingKeys = Object.keys(incomingLocations);
+            // Check incoming locations against current
+            for (const key of incomingKeys) {
+                const currentLoc = currentLocations[key];
+                const incomingLoc = incomingLocations[key];
+                if (!currentLoc
+                    || currentLoc.armor !== incomingLoc.armor
+                    || currentLoc.internal !== incomingLoc.internal
+                    || currentLoc.pendingArmor !== incomingLoc.pendingArmor
+                    || currentLoc.pendingInternal !== incomingLoc.pendingInternal) {
+                    locationsChanged = true;
+                    break;
+                }
+            }
 
-            if (currentKeys.length !== incomingKeys.length) {
-                locationsChanged = true;
-            } else {
-                for (const key of incomingKeys) {
-                    const currentLoc = currentLocations[key];
-                    const incomingLoc = incomingLocations[key];
-                    if (!currentLoc
-                        || currentLoc.armor !== incomingLoc.armor
-                        || currentLoc.internal !== incomingLoc.internal
-                        || currentLoc.pendingArmor !== incomingLoc.pendingArmor
-                        || currentLoc.pendingInternal !== incomingLoc.pendingInternal) {
-                        locationsChanged = true;
-                        break;
+            // Check if any current locations with state are absent from incoming (need reset)
+            if (!locationsChanged) {
+                for (const key of Object.keys(currentLocations)) {
+                    if (!incomingKeys.has(key)) {
+                        const loc = currentLocations[key];
+                        if ((loc.armor ?? 0) !== 0 || (loc.internal ?? 0) !== 0 ||
+                            (loc.pendingArmor ?? 0) !== 0 || (loc.pendingInternal ?? 0) !== 0) {
+                            locationsChanged = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -230,8 +240,46 @@ export class CBTForceUnitState extends ForceUnitState {
             }
         }
 
-        if (data.inventory) {
-            this.deserializeInventory(data.inventory);
+        // Incoming inventory is sparse: only items with state (destroyed, consumed, states).
+        // Items not in incoming data are reset to pristine.
+        {
+            const currentInventory = this.inventory();
+            const incomingMap = new Map((data.inventory ?? []).map(e => [e.id, e]));
+            let inventoryChanged = false;
+
+            for (const item of currentInventory) {
+                const incoming = incomingMap.get(item.id);
+                if (incoming) {
+                    // Apply incoming state
+                    if (item.destroyed !== incoming.destroyed) {
+                        item.destroyed = incoming.destroyed;
+                        inventoryChanged = true;
+                    }
+                    if (item.consumed !== incoming.consumed) {
+                        item.consumed = incoming.consumed;
+                        inventoryChanged = true;
+                    }
+                    if (incoming.states !== undefined) {
+                        item.states = new Map(incoming.states.map(s => [s.name, s.value]));
+                        inventoryChanged = true;
+                    }
+                } else {
+                    // Not in incoming: reset to pristine if it had state
+                    if (item.destroyed || (item.consumed ?? 0) > 0 ||
+                        (item.states && item.states.size > 0 && Array.from(item.states.values()).some(v => v !== ''))) {
+                        item.destroyed = undefined;
+                        item.consumed = undefined;
+                        if (item.states) {
+                            item.states.forEach((_v, k) => item.states!.set(k, ''));
+                        }
+                        inventoryChanged = true;
+                    }
+                }
+            }
+
+            if (inventoryChanged) {
+                this.inventory.set([...currentInventory]);
+            }
         }
 
         const crewMap = new Map(this.crew().map(c => [c.getId(), c]));
@@ -260,29 +308,58 @@ export class CBTForceUnitState extends ForceUnitState {
      * Pristine crits (no hits, no consumption, no name override, not destroying/destroyed)
      * are omitted as they can be reconstructed from the SVG during initialization.
      */
+    /**
+     * Returns only locations with non-zero damage state for serialization.
+     * Pristine locations (all values 0 or undefined) are omitted since
+     * getters default to 0 for missing keys.
+     */
+    locationsForSerialization(): Record<string, LocationData> {
+        const locations = this.locations();
+        const result: Record<string, LocationData> = {};
+        for (const [key, loc] of Object.entries(locations)) {
+            if ((loc.armor ?? 0) !== 0 || (loc.internal ?? 0) !== 0 ||
+                (loc.pendingArmor ?? 0) !== 0 || (loc.pendingInternal ?? 0) !== 0) {
+                result[key] = loc;
+            }
+        }
+        return result;
+    }
+
     critsForSerialization(): Omit<CriticalSlot, 'el' | 'eq'>[] {
         return this.crits()
             .filter(crit =>
                 (crit.hits ?? 0) > 0 ||
                 (crit.consumed ?? 0) > 0 ||
                 (crit.originalName !== undefined && crit.originalName !== crit.name) ||
-                crit.destroying !== undefined ||
-                crit.destroyed !== undefined
+                crit.destroying ||
+                crit.destroyed
             )
             .map(({ el, eq, ...rest }) => rest);
     }
 
-    inventoryForSerialization(): SerializedInventory[] {
+    /**
+     * Returns only inventory items with meaningful state for serialization.
+     * Items with no destroyed, consumed, or states are omitted since they
+     * can be reconstructed from the SVG during initialization.
+     */
+    inventoryForSerialization(): SerializedInventory[] | undefined {
         const inventory = this.inventory();
-        const serializedData = inventory.map(item => ({
-            id: item.id,
-            ...(item.destroyed !== undefined && { destroyed: item.destroyed }),
-            ...(item.consumed !== undefined && { consumed: item.consumed }),
-            ...(item.states !== undefined && item.states.size > 0 && { 
-                states: Array.from(item.states.entries()).map(([name, value]) => ({ name, value })) 
-            })
-        }));
-        return serializedData;
+        const serializedData: SerializedInventory[] = [];
+        for (const item of inventory) {
+            const hasStates = item.states !== undefined && item.states.size > 0 
+                && Array.from(item.states.values()).some(v => v !== '');
+            if (item.destroyed || (item.consumed ?? 0) > 0 || hasStates) {
+                serializedData.push({
+                    id: item.id,
+                    ...(item.destroyed && { destroyed: item.destroyed }),
+                    ...((item.consumed ?? 0) > 0 && { consumed: item.consumed }),
+                    ...(hasStates && { 
+                        states: Array.from(item.states!.entries()).map(([name, value]) => ({ name, value })) 
+                    })
+                });
+            }
+        }
+        return serializedData.length > 0 ? serializedData : undefined;
     }
 
     deserializeInventory(serializedInventory: SerializedInventory[]) {

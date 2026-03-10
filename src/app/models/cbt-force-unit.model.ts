@@ -756,7 +756,7 @@ export class CBTForceUnit extends ForceUnit {
             crew: this.state.crew().map(crew => crew.serialize()),
             crits: this.state.critsForSerialization(),
             heat: this.state.heat(),
-            locations: this.state.locations(),
+            locations: this.state.locationsForSerialization(),
             modified: this.state.modified(),
             destroyed: this.state.destroyed(),
             shutdown: this.state.shutdown(),
