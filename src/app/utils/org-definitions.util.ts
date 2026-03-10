@@ -533,7 +533,7 @@ const ComStarOrg: OrgDefinition = {
             }, commandRank: 'Adept', tier: 1,
         },
         {
-            type: 'Choir', strict: true, priority: 1, countsAs: 'Level II', modifiers: { '': 12 }, commandRank: 'Adept', tier: 1.5,
+            type: 'Choir', strict: true, priority: 1, countsAs: 'Level II', modifiers: { '': 12 }, commandRank: 'Adept', tier: 1.6,
             filter: (comp) => comp.AF === 0 &&comp.CV === 0 && comp.PM === 0 && comp.CI === 0 && comp.other === 0 &&
                     ((comp.BA_MEC > 0 && comp.BM_Omni > 0) || (comp.BA_XMEC > 0 && comp.BM > 0 )),
             customMatch: (comp) => {
