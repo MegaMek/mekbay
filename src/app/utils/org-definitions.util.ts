@@ -101,11 +101,16 @@ export type OrgType =
 
 export interface ForceComposition {
     BM: number;
+    BM_Omni: number;
     BA: number;
+    BA_MEC: number;
+    BA_XMEC: number;
     CI: number;
     PM: number;
     CV: number;
+    CV_Omni: number;
     AF: number;
+    AF_Omni: number;
     other: number;
     BA_troopers: number;
     CI_troopers: number;
@@ -120,11 +125,16 @@ export interface ForceComposition {
 export function getForceCompositionFromUnits(units: Unit[]): ForceComposition {
     const comp: ForceComposition = {
         BM: 0,
+        BM_Omni: 0,
         BA: 0,
+        BA_MEC: 0,
+        BA_XMEC: 0,
         CI: 0,
         PM: 0,
         CV: 0,
+        CV_Omni: 0,
         AF: 0,
+        AF_Omni: 0,
         other: 0,
         BA_troopers: 0,
         CI_troopers: 0,
@@ -137,10 +147,15 @@ export function getForceCompositionFromUnits(units: Unit[]): ForceComposition {
     };
 
     for (const u of units) {
-        if (u.type === 'Mek') comp.BM++;
+        if (u.type === 'Mek') {
+            comp.BM++;
+            if (u.as.specials.includes('OMNI')) comp.BM_Omni++;
+        }
         else if (u.type === 'Infantry') {
             if (u.subtype === 'Battle Armor') {
                 comp.BA++;
+                if (u.as.specials.includes('MEC')) comp.BA_MEC++;
+                if (u.as.specials.includes('XMEC')) comp.BA_XMEC++;
                 comp.BA_troopers += (u.internal || 0);
             } else {
                 comp.CI++;
@@ -158,8 +173,14 @@ export function getForceCompositionFromUnits(units: Unit[]): ForceComposition {
             }
         }
         else if (u.type === 'ProtoMek') comp.PM++;
-        else if (u.type === 'Tank' || u.type === 'VTOL' || u.type === 'Naval') comp.CV++;
-        else if (u.type === 'Aero') comp.AF++;
+        else if (u.type === 'Tank' || u.type === 'VTOL' || u.type === 'Naval') {
+            comp.CV++;
+            if (u.as.specials.includes('OMNI')) comp.CV_Omni++;
+        }
+        else if (u.type === 'Aero') {
+            comp.AF++;
+            if (u.as.specials.includes('OMNI')) comp.AF_Omni++;
+        }
         else comp.other++;
     }
     return comp;
@@ -294,8 +315,9 @@ const CLAN_STAR: OrgTypeRule = {
 };
 const CLAN_NOVA: OrgTypeRule = {
     type: 'Nova', strict: true, priority: 1, countsAs: 'Star', modifiers: { '': 10 }, commandRank: 'Nova Commander', tier: 1.5,
-    filter: (comp) => comp.BA > 0 && comp.PM === 0 && comp.CI === 0 && comp.other === 0
-        && (comp.BM > 0 || comp.CV > 0 || comp.AF > 0),
+    filter: (comp) => comp.PM === 0 && comp.CI === 0 && comp.other === 0 &&
+            (comp.BA_MEC > 0 && (comp.BM_Omni > 0 || comp.CV_Omni > 0 || comp.AF_Omni > 0) ||
+            (comp.BA_XMEC > 0 && (comp.BM > 0 || comp.CV > 0 || comp.AF > 0))),
     customMatch: (comp) => {
         const configs = [
             { bm: 5, cv: 0, af: 0, ba: 5 }, // Standard Nova: 5 BM + 5 BA
@@ -709,8 +731,11 @@ const CCOrg: OrgDefinition = {
         {
             type: 'Augmented Lance', strict: true, priority: 1, countsAs: 'Lance',
             modifiers: { '': 6 }, commandRank: 'Lieutenant', tier: 1,
-            filter: (comp) => comp.AF === 0 && comp.CI === 0 && comp.PM === 0 && comp.other === 0
-                && ((comp.BM > 0 && (comp.CV > 0 || comp.BA > 0)) || (comp.CV > 0 && comp.BA > 0)),
+            filter: (comp) => comp.AF === 0 && comp.CI === 0 && comp.PM === 0 && comp.other === 0 && (
+                    (comp.BA_MEC > 0 && (comp.BM_Omni > 0 || comp.CV_Omni > 0)) ||
+                    (comp.BA_XMEC > 0 && (comp.CV > 0 || comp.BM > 0)) ||
+                    (comp.BM > 0 && comp.CV > 0)
+            ),
             customMatch: (comp) => {
                 const configs = [
                     { bm: 4, cv: 2, ba: 0 },
