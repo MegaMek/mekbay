@@ -429,11 +429,11 @@ export class UnitDetailsDialogComponent {
                 title: 'Add Multiple',
                 message: `How many copies of ${this.unit.chassis} ${this.unit.model}?`,
                 buttons: [
-                    { label: '1', value: 1, class: 'square' },
                     { label: '2', value: 2, class: 'square' },
                     { label: '3', value: 3, class: 'square' },
                     { label: '4', value: 4, class: 'square' },
                     { label: '5', value: 5, class: 'square' },
+                    { label: '6', value: 6, class: 'square' },
                 ]
             }
         });
