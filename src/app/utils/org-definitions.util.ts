@@ -553,21 +553,21 @@ const ComStarOrg: OrgDefinition = {
         {
             type: 'Level III', composedOfAny: ['Level II'], modifiers: {
                 'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
-            }, commandRank: 'Adept (Demi-Precentor)', tier: 3,
+            }, commandRank: 'Adept (Demi-Precentor)', tier: 2,
         },
         {
             type: 'Level IV', composedOfAny: ['Level III'], modifiers: {
                 'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
-            }, commandRank: 'Precentor', tier: 4,
+            }, commandRank: 'Precentor', tier: 3,
         },
         {
             type: 'Level V', composedOfAny: ['Level IV'], modifiers: {
                 'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
-            }, commandRank: 'Precentor', tier: 5,
+            }, commandRank: 'Precentor', tier: 4,
         },
         {
             type: 'Level VI', composedOfAny: ['Level V'], modifiers: { '': 2, },
-            commandRank: 'Precentor Martial', tier: 6,
+            commandRank: 'Precentor Martial', tier: 5,
         },
     ],
 };
