@@ -270,6 +270,21 @@
 .ammo-list {
     margin-top: 4px;
     font-size: 0.85em;
+    line-height: 1.5;
+}
+
+.ammo-entry {
+    display: inline-block;
+    white-space: nowrap;
+    vertical-align: baseline;
+    margin-right: 0.3em;
+}
+
+.case-bracket {
+    color: #e8a64a;
+    font-size: 1.4em;
+    line-height: 0.8em;
+    vertical-align: -2px;
 }
 
 /* Search highlight */

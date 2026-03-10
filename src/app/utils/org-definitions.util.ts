@@ -282,12 +282,6 @@ export function getModifierPrefix(rule: OrgTypeRule, count: number): string {
             bestPrefix = prefix;
         }
     }
-    if (bestDist > 0 && bestPrefix === '') {
-        const regular = rule.modifiers[''];
-        if (regular !== undefined) {
-            return count < regular ? 'Under-Strength ' : 'Reinforced ';
-        }
-    }
     return bestPrefix;
 }
 

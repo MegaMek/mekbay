@@ -494,6 +494,35 @@ export class UnitCardExpandedComponent {
         return cur;
     }
 
+    /** Map of normalized location code -> '[CASE]' or '[CASE II]' for locations that have CASE equipment */
+    private caseByLocation = computed<Map<string, string>>(() => {
+        const u = this.resolvedUnit();
+        const result = new Map<string, string>();
+        if (!u?.comp) return result;
+        for (const comp of u.comp) {
+            if (!comp.eq || !comp.l) continue;
+            let label: string | undefined;
+            if (comp.eq.hasFlag('F_CASE_II')) label = '[CASE II]';
+            else if (comp.eq.hasFlag('F_CASE') || comp.eq.hasFlag('F_CASE_P')) label = '[CASE]';
+            if (label) result.set(this.normalizeLoc(comp.l), label);
+        }
+        return result;
+    });
+
+    private normalizeLoc(loc: string): string {
+        if (!loc) return 'UNK';
+        let norm = (loc === '*') ? 'ALL' : loc.trim();
+        norm = norm.replace(/[^A-Za-z0-9_-]/g, '');
+        if (/^[0-9]/.test(norm)) norm = 'L' + norm;
+        if (!norm) norm = 'UNK';
+        return norm;
+    }
+
+    /** Returns the CASE label for a raw location string */
+    getCaseLabel(loc: string): string {
+        return this.caseByLocation().get(this.normalizeLoc(loc)) ?? '';
+    }
+
     /** Format armor type - removes " Armor" suffix if present */
     formatArmorType(armorType: string | undefined): string {
         if (!armorType) return '';

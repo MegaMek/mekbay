@@ -257,7 +257,7 @@
             <div class="ammo-list">
                 <span class="info-label muted">Ammo: </span>
                 @for (comp of ammoList; let last = $last; let i = $index; track i) {
-                <unit-component-item [unit]="u" [comp]="comp" displayStyle="text"></unit-component-item>@if(!last){<span>, </span>}
+                <span class="ammo-entry">@if (getCaseLabel(comp.l); as caseType) {<span class="case-bracket">[</span><unit-component-item [unit]="u" [comp]="comp" displayStyle="text"></unit-component-item><span class="case-bracket">]</span>} @else {<unit-component-item [unit]="u" [comp]="comp" displayStyle="text"></unit-component-item>}@if(!last){,}</span>
                 }
             </div>
             }
