@@ -44,6 +44,7 @@ import { LoadForceEntry, LoadForceGroup } from '../../models/load-force-entry.mo
 import { LoadOperationEntry } from '../../models/operation.model';
 import { SerializedOperation } from '../../models/operation.model';
 import { LoadOrganizationEntry } from '../../models/organization.model';
+import { ConfirmDialogComponent, ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
 import { SaveOperationDialogComponent, OperationDialogData, OperationDialogResult } from '../save-operation-dialog/save-operation-dialog.component';
 import { OpPreviewComponent } from '../op-preview/op-preview.component';
 import { OptionsService } from '../../services/options.service';
@@ -145,7 +146,7 @@ export class ForceLoadDialogComponent {
     selectedForce = signal<LoadForceEntry | null>(null);
     loading = signal<boolean>(true);
 
-    tabs = ['Hangar', 'Force Packs', 'Operations', 'TO&E'];
+    tabs = ['Hangar', 'Force Packs', 'TO&E', 'Operations'];
     activeTab = signal(this.dialogData?.initialTab ?? this.tabs[0]);
 
     searchText = signal<string>('');
@@ -492,6 +493,28 @@ export class ForceLoadDialogComponent {
             this.onOpenOrganization();
             return;
         }
+        // If forces are already loaded, ask the user whether to replace or append
+        if (this.forceBuilderService.loadedForces().length > 0) {
+            const ref = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
+                disableClose: true,
+                data: <ConfirmDialogData<string>>{
+                    title: 'Deploy Force',
+                    message: 'You already have forces deployed. Would you like to replace them or add this force alongside them?',
+                    buttons: [
+                        { label: 'REPLACE', value: 'replace' },
+                        { label: 'ADD', value: 'add' },
+                        { label: 'CANCEL', value: 'cancel' },
+                    ]
+                }
+            });
+            const answer = await firstValueFrom(ref.closed);
+            if (answer === 'replace') {
+                await this.closeWithMode('load', 'friendly');
+            } else if (answer === 'add') {
+                await this.onAdd();
+            }
+            return;
+        }
         await this.closeWithMode('load', 'friendly');
     }
 
@@ -724,8 +747,13 @@ export class ForceLoadDialogComponent {
         this.organizationsLoading.set(true);
         try {
             const result = await this.dataService.listOrganizations();
-            this.organizations.set(result || []);
-            this.selectedOrganization.set(null);
+            const orgs = result || [];
+            this.organizations.set(orgs);
+            const prev = this.selectedOrganization();
+            if (prev) {
+                const match = orgs.find(o => o.organizationId === prev.organizationId);
+                this.selectedOrganization.set(match ?? null);
+            }
         } finally {
             this.organizationsLoading.set(false);
         }

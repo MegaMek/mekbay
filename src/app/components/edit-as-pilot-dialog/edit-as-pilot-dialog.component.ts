@@ -75,7 +75,9 @@ export interface EditASPilotResult {
 })
 export class EditASPilotDialogComponent {
     nameInput = viewChild.required<ElementRef<HTMLInputElement>>('nameInput');
-    skillInput = viewChild.required<ElementRef<HTMLInputElement>>('skillInput');
+    skillInput = viewChild.required<ElementRef<HTMLSelectElement>>('skillInput');
+
+    readonly skillValues = [0, 1, 2, 3, 4, 5, 6, 7, 8];
     dropdownTrigger0 = viewChild<ElementRef<HTMLButtonElement>>('dropdownTrigger0');
     dropdownTrigger1 = viewChild<ElementRef<HTMLButtonElement>>('dropdownTrigger1');
     dropdownTrigger2 = viewChild<ElementRef<HTMLButtonElement>>('dropdownTrigger2');
@@ -208,13 +210,11 @@ export class EditASPilotDialogComponent {
 
     /** Handle skill input change to update limits */
     onSkillChange(event: Event): void {
-        const input = event.target as HTMLInputElement;
-        const newSkill = Number(input.value);
-        if (!isNaN(newSkill) && newSkill >= 0 && newSkill <= 8) {
-            this.currentSkill.set(newSkill);
-            // Clear abilities that exceed new limits
-            this.enforceAbilityLimits();
-        }
+        const select = event.target as HTMLSelectElement;
+        const newSkill = Number(select.value);
+        this.currentSkill.set(newSkill);
+        // Clear abilities that exceed new limits
+        this.enforceAbilityLimits();
     }
 
     /** Remove abilities that exceed current skill limits */
@@ -377,8 +377,7 @@ export class EditASPilotDialogComponent {
 
     submit() {
         const name = this.nameInput().nativeElement.value.trim();
-        const skillValue = this.skillInput().nativeElement.value;
-        const skill = Number(skillValue === '' ? this.data.skill : skillValue);
+        const skill = Number(this.skillInput().nativeElement.value);
         const abilities = this.selectedAbilities().filter((a): a is AbilitySelection => a !== null);
         this.dialogRef.close({ name, skill, abilities });
     }

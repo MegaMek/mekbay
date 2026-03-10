@@ -308,15 +308,12 @@
     </div>
     <div dialog-footer class="footer">
         @if (activeTab() === 'TO&E') {
-            <button class="modal-btn bt-button" (click)="onNewOrganization();">NEW</button>
             <button class="modal-btn bt-button" (click)="onOpenOrganization();" [disabled]="!selectedOrganization()">OPEN</button>
+            <button class="modal-btn bt-button" (click)="onNewOrganization();">NEW</button>
             <button class="modal-btn bt-button danger" (click)="onDeleteOrganization();" [disabled]="!selectedOrganization()">DELETE</button>
             <button class="modal-btn bt-button" (click)="onClose();">DISMISS</button>
         } @else {
-            <button class="modal-btn bt-button" (click)="onLoad();" [disabled]="activeTab() === 'Operations' ? !selectedOperation() : (!selectedForce() && !selectedPack())">LOAD</button>
-            @if (forceBuilderService.loadedForces().length > 0 && activeTab() !== 'Operations') {
-                <button class="modal-btn bt-button" (click)="onAdd();" [disabled]="(!selectedForce() && !selectedPack()) || isSelectedForceLoaded()">ADD</button>
-            }
+            <button class="modal-btn bt-button" (click)="onLoad();" [disabled]="activeTab() === 'Operations' ? !selectedOperation() : (!selectedForce() && !selectedPack())">DEPLOY</button>
             <button class="modal-btn bt-button danger" (click)="onDelete();" [disabled]="activeTab() === 'Operations' ? !selectedOperation() : !selectedForce()">DELETE</button>
             <button class="modal-btn bt-button" (click)="onClose();">DISMISS</button>
         }
