@@ -409,11 +409,19 @@
 .grav-list,
 .ammo-list {
     margin-bottom: 8px;
+    line-height: 1.5;
 }
 
 .ammo-pill {
     white-space: nowrap;
     line-height: 1.4em;
+}
+
+.ammo-entry {
+    display: inline-block;
+    white-space: nowrap;
+    vertical-align: baseline;
+    margin-right: 0.3em;
 }
 
 .ammo-pill:hover {
