@@ -315,13 +315,16 @@ const CLAN_NOVA: OrgTypeRule = {
             (comp.BA_MEC > 0 && (comp.BM_Omni > 0 || comp.CV_Omni > 0 || comp.AF_Omni > 0) ||
             (comp.BA_XMEC > 0 && (comp.BM > 0 || comp.CV > 0 || comp.AF > 0))),
     customMatch: (comp) => {
+        const qualBA = Math.min(comp.BA, comp.BA_MEC + comp.BA_XMEC);
+        const nonQualBA = comp.BA - qualBA;
         const configs = [
-            { bm: 5, cv: 0, af: 0, ba: 5 }, // Standard Nova: 5 BM + 5 BA
-            { bm: 0, cv: 5, af: 0, ba: 5 }, // Vehicle Nova: 5 CV + 5 BA
-            { bm: 0, cv: 0, af: 5, ba: 5 }, // Aero Nova: 5 AF + 5 BA
+            { carrier: comp.BM, omni: comp.BM_Omni, others: comp.CV + comp.AF },
+            { carrier: comp.CV, omni: comp.CV_Omni, others: comp.BM + comp.AF },
+            { carrier: comp.AF, omni: comp.AF_Omni, others: comp.BM + comp.CV },
         ];
         return Math.min(...configs.map(cfg =>
-            Math.abs(comp.BM - cfg.bm) + Math.abs(comp.CV - cfg.cv) + Math.abs(comp.AF - cfg.af) + Math.abs(comp.BA - cfg.ba)
+            Math.abs(cfg.carrier - 5) + Math.abs(qualBA - 5) + cfg.others +
+            Math.max(0, comp.BA_MEC - cfg.omni) + nonQualBA
         ));
     },
 };
@@ -725,32 +728,38 @@ const CCOrg: OrgDefinition = {
         // CC Augmented Lance
         {
             type: 'Augmented Lance', strict: true, priority: 1, countsAs: 'Lance',
-            modifiers: { '': 6 }, commandRank: 'Lieutenant', tier: 1,
+            modifiers: { '': 6 }, commandRank: 'Lieutenant', tier: 1.1,
             filter: (comp) => comp.AF === 0 && comp.CI === 0 && comp.PM === 0 && comp.other === 0 && (
                     (comp.BA_MEC > 0 && (comp.BM_Omni > 0 || comp.CV_Omni > 0)) ||
                     (comp.BA_XMEC > 0 && (comp.CV > 0 || comp.BM > 0)) ||
                     (comp.BM > 0 && comp.CV > 0)
             ),
             customMatch: (comp) => {
+                const qualBA = Math.min(comp.BA, comp.BA_MEC + comp.BA_XMEC);
+                const nonQualBA = comp.BA - qualBA;
                 const configs = [
-                    { bm: 4, cv: 2, ba: 0 },
-                    { bm: 4, cv: 0, ba: 2 },
-                    { bm: 2, cv: 4, ba: 0 },
-                    { bm: 0, cv: 4, ba: 4 },
+                    // BM + CV (no BA)
+                    { carrier: comp.BM, targetC: 4, other: comp.CV, targetO: 2, ba: 0, omni: 0 },
+                    { carrier: comp.CV, targetC: 4, other: comp.BM, targetO: 2, ba: 0, omni: 0 },
+                    // BM + BA (BA rides on BM)
+                    { carrier: comp.BM, targetC: 4, other: comp.CV, targetO: 0, ba: 2, omni: comp.BM_Omni },
+                    // CV + BA (BA rides on CV)
+                    { carrier: comp.CV, targetC: 4, other: comp.BM, targetO: 0, ba: 4, omni: comp.CV_Omni },
                 ];
                 return Math.min(...configs.map(cfg =>
-                    Math.abs(comp.BM - cfg.bm) + Math.abs(comp.CV - cfg.cv) + Math.abs(comp.BA - cfg.ba)
-                ));
+                    Math.abs(cfg.carrier - cfg.targetC) + Math.abs(cfg.other - cfg.targetO) +
+                    Math.abs(qualBA - cfg.ba) + Math.max(0, comp.BA_MEC - cfg.omni)
+                )) + nonQualBA;
             },
         },
         // CC Augmented Company (Reinforced Augmented Company is not canonically listed, but seems reasonable to allow in the app)
-        { type: 'Augmented Company', composedOfAny: ['Augmented Lance'],modifiers: { '': 2 }, commandRank: 'Captain', tier: 2 },
+        { type: 'Augmented Company', composedOfAny: ['Augmented Lance'], priority: 1, modifiers: { '': 2 }, commandRank: 'Captain', tier: 2.1 },
         // CC Augmented Battalion (Short, Under-Strength, and Strong variants are not canonically listed, but seem reasonable to allow in the app)
-        { type: 'Augmented Battalion', composedOfAny: ['Augmented Company'], modifiers: { '': 4 }, commandRank: 'Major', tier: 3 },
+        { type: 'Augmented Battalion', composedOfAny: ['Augmented Company'], priority: 1, modifiers: { '': 4 }, commandRank: 'Major', tier: 3.1 },
         // CC Augmented Regiment
         {
             type: 'Augmented Regiment', composedOfAny: ['Augmented Battalion', 'Battalion', 'Wing'],
-            modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'General', tier: 4,
+            modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'General', tier: 4.1,
             groupFilter: (groups: ReadonlyArray<GroupSizeResult>) => groups.some(g => g.type === 'Augmented Battalion'),
         },
     ],
