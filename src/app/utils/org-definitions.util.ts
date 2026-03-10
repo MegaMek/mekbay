@@ -77,7 +77,7 @@ export type OrgType =
     | 'Level I'
     | 'Level II'
     | 'Choir'
-    | 'Demi-Level III'
+//  | 'Demi-Level III'
     | 'Level III'
     | 'Level IV'
     | 'Level V'
@@ -545,11 +545,11 @@ const ComStarOrg: OrgDefinition = {
                 ));
             },
         },
-        {
+ /*       {
             type: 'Demi-Level III', composedOfAny: ['Level II'], modifiers: {
                 'Under-Strength ': 2, '': 3, 'Reinforced ': 4,
             }, commandRank: 'Adept (Demi-Precentor)', tier: 2,
-        },
+        },*/
         {
             type: 'Level III', composedOfAny: ['Level II'], modifiers: {
                 'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
@@ -630,9 +630,7 @@ const MHOrg: OrgDefinition = {
     rules: [
         { type: 'Contubernium', modifiers: { '': 1 }, commandRank: 'Miles probatus', tier: 0 },
         {
-            type: 'Century', composedOfAny: ['Contubernium'], modifiers: {
-                'Half ': 2, 'Short ': 3, 'Under-Strength ': 4, '': 5, 'Reinforced ': 6, 'Fortified ': 7,
-            }, commandRank: 'Centurion', tier: 1,
+            type: 'Century', composedOfAny: ['Contubernium'], modifiers: { '': 5 }, commandRank: 'Centurion', tier: 1,
             filter: (comp) => !isPureCI(comp),
         },
         // Century (Infantry) = 4-10 CI infantry Points
@@ -642,20 +640,9 @@ const MHOrg: OrgDefinition = {
             }, commandRank: 'Centurion', tier: 1,
             filter: (comp) => isPureCI(comp),
         },
-        {
-            type: 'Maniple', strict: true, composedOfAny: ['Century'],
-            modifiers: { '': 2 }, commandRank: 'Principes', tier: 2,
-        },
-        {
-            type: 'Cohort', composedOfAny: ['Maniple'], modifiers: {
-                'Under-Strength ': 2, '': 3, 'Reinforced ': 4, 'Strong ': 5,
-            }, commandRank: 'Legatus', tier: 3,
-        },
-        {
-            type: 'Legion', composedOfAny: ['Cohort'], modifiers: {
-                'Under-Strength ': 2, '': 3, 'Reinforced ': 4, 'Strong ': 5,
-            }, commandRank: 'General', tier: 4,
-        },
+        { type: 'Maniple', composedOfAny: ['Century'], modifiers: { '': 2 }, commandRank: 'Principes', tier: 2 },
+        { type: 'Cohort', composedOfAny: ['Maniple'], modifiers: { '': 3 }, commandRank: 'Legatus', tier: 3 },
+        { type: 'Legion', composedOfAny: ['Cohort'], modifiers: { '': 4 }, commandRank: 'General', tier: 4 },
     ],
 };
 
@@ -763,15 +750,9 @@ const CCOrg: OrgDefinition = {
             },
         },
         // CC Augmented Company (Reinforced Augmented Company is not canonically listed, but seems reasonable to allow in the app)
-        {
-            type: 'Augmented Company', composedOfAny: ['Augmented Lance'],
-            modifiers: { '': 2, 'Reinforced ': 3 }, commandRank: 'Captain', tier: 2,
-        },
+        { type: 'Augmented Company', composedOfAny: ['Augmented Lance'],modifiers: { '': 2 }, commandRank: 'Captain', tier: 2 },
         // CC Augmented Battalion (Short, Under-Strength, and Strong variants are not canonically listed, but seem reasonable to allow in the app)
-        {
-            type: 'Augmented Battalion', composedOfAny: ['Augmented Company'],
-            modifiers: { 'Short ': 2, 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'Major', tier: 3,
-        },
+        { type: 'Augmented Battalion', composedOfAny: ['Augmented Company'], modifiers: { '': 4 }, commandRank: 'Major', tier: 3 },
         // CC Augmented Regiment
         {
             type: 'Augmented Regiment', composedOfAny: ['Augmented Battalion', 'Battalion', 'Wing'],
