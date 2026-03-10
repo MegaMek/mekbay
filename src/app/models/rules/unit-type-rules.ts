@@ -31,8 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { Signal } from '@angular/core';
-import { PSRCheck } from '../turn-state.model';
+import type { Signal } from '@angular/core';
+import type { PSRCheck } from '../turn-state.model';
 
 /**
  * Author: Drake

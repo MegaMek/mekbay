@@ -35,10 +35,10 @@ import {
     Component,
     computed,
     effect,
-    ElementRef,
+    type ElementRef,
     input,
     output,
-    signal,
+    type signal,
     viewChild,
 } from '@angular/core';
 

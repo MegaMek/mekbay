@@ -31,14 +31,14 @@
  * affiliated with Microsoft.
  */
 
-import { ApplicationRef, ComponentRef, createComponent, EnvironmentInjector, Injector } from '@angular/core';
-import { ASForceUnit } from '../models/as-force-unit.model';
-import { UnitGroup } from '../models/force.model';
+import { type ApplicationRef, type ComponentRef, createComponent, EnvironmentInjector, type Injector } from '@angular/core';
+import type { ASForceUnit } from '../models/as-force-unit.model';
+import type { UnitGroup } from '../models/force.model';
 import { AlphaStrikeCardComponent } from '../components/alpha-strike-card/alpha-strike-card.component';
 import { getLayoutForUnitType } from '../components/alpha-strike-card/card-layout.config';
-import { OptionsService } from '../services/options.service';
+import type { OptionsService } from '../services/options.service';
 import { isIOS } from './platform.util';
-import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
+import type { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
 
 /**
  * Represents a single card to render (handles multi-card units)

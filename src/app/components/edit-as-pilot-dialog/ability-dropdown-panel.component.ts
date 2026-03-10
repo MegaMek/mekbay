@@ -32,9 +32,9 @@
  */
 
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { PilotAbility, getAbilityDetails, PilotAbilityRuleDetails } from '../../models/pilot-abilities.model';
-import { GameSystem, RulesReference } from '../../models/common.model';
-import { ASUnitTypeCode } from '../../models/units.model';
+import { type PilotAbility, getAbilityDetails, type PilotAbilityRuleDetails } from '../../models/pilot-abilities.model';
+import { GameSystem, type RulesReference } from '../../models/common.model';
+import type { ASUnitTypeCode } from '../../models/units.model';
 
 interface ResolvedDropdownAbility {
     ability: PilotAbility;

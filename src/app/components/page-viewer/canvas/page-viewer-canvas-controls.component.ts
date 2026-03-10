@@ -41,7 +41,7 @@ import {
 } from '@angular/core';
 import { PageViewerCanvasService } from './page-viewer-canvas.service';
 import { DialogsService } from '../../../services/dialogs.service';
-import { ForceUnit } from '../../../models/force-unit.model';
+import type { ForceUnit } from '../../../models/force-unit.model';
 
 /*
  * Author: Drake

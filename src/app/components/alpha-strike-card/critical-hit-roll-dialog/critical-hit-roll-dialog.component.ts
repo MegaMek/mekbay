@@ -31,11 +31,11 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, inject, signal, viewChild, AfterViewInit, computed } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal, viewChild, type AfterViewInit, computed } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
-import { ASForceUnit } from '../../../models/as-force-unit.model';
-import { ASUnitTypeCode } from '../../../models/units.model';
+import type { ASForceUnit } from '../../../models/as-force-unit.model';
+import type { ASUnitTypeCode } from '../../../models/units.model';
 import { OptionsService } from '../../../services/options.service';
 
 /*

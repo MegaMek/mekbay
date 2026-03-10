@@ -32,9 +32,9 @@
  */
 
 import { DestroyRef, Directive, ElementRef, Input, inject } from '@angular/core';
-import { Overlay, OverlayRef } from '@angular/cdk/overlay';
+import { Overlay, type OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { TooltipComponent, TooltipContent } from '../components/tooltip/tooltip.component';
+import { TooltipComponent, type TooltipContent } from '../components/tooltip/tooltip.component';
 import { take } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 

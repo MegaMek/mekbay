@@ -32,10 +32,10 @@
  */
 
 import { uidTranslations } from "../models/common.model";
-import { CriticalSlot, MountedEquipment } from "../models/force-serialization";
+import type { CriticalSlot, MountedEquipment } from "../models/force-serialization";
 import { UnitSvgService } from "./unit-svg.service";
 import { AmmoEquipment } from "../models/equipment.model";
-import { MekRules } from "../models/rules/mek-rules";
+import type { MekRules } from "../models/rules/mek-rules";
 import { resolveHitModifier } from "../models/rules/hit-modifier.util";
 
 /*

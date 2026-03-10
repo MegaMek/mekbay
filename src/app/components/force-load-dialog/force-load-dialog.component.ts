@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, viewChild, ElementRef, DestroyRef } from '@angular/core';
+import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, viewChild, type ElementRef, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { firstValueFrom, map, race } from 'rxjs';
@@ -39,23 +39,23 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
-import { Pipe, PipeTransform } from "@angular/core";
-import { LoadForceEntry, LoadForceGroup } from '../../models/load-force-entry.model';
-import { LoadOperationEntry } from '../../models/operation.model';
-import { SerializedOperation } from '../../models/operation.model';
-import { LoadOrganizationEntry } from '../../models/organization.model';
-import { ConfirmDialogComponent, ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
-import { SaveOperationDialogComponent, OperationDialogData, OperationDialogResult } from '../save-operation-dialog/save-operation-dialog.component';
+import { Pipe, type PipeTransform } from "@angular/core";
+import type { LoadForceEntry, LoadForceGroup } from '../../models/load-force-entry.model';
+import type { LoadOperationEntry } from '../../models/operation.model';
+import type { SerializedOperation } from '../../models/operation.model';
+import type { LoadOrganizationEntry } from '../../models/organization.model';
+import { ConfirmDialogComponent, type ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
+import { SaveOperationDialogComponent, type OperationDialogData, type OperationDialogResult } from '../save-operation-dialog/save-operation-dialog.component';
 import { OpPreviewComponent } from '../op-preview/op-preview.component';
 import { OptionsService } from '../../services/options.service';
 import { GameService } from '../../services/game.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
-import { ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
-import { CustomizeForcePackDialogComponent, CustomizeForcePackDialogData, CustomizeForcePackDialogResult } from '../customize-force-pack-dialog/customize-force-pack-dialog.component';
-import { ForceAlignment } from '../../models/force-slot.model';
-import { ForceAddModePickerDialogComponent, ForceAddModePickerData, ForceAddModePickerResult } from '../force-add-mode-picker-dialog/force-add-mode-picker-dialog.component';
+import { type ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
+import { CustomizeForcePackDialogComponent, type CustomizeForcePackDialogData, type CustomizeForcePackDialogResult } from '../customize-force-pack-dialog/customize-force-pack-dialog.component';
+import type { ForceAlignment } from '../../models/force-slot.model';
+import { ForceAddModePickerDialogComponent, type ForceAddModePickerData, type ForceAddModePickerResult } from '../force-add-mode-picker-dialog/force-add-mode-picker-dialog.component';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';

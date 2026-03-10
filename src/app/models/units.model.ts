@@ -34,9 +34,9 @@
 /*
  * Author: Drake
  */
-import { Equipment } from "./equipment.model";
-import { Era } from "./eras.model";
-import { TechBase } from "./common.model";
+import type { Equipment } from "./equipment.model";
+import type { Era } from "./eras.model";
+import type { TechBase } from "./common.model";
 
 export type UnitType =
     | 'Aero'

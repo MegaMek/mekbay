@@ -31,8 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
-import { WildcardPattern } from './semantic-filter.util';
+import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
+import type { WildcardPattern } from './semantic-filter.util';
 import { wildcardToRegex } from './string.util';
 
 /**

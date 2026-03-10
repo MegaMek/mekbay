@@ -31,11 +31,11 @@
  * affiliated with Microsoft.
  */
 
-import { ForceUnit } from '../models/force-unit.model';
+import type { ForceUnit } from '../models/force-unit.model';
 import { GameSystem } from '../models/common.model';
-import { FormationTypeDefinition, FormationMatch, NO_FORMATION, NO_FORMATION_ID } from './formation-type.model';
+import { type FormationTypeDefinition, type FormationMatch, NO_FORMATION, NO_FORMATION_ID } from './formation-type.model';
 import { FORMATION_DEFINITIONS } from './formation-definitions';
-import { UnitGroup } from '../models/force.model';
+import type { UnitGroup } from '../models/force.model';
 
 
 

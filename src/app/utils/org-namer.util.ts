@@ -30,10 +30,10 @@
  * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
  * affiliated with Microsoft.
  */
-import { resolveFromGroups, resolveFromUnits, GroupSizeResult } from './org-solver.util';
-import { Force, UnitGroup } from '../models/force.model';
-import { LoadForceEntry, LoadForceGroup } from '../models/load-force-entry.model';
-import { Unit } from '../models/units.model';
+import { resolveFromGroups, resolveFromUnits, type GroupSizeResult } from './org-solver.util';
+import { type Force, UnitGroup } from '../models/force.model';
+import { LoadForceEntry, type LoadForceGroup } from '../models/load-force-entry.model';
+import type { Unit } from '../models/units.model';
 
 /*
  * Author: Drake

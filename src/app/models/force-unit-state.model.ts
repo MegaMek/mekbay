@@ -1,8 +1,8 @@
 
-import { signal, computed } from '@angular/core';
-import { ForceUnit } from './force-unit.model';
-import { SerializedState, C3_POSITION_SCHEMA } from './force-serialization';
-import { Sanitizer } from '../utils/sanitizer.util';
+import { signal, type computed } from '@angular/core';
+import type { ForceUnit } from './force-unit.model';
+import type { SerializedState, C3_POSITION_SCHEMA } from './force-serialization';
+import type { Sanitizer } from '../utils/sanitizer.util';
 
 /**
  * Base state class for ForceUnit instances.

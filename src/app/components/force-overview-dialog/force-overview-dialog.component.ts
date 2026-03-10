@@ -31,15 +31,15 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, ElementRef, inject, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, type DestroyRef, type ElementRef, inject, signal, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { DragDropModule, CdkDragDrop, CdkDragMove } from '@angular/cdk/drag-drop';
-import { Force, UnitGroup } from '../../models/force.model';
-import { ForceUnit } from '../../models/force-unit.model';
-import { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import { DragDropModule, type CdkDragDrop, type CdkDragMove } from '@angular/cdk/drag-drop';
+import type { Force, UnitGroup } from '../../models/force.model';
+import type { ForceUnit } from '../../models/force-unit.model';
+import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
-import { Unit } from '../../models/units.model';
+import type { Unit } from '../../models/units.model';
 import { GameService } from '../../services/game.service';
 import { LayoutService } from '../../services/layout.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -50,12 +50,12 @@ import { AsAbilityLookupService } from '../../services/as-ability-lookup.service
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
-import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
-import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
+import type { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
+import { AbilityInfoDialogComponent, type AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
 import { SORT_OPTIONS } from '../../services/unit-search-filters.service';
 import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
 import { TaggingService } from '../../services/tagging.service';
-import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
+import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { AdjustedPV } from '../../pipes/adjusted-pv.pipe';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { formatMovement } from '../../utils/as-common.util';

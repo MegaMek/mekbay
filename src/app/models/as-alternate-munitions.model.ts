@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { ASSpecialAbility } from './as-abilities.model';
+import type { ASSpecialAbility } from './as-abilities.model';
 
 /**
  * Author: Drake

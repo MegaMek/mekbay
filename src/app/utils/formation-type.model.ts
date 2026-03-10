@@ -31,8 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { GameSystem, Rulebook, RulesReference } from '../models/common.model';
-import { ForceUnit } from '../models/force-unit.model';
+import type { GameSystem, Rulebook, RulesReference } from '../models/common.model';
+import type { ForceUnit } from '../models/force-unit.model';
 
 /*
  * Author: Drake

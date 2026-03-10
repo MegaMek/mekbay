@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { inject, Pipe, PipeTransform } from '@angular/core';
+import { inject, Pipe, type PipeTransform } from '@angular/core';
 import { DataService } from '../services/data.service';
 
 /*

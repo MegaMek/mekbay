@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection, ErrorHandler, provideAppInitializer, inject, isDevMode } from '@angular/core';
+import { type ApplicationConfig, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection, ErrorHandler, provideAppInitializer, inject, isDevMode } from '@angular/core';
 import { OVERLAY_DEFAULT_CONFIG } from '@angular/cdk/overlay';
 import { provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';

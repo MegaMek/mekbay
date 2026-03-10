@@ -32,8 +32,8 @@
  */
 
 import { Injectable, effect, inject, DestroyRef } from '@angular/core';
-import { CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, SkillType } from '../models/crew-member.model';
-import { CriticalSlot, HeatProfile, MountedEquipment } from '../models/force-serialization';
+import { type CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, type SkillType } from '../models/crew-member.model';
+import type { CriticalSlot, HeatProfile, MountedEquipment } from '../models/force-serialization';
 import { SheetService } from './sheet.service';
 import { UnitInitializerService } from './unit-initializer.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';

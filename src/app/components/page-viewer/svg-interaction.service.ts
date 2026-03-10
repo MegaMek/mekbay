@@ -31,26 +31,26 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, ElementRef, DestroyRef, signal, WritableSignal, Injector, effect, EffectRef, inject } from '@angular/core';
+import { Injectable, type ElementRef, DestroyRef, signal, type WritableSignal, type Injector, effect, type EffectRef, inject } from '@angular/core';
 import { DialogsService } from '../../services/dialogs.service';
 import { firstValueFrom } from 'rxjs';
-import { ForceUnit } from '../../models/force-unit.model';
-import { SkillType } from '../../models/crew-member.model';
-import { CriticalSlot, MountedEquipment } from '../../models/force-serialization';
+import type { ForceUnit } from '../../models/force-unit.model';
+import type { SkillType } from '../../models/crew-member.model';
+import type { CriticalSlot, MountedEquipment } from '../../models/force-serialization';
 import { OptionsService } from '../../services/options.service';
-import { InputDialogComponent, InputDialogData } from '../input-dialog/input-dialog.component';
-import { ZoomPanServiceInterface } from './zoom-pan.interface';
-import { ChoicePickerInstance, isChoicePickerInstance, NumericPickerInstance, NumericPickerResult, PickerChoice, PickerPosition, PickerTargetType, PickerValue } from '../picker/picker.interface';
+import { InputDialogComponent, type InputDialogData } from '../input-dialog/input-dialog.component';
+import type { ZoomPanServiceInterface } from './zoom-pan.interface';
+import { type ChoicePickerInstance, isChoicePickerInstance, type NumericPickerInstance, type NumericPickerResult, type PickerChoice, type PickerPosition, type PickerTargetType, type PickerValue } from '../picker/picker.interface';
 import { ToastService } from '../../services/toast.service';
 import { LayoutService } from '../../services/layout.service';
-import { SetAmmoDialogComponent, SetAmmoDialogData } from '../set-ammo-dialog/set-ammo.dialog.component';
+import { SetAmmoDialogComponent, type SetAmmoDialogData } from '../set-ammo-dialog/set-ammo.dialog.component';
 import { DataService } from '../../services/data.service';
 import { AmmoEquipment } from '../../models/equipment.model';
 import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
-import { HandlerChoice, HandlerContext } from '../../services/equipment-interaction-registry.service';
+import type { HandlerChoice, HandlerContext } from '../../services/equipment-interaction-registry.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { CBTForceUnit } from '../../models/cbt-force-unit.model';
-import { ChoicePickerStyle, PickerFactoryService } from '../../services/picker-factory.service';
+import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import { type ChoicePickerStyle, PickerFactoryService } from '../../services/picker-factory.service';
 import { canAntiMech } from '../../utils/infantry.util';
 
 /*

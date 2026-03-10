@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { ASUnitTypeCode } from "../../models/units.model";
+import type { ASUnitTypeCode } from "../../models/units.model";
 
 /*
  * Author: Drake

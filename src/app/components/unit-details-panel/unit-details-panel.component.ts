@@ -33,7 +33,7 @@
 
 import { Component, ChangeDetectionStrategy, input, output, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Unit } from '../../models/units.model';
+import type { Unit } from '../../models/units.model';
 import { GameService } from '../../services/game.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { ToastService } from '../../services/toast.service';
@@ -43,14 +43,14 @@ import { REMOTE_HOST } from '../../models/common.model';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { BasePanelComponent } from '../base-panel/base-panel.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
-import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
+import { UnitTagsComponent, type TagClickEvent } from '../unit-tags/unit-tags.component';
 import { UnitDetailsGeneralTabComponent } from '../unit-details-dialog/tabs/unit-details-general-tab.component';
 import { UnitDetailsIntelTabComponent } from '../unit-details-dialog/tabs/unit-details-intel-tab.component';
 import { UnitDetailsFactionTabComponent } from '../unit-details-dialog/tabs/unit-details-factions-tab.component';
 import { UnitDetailsSheetTabComponent } from '../unit-details-dialog/tabs/unit-details-sheet-tab.component';
 import { UnitDetailsCardTabComponent } from '../unit-details-dialog/tabs/unit-details-card-tab.component';
-import { UnitDetailsVariantsTabComponent, VariantsTabState, DEFAULT_VARIANTS_TAB_STATE } from '../unit-details-dialog/tabs/unit-details-variants-tab.component';
-import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
+import { UnitDetailsVariantsTabComponent, type VariantsTabState, DEFAULT_VARIANTS_TAB_STATE } from '../unit-details-dialog/tabs/unit-details-variants-tab.component';
+import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 
 /**
  * Inline unit details panel for expanded view mode.

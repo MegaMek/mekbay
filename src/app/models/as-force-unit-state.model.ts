@@ -33,8 +33,8 @@
 
 import { computed, signal } from '@angular/core';
 import { ForceUnitState } from './force-unit-state.model';
-import { ASForceUnit } from './as-force-unit.model';
-import { ASSerializedState, ASCriticalHit, C3_POSITION_SCHEMA, AS_SERIALIZED_STATE_SCHEMA } from './force-serialization';
+import type { ASForceUnit } from './as-force-unit.model';
+import { type ASSerializedState, type ASCriticalHit, type C3_POSITION_SCHEMA, AS_SERIALIZED_STATE_SCHEMA } from './force-serialization';
 import { Sanitizer } from '../utils/sanitizer.util';
 
 /*

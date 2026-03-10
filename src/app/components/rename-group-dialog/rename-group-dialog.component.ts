@@ -32,16 +32,16 @@
  */
 
 
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, ElementRef, inject, Injector, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, type ElementRef, inject, Injector, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { takeUntilDestroyed, outputToObservable } from '@angular/core/rxjs-interop';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { Force, UnitGroup } from '../../models/force.model';
-import { FormationTypeDefinition, isNoFormation } from '../../utils/formation-type.model';
+import type { Force, UnitGroup } from '../../models/force.model';
+import { type FormationTypeDefinition, isNoFormation } from '../../utils/formation-type.model';
 import { FormationInfoComponent } from '../formation-info/formation-info.component';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
-import { FormationDropdownPanelComponent, FormationDisplayItem } from './formation-dropdown-panel.component';
+import { FormationDropdownPanelComponent, type FormationDisplayItem } from './formation-dropdown-panel.component';
 import { FormationNamerUtil } from '../../utils/formation-namer.util';
 import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
 /*

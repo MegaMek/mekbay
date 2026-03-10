@@ -32,13 +32,13 @@
  */
 
 import { Directive, input, output, computed, inject, signal } from '@angular/core';
-import { ASForceUnit, AbilitySelection } from '../../../models/as-force-unit.model';
-import { AlphaStrikeUnitStats, Unit } from '../../../models/units.model';
-import { Era } from '../../../models/eras.model';
+import type { ASForceUnit, AbilitySelection } from '../../../models/as-force-unit.model';
+import type { AlphaStrikeUnitStats, Unit } from '../../../models/units.model';
+import type { Era } from '../../../models/eras.model';
 import { DataService } from '../../../services/data.service';
 import { AsAbilityLookupService } from '../../../services/as-ability-lookup.service';
-import { PILOT_ABILITIES, PilotAbility, ASCustomPilotAbility } from '../../../models/pilot-abilities.model';
-import { CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
+import { PILOT_ABILITIES, type PilotAbility, type ASCustomPilotAbility } from '../../../models/pilot-abilities.model';
+import { type CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
 import { formatMovement } from '../../../utils/as-common.util';
 

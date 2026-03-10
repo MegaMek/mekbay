@@ -37,7 +37,7 @@ import {
     input,
     computed,
     inject,
-    ElementRef
+    type ElementRef
 } from '@angular/core';
 import { LayoutService } from '../../services/layout.service';
 

@@ -31,15 +31,15 @@
  * affiliated with Microsoft.
  */
 
-import { signal, computed, Injector, Signal, WritableSignal } from '@angular/core';
-import { DataService } from '../services/data.service';
-import { Unit } from "./units.model";
-import { UnitInitializerService } from '../services/unit-initializer.service';
+import { signal, computed, type Injector, type Signal, type WritableSignal } from '@angular/core';
+import type { DataService } from '../services/data.service';
+import type { Unit } from "./units.model";
+import type { UnitInitializerService } from '../services/unit-initializer.service';
 import { generateUUID } from '../services/ws.service';
-import { SerializedUnit } from './force-serialization';
-import { Force, UnitGroup } from './force.model';
-import { ForceUnitState } from './force-unit-state.model';
-import { CrewMember } from './crew-member.model';
+import type { SerializedUnit } from './force-serialization';
+import type { Force, UnitGroup } from './force.model';
+import type { ForceUnitState } from './force-unit-state.model';
+import type { CrewMember } from './crew-member.model';
 
 /*
  * Author: Drake

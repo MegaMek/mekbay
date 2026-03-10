@@ -32,9 +32,9 @@
  */
 
 import { Injectable, inject, signal, computed } from '@angular/core';
-import { DbService, StoredSavedSearches, SavedSearchOp } from './db.service';
-import { SerializedSearchFilter } from './unit-search-filters.service';
-import { WsService, generateUUID } from './ws.service';
+import { DbService, type StoredSavedSearches, type SavedSearchOp } from './db.service';
+import type { SerializedSearchFilter } from './unit-search-filters.service';
+import { WsService, type generateUUID } from './ws.service';
 import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
 import { DialogsService } from './dialogs.service';

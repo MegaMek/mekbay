@@ -36,12 +36,12 @@ import { outputToObservable } from '@angular/core/rxjs-interop';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { firstValueFrom, takeUntil } from 'rxjs';
-import { Unit, PublicTagInfo } from '../models/units.model';
+import type { Unit, PublicTagInfo } from '../models/units.model';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 import { OverlayManagerService } from './overlay-manager.service';
 import { DialogsService } from './dialogs.service';
-import { TagSelectorComponent, TagSelectionEvent } from '../components/tag-selector/tag-selector.component';
-import { InputDialogComponent, InputDialogData } from '../components/input-dialog/input-dialog.component';
+import { TagSelectorComponent, type TagSelectionEvent } from '../components/tag-selector/tag-selector.component';
+import { InputDialogComponent, type InputDialogData } from '../components/input-dialog/input-dialog.component';
 import { TagsService } from './tags.service';
 import { PublicTagsService } from './public-tags.service';
 

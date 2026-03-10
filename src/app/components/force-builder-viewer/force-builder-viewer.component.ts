@@ -31,17 +31,17 @@
  * affiliated with Microsoft.
  */
 
-import { Component, computed, Injector, ElementRef, effect, inject, ChangeDetectionStrategy, viewChild, viewChildren, input, signal, afterNextRender, DestroyRef, HostListener } from '@angular/core';
+import { Component, computed, Injector, type ElementRef, effect, inject, ChangeDetectionStrategy, viewChild, viewChildren, input, signal, afterNextRender, DestroyRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Subscription } from 'rxjs';
+import type { Subscription } from 'rxjs';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
-import { Force, UnitGroup } from '../../models/force.model';
-import { ForceSlot } from '../../models/force-slot.model';
-import { ForceUnit } from '../../models/force-unit.model';
-import { DragDropModule, CdkDragDrop, CdkDragMove } from '@angular/cdk/drag-drop'
+import type { Force, UnitGroup } from '../../models/force.model';
+import type { ForceSlot } from '../../models/force-slot.model';
+import type { ForceUnit } from '../../models/force-unit.model';
+import { DragDropModule, type CdkDragDrop, type CdkDragMove } from '@angular/cdk/drag-drop'
 import { DialogsService } from '../../services/dialogs.service';
-import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
+import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { ToastService } from '../../services/toast.service';

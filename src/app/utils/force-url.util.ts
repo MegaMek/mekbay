@@ -31,14 +31,14 @@
  * affiliated with Microsoft.
  */
 
-import { Unit } from '../models/units.model';
-import { Force, UnitGroup } from '../models/force.model';
-import { ForceUnit } from '../models/force-unit.model';
+import type { Unit } from '../models/units.model';
+import type { Force, UnitGroup } from '../models/force.model';
+import type { ForceUnit } from '../models/force-unit.model';
 import { ASForceUnit } from '../models/as-force-unit.model';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
-import { GameSystem } from '../models/common.model';
-import { ForceSlot } from '../models/force-slot.model';
+import type { GameSystem } from '../models/common.model';
+import type { ForceSlot } from '../models/force-slot.model';
 import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
 
 /**

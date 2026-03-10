@@ -1,13 +1,13 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, signal, computed, input, viewChild, ElementRef, Renderer2 } from '@angular/core';
-import { Portal, PortalModule } from '@angular/cdk/portal';
+import { type Portal, PortalModule } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
-import { UnitSearchComponent } from '../unit-search/unit-search.component';
+import type { UnitSearchComponent } from '../unit-search/unit-search.component';
 import { OptionsService } from '../../services/options.service';
 import { SidebarFooterComponent } from '../sidebar-footer/sidebar-footer.component';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { ForceBuilderViewerComponent } from '../force-builder-viewer/force-builder-viewer.component';
-import { SwipeDirective, SwipeEndEvent, SwipeStartEvent } from '../../directives/swipe.directive';
+import { SwipeDirective, type SwipeEndEvent, type SwipeStartEvent } from '../../directives/swipe.directive';
 import { BUILD_BRANCH } from '../../build-meta';
 import { DialogsService } from '../../services/dialogs.service';
 

@@ -32,7 +32,7 @@
  */
 
 import { UnitSvgService } from "./unit-svg.service";
-import { InfantryRules } from "../models/rules/infantry-rules";
+import type { InfantryRules } from "../models/rules/infantry-rules";
 
 /*
  * Author: Drake

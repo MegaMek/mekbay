@@ -32,19 +32,19 @@
  */
 
 
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, ElementRef, inject, Injector, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, type ElementRef, inject, Injector, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { outputToObservable } from '@angular/core/rxjs-interop';
 import { DecimalPipe } from '@angular/common';
 import { DataService } from '../../services/data.service';
-import { Force } from '../../models/force.model';
-import { Faction, FACTION_MERCENARY } from '../../models/factions.model';
-import { ForceNamerUtil, FactionDisplayInfo } from '../../utils/force-namer.util';
+import type { Force } from '../../models/force.model';
+import { type Faction, FACTION_MERCENARY } from '../../models/factions.model';
+import { ForceNamerUtil, type FactionDisplayInfo } from '../../utils/force-namer.util';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { FactionDropdownPanelComponent } from './faction-dropdown-panel.component';
-import { resolveFromGroups, GroupSizeResult } from '../../utils/org-solver.util';
+import { resolveFromGroups, type GroupSizeResult } from '../../utils/org-solver.util';
 
 
 /*

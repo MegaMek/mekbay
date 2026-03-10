@@ -31,9 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { ForceUnit } from '../models/force-unit.model';
-import { Faction, FACTION_EXTINCT, FACTION_MERCENARY } from '../models/factions.model';
-import { Era } from '../models/eras.model';
+import type { ForceUnit } from '../models/force-unit.model';
+import { type Faction, FACTION_EXTINCT, FACTION_MERCENARY } from '../models/factions.model';
+import type { Era } from '../models/eras.model';
 import {
     MIDDLE_WORD_MERCENARY, END_WORD_MERCENARY,
     MIDDLE_WORD_CORPORATE, END_WORD_CORPORATE,

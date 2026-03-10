@@ -32,7 +32,7 @@
  */
 
 import { GameSystem } from '../models/common.model';
-import { SemanticFilterState } from '../utils/semantic-filter.util';
+import type { SemanticFilterState } from '../utils/semantic-filter.util';
 
 /*
  * Author: Drake

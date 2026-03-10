@@ -1,6 +1,6 @@
-import { Component, ChangeDetectionStrategy, signal, effect, input, inject, viewChild, ElementRef } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal, effect, input, inject, viewChild, type ElementRef } from '@angular/core';
 
-import { Unit } from '../../models/units.model';
+import type { Unit } from '../../models/units.model';
 import { SheetService } from '../../services/sheet.service';
 import { OptionsService } from '../../services/options.service';
 import { LoggerService } from '../../services/logger.service';

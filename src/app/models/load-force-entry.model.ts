@@ -32,7 +32,7 @@
  */
 
 import { GameSystem } from "./common.model";
-import { Unit } from "./units.model";
+import type { Unit } from "./units.model";
 
 /*
  * Author: Drake

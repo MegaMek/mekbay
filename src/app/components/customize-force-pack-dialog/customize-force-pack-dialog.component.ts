@@ -45,12 +45,12 @@ import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { LayoutService } from '../../services/layout.service';
 import { TaggingService } from '../../services/tagging.service';
 import { UnitCardCompactComponent } from '../unit-card-compact/unit-card-compact.component';
-import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
+import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { VariantDropdownPanelComponent } from './variant-dropdown-panel.component';
-import { Unit } from '../../models/units.model';
-import { PackUnitEntry, ResolvedPack } from '../../utils/force-pack.util';
+import type { Unit } from '../../models/units.model';
+import type { PackUnitEntry, ResolvedPack } from '../../utils/force-pack.util';
 import { compareUnitsByName } from '../../utils/sort.util';
-import { TagClickEvent } from '../unit-tags/unit-tags.component';
+import type { TagClickEvent } from '../unit-tags/unit-tags.component';
 import { GameSystem } from '../../models/common.model';
 import { GameService } from '../../services/game.service';
 

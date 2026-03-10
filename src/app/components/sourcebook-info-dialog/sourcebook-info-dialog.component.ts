@@ -32,9 +32,9 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, inject, viewChild } from '@angular/core';
+import { type AfterViewInit, ChangeDetectionStrategy, Component, type ElementRef, inject, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { Sourcebook } from '../../models/sourcebook.model';
+import type { Sourcebook } from '../../models/sourcebook.model';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 
 /*

@@ -32,12 +32,12 @@
  */
 
 import { Injectable, inject, signal } from '@angular/core';
-import { DbService, TagData, TagDataLegacy, TagEntry, UnitTagData, TagOp, StoredTags, StoredChassisTags } from './db.service';
+import { DbService, type TagData, type TagDataLegacy, type TagEntry, type UnitTagData, type TagOp, type StoredTags, type StoredChassisTags } from './db.service';
 import { WsService } from './ws.service';
 import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
 import { DialogsService } from './dialogs.service';
-import { Unit } from '../models/units.model';
+import type { Unit } from '../models/units.model';
 
 /*
  * Author: Drake

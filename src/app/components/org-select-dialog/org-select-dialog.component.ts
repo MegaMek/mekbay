@@ -34,7 +34,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { LoadOrganizationEntry } from '../../models/organization.model';
+import type { LoadOrganizationEntry } from '../../models/organization.model';
 
 /*
  * Author: Drake

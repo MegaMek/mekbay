@@ -38,7 +38,7 @@ import {
     computed,
     inject
 } from '@angular/core';
-import { ASForce } from '../../models/as-force.model';
+import type { ASForce } from '../../models/as-force.model';
 import { DialogsService } from '../../services/dialogs.service';
 
 /*

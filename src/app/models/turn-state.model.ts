@@ -1,9 +1,9 @@
 import { computed, signal } from "@angular/core";
-import { ForceUnitState } from "./force-unit-state.model";
-import { getMotiveModeMaxDistance, MotiveModes } from "./motiveModes.model";
-import { CriticalSlot } from "./force-serialization";
+import type { ForceUnitState } from "./force-unit-state.model";
+import { getMotiveModeMaxDistance, type MotiveModes } from "./motiveModes.model";
+import type { CriticalSlot } from "./force-serialization";
 import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "./common.model";
-import { CBTForceUnitState } from "./cbt-force-unit-state.model";
+import type { CBTForceUnitState } from "./cbt-force-unit-state.model";
 import { MekRules } from "./rules/mek-rules";
 
 export interface PSRCheck {

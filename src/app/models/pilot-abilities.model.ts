@@ -31,9 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { Rulebook, RulesReference } from './common.model';
+import { Rulebook, type RulesReference } from './common.model';
 import { GameSystem } from '../models/common.model';
-import { ASUnitTypeCode } from './units.model';
+import type { ASUnitTypeCode } from './units.model';
 
 /** Game-system-specific details for a pilot ability */
 export interface PilotAbilityRuleDetails {

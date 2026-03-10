@@ -31,9 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { ForceUnit } from '../models/force-unit.model';
-import { Unit } from '../models/units.model';
-import { compareUnitsByName } from './sort.util';
+import type { ForceUnit } from '../models/force-unit.model';
+import type { Unit } from '../models/units.model';
+import type { compareUnitsByName } from './sort.util';
 
 /*
  * Author: Drake

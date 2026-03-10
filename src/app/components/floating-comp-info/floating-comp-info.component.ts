@@ -33,10 +33,10 @@
 
 import { Component, input, computed, inject, ChangeDetectionStrategy } from '@angular/core';
 
-import { UnitComponent } from '../../models/units.model';
+import type { UnitComponent } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
-import { Unit } from '../../models/units.model';
-import { Equipment, WeaponEquipment } from '../../models/equipment.model';
+import type { Unit } from '../../models/units.model';
+import { type Equipment, WeaponEquipment } from '../../models/equipment.model';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
 
 /*

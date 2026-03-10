@@ -32,7 +32,7 @@
  */
 
 import { DEFAULT_PILOTING_SKILL } from "../models/crew-member.model";
-import { Unit } from "../models/units.model";
+import type { Unit } from "../models/units.model";
 import { canAntiMech, NO_ANTIMEK_SKILL } from "./infantry.util";
 
 /**

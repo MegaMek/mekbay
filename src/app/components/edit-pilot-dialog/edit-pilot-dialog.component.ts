@@ -32,15 +32,15 @@
  */
 
 
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, ElementRef, inject, Injector, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, type ElementRef, inject, Injector, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
-import { SkillDropdownPanelComponent, SkillPreviewEntry } from '../skill-dropdown-panel/skill-dropdown-panel.component';
-import { SkillMatrixPanelComponent, SkillMatrixCell } from '../skill-dropdown-panel/skill-matrix-panel.component';
+import { SkillDropdownPanelComponent, type SkillPreviewEntry } from '../skill-dropdown-panel/skill-dropdown-panel.component';
+import { SkillMatrixPanelComponent, type SkillMatrixCell } from '../skill-dropdown-panel/skill-matrix-panel.component';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
-import { Unit } from '../../models/units.model';
+import type { Unit } from '../../models/units.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
 
 /*

@@ -32,10 +32,10 @@
  */
 
 import { Injectable } from '@angular/core';
-import { PickerChoice, PickerValue } from '../components/picker/picker.interface';
-import { MountedEquipment } from '../models/force-serialization';
-import { ToastService } from './toast.service';
-import { DialogsService } from './dialogs.service';
+import type { PickerChoice, PickerValue } from '../components/picker/picker.interface';
+import type { MountedEquipment } from '../models/force-serialization';
+import type { ToastService } from './toast.service';
+import type { DialogsService } from './dialogs.service';
 
 /**
  * Context passed to handlers containing additional information

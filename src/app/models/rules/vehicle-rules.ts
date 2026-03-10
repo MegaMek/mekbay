@@ -33,8 +33,8 @@
 
 import { signal } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
-import { UnitTypeRules } from './unit-type-rules';
-import { PSRCheck } from '../turn-state.model';
+import type { UnitTypeRules } from './unit-type-rules';
+import type { PSRCheck } from '../turn-state.model';
 
 /**
  * Author: Drake

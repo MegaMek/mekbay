@@ -37,22 +37,22 @@ import {
     computed,
     DestroyRef,
     effect,
-    ElementRef,
+    type ElementRef,
     inject,
     signal,
     viewChild,
-    WritableSignal,
+    type WritableSignal,
 } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { LoadForceEntry } from '../../models/load-force-entry.model';
+import type { LoadForceEntry } from '../../models/load-force-entry.model';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
-import { GroupSizeResult } from '../../utils/org-solver.util';
+import type { GroupSizeResult } from '../../utils/org-solver.util';
 import { GameSystem } from '../../models/common.model';
-import { SerializedOrganization, OrgPlacedForce, OrgGroupData } from '../../models/organization.model';
+import type { SerializedOrganization, OrgPlacedForce, OrgGroupData } from '../../models/organization.model';
 import { ForceEntryPreviewDialogComponent } from '../force-entry-preview-dialog/force-entry-preview-dialog.component';
 import { OrgNamerUtil } from '../../utils/org-namer.util';
 

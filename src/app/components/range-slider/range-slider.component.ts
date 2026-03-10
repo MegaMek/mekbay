@@ -32,7 +32,7 @@
  */
 
 
-import { Component, signal, computed, ElementRef, input, output, effect, ChangeDetectionStrategy, viewChild, inject, DestroyRef } from '@angular/core';
+import { Component, signal, computed, type ElementRef, input, output, effect, ChangeDetectionStrategy, viewChild, inject, DestroyRef } from '@angular/core';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 /*
  * Author: Drake

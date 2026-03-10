@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, computed, signal, inject, effect, ChangeDetectionStrategy, viewChild, ElementRef, afterNextRender, Injector, DestroyRef } from '@angular/core';
+import { Component, computed, signal, inject, effect, ChangeDetectionStrategy, viewChild, type ElementRef, afterNextRender, Injector, DestroyRef } from '@angular/core';
 
 import { SwUpdate } from '@angular/service-worker';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -40,10 +40,10 @@ import { PageViewerComponent } from './components/page-viewer/page-viewer.compon
 import { AlphaStrikeViewerComponent } from './components/alpha-strike-viewer/alpha-strike-viewer.component';
 import { DataService } from './services/data.service';
 import { ForceBuilderService } from './services/force-builder.service';
-import { Unit } from './models/units.model';
+import type { Unit } from './models/units.model';
 import { LayoutService } from './services/layout.service';
 import { LayoutModule } from '@angular/cdk/layout';
-import { UnitDetailsDialogComponent, UnitDetailsDialogData } from './components/unit-details-dialog/unit-details-dialog.component';
+import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from './components/unit-details-dialog/unit-details-dialog.component';
 import { OptionsService } from './services/options.service';
 import { OptionsDialogComponent } from './components/options-dialog/options-dialog.component';
 import { SidebarComponent } from './components/sidebar/sidebar.component';

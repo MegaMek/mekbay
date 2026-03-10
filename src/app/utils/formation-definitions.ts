@@ -31,9 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { ForceUnit } from '../models/force-unit.model';
-import { Unit, ASUnitTypeCode } from '../models/units.model';
-import { FormationTypeDefinition } from './formation-type.model';
+import type { ForceUnit } from '../models/force-unit.model';
+import type { Unit, ASUnitTypeCode } from '../models/units.model';
+import type { FormationTypeDefinition } from './formation-type.model';
 import { GameSystem, Rulebook } from '../models/common.model';
 
 /*

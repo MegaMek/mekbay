@@ -33,9 +33,9 @@
 
 import {
     Injectable,
-    ElementRef,
+    type ElementRef,
     signal,
-    WritableSignal,
+    type WritableSignal,
     computed,
     DestroyRef,
     inject

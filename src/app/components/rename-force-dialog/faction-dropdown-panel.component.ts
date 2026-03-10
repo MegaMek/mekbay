@@ -33,8 +33,8 @@
 
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
-import { Faction } from '../../models/factions.model';
-import { FactionDisplayInfo } from '../../utils/force-namer.util';
+import type { Faction } from '../../models/factions.model';
+import type { FactionDisplayInfo } from '../../utils/force-namer.util';
 
 /*
  * Author: Drake

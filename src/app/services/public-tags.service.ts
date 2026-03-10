@@ -34,9 +34,9 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { WsService } from './ws.service';
 import { UserStateService } from './userState.service';
-import { DbService, PublicTagData, TagEntry, TagOp } from './db.service';
+import { DbService, type PublicTagData, type TagEntry, type TagOp } from './db.service';
 import { LoggerService } from './logger.service';
-import { Unit, PublicTagInfo } from '../models/units.model';
+import type { Unit, PublicTagInfo } from '../models/units.model';
 import { TagsService } from './tags.service';
 import { DialogsService } from './dialogs.service';
 

@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { GameSystem } from "./common.model";
+import type { GameSystem } from "./common.model";
 
 /*
  * Author: Drake

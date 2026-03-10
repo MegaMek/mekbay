@@ -32,7 +32,7 @@
  */
 
 import { heatLevels, REMOTE_HOST } from "../models/common.model";
-import { Unit } from "../models/units.model";
+import type { Unit } from "../models/units.model";
 
 /*
  * Author: Drake

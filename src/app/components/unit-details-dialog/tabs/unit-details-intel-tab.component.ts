@@ -31,9 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, output, signal, computed } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, type output, type signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Unit } from '../../../models/units.model';
+import type { Unit } from '../../../models/units.model';
 import { REMOTE_HOST } from '../../../models/common.model';
 
 @Component({

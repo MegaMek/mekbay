@@ -32,10 +32,10 @@
  */
 
 import { inject, Injectable, Injector } from '@angular/core';
-import { CriticalSlot, MountedEquipment } from '../models/force-serialization';
+import type { CriticalSlot, MountedEquipment } from '../models/force-serialization';
 import { DataService } from './data.service';
-import { Equipment } from '../models/equipment.model';
-import { CBTForceUnit } from '../models/cbt-force-unit.model';
+import type { Equipment } from '../models/equipment.model';
+import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 
 /*
  * Author: Drake

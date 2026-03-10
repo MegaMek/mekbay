@@ -49,8 +49,8 @@ import { OptionsService } from '../../../services/options.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import { LoggerService } from '../../../services/logger.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
-import { CBTForceUnit } from '../../../models/cbt-force-unit.model';
-import { CBTForce } from '../../../models/cbt-force.model';
+import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
+import type { CBTForce } from '../../../models/cbt-force.model';
 import { PageTurnSummaryPanelComponent } from './page-turn-summary.component';
 
 /*

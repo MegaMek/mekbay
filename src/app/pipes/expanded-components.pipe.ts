@@ -31,8 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { Pipe, PipeTransform } from '@angular/core';
-import { UnitComponent } from '../models/units.model';
+import { Pipe, type PipeTransform } from '@angular/core';
+import type { UnitComponent } from '../models/units.model';
 
 /**
  * Aggregates and filters unit components for expanded view display.

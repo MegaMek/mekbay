@@ -32,9 +32,9 @@
  */
 
 
-import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, type ElementRef, inject, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { AmmoEquipment } from '../../models/equipment.model';
+import type { AmmoEquipment } from '../../models/equipment.model';
 import { DialogsService } from '../../services/dialogs.service';
 
 /*

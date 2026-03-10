@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, inject, Signal, WritableSignal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, type Signal, type WritableSignal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DIALOG_DATA } from '@angular/cdk/dialog';
 

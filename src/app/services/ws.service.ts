@@ -34,7 +34,7 @@
 import { effect, inject, Injectable, signal } from '@angular/core';
 import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
-import { SerializedForce } from '../models/force-serialization';
+import type { SerializedForce } from '../models/force-serialization';
 
 /*
  * Author: Drake

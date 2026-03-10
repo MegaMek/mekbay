@@ -31,10 +31,10 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentInteractionHandler, HandlerContext } from '../services/equipment-interaction-registry.service';
-import { MountedEquipment } from '../models/force-serialization';
-import { PickerChoice } from '../components/picker/picker.interface';
-import { ALL_C3_FLAGS } from '../models/c3-network.model';
+import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
+import type { MountedEquipment } from '../models/force-serialization';
+import type { PickerChoice } from '../components/picker/picker.interface';
+import type { ALL_C3_FLAGS } from '../models/c3-network.model';
 import { firstValueFrom } from 'rxjs';
 
 export class C3Handler extends EquipmentInteractionHandler {

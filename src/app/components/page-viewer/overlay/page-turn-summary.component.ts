@@ -38,7 +38,7 @@ import {
     Injector,
     input,
     viewChild,
-    ElementRef,
+    type ElementRef,
     output,
     computed
 } from '@angular/core';
@@ -47,7 +47,7 @@ import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
-import { canChangeAirborneGround, MotiveModeOption, MotiveModes } from '../../../models/motiveModes.model';
+import { canChangeAirborneGround, type MotiveModeOption, type MotiveModes } from '../../../models/motiveModes.model';
 
 /*
  * Author: Drake

@@ -31,13 +31,13 @@
  * affiliated with Microsoft.
  */
 
-import { Equipment } from './equipment.model';
+import type { Equipment } from './equipment.model';
 import { Sanitizer } from '../utils/sanitizer.util';
-import { ForceUnit } from './force-unit.model';
-import { GameSystem } from './common.model';
-import { CBTForceUnit } from './cbt-force-unit.model';
-import { ASCustomPilotAbility } from './pilot-abilities.model';
-import { C3NetworkType } from './c3-network.model';
+import type { ForceUnit } from './force-unit.model';
+import type { GameSystem } from './common.model';
+import type { CBTForceUnit } from './cbt-force-unit.model';
+import type { ASCustomPilotAbility } from './pilot-abilities.model';
+import type { C3NetworkType } from './c3-network.model';
 import { DEFAULT_GUNNERY_SKILL } from './crew-member.model';
 
 export interface LocationData {

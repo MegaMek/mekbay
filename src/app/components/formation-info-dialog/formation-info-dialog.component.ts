@@ -33,9 +33,9 @@
 
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { FormationTypeDefinition } from '../../utils/formation-type.model';
+import type { FormationTypeDefinition } from '../../utils/formation-type.model';
 import { FormationInfoComponent } from '../formation-info/formation-info.component';
-import { GameSystem } from '../../models/common.model';
+import type { GameSystem } from '../../models/common.model';
 
 /*
  * Author: Drake

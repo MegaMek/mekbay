@@ -55,9 +55,9 @@
  *   name\=test                          -> searches for literal "name=test"
  */
 
-import { GameSystem } from '../models/common.model';
-import { ADVANCED_FILTERS, AdvFilterConfig, AdvFilterType } from '../services/unit-search-filters.service';
-import { SemanticOperator, SemanticToken, buildSemanticKeyMap, VIRTUAL_SEMANTIC_KEYS, parseValues, parseValueWithQuantity, QuantityConstraint } from './semantic-filter.util';
+import type { GameSystem } from '../models/common.model';
+import { ADVANCED_FILTERS, type AdvFilterConfig, AdvFilterType } from '../services/unit-search-filters.service';
+import { type SemanticOperator, type SemanticToken, buildSemanticKeyMap, VIRTUAL_SEMANTIC_KEYS, parseValues, parseValueWithQuantity, type QuantityConstraint } from './semantic-filter.util';
 import { wildcardToRegex } from './string.util';
 
 // ============================================================================

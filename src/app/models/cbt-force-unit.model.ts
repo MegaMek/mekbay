@@ -31,13 +31,13 @@
  * affiliated with Microsoft.
  */
 
-import { computed, createEnvironmentInjector, EnvironmentInjector, Injector, runInInjectionContext, signal, Signal, untracked, WritableSignal } from '@angular/core';
-import { DataService } from '../services/data.service';
-import { Unit } from "./units.model";
-import { UnitInitializerService } from '../services/unit-initializer.service';
-import { CriticalSlot, HeatProfile, LocationData, MountedEquipment, ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, CBTSerializedState, CBTSerializedUnit } from './force-serialization';
+import { computed, createEnvironmentInjector, EnvironmentInjector, type Injector, runInInjectionContext, signal, type Signal, untracked, type WritableSignal } from '@angular/core';
+import type { DataService } from '../services/data.service';
+import type { Unit } from "./units.model";
+import type { UnitInitializerService } from '../services/unit-initializer.service';
+import { type CriticalSlot, type HeatProfile, type LocationData, type MountedEquipment, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, type CBTSerializedState, type CBTSerializedUnit } from './force-serialization';
 import { ForceUnit } from './force-unit.model';
-import { CBTForce } from './cbt-force.model';
+import type { CBTForce } from './cbt-force.model';
 import { UnitSvgService } from '../services/unit-svg.service';
 import { CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './crew-member.model';
 import { CBTForceUnitState } from './cbt-force-unit-state.model';
@@ -47,10 +47,10 @@ import { UnitSvgInfantryService } from '../services/unit-svg-infantry.service';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { AmmoEquipment, WeaponEquipment } from './equipment.model';
 import { C3NetworkUtil } from '../utils/c3-network.util';
-import { getMotiveModesOptionsByUnit, MotiveModeOption } from './motiveModes.model';
-import { TurnState } from './turn-state.model';
+import { getMotiveModesOptionsByUnit, type MotiveModeOption } from './motiveModes.model';
+import type { TurnState } from './turn-state.model';
 import { Sanitizer } from '../utils/sanitizer.util';
-import { UnitTypeRules } from './rules/unit-type-rules';
+import type { UnitTypeRules } from './rules/unit-type-rules';
 import { MekRules } from './rules/mek-rules';
 import { AeroRules } from './rules/aero-rules';
 import { InfantryRules } from './rules/infantry-rules';

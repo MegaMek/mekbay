@@ -34,7 +34,7 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { LoadForceEntry, LoadForceGroup } from '../../models/load-force-entry.model';
+import type { LoadForceEntry, LoadForceGroup } from '../../models/load-force-entry.model';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
@@ -42,12 +42,12 @@ import { OptionsService } from '../../services/options.service';
 import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
 import { NO_FORMATION_ID } from '../../utils/formation-type.model';
 import { DialogsService } from '../../services/dialogs.service';
-import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
-import { Unit } from '../../models/units.model';
+import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
+import type { Unit } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { ToastService } from '../../services/toast.service';
-import { ForceAddModePickerData, ForceAddModePickerDialogComponent, ForceAddModePickerResult } from '../force-add-mode-picker-dialog/force-add-mode-picker-dialog.component';
+import { type ForceAddModePickerData, ForceAddModePickerDialogComponent, type ForceAddModePickerResult } from '../force-add-mode-picker-dialog/force-add-mode-picker-dialog.component';
 import { firstValueFrom } from 'rxjs';
 import { OrgNamerUtil } from '../../utils/org-namer.util';
 

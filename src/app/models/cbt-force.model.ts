@@ -31,11 +31,11 @@
  * affiliated with Microsoft.
  */
 
-import { Injector } from '@angular/core';
-import { DataService } from '../services/data.service';
-import { Unit } from "./units.model";
-import { UnitInitializerService } from '../services/unit-initializer.service';
-import { CBTSerializedUnit, CBTSerializedForce, CBT_SERIALIZED_FORCE_SCHEMA, SerializedForce } from './force-serialization';
+import type { Injector } from '@angular/core';
+import type { DataService } from '../services/data.service';
+import type { Unit } from "./units.model";
+import type { UnitInitializerService } from '../services/unit-initializer.service';
+import { type CBTSerializedUnit, type CBTSerializedForce, CBT_SERIALIZED_FORCE_SCHEMA, type SerializedForce } from './force-serialization';
 import { GameSystem } from './common.model';
 import { Force } from './force.model';
 import { CBTForceUnit } from './cbt-force-unit.model';

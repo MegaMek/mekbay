@@ -32,8 +32,8 @@
  */
 
 
-import { Component, ElementRef, signal, computed, output, ChangeDetectionStrategy, viewChild, effect, afterNextRender, inject, Injector, input } from '@angular/core';
-import { ChoicePickerComponent, PickerChoice, PickerPosition, PickerValue } from '../picker/picker.interface';
+import { Component, type ElementRef, signal, computed, output, ChangeDetectionStrategy, viewChild, effect, afterNextRender, inject, Injector, input } from '@angular/core';
+import type { ChoicePickerComponent, PickerChoice, PickerPosition, PickerValue } from '../picker/picker.interface';
 import { LayoutService } from '../../services/layout.service';
 
 /*

@@ -31,11 +31,11 @@
  * affiliated with Microsoft.
  */
 
-import { ForceUnit } from '../models/force-unit.model';
-import { HeatProfile } from '../models/force-serialization';
-import { SheetService } from '../services/sheet.service';
-import { OptionsService } from '../services/options.service';
-import { CBTForceUnit } from '../models/cbt-force-unit.model';
+import type { ForceUnit } from '../models/force-unit.model';
+import type { HeatProfile } from '../models/force-serialization';
+import type { SheetService } from '../services/sheet.service';
+import type { OptionsService } from '../services/options.service';
+import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 
 /*
  * Author: Drake

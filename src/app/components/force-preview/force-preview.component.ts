@@ -32,7 +32,7 @@
  */
 
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
-import { Force } from '../../models/force.model';
+import type { Force } from '../../models/force.model';
 import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';

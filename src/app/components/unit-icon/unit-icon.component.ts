@@ -1,7 +1,7 @@
 import { Component, ChangeDetectionStrategy, inject, input, signal, effect, computed, DestroyRef } from '@angular/core';
 
-import { SpriteStorageService, SpriteIconInfo } from '../../services/sprite-storage.service';
-import { Unit } from '../../models/units.model';
+import { SpriteStorageService, type SpriteIconInfo } from '../../services/sprite-storage.service';
+import type { Unit } from '../../models/units.model';
 
 interface SpriteData {
   url: string;

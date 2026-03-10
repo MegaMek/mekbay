@@ -33,8 +33,8 @@
 
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { ForceAlignment } from '../../models/force-slot.model';
-import { Force } from '../../models/force.model';
+import type { ForceAlignment } from '../../models/force-slot.model';
+import type { Force } from '../../models/force.model';
 import { ForcePreviewComponent } from '../force-preview/force-preview.component';
 
 /*

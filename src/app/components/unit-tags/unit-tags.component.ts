@@ -33,7 +33,7 @@
 
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Unit, PublicTagInfo } from '../../models/units.model';
+import type { Unit, PublicTagInfo } from '../../models/units.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { PublicTagsService } from '../../services/public-tags.service';
 

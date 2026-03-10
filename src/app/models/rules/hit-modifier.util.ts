@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { MountedEquipment } from '../force-serialization';
+import type { MountedEquipment } from '../force-serialization';
 import { WeaponEquipment } from '../equipment.model';
 
 /**

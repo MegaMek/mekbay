@@ -37,21 +37,21 @@ import {
     computed,
     DestroyRef,
     effect,
-    ElementRef,
+    type ElementRef,
     inject,
     signal,
     untracked,
     viewChild,
-    AfterViewInit
+    type AfterViewInit
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { ForceUnit } from '../../models/force-unit.model';
-import { CBTForceUnit } from '../../models/cbt-force-unit.model';
-import { C3NetworkUtil, C3NetworkContext } from '../../utils/c3-network.util';
-import { C3NetworkType, C3Node, C3Role, C3_NETWORK_LIMITS, C3_MAX_NETWORK_TOTAL } from '../../models/c3-network.model';
-import { Force, UnitGroup } from '../../models/force.model';
-import { SerializedC3NetworkGroup } from '../../models/force-serialization';
+import type { ForceUnit } from '../../models/force-unit.model';
+import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import { C3NetworkUtil, type C3NetworkContext } from '../../utils/c3-network.util';
+import { C3NetworkType, type C3Node, C3Role, C3_NETWORK_LIMITS, type C3_MAX_NETWORK_TOTAL } from '../../models/c3-network.model';
+import type { Force, UnitGroup } from '../../models/force.model';
+import type { SerializedC3NetworkGroup } from '../../models/force-serialization';
 import { GameSystem } from '../../models/common.model';
 import { ToastService } from '../../services/toast.service';
 import { OptionsService } from '../../services/options.service';

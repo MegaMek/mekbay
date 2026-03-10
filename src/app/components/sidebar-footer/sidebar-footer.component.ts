@@ -1,21 +1,21 @@
 
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, computed, input, signal, effect, ElementRef, viewChildren } from '@angular/core';
-import { Subscription, firstValueFrom } from 'rxjs';
+import { type Subscription, firstValueFrom } from 'rxjs';
 import { LayoutService } from '../../services/layout.service';
 import { OptionsDialogComponent } from '../options-dialog/options-dialog.component';
 import { ToastService } from '../../services/toast.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { DataService } from '../../services/data.service';
-import { ForceAlignment } from '../../models/force-slot.model';
+import type { ForceAlignment } from '../../models/force-slot.model';
 import { CdkMenuModule, CdkMenuTrigger, MenuTracker } from '@angular/cdk/menu';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { C3NetworkUtil } from '../../utils/c3-network.util';
 import { CommonModule } from '@angular/common';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
-import { ForceSlot } from '../../models/force-slot.model';
-import { LoadOrganizationEntry } from '../../models/organization.model';
-import { AlignmentPickerDialogComponent, AlignmentPickerResult } from '../alignment-picker-dialog/alignment-picker-dialog.component';
+import type { ForceSlot } from '../../models/force-slot.model';
+import type { LoadOrganizationEntry } from '../../models/organization.model';
+import { AlignmentPickerDialogComponent, type AlignmentPickerResult } from '../alignment-picker-dialog/alignment-picker-dialog.component';
 
 /*
  * Sidebar footer component

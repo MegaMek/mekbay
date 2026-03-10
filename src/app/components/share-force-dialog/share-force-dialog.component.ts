@@ -39,7 +39,7 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ToastService } from '../../services/toast.service';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
-import { Force } from '../../models/force.model';
+import type { Force } from '../../models/force.model';
 import { buildForceQueryParams } from '../../utils/force-url.util';
 import { firstValueFrom } from 'rxjs';
 import { DialogsService } from '../../services/dialogs.service';

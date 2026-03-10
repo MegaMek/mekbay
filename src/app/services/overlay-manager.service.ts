@@ -31,9 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, ElementRef, Injector, effect, ComponentRef } from '@angular/core';
-import { GlobalPositionStrategy, Overlay, OverlayRef } from '@angular/cdk/overlay';
-import { ComponentPortal } from '@angular/cdk/portal';
+import { Injectable, type ElementRef, Injector, effect, type ComponentRef } from '@angular/core';
+import { type GlobalPositionStrategy, Overlay, type OverlayRef } from '@angular/cdk/overlay';
+import type { ComponentPortal } from '@angular/cdk/portal';
 import { DOCUMENT } from '@angular/common';
 import { inject } from '@angular/core';
 import { Subject, take, takeUntil } from 'rxjs';

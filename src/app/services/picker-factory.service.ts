@@ -31,11 +31,11 @@
  * affiliated with Microsoft.
  */
 
-import { ApplicationRef, ComponentRef, createComponent, EnvironmentInjector, inject, Injectable, Injector } from '@angular/core';
+import { ApplicationRef, type ComponentRef, createComponent, EnvironmentInjector, inject, Injectable, Injector } from '@angular/core';
 import { Subject, takeUntil } from 'rxjs';
 import { OptionsService } from './options.service';
 import { LayoutService } from './layout.service';
-import {
+import type {
     ChoicePickerInstance,
     NumericPickerInstance,
     NumericPickerResult,

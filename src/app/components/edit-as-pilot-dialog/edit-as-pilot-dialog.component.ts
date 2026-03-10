@@ -31,17 +31,17 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, ElementRef, inject, signal, viewChild, computed, DestroyRef, Injector } from '@angular/core';
+import { ChangeDetectionStrategy, Component, type ElementRef, inject, signal, viewChild, computed, DestroyRef, Injector } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { PILOT_ABILITIES, PilotAbility, ASCustomPilotAbility, getAbilityLimitsForSkill, PilotAbilityLimits, getAbilityDetails } from '../../models/pilot-abilities.model';
+import { PILOT_ABILITIES, type PilotAbility, type ASCustomPilotAbility, getAbilityLimitsForSkill, type PilotAbilityLimits, getAbilityDetails } from '../../models/pilot-abilities.model';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { AbilityDropdownPanelComponent } from './ability-dropdown-panel.component';
 import { CustomAbilityDialogComponent } from './custom-ability-dialog.component';
-import { SkillDropdownPanelComponent, SkillPreviewEntry } from '../skill-dropdown-panel/skill-dropdown-panel.component';
+import { SkillDropdownPanelComponent, type SkillPreviewEntry } from '../skill-dropdown-panel/skill-dropdown-panel.component';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { RulesReference, GameSystem } from '../../models/common.model';
-import { ASUnitTypeCode } from '../../models/units.model';
+import { type RulesReference, GameSystem } from '../../models/common.model';
+import type { ASUnitTypeCode } from '../../models/units.model';
 import { PVCalculatorUtil } from '../../utils/pv-calculator.util';
 import { DEFAULT_GUNNERY_SKILL } from '../../models/crew-member.model';
 

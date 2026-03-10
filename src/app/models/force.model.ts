@@ -31,23 +31,23 @@
  * affiliated with Microsoft.
  */
 
-import { signal, computed, WritableSignal, Injector } from '@angular/core';
+import { signal, computed, type WritableSignal, type Injector } from '@angular/core';
 import { Subject } from 'rxjs';
-import { DataService } from '../services/data.service';
-import { Unit } from "./units.model";
-import { UnitInitializerService } from '../services/unit-initializer.service';
+import type { DataService } from '../services/data.service';
+import type { Unit } from "./units.model";
+import type { UnitInitializerService } from '../services/unit-initializer.service';
 import { generateUUID } from '../services/ws.service';
-import { SerializedForce, SerializedUnit, SerializedGroup, SerializedC3NetworkGroup, C3_NETWORK_GROUP_SCHEMA } from './force-serialization';
-import { ForceUnit } from './force-unit.model';
+import { type SerializedForce, type SerializedUnit, type SerializedGroup, type SerializedC3NetworkGroup, C3_NETWORK_GROUP_SCHEMA } from './force-serialization';
+import type { ForceUnit } from './force-unit.model';
 import { GameSystem } from './common.model';
 import { C3NetworkUtil } from '../utils/c3-network.util';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { LoggerService } from '../services/logger.service';
-import { Faction } from './factions.model';
-import { FormationTypeDefinition, FormationMatch, isNoFormation } from '../utils/formation-type.model';
+import type { Faction } from './factions.model';
+import { type FormationTypeDefinition, type FormationMatch, isNoFormation } from '../utils/formation-type.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
-import { GroupSizeResult } from '../utils/org-solver.util';
+import type { GroupSizeResult } from '../utils/org-solver.util';
 import { OrgNamerUtil } from '../utils/org-namer.util';
 
 /*

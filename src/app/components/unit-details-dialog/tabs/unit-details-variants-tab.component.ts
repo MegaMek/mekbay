@@ -33,11 +33,11 @@
 
 import { Component, ChangeDetectionStrategy, input, inject, computed, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Unit } from '../../../models/units.model';
+import type { Unit } from '../../../models/units.model';
 import { DataService } from '../../../services/data.service';
 import { compareUnitsByName } from '../../../utils/sort.util';
 import { UnitCardExpandedComponent } from '../../unit-card-expanded/unit-card-expanded.component';
-import { TagClickEvent } from '../../unit-tags/unit-tags.component';
+import type { TagClickEvent } from '../../unit-tags/unit-tags.component';
 import { SORT_OPTIONS } from '../../../services/unit-search-filters.service';
 import { GameService } from '../../../services/game.service';
 

@@ -31,9 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { Unit } from '../models/units.model';
+import type { Unit } from '../models/units.model';
 import { getForcePacks } from '../models/forcepacks.model';
-import { DataService } from '../services/data.service';
+import type { DataService } from '../services/data.service';
 
 export type PackUnitEntry = {
     chassis: string;

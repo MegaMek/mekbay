@@ -32,24 +32,24 @@
  */
 
 import { inject, Injectable } from '@angular/core';
-import { Units } from '../models/units.model';
-import { Eras } from '../models/eras.model';
-import { Factions } from '../models/factions.model';
-import { Options } from '../models/options.model';
-import { Quirks } from '../models/quirks.model';
-import { Sourcebooks } from '../models/sourcebook.model';
-import { MULUnitSources } from '../models/mul-unit-sources.model';
-import { EquipmentData } from '../models/equipment.model';
-import { SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-serialization';
-import { DataService } from './data.service';
-import { UnitInitializerService } from './unit-initializer.service';
-import { Injector } from '@angular/core';
+import type { Units } from '../models/units.model';
+import type { Eras } from '../models/eras.model';
+import type { Factions } from '../models/factions.model';
+import type { Options } from '../models/options.model';
+import type { Quirks } from '../models/quirks.model';
+import type { Sourcebooks } from '../models/sourcebook.model';
+import type { MULUnitSources } from '../models/mul-unit-sources.model';
+import type { EquipmentData } from '../models/equipment.model';
+import type { SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-serialization';
+import type { DataService } from './data.service';
+import type { UnitInitializerService } from './unit-initializer.service';
+import type { Injector } from '@angular/core';
 import { DialogsService } from './dialogs.service';
-import { SerializedSearchFilter } from './unit-search-filters.service';
-import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
+import type { SerializedSearchFilter } from './unit-search-filters.service';
+import { LoadForceEntry, type LoadForceGroup, type LoadForceUnit } from '../models/load-force-entry.model';
 import { LoggerService } from './logger.service';
-import { SerializedOperation } from '../models/operation.model';
-import { SerializedOrganization } from '../models/organization.model';
+import type { SerializedOperation } from '../models/operation.model';
+import type { SerializedOrganization } from '../models/organization.model';
 
 
 /*

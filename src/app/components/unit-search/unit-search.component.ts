@@ -32,18 +32,18 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, signal, ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, input, viewChild, ChangeDetectorRef, DestroyRef, untracked, ComponentRef } from '@angular/core';
+import { Component, signal, type ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, type input, viewChild, ChangeDetectorRef, DestroyRef, untracked, type ComponentRef } from '@angular/core';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
-import { UnitSearchFiltersService, SORT_OPTIONS, SortOption, SerializedSearchFilter } from '../../services/unit-search-filters.service';
-import { HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
-import { Unit } from '../../models/units.model';
+import { UnitSearchFiltersService, SORT_OPTIONS, type SortOption, type SerializedSearchFilter } from '../../services/unit-search-filters.service';
+import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
+import type { Unit } from '../../models/units.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { Overlay, OverlayRef } from '@angular/cdk/overlay';
+import { Overlay, type OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
+import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { firstValueFrom } from 'rxjs';
 import { LayoutService } from '../../services/layout.service';
 import { DataService } from '../../services/data.service';
@@ -59,13 +59,13 @@ import { SemanticGuideDialogComponent } from '../semantic-guide-dialog/semantic-
 import { SemanticGuideComponent } from '../semantic-guide/semantic-guide.component';
 import { highlightMatches } from '../../utils/search.util';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
-import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
-import { RangeModel, UnitSearchFilterRangeDialogComponent, UnitSearchFilterRangeDialogData } from '../unit-search-filter-range-dialog/unit-search-filter-range-dialog.component';
+import { UnitTagsComponent, type TagClickEvent } from '../unit-tags/unit-tags.component';
+import { type RangeModel, UnitSearchFilterRangeDialogComponent, type UnitSearchFilterRangeDialogData } from '../unit-search-filter-range-dialog/unit-search-filter-range-dialog.component';
 import { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
 import { TaggingService } from '../../services/tagging.service';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
-import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
+import { AbilityInfoDialogComponent, type AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
 import { SyntaxInputComponent } from '../syntax-input/syntax-input.component';
 import { SavedSearchesService } from '../../services/saved-searches.service';
 import { generateUUID } from '../../services/ws.service';
@@ -75,7 +75,7 @@ import { UnitDetailsPanelComponent } from '../unit-details-panel/unit-details-pa
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import { formatMovement } from '../../utils/as-common.util';
-import { UnitType } from '../../models/units.model';
+import type { UnitType } from '../../models/units.model';
 
 /** Grouped chassis entry for compact view */
 export interface ChassisGroup {

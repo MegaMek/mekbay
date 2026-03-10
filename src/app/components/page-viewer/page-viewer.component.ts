@@ -34,8 +34,8 @@
 import {
     Component,
     input,
-    ElementRef,
-    AfterViewInit,
+    type ElementRef,
+    type AfterViewInit,
     Renderer2,
     Injector,
     signal,
@@ -44,19 +44,19 @@ import {
     ChangeDetectionStrategy,
     viewChild,
     computed,
-    EffectRef,
+    type EffectRef,
     DestroyRef,
     untracked,
     runInInjectionContext,
     createComponent,
     ApplicationRef,
-    ComponentRef
+    type ComponentRef
 } from '@angular/core';
 
-import { ViewportTransform } from '../../models/force-serialization';
+import type { ViewportTransform } from '../../models/force-serialization';
 import {
     PageViewerZoomPanService,
-    SwipeCallbacks,
+    type SwipeCallbacks,
     PAGE_WIDTH,
     PAGE_HEIGHT,
     PAGE_GAP
@@ -64,11 +64,11 @@ import {
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { OptionsService } from '../../services/options.service';
 import { DbService } from '../../services/db.service';
-import { LayoutService } from '../../services/layout.service';
+import type { LayoutService } from '../../services/layout.service';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { CBTForce } from '../../models/cbt-force.model';
 import { SvgInteractionService } from './svg-interaction.service';
-import { HeatDiffMarkerComponent, HeatDiffMarkerData } from '../heat-diff-marker/heat-diff-marker.component';
+import { HeatDiffMarkerComponent, type HeatDiffMarkerData } from '../heat-diff-marker/heat-diff-marker.component';
 import {
     PageViewerCanvasService,
     PageCanvasOverlayComponent,

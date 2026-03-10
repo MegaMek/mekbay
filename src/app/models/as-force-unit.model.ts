@@ -31,20 +31,20 @@
  * affiliated with Microsoft.
  */
 
-import { computed, Injector, signal, Signal } from '@angular/core';
-import { DataService } from '../services/data.service';
-import { Unit } from "./units.model";
-import { UnitInitializerService } from '../services/unit-initializer.service';
+import { computed, type Injector, signal, type Signal } from '@angular/core';
+import type { DataService } from '../services/data.service';
+import type { Unit } from "./units.model";
+import type { UnitInitializerService } from '../services/unit-initializer.service';
 import { AsAbilityLookupService } from '../services/as-ability-lookup.service';
-import { ASSerializedState, ASSerializedUnit, AS_SERIALIZED_UNIT_SCHEMA } from './force-serialization';
-import { ASForce } from './as-force.model';
+import { type ASSerializedState, type ASSerializedUnit, AS_SERIALIZED_UNIT_SCHEMA } from './force-serialization';
+import type { ASForce } from './as-force.model';
 import { ForceUnit } from './force-unit.model';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { ASForceUnitState } from './as-force-unit-state.model';
-import { CrewMember } from './crew-member.model';
-import { ASCustomPilotAbility } from './pilot-abilities.model';
+import type { CrewMember } from './crew-member.model';
+import type { ASCustomPilotAbility } from './pilot-abilities.model';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
-import { SpecialAbilityState } from '../components/alpha-strike-card/layouts/layout-base.component';
+import type { SpecialAbilityState } from '../components/alpha-strike-card/layouts/layout-base.component';
 import { isAerospace } from '../utils/as-common.util';
 
 /** Represents either a standard ability (by ID) or a custom ability (object) */

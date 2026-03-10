@@ -34,7 +34,7 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { OpPreviewComponent, OpPreviewForce } from '../op-preview/op-preview.component';
+import { OpPreviewComponent, type OpPreviewForce } from '../op-preview/op-preview.component';
 
 /*
  * Author: Drake

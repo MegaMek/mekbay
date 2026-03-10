@@ -33,7 +33,7 @@
 
 import { Component, ChangeDetectionStrategy, input, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Unit } from '../../../models/units.model';
+import type { Unit } from '../../../models/units.model';
 import { DataService } from '../../../services/data.service';
 
 export interface FactionAvailability {

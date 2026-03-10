@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, inject, computed, effect, ElementRef, viewChildren, signal, DestroyRef, viewChild } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, computed, effect, type ElementRef, viewChildren, signal, DestroyRef, viewChild } from '@angular/core';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import { OptionsService } from '../../services/options.service';
 import { ASForceUnit } from '../../models/as-force-unit.model';

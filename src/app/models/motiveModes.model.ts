@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Unit } from "./units.model";
+import type { Unit } from "./units.model";
 
 export type MotiveState = ''
 

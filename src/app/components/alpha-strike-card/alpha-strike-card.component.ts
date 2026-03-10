@@ -31,22 +31,22 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output, ElementRef, DestroyRef, afterNextRender, ComponentRef, Injector } from '@angular/core';
-import { ASUnitTypeCode, Unit } from '../../models/units.model';
-import { ASForceUnit, AbilitySelection } from '../../models/as-force-unit.model';
-import { PILOT_ABILITIES, ASCustomPilotAbility } from '../../models/pilot-abilities.model';
-import { AsAbilityLookupService, ParsedAbility } from '../../services/as-ability-lookup.service';
+import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output, ElementRef, DestroyRef, afterNextRender, type ComponentRef, Injector } from '@angular/core';
+import type { ASUnitTypeCode, Unit } from '../../models/units.model';
+import type { ASForceUnit, AbilitySelection } from '../../models/as-force-unit.model';
+import { PILOT_ABILITIES, type ASCustomPilotAbility } from '../../models/pilot-abilities.model';
+import { AsAbilityLookupService, type ParsedAbility } from '../../services/as-ability-lookup.service';
 import { DialogsService } from '../../services/dialogs.service';
-import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
-import { InputDialogComponent, InputDialogData } from '../input-dialog/input-dialog.component';
-import { PilotAbilityInfoDialogComponent, PilotAbilityInfoDialogData } from '../pilot-ability-info-dialog/pilot-ability-info-dialog.component';
-import { CardConfig, CardLayoutDesign, CriticalHitsVariant, getLayoutForUnitType } from './card-layout.config';
-import { SpecialAbilityState, SpecialAbilityClickEvent } from './layouts/layout-base.component';
-import { CriticalHitRollDialogComponent, CriticalHitRollDialogData } from './critical-hit-roll-dialog/critical-hit-roll-dialog.component';
-import { MotiveDamageRollDialogComponent, MotiveDamageRollDialogData } from './motive-damage-roll-dialog/motive-damage-roll-dialog.component';
+import { AbilityInfoDialogComponent, type AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
+import { InputDialogComponent, type InputDialogData } from '../input-dialog/input-dialog.component';
+import { PilotAbilityInfoDialogComponent, type PilotAbilityInfoDialogData } from '../pilot-ability-info-dialog/pilot-ability-info-dialog.component';
+import { type CardConfig, type CardLayoutDesign, type CriticalHitsVariant, getLayoutForUnitType } from './card-layout.config';
+import type { SpecialAbilityState, SpecialAbilityClickEvent } from './layouts/layout-base.component';
+import { CriticalHitRollDialogComponent, type CriticalHitRollDialogData } from './critical-hit-roll-dialog/critical-hit-roll-dialog.component';
+import { MotiveDamageRollDialogComponent, type MotiveDamageRollDialogData } from './motive-damage-roll-dialog/motive-damage-roll-dialog.component';
 import { AsLayoutStandardComponent, AsLayoutLargeVessel1Component, AsLayoutLargeVessel2Component } from './layouts';
 import { GameSystem, REMOTE_HOST } from '../../models/common.model';
-import { ChoicePickerInstance, NumericPickerInstance, NumericPickerResult, PickerChoice, PickerPosition } from '../picker/picker.interface';
+import type { ChoicePickerInstance, NumericPickerInstance, NumericPickerResult, PickerChoice, PickerPosition } from '../picker/picker.interface';
 import { vibrate } from '../../utils/vibrate.util';
 import { firstValueFrom } from 'rxjs';
 import { OptionsService } from '../../services/options.service';

@@ -32,14 +32,14 @@
  */
 
 import { Injectable, signal, computed, effect, inject, untracked } from '@angular/core';
-import { Unit } from '../models/units.model';
-import { Era } from '../models/eras.model';
+import type { Unit } from '../models/units.model';
+import type { Era } from '../models/eras.model';
 import { DataService } from './data.service';
-import { MultiState, MultiStateSelection, MultiStateOption } from '../components/multi-select-dropdown/multi-select-dropdown.component';
+import type { MultiState, MultiStateSelection, MultiStateOption } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { getForcePacks } from '../models/forcepacks.model';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { computeRelevanceScore, naturalCompare, compareUnitsByName } from '../utils/sort.util';
-import { parseSearchQuery, SearchTokensGroup } from '../utils/search.util';
+import { parseSearchQuery, type SearchTokensGroup } from '../utils/search.util';
 import { OptionsService } from './options.service';
 import { LoggerService } from './logger.service';
 import { matchesSearch } from '../utils/search.util';
@@ -47,8 +47,8 @@ import { GameSystem } from '../models/common.model';
 import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
-import { filterStateToSemanticText, tokensToFilterState, WildcardPattern } from '../utils/semantic-filter.util';
-import { parseSemanticQueryAST, ParseResult, ParseError, filterUnitsWithAST, EvaluatorContext, isComplexQuery, getMatchingTextForUnit } from '../utils/semantic-filter-ast.util';
+import { filterStateToSemanticText, tokensToFilterState, type WildcardPattern } from '../utils/semantic-filter.util';
+import { parseSemanticQueryAST, type ParseResult, type ParseError, filterUnitsWithAST, type EvaluatorContext, isComplexQuery, getMatchingTextForUnit } from '../utils/semantic-filter-ast.util';
 import { wildcardToRegex } from '../utils/string.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
@@ -57,7 +57,7 @@ import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
 import { FACTION_EXTINCT } from '../models/factions.model';
 import { resolveFactionNamesFromFilter } from '../utils/faction-filter.util';
-import { ADVANCED_FILTERS, AS_MOVEMENT_MODE_DISPLAY_NAMES, AdvFilterConfig, AdvFilterOptions, AdvFilterType, FilterState, DROPDOWN_FILTERS, RANGE_FILTERS, DropdownFilterConfig, RangeFilterConfig, SemanticDisplayItem, SerializedSearchFilter, SORT_OPTIONS } from './unit-search-filters.model';
+import { ADVANCED_FILTERS, AS_MOVEMENT_MODE_DISPLAY_NAMES, type AdvFilterConfig, type AdvFilterOptions, AdvFilterType, type FilterState, DROPDOWN_FILTERS, RANGE_FILTERS, type DropdownFilterConfig, type RangeFilterConfig, type SemanticDisplayItem, type SerializedSearchFilter, SORT_OPTIONS } from './unit-search-filters.model';
 export * from './unit-search-filters.model';
 
 function sortAvailableDropdownOptions(options: string[], predefinedOrder?: string[]): string[] {

@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { InputSignal, OutputEmitterRef, WritableSignal } from '@angular/core';
+import type { InputSignal, OutputEmitterRef, WritableSignal } from '@angular/core';
 
 /*
  * Author: Drake

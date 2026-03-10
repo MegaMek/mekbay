@@ -31,8 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { ForceAlignment } from './force-slot.model';
-import { GameSystem } from './common.model';
+import type { ForceAlignment } from './force-slot.model';
+import type { GameSystem } from './common.model';
 
 /*
  * Author: Drake

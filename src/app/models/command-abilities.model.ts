@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Rulebook, RulesReference } from './common.model';
+import { Rulebook, type RulesReference } from './common.model';
 
 // ── Special Command Abilities (SCAs) ─────────────────────────────────────────
 

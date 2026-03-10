@@ -33,9 +33,9 @@
 
 import { ChangeDetectionStrategy, Component, computed, input, model } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { CdkDragDrop, DragDropModule, moveItemInArray, transferArrayItem } from '@angular/cdk/drag-drop';
-import { ForceAlignment } from '../../models/force-slot.model';
-import { GameSystem } from '../../models/common.model';
+import { type CdkDragDrop, DragDropModule, moveItemInArray, transferArrayItem } from '@angular/cdk/drag-drop';
+import type { ForceAlignment } from '../../models/force-slot.model';
+import type { GameSystem } from '../../models/common.model';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 
 /*

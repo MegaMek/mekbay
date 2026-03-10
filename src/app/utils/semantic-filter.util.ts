@@ -31,9 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { GameSystem } from '../models/common.model';
-import { ADVANCED_FILTERS, AdvFilterConfig, AdvFilterType } from '../services/unit-search-filters.service';
-import { CountOperator, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
+import type { GameSystem } from '../models/common.model';
+import { ADVANCED_FILTERS, type AdvFilterConfig, AdvFilterType } from '../services/unit-search-filters.service';
+import type { CountOperator, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 
 // Cache for semantic key maps
 const semanticKeyMapCache = new Map<GameSystem, Map<string, AdvFilterConfig>>();

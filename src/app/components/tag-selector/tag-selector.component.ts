@@ -32,7 +32,7 @@
  */
 
 import { ChangeDetectionStrategy, Component, output, signal } from '@angular/core';
-import { PublicTagInfo } from '../../models/units.model';
+import type { PublicTagInfo } from '../../models/units.model';
 
 
 /*

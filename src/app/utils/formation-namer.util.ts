@@ -31,12 +31,12 @@
  * affiliated with Microsoft.
  */
 
-import { ForceUnit } from '../models/force-unit.model';
-import { Faction } from '../models/factions.model';
-import { GameSystem } from '../models/common.model';
-import { FormationTypeDefinition, FormationMatch } from './formation-type.model';
+import type { ForceUnit } from '../models/force-unit.model';
+import type { Faction } from '../models/factions.model';
+import type { GameSystem } from '../models/common.model';
+import type { FormationTypeDefinition, FormationMatch } from './formation-type.model';
 import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
-import { UnitGroup } from '../models/force.model';
+import type { UnitGroup } from '../models/force.model';
 
 /*
  * Author: Drake

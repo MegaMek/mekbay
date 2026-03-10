@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Unit, UnitComponent } from "../models/units.model";
+import type { Unit, UnitComponent } from "../models/units.model";
 
 /*
  * Author: Drake

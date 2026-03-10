@@ -33,8 +33,8 @@
 
 import { ChangeDetectionStrategy, Component, inject, computed } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { ParsedAbility } from '../../services/as-ability-lookup.service';
-import { ASSpecialAbility } from '../../models/as-abilities.model';
+import type { ParsedAbility } from '../../services/as-ability-lookup.service';
+import type { ASSpecialAbility } from '../../models/as-abilities.model';
 
 export interface AbilityInfoDialogData {
     /** The parsed original ability */

@@ -31,13 +31,13 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, ElementRef, afterNextRender, inject, input, output, viewChild, computed } from '@angular/core';
+import { ChangeDetectionStrategy, Component, type ElementRef, afterNextRender, inject, input, output, viewChild, type computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Unit } from '../../models/units.model';
-import { GameSystem } from '../../models/common.model';
+import type { Unit } from '../../models/units.model';
+import type { GameSystem } from '../../models/common.model';
 import { UnitCardCompactComponent } from '../unit-card-compact/unit-card-compact.component';
 import { TaggingService } from '../../services/tagging.service';
-import { TagClickEvent } from '../unit-tags/unit-tags.component';
+import type { TagClickEvent } from '../unit-tags/unit-tags.component';
 
 @Component({
     selector: 'variant-dropdown-panel',

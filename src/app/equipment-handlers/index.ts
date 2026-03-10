@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
+import type { EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
 import { ECMHandler } from './ecm.handler';
 import { BAPHandler } from './bap.handler';
 import { StealthHandler } from './stealth.handler';

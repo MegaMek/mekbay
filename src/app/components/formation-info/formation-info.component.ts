@@ -32,11 +32,11 @@
  */
 
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
-import { FormationTypeDefinition, FormationEffectGroup } from '../../utils/formation-type.model';
+import type { FormationTypeDefinition, FormationEffectGroup } from '../../utils/formation-type.model';
 import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
-import { PilotAbility, PILOT_ABILITIES, getAbilityDetails } from '../../models/pilot-abilities.model';
-import { CommandAbility, COMMAND_ABILITIES } from '../../models/command-abilities.model';
-import { GameSystem, RulesReference } from '../../models/common.model';
+import { type PilotAbility, PILOT_ABILITIES, getAbilityDetails } from '../../models/pilot-abilities.model';
+import { type CommandAbility, COMMAND_ABILITIES } from '../../models/command-abilities.model';
+import { GameSystem, type RulesReference } from '../../models/common.model';
 
 /*
  * Author: Drake

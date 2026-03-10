@@ -33,7 +33,7 @@
 
 import { Component, ChangeDetectionStrategy, input } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Unit } from '../../../models/units.model';
+import type { Unit } from '../../../models/units.model';
 import { SvgViewerLiteComponent } from '../../svg-viewer-lite/svg-viewer-lite.component';
 
 @Component({

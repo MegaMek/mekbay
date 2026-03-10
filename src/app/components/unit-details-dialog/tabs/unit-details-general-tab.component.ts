@@ -33,7 +33,7 @@
 
 import { Component, ChangeDetectionStrategy, input, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Unit, UnitComponent } from '../../../models/units.model';
+import type { Unit, UnitComponent } from '../../../models/units.model';
 import { weaponTypes } from '../../../utils/equipment.util';
 import { DataService } from '../../../services/data.service';
 import { DialogsService } from '../../../services/dialogs.service';
@@ -43,8 +43,8 @@ import { FilterAmmoPipe } from '../../../pipes/filter-ammo.pipe';
 import { UnitComponentItemComponent } from '../../unit-component-item/unit-component-item.component';
 import { TooltipDirective } from '../../../directives/tooltip.directive';
 import { BVCalculatorUtil } from '../../../utils/bv-calculator.util';
-import { SourcebookInfoDialogComponent, SourcebookInfoDialogData } from '../../sourcebook-info-dialog/sourcebook-info-dialog.component';
-import { Sourcebook } from '../../../models/sourcebook.model';
+import { SourcebookInfoDialogComponent, type SourcebookInfoDialogData } from '../../sourcebook-info-dialog/sourcebook-info-dialog.component';
+import type { Sourcebook } from '../../../models/sourcebook.model';
 
 // Matrix layout types
 type SlotSpec = string | string[];

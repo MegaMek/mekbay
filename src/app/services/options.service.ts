@@ -33,7 +33,7 @@
 
 import { inject, Injectable, signal } from '@angular/core';
 import { DbService } from './db.service';
-import { Options } from '../models/options.model';
+import type { Options } from '../models/options.model';
 import { GameSystem } from '../models/common.model';
 
 /*

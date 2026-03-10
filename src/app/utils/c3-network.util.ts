@@ -31,12 +31,12 @@
  * affiliated with Microsoft.
  */
 
-import { ForceUnit } from '../models/force-unit.model';
-import { Unit, UnitComponent } from '../models/units.model';
+import type { ForceUnit } from '../models/force-unit.model';
+import type { Unit, UnitComponent } from '../models/units.model';
 import {
-    C3Component,
+    type C3Component,
     C3NetworkType,
-    C3Node,
+    type C3Node,
     C3Role,
     ALL_C3_FLAGS,
     C3_MASTER_FLAGS,
@@ -53,8 +53,8 @@ import {
     C3_NETWORK_COLORS,
     parseASC3Specials
 } from '../models/c3-network.model';
-import { SerializedC3NetworkGroup } from '../models/force-serialization';
-import { CBTForceUnit } from '../models/cbt-force-unit.model';
+import type { SerializedC3NetworkGroup } from '../models/force-serialization';
+import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { generateUUID } from '../services/ws.service';
 
 /** Result of a network mutation operation */

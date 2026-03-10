@@ -33,10 +33,10 @@
 
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
-import { InputDialogComponent, InputDialogData } from '../components/input-dialog/input-dialog.component';
-import { Dialog, DialogRef as CdkDialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { ComponentType } from '@angular/cdk/portal';
+import { ConfirmDialogComponent, type ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
+import { InputDialogComponent, type InputDialogData } from '../components/input-dialog/input-dialog.component';
+import { Dialog, type DialogRef as CdkDialogRef, type DIALOG_DATA } from '@angular/cdk/dialog';
+import type { ComponentType } from '@angular/cdk/portal';
 
 /*
  * Author: Drake

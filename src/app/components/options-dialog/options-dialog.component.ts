@@ -31,18 +31,18 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, ElementRef, inject, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, type ElementRef, inject, signal, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { OptionsService } from '../../services/options.service';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
-import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
+import { DialogRef, type DIALOG_DATA } from '@angular/cdk/dialog';
 import { DbService } from '../../services/db.service';
 import { UserStateService } from '../../services/userState.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { isIOS } from '../../utils/platform.util';
 import { LoggerService } from '../../services/logger.service';
 import { GameService } from '../../services/game.service';
-import { GameSystem } from '../../models/common.model';
+import type { GameSystem } from '../../models/common.model';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { DataService } from '../../services/data.service';
 import { PublicTagsService } from '../../services/public-tags.service';

@@ -33,32 +33,32 @@
 
 import { Injectable, signal, Injector, inject, DestroyRef } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Unit, UnitComponent, Units } from '../models/units.model';
-import { Faction, Factions } from '../models/factions.model';
-import { Era, Eras } from '../models/eras.model';
-import { DbService, TagData } from './db.service';
+import type { Unit, UnitComponent, Units } from '../models/units.model';
+import type { Faction, Factions } from '../models/factions.model';
+import type { Era, Eras } from '../models/eras.model';
+import { DbService, type TagData } from './db.service';
 import { TagsService } from './tags.service';
 import { PublicTagsService } from './public-tags.service';
 
-import { Equipment, EquipmentData, EquipmentMap, RawEquipmentData, createEquipment } from '../models/equipment.model';
-import { Quirk, Quirks } from '../models/quirks.model';
+import { type Equipment, type EquipmentData, type EquipmentMap, type RawEquipmentData, createEquipment } from '../models/equipment.model';
+import type { Quirk, Quirks } from '../models/quirks.model';
 import { generateUUID, WsService } from './ws.service';
-import { ForceUnit } from '../models/force-unit.model';
-import { Force }    from '../models/force.model';
-import { ASSerializedForce, CBTSerializedForce, SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-serialization';
+import type { ForceUnit } from '../models/force-unit.model';
+import type { Force }    from '../models/force.model';
+import type { ASSerializedForce, CBTSerializedForce, SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-serialization';
 import { UnitInitializerService } from './unit-initializer.service';
 import { UserStateService } from './userState.service';
-import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
+import { LoadForceEntry, type LoadForceGroup, type LoadForceUnit } from '../models/load-force-entry.model';
 import { LoggerService } from './logger.service';
-import { SerializedOperation, LoadOperationEntry, OperationForceInfo } from '../models/operation.model';
-import { SerializedOrganization, LoadOrganizationEntry } from '../models/organization.model';
-import { DialogsService } from './dialogs.service';
+import { type SerializedOperation, LoadOperationEntry, type OperationForceInfo } from '../models/operation.model';
+import { type SerializedOrganization, LoadOrganizationEntry } from '../models/organization.model';
+import type { DialogsService } from './dialogs.service';
 import { firstValueFrom, Subject } from 'rxjs';
 import { GameSystem, REMOTE_HOST } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
-import { Sourcebook, Sourcebooks } from '../models/sourcebook.model';
-import { MULUnitSources, MULUnitSourcesData } from '../models/mul-unit-sources.model';
+import type { Sourcebook, Sourcebooks } from '../models/sourcebook.model';
+import type { MULUnitSources, MULUnitSourcesData } from '../models/mul-unit-sources.model';
 import { removeAccents } from '../utils/string.util';
 import { getForcePacks } from '../models/forcepacks.model';
 

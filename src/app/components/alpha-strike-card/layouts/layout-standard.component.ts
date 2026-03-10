@@ -43,7 +43,7 @@ import {
     viewChild,
 } from '@angular/core';
 import { UpperCasePipe } from '@angular/common';
-import { CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
+import { type CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import {
     AsCriticalHitsMekComponent,
     AsCriticalHitsVehicleComponent,

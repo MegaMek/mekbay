@@ -31,17 +31,17 @@
  * affiliated with Microsoft.
  */
 
-import { Unit } from '../models/units.model';
+import type { Unit } from '../models/units.model';
 import {
-    ForceComposition,
-    OrgType,
-    OrgTypeRule,
+    type ForceComposition,
+    type OrgType,
+    type OrgTypeRule,
     getForceCompositionFromUnits,
-    OrgDefinition,
+    type OrgDefinition,
     ORG_REGISTRY,
     DEFAULT_ORG,
-    PointRange,
-    GroupSizeResult,
+    type PointRange,
+    type GroupSizeResult,
     getRegularCount,
     getModifierPrefix,
 } from './org-definitions.util';

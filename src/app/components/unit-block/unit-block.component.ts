@@ -33,8 +33,8 @@
 
 import { Component, ChangeDetectionStrategy, computed, input, output, inject } from '@angular/core';
 import { UpperCasePipe } from '@angular/common';
-import { ForceUnit } from '../../models/force-unit.model';
-import { Unit } from '../../models/units.model';
+import type { ForceUnit } from '../../models/force-unit.model';
+import type { Unit } from '../../models/units.model';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import { OptionsService } from '../../services/options.service';
@@ -42,11 +42,11 @@ import { CdkMenuModule } from '@angular/cdk/menu';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { TooltipDirective } from '../../directives/tooltip.directive';
-import { TooltipLine } from '../tooltip/tooltip.component';
+import type { TooltipLine } from '../tooltip/tooltip.component';
 import { ECMMode } from '../../models/common.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { C3NetworkUtil } from '../../utils/c3-network.util';
-import { C3Component, C3NetworkType } from '../../models/c3-network.model';
+import type { C3Component, C3NetworkType } from '../../models/c3-network.model';
 import { GameSystem } from '../../models/common.model';
 import { formatMovement } from '../../utils/as-common.util';
 

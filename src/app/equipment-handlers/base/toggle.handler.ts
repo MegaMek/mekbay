@@ -31,9 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentInteractionHandler, HandlerContext } from '../../services/equipment-interaction-registry.service';
-import { MountedEquipment } from '../../models/force-serialization';
-import { PickerChoice, PickerValue } from '../../components/picker/picker.interface';
+import { EquipmentInteractionHandler, type HandlerContext } from '../../services/equipment-interaction-registry.service';
+import type { MountedEquipment } from '../../models/force-serialization';
+import type { PickerChoice, PickerValue } from '../../components/picker/picker.interface';
 
 /**
  * Base handler for simple on/off equipment

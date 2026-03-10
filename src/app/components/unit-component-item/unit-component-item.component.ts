@@ -32,8 +32,8 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, ChangeDetectionStrategy, input, inject, computed, ElementRef, viewChild } from '@angular/core';
-import { Unit, UnitComponent } from '../../models/units.model';
+import { Component, ChangeDetectionStrategy, input, inject, computed, type ElementRef, viewChild } from '@angular/core';
+import type { Unit, UnitComponent } from '../../models/units.model';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
 import { FloatingOverlayService } from '../../services/floating-overlay.service';
 

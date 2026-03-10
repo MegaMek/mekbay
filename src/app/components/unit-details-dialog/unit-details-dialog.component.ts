@@ -31,10 +31,10 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, ElementRef, signal, ChangeDetectionStrategy, output, viewChild, effect, computed, Signal, isSignal } from '@angular/core';
+import { Component, inject, ElementRef, signal, ChangeDetectionStrategy, output, viewChild, effect, computed, type Signal, isSignal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
-import { Unit } from '../../models/units.model';
+import type { Unit } from '../../models/units.model';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { firstValueFrom, takeUntil } from 'rxjs';
 import { outputToObservable } from '@angular/core/rxjs-interop';
@@ -43,7 +43,7 @@ import { ForceUnit } from '../../models/force-unit.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { FloatingOverlayService } from '../../services/floating-overlay.service';
-import { SwipeDirective, SwipeEndEvent, SwipeMoveEvent, SwipeStartEvent } from '../../directives/swipe.directive';
+import { SwipeDirective, type SwipeEndEvent, type SwipeMoveEvent, type SwipeStartEvent } from '../../directives/swipe.directive';
 import { LongPressDirective } from '../../directives/long-press.directive';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
@@ -53,16 +53,16 @@ import { UnitDetailsGeneralTabComponent } from './tabs/unit-details-general-tab.
 import { UnitDetailsIntelTabComponent } from './tabs/unit-details-intel-tab.component';
 import { UnitDetailsFactionTabComponent } from './tabs/unit-details-factions-tab.component';
 import { UnitDetailsSheetTabComponent } from './tabs/unit-details-sheet-tab.component';
-import { UnitDetailsVariantsTabComponent, VariantsTabState, DEFAULT_VARIANTS_TAB_STATE } from './tabs/unit-details-variants-tab.component';
+import { UnitDetailsVariantsTabComponent, type VariantsTabState, DEFAULT_VARIANTS_TAB_STATE } from './tabs/unit-details-variants-tab.component';
 import { GameService } from '../../services/game.service';
 import { UnitDetailsCardTabComponent } from './tabs/unit-details-card-tab.component';
-import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
+import { UnitTagsComponent, type TagClickEvent } from '../unit-tags/unit-tags.component';
 import { TaggingService } from '../../services/tagging.service';
 import { UrlStateService } from '../../services/url-state.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { LayoutService } from '../../services/layout.service';
 import { buildUnitShareLinks } from '../../utils/force-url.util';
-import { ConfirmDialogComponent, ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
+import { ConfirmDialogComponent, type ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
 
 /*
  * Author: Drake

@@ -32,11 +32,11 @@
  */
 
 import { signal, computed } from '@angular/core';
-import { LocationData, HeatProfile, SerializedInventory, CriticalSlot, MountedEquipment, SerializedState, CBTSerializedState, C3_POSITION_SCHEMA } from './force-serialization';
+import { type LocationData, type HeatProfile, type SerializedInventory, type CriticalSlot, type MountedEquipment, type SerializedState, type CBTSerializedState, C3_POSITION_SCHEMA } from './force-serialization';
 import { CrewMember } from './crew-member.model';
 import { ForceUnitState } from './force-unit-state.model';
 import { TurnState } from './turn-state.model';
-import { CBTForceUnit } from './cbt-force-unit.model';
+import type { CBTForceUnit } from './cbt-force-unit.model';
 import { Sanitizer } from '../utils/sanitizer.util';
 
 /*

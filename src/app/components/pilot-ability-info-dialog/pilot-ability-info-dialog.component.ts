@@ -33,9 +33,9 @@
 
 import { ChangeDetectionStrategy, Component, inject, computed } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { PilotAbility, ASCustomPilotAbility, getAbilityDetails } from '../../models/pilot-abilities.model';
-import { GameSystem, RulesReference } from '../../models/common.model';
-import { GameService } from '../../services/game.service';
+import { type PilotAbility, type ASCustomPilotAbility, getAbilityDetails } from '../../models/pilot-abilities.model';
+import type { GameSystem, RulesReference } from '../../models/common.model';
+import type { GameService } from '../../services/game.service';
 
 export interface PilotAbilityInfoDialogData {
     gameSystem: GameSystem;

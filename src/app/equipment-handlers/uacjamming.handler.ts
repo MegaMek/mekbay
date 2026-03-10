@@ -31,9 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { PickerChoice } from '../components/picker/picker.interface';
+import type { PickerChoice } from '../components/picker/picker.interface';
 import { WeaponEquipment } from '../models/equipment.model';
-import { MountedEquipment } from '../models/force-serialization';
+import type { MountedEquipment } from '../models/force-serialization';
 import { CycleModeHandler } from './base/cycle-mode.handler';
 
 export class UACJammingHandler extends CycleModeHandler {
