@@ -598,12 +598,7 @@ function promotiveGroupEvaluation(
 
 // ─── Composition arithmetic ────────────────────────────────────────────────────
 
-const COMP_KEYS: readonly (keyof ForceComposition)[] = [
-    'BM', 'CI', 'BA', 'PM', 'CV', 'AF', 'other',
-    'BA_troopers', 'CI_troopers', 'CI_troopers_mechanized',
-    'CI_troopers_legs', 'CI_troopers_jump', 'CI_troopers_hover',
-    'CI_troopers_tracked', 'CI_troopers_wheeled',
-];
+const COMP_KEYS: readonly (keyof ForceComposition)[] = Object.keys(getForceCompositionFromUnits([])) as (keyof ForceComposition)[];
 
 /** Subtract composition b from a. Returns null if any field would go negative. */
 function subtractComp(a: ForceComposition, b: ForceComposition): ForceComposition | null {
