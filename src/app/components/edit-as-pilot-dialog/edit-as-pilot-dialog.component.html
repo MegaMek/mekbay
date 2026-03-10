@@ -10,12 +10,10 @@
             </div>
             <div class="form-fields skill-field">
                 <label class="field-label">Skill</label>
-                <div class="input-wrapper">
-                    <select #skillInput class="field-input" (change)="onSkillChange($event)">
-                        @for (v of skillValues; track v) {
-                            <option [value]="v" [selected]="v === data.skill">{{ v }}</option>
-                        }
-                    </select>
+                <div #skillTrigger class="input-wrapper">
+                    <button class="bt-select skill-selector" (click)="toggleSkillDropdown()">
+                        <span class="skill-selector-value">{{ currentSkill() }}</span>
+                    </button>
                 </div>
             </div>
         </div>

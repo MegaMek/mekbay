@@ -38,9 +38,12 @@ import { PILOT_ABILITIES, PilotAbility, ASCustomPilotAbility, getAbilityLimitsFo
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { AbilityDropdownPanelComponent } from './ability-dropdown-panel.component';
 import { CustomAbilityDialogComponent } from './custom-ability-dialog.component';
+import { SkillDropdownPanelComponent, SkillPreviewEntry } from '../skill-dropdown-panel/skill-dropdown-panel.component';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RulesReference, GameSystem } from '../../models/common.model';
 import { ASUnitTypeCode } from '../../models/units.model';
+import { PVCalculatorUtil } from '../../utils/pv-calculator.util';
+import { DEFAULT_GUNNERY_SKILL } from '../../models/crew-member.model';
 
 /*
  * Author: Drake
@@ -55,6 +58,8 @@ export interface EditASPilotDialogData {
     abilities: AbilitySelection[]; // Array of ability IDs or custom abilities
     /** The unit's AS type code (e.g. 'BM', 'CV') for filtering abilities by unitTypeFilter. */
     unitTypeCode?: ASUnitTypeCode;
+    /** Base PV at skill 4 for PV preview calculation. */
+    basePv?: number;
 }
 
 export interface EditASPilotResult {
@@ -75,9 +80,8 @@ export interface EditASPilotResult {
 })
 export class EditASPilotDialogComponent {
     nameInput = viewChild.required<ElementRef<HTMLInputElement>>('nameInput');
-    skillInput = viewChild.required<ElementRef<HTMLSelectElement>>('skillInput');
+    skillTrigger = viewChild.required<ElementRef<HTMLDivElement>>('skillTrigger');
 
-    readonly skillValues = [0, 1, 2, 3, 4, 5, 6, 7, 8];
     dropdownTrigger0 = viewChild<ElementRef<HTMLButtonElement>>('dropdownTrigger0');
     dropdownTrigger1 = viewChild<ElementRef<HTMLButtonElement>>('dropdownTrigger1');
     dropdownTrigger2 = viewChild<ElementRef<HTMLButtonElement>>('dropdownTrigger2');
@@ -92,6 +96,20 @@ export class EditASPilotDialogComponent {
     selectedAbilities = signal<(AbilitySelection | null)[]>([null, null, null]);
     openDropdown = signal<number | null>(null);
     currentSkill = signal<number>(4);
+
+    private readonly hasPvPreview = this.data.basePv != null;
+
+    skillEntries = computed<SkillPreviewEntry[]>(() => {
+        if (!this.hasPvPreview) {
+            return [0, 1, 2, 3, 4, 5, 6, 7, 8].map(skill => ({ skill, adjustedValue: 0, delta: 0 }));
+        }
+        const basePv = this.data.basePv!;
+        const baselineValue = PVCalculatorUtil.calculateAdjustedPV(basePv, DEFAULT_GUNNERY_SKILL);
+        return [0, 1, 2, 3, 4, 5, 6, 7, 8].map(skill => {
+            const adjustedValue = PVCalculatorUtil.calculateAdjustedPV(basePv, skill);
+            return { skill, adjustedValue, delta: adjustedValue - baselineValue };
+        });
+    });
 
     abilityLimits = computed<PilotAbilityLimits>(() => {
         return getAbilityLimitsForSkill(this.currentSkill());
@@ -133,6 +151,7 @@ export class EditASPilotDialogComponent {
         this.destroyRef.onDestroy(() => {
             this.closeDropdownOverlay();
             this.closeCustomAbilityOverlay();
+            this.overlayManager.closeManagedOverlay('skill-dropdown');
         });
     }
 
@@ -209,12 +228,37 @@ export class EditASPilotDialogComponent {
     }
 
     /** Handle skill input change to update limits */
-    onSkillChange(event: Event): void {
-        const select = event.target as HTMLSelectElement;
-        const newSkill = Number(select.value);
-        this.currentSkill.set(newSkill);
-        // Clear abilities that exceed new limits
-        this.enforceAbilityLimits();
+    toggleSkillDropdown(): void {
+        this.overlayManager.closeManagedOverlay('skill-dropdown');
+
+        const trigger = this.skillTrigger();
+        if (!trigger) return;
+
+        const portal = new ComponentPortal(SkillDropdownPanelComponent, null, this.injector);
+
+        const { componentRef } = this.overlayManager.createManagedOverlay(
+            'skill-dropdown',
+            trigger,
+            portal,
+            {
+                closeOnOutsideClick: true,
+                matchTriggerWidth: true,
+                anchorActiveSelector: '.skill-option.active'
+            }
+        );
+
+        componentRef.setInput('entries', this.skillEntries());
+        componentRef.setInput('selectedSkill', this.currentSkill());
+        componentRef.setInput('valueLabel', 'PV');
+        componentRef.setInput('title', 'Skill');
+
+        outputToObservable(componentRef.instance.selected)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((skill: number) => {
+                this.currentSkill.set(skill);
+                this.enforceAbilityLimits();
+                this.overlayManager.closeManagedOverlay('skill-dropdown');
+            });
     }
 
     /** Remove abilities that exceed current skill limits */
@@ -377,7 +421,7 @@ export class EditASPilotDialogComponent {
 
     submit() {
         const name = this.nameInput().nativeElement.value.trim();
-        const skill = Number(this.skillInput().nativeElement.value);
+        const skill = this.currentSkill();
         const abilities = this.selectedAbilities().filter((a): a is AbilitySelection => a !== null);
         this.dialogRef.close({ name, skill, abilities });
     }

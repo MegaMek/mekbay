@@ -64,6 +64,7 @@ import { GameSystem } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
 import { ASForceUnit } from '../models/as-force-unit.model';
+import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
 import { canAntiMech } from '../utils/infantry.util';
@@ -2567,6 +2568,10 @@ export class ForceBuilderService {
                     labelGunnery: `Gunnery Skill`,
                     labelPiloting: `${labelPiloting} Skill`,
                     disablePiloting: disablePiloting,
+                    preSkillBv: unit instanceof CBTForceUnit
+                        ? unit.getBaseBv() + unit.tagBV() + unit.c3Tax()
+                        : undefined,
+                    unit: baseUnit,
                 }
             }
         );
@@ -2597,6 +2602,7 @@ export class ForceBuilderService {
                     skill: unit.pilotSkill(),
                     abilities: unit.pilotAbilities(),
                     unitTypeCode: unit.getUnit().as?.TP,
+                    basePv: unit.getUnit().pv,
                 }
             }
         );

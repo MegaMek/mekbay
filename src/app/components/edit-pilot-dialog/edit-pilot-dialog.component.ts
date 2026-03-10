@@ -32,8 +32,16 @@
  */
 
 
-import { ChangeDetectionStrategy, Component, ElementRef, inject, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, ElementRef, inject, Injector, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
+import { ComponentPortal } from '@angular/cdk/portal';
+import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { OverlayManagerService } from '../../services/overlay-manager.service';
+import { SkillDropdownPanelComponent, SkillPreviewEntry } from '../skill-dropdown-panel/skill-dropdown-panel.component';
+import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
+import { getEffectivePilotingSkill } from '../../utils/cbt-common.util';
+import { Unit } from '../../models/units.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
 
 /*
  * Author: Drake
@@ -46,6 +54,10 @@ export interface EditPilotDialogData {
     labelGunnery?: string;
     labelPiloting?: string;
     disablePiloting?: boolean;
+    /** Pre-skill BV (base + TAG + C3) for BV preview calculation. */
+    preSkillBv?: number;
+    /** Unit reference for effective piloting skill calculation. */
+    unit?: Unit;
 }
 
 export interface EditPilotResult {
@@ -73,19 +85,19 @@ export interface EditPilotResult {
             <div class="form-row no-stack">
                 <div class="form-fields">
                     <label class="field-label">{{ data.labelGunnery || 'Gunnery Skill' }}</label>
-                    <select #gunneryInput class="field-input centered">
-                        @for (v of skillValues; track v) {
-                            <option [value]="v" [selected]="v === data.gunnery">{{ v }}</option>
-                        }
-                    </select>
+                    <div #gunneryTrigger>
+                        <button class="bt-select skill-selector" (click)="toggleGunneryDropdown()">
+                            <span class="skill-selector-value">{{ currentGunnery() }}</span>
+                        </button>
+                    </div>
                 </div>
                 <div class="form-fields" [class.disabled]="!!data.disablePiloting">
                     <label class="field-label">{{ data.labelPiloting || 'Piloting Skill' }}</label>
-                    <select #pilotingInput class="field-input centered" [disabled]="!!data.disablePiloting">
-                        @for (v of skillValues; track v) {
-                            <option [value]="v" [selected]="v === data.piloting">{{ v }}</option>
-                        }
-                    </select>
+                    <div #pilotingTrigger>
+                        <button class="bt-select skill-selector" [disabled]="!!data.disablePiloting" (click)="togglePilotingDropdown()">
+                            <span class="skill-selector-value">{{ currentPiloting() }}</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -96,29 +108,143 @@ export interface EditPilotResult {
     </div>
     `,
     styles: `
-        .centered { text-align: center; }
+        .skill-selector {
+            width: 100%;
+            text-align: center;
+            font-size: 1em;
+            padding: 8px 20px 8px 8px;
+        }
+        .skill-selector-value {
+            font-weight: 700;
+        }
     `,
 })
 export class EditPilotDialogComponent {
     nameInput = viewChild.required<ElementRef<HTMLInputElement>>('nameInput');
-    gunneryInput = viewChild.required<ElementRef<HTMLSelectElement>>('gunneryInput');
-    pilotingInput = viewChild.required<ElementRef<HTMLSelectElement>>('pilotingInput');
-
-    readonly skillValues = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+    gunneryTrigger = viewChild.required<ElementRef<HTMLDivElement>>('gunneryTrigger');
+    pilotingTrigger = viewChild.required<ElementRef<HTMLDivElement>>('pilotingTrigger');
 
     public dialogRef = inject(DialogRef<EditPilotResult | null, EditPilotDialogComponent>);
     readonly data: EditPilotDialogData = inject(DIALOG_DATA) as EditPilotDialogData;
+    private overlayManager = inject(OverlayManagerService);
+    private injector = inject(Injector);
+    private destroyRef = inject(DestroyRef);
 
-    constructor() { }
+    currentGunnery = signal<number>(this.data.gunnery);
+    currentPiloting = signal<number>(this.data.piloting);
+
+    private readonly hasBvPreview = !!(this.data.preSkillBv != null && this.data.unit);
+
+    gunneryEntries = computed<SkillPreviewEntry[]>(() => {
+        const piloting = this.currentPiloting();
+        return this.buildEntries(
+            (skill) => this.calculateBv(skill, piloting),
+            DEFAULT_GUNNERY_SKILL
+        );
+    });
+
+    pilotingEntries = computed<SkillPreviewEntry[]>(() => {
+        const gunnery = this.currentGunnery();
+        return this.buildEntries(
+            (skill) => this.calculateBv(gunnery, skill),
+            DEFAULT_PILOTING_SKILL
+        );
+    });
+
+    constructor() {
+        this.destroyRef.onDestroy(() => {
+            this.overlayManager.closeManagedOverlay('skill-gunnery-dropdown');
+            this.overlayManager.closeManagedOverlay('skill-piloting-dropdown');
+        });
+    }
+
+    toggleGunneryDropdown(): void {
+        this.openSkillDropdown(
+            'skill-gunnery-dropdown',
+            this.gunneryTrigger(),
+            this.currentGunnery(),
+            this.gunneryEntries(),
+            (skill) => this.currentGunnery.set(skill),
+            this.data.labelGunnery || 'Gunnery Skill'
+        );
+    }
+
+    togglePilotingDropdown(): void {
+        if (this.data.disablePiloting) return;
+        this.openSkillDropdown(
+            'skill-piloting-dropdown',
+            this.pilotingTrigger(),
+            this.currentPiloting(),
+            this.pilotingEntries(),
+            (skill) => this.currentPiloting.set(skill),
+            this.data.labelPiloting || 'Piloting Skill'
+        );
+    }
+
+    private openSkillDropdown(
+        key: string,
+        trigger: ElementRef<HTMLElement>,
+        currentSkill: number,
+        entries: SkillPreviewEntry[],
+        onSelect: (skill: number) => void,
+        title?: string
+    ): void {
+        this.overlayManager.closeManagedOverlay(key);
+
+        const portal = new ComponentPortal(SkillDropdownPanelComponent, null, this.injector);
+
+        const { componentRef } = this.overlayManager.createManagedOverlay(
+            key,
+            trigger,
+            portal,
+            {
+                closeOnOutsideClick: true,
+                matchTriggerWidth: true,
+                anchorActiveSelector: '.skill-option.active'
+            }
+        );
+
+        componentRef.setInput('entries', entries);
+        componentRef.setInput('selectedSkill', currentSkill);
+        componentRef.setInput('valueLabel', 'BV');
+        if (title) componentRef.setInput('title', title);
+
+        outputToObservable(componentRef.instance.selected)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((skill: number) => {
+                onSelect(skill);
+                this.overlayManager.closeManagedOverlay(key);
+            });
+    }
+
+    private calculateBv(gunnery: number, piloting: number): number {
+        if (!this.hasBvPreview) return 0;
+        return BVCalculatorUtil.calculateAdjustedBV(
+            this.data.unit!,
+            this.data.preSkillBv!,
+            gunnery,
+            piloting
+        );
+    }
+
+    private buildEntries(calculate: (skill: number) => number, defaultSkill: number): SkillPreviewEntry[] {
+        if (!this.hasBvPreview) {
+            return [0, 1, 2, 3, 4, 5, 6, 7, 8].map(skill => ({ skill, adjustedValue: 0, delta: 0 }));
+        }
+        const baseValue = calculate(defaultSkill);
+        return [0, 1, 2, 3, 4, 5, 6, 7, 8].map(skill => {
+            const adjustedValue = calculate(skill);
+            return { skill, adjustedValue, delta: adjustedValue - baseValue };
+        });
+    }
 
     submit() {
         const name = this.nameInput().nativeElement.value.trim();
-        const gunnery = Number(this.gunneryInput().nativeElement.value);
-        let piloting = this.data.piloting;
-        if (!this.data.disablePiloting) {
-            piloting = Number(this.pilotingInput().nativeElement.value);
-        }
-        this.dialogRef.close({ name, gunnery, piloting });
+        this.dialogRef.close({
+            name,
+            gunnery: this.currentGunnery(),
+            piloting: this.data.disablePiloting ? this.data.piloting : this.currentPiloting()
+        });
     }
 
     close(value: null = null) {

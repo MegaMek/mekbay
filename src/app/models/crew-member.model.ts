@@ -32,7 +32,6 @@
  */
 import { getEffectivePilotingSkill } from "../utils/cbt-common.util";
 import { CBTForceUnit } from "./cbt-force-unit.model";
-import { ForceUnit } from "./force-unit.model";
 
 export const DEFAULT_GUNNERY_SKILL = 4;
 export const DEFAULT_PILOTING_SKILL = 5;
