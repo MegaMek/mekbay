@@ -754,7 +754,7 @@ export class CBTForceUnit extends ForceUnit {
     public override serialize(): CBTSerializedUnit {
         const stateObj: CBTSerializedState = {
             crew: this.state.crew().map(crew => crew.serialize()),
-            crits: this.state.crits().map(({ el, eq, ...rest }) => rest), // We remove UID, SVGElement and eq as they are linked at load time
+            crits: this.state.critsForSerialization(),
             heat: this.state.heat(),
             locations: this.state.locations(),
             modified: this.state.modified(),

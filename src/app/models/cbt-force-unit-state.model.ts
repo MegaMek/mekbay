@@ -182,20 +182,20 @@ export class CBTForceUnitState extends ForceUnitState {
             }
         }
 
-        // In-place update for critical slots to preserve references
+        // In-place update for critical slots to preserve references.
+        // Incoming crits are sparse: only slots with state (hits, consumed, destroying, destroyed, name override).
+        // Slots not in the incoming data are reset to pristine.
         if (data.crits) {
             const currentCrits = this.crits();
-            const critMap = new Map(currentCrits.map(c => [`${c.loc}-${c.slot}`, c]));
-            const incomingCritKeys = new Set(data.crits.map(c => `${c.loc}-${c.slot}`));
+            const incomingCritMap = new Map(data.crits.map(c => [`${c.loc}-${c.slot}`, c]));
+            let critsChanged = false;
 
-            // Filter out crits that are no longer present (unlikely)
-            let updatedCrits = currentCrits.filter(c => incomingCritKeys.has(`${c.loc}-${c.slot}`));
-            let critsChanged = updatedCrits.length !== currentCrits.length;
+            for (const existingCrit of currentCrits) {
+                const key = `${existingCrit.loc}-${existingCrit.slot}`;
+                const incomingCrit = incomingCritMap.get(key);
 
-            data.crits.forEach(incomingCrit => {
-                const key = `${incomingCrit.loc}-${incomingCrit.slot}`;
-                const existingCrit = critMap.get(key);
-                if (existingCrit) {
+                if (incomingCrit) {
+                    // Update from incoming state
                     if (existingCrit.hits !== incomingCrit.hits ||
                         existingCrit.destroyed !== incomingCrit.destroyed ||
                         existingCrit.consumed !== incomingCrit.consumed) {
@@ -207,18 +207,26 @@ export class CBTForceUnitState extends ForceUnitState {
                         existingCrit.consumed = incomingCrit.consumed;
                         critsChanged = true;
                     }
-                    // Note: We don't update el, eq, name, loc, slot as they are initialized once!!!
                 } else {
-                    // This case should not happen if initialization is correct
-                    console.warn(`Incoming critical slot ${incomingCrit.id} not found in current slots`);
-                    updatedCrits.push(incomingCrit);
-                    critsChanged = true;
+                    // Not in incoming data: reset to pristine if it had any state
+                    if ((existingCrit.hits ?? 0) > 0 || existingCrit.destroying !== undefined ||
+                        existingCrit.destroyed !== undefined || (existingCrit.consumed ?? 0) > 0 ||
+                        existingCrit.originalName !== undefined) {
+                        existingCrit.hits = 0;
+                        existingCrit.destroying = undefined;
+                        existingCrit.destroyed = undefined;
+                        existingCrit.consumed = undefined;
+                        if (existingCrit.originalName) {
+                            existingCrit.name = existingCrit.originalName;
+                            existingCrit.originalName = undefined;
+                        }
+                        critsChanged = true;
+                    }
                 }
-            });
+            }
 
             if (critsChanged) {
-                // Create a new array to trigger signal change detection
-                this.crits.set([...updatedCrits]);
+                this.crits.set([...currentCrits]);
             }
         }
 
@@ -245,6 +253,23 @@ export class CBTForceUnitState extends ForceUnitState {
             return CrewMember.deserialize(crewData, this.unit);
         });
         this.crew.set(updatedCrew);
+    }
+
+    /**
+     * Returns only crits with meaningful state for serialization.
+     * Pristine crits (no hits, no consumption, no name override, not destroying/destroyed)
+     * are omitted as they can be reconstructed from the SVG during initialization.
+     */
+    critsForSerialization(): Omit<CriticalSlot, 'el' | 'eq'>[] {
+        return this.crits()
+            .filter(crit =>
+                (crit.hits ?? 0) > 0 ||
+                (crit.consumed ?? 0) > 0 ||
+                (crit.originalName !== undefined && crit.originalName !== crit.name) ||
+                crit.destroying !== undefined ||
+                crit.destroyed !== undefined
+            )
+            .map(({ el, eq, ...rest }) => rest);
     }
 
     inventoryForSerialization(): SerializedInventory[] {
