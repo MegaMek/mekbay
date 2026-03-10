@@ -57,6 +57,7 @@ export type OrgType =
     | 'Wing'
     | 'Single'
     | 'Lance'
+    | 'Air Lance'
     | 'Company'
     | 'Battalion'
     | 'Regiment'
@@ -398,6 +399,15 @@ const IS_LANCE: OrgTypeRule = {
     commandRank: 'Lieutenant',
     filter: (comp) => !isPureAero(comp) && !isPureInfantry(comp),
 };
+const IS_AIR_LANCE: OrgTypeRule = {
+    type: 'Air Lance', strict: true, composedOfAny: ['Flight', 'Lance'], tier: 1.1,
+    modifiers: { '': 2 },
+    commandRank: 'Lieutenant',
+    filter: (comp) => comp.CI === 0 && comp.BA === 0,
+    groupFilter: (groups) =>
+        groups.some(g => g.type === 'Flight') &&
+        groups.some(g => g.type === 'Lance' || g.countsAsType === 'Lance'),
+};
 const IS_PLATOON: OrgTypeRule = {
     type: 'Platoon', countsAs: 'Lance', priority: 1, modifiers: { '': 1 }, commandRank: 'Lieutenant', tier: 1,
     filter: (comp) => isPureInfantry(comp),
@@ -503,7 +513,7 @@ const ISOrg: OrgDefinition = {
     rules: [
         IS_FLIGHT, IS_SQUADRON, IS_WING,
         IS_SQUAD, IS_PLATOON,
-        IS_SINGLE, IS_LANCE, IS_COMPANY, IS_BATTALION, IS_REGIMENT, IS_BRIGADE,
+        IS_SINGLE, IS_LANCE, IS_AIR_LANCE, IS_COMPANY, IS_BATTALION, IS_REGIMENT, IS_BRIGADE,
     ],
 };
 
