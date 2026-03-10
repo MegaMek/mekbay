@@ -73,11 +73,19 @@ export interface EditPilotResult {
             <div class="form-row no-stack">
                 <div class="form-fields">
                     <label class="field-label">{{ data.labelGunnery || 'Gunnery Skill' }}</label>
-                    <input #gunneryInput type="number" class="field-input" autocomplete="off" [value]="data.gunnery" [placeholder]="data.gunnery" min="0" max="8" (keydown.enter)="submit()" />
+                    <select #gunneryInput class="field-input">
+                        @for (v of skillValues; track v) {
+                            <option [value]="v" [selected]="v === data.gunnery">{{ v }}</option>
+                        }
+                    </select>
                 </div>
                 <div class="form-fields" [class.disabled]="!!data.disablePiloting">
                     <label class="field-label">{{ data.labelPiloting || 'Piloting Skill' }}</label>
-                    <input #pilotingInput type="number" class="field-input" autocomplete="off" [value]="data.piloting" [placeholder]="data.piloting" min="0" max="8" (keydown.enter)="submit()" [disabled]="!!data.disablePiloting" />
+                    <select #pilotingInput class="field-input" [disabled]="!!data.disablePiloting">
+                        @for (v of skillValues; track v) {
+                            <option [value]="v" [selected]="v === data.piloting">{{ v }}</option>
+                        }
+                    </select>
                 </div>
             </div>
         </div>
@@ -90,8 +98,10 @@ export interface EditPilotResult {
 })
 export class EditPilotDialogComponent {
     nameInput = viewChild.required<ElementRef<HTMLInputElement>>('nameInput');
-    gunneryInput = viewChild.required<ElementRef<HTMLInputElement>>('gunneryInput');
-    pilotingInput = viewChild.required<ElementRef<HTMLInputElement>>('pilotingInput');
+    gunneryInput = viewChild.required<ElementRef<HTMLSelectElement>>('gunneryInput');
+    pilotingInput = viewChild.required<ElementRef<HTMLSelectElement>>('pilotingInput');
+
+    readonly skillValues = [0, 1, 2, 3, 4, 5, 6, 7, 8];
 
     public dialogRef = inject(DialogRef<EditPilotResult | null, EditPilotDialogComponent>);
     readonly data: EditPilotDialogData = inject(DIALOG_DATA) as EditPilotDialogData;
@@ -100,12 +110,10 @@ export class EditPilotDialogComponent {
 
     submit() {
         const name = this.nameInput().nativeElement.value.trim();
-        const gunneryValue = this.gunneryInput().nativeElement.value;
-        const gunnery = Number(gunneryValue === "" ? this.data.gunnery : gunneryValue);
+        const gunnery = Number(this.gunneryInput().nativeElement.value);
         let piloting = this.data.piloting;
         if (!this.data.disablePiloting) {
-            const pv = this.pilotingInput().nativeElement.value;
-            piloting = Number(pv === '' ? this.data.piloting : pv);
+            piloting = Number(this.pilotingInput().nativeElement.value);
         }
         this.dialogRef.close({ name, gunnery, piloting });
     }

@@ -11,9 +11,11 @@
             <div class="form-fields skill-field">
                 <label class="field-label">Skill</label>
                 <div class="input-wrapper">
-                    <input #skillInput type="number" class="field-input" [value]="data.skill" [placeholder]="data.skill"
-                        autocomplete="off"
-                        min="0" max="8" (keydown.enter)="submit()" (input)="onSkillChange($event)" />
+                    <select #skillInput class="field-input" (change)="onSkillChange($event)">
+                        @for (v of skillValues; track v) {
+                            <option [value]="v" [selected]="v === data.skill">{{ v }}</option>
+                        }
+                    </select>
                 </div>
             </div>
         </div>
