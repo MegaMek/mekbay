@@ -31,8 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { GameSystem } from '../../models/common.model';
+import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 
 /*
  * Author: Drake
@@ -58,12 +57,10 @@ export interface SkillPreviewEntry {
                      [class.active]="entry.skill === selectedSkill()"
                      (click)="onSelect(entry.skill)">
                     <span class="skill-value">{{ entry.skill }}</span>
-                    <span class="skill-detail">
-                        <span class="adjusted-value">{{ valueLabel() }}: {{ entry.adjustedValue }}</span>
+                    <span class="adjusted-value">{{ valueLabel() }}: {{ entry.adjustedValue }}</span>
+                    <span class="delta" [class.positive]="entry.delta > 0" [class.negative]="entry.delta < 0">
                         @if (entry.delta !== 0) {
-                            <span class="delta" [class.positive]="entry.delta > 0" [class.negative]="entry.delta < 0">
-                                {{ entry.delta > 0 ? '+' : '' }}{{ entry.delta }}
-                            </span>
+                            {{ entry.delta > 0 ? '+' : '' }}{{ entry.delta }}
                         }
                     </span>
                 </div>
@@ -79,6 +76,7 @@ export interface SkillPreviewEntry {
         .dropdown-panel {
             box-sizing: border-box;
             overflow-y: auto;
+            container-type: inline-size;
         }
 
         .panel-title {
@@ -91,12 +89,38 @@ export interface SkillPreviewEntry {
         }
 
         .skill-option {
-            padding: 8px 12px;
+            padding: 8px 6px;
             cursor: pointer;
-            display: flex;
+            display: grid;
+            grid-template-columns: 1.5em auto 3em;
             align-items: center;
-            gap: 12px;
+            gap: 4px;
             border-left: 3px solid transparent;
+            white-space: nowrap;
+        }
+
+        .skill-value {
+            font-weight: 700;
+            font-size: 1.1em;
+            text-align: left;
+            color: var(--text-color);
+        }
+
+        @container (min-width: 200px) {
+            .skill-option {
+                padding: 8px 16px;
+                grid-template-columns: 2em auto 3.5em;
+                gap: 8px;
+            }
+        }
+
+        @container (min-width: 300px) {
+            .skill-option {
+                justify-content: space-between;
+            }
+            .skill-value {
+                text-align: center;
+            }
         }
 
         .skill-option:hover {
@@ -112,26 +136,15 @@ export interface SkillPreviewEntry {
             background: var(--bt-yellow-background-bright-transparent);
         }
 
-        .skill-value {
-            font-weight: 700;
-            font-size: 1.1em;
-            min-width: 20px;
-            text-align: center;
-            color: var(--text-color);
-        }
-
-        .skill-detail {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 0.9em;
-        }
-
         .adjusted-value {
+            text-align: right;
+            font-size: 0.9em;
             color: var(--text-color-secondary);
         }
 
         .delta {
+            min-width: 36px;
+            text-align: right;
             font-weight: 600;
             font-size: 0.85em;
         }
