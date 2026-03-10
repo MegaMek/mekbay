@@ -76,6 +76,8 @@ export type OrgType =
     // ComStar/WoB-specific types
     | 'Level I'
     | 'Level II'
+    | 'Choir'
+//  | 'Demi-Level III'
     | 'Level III'
     | 'Level IV'
     | 'Level V'
@@ -101,11 +103,16 @@ export type OrgType =
 
 export interface ForceComposition {
     BM: number;
+    BM_Omni: number;
     BA: number;
+    BA_MEC: number;
+    BA_XMEC: number;
     CI: number;
     PM: number;
     CV: number;
+    CV_Omni: number;
     AF: number;
+    AF_Omni: number;
     other: number;
     BA_troopers: number;
     CI_troopers: number;
@@ -120,11 +127,16 @@ export interface ForceComposition {
 export function getForceCompositionFromUnits(units: Unit[]): ForceComposition {
     const comp: ForceComposition = {
         BM: 0,
+        BM_Omni: 0,
         BA: 0,
+        BA_MEC: 0,
+        BA_XMEC: 0,
         CI: 0,
         PM: 0,
         CV: 0,
+        CV_Omni: 0,
         AF: 0,
+        AF_Omni: 0,
         other: 0,
         BA_troopers: 0,
         CI_troopers: 0,
@@ -137,10 +149,15 @@ export function getForceCompositionFromUnits(units: Unit[]): ForceComposition {
     };
 
     for (const u of units) {
-        if (u.type === 'Mek') comp.BM++;
+        if (u.type === 'Mek') {
+            comp.BM++;
+            if (u.omni === 1) comp.BM_Omni++;
+        }
         else if (u.type === 'Infantry') {
             if (u.subtype === 'Battle Armor') {
                 comp.BA++;
+                if (u.as.specials.includes('MEC')) comp.BA_MEC++;
+                if (u.as.specials.includes('XMEC')) comp.BA_XMEC++;
                 comp.BA_troopers += (u.internal || 0);
             } else {
                 comp.CI++;
@@ -158,8 +175,14 @@ export function getForceCompositionFromUnits(units: Unit[]): ForceComposition {
             }
         }
         else if (u.type === 'ProtoMek') comp.PM++;
-        else if (u.type === 'Tank' || u.type === 'VTOL' || u.type === 'Naval') comp.CV++;
-        else if (u.type === 'Aero') comp.AF++;
+        else if (u.type === 'Tank' || u.type === 'VTOL' || u.type === 'Naval') {
+            comp.CV++;
+            if (u.omni === 1) comp.CV_Omni++;
+        }
+        else if (u.type === 'Aero') {
+            comp.AF++;
+            if (u.omni === 1) comp.AF_Omni++;
+        }
         else comp.other++;
     }
     return comp;
@@ -288,8 +311,9 @@ const CLAN_STAR: OrgTypeRule = {
 };
 const CLAN_NOVA: OrgTypeRule = {
     type: 'Nova', strict: true, priority: 1, countsAs: 'Star', modifiers: { '': 10 }, commandRank: 'Nova Commander', tier: 1.5,
-    filter: (comp) => comp.BA > 0 && comp.PM === 0 && comp.CI === 0 && comp.other === 0
-        && (comp.BM > 0 || comp.CV > 0 || comp.AF > 0),
+    filter: (comp) => comp.PM === 0 && comp.CI === 0 && comp.other === 0 &&
+            (comp.BA_MEC > 0 && (comp.BM_Omni > 0 || comp.CV_Omni > 0 || comp.AF_Omni > 0) ||
+            (comp.BA_XMEC > 0 && (comp.BM > 0 || comp.CV > 0 || comp.AF > 0))),
     customMatch: (comp) => {
         const configs = [
             { bm: 5, cv: 0, af: 0, ba: 5 }, // Standard Nova: 5 BM + 5 BA
@@ -486,17 +510,12 @@ const ComStarOrg: OrgDefinition = {
     groupDistanceFactor: 0.25,
     groupMinDistance: 1,
     getPointRange(comp: ForceComposition): PointRange {
-        const fixed = comp.BM + comp.PM + comp.CV + comp.AF + comp.other;
+        const fixed = comp.BM + comp.PM + comp.CV + comp.AF + comp.BA + comp.other;
         let minPts = fixed;
         let maxPts = fixed;
         if (comp.CI_troopers > 0) {
             minPts += (comp.CI_troopers) / 36;
             maxPts += (comp.CI_troopers) / 30;
-        }
-        if (comp.BA_troopers > 0) {
-            const ba = comp.BA_troopers / 6;
-            minPts += ba;
-            maxPts += ba;
         }
         return { min: minPts, max: maxPts };
     },
@@ -507,6 +526,24 @@ const ComStarOrg: OrgDefinition = {
                 'Thin ': 2, 'Half ': 3, 'Short ': 4, 'Under-Strength ': 5, '': 6, 'Reinforced ': 7, 'Fortified ': 8, 'Heavy ': 9,
             }, commandRank: 'Adept', tier: 1,
         },
+        {
+            type: 'Choir', strict: true, priority: 1, countsAs: 'Level II', modifiers: { '': 12 }, commandRank: 'Adept', tier: 1.6,
+            filter: (comp) => comp.AF === 0 &&comp.CV === 0 && comp.PM === 0 && comp.CI === 0 && comp.other === 0 &&
+                    ((comp.BA_MEC > 0 && comp.BM_Omni > 0) || (comp.BA_XMEC > 0 && comp.BM > 0 )),
+            customMatch: (comp) => {
+                const configs = [
+                    { bm: 6, ba: 6 }, // Standard Choir: 6 BM + 6 BA
+                ];
+                return Math.min(...configs.map(cfg =>
+                    Math.abs(comp.BM - cfg.bm) + Math.abs(comp.BA - cfg.ba)
+                ));
+            },
+        },
+ /*       {
+            type: 'Demi-Level III', composedOfAny: ['Level II'], modifiers: {
+                'Under-Strength ': 2, '': 3, 'Reinforced ': 4,
+            }, commandRank: 'Adept (Demi-Precentor)', tier: 2,
+        },*/
         {
             type: 'Level III', composedOfAny: ['Level II'], modifiers: {
                 'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
@@ -523,9 +560,8 @@ const ComStarOrg: OrgDefinition = {
             }, commandRank: 'Precentor', tier: 4,
         },
         {
-            type: 'Level VI', composedOfAny: ['Level V'], modifiers: {
-                'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
-            }, commandRank: 'Precentor Martial', tier: 5,
+            type: 'Level VI', composedOfAny: ['Level V'], modifiers: { '': 2, },
+            commandRank: 'Precentor Martial', tier: 5,
         },
     ],
 };
@@ -588,9 +624,7 @@ const MHOrg: OrgDefinition = {
     rules: [
         { type: 'Contubernium', modifiers: { '': 1 }, commandRank: 'Miles probatus', tier: 0 },
         {
-            type: 'Century', composedOfAny: ['Contubernium'], modifiers: {
-                'Half ': 2, 'Short ': 3, 'Under-Strength ': 4, '': 5, 'Reinforced ': 6, 'Fortified ': 7,
-            }, commandRank: 'Centurion', tier: 1,
+            type: 'Century', composedOfAny: ['Contubernium'], modifiers: { '': 5 }, commandRank: 'Centurion', tier: 1,
             filter: (comp) => !isPureCI(comp),
         },
         // Century (Infantry) = 4-10 CI infantry Points
@@ -600,20 +634,9 @@ const MHOrg: OrgDefinition = {
             }, commandRank: 'Centurion', tier: 1,
             filter: (comp) => isPureCI(comp),
         },
-        {
-            type: 'Maniple', strict: true, composedOfAny: ['Century'],
-            modifiers: { '': 2 }, commandRank: 'Principes', tier: 2,
-        },
-        {
-            type: 'Cohort', composedOfAny: ['Maniple'], modifiers: {
-                'Under-Strength ': 2, '': 3, 'Reinforced ': 4, 'Strong ': 5,
-            }, commandRank: 'Legatus', tier: 3,
-        },
-        {
-            type: 'Legion', composedOfAny: ['Cohort'], modifiers: {
-                'Under-Strength ': 2, '': 3, 'Reinforced ': 4, 'Strong ': 5,
-            }, commandRank: 'General', tier: 4,
-        },
+        { type: 'Maniple', composedOfAny: ['Century'], modifiers: { '': 2 }, commandRank: 'Principes', tier: 2 },
+        { type: 'Cohort', composedOfAny: ['Maniple'], modifiers: { '': 3 }, commandRank: 'Legatus', tier: 3 },
+        { type: 'Legion', composedOfAny: ['Cohort'], modifiers: { '': 4 }, commandRank: 'General', tier: 4 },
     ],
 };
 
@@ -703,8 +726,11 @@ const CCOrg: OrgDefinition = {
         {
             type: 'Augmented Lance', strict: true, priority: 1, countsAs: 'Lance',
             modifiers: { '': 6 }, commandRank: 'Lieutenant', tier: 1,
-            filter: (comp) => comp.AF === 0 && comp.CI === 0 && comp.PM === 0 && comp.other === 0
-                && ((comp.BM > 0 && (comp.CV > 0 || comp.BA > 0)) || (comp.CV > 0 && comp.BA > 0)),
+            filter: (comp) => comp.AF === 0 && comp.CI === 0 && comp.PM === 0 && comp.other === 0 && (
+                    (comp.BA_MEC > 0 && (comp.BM_Omni > 0 || comp.CV_Omni > 0)) ||
+                    (comp.BA_XMEC > 0 && (comp.CV > 0 || comp.BM > 0)) ||
+                    (comp.BM > 0 && comp.CV > 0)
+            ),
             customMatch: (comp) => {
                 const configs = [
                     { bm: 4, cv: 2, ba: 0 },
@@ -718,15 +744,9 @@ const CCOrg: OrgDefinition = {
             },
         },
         // CC Augmented Company (Reinforced Augmented Company is not canonically listed, but seems reasonable to allow in the app)
-        {
-            type: 'Augmented Company', composedOfAny: ['Augmented Lance'],
-            modifiers: { '': 2, 'Reinforced ': 3 }, commandRank: 'Captain', tier: 2,
-        },
+        { type: 'Augmented Company', composedOfAny: ['Augmented Lance'],modifiers: { '': 2 }, commandRank: 'Captain', tier: 2 },
         // CC Augmented Battalion (Short, Under-Strength, and Strong variants are not canonically listed, but seem reasonable to allow in the app)
-        {
-            type: 'Augmented Battalion', composedOfAny: ['Augmented Company'],
-            modifiers: { 'Short ': 2, 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'Major', tier: 3,
-        },
+        { type: 'Augmented Battalion', composedOfAny: ['Augmented Company'], modifiers: { '': 4 }, commandRank: 'Major', tier: 3 },
         // CC Augmented Regiment
         {
             type: 'Augmented Regiment', composedOfAny: ['Augmented Battalion', 'Battalion', 'Wing'],
