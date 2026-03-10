@@ -4,6 +4,10 @@
 
 .skill-field {
     flex: 1 1 0 !important;
+
+    select.field-input {
+        text-align: center;
+    }
 }
 
 .abilities-section > p {

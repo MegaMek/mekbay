@@ -73,7 +73,7 @@ export interface EditPilotResult {
             <div class="form-row no-stack">
                 <div class="form-fields">
                     <label class="field-label">{{ data.labelGunnery || 'Gunnery Skill' }}</label>
-                    <select #gunneryInput class="field-input">
+                    <select #gunneryInput class="field-input centered">
                         @for (v of skillValues; track v) {
                             <option [value]="v" [selected]="v === data.gunnery">{{ v }}</option>
                         }
@@ -81,7 +81,7 @@ export interface EditPilotResult {
                 </div>
                 <div class="form-fields" [class.disabled]="!!data.disablePiloting">
                     <label class="field-label">{{ data.labelPiloting || 'Piloting Skill' }}</label>
-                    <select #pilotingInput class="field-input" [disabled]="!!data.disablePiloting">
+                    <select #pilotingInput class="field-input centered" [disabled]="!!data.disablePiloting">
                         @for (v of skillValues; track v) {
                             <option [value]="v" [selected]="v === data.piloting">{{ v }}</option>
                         }
@@ -94,6 +94,9 @@ export interface EditPilotResult {
             <button (click)="close()" class="bt-button">DISMISS</button>
         </div>
     </div>
+    `,
+    styles: `
+        .centered { text-align: center; }
     `,
 })
 export class EditPilotDialogComponent {
