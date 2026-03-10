@@ -76,6 +76,8 @@ export type OrgType =
     // ComStar/WoB-specific types
     | 'Level I'
     | 'Level II'
+    | 'Choir'
+    | 'Demi-Level III'
     | 'Level III'
     | 'Level IV'
     | 'Level V'
@@ -149,7 +151,7 @@ export function getForceCompositionFromUnits(units: Unit[]): ForceComposition {
     for (const u of units) {
         if (u.type === 'Mek') {
             comp.BM++;
-            if (u.as.specials.includes('OMNI')) comp.BM_Omni++;
+            if (u.omni === 1) comp.BM_Omni++;
         }
         else if (u.type === 'Infantry') {
             if (u.subtype === 'Battle Armor') {
@@ -175,11 +177,11 @@ export function getForceCompositionFromUnits(units: Unit[]): ForceComposition {
         else if (u.type === 'ProtoMek') comp.PM++;
         else if (u.type === 'Tank' || u.type === 'VTOL' || u.type === 'Naval') {
             comp.CV++;
-            if (u.as.specials.includes('OMNI')) comp.CV_Omni++;
+            if (u.omni === 1) comp.CV_Omni++;
         }
         else if (u.type === 'Aero') {
             comp.AF++;
-            if (u.as.specials.includes('OMNI')) comp.AF_Omni++;
+            if (u.omni === 1) comp.AF_Omni++;
         }
         else comp.other++;
     }
@@ -514,17 +516,12 @@ const ComStarOrg: OrgDefinition = {
     groupDistanceFactor: 0.25,
     groupMinDistance: 1,
     getPointRange(comp: ForceComposition): PointRange {
-        const fixed = comp.BM + comp.PM + comp.CV + comp.AF + comp.other;
+        const fixed = comp.BM + comp.PM + comp.CV + comp.AF + comp.BA + comp.other;
         let minPts = fixed;
         let maxPts = fixed;
         if (comp.CI_troopers > 0) {
             minPts += (comp.CI_troopers) / 36;
             maxPts += (comp.CI_troopers) / 30;
-        }
-        if (comp.BA_troopers > 0) {
-            const ba = comp.BA_troopers / 6;
-            minPts += ba;
-            maxPts += ba;
         }
         return { min: minPts, max: maxPts };
     },
@@ -536,24 +533,41 @@ const ComStarOrg: OrgDefinition = {
             }, commandRank: 'Adept', tier: 1,
         },
         {
+            type: 'Choir', strict: true, priority: 1, countsAs: 'Level II', modifiers: { '': 12 }, commandRank: 'Adept', tier: 1.5,
+            filter: (comp) => comp.AF === 0 &&comp.CV === 0 && comp.PM === 0 && comp.CI === 0 && comp.other === 0 &&
+                    ((comp.BA_MEC > 0 && comp.BM_Omni > 0) || (comp.BA_XMEC > 0 && comp.BM > 0 )),
+            customMatch: (comp) => {
+                const configs = [
+                    { bm: 6, ba: 6 }, // Standard Choir: 6 BM + 6 BA
+                ];
+                return Math.min(...configs.map(cfg =>
+                    Math.abs(comp.BM - cfg.bm) + Math.abs(comp.BA - cfg.ba)
+                ));
+            },
+        },
+        {
+            type: 'Demi-Level III', composedOfAny: ['Level II'], modifiers: {
+                'Under-Strength ': 2, '': 3, 'Reinforced ': 4,
+            }, commandRank: 'Adept (Demi-Precentor)', tier: 2,
+        },
+        {
             type: 'Level III', composedOfAny: ['Level II'], modifiers: {
                 'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
-            }, commandRank: 'Adept (Demi-Precentor)', tier: 2,
+            }, commandRank: 'Adept (Demi-Precentor)', tier: 3,
         },
         {
             type: 'Level IV', composedOfAny: ['Level III'], modifiers: {
                 'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
-            }, commandRank: 'Precentor', tier: 3,
+            }, commandRank: 'Precentor', tier: 4,
         },
         {
             type: 'Level V', composedOfAny: ['Level IV'], modifiers: {
                 'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
-            }, commandRank: 'Precentor', tier: 4,
+            }, commandRank: 'Precentor', tier: 5,
         },
         {
-            type: 'Level VI', composedOfAny: ['Level V'], modifiers: {
-                'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
-            }, commandRank: 'Precentor Martial', tier: 5,
+            type: 'Level VI', composedOfAny: ['Level V'], modifiers: { '': 2, },
+            commandRank: 'Precentor Martial', tier: 6,
         },
     ],
 };
