@@ -1483,7 +1483,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'phalanx-star',
         name: 'Phalanx',
-        description: 'Combined arms defensive formations.',
+        description: 'Second-Line combined arms defensive formation.',
         effectDescription: 'The formation receives a Float Like a Butterfly SPA. Useable by any unit in the formation. (max 6 rerolls per scenario).',
         effectGroups: [{
             abilityIds: ['float_like_a_butterfly'],
@@ -1492,15 +1492,14 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 3,
         rulesRef: [{ book: Rulebook.BOT, page: 27 }],
-        requirements: () => 'Clans only. Minimum 2 combat vehicles or BattleMeks. Remainder must be Elementals, combat vehicles, or BattleMeks. Must be at least two different unit types.',
+        requirements: () => 'Clan only. Minimum 2 combat vehicles or BattleMeks. Remainder must be Elementals, combat vehicles, or BattleMeks. Must be at least two different unit types.',
         validator: (units) => {
-            if (units.length < 3) return false;
             const allowedTypes: ASUnitTypeCode[] = ['BM', 'CV', 'BA'];
             if (!units.every(u => allowedTypes.includes(u.getUnit().as?.TP as ASUnitTypeCode))) return false;
-            const BM = units.filter(u => u.getUnit().as?.TP === 'BM');
-            const BA = units.filter(u => u.getUnit().as?.TP === 'BA');
-            const CV = units.filter(u => u.getUnit().as?.TP === 'CV');
-            return (BM.length >= 2 && BA.length >= 2) || (BM.length >= 2 && CV.length >= 2) || (BA.length >= 2 && CV.length >= 2); 
+            const BM = units.filter(u => u.getUnit().as?.TP === 'BM').length;
+            const BA = units.filter(u => u.getUnit().as?.TP === 'BA').length;
+            const CV = units.filter(u => u.getUnit().as?.TP === 'CV').length;
+            return (BM >= 2 && (BA > 0 || CV > 0)) || (CV >= 2 && (BM > 0 || BA > 0)); 
         },
     },
 
