@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -32,306 +32,320 @@
  */
 
 import type { Unit } from '../models/units.model';
+import type {
+    OrgTypeRule,
+    OrgTypeModifier,
+    OrgDefinition,
+    PointRange,
+    GroupSizeResult,
+} from './org-types';
 import {
-    type ForceComposition,
-    type OrgType,
-    type OrgTypeRule,
-    getForceCompositionFromUnits,
-    type OrgDefinition,
     ORG_REGISTRY,
     DEFAULT_ORG,
-    type PointRange,
-    type GroupSizeResult,
-    getRegularCount,
-    getModifierPrefix,
 } from './org-definitions.util';
 
-/*
+/**
  * Author: Drake
- *
- * Org solver: force type identification shared between force size naming
- * and group size naming.
- *
- * Solver uses a bottom-up recursive approach:
- * 1. Compute points from ForceComposition via getPointRange
- * 2. Match leaf rules (Point, Single, Flight, etc.) or customMatch rules (Nova, etc.)
- * 3. Divide points by the leaf's regular count to get N virtual sub-groups
- * 4. Feed those groups into evaluateForceByGroups to find the next level up
- * 5. Repeat until no higher level matches
- * 6. Only the final (top) level applies non-regular modifiers (Reinforced, etc.)
- *
- * Org definitions (OrgType, OrgTypeRule, org classes) live in
- * org-definitions.util.ts.
+ * 
+ * Core logic for determining organizational structure from a set of units.
  */
 
-export type { OrgType, GroupSizeResult } from './org-definitions.util';
+// ─── Unit helpers ──────────────────────────────────────────────────────────────
 
-/** Internal result of a force evaluation, carrying the distance for comparison. */
-interface EvaluationResult {
-    name: string;
-    dist: number;
-    matchedRule: OrgTypeRule | null;
-    /** Number of sub-groups at the matched level (used to prefer bigger formations on tie). */
-    subGroupCount?: number;
+function isAero(u: Unit): boolean { return u.type === 'Aero'; }
+function isInfantry(u: Unit): boolean { return u.type === 'Infantry'; }
+
+function unitPointTotal(units: Unit[], getPointRange: (u: Unit[]) => PointRange): number {
+    const range = getPointRange(units);
+    return (range.min + range.max) / 2;
 }
-
-/** Returns true if candidate is a better match than current (lower dist, or same dist with higher tier/regularCount). */
-function isBetterMatch(candidate: EvaluationResult, current: EvaluationResult): boolean {
-    if (!candidate.matchedRule) return false;
-    if (candidate.dist < current.dist) return true;
-    if (candidate.dist > current.dist) return false;
-    // Same distance: higher priority wins
-    const candPriority = candidate.matchedRule.priority ?? 0;
-    const currPriority = current.matchedRule?.priority ?? 0;
-    if (candPriority !== currPriority) return candPriority > currPriority;
-    // Same priority: higher tier wins (prefer the highest organizational level)
-    const candTier = candidate.matchedRule.tier;
-    const currTier = current.matchedRule?.tier ?? 0;
-    if (candTier !== currTier) return candTier > currTier;
-    // Same tier: higher regularCount wins
-    const candRegCount = getRegularCount(candidate.matchedRule);
-    const currRegCount = current.matchedRule ? getRegularCount(current.matchedRule) : 0;
-    if (candRegCount !== currRegCount) return candRegCount > currRegCount;
-    // Same regularCount: prefer more sub-groups (bigger formation better represents force size)
-    return (candidate.subGroupCount ?? 0) > (current.subGroupCount ?? 0);
-}
-
-// ─── Leaf evaluation ───────────────────────────────────────────────────────────
 
 /**
- * Find the best-matching leaf rule for a composition.
- * Leaf rules have no composedOfAny: they match raw points directly.
- * Also matches customMatch rules (Nova, Squad, Platoon, etc.).
- *
- * Returns the matched rule + the pts value from getPointRange.
+ * Collect all leaf-level units from a GroupSizeResult tree.
  */
-function evaluateLeaf(
-    comp: ForceComposition,
-    rules: OrgTypeRule[],
-    getPointRange: (comp: ForceComposition) => PointRange,
-    minDistance = 2,
-    distanceFactor = 0.2,
-): EvaluationResult {
-    const range = getPointRange(comp);
-    const midPts = (range.min + range.max) / 2;
+function collectAllUnits(groups: ReadonlyArray<GroupSizeResult>): Unit[] {
+    const result: Unit[] = [];
+    for (const g of groups) {
+        if (g.units) result.push(...g.units);
+        if (g.children) result.push(...collectAllUnits(g.children));
+    }
+    return result;
+}
 
-    if (range.max === 0) return { name: 'Force', dist: Infinity, matchedRule: null };
+// ─── Combinator (bucket enumeration for customMatch) ───────────────────────────
 
-    let bestDist = Infinity;
-    let bestModName = '';
-    let bestRule: OrgTypeRule | null = null;
+/** A bucket is a group of units sharing the same bucket key. */
+interface UnitBucket {
+    key: string;
+    units: Unit[];
+}
 
-    for (const rule of rules) {
-        if (rule.filter && !rule.filter(comp)) continue;
+/** A shape defines how many units from each bucket are needed for one valid instance. */
+type Shape = number[]; // shape[i] = count from buckets[i]
 
-        let dist = -1;
-        if (rule.customMatch) {
-            const customDist = rule.customMatch(comp);
-            if (customDist === Infinity) continue;
-            if (customDist >= 0) {
-                if (rule.strict && customDist !== 0) continue;
-                const strictUpgradeCM = customDist === bestDist && rule.strict && !bestRule?.strict;
-                const strictDowngradeCM = customDist === bestDist && !rule.strict && bestRule?.strict;
-                const candidateCM: EvaluationResult = { name: '', dist: customDist, matchedRule: rule };
-                const currentCM: EvaluationResult = { name: '', dist: bestDist, matchedRule: bestRule };
-                if (strictUpgradeCM || (!strictDowngradeCM && isBetterMatch(candidateCM, currentCM))) {
-                    bestDist = customDist;
-                    bestRule = rule;
-                    bestModName = customDist === 0
-                        ? ''
-                        : getModifierPrefix(rule, midPts);
+/**
+ * Find valid shapes (unit-count combinations) for a customMatch rule.
+ *
+ * Groups eligible units into buckets, then enumerates all feasible
+ * combinations of counts from each bucket. A shape is "valid" when
+ * customMatch returns 0 for a representative subset of those counts.
+ */
+function findValidShapes(
+    eligible: Unit[],
+    rule: OrgTypeRule,
+): { buckets: UnitBucket[]; shapes: Shape[] } {
+    // Group eligible units by bucket key
+    const bucketMap = new Map<string, Unit[]>();
+    for (const u of eligible) {
+        const k = u.name;
+        if (!bucketMap.has(k)) bucketMap.set(k, []);
+        bucketMap.get(k)!.push(u);
+    }
+    const buckets: UnitBucket[] = Array.from(bucketMap.entries()).map(([key, units]) => ({ key, units }));
+
+    if (buckets.length === 0) return { buckets, shapes: [] };
+
+    const shapes: Shape[] = [];
+    const totalUnits = eligible.length;
+
+    // Enumerate all combinations of counts (0..bucketSize) for each bucket
+    const maxPerBucket = buckets.map(b => b.units.length);
+
+    // Safety: cap total combinations at ~50k to prevent runaway enumeration
+    let totalCombos = 1;
+    for (const m of maxPerBucket) {
+        totalCombos *= (m + 1);
+        if (totalCombos > 50_000) return { buckets, shapes: [] };
+    }
+
+    const current: number[] = new Array(buckets.length).fill(0);
+
+    function enumerate(idx: number, used: number): void {
+        if (idx === buckets.length) {
+            if (used === 0) return;
+            // Build a test subset using first N units from each bucket
+            const testUnits: Unit[] = [];
+            for (let i = 0; i < buckets.length; i++) {
+                for (let j = 0; j < current[i]; j++) {
+                    testUnits.push(buckets[i].units[j]);
                 }
-                continue;
             }
-            // customDist === -1: fall through to range-based evaluation
+            if (rule.customMatch!(testUnits) === 0) {
+                shapes.push([...current]);
+            }
+            return;
         }
-
-        // Only leaf rules (no composedOfAny) use range-based matching against raw pts.
-        // Composed rules have modifier counts that represent sub-unit counts, not pts.
-        if (rule.composedOfAny) continue;
-
-        // For leaf rules, modifier counts are absolute pts
-        const counts = Object.values(rule.modifiers);
-        const ruleMin = Math.min(...counts);
-        const ruleMax = Math.max(...counts);
-
-        if (range.max >= ruleMin && range.min <= ruleMax) {
-            dist = 0;
-        } else if (range.max < ruleMin) {
-            dist = ruleMin - range.max;
-        } else {
-            dist = range.min - ruleMax;
-        }
-
-        if (rule.strict && dist !== 0) continue;
-
-        const strictUpgrade = dist === bestDist && rule.strict && !bestRule?.strict;
-        const strictDowngrade = dist === bestDist && !rule.strict && bestRule?.strict;
-        const candidateLeaf: EvaluationResult = { name: '', dist, matchedRule: rule };
-        const currentLeaf: EvaluationResult = { name: '', dist: bestDist, matchedRule: bestRule };
-        if (strictUpgrade || (!strictDowngrade && isBetterMatch(candidateLeaf, currentLeaf))) {
-            bestDist = dist;
-            bestRule = rule;
-            bestModName = getModifierPrefix(rule, midPts);
+        for (let c = 0; c <= maxPerBucket[idx]; c++) {
+            if (used + c > totalUnits) break;
+            current[idx] = c;
+            enumerate(idx + 1, used + c);
         }
     }
 
-    const maxAllowedDistance = Math.max(minDistance, midPts * distanceFactor);
-    if (bestDist <= maxAllowedDistance) {
-        const name = bestModName ? bestModName + bestRule!.type : bestRule!.type;
-        return { name, dist: bestDist, matchedRule: bestRule };
-    }
-
-    return { name: 'Force', dist: Infinity, matchedRule: null };
+    enumerate(0, 0);
+    return { buckets, shapes };
 }
 
-// ─── Group-based evaluation ────────────────────────────────────────────────────
-
 /**
- * Group-based force evaluation.
+ * Find k non-overlapping instances from the available buckets, allowing
+ * different shapes per instance. Returns the list of shapes chosen (one per
+ * instance), or null if impossible.
  *
- * Counts how many groups matched each rule type. Looks for rules whose
- * composedOfAny types match the group types and compares the group count
- * against the rule's modifier counts.
- *
- * Example: 6 groups each identified as "Level II" → Level III has
- * composedOfAny = ['Level II'] and modifier count 6 → "Level III".
+ * Tries uniform shapes first (fast path), then mixed shapes via backtracking.
  */
-function evaluateForceByGroups(
-    groupResults: GroupSizeResult[],
-    rules: OrgTypeRule[],
-    groupMinDistance = 1,
-    groupDistanceFactor = 0.25,
-): EvaluationResult {
-    let best: EvaluationResult = { name: 'Force', dist: Infinity, matchedRule: null };
+function findPartition(
+    buckets: UnitBucket[],
+    shapes: Shape[],
+    k: number,
+): Shape[] | null {
+    const bucketSizes = buckets.map(b => b.units.length);
 
-    for (const rule of rules) {
-        if (!rule.composedOfAny || rule.composedOfAny.length === 0) continue;
+    // Fast path: try a single shape repeated k times
+    for (const shape of shapes) {
+        let fits = true;
+        for (let i = 0; i < buckets.length; i++) {
+            if (shape[i] * k > bucketSizes[i]) { fits = false; break; }
+        }
+        if (fits) return Array(k).fill(shape);
+    }
 
-        if (rule.groupFilter && !rule.groupFilter(groupResults)) continue;
+    if (k <= 1 || shapes.length <= 1) return null;
 
-        const acceptedTypeSet = new Set(rule.composedOfAny);
-        let count = 0;
-        for (const result of groupResults) {
-            if (result.type && acceptedTypeSet.has(result.type)) {
-                count++;
-            } else if (result.countsAsType && acceptedTypeSet.has(result.countsAsType)) {
-                count++;
+    // Slow path: backtracking to find k instances with mixed shapes
+    const remaining = [...bucketSizes];
+    const chosen: Shape[] = [];
+
+    function backtrack(): boolean {
+        if (chosen.length === k) return true;
+        for (const shape of shapes) {
+            let fits = true;
+            for (let i = 0; i < buckets.length; i++) {
+                if (shape[i] > remaining[i]) { fits = false; break; }
             }
+            if (!fits) continue;
+            // Consume
+            for (let i = 0; i < buckets.length; i++) remaining[i] -= shape[i];
+            chosen.push(shape);
+            if (backtrack()) return true;
+            chosen.pop();
+            for (let i = 0; i < buckets.length; i++) remaining[i] += shape[i];
         }
-        if (count === 0) continue;
-
-        const modCounts = Object.values(rule.modifiers);
-        const rawMin = Math.min(...modCounts);
-        const rawMax = Math.max(...modCounts);
-
-        let dist: number;
-        if (count >= rawMin && count <= rawMax) {
-            dist = 0;
-        } else if (count < rawMin) {
-            dist = rawMin - count;
-        } else {
-            dist = count - rawMax;
-        }
-
-        // Penalize for groups not accounted for by this rule.
-        const unmatchedCount = groupResults.length - count;
-        dist += unmatchedCount;
-
-        const bestPriority = best.matchedRule?.priority ?? 0;
-        const bestTier = best.matchedRule?.tier ?? 0;
-        const rulePriority = rule.priority ?? 0;
-        if (dist < best.dist ||
-            (dist === best.dist && rulePriority > bestPriority) ||
-            (dist === best.dist && rulePriority === bestPriority && rule.tier > bestTier) ||
-            (dist === best.dist && rulePriority === bestPriority && rule.tier === bestTier && getRegularCount(rule) > (best.matchedRule ? getRegularCount(best.matchedRule) : 0))) {
-            const modPrefix = getModifierPrefix(rule, count);
-            best = {
-                name: modPrefix ? modPrefix + rule.type : rule.type,
-                dist,
-                matchedRule: rule,
-                subGroupCount: count,
-            };
-        }
+        return false;
     }
 
-    const maxAllowed = Math.max(groupMinDistance, groupResults.length * groupDistanceFactor);
-    if (best.dist <= maxAllowed) {
-        return best;
-    }
-
-    return { name: 'Force', dist: Infinity, matchedRule: null };
+    return backtrack() ? [...chosen] : null;
 }
 
-// ─── Hierarchical group split ──────────────────────────────────────────────────
-
 /**
- * Hierarchical group split: when direct group evaluation doesn't find a good
- * match, try splitting groups into K sub-batches, evaluate each batch to find
- * an intermediate formation, then see if K intermediate formations compose
- * into a higher-level formation.
- *
- * Example: 4 Novas => K=2 => [Nova,Nova] + [Nova,Nova]
- *   => each batch = Supernova Binary (2 Novas) => 2 x SN Binary
- *   => SN Binary countsAs Binary => Under-Strength Cluster (2 Binaries).
+ * Given a partition (list of shapes, one per instance),
+ * extract actual Unit[] subsets — one per shape.
  */
-function trySplitGroupEvaluation(
-    groupResults: GroupSizeResult[],
-    rules: OrgTypeRule[],
-    groupMinDistance: number,
-    groupDistanceFactor: number,
-): EvaluationResult {
-    let best: EvaluationResult = { name: 'Force', dist: Infinity, matchedRule: null };
+function pickUnitsFromPartition(
+    buckets: UnitBucket[],
+    partition: Shape[],
+): Unit[][] {
+    // Track how many units we've consumed from each bucket
+    const offsets = new Array(buckets.length).fill(0);
+    const results: Unit[][] = [];
 
-    for (let k = 2; k <= 5; k++) {
-        if (groupResults.length < k * 2) break;
-
-        const batchSize = Math.floor(groupResults.length / k);
-        const remainder = groupResults.length % k;
-
-        const batches: GroupSizeResult[][] = [];
-        let offset = 0;
-        for (let i = 0; i < k; i++) {
-            const size = batchSize + (i < remainder ? 1 : 0);
-            batches.push(groupResults.slice(offset, offset + size));
-            offset += size;
-        }
-
-        const batchResults: GroupSizeResult[] = [];
-        let allMatched = true;
-        for (const batch of batches) {
-            const result = evaluateForceByGroups(batch, rules, groupMinDistance, groupDistanceFactor);
-            if (!result.matchedRule) {
-                allMatched = false;
-                break;
+    for (const shape of partition) {
+        const subset: Unit[] = [];
+        for (let i = 0; i < buckets.length; i++) {
+            for (let j = 0; j < shape[i]; j++) {
+                subset.push(buckets[i].units[offsets[i]++]);
             }
-            batchResults.push({
-                name: result.name,
-                type: result.matchedRule.type,
-                countsAsType: result.matchedRule.countsAs ?? null,
-                tier: result.matchedRule.tier,
-            });
         }
-        if (!allMatched) continue;
+        results.push(subset);
+    }
+    return results;
+}
 
-        const higherResult = evaluateForceByGroups(batchResults, rules, groupMinDistance, groupDistanceFactor);
-        if (isBetterMatch(higherResult, best)) {
-            best = higherResult;
-        }
+function subtractUnitsByOccurrence(
+    source: ReadonlyArray<Unit>,
+    consumed: ReadonlyArray<Unit>,
+): Unit[] {
+    if (source.length === 0 || consumed.length === 0) return [...source];
 
-        if (best.dist === 0) break;
+    const counts = new Map<Unit, number>();
+    for (const unit of consumed) {
+        counts.set(unit, (counts.get(unit) ?? 0) + 1);
     }
 
+    const remaining: Unit[] = [];
+    for (const unit of source) {
+        const count = counts.get(unit) ?? 0;
+        if (count > 0) {
+            counts.set(unit, count - 1);
+            continue;
+        }
+        remaining.push(unit);
+    }
+
+    return remaining;
+}
+
+/**
+ * Collect all units consumed by the partition, preserving duplicate instances.
+ */
+function consumedUnitsFromPartition(
+    buckets: UnitBucket[],
+    partition: Shape[],
+): Unit[] {
+    return pickUnitsFromPartition(buckets, partition).flat();
+}
+
+// ─── Modifier helpers ──────────────────────────────────────────────────────────
+
+/** Extract the numeric count from a modifier value (number or OrgTypeModifier). */
+function getModifierCount(mod: number | OrgTypeModifier): number {
+    return typeof mod === 'object' ? mod.count : mod;
+}
+
+/** The regular ('') modifier's count, or the first modifier if no regular exists. */
+function getRegularCount(rule: OrgTypeRule): number {
+    const raw = rule.modifiers[''] ?? Object.values(rule.modifiers)[0];
+    return getModifierCount(raw);
+}
+
+/**
+ * Resolve the effective tier for a rule given the matched modifier prefix.
+ *
+ * Priority:
+ * 1. If the modifier is an OrgTypeModifier with an explicit `tier`, use it.
+ * 2. If the rule has `dynamicTier > 0`, compute the tier adjustment:
+ *    variation = (modCount - regularCount) / regularCount
+ *    effectiveTier = rule.tier + variation * dynamicTier
+ * 3. Otherwise, return `rule.tier`.
+ */
+function resolveTier(rule: OrgTypeRule, prefix: string): number {
+    const mod = rule.modifiers[prefix];
+    // Explicit tier on the modifier always wins
+    if (mod != null && typeof mod === 'object' && mod.tier != null) {
+        return mod.tier;
+    }
+    // Dynamic tier adjustment based on deviation from regular count
+    if (rule.dynamicTier && rule.dynamicTier > 0) {
+        const regularCount = getRegularCount(rule);
+        const modCount = mod != null ? getModifierCount(mod) : regularCount;
+        if (regularCount > 0 && modCount !== regularCount) {
+            const variation = (modCount - regularCount) / regularCount;
+            return rule.tier + variation * rule.dynamicTier;
+        }
+    }
+    return rule.tier;
+}
+
+/** Get sorted modifiers for a rule: [prefix, count] sorted by count ascending. */
+function sortedModifiers(rule: OrgTypeRule): [string, number][] {
+    return Object.entries(rule.modifiers)
+        .map(([prefix, mod]) => [prefix, getModifierCount(mod)] as [string, number])
+        .sort((a, b) => a[1] - b[1]);
+}
+
+/**
+ * Find the best sub-regular modifier for leftovers.
+ * Returns the modifier whose count is the largest value <= leftoverCount
+ * that is still < regularCount. Returns null if none found.
+ */
+function findSubRegularModifier(rule: OrgTypeRule, leftoverCount: number): [string, number] | null {
+    const regular = getRegularCount(rule);
+    const mods = sortedModifiers(rule);
+    let best: [string, number] | null = null;
+    for (const [prefix, count] of mods) {
+        if (count < regular && count <= leftoverCount) {
+            if (!best || count > best[1]) best = [prefix, count];
+        }
+    }
     return best;
+}
+
+/**
+ * Find the modifier whose count is closest to `targetCount`.
+ * When there's a tie, prefer the one with higher count.
+ */
+function findClosestModifier(rule: OrgTypeRule, targetCount: number): [string, number] {
+    const mods = sortedModifiers(rule);
+    let best = mods[0];
+    let bestDist = Math.abs(best[1] - targetCount);
+    for (let i = 1; i < mods.length; i++) {
+        const d = Math.abs(mods[i][1] - targetCount);
+        if (d < bestDist || (d === bestDist && mods[i][1] > best[1])) {
+            best = mods[i];
+            bestDist = d;
+        }
+    }
+    return best;
+}
+
+/** Build the display name for a rule + modifier prefix. */
+function buildName(rule: OrgTypeRule, prefix: string): string {
+    return prefix ? prefix + rule.type : rule.type;
 }
 
 // ─── Foreign-type normalization ────────────────────────────────────────────────
 
 /**
  * Find the closest tier in the tierMap to the target tier.
- * When tiers are floating-point (e.g. 1.2) and the map only has
- * e.g. [1, 2, 3], finds the nearest neighbor(s) and picks the one
- * with the smallest absolute distance. Ties go to the lower tier.
  */
 function findClosestTierRule(targetTier: number, tierMap: Map<number, OrgTypeRule>, sortedTiers: number[]): OrgTypeRule | undefined {
     const exact = tierMap.get(targetTier);
@@ -357,27 +371,14 @@ function findClosestTierRule(targetTier: number, tierMap: Map<number, OrgTypeRul
 /**
  * Map GroupSizeResults whose types don't exist in the target org's rules
  * to their tier-equivalent types in the target org.
- *
- * Example: a "Level II" (ComStar, tier 1) fed into ISOrg rules becomes
- * a "Lance" (IS, tier 1) so that group-based evaluation can count it
- * as a sub-unit of "Company" (composedOfAny: ['Lance']).
- *
- * Only remaps when the type is truly foreign (not in any rule). Keeps
- * the original name prefix (e.g. "Reinforced") by replacing only the
- * type suffix in the display name.
- *
- * When tiers are floating-point, finds the closest available tier
- * (ties go to the lower neighbor).
  */
 function normalizeGroupsToOrg(groupResults: GroupSizeResult[], rules: OrgTypeRule[]): GroupSizeResult[] {
     const knownTypes = new Set(rules.map(r => r.type));
-    // Pre-compute: for each tier, pick the best general-purpose rule (no filter, no strict)
     const tierMap = new Map<number, OrgTypeRule>();
     for (const r of rules) {
-        if (tierMap.has(r.tier)) continue; // first rule at each tier wins (rules are ordered)
+        if (tierMap.has(r.tier)) continue;
         if (!r.strict && !r.filter) tierMap.set(r.tier, r);
     }
-    // Fallback: if no filter-free rule exists at a tier, use any rule at that tier
     for (const r of rules) {
         if (!tierMap.has(r.tier)) tierMap.set(r.tier, r);
     }
@@ -388,12 +389,10 @@ function normalizeGroupsToOrg(groupResults: GroupSizeResult[], rules: OrgTypeRul
                           (g.countsAsType && knownTypes.has(g.countsAsType));
         if (typeKnown) return g;
 
-        // Foreign type: find equivalent rule by closest tier
         const equiv = findClosestTierRule(g.tier, tierMap, sortedTiers);
         if (!equiv) return g;
 
-        // Rebuild name: extract modifier prefix from original, apply to new type
-        let newName = equiv.type;
+        let newName = equiv.type as string;
         if (g.type && g.name.endsWith(g.type)) {
             const prefix = g.name.slice(0, g.name.length - g.type.length);
             if (prefix && prefix in equiv.modifiers) {
@@ -406,761 +405,901 @@ function normalizeGroupsToOrg(groupResults: GroupSizeResult[], rules: OrgTypeRul
             type: equiv.type,
             countsAsType: equiv.countsAs ?? null,
             tier: equiv.tier,
+            children: g.children,
+            units: g.units,
+            leftoverUnits: g.leftoverUnits,
+            tag: g.tag,
+            priority: g.priority,
         };
     });
 }
 
-/**
- * Derive the sub-unit count of a group from its display name and the matching rule.
- * E.g. "Under-Strength Cluster" + Cluster rule → modifier {prefix:'Under-Strength ', count:2} → 2.
- */
-function getSubUnitCountFromName(group: GroupSizeResult, rule: OrgTypeRule): number {
-    for (const [prefix, count] of Object.entries(rule.modifiers)) {
-        const expectedName = prefix ? prefix + rule.type : rule.type;
-        if (group.name === expectedName) return count;
-    }
-    return getRegularCount(rule);
+function collectUnitsOutsidePrimaryGroup(
+    allUnits: ReadonlyArray<Unit>,
+    groups: ReadonlyArray<GroupSizeResult>,
+): Unit[] {
+    if (groups.length === 0 || allUnits.length === 0) return [];
+
+    return subtractUnitsByOccurrence(allUnits, collectAllUnits([groups[0]]));
 }
 
-/**
- * Try to absorb lower-tier groups into higher-tier groups when the lower-tier
- * type is a valid sub-unit of the higher-tier type.
- *
- * Example: [Binary] absorbed into [Under-Strength Cluster]
- *   → Cluster composedOfAny includes 'Binary'
- *   → Under-Strength Cluster has 2 sub-units + 1 Binary = 3 → regular Cluster
- */
-function tryAbsorbIntoHigherTier(
-    lowerGroups: GroupSizeResult[],
-    higherGroups: GroupSizeResult[],
-    rules: OrgTypeRule[],
+function attachTopLevelLeftovers(
+    groups: GroupSizeResult[],
+    allUnits: ReadonlyArray<Unit>,
 ): GroupSizeResult[] {
-    const result = [...higherGroups];
-    const remaining = [...lowerGroups];
+    const leftoverUnits = collectUnitsOutsidePrimaryGroup(allUnits, groups);
+    if (groups.length === 0 || leftoverUnits.length === 0) return groups;
 
-    for (let hi = 0; hi < result.length && remaining.length > 0; hi++) {
-        const hGroup = result[hi];
-        // Find the rule for the higher-tier group
-        const hRule = hGroup.type
-            ? rules.find(r => r.type === hGroup.type && r.composedOfAny && r.composedOfAny.length > 0)
-            : null;
-        if (!hRule || !hRule.composedOfAny) continue;
-
-        const acceptedSet = new Set(hRule.composedOfAny);
-        let absorbed = 0;
-        const toRemove: number[] = [];
-
-        for (let li = 0; li < remaining.length; li++) {
-            const lGroup = remaining[li];
-            if ((lGroup.type && acceptedSet.has(lGroup.type)) ||
-                (lGroup.countsAsType && acceptedSet.has(lGroup.countsAsType))) {
-                absorbed++;
-                toRemove.push(li);
-            }
-        }
-
-        if (absorbed > 0) {
-            const currentCount = getSubUnitCountFromName(hGroup, hRule);
-            const newCount = currentCount + absorbed;
-            const newPrefix = getModifierPrefix(hRule, newCount);
-            const newName = newPrefix ? newPrefix + hRule.type : hRule.type;
-            result[hi] = { name: newName, type: hGroup.type, countsAsType: hGroup.countsAsType, tier: hGroup.tier };
-
-            // Remove absorbed groups (reverse order to preserve indices)
-            for (let i = toRemove.length - 1; i >= 0; i--) {
-                remaining.splice(toRemove[i], 1);
-            }
-        }
-    }
-
-    // Any remaining lower-tier groups that couldn't be absorbed stay in the result
-    return [...result, ...remaining];
+    return [
+        {
+            ...groups[0],
+            leftoverUnits,
+        },
+        ...groups.slice(1),
+    ];
 }
 
+// ─── Leaf allocation ───────────────────────────────────────────────────────────
+
 /**
- * Promotive group evaluation: iteratively promotes lowest-tier groups
- * up the composition hierarchy, then evaluates the result.
+ * Allocate a set of units into a single leaf rule.
  *
- * Algorithm:
- * 1. Find the highest-tier group: that's the floor (minimum result)
- * 2. Separate lowest-tier groups from higher-tier groups
- * 3. Promote lowest-tier groups via evaluateForceByGroups / trySplitGroupEvaluation
- * 4. Merge promoted result with remaining groups
- * 5. Repeat until all groups are at the same tier or no promotion possible
- * 6. Evaluate the final set; floor guarantees result ≥ highest input tier
- *
- * Example: [Cluster, Binary, Star, Star]
- *   → Stars promote to Binary → [Cluster, Binary, Binary]
- *   → Binaries promote to Under-Strength Cluster → [Cluster, Cluster]
- *   → 2 Clusters → Under-Strength Galaxy
+ * 1. N = floor(totalPoints / regularCount) regular instances
+ * 2. leftover = totalPoints - N * regularCount
+ * 3. If leftover > 0:
+ *    a. Try sub-regular modifier (highest count < regular that fits)
+ *    b. If no sub-regular fits, assimilate by upgrading last instance
  */
-function promotiveGroupEvaluation(
-    groupResults: GroupSizeResult[],
-    rules: OrgTypeRule[],
-    groupMinDistance: number,
-    groupDistanceFactor: number,
-): EvaluationResult {
-    const groupTier = (g: GroupSizeResult): number => g.tier;
+function allocateLeaf(
+    units: Unit[],
+    rule: OrgTypeRule,
+    getPointRange: (u: Unit[]) => PointRange,
+): GroupSizeResult[] {
+    const totalPts = unitPointTotal(units, getPointRange);
+    if (totalPts <= 0) return [];
 
-    // Floor: highest-tier group present
-    let maxTier = 0;
-    let floorGroup: GroupSizeResult | null = null;
-    for (const g of groupResults) {
-        const t = groupTier(g);
-        if (t > maxTier) { maxTier = t; floorGroup = g; }
-    }
+    const regular = getRegularCount(rule);
+    const n = Math.floor(totalPts / regular);
 
-    let groups = [...groupResults];
-
-    // Iteratively promote lowest-tier groups
-    for (let iter = 0; iter < 10 && groups.length >= 2; iter++) {
-        const tiers = groups.map(g => groupTier(g));
-        const minTier = Math.min(...tiers);
-        if (minTier === Math.max(...tiers)) break; // All at same tier
-
-        const lowest: GroupSizeResult[] = [];
-        const rest: GroupSizeResult[] = [];
-        for (let i = 0; i < groups.length; i++) {
-            if (tiers[i] === minTier) lowest.push(groups[i]);
-            else rest.push(groups[i]);
+    if (n === 0) {
+        const subMod = findSubRegularModifier(rule, totalPts);
+        if (subMod) {
+            return [{
+                name: buildName(rule, subMod[0]),
+                type: rule.type,
+                countsAsType: rule.countsAs ?? null,
+                tier: resolveTier(rule, subMod[0]),
+                units,
+                tag: rule.tag,
+            }];
         }
-
-        if (lowest.length < 2) {
-            // Try absorbing single lower-tier groups into higher-tier groups
-            // E.g. [Under-Strength Cluster, Binary] → Binary is a sub-unit of Cluster
-            // → absorb: Under-Strength(2) + 1 Binary = 3 → regular Cluster
-            groups = tryAbsorbIntoHigherTier(lowest, rest, rules);
-            break;
-        }
-
-        // Try both direct group eval and split, prefer the one with higher tier
-        let promoted = evaluateForceByGroups(lowest, rules, groupMinDistance, groupDistanceFactor);
-        if (lowest.length >= 4) {
-            const split = trySplitGroupEvaluation(lowest, rules, groupMinDistance, groupDistanceFactor);
-            if (split.matchedRule) {
-                const splitTier = split.matchedRule.tier;
-                const promotedTier = promoted.matchedRule?.tier ?? -1;
-                // Prefer higher tier; on same tier prefer lower distance
-                if (splitTier > promotedTier ||
-                    (splitTier === promotedTier && split.dist < promoted.dist)) {
-                    promoted = split;
-                }
-            }
-        }
-        if (!promoted.matchedRule) break;
-
-        groups = [...rest, {
-            name: promoted.name,
-            type: promoted.matchedRule.type,
-            countsAsType: promoted.matchedRule.countsAs ?? null,
-            tier: promoted.matchedRule.tier,
+        const [prefix] = findClosestModifier(rule, totalPts);
+        return [{
+            name: buildName(rule, prefix),
+            type: rule.type,
+            countsAsType: rule.countsAs ?? null,
+            tier: resolveTier(rule, prefix),
+            units,
+            tag: rule.tag,
         }];
     }
 
-    // After promotion/absorption, a single remaining group IS the result
-    if (groups.length === 1) {
-        const g = groups[0];
-        const matchedRule = g.type ? rules.find(r => r.type === g.type) ?? null : null;
-        return { name: g.name, dist: 0, matchedRule };
-    }
+    const results: GroupSizeResult[] = [];
 
-    // Final evaluation on the resulting groups
-    let result = evaluateForceByGroups(groups, rules, groupMinDistance, groupDistanceFactor);
-    if (groups.length >= 4) {
-        const split = trySplitGroupEvaluation(groups, rules, groupMinDistance, groupDistanceFactor);
-        if (isBetterMatch(split, result)) {
-            result = split;
+    // Greedy point-based distribution: fill each regular instance
+    // up to `regular` points before moving to the next.
+    let offset = 0;
+    for (let i = 0; i < n && offset < units.length; i++) {
+        const instanceUnits: Unit[] = [];
+        let pts = 0;
+        while (offset < units.length && pts < regular - 1e-9) {
+            instanceUnits.push(units[offset]);
+            pts = unitPointTotal(instanceUnits, getPointRange);
+            offset++;
         }
+        results.push({
+            name: rule.type,
+            type: rule.type,
+            countsAsType: rule.countsAs ?? null,
+            tier: resolveTier(rule, ''),
+            units: instanceUnits,
+            tag: rule.tag,
+        });
     }
 
-    // Floor guarantee: never return a result lower-tier than the highest input group.
-    // Re-derive floor from current groups (may have been updated by absorption).
-    let currentFloor: GroupSizeResult | null = null;
-    let currentMaxTier = 0;
-    for (const g of groups) {
-        const t = groupTier(g);
-        if (t > currentMaxTier) { currentMaxTier = t; currentFloor = g; }
-    }
-    if (!currentFloor) { currentFloor = floorGroup; currentMaxTier = maxTier; }
-
-    if (currentFloor) {
-        const resultTier = result.matchedRule?.tier ?? -1;
-        if (resultTier < currentMaxTier) {
-            const floorRule = currentFloor.type
-                ? rules.find(r => r.type === currentFloor!.type) ?? null
-                : null;
-            return { name: currentFloor.name, dist: 0, matchedRule: floorRule };
-        }
-    }
-
-    return result;
-}
-
-// ─── Composition arithmetic ────────────────────────────────────────────────────
-
-const COMP_KEYS: readonly (keyof ForceComposition)[] = Object.keys(getForceCompositionFromUnits([])) as (keyof ForceComposition)[];
-
-/** Subtract composition b from a. Returns null if any field would go negative. */
-function subtractComp(a: ForceComposition, b: ForceComposition): ForceComposition | null {
-    const result = {} as ForceComposition;
-    for (const key of COMP_KEYS) {
-        result[key] = a[key] - b[key];
-        if (result[key] < -1e-9) return null;
-    }
-    // Clamp tiny floating-point negatives to 0
-    for (const key of COMP_KEYS) {
-        if (result[key] < 0) result[key] = 0;
-    }
-    return result;
-}
-
-/** True if any field is positive. */
-function isNonEmptyComp(c: ForceComposition): boolean {
-    return COMP_KEYS.some(k => c[k] > 0);
-}
-
-/**
- * Partition a ForceComposition into n integer sub-compositions.
- *
- * Uses floor-division with deterministic remainder distribution: for each
- * field, the first (value % n) groups get ceil(value/n), the rest get
- * floor(value/n). Every sub-composition has integer values and the sum
- * across all groups equals the original.
- */
-function partitionComposition(comp: ForceComposition, n: number): ForceComposition[] {
-    const parts: ForceComposition[] = [];
-    for (let i = 0; i < n; i++) {
-        const sub = {} as ForceComposition;
-        for (const key of COMP_KEYS) {
-            const base = Math.floor(comp[key] / n);
-            const rem = comp[key] % n;
-            sub[key] = base + (i < rem ? 1 : 0);
-        }
-        parts.push(sub);
-    }
-    return parts;
-}
-
-/**
- * Deduplicate an array of ForceCompositions. Returns unique compositions
- * with their frequency counts.
- */
-function deduplicateCompositions(parts: ForceComposition[]): { comp: ForceComposition; count: number }[] {
-    const result: { comp: ForceComposition; count: number }[] = [];
-    outer:
-    for (const part of parts) {
-        for (const entry of result) {
-            let same = true;
-            for (const key of COMP_KEYS) {
-                if (entry.comp[key] !== part[key]) { same = false; break; }
-            }
-            if (same) { entry.count++; continue outer; }
-        }
-        result.push({ comp: part, count: 1 });
-    }
-    return result;
-}
-
-// ─── Recursive bottom-up split ─────────────────────────────────────────────────
-
-/**
- * Find all leaf rules (no composedOfAny) that pass the composition filter.
- * These are the base units: Point, Single, Flight, Squad, Level I, etc.
- * Excludes customMatch-only rules (Nova, Platoon, etc.) since they need
- * per-sub-group composition data we don't have when doing virtual splits.
- */
-function findLeafRules(rules: OrgTypeRule[], comp: ForceComposition): OrgTypeRule[] {
-    return rules.filter(r => !r.composedOfAny && !r.customMatch && (!r.filter || r.filter(comp)));
-}
-
-/**
- * Recursive bottom-up evaluation: given a total point value, find the highest
- * structural formation by recursively dividing by the regular count of each level.
- *
- * Algorithm:
- * 1. Divide pts by each leaf rule's regularCount to get N virtual groups
- * 2. Feed N groups into evaluateForceByGroups to find the next level
- * 3. If matched, take that level's regularCount, divide the group count by it
- *    to get M virtual groups at the next-next level
- * 4. Repeat until no higher level matches
- * 5. At the final level, apply non-regular modifiers (Reinforced, etc.)
- *
- * Example (ClanOrg, 40 mechs = 40 pts):
- *   40 / 1 (Point regular) = 40 Points
- *   40 Points → Star (composedOfAny: ['Point'], regular=5) → 40/5 = 8 Stars
- *   8 Stars → Binary (composedOfAny: ['Star'], regular=2, priority=0) → 8/2 = 4 Binaries
- *          or Trinary (composedOfAny: ['Star'], regular=3, priority=0) → 8/3 = 2.67
- *   Pick Binary (priority tie-break: both 0, but Binary count=4 vs Trinary count=2, try both)
- *   4 Binaries → Cluster (composedOfAny: ['Binary','Trinary',...], regular=3, modifiers 2-5)
- *   → 4 = Reinforced Cluster
- */
-function trySplitEvaluation(
-    range: PointRange,
-    rules: OrgTypeRule[],
-    comp: ForceComposition,
-    getPointRange: (comp: ForceComposition) => PointRange,
-    minDistance: number,
-    distanceFactor: number,
-    groupMinDistance?: number,
-    groupDistanceFactor?: number,
-): EvaluationResult {
-    const leafRules = findLeafRules(rules, comp);
-    if (leafRules.length === 0) return { name: 'Force', dist: Infinity, matchedRule: null };
-
-    // Pre-filter composed rules by composition so virtual-group evaluation
-    // respects composition filters (e.g. infantry-only Century vs non-infantry Century).
-    const filteredRules = rules.filter(r => !r.filter || r.filter(comp));
-
-    let best: EvaluationResult = { name: 'Force', dist: Infinity, matchedRule: null };
-
-    for (const leaf of leafRules) {
-        const leafRegular = getRegularCount(leaf);
-        const minLeaf = Math.max(2, Math.floor(range.min / leafRegular));
-        const maxLeaf = Math.ceil(range.max / leafRegular);
-
-        for (let leafCount = maxLeaf; leafCount >= minLeaf; leafCount--) {
-
-        // Start with leafCount virtual groups of the leaf type
-        let currentGroups: GroupSizeResult[] = [];
-        for (let i = 0; i < leafCount; i++) {
-            currentGroups.push({
-                name: leaf.type,
-                type: leaf.type,
-                countsAsType: leaf.countsAs ?? null,
-                tier: leaf.tier,
+    if (offset < units.length) {
+        const leftoverUnits = units.slice(offset);
+        const leftoverPts = unitPointTotal(leftoverUnits, getPointRange);
+        const subMod = findSubRegularModifier(rule, leftoverPts);
+        if (subMod) {
+            results.push({
+                name: buildName(rule, subMod[0]),
+                type: rule.type,
+                countsAsType: rule.countsAs ?? null,
+                tier: resolveTier(rule, subMod[0]),
+                units: leftoverUnits,
+                tag: rule.tag,
             });
-        }
-
-        // Recursively build the hierarchy, trying ALL viable paths at each
-        // level (e.g. both Binary and Trinary) and picking the best result.
-        const lastResult = buildHierarchy(currentGroups, filteredRules, 10);
-
-        if (lastResult.matchedRule && isBetterMatch(lastResult, best)) {
-            best = lastResult;
-        }
-        if (best.dist === 0) break;
-        } // end leafCount loop
-    }
-
-    // ── Combinatorial partition: customMatch with integer partitioning ──────
-    //
-    // Three strategies for detecting customMatch formations (Nova, Platoon, etc.):
-    //
-    // Strategy 1: Uniform integer partition:
-    //   Split comp into N integer sub-compositions (floor/ceil), evaluate each
-    //   independently against the customMatch rule. All must match.
-    //
-    // Strategy 2: Greedy ideal-packing with residual:
-    //   Probe to find a sub-composition where the customMatch returns low
-    //   distance. Pack K copies, then evaluate the leftover composition
-    //   against all rules (leaf + customMatch). This finds mixed formations
-    //   like "1 Nova + 1 Star" that uniform partition cannot.
-    //
-    // Strategy 3: Heterogeneous partition:
-    //   Split comp into N integer sub-groups, let each sub-group independently
-    //   match its best rule (leaf or customMatch). Detects formations composed
-    //   of different sub-unit types from a flat unit list.
-
-    const cmRules = filteredRules.filter(r => r.customMatch);
-    const midPts = (range.min + range.max) / 2;
-
-    // ── Strategy 1: Uniform integer partition per customMatch rule ──
-
-    for (const cmRule of cmRules) {
-        const ruleRegular = getRegularCount(cmRule);
-        if (ruleRegular <= 0) continue;
-
-        const maxN = Math.min(10, Math.ceil(midPts / ruleRegular) + 1);
-        for (let n = 2; n <= maxN; n++) {
-            const parts = partitionComposition(comp, n);
-            const distinct = deduplicateCompositions(parts);
-
-            // Every distinct sub-composition must pass the rule
-            let allMatch = true;
-            let worstDist = 0;
-            for (const { comp: sub } of distinct) {
-                if (cmRule.filter && !cmRule.filter(sub)) { allMatch = false; break; }
-                const d = cmRule.customMatch!(sub);
-                if (d === Infinity) { allMatch = false; break; }
-                if (cmRule.strict && d !== 0) { allMatch = false; break; }
-                if (d > worstDist) worstDist = d;
-            }
-            if (!allMatch || worstDist > 1) continue;
-
-            // Create n virtual groups of this customMatch type
-            const virtualGroups: GroupSizeResult[] = Array.from({ length: n }, () => ({
-                name: cmRule.type,
-                type: cmRule.type,
-                countsAsType: cmRule.countsAs ?? null,
-                tier: cmRule.tier,
-            }));
-
-            let cmResult = evaluateForceByGroups(virtualGroups, filteredRules);
-            if (n >= 4) {
-                const split = trySplitGroupEvaluation(virtualGroups, filteredRules,
-                    groupMinDistance ?? 1, groupDistanceFactor ?? 0.25);
-                if (isBetterMatch(split, cmResult)) cmResult = split;
-            }
-            if (cmResult.matchedRule && isBetterMatch(cmResult, best)) best = cmResult;
-        }
-    }
-
-    // ── Strategy 2: Greedy ideal-packing with residual ──
-    //
-    // For each customMatch rule, find the largest K where K copies of its
-    // ideal sub-composition fit within comp, then evaluate the leftover
-    // against all rules. Enables mixed-rule formations.
-
-    for (const cmRule of cmRules) {
-        const ruleRegular = getRegularCount(cmRule);
-        if (ruleRegular <= 0) continue;
-
-        const maxK = Math.min(10, Math.ceil(midPts / ruleRegular));
-
-        // Probe: find the sub-composition at K=1 that gives the best distance.
-        // Use the floor partition of comp/1 (= comp itself) as starting point,
-        // then try comp/(K+1) partitions to find a single-group ideal.
-        for (let k = 1; k <= maxK; k++) {
-            // Use the "richest" partition slot (index 0) as the candidate sub-comp.
-            // At partition size (k+1), slot 0 gets ceil values, giving the largest
-            // single sub-group that leaves room for at least k copies.
-            const probeN = k + 1;
-            if (probeN > 11) break;
-            const probeParts = partitionComposition(comp, probeN);
-            // Probe both the richest (index 0, gets ceil values) and leanest
-            // (last index, gets floor values) partition slots as candidates.
-            const candidates = [probeParts[0]];
-            if (probeN > 1) {
-                const last = probeParts[probeN - 1];
-                // Only add if different from first
-                const isDifferent = COMP_KEYS.some(key => last[key] !== probeParts[0][key]);
-                if (isDifferent) candidates.push(last);
-            }
-
-            for (const idealCandidate of candidates) {
-
-            if (cmRule.filter && !cmRule.filter(idealCandidate)) continue;
-            const idealDist = cmRule.customMatch!(idealCandidate);
-            if (idealDist === Infinity || idealDist > 0.5) continue;
-            if (cmRule.strict && idealDist !== 0) continue;
-
-            // Subtract k copies of idealCandidate from the total composition
-            let remainder = comp as ForceComposition | null;
-            for (let i = 0; i < k && remainder; i++) {
-                remainder = subtractComp(remainder!, idealCandidate);
-            }
-            if (!remainder) continue;
-
-            // Build virtual groups for the k matched copies
-            const matchedGroups: GroupSizeResult[] = Array.from({ length: k }, () => ({
-                name: cmRule.type,
-                type: cmRule.type,
-                countsAsType: cmRule.countsAs ?? null,
-                tier: cmRule.tier,
-            }));
-
-            if (!isNonEmptyComp(remainder)) {
-                // No residual: all units accounted for by k copies of this rule
-                if (k < 2) continue; // single match handled by evaluateLeaf
-                const cmResult = evaluateForceByGroups(matchedGroups, filteredRules);
-                if (cmResult.matchedRule && isBetterMatch(cmResult, best)) best = cmResult;
-                continue;
-            }
-
-            // Evaluate the residual composition against leaf and customMatch rules
-            const residualLeaf = evaluateLeaf(remainder, rules, getPointRange, minDistance, distanceFactor);
-            let residualResult: EvaluationResult = residualLeaf;
-
-            // Also try customMatch rules on the residual
-            for (const otherRule of cmRules) {
-                if (otherRule.filter && !otherRule.filter(remainder)) continue;
-                const d = otherRule.customMatch!(remainder);
-                if (d === Infinity) continue;
-                if (otherRule.strict && d !== 0) continue;
-                if (d < residualResult.dist) {
-                    residualResult = { name: otherRule.type, dist: d, matchedRule: otherRule };
-                }
-            }
-
-            if (!residualResult.matchedRule) continue;
-
-            // Combine matched groups + residual group and evaluate the formation
-            const combinedGroups: GroupSizeResult[] = [
-                ...matchedGroups,
-                {
-                    name: residualResult.name,
-                    type: residualResult.matchedRule.type,
-                    countsAsType: residualResult.matchedRule.countsAs ?? null,
-                    tier: residualResult.matchedRule.tier,
-                },
-            ];
-
-            let cmResult = evaluateForceByGroups(combinedGroups, filteredRules);
-            if (combinedGroups.length >= 4) {
-                const split = trySplitGroupEvaluation(combinedGroups, filteredRules,
-                    groupMinDistance ?? 1, groupDistanceFactor ?? 0.25);
-                if (isBetterMatch(split, cmResult)) cmResult = split;
-            }
-            if (cmResult.matchedRule && isBetterMatch(cmResult, best)) best = cmResult;
-            } // end idealCandidate loop
-        }
-    }
-
-    // ── Strategy 3: Heterogeneous partition ──
-    //
-    // Split comp into N integer sub-groups, let each independently match its
-    // best leaf or customMatch rule. This catches formations where different
-    // sub-groups are different types (e.g. mix of Stars and Novas).
-
-    if (cmRules.length > 0) {
-        const maxHetN = Math.min(6, Math.ceil(midPts / Math.max(1, ...cmRules.map(r => getRegularCount(r)))));
-        for (let n = 2; n <= maxHetN; n++) {
-            const parts = partitionComposition(comp, n);
-            const groupResults: GroupSizeResult[] = [];
-            let allMatched = true;
-
-            for (const part of parts) {
-                // Find the best match for this sub-composition across all rules
-                let bestSub = evaluateLeaf(part, rules, getPointRange, minDistance, distanceFactor);
-
-                for (const cmRule of cmRules) {
-                    if (cmRule.filter && !cmRule.filter(part)) continue;
-                    const d = cmRule.customMatch!(part);
-                    if (d === Infinity) continue;
-                    if (cmRule.strict && d !== 0) continue;
-                    const candidate: EvaluationResult = { name: cmRule.type, dist: d, matchedRule: cmRule };
-                    if (isBetterMatch(candidate, bestSub)) bestSub = candidate;
-                }
-
-                if (!bestSub.matchedRule) { allMatched = false; break; }
-                groupResults.push({
-                    name: bestSub.name,
-                    type: bestSub.matchedRule.type,
-                    countsAsType: bestSub.matchedRule.countsAs ?? null,
-                    tier: bestSub.matchedRule.tier,
-                });
-            }
-            if (!allMatched) continue;
-
-            let hetResult = evaluateForceByGroups(groupResults, filteredRules);
-            if (n >= 4) {
-                const split = trySplitGroupEvaluation(groupResults, filteredRules,
-                    groupMinDistance ?? 1, groupDistanceFactor ?? 0.25);
-                if (isBetterMatch(split, hetResult)) hetResult = split;
-            }
-            if (hetResult.matchedRule && isBetterMatch(hetResult, best)) best = hetResult;
-        }
-    }
-
-    return best;
-}
-
-/**
- * Find ALL viable next-level rules for a set of groups.
- * Returns every rule whose composedOfAny accepts the group types,
- * along with how many groups of that rule type we can form and the remainder.
- * The caller tries every candidate path and picks the best overall result.
- */
-function findNextLevelCandidates(
-    groups: GroupSizeResult[],
-    rules: OrgTypeRule[],
-): { rule: OrgTypeRule; groupCount: number; remainder: number }[] {
-    const candidates: { rule: OrgTypeRule; groupCount: number; remainder: number }[] = [];
-
-    for (const rule of rules) {
-        if (!rule.composedOfAny || rule.composedOfAny.length === 0) continue;
-
-        const acceptedTypeSet = new Set(rule.composedOfAny);
-        let matchingCount = 0;
-        for (const g of groups) {
-            if (g.type && acceptedTypeSet.has(g.type)) {
-                matchingCount++;
-            } else if (g.countsAsType && acceptedTypeSet.has(g.countsAsType)) {
-                matchingCount++;
-            }
-        }
-        if (matchingCount === 0) continue;
-
-        // Use the regular count to divide
-        const regCount = getRegularCount(rule);
-        if (regCount < 1) continue;
-
-        let nextGroupCount = Math.floor(matchingCount / regCount);
-        let remainder = matchingCount % regCount;
-
-        const modCounts = Object.values(rule.modifiers);
-        const minMod = Math.min(...modCounts);
-        const maxMod = Math.max(...modCounts);
-
-        // Only promote when there are genuine leftovers: i.e. the total
-        // sub-units exceed a single group's max modifier count.  When all
-        // sub-units fit within [minMod, maxMod], a single modified group is
-        // the correct answer and no breakdown is needed.
-        if (remainder > 0 && remainder >= minMod && matchingCount > maxMod) {
-            nextGroupCount++;
-            remainder = 0;
-        }
-
-        // When regularCount-based division gives < 2 groups, try using the
-        // full modifier range to form multiple variable-size groups.
-        if (nextGroupCount < 2) {
-            let altGroups = Math.ceil(matchingCount / maxMod);
-            if (matchingCount < altGroups * minMod) {
-                altGroups = Math.floor(matchingCount / minMod);
-            }
-            if (altGroups > nextGroupCount && altGroups > 0 && matchingCount <= altGroups * maxMod) {
-                nextGroupCount = altGroups;
-                remainder = 0;
-            }
-        }
-
-        if (nextGroupCount < 1) continue;
-
-        candidates.push({ rule, groupCount: nextGroupCount, remainder });
-    }
-
-    return candidates;
-}
-
-/**
- * Recursively build the organizational hierarchy from a set of groups.
- * Tries ALL viable next-level rules at each step and picks the path that
- * produces the best top-level result.  This avoids the greedy single-path
- * problem where e.g. 9 Stars → 3 Trinaries → "Cluster" is preferred over
- * 9 Stars → 4 Binaries → "Reinforced Cluster" just because Trinary has
- * zero remainder at tier 2.
- */
-function buildHierarchy(
-    currentGroups: GroupSizeResult[],
-    rules: OrgTypeRule[],
-    maxDepth: number,
-): EvaluationResult {
-    if (currentGroups.length < 2 || maxDepth <= 0) {
-        return { name: 'Force', dist: Infinity, matchedRule: null };
-    }
-
-    let best: EvaluationResult = { name: 'Force', dist: Infinity, matchedRule: null };
-
-    const candidates = findNextLevelCandidates(currentGroups, rules);
-
-    for (const { rule, groupCount, remainder } of candidates) {
-        let result: EvaluationResult;
-
-        if (groupCount >= 2) {
-            // Build next-level groups and recurse
-            const nextGroups: GroupSizeResult[] = [];
-            for (let i = 0; i < groupCount; i++) {
-                nextGroups.push({
-                    name: rule.type,
-                    type: rule.type,
-                    countsAsType: rule.countsAs ?? null,
-                    tier: rule.tier,
-                });
-            }
-            result = buildHierarchy(nextGroups, rules, maxDepth - 1);
-
-            // If recursion didn't find a higher level, this level is the result
-            if (!result.matchedRule) {
-                result = { name: rule.type, dist: remainder, matchedRule: rule, subGroupCount: groupCount };
-            }
         } else {
-            // groupCount === 1: final level: apply modifier
-            const totalSubGroups = currentGroups.length;
-            const modPrefix = getModifierPrefix(rule, totalSubGroups);
-            let modDist = Infinity;
-            for (const count of Object.values(rule.modifiers)) {
-                modDist = Math.min(modDist, Math.abs(totalSubGroups - count));
-            }
-            result = {
-                name: modPrefix ? modPrefix + rule.type : rule.type,
-                dist: modDist,
-                matchedRule: rule,
-                subGroupCount: totalSubGroups,
+            // Assimilate: upgrade the last regular instance
+            const upgradedCount = regular + leftoverPts;
+            const [prefix] = findClosestModifier(rule, upgradedCount);
+            const lastGroup = results[results.length - 1];
+            results[results.length - 1] = {
+                name: buildName(rule, prefix),
+                type: rule.type,
+                countsAsType: rule.countsAs ?? null,
+                tier: resolveTier(rule, prefix),
+                units: [...(lastGroup.units ?? []), ...leftoverUnits],
+                tag: rule.tag,
             };
         }
+    }
 
-        if (result.matchedRule && isBetterMatch(result, best)) {
-            best = result;
+    return results;
+}
+
+
+
+/**
+ * Allocate units into leaf-level groups using a wide combinator.
+ *
+ * Strategy:
+ * 1. Enumerate customMatch rule consumption choices (use/skip per rule)
+ * 2. For each choice, allocate remaining via type-affinity split
+ * 3. Return ALL candidate leaf allocations for upward comparison
+ */
+function allocateLeaves(
+    units: Unit[],
+    rules: OrgTypeRule[],
+    getPointRange: (u: Unit[]) => PointRange,
+): GroupSizeResult[][] {
+    const cmRules = rules
+        .filter(r => r.customMatch)
+        .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0) || b.tier - a.tier);
+
+    const candidates: GroupSizeResult[][] = [];
+
+    // Generate customMatch consumption variants via recursive branching
+    function branchCustomMatch(
+        ruleIdx: number,
+        pool: Unit[],
+        accumulated: GroupSizeResult[],
+    ): void {
+        if (ruleIdx === cmRules.length) {
+            // All customMatch rules processed, allocate remaining via affinity split
+            const remaining = pool.length > 0
+                ? allocateSplitByAffinity(pool, rules, getPointRange)
+                : [];
+            candidates.push([...accumulated, ...remaining]);
+            return;
+        }
+
+        const rule = cmRules[ruleIdx];
+        const eligible = pool.filter(u => !rule.filter || rule.filter(u));
+
+        // Branch 1: skip this rule entirely
+        branchCustomMatch(ruleIdx + 1, pool, accumulated);
+
+        // Branch 2+: try consuming via this rule (various k values)
+        if (eligible.length > 0) {
+            const { buckets, shapes } = findValidShapes(eligible, rule);
+            if (shapes.length > 0) {
+                const regularPts = getRegularCount(rule);
+                const totalPts = unitPointTotal(pool, getPointRange);
+                const maxCopies = regularPts > 0 ? Math.max(1, Math.floor(totalPts / regularPts)) : 1;
+
+                for (let k = maxCopies; k >= 1; k--) {
+                    const partition = findPartition(buckets, shapes, k);
+                    if (!partition) continue;
+
+                    const unitSubsets = pickUnitsFromPartition(buckets, partition);
+                    const consumed = consumedUnitsFromPartition(buckets, partition);
+                    const newPool = subtractUnitsByOccurrence(pool, consumed);
+
+                    const newGroups: GroupSizeResult[] = [];
+                    for (const subset of unitSubsets) {
+                        newGroups.push({
+                            name: rule.type,
+                            type: rule.type,
+                            countsAsType: rule.countsAs ?? null,
+                            tier: resolveTier(rule, ''),
+                            units: subset,
+                            tag: rule.tag,
+                            priority: rule.priority,
+                        });
+                    }
+                    branchCustomMatch(ruleIdx + 1, newPool, [...accumulated, ...newGroups]);
+                    break; // Only the best k that fits; lower k are strictly worse
+                }
+            }
         }
     }
 
-    // Also try evaluateForceByGroups directly (catches modifier-range matches
-    // that the regular-count division misses, e.g. 3 Points → "Short Star").
-    const directEval = evaluateForceByGroups(currentGroups, rules);
-    if (directEval.matchedRule && isBetterMatch(directEval, best)) {
-        best = directEval;
+    branchCustomMatch(0, units, []);
+
+    return candidates.length > 0 ? candidates : [allocateSplitByAffinity(units, rules, getPointRange)];
+}
+
+/**
+ * Allocate units to leaf rules using each rule's own filter to partition.
+ * Iterates leaf rules by priority (highest first). When a rule's filter
+ * accepts some units but rejects others, the accepted units are allocated
+ * to that rule and removed from the pool. Remaining units go to the
+ * best-matching leaf rule.
+ */
+function allocateSplitByAffinity(
+    units: Unit[],
+    rules: OrgTypeRule[],
+    getPointRange: (u: Unit[]) => PointRange,
+): GroupSizeResult[] {
+    const results: GroupSizeResult[] = [];
+    let remaining = [...units];
+
+    // Leaf rules sorted by priority desc, then tier desc
+    const leafRules = rules
+        .filter(r => !r.composedOfAny && !r.customMatch)
+        .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0) || b.tier - a.tier);
+
+    for (const rule of leafRules) {
+        if (remaining.length === 0) break;
+        if (!rule.filter) continue; // no filter = accepts everything, handle at the end
+
+        const accepted = remaining.filter(u => rule.filter!(u));
+        const rejected = remaining.filter(u => !rule.filter!(u));
+
+        // Only split if this rule creates a genuine partition
+        if (accepted.length === 0 || rejected.length === 0) continue;
+
+        results.push(...allocateLeaf(accepted, rule, getPointRange));
+        remaining = rejected;
     }
 
+    // Remaining: all pass the same filters — use best matching leaf rule
+    if (remaining.length > 0) {
+        const leaf = findBestLeafRule(remaining, rules);
+        if (leaf) {
+            results.push(...allocateLeaf(remaining, leaf, getPointRange));
+        } else {
+            // Per-unit fallback
+            for (const u of remaining) {
+                const uLeaf = findBestLeafRule([u], rules);
+                results.push({
+                    name: uLeaf?.type ?? 'Force',
+                    type: uLeaf?.type ?? null,
+                    countsAsType: uLeaf?.countsAs ?? null,
+                    tier: uLeaf?.tier ?? 0,
+                    units: [u],
+                    tag: uLeaf?.tag,
+                });
+            }
+        }
+    }
+
+    return results;
+}
+
+/**
+ * Find the best-matching leaf rule (no composedOfAny, no customMatch) for a set of units.
+ * All units must pass the rule's per-unit filter. Prefers higher priority, then higher tier.
+ */
+function findBestLeafRule(units: Unit[], rules: OrgTypeRule[]): OrgTypeRule | null {
+    let best: OrgTypeRule | null = null;
+    for (const rule of rules) {
+        if (rule.composedOfAny) continue;
+        if (rule.customMatch) continue;
+        if (rule.filter && !units.every(u => rule.filter!(u))) continue;
+        if (!best ||
+            (rule.priority ?? 0) > (best.priority ?? 0) ||
+            ((rule.priority ?? 0) === (best.priority ?? 0) && rule.tier > best.tier)) {
+            best = rule;
+        }
+    }
     return best;
+}
+
+// ─── Upward composition ────────────────────────────────────────────────────────
+
+/**
+ * Compose groups upward through the hierarchy using exact partitioning.
+ *
+ * At each tier, finds composed rules whose composedOfAny includes the
+ * available group types, then:
+ * 1. N = floor(matchingCount / regularCount) regular instances
+ * 2. Handle leftovers (sub-regular or assimilation)
+ * 3. Groups not consumed stay as-is
+ * 4. Repeat until no more composition possible
+ *
+ * Tries ALL viable composed rules at each step and picks the one that
+ * produces the highest-tier, most regular result.
+ */
+function composeUpward(groups: GroupSizeResult[], rules: OrgTypeRule[]): GroupSizeResult[] {
+    let current = [...groups];
+
+    for (let iter = 0; iter < 20 && current.length >= 2; iter++) {
+        const best = findBestComposition(current, rules);
+        if (!best) break;
+        current = best;
+    }
+
+    return current;
+}
+
+/**
+ * Scoring tuple for comparing composition candidates.
+ * Fields are compared in order: higher is better.
+ */
+interface CompositionScore {
+    /** Max tier among the newly created groups (not inherited non-matching groups). */
+    composedTier: number;
+    /** Total number of input groups consumed. */
+    consumed: number;
+    /** Whether the result can be further composed into higher tiers. */
+    canPromote: boolean;
+    /** Number of strict-rule groups in the result. */
+    strictCount: number;
+    /** Sum of priorities of rules used. */
+    prioritySum: number;
+}
+
+function maxTier(groups: ReadonlyArray<GroupSizeResult>): number {
+    let tier = -1;
+    for (const group of groups) {
+        if (group.tier > tier) tier = group.tier;
+    }
+    return tier;
+}
+
+function betterScore(a: CompositionScore, b: CompositionScore): boolean {
+    if (a.composedTier !== b.composedTier) return a.composedTier > b.composedTier;
+    if (a.consumed !== b.consumed) return a.consumed > b.consumed;
+    if (a.canPromote !== b.canPromote) return a.canPromote;
+    if (a.strictCount !== b.strictCount) return a.strictCount > b.strictCount;
+    return a.prioritySum > b.prioritySum;
+}
+
+/** Check whether any composed rule can consume groups from the result set. */
+function canPromoteFurther(groups: GroupSizeResult[], rules: OrgTypeRule[]): boolean {
+    for (const rule of rules) {
+        if (!rule.composedOfAny || rule.composedOfAny.length === 0) continue;
+        const accepted = new Set(rule.composedOfAny);
+        let matchCount = 0;
+        for (const g of groups) {
+            if ((g.type && accepted.has(g.type)) || (g.countsAsType && accepted.has(g.countsAsType))) {
+                matchCount++;
+            }
+        }
+        if (matchCount < 1) continue;
+        if (rule.strict) {
+            // Strict: matchCount must exactly equal one of the modifier values
+            const mods = sortedModifiers(rule);
+            if (mods.some(([, c]) => matchCount >= c)) return true;
+        } else {
+            const regular = getRegularCount(rule);
+            if (matchCount >= regular) return true;
+            const sub = findSubRegularModifier(rule, matchCount);
+            if (sub) return true;
+        }
+    }
+    return false;
+}
+
+interface ComposedResult {
+    groups: GroupSizeResult[];
+    /** Number of matchingGroups actually consumed into composed formations. */
+    consumed: number;
+}
+
+/**
+ * Apply a single composed rule to `matchingGroups`, producing composed instances.
+ *
+ * Strict rules only accept exact modifier counts — no sub-regular fallback,
+ * no assimilation. Unconsumed groups remain available for other rules.
+ */
+function applyComposedRule(
+    rule: OrgTypeRule,
+    matchingGroups: GroupSizeResult[],
+    count: number,
+): ComposedResult | null {
+    const regularCount = getRegularCount(rule);
+    if (regularCount < 1 || count < 1) return null;
+
+    // ── Strict rules: exact modifier counts only ──
+    if (rule.strict) {
+        const mods = sortedModifiers(rule);
+        // Find the modifier that consumes the most groups (largest n * modCount)
+        let bestPrefix = '';
+        let bestModCount = 0;
+        let bestN = 0;
+        for (const [prefix, modCount] of mods) {
+            if (modCount < 1 || modCount > count) continue;
+            const n = Math.floor(count / modCount);
+            if (n * modCount > bestN * bestModCount) {
+                bestPrefix = prefix;
+                bestModCount = modCount;
+                bestN = n;
+            }
+        }
+        if (bestN === 0) return null;
+
+        const results: GroupSizeResult[] = [];
+        const childPriority = maxPriority(matchingGroups);
+        for (let i = 0; i < bestN; i++) {
+            const start = i * bestModCount;
+            results.push({
+                name: buildName(rule, bestPrefix),
+                type: rule.type,
+                countsAsType: rule.countsAs ?? null,
+                tier: resolveTier(rule, bestPrefix),
+                children: matchingGroups.slice(start, start + bestModCount),
+                priority: Math.max(rule.priority ?? 0, childPriority),
+            });
+        }
+        return { groups: results, consumed: bestN * bestModCount };
+    }
+
+    // ── Non-strict rules: sub-regular and assimilation allowed ──
+    const n = Math.floor(count / regularCount);
+    const leftover = count - n * regularCount;
+
+    if (n === 0) {
+        const subMod = findSubRegularModifier(rule, leftover);
+        if (!subMod) return null;
+        return {
+            groups: [{
+                name: buildName(rule, subMod[0]),
+                type: rule.type,
+                countsAsType: rule.countsAs ?? null,
+                tier: resolveTier(rule, subMod[0]),
+                children: matchingGroups.slice(0, count),
+                priority: Math.max(rule.priority ?? 0, maxPriority(matchingGroups)),
+            }],
+            consumed: count,
+        };
+    }
+
+    const results: GroupSizeResult[] = [];
+    const childPriority = maxPriority(matchingGroups);
+    const effectivePriority = Math.max(rule.priority ?? 0, childPriority);
+    for (let i = 0; i < n; i++) {
+        const start = i * regularCount;
+        results.push({
+            name: rule.type,
+            type: rule.type,
+            countsAsType: rule.countsAs ?? null,
+            tier: resolveTier(rule, ''),
+            children: matchingGroups.slice(start, start + regularCount),
+            priority: effectivePriority,
+        });
+    }
+
+    if (leftover > 0) {
+        const leftoverGroups = matchingGroups.slice(n * regularCount, count);
+        const subMod = findSubRegularModifier(rule, leftover);
+        if (subMod) {
+            results.push({
+                name: buildName(rule, subMod[0]),
+                type: rule.type,
+                countsAsType: rule.countsAs ?? null,
+                tier: resolveTier(rule, subMod[0]),
+                children: leftoverGroups,
+                priority: effectivePriority,
+            });
+        } else {
+            const lastIdx = results.length - 1;
+            const lastGroup = results[lastIdx];
+            const upgradedCount = regularCount + leftover;
+            const [prefix] = findClosestModifier(rule, upgradedCount);
+            results[lastIdx] = {
+                name: buildName(rule, prefix),
+                type: rule.type,
+                countsAsType: rule.countsAs ?? null,
+                tier: resolveTier(rule, prefix),
+                children: [...(lastGroup.children ?? []), ...leftoverGroups],
+                priority: effectivePriority,
+            };
+        }
+    }
+
+    return { groups: results, consumed: count };
+}
+
+/**
+ * Try all viable composed rules on the current set of groups.
+ * Tries each rule independently AND combinations of same-tier rules
+ * that share matching groups (e.g. Binary + Trinary for Clan Stars).
+ *
+ * Scoring prefers: higher composed tier → more consumed → promotability
+ * → strict count → priority sum.
+ */
+function findBestComposition(groups: GroupSizeResult[], rules: OrgTypeRule[]): GroupSizeResult[] | null {
+    let bestResult: GroupSizeResult[] | null = null;
+    let bestScore: CompositionScore = { composedTier: -1, consumed: 0, canPromote: false, strictCount: 0, prioritySum: 0 };
+
+    const composedRules = rules
+        .filter(r => r.composedOfAny && r.composedOfAny.length > 0)
+        .sort((a, b) => a.tier - b.tier);
+
+    // Collect viable rules with their matching indices
+    interface ViableRule {
+        rule: OrgTypeRule;
+        matching: number[];
+        nonMatching: number[];
+    }
+    const viable: ViableRule[] = [];
+
+    for (const rule of composedRules) {
+        // For composed rules with per-unit filter, check that all leaf units pass
+        if (rule.filter) {
+            const allUnits = collectAllUnits(groups);
+            if (allUnits.some(u => !rule.filter!(u))) continue;
+        }
+        if (rule.groupFilter && !rule.groupFilter(groups)) continue;
+
+        const acceptedTypes = new Set(rule.composedOfAny!);
+        const matching: number[] = [];
+        const nonMatching: number[] = [];
+
+        for (let i = 0; i < groups.length; i++) {
+            const g = groups[i];
+            if ((g.type && acceptedTypes.has(g.type)) ||
+                (g.countsAsType && acceptedTypes.has(g.countsAsType))) {
+                matching.push(i);
+            } else {
+                nonMatching.push(i);
+            }
+        }
+
+        if (matching.length === 0) continue;
+        viable.push({ rule, matching, nonMatching });
+    }
+
+    if (viable.length === 0) return null;
+
+    /** Evaluate a candidate result and compete against current best. */
+    function evaluateCandidate(newGroups: GroupSizeResult[], consumed: number, composedTier: number, usedRules: OrgTypeRule[]) {
+        const promote = canPromoteFurther(newGroups, rules);
+        const strict = usedRules.reduce((s, r) => s + (r.strict ? 1 : 0), 0);
+        const prio = usedRules.reduce((s, r) => s + (r.priority ?? 0), 0);
+        const score: CompositionScore = {
+            composedTier: composedTier,
+            consumed,
+            canPromote: promote,
+            strictCount: strict,
+            prioritySum: prio,
+        };
+        if (betterScore(score, bestScore)) {
+            bestResult = newGroups;
+            bestScore = score;
+        }
+    }
+
+    // Phase 1: Try each rule independently (single-rule allocation)
+    for (const { rule, matching, nonMatching } of viable) {
+        const matchingGroups = matching.map(i => groups[i]);
+        const result = applyComposedRule(rule, matchingGroups, matching.length);
+        if (!result) continue;
+
+        const newGroups = [...nonMatching.map(i => groups[i]), ...result.groups];
+        // Add back unconsumed matching groups
+        for (let i = result.consumed; i < matching.length; i++) {
+            newGroups.push(matchingGroups[i]);
+        }
+        evaluateCandidate(newGroups, result.consumed, maxTier(result.groups), [rule]);
+    }
+
+    // Phase 2: Try combinations of same-tier rules that share matching groups.
+    // Group viable rules by tier, then enumerate allocations within each tier.
+    const byTier = new Map<number, ViableRule[]>();
+    for (const v of viable) {
+        const t = v.rule.tier;
+        if (!byTier.has(t)) byTier.set(t, []);
+        byTier.get(t)!.push(v);
+    }
+
+    for (const [, tierViable] of byTier) {
+        if (tierViable.length < 2) continue;
+
+        // Find the union of matching indices across all rules at this tier
+        const unionMatching = new Set<number>();
+        for (const v of tierViable) {
+            for (const idx of v.matching) unionMatching.add(idx);
+        }
+        const matchingArr = Array.from(unionMatching);
+        const totalMatching = matchingArr.length;
+        const nonMatchingArr = groups.filter((_, i) => !unionMatching.has(i));
+        const matchingGroups = matchingArr.map(i => groups[i]);
+
+        // Enumerate allocations: for each pair of rules, try all splits
+        // of matchingGroups between them. For >2 rules, try all orderings.
+        const counts = tierViable.map(v => getRegularCount(v.rule));
+
+        if (tierViable.length === 2) {
+            const [r0, r1] = tierViable;
+            const c0 = counts[0];
+            const c1 = counts[1];
+            // Try all (n0, n1) where n0*c0 + n1*c1 <= totalMatching
+            const maxN0 = Math.floor(totalMatching / c0);
+            for (let n0 = 0; n0 <= maxN0; n0++) {
+                const remaining0 = totalMatching - n0 * c0;
+                const maxN1 = Math.floor(remaining0 / c1);
+                for (let n1 = 0; n1 <= maxN1; n1++) {
+                    if (n0 === 0 && n1 === 0) continue;
+                    const consumed0 = n0 * c0;
+                    const consumed1 = n1 * c1;
+                    const totalConsumed = consumed0 + consumed1;
+                    if (totalConsumed === 0) continue;
+
+                    const newGroups = [...nonMatchingArr];
+                    const usedRules: OrgTypeRule[] = [];
+                    let offset = 0;
+
+                    if (n0 > 0) {
+                        const res0 = applyComposedRule(r0.rule, matchingGroups.slice(offset, offset + consumed0), consumed0);
+                        if (!res0) continue;
+                        newGroups.push(...res0.groups);
+                        usedRules.push(r0.rule);
+                        offset += res0.consumed;
+                    }
+                    if (n1 > 0) {
+                        const res1 = applyComposedRule(r1.rule, matchingGroups.slice(offset, offset + consumed1), consumed1);
+                        if (!res1) continue;
+                        newGroups.push(...res1.groups);
+                        usedRules.push(r1.rule);
+                        offset += res1.consumed;
+                    }
+
+                    // Add unconsumed matching groups back
+                    for (let i = offset; i < totalMatching; i++) {
+                        newGroups.push(matchingGroups[i]);
+                    }
+
+                    evaluateCandidate(newGroups, totalConsumed, maxTier(newGroups), usedRules);
+                }
+            }
+        } else {
+            // For 3+ same-tier rules: try all permutations of greedy allocation
+            const permutations = getPermutations(tierViable);
+            for (const perm of permutations) {
+                const newGroups = [...nonMatchingArr];
+                const usedRules: OrgTypeRule[] = [];
+                let remaining = totalMatching;
+                let offset = 0;
+
+                for (const v of perm) {
+                    const c = getRegularCount(v.rule);
+                    if (remaining < c) continue;
+                    const take = Math.floor(remaining / c) * c;
+                    if (take === 0) continue;
+                    const res = applyComposedRule(v.rule, matchingGroups.slice(offset, offset + take), take);
+                    if (!res) continue;
+                    newGroups.push(...res.groups);
+                    usedRules.push(v.rule);
+                    offset += res.consumed;
+                    remaining -= res.consumed;
+                }
+
+                if (usedRules.length === 0) continue;
+
+                for (let i = offset; i < totalMatching; i++) {
+                    newGroups.push(matchingGroups[i]);
+                }
+
+                evaluateCandidate(newGroups, offset, maxTier(newGroups), usedRules);
+            }
+        }
+    }
+
+    return bestResult;
+}
+
+/** Generate all permutations of an array (for small arrays only). */
+function getPermutations<T>(arr: T[]): T[][] {
+    if (arr.length <= 1) return [arr];
+    const result: T[][] = [];
+    for (let i = 0; i < arr.length; i++) {
+        const rest = [...arr.slice(0, i), ...arr.slice(i + 1)];
+        for (const perm of getPermutations(rest)) {
+            result.push([arr[i], ...perm]);
+        }
+    }
+    return result;
+}
+
+// ─── Wrap result ───────────────────────────────────────────────────────────────
+
+export function aggregateGroupSizeResult(groups: GroupSizeResult[]): GroupSizeResult {
+    if (groups.length === 0) {
+        return { name: 'Force', type: null, countsAsType: null, tier: 0 };
+    }
+    if (groups.length === 1) {
+        return groups[0];
+    }
+    // Sort by tier descending so the highest-tier group appears first
+    const sorted = [...groups].sort((a, b) => b.tier - a.tier);
+
+    // Build descriptive name: count duplicates, e.g. "2x Galaxy + Flight"
+    const nameCounts = new Map<string, number>();
+    for (const g of sorted) {
+        nameCounts.set(g.name, (nameCounts.get(g.name) || 0) + 1);
+    }
+    const parts: string[] = [];
+    for (const [name, count] of nameCounts) {
+        parts.push(count > 1 ? `${count}x ${name}` : name);
+    }
+
+    // Tier: base = highest tier, + otherTier/baseTier for each other group
+    const baseTier = sorted[0].tier;
+    let tierSum = baseTier;
+    for (let i = 1; i < sorted.length; i++) {
+        tierSum += baseTier > 0 ? sorted[i].tier / baseTier : 0;
+    }
+    return {
+        name: parts.join(' + '),
+        type: null,
+        countsAsType: null,
+        tier: tierSum,
+        children: sorted,
+    };
+}
+
+/** When true, multiple uncomposable top-level groups get a descriptive combined
+ *  name (e.g. "2x Galaxy", "Augmented Company + Flight") and an adjusted tier
+ *  (baseTier + sum(otherTier / baseTier) for each additional group). */
+const SYNTHETIC_AGGREGATED_GROUP = false;
+const RETURN_MAX_ONE_GROUP = false;
+
+/**
+ * Wrap a list of composed groups into a single top-level GroupSizeResult.
+ * If there's exactly one group, return it directly.
+ * If multiple, return "Force" with children.
+ */
+function wrapResult(groups: GroupSizeResult[]): GroupSizeResult[] {
+    if (groups.length === 0) return [{ name: 'Force', type: null, countsAsType: null, tier: 0 }];
+    if (groups.length === 1) return groups;
+
+    if (SYNTHETIC_AGGREGATED_GROUP) {
+        const aggregatedGroup = aggregateGroupSizeResult(groups);
+        return [aggregatedGroup];
+    } else
+    if (RETURN_MAX_ONE_GROUP) {
+        // Fallback: use the highest-tier group's name
+        let best = groups[0];
+        for (let i = 1; i < groups.length; i++) {
+            if (groups[i].tier > best.tier) best = groups[i];
+        }
+
+        return [{
+            name: best.name,
+            type: null,
+            countsAsType: null,
+            tier: best.tier,
+            children: groups,
+        }];
+    }
+
+    return [...groups].sort((a, b) => b.tier - a.tier);
 }
 
 // ─── Org Resolution ────────────────────────────────────────────────────────────
 
-/**
- * Resolve the org rules and point-range function for the given tech base / faction.
- */
 function resolveOrg(techBase: string, factionName: string): OrgDefinition {
     return ORG_REGISTRY.find(e => e.match(techBase, factionName))?.org ?? DEFAULT_ORG;
 }
 
 // ─── Public API ────────────────────────────────────────────────────────────────
 
-/**
- * Evaluate a single group of units and return the structural result
- * (name + matched OrgType). This is the data each UnitGroup can cache
- * in a computed signal so the force-level evaluator doesn't redo it.
- *
- * Strategy:
- * 1. Try leaf matching (Point, Single, customMatch rules like Nova)
- * 2. If leaf didn't match or pts is large, try recursive bottom-up split
- */
-export function resolveFromUnits(units: Unit[], techBase: string, factionName: string): GroupSizeResult {
-    if (units.length === 0) return { name: 'Force', type: null, countsAsType: null, tier: 0 };
-    const { rules, getPointRange, minDistance, distanceFactor, groupMinDistance, groupDistanceFactor } = resolveOrg(techBase, factionName);
-    const comp = getForceCompositionFromUnits(units);
-    let result = evaluateLeaf(comp, rules, getPointRange, minDistance, distanceFactor);
+/** Collect the max priority across a set of GroupSizeResults. */
+function maxPriority(groups: ReadonlyArray<GroupSizeResult>): number {
+    let p = 0;
+    for (const g of groups) {
+        if ((g.priority ?? 0) > p) p = g.priority!;
+    }
+    return p;
+}
 
-    const range = getPointRange(comp);
-    if (range.max > 0) {
-        const splitResult = trySplitEvaluation(range, rules, comp, getPointRange, minDistance, distanceFactor, groupMinDistance, groupDistanceFactor);
-        if (isBetterMatch(splitResult, result)) {
-            result = splitResult;
+/**
+ * Score a wrapped result for candidate comparison.
+ * Priority only leads when the topmost result has no leftovers.
+ * Then compare tier, then raw priority as a tie-breaker.
+ */
+function scoreResult(
+    groups: GroupSizeResult[],
+    allUnits: ReadonlyArray<Unit>,
+): {
+    priorityWithoutLeftovers: number;
+    maxTier: number;
+    rawPriority: number;
+    groupCount: number;
+    tierSum: number;
+} {
+    let mTier = 0;
+    let rawPriority = 0;
+    let tierSum = 0;
+    for (const g of groups) {
+        if (g.tier > mTier) mTier = g.tier;
+        if ((g.priority ?? 0) > rawPriority) rawPriority = g.priority!;
+        tierSum += g.tier;
+    }
+    const priorityWithoutLeftovers = collectUnitsOutsidePrimaryGroup(allUnits, groups).length === 0 ? rawPriority : 0;
+    return { priorityWithoutLeftovers, maxTier: mTier, rawPriority, groupCount: groups.length, tierSum };
+}
+
+function betterResult(
+    a: { priorityWithoutLeftovers: number; maxTier: number; rawPriority: number; groupCount: number; tierSum: number },
+    b: { priorityWithoutLeftovers: number; maxTier: number; rawPriority: number; groupCount: number; tierSum: number },
+): boolean {
+    if (a.priorityWithoutLeftovers !== b.priorityWithoutLeftovers) {
+        return a.priorityWithoutLeftovers > b.priorityWithoutLeftovers;
+    }
+    if (a.maxTier !== b.maxTier) return a.maxTier > b.maxTier;
+    if (a.rawPriority !== b.rawPriority) return a.rawPriority > b.rawPriority;
+    if (a.groupCount !== b.groupCount) return a.groupCount < b.groupCount;
+    return a.tierSum > b.tierSum;
+}
+
+/**
+ * Evaluate a single group of units and return the structural result.
+ *
+ * Wide combinator approach:
+ * 1. Generate all leaf allocation candidates (customMatch branches)
+ * 2. Compose each candidate upward
+ * 3. Pick the best result (highest tier, fewest groups, highest priority)
+ */
+export function resolveFromUnits(units: Unit[], techBase: string, factionName: string): GroupSizeResult[] {
+    if (units.length === 0) {
+        return [{ name: 'Force', type: null, countsAsType: null, tier: 0 }];
+    }
+    const { rules, getPointRange } = resolveOrg(techBase, factionName);
+
+    // Step 1: Generate all leaf allocation candidates
+    const leafCandidates = allocateLeaves(units, rules, getPointRange);
+
+    let bestComposed: GroupSizeResult[] | null = null;
+    let bestScore: {
+        priorityWithoutLeftovers: number;
+        maxTier: number;
+        rawPriority: number;
+        groupCount: number;
+        tierSum: number;
+    } | null = null;
+
+    // Step 2: Compose each candidate upward and pick the best
+    for (const leafGroups of leafCandidates) {
+        if (leafGroups.length === 0) continue;
+        const composed = composeUpward(leafGroups, rules);
+        const wrapped = wrapResult(composed);
+        const score = scoreResult(wrapped, units);
+
+        if (!bestScore || betterResult(score, bestScore)) {
+            bestComposed = wrapped;
+            bestScore = score;
         }
     }
 
-    return {
-        name: result.name,
-        type: result.matchedRule?.type ?? null,
-        countsAsType: result.matchedRule?.countsAs ?? null,
-        tier: result.matchedRule?.tier ?? 0,
-    };
+    return attachTopLevelLeftovers(
+        bestComposed ?? [{ name: 'Force', type: null, countsAsType: null, tier: 0 }],
+        units,
+    );
 }
 
-export function resolveFromGroups(techBase: string, factionName: string, groupResults: GroupSizeResult[]): GroupSizeResult {
-    if (groupResults.length === 0) return { name: 'Force', type: null, countsAsType: null, tier: 0 };
-    const { rules, groupMinDistance, groupDistanceFactor } = resolveOrg(techBase, factionName);
-    // Normalize foreign types (e.g. Level II → Lance) so they can participate
-    // in group-based evaluation against this org's composition hierarchy.
-    const normalized = normalizeGroupsToOrg(groupResults, rules);
-    if (normalized.length === 1) {
-        const single = normalized[0];
-        return {
-            name: single.name,
-            type: single.type,
-            countsAsType: single.countsAsType,
-            tier: single.tier,
-        };
-    }
-    const groupResult = promotiveGroupEvaluation(normalized, rules, groupMinDistance, groupDistanceFactor);
+/**
+ * Evaluate a force from pre-computed group results.
+ * Groups are taken as-is (not deconstructed) and composed upward.
+ */
+export function resolveFromGroups(techBase: string, factionName: string, groupResults: GroupSizeResult[]): GroupSizeResult[] {
+    if (groupResults.length === 0) return [{ name: 'Force', type: null, countsAsType: null, tier: 0 }];
 
-    if (groupResult.matchedRule) {
-        return {
-            name: groupResult.name,
-            type: groupResult.matchedRule?.type ?? null,
-            countsAsType: groupResult.matchedRule?.countsAs ?? null,
-            tier: groupResult.matchedRule?.tier ?? 0,
-        };
-    } else {
-        return { name: 'Force', type: null, countsAsType: null, tier: 0 };
-    }
+    const { rules } = resolveOrg(techBase, factionName);
+    const allUnits = collectAllUnits(groupResults);
+
+    // Normalize foreign types
+    const normalized = normalizeGroupsToOrg(groupResults, rules);
+
+    if (normalized.length === 1) return attachTopLevelLeftovers([normalized[0]], allUnits);
+
+    // Compose upward
+    const composed = composeUpward(normalized, rules);
+
+    return attachTopLevelLeftovers(wrapResult(composed), allUnits);
 }

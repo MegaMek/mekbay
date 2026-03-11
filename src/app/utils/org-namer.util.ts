@@ -30,7 +30,8 @@
  * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
  * affiliated with Microsoft.
  */
-import { resolveFromGroups, resolveFromUnits, type GroupSizeResult } from './org-solver.util';
+import { resolveFromGroups, resolveFromUnits } from './org-solver.util';
+import type { GroupSizeResult } from './org-types';
 import { type Force, UnitGroup } from '../models/force.model';
 import { LoadForceEntry, type LoadForceGroup } from '../models/load-force-entry.model';
 import type { Unit } from '../models/units.model';
@@ -45,9 +46,9 @@ export class OrgNamerUtil {
 
     private static readonly EMPTY_RESULT: GroupSizeResult = { name: 'Force', type: null, countsAsType: null, tier: 0 };
 
-    public static getOrgFromGroup(group: UnitGroup): GroupSizeResult;
-    public static getOrgFromGroup(group: LoadForceGroup, factionName: string, techBase: string): GroupSizeResult;
-    public static getOrgFromGroup(group: UnitGroup | LoadForceGroup, factionName?: string, techBase?: string): GroupSizeResult {
+    public static getOrgFromGroup(group: UnitGroup): GroupSizeResult[];
+    public static getOrgFromGroup(group: LoadForceGroup, factionName: string, techBase: string): GroupSizeResult[];
+    public static getOrgFromGroup(group: UnitGroup | LoadForceGroup, factionName?: string, techBase?: string): GroupSizeResult[] {
         if (group instanceof UnitGroup) {
             const force = group.force;
             const fn = force.faction()?.name ?? 'Mercenary';
@@ -62,15 +63,15 @@ export class OrgNamerUtil {
         return resolveFromUnits(units, techBase!, factionName!);
     }
 
-    public static getOrgFromForce(force: Force): GroupSizeResult;
-    public static getOrgFromForce(entry: LoadForceEntry, factionName: string): GroupSizeResult;
-    public static getOrgFromForce(forceOrEntry: Force | LoadForceEntry, factionName?: string): GroupSizeResult {
+    public static getOrgFromForce(force: Force): GroupSizeResult[];
+    public static getOrgFromForce(entry: LoadForceEntry, factionName: string): GroupSizeResult[];
+    public static getOrgFromForce(forceOrEntry: Force | LoadForceEntry, factionName?: string): GroupSizeResult[] {
         if (forceOrEntry instanceof LoadForceEntry) {
             const fn = factionName || '';
             const techBase = this.resolveTechBase(forceOrEntry.groups.flatMap(g => g.units), fn);
             const groupResults = forceOrEntry.groups
                 .filter(g => g.units.some(u => u.unit !== undefined))
-                .map(g => this.getOrgFromGroup(g, fn, techBase));
+                .flatMap(g => this.getOrgFromGroup(g, fn, techBase));
             return resolveFromGroups(techBase, fn, groupResults);
         }
         const fn = forceOrEntry.faction()?.name ?? 'Mercenary';
@@ -78,7 +79,7 @@ export class OrgNamerUtil {
         const techBase = isComStarOrWoB ? '' : forceOrEntry.techBase();
         const groupResults = forceOrEntry.groups()
             .filter(g => g.units().length > 0)
-            .map(g => g.sizeResult());
+            .flatMap(g => g.sizeResult() ?? []);
         return resolveFromGroups(techBase, fn, groupResults);
     }
 
@@ -92,11 +93,11 @@ export class OrgNamerUtil {
         entries: LoadForceEntry[],
         factionName: string,
         childGroupResults?: GroupSizeResult[],
-    ): GroupSizeResult {
-        if (entries.length === 0) return this.EMPTY_RESULT;
+    ): GroupSizeResult[] {
+        if (entries.length === 0) return [this.EMPTY_RESULT];
         const techBase = this.resolveTechBaseFromEntries(entries, factionName);
         const groupResults = childGroupResults
-            ?? entries.map(e => this.getOrgFromForce(e, factionName));
+            ?? entries.flatMap(e => this.getOrgFromForce(e, factionName));
         return resolveFromGroups(techBase, factionName, groupResults);
     }
 

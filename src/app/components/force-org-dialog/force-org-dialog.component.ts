@@ -50,11 +50,12 @@ import { DialogsService } from '../../services/dialogs.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
-import type { GroupSizeResult } from '../../utils/org-solver.util';
+import type { GroupSizeResult } from '../../utils/org-types';
 import { GameSystem } from '../../models/common.model';
 import type { SerializedOrganization, OrgPlacedForce, OrgGroupData } from '../../models/organization.model';
 import { ForceEntryPreviewDialogComponent } from '../force-entry-preview-dialog/force-entry-preview-dialog.component';
 import { OrgNamerUtil } from '../../utils/org-namer.util';
+import { aggregateGroupSizeResult } from '../../utils/org-solver.util';
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2.0;
@@ -213,7 +214,8 @@ export interface ForceOrgDialogData {
 
 interface ForceMetadata {
     factionName: string;
-    org: GroupSizeResult;
+    org: GroupSizeResult[];
+    aggregatedOrg: GroupSizeResult;
     bvString: string;
     totalBv: number;
     totalPv: number;
@@ -454,9 +456,11 @@ export class ForceOrgDialogComponent {
                 bvString = `PV: ${force.pv.toLocaleString()}`;
                 if (totalPv > 0 && totalPv !== force.pv) bvString += ` (${totalPv.toLocaleString()})`;
             }
+            const org = OrgNamerUtil.getOrgFromForce(force, factionName);
             result.set(force.instanceId, {
                 factionName,
-                org: OrgNamerUtil.getOrgFromForce(force, factionName),
+                org: org,
+                aggregatedOrg: aggregateGroupSizeResult(org),
                 bvString,
                 totalBv,
                 totalPv,
@@ -525,7 +529,7 @@ export class ForceOrgDialogComponent {
             const group = groups.find(g => g.id === currentId);
             if (entries.length > 0 && group) {
                 const orgResult = this.computeHierarchicalOrgResult(group, entries, groups, placed, previewDescendants);
-                result.set(currentId, { orgName: orgResult.name, totals: formatTotals(entries), factionId: previewFactions.get(currentId) });
+                result.set(currentId, { orgName: aggregateGroupSizeResult(orgResult).name, totals: formatTotals(entries), factionId: previewFactions.get(currentId) });
             }
             currentId = group?.parentGroupId ?? null;
         }
@@ -551,7 +555,7 @@ export class ForceOrgDialogComponent {
         for (const group of groups) {
             const descendants = group.descendants();
             group.orgName.set(descendants.length > 0
-                ? this.computeHierarchicalOrgResult(group, descendants, groups, placed).name
+                ? aggregateGroupSizeResult(this.computeHierarchicalOrgResult(group, descendants, groups, placed)).name
                 : '');
         }
     });
@@ -583,7 +587,7 @@ export class ForceOrgDialogComponent {
         groups: OrgGroup[],
         placed: PlacedForce[],
         descendantsOverride?: Map<string, LoadForceEntry[]>,
-    ): GroupSizeResult {
+    ): GroupSizeResult[] {
         const childGroups = groups.filter(g => g.parentGroupId === group.id);
         const factionName = group.factionName() ?? 'Mercenary';
 
@@ -593,14 +597,14 @@ export class ForceOrgDialogComponent {
                 ?? this.collectDescendantForces(child.id, placed, groups);
             if (childEntries.length === 0) continue;
             childGroupResults.push(
-                this.computeHierarchicalOrgResult(child, childEntries, groups, placed, descendantsOverride),
+                ...this.computeHierarchicalOrgResult(child, childEntries, groups, placed, descendantsOverride),
             );
         }
 
         // Evaluate direct forces with the determined faction
         const directForces = placed.filter(pf => pf.groupId === group.id);
         for (const pf of directForces) {
-            childGroupResults.push(OrgNamerUtil.getOrgFromForce(pf.force, factionName));
+            childGroupResults.push(...OrgNamerUtil.getOrgFromForce(pf.force, factionName));
         }
 
         // Leaf case: no child groups
@@ -1054,7 +1058,8 @@ export class ForceOrgDialogComponent {
     private computeGroupPreview(a: Rect, b: Rect, entries: LoadForceEntry[], childGroupResults?: GroupSizeResult[]): GroupPreview {
         const factionId = getDominantFactionId(entries);
         const factionName = factionId !== undefined ? this.getFactionName(factionId) : 'Mercenary';
-        const orgName = OrgNamerUtil.getOrgFromForceCollection(entries, factionName, childGroupResults).name;
+        const aggregateResult = aggregateGroupSizeResult(OrgNamerUtil.getOrgFromForceCollection(entries, factionName, childGroupResults));
+        const orgName = aggregateResult.name;
         const totals = formatTotals(entries);
         this.previewOrgCache = { orgName, totals, factionId };
         return { ...this.computeGroupPreviewRect(a, b), orgName, totals, factionId };
@@ -1660,10 +1665,10 @@ export class ForceOrgDialogComponent {
                     const otherEntries = this.collectDescendantForces(grpAction.other.id, currentPlaced, currentGroups);
                     grpChildGroupResults = [];
                     if (draggedEntries.length > 0) {
-                        grpChildGroupResults.push(this.computeHierarchicalOrgResult(draggedGrp, draggedEntries, currentGroups, currentPlaced));
+                        grpChildGroupResults.push(...this.computeHierarchicalOrgResult(draggedGrp, draggedEntries, currentGroups, currentPlaced));
                     }
                     if (otherEntries.length > 0) {
-                        grpChildGroupResults.push(this.computeHierarchicalOrgResult(grpAction.other, otherEntries, currentGroups, currentPlaced));
+                        grpChildGroupResults.push(...this.computeHierarchicalOrgResult(grpAction.other, otherEntries, currentGroups, currentPlaced));
                     }
                 }
             }

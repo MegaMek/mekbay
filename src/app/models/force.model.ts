@@ -47,8 +47,9 @@ import type { Faction } from './factions.model';
 import { type FormationTypeDefinition, type FormationMatch, isNoFormation } from '../utils/formation-type.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
-import type { GroupSizeResult } from '../utils/org-solver.util';
+import type { GroupSizeResult } from '../utils/org-types';
 import { OrgNamerUtil } from '../utils/org-namer.util';
+import { aggregateGroupSizeResult } from '../utils/org-solver.util';
 
 /*
  * Author: Drake
@@ -137,12 +138,14 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     }
 
     /** Structural evaluation result for this group (name + matched ForceType). */
-    sizeResult = computed<GroupSizeResult>(() => {
-        return OrgNamerUtil.getOrgFromGroup(this);
+    sizeResult = computed<GroupSizeResult[]>(() => {
+        const result = OrgNamerUtil.getOrgFromGroup(this);
+        console.log(result);
+        return result;
     });
 
     sizeName = computed(() => {
-        return this.sizeResult().name;
+        return aggregateGroupSizeResult(this.sizeResult()).name;
     });
 
     activeFormation = computed<FormationTypeDefinition | null>(() => {
@@ -261,7 +264,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     }
 
     sizeName = computed(() => {
-        return OrgNamerUtil.getOrgFromForce(this).name;
+        return aggregateGroupSizeResult(OrgNamerUtil.getOrgFromForce(this)).name;
     });
 
     techBase = computed((): string => {

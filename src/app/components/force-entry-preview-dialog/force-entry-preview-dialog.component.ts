@@ -50,6 +50,7 @@ import { ToastService } from '../../services/toast.service';
 import { type ForceAddModePickerData, ForceAddModePickerDialogComponent, type ForceAddModePickerResult } from '../force-add-mode-picker-dialog/force-add-mode-picker-dialog.component';
 import { firstValueFrom } from 'rxjs';
 import { OrgNamerUtil } from '../../utils/org-namer.util';
+import { aggregateGroupSizeResult } from '../../utils/org-solver.util';
 
 export interface ForceEntryPreviewDialogData {
     force: LoadForceEntry;
@@ -101,7 +102,7 @@ export class ForceEntryPreviewDialogComponent {
         const techBase = isComStarOrWoB ? '' : OrgNamerUtil.deriveTechBase(this.allUnits);
 
         this.groupDisplayData = this.force.groups.map(group => {
-            const sizeResult = OrgNamerUtil.getOrgFromGroup(group, factionName, techBase);
+            const sizeResult = aggregateGroupSizeResult(OrgNamerUtil.getOrgFromGroup(group, factionName, techBase));
             const orgName = (sizeResult.name && sizeResult.name !== 'Force') ? sizeResult.name : null;
 
             let name: string;
@@ -122,7 +123,7 @@ export class ForceEntryPreviewDialogComponent {
             return { group, name, orgName, formationName };
         });
 
-        const forceResult = OrgNamerUtil.getOrgFromForce(this.force, factionName);
+        const forceResult = aggregateGroupSizeResult(OrgNamerUtil.getOrgFromForce(this.force, factionName));
         if (forceResult && forceResult.type) {
             this.forceOrgName = forceResult.name;
         }

@@ -44,7 +44,8 @@ import { type Faction, FACTION_MERCENARY } from '../../models/factions.model';
 import { ForceNamerUtil, type FactionDisplayInfo } from '../../utils/force-namer.util';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { FactionDropdownPanelComponent } from './faction-dropdown-panel.component';
-import { resolveFromGroups, type GroupSizeResult } from '../../utils/org-solver.util';
+import { aggregateGroupSizeResult, resolveFromGroups } from '../../utils/org-solver.util';
+import type { GroupSizeResult } from '../../utils/org-types';
 
 
 /*
@@ -342,20 +343,20 @@ export class RenameForceDialogComponent {
         );
     });
 
-    forceSizeResult = computed<GroupSizeResult | null>(() => {
+    forceSizeResult = computed<GroupSizeResult[]>(() => {
         const units = this.data.force.units();
-        if (units.length === 0) return null;
+        if (units.length === 0) return [];
         const factionName = this.selectedFaction()?.name ?? 'Mercenary';
         const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
         const techBase = isComStarOrWoB ? '' : this.data.force.techBase();
         const groupResults: GroupSizeResult[] = this.data.force.groups()
             .filter(g => g.units().length > 0)
-            .map(g => g.sizeResult());
+            .flatMap(g => g.sizeResult() ?? []);
         return resolveFromGroups(techBase, factionName, groupResults);
     });
 
     forceSizeName = computed<string>(() => {
-        return this.forceSizeResult()?.name.toUpperCase() ?? 'FORCE';
+        return aggregateGroupSizeResult(this.forceSizeResult()).name.toUpperCase();
     });
     
     /** Placeholder name based force size. */
