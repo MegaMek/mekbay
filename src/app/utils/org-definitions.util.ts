@@ -157,8 +157,8 @@ export function getForceCompositionFromUnits(units: Unit[]): ForceComposition {
         else if (u.type === 'Infantry') {
             if (u.subtype === 'Battle Armor') {
                 comp.BA++;
-                if (u.as.specials.includes('MEC')) comp.BA_MEC++;
-                if (u.as.specials.includes('XMEC')) comp.BA_XMEC++;
+                if (u.as?.specials?.includes('MEC')) comp.BA_MEC++;
+                if (u.as?.specials?.includes('XMEC')) comp.BA_XMEC++;
                 comp.BA_troopers += (u.internal || 0);
             } else {
                 comp.CI++;
@@ -782,6 +782,7 @@ const CCOrg: OrgDefinition = {
  * Order matters: first match wins. IS is the default fallback.
  * To add a new org, append one entry here.
  */
+
 export const ORG_REGISTRY: { match: (techBase: string, factionName: string) => boolean; org: OrgDefinition }[] = [
     { match: (_, f) => f === 'ComStar' || f === 'Word of Blake', org: ComStarOrg },
     { match: (_, f) => f === 'Society', org: SocietyOrg },
