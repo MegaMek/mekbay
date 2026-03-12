@@ -67,14 +67,6 @@ interface SolverContext {
     ruleFilterCache: WeakMap<OrgTypeRule, Map<string, boolean>>;
 }
 
-function createSolverContext(): SolverContext {
-    return {
-        groupUnitCache: new WeakMap<GroupSizeResult, Unit[]>(),
-        customMatchCache: new WeakMap<OrgTypeRule, Map<string, number>>(),
-        ruleFilterCache: new WeakMap<OrgTypeRule, Map<string, boolean>>(),
-    };
-}
-
 function collectGroupUnits(group: GroupSizeResult, context: SolverContext): Unit[] {
     const cached = context.groupUnitCache.get(group);
     if (cached) return cached;
@@ -1349,6 +1341,67 @@ function betterResult(
     return a.tierSum > b.tierSum;
 }
 
+class OrgSolver {
+    private readonly context: SolverContext = {
+        groupUnitCache: new WeakMap<GroupSizeResult, Unit[]>(),
+        customMatchCache: new WeakMap<OrgTypeRule, Map<string, number>>(),
+        ruleFilterCache: new WeakMap<OrgTypeRule, Map<string, boolean>>(),
+    };
+
+    constructor(private readonly org: OrgDefinition) {}
+
+    resolveFromUnits(units: Unit[]): GroupSizeResult[] {
+        if (units.length === 0) {
+            return [{ name: 'Force', type: null, countsAsType: null, tier: 0 }];
+        }
+
+        const leafCandidates = allocateLeaves(units, this.org.rules, this.org.getPointRange, this.context);
+
+        let bestComposed: GroupSizeResult[] | null = null;
+        let bestScore: {
+            priorityWithoutLeftovers: number;
+            maxTier: number;
+            rawPriority: number;
+            groupCount: number;
+            tierSum: number;
+        } | null = null;
+
+        for (const leafGroups of leafCandidates) {
+            if (leafGroups.length === 0) continue;
+            const composed = composeUpward(leafGroups, this.org.rules, this.context);
+            const wrapped = wrapResult(composed);
+            const score = scoreResult(wrapped, units, this.context);
+
+            if (!bestScore || betterResult(score, bestScore)) {
+                bestComposed = wrapped;
+                bestScore = score;
+            }
+        }
+
+        if (!bestComposed) {
+            return [];
+        }
+
+        return attachTopLevelLeftovers(bestComposed, units, this.context);
+    }
+
+    resolveFromGroups(groupResults: GroupSizeResult[]): GroupSizeResult[] {
+        if (groupResults.length === 0) {
+            return [{ name: 'Force', type: null, countsAsType: null, tier: 0 }];
+        }
+
+        const allUnits = collectAllUnits(groupResults, this.context);
+        const normalized = normalizeGroupsToOrg(groupResults, this.org.rules);
+
+        if (normalized.length === 1) {
+            return attachTopLevelLeftovers([normalized[0]], allUnits, this.context);
+        }
+
+        const composed = composeUpward(normalized, this.org.rules, this.context);
+        return attachTopLevelLeftovers(wrapResult(composed), allUnits, this.context);
+    }
+}
+
 /**
  * Evaluate a single group of units and return the structural result.
  *
@@ -1358,43 +1411,7 @@ function betterResult(
  * 3. Pick the best result (highest tier, fewest groups, highest priority)
  */
 export function resolveFromUnits(units: Unit[], techBase: TechBase, factionName: string): GroupSizeResult[] {
-    const context = createSolverContext();
-
-    if (units.length === 0) {
-        return [{ name: 'Force', type: null, countsAsType: null, tier: 0 }];
-    }
-    const { rules, getPointRange } = resolveOrg(techBase, factionName);
-
-    // Step 1: Generate all leaf allocation candidates
-    const leafCandidates = allocateLeaves(units, rules, getPointRange, context);
-
-    let bestComposed: GroupSizeResult[] | null = null;
-    let bestScore: {
-        priorityWithoutLeftovers: number;
-        maxTier: number;
-        rawPriority: number;
-        groupCount: number;
-        tierSum: number;
-    } | null = null;
-
-    // Step 2: Compose each candidate upward and pick the best
-    for (const leafGroups of leafCandidates) {
-        if (leafGroups.length === 0) continue;
-        const composed = composeUpward(leafGroups, rules, context);
-        const wrapped = wrapResult(composed);
-        const score = scoreResult(wrapped, units, context);
-
-        if (!bestScore || betterResult(score, bestScore)) {
-            bestComposed = wrapped;
-            bestScore = score;
-        }
-    }
-
-    if (!bestComposed) {
-        return [];
-    }
-
-    return attachTopLevelLeftovers(bestComposed, units, context);
+    return new OrgSolver(resolveOrg(techBase, factionName)).resolveFromUnits(units);
 }
 
 /**
@@ -1402,20 +1419,5 @@ export function resolveFromUnits(units: Unit[], techBase: TechBase, factionName:
  * Groups are taken as-is (not deconstructed) and composed upward.
  */
 export function resolveFromGroups(techBase: TechBase, factionName: string, groupResults: GroupSizeResult[]): GroupSizeResult[] {
-    const context = createSolverContext();
-
-    if (groupResults.length === 0) return [{ name: 'Force', type: null, countsAsType: null, tier: 0 }];
-
-    const { rules } = resolveOrg(techBase, factionName);
-    const allUnits = collectAllUnits(groupResults, context);
-
-    // Normalize foreign types
-    const normalized = normalizeGroupsToOrg(groupResults, rules);
-
-    if (normalized.length === 1) return attachTopLevelLeftovers([normalized[0]], allUnits, context);
-
-    // Compose upward
-    const composed = composeUpward(normalized, rules, context);
-
-    return attachTopLevelLeftovers(wrapResult(composed), allUnits, context);
+    return new OrgSolver(resolveOrg(techBase, factionName)).resolveFromGroups(groupResults);
 }

@@ -42,14 +42,11 @@ import { getUnitsAverageTechBase, TechBase } from '../models/tech.model';
  *
  * Utility class to deteremine organization names.
  */
+const EMPTY_RESULT: GroupSizeResult = { name: 'Force', type: null, countsAsType: null, tier: 0 };
 
-export class OrgNamerUtil {
-
-    private static readonly EMPTY_RESULT: GroupSizeResult = { name: 'Force', type: null, countsAsType: null, tier: 0 };
-
-    public static getOrgFromGroup(group: UnitGroup): GroupSizeResult[];
-    public static getOrgFromGroup(group: LoadForceGroup, factionName: string, techBase: TechBase): GroupSizeResult[];
-    public static getOrgFromGroup(group: UnitGroup | LoadForceGroup, factionName?: string, techBase?: TechBase): GroupSizeResult[] {
+export function getOrgFromGroup(group: UnitGroup): GroupSizeResult[];
+export function getOrgFromGroup(group: LoadForceGroup, factionName: string, techBase: TechBase): GroupSizeResult[];
+export function getOrgFromGroup(group: UnitGroup | LoadForceGroup, factionName?: string, techBase?: TechBase): GroupSizeResult[] {
         if (group instanceof UnitGroup) {
             const force = group.force;
             const fn = force.faction()?.name ?? 'Mercenary';
@@ -62,54 +59,53 @@ export class OrgNamerUtil {
         return resolveFromUnits(units, techBase!, factionName!);
     }
 
-    public static getOrgFromForce(force: Force): GroupSizeResult[];
-    public static getOrgFromForce(entry: LoadForceEntry, factionName: string): GroupSizeResult[];
-    public static getOrgFromForce(forceOrEntry: Force | LoadForceEntry, factionName?: string): GroupSizeResult[] {
-        if (forceOrEntry instanceof LoadForceEntry) {
-            const fn = factionName || '';
-            const techBase = this.resolveTechBase(forceOrEntry.groups.flatMap(g => g.units), fn);
-            const groupResults = forceOrEntry.groups
-                .filter(g => g.units.some(u => u.unit !== undefined))
-                .flatMap(g => this.getOrgFromGroup(g, fn, techBase));
-            return resolveFromGroups(techBase, fn, groupResults);
-        }
-        const fn = forceOrEntry.faction()?.name ?? 'Mercenary';
-        const techBase = forceOrEntry.techBase();
-        const groupResults = forceOrEntry.groups()
-            .filter(g => g.units().length > 0)
-            .flatMap(g => g.sizeResult() ?? []);
+export function getOrgFromForce(force: Force): GroupSizeResult[];
+export function getOrgFromForce(entry: LoadForceEntry, factionName: string): GroupSizeResult[];
+export function getOrgFromForce(forceOrEntry: Force | LoadForceEntry, factionName?: string): GroupSizeResult[] {
+    if (forceOrEntry instanceof LoadForceEntry) {
+        const fn = factionName || '';
+        const techBase = resolveTechBase(forceOrEntry.groups.flatMap(g => g.units), fn);
+        const groupResults = forceOrEntry.groups
+            .filter(g => g.units.some(u => u.unit !== undefined))
+            .flatMap(g => getOrgFromGroup(g, fn, techBase));
         return resolveFromGroups(techBase, fn, groupResults);
     }
+    const fn = forceOrEntry.faction()?.name ?? 'Mercenary';
+    const techBase = forceOrEntry.techBase();
+    const groupResults = forceOrEntry.groups()
+        .filter(g => g.units().length > 0)
+        .flatMap(g => g.sizeResult() ?? []);
+    return resolveFromGroups(techBase, fn, groupResults);
+}
 
-    /**
-     * Evaluate the org size result for a collection of LoadForceEntry instances.
-     * If childGroupResults are provided, they are used as pre-computed sub-group
-     * results (hierarchical mode). Otherwise, each entry is evaluated individually
-     * and their results are used as sub-groups (flat mode).
-     */
-    public static getOrgFromForceCollection(
+/**
+ * Evaluate the org size result for a collection of LoadForceEntry instances.
+ * If childGroupResults are provided, they are used as pre-computed sub-group
+ * results (hierarchical mode). Otherwise, each entry is evaluated individually
+ * and their results are used as sub-groups (flat mode).
+ */
+export function getOrgFromForceCollection(
         entries: LoadForceEntry[],
         factionName: string,
         childGroupResults?: GroupSizeResult[],
     ): GroupSizeResult[] {
-        if (entries.length === 0) return [this.EMPTY_RESULT];
-        const techBase = this.resolveTechBaseFromEntries(entries, factionName);
+        if (entries.length === 0) return [EMPTY_RESULT];
+        const techBase = resolveTechBaseFromEntries(entries, factionName);
         const groupResults = childGroupResults
-            ?? entries.flatMap(e => this.getOrgFromForce(e, factionName));
+            ?? entries.flatMap(e => getOrgFromForce(e, factionName));
         return resolveFromGroups(techBase, factionName, groupResults);
     }
 
-    // ===== Utility methods =====
+// ===== Utility =====
 
-    /** Resolve tech base from a flat array of LoadForceUnit-like objects. */
-    private static resolveTechBase(units: { unit: Unit | undefined }[], factionName: string): TechBase {
-        if (factionName.includes('ComStar') || factionName.includes('Word of Blake')) return 'Inner Sphere'; // not important
-        const realUnits = units.filter((u): u is { unit: Unit } => u.unit !== undefined).map(u => u.unit);
-        return getUnitsAverageTechBase(realUnits);
-    }
+/** Resolve tech base from a flat array of LoadForceUnit-like objects. */
+function resolveTechBase(units: { unit: Unit | undefined }[], factionName: string): TechBase {
+    if (factionName.includes('ComStar') || factionName.includes('Word of Blake')) return 'Inner Sphere'; // not important
+    const realUnits = units.filter((u): u is { unit: Unit } => u.unit !== undefined).map(u => u.unit);
+    return getUnitsAverageTechBase(realUnits);
+}
 
-    /** Resolve tech base from a set of LoadForceEntry instances. */
-    static resolveTechBaseFromEntries(entries: LoadForceEntry[], factionName: string): TechBase {
-        return this.resolveTechBase(entries.flatMap(e => e.groups.flatMap(g => g.units)), factionName);
-    }
+/** Resolve tech base from a set of LoadForceEntry instances. */
+function resolveTechBaseFromEntries(entries: LoadForceEntry[], factionName: string): TechBase {
+    return resolveTechBase(entries.flatMap(e => e.groups.flatMap(g => g.units)), factionName);
 }

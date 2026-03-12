@@ -54,7 +54,7 @@ import type { GroupSizeResult } from '../../utils/org-types';
 import { GameSystem } from '../../models/common.model';
 import type { SerializedOrganization, OrgPlacedForce, OrgGroupData } from '../../models/organization.model';
 import { ForceEntryPreviewDialogComponent } from '../force-entry-preview-dialog/force-entry-preview-dialog.component';
-import { OrgNamerUtil } from '../../utils/org-namer.util';
+import { getOrgFromForce, getOrgFromForceCollection } from '../../utils/org-namer.util';
 import { aggregateGroupSizeResult } from '../../utils/org-solver.util';
 
 const MIN_ZOOM = 0.2;
@@ -456,7 +456,7 @@ export class ForceOrgDialogComponent {
                 bvString = `PV: ${force.pv.toLocaleString()}`;
                 if (totalPv > 0 && totalPv !== force.pv) bvString += ` (${totalPv.toLocaleString()})`;
             }
-            const org = OrgNamerUtil.getOrgFromForce(force, factionName);
+            const org = getOrgFromForce(force, factionName);
             result.set(force.instanceId, {
                 factionName,
                 org: org,
@@ -604,15 +604,15 @@ export class ForceOrgDialogComponent {
         // Evaluate direct forces with the determined faction
         const directForces = placed.filter(pf => pf.groupId === group.id);
         for (const pf of directForces) {
-            childGroupResults.push(...OrgNamerUtil.getOrgFromForce(pf.force, factionName));
+            childGroupResults.push(...getOrgFromForce(pf.force, factionName));
         }
 
         // Leaf case: no child groups
         if (childGroups.length === 0) {
-            return OrgNamerUtil.getOrgFromForceCollection(allEntries, factionName);
+            return getOrgFromForceCollection(allEntries, factionName);
         }
 
-        return OrgNamerUtil.getOrgFromForceCollection(allEntries, factionName, childGroupResults);
+        return getOrgFromForceCollection(allEntries, factionName, childGroupResults);
     }
 
     private nextZIndex = 0;
@@ -1058,7 +1058,7 @@ export class ForceOrgDialogComponent {
     private computeGroupPreview(a: Rect, b: Rect, entries: LoadForceEntry[], childGroupResults?: GroupSizeResult[]): GroupPreview {
         const factionId = getDominantFactionId(entries);
         const factionName = factionId !== undefined ? this.getFactionName(factionId) : 'Mercenary';
-        const aggregateResult = aggregateGroupSizeResult(OrgNamerUtil.getOrgFromForceCollection(entries, factionName, childGroupResults));
+        const aggregateResult = aggregateGroupSizeResult(getOrgFromForceCollection(entries, factionName, childGroupResults));
         const orgName = aggregateResult.name;
         const totals = formatTotals(entries);
         this.previewOrgCache = { orgName, totals, factionId };

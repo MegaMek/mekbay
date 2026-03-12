@@ -48,7 +48,7 @@ import { type FormationTypeDefinition, type FormationMatch, isNoFormation } from
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
 import type { GroupSizeResult } from '../utils/org-types';
-import { OrgNamerUtil } from '../utils/org-namer.util';
+import { getOrgFromForce, getOrgFromGroup } from '../utils/org-namer.util';
 import { aggregateGroupSizeResult } from '../utils/org-solver.util';
 import { getUnitsAverageTechBase, TechBase } from './tech.model';
 
@@ -140,7 +140,7 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
 
     /** Structural evaluation result for this group (name + matched ForceType). */
     sizeResult = computed<GroupSizeResult[]>(() => {
-        const result = OrgNamerUtil.getOrgFromGroup(this);
+        const result = getOrgFromGroup(this);
         console.log(result);
         return result;
     });
@@ -265,7 +265,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     }
 
     sizeName = computed(() => {
-        return aggregateGroupSizeResult(OrgNamerUtil.getOrgFromForce(this)).name;
+        return aggregateGroupSizeResult(getOrgFromForce(this)).name;
     });
 
     techBase = computed((): TechBase => {
