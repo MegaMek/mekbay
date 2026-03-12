@@ -891,24 +891,69 @@ function canRuleComposeGroups(
     return true;
 }
 
-function getCandidateTakeCounts(rule: OrgTypeRule, maxAvailable: number): number[] {
+function getCandidateTakeCounts(
+    rule: OrgTypeRule,
+    maxAvailable: number,
+    includeSubRegular: boolean = false,
+): number[] {
     if (maxAvailable < 1) return [];
 
     const counts = new Set<number>();
     const regular = getRegularCount(rule);
     const minimum = getMinimumModifierCount(rule);
 
-    for (const [, count] of sortedModifiers(rule)) {
-        if (count <= maxAvailable) counts.add(count);
+    if (rule.strict) {
+        for (const [, count] of sortedModifiers(rule)) {
+            if (count <= maxAvailable) counts.add(count);
+        }
+        return Array.from(counts).sort((a, b) => b - a);
     }
 
-    if (!rule.strict) {
-        for (let count = Math.max(minimum, 1); count <= maxAvailable; count++) {
+    for (let count = Math.max(regular, 1); count <= maxAvailable; count++) {
+        counts.add(count);
+    }
+
+    if (includeSubRegular) {
+        for (let count = Math.max(minimum, 1); count < Math.min(regular, maxAvailable + 1); count++) {
             counts.add(count);
         }
     }
 
     return Array.from(counts).sort((a, b) => b - a);
+}
+
+interface SubsetCompositionCandidate {
+    chosenIndices: number[];
+    result: ComposedResult;
+}
+
+function collectSubsetCompositionCandidates(
+    rule: OrgTypeRule,
+    availableGroups: GroupSizeResult[],
+    context: SolverContext,
+): SubsetCompositionCandidate[] {
+    const buildCandidates = (includeSubRegular: boolean): SubsetCompositionCandidate[] => {
+        const candidates: SubsetCompositionCandidate[] = [];
+
+        for (const takeCount of getCandidateTakeCounts(rule, availableGroups.length, includeSubRegular)) {
+            const combinations = collectIndexCombinations(availableGroups.length, takeCount);
+            for (const indices of combinations) {
+                const chosenGroups = indices.map(index => availableGroups[index]);
+                if (!canRuleComposeGroups(rule, chosenGroups, context)) continue;
+
+                const result = applyComposedRule(rule, chosenGroups, chosenGroups.length);
+                if (!result || result.groups.length === 0) continue;
+
+                candidates.push({ chosenIndices: indices, result });
+            }
+        }
+
+        return candidates;
+    };
+
+    const regularCandidates = buildCandidates(false);
+    if (regularCandidates.length > 0 || rule.strict) return regularCandidates;
+    return buildCandidates(true);
 }
 
 function collectIndexCombinations(length: number, size: number): number[][] {
@@ -1117,7 +1162,7 @@ function findBestComposition(groups: GroupSizeResult[], rules: OrgTypeRule[], co
         }
 
         if (matching.length === 0) continue;
-        if (getCandidateTakeCounts(rule, matching.length).length === 0) continue;
+        if (getCandidateTakeCounts(rule, matching.length, true).length === 0) continue;
         viable.push({ rule, matching, nonMatching });
     }
 
@@ -1158,30 +1203,18 @@ function findBestComposition(groups: GroupSizeResult[], rules: OrgTypeRule[], co
             }
         }
 
-        for (const takeCount of getCandidateTakeCounts(rule, matching.length)) {
-            if (takeCount === matching.length) continue;
+        for (const candidate of collectSubsetCompositionCandidates(rule, matchingGroups, context)) {
+            if (candidate.chosenIndices.length === matching.length) continue;
 
-            const combinations = collectIndexCombinations(matching.length, takeCount);
-            for (const indices of combinations) {
-                const chosenSet = new Set(indices);
-                const chosenGroups = indices.map(index => matchingGroups[index]);
-                if (!canRuleComposeGroups(rule, chosenGroups, context)) continue;
-
-                const result = applyComposedRule(rule, chosenGroups, chosenGroups.length);
-                if (!result || result.groups.length === 0) continue;
-
-                const newGroups = [...nonMatchingGroups, ...result.groups];
-                for (let i = 0; i < matchingGroups.length; i++) {
-                    if (!chosenSet.has(i)) {
-                        newGroups.push(matchingGroups[i]);
-                    }
+            const chosenSet = new Set(candidate.chosenIndices);
+            const newGroups = [...nonMatchingGroups, ...candidate.result.groups];
+            for (let i = 0; i < matchingGroups.length; i++) {
+                if (!chosenSet.has(i)) {
+                    newGroups.push(matchingGroups[i]);
                 }
-                for (let i = result.consumed; i < chosenGroups.length; i++) {
-                    newGroups.push(chosenGroups[i]);
-                }
-
-                evaluateCandidate(newGroups, result.consumed, maxTier(result.groups), [rule]);
             }
+
+            evaluateCandidate(newGroups, candidate.result.consumed, maxTier(candidate.result.groups), [rule]);
         }
     }
 
@@ -1224,25 +1257,16 @@ function findBestComposition(groups: GroupSizeResult[], rules: OrgTypeRule[], co
             exploreTierAllocations(ruleIndex + 1, availableGroups, createdGroups, usedRules, totalConsumed);
 
             const currentRule = tierViable[ruleIndex].rule;
-            for (const takeCount of getCandidateTakeCounts(currentRule, availableGroups.length)) {
-                const combinations = collectIndexCombinations(availableGroups.length, takeCount);
-                for (const indices of combinations) {
-                    const chosenSet = new Set(indices);
-                    const chosenGroups = indices.map(index => availableGroups[index]);
-                    if (!canRuleComposeGroups(currentRule, chosenGroups, context)) continue;
-
-                    const result = applyComposedRule(currentRule, chosenGroups, chosenGroups.length);
-                    if (!result || result.groups.length === 0) continue;
-
-                    const remainingGroups = availableGroups.filter((_, index) => !chosenSet.has(index));
-                    exploreTierAllocations(
-                        ruleIndex + 1,
-                        remainingGroups,
-                        [...createdGroups, ...result.groups],
-                        [...usedRules, currentRule],
-                        totalConsumed + result.consumed,
-                    );
-                }
+            for (const candidate of collectSubsetCompositionCandidates(currentRule, availableGroups, context)) {
+                const chosenSet = new Set(candidate.chosenIndices);
+                const remainingGroups = availableGroups.filter((_, index) => !chosenSet.has(index));
+                exploreTierAllocations(
+                    ruleIndex + 1,
+                    remainingGroups,
+                    [...createdGroups, ...candidate.result.groups],
+                    [...usedRules, currentRule],
+                    totalConsumed + candidate.result.consumed,
+                );
             }
         }
 
@@ -1396,7 +1420,7 @@ class OrgSolver {
  * 2. Compose each candidate upward
  * 3. Pick the best result (highest tier, fewest groups, highest priority)
  */
-export function resolveFromUnits(units: Unit[], techBase: TechBase, factionName: string): GroupSizeResult[] {
+export function resolveFromUnits(units: Unit[], techBase: TechBase, factionName: string, hierarchicalAggregation: boolean = false): GroupSizeResult[] {
     return new OrgSolver(resolveOrg(techBase, factionName)).resolveFromUnits(units);
 }
 
@@ -1404,6 +1428,6 @@ export function resolveFromUnits(units: Unit[], techBase: TechBase, factionName:
  * Evaluate a force from pre-computed group results.
  * Groups are taken as-is (not deconstructed) and composed upward.
  */
-export function resolveFromGroups(techBase: TechBase, factionName: string, groupResults: GroupSizeResult[]): GroupSizeResult[] {
+export function resolveFromGroups(techBase: TechBase, factionName: string, groupResults: GroupSizeResult[], hierarchicalAggregation: boolean = false): GroupSizeResult[] {
     return new OrgSolver(resolveOrg(techBase, factionName)).resolveFromGroups(groupResults);
 }
