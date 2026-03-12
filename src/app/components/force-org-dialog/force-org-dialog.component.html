@@ -69,6 +69,8 @@
 
             <!-- Groups layer (rendered below forces) -->
             @for (group of sortedGroups(); track group.id) {
+            @let previewInfo = previewGroupInfo().get(group.id);
+            @let previewFactionId = previewInfo?.factionId ?? group.factionId();
             <g class="group-container" [class.parent-group]="isParentGroup(group)"
                 [class.drop-target]="dropTargetGroupId() === group.id"
                 [attr.transform]="'translate(' + group.x() + ',' + group.y() + ')'"
@@ -85,28 +87,28 @@
                     [attr.height]="GROUP_HEADER_HEIGHT" />
 
                 <!-- Group faction icon -->
-                @if (group.factionId() | factionImg; as factionImgUrl) {
+                @if (previewFactionId | factionImg; as factionImgUrl) {
                 <image [attr.href]="factionImgUrl" x="8" y="10" width="28" height="28"
                     preserveAspectRatio="xMidYMid meet" />
                 }
 
                 <!-- Group header info -->
-                <foreignObject [attr.x]="group.factionId() !== undefined ? 40 : 8" y="0"
-                    [attr.width]="group.width() - (group.factionId() !== undefined ? 88 : 56)"
+                <foreignObject [attr.x]="previewFactionId !== undefined ? 40 : 8" y="0"
+                    [attr.width]="group.width() - (previewFactionId !== undefined ? 88 : 56)"
                     [attr.height]="GROUP_HEADER_HEIGHT" class="group-name-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="group-header-info">
                         <div class="group-name" (click)="renameGroup(group)" title="Click to rename">
-                            {{ group.name() || previewGroupInfo().get(group.id)?.orgName ||
+                            {{ group.name() || previewInfo?.orgName ||
                             group.orgName() }}
                         </div>
                         <div class="group-data">
-                            @if (group.name() && (previewGroupInfo().get(group.id)?.orgName ||
+                            @if (group.name() && (previewInfo?.orgName ||
                             group.orgName()); as orgName) {
                             <span class="group-org-name">{{ orgName }}</span>
                             }
-                            @if (previewGroupInfo().get(group.id)?.totals || group.totals(); as totals)
+                            @if (previewInfo?.totals || group.totals(); as totals)
                             {
-                            @if (group.name() && (previewGroupInfo().has(group.id) || group.totals())) {
+                            @if (group.name() && (previewInfo || group.totals())) {
                             · }
                             <span class="group-totals">{{ totals }}</span>
                             }

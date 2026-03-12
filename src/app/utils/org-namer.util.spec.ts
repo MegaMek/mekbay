@@ -1,8 +1,9 @@
 import { GameSystem } from '../models/common.model';
 import { LoadForceEntry, type LoadForceGroup } from '../models/load-force-entry.model';
 import type { Unit } from '../models/units.model';
+import type { GroupSizeResult } from './org-types';
 import { resolveFromGroups, resolveFromUnits } from './org-solver.util';
-import { aggregateGroupSizeResult, getOrgFromForce, getOrgFromForceCollection, getOrgFromGroup } from './org-namer.util';
+import { aggregateGroupSizeResult, getDisplayGroupSizeResult, getOrgFromForce, getOrgFromForceCollection, getOrgFromGroup } from './org-namer.util';
 
 function createUnit(
     name: string,
@@ -215,5 +216,36 @@ describe('org-namer aggregation flow', () => {
         expect(merged.every(group => group.name === 'Sept')).toBeTrue();
         expect(merged.every(group => group.type === 'Sept')).toBeTrue();
         expect(aggregateGroupSizeResult(merged).name).toBe('19x Sept');
+    });
+
+    it('promotes display names using leftover child groups without changing raw org results', () => {
+        const rawGroups: GroupSizeResult[] = [
+            { name: 'Under-Strength Cluster', type: 'Cluster', countsAsType: null, tier: 3 },
+            { name: 'Binary', type: 'Binary', countsAsType: null, tier: 1.8 },
+        ];
+
+        const display = getDisplayGroupSizeResult(rawGroups, 'Clan', 'Clan Test');
+
+        expect(display.name).toBe('Cluster');
+        expect(display.type).toBe('Cluster');
+    });
+
+    it('uses hierarchical display aggregation for mixed Marian child groups', () => {
+        const rawGroups: GroupSizeResult[] = [
+            { name: 'Contubernium', type: 'Contubernium', countsAsType: null, tier: 0, tag: 'non-infantry' },
+            { name: 'Contubernium', type: 'Contubernium', countsAsType: null, tier: 0, tag: 'infantry' },
+            { name: 'Contubernium', type: 'Contubernium', countsAsType: null, tier: 0, tag: 'non-infantry' },
+            { name: 'Contubernium', type: 'Contubernium', countsAsType: null, tier: 0, tag: 'infantry' },
+            { name: 'Contubernium', type: 'Contubernium', countsAsType: null, tier: 0, tag: 'non-infantry' },
+            { name: 'Contubernium', type: 'Contubernium', countsAsType: null, tier: 0, tag: 'infantry' },
+            { name: 'Contubernium', type: 'Contubernium', countsAsType: null, tier: 0, tag: 'non-infantry' },
+            { name: 'Contubernium', type: 'Contubernium', countsAsType: null, tier: 0, tag: 'infantry' },
+            { name: 'Contubernium', type: 'Contubernium', countsAsType: null, tier: 0, tag: 'non-infantry' },
+        ];
+
+        const display = getDisplayGroupSizeResult(rawGroups, 'Inner Sphere', 'Marian Hegemony');
+
+        expect(display.name).toBe('Maniple');
+        expect(display.type).toBe('Maniple');
     });
 });

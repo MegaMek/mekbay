@@ -31,7 +31,9 @@
  * affiliated with Microsoft.
  */
 import { resolveFromGroups, resolveFromUnits, EMPTY_RESULT } from './org-solver.util';
+import { DEFAULT_ORG, ORG_REGISTRY } from './org-definitions.util';
 import type { GroupSizeResult } from './org-types';
+import type { OrgDefinition, OrgTypeComposed, OrgTypeRule } from './org-types';
 import { type Force, UnitGroup } from '../models/force.model';
 import { LoadForceEntry, type LoadForceGroup } from '../models/load-force-entry.model';
 import type { Unit } from '../models/units.model';
@@ -50,12 +52,12 @@ export function getOrgFromGroup(group: UnitGroup | LoadForceGroup, factionName?:
         const force = group.force;
         const fn = force.faction()?.name ?? 'Mercenary';
         const allUnits = group.units().map(u => u.getUnit()).filter((u): u is Unit => u !== undefined);
-        return resolveFromUnits(allUnits, force.techBase(), fn, true);
+        return resolveFromUnits(allUnits, force.techBase(), fn);
     }
     const units = group.units
         .filter((u): u is typeof u & { unit: Unit } => u.unit !== undefined)
         .map(u => u.unit);
-    return resolveFromUnits(units, techBase!, factionName!, true);
+    return resolveFromUnits(units, techBase!, factionName!);
 }
 
 export function getOrgFromForce(force: Force): GroupSizeResult[];
@@ -67,14 +69,14 @@ export function getOrgFromForce(forceOrEntry: Force | LoadForceEntry, factionNam
         const groupResults = forceOrEntry.groups
             .filter(g => g.units.some(u => u.unit !== undefined))
             .flatMap(g => getOrgFromGroup(g, fn, techBase));
-        return resolveFromGroups(techBase, fn, groupResults, true);
+        return resolveFromGroups(techBase, fn, groupResults);
     }
     const fn = forceOrEntry.faction()?.name ?? 'Mercenary';
     const techBase = forceOrEntry.techBase();
     const groupResults = forceOrEntry.groups()
         .filter(g => g.units().length > 0)
         .flatMap(g => g.sizeResult() ?? []);
-    return resolveFromGroups(techBase, fn, groupResults, true);
+    return resolveFromGroups(techBase, fn, groupResults);
 }
 
 /**
@@ -92,7 +94,155 @@ export function getOrgFromForceCollection(
     const techBase = resolveTechBaseFromEntries(entries, factionName);
     const groupResults = childGroupResults
         ?? entries.flatMap(e => getOrgFromForce(e, factionName));
-    return resolveFromGroups(techBase, factionName, groupResults, true);
+    return resolveFromGroups(techBase, factionName, groupResults);
+}
+
+/**
+ * Display-only aggregation helper.
+ *
+ * Raw org-namer APIs intentionally return the unwrapped top-level groups so callers
+ * can reason about exact subgroup structure. For UI display, we then run the same
+ * groups back through hierarchical aggregation and finally fold duplicate names into
+ * `Nx Name` strings.
+ */
+export function getDisplayGroupSizeResult(
+    groups: GroupSizeResult[],
+    techBase: TechBase,
+    factionName: string,
+): GroupSizeResult {
+    if (groups.length === 0) {
+        return EMPTY_RESULT;
+    }
+
+    const promotedGroups = promoteDisplayGroups(groups, resolveOrg(techBase, factionName));
+    const displayGroups = resolveFromGroups(techBase, factionName, promotedGroups, true);
+    return aggregateGroupSizeResult(displayGroups);
+}
+
+function resolveOrg(techBase: TechBase, factionName: string): OrgDefinition {
+    return ORG_REGISTRY.find(entry => entry.match(techBase, factionName))?.org ?? DEFAULT_ORG;
+}
+
+function isComposedRule(rule: OrgTypeRule): rule is OrgTypeComposed {
+    return rule.kind === 'composed';
+}
+
+function getModifierCount(modifier: number | { count: number }): number {
+    return typeof modifier === 'number' ? modifier : modifier.count;
+}
+
+function getSortedModifiers(rule: OrgTypeRule): [string, number][] {
+    return Object.entries(rule.modifiers)
+        .map(([prefix, modifier]) => [prefix, getModifierCount(modifier)] as [string, number])
+        .sort((a, b) => a[1] - b[1]);
+}
+
+function getRegularCount(rule: OrgTypeRule): number {
+    const regularModifier = rule.modifiers[''] ?? Object.values(rule.modifiers)[0];
+    return regularModifier ? getModifierCount(regularModifier) : 0;
+}
+
+function resolveTier(rule: OrgTypeRule, prefix: string): number {
+    const modifier = rule.modifiers[prefix];
+    if (modifier != null && typeof modifier === 'object' && 'tier' in modifier && modifier.tier != null) {
+        return modifier.tier;
+    }
+    if (rule.dynamicTier && rule.dynamicTier > 0) {
+        const regularCount = getRegularCount(rule);
+        const modifierCount = modifier != null ? getModifierCount(modifier) : regularCount;
+        if (regularCount > 0 && modifierCount !== regularCount) {
+            const variation = (modifierCount - regularCount) / regularCount;
+            return rule.tier + variation * rule.dynamicTier;
+        }
+    }
+    return rule.tier;
+}
+
+function buildRuleName(rule: OrgTypeRule, prefix: string): string {
+    return prefix ? `${prefix}${rule.type}` : rule.type;
+}
+
+function findGroupRuleState(
+    group: GroupSizeResult,
+    rules: ReadonlyArray<OrgTypeRule>,
+): { rule: OrgTypeRule; prefix: string; count: number } | null {
+    if (!group.type) return null;
+
+    for (const rule of rules) {
+        if (rule.type !== group.type) continue;
+
+        for (const [prefix, count] of getSortedModifiers(rule)) {
+            if (buildRuleName(rule, prefix) === group.name) {
+                return { rule, prefix, count };
+            }
+        }
+    }
+
+    return null;
+}
+
+function promoteDisplayGroups(
+    groups: GroupSizeResult[],
+    org: OrgDefinition,
+): GroupSizeResult[] {
+    const promoted = [...groups].sort((a, b) => b.tier - a.tier);
+
+    let changed = true;
+    while (changed) {
+        changed = false;
+
+        for (let index = 0; index < promoted.length; index++) {
+            const state = findGroupRuleState(promoted[index], org.rules);
+            if (!state || !isComposedRule(state.rule)) continue;
+
+            const nextModifiers = getSortedModifiers(state.rule)
+                .filter(([, count]) => count > state.count)
+                .sort((a, b) => a[1] - b[1]);
+            if (nextModifiers.length === 0) continue;
+
+            const acceptedTypes = new Set(state.rule.composedOfAny);
+            const candidateIndices = promoted
+                .map((group, candidateIndex) => ({ group, candidateIndex }))
+                .filter(({ candidateIndex, group }) =>
+                    candidateIndex !== index &&
+                    ((group.type && acceptedTypes.has(group.type)) ||
+                        (group.countsAsType && acceptedTypes.has(group.countsAsType))),
+                )
+                .map(({ candidateIndex }) => candidateIndex);
+
+            if (candidateIndices.length === 0) continue;
+
+            const reachableModifier = nextModifiers
+                .filter(([, count]) => count <= state.count + candidateIndices.length)
+                .at(-1);
+            if (!reachableModifier) continue;
+
+            const [nextPrefix, nextCount] = reachableModifier;
+            const consumeCount = nextCount - state.count;
+            const consumedIndices = candidateIndices.slice(0, consumeCount).sort((a, b) => b - a);
+            const consumedGroups = consumedIndices.map(candidateIndex => promoted[candidateIndex]);
+
+            promoted[index] = {
+                ...promoted[index],
+                name: buildRuleName(state.rule, nextPrefix),
+                tier: resolveTier(state.rule, nextPrefix),
+                children: [
+                    ...(promoted[index].children ?? []),
+                    ...consumedGroups,
+                ],
+            };
+
+            for (const consumedIndex of consumedIndices) {
+                promoted.splice(consumedIndex, 1);
+            }
+
+            promoted.sort((a, b) => b.tier - a.tier);
+            changed = true;
+            break;
+        }
+    }
+
+    return promoted;
 }
 
 /**

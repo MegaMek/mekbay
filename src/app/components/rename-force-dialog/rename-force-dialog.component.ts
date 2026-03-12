@@ -44,9 +44,9 @@ import { type Faction, FACTION_MERCENARY } from '../../models/factions.model';
 import { ForceNamerUtil, type FactionDisplayInfo } from '../../utils/force-namer.util';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { FactionDropdownPanelComponent } from './faction-dropdown-panel.component';
-import { resolveFromGroups } from '../../utils/org-solver.util';
+import { EMPTY_RESULT, resolveFromGroups } from '../../utils/org-solver.util';
 import type { GroupSizeResult } from '../../utils/org-types';
-import { aggregateGroupSizeResult } from '../../utils/org-namer.util';
+import { getDisplayGroupSizeResult } from '../../utils/org-namer.util';
 
 
 /*
@@ -344,19 +344,20 @@ export class RenameForceDialogComponent {
         );
     });
 
-    forceSizeResult = computed<GroupSizeResult[]>(() => {
+    forceSizeResult = computed<GroupSizeResult>(() => {
         const units = this.data.force.units();
-        if (units.length === 0) return [];
+        if (units.length === 0) return EMPTY_RESULT;
         const factionName = this.selectedFaction()?.name ?? 'Mercenary';
         const techBase = this.data.force.techBase();
         const groupResults: GroupSizeResult[] = this.data.force.groups()
             .filter(g => g.units().length > 0)
             .flatMap(g => g.sizeResult() ?? []);
-        return resolveFromGroups(techBase, factionName, groupResults);
+        const resolvedOrg = resolveFromGroups(techBase, factionName, groupResults);
+        return getDisplayGroupSizeResult(resolvedOrg, techBase, factionName);
     });
 
     forceSizeName = computed<string>(() => {
-        return aggregateGroupSizeResult(this.forceSizeResult()).name.toUpperCase();
+        return this.forceSizeResult().name;
     });
     
     /** Placeholder name based force size. */
