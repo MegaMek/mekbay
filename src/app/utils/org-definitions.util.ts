@@ -37,6 +37,8 @@ import type {
     OrgDefinition,
     OrgType,
     OrgTypeRule,
+    OrgTypeLeaf,
+    OrgTypeComposed,
     PointRange,
 } from './org-types';
 
@@ -58,6 +60,14 @@ export function rangeDistToPoint(range: PointRange, point: number): number {
     if (point >= range.min && point <= range.max) return 0;
     if (point < range.min) return range.min - point;
     return point - range.max;
+}
+
+function leafRule(rule: Omit<OrgTypeLeaf, 'kind'>): OrgTypeLeaf {
+    return { kind: 'leaf', ...rule };
+}
+
+function composedRule(rule: Omit<OrgTypeComposed, 'kind'>): OrgTypeComposed {
+    return { kind: 'composed', ...rule };
 }
 
 //  Unit classification helpers 
@@ -112,13 +122,13 @@ function sumCIMechanizedTroopers(units: Unit[]): number {
 // Rules reused across org definitions (e.g. WDOrg extends Clan + IS rules).
 
 // Clan rules
-const CLAN_POINT: OrgTypeRule = { type: 'Point', modifiers: { '': 1 }, commandRank: 'Point Commander', tier: 0 };
-const CLAN_STAR: OrgTypeRule = {
+const CLAN_POINT: OrgTypeLeaf = leafRule({ type: 'Point', modifiers: { '': 1 }, commandRank: 'Point Commander', tier: 0 });
+const CLAN_STAR: OrgTypeComposed = composedRule({
     type: 'Star', composedOfAny: ['Point'], modifiers: {
         'Half ': 2, 'Short ': 3, 'Under-Strength ': 4, '': 5, 'Reinforced ': 6, 'Fortified ': 7,
     }, commandRank: 'Star Commander', tier: 1,
-};
-const CLAN_NOVA: OrgTypeRule = {
+});
+const CLAN_NOVA: OrgTypeLeaf = leafRule({
     type: 'Nova', strict: true, priority: 1, countsAs: 'Star', modifiers: { '': 10 }, commandRank: 'Nova Commander', tier: 1.7,
     filter: (u) => isBM(u) || isCV(u) || isAero(u) || isBA(u),
     customMatchUnitCounts: [10],
@@ -142,56 +152,56 @@ const CLAN_NOVA: OrgTypeRule = {
             Math.max(0, baMEC - cfg.omni) + nonQualBA
         ));
     },
-};
-const CLAN_BINARY: OrgTypeRule = {
+});
+const CLAN_BINARY: OrgTypeComposed = composedRule({
     type: 'Binary', strict: true, composedOfAny: ['Star'],
     modifiers: { '': 2 }, commandRank: 'Star Captain', tier: 1.8,
-};
-const CLAN_TRINARY: OrgTypeRule = {
+});
+const CLAN_TRINARY: OrgTypeComposed = composedRule({
     type: 'Trinary', strict: true, composedOfAny: ['Star'],
     modifiers: { '': 3 }, commandRank: 'Star Captain', tier: 2,
-};
-const CLAN_SUPERNOVA_BINARY: OrgTypeRule = {
+});
+const CLAN_SUPERNOVA_BINARY: OrgTypeComposed = composedRule({
     type: 'Supernova Binary', strict: true, priority: 2, countsAs: 'Binary',
     composedOfAny: ['Nova'], modifiers: { '': 2 }, commandRank: 'Nova Captain', tier: 3,
-};
-const CLAN_SUPERNOVA_TRINARY: OrgTypeRule = {
+});
+const CLAN_SUPERNOVA_TRINARY: OrgTypeComposed = composedRule({
     type: 'Supernova Trinary', strict: true, priority: 1, countsAs: 'Trinary',
     composedOfAny: ['Nova'], modifiers: { '': 3 }, commandRank: 'Nova Captain', tier: 3,
-};
-const CLAN_SUPERNOVA_TRINARY_FROM_BINARY: OrgTypeRule = {
+});
+const CLAN_SUPERNOVA_TRINARY_FROM_BINARY: OrgTypeComposed = composedRule({
     type: 'Supernova Trinary', strict: true, priority: 1, countsAs: 'Trinary',
     composedOfAny: ['Supernova Binary', 'Nova'], requiredChildTypeCounts: { 'Supernova Binary': 1, 'Nova': 1 }, modifiers: { '': 2 }, commandRank: 'Nova Captain', tier: 3
-};
-const CLAN_CLUSTER: OrgTypeRule = {
+});
+const CLAN_CLUSTER: OrgTypeComposed = composedRule({
     type: 'Cluster',
     composedOfAny: ['Binary', 'Trinary'],
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4, 'Strong ': 5 },
     commandRank: 'Star Colonel', tier: 4,
-};
-const CLAN_GALAXY: OrgTypeRule = {
+});
+const CLAN_GALAXY: OrgTypeComposed = composedRule({
     type: 'Galaxy', composedOfAny: ['Cluster'], modifiers: {
         'Under-Strength ': 2, '': 3, 'Reinforced ': 4, 'Strong ': 5,
     }, commandRank: 'Galaxy Commander', tier: 8,
-};
+});
 
 // IS rules
-const IS_FLIGHT: OrgTypeRule = {
+const IS_FLIGHT: OrgTypeLeaf = leafRule({
     type: 'Flight', modifiers: { 'Under-Strength ': 1, '': 2, 'Reinforced ': 3 },
     commandRank: 'Lieutenant', tier: 1, priority: 1,
     filter: (u) => isAero(u),
-};
-const IS_SQUADRON: OrgTypeRule = {
+});
+const IS_SQUADRON: OrgTypeComposed = composedRule({
     type: 'Squadron', composedOfAny: ['Flight'],
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
     commandRank: 'Captain', tier: 2,
-};
-const IS_WING: OrgTypeRule = {
+});
+const IS_WING: OrgTypeComposed = composedRule({
     type: 'Wing', composedOfAny: ['Squadron'],
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
     commandRank: 'Major', tier: 4,
-};
-const IS_SQUAD: OrgTypeRule = {
+});
+const IS_SQUAD: OrgTypeLeaf = leafRule({
     type: 'Squad', modifiers: { '': 1 }, commandRank: 'Sergeant', tier: 0,
     filter: (u) => isInfantry(u),
     customMatch: (units) => {
@@ -205,21 +215,21 @@ const IS_SQUAD: OrgTypeRule = {
         }
         return Infinity;
     },
-};
-const IS_LANCE: OrgTypeRule = {
+});
+const IS_LANCE: OrgTypeLeaf = leafRule({
     type: 'Lance', tier: 1,
     modifiers: { 'Short ': 2, 'Under-Strength ': 3, '': 4, 'Reinforced ': 5, 'Fortified ': 6 },
     commandRank: 'Lieutenant',
     filter: (u) => !isCI(u),
-};
-const IS_AIR_LANCE: OrgTypeRule = {
+});
+const IS_AIR_LANCE: OrgTypeComposed = composedRule({
     type: 'Air Lance', countsAs: 'Lance', priority: 1, composedOfAny: ['Flight', 'Lance'], tier: 1.5,
     requiredChildTypeCounts: { 'Flight': 1, 'Lance': 1 },
     modifiers: { '': 2 },
     commandRank: 'Lieutenant',
     filter: (u) => !isInfantry(u),
-};
-const IS_PLATOON: OrgTypeRule = {
+});
+const IS_PLATOON: OrgTypeLeaf = leafRule({
     type: 'Platoon', countsAs: 'Lance', priority: 1, modifiers: { '': 1 }, commandRank: 'Lieutenant', tier: 1,
     filter: (u) => isCI(u),
     customMatch: (units) => {
@@ -228,27 +238,27 @@ const IS_PLATOON: OrgTypeRule = {
         if (ciTroopers < 6) return (6 - ciTroopers) / 28;
         return (ciTroopers - 32) / 28;
     },
-};
-const IS_COMPANY: OrgTypeRule = {
+});
+const IS_COMPANY: OrgTypeComposed = composedRule({
     type: 'Company', composedOfAny: ['Lance', 'Flight'],
     modifiers: { 'Under-Strength ': { count: 2, tier: 1.5 }, '': 3, 'Reinforced ': 4 },
     commandRank: 'Captain', tier: 2, dynamicTier: 1
-};
-const IS_BATTALION: OrgTypeRule = {
+});
+const IS_BATTALION: OrgTypeComposed = composedRule({
     type: 'Battalion', composedOfAny: ['Company', 'Squadron'],
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
     commandRank: 'Major', tier: 4, dynamicTier: 1
-};
-const IS_REGIMENT: OrgTypeRule = {
+});
+const IS_REGIMENT: OrgTypeComposed = composedRule({
     type: 'Regiment', composedOfAny: ['Battalion', 'Wing'],
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4, 'Strong ': 5 },
     commandRank: 'Colonel', tier: 8, dynamicTier: 1
-};
-const IS_BRIGADE: OrgTypeRule = {
+});
+const IS_BRIGADE: OrgTypeComposed = composedRule({
     type: 'Brigade', composedOfAny: ['Regiment'],
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
     commandRank: 'General', tier: 16, dynamicTier: 1
-};
+});
 
 //  Org Definitions 
 
@@ -330,13 +340,13 @@ const ComStarOrg: OrgDefinition = {
         return { min: minPts, max: maxPts };
     },
     rules: [
-        { type: 'Level I', modifiers: { 'Demi-': 0.5, '': 1 }, commandRank: 'Acolyte', tier: 0 },
-        {
+        leafRule({ type: 'Level I', modifiers: { 'Demi-': 0.5, '': 1 }, commandRank: 'Acolyte', tier: 0 }),
+        composedRule({
             type: 'Level II', composedOfAny: ['Level I'], modifiers: {
                 'Thin ': 2, 'Half ': 3, 'Short ': 4, 'Under-Strength ': 5, '': 6, 'Reinforced ': 7, 'Fortified ': 8, 'Heavy ': 9,
             }, commandRank: 'Adept', tier: 1,
-        },
-        {
+        }),
+        leafRule({
             type: 'Choir', strict: true, priority: 1, countsAs: 'Level II', modifiers: { '': 12 }, commandRank: 'Adept', tier: 1.6,
             filter: (u) => isBM(u) || isBA(u),
             customMatchUnitCounts: [12],
@@ -351,31 +361,31 @@ const ComStarOrg: OrgDefinition = {
                 if (!((baMEC > 0 && bmOmni > 0) || (baXMEC > 0 && bm > 0))) return Infinity;
                 return Math.abs(bm - 6) + Math.abs(ba - 6);
             },
-        },
+        }),
  /*       {
             type: 'Demi-Level III', composedOfAny: ['Level II'], modifiers: {
                 'Under-Strength ': 2, '': 3, 'Reinforced ': 4,
             }, commandRank: 'Adept (Demi-Precentor)', tier: 2,
         },*/
-        {
+        composedRule({
             type: 'Level III', composedOfAny: ['Level II'], modifiers: {
                 'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
             }, commandRank: 'Adept (Demi-Precentor)', tier: 2,
-        },
-        {
+        }),
+        composedRule({
             type: 'Level IV', composedOfAny: ['Level III'], modifiers: {
                 'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
             }, commandRank: 'Precentor', tier: 4,
-        },
-        {
+        }),
+        composedRule({
             type: 'Level V', composedOfAny: ['Level IV'], modifiers: {
                 'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
             }, commandRank: 'Precentor', tier: 8,
-        },
-        {
+        }),
+        composedRule({
             type: 'Level VI', composedOfAny: ['Level V'], modifiers: { '': 2, },
             commandRank: 'Precentor Martial', tier: 16,
-        },
+        }),
     ],
 };
 
@@ -397,9 +407,9 @@ const SocietyOrg: OrgDefinition = {
         return { min: fixed, max: fixed };
     },
     rules: [
-        { type: 'Un', modifiers: { '': 1 }, tier: 0 },
-        { type: 'Trey', strict: true, composedOfAny: ['Un'], modifiers: { '': 3 }, tier: 0.8 },
-        { type: 'Sept', strict: true, composedOfAny: ['Un'], modifiers: { '': 7 }, tier: 1.6 },
+        leafRule({ type: 'Un', modifiers: { '': 1 }, tier: 0 }),
+        composedRule({ type: 'Trey', strict: true, composedOfAny: ['Un'], modifiers: { '': 3 }, tier: 0.8 }),
+        composedRule({ type: 'Sept', strict: true, composedOfAny: ['Un'], modifiers: { '': 7 }, tier: 1.6 }),
     ],
 };
 
@@ -429,20 +439,20 @@ const MHOrg: OrgDefinition = {
         return { min: minPts, max: maxPts };
     },
     rules: [
-        { type: 'Contubernium', tag: 'non-infantry', filter: (u) => !isCI(u), modifiers: { '': 1 }, commandRank: 'Miles probatus', tier: 0 },
-        { type: 'Contubernium', tag: 'infantry', filter: (u) => isCI(u), modifiers: { '': 1 }, commandRank: 'Miles probatus', tier: 0 },
-        {
+        leafRule({ type: 'Contubernium', tag: 'non-infantry', filter: (u) => !isCI(u), modifiers: { '': 1 }, commandRank: 'Miles probatus', tier: 0 }),
+        leafRule({ type: 'Contubernium', tag: 'infantry', filter: (u) => isCI(u), modifiers: { '': 1 }, commandRank: 'Miles probatus', tier: 0 }),
+        composedRule({
             type: 'Century', composedOfAny: ['Contubernium'], allowedChildTagsAll: ['non-infantry'], modifiers: { '': 5 }, commandRank: 'Centurion', tier: 1,
-        },
+        }),
         // Century (Infantry) = 4-10 CI infantry Points
-        {
+        composedRule({
             type: 'Century', composedOfAny: ['Contubernium'], modifiers: {
                 'Under-Strength ': 4, '': 7, 'Reinforced ': 10,
             }, allowedChildTagsAll: ['infantry'], commandRank: 'Centurion', tier: 1,
-        },
-        { type: 'Maniple', composedOfAny: ['Century'], modifiers: { '': 2 }, commandRank: 'Principes', tier: 2 },
-        { type: 'Cohort', composedOfAny: ['Maniple'], modifiers: { '': 3 }, commandRank: 'Legatus', tier: 4 },
-        { type: 'Legion', composedOfAny: ['Cohort'], modifiers: { '': 4 }, commandRank: 'General', tier: 8 },
+        }),
+        composedRule({ type: 'Maniple', composedOfAny: ['Century'], modifiers: { '': 2 }, commandRank: 'Principes', tier: 2 }),
+        composedRule({ type: 'Cohort', composedOfAny: ['Maniple'], modifiers: { '': 3 }, commandRank: 'Legatus', tier: 4 }),
+        composedRule({ type: 'Legion', composedOfAny: ['Cohort'], modifiers: { '': 4 }, commandRank: 'General', tier: 8 }),
     ],
 };
 
@@ -470,36 +480,36 @@ const WDOrg: OrgDefinition = {
     },
     rules: [
         IS_FLIGHT, IS_SQUADRON, IS_WING,
-        { ...IS_SQUAD, filter: (u: Unit) => isCI(u) },
-        { ...IS_PLATOON, filter: (u: Unit) => isCI(u) },
-        { ...CLAN_NOVA, commandRank: 'Lieutenant' },
-        { ...CLAN_SUPERNOVA_BINARY, commandRank: 'Captain' },
-        { ...CLAN_SUPERNOVA_TRINARY, commandRank: 'Captain' },
-        { ...CLAN_SUPERNOVA_TRINARY_FROM_BINARY, commandRank: 'Captain' },
+        leafRule({ ...IS_SQUAD, filter: (u: Unit) => isCI(u) }),
+        leafRule({ ...IS_PLATOON, filter: (u: Unit) => isCI(u) }),
+        leafRule({ ...CLAN_NOVA, commandRank: 'Lieutenant' }),
+        composedRule({ ...CLAN_SUPERNOVA_BINARY, commandRank: 'Captain' }),
+        composedRule({ ...CLAN_SUPERNOVA_TRINARY, commandRank: 'Captain' }),
+        composedRule({ ...CLAN_SUPERNOVA_TRINARY_FROM_BINARY, commandRank: 'Captain' }),
         // WD Point (excludes aero and conventional infantry)
-        { ...CLAN_POINT, commandRank: 'Sergeant', filter: (u: Unit) => !isAero(u) && !isCI(u) },
+        leafRule({ ...CLAN_POINT, commandRank: 'Sergeant', filter: (u: Unit) => !isAero(u) && !isCI(u) }),
         // WD Lance (composedOf Point, not Single; limited to 2-4 BM non-BA)
-        { ...IS_LANCE, composedOfAny: ['Point'], filter: (u: Unit) => !isAero(u) && !isBA(u) },
+        composedRule({ ...IS_LANCE, composedOfAny: ['Point'], filter: (u: Unit) => !isAero(u) && !isBA(u) }),
         // WD Star (composedOf Point; for BA or 5+ BM non-vehicle)
-        { ...CLAN_STAR, commandRank: 'Lieutenant', filter: (u: Unit) => !isCV(u) },
-        { ...CLAN_BINARY, countsAs: 'Company' as OrgType, commandRank: 'Captain', filter: (u: Unit) => !isAero(u) },
-        { ...CLAN_TRINARY, countsAs: 'Company' as OrgType, commandRank: 'Captain', filter: (u: Unit) => !isAero(u) },
-        { ...CLAN_CLUSTER, priority: 1, countsAs: 'Battalion' as OrgType, commandRank: 'Major', filter: (u: Unit) => !isAero(u) },
+        composedRule({ ...CLAN_STAR, commandRank: 'Lieutenant', filter: (u: Unit) => !isCV(u) }),
+        composedRule({ ...CLAN_BINARY, countsAs: 'Company' as OrgType, commandRank: 'Captain', filter: (u: Unit) => !isAero(u) }),
+        composedRule({ ...CLAN_TRINARY, countsAs: 'Company' as OrgType, commandRank: 'Captain', filter: (u: Unit) => !isAero(u) }),
+        composedRule({ ...CLAN_CLUSTER, priority: 1, countsAs: 'Battalion' as OrgType, commandRank: 'Major', filter: (u: Unit) => !isAero(u) }),
         // WD Company (accepts Lance + Star, requires at least 1 Lance)
-        {
+        composedRule({
             ...IS_COMPANY,
             composedOfAny: ['Lance', 'Star'] as OrgType[],
             requiredChildTypeCounts: { 'Lance': 1 },
-        },
+        }),
         // WD Battalion (accepts Company + Binary + Trinary, requires at least 1 Company)
-        {
+        composedRule({
             ...IS_BATTALION,
             composedOfAny: ['Company', 'Binary', 'Trinary'] as OrgType[],
             requiredChildTypeCounts: { 'Company': 1 },
             filter: (u: Unit) => !isAero(u),
-        },
+        }),
         // WD Regiment
-        { ...IS_REGIMENT, composedOfAny: ['Battalion', 'Wing'] as OrgType[] },
+        composedRule({ ...IS_REGIMENT, composedOfAny: ['Battalion', 'Wing'] as OrgType[] }),
     ],
 };
 
@@ -529,11 +539,11 @@ const CCOrg: OrgDefinition = {
         IS_FLIGHT, IS_SQUADRON, IS_WING, 
         IS_SQUAD, IS_PLATOON, 
         IS_LANCE, IS_COMPANY, IS_BATTALION, IS_REGIMENT,
-        { ... IS_COMPANY, composedOfAny: [...IS_COMPANY.composedOfAny!, 'Augmented Lance'] },
-        { ... IS_BATTALION, composedOfAny: [...IS_BATTALION.composedOfAny!, 'Augmented Company'] },
-        { ... IS_REGIMENT, composedOfAny: [...IS_REGIMENT.composedOfAny!, 'Augmented Battalion'] },
+        composedRule({ ...IS_COMPANY, composedOfAny: [...IS_COMPANY.composedOfAny, 'Augmented Lance'] }),
+        composedRule({ ...IS_BATTALION, composedOfAny: [...IS_BATTALION.composedOfAny, 'Augmented Company'] }),
+        composedRule({ ...IS_REGIMENT, composedOfAny: [...IS_REGIMENT.composedOfAny, 'Augmented Battalion'] }),
         // CC Augmented Lance
-        {
+        leafRule({
             type: 'Augmented Lance', countsAs: 'Lance', strict: true, priority: 1,
             modifiers: { '': 6 }, commandRank: 'Lieutenant', tier: 1.05,
             filter: (u) => isBM(u) || isCV(u) || isBA(u),
@@ -559,17 +569,17 @@ const CCOrg: OrgDefinition = {
                     Math.abs(qualBA - cfg.ba) + Math.max(0, baMEC - cfg.omni)
                 )) + nonQualBA;
             },
-        },
+        }),
         // CC Augmented Company, slightly inferior tier than Regular Company due to being smaller. It will prevail over Regular Company due to priority if there are no leftovers.
-        { type: 'Augmented Company', countsAs: 'Company', composedOfAny: ['Augmented Lance'], priority: 1, modifiers: { '': 2, 'Reinforced ': 3 }, commandRank: 'Captain', tier: 1.95 },
+        composedRule({ type: 'Augmented Company', countsAs: 'Company', composedOfAny: ['Augmented Lance'], priority: 1, modifiers: { '': 2, 'Reinforced ': 3 }, commandRank: 'Captain', tier: 1.95 }),
         // CC Augmented Battalion
-        { type: 'Augmented Battalion', countsAs: 'Battalion', composedOfAny: ['Augmented Company'], priority: 1, modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'Major', tier: 4 },
+        composedRule({ type: 'Augmented Battalion', countsAs: 'Battalion', composedOfAny: ['Augmented Company'], priority: 1, modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'Major', tier: 4 }),
         // CC Augmented Regiment
-        {
+        composedRule({
             type: 'Augmented Regiment', countsAs: 'Regiment', composedOfAny: ['Augmented Battalion', 'Battalion', 'Wing'],
             requiredChildTypeCounts: { 'Augmented Battalion': 1 },
             modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'General', tier: 8.01,
-        },
+        }),
     ],
 };
 

@@ -147,29 +147,16 @@ export interface OrgTypeModifier {
 }
 
 /**
- * Describes a force organization type at one level of the hierarchy.
+ * Properties shared by all force-organization rules.
  *
  * `modifiers` maps a display prefix ('' for regular) to the sub-unit count.
- * Leaf rules (no composedOfAny) use counts as absolute point values.
- * Composed rules use counts as number of sub-units.
+ * Leaf rules use counts as absolute point values.
+ * Composed rules use counts as number of child groups.
  */
-export interface OrgTypeRule {
+export interface OrgTypeRuleBase {
     readonly type: OrgType;
     /** Prefix -> count mapping. '' prefix = regular/default count. */
     readonly modifiers: Record<string, number | OrgTypeModifier>;
-    /**
-     * Which sub-unit types this rule is composed of.
-     * E.g. Cluster's composedOfAny = ['Binary', 'Trinary'].
-     * Leaf rules (Point, Single, Flight, etc.) leave this undefined.
-     */
-    readonly composedOfAny?: OrgType[];
-    /**
-     * Subset compositions must include at least the listed number of groups for each type.
-     * Example: { Flight: 1, Lance: 1 } means the chosen subset must include one Flight and one Lance.
-     */
-    readonly requiredChildTypeCounts?: Partial<Record<OrgType, number>>;
-    /** Every chosen child group must have a tag contained in this list. */
-    readonly allowedChildTagsAll?: readonly string[];
     readonly commandRank?: string;
     readonly strict?: boolean;
     readonly tier: number;
@@ -179,6 +166,22 @@ export interface OrgTypeRule {
      * Used to quickly filter which units even get considered for this rule.
      */
     readonly filter?: (unit: Unit) => boolean;
+    /** For group-based force evaluation: this type also counts as another type. */
+    readonly countsAs?: OrgType;
+    /**
+     * Explicit tie-breaker for group-based evaluation. Higher priority wins
+     * when two rules match the same groups at equal distance. Defaults to 0.
+     */
+    readonly priority?: number;
+    /** tag propagated to GroupSizeResult for groupFilter differentiation. */
+    readonly tag?: string;
+}
+
+/**
+ * Leaf rules match directly against units and may use customMatch.
+ */
+export interface OrgTypeLeaf extends OrgTypeRuleBase {
+    readonly kind: 'leaf';
     /**
      * Distance function on a set of units. Returns 0 for a perfect match.
      * The solver enumerates unit subsets and calls this to find valid shapes.
@@ -189,13 +192,25 @@ export interface OrgTypeRule {
      * Use this when customMatch can only return 0 for specific subset sizes.
      */
     readonly customMatchUnitCounts?: readonly number[];
-    /** For group-based force evaluation: this type also counts as another type. */
-    readonly countsAs?: OrgType;
+}
+
+/**
+ * Composed rules match against previously created child groups.
+ */
+export interface OrgTypeComposed extends OrgTypeRuleBase {
+    readonly kind: 'composed';
     /**
-     * Explicit tie-breaker for group-based evaluation. Higher priority wins
-     * when two rules match the same groups at equal distance. Defaults to 0.
+     * Which sub-unit types this rule is composed of.
+     * E.g. Cluster's composedOfAny = ['Binary', 'Trinary'].
      */
-    readonly priority?: number;
+    readonly composedOfAny: readonly OrgType[];
+    /**
+     * Subset compositions must include at least the listed number of groups for each type.
+     * Example: { Flight: 1, Lance: 1 } means the chosen subset must include one Flight and one Lance.
+     */
+    readonly requiredChildTypeCounts?: Partial<Record<OrgType, number>>;
+    /** Every chosen child group must have a tag contained in this list. */
+    readonly allowedChildTagsAll?: readonly string[];
     /**
      * Group-level filter for group-based force evaluation.
      * Checked in evaluateForceByGroups - receives the array of group results
@@ -203,9 +218,9 @@ export interface OrgTypeRule {
      * VERY EXPENSIVE, so only use when necessary and try to pre-filter groups by tag or other cheap properties.
      */
     readonly groupFilter?: (groups: ReadonlyArray<GroupSizeResult>) => boolean;
-    /** tag propagated to GroupSizeResult for groupFilter differentiation. */
-    readonly tag?: string;
 }
+
+export type OrgTypeRule = OrgTypeLeaf | OrgTypeComposed;
 
 /**
  * Shared shape for all org definitions (ClanOrg, ISOrg, ComStarOrg, etc.).
