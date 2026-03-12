@@ -339,4 +339,72 @@ describe('resolveFromUnits', () => {
         expect(result[0].children?.every(child => child.type === 'Century')).toBeTrue();
         expect(result[0].leftoverUnits).toBeUndefined();
     });
+
+    it('resolves 5 BA (with MEC special) and 5 BM (with OMNI special) into a Nova', () => {
+        const units: Unit[] = [
+            createUnit(1, 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit(2, 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit(3, 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit(4, 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit(5, 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit(1, 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit(2, 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit(3, 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit(4, 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit(5, 'Mek', 'BattleMek Omni', true, ['OMNI'])
+        ];
+
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Clan Test');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Nova');
+        expect(result[0].type).toBe('Nova');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+    
+    it('resolves 5 BA (MEC/XMEC) and 5 BM (OMNI and not) into a Nova', () => {
+        const units: Unit[] = [
+            createUnit(1, 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit(2, 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit(3, 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit(4, 'Infantry', 'Battle Armor', false, ['XMEC']),
+            createUnit(5, 'Infantry', 'Battle Armor', false, ['XMEC']),
+            createUnit(1, 'Mek', 'BattleMek Omni', false),
+            createUnit(2, 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit(3, 'Mek', 'BattleMek Omni', false),
+            createUnit(4, 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit(5, 'Mek', 'BattleMek Omni', true, ['OMNI'])
+        ];
+
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Clan Test');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Nova');
+        expect(result[0].type).toBe('Nova');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+
+    it('resolves 5 BA (with MEC special) and 6 BM (with OMNI special) into a Binary instead of Nova', () => {
+        const units: Unit[] = [
+            createUnit(1, 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit(2, 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit(3, 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit(4, 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit(5, 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit(1, 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit(2, 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit(3, 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit(4, 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit(5, 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit(6, 'Mek', 'BattleMek Omni', true, ['OMNI'])
+        ];
+
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Clan Test');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Binary');
+        expect(result[0].type).toBe('Binary');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
 });
