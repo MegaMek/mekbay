@@ -65,8 +65,37 @@ function unitPointTotal(units: Unit[], getPointRange: (u: Unit[]) => PointRange)
  */
 interface SolverContext {
     groupUnitCache: WeakMap<GroupSizeResult, Unit[]>;
-    customMatchCache: WeakMap<OrgTypeRule, Map<string, number>>;
-    ruleFilterCache: WeakMap<OrgTypeRule, Map<string, boolean>>;
+}
+
+const GLOBAL_CUSTOM_MATCH_CACHE = new WeakMap<OrgTypeRule, Map<string, number>>();
+const GLOBAL_RULE_FILTER_CACHE = new WeakMap<OrgTypeRule, Map<string, boolean>>();
+const GLOBAL_CUSTOM_MATCH_CACHE_MAX_SIZE = 1000;
+const GLOBAL_RULE_FILTER_CACHE_MAX_SIZE = 1000;
+
+function getOrCreateGlobalRuleCache<T>(
+    store: WeakMap<OrgTypeRule, Map<string, T>>,
+    rule: OrgTypeRule,
+): Map<string, T> {
+    let memo = store.get(rule);
+    if (!memo) {
+        memo = new Map<string, T>();
+        store.set(rule, memo);
+    }
+    return memo;
+}
+
+function setBoundedCacheValue<T>(memo: Map<string, T>, key: string, value: T, maxSize: number): void {
+    if (memo.has(key)) {
+        memo.delete(key);
+    }
+    memo.set(key, value);
+
+    if (memo.size > maxSize) {
+        const oldestKey = memo.keys().next().value;
+        if (oldestKey !== undefined) {
+            memo.delete(oldestKey);
+        }
+    }
 }
 
 function collectGroupUnits(group: GroupSizeResult, context: SolverContext): Unit[] {
@@ -105,21 +134,11 @@ interface SameUnitCountBucket {
 }
 
 function getCustomMatchMemo(rule: OrgTypeRule, context: SolverContext): Map<string, number> {
-    let memo = context.customMatchCache.get(rule);
-    if (!memo) {
-        memo = new Map<string, number>();
-        context.customMatchCache.set(rule, memo);
-    }
-    return memo;
+    return getOrCreateGlobalRuleCache(GLOBAL_CUSTOM_MATCH_CACHE, rule);
 }
 
 function getRuleFilterMemo(rule: OrgTypeRule, context: SolverContext): Map<string, boolean> {
-    let memo = context.ruleFilterCache.get(rule);
-    if (!memo) {
-        memo = new Map<string, boolean>();
-        context.ruleFilterCache.set(rule, memo);
-    }
-    return memo;
+    return getOrCreateGlobalRuleCache(GLOBAL_RULE_FILTER_CACHE, rule);
 }
 
 function passesRuleFilter(rule: OrgTypeRule, unit: Unit, context: SolverContext): boolean {
@@ -130,7 +149,7 @@ function passesRuleFilter(rule: OrgTypeRule, unit: Unit, context: SolverContext)
     if (cached !== undefined) return cached;
 
     const passes = rule.filter(unit);
-    memo.set(unit.name, passes);
+    setBoundedCacheValue(memo, unit.name, passes, GLOBAL_RULE_FILTER_CACHE_MAX_SIZE);
     return passes;
 }
 
@@ -292,7 +311,7 @@ function findValidShapes(
                     }
                 }
                 matchScore = rule.customMatch!(testUnits);
-                shapeMatchCache.set(shapeKey, matchScore);
+                setBoundedCacheValue(shapeMatchCache, shapeKey, matchScore, GLOBAL_CUSTOM_MATCH_CACHE_MAX_SIZE);
             }
             if (matchScore === 0) {
                 shapes.push([...current]);
@@ -1892,8 +1911,6 @@ function betterResult(
 class OrgSolver {
     private readonly context: SolverContext = {
         groupUnitCache: new WeakMap<GroupSizeResult, Unit[]>(),
-        customMatchCache: new WeakMap<OrgTypeRule, Map<string, number>>(),
-        ruleFilterCache: new WeakMap<OrgTypeRule, Map<string, boolean>>(),
     };
 
     constructor(
