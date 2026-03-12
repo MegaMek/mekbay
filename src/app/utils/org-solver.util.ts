@@ -53,9 +53,6 @@ import { TechBase } from '../models/tech.model';
 
 // ─── Unit helpers ──────────────────────────────────────────────────────────────
 
-function isAero(u: Unit): boolean { return u.type === 'Aero'; }
-function isInfantry(u: Unit): boolean { return u.type === 'Infantry'; }
-
 function unitPointTotal(units: Unit[], getPointRange: (u: Unit[]) => PointRange): number {
     const range = getPointRange(units);
     return (range.min + range.max) / 2;
@@ -64,28 +61,40 @@ function unitPointTotal(units: Unit[], getPointRange: (u: Unit[]) => PointRange)
 /**
  * Collect all leaf-level units from a GroupSizeResult tree.
  */
-const groupUnitCache = new WeakMap<GroupSizeResult, Unit[]>();
+interface SolverContext {
+    groupUnitCache: WeakMap<GroupSizeResult, Unit[]>;
+    customMatchCache: WeakMap<OrgTypeRule, Map<string, number>>;
+    ruleFilterCache: WeakMap<OrgTypeRule, Map<string, boolean>>;
+}
 
-function collectGroupUnits(group: GroupSizeResult): Unit[] {
-    const cached = groupUnitCache.get(group);
+function createSolverContext(): SolverContext {
+    return {
+        groupUnitCache: new WeakMap<GroupSizeResult, Unit[]>(),
+        customMatchCache: new WeakMap<OrgTypeRule, Map<string, number>>(),
+        ruleFilterCache: new WeakMap<OrgTypeRule, Map<string, boolean>>(),
+    };
+}
+
+function collectGroupUnits(group: GroupSizeResult, context: SolverContext): Unit[] {
+    const cached = context.groupUnitCache.get(group);
     if (cached) return cached;
 
     const result: Unit[] = [];
     if (group.units) result.push(...group.units);
     if (group.children) {
         for (const child of group.children) {
-            result.push(...collectGroupUnits(child));
+            result.push(...collectGroupUnits(child, context));
         }
     }
 
-    groupUnitCache.set(group, result);
+    context.groupUnitCache.set(group, result);
     return result;
 }
 
-function collectAllUnits(groups: ReadonlyArray<GroupSizeResult>): Unit[] {
+function collectAllUnits(groups: ReadonlyArray<GroupSizeResult>, context: SolverContext): Unit[] {
     const result: Unit[] = [];
     for (const g of groups) {
-        result.push(...collectGroupUnits(g));
+        result.push(...collectGroupUnits(g, context));
     }
     return result;
 }
@@ -101,31 +110,28 @@ interface SameUnitCountBucket {
     units: Unit[];
 }
 
-const customMatchCache = new WeakMap<OrgTypeRule, Map<string, number>>();
-const ruleFilterCache = new WeakMap<OrgTypeRule, Map<string, boolean>>();
-
-function getCustomMatchMemo(rule: OrgTypeRule): Map<string, number> {
-    let memo = customMatchCache.get(rule);
+function getCustomMatchMemo(rule: OrgTypeRule, context: SolverContext): Map<string, number> {
+    let memo = context.customMatchCache.get(rule);
     if (!memo) {
         memo = new Map<string, number>();
-        customMatchCache.set(rule, memo);
+        context.customMatchCache.set(rule, memo);
     }
     return memo;
 }
 
-function getRuleFilterMemo(rule: OrgTypeRule): Map<string, boolean> {
-    let memo = ruleFilterCache.get(rule);
+function getRuleFilterMemo(rule: OrgTypeRule, context: SolverContext): Map<string, boolean> {
+    let memo = context.ruleFilterCache.get(rule);
     if (!memo) {
         memo = new Map<string, boolean>();
-        ruleFilterCache.set(rule, memo);
+        context.ruleFilterCache.set(rule, memo);
     }
     return memo;
 }
 
-function passesRuleFilter(rule: OrgTypeRule, unit: Unit): boolean {
+function passesRuleFilter(rule: OrgTypeRule, unit: Unit, context: SolverContext): boolean {
     if (!rule.filter) return true;
 
-    const memo = getRuleFilterMemo(rule);
+    const memo = getRuleFilterMemo(rule, context);
     const cached = memo.get(unit.name);
     if (cached !== undefined) return cached;
 
@@ -160,6 +166,7 @@ type Shape = number[]; // shape[i] = count from sameUnitCountBuckets[i]
 function findValidShapes(
     eligible: Unit[],
     rule: OrgTypeRule,
+    context: SolverContext,
 ): { sameUnitCountBuckets: SameUnitCountBucket[]; shapes: Shape[] } {
     const sameUnitCountBuckets = new Map<string, Unit[]>();
     for (const u of eligible) {
@@ -177,7 +184,7 @@ function findValidShapes(
 
     const shapes: Shape[] = [];
     const totalUnits = eligible.length;
-    const shapeMatchCache = getCustomMatchMemo(rule);
+    const shapeMatchCache = getCustomMatchMemo(rule, context);
 
     // Enumerate all combinations of counts (0..bucketSize) for each same-name bucket.
     const maxPerBucket = sameUnitCountBucketList.map(bucket => bucket.units.length);
@@ -509,17 +516,19 @@ function normalizeGroupsToOrg(groupResults: GroupSizeResult[], rules: OrgTypeRul
 function collectUnassignedUnits(
     allUnits: ReadonlyArray<Unit>,
     groups: ReadonlyArray<GroupSizeResult>,
+    context: SolverContext,
 ): Unit[] {
     if (groups.length === 0 || allUnits.length === 0) return [];
 
-    return subtractUnitsByOccurrence(allUnits, collectAllUnits(groups));
+    return subtractUnitsByOccurrence(allUnits, collectAllUnits(groups, context));
 }
 
 function attachTopLevelLeftovers(
     groups: GroupSizeResult[],
     allUnits: ReadonlyArray<Unit>,
+    context: SolverContext,
 ): GroupSizeResult[] {
-    const leftoverUnits = collectUnassignedUnits(allUnits, groups);
+    const leftoverUnits = collectUnassignedUnits(allUnits, groups, context);
     if (groups.length === 0 || leftoverUnits.length === 0) return groups;
 
     return [
@@ -651,6 +660,7 @@ function allocateLeaves(
     units: Unit[],
     rules: OrgTypeRule[],
     getPointRange: (u: Unit[]) => PointRange,
+    context: SolverContext,
 ): GroupSizeResult[][] {
     const cmRules = rules
         .filter(r => r.customMatch)
@@ -658,7 +668,6 @@ function allocateLeaves(
 
     const candidates: GroupSizeResult[][] = [];
 
-    // Generate customMatch consumption variants via recursive branching
     function branchCustomMatch(
         ruleIdx: number,
         pool: Unit[],
@@ -667,21 +676,21 @@ function allocateLeaves(
         if (ruleIdx === cmRules.length) {
             // All customMatch rules processed, allocate remaining via affinity split
             const remaining = pool.length > 0
-                ? allocateSplitByAffinity(pool, rules, getPointRange)
+                ? allocateSplitByAffinity(pool, rules, getPointRange, context)
                 : [];
             candidates.push([...accumulated, ...remaining]);
             return;
         }
 
         const rule = cmRules[ruleIdx];
-        const eligible = pool.filter(u => passesRuleFilter(rule, u));
+        const eligible = pool.filter(u => passesRuleFilter(rule, u, context));
 
         // Branch 1: skip this rule entirely
         branchCustomMatch(ruleIdx + 1, pool, accumulated);
 
         // Branch 2+: try consuming via this rule (various k values)
         if (eligible.length > 0) {
-            const { sameUnitCountBuckets, shapes } = findValidShapes(eligible, rule);
+            const { sameUnitCountBuckets, shapes } = findValidShapes(eligible, rule, context);
             if (shapes.length > 0) {
                 const regularPts = getRegularCount(rule);
                 const totalPts = unitPointTotal(pool, getPointRange);
@@ -716,7 +725,7 @@ function allocateLeaves(
 
     branchCustomMatch(0, units, []);
 
-    return candidates.length > 0 ? candidates : [allocateSplitByAffinity(units, rules, getPointRange)];
+    return candidates.length > 0 ? candidates : [allocateSplitByAffinity(units, rules, getPointRange, context)];
 }
 
 /**
@@ -730,6 +739,7 @@ function allocateSplitByAffinity(
     units: Unit[],
     rules: OrgTypeRule[],
     getPointRange: (u: Unit[]) => PointRange,
+    context: SolverContext,
 ): GroupSizeResult[] {
     const results: GroupSizeResult[] = [];
     let remaining = [...units];
@@ -743,8 +753,8 @@ function allocateSplitByAffinity(
         if (remaining.length === 0) break;
         if (!rule.filter) continue; // no filter = accepts everything, handle at the end
 
-        const accepted = remaining.filter(u => passesRuleFilter(rule, u));
-        const rejected = remaining.filter(u => !passesRuleFilter(rule, u));
+        const accepted = remaining.filter(u => passesRuleFilter(rule, u, context));
+        const rejected = remaining.filter(u => !passesRuleFilter(rule, u, context));
 
         // Only split if this rule creates a genuine partition
         if (accepted.length === 0 || rejected.length === 0) continue;
@@ -755,12 +765,12 @@ function allocateSplitByAffinity(
 
     // Remaining: all pass the same filters: use best matching leaf rule
     if (remaining.length > 0) {
-            const allocated = findBestLeafAllocation(remaining, rules, getPointRange);
-            if (allocated.length > 0) {
-                results.push(...allocated);
+        const allocated = findBestLeafAllocation(remaining, rules, getPointRange, context);
+        if (allocated.length > 0) {
+            results.push(...allocated);
         } else {
             for (const u of remaining) {
-                    const allocated = findBestLeafAllocation([u], rules, getPointRange);
+                const allocated = findBestLeafAllocation([u], rules, getPointRange, context);
                 if (allocated.length > 0) {
                     results.push(...allocated);
                 }
@@ -780,12 +790,13 @@ function findBestLeafAllocation(
     units: Unit[],
     rules: OrgTypeRule[],
     getPointRange: (u: Unit[]) => PointRange,
+    context: SolverContext,
 ): GroupSizeResult[] {
     let best: { rule: OrgTypeRule; allocation: GroupSizeResult[] } | null = null;
     for (const rule of rules) {
         if (rule.composedOfAny) continue;
         if (rule.customMatch) continue;
-        if (!units.every(u => passesRuleFilter(rule, u))) continue;
+        if (!units.every(u => passesRuleFilter(rule, u, context))) continue;
 
         const allocation = allocateLeaf(units, rule, getPointRange);
         if (allocation.length === 0) continue;
@@ -814,11 +825,11 @@ function findBestLeafAllocation(
  * Tries ALL viable composed rules at each step and picks the one that
  * produces the highest-tier, most regular result.
  */
-function composeUpward(groups: GroupSizeResult[], rules: OrgTypeRule[]): GroupSizeResult[] {
+function composeUpward(groups: GroupSizeResult[], rules: OrgTypeRule[], context: SolverContext): GroupSizeResult[] {
     let current = [...groups];
 
     for (let iter = 0; iter < 20 && current.length >= 2; iter++) {
-        const best = findBestComposition(current, rules);
+        const best = findBestComposition(current, rules, context);
         if (!best) break;
         current = best;
     }
@@ -862,6 +873,7 @@ function betterScore(a: CompositionScore, b: CompositionScore): boolean {
 function canRuleComposeGroups(
     rule: OrgTypeRule,
     groups: ReadonlyArray<GroupSizeResult>,
+    context: SolverContext,
 ): boolean {
     if (!rule.composedOfAny || groups.length === 0) return false;
 
@@ -876,8 +888,8 @@ function canRuleComposeGroups(
     }
 
     if (rule.filter) {
-        const allUnits = collectAllUnits(groups);
-        if (allUnits.some(unit => !passesRuleFilter(rule, unit))) return false;
+        const allUnits = collectAllUnits(groups, context);
+        if (allUnits.some(unit => !passesRuleFilter(rule, unit, context))) return false;
     }
 
     if (rule.groupFilter && !rule.groupFilter(groups)) return false;
@@ -1081,7 +1093,7 @@ function applyComposedRule(
  * Scoring prefers: higher composed tier → more consumed → promotability
  * → strict count → priority sum.
  */
-function findBestComposition(groups: GroupSizeResult[], rules: OrgTypeRule[]): GroupSizeResult[] | null {
+function findBestComposition(groups: GroupSizeResult[], rules: OrgTypeRule[], context: SolverContext): GroupSizeResult[] | null {
     let bestResult: GroupSizeResult[] | null = null;
     let bestScore: CompositionScore = { composedTier: -1, consumed: 0, canPromote: false, strictCount: 0, prioritySum: 0 };
 
@@ -1113,7 +1125,7 @@ function findBestComposition(groups: GroupSizeResult[], rules: OrgTypeRule[]): G
         }
 
         if (matching.length === 0) continue;
-        if (!canRuleComposeGroups(rule, matching.map(i => groups[i]))) continue;
+        if (!canRuleComposeGroups(rule, matching.map(i => groups[i]), context)) continue;
         viable.push({ rule, matching, nonMatching });
     }
 
@@ -1195,7 +1207,7 @@ function findBestComposition(groups: GroupSizeResult[], rules: OrgTypeRule[]): G
                 for (const indices of combinations) {
                     const chosenSet = new Set(indices);
                     const chosenGroups = indices.map(index => availableGroups[index]);
-                    if (!canRuleComposeGroups(currentRule, chosenGroups)) continue;
+                    if (!canRuleComposeGroups(currentRule, chosenGroups, context)) continue;
 
                     const result = applyComposedRule(currentRule, chosenGroups, chosenGroups.length);
                     if (!result || result.groups.length === 0) continue;
@@ -1304,6 +1316,7 @@ function maxPriority(groups: ReadonlyArray<GroupSizeResult>): number {
 function scoreResult(
     groups: GroupSizeResult[],
     allUnits: ReadonlyArray<Unit>,
+    context: SolverContext,
 ): {
     priorityWithoutLeftovers: number;
     maxTier: number;
@@ -1319,7 +1332,7 @@ function scoreResult(
         if ((g.priority ?? 0) > rawPriority) rawPriority = g.priority!;
         tierSum += g.tier;
     }
-    const priorityWithoutLeftovers = collectUnassignedUnits(allUnits, groups).length === 0 ? rawPriority : 0;
+    const priorityWithoutLeftovers = collectUnassignedUnits(allUnits, groups, context).length === 0 ? rawPriority : 0;
     return { priorityWithoutLeftovers, maxTier: mTier, rawPriority, groupCount: groups.length, tierSum };
 }
 
@@ -1345,13 +1358,15 @@ function betterResult(
  * 3. Pick the best result (highest tier, fewest groups, highest priority)
  */
 export function resolveFromUnits(units: Unit[], techBase: TechBase, factionName: string): GroupSizeResult[] {
+    const context = createSolverContext();
+
     if (units.length === 0) {
         return [{ name: 'Force', type: null, countsAsType: null, tier: 0 }];
     }
     const { rules, getPointRange } = resolveOrg(techBase, factionName);
 
     // Step 1: Generate all leaf allocation candidates
-    const leafCandidates = allocateLeaves(units, rules, getPointRange);
+    const leafCandidates = allocateLeaves(units, rules, getPointRange, context);
 
     let bestComposed: GroupSizeResult[] | null = null;
     let bestScore: {
@@ -1365,9 +1380,9 @@ export function resolveFromUnits(units: Unit[], techBase: TechBase, factionName:
     // Step 2: Compose each candidate upward and pick the best
     for (const leafGroups of leafCandidates) {
         if (leafGroups.length === 0) continue;
-        const composed = composeUpward(leafGroups, rules);
+        const composed = composeUpward(leafGroups, rules, context);
         const wrapped = wrapResult(composed);
-        const score = scoreResult(wrapped, units);
+        const score = scoreResult(wrapped, units, context);
 
         if (!bestScore || betterResult(score, bestScore)) {
             bestComposed = wrapped;
@@ -1379,7 +1394,7 @@ export function resolveFromUnits(units: Unit[], techBase: TechBase, factionName:
         return [];
     }
 
-    return attachTopLevelLeftovers(bestComposed, units);
+    return attachTopLevelLeftovers(bestComposed, units, context);
 }
 
 /**
@@ -1387,18 +1402,20 @@ export function resolveFromUnits(units: Unit[], techBase: TechBase, factionName:
  * Groups are taken as-is (not deconstructed) and composed upward.
  */
 export function resolveFromGroups(techBase: TechBase, factionName: string, groupResults: GroupSizeResult[]): GroupSizeResult[] {
+    const context = createSolverContext();
+
     if (groupResults.length === 0) return [{ name: 'Force', type: null, countsAsType: null, tier: 0 }];
 
     const { rules } = resolveOrg(techBase, factionName);
-    const allUnits = collectAllUnits(groupResults);
+    const allUnits = collectAllUnits(groupResults, context);
 
     // Normalize foreign types
     const normalized = normalizeGroupsToOrg(groupResults, rules);
 
-    if (normalized.length === 1) return attachTopLevelLeftovers([normalized[0]], allUnits);
+    if (normalized.length === 1) return attachTopLevelLeftovers([normalized[0]], allUnits, context);
 
     // Compose upward
-    const composed = composeUpward(normalized, rules);
+    const composed = composeUpward(normalized, rules, context);
 
-    return attachTopLevelLeftovers(wrapResult(composed), allUnits);
+    return attachTopLevelLeftovers(wrapResult(composed), allUnits, context);
 }
