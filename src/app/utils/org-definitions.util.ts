@@ -385,18 +385,6 @@ const ComStarOrg: OrgDefinition = {
     ],
 };
 
-
-function isSocietyUn(units: Unit[]): boolean {
-    if (units.length === 0) return false;
-    if (units.every(isBM)) return countBM(units) === 1;
-    if (units.every(isBA)) return sumBATroopers(units) === 3;
-    if (units.every(isCI)) return sumCITroopers(units) === 75;
-    if (units.every(isPM)) return countPM(units) === 3;
-    if (units.every(isAero)) return countAF(units) === 3;
-    if (units.every(isCV)) return countCV(units) === 7;
-    return false;
-}
-
 const SocietyOrg: OrgDefinition = {
     distanceFactor: 0.2,
     minDistance: 2,
@@ -415,14 +403,9 @@ const SocietyOrg: OrgDefinition = {
         return { min: fixed, max: fixed };
     },
     rules: [
-        {
-            type: 'Un',
-            modifiers: { '': 1 },
-            tier: 0,
-            customMatch: (units) => isSocietyUn(units) ? 0 : Infinity,
-        },
-        { type: 'Trey', strict: true, composedOfAny: ['Un'], modifiers: { '': 3 }, tier: 1 },
-        { type: 'Sept', strict: true, composedOfAny: ['Un'], modifiers: { '': 7 }, tier: 1.8 },
+        { type: 'Un', modifiers: { '': 1 }, tier: 0 },
+        { type: 'Trey', strict: true, composedOfAny: ['Un'], modifiers: { '': 3 }, tier: 0.8 },
+        { type: 'Sept', strict: true, composedOfAny: ['Un'], modifiers: { '': 7 }, tier: 1.6 },
     ],
 };
 
