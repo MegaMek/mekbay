@@ -506,20 +506,20 @@ function normalizeGroupsToOrg(groupResults: GroupSizeResult[], rules: OrgTypeRul
     });
 }
 
-function collectUnitsOutsidePrimaryGroup(
+function collectUnassignedUnits(
     allUnits: ReadonlyArray<Unit>,
     groups: ReadonlyArray<GroupSizeResult>,
 ): Unit[] {
     if (groups.length === 0 || allUnits.length === 0) return [];
 
-    return subtractUnitsByOccurrence(allUnits, collectAllUnits([groups[0]]));
+    return subtractUnitsByOccurrence(allUnits, collectAllUnits(groups));
 }
 
 function attachTopLevelLeftovers(
     groups: GroupSizeResult[],
     allUnits: ReadonlyArray<Unit>,
 ): GroupSizeResult[] {
-    const leftoverUnits = collectUnitsOutsidePrimaryGroup(allUnits, groups);
+    const leftoverUnits = collectUnassignedUnits(allUnits, groups);
     if (groups.length === 0 || leftoverUnits.length === 0) return groups;
 
     return [
@@ -1261,7 +1261,6 @@ export function aggregateGroupSizeResult(groups: GroupSizeResult[]): GroupSizeRe
  *  name (e.g. "2x Galaxy", "Augmented Company + Flight") and an adjusted tier
  *  (baseTier + sum(otherTier / baseTier) for each additional group). */
 const SYNTHETIC_AGGREGATED_GROUP = false;
-const RETURN_MAX_ONE_GROUP = false;
 
 /**
  * Wrap a list of composed groups into a single top-level GroupSizeResult.
@@ -1275,21 +1274,6 @@ function wrapResult(groups: GroupSizeResult[]): GroupSizeResult[] {
     if (SYNTHETIC_AGGREGATED_GROUP) {
         const aggregatedGroup = aggregateGroupSizeResult(groups);
         return [aggregatedGroup];
-    } else
-    if (RETURN_MAX_ONE_GROUP) {
-        // Fallback: use the highest-tier group's name
-        let best = groups[0];
-        for (let i = 1; i < groups.length; i++) {
-            if (groups[i].tier > best.tier) best = groups[i];
-        }
-
-        return [{
-            name: best.name,
-            type: null,
-            countsAsType: null,
-            tier: best.tier,
-            children: groups,
-        }];
     }
 
     return [...groups].sort((a, b) => b.tier - a.tier);
@@ -1335,7 +1319,7 @@ function scoreResult(
         if ((g.priority ?? 0) > rawPriority) rawPriority = g.priority!;
         tierSum += g.tier;
     }
-    const priorityWithoutLeftovers = collectUnitsOutsidePrimaryGroup(allUnits, groups).length === 0 ? rawPriority : 0;
+    const priorityWithoutLeftovers = collectUnassignedUnits(allUnits, groups).length === 0 ? rawPriority : 0;
     return { priorityWithoutLeftovers, maxTier: mTier, rawPriority, groupCount: groups.length, tierSum };
 }
 

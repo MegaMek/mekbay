@@ -134,32 +134,12 @@ describe('resolveFromUnits', () => {
         const result = resolveFromUnits(units, 'Inner Sphere', 'Capellan Confederation');
 
         expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Under-Strength Company');
         expect(result[0].type).toBe('Company');
         expect(result[0].leftoverUnits).toBeUndefined();
         expect(result[0].children?.length).toBe(2);
-        expect(result[0].children?.every(child => child.type === 'Lance')).toBeTrue();
     });
     
-    it('leftovers only to the top-most group', () => {
-        const units: Unit[] = [
-            createUnit(1, 'Tank', 'Combat Vehicle'),
-            createUnit(2, 'Tank', 'Combat Vehicle'),
-            createUnit(3, 'Tank', 'Combat Vehicle'),
-            createUnit(4, 'Tank', 'Combat Vehicle'),
-            createUnit(5, 'Mek', 'BattleMek'),
-            createUnit(6, 'Mek', 'BattleMek'),
-        ];
-
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
-        const descendantGroups = collectDescendantGroups(result[0]);
-
-        expect(result[0].name).toBe('2x Trey');
-        expect(result[0].type).toBe('Trey');
-        expect(result[0].leftoverUnits?.length).toBe(1);
-        expect(result[0].leftoverUnits?.[0].type).toBe('Mek');
-        expect(descendantGroups.every(group => group.leftoverUnits === undefined)).toBeTrue();
-    });
-
     it('preserves leftover count when duplicate instances share the same Unit reference', () => {
         const sharedMek = createUnit(5, 'Mek', 'BattleMek');
         sharedMek.name = 'shared-mek';
@@ -221,6 +201,106 @@ describe('resolveFromUnits', () => {
         expect(result[0].type).toBe('Un');
         expect(result[0].name).toBe('Un');
         expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 2 BM in Society as 2x Un', () => {
+        const units: Unit[] = [
+            createUnit(1, 'Mek', 'BattleMek'),
+            createUnit(2, 'Mek', 'BattleMek'),
+        ];
+
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
+
+        expect(result.length).toBe(2);
+        expect(result.every(group => group.type === 'Un')).toBeTrue();
+        expect(result.every(group => group.name === 'Un')).toBeTrue();
+        expect(result.every(group => group.leftoverUnits === undefined)).toBeTrue();
+    });
+
+    it('resolves 3 BM in Society as Trey', () => {
+        const units: Unit[] = [
+            createUnit(1, 'Mek', 'BattleMek'),
+            createUnit(2, 'Mek', 'BattleMek'),
+            createUnit(3, 'Mek', 'BattleMek'),
+        ];
+
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
+
+        expect(result.length).toBe(1);
+        expect(result[0].type).toBe('Trey');
+        expect(result[0].name).toBe('Trey');
+        expect(result[0].children?.length).toBe(3);
+        expect(result[0].children?.every(group => group.type === 'Un')).toBeTrue();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 7 CV in Society as Un', () => {
+        const units: Unit[] = [
+            createUnit(1, 'Tank', 'Combat Vehicle'),
+            createUnit(2, 'Tank', 'Combat Vehicle'),
+            createUnit(3, 'Tank', 'Combat Vehicle'),
+            createUnit(4, 'Tank', 'Combat Vehicle'),
+            createUnit(5, 'Tank', 'Combat Vehicle'),
+            createUnit(6, 'Tank', 'Combat Vehicle'),
+            createUnit(7, 'Tank', 'Combat Vehicle'),
+        ];
+
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Un');
+        expect(result[0].type).toBe('Un');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 3 CI platoons in Society as Un', () => {
+        const units: Unit[] = [
+            createUnit(1, 'Infantry', 'Conventional Infantry'),
+            createUnit(2, 'Infantry', 'Conventional Infantry'),
+            createUnit(3, 'Infantry', 'Conventional Infantry'),
+        ];
+        units.forEach(unit => {
+            unit.internal = 25;
+        });
+
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Un');
+        expect(result[0].type).toBe('Un');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 3 battle armor troopers in Society as Un', () => {
+        const battleArmor = createUnit(1, 'Infantry', 'Battle Armor');
+        battleArmor.internal = 3;
+
+        const result = resolveFromUnits([battleArmor], 'Inner Sphere', 'Society');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Un');
+        expect(result[0].type).toBe('Un');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('attaches Society leftovers only to the top-most group', () => {
+        const units: Unit[] = [
+            createUnit(1, 'Mek', 'BattleMek'),
+            createUnit(2, 'Mek', 'BattleMek'),
+            createUnit(3, 'Mek', 'BattleMek'),
+            createUnit(4, 'Tank', 'Combat Vehicle'),
+            createUnit(5, 'Tank', 'Combat Vehicle'),
+        ];
+
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
+        const descendantGroups = collectDescendantGroups(result[0]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Trey');
+        expect(result[0].type).toBe('Trey');
+        expect(result[0].leftoverUnits?.length).toBe(2);
+        expect(result[0].leftoverUnits?.every(unit => unit.type === 'Tank')).toBeTrue();
+        expect(descendantGroups.every(group => group.leftoverUnits === undefined)).toBeTrue();
     });
 
     it('resolves 2 BM plus 1 AF as Air Lance', () => {

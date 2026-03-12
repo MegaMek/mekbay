@@ -375,6 +375,18 @@ const ComStarOrg: OrgDefinition = {
     ],
 };
 
+
+function isSocietyUn(units: Unit[]): boolean {
+    if (units.length === 0) return false;
+    if (units.every(isBM)) return countBM(units) === 1;
+    if (units.every(isBA)) return sumBATroopers(units) === 3;
+    if (units.every(isCI)) return sumCITroopers(units) === 75;
+    if (units.every(isPM)) return countPM(units) === 3;
+    if (units.every(isAero)) return countAF(units) === 3;
+    if (units.every(isCV)) return countCV(units) === 7;
+    return false;
+}
+
 const SocietyOrg: OrgDefinition = {
     distanceFactor: 0.2,
     minDistance: 2,
@@ -384,23 +396,23 @@ const SocietyOrg: OrgDefinition = {
         const baTroopers = sumBATroopers(units);
         const ciTroopers = sumCITroopers(units);
         const fixed = countBM(units) +
-            (baTroopers / 9) +
+            (baTroopers / 3) +
+            (ciTroopers / 75) +
             (countPM(units) / 3) +
             (countCV(units) / 7) +
             (countAF(units) / 3) +
             units.filter(u => !isBM(u) && !isBA(u) && !isCI(u) && !isPM(u) && !isCV(u) && !isAero(u)).length;
-        let minPts = fixed;
-        let maxPts = fixed;
-        if (ciTroopers > 0) {
-            minPts += ciTroopers / 75;
-            maxPts += ciTroopers / 75;
-        }
-        return { min: minPts, max: maxPts };
+        return { min: fixed, max: fixed };
     },
     rules: [
-        { type: 'Un', modifiers: { '': 1 }, tier: 0 },
-        { type: 'Trey', modifiers: { '': 3 }, tier: 0.8 },
-        { type: 'Sept', modifiers: { '': 7 }, tier: 1.6 },
+        {
+            type: 'Un',
+            modifiers: { '': 1 },
+            tier: 0,
+            customMatch: (units) => isSocietyUn(units) ? 0 : Infinity,
+        },
+        { type: 'Trey', strict: true, composedOfAny: ['Un'], modifiers: { '': 3 }, tier: 1 },
+        { type: 'Sept', strict: true, composedOfAny: ['Un'], modifiers: { '': 7 }, tier: 2 },
     ],
 };
 
@@ -564,10 +576,10 @@ const CCOrg: OrgDefinition = {
                 )) + nonQualBA;
             },
         },
-        // CC Augmented Company
-        { type: 'Augmented Company', countsAs: 'Company', composedOfAny: ['Augmented Lance'], priority: 1, modifiers: { '': 2, 'Reinforced ': 3 }, commandRank: 'Captain', tier: 2.01 },
+        // CC Augmented Company, slightly inferior tier than Regular Company due to being smaller. It will prevail over Regular Company due to priority if there are no leftovers.
+        { type: 'Augmented Company', countsAs: 'Company', composedOfAny: ['Augmented Lance'], priority: 1, modifiers: { '': 2, 'Reinforced ': 3 }, commandRank: 'Captain', tier: 1.95 },
         // CC Augmented Battalion
-        { type: 'Augmented Battalion', countsAs: 'Battalion', composedOfAny: ['Augmented Company'], priority: 1, modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'Major', tier: 3.01 },
+        { type: 'Augmented Battalion', countsAs: 'Battalion', composedOfAny: ['Augmented Company'], priority: 1, modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'Major', tier: 3 },
         // CC Augmented Regiment
         {
             type: 'Augmented Regiment', countsAs: 'Regiment', composedOfAny: ['Augmented Battalion', 'Battalion', 'Wing'],
