@@ -998,7 +998,6 @@ function applyComposedRule(
         if (bestN === 0) return null;
 
         const results: GroupSizeResult[] = [];
-        const childPriority = maxPriority(matchingGroups);
         for (let i = 0; i < bestN; i++) {
             const start = i * bestModCount;
             results.push({
@@ -1007,7 +1006,7 @@ function applyComposedRule(
                 countsAsType: rule.countsAs ?? null,
                 tier: resolveTier(rule, bestPrefix),
                 children: matchingGroups.slice(start, start + bestModCount),
-                priority: Math.max(rule.priority ?? 0, childPriority),
+                priority: rule.priority,
             });
         }
         return { groups: results, consumed: bestN * bestModCount };
@@ -1027,15 +1026,13 @@ function applyComposedRule(
                 countsAsType: rule.countsAs ?? null,
                 tier: resolveTier(rule, subMod[0]),
                 children: matchingGroups.slice(0, count),
-                priority: Math.max(rule.priority ?? 0, maxPriority(matchingGroups)),
+                priority: rule.priority,
             }],
             consumed: count,
         };
     }
 
     const results: GroupSizeResult[] = [];
-    const childPriority = maxPriority(matchingGroups);
-    const effectivePriority = Math.max(rule.priority ?? 0, childPriority);
     for (let i = 0; i < n; i++) {
         const start = i * regularCount;
         results.push({
@@ -1044,7 +1041,7 @@ function applyComposedRule(
             countsAsType: rule.countsAs ?? null,
             tier: resolveTier(rule, ''),
             children: matchingGroups.slice(start, start + regularCount),
-            priority: effectivePriority,
+            priority: rule.priority,
         });
     }
 
@@ -1058,7 +1055,7 @@ function applyComposedRule(
                 countsAsType: rule.countsAs ?? null,
                 tier: resolveTier(rule, subMod[0]),
                 children: leftoverGroups,
-                priority: effectivePriority,
+                priority: rule.priority,
             });
         } else {
             const lastIdx = results.length - 1;
@@ -1071,7 +1068,7 @@ function applyComposedRule(
                 countsAsType: rule.countsAs ?? null,
                 tier: resolveTier(rule, prefix),
                 children: [...(lastGroup.children ?? []), ...leftoverGroups],
-                priority: effectivePriority,
+                priority: rule.priority,
             };
         }
     }
@@ -1292,15 +1289,6 @@ function resolveOrg(techBase: TechBase, factionName: string): OrgDefinition {
 }
 
 // ─── Public API ────────────────────────────────────────────────────────────────
-
-/** Collect the max priority across a set of GroupSizeResults. */
-function maxPriority(groups: ReadonlyArray<GroupSizeResult>): number {
-    let p = 0;
-    for (const g of groups) {
-        if ((g.priority ?? 0) > p) p = g.priority!;
-    }
-    return p;
-}
 
 /**
  * Score a wrapped result for candidate comparison.
