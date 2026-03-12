@@ -1491,15 +1491,14 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             distribution: 'shared-pool',
         }],
         minUnits: 3,
-        rulesRef: [{ book: Rulebook.BOT, page: 27 }, { book: Rulebook.ASCE, page: 96 }],
+        rulesRef: [{ book: Rulebook.BOT, page: 27 }],
         requirements: () => 'Clan only. Minimum 2 combat vehicles or BattleMeks. Remainder must be Elementals, combat vehicles, or BattleMeks. Must be at least two different unit types.',
         validator: (units, gameSystem) => {
             if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                const allowedTypes: ASUnitTypeCode[] = ['BM', 'CV', 'BA'];
-                if (!units.every(u => allowedTypes.includes(u.getUnit().as?.TP as ASUnitTypeCode))) return false;
                 const BM = units.filter(u => u.getUnit().as?.TP === 'BM').length;
                 const BA = units.filter(u => u.getUnit().as?.TP === 'BA').length;
                 const CV = units.filter(u => u.getUnit().as?.TP === 'CV').length;
+                if (units.length > BM + BA + CV) return false;
                 return (BM >= 2 && (BA > 0 || CV > 0)) || (CV >= 2 && (BM > 0 || BA > 0)); 
             } else {
                 const BM = units.filter(u => u.getUnit().type === 'Mek').length;
@@ -1516,7 +1515,31 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
     // Bonus: At the beginning of each turn, up to 2 units get Combat Intuition SPA.
     //
 
-
+    {
+        id: 'rogue-star',
+        name: 'Rogue',
+        description: 'Swift strike formation.',
+        effectDescription: 'At the beginning of each turn, up to two units in this formation may receive the Combat Intuition SPA.',
+        effectGroups: [{
+            abilityIds: ['combat_intuition'],
+            selection: 'all',
+            distribution: 'fixed',
+            count: 2,
+            perTurn: true,
+        }],
+        minUnits: 3,
+        rulesRef: [{ book: Rulebook.BOT, page: 27 }],
+        requirements: () => 'Clan only. At least two units in the Formation must be the same model (including the same OmniMek configuration)',
+        validator: (units) => {
+            let duplicate = 0;
+            const seen: Record<string, boolean> = {};
+            for (const u of units) {
+                if (seen[u.getUnit().name]) duplicate++;
+                else seen[u.getUnit().name] = true;
+            }
+            return duplicate > 0;
+        },
+    },
 
     //
     // Strategic Command Star
@@ -1528,7 +1551,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         id: 'strategic-command-star',
         name: 'Strategic Command',
         description: 'Combined arms command star.',
-        effectDescription: 'Prior to the beginning of play, two of the non-commander units in this formation receive one of the following Special Pilot Abilities for free (each unit may receive a different SPA): Antagonizer, Combat Intuition, Blood Stalker, Eagle\'s Eyes, Marksman, or Multi-Tasker. In addition, the commander\'s unit receives the Tactical Genius SPA. If the commander already has the Tactical Genius SPA, instead add a +1 modifier to the force\'s Initiative roll results, including any rerolls made as a result of the Tactical Genius SPA. Aerospace units cannot be designated force commander.',
+        effectDescription: 'Clan only. Prior to the beginning of play, two of the non-commander units in this formation receive one of the following Special Pilot Abilities for free (each unit may receive a different SPA): Antagonizer, Combat Intuition, Blood Stalker, Eagle\'s Eyes, Marksman, or Multi-Tasker. In addition, the commander\'s unit receives the Tactical Genius SPA. If the commander already has the Tactical Genius SPA, instead add a +1 modifier to the force\'s Initiative roll results, including any rerolls made as a result of the Tactical Genius SPA. Aerospace units cannot be designated force commander.',
         effectGroups: [
             {
                 abilityIds: ['antagonizer', 'blood_stalker', 'combat_intuition', 'eagles_eyes', 'marksman', 'multi_tasker'],
@@ -1543,7 +1566,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             },
         ],
         minUnits: 3,
-        rulesRef: [{ book: Rulebook.BOT, page: 27 }, { book: Rulebook.CO, page: 63 }, { book: Rulebook.ASCE, page: 120 }],
+        rulesRef: [{ book: Rulebook.BOT, page: 27 }],
         requirements: (gameSystem) => {
             if (gameSystem === GameSystem.ALPHA_STRIKE) {
                 return 'Minimum 3 units. All must have skill 3 or lower. Must have 1 Aerospace Point. Others must be Mek or Battle Armor. If Mek, at least 2 units Size 3+ and, no Size 1.';
