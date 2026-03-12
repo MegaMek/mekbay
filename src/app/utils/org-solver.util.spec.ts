@@ -1,7 +1,8 @@
 import type { Unit } from '../models/units.model';
-import { resolveFromUnits } from './org-solver.util';
+import { resolveFromGroups, resolveFromUnits } from './org-solver.util';
+import type { GroupSizeResult } from './org-types';
 
-function createUnit(id: number, type: Unit['type'], subtype: Unit['subtype']): Unit {
+function createUnit(id: number, type: Unit['type'], subtype: Unit['subtype'], isOmni: boolean = false, specials: string[] = []): Unit {
     return {
         name: `unit-${id}`,
         id,
@@ -19,7 +20,7 @@ function createUnit(id: number, type: Unit['type'], subtype: Unit['subtype']): U
         techRating: 'D',
         type,
         subtype,
-        omni: 0,
+        omni: isOmni ? 1 : 0,
         engine: 'Fusion',
         engineRating: 0,
         engineHS: 0,
@@ -63,7 +64,7 @@ function createUnit(id: number, type: Unit['type'], subtype: Unit['subtype']): U
             Th: 0,
             Arm: 0,
             Str: 0,
-            specials: [],
+            specials: specials,
             dmg: {
                 dmgS: '0',
                 dmgM: '0',
@@ -84,8 +85,41 @@ function createUnit(id: number, type: Unit['type'], subtype: Unit['subtype']): U
     };
 }
 
+function createContuberniumGroup(unit: Unit, tag: 'infantry' | 'non-infantry'): GroupSizeResult {
+    return {
+        name: 'Contubernium',
+        type: 'Contubernium',
+        countsAsType: null,
+        tier: 0,
+        units: [unit],
+        tag,
+    };
+}
+
+function collectDescendantGroups(group: GroupSizeResult): GroupSizeResult[] {
+    const children = group.children ?? [];
+    return children.flatMap(child => [child, ...collectDescendantGroups(child)]);
+}
+
 describe('resolveFromUnits', () => {
-    it('prefers a complete Capellan company over an augmented lance with leftovers', () => {
+
+    it('resolves 4 CV and 2 BM to an Augmented Lance', () => {
+        const units: Unit[] = [
+            createUnit(1, 'Tank', 'Combat Vehicle'),
+            createUnit(2, 'Tank', 'Combat Vehicle'),
+            createUnit(3, 'Tank', 'Combat Vehicle'),
+            createUnit(4, 'Tank', 'Combat Vehicle'),
+            createUnit(5, 'Mek', 'BattleMek'),
+            createUnit(6, 'Mek', 'BattleMek'),
+        ];
+
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Capellan Confederation');
+
+        expect(result[0].type).toBe('Augmented Lance');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('prefers a complete Capellan company over an Augmented Lance with leftovers', () => {
         const units: Unit[] = [
             createUnit(1, 'Tank', 'Combat Vehicle'),
             createUnit(2, 'Tank', 'Combat Vehicle'),
@@ -105,8 +139,8 @@ describe('resolveFromUnits', () => {
         expect(result[0].children?.length).toBe(2);
         expect(result[0].children?.every(child => child.type === 'Lance')).toBeTrue();
     });
-
-    it('attaches leftover units only to the topmost result', () => {
+    
+    it('leftovers only to the top-most group', () => {
         const units: Unit[] = [
             createUnit(1, 'Tank', 'Combat Vehicle'),
             createUnit(2, 'Tank', 'Combat Vehicle'),
@@ -114,14 +148,16 @@ describe('resolveFromUnits', () => {
             createUnit(4, 'Tank', 'Combat Vehicle'),
             createUnit(5, 'Mek', 'BattleMek'),
             createUnit(6, 'Mek', 'BattleMek'),
-            createUnit(7, 'Mek', 'BattleMek'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Capellan Confederation');
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
+        const descendantGroups = collectDescendantGroups(result[0]);
 
-        expect(result[0].type).toBe('Augmented Lance');
-        expect(result[0].leftoverUnits?.map(unit => unit.id)).toEqual([7]);
-        expect(result.slice(1).every(group => group.leftoverUnits === undefined)).toBeTrue();
+        expect(result[0].name).toBe('2x Trey');
+        expect(result[0].type).toBe('Trey');
+        expect(result[0].leftoverUnits?.length).toBe(1);
+        expect(result[0].leftoverUnits?.[0].type).toBe('Mek');
+        expect(descendantGroups.every(group => group.leftoverUnits === undefined)).toBeTrue();
     });
 
     it('preserves leftover count when duplicate instances share the same Unit reference', () => {
@@ -158,6 +194,69 @@ describe('resolveFromUnits', () => {
         expect(result.length).toBe(1);
         expect(result[0].type).toBe('Air Lance');
         expect(result[0].name).toBe('Air Lance');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 1 AF as Under-Strength Flight', () => {
+        const units: Unit[] = [
+            createUnit(1, 'Aero', 'Aerospace Fighter'),
+        ];
+
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Federated Suns');
+
+        expect(result.length).toBe(1);
+        expect(result[0].type).toBe('Flight');
+        expect(result[0].name).toBe('Under-Strength Flight');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 1 BM in Society as Un', () => {
+        const units: Unit[] = [
+            createUnit(1, 'Mek', 'BattleMek'),
+        ];
+
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
+
+        expect(result.length).toBe(1);
+        expect(result[0].type).toBe('Un');
+        expect(result[0].name).toBe('Un');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 2 BM plus 1 AF as Air Lance', () => {
+        const units: Unit[] = [
+            createUnit(1, 'Mek', 'BattleMek'),
+            createUnit(2, 'Mek', 'BattleMek'),
+            createUnit(3, 'Aero', 'Aerospace Fighter'),
+        ];
+
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Federated Suns');
+
+        expect(result.length).toBe(1);
+        expect(result[0].type).toBe('Air Lance');
+        expect(result[0].name).toBe('Air Lance');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('splits interleaved Marian Contubernia into valid same-tier subsets', () => {
+        const groupResults: GroupSizeResult[] = [
+            createContuberniumGroup(createUnit(1, 'Tank', 'Combat Vehicle'), 'non-infantry'),
+            createContuberniumGroup(createUnit(2, 'Infantry', 'Conventional Infantry'), 'infantry'),
+            createContuberniumGroup(createUnit(3, 'Tank', 'Combat Vehicle'), 'non-infantry'),
+            createContuberniumGroup(createUnit(4, 'Infantry', 'Conventional Infantry'), 'infantry'),
+            createContuberniumGroup(createUnit(5, 'Tank', 'Combat Vehicle'), 'non-infantry'),
+            createContuberniumGroup(createUnit(6, 'Infantry', 'Conventional Infantry'), 'infantry'),
+            createContuberniumGroup(createUnit(7, 'Tank', 'Combat Vehicle'), 'non-infantry'),
+            createContuberniumGroup(createUnit(8, 'Infantry', 'Conventional Infantry'), 'infantry'),
+            createContuberniumGroup(createUnit(9, 'Tank', 'Combat Vehicle'), 'non-infantry'),
+        ];
+
+        const result = resolveFromGroups('Inner Sphere', 'Marian Hegemony', groupResults);
+
+        expect(result.length).toBe(1);
+        expect(result[0].type).toBe('Maniple');
+        expect(result[0].children?.length).toBe(2);
+        expect(result[0].children?.every(child => child.type === 'Century')).toBeTrue();
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 });

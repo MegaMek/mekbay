@@ -43,6 +43,7 @@ import {
     ORG_REGISTRY,
     DEFAULT_ORG,
 } from './org-definitions.util';
+import { TechBase } from '../models/tech.model';
 
 /**
  * Author: Drake
@@ -63,74 +64,152 @@ function unitPointTotal(units: Unit[], getPointRange: (u: Unit[]) => PointRange)
 /**
  * Collect all leaf-level units from a GroupSizeResult tree.
  */
+const groupUnitCache = new WeakMap<GroupSizeResult, Unit[]>();
+
+function collectGroupUnits(group: GroupSizeResult): Unit[] {
+    const cached = groupUnitCache.get(group);
+    if (cached) return cached;
+
+    const result: Unit[] = [];
+    if (group.units) result.push(...group.units);
+    if (group.children) {
+        for (const child of group.children) {
+            result.push(...collectGroupUnits(child));
+        }
+    }
+
+    groupUnitCache.set(group, result);
+    return result;
+}
+
 function collectAllUnits(groups: ReadonlyArray<GroupSizeResult>): Unit[] {
     const result: Unit[] = [];
     for (const g of groups) {
-        if (g.units) result.push(...g.units);
-        if (g.children) result.push(...collectAllUnits(g.children));
+        result.push(...collectGroupUnits(g));
     }
     return result;
 }
 
-// ─── Combinator (bucket enumeration for customMatch) ───────────────────────────
+// ─── Combinator (same-name count enumeration for customMatch) ─────────────────
 
-/** A bucket is a group of units sharing the same bucket key. */
-interface UnitBucket {
+/**
+ * Same-name units are structurally identical, so customMatch only needs the
+ * count per unit name, not the original unit ordering.
+ */
+interface SameUnitCountBucket {
     key: string;
     units: Unit[];
 }
 
-/** A shape defines how many units from each bucket are needed for one valid instance. */
-type Shape = number[]; // shape[i] = count from buckets[i]
+const customMatchCache = new WeakMap<OrgTypeRule, Map<string, number>>();
+const ruleFilterCache = new WeakMap<OrgTypeRule, Map<string, boolean>>();
+
+function getCustomMatchMemo(rule: OrgTypeRule): Map<string, number> {
+    let memo = customMatchCache.get(rule);
+    if (!memo) {
+        memo = new Map<string, number>();
+        customMatchCache.set(rule, memo);
+    }
+    return memo;
+}
+
+function getRuleFilterMemo(rule: OrgTypeRule): Map<string, boolean> {
+    let memo = ruleFilterCache.get(rule);
+    if (!memo) {
+        memo = new Map<string, boolean>();
+        ruleFilterCache.set(rule, memo);
+    }
+    return memo;
+}
+
+function passesRuleFilter(rule: OrgTypeRule, unit: Unit): boolean {
+    if (!rule.filter) return true;
+
+    const memo = getRuleFilterMemo(rule);
+    const cached = memo.get(unit.name);
+    if (cached !== undefined) return cached;
+
+    const passes = rule.filter(unit);
+    memo.set(unit.name, passes);
+    return passes;
+}
+
+function buildUnitNameCountKey(
+    sameUnitCountBuckets: ReadonlyArray<SameUnitCountBucket>,
+    counts: ReadonlyArray<number>,
+): string {
+    const parts: string[] = [];
+    for (let i = 0; i < sameUnitCountBuckets.length; i++) {
+        if (counts[i] > 0) {
+            parts.push(`${sameUnitCountBuckets[i].key}:${counts[i]}`);
+        }
+    }
+    return parts.join('|');
+}
+
+/** A shape defines how many units from each same-name bucket are needed. */
+type Shape = number[]; // shape[i] = count from sameUnitCountBuckets[i]
 
 /**
  * Find valid shapes (unit-count combinations) for a customMatch rule.
  *
- * Groups eligible units into buckets, then enumerates all feasible
- * combinations of counts from each bucket. A shape is "valid" when
+ * Groups eligible units into same-name count buckets, then enumerates all
+ * feasible count combinations. A shape is "valid" when
  * customMatch returns 0 for a representative subset of those counts.
  */
 function findValidShapes(
     eligible: Unit[],
     rule: OrgTypeRule,
-): { buckets: UnitBucket[]; shapes: Shape[] } {
-    // Group eligible units by bucket key
-    const bucketMap = new Map<string, Unit[]>();
+): { sameUnitCountBuckets: SameUnitCountBucket[]; shapes: Shape[] } {
+    const sameUnitCountBuckets = new Map<string, Unit[]>();
     for (const u of eligible) {
         const k = u.name;
-        if (!bucketMap.has(k)) bucketMap.set(k, []);
-        bucketMap.get(k)!.push(u);
+        if (!sameUnitCountBuckets.has(k)) sameUnitCountBuckets.set(k, []);
+        sameUnitCountBuckets.get(k)!.push(u);
     }
-    const buckets: UnitBucket[] = Array.from(bucketMap.entries()).map(([key, units]) => ({ key, units }));
+    const sameUnitCountBucketList: SameUnitCountBucket[] = Array.from(sameUnitCountBuckets.entries())
+        .map(([key, units]) => ({ key, units }))
+        .sort((a, b) => a.key.localeCompare(b.key));
 
-    if (buckets.length === 0) return { buckets, shapes: [] };
+    if (sameUnitCountBucketList.length === 0) {
+        return { sameUnitCountBuckets: sameUnitCountBucketList, shapes: [] };
+    }
 
     const shapes: Shape[] = [];
     const totalUnits = eligible.length;
+    const shapeMatchCache = getCustomMatchMemo(rule);
 
-    // Enumerate all combinations of counts (0..bucketSize) for each bucket
-    const maxPerBucket = buckets.map(b => b.units.length);
+    // Enumerate all combinations of counts (0..bucketSize) for each same-name bucket.
+    const maxPerBucket = sameUnitCountBucketList.map(bucket => bucket.units.length);
 
     // Safety: cap total combinations at ~50k to prevent runaway enumeration
     let totalCombos = 1;
     for (const m of maxPerBucket) {
         totalCombos *= (m + 1);
-        if (totalCombos > 50_000) return { buckets, shapes: [] };
+        if (totalCombos > 50_000) {
+            console.warn(`Too many combinations (${totalCombos}) for customMatch rule ${rule.type}, skipping shape enumeration`);
+            return { sameUnitCountBuckets: sameUnitCountBucketList, shapes: [] };
+        }
     }
 
-    const current: number[] = new Array(buckets.length).fill(0);
+    const current: number[] = new Array(sameUnitCountBucketList.length).fill(0);
 
     function enumerate(idx: number, used: number): void {
-        if (idx === buckets.length) {
+        if (idx === sameUnitCountBucketList.length) {
             if (used === 0) return;
-            // Build a test subset using first N units from each bucket
-            const testUnits: Unit[] = [];
-            for (let i = 0; i < buckets.length; i++) {
-                for (let j = 0; j < current[i]; j++) {
-                    testUnits.push(buckets[i].units[j]);
+            const shapeKey = buildUnitNameCountKey(sameUnitCountBucketList, current);
+            let matchScore = shapeMatchCache.get(shapeKey);
+            if (matchScore === undefined) {
+                const testUnits: Unit[] = [];
+                for (let i = 0; i < sameUnitCountBucketList.length; i++) {
+                    for (let j = 0; j < current[i]; j++) {
+                        testUnits.push(sameUnitCountBucketList[i].units[j]);
+                    }
                 }
+                matchScore = rule.customMatch!(testUnits);
+                shapeMatchCache.set(shapeKey, matchScore);
             }
-            if (rule.customMatch!(testUnits) === 0) {
+            if (matchScore === 0) {
                 shapes.push([...current]);
             }
             return;
@@ -143,7 +222,16 @@ function findValidShapes(
     }
 
     enumerate(0, 0);
-    return { buckets, shapes };
+    shapes.sort((a, b) => {
+        const totalA = a.reduce((sum, count) => sum + count, 0);
+        const totalB = b.reduce((sum, count) => sum + count, 0);
+        if (totalA !== totalB) return totalB - totalA;
+        for (let i = 0; i < a.length; i++) {
+            if (a[i] !== b[i]) return b[i] - a[i];
+        }
+        return 0;
+    });
+    return { sameUnitCountBuckets: sameUnitCountBucketList, shapes };
 }
 
 /**
@@ -154,16 +242,16 @@ function findValidShapes(
  * Tries uniform shapes first (fast path), then mixed shapes via backtracking.
  */
 function findPartition(
-    buckets: UnitBucket[],
+    sameUnitCountBuckets: SameUnitCountBucket[],
     shapes: Shape[],
     k: number,
 ): Shape[] | null {
-    const bucketSizes = buckets.map(b => b.units.length);
+    const bucketSizes = sameUnitCountBuckets.map(bucket => bucket.units.length);
 
     // Fast path: try a single shape repeated k times
     for (const shape of shapes) {
         let fits = true;
-        for (let i = 0; i < buckets.length; i++) {
+        for (let i = 0; i < sameUnitCountBuckets.length; i++) {
             if (shape[i] * k > bucketSizes[i]) { fits = false; break; }
         }
         if (fits) return Array(k).fill(shape);
@@ -179,16 +267,16 @@ function findPartition(
         if (chosen.length === k) return true;
         for (const shape of shapes) {
             let fits = true;
-            for (let i = 0; i < buckets.length; i++) {
+            for (let i = 0; i < sameUnitCountBuckets.length; i++) {
                 if (shape[i] > remaining[i]) { fits = false; break; }
             }
             if (!fits) continue;
             // Consume
-            for (let i = 0; i < buckets.length; i++) remaining[i] -= shape[i];
+            for (let i = 0; i < sameUnitCountBuckets.length; i++) remaining[i] -= shape[i];
             chosen.push(shape);
             if (backtrack()) return true;
             chosen.pop();
-            for (let i = 0; i < buckets.length; i++) remaining[i] += shape[i];
+            for (let i = 0; i < sameUnitCountBuckets.length; i++) remaining[i] += shape[i];
         }
         return false;
     }
@@ -201,18 +289,17 @@ function findPartition(
  * extract actual Unit[] subsets — one per shape.
  */
 function pickUnitsFromPartition(
-    buckets: UnitBucket[],
+    sameUnitCountBuckets: SameUnitCountBucket[],
     partition: Shape[],
 ): Unit[][] {
-    // Track how many units we've consumed from each bucket
-    const offsets = new Array(buckets.length).fill(0);
+    const offsets = new Array(sameUnitCountBuckets.length).fill(0);
     const results: Unit[][] = [];
 
     for (const shape of partition) {
         const subset: Unit[] = [];
-        for (let i = 0; i < buckets.length; i++) {
+        for (let i = 0; i < sameUnitCountBuckets.length; i++) {
             for (let j = 0; j < shape[i]; j++) {
-                subset.push(buckets[i].units[offsets[i]++]);
+                subset.push(sameUnitCountBuckets[i].units[offsets[i]++]);
             }
         }
         results.push(subset);
@@ -248,10 +335,10 @@ function subtractUnitsByOccurrence(
  * Collect all units consumed by the partition, preserving duplicate instances.
  */
 function consumedUnitsFromPartition(
-    buckets: UnitBucket[],
+    sameUnitCountBuckets: SameUnitCountBucket[],
     partition: Shape[],
 ): Unit[] {
-    return pickUnitsFromPartition(buckets, partition).flat();
+    return pickUnitsFromPartition(sameUnitCountBuckets, partition).flat();
 }
 
 // ─── Modifier helpers ──────────────────────────────────────────────────────────
@@ -300,6 +387,11 @@ function sortedModifiers(rule: OrgTypeRule): [string, number][] {
     return Object.entries(rule.modifiers)
         .map(([prefix, mod]) => [prefix, getModifierCount(mod)] as [string, number])
         .sort((a, b) => a[1] - b[1]);
+}
+
+function getMinimumModifierCount(rule: OrgTypeRule): number {
+    const mods = sortedModifiers(rule);
+    return mods.length > 0 ? mods[0][1] : 0;
 }
 
 /**
@@ -473,6 +565,12 @@ function allocateLeaf(
                 tag: rule.tag,
             }];
         }
+
+        // Smaller than the minimum legal modifier: no valid formation exists.
+        if (totalPts < getMinimumModifierCount(rule) - 1e-9) {
+            return [];
+        }
+
         const [prefix] = findClosestModifier(rule, totalPts);
         return [{
             name: buildName(rule, prefix),
@@ -576,25 +674,25 @@ function allocateLeaves(
         }
 
         const rule = cmRules[ruleIdx];
-        const eligible = pool.filter(u => !rule.filter || rule.filter(u));
+        const eligible = pool.filter(u => passesRuleFilter(rule, u));
 
         // Branch 1: skip this rule entirely
         branchCustomMatch(ruleIdx + 1, pool, accumulated);
 
         // Branch 2+: try consuming via this rule (various k values)
         if (eligible.length > 0) {
-            const { buckets, shapes } = findValidShapes(eligible, rule);
+            const { sameUnitCountBuckets, shapes } = findValidShapes(eligible, rule);
             if (shapes.length > 0) {
                 const regularPts = getRegularCount(rule);
                 const totalPts = unitPointTotal(pool, getPointRange);
                 const maxCopies = regularPts > 0 ? Math.max(1, Math.floor(totalPts / regularPts)) : 1;
 
                 for (let k = maxCopies; k >= 1; k--) {
-                    const partition = findPartition(buckets, shapes, k);
+                    const partition = findPartition(sameUnitCountBuckets, shapes, k);
                     if (!partition) continue;
 
-                    const unitSubsets = pickUnitsFromPartition(buckets, partition);
-                    const consumed = consumedUnitsFromPartition(buckets, partition);
+                    const unitSubsets = pickUnitsFromPartition(sameUnitCountBuckets, partition);
+                    const consumed = consumedUnitsFromPartition(sameUnitCountBuckets, partition);
                     const newPool = subtractUnitsByOccurrence(pool, consumed);
 
                     const newGroups: GroupSizeResult[] = [];
@@ -645,8 +743,8 @@ function allocateSplitByAffinity(
         if (remaining.length === 0) break;
         if (!rule.filter) continue; // no filter = accepts everything, handle at the end
 
-        const accepted = remaining.filter(u => rule.filter!(u));
-        const rejected = remaining.filter(u => !rule.filter!(u));
+        const accepted = remaining.filter(u => passesRuleFilter(rule, u));
+        const rejected = remaining.filter(u => !passesRuleFilter(rule, u));
 
         // Only split if this rule creates a genuine partition
         if (accepted.length === 0 || rejected.length === 0) continue;
@@ -655,23 +753,17 @@ function allocateSplitByAffinity(
         remaining = rejected;
     }
 
-    // Remaining: all pass the same filters — use best matching leaf rule
+    // Remaining: all pass the same filters: use best matching leaf rule
     if (remaining.length > 0) {
-        const leaf = findBestLeafRule(remaining, rules);
-        if (leaf) {
-            results.push(...allocateLeaf(remaining, leaf, getPointRange));
+            const allocated = findBestLeafAllocation(remaining, rules, getPointRange);
+            if (allocated.length > 0) {
+                results.push(...allocated);
         } else {
-            // Per-unit fallback
             for (const u of remaining) {
-                const uLeaf = findBestLeafRule([u], rules);
-                results.push({
-                    name: uLeaf?.type ?? 'Force',
-                    type: uLeaf?.type ?? null,
-                    countsAsType: uLeaf?.countsAs ?? null,
-                    tier: uLeaf?.tier ?? 0,
-                    units: [u],
-                    tag: uLeaf?.tag,
-                });
+                    const allocated = findBestLeafAllocation([u], rules, getPointRange);
+                if (allocated.length > 0) {
+                    results.push(...allocated);
+                }
             }
         }
     }
@@ -680,22 +772,31 @@ function allocateSplitByAffinity(
 }
 
 /**
- * Find the best-matching leaf rule (no composedOfAny, no customMatch) for a set of units.
- * All units must pass the rule's per-unit filter. Prefers higher priority, then higher tier.
+ * Find the best valid leaf allocation (no composedOfAny, no customMatch) for a set of units.
+ * All units must pass the rule's per-unit filter. Rules that cannot allocate the
+ * current point total are ignored. Prefers higher priority, then higher tier.
  */
-function findBestLeafRule(units: Unit[], rules: OrgTypeRule[]): OrgTypeRule | null {
-    let best: OrgTypeRule | null = null;
+function findBestLeafAllocation(
+    units: Unit[],
+    rules: OrgTypeRule[],
+    getPointRange: (u: Unit[]) => PointRange,
+): GroupSizeResult[] {
+    let best: { rule: OrgTypeRule; allocation: GroupSizeResult[] } | null = null;
     for (const rule of rules) {
         if (rule.composedOfAny) continue;
         if (rule.customMatch) continue;
-        if (rule.filter && !units.every(u => rule.filter!(u))) continue;
+        if (!units.every(u => passesRuleFilter(rule, u))) continue;
+
+        const allocation = allocateLeaf(units, rule, getPointRange);
+        if (allocation.length === 0) continue;
+
         if (!best ||
-            (rule.priority ?? 0) > (best.priority ?? 0) ||
-            ((rule.priority ?? 0) === (best.priority ?? 0) && rule.tier > best.tier)) {
-            best = rule;
+            (rule.priority ?? 0) > (best.rule.priority ?? 0) ||
+            ((rule.priority ?? 0) === (best.rule.priority ?? 0) && rule.tier > best.rule.tier)) {
+            best = { rule, allocation };
         }
     }
-    return best;
+    return best?.allocation ?? [];
 }
 
 // ─── Upward composition ────────────────────────────────────────────────────────
@@ -756,6 +857,74 @@ function betterScore(a: CompositionScore, b: CompositionScore): boolean {
     if (a.canPromote !== b.canPromote) return a.canPromote;
     if (a.strictCount !== b.strictCount) return a.strictCount > b.strictCount;
     return a.prioritySum > b.prioritySum;
+}
+
+function canRuleComposeGroups(
+    rule: OrgTypeRule,
+    groups: ReadonlyArray<GroupSizeResult>,
+): boolean {
+    if (!rule.composedOfAny || groups.length === 0) return false;
+
+    const acceptedTypes = new Set(rule.composedOfAny);
+    for (const group of groups) {
+        if (
+            !(group.type && acceptedTypes.has(group.type)) &&
+            !(group.countsAsType && acceptedTypes.has(group.countsAsType))
+        ) {
+            return false;
+        }
+    }
+
+    if (rule.filter) {
+        const allUnits = collectAllUnits(groups);
+        if (allUnits.some(unit => !passesRuleFilter(rule, unit))) return false;
+    }
+
+    if (rule.groupFilter && !rule.groupFilter(groups)) return false;
+
+    return true;
+}
+
+function getCandidateTakeCounts(rule: OrgTypeRule, maxAvailable: number): number[] {
+    if (maxAvailable < 1) return [];
+
+    const counts = new Set<number>();
+    const regular = getRegularCount(rule);
+
+    for (const [, count] of sortedModifiers(rule)) {
+        if (count <= maxAvailable) counts.add(count);
+    }
+
+    if (!rule.strict) {
+        for (let count = Math.max(regular, 1); count <= maxAvailable; count++) {
+            counts.add(count);
+        }
+    }
+
+    return Array.from(counts).sort((a, b) => b - a);
+}
+
+function collectIndexCombinations(length: number, size: number): number[][] {
+    if (size < 1 || size > length) return [];
+
+    const results: number[][] = [];
+    const current: number[] = [];
+
+    function visit(start: number): void {
+        if (current.length === size) {
+            results.push([...current]);
+            return;
+        }
+
+        for (let idx = start; idx <= length - (size - current.length); idx++) {
+            current.push(idx);
+            visit(idx + 1);
+            current.pop();
+        }
+    }
+
+    visit(0);
+    return results;
 }
 
 /** Check whether any composed rule can consume groups from the result set. */
@@ -929,13 +1098,6 @@ function findBestComposition(groups: GroupSizeResult[], rules: OrgTypeRule[]): G
     const viable: ViableRule[] = [];
 
     for (const rule of composedRules) {
-        // For composed rules with per-unit filter, check that all leaf units pass
-        if (rule.filter) {
-            const allUnits = collectAllUnits(groups);
-            if (allUnits.some(u => !rule.filter!(u))) continue;
-        }
-        if (rule.groupFilter && !rule.groupFilter(groups)) continue;
-
         const acceptedTypes = new Set(rule.composedOfAny!);
         const matching: number[] = [];
         const nonMatching: number[] = [];
@@ -951,6 +1113,7 @@ function findBestComposition(groups: GroupSizeResult[], rules: OrgTypeRule[]): G
         }
 
         if (matching.length === 0) continue;
+        if (!canRuleComposeGroups(rule, matching.map(i => groups[i]))) continue;
         viable.push({ rule, matching, nonMatching });
     }
 
@@ -989,7 +1152,7 @@ function findBestComposition(groups: GroupSizeResult[], rules: OrgTypeRule[]): G
     }
 
     // Phase 2: Try combinations of same-tier rules that share matching groups.
-    // Group viable rules by tier, then enumerate allocations within each tier.
+    // Group viable rules by tier, then enumerate subset allocations within each tier.
     const byTier = new Map<number, ViableRule[]>();
     for (const v of viable) {
         const t = v.rule.tier;
@@ -1010,100 +1173,51 @@ function findBestComposition(groups: GroupSizeResult[], rules: OrgTypeRule[]): G
         const nonMatchingArr = groups.filter((_, i) => !unionMatching.has(i));
         const matchingGroups = matchingArr.map(i => groups[i]);
 
-        // Enumerate allocations: for each pair of rules, try all splits
-        // of matchingGroups between them. For >2 rules, try all orderings.
-        const counts = tierViable.map(v => getRegularCount(v.rule));
+        function exploreTierAllocations(
+            ruleIndex: number,
+            availableGroups: GroupSizeResult[],
+            createdGroups: GroupSizeResult[],
+            usedRules: OrgTypeRule[],
+            totalConsumed: number,
+        ): void {
+            if (ruleIndex === tierViable.length) {
+                if (createdGroups.length === 0) return;
+                const newGroups = [...nonMatchingArr, ...createdGroups, ...availableGroups];
+                evaluateCandidate(newGroups, totalConsumed, maxTier(createdGroups), usedRules);
+                return;
+            }
 
-        if (tierViable.length === 2) {
-            const [r0, r1] = tierViable;
-            const c0 = counts[0];
-            const c1 = counts[1];
-            // Try all (n0, n1) where n0*c0 + n1*c1 <= totalMatching
-            const maxN0 = Math.floor(totalMatching / c0);
-            for (let n0 = 0; n0 <= maxN0; n0++) {
-                const remaining0 = totalMatching - n0 * c0;
-                const maxN1 = Math.floor(remaining0 / c1);
-                for (let n1 = 0; n1 <= maxN1; n1++) {
-                    if (n0 === 0 && n1 === 0) continue;
-                    const consumed0 = n0 * c0;
-                    const consumed1 = n1 * c1;
-                    const totalConsumed = consumed0 + consumed1;
-                    if (totalConsumed === 0) continue;
+            exploreTierAllocations(ruleIndex + 1, availableGroups, createdGroups, usedRules, totalConsumed);
 
-                    const newGroups = [...nonMatchingArr];
-                    const usedRules: OrgTypeRule[] = [];
-                    let offset = 0;
+            const currentRule = tierViable[ruleIndex].rule;
+            for (const takeCount of getCandidateTakeCounts(currentRule, availableGroups.length)) {
+                const combinations = collectIndexCombinations(availableGroups.length, takeCount);
+                for (const indices of combinations) {
+                    const chosenSet = new Set(indices);
+                    const chosenGroups = indices.map(index => availableGroups[index]);
+                    if (!canRuleComposeGroups(currentRule, chosenGroups)) continue;
 
-                    if (n0 > 0) {
-                        const res0 = applyComposedRule(r0.rule, matchingGroups.slice(offset, offset + consumed0), consumed0);
-                        if (!res0) continue;
-                        newGroups.push(...res0.groups);
-                        usedRules.push(r0.rule);
-                        offset += res0.consumed;
-                    }
-                    if (n1 > 0) {
-                        const res1 = applyComposedRule(r1.rule, matchingGroups.slice(offset, offset + consumed1), consumed1);
-                        if (!res1) continue;
-                        newGroups.push(...res1.groups);
-                        usedRules.push(r1.rule);
-                        offset += res1.consumed;
-                    }
+                    const result = applyComposedRule(currentRule, chosenGroups, chosenGroups.length);
+                    if (!result || result.groups.length === 0) continue;
 
-                    // Add unconsumed matching groups back
-                    for (let i = offset; i < totalMatching; i++) {
-                        newGroups.push(matchingGroups[i]);
-                    }
-
-                    evaluateCandidate(newGroups, totalConsumed, maxTier(newGroups), usedRules);
+                    const remainingGroups = availableGroups.filter((_, index) => !chosenSet.has(index));
+                    exploreTierAllocations(
+                        ruleIndex + 1,
+                        remainingGroups,
+                        [...createdGroups, ...result.groups],
+                        [...usedRules, currentRule],
+                        totalConsumed + result.consumed,
+                    );
                 }
             }
-        } else {
-            // For 3+ same-tier rules: try all permutations of greedy allocation
-            const permutations = getPermutations(tierViable);
-            for (const perm of permutations) {
-                const newGroups = [...nonMatchingArr];
-                const usedRules: OrgTypeRule[] = [];
-                let remaining = totalMatching;
-                let offset = 0;
+        }
 
-                for (const v of perm) {
-                    const c = getRegularCount(v.rule);
-                    if (remaining < c) continue;
-                    const take = Math.floor(remaining / c) * c;
-                    if (take === 0) continue;
-                    const res = applyComposedRule(v.rule, matchingGroups.slice(offset, offset + take), take);
-                    if (!res) continue;
-                    newGroups.push(...res.groups);
-                    usedRules.push(v.rule);
-                    offset += res.consumed;
-                    remaining -= res.consumed;
-                }
-
-                if (usedRules.length === 0) continue;
-
-                for (let i = offset; i < totalMatching; i++) {
-                    newGroups.push(matchingGroups[i]);
-                }
-
-                evaluateCandidate(newGroups, offset, maxTier(newGroups), usedRules);
-            }
+        if (totalMatching > 0) {
+            exploreTierAllocations(0, matchingGroups, [], [], 0);
         }
     }
 
     return bestResult;
-}
-
-/** Generate all permutations of an array (for small arrays only). */
-function getPermutations<T>(arr: T[]): T[][] {
-    if (arr.length <= 1) return [arr];
-    const result: T[][] = [];
-    for (let i = 0; i < arr.length; i++) {
-        const rest = [...arr.slice(0, i), ...arr.slice(i + 1)];
-        for (const perm of getPermutations(rest)) {
-            result.push([arr[i], ...perm]);
-        }
-    }
-    return result;
 }
 
 // ─── Wrap result ───────────────────────────────────────────────────────────────
@@ -1183,7 +1297,7 @@ function wrapResult(groups: GroupSizeResult[]): GroupSizeResult[] {
 
 // ─── Org Resolution ────────────────────────────────────────────────────────────
 
-function resolveOrg(techBase: string, factionName: string): OrgDefinition {
+function resolveOrg(techBase: TechBase, factionName: string): OrgDefinition {
     return ORG_REGISTRY.find(e => e.match(techBase, factionName))?.org ?? DEFAULT_ORG;
 }
 
@@ -1246,7 +1360,7 @@ function betterResult(
  * 2. Compose each candidate upward
  * 3. Pick the best result (highest tier, fewest groups, highest priority)
  */
-export function resolveFromUnits(units: Unit[], techBase: string, factionName: string): GroupSizeResult[] {
+export function resolveFromUnits(units: Unit[], techBase: TechBase, factionName: string): GroupSizeResult[] {
     if (units.length === 0) {
         return [{ name: 'Force', type: null, countsAsType: null, tier: 0 }];
     }
@@ -1277,17 +1391,18 @@ export function resolveFromUnits(units: Unit[], techBase: string, factionName: s
         }
     }
 
-    return attachTopLevelLeftovers(
-        bestComposed ?? [{ name: 'Force', type: null, countsAsType: null, tier: 0 }],
-        units,
-    );
+    if (!bestComposed) {
+        return [];
+    }
+
+    return attachTopLevelLeftovers(bestComposed, units);
 }
 
 /**
  * Evaluate a force from pre-computed group results.
  * Groups are taken as-is (not deconstructed) and composed upward.
  */
-export function resolveFromGroups(techBase: string, factionName: string, groupResults: GroupSizeResult[]): GroupSizeResult[] {
+export function resolveFromGroups(techBase: TechBase, factionName: string, groupResults: GroupSizeResult[]): GroupSizeResult[] {
     if (groupResults.length === 0) return [{ name: 'Force', type: null, countsAsType: null, tier: 0 }];
 
     const { rules } = resolveOrg(techBase, factionName);
