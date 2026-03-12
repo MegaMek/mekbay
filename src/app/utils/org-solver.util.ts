@@ -841,49 +841,126 @@ function buildGroupedName(groups: ReadonlyArray<GroupSizeResult>): string {
         .map(([name, count]) => count > 1 ? `${count}x ${name}` : name)
         .join(' + ');
 }
+
+interface NormalizationTarget {
+    rule: OrgTypeRule;
+    prefix: string;
+    tier: number;
+    name: string;
+}
+
+function canUseRuleAsNormalizationTarget(
+    rule: OrgTypeRule,
+    group: GroupSizeResult,
+    context: SolverContext,
+): boolean {
+    if (isLeafRule(rule) && rule.customMatch) return false;
+    if (isComposedRule(rule) && getRequiredChildTypeCountEntries(rule).length > 0) return false;
+    if (!rule.filter) return true;
+
+    const groupUnits = collectGroupUnits(group, context);
+    if (groupUnits.length === 0) return false;
+
+    return groupUnits.every(unit => passesRuleFilter(rule, unit, context));
+}
+
+function collectNormalizationTargets(
+    rules: ReadonlyArray<OrgTypeRule>,
+    group: GroupSizeResult,
+    context: SolverContext,
+): NormalizationTarget[] {
+    const targets: NormalizationTarget[] = [];
+
+    for (const rule of rules) {
+        if (!canUseRuleAsNormalizationTarget(rule, group, context)) continue;
+
+        if (rule.dynamicTier && rule.dynamicTier > 0) {
+            for (const [prefix] of sortedModifiers(rule)) {
+                targets.push({
+                    rule,
+                    prefix,
+                    tier: resolveTier(rule, prefix),
+                    name: buildName(rule, prefix),
+                });
+            }
+            continue;
+        }
+
+        targets.push({
+            rule,
+            prefix: '',
+            tier: resolveTier(rule, ''),
+            name: buildName(rule, ''),
+        });
+    }
+
+    return targets.sort((a, b) => a.tier - b.tier);
+}
+
+function pickNormalizationTargets(
+    sourceTier: number,
+    targets: ReadonlyArray<NormalizationTarget>,
+): NormalizationTarget[] {
+    if (targets.length === 0) return [];
+
+    const highestTarget = targets[targets.length - 1];
+    if (sourceTier > highestTarget.tier) {
+        const repeatCount = highestTarget.tier > 0
+            ? Math.max(1, Math.floor(sourceTier / highestTarget.tier))
+            : 1;
+        return Array.from({ length: repeatCount }, () => highestTarget);
+    }
+
+    let bestTarget = targets[0];
+    let bestDistance = Math.abs(sourceTier - bestTarget.tier);
+
+    for (let i = 1; i < targets.length; i++) {
+        const candidate = targets[i];
+        const candidateDistance = Math.abs(sourceTier - candidate.tier);
+        if (candidateDistance < bestDistance) {
+            bestTarget = candidate;
+            bestDistance = candidateDistance;
+            continue;
+        }
+
+        if (candidateDistance === bestDistance && candidate.tier < bestTarget.tier) {
+            bestTarget = candidate;
+        }
+    }
+
+    return [bestTarget];
+}
 /**
  * Map GroupSizeResults whose types don't exist in the target org's rules
  * to their tier-equivalent types in the target org.
  */
-function normalizeGroupsToOrg(groupResults: GroupSizeResult[], rules: ReadonlyArray<OrgTypeRule>): GroupSizeResult[] {
+function normalizeGroupsToOrg(
+    groupResults: GroupSizeResult[],
+    rules: ReadonlyArray<OrgTypeRule>,
+    context: SolverContext,
+): GroupSizeResult[] {
     const knownTypes = new Set(rules.map(r => r.type));
-    const tierMap = new Map<number, OrgTypeRule>();
-    for (const r of rules) {
-        if (tierMap.has(r.tier)) continue;
-        if (!r.strict && !r.filter) tierMap.set(r.tier, r);
-    }
-    for (const r of rules) {
-        if (!tierMap.has(r.tier)) tierMap.set(r.tier, r);
-    }
-    const sortedTiers = Array.from(tierMap.keys()).sort((a, b) => a - b);
 
-    return groupResults.map(g => {
+    return groupResults.flatMap((g) => {
         const typeKnown = (g.type && knownTypes.has(g.type)) ||
                           (g.countsAsType && knownTypes.has(g.countsAsType));
-        if (typeKnown) return g;
+        if (typeKnown) return [g];
 
-        const equiv = findClosestTierRule(g.tier, tierMap, sortedTiers);
-        if (!equiv) return g;
+        const normalizationTargets = collectNormalizationTargets(rules, g, context);
+        const targets = pickNormalizationTargets(g.tier, normalizationTargets);
+        if (targets.length === 0) return [g];
 
-        let newName = equiv.type as string;
-        if (g.type && g.name.endsWith(g.type)) {
-            const prefix = g.name.slice(0, g.name.length - g.type.length);
-            if (prefix && prefix in equiv.modifiers) {
-                newName = prefix + equiv.type;
-            }
-        }
-
-        return {
-            name: newName,
-            type: equiv.type,
-            countsAsType: equiv.countsAs ?? null,
-            tier: equiv.tier,
-            children: g.children,
-            units: g.units,
-            leftoverUnits: g.leftoverUnits,
-            tag: g.tag,
-            priority: g.priority,
-        };
+        return targets.map((target, index) => ({
+            name: target.name,
+            type: target.rule.type,
+            countsAsType: target.rule.countsAs ?? null,
+            tier: target.tier,
+            children: index === 0 ? g.children : undefined,
+            units: index === 0 ? g.units : undefined,
+            leftoverUnits: index === 0 ? g.leftoverUnits : undefined,
+            tag: target.rule.tag,
+            priority: target.rule.priority,
+        }));
     });
 }
 
@@ -2042,7 +2119,7 @@ class OrgSolver {
         }
 
         const allUnits = collectAllUnits(groupResults, this.context);
-        const normalized = normalizeGroupsToOrg(groupResults, this.rules);
+        const normalized = normalizeGroupsToOrg(groupResults, this.rules, this.context);
 
         if (normalized.length === 1) {
             return attachTopLevelLeftovers([normalized[0]], allUnits, this.context);

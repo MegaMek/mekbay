@@ -128,6 +128,22 @@ function createContuberniumGroup(unit: Unit, tag: 'infantry' | 'non-infantry'): 
     };
 }
 
+function createForeignGroup(
+    name: string,
+    type: GroupSizeResult['type'],
+    tier: number,
+    countsAsType: GroupSizeResult['countsAsType'] = null,
+    units?: Unit[],
+): GroupSizeResult {
+    return {
+        name,
+        type,
+        countsAsType,
+        tier,
+        units,
+    };
+}
+
 function collectDescendantGroups(group: GroupSizeResult): GroupSizeResult[] {
     const children = group.children ?? [];
     return children.flatMap(child => [child, ...collectDescendantGroups(child)]);
@@ -805,5 +821,79 @@ describe('resolveFromUnits', () => {
         expect(result[0].leftoverUnits).toBeUndefined();
         expect(result[0].children?.length).toBe(3);
         expect(result[0].children?.every(child => child.type === 'Star')).toBeTrue();
+    });
+
+    it('crossgrades foreign groups to the nearest dynamic-tier modifier in the target org', () => {
+        const result = resolveFromGroups('Inner Sphere', 'Federated Suns', [
+            createForeignGroup('Sept', 'Sept', 1.6),
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Under-Strength Company');
+        expect(result[0].type).toBe('Company');
+        expect(result[0].tier).toBeCloseTo(1.5, 5);
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('crossgrades a real resolved foreign group through the public APIs', () => {
+        const sourceUnits: Unit[] = [
+            createBM('BM1'),
+            createBM('BM2'),
+            createBM('BM3'),
+            createBM('BM4'),
+            createBM('BM5'),
+            createBM('BM6'),
+            createBM('BM7'),
+        ];
+
+        const foreignGroup = resolveFromUnits(sourceUnits, 'Inner Sphere', 'Society');
+
+        expect(foreignGroup.length).toBe(1);
+        expect(foreignGroup[0].name).toBe('Sept');
+        expect(foreignGroup[0].type).toBe('Sept');
+
+        const result = resolveFromGroups('Inner Sphere', 'Federated Suns', foreignGroup);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Under-Strength Company');
+        expect(result[0].type).toBe('Company');
+        expect(result[0].tier).toBeCloseTo(1.5, 5);
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('rounds crossgrade ties downward when a foreign tier sits between lower and upper targets', () => {
+        const result = resolveFromGroups('Inner Sphere', 'Federated Suns', [
+            createForeignGroup('Level IV', 'Level IV', ((11 / 3) + 4) / 2),
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Under-Strength Battalion');
+        expect(result[0].type).toBe('Battalion');
+        expect(result[0].tier).toBeCloseTo(11 / 3, 5);
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('filters out incompatible normalization targets based on the foreign group units', () => {
+        const result = resolveFromGroups('Inner Sphere', 'Federated Suns', [
+            createForeignGroup('Foreign Vehicle Cell', 'Force', 1, null, [createCV('CV1')]),
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Lance');
+        expect(result[0].type).toBe('Lance');
+        expect(result[0].tier).toBe(1);
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('crossgrades tiers above the target org ceiling into repeated highest-tier synthetic groups', () => {
+        const result = resolveFromGroups('Inner Sphere', 'Society', [
+            createForeignGroup('Brigade', 'Brigade', 5),
+        ]);
+
+        expect(result.length).toBe(3);
+        expect(result.every(group => group.name === 'Sept')).toBeTrue();
+        expect(result.every(group => group.type === 'Sept')).toBeTrue();
+        expect(result.every(group => group.tier === 1.6)).toBeTrue();
+        expect(result.every(group => group.leftoverUnits === undefined)).toBeTrue();
     });
 });
