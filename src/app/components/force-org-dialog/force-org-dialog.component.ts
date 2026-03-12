@@ -603,15 +603,15 @@ export class ForceOrgDialogComponent {
         // Evaluate direct forces with the determined faction
         const directForces = placed.filter(pf => pf.groupId === group.id);
         for (const pf of directForces) {
-            childGroupResults.push(...getOrgFromForce(pf.force, factionName));
+            childGroupResults.push(...this.getForceOrgResults(pf.force));
         }
 
         // Leaf case: no child groups
         if (childGroups.length === 0) {
-            return getOrgFromForceCollection(allEntries, factionName);
+            return this.computeOrgCollectionResult(allEntries, factionName, childGroupResults);
         }
 
-        return getOrgFromForceCollection(allEntries, factionName, childGroupResults);
+        return this.computeOrgCollectionResult(allEntries, factionName, childGroupResults);
     }
 
     private nextZIndex = 0;
@@ -716,6 +716,21 @@ export class ForceOrgDialogComponent {
     private getFactionName(factionId: number | undefined): string {
         if (factionId === undefined) return 'Mercenary';
         return this.dataService.getFactionById(factionId)?.name ?? 'Mercenary';
+    }
+
+    private getForceOrgResults(force: LoadForceEntry): GroupSizeResult[] {
+        return this.forcesData().get(force.instanceId)?.org
+            ?? getOrgFromForce(force, this.getFactionName(force.factionId));
+    }
+
+    private computeOrgCollectionResult(
+        entries: LoadForceEntry[],
+        factionName: string,
+        childGroupResults?: GroupSizeResult[],
+    ): GroupSizeResult[] {
+        const groupResults = childGroupResults
+            ?? entries.flatMap(entry => this.getForceOrgResults(entry));
+        return getOrgFromForceCollection(entries, factionName, groupResults);
     }
 
 
@@ -1057,7 +1072,9 @@ export class ForceOrgDialogComponent {
     private computeGroupPreview(a: Rect, b: Rect, entries: LoadForceEntry[], childGroupResults?: GroupSizeResult[]): GroupPreview {
         const factionId = getDominantFactionId(entries);
         const factionName = factionId !== undefined ? this.getFactionName(factionId) : 'Mercenary';
-        const aggregateResult = aggregateGroupSizeResult(getOrgFromForceCollection(entries, factionName, childGroupResults));
+        const aggregateResult = aggregateGroupSizeResult(
+            this.computeOrgCollectionResult(entries, factionName, childGroupResults),
+        );
         const orgName = aggregateResult.name;
         const totals = formatTotals(entries);
         this.previewOrgCache = { orgName, totals, factionId };

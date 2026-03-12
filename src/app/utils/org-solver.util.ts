@@ -55,6 +55,7 @@ import { TechBase } from '../models/tech.model';
  */
 
 export const EMPTY_RESULT: GroupSizeResult = { name: 'Force', type: null, countsAsType: null, tier: 0 };
+export const FOREIGN_EVALUATION = true;
 
 // ─── Unit helpers ──────────────────────────────────────────────────────────────
 
@@ -807,30 +808,6 @@ function sumAllocationPlanCounts(plan: ReadonlyArray<AllocationPlanEntry>): numb
 
 // ─── Foreign-type normalization ────────────────────────────────────────────────
 
-/**
- * Find the closest tier in the tierMap to the target tier.
- */
-function findClosestTierRule(targetTier: number, tierMap: Map<number, OrgTypeRule>, sortedTiers: number[]): OrgTypeRule | undefined {
-    const exact = tierMap.get(targetTier);
-    if (exact) return exact;
-    if (sortedTiers.length === 0) return undefined;
-
-    let lower: number | undefined;
-    let upper: number | undefined;
-    for (const t of sortedTiers) {
-        if (t <= targetTier) lower = t;
-        if (t >= targetTier && upper === undefined) upper = t;
-    }
-
-    if (lower === undefined && upper === undefined) return undefined;
-    if (lower === undefined) return tierMap.get(upper!);
-    if (upper === undefined) return tierMap.get(lower);
-
-    const distLower = Math.abs(targetTier - lower);
-    const distUpper = Math.abs(upper - targetTier);
-    return distLower <= distUpper ? tierMap.get(lower) : tierMap.get(upper);
-}
-
 function buildGroupedName(groups: ReadonlyArray<GroupSizeResult>): string {
     const nameCounts = new Map<string, number>();
     for (const group of groups) {
@@ -960,6 +937,48 @@ function normalizeGroupsToOrg(
             priority: target.rule.priority,
         }));
     });
+}
+
+function isKnownGroupType(group: GroupSizeResult, rules: ReadonlyArray<OrgTypeRule>): boolean {
+    const knownTypes = new Set(rules.map(rule => rule.type));
+    return Boolean(
+        (group.type && knownTypes.has(group.type)) ||
+        (group.countsAsType && knownTypes.has(group.countsAsType)),
+    );
+}
+
+function collectCrossgradedGroups(
+    groupResults: GroupSizeResult[],
+    rules: ReadonlyArray<OrgTypeRule>,
+    context: SolverContext,
+): {
+    knownGroups: GroupSizeResult[];
+    foreignGroupsWithUnits: GroupSizeResult[];
+    foreignGroupsWithoutUnits: GroupSizeResult[];
+} {
+    const knownGroups: GroupSizeResult[] = [];
+    const foreignGroupsWithUnits: GroupSizeResult[] = [];
+    const foreignGroupsWithoutUnits: GroupSizeResult[] = [];
+
+    for (const group of groupResults) {
+        if (isKnownGroupType(group, rules)) {
+            knownGroups.push(group);
+            continue;
+        }
+
+        if (collectGroupUnits(group, context).length > 0) {
+            foreignGroupsWithUnits.push(group);
+            continue;
+        }
+
+        foreignGroupsWithoutUnits.push(group);
+    }
+
+    return {
+        knownGroups,
+        foreignGroupsWithUnits,
+        foreignGroupsWithoutUnits,
+    };
 }
 
 function collectUnassignedUnits(
@@ -2117,7 +2136,31 @@ class OrgSolver {
         }
 
         const allUnits = collectAllUnits(groupResults, this.context);
-        const normalized = normalizeGroupsToOrg(groupResults, this.rules, this.context);
+        let normalized: GroupSizeResult[];
+
+        if (FOREIGN_EVALUATION) {
+            const {
+                knownGroups,
+                foreignGroupsWithUnits,
+                foreignGroupsWithoutUnits,
+            } = collectCrossgradedGroups(groupResults, this.rules, this.context);
+            const reevaluatedForeignGroups = foreignGroupsWithUnits.length > 0
+                ? this.resolveFromUnits(collectAllUnits(foreignGroupsWithUnits, this.context))
+                : [];
+            const tierCrossgradedGroups = normalizeGroupsToOrg(
+                foreignGroupsWithoutUnits,
+                this.rules,
+                this.context,
+            );
+
+            normalized = [
+                ...knownGroups,
+                ...reevaluatedForeignGroups,
+                ...tierCrossgradedGroups,
+            ];
+        } else {
+            normalized = normalizeGroupsToOrg(groupResults, this.rules, this.context);
+        }
 
         if (normalized.length === 1) {
             return attachTopLevelLeftovers([normalized[0]], allUnits, this.context);

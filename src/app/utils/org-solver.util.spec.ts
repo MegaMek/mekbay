@@ -861,6 +861,26 @@ describe('resolveFromUnits', () => {
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
+    it('re-evaluates all units from foreign groups together before falling back to tier crossgrading', () => {
+        const result = resolveFromGroups('Inner Sphere', 'Federated Suns', [
+            createForeignGroup('Foreign Cell A', 'Sept', 1, null, [
+                createBM('BM1'),
+                createBM('BM2'),
+                createBM('BM3'),
+            ]),
+            createForeignGroup('Foreign Cell B', 'Sept', 1, null, [
+                createBM('BM4'),
+                createBM('BM5'),
+                createBM('BM6'),
+            ]),
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Fortified Lance');
+        expect(result[0].type).toBe('Lance');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
     it('rounds crossgrade ties downward when a foreign tier sits between lower and upper targets', () => {
         const result = resolveFromGroups('Inner Sphere', 'Federated Suns', [
             createForeignGroup('Level IV', 'Level IV', ((11 / 3) + 4) / 2),
@@ -873,16 +893,16 @@ describe('resolveFromUnits', () => {
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
-    it('filters out incompatible normalization targets based on the foreign group units', () => {
+    it('re-evaluates incompatible foreign units instead of tier-normalizing them', () => {
         const result = resolveFromGroups('Inner Sphere', 'Federated Suns', [
             createForeignGroup('Foreign Vehicle Cell', 'Force', 1, null, [createCV('CV1')]),
         ]);
 
         expect(result.length).toBe(1);
-        expect(result[0].name).toBe('Lance');
-        expect(result[0].type).toBe('Lance');
-        expect(result[0].tier).toBe(1);
-        expect(result[0].leftoverUnits).toBeUndefined();
+        expect(result[0].name).toBe('Force');
+        expect(result[0].type).toBeNull();
+        expect(result[0].tier).toBe(0);
+        expect(result[0].leftoverUnits).toEqual([jasmine.objectContaining({ name: 'CV1' })]);
     });
 
     it('crossgrades one tier above the target org ceiling into three highest-tier synthetic groups', () => {
@@ -908,4 +928,5 @@ describe('resolveFromUnits', () => {
         expect(result.every(group => group.tier === 1.6)).toBeTrue();
         expect(result.every(group => group.leftoverUnits === undefined)).toBeTrue();
     });
+
 });
