@@ -140,7 +140,6 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     /** Structural evaluation result for this group (name + matched ForceType). */
     sizeResult = computed<GroupSizeResult[]>(() => {
         const result = getOrgFromGroup(this);
-        console.log(result);
         return result;
     });
 
@@ -263,8 +262,13 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         }
     }
 
+    sizeResult = computed<GroupSizeResult[]>(() => {
+        const result = getOrgFromForce(this);
+        return result;
+    });
+
     sizeName = computed(() => {
-        return aggregateGroupSizeResult(getOrgFromForce(this)).name;
+        return aggregateGroupSizeResult(this.sizeResult()).name;
     });
 
     techBase = computed((): TechBase => {
