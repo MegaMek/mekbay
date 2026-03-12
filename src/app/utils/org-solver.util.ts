@@ -1315,6 +1315,104 @@ interface SubsetCompositionCandidate {
     result: ComposedResult;
 }
 
+function collectValueCombinations(values: ReadonlyArray<number>, size: number): number[][] {
+    if (size < 1 || size > values.length) return [];
+
+    const results: number[][] = [];
+    const current: number[] = [];
+
+    function visit(start: number): void {
+        if (current.length === size) {
+            results.push([...current]);
+            return;
+        }
+
+        for (let idx = start; idx <= values.length - (size - current.length); idx++) {
+            current.push(values[idx]);
+            visit(idx + 1);
+            current.pop();
+        }
+    }
+
+    visit(0);
+    return results;
+}
+
+function collectConstrainedIndexCombinations(
+    rule: OrgTypeRule,
+    eligibleGroups: ReadonlyArray<GroupSizeResult>,
+    takeCount: number,
+): number[][] | null {
+    const requiredEntries = Object.entries(rule.requiredChildTypeCounts ?? {})
+        .map(([type, count]) => ({ type, count: count ?? 0 }))
+        .filter(entry => entry.count > 0);
+    if (requiredEntries.length === 0) return null;
+
+    const totalRequired = requiredEntries.reduce((sum, entry) => sum + entry.count, 0);
+    if (takeCount < totalRequired) return [];
+
+    const buckets = requiredEntries.map(entry => ({
+        ...entry,
+        indices: eligibleGroups.flatMap((group, index) => groupMatchesType(group, entry.type) ? [index] : []),
+    }));
+    if (buckets.some(bucket => bucket.indices.length < bucket.count)) return [];
+
+    const results: number[][] = [];
+    const seen = new Set<string>();
+    const chosen: number[] = [];
+    const used = new Set<number>();
+
+    function pushResult(indices: ReadonlyArray<number>): void {
+        const sorted = [...indices].sort((a, b) => a - b);
+        const key = sorted.join(',');
+        if (seen.has(key)) return;
+        seen.add(key);
+        results.push(sorted);
+    }
+
+    function visitBuckets(bucketIndex: number): void {
+        if (bucketIndex === buckets.length) {
+            const remainingNeeded = takeCount - chosen.length;
+            if (remainingNeeded < 0) return;
+
+            const remainingIndices: number[] = [];
+            for (let index = 0; index < eligibleGroups.length; index++) {
+                if (!used.has(index)) remainingIndices.push(index);
+            }
+            if (remainingNeeded > remainingIndices.length) return;
+
+            if (remainingNeeded === 0) {
+                pushResult(chosen);
+                return;
+            }
+
+            for (const extra of collectValueCombinations(remainingIndices, remainingNeeded)) {
+                pushResult([...chosen, ...extra]);
+            }
+            return;
+        }
+
+        const bucket = buckets[bucketIndex];
+        const availableIndices = bucket.indices.filter(index => !used.has(index));
+        if (availableIndices.length < bucket.count) return;
+
+        for (const combination of collectValueCombinations(availableIndices, bucket.count)) {
+            for (const index of combination) {
+                used.add(index);
+                chosen.push(index);
+            }
+            visitBuckets(bucketIndex + 1);
+            for (let i = combination.length - 1; i >= 0; i--) {
+                used.delete(combination[i]);
+                chosen.pop();
+            }
+        }
+    }
+
+    visitBuckets(0);
+    return results;
+}
+
 function collectSubsetCompositionCandidates(
     rule: OrgTypeRule,
     availableGroups: GroupSizeResult[],
@@ -1330,7 +1428,11 @@ function collectSubsetCompositionCandidates(
         const candidates: SubsetCompositionCandidate[] = [];
 
         for (const takeCount of getCandidateTakeCounts(rule, eligibleEntries.length, includeSubRegular)) {
-            const combinations = collectIndexCombinations(eligibleEntries.length, takeCount);
+            const combinations = collectConstrainedIndexCombinations(
+                rule,
+                eligibleEntries.map(entry => entry.group),
+                takeCount,
+            ) ?? collectIndexCombinations(eligibleEntries.length, takeCount);
             for (const indices of combinations) {
                 const chosenGroups = indices.map(index => eligibleEntries[index].group);
                 if (!canRuleComposeGroups(rule, chosenGroups, context)) continue;
