@@ -35,6 +35,7 @@ import type { GroupSizeResult } from './org-types';
 import { type Force, UnitGroup } from '../models/force.model';
 import { LoadForceEntry, type LoadForceGroup } from '../models/load-force-entry.model';
 import type { Unit } from '../models/units.model';
+import { getUnitsAverageTechBase, TechBase } from '../models/tech.model';
 
 /*
  * Author: Drake
@@ -47,15 +48,13 @@ export class OrgNamerUtil {
     private static readonly EMPTY_RESULT: GroupSizeResult = { name: 'Force', type: null, countsAsType: null, tier: 0 };
 
     public static getOrgFromGroup(group: UnitGroup): GroupSizeResult[];
-    public static getOrgFromGroup(group: LoadForceGroup, factionName: string, techBase: string): GroupSizeResult[];
-    public static getOrgFromGroup(group: UnitGroup | LoadForceGroup, factionName?: string, techBase?: string): GroupSizeResult[] {
+    public static getOrgFromGroup(group: LoadForceGroup, factionName: string, techBase: TechBase): GroupSizeResult[];
+    public static getOrgFromGroup(group: UnitGroup | LoadForceGroup, factionName?: string, techBase?: TechBase): GroupSizeResult[] {
         if (group instanceof UnitGroup) {
             const force = group.force;
             const fn = force.faction()?.name ?? 'Mercenary';
-            const isComStarOrWoB = fn.includes('ComStar') || fn.includes('Word of Blake');
-            const tb = isComStarOrWoB ? '' : force.techBase();
             const allUnits = group.units().map(u => u.getUnit()).filter((u): u is Unit => u !== undefined);
-            return resolveFromUnits(allUnits, tb, fn);
+            return resolveFromUnits(allUnits, force.techBase(), fn);
         }
         const units = group.units
             .filter((u): u is typeof u & { unit: Unit } => u.unit !== undefined)
@@ -75,8 +74,7 @@ export class OrgNamerUtil {
             return resolveFromGroups(techBase, fn, groupResults);
         }
         const fn = forceOrEntry.faction()?.name ?? 'Mercenary';
-        const isComStarOrWoB = fn.includes('ComStar') || fn.includes('Word of Blake');
-        const techBase = isComStarOrWoB ? '' : forceOrEntry.techBase();
+        const techBase = forceOrEntry.techBase();
         const groupResults = forceOrEntry.groups()
             .filter(g => g.units().length > 0)
             .flatMap(g => g.sizeResult() ?? []);
@@ -103,34 +101,15 @@ export class OrgNamerUtil {
 
     // ===== Utility methods =====
 
-    /** Derive the majority tech base from a set of raw Unit objects. */
-    static deriveTechBase(units: Unit[]): string {
-        const counts: Record<string, number> = {};
-        for (const u of units) {
-            if (u.techBase === 'Mixed') {
-                counts['Clan'] = (counts['Clan'] || 0) + 1;
-                counts['Inner Sphere'] = (counts['Inner Sphere'] || 0) + 1;
-            } else {
-                counts[u.techBase] = (counts[u.techBase] || 0) + 1;
-            }
-        }
-        let majority = 'Inner Sphere';
-        let max = 0;
-        for (const [tb, count] of Object.entries(counts)) {
-            if (count > max) { majority = tb; max = count; }
-        }
-        return majority;
-    }
-
     /** Resolve tech base from a flat array of LoadForceUnit-like objects. */
-    private static resolveTechBase(units: { unit: Unit | undefined }[], factionName: string): string {
-        if (factionName.includes('ComStar') || factionName.includes('Word of Blake')) return '';
+    private static resolveTechBase(units: { unit: Unit | undefined }[], factionName: string): TechBase {
+        if (factionName.includes('ComStar') || factionName.includes('Word of Blake')) return 'Inner Sphere'; // not important
         const realUnits = units.filter((u): u is { unit: Unit } => u.unit !== undefined).map(u => u.unit);
-        return this.deriveTechBase(realUnits);
+        return getUnitsAverageTechBase(realUnits);
     }
 
     /** Resolve tech base from a set of LoadForceEntry instances. */
-    static resolveTechBaseFromEntries(entries: LoadForceEntry[], factionName: string): string {
+    static resolveTechBaseFromEntries(entries: LoadForceEntry[], factionName: string): TechBase {
         return this.resolveTechBase(entries.flatMap(e => e.groups.flatMap(g => g.units)), factionName);
     }
 }

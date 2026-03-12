@@ -51,6 +51,7 @@ import { type ForceAddModePickerData, ForceAddModePickerDialogComponent, type Fo
 import { firstValueFrom } from 'rxjs';
 import { OrgNamerUtil } from '../../utils/org-namer.util';
 import { aggregateGroupSizeResult } from '../../utils/org-solver.util';
+import { getUnitsAverageTechBase } from '../../models/tech.model';
 
 export interface ForceEntryPreviewDialogData {
     force: LoadForceEntry;
@@ -98,8 +99,7 @@ export class ForceEntryPreviewDialogComponent {
         const factionName = this.force.factionId !== undefined
             ? (this.dataService.getFactionById(this.force.factionId)?.name ?? 'Mercenary')
             : 'Mercenary';
-        const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
-        const techBase = isComStarOrWoB ? '' : OrgNamerUtil.deriveTechBase(this.allUnits);
+        const techBase = getUnitsAverageTechBase(this.allUnits);
 
         this.groupDisplayData = this.force.groups.map(group => {
             const sizeResult = aggregateGroupSizeResult(OrgNamerUtil.getOrgFromGroup(group, factionName, techBase));

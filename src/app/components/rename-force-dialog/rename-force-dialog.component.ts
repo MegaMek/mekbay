@@ -347,8 +347,7 @@ export class RenameForceDialogComponent {
         const units = this.data.force.units();
         if (units.length === 0) return [];
         const factionName = this.selectedFaction()?.name ?? 'Mercenary';
-        const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
-        const techBase = isComStarOrWoB ? '' : this.data.force.techBase();
+        const techBase = this.data.force.techBase();
         const groupResults: GroupSizeResult[] = this.data.force.groups()
             .filter(g => g.units().length > 0)
             .flatMap(g => g.sizeResult() ?? []);

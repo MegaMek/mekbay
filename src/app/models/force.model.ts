@@ -50,7 +50,7 @@ import { FormationNamerUtil } from '../utils/formation-namer.util';
 import type { GroupSizeResult } from '../utils/org-types';
 import { OrgNamerUtil } from '../utils/org-namer.util';
 import { aggregateGroupSizeResult } from '../utils/org-solver.util';
-import { TechBase } from './tech.model';
+import { getUnitsAverageTechBase, TechBase } from './tech.model';
 
 /*
  * Author: Drake
@@ -269,27 +269,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     });
 
     techBase = computed((): TechBase => {
-        const counts: Partial<Record<TechBase, number>> = {};
-        for (const unit of this.units()) {
-            const tb = unit.getUnit().techBase;
-            if (tb === 'Mixed') {
-                counts['Clan'] = (counts['Clan'] || 0) + 1;
-                counts['Inner Sphere'] = (counts['Inner Sphere'] || 0) + 1;
-            } else {
-                counts[tb] = (counts[tb] || 0) + 1;
-            }
-        }
-        let majority: TechBase = 'Inner Sphere';
-        let max = 0;
-        // Mixed is expanded to both
-        for (const tb of ['Inner Sphere', 'Clan'] as const) {
-            const count = counts[tb] ?? 0;
-            if (count > max) {
-                majority = tb;
-                max = count;
-            }
-        }
-        return majority;
+        return getUnitsAverageTechBase(this.units().map(u => u.getUnit()).filter((u): u is Unit => u !== undefined));
     });
 
     /**
