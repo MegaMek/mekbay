@@ -1304,8 +1304,10 @@ function maxPriority(groups: ReadonlyArray<GroupSizeResult>): number {
 
 /**
  * Score a wrapped result for candidate comparison.
- * Priority only leads when the topmost result has no leftovers.
- * Then compare tier, then raw priority as a tie-breaker.
+ * Priority only applies when the candidate resolves into a single complete
+ * top-level formation with no unassigned units. Split top-level results like
+ * "Nova + Point" should compete on tier/grouping, not inherit priority from
+ * one favored subgroup.
  */
 function scoreResult(
     groups: GroupSizeResult[],
@@ -1326,8 +1328,17 @@ function scoreResult(
         if ((g.priority ?? 0) > rawPriority) rawPriority = g.priority!;
         tierSum += g.tier;
     }
-    const priorityWithoutLeftovers = collectUnassignedUnits(allUnits, groups, context).length === 0 ? rawPriority : 0;
-    return { priorityWithoutLeftovers, maxTier: mTier, rawPriority, groupCount: groups.length, tierSum };
+    const isSingleCompleteFormation =
+        groups.length === 1 && collectUnassignedUnits(allUnits, groups, context).length === 0;
+    const effectivePriority = isSingleCompleteFormation ? rawPriority : 0;
+
+    return {
+        priorityWithoutLeftovers: effectivePriority,
+        maxTier: mTier,
+        rawPriority: effectivePriority,
+        groupCount: groups.length,
+        tierSum,
+    };
 }
 
 function betterResult(
