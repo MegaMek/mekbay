@@ -493,60 +493,204 @@ function sortedModifiers(rule: OrgTypeRule): [string, number][] {
         .sort((a, b) => a[1] - b[1]);
 }
 
+type ModifierSelectionMode = 'exact' | 'closest' | 'sub-regular';
+
+function selectModifier(
+    rule: OrgTypeRule,
+    targetCount: number,
+    mode: ModifierSelectionMode,
+): [string, number] | null {
+    const modifiers = sortedModifiers(rule);
+    if (modifiers.length === 0) return null;
+
+    if (mode === 'exact') {
+        const exactMatches = modifiers.filter(([, count]) => Math.abs(count - targetCount) < 1e-9);
+        if (exactMatches.length === 0) return null;
+        return exactMatches.find(([prefix]) => prefix === '') ?? exactMatches[0];
+    }
+
+    if (mode === 'sub-regular') {
+        const regularCount = getRegularCount(rule);
+        let best: [string, number] | null = null;
+        for (const [prefix, count] of modifiers) {
+            if (count < regularCount && count <= targetCount) {
+                if (!best || count > best[1]) best = [prefix, count];
+            }
+        }
+        return best;
+    }
+
+    let best = modifiers[0];
+    let bestDistance = Math.abs(best[1] - targetCount);
+    for (let i = 1; i < modifiers.length; i++) {
+        const distance = Math.abs(modifiers[i][1] - targetCount);
+        if (distance < bestDistance || (distance === bestDistance && modifiers[i][1] > best[1])) {
+            best = modifiers[i];
+            bestDistance = distance;
+        }
+    }
+    return best;
+}
+
+function getModifierExtremeCount(rule: OrgTypeRule, mode: 'min' | 'max'): number {
+    const modifiers = sortedModifiers(rule);
+    if (modifiers.length === 0) return 0;
+    return mode === 'min' ? modifiers[0][1] : modifiers[modifiers.length - 1][1];
+}
+
 function getMinimumModifierCount(rule: OrgTypeRule): number {
-    const mods = sortedModifiers(rule);
-    return mods.length > 0 ? mods[0][1] : 0;
+    return getModifierExtremeCount(rule, 'min');
 }
 
 function getMaximumModifierCount(rule: OrgTypeRule): number {
-    const mods = sortedModifiers(rule);
-    return mods.length > 0 ? mods[mods.length - 1][1] : 0;
-}
-
-/**
- * Find the best sub-regular modifier for leftovers.
- * Returns the modifier whose count is the largest value <= leftoverCount
- * that is still < regularCount. Returns null if none found.
- */
-function findSubRegularModifier(rule: OrgTypeRule, leftoverCount: number): [string, number] | null {
-    const regular = getRegularCount(rule);
-    const mods = sortedModifiers(rule);
-    let best: [string, number] | null = null;
-    for (const [prefix, count] of mods) {
-        if (count < regular && count <= leftoverCount) {
-            if (!best || count > best[1]) best = [prefix, count];
-        }
-    }
-    return best;
-}
-
-/**
- * Find the modifier whose count is closest to `targetCount`.
- * When there's a tie, prefer the one with higher count.
- */
-function findClosestModifier(rule: OrgTypeRule, targetCount: number): [string, number] {
-    const mods = sortedModifiers(rule);
-    let best = mods[0];
-    let bestDist = Math.abs(best[1] - targetCount);
-    for (let i = 1; i < mods.length; i++) {
-        const d = Math.abs(mods[i][1] - targetCount);
-        if (d < bestDist || (d === bestDist && mods[i][1] > best[1])) {
-            best = mods[i];
-            bestDist = d;
-        }
-    }
-    return best;
-}
-
-function findExactModifier(rule: OrgTypeRule, targetCount: number): [string, number] | null {
-    const exactMatches = sortedModifiers(rule).filter(([, count]) => Math.abs(count - targetCount) < 1e-9);
-    if (exactMatches.length === 0) return null;
-    return exactMatches.find(([prefix]) => prefix === '') ?? exactMatches[0];
+    return getModifierExtremeCount(rule, 'max');
 }
 
 /** Build the display name for a rule + modifier prefix. */
 function buildName(rule: OrgTypeRule, prefix: string): string {
     return prefix ? prefix + rule.type : rule.type;
+}
+
+interface AllocationPlanEntry {
+    prefix: string;
+    count: number;
+}
+
+interface FlexibleAllocationPlan {
+    entries: AllocationPlanEntry[];
+    consumesAllUnits: boolean;
+}
+
+function buildRuleGroup(
+    rule: OrgTypeRule,
+    prefix: string,
+    extra: Partial<GroupSizeResult>,
+): GroupSizeResult {
+    return {
+        name: buildName(rule, prefix),
+        type: rule.type,
+        countsAsType: rule.countsAs ?? null,
+        tier: resolveTier(rule, prefix),
+        ...extra,
+    };
+}
+
+function buildStrictAllocationPlan(rule: OrgTypeRule, totalCount: number): AllocationPlanEntry[] | null {
+    const regularCount = getRegularCount(rule);
+    if (regularCount < 1 || totalCount < 1) return null;
+
+    let bestPrefix = '';
+    let bestModCount = 0;
+    let bestInstances = 0;
+    for (const [prefix, modCount] of sortedModifiers(rule)) {
+        if (modCount < 1 || modCount > totalCount) continue;
+        const instances = Math.floor(totalCount / modCount);
+        if (instances * modCount > bestInstances * bestModCount) {
+            bestPrefix = prefix;
+            bestModCount = modCount;
+            bestInstances = instances;
+        }
+    }
+
+    if (bestInstances === 0) return null;
+    return Array.from({ length: bestInstances }, () => ({ prefix: bestPrefix, count: bestModCount }));
+}
+
+function buildFlexibleAllocationPlan(
+    rule: OrgTypeRule,
+    totalCount: number,
+    preferExactMatch: boolean,
+): FlexibleAllocationPlan | null {
+    if (totalCount <= 0) return null;
+
+    if (preferExactMatch) {
+        const exactModifier = selectModifier(rule, totalCount, 'exact');
+        if (exactModifier) {
+            return {
+                entries: [{ prefix: exactModifier[0], count: exactModifier[1] }],
+                consumesAllUnits: true,
+            };
+        }
+    }
+
+    const regularCount = getRegularCount(rule);
+    const regularInstances = Math.floor(totalCount / regularCount);
+
+    if (regularInstances === 0) {
+        const subRegularModifier = selectModifier(rule, totalCount, 'sub-regular');
+        if (subRegularModifier) {
+            return {
+                entries: [{ prefix: subRegularModifier[0], count: subRegularModifier[1] }],
+                consumesAllUnits: true,
+            };
+        }
+
+        if (totalCount < getMinimumModifierCount(rule) - 1e-9) {
+            return null;
+        }
+
+        const [prefix, count] = selectModifier(rule, totalCount, 'closest')!;
+        return {
+            entries: [{ prefix, count }],
+            consumesAllUnits: true,
+        };
+    }
+
+    const entries: AllocationPlanEntry[] = Array.from(
+        { length: regularInstances },
+        () => ({ prefix: '', count: regularCount }),
+    );
+    const leftoverCount = totalCount - regularInstances * regularCount;
+    if (leftoverCount <= 0) {
+        return { entries, consumesAllUnits: true };
+    }
+
+    const subRegularModifier = selectModifier(rule, leftoverCount, 'sub-regular');
+    if (subRegularModifier) {
+        entries.push({ prefix: subRegularModifier[0], count: subRegularModifier[1] });
+        return { entries, consumesAllUnits: true };
+    }
+
+    if (getMaximumModifierCount(rule) > regularCount) {
+        const [prefix, count] = selectModifier(rule, regularCount + leftoverCount, 'closest')!;
+        entries[entries.length - 1] = { prefix, count };
+        return { entries, consumesAllUnits: true };
+    }
+
+    return { entries, consumesAllUnits: false };
+}
+
+function splitUnitsByTargetCounts(
+    units: ReadonlyArray<Unit>,
+    targetCounts: ReadonlyArray<number>,
+    getPointRange: (u: Unit[]) => PointRange,
+    consumeAllInLastPartition: boolean,
+): Unit[][] {
+    const partitions: Unit[][] = [];
+    let offset = 0;
+
+    for (let i = 0; i < targetCounts.length; i++) {
+        if (consumeAllInLastPartition && i === targetCounts.length - 1) {
+            partitions.push(units.slice(offset));
+            break;
+        }
+
+        const targetCount = targetCounts[i];
+        const partition: Unit[] = [];
+        let totalPoints = 0;
+        while (offset < units.length && totalPoints < targetCount - 1e-9) {
+            partition.push(units[offset]);
+            totalPoints = unitPointTotal(partition, getPointRange);
+            offset++;
+        }
+        partitions.push(partition);
+    }
+
+    return partitions;
+}
+
+function sumAllocationPlanCounts(plan: ReadonlyArray<AllocationPlanEntry>): number {
+    return plan.reduce((sum, entry) => sum + entry.count, 0);
 }
 
 // ─── Foreign-type normalization ────────────────────────────────────────────────
@@ -675,105 +819,20 @@ function allocateLeaf(
     getPointRange: (u: Unit[]) => PointRange,
 ): GroupSizeResult[] {
     const totalPts = unitPointTotal(units, getPointRange);
-    if (totalPts <= 0) return [];
+    const plan = buildFlexibleAllocationPlan(rule, totalPts, true);
+    if (!plan || plan.entries.length === 0) return [];
 
-    const exactModifier = findExactModifier(rule, totalPts);
-    if (exactModifier) {
-        return [{
-            name: buildName(rule, exactModifier[0]),
-            type: rule.type,
-            countsAsType: rule.countsAs ?? null,
-            tier: resolveTier(rule, exactModifier[0]),
-            units,
-            tag: rule.tag,
-        }];
-    }
+    const partitions = splitUnitsByTargetCounts(
+        units,
+        plan.entries.map(entry => entry.count),
+        getPointRange,
+        plan.consumesAllUnits,
+    );
 
-    const regular = getRegularCount(rule);
-    const n = Math.floor(totalPts / regular);
-
-    if (n === 0) {
-        const subMod = findSubRegularModifier(rule, totalPts);
-        if (subMod) {
-            return [{
-                name: buildName(rule, subMod[0]),
-                type: rule.type,
-                countsAsType: rule.countsAs ?? null,
-                tier: resolveTier(rule, subMod[0]),
-                units,
-                tag: rule.tag,
-            }];
-        }
-
-        // Smaller than the minimum legal modifier: no valid formation exists.
-        if (totalPts < getMinimumModifierCount(rule) - 1e-9) {
-            return [];
-        }
-
-        const [prefix] = findClosestModifier(rule, totalPts);
-        return [{
-            name: buildName(rule, prefix),
-            type: rule.type,
-            countsAsType: rule.countsAs ?? null,
-            tier: resolveTier(rule, prefix),
-            units,
-            tag: rule.tag,
-        }];
-    }
-
-    const results: GroupSizeResult[] = [];
-
-    // Greedy point-based distribution: fill each regular instance
-    // up to `regular` points before moving to the next.
-    let offset = 0;
-    for (let i = 0; i < n && offset < units.length; i++) {
-        const instanceUnits: Unit[] = [];
-        let pts = 0;
-        while (offset < units.length && pts < regular - 1e-9) {
-            instanceUnits.push(units[offset]);
-            pts = unitPointTotal(instanceUnits, getPointRange);
-            offset++;
-        }
-        results.push({
-            name: rule.type,
-            type: rule.type,
-            countsAsType: rule.countsAs ?? null,
-            tier: resolveTier(rule, ''),
-            units: instanceUnits,
-            tag: rule.tag,
-        });
-    }
-
-    if (offset < units.length) {
-        const leftoverUnits = units.slice(offset);
-        const leftoverPts = unitPointTotal(leftoverUnits, getPointRange);
-        const subMod = findSubRegularModifier(rule, leftoverPts);
-        if (subMod) {
-            results.push({
-                name: buildName(rule, subMod[0]),
-                type: rule.type,
-                countsAsType: rule.countsAs ?? null,
-                tier: resolveTier(rule, subMod[0]),
-                units: leftoverUnits,
-                tag: rule.tag,
-            });
-        } else if (getMaximumModifierCount(rule) > regular) {
-            // Assimilate: upgrade the last regular instance
-            const upgradedCount = regular + leftoverPts;
-            const [prefix] = findClosestModifier(rule, upgradedCount);
-            const lastGroup = results[results.length - 1];
-            results[results.length - 1] = {
-                name: buildName(rule, prefix),
-                type: rule.type,
-                countsAsType: rule.countsAs ?? null,
-                tier: resolveTier(rule, prefix),
-                units: [...(lastGroup.units ?? []), ...leftoverUnits],
-                tag: rule.tag,
-            };
-        }
-    }
-
-    return results;
+    return plan.entries.map((entry, index) => buildRuleGroup(rule, entry.prefix, {
+        units: partitions[index],
+        tag: rule.tag,
+    }));
 }
 
 
@@ -1513,7 +1572,7 @@ function canPromoteFurther(groups: GroupSizeResult[], rules: ReadonlyArray<OrgTy
         } else {
             const regular = getRegularCount(rule);
             if (matchCount >= regular) return true;
-            const sub = findSubRegularModifier(rule, matchCount);
+            const sub = selectModifier(rule, matchCount, 'sub-regular');
             if (sub) return true;
         }
     }
@@ -1537,104 +1596,22 @@ function applyComposedRule(
     matchingGroups: GroupSizeResult[],
     count: number,
 ): ComposedResult | null {
-    const regularCount = getRegularCount(rule);
-    if (regularCount < 1 || count < 1) return null;
-
-    // ── Strict rules: exact modifier counts only ──
-    if (rule.strict) {
-        const mods = sortedModifiers(rule);
-        // Find the modifier that consumes the most groups (largest n * modCount)
-        let bestPrefix = '';
-        let bestModCount = 0;
-        let bestN = 0;
-        for (const [prefix, modCount] of mods) {
-            if (modCount < 1 || modCount > count) continue;
-            const n = Math.floor(count / modCount);
-            if (n * modCount > bestN * bestModCount) {
-                bestPrefix = prefix;
-                bestModCount = modCount;
-                bestN = n;
-            }
-        }
-        if (bestN === 0) return null;
-
-        const results: GroupSizeResult[] = [];
-        for (let i = 0; i < bestN; i++) {
-            const start = i * bestModCount;
-            results.push({
-                name: buildName(rule, bestPrefix),
-                type: rule.type,
-                countsAsType: rule.countsAs ?? null,
-                tier: resolveTier(rule, bestPrefix),
-                children: matchingGroups.slice(start, start + bestModCount),
-                priority: rule.priority,
-            });
-        }
-        return { groups: results, consumed: bestN * bestModCount };
-    }
-
-    // ── Non-strict rules: sub-regular and assimilation allowed ──
-    const n = Math.floor(count / regularCount);
-    const leftover = count - n * regularCount;
-
-    if (n === 0) {
-        const subMod = findSubRegularModifier(rule, leftover);
-        if (!subMod) return null;
-        return {
-            groups: [{
-                name: buildName(rule, subMod[0]),
-                type: rule.type,
-                countsAsType: rule.countsAs ?? null,
-                tier: resolveTier(rule, subMod[0]),
-                children: matchingGroups.slice(0, count),
-                priority: rule.priority,
-            }],
-            consumed: count,
-        };
-    }
+    const plan = rule.strict
+        ? buildStrictAllocationPlan(rule, count)
+        : buildFlexibleAllocationPlan(rule, count, false)?.entries;
+    if (!plan || plan.length === 0) return null;
 
     const results: GroupSizeResult[] = [];
-    for (let i = 0; i < n; i++) {
-        const start = i * regularCount;
-        results.push({
-            name: rule.type,
-            type: rule.type,
-            countsAsType: rule.countsAs ?? null,
-            tier: resolveTier(rule, ''),
-            children: matchingGroups.slice(start, start + regularCount),
+    let offset = 0;
+    for (const entry of plan) {
+        results.push(buildRuleGroup(rule, entry.prefix, {
+            children: matchingGroups.slice(offset, offset + entry.count),
             priority: rule.priority,
-        });
+        }));
+        offset += entry.count;
     }
 
-    if (leftover > 0) {
-        const leftoverGroups = matchingGroups.slice(n * regularCount, count);
-        const subMod = findSubRegularModifier(rule, leftover);
-        if (subMod) {
-            results.push({
-                name: buildName(rule, subMod[0]),
-                type: rule.type,
-                countsAsType: rule.countsAs ?? null,
-                tier: resolveTier(rule, subMod[0]),
-                children: leftoverGroups,
-                priority: rule.priority,
-            });
-        } else {
-            const lastIdx = results.length - 1;
-            const lastGroup = results[lastIdx];
-            const upgradedCount = regularCount + leftover;
-            const [prefix] = findClosestModifier(rule, upgradedCount);
-            results[lastIdx] = {
-                name: buildName(rule, prefix),
-                type: rule.type,
-                countsAsType: rule.countsAs ?? null,
-                tier: resolveTier(rule, prefix),
-                children: [...(lastGroup.children ?? []), ...leftoverGroups],
-                priority: rule.priority,
-            };
-        }
-    }
-
-    return { groups: results, consumed: count };
+    return { groups: results, consumed: sumAllocationPlanCounts(plan) };
 }
 
 /**
@@ -1849,6 +1826,7 @@ function logOrgSolverTiming(
     startedAt: number,
 ): void {
     const durationMs = nowMs() - startedAt;
+    if (durationMs < 10) return; // Don't log very fast resolutions
     console.log(
         `[OrgSolver:${orgLabel}] mode=${mode} count=${count} hierarchical=${hierarchicalAggregation} duration=${durationMs.toFixed(3)}ms`,
     );
