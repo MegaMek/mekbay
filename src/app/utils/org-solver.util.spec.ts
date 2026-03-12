@@ -2,12 +2,19 @@ import type { Unit } from '../models/units.model';
 import { resolveFromGroups, resolveFromUnits } from './org-solver.util';
 import type { GroupSizeResult } from './org-types';
 
-function createUnit(id: number, type: Unit['type'], subtype: Unit['subtype'], isOmni: boolean = false, specials: string[] = []): Unit {
-    return {
-        name: `unit-${id}`,
-        id,
-        chassis: `Chassis ${id}`,
-        model: `Model ${id}`,
+    function createUnit(
+    name: string,
+    type: Unit['type'],
+    subtype: Unit['subtype'],
+    isOmni: boolean = false,
+    specials: string[] = [],
+    internal: number = 1,
+): Unit {
+    return {    
+        name: name,
+        id: -1,        
+        chassis: `Chassis ${name}`,
+        model: `Model ${name}`,
         year: 3151,
         weightClass: 'Medium',
         tons: 50,
@@ -31,7 +38,7 @@ function createUnit(id: number, type: Unit['type'], subtype: Unit['subtype'], is
         structureType: '',
         armor: 0,
         armorPer: 0,
-        internal: 1,
+        internal,
         heat: 0,
         dissipation: 0,
         moveType: 'Tracked',
@@ -105,12 +112,12 @@ describe('resolveFromUnits', () => {
 
     it('resolves 4 CV and 2 BM to an Augmented Lance', () => {
         const units: Unit[] = [
-            createUnit(1, 'Tank', 'Combat Vehicle'),
-            createUnit(2, 'Tank', 'Combat Vehicle'),
-            createUnit(3, 'Tank', 'Combat Vehicle'),
-            createUnit(4, 'Tank', 'Combat Vehicle'),
-            createUnit(5, 'Mek', 'BattleMek'),
-            createUnit(6, 'Mek', 'BattleMek'),
+            createUnit('CV1', 'Tank', 'Combat Vehicle'),
+            createUnit('CV1', 'Tank', 'Combat Vehicle'),
+            createUnit('CV2', 'Tank', 'Combat Vehicle'),
+            createUnit('CV2', 'Tank', 'Combat Vehicle'),
+            createUnit('BM1', 'Mek', 'BattleMek'),
+            createUnit('BM2', 'Mek', 'BattleMek'),
         ];
 
         const result = resolveFromUnits(units, 'Inner Sphere', 'Capellan Confederation');
@@ -121,14 +128,14 @@ describe('resolveFromUnits', () => {
 
     it('prefers a complete Capellan company over an Augmented Lance with leftovers', () => {
         const units: Unit[] = [
-            createUnit(1, 'Tank', 'Combat Vehicle'),
-            createUnit(2, 'Tank', 'Combat Vehicle'),
-            createUnit(3, 'Tank', 'Combat Vehicle'),
-            createUnit(4, 'Tank', 'Combat Vehicle'),
-            createUnit(5, 'Mek', 'BattleMek'),
-            createUnit(6, 'Mek', 'BattleMek'),
-            createUnit(7, 'Mek', 'BattleMek'),
-            createUnit(8, 'Mek', 'BattleMek'),
+            createUnit('CV1', 'Tank', 'Combat Vehicle'),
+            createUnit('CV2', 'Tank', 'Combat Vehicle'),
+            createUnit('CV3', 'Tank', 'Combat Vehicle'),
+            createUnit('CV3', 'Tank', 'Combat Vehicle'),
+            createUnit('BM1', 'Mek', 'BattleMek'),
+            createUnit('BM2', 'Mek', 'BattleMek'),
+            createUnit('BM3', 'Mek', 'BattleMek'),
+            createUnit('BM4', 'Mek', 'BattleMek'),
         ];
 
         const result = resolveFromUnits(units, 'Inner Sphere', 'Capellan Confederation');
@@ -141,14 +148,14 @@ describe('resolveFromUnits', () => {
     });
     
     it('preserves leftover count when duplicate instances share the same Unit reference', () => {
-        const sharedMek = createUnit(5, 'Mek', 'BattleMek');
+        const sharedMek = createUnit('BM1', 'Mek', 'BattleMek');
         sharedMek.name = 'shared-mek';
 
         const units: Unit[] = [
-            createUnit(1, 'Tank', 'Combat Vehicle'),
-            createUnit(2, 'Tank', 'Combat Vehicle'),
-            createUnit(3, 'Tank', 'Combat Vehicle'),
-            createUnit(4, 'Tank', 'Combat Vehicle'),
+            createUnit('CV1', 'Tank', 'Combat Vehicle'),
+            createUnit('CV2', 'Tank', 'Combat Vehicle'),
+            createUnit('CV3', 'Tank', 'Combat Vehicle'),
+            createUnit('CV4', 'Tank', 'Combat Vehicle'),
             sharedMek,
             sharedMek,
             sharedMek,
@@ -163,10 +170,10 @@ describe('resolveFromUnits', () => {
 
     it('prefers Air Lance over Under-Strength Company for 2 BM plus 2 AF', () => {
         const units: Unit[] = [
-            createUnit(1, 'Mek', 'BattleMek'),
-            createUnit(2, 'Mek', 'BattleMek'),
-            createUnit(3, 'Aero', 'Aerospace Fighter'),
-            createUnit(4, 'Aero', 'Aerospace Fighter'),
+            createUnit('BM1', 'Mek', 'BattleMek'),
+            createUnit('BM2', 'Mek', 'BattleMek'),
+            createUnit('AF1', 'Aero', 'Aerospace Fighter'),
+            createUnit('AF2', 'Aero', 'Aerospace Fighter'),
         ];
 
         const result = resolveFromUnits(units, 'Inner Sphere', 'Federated Suns');
@@ -179,7 +186,7 @@ describe('resolveFromUnits', () => {
 
     it('resolves 1 AF as Under-Strength Flight', () => {
         const units: Unit[] = [
-            createUnit(1, 'Aero', 'Aerospace Fighter'),
+            createUnit('AF1', 'Aero', 'Aerospace Fighter'),
         ];
 
         const result = resolveFromUnits(units, 'Inner Sphere', 'Federated Suns');
@@ -192,7 +199,7 @@ describe('resolveFromUnits', () => {
 
     it('resolves 1 BM in Society as Un', () => {
         const units: Unit[] = [
-            createUnit(1, 'Mek', 'BattleMek'),
+            createUnit('BM1', 'Mek', 'BattleMek'),
         ];
 
         const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
@@ -205,8 +212,8 @@ describe('resolveFromUnits', () => {
 
     it('resolves 2 BM in Society as 2x Un', () => {
         const units: Unit[] = [
-            createUnit(1, 'Mek', 'BattleMek'),
-            createUnit(2, 'Mek', 'BattleMek'),
+            createUnit('BM1', 'Mek', 'BattleMek'),
+            createUnit('BM2', 'Mek', 'BattleMek'),
         ];
 
         const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
@@ -219,9 +226,9 @@ describe('resolveFromUnits', () => {
 
     it('resolves 3 BM in Society as Trey', () => {
         const units: Unit[] = [
-            createUnit(1, 'Mek', 'BattleMek'),
-            createUnit(2, 'Mek', 'BattleMek'),
-            createUnit(3, 'Mek', 'BattleMek'),
+            createUnit('BM1', 'Mek', 'BattleMek'),
+            createUnit('BM1', 'Mek', 'BattleMek'),
+            createUnit('BM2', 'Mek', 'BattleMek'),
         ];
 
         const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
@@ -236,13 +243,13 @@ describe('resolveFromUnits', () => {
 
     it('resolves 7 CV in Society as Un', () => {
         const units: Unit[] = [
-            createUnit(1, 'Tank', 'Combat Vehicle'),
-            createUnit(2, 'Tank', 'Combat Vehicle'),
-            createUnit(3, 'Tank', 'Combat Vehicle'),
-            createUnit(4, 'Tank', 'Combat Vehicle'),
-            createUnit(5, 'Tank', 'Combat Vehicle'),
-            createUnit(6, 'Tank', 'Combat Vehicle'),
-            createUnit(7, 'Tank', 'Combat Vehicle'),
+            createUnit('CV1', 'Tank', 'Combat Vehicle'),
+            createUnit('CV1', 'Tank', 'Combat Vehicle'),
+            createUnit('CV1', 'Tank', 'Combat Vehicle'),
+            createUnit('CV1', 'Tank', 'Combat Vehicle'),
+            createUnit('CV1', 'Tank', 'Combat Vehicle'),
+            createUnit('CV1', 'Tank', 'Combat Vehicle'),
+            createUnit('CV2', 'Tank', 'Combat Vehicle'),
         ];
 
         const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
@@ -255,13 +262,12 @@ describe('resolveFromUnits', () => {
 
     it('resolves 3 CI platoons in Society as Un', () => {
         const units: Unit[] = [
-            createUnit(1, 'Infantry', 'Conventional Infantry'),
-            createUnit(2, 'Infantry', 'Conventional Infantry'),
-            createUnit(3, 'Infantry', 'Conventional Infantry'),
+            createUnit('CI1', 'Infantry', 'Conventional Infantry'),
+            createUnit('CI1', 'Infantry', 'Conventional Infantry'),
+            createUnit('CI1', 'Infantry', 'Conventional Infantry'),
         ];
-        units.forEach(unit => {
-            unit.internal = 25;
-        });
+
+        units.forEach(u => u.internal = 25);
 
         const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
 
@@ -272,8 +278,7 @@ describe('resolveFromUnits', () => {
     });
 
     it('resolves 3 battle armor troopers in Society as Un', () => {
-        const battleArmor = createUnit(1, 'Infantry', 'Battle Armor');
-        battleArmor.internal = 3;
+        const battleArmor = createUnit('BA1', 'Infantry', 'Battle Armor', false, [], 3);
 
         const result = resolveFromUnits([battleArmor], 'Inner Sphere', 'Society');
 
@@ -285,11 +290,11 @@ describe('resolveFromUnits', () => {
 
     it('attaches Society leftovers only to the top-most group', () => {
         const units: Unit[] = [
-            createUnit(1, 'Mek', 'BattleMek'),
-            createUnit(2, 'Mek', 'BattleMek'),
-            createUnit(3, 'Mek', 'BattleMek'),
-            createUnit(4, 'Tank', 'Combat Vehicle'),
-            createUnit(5, 'Tank', 'Combat Vehicle'),
+            createUnit('BM1', 'Mek', 'BattleMek'),
+            createUnit('BM2', 'Mek', 'BattleMek'),
+            createUnit('BM2', 'Mek', 'BattleMek'),
+            createUnit('CV1', 'Tank', 'Combat Vehicle'),
+            createUnit('CV1', 'Tank', 'Combat Vehicle'),
         ];
 
         const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
@@ -305,9 +310,9 @@ describe('resolveFromUnits', () => {
 
     it('resolves 2 BM plus 1 AF as Air Lance', () => {
         const units: Unit[] = [
-            createUnit(1, 'Mek', 'BattleMek'),
-            createUnit(2, 'Mek', 'BattleMek'),
-            createUnit(3, 'Aero', 'Aerospace Fighter'),
+            createUnit('BM1', 'Mek', 'BattleMek'),
+            createUnit('BM2', 'Mek', 'BattleMek'),
+            createUnit('AF1', 'Aero', 'Aerospace Fighter'),
         ];
 
         const result = resolveFromUnits(units, 'Inner Sphere', 'Federated Suns');
@@ -320,15 +325,15 @@ describe('resolveFromUnits', () => {
 
     it('splits interleaved Marian Contubernia into valid same-tier subsets', () => {
         const groupResults: GroupSizeResult[] = [
-            createContuberniumGroup(createUnit(1, 'Tank', 'Combat Vehicle'), 'non-infantry'),
-            createContuberniumGroup(createUnit(2, 'Infantry', 'Conventional Infantry'), 'infantry'),
-            createContuberniumGroup(createUnit(3, 'Tank', 'Combat Vehicle'), 'non-infantry'),
-            createContuberniumGroup(createUnit(4, 'Infantry', 'Conventional Infantry'), 'infantry'),
-            createContuberniumGroup(createUnit(5, 'Tank', 'Combat Vehicle'), 'non-infantry'),
-            createContuberniumGroup(createUnit(6, 'Infantry', 'Conventional Infantry'), 'infantry'),
-            createContuberniumGroup(createUnit(7, 'Tank', 'Combat Vehicle'), 'non-infantry'),
-            createContuberniumGroup(createUnit(8, 'Infantry', 'Conventional Infantry'), 'infantry'),
-            createContuberniumGroup(createUnit(9, 'Tank', 'Combat Vehicle'), 'non-infantry'),
+            createContuberniumGroup(createUnit('CV1', 'Tank', 'Combat Vehicle'), 'non-infantry'),
+            createContuberniumGroup(createUnit('CI1', 'Infantry', 'Conventional Infantry'), 'infantry'),
+            createContuberniumGroup(createUnit('CV2', 'Tank', 'Combat Vehicle'), 'non-infantry'),
+            createContuberniumGroup(createUnit('CI2', 'Infantry', 'Conventional Infantry'), 'infantry'),
+            createContuberniumGroup(createUnit('CV3', 'Tank', 'Combat Vehicle'), 'non-infantry'),
+            createContuberniumGroup(createUnit('CI3', 'Infantry', 'Conventional Infantry'), 'infantry'),
+            createContuberniumGroup(createUnit('CV4', 'Tank', 'Combat Vehicle'), 'non-infantry'),
+            createContuberniumGroup(createUnit('CI4', 'Infantry', 'Conventional Infantry'), 'infantry'),
+            createContuberniumGroup(createUnit('CV5', 'Tank', 'Combat Vehicle'), 'non-infantry'),
         ];
 
         const result = resolveFromGroups('Inner Sphere', 'Marian Hegemony', groupResults);
@@ -342,16 +347,16 @@ describe('resolveFromUnits', () => {
 
     it('resolves 5 BA (with MEC special) and 5 BM (with OMNI special) into a Nova', () => {
         const units: Unit[] = [
-            createUnit(1, 'Infantry', 'Battle Armor', false, ['MEC']),
-            createUnit(2, 'Infantry', 'Battle Armor', false, ['MEC']),
-            createUnit(3, 'Infantry', 'Battle Armor', false, ['MEC']),
-            createUnit(4, 'Infantry', 'Battle Armor', false, ['MEC']),
-            createUnit(5, 'Infantry', 'Battle Armor', false, ['MEC']),
-            createUnit(1, 'Mek', 'BattleMek Omni', true, ['OMNI']),
-            createUnit(2, 'Mek', 'BattleMek Omni', true, ['OMNI']),
-            createUnit(3, 'Mek', 'BattleMek Omni', true, ['OMNI']),
-            createUnit(4, 'Mek', 'BattleMek Omni', true, ['OMNI']),
-            createUnit(5, 'Mek', 'BattleMek Omni', true, ['OMNI'])
+            createUnit('BA1', 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit('BA2', 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit('BA3', 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit('BA4', 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit('BA5', 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit('BM1', 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit('BM2', 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit('BM3', 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit('BM4', 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit('BM5', 'Mek', 'BattleMek Omni', true, ['OMNI'])
         ];
 
         const result = resolveFromUnits(units, 'Inner Sphere', 'Clan Test');
@@ -364,16 +369,16 @@ describe('resolveFromUnits', () => {
     
     it('resolves 5 BA (MEC/XMEC) and 5 BM (OMNI and not) into a Nova', () => {
         const units: Unit[] = [
-            createUnit(1, 'Infantry', 'Battle Armor', false, ['MEC']),
-            createUnit(2, 'Infantry', 'Battle Armor', false, ['MEC']),
-            createUnit(3, 'Infantry', 'Battle Armor', false, ['MEC']),
-            createUnit(4, 'Infantry', 'Battle Armor', false, ['XMEC']),
-            createUnit(5, 'Infantry', 'Battle Armor', false, ['XMEC']),
-            createUnit(1, 'Mek', 'BattleMek Omni', false),
-            createUnit(2, 'Mek', 'BattleMek Omni', true, ['OMNI']),
-            createUnit(3, 'Mek', 'BattleMek Omni', false),
-            createUnit(4, 'Mek', 'BattleMek Omni', true, ['OMNI']),
-            createUnit(5, 'Mek', 'BattleMek Omni', true, ['OMNI'])
+            createUnit('BA1', 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit('BA1', 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit('BA1', 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit('BA2', 'Infantry', 'Battle Armor', false, ['XMEC']),
+            createUnit('BA3', 'Infantry', 'Battle Armor', false, ['XMEC']),
+            createUnit('BM1', 'Mek', 'BattleMek Omni', false),
+            createUnit('BM2', 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit('BM1', 'Mek', 'BattleMek Omni', false),
+            createUnit('BM2', 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit('BM2', 'Mek', 'BattleMek Omni', true, ['OMNI'])
         ];
 
         const result = resolveFromUnits(units, 'Inner Sphere', 'Clan Test');
@@ -387,17 +392,17 @@ describe('resolveFromUnits', () => {
 
     it('resolves 5 BA (with MEC special) and 6 BM (with OMNI special) into a Binary instead of Nova', () => {
         const units: Unit[] = [
-            createUnit(1, 'Infantry', 'Battle Armor', false, ['MEC']),
-            createUnit(2, 'Infantry', 'Battle Armor', false, ['MEC']),
-            createUnit(3, 'Infantry', 'Battle Armor', false, ['MEC']),
-            createUnit(4, 'Infantry', 'Battle Armor', false, ['MEC']),
-            createUnit(5, 'Infantry', 'Battle Armor', false, ['MEC']),
-            createUnit(1, 'Mek', 'BattleMek Omni', true, ['OMNI']),
-            createUnit(2, 'Mek', 'BattleMek Omni', true, ['OMNI']),
-            createUnit(3, 'Mek', 'BattleMek Omni', true, ['OMNI']),
-            createUnit(4, 'Mek', 'BattleMek Omni', true, ['OMNI']),
-            createUnit(5, 'Mek', 'BattleMek Omni', true, ['OMNI']),
-            createUnit(6, 'Mek', 'BattleMek Omni', true, ['OMNI'])
+            createUnit('BA1', 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit('BA1', 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit('BA1', 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit('BA1', 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit('BA1', 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit('BM1', 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit('BM1', 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit('BM1', 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit('BM1', 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit('BM1', 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit('BM1', 'Mek', 'BattleMek Omni', true, ['OMNI'])
         ];
 
         const result = resolveFromUnits(units, 'Inner Sphere', 'Clan Test');
