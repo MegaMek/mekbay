@@ -446,7 +446,6 @@ const MHOrg: OrgDefinition = {
         { type: 'Contubernium', tag: 'infantry', filter: (u) => isCI(u), modifiers: { '': 1 }, commandRank: 'Miles probatus', tier: 0 },
         {
             type: 'Century', composedOfAny: ['Contubernium'], modifiers: { '': 5 }, commandRank: 'Centurion', tier: 1,
-            filter: (u) => !isCI(u),
             groupFilter: (groups) => groups.every(g => g.tag !== 'infantry'),
         },
         // Century (Infantry) = 4-10 CI infantry Points
@@ -454,9 +453,7 @@ const MHOrg: OrgDefinition = {
             type: 'Century', composedOfAny: ['Contubernium'], modifiers: {
                 'Under-Strength ': 4, '': 7, 'Reinforced ': 10,
             }, commandRank: 'Centurion', tier: 1,
-                
-            filter: (u) => isCI(u),
-            groupFilter: (groups) => groups.every(g => g.tag !== 'non-infantry'),
+            groupFilter: (groups) => groups.every(g => g.tag === 'infantry'),
         },
         { type: 'Maniple', composedOfAny: ['Century'], modifiers: { '': 2 }, commandRank: 'Principes', tier: 2 },
         { type: 'Cohort', composedOfAny: ['Maniple'], modifiers: { '': 3 }, commandRank: 'Legatus', tier: 3 },

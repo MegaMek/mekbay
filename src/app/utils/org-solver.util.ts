@@ -896,13 +896,14 @@ function getCandidateTakeCounts(rule: OrgTypeRule, maxAvailable: number): number
 
     const counts = new Set<number>();
     const regular = getRegularCount(rule);
+    const minimum = getMinimumModifierCount(rule);
 
     for (const [, count] of sortedModifiers(rule)) {
         if (count <= maxAvailable) counts.add(count);
     }
 
     if (!rule.strict) {
-        for (let count = Math.max(regular, 1); count <= maxAvailable; count++) {
+        for (let count = Math.max(minimum, 1); count <= maxAvailable; count++) {
             counts.add(count);
         }
     }
@@ -1116,7 +1117,7 @@ function findBestComposition(groups: GroupSizeResult[], rules: OrgTypeRule[], co
         }
 
         if (matching.length === 0) continue;
-        if (!canRuleComposeGroups(rule, matching.map(i => groups[i]), context)) continue;
+        if (getCandidateTakeCounts(rule, matching.length).length === 0) continue;
         viable.push({ rule, matching, nonMatching });
     }
 
@@ -1143,15 +1144,45 @@ function findBestComposition(groups: GroupSizeResult[], rules: OrgTypeRule[], co
     // Phase 1: Try each rule independently (single-rule allocation)
     for (const { rule, matching, nonMatching } of viable) {
         const matchingGroups = matching.map(i => groups[i]);
-        const result = applyComposedRule(rule, matchingGroups, matching.length);
-        if (!result) continue;
+        const nonMatchingGroups = nonMatching.map(i => groups[i]);
 
-        const newGroups = [...nonMatching.map(i => groups[i]), ...result.groups];
-        // Add back unconsumed matching groups
-        for (let i = result.consumed; i < matching.length; i++) {
-            newGroups.push(matchingGroups[i]);
+        if (canRuleComposeGroups(rule, matchingGroups, context)) {
+            const result = applyComposedRule(rule, matchingGroups, matching.length);
+            if (result) {
+                const newGroups = [...nonMatchingGroups, ...result.groups];
+                // Add back unconsumed matching groups
+                for (let i = result.consumed; i < matching.length; i++) {
+                    newGroups.push(matchingGroups[i]);
+                }
+                evaluateCandidate(newGroups, result.consumed, maxTier(result.groups), [rule]);
+            }
         }
-        evaluateCandidate(newGroups, result.consumed, maxTier(result.groups), [rule]);
+
+        for (const takeCount of getCandidateTakeCounts(rule, matching.length)) {
+            if (takeCount === matching.length) continue;
+
+            const combinations = collectIndexCombinations(matching.length, takeCount);
+            for (const indices of combinations) {
+                const chosenSet = new Set(indices);
+                const chosenGroups = indices.map(index => matchingGroups[index]);
+                if (!canRuleComposeGroups(rule, chosenGroups, context)) continue;
+
+                const result = applyComposedRule(rule, chosenGroups, chosenGroups.length);
+                if (!result || result.groups.length === 0) continue;
+
+                const newGroups = [...nonMatchingGroups, ...result.groups];
+                for (let i = 0; i < matchingGroups.length; i++) {
+                    if (!chosenSet.has(i)) {
+                        newGroups.push(matchingGroups[i]);
+                    }
+                }
+                for (let i = result.consumed; i < chosenGroups.length; i++) {
+                    newGroups.push(chosenGroups[i]);
+                }
+
+                evaluateCandidate(newGroups, result.consumed, maxTier(result.groups), [rule]);
+            }
+        }
     }
 
     // Phase 2: Try combinations of same-tier rules that share matching groups.
