@@ -905,9 +905,7 @@ function pickNormalizationTargets(
 
     const highestTarget = targets[targets.length - 1];
     if (sourceTier > highestTarget.tier) {
-        const repeatCount = highestTarget.tier > 0
-            ? Math.max(1, Math.floor(sourceTier / highestTarget.tier))
-            : 1;
+        const repeatCount = Math.max(1, Math.floor(Math.pow(3, sourceTier - highestTarget.tier)));
         return Array.from({ length: repeatCount }, () => highestTarget);
     }
 

@@ -885,12 +885,24 @@ describe('resolveFromUnits', () => {
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
-    it('crossgrades tiers above the target org ceiling into repeated highest-tier synthetic groups', () => {
+    it('crossgrades one tier above the target org ceiling into three highest-tier synthetic groups', () => {
         const result = resolveFromGroups('Inner Sphere', 'Society', [
-            createForeignGroup('Brigade', 'Brigade', 5),
+            createForeignGroup('Foreign Apex Group', 'Force', 2.6),
         ]);
 
         expect(result.length).toBe(3);
+        expect(result.every(group => group.name === 'Sept')).toBeTrue();
+        expect(result.every(group => group.type === 'Sept')).toBeTrue();
+        expect(result.every(group => group.tier === 1.6)).toBeTrue();
+        expect(result.every(group => group.leftoverUnits === undefined)).toBeTrue();
+    });
+
+    it('crossgrades two tiers above the target org ceiling into nine highest-tier synthetic groups', () => {
+        const result = resolveFromGroups('Inner Sphere', 'Society', [
+            createForeignGroup('Foreign Apex Group', 'Force', 3.6),
+        ]);
+
+        expect(result.length).toBe(9);
         expect(result.every(group => group.name === 'Sept')).toBeTrue();
         expect(result.every(group => group.type === 'Sept')).toBeTrue();
         expect(result.every(group => group.tier === 1.6)).toBeTrue();
