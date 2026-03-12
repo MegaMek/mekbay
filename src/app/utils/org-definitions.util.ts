@@ -161,11 +161,7 @@ const CLAN_SUPERNOVA_TRINARY: OrgTypeRule = {
 };
 const CLAN_SUPERNOVA_TRINARY_FROM_BINARY: OrgTypeRule = {
     type: 'Supernova Trinary', strict: true, priority: 1, countsAs: 'Trinary',
-    composedOfAny: ['Supernova Binary', 'Nova'], requiredChildTypes: ['Supernova Binary', 'Nova'], modifiers: { '': 2 }, commandRank: 'Nova Captain', tier: 3,
-    groupFilter: (groups) =>
-        groups.length === 2 &&
-        groups.some(group => group.type === 'Supernova Binary') &&
-        groups.some(group => group.type === 'Nova'),
+    composedOfAny: ['Supernova Binary', 'Nova'], requiredChildTypeCounts: { 'Supernova Binary': 1, 'Nova': 1 }, modifiers: { '': 2 }, commandRank: 'Nova Captain', tier: 3
 };
 const CLAN_CLUSTER: OrgTypeRule = {
     type: 'Cluster',
@@ -218,7 +214,7 @@ const IS_LANCE: OrgTypeRule = {
 };
 const IS_AIR_LANCE: OrgTypeRule = {
     type: 'Air Lance', countsAs: 'Lance', priority: 1, composedOfAny: ['Flight', 'Lance'], tier: 1.5,
-    requiredChildTypes: ['Flight', 'Lance'],
+    requiredChildTypeCounts: { 'Flight': 1, 'Lance': 1 },
     modifiers: { '': 2 },
     commandRank: 'Lieutenant',
     filter: (u) => !isInfantry(u),
@@ -436,15 +432,13 @@ const MHOrg: OrgDefinition = {
         { type: 'Contubernium', tag: 'non-infantry', filter: (u) => !isCI(u), modifiers: { '': 1 }, commandRank: 'Miles probatus', tier: 0 },
         { type: 'Contubernium', tag: 'infantry', filter: (u) => isCI(u), modifiers: { '': 1 }, commandRank: 'Miles probatus', tier: 0 },
         {
-            type: 'Century', composedOfAny: ['Contubernium'], modifiers: { '': 5 }, commandRank: 'Centurion', tier: 1,
-            groupFilter: (groups) => groups.every(g => g.tag !== 'infantry'),
+            type: 'Century', composedOfAny: ['Contubernium'], allowedChildTagsAll: ['non-infantry'], modifiers: { '': 5 }, commandRank: 'Centurion', tier: 1,
         },
         // Century (Infantry) = 4-10 CI infantry Points
         {
             type: 'Century', composedOfAny: ['Contubernium'], modifiers: {
                 'Under-Strength ': 4, '': 7, 'Reinforced ': 10,
-            }, commandRank: 'Centurion', tier: 1,
-            groupFilter: (groups) => groups.every(g => g.tag === 'infantry'),
+            }, allowedChildTagsAll: ['infantry'], commandRank: 'Centurion', tier: 1,
         },
         { type: 'Maniple', composedOfAny: ['Century'], modifiers: { '': 2 }, commandRank: 'Principes', tier: 2 },
         { type: 'Cohort', composedOfAny: ['Maniple'], modifiers: { '': 3 }, commandRank: 'Legatus', tier: 4 },
@@ -495,13 +489,13 @@ const WDOrg: OrgDefinition = {
         {
             ...IS_COMPANY,
             composedOfAny: ['Lance', 'Star'] as OrgType[],
-            requiredChildTypes: ['Lance'],
+            requiredChildTypeCounts: { 'Lance': 1 },
         },
         // WD Battalion (accepts Company + Binary + Trinary, requires at least 1 Company)
         {
             ...IS_BATTALION,
             composedOfAny: ['Company', 'Binary', 'Trinary'] as OrgType[],
-            requiredChildTypes: ['Company'],
+            requiredChildTypeCounts: { 'Company': 1 },
             filter: (u: Unit) => !isAero(u),
         },
         // WD Regiment
@@ -573,7 +567,7 @@ const CCOrg: OrgDefinition = {
         // CC Augmented Regiment
         {
             type: 'Augmented Regiment', countsAs: 'Regiment', composedOfAny: ['Augmented Battalion', 'Battalion', 'Wing'],
-            requiredChildTypes: ['Augmented Battalion'],
+            requiredChildTypeCounts: { 'Augmented Battalion': 1 },
             modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'General', tier: 8.01,
         },
     ],

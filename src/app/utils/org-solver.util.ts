@@ -1212,14 +1212,40 @@ function groupMatchesType(group: GroupSizeResult, type: string): boolean {
     return group.type === type || group.countsAsType === type;
 }
 
+function groupMatchesSubsetConstraints(rule: OrgTypeRule, group: GroupSizeResult): boolean {
+    if (rule.allowedChildTagsAll && rule.allowedChildTagsAll.length > 0) {
+        if (!group.tag || !rule.allowedChildTagsAll.includes(group.tag)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 function canRulePossiblyComposeSubset(
     rule: OrgTypeRule,
     availableGroups: ReadonlyArray<GroupSizeResult>,
 ): boolean {
     if (availableGroups.length === 0) return false;
-    if (!rule.requiredChildTypes || rule.requiredChildTypes.length === 0) return true;
 
-    return rule.requiredChildTypes.every(type => availableGroups.some(group => groupMatchesType(group, type)));
+    const eligibleGroups = availableGroups.filter(group => groupMatchesSubsetConstraints(rule, group));
+    if (eligibleGroups.length === 0) return false;
+    if (!rule.requiredChildTypeCounts || Object.keys(rule.requiredChildTypeCounts).length === 0) return true;
+
+    return Object.entries(rule.requiredChildTypeCounts).every(([type, requiredCount]) => {
+        const required = requiredCount ?? 0;
+        if (required <= 0) return true;
+
+        let matchingCount = 0;
+        for (const group of eligibleGroups) {
+            if (groupMatchesType(group, type)) {
+                matchingCount++;
+                if (matchingCount >= required) return true;
+            }
+        }
+
+        return false;
+    });
 }
 
 function canRuleComposeGroups(
@@ -1232,6 +1258,9 @@ function canRuleComposeGroups(
 
     const acceptedTypes = new Set(rule.composedOfAny);
     for (const group of groups) {
+        if (!groupMatchesSubsetConstraints(rule, group)) {
+            return false;
+        }
         if (
             !(group.type && acceptedTypes.has(group.type)) &&
             !(group.countsAsType && acceptedTypes.has(group.countsAsType))
@@ -1293,19 +1322,23 @@ function collectSubsetCompositionCandidates(
 ): SubsetCompositionCandidate[] {
     if (!canRulePossiblyComposeSubset(rule, availableGroups)) return [];
 
+    const eligibleEntries = availableGroups
+        .map((group, index) => ({ group, index }))
+        .filter(entry => groupMatchesSubsetConstraints(rule, entry.group));
+
     const buildCandidates = (includeSubRegular: boolean): SubsetCompositionCandidate[] => {
         const candidates: SubsetCompositionCandidate[] = [];
 
-        for (const takeCount of getCandidateTakeCounts(rule, availableGroups.length, includeSubRegular)) {
-            const combinations = collectIndexCombinations(availableGroups.length, takeCount);
+        for (const takeCount of getCandidateTakeCounts(rule, eligibleEntries.length, includeSubRegular)) {
+            const combinations = collectIndexCombinations(eligibleEntries.length, takeCount);
             for (const indices of combinations) {
-                const chosenGroups = indices.map(index => availableGroups[index]);
+                const chosenGroups = indices.map(index => eligibleEntries[index].group);
                 if (!canRuleComposeGroups(rule, chosenGroups, context)) continue;
 
                 const result = applyComposedRule(rule, chosenGroups, chosenGroups.length);
                 if (!result || result.groups.length === 0) continue;
 
-                candidates.push({ chosenIndices: indices, result });
+                candidates.push({ chosenIndices: indices.map(index => eligibleEntries[index].index), result });
             }
         }
 

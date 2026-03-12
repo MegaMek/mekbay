@@ -163,8 +163,13 @@ export interface OrgTypeRule {
      * Leaf rules (Point, Single, Flight, etc.) leave this undefined.
      */
     readonly composedOfAny?: OrgType[];
-    /** Subset compositions must include at least one group matching each listed type. */
-    readonly requiredChildTypes?: readonly OrgType[];
+    /**
+     * Subset compositions must include at least the listed number of groups for each type.
+     * Example: { Flight: 1, Lance: 1 } means the chosen subset must include one Flight and one Lance.
+     */
+    readonly requiredChildTypeCounts?: Partial<Record<OrgType, number>>;
+    /** Every chosen child group must have a tag contained in this list. */
+    readonly allowedChildTagsAll?: readonly string[];
     readonly commandRank?: string;
     readonly strict?: boolean;
     readonly tier: number;
@@ -194,7 +199,8 @@ export interface OrgTypeRule {
     /**
      * Group-level filter for group-based force evaluation.
      * Checked in evaluateForceByGroups - receives the array of group results
-     * and returns false to skip this rule.
+     * and returns false to skip this rule. 
+     * VERY EXPENSIVE, so only use when necessary and try to pre-filter groups by tag or other cheap properties.
      */
     readonly groupFilter?: (groups: ReadonlyArray<GroupSizeResult>) => boolean;
     /** tag propagated to GroupSizeResult for groupFilter differentiation. */
