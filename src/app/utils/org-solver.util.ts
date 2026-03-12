@@ -1225,60 +1225,14 @@ function findBestComposition(groups: GroupSizeResult[], rules: OrgTypeRule[], co
 
 // ─── Wrap result ───────────────────────────────────────────────────────────────
 
-export function aggregateGroupSizeResult(groups: GroupSizeResult[]): GroupSizeResult {
-    if (groups.length === 0) {
-        return EMPTY_RESULT;
-    }
-    if (groups.length === 1) {
-        return groups[0];
-    }
-    // Sort by tier descending so the highest-tier group appears first
-    const sorted = [...groups].sort((a, b) => b.tier - a.tier);
-
-    // Build descriptive name: count duplicates, e.g. "2x Galaxy + Flight"
-    const nameCounts = new Map<string, number>();
-    for (const g of sorted) {
-        nameCounts.set(g.name, (nameCounts.get(g.name) || 0) + 1);
-    }
-    const parts: string[] = [];
-    for (const [name, count] of nameCounts) {
-        parts.push(count > 1 ? `${count}x ${name}` : name);
-    }
-
-    // Tier: base = highest tier, + otherTier/baseTier for each other group
-    const baseTier = sorted[0].tier;
-    let tierSum = baseTier;
-    for (let i = 1; i < sorted.length; i++) {
-        tierSum += baseTier > 0 ? sorted[i].tier / baseTier : 0;
-    }
-    return {
-        name: parts.join(' + '),
-        type: null,
-        countsAsType: null,
-        tier: tierSum,
-        children: sorted,
-    };
-}
-
-/** When true, multiple uncomposable top-level groups get a descriptive combined
- *  name (e.g. "2x Galaxy", "Augmented Company + Flight") and an adjusted tier
- *  (baseTier + sum(otherTier / baseTier) for each additional group). */
-const SYNTHETIC_AGGREGATED_GROUP = false;
-
 /**
- * Wrap a list of composed groups into a single top-level GroupSizeResult.
+ * Wrap a list of composed groups into a an ordered list by tier.
  * If there's exactly one group, return it directly.
- * If multiple, return "Force" with children.
+ * If nothing, return a single empty result.
  */
 function wrapResult(groups: GroupSizeResult[]): GroupSizeResult[] {
     if (groups.length === 0) return [EMPTY_RESULT];
     if (groups.length === 1) return groups;
-
-    if (SYNTHETIC_AGGREGATED_GROUP) {
-        const aggregatedGroup = aggregateGroupSizeResult(groups);
-        return [aggregatedGroup];
-    }
-
     return [...groups].sort((a, b) => b.tier - a.tier);
 }
 

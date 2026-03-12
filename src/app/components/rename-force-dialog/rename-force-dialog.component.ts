@@ -44,8 +44,9 @@ import { type Faction, FACTION_MERCENARY } from '../../models/factions.model';
 import { ForceNamerUtil, type FactionDisplayInfo } from '../../utils/force-namer.util';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { FactionDropdownPanelComponent } from './faction-dropdown-panel.component';
-import { aggregateGroupSizeResult, resolveFromGroups } from '../../utils/org-solver.util';
+import { resolveFromGroups } from '../../utils/org-solver.util';
 import type { GroupSizeResult } from '../../utils/org-types';
+import { aggregateGroupSizeResult } from '../../utils/org-namer.util';
 
 
 /*

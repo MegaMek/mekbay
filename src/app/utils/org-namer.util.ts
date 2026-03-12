@@ -46,17 +46,17 @@ import { getUnitsAverageTechBase, TechBase } from '../models/tech.model';
 export function getOrgFromGroup(group: UnitGroup): GroupSizeResult[];
 export function getOrgFromGroup(group: LoadForceGroup, factionName: string, techBase: TechBase): GroupSizeResult[];
 export function getOrgFromGroup(group: UnitGroup | LoadForceGroup, factionName?: string, techBase?: TechBase): GroupSizeResult[] {
-        if (group instanceof UnitGroup) {
-            const force = group.force;
-            const fn = force.faction()?.name ?? 'Mercenary';
-            const allUnits = group.units().map(u => u.getUnit()).filter((u): u is Unit => u !== undefined);
-            return resolveFromUnits(allUnits, force.techBase(), fn);
-        }
-        const units = group.units
-            .filter((u): u is typeof u & { unit: Unit } => u.unit !== undefined)
-            .map(u => u.unit);
-        return resolveFromUnits(units, techBase!, factionName!);
+    if (group instanceof UnitGroup) {
+        const force = group.force;
+        const fn = force.faction()?.name ?? 'Mercenary';
+        const allUnits = group.units().map(u => u.getUnit()).filter((u): u is Unit => u !== undefined);
+        return resolveFromUnits(allUnits, force.techBase(), fn);
     }
+    const units = group.units
+        .filter((u): u is typeof u & { unit: Unit } => u.unit !== undefined)
+        .map(u => u.unit);
+    return resolveFromUnits(units, techBase!, factionName!);
+}
 
 export function getOrgFromForce(force: Force): GroupSizeResult[];
 export function getOrgFromForce(entry: LoadForceEntry, factionName: string): GroupSizeResult[];
@@ -84,16 +84,60 @@ export function getOrgFromForce(forceOrEntry: Force | LoadForceEntry, factionNam
  * and their results are used as sub-groups (flat mode).
  */
 export function getOrgFromForceCollection(
-        entries: LoadForceEntry[],
-        factionName: string,
-        childGroupResults?: GroupSizeResult[],
-    ): GroupSizeResult[] {
-        if (entries.length === 0) return [EMPTY_RESULT];
-        const techBase = resolveTechBaseFromEntries(entries, factionName);
-        const groupResults = childGroupResults
-            ?? entries.flatMap(e => getOrgFromForce(e, factionName));
-        return resolveFromGroups(techBase, factionName, groupResults);
+    entries: LoadForceEntry[],
+    factionName: string,
+    childGroupResults?: GroupSizeResult[],
+): GroupSizeResult[] {
+    if (entries.length === 0) return [EMPTY_RESULT];
+    const techBase = resolveTechBaseFromEntries(entries, factionName);
+    const groupResults = childGroupResults
+        ?? entries.flatMap(e => getOrgFromForce(e, factionName));
+    return resolveFromGroups(techBase, factionName, groupResults);
+}
+
+/**
+ * Aggregates multiple GroupSizeResults into a single result, summing their tiers and concatenating their names.
+ * Used to produce a single top-level result for a force from multiple group-level results:
+ * (e.g. "2x Galaxy", "Augmented Company + Flight") and an adjusted tier
+ * (baseTier + sum(otherTier / baseTier) for each additional group).
+ * @param groups 
+ * @returns 
+ */
+export function aggregateGroupSizeResult(groups: GroupSizeResult[]): GroupSizeResult {
+    if (groups.length === 0) {
+        return EMPTY_RESULT;
     }
+    if (groups.length === 1) {
+        return groups[0];
+    }
+    // Sort by tier descending so the highest-tier group appears first
+    const sorted = [...groups].sort((a, b) => b.tier - a.tier);
+
+    // Build descriptive name: count duplicates, e.g. "2x Galaxy + Flight"
+    const nameCounts = new Map<string, number>();
+    for (const g of sorted) {
+        nameCounts.set(g.name, (nameCounts.get(g.name) || 0) + 1);
+    }
+    const parts: string[] = [];
+    for (const [name, count] of nameCounts) {
+        parts.push(count > 1 ? `${count}x ${name}` : name);
+    }
+
+    // Tier: base = highest tier, + otherTier/baseTier for each other group
+    const baseTier = sorted[0].tier;
+    let tierSum = baseTier;
+    for (let i = 1; i < sorted.length; i++) {
+        tierSum += baseTier > 0 ? sorted[i].tier / baseTier : 0;
+    }
+    return {
+        name: parts.join(' + '),
+        type: null,
+        countsAsType: null,
+        tier: tierSum,
+        children: sorted,
+    };
+}
+
 
 // ===== Utility =====
 

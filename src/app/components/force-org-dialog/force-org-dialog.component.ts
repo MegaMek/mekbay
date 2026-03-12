@@ -54,8 +54,7 @@ import type { GroupSizeResult } from '../../utils/org-types';
 import { GameSystem } from '../../models/common.model';
 import type { SerializedOrganization, OrgPlacedForce, OrgGroupData } from '../../models/organization.model';
 import { ForceEntryPreviewDialogComponent } from '../force-entry-preview-dialog/force-entry-preview-dialog.component';
-import { getOrgFromForce, getOrgFromForceCollection } from '../../utils/org-namer.util';
-import { aggregateGroupSizeResult } from '../../utils/org-solver.util';
+import { getOrgFromForce, getOrgFromForceCollection, aggregateGroupSizeResult } from '../../utils/org-namer.util';
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2.0;

@@ -48,8 +48,7 @@ import { type FormationTypeDefinition, type FormationMatch, isNoFormation } from
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
 import type { GroupSizeResult } from '../utils/org-types';
-import { getOrgFromForce, getOrgFromGroup } from '../utils/org-namer.util';
-import { aggregateGroupSizeResult } from '../utils/org-solver.util';
+import { getOrgFromForce, getOrgFromGroup, aggregateGroupSizeResult } from '../utils/org-namer.util';
 import { getUnitsAverageTechBase, TechBase } from './tech.model';
 
 /*
