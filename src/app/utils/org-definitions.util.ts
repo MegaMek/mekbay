@@ -399,8 +399,8 @@ const SocietyOrg: OrgDefinition = {
     },
     rules: [
         { type: 'Un', modifiers: { '': 1 }, tier: 0 },
-        { type: 'Trey', modifiers: { '': 3 }, tier: 1 },
-        { type: 'Sept', modifiers: { '': 7 }, tier: 2 },
+        { type: 'Trey', modifiers: { '': 3 }, tier: 0.8 },
+        { type: 'Sept', modifiers: { '': 7 }, tier: 1.6 },
     ],
 };
 
