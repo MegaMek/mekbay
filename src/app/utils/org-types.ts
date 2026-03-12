@@ -121,7 +121,7 @@ export interface GroupSizeResult {
     type: OrgType | null;
     /** Alias type for group-based counting (e.g. Nova also counts as Star). */
     countsAsType: OrgType | null;
-    /** Hierarchy depth from the matched rule (0 = leaf). */
+    /** Cross-Organization evaluation */
     tier: number;
     /** Sub-groups that compose this result (the structural breakdown). */
     children?: GroupSizeResult[];
@@ -177,6 +177,11 @@ export interface OrgTypeRule {
      * The solver enumerates unit subsets and calls this to find valid shapes.
      */
     readonly customMatch?: (units: Unit[]) => number;
+    /**
+     * Optional total unit counts worth enumerating for customMatch.
+     * Use this when customMatch can only return 0 for specific subset sizes.
+     */
+    readonly customMatchUnitCounts?: readonly number[];
     /** For group-based force evaluation: this type also counts as another type. */
     readonly countsAs?: OrgType;
     /**

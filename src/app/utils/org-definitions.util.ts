@@ -121,6 +121,7 @@ const CLAN_STAR: OrgTypeRule = {
 const CLAN_NOVA: OrgTypeRule = {
     type: 'Nova', strict: true, priority: 1, countsAs: 'Star', modifiers: { '': 10 }, commandRank: 'Nova Commander', tier: 1.7,
     filter: (u) => isBM(u) || isCV(u) || isAero(u) || isBA(u),
+    customMatchUnitCounts: [10],
     customMatch: (units) => {
         const ba = countBA(units);
         const baMEC = countBAMEC(units);
@@ -152,22 +153,30 @@ const CLAN_TRINARY: OrgTypeRule = {
 };
 const CLAN_SUPERNOVA_BINARY: OrgTypeRule = {
     type: 'Supernova Binary', strict: true, priority: 2, countsAs: 'Binary',
-    composedOfAny: ['Nova'], modifiers: { '': 2 }, commandRank: 'Nova Captain', tier: 2.5,
+    composedOfAny: ['Nova'], modifiers: { '': 2 }, commandRank: 'Nova Captain', tier: 3,
 };
 const CLAN_SUPERNOVA_TRINARY: OrgTypeRule = {
     type: 'Supernova Trinary', strict: true, priority: 1, countsAs: 'Trinary',
-    composedOfAny: ['Nova'], modifiers: { '': 3 }, commandRank: 'Nova Captain', tier: 2.5,
+    composedOfAny: ['Nova'], modifiers: { '': 3 }, commandRank: 'Nova Captain', tier: 3,
+};
+const CLAN_SUPERNOVA_TRINARY_FROM_BINARY: OrgTypeRule = {
+    type: 'Supernova Trinary', strict: true, priority: 1, countsAs: 'Trinary',
+    composedOfAny: ['Supernova Binary', 'Nova'], modifiers: { '': 2 }, commandRank: 'Nova Captain', tier: 3,
+    groupFilter: (groups) =>
+        groups.length === 2 &&
+        groups.some(group => group.type === 'Supernova Binary') &&
+        groups.some(group => group.type === 'Nova'),
 };
 const CLAN_CLUSTER: OrgTypeRule = {
     type: 'Cluster',
     composedOfAny: ['Binary', 'Trinary'],
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4, 'Strong ': 5 },
-    commandRank: 'Star Colonel', tier: 3,
+    commandRank: 'Star Colonel', tier: 4,
 };
 const CLAN_GALAXY: OrgTypeRule = {
     type: 'Galaxy', composedOfAny: ['Cluster'], modifiers: {
         'Under-Strength ': 2, '': 3, 'Reinforced ': 4, 'Strong ': 5,
-    }, commandRank: 'Galaxy Commander', tier: 4,
+    }, commandRank: 'Galaxy Commander', tier: 8,
 };
 
 // IS rules
@@ -184,7 +193,7 @@ const IS_SQUADRON: OrgTypeRule = {
 const IS_WING: OrgTypeRule = {
     type: 'Wing', composedOfAny: ['Squadron'],
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
-    commandRank: 'Major', tier: 3,
+    commandRank: 'Major', tier: 4,
 };
 const IS_SQUAD: OrgTypeRule = {
     type: 'Squad', modifiers: { '': 1 }, commandRank: 'Sergeant', tier: 0,
@@ -234,17 +243,17 @@ const IS_COMPANY: OrgTypeRule = {
 const IS_BATTALION: OrgTypeRule = {
     type: 'Battalion', composedOfAny: ['Company', 'Squadron'],
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
-    commandRank: 'Major', tier: 3, dynamicTier: 1
+    commandRank: 'Major', tier: 4, dynamicTier: 1
 };
 const IS_REGIMENT: OrgTypeRule = {
     type: 'Regiment', composedOfAny: ['Battalion', 'Wing'],
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4, 'Strong ': 5 },
-    commandRank: 'Colonel', tier: 4, dynamicTier: 1
+    commandRank: 'Colonel', tier: 8, dynamicTier: 1
 };
 const IS_BRIGADE: OrgTypeRule = {
     type: 'Brigade', composedOfAny: ['Regiment'],
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
-    commandRank: 'General', tier: 5, dynamicTier: 1
+    commandRank: 'General', tier: 16, dynamicTier: 1
 };
 
 //  Org Definitions 
@@ -272,7 +281,7 @@ const ClanOrg: OrgDefinition = {
         return { min: minPts, max: maxPts };
     },
     rules: [
-        CLAN_NOVA, CLAN_SUPERNOVA_BINARY, CLAN_SUPERNOVA_TRINARY,
+        CLAN_NOVA, CLAN_SUPERNOVA_BINARY, CLAN_SUPERNOVA_TRINARY, CLAN_SUPERNOVA_TRINARY_FROM_BINARY,
         CLAN_POINT,
         CLAN_STAR,
         CLAN_BINARY, CLAN_TRINARY,
@@ -336,6 +345,7 @@ const ComStarOrg: OrgDefinition = {
         {
             type: 'Choir', strict: true, priority: 1, countsAs: 'Level II', modifiers: { '': 12 }, commandRank: 'Adept', tier: 1.6,
             filter: (u) => isBM(u) || isBA(u),
+            customMatchUnitCounts: [12],
             customMatch: (units) => {
                 const bm = countBM(units);
                 const ba = countBA(units);
@@ -361,16 +371,16 @@ const ComStarOrg: OrgDefinition = {
         {
             type: 'Level IV', composedOfAny: ['Level III'], modifiers: {
                 'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
-            }, commandRank: 'Precentor', tier: 3,
+            }, commandRank: 'Precentor', tier: 4,
         },
         {
             type: 'Level V', composedOfAny: ['Level IV'], modifiers: {
                 'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
-            }, commandRank: 'Precentor', tier: 4,
+            }, commandRank: 'Precentor', tier: 8,
         },
         {
             type: 'Level VI', composedOfAny: ['Level V'], modifiers: { '': 2, },
-            commandRank: 'Precentor Martial', tier: 5,
+            commandRank: 'Precentor Martial', tier: 16,
         },
     ],
 };
@@ -412,7 +422,7 @@ const SocietyOrg: OrgDefinition = {
             customMatch: (units) => isSocietyUn(units) ? 0 : Infinity,
         },
         { type: 'Trey', strict: true, composedOfAny: ['Un'], modifiers: { '': 3 }, tier: 1 },
-        { type: 'Sept', strict: true, composedOfAny: ['Un'], modifiers: { '': 7 }, tier: 2 },
+        { type: 'Sept', strict: true, composedOfAny: ['Un'], modifiers: { '': 7 }, tier: 1.8 },
     ],
 };
 
@@ -456,8 +466,8 @@ const MHOrg: OrgDefinition = {
             groupFilter: (groups) => groups.every(g => g.tag === 'infantry'),
         },
         { type: 'Maniple', composedOfAny: ['Century'], modifiers: { '': 2 }, commandRank: 'Principes', tier: 2 },
-        { type: 'Cohort', composedOfAny: ['Maniple'], modifiers: { '': 3 }, commandRank: 'Legatus', tier: 3 },
-        { type: 'Legion', composedOfAny: ['Cohort'], modifiers: { '': 4 }, commandRank: 'General', tier: 4 },
+        { type: 'Cohort', composedOfAny: ['Maniple'], modifiers: { '': 3 }, commandRank: 'Legatus', tier: 4 },
+        { type: 'Legion', composedOfAny: ['Cohort'], modifiers: { '': 4 }, commandRank: 'General', tier: 8 },
     ],
 };
 
@@ -490,6 +500,7 @@ const WDOrg: OrgDefinition = {
         { ...CLAN_NOVA, commandRank: 'Lieutenant' },
         { ...CLAN_SUPERNOVA_BINARY, commandRank: 'Captain' },
         { ...CLAN_SUPERNOVA_TRINARY, commandRank: 'Captain' },
+        { ...CLAN_SUPERNOVA_TRINARY_FROM_BINARY, commandRank: 'Captain' },
         // WD Point (excludes aero and conventional infantry)
         { ...CLAN_POINT, commandRank: 'Sergeant', filter: (u: Unit) => !isAero(u) && !isCI(u) },
         // WD Lance (composedOf Point, not Single; limited to 2-4 BM non-BA)
@@ -551,6 +562,7 @@ const CCOrg: OrgDefinition = {
             type: 'Augmented Lance', countsAs: 'Lance', strict: true, priority: 1,
             modifiers: { '': 6 }, commandRank: 'Lieutenant', tier: 1.05,
             filter: (u) => isBM(u) || isCV(u) || isBA(u),
+            customMatchUnitCounts: [6],
             customMatch: (units) => {
                 const bm = countBM(units); const bmOmni = countBMOmni(units);
                 const cv = countCV(units); const cvOmni = countCVOmni(units);
@@ -576,11 +588,11 @@ const CCOrg: OrgDefinition = {
         // CC Augmented Company, slightly inferior tier than Regular Company due to being smaller. It will prevail over Regular Company due to priority if there are no leftovers.
         { type: 'Augmented Company', countsAs: 'Company', composedOfAny: ['Augmented Lance'], priority: 1, modifiers: { '': 2, 'Reinforced ': 3 }, commandRank: 'Captain', tier: 1.95 },
         // CC Augmented Battalion
-        { type: 'Augmented Battalion', countsAs: 'Battalion', composedOfAny: ['Augmented Company'], priority: 1, modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'Major', tier: 3 },
+        { type: 'Augmented Battalion', countsAs: 'Battalion', composedOfAny: ['Augmented Company'], priority: 1, modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'Major', tier: 4 },
         // CC Augmented Regiment
         {
             type: 'Augmented Regiment', countsAs: 'Regiment', composedOfAny: ['Augmented Battalion', 'Battalion', 'Wing'],
-            modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'General', tier: 4.01,
+            modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'General', tier: 8.01,
             groupFilter: (groups: ReadonlyArray<GroupSizeResult>) => groups.some(g => g.type === 'Augmented Battalion'),
         },
     ],

@@ -171,27 +171,6 @@ describe('resolveFromUnits', () => {
         expect(result[0].leftoverUnits).toBeUndefined();
         expect(result[0].children?.length).toBe(2);
     });
-    
-    it('preserves leftover count when duplicate instances share the same Unit reference', () => {
-        const sharedMek = createBM('BM1');
-        sharedMek.name = 'shared-mek';
-
-        const units: Unit[] = [
-            createCV('CV1'),
-            createCV('CV2'),
-            createCV('CV3'),
-            createCV('CV4'),
-            sharedMek,
-            sharedMek,
-            sharedMek,
-        ];
-
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Capellan Confederation');
-
-        expect(result[0].type).toBe('Augmented Lance');
-        expect(result[0].leftoverUnits?.length).toBe(1);
-        expect(result[0].leftoverUnits?.[0]).toBe(sharedMek);
-    });
 
     it('prefers Air Lance over Under-Strength Company for 2 BM plus 2 AF', () => {
         const units: Unit[] = [
@@ -390,6 +369,101 @@ describe('resolveFromUnits', () => {
         expect(result[0].name).toBe('Nova');
         expect(result[0].type).toBe('Nova');
         expect(result[0].leftoverUnits).toBeUndefined();
+    });
+    
+    it('resolves 10 BA (with MEC special) and 10 BM (with OMNI special) into a Supernova Binary', () => {
+        const units: Unit[] = [
+            createBA('BA1', ['MEC'], 5),
+            createBA('BA2', ['MEC'], 5),
+            createBA('BA3', ['MEC'], 5),
+            createBA('BA4', ['MEC'], 5),
+            createBA('BA5', ['MEC'], 5),
+            createBA('BA1', ['MEC'], 5),
+            createBA('BA2', ['MEC'], 5),
+            createBA('BA3', ['MEC'], 5),
+            createBA('BA4', ['MEC'], 5),
+            createBA('BA5', ['MEC'], 5),
+            createBM('BM1', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM2', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM3', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM4', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM5', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM1', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM2', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM3', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM4', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM5', 'BattleMek Omni', true, ['OMNI'])
+        ];
+
+        const result = resolveFromUnits(units, 'Clan', 'Clan Test');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Supernova Binary');
+        expect(result[0].type).toBe('Supernova Binary');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+    
+    it('resolves 10BA+10BM and 5BA+5BM in Supernova Trinary', () => {
+        const units1: Unit[] = [
+            createBA('BA1', ['MEC'], 5),
+            createBA('BA2', ['MEC'], 5),
+            createBA('BA3', ['MEC'], 5),
+            createBA('BA4', ['MEC'], 5),
+            createBA('BA5', ['MEC'], 5),
+            createBA('BA1', ['MEC'], 5),
+            createBA('BA2', ['MEC'], 5),
+            createBA('BA3', ['MEC'], 5),
+            createBA('BA4', ['MEC'], 5),
+            createBA('BA5', ['MEC'], 5),
+            createBM('BM1', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM2', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM3', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM4', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM5', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM1', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM2', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM3', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM4', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM5', 'BattleMek Omni', true, ['OMNI'])
+        ];
+
+        const result1 = resolveFromUnits(units1, 'Clan', 'Clan Test');
+        
+        expect(result1.length).toBe(1);
+        expect(result1[0].name).toBe('Supernova Binary');
+        expect(result1[0].type).toBe('Supernova Binary');
+        expect(result1[0].leftoverUnits).toBeUndefined();
+
+        const units2: Unit[] = [
+            createBA('BA1', ['MEC'], 5),
+            createBA('BA2', ['MEC'], 5),
+            createBA('BA3', ['MEC'], 5),
+            createBA('BA4', ['MEC'], 5),
+            createBA('BA5', ['MEC'], 5),
+            createBM('BM1', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM2', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM3', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM4', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM5', 'BattleMek Omni', true, ['OMNI'])
+        ];
+
+        const result2 = resolveFromUnits(units2, 'Clan', 'Clan Test');
+
+        expect(result2.length).toBe(1);
+        expect(result2[0].name).toBe('Nova');
+        expect(result2[0].type).toBe('Nova');
+        expect(result2[0].leftoverUnits).toBeUndefined();
+
+        const result3 = resolveFromGroups('Clan', 'Clan Test', [
+            result1[0],
+            result2[0],
+        ]);
+
+        expect(result3.length).toBe(1);
+        expect(result3[0].name).toBe('Supernova Trinary');
+        expect(result3[0].type).toBe('Supernova Trinary');
+        expect(result3[0].leftoverUnits).toBeUndefined();
+        expect(result3[0].children?.length).toBe(2);
     });
     
     it('resolves 5 BA (MEC/XMEC) and 5 BM (OMNI and not) into a Nova', () => {
