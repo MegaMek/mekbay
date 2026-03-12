@@ -119,7 +119,7 @@ const CLAN_STAR: OrgTypeRule = {
     }, commandRank: 'Star Commander', tier: 1,
 };
 const CLAN_NOVA: OrgTypeRule = {
-    type: 'Nova', strict: true, priority: 1, countsAs: 'Star', modifiers: { '': 10 }, commandRank: 'Nova Commander', tier: 1.8,
+    type: 'Nova', strict: true, priority: 1, countsAs: 'Star', modifiers: { '': 10 }, commandRank: 'Nova Commander', tier: 1.7,
     filter: (u) => isBM(u) || isCV(u) || isAero(u) || isBA(u),
     customMatch: (units) => {
         const ba = countBA(units);

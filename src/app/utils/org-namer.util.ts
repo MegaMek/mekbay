@@ -30,7 +30,7 @@
  * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
  * affiliated with Microsoft.
  */
-import { resolveFromGroups, resolveFromUnits } from './org-solver.util';
+import { resolveFromGroups, resolveFromUnits, EMPTY_RESULT } from './org-solver.util';
 import type { GroupSizeResult } from './org-types';
 import { type Force, UnitGroup } from '../models/force.model';
 import { LoadForceEntry, type LoadForceGroup } from '../models/load-force-entry.model';
@@ -42,7 +42,6 @@ import { getUnitsAverageTechBase, TechBase } from '../models/tech.model';
  *
  * Utility class to deteremine organization names.
  */
-const EMPTY_RESULT: GroupSizeResult = { name: 'Force', type: null, countsAsType: null, tier: 0 };
 
 export function getOrgFromGroup(group: UnitGroup): GroupSizeResult[];
 export function getOrgFromGroup(group: LoadForceGroup, factionName: string, techBase: TechBase): GroupSizeResult[];

@@ -51,6 +51,8 @@ import { TechBase } from '../models/tech.model';
  * Core logic for determining organizational structure from a set of units.
  */
 
+export const EMPTY_RESULT: GroupSizeResult = { name: 'Force', type: null, countsAsType: null, tier: 0 };
+
 // ─── Unit helpers ──────────────────────────────────────────────────────────────
 
 function unitPointTotal(units: Unit[], getPointRange: (u: Unit[]) => PointRange): number {
@@ -1228,7 +1230,7 @@ function findBestComposition(groups: GroupSizeResult[], rules: OrgTypeRule[], co
 
 export function aggregateGroupSizeResult(groups: GroupSizeResult[]): GroupSizeResult {
     if (groups.length === 0) {
-        return { name: 'Force', type: null, countsAsType: null, tier: 0 };
+        return EMPTY_RESULT;
     }
     if (groups.length === 1) {
         return groups[0];
@@ -1272,7 +1274,7 @@ const SYNTHETIC_AGGREGATED_GROUP = false;
  * If multiple, return "Force" with children.
  */
 function wrapResult(groups: GroupSizeResult[]): GroupSizeResult[] {
-    if (groups.length === 0) return [{ name: 'Force', type: null, countsAsType: null, tier: 0 }];
+    if (groups.length === 0) return [EMPTY_RESULT];
     if (groups.length === 1) return groups;
 
     if (SYNTHETIC_AGGREGATED_GROUP) {
@@ -1352,7 +1354,7 @@ class OrgSolver {
 
     resolveFromUnits(units: Unit[]): GroupSizeResult[] {
         if (units.length === 0) {
-            return [{ name: 'Force', type: null, countsAsType: null, tier: 0 }];
+            return [EMPTY_RESULT];
         }
 
         const leafCandidates = allocateLeaves(units, this.org.rules, this.org.getPointRange, this.context);
@@ -1387,7 +1389,7 @@ class OrgSolver {
 
     resolveFromGroups(groupResults: GroupSizeResult[]): GroupSizeResult[] {
         if (groupResults.length === 0) {
-            return [{ name: 'Force', type: null, countsAsType: null, tier: 0 }];
+            return [EMPTY_RESULT];
         }
 
         const allUnits = collectAllUnits(groupResults, this.context);
