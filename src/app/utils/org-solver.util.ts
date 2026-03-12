@@ -1208,12 +1208,27 @@ function betterScore(a: CompositionScore, b: CompositionScore): boolean {
     return a.prioritySum > b.prioritySum;
 }
 
+function groupMatchesType(group: GroupSizeResult, type: string): boolean {
+    return group.type === type || group.countsAsType === type;
+}
+
+function canRulePossiblyComposeSubset(
+    rule: OrgTypeRule,
+    availableGroups: ReadonlyArray<GroupSizeResult>,
+): boolean {
+    if (availableGroups.length === 0) return false;
+    if (!rule.requiredChildTypes || rule.requiredChildTypes.length === 0) return true;
+
+    return rule.requiredChildTypes.every(type => availableGroups.some(group => groupMatchesType(group, type)));
+}
+
 function canRuleComposeGroups(
     rule: OrgTypeRule,
     groups: ReadonlyArray<GroupSizeResult>,
     context: SolverContext,
 ): boolean {
     if (!rule.composedOfAny || groups.length === 0) return false;
+    if (!canRulePossiblyComposeSubset(rule, groups)) return false;
 
     const acceptedTypes = new Set(rule.composedOfAny);
     for (const group of groups) {
@@ -1276,6 +1291,8 @@ function collectSubsetCompositionCandidates(
     availableGroups: GroupSizeResult[],
     context: SolverContext,
 ): SubsetCompositionCandidate[] {
+    if (!canRulePossiblyComposeSubset(rule, availableGroups)) return [];
+
     const buildCandidates = (includeSubRegular: boolean): SubsetCompositionCandidate[] => {
         const candidates: SubsetCompositionCandidate[] = [];
 
@@ -1507,6 +1524,7 @@ function findBestComposition(groups: GroupSizeResult[], rules: ReadonlyArray<Org
 
         if (matching.length === 0) continue;
         if (getCandidateTakeCounts(rule, matching.length, true).length === 0) continue;
+        if (!canRulePossiblyComposeSubset(rule, matching.map(i => groups[i]))) continue;
         viable.push({ rule, matching, nonMatching });
     }
 

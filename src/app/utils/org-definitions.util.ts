@@ -161,7 +161,7 @@ const CLAN_SUPERNOVA_TRINARY: OrgTypeRule = {
 };
 const CLAN_SUPERNOVA_TRINARY_FROM_BINARY: OrgTypeRule = {
     type: 'Supernova Trinary', strict: true, priority: 1, countsAs: 'Trinary',
-    composedOfAny: ['Supernova Binary', 'Nova'], modifiers: { '': 2 }, commandRank: 'Nova Captain', tier: 3,
+    composedOfAny: ['Supernova Binary', 'Nova'], requiredChildTypes: ['Supernova Binary', 'Nova'], modifiers: { '': 2 }, commandRank: 'Nova Captain', tier: 3,
     groupFilter: (groups) =>
         groups.length === 2 &&
         groups.some(group => group.type === 'Supernova Binary') &&
@@ -218,12 +218,10 @@ const IS_LANCE: OrgTypeRule = {
 };
 const IS_AIR_LANCE: OrgTypeRule = {
     type: 'Air Lance', countsAs: 'Lance', priority: 1, composedOfAny: ['Flight', 'Lance'], tier: 1.5,
+    requiredChildTypes: ['Flight', 'Lance'],
     modifiers: { '': 2 },
     commandRank: 'Lieutenant',
     filter: (u) => !isInfantry(u),
-    groupFilter: (groups) =>
-        groups.some(g => g.type === 'Flight') &&
-        groups.some(g => g.type === 'Lance' || g.countsAsType === 'Lance'),
 };
 const IS_PLATOON: OrgTypeRule = {
     type: 'Platoon', countsAs: 'Lance', priority: 1, modifiers: { '': 1 }, commandRank: 'Lieutenant', tier: 1,
@@ -497,14 +495,14 @@ const WDOrg: OrgDefinition = {
         {
             ...IS_COMPANY,
             composedOfAny: ['Lance', 'Star'] as OrgType[],
-            groupFilter: (groups: ReadonlyArray<GroupSizeResult>) => groups.some(g => g.type === 'Lance' || g.countsAsType === 'Lance'),
+            requiredChildTypes: ['Lance'],
         },
         // WD Battalion (accepts Company + Binary + Trinary, requires at least 1 Company)
         {
             ...IS_BATTALION,
             composedOfAny: ['Company', 'Binary', 'Trinary'] as OrgType[],
+            requiredChildTypes: ['Company'],
             filter: (u: Unit) => !isAero(u),
-            groupFilter: (groups: ReadonlyArray<GroupSizeResult>) => groups.some(g => g.type === 'Company' || g.countsAsType === 'Company'),
         },
         // WD Regiment
         { ...IS_REGIMENT, composedOfAny: ['Battalion', 'Wing'] as OrgType[] },
@@ -575,8 +573,8 @@ const CCOrg: OrgDefinition = {
         // CC Augmented Regiment
         {
             type: 'Augmented Regiment', countsAs: 'Regiment', composedOfAny: ['Augmented Battalion', 'Battalion', 'Wing'],
+            requiredChildTypes: ['Augmented Battalion'],
             modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'General', tier: 8.01,
-            groupFilter: (groups: ReadonlyArray<GroupSizeResult>) => groups.some(g => g.type === 'Augmented Battalion'),
         },
     ],
 };

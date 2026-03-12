@@ -163,6 +163,8 @@ export interface OrgTypeRule {
      * Leaf rules (Point, Single, Flight, etc.) leave this undefined.
      */
     readonly composedOfAny?: OrgType[];
+    /** Subset compositions must include at least one group matching each listed type. */
+    readonly requiredChildTypes?: readonly OrgType[];
     readonly commandRank?: string;
     readonly strict?: boolean;
     readonly tier: number;
