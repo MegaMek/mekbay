@@ -53,8 +53,6 @@ export interface RulesReference {
     page: number;
 }
 
-export type TechBase = 'Inner Sphere' | 'Clan' | 'Mixed';
-
 export enum ECMMode {
     ECM = 'ecm',
     ECCM = 'eccm',

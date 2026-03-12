@@ -50,6 +50,7 @@ import { FormationNamerUtil } from '../utils/formation-namer.util';
 import type { GroupSizeResult } from '../utils/org-types';
 import { OrgNamerUtil } from '../utils/org-namer.util';
 import { aggregateGroupSizeResult } from '../utils/org-solver.util';
+import { TechBase } from './tech.model';
 
 /*
  * Author: Drake
@@ -267,8 +268,8 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         return aggregateGroupSizeResult(OrgNamerUtil.getOrgFromForce(this)).name;
     });
 
-    techBase = computed((): string => {
-        const counts: Record<string, number> = {};
+    techBase = computed((): TechBase => {
+        const counts: Partial<Record<TechBase, number>> = {};
         for (const unit of this.units()) {
             const tb = unit.getUnit().techBase;
             if (tb === 'Mixed') {
@@ -278,10 +279,15 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                 counts[tb] = (counts[tb] || 0) + 1;
             }
         }
-        let majority = 'Inner Sphere';
+        let majority: TechBase = 'Inner Sphere';
         let max = 0;
-        for (const [tb, count] of Object.entries(counts)) {
-            if (count > max) { majority = tb; max = count; }
+        // Mixed is expanded to both
+        for (const tb of ['Inner Sphere', 'Clan'] as const) {
+            const count = counts[tb] ?? 0;
+            if (count > max) {
+                majority = tb;
+                max = count;
+            }
         }
         return majority;
     });
