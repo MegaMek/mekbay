@@ -464,6 +464,157 @@ describe('resolveFromUnits', () => {
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
+    it('keeps Inner Sphere repeated group aggregation stable across multiple passes', () => {
+        const companyGroups: GroupSizeResult[] = [];
+
+        for (let companyIndex = 0; companyIndex < 9; companyIndex++) {
+            const units: Unit[] = [];
+            for (let unitIndex = 0; unitIndex < 12; unitIndex++) {
+                units.push(createBM(`IS-BM-${companyIndex + 1}-${unitIndex + 1}`));
+            }
+
+            const companyResult = resolveFromUnits(units, 'Inner Sphere', 'Federated Suns');
+            expect(companyResult.length).toBe(1);
+            expect(companyResult[0].type).toBe('Company');
+            companyGroups.push(companyResult[0]);
+        }
+
+        const firstPass = resolveFromGroups('Inner Sphere', 'Federated Suns', companyGroups);
+        const secondPass = resolveFromGroups('Inner Sphere', 'Federated Suns', firstPass);
+        const thirdPass = resolveFromGroups('Inner Sphere', 'Federated Suns', secondPass);
+
+        for (const pass of [firstPass, secondPass, thirdPass]) {
+            expect(pass.length).toBe(1);
+            expect(pass[0].name).toBe('Regiment');
+            expect(pass[0].type).toBe('Regiment');
+            expect(pass[0].children?.length).toBe(3);
+            expect(pass[0].children?.every(child => child.type === 'Battalion')).toBeTrue();
+            expect(pass[0].leftoverUnits).toBeUndefined();
+        }
+    });
+
+    it('repeatedly aggregates Inner Sphere Lance and Flight groups up through Air Lances and a Brigade', () => {
+        function buildAirLanceCompany(companyIndex: number): GroupSizeResult {
+            const airLances: GroupSizeResult[] = [];
+
+            for (let airLanceIndex = 0; airLanceIndex < 3; airLanceIndex++) {
+                const lanceUnits: Unit[] = [];
+                for (let unitIndex = 0; unitIndex < 4; unitIndex++) {
+                    lanceUnits.push(createBM(`IS-L-${companyIndex + 1}-${airLanceIndex + 1}-${unitIndex + 1}`));
+                }
+
+                const flightUnits: Unit[] = [
+                    createUnit(`IS-AF-${companyIndex + 1}-${airLanceIndex + 1}-1`, 'Aero', 'Aerospace Fighter'),
+                    createUnit(`IS-AF-${companyIndex + 1}-${airLanceIndex + 1}-2`, 'Aero', 'Aerospace Fighter'),
+                ];
+
+                const lanceResult = resolveFromUnits(lanceUnits, 'Inner Sphere', 'Federated Suns');
+                const flightResult = resolveFromUnits(flightUnits, 'Inner Sphere', 'Federated Suns');
+
+                expect(lanceResult.length).toBe(1);
+                expect(lanceResult[0].type).toBe('Lance');
+                expect(flightResult.length).toBe(1);
+                expect(flightResult[0].type).toBe('Flight');
+
+                const airLancePass1 = resolveFromGroups('Inner Sphere', 'Federated Suns', [lanceResult[0], flightResult[0]]);
+                const airLancePass2 = resolveFromGroups('Inner Sphere', 'Federated Suns', airLancePass1);
+                const airLancePass3 = resolveFromGroups('Inner Sphere', 'Federated Suns', airLancePass2);
+
+                for (const pass of [airLancePass1, airLancePass2, airLancePass3]) {
+                    expect(pass.length).toBe(1);
+                    expect(pass[0].type).toBe('Air Lance');
+                    expect(pass[0].name).toBe('Air Lance');
+                    expect(pass[0].children?.length).toBe(2);
+                    expect(pass[0].children?.some(child => child.type === 'Lance')).toBeTrue();
+                    expect(pass[0].children?.some(child => child.type === 'Flight')).toBeTrue();
+                    expect(pass[0].leftoverUnits).toBeUndefined();
+                }
+
+                airLances.push(airLancePass3[0]);
+            }
+
+            const companyPass1 = resolveFromGroups('Inner Sphere', 'Federated Suns', airLances);
+            const companyPass2 = resolveFromGroups('Inner Sphere', 'Federated Suns', companyPass1);
+            const companyPass3 = resolveFromGroups('Inner Sphere', 'Federated Suns', companyPass2);
+
+            for (const pass of [companyPass1, companyPass2, companyPass3]) {
+                expect(pass.length).toBe(1);
+                expect(pass[0].type).toBe('Company');
+                expect(pass[0].name).toBe('Company');
+                expect(pass[0].children?.length).toBe(3);
+                expect(pass[0].children?.every(child => child.type === 'Air Lance')).toBeTrue();
+                expect(pass[0].leftoverUnits).toBeUndefined();
+            }
+
+            return companyPass3[0];
+        }
+
+        function buildBattalion(battalionIndex: number): GroupSizeResult {
+            const companies = [
+                buildAirLanceCompany(battalionIndex * 3),
+                buildAirLanceCompany(battalionIndex * 3 + 1),
+                buildAirLanceCompany(battalionIndex * 3 + 2),
+            ];
+
+            const battalionPass1 = resolveFromGroups('Inner Sphere', 'Federated Suns', companies);
+            const battalionPass2 = resolveFromGroups('Inner Sphere', 'Federated Suns', battalionPass1);
+            const battalionPass3 = resolveFromGroups('Inner Sphere', 'Federated Suns', battalionPass2);
+
+            for (const pass of [battalionPass1, battalionPass2, battalionPass3]) {
+                expect(pass.length).toBe(1);
+                expect(pass[0].name).toBe('Battalion');
+                expect(pass[0].type).toBe('Battalion');
+                expect(pass[0].children?.length).toBe(3);
+                expect(pass[0].children?.every(child => child.type === 'Company')).toBeTrue();
+                expect(pass[0].leftoverUnits).toBeUndefined();
+            }
+
+            return battalionPass3[0];
+        }
+
+        function buildRegiment(regimentIndex: number): GroupSizeResult {
+            const battalions = [
+                buildBattalion(regimentIndex * 3),
+                buildBattalion(regimentIndex * 3 + 1),
+                buildBattalion(regimentIndex * 3 + 2),
+            ];
+
+            const regimentPass1 = resolveFromGroups('Inner Sphere', 'Federated Suns', battalions);
+            const regimentPass2 = resolveFromGroups('Inner Sphere', 'Federated Suns', regimentPass1);
+            const regimentPass3 = resolveFromGroups('Inner Sphere', 'Federated Suns', regimentPass2);
+
+            for (const pass of [regimentPass1, regimentPass2, regimentPass3]) {
+                expect(pass.length).toBe(1);
+                expect(pass[0].name).toBe('Regiment');
+                expect(pass[0].type).toBe('Regiment');
+                expect(pass[0].children?.length).toBe(3);
+                expect(pass[0].children?.every(child => child.type === 'Battalion')).toBeTrue();
+                expect(pass[0].leftoverUnits).toBeUndefined();
+            }
+
+            return regimentPass3[0];
+        }
+
+        const regiments = [
+            buildRegiment(0),
+            buildRegiment(1),
+            buildRegiment(2),
+        ];
+
+        const brigadePass1 = resolveFromGroups('Inner Sphere', 'Federated Suns', regiments);
+        const brigadePass2 = resolveFromGroups('Inner Sphere', 'Federated Suns', brigadePass1);
+        const brigadePass3 = resolveFromGroups('Inner Sphere', 'Federated Suns', brigadePass2);
+
+        for (const pass of [brigadePass1, brigadePass2, brigadePass3]) {
+            expect(pass.length).toBe(1);
+            expect(pass[0].name).toBe('Brigade');
+            expect(pass[0].type).toBe('Brigade');
+            expect(pass[0].children?.length).toBe(3);
+            expect(pass[0].children?.every(child => child.type === 'Regiment')).toBeTrue();
+            expect(pass[0].leftoverUnits).toBeUndefined();
+        }
+    });
+
     it('resolves 5 BA (with MEC special) and 5 BM (with OMNI special) into a Nova', () => {
         const units: Unit[] = [
             createBA('BA1', ['MEC'], 5),

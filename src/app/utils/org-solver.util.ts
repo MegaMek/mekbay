@@ -33,6 +33,7 @@
 
 import type { Unit } from '../models/units.model';
 import type {
+    OrgType,
     OrgTypeRule,
     OrgTypeLeaf,
     OrgTypeComposed,
@@ -135,6 +136,40 @@ interface SameUnitCountBucket {
     units: Unit[];
 }
 
+interface RequiredChildTypeCountEntry {
+    type: OrgType;
+    count: number;
+}
+
+interface CompiledRuleMetadata {
+    rawRule: OrgTypeRule;
+    sortedModifierEntries: ReadonlyArray<[string, number]>;
+    regularCount: number;
+    minimumModifierCount: number;
+    maximumModifierCount: number;
+}
+
+interface CompiledLeafRule extends OrgTypeLeaf, CompiledRuleMetadata {
+    rawRule: OrgTypeLeaf;
+}
+
+interface CompiledComposedRule extends OrgTypeComposed, CompiledRuleMetadata {
+    rawRule: OrgTypeComposed;
+    acceptedChildTypes: ReadonlySet<OrgType>;
+    requiredChildTypeCountEntries: ReadonlyArray<RequiredChildTypeCountEntry>;
+    allowedChildTagSet?: ReadonlySet<string>;
+}
+
+type CompiledOrgRule = CompiledLeafRule | CompiledComposedRule;
+
+function hasCompiledRuleMetadata(rule: OrgTypeRule): rule is CompiledOrgRule {
+    return 'rawRule' in rule;
+}
+
+function getCacheRule(rule: OrgTypeRule): OrgTypeRule {
+    return hasCompiledRuleMetadata(rule) ? rule.rawRule : rule;
+}
+
 function isLeafRule(rule: OrgTypeRule): rule is OrgTypeLeaf {
     return rule.kind === 'leaf';
 }
@@ -147,12 +182,52 @@ function hasCustomMatch(rule: OrgTypeRule): rule is OrgTypeLeaf & Required<Pick<
     return isLeafRule(rule) && typeof rule.customMatch === 'function';
 }
 
+function compileRule(rule: OrgTypeLeaf): CompiledLeafRule;
+function compileRule(rule: OrgTypeComposed): CompiledComposedRule;
+function compileRule(rule: OrgTypeRule): CompiledOrgRule {
+    const sortedModifierEntries = Object.entries(rule.modifiers)
+        .map(([prefix, mod]) => [prefix, getModifierCount(mod)] as [string, number])
+        .sort((a, b) => a[1] - b[1]);
+    const regularModifier = rule.modifiers[''] ?? Object.values(rule.modifiers)[0];
+    const regularCount = getModifierCount(regularModifier);
+    const minimumModifierCount = sortedModifierEntries.length > 0 ? sortedModifierEntries[0][1] : 0;
+    const maximumModifierCount = sortedModifierEntries.length > 0 ? sortedModifierEntries[sortedModifierEntries.length - 1][1] : 0;
+    if (isLeafRule(rule)) {
+        return {
+            ...rule,
+            rawRule: rule,
+            sortedModifierEntries,
+            regularCount,
+            minimumModifierCount,
+            maximumModifierCount,
+        };
+    }
+
+    return {
+        ...rule,
+        rawRule: rule,
+        sortedModifierEntries,
+        regularCount,
+        minimumModifierCount,
+        maximumModifierCount,
+        acceptedChildTypes: new Set(rule.composedOfAny),
+        requiredChildTypeCountEntries: Object.entries(rule.requiredChildTypeCounts ?? {})
+            .map(([type, count]) => ({ type: type as OrgType, count: count ?? 0 }))
+            .filter(entry => entry.count > 0),
+        allowedChildTagSet: rule.allowedChildTagsAll ? new Set(rule.allowedChildTagsAll) : undefined,
+    };
+}
+
+function compileRules(rules: ReadonlyArray<OrgTypeRule>): CompiledOrgRule[] {
+    return rules.map(rule => isLeafRule(rule) ? compileRule(rule) : compileRule(rule));
+}
+
 function getCustomMatchMemo(rule: OrgTypeLeaf, context: SolverContext): Map<string, number> {
-    return getOrCreateGlobalRuleCache(GLOBAL_CUSTOM_MATCH_CACHE, rule);
+    return getOrCreateGlobalRuleCache(GLOBAL_CUSTOM_MATCH_CACHE, getCacheRule(rule) as OrgTypeLeaf);
 }
 
 function getRuleFilterMemo(rule: OrgTypeRule, context: SolverContext): Map<string, boolean> {
-    return getOrCreateGlobalRuleCache(GLOBAL_RULE_FILTER_CACHE, rule);
+    return getOrCreateGlobalRuleCache(GLOBAL_RULE_FILTER_CACHE, getCacheRule(rule));
 }
 
 function passesRuleFilter(rule: OrgTypeRule, unit: Unit, context: SolverContext): boolean {
@@ -468,6 +543,7 @@ function getModifierCount(mod: number | OrgTypeModifier): number {
 
 /** The regular ('') modifier's count, or the first modifier if no regular exists. */
 function getRegularCount(rule: OrgTypeRule): number {
+    if (hasCompiledRuleMetadata(rule)) return rule.regularCount;
     const raw = rule.modifiers[''] ?? Object.values(rule.modifiers)[0];
     return getModifierCount(raw);
 }
@@ -502,6 +578,7 @@ function resolveTier(rule: OrgTypeRule, prefix: string): number {
 
 /** Get sorted modifiers for a rule: [prefix, count] sorted by count ascending. */
 function sortedModifiers(rule: OrgTypeRule): [string, number][] {
+    if (hasCompiledRuleMetadata(rule)) return [...rule.sortedModifierEntries];
     return Object.entries(rule.modifiers)
         .map(([prefix, mod]) => [prefix, getModifierCount(mod)] as [string, number])
         .sort((a, b) => a[1] - b[1]);
@@ -547,9 +624,30 @@ function selectModifier(
 }
 
 function getModifierExtremeCount(rule: OrgTypeRule, mode: 'min' | 'max'): number {
+    if (hasCompiledRuleMetadata(rule)) {
+        return mode === 'min' ? rule.minimumModifierCount : rule.maximumModifierCount;
+    }
     const modifiers = sortedModifiers(rule);
     if (modifiers.length === 0) return 0;
     return mode === 'min' ? modifiers[0][1] : modifiers[modifiers.length - 1][1];
+}
+
+function getAcceptedChildTypes(rule: OrgTypeComposed): ReadonlySet<OrgType> {
+    return hasCompiledRuleMetadata(rule) ? rule.acceptedChildTypes : new Set(rule.composedOfAny);
+}
+
+function getRequiredChildTypeCountEntries(rule: OrgTypeComposed): ReadonlyArray<RequiredChildTypeCountEntry> {
+    if (hasCompiledRuleMetadata(rule)) return rule.requiredChildTypeCountEntries;
+
+    return Object.entries(rule.requiredChildTypeCounts ?? {})
+        .map(([type, count]) => ({ type: type as OrgType, count: count ?? 0 }))
+        .filter(entry => entry.count > 0);
+}
+
+function getAllowedChildTagSet(rule: OrgTypeComposed): ReadonlySet<string> | undefined {
+    return hasCompiledRuleMetadata(rule)
+        ? rule.allowedChildTagSet
+        : (rule.allowedChildTagsAll ? new Set(rule.allowedChildTagsAll) : undefined);
 }
 
 function getMinimumModifierCount(rule: OrgTypeRule): number {
@@ -1305,8 +1403,9 @@ function groupMatchesType(group: GroupSizeResult, type: string): boolean {
 }
 
 function groupMatchesSubsetConstraints(rule: OrgTypeComposed, group: GroupSizeResult): boolean {
-    if (rule.allowedChildTagsAll && rule.allowedChildTagsAll.length > 0) {
-        if (!group.tag || !rule.allowedChildTagsAll.includes(group.tag)) {
+    const allowedChildTagSet = getAllowedChildTagSet(rule);
+    if (allowedChildTagSet && allowedChildTagSet.size > 0) {
+        if (!group.tag || !allowedChildTagSet.has(group.tag)) {
             return false;
         }
     }
@@ -1322,12 +1421,10 @@ function canRulePossiblyComposeSubset(
 
     const eligibleGroups = availableGroups.filter(group => groupMatchesSubsetConstraints(rule, group));
     if (eligibleGroups.length === 0) return false;
-    if (!rule.requiredChildTypeCounts || Object.keys(rule.requiredChildTypeCounts).length === 0) return true;
+    const requiredEntries = getRequiredChildTypeCountEntries(rule);
+    if (requiredEntries.length === 0) return true;
 
-    return Object.entries(rule.requiredChildTypeCounts).every(([type, requiredCount]) => {
-        const required = requiredCount ?? 0;
-        if (required <= 0) return true;
-
+    return requiredEntries.every(({ type, count: required }) => {
         let matchingCount = 0;
         for (const group of eligibleGroups) {
             if (groupMatchesType(group, type)) {
@@ -1348,7 +1445,7 @@ function canRuleComposeGroups(
     if (!rule.composedOfAny || groups.length === 0) return false;
     if (!canRulePossiblyComposeSubset(rule, groups)) return false;
 
-    const acceptedTypes = new Set(rule.composedOfAny);
+    const acceptedTypes = getAcceptedChildTypes(rule);
     for (const group of groups) {
         if (!groupMatchesSubsetConstraints(rule, group)) {
             return false;
@@ -1441,9 +1538,7 @@ function collectConstrainedIndexCombinations(
     eligibleGroups: ReadonlyArray<GroupSizeResult>,
     takeCount: number,
 ): number[][] | null {
-    const requiredEntries = Object.entries(rule.requiredChildTypeCounts ?? {})
-        .map(([type, count]) => ({ type, count: count ?? 0 }))
-        .filter(entry => entry.count > 0);
+    const requiredEntries = getRequiredChildTypeCountEntries(rule);
     if (requiredEntries.length === 0) return null;
 
     const totalRequired = requiredEntries.reduce((sum, entry) => sum + entry.count, 0);
@@ -1596,7 +1691,7 @@ function collectIndexCombinations(length: number, size: number): number[][] {
 function canPromoteFurther(groups: GroupSizeResult[], rules: ReadonlyArray<OrgTypeRule>): boolean {
     for (const rule of rules) {
         if (!isComposedRule(rule) || rule.composedOfAny.length === 0) continue;
-        const accepted = new Set(rule.composedOfAny);
+        const accepted = getAcceptedChildTypes(rule);
         let matchCount = 0;
         for (const g of groups) {
             if ((g.type && accepted.has(g.type)) || (g.countsAsType && accepted.has(g.countsAsType))) {
@@ -1635,7 +1730,7 @@ function collectViableComposedRules(
     const viable: ViableComposedRule[] = [];
 
     for (const rule of composedRules) {
-        const acceptedTypes = new Set(rule.composedOfAny!);
+        const acceptedTypes = getAcceptedChildTypes(rule);
         const matchingGroups: GroupSizeResult[] = [];
         const nonMatchingGroups: GroupSizeResult[] = [];
 
@@ -1897,18 +1992,21 @@ class OrgSolver {
     private readonly context: SolverContext = {
         groupUnitCache: new WeakMap<GroupSizeResult, Unit[]>(),
     };
+    private readonly rules: CompiledOrgRule[];
 
     constructor(
         private readonly org: OrgDefinition,
         private readonly hierarchicalAggregation: boolean
-    ) {}
+    ) {
+        this.rules = compileRules(org.rules);
+    }
 
     resolveFromUnits(units: Unit[]): GroupSizeResult[] {
         if (units.length === 0) {
             return [EMPTY_RESULT];
         }
 
-        const leafCandidates = allocateLeaves(units, this.org.rules, this.org.getPointRange, this.context);
+        const leafCandidates = allocateLeaves(units, this.rules, this.org.getPointRange, this.context);
 
         let bestComposed: GroupSizeResult[] | null = null;
         let bestScore: {
@@ -1921,8 +2019,8 @@ class OrgSolver {
 
         for (const leafGroups of leafCandidates) {
             if (leafGroups.length === 0) continue;
-            const composed = composeUpward(leafGroups, this.org.rules, this.context);
-            const wrapped = wrapResult(composed, this.org.rules, this.context, this.hierarchicalAggregation);
+            const composed = composeUpward(leafGroups, this.rules, this.context);
+            const wrapped = wrapResult(composed, this.rules, this.context, this.hierarchicalAggregation);
             const score = scoreResult(wrapped, units, this.context);
 
             if (!bestScore || betterResult(score, bestScore)) {
@@ -1944,15 +2042,15 @@ class OrgSolver {
         }
 
         const allUnits = collectAllUnits(groupResults, this.context);
-        const normalized = normalizeGroupsToOrg(groupResults, this.org.rules);
+        const normalized = normalizeGroupsToOrg(groupResults, this.rules);
 
         if (normalized.length === 1) {
             return attachTopLevelLeftovers([normalized[0]], allUnits, this.context);
         }
 
-        const composed = composeUpward(normalized, this.org.rules, this.context);
+        const composed = composeUpward(normalized, this.rules, this.context);
         return attachTopLevelLeftovers(
-            wrapResult(composed, this.org.rules, this.context, this.hierarchicalAggregation),
+            wrapResult(composed, this.rules, this.context, this.hierarchicalAggregation),
             allUnits,
             this.context,
         );
@@ -1961,11 +2059,6 @@ class OrgSolver {
 
 /**
  * Evaluate a single group of units and return the structural result.
- *
- * Wide combinator approach:
- * 1. Generate all leaf allocation candidates (customMatch branches)
- * 2. Compose each candidate upward
- * 3. Pick the best result (highest tier, fewest groups, highest priority)
  */
 export function resolveFromUnits(units: Unit[], techBase: TechBase, factionName: string, hierarchicalAggregation: boolean = false): GroupSizeResult[] {
     return new OrgSolver(resolveOrg(techBase, factionName), hierarchicalAggregation).resolveFromUnits(units);
