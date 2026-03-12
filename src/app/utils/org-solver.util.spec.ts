@@ -135,6 +135,107 @@ function collectDescendantGroups(group: GroupSizeResult): GroupSizeResult[] {
 
 describe('resolveFromUnits', () => {
 
+    it('resolves 4 BM in a Lance', () => {
+        const units: Unit[] = [
+            createBM('BM1'),
+            createBM('BM2'),
+            createBM('BM3'),
+            createBM('BM4'),
+        ];
+
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Random Inner Sphere Faction');
+
+        expect(result[0].name).toBe('Lance');
+        expect(result[0].type).toBe('Lance');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 3 BM in a Under-Strength Lance', () => {
+        const units: Unit[] = [
+            createBM('BM1'),
+            createBM('BM2'),
+            createBM('BM3'),
+        ];
+
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Random Inner Sphere Faction');
+
+        expect(result[0].name).toBe('Under-Strength Lance');
+        expect(result[0].type).toBe('Lance');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 5 BM in a Reinforced Lance', () => {
+        const units: Unit[] = [
+            createBM('BM1'),
+            createBM('BM2'),
+            createBM('BM3'),
+            createBM('BM4'),
+            createBM('BM5'),
+        ];
+
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Random Inner Sphere Faction');
+
+        expect(result[0].name).toBe('Reinforced Lance');
+        expect(result[0].type).toBe('Lance');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 6 BM in a Fortified Lance', () => {
+        const units: Unit[] = [
+            createBM('BM1'),
+            createBM('BM2'),
+            createBM('BM3'),
+            createBM('BM4'),
+            createBM('BM5'),
+            createBM('BM6'),
+        ];
+
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Random Inner Sphere Faction');
+
+        expect(result[0].name).toBe('Fortified Lance');
+        expect(result[0].type).toBe('Lance');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 7 BM as an Under-Strength Company', () => {
+        const units: Unit[] = [
+            createBM('BM1'),
+            createBM('BM2'),
+            createBM('BM3'),
+            createBM('BM4'),
+            createBM('BM5'),
+            createBM('BM6'),
+            createBM('BM7'),
+        ];
+
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Random Inner Sphere Faction');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Under-Strength Company');
+        expect(result[0].type).toBe('Company');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 8 BM as an Under-Strength Company', () => {
+        const units: Unit[] = [
+            createBM('BM1'),
+            createBM('BM2'),
+            createBM('BM3'),
+            createBM('BM4'),
+            createBM('BM5'),
+            createBM('BM6'),
+            createBM('BM7'),
+            createBM('BM8'),
+        ];
+
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Random Inner Sphere Faction');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Under-Strength Company');
+        expect(result[0].type).toBe('Company');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
     it('resolves 4 CV and 2 BM to an Augmented Lance', () => {
         const units: Unit[] = [
             createCV('CV1'),
@@ -310,6 +411,20 @@ describe('resolveFromUnits', () => {
         expect(result[0].leftoverUnits?.length).toBe(2);
         expect(result[0].leftoverUnits?.every(unit => unit.type === 'Tank')).toBeTrue();
         expect(descendantGroups.every(group => group.leftoverUnits === undefined)).toBeTrue();
+    });
+
+    it('98 BM makes 14x Sept', () => {
+        const units: Unit[] = [];
+        for (let i = 0; i < 98; i++) {
+            units.push(createBM(`BM${i + 1}`));
+        }
+
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Society', true);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('14x Sept');
+        expect(result[0].type).toBe('Sept');
+        expect(result[0].leftoverUnits).toBeUndefined();
     });
 
     it('resolves 2 BM plus 1 AF as Air Lance', () => {
