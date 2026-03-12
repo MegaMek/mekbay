@@ -147,6 +147,70 @@ function buildUnitNameCountKey(
     return parts.join('|');
 }
 
+function getAllowedCustomMatchUnitCounts(
+    rule: OrgTypeRule,
+    totalUnits: number,
+): number[] | null {
+    if (!rule.customMatchUnitCounts || rule.customMatchUnitCounts.length === 0) {
+        return null;
+    }
+
+    const filtered = Array.from(new Set(rule.customMatchUnitCounts))
+        .filter(count => Number.isInteger(count) && count > 0 && count <= totalUnits)
+        .sort((a, b) => a - b);
+
+    return filtered.length > 0 ? filtered : [];
+}
+
+function countConstrainedCombinations(
+    maxPerBucket: ReadonlyArray<number>,
+    allowedTotals: ReadonlyArray<number>,
+    cap: number,
+): number {
+    if (allowedTotals.length === 0) return 0;
+
+    const suffixCapacity = new Array(maxPerBucket.length + 1).fill(0);
+    for (let i = maxPerBucket.length - 1; i >= 0; i--) {
+        suffixCapacity[i] = suffixCapacity[i + 1] + maxPerBucket[i];
+    }
+
+    const allowedSet = new Set(allowedTotals);
+    const memo = new Map<string, number>();
+
+    function visit(idx: number, used: number): number {
+        const key = `${idx}:${used}`;
+        const cached = memo.get(key);
+        if (cached !== undefined) return cached;
+
+        const remainingCapacity = suffixCapacity[idx];
+        const canStillReachAllowed = allowedTotals.some(total => total >= used && total <= used + remainingCapacity);
+        if (!canStillReachAllowed) {
+            memo.set(key, 0);
+            return 0;
+        }
+
+        if (idx === maxPerBucket.length) {
+            const result = allowedSet.has(used) ? 1 : 0;
+            memo.set(key, result);
+            return result;
+        }
+
+        let total = 0;
+        for (let count = 0; count <= maxPerBucket[idx]; count++) {
+            total += visit(idx + 1, used + count);
+            if (total > cap) {
+                memo.set(key, cap + 1);
+                return cap + 1;
+            }
+        }
+
+        memo.set(key, total);
+        return total;
+    }
+
+    return visit(0, 0);
+}
+
 /** A shape defines how many units from each same-name bucket are needed. */
 type Shape = number[]; // shape[i] = count from sameUnitCountBuckets[i]
 
@@ -179,25 +243,45 @@ function findValidShapes(
     const shapes: Shape[] = [];
     const totalUnits = eligible.length;
     const shapeMatchCache = getCustomMatchMemo(rule, context);
+    const allowedUnitCounts = getAllowedCustomMatchUnitCounts(rule, totalUnits);
 
     // Enumerate all combinations of counts (0..bucketSize) for each same-name bucket.
     const maxPerBucket = sameUnitCountBucketList.map(bucket => bucket.units.length);
 
-    // Safety: cap total combinations at ~50k to prevent runaway enumeration
-    let totalCombos = 1;
-    for (const m of maxPerBucket) {
-        totalCombos *= (m + 1);
-        if (totalCombos > 50_000) {
-            console.warn(`Too many combinations (${totalCombos}) for customMatch rule ${rule.type}, skipping shape enumeration`);
-            return { sameUnitCountBuckets: sameUnitCountBucketList, shapes: [] };
+    // Safety: cap total combinations at ~50k to prevent runaway enumeration.
+    let totalCombos = 0;
+    if (allowedUnitCounts) {
+        totalCombos = countConstrainedCombinations(maxPerBucket, allowedUnitCounts, 50_000);
+    } else {
+        totalCombos = 1;
+        for (const m of maxPerBucket) {
+            totalCombos *= (m + 1);
+            if (totalCombos > 50_000) break;
         }
+    }
+    if (totalCombos > 50_000) {
+        console.warn(`Too many combinations (${totalCombos}) for customMatch rule ${rule.type}, skipping shape enumeration`);
+        return { sameUnitCountBuckets: sameUnitCountBucketList, shapes: [] };
+    }
+
+    const allowedUnitCountSet = allowedUnitCounts ? new Set(allowedUnitCounts) : null;
+    const suffixCapacity = new Array(maxPerBucket.length + 1).fill(0);
+    for (let i = maxPerBucket.length - 1; i >= 0; i--) {
+        suffixCapacity[i] = suffixCapacity[i + 1] + maxPerBucket[i];
     }
 
     const current: number[] = new Array(sameUnitCountBucketList.length).fill(0);
 
     function enumerate(idx: number, used: number): void {
+        if (allowedUnitCounts) {
+            const remainingCapacity = suffixCapacity[idx];
+            const canStillReachAllowed = allowedUnitCounts.some(total => total >= used && total <= used + remainingCapacity);
+            if (!canStillReachAllowed) return;
+        }
+
         if (idx === sameUnitCountBucketList.length) {
             if (used === 0) return;
+            if (allowedUnitCountSet && !allowedUnitCountSet.has(used)) return;
             const shapeKey = buildUnitNameCountKey(sameUnitCountBucketList, current);
             let matchScore = shapeMatchCache.get(shapeKey);
             if (matchScore === undefined) {
@@ -395,6 +479,11 @@ function getMinimumModifierCount(rule: OrgTypeRule): number {
     return mods.length > 0 ? mods[0][1] : 0;
 }
 
+function getMaximumModifierCount(rule: OrgTypeRule): number {
+    const mods = sortedModifiers(rule);
+    return mods.length > 0 ? mods[mods.length - 1][1] : 0;
+}
+
 /**
  * Find the best sub-regular modifier for leftovers.
  * Returns the modifier whose count is the largest value <= leftoverCount
@@ -430,6 +519,12 @@ function findClosestModifier(rule: OrgTypeRule, targetCount: number): [string, n
     return best;
 }
 
+function findExactModifier(rule: OrgTypeRule, targetCount: number): [string, number] | null {
+    const exactMatches = sortedModifiers(rule).filter(([, count]) => Math.abs(count - targetCount) < 1e-9);
+    if (exactMatches.length === 0) return null;
+    return exactMatches.find(([prefix]) => prefix === '') ?? exactMatches[0];
+}
+
 /** Build the display name for a rule + modifier prefix. */
 function buildName(rule: OrgTypeRule, prefix: string): string {
     return prefix ? prefix + rule.type : rule.type;
@@ -461,11 +556,21 @@ function findClosestTierRule(targetTier: number, tierMap: Map<number, OrgTypeRul
     return distLower <= distUpper ? tierMap.get(lower) : tierMap.get(upper);
 }
 
+function buildGroupedName(groups: ReadonlyArray<GroupSizeResult>): string {
+    const nameCounts = new Map<string, number>();
+    for (const group of groups) {
+        nameCounts.set(group.name, (nameCounts.get(group.name) ?? 0) + 1);
+    }
+
+    return Array.from(nameCounts.entries())
+        .map(([name, count]) => count > 1 ? `${count}x ${name}` : name)
+        .join(' + ');
+}
 /**
  * Map GroupSizeResults whose types don't exist in the target org's rules
  * to their tier-equivalent types in the target org.
  */
-function normalizeGroupsToOrg(groupResults: GroupSizeResult[], rules: OrgTypeRule[]): GroupSizeResult[] {
+function normalizeGroupsToOrg(groupResults: GroupSizeResult[], rules: ReadonlyArray<OrgTypeRule>): GroupSizeResult[] {
     const knownTypes = new Set(rules.map(r => r.type));
     const tierMap = new Map<number, OrgTypeRule>();
     for (const r of rules) {
@@ -553,6 +658,18 @@ function allocateLeaf(
     const totalPts = unitPointTotal(units, getPointRange);
     if (totalPts <= 0) return [];
 
+    const exactModifier = findExactModifier(rule, totalPts);
+    if (exactModifier) {
+        return [{
+            name: buildName(rule, exactModifier[0]),
+            type: rule.type,
+            countsAsType: rule.countsAs ?? null,
+            tier: resolveTier(rule, exactModifier[0]),
+            units,
+            tag: rule.tag,
+        }];
+    }
+
     const regular = getRegularCount(rule);
     const n = Math.floor(totalPts / regular);
 
@@ -621,7 +738,7 @@ function allocateLeaf(
                 units: leftoverUnits,
                 tag: rule.tag,
             });
-        } else {
+        } else if (getMaximumModifierCount(rule) > regular) {
             // Assimilate: upgrade the last regular instance
             const upgradedCount = regular + leftoverPts;
             const [prefix] = findClosestModifier(rule, upgradedCount);
@@ -652,7 +769,7 @@ function allocateLeaf(
  */
 function allocateLeaves(
     units: Unit[],
-    rules: OrgTypeRule[],
+    rules: ReadonlyArray<OrgTypeRule>,
     getPointRange: (u: Unit[]) => PointRange,
     context: SolverContext,
 ): GroupSizeResult[][] {
@@ -731,7 +848,7 @@ function allocateLeaves(
  */
 function allocateSplitByAffinity(
     units: Unit[],
-    rules: OrgTypeRule[],
+    rules: ReadonlyArray<OrgTypeRule>,
     getPointRange: (u: Unit[]) => PointRange,
     context: SolverContext,
 ): GroupSizeResult[] {
@@ -782,7 +899,7 @@ function allocateSplitByAffinity(
  */
 function findBestLeafAllocation(
     units: Unit[],
-    rules: OrgTypeRule[],
+    rules: ReadonlyArray<OrgTypeRule>,
     getPointRange: (u: Unit[]) => PointRange,
     context: SolverContext,
 ): GroupSizeResult[] {
@@ -819,7 +936,7 @@ function findBestLeafAllocation(
  * Tries ALL viable composed rules at each step and picks the one that
  * produces the highest-tier, most regular result.
  */
-function composeUpward(groups: GroupSizeResult[], rules: OrgTypeRule[], context: SolverContext): GroupSizeResult[] {
+function composeUpward(groups: GroupSizeResult[], rules: ReadonlyArray<OrgTypeRule>, context: SolverContext): GroupSizeResult[] {
     let current = [...groups];
 
     for (let iter = 0; iter < 20 && current.length >= 2; iter++) {
@@ -855,6 +972,233 @@ function maxTier(groups: ReadonlyArray<GroupSizeResult>): number {
     }
     return tier;
 }
+
+// ─── Upward Collapse ────────────────────────────────────────────────────────
+
+function findRuleForGroup(group: GroupSizeResult, rules: ReadonlyArray<OrgTypeRule>): OrgTypeRule | undefined {
+    if (!group.type) return undefined;
+
+    const candidates = rules.filter(rule => rule.type === group.type);
+    if (candidates.length === 0) return undefined;
+
+    return candidates.find(rule => getGroupModifier(rule, group) !== null) ?? candidates[0];
+}
+
+function getGroupModifier(rule: OrgTypeRule, group: GroupSizeResult): [string, number] | null {
+    for (const [prefix, count] of sortedModifiers(rule)) {
+        if (group.name === buildName(rule, prefix)) {
+            return [prefix, count];
+        }
+    }
+
+    if (group.name === rule.type) {
+        return ['', getRegularCount(rule)];
+    }
+
+    return null;
+}
+
+function compareCountPartitions(
+    a: ReadonlyArray<number>,
+    b: ReadonlyArray<number>,
+    regular: number,
+): boolean {
+    if (a.length !== b.length) return a.length < b.length;
+
+    const aSpread = a[0] - a[a.length - 1];
+    const bSpread = b[0] - b[b.length - 1];
+    if (aSpread !== bSpread) return aSpread < bSpread;
+
+    const aRegularDist = a.reduce((sum, count) => sum + Math.abs(count - regular), 0);
+    const bRegularDist = b.reduce((sum, count) => sum + Math.abs(count - regular), 0);
+    if (aRegularDist !== bRegularDist) return aRegularDist < bRegularDist;
+
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return a[i] > b[i];
+    }
+
+    return false;
+}
+
+function partitionCountToModifiers(rule: OrgTypeRule, totalCount: number): number[] | null {
+    const counts = Array.from(new Set(sortedModifiers(rule).map(([, count]) => count))).sort((a, b) => b - a);
+    const regular = getRegularCount(rule);
+    let best: number[] | null = null;
+
+    function visit(remaining: number, current: number[], startIndex: number): void {
+        if (remaining === 0) {
+            const candidate = [...current].sort((a, b) => b - a);
+            if (!best || compareCountPartitions(candidate, best, regular)) {
+                best = candidate;
+            }
+            return;
+        }
+
+        if (best && current.length >= best.length) return;
+
+        for (let i = startIndex; i < counts.length; i++) {
+            const count = counts[i];
+            if (count > remaining) continue;
+            current.push(count);
+            visit(remaining - count, current, i);
+            current.pop();
+        }
+    }
+
+    visit(totalCount, [], 0);
+    return best;
+}
+
+function assignGroupsToCounts(
+    groups: ReadonlyArray<{ group: GroupSizeResult; count: number }>,
+    targetCounts: ReadonlyArray<number>,
+): GroupSizeResult[][] | null {
+    const sortedGroups = [...groups].sort((a, b) => b.count - a.count);
+    const buckets = targetCounts.map(target => ({ target, groups: [] as GroupSizeResult[], total: 0 }));
+
+    function visit(index: number): boolean {
+        if (index === sortedGroups.length) {
+            return buckets.every(bucket => bucket.total === bucket.target);
+        }
+
+        const entry = sortedGroups[index];
+        for (const bucket of buckets) {
+            if (bucket.total + entry.count > bucket.target) continue;
+            bucket.groups.push(entry.group);
+            bucket.total += entry.count;
+            if (visit(index + 1)) return true;
+            bucket.groups.pop();
+            bucket.total -= entry.count;
+        }
+
+        return false;
+    }
+
+    return visit(0) ? buckets.map(bucket => bucket.groups) : null;
+}
+
+function repackSameTypeGroups(
+    groups: ReadonlyArray<GroupSizeResult>,
+    rules: ReadonlyArray<OrgTypeRule>,
+): GroupSizeResult[] | null {
+    if (groups.length < 2) return null;
+
+    const rule = findRuleForGroup(groups[0], rules);
+    if (!rule || groups.some(group => group.type !== groups[0].type)) return null;
+
+    const entries = groups.map(group => {
+        const modifier = getGroupModifier(rule, group);
+        return modifier ? { group, count: modifier[1] } : null;
+    });
+    if (entries.some(entry => entry === null)) return null;
+
+    const typedEntries = entries as Array<{ group: GroupSizeResult; count: number }>;
+    const totalCount = typedEntries.reduce((sum, entry) => sum + entry.count, 0);
+    const targetCounts = partitionCountToModifiers(rule, totalCount);
+    if (!targetCounts || targetCounts.length >= groups.length) return null;
+
+    const assigned = assignGroupsToCounts(typedEntries, targetCounts);
+    if (!assigned) return null;
+
+    const modifierLookup = new Map<number, string[]>();
+    for (const [prefix, count] of sortedModifiers(rule)) {
+        if (!modifierLookup.has(count)) modifierLookup.set(count, []);
+        modifierLookup.get(count)!.push(prefix);
+    }
+
+    return assigned.map(children => {
+        const childCount = children.reduce((sum, child) => {
+            const modifier = getGroupModifier(rule, child);
+            return sum + (modifier?.[1] ?? 0);
+        }, 0);
+        const childTier = children.reduce((sum, child) => sum + child.tier, 0);
+        const prefixes = modifierLookup.get(childCount) ?? [''];
+        const prefix = prefixes.includes('') ? '' : prefixes[0];
+
+        return {
+            name: buildName(rule, prefix),
+            type: rule.type,
+            countsAsType: rule.countsAs ?? null,
+            tier: childTier,
+            children,
+            tag: rule.tag,
+            priority: rule.priority,
+        };
+    });
+}
+
+function collapseHighestTierGroups(
+    groups: GroupSizeResult[],
+    rules: ReadonlyArray<OrgTypeRule>,
+    context: SolverContext,
+): GroupSizeResult[] {
+    let current = [...groups];
+
+    for (let iter = 0; iter < 20 && current.length > 1; iter++) {
+        current.sort((a, b) => b.tier - a.tier);
+        const highestTier = current[0].tier;
+        const highestGroups = current.filter(group => group.tier === highestTier);
+        const lowerGroups = current.filter(group => group.tier !== highestTier);
+
+        const composedHighest = composeUpward(highestGroups, rules, context);
+        if (
+            composedHighest.length < highestGroups.length ||
+            maxTier(composedHighest) > highestTier
+        ) {
+            current = [...lowerGroups, ...composedHighest];
+            continue;
+        }
+
+        let repacked = false;
+        const byType = new Map<string, GroupSizeResult[]>();
+        for (const group of highestGroups) {
+            const key = `${group.type ?? 'null'}:${group.name}`;
+            if (!byType.has(key)) byType.set(key, []);
+            byType.get(key)!.push(group);
+        }
+
+        const nextHighest: GroupSizeResult[] = [];
+        for (const bucket of byType.values()) {
+            const repackedBucket = repackSameTypeGroups(bucket, rules);
+            if (repackedBucket && repackedBucket.length < bucket.length) {
+                nextHighest.push(...repackedBucket);
+                repacked = true;
+            } else {
+                nextHighest.push(...bucket);
+            }
+        }
+
+        if (!repacked) break;
+        current = [...lowerGroups, ...nextHighest];
+    }
+
+    return current.sort((a, b) => b.tier - a.tier);
+}
+
+function hierarchicallyAggregateGroups(
+    groups: GroupSizeResult[],
+    rules: ReadonlyArray<OrgTypeRule>,
+    context: SolverContext,
+): GroupSizeResult[] {
+    const collapsed = collapseHighestTierGroups(groups, rules, context);
+    if (collapsed.length <= 1) return collapsed;
+
+    const highestTier = collapsed[0].tier;
+    const highestGroups = collapsed.filter(group => group.tier === highestTier);
+    if (highestGroups.length === 1) return [highestGroups[0]];
+
+    const [keep] = highestGroups;
+    const tier = highestGroups.reduce((sum, group) => sum + group.tier, 0);
+
+    return [{
+        ...keep,
+        name: buildGroupedName(highestGroups),
+        tier,
+        children: highestGroups,
+    }];
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
 
 function betterScore(a: CompositionScore, b: CompositionScore): boolean {
     if (a.composedTier !== b.composedTier) return a.composedTier > b.composedTier;
@@ -980,7 +1324,7 @@ function collectIndexCombinations(length: number, size: number): number[][] {
 }
 
 /** Check whether any composed rule can consume groups from the result set. */
-function canPromoteFurther(groups: GroupSizeResult[], rules: OrgTypeRule[]): boolean {
+function canPromoteFurther(groups: GroupSizeResult[], rules: ReadonlyArray<OrgTypeRule>): boolean {
     for (const rule of rules) {
         if (!rule.composedOfAny || rule.composedOfAny.length === 0) continue;
         const accepted = new Set(rule.composedOfAny);
@@ -1130,7 +1474,7 @@ function applyComposedRule(
  * Scoring prefers: higher composed tier → more consumed → promotability
  * → strict count → priority sum.
  */
-function findBestComposition(groups: GroupSizeResult[], rules: OrgTypeRule[], context: SolverContext): GroupSizeResult[] | null {
+function findBestComposition(groups: GroupSizeResult[], rules: ReadonlyArray<OrgTypeRule>, context: SolverContext): GroupSizeResult[] | null {
     let bestResult: GroupSizeResult[] | null = null;
     let bestScore: CompositionScore = { composedTier: -1, consumed: 0, canPromote: false, strictCount: 0, prioritySum: 0 };
 
@@ -1190,8 +1534,9 @@ function findBestComposition(groups: GroupSizeResult[], rules: OrgTypeRule[], co
     for (const { rule, matching, nonMatching } of viable) {
         const matchingGroups = matching.map(i => groups[i]);
         const nonMatchingGroups = nonMatching.map(i => groups[i]);
+        const canComposeWholeMatching = canRuleComposeGroups(rule, matchingGroups, context);
 
-        if (canRuleComposeGroups(rule, matchingGroups, context)) {
+        if (canComposeWholeMatching) {
             const result = applyComposedRule(rule, matchingGroups, matching.length);
             if (result) {
                 const newGroups = [...nonMatchingGroups, ...result.groups];
@@ -1203,18 +1548,20 @@ function findBestComposition(groups: GroupSizeResult[], rules: OrgTypeRule[], co
             }
         }
 
-        for (const candidate of collectSubsetCompositionCandidates(rule, matchingGroups, context)) {
-            if (candidate.chosenIndices.length === matching.length) continue;
+        if (!canComposeWholeMatching) {
+            for (const candidate of collectSubsetCompositionCandidates(rule, matchingGroups, context)) {
+                if (candidate.chosenIndices.length === matching.length) continue;
 
-            const chosenSet = new Set(candidate.chosenIndices);
-            const newGroups = [...nonMatchingGroups, ...candidate.result.groups];
-            for (let i = 0; i < matchingGroups.length; i++) {
-                if (!chosenSet.has(i)) {
-                    newGroups.push(matchingGroups[i]);
+                const chosenSet = new Set(candidate.chosenIndices);
+                const newGroups = [...nonMatchingGroups, ...candidate.result.groups];
+                for (let i = 0; i < matchingGroups.length; i++) {
+                    if (!chosenSet.has(i)) {
+                        newGroups.push(matchingGroups[i]);
+                    }
                 }
-            }
 
-            evaluateCandidate(newGroups, candidate.result.consumed, maxTier(candidate.result.groups), [rule]);
+                evaluateCandidate(newGroups, candidate.result.consumed, maxTier(candidate.result.groups), [rule]);
+            }
         }
     }
 
@@ -1285,16 +1632,54 @@ function findBestComposition(groups: GroupSizeResult[], rules: OrgTypeRule[], co
  * If there's exactly one group, return it directly.
  * If nothing, return a single empty result.
  */
-function wrapResult(groups: GroupSizeResult[]): GroupSizeResult[] {
+function wrapResult(
+    groups: GroupSizeResult[],
+    rules: ReadonlyArray<OrgTypeRule>,
+    context: SolverContext,
+    hierarchicalAggregation: boolean,
+): GroupSizeResult[] {
     if (groups.length === 0) return [EMPTY_RESULT];
     if (groups.length === 1) return groups;
-    return [...groups].sort((a, b) => b.tier - a.tier);
+    if (!hierarchicalAggregation) {
+        return [...groups].sort((a, b) => b.tier - a.tier);
+    }
+    return hierarchicallyAggregateGroups(groups, rules, context);
 }
 
 // ─── Org Resolution ────────────────────────────────────────────────────────────
 
 function resolveOrg(techBase: TechBase, factionName: string): OrgDefinition {
     return ORG_REGISTRY.find(e => e.match(techBase, factionName))?.org ?? DEFAULT_ORG;
+}
+
+function resolveOrgLabel(org: OrgDefinition): string {
+    const registryIndex = ORG_REGISTRY.findIndex(entry => entry.org === org);
+    if (registryIndex >= 0) {
+        return `registry:${registryIndex}`;
+    }
+    if (org === DEFAULT_ORG) {
+        return 'default';
+    }
+    return 'unknown';
+}
+
+function nowMs(): number {
+    return typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now();
+}
+
+function logOrgSolverTiming(
+    orgLabel: string,
+    mode: 'units' | 'groups',
+    count: number,
+    hierarchicalAggregation: boolean,
+    startedAt: number,
+): void {
+    const durationMs = nowMs() - startedAt;
+    console.log(
+        `[OrgSolver:${orgLabel}] mode=${mode} count=${count} hierarchical=${hierarchicalAggregation} duration=${durationMs.toFixed(3)}ms`,
+    );
 }
 
 // ─── Public API ────────────────────────────────────────────────────────────────
@@ -1358,9 +1743,15 @@ class OrgSolver {
         ruleFilterCache: new WeakMap<OrgTypeRule, Map<string, boolean>>(),
     };
 
-    constructor(private readonly org: OrgDefinition) {}
+    constructor(
+        private readonly org: OrgDefinition,
+        private readonly hierarchicalAggregation: boolean,
+        private readonly orgLabel: string,
+    ) {}
 
     resolveFromUnits(units: Unit[]): GroupSizeResult[] {
+        const startedAt = nowMs();
+        try {
         if (units.length === 0) {
             return [EMPTY_RESULT];
         }
@@ -1379,7 +1770,7 @@ class OrgSolver {
         for (const leafGroups of leafCandidates) {
             if (leafGroups.length === 0) continue;
             const composed = composeUpward(leafGroups, this.org.rules, this.context);
-            const wrapped = wrapResult(composed);
+            const wrapped = wrapResult(composed, this.org.rules, this.context, this.hierarchicalAggregation);
             const score = scoreResult(wrapped, units, this.context);
 
             if (!bestScore || betterResult(score, bestScore)) {
@@ -1393,9 +1784,14 @@ class OrgSolver {
         }
 
         return attachTopLevelLeftovers(bestComposed, units, this.context);
+        } finally {
+            logOrgSolverTiming(this.orgLabel, 'units', units.length, this.hierarchicalAggregation, startedAt);
+        }
     }
 
     resolveFromGroups(groupResults: GroupSizeResult[]): GroupSizeResult[] {
+        const startedAt = nowMs();
+        try {
         if (groupResults.length === 0) {
             return [EMPTY_RESULT];
         }
@@ -1408,7 +1804,14 @@ class OrgSolver {
         }
 
         const composed = composeUpward(normalized, this.org.rules, this.context);
-        return attachTopLevelLeftovers(wrapResult(composed), allUnits, this.context);
+        return attachTopLevelLeftovers(
+            wrapResult(composed, this.org.rules, this.context, this.hierarchicalAggregation),
+            allUnits,
+            this.context,
+        );
+        } finally {
+            logOrgSolverTiming(this.orgLabel, 'groups', groupResults.length, this.hierarchicalAggregation, startedAt);
+        }
     }
 }
 
@@ -1421,7 +1824,8 @@ class OrgSolver {
  * 3. Pick the best result (highest tier, fewest groups, highest priority)
  */
 export function resolveFromUnits(units: Unit[], techBase: TechBase, factionName: string, hierarchicalAggregation: boolean = false): GroupSizeResult[] {
-    return new OrgSolver(resolveOrg(techBase, factionName)).resolveFromUnits(units);
+    const org = resolveOrg(techBase, factionName);
+    return new OrgSolver(org, hierarchicalAggregation, resolveOrgLabel(org)).resolveFromUnits(units);
 }
 
 /**
@@ -1429,5 +1833,6 @@ export function resolveFromUnits(units: Unit[], techBase: TechBase, factionName:
  * Groups are taken as-is (not deconstructed) and composed upward.
  */
 export function resolveFromGroups(techBase: TechBase, factionName: string, groupResults: GroupSizeResult[], hierarchicalAggregation: boolean = false): GroupSizeResult[] {
-    return new OrgSolver(resolveOrg(techBase, factionName)).resolveFromGroups(groupResults);
+    const org = resolveOrg(techBase, factionName);
+    return new OrgSolver(org, hierarchicalAggregation, resolveOrgLabel(org)).resolveFromGroups(groupResults);
 }

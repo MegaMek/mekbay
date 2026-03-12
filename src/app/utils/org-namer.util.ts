@@ -50,12 +50,12 @@ export function getOrgFromGroup(group: UnitGroup | LoadForceGroup, factionName?:
         const force = group.force;
         const fn = force.faction()?.name ?? 'Mercenary';
         const allUnits = group.units().map(u => u.getUnit()).filter((u): u is Unit => u !== undefined);
-        return resolveFromUnits(allUnits, force.techBase(), fn);
+        return resolveFromUnits(allUnits, force.techBase(), fn, true);
     }
     const units = group.units
         .filter((u): u is typeof u & { unit: Unit } => u.unit !== undefined)
         .map(u => u.unit);
-    return resolveFromUnits(units, techBase!, factionName!);
+    return resolveFromUnits(units, techBase!, factionName!, true);
 }
 
 export function getOrgFromForce(force: Force): GroupSizeResult[];
@@ -67,14 +67,14 @@ export function getOrgFromForce(forceOrEntry: Force | LoadForceEntry, factionNam
         const groupResults = forceOrEntry.groups
             .filter(g => g.units.some(u => u.unit !== undefined))
             .flatMap(g => getOrgFromGroup(g, fn, techBase));
-        return resolveFromGroups(techBase, fn, groupResults);
+        return resolveFromGroups(techBase, fn, groupResults, true);
     }
     const fn = forceOrEntry.faction()?.name ?? 'Mercenary';
     const techBase = forceOrEntry.techBase();
     const groupResults = forceOrEntry.groups()
         .filter(g => g.units().length > 0)
         .flatMap(g => g.sizeResult() ?? []);
-    return resolveFromGroups(techBase, fn, groupResults);
+    return resolveFromGroups(techBase, fn, groupResults, true);
 }
 
 /**
@@ -92,7 +92,7 @@ export function getOrgFromForceCollection(
     const techBase = resolveTechBaseFromEntries(entries, factionName);
     const groupResults = childGroupResults
         ?? entries.flatMap(e => getOrgFromForce(e, factionName));
-    return resolveFromGroups(techBase, factionName, groupResults);
+    return resolveFromGroups(techBase, factionName, groupResults, true);
 }
 
 /**
@@ -112,7 +112,7 @@ export function aggregateGroupSizeResult(groups: GroupSizeResult[]): GroupSizeRe
     }
     // Sort by tier descending so the highest-tier group appears first
     const sorted = [...groups].sort((a, b) => b.tier - a.tier);
-
+    
     // Build descriptive name: count duplicates, e.g. "2x Galaxy + Flight"
     const nameCounts = new Map<string, number>();
     for (const g of sorted) {
