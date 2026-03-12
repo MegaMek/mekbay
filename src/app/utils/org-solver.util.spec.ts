@@ -412,4 +412,31 @@ describe('resolveFromUnits', () => {
         expect(result[0].type).toBe('Binary');
         expect(result[0].leftoverUnits).toBeUndefined();
     });
+
+    it('resolves 10 BM and 5 BA into a Trinary instead of a Binary promoted by internal Nova priority', () => {
+        const units: Unit[] = [
+            createUnit('BA1', 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit('BA2', 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit('BA3', 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit('BA4', 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit('BA5', 'Infantry', 'Battle Armor', false, ['MEC']),
+            createUnit('BM1', 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit('BM2', 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit('BM3', 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit('BM4', 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit('BM5', 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit('BM6', 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit('BM7', 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit('BM8', 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit('BM9', 'Mek', 'BattleMek Omni', true, ['OMNI']),
+            createUnit('BM10', 'Mek', 'BattleMek Omni', true, ['OMNI'])
+        ];
+
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Clan Test');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Trinary');
+        expect(result[0].type).toBe('Trinary');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
 });
