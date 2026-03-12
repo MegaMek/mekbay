@@ -614,7 +614,7 @@ export const ORG_REGISTRY: { match: (techBase: string, factionName: string) => b
     { match: (_, f) => f.includes('Clan'), org: ClanOrg },
     { match: (_, f) =>
         f.includes('Rasalhague Dominion') || f.includes('Raven Alliance') || f.includes('Wolf Empire') ||
-        f.includes('Escorpion') || f.includes('Scorpion Empire'),
+        f.includes('Escorpion') || f.includes('Scorpion Empire') || f.includes('Alyina Mercantile League'),
         org: ClanOrg,
     },
     // ISOrg is the default fallback if no other org matches
