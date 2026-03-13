@@ -136,6 +136,8 @@ export class PageViewerZoomPanService {
     private totalPages = 1;
     private nonInteractiveSelectors: string[] = [];
     private spaceEvenly = false;
+    private transformPageWrappers: HTMLElement[] = [];
+    private transformCanvasOverlays: HTMLElement[] = [];
 
     // Pointer tracking
     private pointers = new Map<number, { x: number; y: number }>();
@@ -220,6 +222,15 @@ export class PageViewerZoomPanService {
      */
     setDisplayedPages(count: number): void {
         this.actualDisplayedPages.set(Math.max(1, count));
+    }
+
+    /**
+     * Update the elements affected by transform changes.
+     * This avoids rescanning the DOM tree on every pan/zoom update.
+     */
+    setTransformTargets(pageWrappers: HTMLElement[], canvasOverlays: HTMLElement[] = []): void {
+        this.transformPageWrappers = pageWrappers;
+        this.transformCanvasOverlays = canvasOverlays;
     }
 
     /**
@@ -895,8 +906,7 @@ export class PageViewerZoomPanService {
 
         // Apply scale directly to each root SVG element (direct children of page-wrappers)
         // This fixes iOS blurry rendering without double-scaling nested SVGs
-        const pageWrappers = content.querySelectorAll('.page-wrapper') as NodeListOf<HTMLElement>;
-        pageWrappers.forEach((wrapper: HTMLElement) => {
+        this.transformPageWrappers.forEach((wrapper: HTMLElement) => {
             // Get the original left position (unscaled)
             const originalLeft = parseFloat(wrapper.dataset['originalLeft'] || wrapper.style.left) || 0;
             // Store original left if not already stored
@@ -909,7 +919,7 @@ export class PageViewerZoomPanService {
             wrapper.style.height = `${PAGE_HEIGHT * scale}px`;
             
             // Scale only the direct SVG child (not nested SVGs)
-            const rootSvg = wrapper.querySelector(':scope > svg') as SVGSVGElement;
+            const rootSvg = wrapper.querySelector(':scope > svg') as SVGSVGElement | null;
             if (rootSvg) {
                 rootSvg.style.transform = `scale(${scale})`;
                 rootSvg.style.transformOrigin = 'top left';
@@ -917,8 +927,7 @@ export class PageViewerZoomPanService {
         });
 
         // Also scale canvas overlays if present
-        const canvasOverlays = content.querySelectorAll('page-canvas-overlay') as NodeListOf<HTMLElement>;
-        canvasOverlays.forEach((overlay: HTMLElement) => {
+        this.transformCanvasOverlays.forEach((overlay: HTMLElement) => {
             const originalLeft = parseFloat(overlay.dataset['originalLeft'] || overlay.style.left) || 0;
             if (!overlay.dataset['originalLeft']) {
                 overlay.dataset['originalLeft'] = String(originalLeft);
