@@ -41,6 +41,16 @@ export function getEquivalentGroupCountAtTier(groupTier: number, baseTier: numbe
     return Math.pow(ORG_TIER_GROUPING_FACTOR, groupTier - baseTier);
 }
 
+export function getTierDeltaForEquivalentGroupCount(equivalentGroupCount: number): number {
+    if (equivalentGroupCount <= 0) return 0;
+    return Math.log(equivalentGroupCount) / Math.log(ORG_TIER_GROUPING_FACTOR);
+}
+
+export function getTierForRepeatedGroup(baseTier: number, repeatCount: number): number {
+    if (repeatCount <= 1) return baseTier;
+    return baseTier + getTierDeltaForEquivalentGroupCount(repeatCount);
+}
+
 export function getDynamicTierForModifier(
     baseTier: number,
     regularCount: number,
@@ -64,7 +74,7 @@ export function getAggregatedTier(groupTiers: ReadonlyArray<number>): number {
     );
 
     return floorToTwoDecimals(
-        baseTier + Math.log(equivalentBaseGroups) / Math.log(ORG_TIER_GROUPING_FACTOR),
+        baseTier + getTierDeltaForEquivalentGroupCount(equivalentBaseGroups),
     );
 }
 

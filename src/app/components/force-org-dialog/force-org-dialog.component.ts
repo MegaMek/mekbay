@@ -55,7 +55,7 @@ import { GameSystem } from '../../models/common.model';
 import { getUnitsAverageTechBase, type TechBase } from '../../models/tech.model';
 import type { SerializedOrganization, OrgPlacedForce, OrgGroupData } from '../../models/organization.model';
 import { ForceEntryPreviewDialogComponent } from '../force-entry-preview-dialog/force-entry-preview-dialog.component';
-import { getAggregatedGroupsResult, getDisplayGroups, getOrgFromForce, getOrgFromForceCollection } from '../../utils/org-namer.util';
+import { getAggregatedGroupsResult, getOrgFromForce, getOrgFromForceCollection } from '../../utils/org-namer.util';
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2.0;
@@ -222,7 +222,6 @@ interface ForceMetadata {
     factionName: string;
     techBase: TechBase;
     org: GroupSizeResult[];
-    displayGroups: GroupSizeResult[];
     aggregatedOrg: AggregatedGroupSizeResult;
     bvString: string;
     totalBv: number;
@@ -478,13 +477,12 @@ export class ForceOrgDialogComponent {
                 if (totalPv > 0 && totalPv !== force.pv) bvString += ` (${totalPv.toLocaleString()})`;
             }
             const org = getOrgFromForce(force, factionName);
-            const displayGroups = getDisplayGroups(org, techBase, factionName);
+            const aggregatedOrg = getAggregatedGroupsResult(org, techBase, factionName);
             result.set(force.instanceId, {
                 factionName,
                 techBase,
-                org: org,
-                displayGroups,
-                aggregatedOrg: getAggregatedGroupsResult(org, techBase, factionName),
+                org,
+                aggregatedOrg,
                 bvString,
                 totalBv,
                 totalPv,
@@ -566,7 +564,7 @@ export class ForceOrgDialogComponent {
                     previewChildGroups,
                 );
                 result.set(currentId, {
-                    orgName: this.getDisplayOrgResult(orgResult, entries, factionName).name,
+                    orgName: this.getAggregatedOrgResult(orgResult, entries, factionName).name,
                     totals: formatTotals(entries),
                     factionId: previewFactions.get(currentId),
                 });
@@ -596,7 +594,7 @@ export class ForceOrgDialogComponent {
             const descendants = group.descendants();
             const factionName = group.factionName() || 'Mercenary';
             group.orgName.set(descendants.length > 0
-                ? this.getDisplayOrgResult(
+                ? this.getAggregatedOrgResult(
                     this.computeHierarchicalOrgResult(group, descendants, groups, placed),
                     descendants,
                     factionName,
@@ -664,7 +662,7 @@ export class ForceOrgDialogComponent {
                 previewChildGroupsOverride,
             );
             childGroupResults.push(
-                ...this.getDisplayGroupsForEntries(childOrgResult, childEntries, childFactionName),
+                ...childOrgResult,  
             );
         }
 
@@ -679,7 +677,7 @@ export class ForceOrgDialogComponent {
         // Evaluate direct forces with the determined faction
         const directEntries = allEntries.filter(entry => !childEntryIds.has(entry.instanceId));
         for (const entry of directEntries) {
-            childGroupResults.push(...this.getForceDisplayOrgResults(entry));
+            childGroupResults.push(...this.getForceOrgResults(entry));
         }
 
         return this.computeOrgCollectionResult(allEntries, factionName, childGroupResults);
@@ -823,7 +821,7 @@ export class ForceOrgDialogComponent {
         return this.computeEntriesTechBaseUncached(entries, factionName);
     }
 
-    private getDisplayOrgResult(
+    private getAggregatedOrgResult(
         groups: GroupSizeResult[],
         entries: LoadForceEntry[],
         factionName: string,
@@ -835,29 +833,9 @@ export class ForceOrgDialogComponent {
         );
     }
 
-    private getDisplayGroupsForEntries(
-        groups: GroupSizeResult[],
-        entries: LoadForceEntry[],
-        factionName: string,
-    ): GroupSizeResult[] {
-        return getDisplayGroups(
-            groups,
-            this.getEntriesTechBase(entries, factionName),
-            factionName,
-        );
-    }
-
     private getForceOrgResults(force: LoadForceEntry): GroupSizeResult[] {
         return this.forcesData().get(force.instanceId)?.org
             ?? getOrgFromForce(force, this.getFactionName(force.factionId));
-    }
-
-    private getForceDisplayOrgResults(force: LoadForceEntry): GroupSizeResult[] {
-        const cached = this.forcesData().get(force.instanceId)?.displayGroups;
-        if (cached) return cached;
-
-        const factionName = this.getFactionName(force.factionId);
-        return this.getDisplayGroupsForEntries(this.getForceOrgResults(force), [force], factionName);
     }
 
     private computeOrgCollectionResult(
@@ -1240,7 +1218,7 @@ export class ForceOrgDialogComponent {
     private computeGroupPreview(a: Rect, b: Rect, entries: LoadForceEntry[], childGroupResults?: GroupSizeResult[]): GroupPreview {
         const factionId = getDominantFactionId(entries);
         const factionName = factionId !== undefined ? this.getFactionName(factionId) : 'Mercenary';
-        const aggregateResult = this.getDisplayOrgResult(
+        const aggregateResult = this.getAggregatedOrgResult(
             this.computeOrgCollectionResult(entries, factionName, childGroupResults),
             entries,
             factionName,
@@ -1906,32 +1884,23 @@ export class ForceOrgDialogComponent {
                 if (grpAction?.type === 'create-parent') {
                     const draggedEntries = this.collectDescendantForces(draggedGrp.id, currentPlaced, currentGroups);
                     const otherEntries = this.collectDescendantForces(grpAction.other.id, currentPlaced, currentGroups);
-                    const draggedFactionName = draggedGrp.factionName() || 'Mercenary';
-                    const otherFactionName = grpAction.other.factionName() || 'Mercenary';
                     grpChildGroupResults = [];
                     if (draggedEntries.length > 0) {
                         grpChildGroupResults.push(
-                            ...this.getDisplayGroupsForEntries(
-                                this.computeHierarchicalOrgResult(draggedGrp, draggedEntries, currentGroups, currentPlaced),
-                                draggedEntries,
-                                draggedFactionName,
-                            ),
+                            ...this.computeHierarchicalOrgResult(draggedGrp, draggedEntries, currentGroups, currentPlaced),
                         );
                     }
                     if (otherEntries.length > 0) {
                         grpChildGroupResults.push(
-                            ...this.getDisplayGroupsForEntries(
-                                this.computeHierarchicalOrgResult(grpAction.other, otherEntries, currentGroups, currentPlaced),
-                                otherEntries,
-                                otherFactionName,
-                            ),
+                            ...this.computeHierarchicalOrgResult(grpAction.other, otherEntries, currentGroups, currentPlaced),
                         );
                     }
                 } else if (grpAction?.type === 'join-parent' && grpEntries && grpEntries.length > 0) {
-                    grpChildGroupResults = this.getDisplayGroupsForEntries(
-                        this.computeHierarchicalOrgResult(draggedGrp, grpEntries, currentGroups, currentPlaced),
+                    grpChildGroupResults = this.computeHierarchicalOrgResult(
+                        draggedGrp,
                         grpEntries,
-                        draggedGrp.factionName() || 'Mercenary',
+                        currentGroups,
+                        currentPlaced,
                     );
                 }
             }

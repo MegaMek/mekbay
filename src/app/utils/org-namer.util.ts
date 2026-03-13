@@ -39,7 +39,12 @@ import { type Force, UnitGroup } from '../models/force.model';
 import { LoadForceEntry, type LoadForceGroup } from '../models/load-force-entry.model';
 import type { Unit } from '../models/units.model';
 import { getUnitsAverageTechBase, TechBase } from '../models/tech.model';
-import { getAggregatedTier, getDynamicTierForModifier } from './org-tier.util';
+import {
+    getAggregatedTier,
+    getDynamicTierForModifier,
+    getEquivalentGroupCountAtTier,
+    getTierForRepeatedGroup,
+} from './org-tier.util';
 
 /*
  * Author: Drake
@@ -134,7 +139,7 @@ export function getAggregatedGroupsResult(
     return aggregateGroupsResult(displayGroups, groups, org);
 }
 
-export function getDisplayGroups(
+function getDisplayGroups(
     groups: GroupSizeResult[],
     techBase: TechBase,
     factionName: string,
@@ -304,14 +309,15 @@ export function aggregateGroupsResult(
     }
     // Sort by tier descending so the highest-tier group appears first
     const sorted = [...groups].sort((a, b) => b.tier - a.tier);
-    
-    const parts = buildAggregatedNameParts(sorted, org);
 
     // Tier: each +1 tier is worth 3x groups of the previous tier.
     const tierSum = getAggregatedTier(sorted.map(group => group.tier));
+    const name = org
+        ? buildAggregatedDisplayName(sorted, tierSum, org)
+        : buildAggregatedNameParts(sorted).join(' + ');
 
     return {
-        name: parts.join(' + '),
+        name,
         tier: tierSum,
         groups: originalGroups,
     };
@@ -332,53 +338,80 @@ function resolveTechBaseFromEntries(entries: LoadForceEntry[], factionName: stri
     return resolveTechBase(entries.flatMap(e => e.groups.flatMap(g => g.units)), factionName);
 }
 
-function buildAggregatedNameParts(groups: GroupSizeResult[], org?: OrgDefinition): string[] {
+function buildAggregatedNameParts(groups: GroupSizeResult[]): string[] {
     const buckets = new Map<string, GroupSizeResult[]>();
     for (const group of groups) {
-        const state = org ? findGroupRuleState(group, org.rules) : null;
-        const key = state
-            ? `rule:${state.rule.type}:${group.tag ?? ''}`
-            : `${group.type ?? 'null'}:${group.name}:${group.tag ?? ''}`;
+        const key = `${group.type ?? 'null'}:${group.name}:${group.tag ?? ''}`;
         if (!buckets.has(key)) buckets.set(key, []);
         buckets.get(key)!.push(group);
     }
 
     const parts: string[] = [];
     for (const bucket of buckets.values()) {
-        parts.push(formatAggregatedBucketName(bucket, org));
+        const [first] = bucket;
+        if (!first) continue;
+        parts.push(bucket.length > 1 ? `${bucket.length}x ${first.name}` : first.name);
     }
 
     return parts;
 }
 
-function formatAggregatedBucketName(groups: GroupSizeResult[], org?: OrgDefinition): string {
-    const [first] = groups;
-    if (!first) return EMPTY_RESULT.name;
-    if (groups.length === 1 || !org) return groups.length > 1 ? `${groups.length}x ${first.name}` : first.name;
+function buildAggregatedDisplayName(
+    groups: GroupSizeResult[],
+    aggregatedTier: number,
+    org: OrgDefinition,
+): string {
+    const anchorState = findGroupRuleState(groups[0], org.rules);
+    if (!anchorState) return buildAggregatedNameParts(groups).join(' + ');
 
-    const state = findGroupRuleState(first, org.rules);
-    if (!state) return `${groups.length}x ${first.name}`;
+    return findClosestAggregatedRuleLabel(anchorState.rule, aggregatedTier);
+}
 
-    const sortedModifiers = getSortedModifiers(state.rule);
-    const regularIndex = sortedModifiers.findIndex(([prefix]) => prefix === '');
-    const highestModifier = sortedModifiers.at(-1);
+function findClosestAggregatedRuleLabel(rule: OrgTypeRule, aggregatedTier: number): string {
+    const modifiers = getSortedModifiers(rule);
+    if (modifiers.length === 0) return rule.type;
 
-    if (
-        regularIndex === -1 ||
-        !highestModifier ||
-        state.prefix !== highestModifier[0]
-    ) {
-        return `${groups.length}x ${first.name}`;
+    let bestName = buildRuleName(rule, modifiers[0][0]);
+    let bestTier = resolveTier(rule, modifiers[0][0]);
+    let bestDistance = Math.abs(aggregatedTier - bestTier);
+
+    const consider = (name: string, tier: number): void => {
+        const distance = Math.abs(aggregatedTier - tier);
+        if (
+            distance < bestDistance ||
+            (distance === bestDistance && tier < bestTier)
+        ) {
+            bestName = name;
+            bestTier = tier;
+            bestDistance = distance;
+        }
+    };
+
+    for (const [prefix] of modifiers) {
+        consider(buildRuleName(rule, prefix), resolveTier(rule, prefix));
     }
 
-    if (groups.length === 1) return first.name;
+    const regularIndex = modifiers.findIndex(([prefix]) => prefix === '');
+    if (regularIndex === -1) {
+        return bestName;
+    }
 
-    const multiplierCycle = sortedModifiers.slice(regularIndex);
-    if (multiplierCycle.length === 0) return `${groups.length}x ${first.name}`;
+    const multiplierCycle = modifiers.slice(regularIndex);
+    const tierSlack = 2;
+    const maxMultiplier = Math.max(
+        2,
+        Math.ceil(getEquivalentGroupCountAtTier(aggregatedTier, bestTier)) + 2,
+    );
 
-    const cycleIndex = (groups.length - 2) % multiplierCycle.length;
-    const multiplier = Math.floor((groups.length - 2) / multiplierCycle.length) + 2;
-    const [prefix] = multiplierCycle[cycleIndex];
+    for (let multiplier = 2; multiplier <= maxMultiplier; multiplier++) {
+        for (const [prefix] of multiplierCycle) {
+            const tier = getTierForRepeatedGroup(resolveTier(rule, prefix), multiplier);
+            if (tier > aggregatedTier + tierSlack && multiplier > maxMultiplier - 1) {
+                continue;
+            }
+            consider(`${multiplier}x ${buildRuleName(rule, prefix)}`, tier);
+        }
+    }
 
-    return `${multiplier}x ${buildRuleName(state.rule, prefix)}`;
+    return bestName;
 }

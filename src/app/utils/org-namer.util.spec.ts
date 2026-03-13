@@ -58,10 +58,25 @@ describe('getAggregatedGroupsResult', () => {
         }));
 
         expect(getAggregatedGroupsResult(makeBrigades(1), 'Inner Sphere', 'Mercenary').name).toBe('Reinforced Brigade');
-        expect(getAggregatedGroupsResult(makeBrigades(2), 'Inner Sphere', 'Mercenary').name).toBe('2x Brigade');
-        expect(getAggregatedGroupsResult(makeBrigades(3), 'Inner Sphere', 'Mercenary').name).toBe('2x Reinforced Brigade');
-        expect(getAggregatedGroupsResult(makeBrigades(4), 'Inner Sphere', 'Mercenary').name).toBe('3x Brigade');
-        expect(getAggregatedGroupsResult(makeBrigades(5), 'Inner Sphere', 'Mercenary').name).toBe('3x Reinforced Brigade');
+        expect(getAggregatedGroupsResult(makeBrigades(2), 'Inner Sphere', 'Mercenary').name).toBe('2x Reinforced Brigade');
+        expect(getAggregatedGroupsResult(makeBrigades(3), 'Inner Sphere', 'Mercenary').name).toBe('3x Reinforced Brigade');
+        expect(getAggregatedGroupsResult(makeBrigades(4), 'Inner Sphere', 'Mercenary').name).toBe('4x Reinforced Brigade');
+        expect(getAggregatedGroupsResult(makeBrigades(5), 'Inner Sphere', 'Mercenary').name).toBe('5x Reinforced Brigade');
+    });
+
+    it('aggregates repeated Under-Strength Brigade groups into the reinforced multiplier track', () => {
+        const makeUnderStrengthBrigades = (count: number): GroupSizeResult[] => Array.from({ length: count }, () => ({
+            name: 'Under-Strength Brigade',
+            type: 'Brigade',
+            countsAsType: null,
+            tier: 4.63,
+        }));
+
+        expect(getAggregatedGroupsResult(makeUnderStrengthBrigades(1), 'Inner Sphere', 'Mercenary').name).toBe('Under-Strength Brigade');
+        expect(getAggregatedGroupsResult(makeUnderStrengthBrigades(2), 'Inner Sphere', 'Mercenary').name).toBe('Reinforced Brigade');
+        expect(getAggregatedGroupsResult(makeUnderStrengthBrigades(3), 'Inner Sphere', 'Mercenary').name).toBe('2x Brigade');
+        expect(getAggregatedGroupsResult(makeUnderStrengthBrigades(4), 'Inner Sphere', 'Mercenary').name).toBe('2x Reinforced Brigade');
+        expect(getAggregatedGroupsResult(makeUnderStrengthBrigades(5), 'Inner Sphere', 'Mercenary').name).toBe('3x Brigade');
     });
 
     it('keeps mixed Brigade tiers when collapsing display groups', () => {
@@ -70,8 +85,31 @@ describe('getAggregatedGroupsResult', () => {
             { name: 'Brigade', type: 'Brigade', countsAsType: null, tier: 5 },
         ], 'Inner Sphere', 'Mercenary');
 
-        expect(result.name).toBe('2x Brigade');
+        expect(result.name).toBe('2x Reinforced Brigade');
         expect(result.tier).toBeCloseTo(5.77, 2);
+    });
+
+    it('aggregates same-type groups even when their display names differ', () => {
+        const result = getAggregatedGroupsResult([
+            { name: 'Under-Strength Brigade', type: 'Brigade', countsAsType: null, tier: 4.63 },
+            { name: 'Reinforced Brigade', type: 'Brigade', countsAsType: null, tier: 5.26 },
+        ], 'Inner Sphere', 'Mercenary');
+
+        expect(result.name).toBe('2x Brigade');
+        expect(result.tier).toBeCloseTo(5.62, 2);
+    });
+
+    it('assimilates lower-tier groups into the top aggregated display instead of listing them separately', () => {
+        const result = getAggregatedGroupsResult([
+            { name: 'Brigade', type: 'Brigade', countsAsType: null, tier: 5 },
+            { name: 'Brigade', type: 'Brigade', countsAsType: null, tier: 5 },
+            { name: 'Under-Strength Battalion', type: 'Battalion', countsAsType: null, tier: 2.63 },
+            { name: 'Single', type: 'Single', countsAsType: null, tier: 0 },
+        ], 'Inner Sphere', 'Mercenary');
+
+        expect(result.name).toBe('2x Brigade');
+        expect(result.name.includes(' + ')).toBeFalse();
+        expect(result.tier).toBeCloseTo(5.66, 2);
     });
 });
 
@@ -409,7 +447,7 @@ describe('org-namer aggregation flow', () => {
         expect(stages[0].rawGroups.every(group => group.type === 'Brigade')).toBeTrue();
         expect(stages[0].rawGroups.every(group => Math.abs(group.tier - 4.63) < 0.01)).toBeTrue();
         expect(stages[0].aggregated.groups).toBe(stages[0].rawGroups);
-        expect(stages[0].aggregated.name).toBe('11x Brigade');
+        expect(stages[0].aggregated.name).toBe('20x Reinforced Brigade');
         expect(stages[0].aggregated.tier).toBeCloseTo(7.98, 2);
     });
 });
