@@ -30,6 +30,7 @@
  * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
  * affiliated with Microsoft.
  */
+
 import { resolveFromGroups, resolveFromUnits, EMPTY_RESULT } from './org-solver.util';
 import { DEFAULT_ORG, ORG_REGISTRY } from './org-definitions.util';
 import type { AggregatedGroupSizeResult, GroupSizeResult } from './org-types';
@@ -38,6 +39,7 @@ import { type Force, UnitGroup } from '../models/force.model';
 import { LoadForceEntry, type LoadForceGroup } from '../models/load-force-entry.model';
 import type { Unit } from '../models/units.model';
 import { getUnitsAverageTechBase, TechBase } from '../models/tech.model';
+import { getAggregatedTier } from './org-tier.util';
 
 /*
  * Author: Drake
@@ -259,12 +261,17 @@ function promoteDisplayGroups(
 }
 
 /**
- * Aggregates multiple GroupSizeResults into a single result, summing their tiers and concatenating their names.
- * Used to produce a single top-level result for a force from multiple group-level results:
- * (e.g. "2x Galaxy", "Augmented Company + Flight") and an adjusted tier
- * (baseTier + sum(otherTier / baseTier) for each additional group).
- * @param groups 
- * @returns 
+ * Aggregates multiple GroupSizeResults into a single display result.
+ *
+ * Tier aggregation treats each +1 tier step as being worth 3x formations of the
+ * previous tier. For a highest-tier group at `baseTier`, each other group
+ * contributes `3^(groupTier - baseTier)` equivalent base groups. The final tier
+ * is then `baseTier + log_3(totalEquivalentBaseGroups)`.
+ *
+ * Examples:
+ * - 3x tier-5 groups => tier 6
+ * - 9x tier-5 groups => tier 7
+ * - mixed tiers combine additively in this base-3 space.
  */
 export function aggregateGroupsResult(
     groups: GroupSizeResult[],
@@ -297,12 +304,9 @@ export function aggregateGroupsResult(
         parts.push(count > 1 ? `${count}x ${name}` : name);
     }
 
-    // Tier: base = highest tier, + otherTier/baseTier for each other group
-    const baseTier = sorted[0].tier;
-    let tierSum = baseTier;
-    for (let i = 1; i < sorted.length; i++) {
-        tierSum += baseTier > 0 ? sorted[i].tier / baseTier : 0;
-    }
+    // Tier: each +1 tier is worth 3x groups of the previous tier.
+    const tierSum = getAggregatedTier(sorted.map(group => group.tier));
+
     return {
         name: parts.join(' + '),
         tier: tierSum,

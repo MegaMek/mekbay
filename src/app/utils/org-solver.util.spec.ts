@@ -1,5 +1,6 @@
 import type { Unit } from '../models/units.model';
 import { resolveFromGroups, resolveFromUnits } from './org-solver.util';
+import { getAggregatedGroupsResult } from './org-namer.util';
 import type { GroupSizeResult } from './org-types';
 
     function createUnit(
@@ -429,7 +430,7 @@ describe('resolveFromUnits', () => {
         expect(descendantGroups.every(group => group.leftoverUnits === undefined)).toBeTrue();
     });
 
-    it('98 BM makes 14x Sept', () => {
+    it('98 BM keeps 14 Sept groups under hierarchical aggregation', () => {
         const units: Unit[] = [];
         for (let i = 0; i < 98; i++) {
             units.push(createBM(`BM${i + 1}`));
@@ -437,10 +438,27 @@ describe('resolveFromUnits', () => {
 
         const result = resolveFromUnits(units, 'Inner Sphere', 'Society', true);
 
-        expect(result.length).toBe(1);
-        expect(result[0].name).toBe('14x Sept');
-        expect(result[0].type).toBe('Sept');
-        expect(result[0].leftoverUnits).toBeUndefined();
+        expect(result.length).toBe(14);
+        expect(result.every(group => group.name === 'Sept')).toBeTrue();
+        expect(result.every(group => group.type === 'Sept')).toBeTrue();
+        expect(result.every(group => group.leftoverUnits === undefined)).toBeTrue();
+    });
+
+    it('aggregates 14 preserved Sept groups into a 14x Sept display result', () => {
+        const units: Unit[] = [];
+        for (let i = 0; i < 98; i++) {
+            units.push(createBM(`BM${i + 1}`));
+        }
+
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Society', true);
+        const aggregated = getAggregatedGroupsResult(result, 'Inner Sphere', 'Society');
+
+        expect(result.length).toBe(14);
+        expect(aggregated.name).toBe('14x Sept');
+        expect(aggregated.groups).toBe(result);
+        expect(aggregated.groups.length).toBe(14);
+        expect(aggregated.groups.every(group => group.name === 'Sept')).toBeTrue();
+        expect(aggregated.groups.every(group => group.type === 'Sept')).toBeTrue();
     });
 
     it('resolves 2 BM plus 1 AF as Air Lance', () => {
@@ -883,13 +901,25 @@ describe('resolveFromUnits', () => {
 
     it('rounds crossgrade ties downward when a foreign tier sits between lower and upper targets', () => {
         const result = resolveFromGroups('Inner Sphere', 'Federated Suns', [
-            createForeignGroup('Level IV', 'Level IV', ((11 / 3) + 4) / 2),
+            createForeignGroup('Supernova Binary', 'Supernova Trinary', 2.5),
         ]);
 
         expect(result.length).toBe(1);
-        expect(result[0].name).toBe('Under-Strength Battalion');
+        expect(result[0].name).toBe('Reinforced Company');
+        expect(result[0].type).toBe('Company');
+        expect(result[0].tier).toBeCloseTo(2.3, 1);
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('rounds crossgrade when a foreign tier matches target tier', () => {
+        const result = resolveFromGroups('Inner Sphere', 'Federated Suns', [
+            createForeignGroup('Level IV', 'Level IV', 3),
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Battalion');
         expect(result[0].type).toBe('Battalion');
-        expect(result[0].tier).toBeCloseTo(11 / 3, 5);
+        expect(result[0].tier).toBeCloseTo(3, 5);
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 

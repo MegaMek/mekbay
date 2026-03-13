@@ -159,6 +159,63 @@ function createLoadForceGroup(units: Unit[]): LoadForceGroup {
     };
 }
 
+interface AggregatedForceStage {
+    entries: LoadForceEntry[];
+    rawGroups: GroupSizeResult[];
+    aggregated: ReturnType<typeof getAggregatedGroupsResult>;
+}
+
+function createMercenaryForce(forceIndex: number): LoadForceEntry {
+    const groupCount = 2 + (forceIndex % 4);
+    const groups: LoadForceGroup[] = [];
+
+    for (let groupIndex = 0; groupIndex < groupCount; groupIndex++) {
+        const units: Unit[] = [];
+        for (let unitIndex = 0; unitIndex < 4; unitIndex++) {
+            units.push(createBM(`MERC-${forceIndex + 1}-${groupIndex + 1}-${unitIndex + 1}`));
+        }
+        groups.push(createLoadForceGroup(units));
+    }
+
+    return new LoadForceEntry({
+        instanceId: `merc-${forceIndex + 1}`,
+        name: `Mercenary Force ${forceIndex + 1}`,
+        type: GameSystem.CLASSIC,
+        groups,
+    });
+}
+
+function resolveAggregatedForceStage(entry: LoadForceEntry): AggregatedForceStage {
+    const rawGroups = getOrgFromForce(entry, 'Mercenary');
+    const aggregated = getAggregatedGroupsResult(rawGroups, 'Inner Sphere', 'Mercenary');
+
+    return {
+        entries: [entry],
+        rawGroups,
+        aggregated,
+    };
+}
+
+function mergeAggregatedForceStages(stages: AggregatedForceStage[], batchSize: number): AggregatedForceStage[] {
+    const mergedStages: AggregatedForceStage[] = [];
+
+    for (let start = 0; start < stages.length; start += batchSize) {
+        const batch = stages.slice(start, start + batchSize);
+        const entries = batch.flatMap(stage => stage.entries);
+        const childGroupResults = batch.flatMap(stage => stage.aggregated.groups);
+        const rawGroups = getOrgFromForceCollection(entries, 'Mercenary', childGroupResults);
+        const aggregated = getAggregatedGroupsResult(rawGroups, 'Inner Sphere', 'Mercenary');
+
+        mergedStages.push({
+            entries,
+            rawGroups,
+            aggregated,
+        });
+    }
+
+    return mergedStages;
+}
+
 describe('org-namer aggregation flow', () => {
     it('keeps raw Sept groups in getOrgFromGroup and aggregates only for display', () => {
         const units: Unit[] = [];
@@ -292,5 +349,43 @@ describe('org-namer aggregation flow', () => {
 
         expect(display.name).toBe('Maniple');
         expect(display.groups).toBe(rawGroups);
+    });
+
+    it('aggregates 400 multi-group forces and merges them in batches of 10 down to one force', () => {
+        let stages = Array.from({ length: 400 }, (_, index) => resolveAggregatedForceStage(createMercenaryForce(index)));
+        const roundSizes = [stages.length];
+        const firstStage = stages[0];
+
+        expect(stages.every(stage => stage.rawGroups.length > 0)).toBeTrue();
+        expect(stages.every(stage => stage.aggregated.groups === stage.rawGroups)).toBeTrue();
+        expect(new Set(stages.map(stage => stage.aggregated.name)).size).toBeGreaterThan(1);
+
+        expect(firstStage.rawGroups.length).toBe(1);
+        expect(firstStage.rawGroups[0].name).toBe('Under-Strength Company');
+        expect(firstStage.rawGroups[0].type).toBe('Company');
+        expect(firstStage.rawGroups[0].tier).toBe(1.5);
+        expect(firstStage.aggregated.name).toBe('Under-Strength Company');
+        expect(firstStage.aggregated.tier).toBe(1.5);
+
+        while (stages.length > 1) {
+            stages = mergeAggregatedForceStages(stages, 10);
+            roundSizes.push(stages.length);
+
+            expect(stages.every(stage => stage.entries.length > 0)).toBeTrue();
+            expect(stages.every(stage => stage.rawGroups.length > 0)).toBeTrue();
+            expect(stages.every(stage => stage.aggregated.groups === stage.rawGroups)).toBeTrue();
+            expect(stages.every(stage => stage.aggregated.name.length > 0)).toBeTrue();
+        }
+
+        expect(roundSizes).toEqual([400, 40, 4, 1]);
+        expect(stages[0].entries.length).toBe(400);
+        expect(stages[0].rawGroups.length).toBe(40);
+        expect(stages[0].rawGroups.every(group => group.name === 'Under-Strength Brigade')).toBeTrue();
+        expect(stages[0].rawGroups.every(group => group.type === 'Brigade')).toBeTrue();
+        // 4.66 is theh dynamicTier for US Brigade
+        expect(stages[0].rawGroups.every(group => Math.round(Math.abs(group.tier - 4.66)) === 0)).toBeTrue();
+        expect(stages[0].aggregated.groups).toBe(stages[0].rawGroups);
+        expect(stages[0].aggregated.name).toBe('20x Reinforced Brigade');
+        expect(stages[0].aggregated.tier).toBeCloseTo(8.06, 2);
     });
 });

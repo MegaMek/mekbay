@@ -433,6 +433,18 @@ export class ForceOrgDialogComponent {
         });
     });
 
+    protected baseLayerGroups = computed(() => {
+        const draggedGroup = this.draggedGroup();
+        if (!draggedGroup) return this.sortedGroups();
+        return this.sortedGroups().filter(group => !this.isRenderedInDragOverlay(group, draggedGroup.id));
+    });
+
+    protected dragOverlayGroups = computed(() => {
+        const draggedGroup = this.draggedGroup();
+        if (!draggedGroup) return [];
+        return this.sortedGroups().filter(group => this.isRenderedInDragOverlay(group, draggedGroup.id));
+    });
+
     /** Org size name for each LoadForceEntry, keyed by instanceId. */
     protected forcesData = computed<Map<string, ForceMetadata>>(() => {
         const all = this.allForces();
@@ -732,7 +744,16 @@ export class ForceOrgDialogComponent {
 
     private computeSearchText(force: LoadForceEntry): string {
         let s = '';
+        const factionName = this.getFactionName(force.factionId);
+        const techBase = this.computeEntriesTechBaseUncached([force], factionName);
+        const orgName = getAggregatedGroupsResult(
+            getOrgFromForce(force, factionName),
+            techBase,
+            factionName,
+        ).name;
+
         if (force.name) s += force.name + ' ';
+        if (orgName) s += orgName + ' ';
         for (const g of (force.groups || [])) {
             if (g.name) s += g.name + ' ';
             for (const ue of (g.units || [])) {
@@ -1022,7 +1043,20 @@ export class ForceOrgDialogComponent {
         this.groupDragged = false;
         this.groupDragStartPos = { x: event.clientX, y: event.clientY };
         this.groupStartPos = { x: group.x(), y: group.y() };
+        this.bringGroupToFront(group);
         this.addGlobalPointerListeners();
+    }
+
+    private bringGroupToFront(group: OrgGroup): void {
+        const groups = this.groups();
+        const currentZ = group.zIndex();
+        for (const other of groups) {
+            if (other.zIndex() > currentZ) other.zIndex.update(v => v - 1);
+        }
+        group.zIndex.set(groups.length - 1);
+        this.nextGroupZIndex = groups.length;
+        this.groups.set([...groups]);
+        this.dirty.set(true);
     }
 
     // ==================== Remove Force ====================
@@ -1058,6 +1092,11 @@ export class ForceOrgDialogComponent {
 
     protected removeGroup(group: OrgGroup): void {
         if (this.groupDragged) return;
+        this.dissolveGroup(group);
+        this.dirty.set(true);
+    }
+
+    private dissolveGroup(group: OrgGroup): void {
         // Ungroup all direct force members
         for (const pf of this.placedForces()) {
             if (pf.groupId === group.id) {
@@ -1077,7 +1116,13 @@ export class ForceOrgDialogComponent {
             const parent = this.groups().find(g => g.id === group.parentGroupId);
             if (parent) this.layoutGroup(parent);
         }
-        this.dirty.set(true);
+    }
+
+    private dissolveTopLevelGroupIfUnderpopulated(group: OrgGroup): void {
+        if (group.parentGroupId !== null) return;
+        const remainingEntries = this.collectDescendantForces(group.id, this.placedForces(), this.groups()).length;
+        if (remainingEntries > 1) return;
+        this.dissolveGroup(group);
     }
 
     private cleanupEmptyGroups(): void {
@@ -1129,6 +1174,13 @@ export class ForceOrgDialogComponent {
                  a.y + a.height < b.y || b.y + b.height < a.y);
     }
 
+    private getOverlapArea(a: Rect, b: Rect): number {
+        const overlapWidth = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+        const overlapHeight = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+        if (overlapWidth <= 0 || overlapHeight <= 0) return 0;
+        return overlapWidth * overlapHeight;
+    }
+
     private forceRect(pf: PlacedForce): Rect {
         return { x: pf.x(), y: pf.y(), width: CARD_WIDTH, height: CARD_HEIGHT };
     }
@@ -1168,66 +1220,68 @@ export class ForceOrgDialogComponent {
     }
 
     /** Detect what would happen if the dragged force were dropped now. */
-    private detectForceDrop(pf: PlacedForce, cursorWorld: { x: number; y: number }): ForceDropAction | null {
+    private detectForceDrop(pf: PlacedForce): ForceDropAction | null {
         const pfRect = this.forceRect(pf);
+        let bestOverlap = 0;
+        let bestAction: ForceDropAction | null = pf.groupId ? { type: 'leave-group' } : null;
 
-        // If the force belongs to a group, check cursor vs own group first
+        // A grouped force remains in its current group while it has the largest overlap.
         if (pf.groupId) {
             const ownGroup = this.groups().find(g => g.id === pf.groupId);
             if (ownGroup) {
-                const cursorInside = cursorWorld.x >= ownGroup.x() && cursorWorld.x <= ownGroup.x() + ownGroup.width() &&
-                                     cursorWorld.y >= ownGroup.y() && cursorWorld.y <= ownGroup.y() + ownGroup.height();
-                if (cursorInside) {
-                    // Cursor is still inside own group — stay in group, just re-layout
-                    return null;
+                bestOverlap = this.getOverlapArea(pfRect, this.groupRect(ownGroup));
+                if (bestOverlap > 0) {
+                    bestAction = null;
                 }
-                // Cursor is outside own group — leaving
-                // Check overlap with ungrouped forces for possible new group
-                for (const other of this.placedForces()) {
-                    if (other === pf || other.groupId) continue;
-                    if (this.rectsOverlap(pfRect, this.forceRect(other))) {
-                        return { type: 'new-group', other };
-                    }
-                }
-                return { type: 'leave-group' };
             }
         }
 
-        // Ungrouped force: check overlap with existing groups
+        // Check overlap with existing groups, excluding the current one if any.
         for (const group of this.groups()) {
-            if (this.rectsOverlap(pfRect, this.groupRect(group))) {
-                return { type: 'join-group', groupId: group.id };
+            if (group.id === pf.groupId) continue;
+            const overlap = this.getOverlapArea(pfRect, this.groupRect(group));
+            if (overlap > bestOverlap) {
+                bestOverlap = overlap;
+                bestAction = { type: 'join-group', groupId: group.id };
             }
         }
+
         // Check overlap with other ungrouped forces
         for (const other of this.placedForces()) {
             if (other === pf || other.groupId) continue;
-            if (this.rectsOverlap(pfRect, this.forceRect(other))) {
-                return { type: 'new-group', other };
+            const overlap = this.getOverlapArea(pfRect, this.forceRect(other));
+            if (overlap > bestOverlap) {
+                bestOverlap = overlap;
+                bestAction = { type: 'new-group', other };
             }
         }
-        return null;
+
+        return bestAction;
     }
 
     /** Detect what would happen if the dragged group were dropped now. */
-    private detectGroupDrop(grp: OrgGroup, cursorWorld: { x: number; y: number }): GroupDropAction | null {
-        // If the group has a parent and the cursor is outside it, treat as leaving
+    private detectGroupDrop(grp: OrgGroup): GroupDropAction | null {
+        const grpRect = this.groupRect(grp);
+        let bestOverlap = 0;
+        let bestAction: GroupDropAction | null = null;
+
+        // A child group remains in its parent while it has the largest overlap.
         if (grp.parentGroupId) {
             const parent = this.groups().find(g => g.id === grp.parentGroupId);
-            if (parent && (cursorWorld.x < parent.x() || cursorWorld.x > parent.x() + parent.width() ||
-                           cursorWorld.y < parent.y() || cursorWorld.y > parent.y() + parent.height())) {
-                return null; // Will be handled as leave-parent in pointerUp
+            if (parent) {
+                bestOverlap = this.getOverlapArea(grpRect, this.groupRect(parent));
             }
         }
-        const grpRect = this.groupRect(grp);
         for (const other of this.groups()) {
             if (other.id === grp.id) continue;
             if (this.isDescendantOf(other, grp.id)) continue;
             if (other.id === grp.parentGroupId) continue;
-            if (!this.rectsOverlap(grpRect, this.groupRect(other))) continue;
+            const overlap = this.getOverlapArea(grpRect, this.groupRect(other));
+            if (overlap <= bestOverlap) continue;
             const otherHasChildren = this.groups().some(g => g.parentGroupId === other.id);
             if (otherHasChildren && grp.parentGroupId !== other.id) {
-                return { type: 'join-parent', groupId: other.id };
+                bestOverlap = overlap;
+                bestAction = { type: 'join-parent', groupId: other.id };
             }
         }
         for (const other of this.groups()) {
@@ -1235,13 +1289,17 @@ export class ForceOrgDialogComponent {
             if (other.parentGroupId !== grp.parentGroupId) continue;
             if (this.isDescendantOf(other, grp.id)) continue;
             if (this.isDescendantOf(grp, other.id)) continue;
-            if (!this.rectsOverlap(grpRect, this.groupRect(other))) continue;
+            const overlap = this.getOverlapArea(grpRect, this.groupRect(other));
+            if (overlap <= bestOverlap) continue;
             if (grp.parentGroupId !== null) {
-                return { type: 'rearrange', parentId: grp.parentGroupId };
+                bestOverlap = overlap;
+                bestAction = { type: 'rearrange', parentId: grp.parentGroupId };
+                continue;
             }
-            return { type: 'create-parent', other };
+            bestOverlap = overlap;
+            bestAction = { type: 'create-parent', other };
         }
-        return null;
+        return bestAction;
     }
 
     private clearDropPreview(): void {
@@ -1252,32 +1310,60 @@ export class ForceOrgDialogComponent {
         this.previewOrgCache = null;
     }
 
+    private setExistingGroupDropPreview(groupId: string): void {
+        if (this.dropTargetGroupId() === groupId && this.dropPreviewRect() === null && this.previewExtraForces() === null) {
+            return;
+        }
+        this.dropTargetGroupId.set(groupId);
+        this.dropPreviewRect.set(null);
+        this.previewExtraForces.set(null);
+        this.previewOtherId = null;
+        this.previewOrgCache = null;
+    }
+
     /** Update preview state for a sidebar drag at the given world-space rect. */
     private updateSidebarDragPreview(rect: Rect, sidebarForce: LoadForceEntry): void {
+        let bestGroup: OrgGroup | null = null;
+        let bestGroupOverlap = 0;
         for (const group of this.groups()) {
-            if (this.rectsOverlap(rect, this.groupRect(group))) {
-                // Skip if already previewing the same group
-                if (this.dropTargetGroupId() === group.id) return;
-                this.dropTargetGroupId.set(group.id);
-                this.dropPreviewRect.set(null);
-                this.previewExtraForces.set({ targetGroupId: group.id, entries: [sidebarForce] });
-                return;
+            const overlap = this.getOverlapArea(rect, this.groupRect(group));
+            if (overlap > bestGroupOverlap) {
+                bestGroupOverlap = overlap;
+                bestGroup = group;
             }
         }
+
+        let bestForce: PlacedForce | null = null;
+        let bestForceOverlap = 0;
         for (const pf of this.placedForces()) {
             if (pf.groupId) continue;
-            if (this.rectsOverlap(rect, this.forceRect(pf))) {
-                if (this.dropTargetGroupId() !== null) this.dropTargetGroupId.set(null);
-                if (this.previewExtraForces() !== null) this.previewExtraForces.set(null);
-                if (this.previewOtherId === pf.force.instanceId && this.previewOrgCache) {
-                    this.dropPreviewRect.set({ ...this.computeGroupPreviewRect(rect, this.forceRect(pf)), ...this.previewOrgCache });
-                } else {
-                    this.previewOtherId = pf.force.instanceId;
-                    this.dropPreviewRect.set(this.computeGroupPreview(rect, this.forceRect(pf), [sidebarForce, pf.force]));
-                }
-                return;
+            const overlap = this.getOverlapArea(rect, this.forceRect(pf));
+            if (overlap > bestForceOverlap) {
+                bestForceOverlap = overlap;
+                bestForce = pf;
             }
         }
+
+        if (bestGroup && bestGroupOverlap >= bestForceOverlap) {
+            if (this.dropTargetGroupId() === bestGroup.id) return;
+            this.dropTargetGroupId.set(bestGroup.id);
+            this.dropPreviewRect.set(null);
+            this.previewExtraForces.set({ targetGroupId: bestGroup.id, entries: [sidebarForce] });
+            return;
+        }
+
+        if (bestForce) {
+            if (this.dropTargetGroupId() !== null) this.dropTargetGroupId.set(null);
+            if (this.previewExtraForces() !== null) this.previewExtraForces.set(null);
+            if (this.previewOtherId === bestForce.force.instanceId && this.previewOrgCache) {
+                this.dropPreviewRect.set({ ...this.computeGroupPreviewRect(rect, this.forceRect(bestForce)), ...this.previewOrgCache });
+            } else {
+                this.previewOtherId = bestForce.force.instanceId;
+                this.dropPreviewRect.set(this.computeGroupPreview(rect, this.forceRect(bestForce), [sidebarForce, bestForce.force]));
+            }
+            return;
+        }
+
         this.clearDropPreview();
     }
 
@@ -1327,8 +1413,8 @@ export class ForceOrgDialogComponent {
     }
 
     /** Execute the force drop action detected by detectForceDrop. */
-    private tryFormGroup(draggedPf: PlacedForce, cursorWorld: { x: number; y: number }): void {
-        const action = this.detectForceDrop(draggedPf, cursorWorld);
+    private tryFormGroup(draggedPf: PlacedForce): void {
+        const action = this.detectForceDrop(draggedPf);
         const placed = this.placedForces();
 
         switch (action?.type) {
@@ -1339,6 +1425,7 @@ export class ForceOrgDialogComponent {
                 this.recalcGroupBounds(group);
                 if (oldGroup) {
                     this.recalcGroupBounds(oldGroup);
+                    this.dissolveTopLevelGroupIfUnderpopulated(oldGroup);
                     this.cleanupEmptyGroups();
                 }
                 this.placedForces.set([...placed]);
@@ -1359,6 +1446,7 @@ export class ForceOrgDialogComponent {
                 this.recalcGroupBounds(group);
                 if (oldGroup) {
                     this.recalcGroupBounds(oldGroup);
+                    this.dissolveTopLevelGroupIfUnderpopulated(oldGroup);
                     this.cleanupEmptyGroups();
                 }
                 this.placedForces.set([...placed]);
@@ -1368,6 +1456,7 @@ export class ForceOrgDialogComponent {
                 const group = this.groups().find(g => g.id === draggedPf.groupId)!;
                 draggedPf.groupId = null;
                 this.recalcGroupBounds(group);
+                this.dissolveTopLevelGroupIfUnderpopulated(group);
                 this.cleanupEmptyGroups();
                 this.placedForces.set([...placed]);
                 return;
@@ -1499,9 +1588,13 @@ export class ForceOrgDialogComponent {
         return false;
     }
 
+    private isRenderedInDragOverlay(group: OrgGroup, draggedGroupId: string): boolean {
+        return group.id === draggedGroupId || this.isDescendantOf(group, draggedGroupId);
+    }
+
     /** Execute the group drop action detected by detectGroupDrop. */
-    private tryMergeGroups(draggedGrp: OrgGroup, cursorWorld: { x: number; y: number }): void {
-        const action = this.detectGroupDrop(draggedGrp, cursorWorld);
+    private tryMergeGroups(draggedGrp: OrgGroup): void {
+        const action = this.detectGroupDrop(draggedGrp);
 
         switch (action?.type) {
             case 'join-parent': {
@@ -1697,8 +1790,14 @@ export class ForceOrgDialogComponent {
             dragged.x.set(this.forceStartPos.x + dx);
             dragged.y.set(this.forceStartPos.y + dy);
             // Update drop preview
-            const cursorWorld = this.screenToWorld(event.clientX, event.clientY);
-            const forceAction = this.detectForceDrop(dragged, cursorWorld);
+            const forceAction = this.detectForceDrop(dragged);
+            if (!forceAction && dragged.groupId) {
+                const ownGroup = this.groups().find(group => group.id === dragged.groupId);
+                if (ownGroup && this.getOverlapArea(this.forceRect(dragged), this.groupRect(ownGroup)) > 0) {
+                    this.setExistingGroupDropPreview(ownGroup.id);
+                    return;
+                }
+            }
             const otherRect = forceAction?.type === 'new-group' ? this.forceRect(forceAction.other) : undefined;
             // Skip building entries if still overlapping the same target
             const forceOtherId = forceAction?.type === 'new-group' ? forceAction.other.force.instanceId
@@ -1730,8 +1829,14 @@ export class ForceOrgDialogComponent {
             this.translateGroupRecursive(draggedGrp, moveDx, moveDy);
 
             // Update drop preview
-            const grpCursorWorld = this.screenToWorld(event.clientX, event.clientY);
-            const grpAction = this.detectGroupDrop(draggedGrp, grpCursorWorld);
+            const grpAction = this.detectGroupDrop(draggedGrp);
+            if (!grpAction && draggedGrp.parentGroupId) {
+                const parent = this.groups().find(group => group.id === draggedGrp.parentGroupId);
+                if (parent && this.getOverlapArea(this.groupRect(draggedGrp), this.groupRect(parent)) > 0) {
+                    this.setExistingGroupDropPreview(parent.id);
+                    return;
+                }
+            }
             const grpOtherRect = grpAction?.type === 'create-parent' ? this.groupRect(grpAction.other) : undefined;
             // Skip expensive org computation if still overlapping the same target
             const grpOtherId = grpAction?.type === 'create-parent' ? grpAction.other.id
@@ -1832,7 +1937,7 @@ export class ForceOrgDialogComponent {
                             };
                             this.placedForces.set([...this.placedForces(), newPlaced]);
                             // Try grouping with nearby forces
-                            this.tryFormGroup(newPlaced, worldPos);
+                            this.tryFormGroup(newPlaced);
                             if (newPlaced.groupId) {
                                 const group = this.groups().find(g => g.id === newPlaced.groupId);
                                 if (group) this.layoutGroup(group);
@@ -1851,8 +1956,7 @@ export class ForceOrgDialogComponent {
         const dragged = this.draggedForce();
         if (dragged) {
             if (this.forceDragged) {
-                const forceCursorWorld = this.screenToWorld(event.clientX, event.clientY);
-                this.tryFormGroup(dragged, forceCursorWorld);
+                this.tryFormGroup(dragged);
                 if (dragged.groupId) {
                     const group = this.groups().find(g => g.id === dragged.groupId);
                     if (group) this.layoutGroup(group);
@@ -1870,23 +1974,18 @@ export class ForceOrgDialogComponent {
                 // Check if dragged out of parent
                 if (dragEndGroup.parentGroupId) {
                     const parent = this.groups().find(g => g.id === dragEndGroup.parentGroupId);
-                    const dropWorld = this.screenToWorld(event.clientX, event.clientY);
-                    const pointerOutside = parent && (
-                        dropWorld.x < parent.x() || dropWorld.x > parent.x() + parent.width() ||
-                        dropWorld.y < parent.y() || dropWorld.y > parent.y() + parent.height()
-                    );
-                    if (parent && pointerOutside) {
+                    const overlapsParent = parent && this.rectsOverlap(this.groupRect(dragEndGroup), this.groupRect(parent));
+                    if (parent && !overlapsParent) {
                         dragEndGroup.parentGroupId = null;
                         this.groups.set([...this.groups()]);
                         // Re-layout old parent (and clean up if empty)
                         this.recalcGroupBounds(parent);
                         this.cleanupEmptyGroups();
                     } else {
-                        this.tryMergeGroups(dragEndGroup, dropWorld);
+                        this.tryMergeGroups(dragEndGroup);
                     }
                 } else {
-                    const dropWorldRoot = this.screenToWorld(event.clientX, event.clientY);
-                    this.tryMergeGroups(dragEndGroup, dropWorldRoot);
+                    this.tryMergeGroups(dragEndGroup);
                 }
                 // Re-layout parent if it still has one
                 if (dragEndGroup.parentGroupId) {

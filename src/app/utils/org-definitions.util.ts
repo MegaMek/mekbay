@@ -163,26 +163,26 @@ const CLAN_TRINARY: OrgTypeComposed = composedRule({
 });
 const CLAN_SUPERNOVA_BINARY: OrgTypeComposed = composedRule({
     type: 'Supernova Binary', strict: true, priority: 2, countsAs: 'Binary',
-    composedOfAny: ['Nova'], modifiers: { '': 2 }, commandRank: 'Nova Captain', tier: 3,
+    composedOfAny: ['Nova'], modifiers: { '': 2 }, commandRank: 'Nova Captain', tier: 2,
 });
 const CLAN_SUPERNOVA_TRINARY: OrgTypeComposed = composedRule({
     type: 'Supernova Trinary', strict: true, priority: 1, countsAs: 'Trinary',
-    composedOfAny: ['Nova'], modifiers: { '': 3 }, commandRank: 'Nova Captain', tier: 3,
+    composedOfAny: ['Nova'], modifiers: { '': 3 }, commandRank: 'Nova Captain', tier: 2.5,
 });
 const CLAN_SUPERNOVA_TRINARY_FROM_BINARY: OrgTypeComposed = composedRule({
     type: 'Supernova Trinary', strict: true, priority: 1, countsAs: 'Trinary',
-    composedOfAny: ['Supernova Binary', 'Nova'], requiredChildTypeCounts: { 'Supernova Binary': 1, 'Nova': 1 }, modifiers: { '': 2 }, commandRank: 'Nova Captain', tier: 3
+    composedOfAny: ['Supernova Binary', 'Nova'], requiredChildTypeCounts: { 'Supernova Binary': 1, 'Nova': 1 }, modifiers: { '': 2 }, commandRank: 'Nova Captain', tier: 2.5
 });
 const CLAN_CLUSTER: OrgTypeComposed = composedRule({
     type: 'Cluster',
     composedOfAny: ['Binary', 'Trinary'],
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4, 'Strong ': 5 },
-    commandRank: 'Star Colonel', tier: 4,
+    commandRank: 'Star Colonel', tier: 3,
 });
 const CLAN_GALAXY: OrgTypeComposed = composedRule({
     type: 'Galaxy', composedOfAny: ['Cluster'], modifiers: {
         'Under-Strength ': 2, '': 3, 'Reinforced ': 4, 'Strong ': 5,
-    }, commandRank: 'Galaxy Commander', tier: 8,
+    }, commandRank: 'Galaxy Commander', tier: 4,
 });
 
 // IS rules
@@ -252,17 +252,17 @@ const IS_COMPANY: OrgTypeComposed = composedRule({
 const IS_BATTALION: OrgTypeComposed = composedRule({
     type: 'Battalion', composedOfAny: ['Company', 'Squadron'],
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
-    commandRank: 'Major', tier: 4, dynamicTier: 1
+    commandRank: 'Major', tier: 3, dynamicTier: 1
 });
 const IS_REGIMENT: OrgTypeComposed = composedRule({
     type: 'Regiment', composedOfAny: ['Battalion', 'Wing'],
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4, 'Strong ': 5 },
-    commandRank: 'Colonel', tier: 8, dynamicTier: 1
+    commandRank: 'Colonel', tier: 4, dynamicTier: 1
 });
 const IS_BRIGADE: OrgTypeComposed = composedRule({
     type: 'Brigade', composedOfAny: ['Regiment'],
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
-    commandRank: 'General', tier: 16, dynamicTier: 1
+    commandRank: 'General', tier: 5, dynamicTier: 1
 });
 
 //  Org Definitions 
@@ -367,11 +367,6 @@ const ComStarOrg: OrgDefinition = {
                 return Math.abs(bm - 6) + Math.abs(ba - 6);
             },
         }),
- /*       {
-            type: 'Demi-Level III', composedOfAny: ['Level II'], modifiers: {
-                'Under-Strength ': 2, '': 3, 'Reinforced ': 4,
-            }, commandRank: 'Adept (Demi-Precentor)', tier: 2,
-        },*/
         composedRule({
             type: 'Level III', composedOfAny: ['Level II'], modifiers: {
                 'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
@@ -380,16 +375,16 @@ const ComStarOrg: OrgDefinition = {
         composedRule({
             type: 'Level IV', composedOfAny: ['Level III'], modifiers: {
                 'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
-            }, commandRank: 'Precentor', tier: 4,
+            }, commandRank: 'Precentor', tier: 3,
         }),
         composedRule({
             type: 'Level V', composedOfAny: ['Level IV'], modifiers: {
                 'Under-Strength ': 5, '': 6, 'Reinforced ': 7,
-            }, commandRank: 'Precentor', tier: 8,
+            }, commandRank: 'Precentor', tier: 4,
         }),
         composedRule({
             type: 'Level VI', composedOfAny: ['Level V'], modifiers: { '': 2, },
-            commandRank: 'Precentor Martial', tier: 16,
+            commandRank: 'Precentor Martial', tier: 5,
         }),
     ],
 };
@@ -456,8 +451,8 @@ const MHOrg: OrgDefinition = {
             }, allowedChildTagsAll: ['infantry'], commandRank: 'Centurion', tier: 1,
         }),
         composedRule({ type: 'Maniple', composedOfAny: ['Century'], modifiers: { '': 2 }, commandRank: 'Principes', tier: 2 }),
-        composedRule({ type: 'Cohort', composedOfAny: ['Maniple'], modifiers: { '': 3 }, commandRank: 'Legatus', tier: 4 }),
-        composedRule({ type: 'Legion', composedOfAny: ['Cohort'], modifiers: { '': 4 }, commandRank: 'General', tier: 8 }),
+        composedRule({ type: 'Cohort', composedOfAny: ['Maniple'], modifiers: { '': 3 }, commandRank: 'Legatus', tier: 3 }),
+        composedRule({ type: 'Legion', composedOfAny: ['Cohort'], modifiers: { '': 4 }, commandRank: 'General', tier: 4 }),
     ],
 };
 
@@ -579,12 +574,12 @@ const CCOrg: OrgDefinition = {
         // CC Augmented Company, slightly inferior tier than Regular Company due to being smaller. It will prevail over Regular Company due to priority if there are no leftovers.
         composedRule({ type: 'Augmented Company', countsAs: 'Company', composedOfAny: ['Augmented Lance'], priority: 1, modifiers: { '': 2, 'Reinforced ': 3 }, commandRank: 'Captain', tier: 1.95 }),
         // CC Augmented Battalion
-        composedRule({ type: 'Augmented Battalion', countsAs: 'Battalion', composedOfAny: ['Augmented Company'], priority: 1, modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'Major', tier: 4 }),
+        composedRule({ type: 'Augmented Battalion', countsAs: 'Battalion', composedOfAny: ['Augmented Company'], priority: 1, modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'Major', tier: 3 }),
         // CC Augmented Regiment
         composedRule({
             type: 'Augmented Regiment', countsAs: 'Regiment', composedOfAny: ['Augmented Battalion', 'Battalion', 'Wing'],
             requiredChildTypeCounts: { 'Augmented Battalion': 1 },
-            modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'General', tier: 8.01,
+            modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 }, commandRank: 'General', tier: 4.01,
         }),
     ],
 };

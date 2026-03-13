@@ -47,6 +47,7 @@ import {
     DEFAULT_ORG,
 } from './org-definitions.util';
 import { TechBase } from '../models/tech.model';
+import { getRepeatCountForTierDelta } from './org-tier.util';
 
 /**
  * Author: Drake
@@ -882,7 +883,7 @@ function pickNormalizationTargets(
 
     const highestTarget = targets[targets.length - 1];
     if (sourceTier > highestTarget.tier) {
-        const repeatCount = Math.max(1, Math.floor(Math.pow(3, sourceTier - highestTarget.tier)));
+        const repeatCount = getRepeatCountForTierDelta(sourceTier, highestTarget.tier);
         return Array.from({ length: repeatCount }, () => highestTarget);
     }
 
@@ -1395,7 +1396,6 @@ function repackSameTypeGroups(
             const modifier = getGroupModifier(rule, child);
             return sum + (modifier?.[1] ?? 0);
         }, 0);
-        const childTier = children.reduce((sum, child) => sum + child.tier, 0);
         const prefixes = modifierLookup.get(childCount) ?? [''];
         const prefix = prefixes.includes('') ? '' : prefixes[0];
 
@@ -1403,7 +1403,7 @@ function repackSameTypeGroups(
             name: buildName(rule, prefix),
             type: rule.type,
             countsAsType: rule.countsAs ?? null,
-            tier: childTier,
+            tier: resolveTier(rule, prefix),
             children,
             tag: rule.tag,
             priority: rule.priority,
@@ -1469,17 +1469,7 @@ function hierarchicallyAggregateGroups(
 
     const highestTier = collapsed[0].tier;
     const highestGroups = collapsed.filter(group => group.tier === highestTier);
-    if (highestGroups.length === 1) return [highestGroups[0]];
-
-    const [keep] = highestGroups;
-    const tier = highestGroups.reduce((sum, group) => sum + group.tier, 0);
-
-    return [{
-        ...keep,
-        name: buildGroupedName(highestGroups),
-        tier,
-        children: highestGroups,
-    }];
+    return highestGroups;
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
