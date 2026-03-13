@@ -519,9 +519,15 @@ export class OverlayManagerService {
         strategy.left(`${triggerRect.left}px`).top(`${top}px`);
         entry.overlayRef.updatePosition();
 
+        pane.style.maxHeight = `${maxPanelH}px`;
+        pane.style.boxSizing = 'border-box';
+
         // Constrain panel height
-        if (content && content !== scrollContainer) {
+        if (content) {
             content.style.maxHeight = `${maxPanelH}px`;
+            content.style.height = `${effectiveH}px`;
+            content.style.boxSizing = 'border-box';
+            content.style.overflow = 'hidden';
         }
         scrollContainer.style.maxHeight = `${maxScrollH}px`;
         scrollContainer.style.overflowY = 'auto';

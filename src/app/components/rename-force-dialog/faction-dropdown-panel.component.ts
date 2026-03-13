@@ -186,8 +186,10 @@ import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-vis
         }
 
         .dropdown-shell {
+            box-sizing: border-box;
             display: flex;
             flex-direction: column;
+            height: 100%;
             min-height: 0;
         }
 
