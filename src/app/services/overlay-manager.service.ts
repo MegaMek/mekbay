@@ -301,6 +301,10 @@ export class OverlayManagerService {
                     if (overlayEl?.contains(targetNode) || (triggerEl && triggerEl.contains && triggerEl.contains(targetNode))) {
                         return;
                     }
+                    // Consume the pointerdown so underlying gesture handlers do not enter
+                    // pan/swipe mode before we decide whether this interaction is a click.
+                    ev.stopPropagation();
+                    ev.preventDefault();
                     // record start position and pointer id
                     entry.pointerStart = { id: ev.pointerId, x: ev.clientX, y: ev.clientY };
                 } catch { /* ignore */ }
