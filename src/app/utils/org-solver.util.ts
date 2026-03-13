@@ -807,17 +807,6 @@ function sumAllocationPlanCounts(plan: ReadonlyArray<AllocationPlanEntry>): numb
 
 // ─── Foreign-type normalization ────────────────────────────────────────────────
 
-function buildGroupedName(groups: ReadonlyArray<GroupSizeResult>): string {
-    const nameCounts = new Map<string, number>();
-    for (const group of groups) {
-        nameCounts.set(group.name, (nameCounts.get(group.name) ?? 0) + 1);
-    }
-
-    return Array.from(nameCounts.entries())
-        .map(([name, count]) => count > 1 ? `${count}x ${name}` : name)
-        .join(' + ');
-}
-
 interface NormalizationTarget {
     rule: OrgTypeRule;
     prefix: string;

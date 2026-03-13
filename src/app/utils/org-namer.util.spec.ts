@@ -280,6 +280,54 @@ function mergeAggregatedForceStages(stages: AggregatedForceStage[], batchSize: n
 }
 
 describe('org-namer aggregation flow', () => {
+    it('merges an under-strength company with two separate lances into an under-strength battalion', () => {
+        const underStrengthCompany = resolveFromUnits([
+            createBM('CO-1'),
+            createBM('CO-2'),
+            createBM('CO-3'),
+            createBM('CO-4'),
+            createBM('CO-5'),
+            createBM('CO-6'),
+            createBM('CO-7'),
+            createBM('CO-8'),
+        ], 'Inner Sphere', 'Mercenary');
+        const firstLance = resolveFromUnits([
+            createBM('L1-1'),
+            createBM('L1-2'),
+            createBM('L1-3'),
+            createBM('L1-4'),
+        ], 'Inner Sphere', 'Mercenary');
+        const secondLance = resolveFromUnits([
+            createBM('L2-1'),
+            createBM('L2-2'),
+            createBM('L2-3'),
+            createBM('L2-4'),
+        ], 'Inner Sphere', 'Mercenary');
+
+        expect(underStrengthCompany.length).toBe(1);
+        expect(underStrengthCompany[0].name).toBe('Under-Strength Company');
+        expect(underStrengthCompany[0].type).toBe('Company');
+        expect(firstLance.length).toBe(1);
+        expect(firstLance[0].name).toBe('Lance');
+        expect(firstLance[0].type).toBe('Lance');
+        expect(secondLance.length).toBe(1);
+        expect(secondLance[0].name).toBe('Lance');
+        expect(secondLance[0].type).toBe('Lance');
+
+        const merged = resolveFromGroups('Inner Sphere', 'Mercenary', [
+            underStrengthCompany[0],
+            firstLance[0],
+            secondLance[0],
+        ]);
+
+        expect(merged.length).toBe(1);
+        expect(merged[0].name).toBe('Under-Strength Battalion');
+        expect(merged[0].type).toBe('Battalion');
+        expect(merged[0].children?.length).toBe(2);
+        expect(merged[0].children?.every(child => child.name === 'Under-Strength Company')).toBeTrue();
+        expect(merged[0].children?.every(child => child.type === 'Company')).toBeTrue();
+    });
+
     it('keeps raw Sept groups in getOrgFromGroup and aggregates only for display', () => {
         const units: Unit[] = [];
         for (let i = 0; i < 98; i++) {
