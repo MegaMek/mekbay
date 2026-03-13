@@ -80,6 +80,19 @@
         </div>
     </div>
     }
+    @if (psrModifiers().length > 0) {
+    <div class="group">
+        <div class="phaseTitle">PSR Modifiers</div>
+        <div class="summary-entry psr-modifiers">
+            @for (modifier of psrModifiers(); track $index) {
+            <div class="row wrap">
+                <span>{{ modifier.reason }}</span>
+                <span>{{ modifier.pilotCheck! >= 0 ? '+' : '' }}{{ modifier.pilotCheck }}</span>
+            </div>
+            }
+        </div>
+    </div>
+    }
     @if (falling()) {
     <button role="button" class="summary-entry bt-button danger" tabindex="0">
         ⚠ FALLING! ⚠
