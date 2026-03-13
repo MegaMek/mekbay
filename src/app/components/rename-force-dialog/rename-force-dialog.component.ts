@@ -332,6 +332,19 @@ export interface RenameForceDialogResult {
         .clear-btn:hover {
             color: #ff4444;
         }
+
+        @media (max-width: 500px) {
+            .faction-selector-era-chip {
+                padding: 0;
+            }
+        }
+
+        @media (max-width: 370px) {
+            .faction-selector-era-icon {
+                height: 0.9em;
+                width: 0.9em;
+            }
+        }
     `]
 })
 
