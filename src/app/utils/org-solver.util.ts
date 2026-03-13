@@ -1191,6 +1191,12 @@ function composeUpward(groups: GroupSizeResult[], rules: ReadonlyArray<OrgTypeRu
             }
         }
 
+        const repacked = tryRepackFractionalSameTypeGroups(current, rules);
+        if (repacked) {
+            current = repacked;
+            continue;
+        }
+
         const best = findBestComposition(current, rules, context);
         if (best) {
             current = best;
@@ -1514,6 +1520,40 @@ function repackSameTypeGroups(
             priority: rule.priority,
         };
     });
+}
+
+function ruleUsesFractionalModifiers(rule: OrgTypeRule): boolean {
+    return sortedModifiers(rule).some(([, count]) => !Number.isInteger(count));
+}
+
+function tryRepackFractionalSameTypeGroups(
+    groups: ReadonlyArray<GroupSizeResult>,
+    rules: ReadonlyArray<OrgTypeRule>,
+): GroupSizeResult[] | null {
+    let repacked = false;
+    const byType = new Map<string, GroupSizeResult[]>();
+
+    for (const group of groups) {
+        const key = group.type ?? 'null';
+        if (!byType.has(key)) byType.set(key, []);
+        byType.get(key)!.push(group);
+    }
+
+    const nextGroups: GroupSizeResult[] = [];
+    for (const bucket of byType.values()) {
+        const rule = bucket[0] ? findRuleForGroup(bucket[0], rules) : undefined;
+        const repackedBucket = rule && ruleUsesFractionalModifiers(rule)
+            ? repackSameTypeGroups(bucket, rules)
+            : null;
+        if (repackedBucket && repackedBucket.length < bucket.length) {
+            nextGroups.push(...repackedBucket);
+            repacked = true;
+        } else {
+            nextGroups.push(...bucket);
+        }
+    }
+
+    return repacked ? nextGroups : null;
 }
 
 function collapseHighestTierGroups(

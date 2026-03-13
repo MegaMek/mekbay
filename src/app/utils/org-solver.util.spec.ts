@@ -147,6 +147,23 @@ function createForeignGroup(
     };
 }
 
+function createGroupResult(
+    name: string,
+    type: GroupSizeResult['type'],
+    modifierKey: string,
+    tier: number,
+    children?: GroupSizeResult[],
+): GroupSizeResult {
+    return {
+        name,
+        type,
+        modifierKey,
+        countsAsType: null,
+        tier,
+        children,
+    };
+}
+
 function collectDescendantGroups(group: GroupSizeResult): GroupSizeResult[] {
     const children = group.children ?? [];
     return children.flatMap(child => [child, ...collectDescendantGroups(child)]);
@@ -529,6 +546,41 @@ describe('resolveFromUnits', () => {
         expect(result.every(group => group.children?.length === 6)).toBeTrue();
         expect(result.every(group => group.children?.every(child => child.name === 'Level I'))).toBeTrue();
         expect(result.every(group => group.leftoverUnits === undefined)).toBeTrue();
+    });
+
+    it('repackages two Demi-Level I groups into one regular Level I', () => {
+        const demiLevelIs = [
+            createGroupResult('Demi-Level I', 'Level I', 'Demi-', 0),
+            createGroupResult('Demi-Level I', 'Level I', 'Demi-', 0),
+        ];
+
+        const result = resolveFromGroups('Inner Sphere', 'ComStar', demiLevelIs);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Level I');
+        expect(result[0].type).toBe('Level I');
+        expect(result[0].modifierKey).toBe('');
+        expect(result[0].children?.length).toBe(2);
+        expect(result[0].children?.every(child => child.name === 'Demi-Level I')).toBeTrue();
+        expect(result[0].children?.every(child => child.modifierKey === 'Demi-')).toBeTrue();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('repackages twelve Demi-Level I groups into one regular Level II', () => {
+        const demiLevelIs = Array.from({ length: 12 }, () =>
+            createGroupResult('Demi-Level I', 'Level I', 'Demi-', 0),
+        );
+
+        const result = resolveFromGroups('Inner Sphere', 'ComStar', demiLevelIs);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Level II');
+        expect(result[0].type).toBe('Level II');
+        expect(result[0].modifierKey).toBe('');
+        expect(result[0].children?.length).toBe(6);
+        expect(result[0].children?.every(child => child.name === 'Level I')).toBeTrue();
+        expect(result[0].children?.every(child => child.modifierKey === '')).toBeTrue();
+        expect(result[0].leftoverUnits).toBeUndefined();
     });
 
     it('groups thirty-six Level I into a Level III for ComStar', () => {
@@ -1182,12 +1234,12 @@ describe('resolveFromUnits', () => {
 
     it('re-evaluates each foreign parent group independently before upward composition', () => {
         const result = resolveFromGroups('Inner Sphere', 'Federated Suns', [
-            createForeignGroup('Foreign Cell A', 'Sept', 1, null, [
+            createForeignGroup('Foreign Cell A', null, 1, null, [
                 createBM('BM1'),
                 createBM('BM2'),
                 createBM('BM3'),
             ]),
-            createForeignGroup('Foreign Cell B', 'Sept', 1, null, [
+            createForeignGroup('Foreign Cell B', null, 1, null, [
                 createBM('BM4'),
                 createBM('BM5'),
                 createBM('BM6'),
@@ -1200,6 +1252,48 @@ describe('resolveFromUnits', () => {
         expect(result[0].children?.length).toBe(2);
         expect(result[0].children?.every(child => child.name === 'Under-Strength Lance')).toBeTrue();
         expect(result[0].children?.every(child => child.type === 'Lance')).toBeTrue();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('re-evaluates real Sept groups independently before composing them upward', () => {
+        const firstSept = resolveFromUnits([
+            createBM('FS-A1'),
+            createBM('FS-A2'),
+            createBM('FS-A3'),
+            createBM('FS-A4'),
+            createBM('FS-A5'),
+            createBM('FS-A6'),
+            createBM('FS-A7'),
+        ], 'Inner Sphere', 'Society');
+        const secondSept = resolveFromUnits([
+            createBM('FS-B1'),
+            createBM('FS-B2'),
+            createBM('FS-B3'),
+            createBM('FS-B4'),
+            createBM('FS-B5'),
+            createBM('FS-B6'),
+            createBM('FS-B7'),
+        ], 'Inner Sphere', 'Society');
+
+        expect(firstSept.length).toBe(1);
+        expect(firstSept[0].name).toBe('Sept');
+        expect(firstSept[0].type).toBe('Sept');
+        expect(secondSept.length).toBe(1);
+        expect(secondSept[0].name).toBe('Sept');
+        expect(secondSept[0].type).toBe('Sept');
+
+        const result = resolveFromGroups('Inner Sphere', 'Federated Suns', [
+            firstSept[0],
+            secondSept[0],
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Under-Strength Battalion');
+        expect(result[0].type).toBe('Battalion');
+        expect(result[0].modifierKey).toBe('Under-Strength ');
+        expect(result[0].children?.length).toBe(2);
+        expect(result[0].children?.every(child => child.name === 'Under-Strength Company')).toBeTrue();
+        expect(result[0].children?.every(child => child.type === 'Company')).toBeTrue();
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
