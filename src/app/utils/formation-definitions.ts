@@ -1570,7 +1570,9 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-//            if (!units.every(u => u.getCrewMembers()[0].getSkill('gunnery', isAS) <= 3)) return false;
+            const skillCheck = units.every(u =>
+            (isAS ? (u as any).pilotSkill() : (u as any).gunnerySkill()) <= 3);
+            if (!skillCheck) return false;
             const hasAF = units.filter(u =>
                 (isAS ? u.getUnit().as?.TP === 'AF' : u.getUnit().type === 'Aero')).length;
             if (hasAF !== 2) return false;
