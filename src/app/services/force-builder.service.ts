@@ -567,9 +567,6 @@ export class ForceBuilderService {
             if (this.followLastModifiedUnit()) {
                 const allUnits = targetForce.units();
                 if (allUnits.length > 0) {
-                    for (const unit of allUnits) {
-                        console.log(`Unit ${unit.getUnit().name} (ID: ${unit.id}) updatedTs: ${unit.updatedTs}`);
-                    }
                     const latest = allUnits.reduce((best, u) =>
                         (u.updatedTs ?? 0) > (best.updatedTs ?? 0) ? u : best, allUnits[0]);
                     if ((latest.updatedTs ?? 0) > 0) {
