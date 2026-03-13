@@ -49,7 +49,7 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { ToastService } from '../../services/toast.service';
 import { type ForceAddModePickerData, ForceAddModePickerDialogComponent, type ForceAddModePickerResult } from '../force-add-mode-picker-dialog/force-add-mode-picker-dialog.component';
 import { firstValueFrom } from 'rxjs';
-import { getOrgFromForce, getOrgFromGroup, getDisplayGroupSizeResult } from '../../utils/org-namer.util';
+import { getOrgFromForce, getOrgFromGroup, getAggregatedGroupsResult } from '../../utils/org-namer.util';
 import { getUnitsAverageTechBase } from '../../models/tech.model';
 
 export interface ForceEntryPreviewDialogData {
@@ -101,7 +101,7 @@ export class ForceEntryPreviewDialogComponent {
         const techBase = getUnitsAverageTechBase(this.allUnits);
 
         this.groupDisplayData = this.force.groups.map(group => {
-            const sizeResult = getDisplayGroupSizeResult(getOrgFromGroup(group, factionName, techBase), techBase, factionName);
+            const sizeResult = getAggregatedGroupsResult(getOrgFromGroup(group, factionName, techBase), techBase, factionName);
             const orgName = (sizeResult.name && sizeResult.name !== 'Force') ? sizeResult.name : null;
 
             let name: string;
@@ -122,8 +122,8 @@ export class ForceEntryPreviewDialogComponent {
             return { group, name, orgName, formationName };
         });
 
-        const forceResult = getDisplayGroupSizeResult(getOrgFromForce(this.force, factionName), techBase, factionName);
-        if (forceResult && forceResult.type) {
+        const forceResult = getAggregatedGroupsResult(getOrgFromForce(this.force, factionName), techBase, factionName);
+        if (forceResult.name !== 'Force') {
             this.forceOrgName = forceResult.name;
         }
 

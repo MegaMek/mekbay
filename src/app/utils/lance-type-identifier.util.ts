@@ -235,7 +235,7 @@ export class LanceTypeIdentifierUtil {
         }
 
         // Nova fallback: try without Infantry
-        const isNova = group.sizeName()?.toLowerCase().includes('nova') ?? false;
+        const isNova = group.organizationalName()?.toLowerCase().includes('nova') ?? false;
         if (isNova) {
             const nonInfantryUnits = units.filter(u => !this.isInfantryUnit(u, gameSystem));
             if (nonInfantryUnits.length > 0 && nonInfantryUnits.length < units.length) {
@@ -305,7 +305,7 @@ export class LanceTypeIdentifierUtil {
         if (!targetForce) return null;
         const factionName = targetForce.faction()?.name ?? 'Mercenary';
         const techBase = targetForce.techBase();
-        const isNova = group.sizeName()?.toLowerCase().includes('nova') ?? false;
+        const isNova = group.organizationalName()?.toLowerCase().includes('nova') ?? false;
         const best = LanceTypeIdentifierUtil.getBestMatch(
             group.units(), techBase, factionName, targetForce.gameSystem, group.formationHistory, isNova
         );

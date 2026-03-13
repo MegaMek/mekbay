@@ -216,6 +216,11 @@ const IS_SQUAD: OrgTypeLeaf = leafRule({
         return Infinity;
     },
 });
+const IS_SINGLE: OrgTypeLeaf = leafRule({
+    type: 'Single', tier: 0, priority: -1,
+    modifiers: { '': 1 },    
+    filter: (u) => !isCI(u),
+});
 const IS_LANCE: OrgTypeLeaf = leafRule({
     type: 'Lance', tier: 1,
     modifiers: { 'Short ': 2, 'Under-Strength ': 3, '': 4, 'Reinforced ': 5, 'Fortified ': 6 },
@@ -318,7 +323,7 @@ const ISOrg: OrgDefinition = {
     rules: [
         IS_FLIGHT, IS_SQUADRON, IS_WING,
         IS_SQUAD, IS_PLATOON,
-        IS_LANCE, IS_AIR_LANCE, IS_COMPANY, IS_BATTALION, IS_REGIMENT, IS_BRIGADE,
+        IS_SINGLE, IS_LANCE, IS_AIR_LANCE, IS_COMPANY, IS_BATTALION, IS_REGIMENT, IS_BRIGADE,
     ],
 };
 
@@ -489,6 +494,7 @@ const WDOrg: OrgDefinition = {
         // WD Point (excludes aero and conventional infantry)
         leafRule({ ...CLAN_POINT, commandRank: 'Sergeant', filter: (u: Unit) => !isAero(u) && !isCI(u) }),
         // WD Lance (composedOf Point, not Single; limited to 2-4 BM non-BA)
+        IS_SINGLE,
         composedRule({ ...IS_LANCE, composedOfAny: ['Point'], filter: (u: Unit) => !isAero(u) && !isBA(u) }),
         // WD Star (composedOf Point; for BA or 5+ BM non-vehicle)
         composedRule({ ...CLAN_STAR, commandRank: 'Lieutenant', filter: (u: Unit) => !isCV(u) }),
@@ -538,7 +544,7 @@ const CCOrg: OrgDefinition = {
     rules: [
         IS_FLIGHT, IS_SQUADRON, IS_WING, 
         IS_SQUAD, IS_PLATOON, 
-        IS_LANCE, IS_COMPANY, IS_BATTALION, IS_REGIMENT,
+        IS_SINGLE, IS_LANCE, IS_COMPANY, IS_BATTALION, IS_REGIMENT,
         composedRule({ ...IS_COMPANY, composedOfAny: [...IS_COMPANY.composedOfAny, 'Augmented Lance'] }),
         composedRule({ ...IS_BATTALION, composedOfAny: [...IS_BATTALION.composedOfAny, 'Augmented Company'] }),
         composedRule({ ...IS_REGIMENT, composedOfAny: [...IS_REGIMENT.composedOfAny, 'Augmented Battalion'] }),

@@ -47,8 +47,8 @@ import type { Faction } from './factions.model';
 import { type FormationTypeDefinition, type FormationMatch, isNoFormation } from '../utils/formation-type.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
-import type { GroupSizeResult } from '../utils/org-types';
-import { getOrgFromForce, getOrgFromGroup, getDisplayGroupSizeResult } from '../utils/org-namer.util';
+import type { AggregatedGroupSizeResult, GroupSizeResult } from '../utils/org-types';
+import { getOrgFromForce, getOrgFromGroup, getAggregatedGroupsResult } from '../utils/org-namer.util';
 import { getUnitsAverageTechBase, TechBase } from './tech.model';
 
 /*
@@ -138,17 +138,18 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     }
 
     /** Structural evaluation result for this group (name + matched ForceType). */
-    sizeResult = computed<GroupSizeResult[]>(() => {
-        const result = getOrgFromGroup(this);
+    sizeResult = computed<AggregatedGroupSizeResult>(() => {
+        const groups = getOrgFromGroup(this);
+        const result = getAggregatedGroupsResult(
+            groups,
+            this.force.techBase(),
+            this.force.faction()?.name ?? 'Mercenary',
+        );
         return result;
     });
 
-    sizeName = computed(() => {
-        return getDisplayGroupSizeResult(
-            this.sizeResult(),
-            this.force.techBase(),
-            this.force.faction()?.name ?? 'Mercenary',
-        ).name;
+    organizationalName = computed(() => {
+        return this.sizeResult().name;
     });
 
     activeFormation = computed<FormationTypeDefinition | null>(() => {
@@ -159,7 +160,7 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     groupDisplayName = computed<string>(() => {
         const name = this.name();
         if (name) return name;
-        return this.formationDisplayName() ?? this.sizeName();
+        return this.formationDisplayName() ?? this.organizationalName();
     });
 
     isFormationAlreadyInGroupName = computed<boolean>(() => {   
@@ -254,7 +255,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     displayName = computed<string>(() => {
         const name = this.name;
         if (!name) {
-            return this.sizeName();
+            return this.organizationalName();
         }
         return name;
     });
@@ -266,17 +267,17 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         }
     }
 
-    sizeResult = computed<GroupSizeResult[]>(() => {
-        const result = getOrgFromForce(this);
-        return result;
-    });
-
-    sizeName = computed(() => {
-        return getDisplayGroupSizeResult(
-            this.sizeResult(),
+    sizeResult = computed<AggregatedGroupSizeResult>(() => {
+        const groups = getOrgFromForce(this);
+        return getAggregatedGroupsResult(
+            groups,
             this.techBase(),
             this.faction()?.name ?? 'Mercenary',
-        ).name;
+        );
+    });
+
+    organizationalName = computed(() => {
+        return this.sizeResult().name;
     });
 
     techBase = computed((): TechBase => {

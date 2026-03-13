@@ -899,10 +899,9 @@ describe('resolveFromUnits', () => {
         ]);
 
         expect(result.length).toBe(1);
-        expect(result[0].name).toBe('Force');
-        expect(result[0].type).toBeNull();
+        expect(result[0].name).toBe('Single');
+        expect(result[0].type).toBe('Single');
         expect(result[0].tier).toBe(0);
-        expect(result[0].leftoverUnits).toEqual([jasmine.objectContaining({ name: 'CV1' })]);
     });
 
     it('crossgrades one tier above the target org ceiling into three highest-tier synthetic groups', () => {

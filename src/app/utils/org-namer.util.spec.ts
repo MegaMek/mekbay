@@ -3,7 +3,52 @@ import { LoadForceEntry, type LoadForceGroup } from '../models/load-force-entry.
 import type { Unit } from '../models/units.model';
 import type { GroupSizeResult } from './org-types';
 import { resolveFromGroups, resolveFromUnits } from './org-solver.util';
-import { aggregateGroupSizeResult, getDisplayGroupSizeResult, getOrgFromForce, getOrgFromForceCollection, getOrgFromGroup } from './org-namer.util';
+import { aggregateGroupsResult, getAggregatedGroupsResult, getOrgFromForce, getOrgFromForceCollection, getOrgFromGroup } from './org-namer.util';
+
+describe('getAggregatedGroupsResult', () => {
+    it('passes through a single input group without upgrades or conversions', () => {
+        const groups: GroupSizeResult[] = [{
+            name: 'Force',
+            type: null,
+            countsAsType: null,
+            tier: 0,
+        }];
+
+        const result = getAggregatedGroupsResult(groups, 'Inner Sphere', 'Mercenary');
+
+        expect(result.name).toBe('Force');
+        expect(result.tier).toBe(0);
+        expect(result.groups).toBe(groups);
+        expect(result.groups[0]).toBe(groups[0]);
+    });
+
+    it('preserves the original structural groups when computing an aggregated display result', () => {
+        const groups: GroupSizeResult[] = [
+            {
+                name: 'Lance',
+                type: 'Lance',
+                countsAsType: null,
+                tier: 1,
+                units: [],
+            },
+            {
+                name: 'Lance',
+                type: 'Lance',
+                countsAsType: null,
+                tier: 1,
+                units: [],
+            },
+        ];
+
+        const result = getAggregatedGroupsResult(groups, 'Inner Sphere', 'Mercenary');
+
+        expect(result.name).toBe('Under-Strength Company');
+        expect(result.tier).toBe(1.5);
+        expect(result.groups).toBe(groups);
+        expect(result.groups.length).toBe(2);
+        expect(result.groups.every(group => group.type === 'Lance')).toBeTrue();
+    });
+});
 
 function createUnit(
     name: string,
@@ -126,7 +171,7 @@ describe('org-namer aggregation flow', () => {
         expect(result.length).toBe(14);
         expect(result.every(group => group.name === 'Sept')).toBeTrue();
         expect(result.every(group => group.type === 'Sept')).toBeTrue();
-        expect(aggregateGroupSizeResult(result).name).toBe('14x Sept');
+        expect(aggregateGroupsResult(result).name).toBe('14x Sept');
     });
 
     it('keeps raw Sept groups in getOrgFromForce and aggregates only for display', () => {
@@ -146,7 +191,7 @@ describe('org-namer aggregation flow', () => {
         expect(result.length).toBe(14);
         expect(result.every(group => group.name === 'Sept')).toBeTrue();
         expect(result.every(group => group.type === 'Sept')).toBeTrue();
-        expect(aggregateGroupSizeResult(result).name).toBe('14x Sept');
+        expect(aggregateGroupsResult(result).name).toBe('14x Sept');
     });
 
     it('lets display aggregation grow when a Society stack is merged with a foreign Supernova Trinary', () => {
@@ -215,7 +260,7 @@ describe('org-namer aggregation flow', () => {
         expect(merged.length).toBe(19);
         expect(merged.every(group => group.name === 'Sept')).toBeTrue();
         expect(merged.every(group => group.type === 'Sept')).toBeTrue();
-        expect(aggregateGroupSizeResult(merged).name).toBe('19x Sept');
+        expect(aggregateGroupsResult(merged).name).toBe('19x Sept');
     });
 
     it('promotes display names using leftover child groups without changing raw org results', () => {
@@ -224,10 +269,10 @@ describe('org-namer aggregation flow', () => {
             { name: 'Binary', type: 'Binary', countsAsType: null, tier: 1.8 },
         ];
 
-        const display = getDisplayGroupSizeResult(rawGroups, 'Clan', 'Clan Test');
+        const display = getAggregatedGroupsResult(rawGroups, 'Clan', 'Clan Test');
 
         expect(display.name).toBe('Cluster');
-        expect(display.type).toBe('Cluster');
+        expect(display.groups).toBe(rawGroups);
     });
 
     it('uses hierarchical display aggregation for mixed Marian child groups', () => {
@@ -243,9 +288,9 @@ describe('org-namer aggregation flow', () => {
             { name: 'Contubernium', type: 'Contubernium', countsAsType: null, tier: 0, tag: 'non-infantry' },
         ];
 
-        const display = getDisplayGroupSizeResult(rawGroups, 'Inner Sphere', 'Marian Hegemony');
+        const display = getAggregatedGroupsResult(rawGroups, 'Inner Sphere', 'Marian Hegemony');
 
         expect(display.name).toBe('Maniple');
-        expect(display.type).toBe('Maniple');
+        expect(display.groups).toBe(rawGroups);
     });
 });

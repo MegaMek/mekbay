@@ -772,16 +772,25 @@ export class ForceBuilderService {
         const sourceIndex = units.findIndex(u => u.id === sourceUnit.id);
         if (sourceIndex === -1) return null;
 
-        const newForceUnit = force.addUnit(unitData, group);
-        // addUnit appends to end — move it to right after the source
-        const updatedUnits = group.units();
-        const newIndex = updatedUnits.findIndex(u => u.id === newForceUnit.id);
-        if (newIndex !== sourceIndex + 1) {
-            group.reorderUnit(newIndex, sourceIndex + 1);
-        }
+        try {
+            const newForceUnit = force.addUnit(unitData, group);
+            // addUnit appends to end — move it to right after the source
+            const updatedUnits = group.units();
+            const newIndex = updatedUnits.findIndex(u => u.id === newForceUnit.id);
+            if (newIndex !== sourceIndex + 1) {
+                group.reorderUnit(newIndex, sourceIndex + 1);
+            }
 
-        this.selectUnit(newForceUnit);
-        return newForceUnit;
+            this.selectUnit(newForceUnit);
+            return newForceUnit;
+        } catch (error) {
+            if (error instanceof Error && error.message === `Cannot add more than ${MAX_UNITS} units to a single force`) {
+                this.toastService.showToast(`Cannot clone unit. A force cannot contain more than ${MAX_UNITS} units.`, 'error');
+                return null;
+            }
+
+            throw error;
+        }
     }
 
     getNextUnit(forceUnit: ForceUnit | null): ForceUnit | null {

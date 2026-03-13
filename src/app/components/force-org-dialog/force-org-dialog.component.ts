@@ -50,12 +50,12 @@ import { DialogsService } from '../../services/dialogs.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
-import type { GroupSizeResult } from '../../utils/org-types';
+import type { AggregatedGroupSizeResult, GroupSizeResult } from '../../utils/org-types';
 import { GameSystem } from '../../models/common.model';
 import { getUnitsAverageTechBase, type TechBase } from '../../models/tech.model';
 import type { SerializedOrganization, OrgPlacedForce, OrgGroupData } from '../../models/organization.model';
 import { ForceEntryPreviewDialogComponent } from '../force-entry-preview-dialog/force-entry-preview-dialog.component';
-import { getOrgFromForce, getOrgFromForceCollection, getDisplayGroupSizeResult } from '../../utils/org-namer.util';
+import { getAggregatedGroupsResult, getOrgFromForce, getOrgFromForceCollection } from '../../utils/org-namer.util';
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2.0;
@@ -216,7 +216,7 @@ interface ForceMetadata {
     factionName: string;
     techBase: TechBase;
     org: GroupSizeResult[];
-    aggregatedOrg: GroupSizeResult;
+    aggregatedOrg: AggregatedGroupSizeResult;
     bvString: string;
     totalBv: number;
     totalPv: number;
@@ -463,7 +463,7 @@ export class ForceOrgDialogComponent {
                 factionName,
                 techBase,
                 org: org,
-                aggregatedOrg: getDisplayGroupSizeResult(org, techBase, factionName),
+                aggregatedOrg: getAggregatedGroupsResult(org, techBase, factionName),
                 bvString,
                 totalBv,
                 totalPv,
@@ -641,7 +641,7 @@ export class ForceOrgDialogComponent {
         // Evaluate direct forces with the determined faction
         const directEntries = allEntries.filter(entry => !childEntryIds.has(entry.instanceId));
         for (const entry of directEntries) {
-            childGroupResults.push(...getOrgFromForce(entry, factionName));
+            childGroupResults.push(...this.getForceOrgResults(entry));
         }
 
         return this.computeOrgCollectionResult(allEntries, factionName, childGroupResults);
@@ -780,8 +780,8 @@ export class ForceOrgDialogComponent {
         groups: GroupSizeResult[],
         entries: LoadForceEntry[],
         factionName: string,
-    ): GroupSizeResult {
-        return getDisplayGroupSizeResult(
+    ): AggregatedGroupSizeResult {
+        return getAggregatedGroupsResult(
             groups,
             this.getEntriesTechBase(entries, factionName),
             factionName,

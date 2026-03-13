@@ -136,6 +136,19 @@ export interface GroupSizeResult {
 }
 
 /**
+ * Display aggregation wrapper for one or more structural group results.
+ *
+ * `name` and `tier` are derived for UI display only. `groups` always preserves
+ * the original structural inputs so callers can safely re-submit them to the
+ * solver without losing type, child, or unit information.
+ */
+export interface AggregatedGroupSizeResult {
+    name: string;
+    tier: number;
+    groups: GroupSizeResult[];
+}
+
+/**
  * Modifier for an org type count. Used when a rule has multiple thresholds (e.g.
  * under-strength, reinforced, etc.) that map to different counts and tiers.
  * `count` is the actual count for this modifier, while `tier` is an optional tier override

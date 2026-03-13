@@ -32,7 +32,7 @@
  */
 import { resolveFromGroups, resolveFromUnits, EMPTY_RESULT } from './org-solver.util';
 import { DEFAULT_ORG, ORG_REGISTRY } from './org-definitions.util';
-import type { GroupSizeResult } from './org-types';
+import type { AggregatedGroupSizeResult, GroupSizeResult } from './org-types';
 import type { OrgDefinition, OrgTypeComposed, OrgTypeRule } from './org-types';
 import { type Force, UnitGroup } from '../models/force.model';
 import { LoadForceEntry, type LoadForceGroup } from '../models/load-force-entry.model';
@@ -75,7 +75,7 @@ export function getOrgFromForce(forceOrEntry: Force | LoadForceEntry, factionNam
     const techBase = forceOrEntry.techBase();
     const groupResults = forceOrEntry.groups()
         .filter(g => g.units().length > 0)
-        .flatMap(g => g.sizeResult() ?? []);
+        .flatMap(g => g.sizeResult().groups ?? []);
     return resolveFromGroups(techBase, fn, groupResults);
 }
 
@@ -103,20 +103,33 @@ export function getOrgFromForceCollection(
  * Raw org-namer APIs intentionally return the unwrapped top-level groups so callers
  * can reason about exact subgroup structure. For UI display, we then run the same
  * groups back through hierarchical aggregation and finally fold duplicate names into
- * `Nx Name` strings.
+ * `Nx Name` strings. The original groups are preserved on the returned wrapper so
+ * callers can re-submit them for further structural evaluation without losing data.
  */
-export function getDisplayGroupSizeResult(
+export function getAggregatedGroupsResult(
     groups: GroupSizeResult[],
     techBase: TechBase,
     factionName: string,
-): GroupSizeResult {
+): AggregatedGroupSizeResult {
     if (groups.length === 0) {
-        return EMPTY_RESULT;
+        return {
+            name: EMPTY_RESULT.name,
+            tier: EMPTY_RESULT.tier,
+            groups,
+        };
+    }
+
+    if (groups.length === 1) {
+        return {
+            name: groups[0].name,
+            tier: groups[0].tier,
+            groups,
+        };
     }
 
     const promotedGroups = promoteDisplayGroups(groups, resolveOrg(techBase, factionName));
     const displayGroups = resolveFromGroups(techBase, factionName, promotedGroups, true);
-    return aggregateGroupSizeResult(displayGroups);
+    return aggregateGroupsResult(displayGroups, groups);
 }
 
 function resolveOrg(techBase: TechBase, factionName: string): OrgDefinition {
@@ -253,12 +266,23 @@ function promoteDisplayGroups(
  * @param groups 
  * @returns 
  */
-export function aggregateGroupSizeResult(groups: GroupSizeResult[]): GroupSizeResult {
+export function aggregateGroupsResult(
+    groups: GroupSizeResult[],
+    originalGroups: GroupSizeResult[] = groups,
+): AggregatedGroupSizeResult {
     if (groups.length === 0) {
-        return EMPTY_RESULT;
+        return {
+            name: EMPTY_RESULT.name,
+            tier: EMPTY_RESULT.tier,
+            groups: originalGroups,
+        };
     }
     if (groups.length === 1) {
-        return groups[0];
+        return {
+            name: groups[0].name,
+            tier: groups[0].tier,
+            groups: originalGroups,
+        };
     }
     // Sort by tier descending so the highest-tier group appears first
     const sorted = [...groups].sort((a, b) => b.tier - a.tier);
@@ -281,10 +305,8 @@ export function aggregateGroupSizeResult(groups: GroupSizeResult[]): GroupSizeRe
     }
     return {
         name: parts.join(' + '),
-        type: null,
-        countsAsType: null,
         tier: tierSum,
-        children: sorted,
+        groups: originalGroups,
     };
 }
 

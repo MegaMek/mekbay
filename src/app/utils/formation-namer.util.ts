@@ -60,7 +60,7 @@ export class FormationNamerUtil {
          const targetForce = group.force;
          if (!targetForce) return [];
         const factionName = targetForce.faction()?.name ?? 'Mercenary';
-        const isNova = group.sizeName()?.toLowerCase().includes('nova') ?? false;
+        const isNova = group.organizationalName()?.toLowerCase().includes('nova') ?? false;
         return LanceTypeIdentifierUtil.identifyFormations(group.units(), targetForce.techBase(), factionName, targetForce.gameSystem, isNova);
     }
 
@@ -75,14 +75,14 @@ export class FormationNamerUtil {
         group: UnitGroup,
         novaFiltered: boolean = false,
     ): string {
-        const sizeName = group.sizeName();
+        const organizationalName = group.organizationalName();
         const suffix = novaFiltered ? ' *' : '';
-        if (sizeName && definition.name.includes(sizeName)) {
+        if (organizationalName && definition.name.includes(organizationalName)) {
             return definition.name + suffix;
         }
-        if (sizeName?.includes('Level')) {
-            return sizeName + ' - ' + definition.name + suffix;
+        if (organizationalName?.includes('Level')) {
+            return organizationalName + ' - ' + definition.name + suffix;
         }
-        return definition.name + ' ' + sizeName + suffix;
+        return definition.name + ' ' + organizationalName + suffix;
     }
 }
