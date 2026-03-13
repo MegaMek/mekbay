@@ -879,7 +879,7 @@ describe('resolveFromUnits', () => {
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
-    it('re-evaluates all units from foreign groups together before falling back to tier crossgrading', () => {
+    it('re-evaluates each foreign parent group independently before upward composition', () => {
         const result = resolveFromGroups('Inner Sphere', 'Federated Suns', [
             createForeignGroup('Foreign Cell A', 'Sept', 1, null, [
                 createBM('BM1'),
@@ -894,20 +894,23 @@ describe('resolveFromUnits', () => {
         ]);
 
         expect(result.length).toBe(1);
-        expect(result[0].name).toBe('Fortified Lance');
-        expect(result[0].type).toBe('Lance');
+        expect(result[0].name).toBe('Under-Strength Company');
+        expect(result[0].type).toBe('Company');
+        expect(result[0].children?.length).toBe(2);
+        expect(result[0].children?.every(child => child.name === 'Under-Strength Lance')).toBeTrue();
+        expect(result[0].children?.every(child => child.type === 'Lance')).toBeTrue();
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
-    it('rounds crossgrade ties downward when a foreign tier sits between lower and upper targets', () => {
+    it('crossgrades to the nearest target tier when a foreign tier sits between lower and upper targets', () => {
         const result = resolveFromGroups('Inner Sphere', 'Federated Suns', [
             createForeignGroup('Supernova Binary', 'Supernova Trinary', 2.5),
         ]);
 
         expect(result.length).toBe(1);
-        expect(result[0].name).toBe('Reinforced Company');
-        expect(result[0].type).toBe('Company');
-        expect(result[0].tier).toBeCloseTo(2.3, 1);
+        expect(result[0].name).toBe('Under-Strength Battalion');
+        expect(result[0].type).toBe('Battalion');
+        expect(result[0].tier).toBeCloseTo(2.63, 2);
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 

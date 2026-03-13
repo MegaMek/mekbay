@@ -48,6 +48,31 @@ describe('getAggregatedGroupsResult', () => {
         expect(result.groups.length).toBe(2);
         expect(result.groups.every(group => group.type === 'Lance')).toBeTrue();
     });
+
+    it('cycles multiplier names across regular-and-above modifiers after the highest modifier is exceeded', () => {
+        const makeBrigades = (count: number): GroupSizeResult[] => Array.from({ length: count }, () => ({
+            name: 'Reinforced Brigade',
+            type: 'Brigade',
+            countsAsType: null,
+            tier: 5.26,
+        }));
+
+        expect(getAggregatedGroupsResult(makeBrigades(1), 'Inner Sphere', 'Mercenary').name).toBe('Reinforced Brigade');
+        expect(getAggregatedGroupsResult(makeBrigades(2), 'Inner Sphere', 'Mercenary').name).toBe('2x Brigade');
+        expect(getAggregatedGroupsResult(makeBrigades(3), 'Inner Sphere', 'Mercenary').name).toBe('2x Reinforced Brigade');
+        expect(getAggregatedGroupsResult(makeBrigades(4), 'Inner Sphere', 'Mercenary').name).toBe('3x Brigade');
+        expect(getAggregatedGroupsResult(makeBrigades(5), 'Inner Sphere', 'Mercenary').name).toBe('3x Reinforced Brigade');
+    });
+
+    it('keeps mixed Brigade tiers when collapsing display groups', () => {
+        const result = getAggregatedGroupsResult([
+            { name: 'Reinforced Brigade', type: 'Brigade', countsAsType: null, tier: 5.26 },
+            { name: 'Brigade', type: 'Brigade', countsAsType: null, tier: 5 },
+        ], 'Inner Sphere', 'Mercenary');
+
+        expect(result.name).toBe('2x Brigade');
+        expect(result.tier).toBeCloseTo(5.77, 2);
+    });
 });
 
 function createUnit(
@@ -382,10 +407,9 @@ describe('org-namer aggregation flow', () => {
         expect(stages[0].rawGroups.length).toBe(40);
         expect(stages[0].rawGroups.every(group => group.name === 'Under-Strength Brigade')).toBeTrue();
         expect(stages[0].rawGroups.every(group => group.type === 'Brigade')).toBeTrue();
-        // 4.66 is theh dynamicTier for US Brigade
-        expect(stages[0].rawGroups.every(group => Math.round(Math.abs(group.tier - 4.66)) === 0)).toBeTrue();
+        expect(stages[0].rawGroups.every(group => Math.abs(group.tier - 4.63) < 0.01)).toBeTrue();
         expect(stages[0].aggregated.groups).toBe(stages[0].rawGroups);
-        expect(stages[0].aggregated.name).toBe('20x Reinforced Brigade');
-        expect(stages[0].aggregated.tier).toBeCloseTo(8.06, 2);
+        expect(stages[0].aggregated.name).toBe('11x Brigade');
+        expect(stages[0].aggregated.tier).toBeCloseTo(7.98, 2);
     });
 });

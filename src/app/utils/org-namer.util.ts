@@ -39,7 +39,7 @@ import { type Force, UnitGroup } from '../models/force.model';
 import { LoadForceEntry, type LoadForceGroup } from '../models/load-force-entry.model';
 import type { Unit } from '../models/units.model';
 import { getUnitsAverageTechBase, TechBase } from '../models/tech.model';
-import { getAggregatedTier } from './org-tier.util';
+import { getAggregatedTier, getDynamicTierForModifier } from './org-tier.util';
 
 /*
  * Author: Drake
@@ -113,6 +113,7 @@ export function getAggregatedGroupsResult(
     techBase: TechBase,
     factionName: string,
 ): AggregatedGroupSizeResult {
+    const org = resolveOrg(techBase, factionName);
     if (groups.length === 0) {
         return {
             name: EMPTY_RESULT.name,
@@ -129,9 +130,19 @@ export function getAggregatedGroupsResult(
         };
     }
 
+    const displayGroups = getDisplayGroups(groups, techBase, factionName);
+    return aggregateGroupsResult(displayGroups, groups, org);
+}
+
+export function getDisplayGroups(
+    groups: GroupSizeResult[],
+    techBase: TechBase,
+    factionName: string,
+): GroupSizeResult[] {
+    if (groups.length <= 1) return groups;
+
     const promotedGroups = promoteDisplayGroups(groups, resolveOrg(techBase, factionName));
-    const displayGroups = resolveFromGroups(techBase, factionName, promotedGroups, true);
-    return aggregateGroupsResult(displayGroups, groups);
+    return resolveFromGroups(techBase, factionName, promotedGroups, true);
 }
 
 function resolveOrg(techBase: TechBase, factionName: string): OrgDefinition {
@@ -166,8 +177,7 @@ function resolveTier(rule: OrgTypeRule, prefix: string): number {
         const regularCount = getRegularCount(rule);
         const modifierCount = modifier != null ? getModifierCount(modifier) : regularCount;
         if (regularCount > 0 && modifierCount !== regularCount) {
-            const variation = (modifierCount - regularCount) / regularCount;
-            return rule.tier + variation * rule.dynamicTier;
+            return getDynamicTierForModifier(rule.tier, regularCount, modifierCount, rule.dynamicTier);
         }
     }
     return rule.tier;
@@ -276,6 +286,7 @@ function promoteDisplayGroups(
 export function aggregateGroupsResult(
     groups: GroupSizeResult[],
     originalGroups: GroupSizeResult[] = groups,
+    org?: OrgDefinition,
 ): AggregatedGroupSizeResult {
     if (groups.length === 0) {
         return {
@@ -294,15 +305,7 @@ export function aggregateGroupsResult(
     // Sort by tier descending so the highest-tier group appears first
     const sorted = [...groups].sort((a, b) => b.tier - a.tier);
     
-    // Build descriptive name: count duplicates, e.g. "2x Galaxy + Flight"
-    const nameCounts = new Map<string, number>();
-    for (const g of sorted) {
-        nameCounts.set(g.name, (nameCounts.get(g.name) || 0) + 1);
-    }
-    const parts: string[] = [];
-    for (const [name, count] of nameCounts) {
-        parts.push(count > 1 ? `${count}x ${name}` : name);
-    }
+    const parts = buildAggregatedNameParts(sorted, org);
 
     // Tier: each +1 tier is worth 3x groups of the previous tier.
     const tierSum = getAggregatedTier(sorted.map(group => group.tier));
@@ -327,4 +330,55 @@ function resolveTechBase(units: { unit: Unit | undefined }[], factionName: strin
 /** Resolve tech base from a set of LoadForceEntry instances. */
 function resolveTechBaseFromEntries(entries: LoadForceEntry[], factionName: string): TechBase {
     return resolveTechBase(entries.flatMap(e => e.groups.flatMap(g => g.units)), factionName);
+}
+
+function buildAggregatedNameParts(groups: GroupSizeResult[], org?: OrgDefinition): string[] {
+    const buckets = new Map<string, GroupSizeResult[]>();
+    for (const group of groups) {
+        const state = org ? findGroupRuleState(group, org.rules) : null;
+        const key = state
+            ? `rule:${state.rule.type}:${group.tag ?? ''}`
+            : `${group.type ?? 'null'}:${group.name}:${group.tag ?? ''}`;
+        if (!buckets.has(key)) buckets.set(key, []);
+        buckets.get(key)!.push(group);
+    }
+
+    const parts: string[] = [];
+    for (const bucket of buckets.values()) {
+        parts.push(formatAggregatedBucketName(bucket, org));
+    }
+
+    return parts;
+}
+
+function formatAggregatedBucketName(groups: GroupSizeResult[], org?: OrgDefinition): string {
+    const [first] = groups;
+    if (!first) return EMPTY_RESULT.name;
+    if (groups.length === 1 || !org) return groups.length > 1 ? `${groups.length}x ${first.name}` : first.name;
+
+    const state = findGroupRuleState(first, org.rules);
+    if (!state) return `${groups.length}x ${first.name}`;
+
+    const sortedModifiers = getSortedModifiers(state.rule);
+    const regularIndex = sortedModifiers.findIndex(([prefix]) => prefix === '');
+    const highestModifier = sortedModifiers.at(-1);
+
+    if (
+        regularIndex === -1 ||
+        !highestModifier ||
+        state.prefix !== highestModifier[0]
+    ) {
+        return `${groups.length}x ${first.name}`;
+    }
+
+    if (groups.length === 1) return first.name;
+
+    const multiplierCycle = sortedModifiers.slice(regularIndex);
+    if (multiplierCycle.length === 0) return `${groups.length}x ${first.name}`;
+
+    const cycleIndex = (groups.length - 2) % multiplierCycle.length;
+    const multiplier = Math.floor((groups.length - 2) / multiplierCycle.length) + 2;
+    const [prefix] = multiplierCycle[cycleIndex];
+
+    return `${multiplier}x ${buildRuleName(state.rule, prefix)}`;
 }

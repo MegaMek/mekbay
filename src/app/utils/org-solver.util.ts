@@ -47,7 +47,7 @@ import {
     DEFAULT_ORG,
 } from './org-definitions.util';
 import { TechBase } from '../models/tech.model';
-import { getRepeatCountForTierDelta } from './org-tier.util';
+import { getDynamicTierForModifier, getRepeatCountForTierDelta } from './org-tier.util';
 
 /**
  * Author: Drake
@@ -555,9 +555,8 @@ function getRegularCount(rule: OrgTypeRule): number {
  *
  * Priority:
  * 1. If the modifier is an OrgTypeModifier with an explicit `tier`, use it.
- * 2. If the rule has `dynamicTier > 0`, compute the tier adjustment:
- *    variation = (modCount - regularCount) / regularCount
- *    effectiveTier = rule.tier + variation * dynamicTier
+ * 2. If the rule has `dynamicTier > 0`, scale the adjustment in base-3 space:
+ *    effectiveTier = rule.tier + log_3(modCount / regularCount) * dynamicTier
  * 3. Otherwise, return `rule.tier`.
  */
 function resolveTier(rule: OrgTypeRule, prefix: string): number {
@@ -571,8 +570,7 @@ function resolveTier(rule: OrgTypeRule, prefix: string): number {
         const regularCount = getRegularCount(rule);
         const modCount = mod != null ? getModifierCount(mod) : regularCount;
         if (regularCount > 0 && modCount !== regularCount) {
-            const variation = (modCount - regularCount) / regularCount;
-            return rule.tier + variation * rule.dynamicTier;
+            return getDynamicTierForModifier(rule.tier, regularCount, modCount, rule.dynamicTier);
         }
     }
     return rule.tier;
@@ -946,40 +944,6 @@ function isKnownGroupType(group: GroupSizeResult, rules: ReadonlyArray<OrgTypeRu
         (group.type && knownTypes.has(group.type)) ||
         (group.countsAsType && knownTypes.has(group.countsAsType)),
     );
-}
-
-function collectCrossgradedGroups(
-    groupResults: GroupSizeResult[],
-    rules: ReadonlyArray<OrgTypeRule>,
-    context: SolverContext,
-): {
-    knownGroups: GroupSizeResult[];
-    foreignGroupsWithUnits: GroupSizeResult[];
-    foreignGroupsWithoutUnits: GroupSizeResult[];
-} {
-    const knownGroups: GroupSizeResult[] = [];
-    const foreignGroupsWithUnits: GroupSizeResult[] = [];
-    const foreignGroupsWithoutUnits: GroupSizeResult[] = [];
-
-    for (const group of groupResults) {
-        if (isKnownGroupType(group, rules)) {
-            knownGroups.push(group);
-            continue;
-        }
-
-        if (collectGroupUnits(group, context).length > 0) {
-            foreignGroupsWithUnits.push(group);
-            continue;
-        }
-
-        foreignGroupsWithoutUnits.push(group);
-    }
-
-    return {
-        knownGroups,
-        foreignGroupsWithUnits,
-        foreignGroupsWithoutUnits,
-    };
 }
 
 function collectUnassignedUnits(
@@ -1465,11 +1429,7 @@ function hierarchicallyAggregateGroups(
     context: SolverContext,
 ): GroupSizeResult[] {
     const collapsed = collapseHighestTierGroups(groups, rules, context);
-    if (collapsed.length <= 1) return collapsed;
-
-    const highestTier = collapsed[0].tier;
-    const highestGroups = collapsed.filter(group => group.tier === highestTier);
-    return highestGroups;
+    return collapsed;
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -2129,25 +2089,18 @@ class OrgSolver {
         let normalized: GroupSizeResult[];
 
         if (FOREIGN_EVALUATION) {
-            const {
-                knownGroups,
-                foreignGroupsWithUnits,
-                foreignGroupsWithoutUnits,
-            } = collectCrossgradedGroups(groupResults, this.rules, this.context);
-            const reevaluatedForeignGroups = foreignGroupsWithUnits.length > 0
-                ? this.resolveFromUnits(collectAllUnits(foreignGroupsWithUnits, this.context))
-                : [];
-            const tierCrossgradedGroups = normalizeGroupsToOrg(
-                foreignGroupsWithoutUnits,
-                this.rules,
-                this.context,
-            );
+            normalized = groupResults.flatMap(group => {
+                if (isKnownGroupType(group, this.rules)) {
+                    return [group];
+                }
 
-            normalized = [
-                ...knownGroups,
-                ...reevaluatedForeignGroups,
-                ...tierCrossgradedGroups,
-            ];
+                const groupUnits = collectGroupUnits(group, this.context);
+                if (groupUnits.length > 0) {
+                    return this.resolveFromUnits(groupUnits);
+                }
+
+                return normalizeGroupsToOrg([group], this.rules, this.context);
+            });
         } else {
             normalized = normalizeGroupsToOrg(groupResults, this.rules, this.context);
         }
