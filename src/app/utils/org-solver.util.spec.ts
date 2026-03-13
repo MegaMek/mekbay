@@ -140,6 +140,7 @@ function createForeignGroup(
     return {
         name,
         type,
+        modifierKey: '',
         countsAsType,
         tier,
         units,
@@ -495,6 +496,61 @@ describe('resolveFromUnits', () => {
         expect(result[1].name).toBe('Lance');
         expect(result[1].type).toBe('Lance');
         expect(result[1].leftoverUnits).toBeUndefined();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('regularizes a Thin Level II with ten Level I into two regular Level II groups', () => {
+        const thinLevelII = resolveFromUnits([
+            createBM('CS-TL2-1'),
+            createBM('CS-TL2-2'),
+        ], 'Inner Sphere', 'ComStar');
+        const levelIs = Array.from({ length: 10 }, (_, index) =>
+            resolveFromUnits([
+                createBM(`CS-L1-${index + 1}`),
+            ], 'Inner Sphere', 'ComStar')[0],
+        );
+
+        expect(thinLevelII.length).toBe(1);
+        expect(thinLevelII[0].name).toBe('Thin Level II');
+        expect(thinLevelII[0].type).toBe('Level II');
+        expect(thinLevelII[0].modifierKey).toBe('Thin ');
+        expect(levelIs.every(group => group.name === 'Level I')).toBeTrue();
+        expect(levelIs.every(group => group.type === 'Level I')).toBeTrue();
+
+        const result = resolveFromGroups('Inner Sphere', 'ComStar', [
+            thinLevelII[0],
+            ...levelIs,
+        ]);
+
+        expect(result.length).toBe(2);
+        expect(result.every(group => group.name === 'Level II')).toBeTrue();
+        expect(result.every(group => group.type === 'Level II')).toBeTrue();
+        expect(result.every(group => group.modifierKey === '')).toBeTrue();
+        expect(result.every(group => group.children?.length === 6)).toBeTrue();
+        expect(result.every(group => group.children?.every(child => child.name === 'Level I'))).toBeTrue();
+        expect(result.every(group => group.leftoverUnits === undefined)).toBeTrue();
+    });
+
+    it('groups thirty-six Level I into a Level III for ComStar', () => {
+        const levelIs = Array.from({ length: 36 }, (_, index) =>
+            resolveFromUnits([
+                createBM(`CS-L3-${index + 1}`),
+            ], 'Inner Sphere', 'ComStar')[0],
+        );
+
+        expect(levelIs.every(group => group.name === 'Level I')).toBeTrue();
+        expect(levelIs.every(group => group.type === 'Level I')).toBeTrue();
+
+        const result = resolveFromGroups('Inner Sphere', 'ComStar', levelIs);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Level III');
+        expect(result[0].type).toBe('Level III');
+        expect(result[0].modifierKey).toBe('');
+        expect(result[0].children?.length).toBe(6);
+        expect(result[0].children?.every(child => child.name === 'Level II')).toBeTrue();
+        expect(result[0].children?.every(child => child.type === 'Level II')).toBeTrue();
+        expect(result[0].children?.every(child => child.modifierKey === '')).toBeTrue();
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 

@@ -10,6 +10,7 @@ describe('getAggregatedGroupsResult', () => {
         const groups: GroupSizeResult[] = [{
             name: 'Force',
             type: null,
+            modifierKey: '',
             countsAsType: null,
             tier: 0,
         }];

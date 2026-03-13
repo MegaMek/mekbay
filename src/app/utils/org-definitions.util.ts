@@ -383,8 +383,10 @@ const ComStarOrg: OrgDefinition = {
             }, commandRank: 'Precentor', tier: 4,
         }),
         composedRule({
-            type: 'Level VI', composedOfAny: ['Level V'], modifiers: { '': 2, },
-            commandRank: 'Precentor Martial', tier: 5,
+            type: 'Level VI', composedOfAny: ['Level V'], modifiers: { 
+                'Under-Strength ': 2, '': 6, 'Reinforced ': 12
+             },
+            commandRank: 'Precentor Martial', tier: 5, dynamicTier: 1,
         }),
     ],
 };
