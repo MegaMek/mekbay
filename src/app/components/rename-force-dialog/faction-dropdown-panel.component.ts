@@ -35,6 +35,7 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
 import { DecimalPipe } from '@angular/common';
 import type { Faction } from '../../models/factions.model';
 import type { FactionDisplayInfo } from '../../utils/force-namer.util';
+import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-visuals.util';
 
 /*
  * Author: Drake
@@ -43,102 +44,158 @@ import type { FactionDisplayInfo } from '../../utils/force-namer.util';
     selector: 'faction-dropdown-panel',
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <div class="dropdown-panel glass has-shadow framed-borders" data-scroll-container>
-            <!-- None option -->
-            <div class="dropdown-option none-option"
-                 [class.active]="!selectedFactionId()"
-                 (click)="onSelectNone()">
-                <div class="faction-icon-spacer" aria-hidden="true"></div>
-                <div class="none-option-details">
-                    <div class="faction-header">
-                        <span class="faction-name">None</span>
+        <div class="dropdown-shell glass has-shadow framed-borders">
+            <div class="dropdown-panel" data-scroll-container>
+                <!-- None option -->
+                <div class="dropdown-option none-option"
+                     [class.active]="!selectedFactionId()"
+                     (click)="onSelectNone()">
+                    <div class="faction-icon-spacer" aria-hidden="true"></div>
+                    <div class="none-option-details">
+                        <div class="faction-header">
+                            <span class="faction-name">None</span>
+                        </div>
+                        <div class="faction-summary">Explicitly opt out of any faction</div>
                     </div>
-                    <div class="faction-summary">Explicitly opt out of any faction</div>
+                </div>
+                <hr class="divider"/>
+
+                @if (hasMatchingFactions()) {
+                    <div class="section-label">Matching Factions</div>
+                }
+
+                @for (item of factions(); track item.faction.id) {
+                    @if (item.isMatching) {
+                    <div class="dropdown-option matching"
+                         [class.active]="selectedFactionId() === item.faction.id"
+                         (click)="onSelect(item.faction)">
+                        @if (item.faction.img) {
+                            <img [src]="item.faction.img" class="faction-icon" [alt]="item.faction.name" />
+                        } @else {
+                            <div class="faction-icon-spacer" aria-hidden="true"></div>
+                        }
+                        <div class="faction-details">
+                            <div class="faction-header">
+                                <span class="faction-name">{{ item.faction.name }}</span>
+                                <span class="match-badge">{{ (item.matchPercentage * 100) | number:'1.0-0' }}% match</span>
+                            </div>
+                            <div class="era-icons">
+                                @for (eraItem of item.eraAvailability; track eraItem.era.id) {
+                                    @if (eraItem.era.icon) {
+                                        <span class="era-chip"
+                                            [class.past-era]="eraItem.isBeforeReferenceYear"
+                                              [title]="getEraTitle(eraItem)">
+                                            <img class="era-icon"
+                                                 [src]="eraItem.era.icon"
+                                                [alt]="eraItem.era.name"
+                                                [class.unavailable]="!eraItem.isAvailable"
+                                                [style.filter]="getEraIconFilter(eraItem)" />
+                                        </span>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </div>
+                    }
+                }
+
+                @if (hasMatchingFactions() && hasNonMatchingFactions()) {
+                    <hr class="divider"/>
+                    <div class="section-label">Other Factions</div>
+                }
+
+                @for (item of factions(); track item.faction.id) {
+                    @if (!item.isMatching) {
+                    <div class="dropdown-option"
+                         [class.active]="selectedFactionId() === item.faction.id"
+                         (click)="onSelect(item.faction)">
+                        @if (item.faction.img) {
+                            <img [src]="item.faction.img" class="faction-icon" [alt]="item.faction.name" />
+                        } @else {
+                            <div class="faction-icon-spacer" aria-hidden="true"></div>
+                        }
+                        <div class="faction-details">
+                            <div class="faction-header">
+                                <span class="faction-name">{{ item.faction.name }}</span>
+                                <span class="match-badge">{{ (item.matchPercentage * 100) | number:'1.0-0' }}% match</span>
+                            </div>
+                            <div class="era-icons">
+                                @for (eraItem of item.eraAvailability; track eraItem.era.id) {
+                                    @if (eraItem.era.icon) {
+                                        <span class="era-chip"
+                                            [class.past-era]="eraItem.isBeforeReferenceYear"
+                                              [title]="getEraTitle(eraItem)">
+                                            <img class="era-icon"
+                                                 [src]="eraItem.era.icon"
+                                                [alt]="eraItem.era.name"
+                                                [class.unavailable]="!eraItem.isAvailable"
+                                                [style.filter]="getEraIconFilter(eraItem)" />
+                                        </span>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </div>
+                    }
+                }
+            </div>
+
+            <div class="legend-footer">
+                <div class="legend-icons">
+                    <div class="legend-icon-card">
+                        <span class="era-chip legend-era-chip past-era-example">
+                            <img class="era-icon legend-era-icon"
+                                 [src]="legendEraIcon"
+                                 alt="Clan Invasion past era example" />
+                        </span>
+                        <span class="legend-label">Era predates this force</span>
+                    </div>
+                    <div class="legend-icon-card">
+                        <span class="era-chip legend-era-chip">
+                            <img class="era-icon legend-era-icon unavailable"
+                                 [src]="legendEraIcon"
+                                 alt="Clan Invasion unavailable example" />
+                        </span>
+                        <span class="legend-label">Faction not available in this era</span>
+                    </div>
+                    <div class="legend-icon-card">
+                        <span class="era-chip legend-era-chip">
+                            <img class="era-icon legend-era-icon"
+                                 [src]="legendEraIcon"
+                                 alt="Clan Invasion normal example" />
+                        </span>
+                        <span class="legend-label">Faction available in this era</span>
+                    </div>
+                    <div class="legend-icon-card">
+                        <span class="era-chip legend-era-chip">
+                            <img class="era-icon legend-era-icon glowing"
+                                 [src]="legendEraIcon"
+                                 alt="Clan Invasion glowing example" />
+                        </span>
+                        <span class="legend-label">Faction and force units available</span>
+                    </div>
                 </div>
             </div>
-            <hr class="divider"/>
-
-            @if (hasMatchingFactions()) {
-                <div class="section-label">Matching Factions</div>
-            }
-
-            @for (item of factions(); track item.faction.id) {
-                @if (item.isMatching) {
-                <div class="dropdown-option matching"
-                     [class.active]="selectedFactionId() === item.faction.id"
-                     (click)="onSelect(item.faction)">
-                    @if (item.faction.img) {
-                        <img [src]="item.faction.img" class="faction-icon" [alt]="item.faction.name" />
-                    } @else {
-                        <div class="faction-icon-spacer" aria-hidden="true"></div>
-                    }
-                    <div class="faction-details">
-                        <div class="faction-header">
-                            <span class="faction-name">{{ item.faction.name }}</span>
-                            <span class="match-badge">{{ (item.matchPercentage * 100) | number:'1.0-0' }}% match</span>
-                        </div>
-                        <div class="era-icons">
-                            @for (eraItem of item.eraAvailability; track eraItem.era.id) {
-                                @if (eraItem.era.icon) {
-                                    <img class="era-icon"
-                                         [src]="eraItem.era.icon"
-                                         [alt]="eraItem.era.name"
-                                         [title]="eraItem.era.name + ' (' + (eraItem.era.years.from ?? '?') + '–' + (eraItem.era.years.to ?? 'present') + ')'"
-                                         [class.unavailable]="!eraItem.isAvailable" />
-                                }
-                            }
-                        </div>
-                    </div>
-                </div>
-                }
-            }
-
-            @if (hasMatchingFactions() && hasNonMatchingFactions()) {
-                <hr class="divider"/>
-                <div class="section-label">Other Factions</div>
-            }
-
-            @for (item of factions(); track item.faction.id) {
-                @if (!item.isMatching) {
-                <div class="dropdown-option"
-                     [class.active]="selectedFactionId() === item.faction.id"
-                     (click)="onSelect(item.faction)">
-                    @if (item.faction.img) {
-                        <img [src]="item.faction.img" class="faction-icon" [alt]="item.faction.name" />
-                    } @else {
-                        <div class="faction-icon-spacer" aria-hidden="true"></div>
-                    }
-                    <div class="faction-details">
-                        <div class="faction-header">
-                            <span class="faction-name">{{ item.faction.name }}</span>
-                            <span class="match-badge">{{ (item.matchPercentage * 100) | number:'1.0-0' }}% match</span>
-                        </div>
-                        <div class="era-icons">
-                            @for (eraItem of item.eraAvailability; track eraItem.era.id) {
-                                @if (eraItem.era.icon) {
-                                    <img class="era-icon"
-                                         [src]="eraItem.era.icon"
-                                         [alt]="eraItem.era.name"
-                                         [title]="eraItem.era.name + ' (' + (eraItem.era.years.from ?? '?') + '–' + (eraItem.era.years.to ?? 'present') + ')'"
-                                         [class.unavailable]="!eraItem.isAvailable" />
-                                }
-                            }
-                        </div>
-                    </div>
-                </div>
-                }
-            }
         </div>
     `,
     styles: [`
         :host {
             display: block;
             width: 100%;
+            min-height: 0;
+        }
+
+        .dropdown-shell {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
         }
 
         .dropdown-panel {
             box-sizing: border-box;
             overflow-y: auto;
+            flex: 1 1 auto;
+            min-height: 0;
         }
 
         .section-label {
@@ -215,7 +272,7 @@ import type { FactionDisplayInfo } from '../../utils/force-namer.util';
         .faction-details {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 2px;
             min-width: 0;
             flex: 1;
         }
@@ -252,15 +309,90 @@ import type { FactionDisplayInfo } from '../../utils/force-namer.util';
             align-items: center;
         }
 
+        .era-chip {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2px; 
+        }
+
+        .era-chip.past-era::before {
+            content: '';
+            position: absolute;
+            left: -2px;
+            top: -1px;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 0, 0, 0.2);
+            pointer-events: none;
+        }
+
         .era-icon {
             width: 1.2em;
             height: 1.2em;
             object-fit: contain;
-            transition: opacity 0.2s ease;
         }
 
         .era-icon.unavailable {
-            opacity: 0.15;
+            opacity: 0.18;
+        }
+
+        .legend-footer {
+            flex: 0 0 auto;
+            padding: 10px 12px 12px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .legend-icons {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .legend-icon-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            text-align: center;
+        }
+
+        .legend-label {
+            font-size: 0.8em;
+            line-height: 1.25;
+            color: var(--text-color-secondary);
+        }
+
+        .legend-era-chip {
+            min-width: 1.75em;
+            min-height: 1.75em;
+        }
+
+        .legend-era-icon {
+            width: 1.2em;
+            height: 1.2em;
+        }
+
+        .legend-era-chip.past-era-example::before {
+            content: '';
+            position: absolute;
+            left: 0px;
+            top: 0px;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 0, 0, 0.2);
+            pointer-events: none;
+        }
+
+        .legend-era-icon.glowing {
+            filter: sepia(1) saturate(10) hue-rotate(344deg) drop-shadow(0 0 2px rgba(214, 162, 74, 1));
+        }
+
+        @media (max-width: 560px) {
+            .legend-icons {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
         }
     `],
     imports: [
@@ -268,6 +400,8 @@ import type { FactionDisplayInfo } from '../../utils/force-namer.util';
     ]
 })
 export class FactionDropdownPanelComponent {
+    readonly legendEraIcon = '/images/eras/era03-clan-invasion.png';
+
     factions = input.required<FactionDisplayInfo[]>();
     selectedFactionId = input<number | null>(null);
 
@@ -288,4 +422,8 @@ export class FactionDropdownPanelComponent {
     onSelectNone(): void {
         this.selected.emit(null);
     }
+
+    getEraTitle = buildFactionEraTitle;
+
+    getEraIconFilter = getFactionEraIconFilter;
 }

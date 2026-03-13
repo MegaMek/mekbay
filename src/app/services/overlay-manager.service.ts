@@ -471,7 +471,13 @@ export class OverlayManagerService {
             : pane;
 
         const maxPanelH = viewportH - 2 * MARGIN;
-        const naturalH = scrollContainer.scrollHeight;
+        const chromeHeight = content && content !== scrollContainer
+            ? Math.max(0, content.offsetHeight - scrollContainer.offsetHeight)
+            : 0;
+        const maxScrollH = Math.max(0, maxPanelH - chromeHeight);
+        const naturalScrollH = scrollContainer.scrollHeight;
+        const naturalH = naturalScrollH + chromeHeight;
+        const visibleScrollH = Math.min(naturalScrollH, maxScrollH);
         const effectiveH = Math.min(naturalH, maxPanelH);
         const overflows = naturalH > maxPanelH;
 
@@ -497,7 +503,7 @@ export class OverlayManagerService {
             // Content overflows: panel will be viewport-sized.
             // Place it so the trigger center is vertically centred in the panel,
             // then use scrollTop to bring the active item to that position.
-            top = triggerCenterY - effectiveH / 2;
+            top = triggerCenterY - visibleScrollH / 2;
         }
 
         // Clamp to viewport
@@ -514,7 +520,10 @@ export class OverlayManagerService {
         entry.overlayRef.updatePosition();
 
         // Constrain panel height
-        scrollContainer.style.maxHeight = `${maxPanelH}px`;
+        if (content && content !== scrollContainer) {
+            content.style.maxHeight = `${maxPanelH}px`;
+        }
+        scrollContainer.style.maxHeight = `${maxScrollH}px`;
         scrollContainer.style.overflowY = 'auto';
 
         // Scroll to centre the active item inside the panel
