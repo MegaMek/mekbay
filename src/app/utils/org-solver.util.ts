@@ -56,7 +56,7 @@ import { getDynamicTierForModifier, getRepeatCountForTierDelta } from './org-tie
  */
 
 export const EMPTY_RESULT: GroupSizeResult = { name: 'Force', type: null, modifierKey: '', countsAsType: null, tier: 0 };
-const FOREIGN_EVALUATION = true;
+const FOREIGN_UNITS_EVALUATION = true;
 const FLATTEN_REEVALUATED_FOREIGN_GROUPS_BEFORE_COMPOSITION = false;
 const ASSIMILATE_FIRST_FOR_SUBOPTIMAL_GROUPS = true;
 const ASSIMILATE_SUBOPTIMAL_GROUPS_LOWEST_TIER_FIRST = true;
@@ -2290,7 +2290,7 @@ class OrgSolver {
         const allUnits = collectAllUnits(groupResults, this.context);
         let normalized: GroupSizeResult[];
 
-        if (FOREIGN_EVALUATION) {
+        if (FOREIGN_UNITS_EVALUATION) {
             normalized = groupResults.flatMap(group => {
                 if (isKnownGroupType(group, this.rules)) {
                     return [group];
