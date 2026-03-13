@@ -122,6 +122,7 @@ function createContuberniumGroup(unit: Unit, tag: 'infantry' | 'non-infantry'): 
     return {
         name: 'Contubernium',
         type: 'Contubernium',
+        modifierKey: '',
         countsAsType: null,
         tier: 0,
         units: [unit],
@@ -230,6 +231,7 @@ describe('resolveFromUnits', () => {
         expect(result.length).toBe(1);
         expect(result[0].name).toBe('Under-Strength Company');
         expect(result[0].type).toBe('Company');
+        expect(result[0].modifierKey).toBe('Under-Strength ');
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
@@ -250,6 +252,249 @@ describe('resolveFromUnits', () => {
         expect(result.length).toBe(1);
         expect(result[0].name).toBe('Under-Strength Company');
         expect(result[0].type).toBe('Company');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('groups four lances into a Reinforced Company', () => {
+        const lanceGroups = [0, 1, 2, 3].map(lanceIndex =>
+            resolveFromUnits([
+                createBM(`L${lanceIndex + 1}-1`),
+                createBM(`L${lanceIndex + 1}-2`),
+                createBM(`L${lanceIndex + 1}-3`),
+                createBM(`L${lanceIndex + 1}-4`),
+            ], 'Inner Sphere', 'Mercenary')[0],
+        );
+
+        const result = resolveFromGroups('Inner Sphere', 'Mercenary', lanceGroups);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Reinforced Company');
+        expect(result[0].type).toBe('Company');
+        expect(result[0].modifierKey).toBe('Reinforced ');
+        expect(result[0].children?.length).toBe(4);
+        expect(result[0].children?.every(child => child.name === 'Lance')).toBeTrue();
+        expect(result[0].children?.every(child => child.type === 'Lance')).toBeTrue();
+        expect(result[0].children?.every(child => child.modifierKey === '')).toBeTrue();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('assimilates an Under-Strength Company and two lances into a Reinforced Company', () => {
+        const underStrengthCompany = resolveFromUnits([
+            createBM('CO-1'),
+            createBM('CO-2'),
+            createBM('CO-3'),
+            createBM('CO-4'),
+            createBM('CO-5'),
+            createBM('CO-6'),
+            createBM('CO-7'),
+            createBM('CO-8'),
+        ], 'Inner Sphere', 'Mercenary');
+        const firstLance = resolveFromUnits([
+            createBM('L1-1'),
+            createBM('L1-2'),
+            createBM('L1-3'),
+            createBM('L1-4'),
+        ], 'Inner Sphere', 'Mercenary');
+        const secondLance = resolveFromUnits([
+            createBM('L2-1'),
+            createBM('L2-2'),
+            createBM('L2-3'),
+            createBM('L2-4'),
+        ], 'Inner Sphere', 'Mercenary');
+
+        expect(underStrengthCompany.length).toBe(1);
+        expect(underStrengthCompany[0].name).toBe('Under-Strength Company');
+        expect(underStrengthCompany[0].type).toBe('Company');
+        expect(firstLance.length).toBe(1);
+        expect(firstLance[0].name).toBe('Lance');
+        expect(firstLance[0].type).toBe('Lance');
+        expect(secondLance.length).toBe(1);
+        expect(secondLance[0].name).toBe('Lance');
+        expect(secondLance[0].type).toBe('Lance');
+
+        const result = resolveFromGroups('Inner Sphere', 'Mercenary', [
+            underStrengthCompany[0],
+            firstLance[0],
+            secondLance[0],
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Reinforced Company');
+        expect(result[0].type).toBe('Company');
+        expect(result[0].children?.length).toBe(4);
+        expect(result[0].children?.every(child => child.name === 'Lance')).toBeTrue();
+        expect(result[0].children?.every(child => child.type === 'Lance')).toBeTrue();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('regularizes an Under-Strength Company before building upward from four additional lances', () => {
+        const underStrengthCompany = resolveFromUnits([
+            createBM('UPCO-1'),
+            createBM('UPCO-2'),
+            createBM('UPCO-3'),
+            createBM('UPCO-4'),
+            createBM('UPCO-5'),
+            createBM('UPCO-6'),
+            createBM('UPCO-7'),
+            createBM('UPCO-8'),
+        ], 'Inner Sphere', 'Mercenary');
+        const lanceGroups = [0, 1, 2, 3].map(lanceIndex =>
+            resolveFromUnits([
+                createBM(`UPL${lanceIndex + 1}-1`),
+                createBM(`UPL${lanceIndex + 1}-2`),
+                createBM(`UPL${lanceIndex + 1}-3`),
+                createBM(`UPL${lanceIndex + 1}-4`),
+            ], 'Inner Sphere', 'Mercenary')[0],
+        );
+
+        const result = resolveFromGroups('Inner Sphere', 'Mercenary', [
+            underStrengthCompany[0],
+            ...lanceGroups,
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Under-Strength Battalion');
+        expect(result[0].type).toBe('Battalion');
+        expect(result[0].modifierKey).toBe('Under-Strength ');
+        expect(result[0].children?.length).toBe(2);
+        expect(result[0].children?.every(child => child.type === 'Company')).toBeTrue();
+        expect(result[0].children?.every(child => child.name === 'Company')).toBeTrue();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('promotes a sub-regular company only to regular, not directly to reinforced', () => {
+        const firstUnderStrengthCompany = resolveFromUnits([
+            createBM('INV-BCO-1'),
+            createBM('INV-BCO-2'),
+            createBM('INV-BCO-3'),
+            createBM('INV-BCO-4'),
+            createBM('INV-BCO-5'),
+            createBM('INV-BCO-6'),
+            createBM('INV-BCO-7'),
+            createBM('INV-BCO-8'),
+        ], 'Inner Sphere', 'Mercenary');
+        const secondUnderStrengthCompany = resolveFromUnits([
+            createBM('INV-CCO-1'),
+            createBM('INV-CCO-2'),
+            createBM('INV-CCO-3'),
+            createBM('INV-CCO-4'),
+            createBM('INV-CCO-5'),
+            createBM('INV-CCO-6'),
+            createBM('INV-CCO-7'),
+            createBM('INV-CCO-8'),
+        ], 'Inner Sphere', 'Mercenary');
+        const underStrengthBattalion = resolveFromGroups('Inner Sphere', 'Mercenary', [
+            firstUnderStrengthCompany[0],
+            secondUnderStrengthCompany[0],
+        ]);
+        const thirdUnderStrengthCompany = resolveFromUnits([
+            createBM('INV-DCO-1'),
+            createBM('INV-DCO-2'),
+            createBM('INV-DCO-3'),
+            createBM('INV-DCO-4'),
+            createBM('INV-DCO-5'),
+            createBM('INV-DCO-6'),
+            createBM('INV-DCO-7'),
+            createBM('INV-DCO-8'),
+        ], 'Inner Sphere', 'Mercenary');
+        const firstLance = resolveFromUnits([
+            createBM('INV-L1-1'),
+            createBM('INV-L1-2'),
+            createBM('INV-L1-3'),
+            createBM('INV-L1-4'),
+        ], 'Inner Sphere', 'Mercenary');
+        const secondLance = resolveFromUnits([
+            createBM('INV-L2-1'),
+            createBM('INV-L2-2'),
+            createBM('INV-L2-3'),
+            createBM('INV-L2-4'),
+        ], 'Inner Sphere', 'Mercenary');
+
+        const result = resolveFromGroups('Inner Sphere', 'Mercenary', [
+            underStrengthBattalion[0],
+            thirdUnderStrengthCompany[0],
+            firstLance[0],
+            secondLance[0],
+        ]);
+
+        expect(result.length).toBe(2);
+        expect(result[0].name).toBe('Battalion');
+        expect(result[0].type).toBe('Battalion');
+        expect(result[0].modifierKey).toBe('');
+        expect(result[1].name).toBe('Lance');
+        expect(result[1].type).toBe('Lance');
+        expect(result[1].modifierKey).toBe('');
+    });
+
+    it('assimilates an Under-Strength Battalion, an Under-Strength Company, and two lances from the lowest tier first', () => {
+        const firstUnderStrengthCompany = resolveFromUnits([
+            createBM('BCO-1'),
+            createBM('BCO-2'),
+            createBM('BCO-3'),
+            createBM('BCO-4'),
+            createBM('BCO-5'),
+            createBM('BCO-6'),
+            createBM('BCO-7'),
+            createBM('BCO-8'),
+        ], 'Inner Sphere', 'Mercenary');
+        const secondUnderStrengthCompany = resolveFromUnits([
+            createBM('CCO-1'),
+            createBM('CCO-2'),
+            createBM('CCO-3'),
+            createBM('CCO-4'),
+            createBM('CCO-5'),
+            createBM('CCO-6'),
+            createBM('CCO-7'),
+            createBM('CCO-8'),
+        ], 'Inner Sphere', 'Mercenary');
+        const underStrengthBattalion = resolveFromGroups('Inner Sphere', 'Mercenary', [
+            firstUnderStrengthCompany[0],
+            secondUnderStrengthCompany[0],
+        ]);
+        const thirdUnderStrengthCompany = resolveFromUnits([
+            createBM('DCO-1'),
+            createBM('DCO-2'),
+            createBM('DCO-3'),
+            createBM('DCO-4'),
+            createBM('DCO-5'),
+            createBM('DCO-6'),
+            createBM('DCO-7'),
+            createBM('DCO-8'),
+        ], 'Inner Sphere', 'Mercenary');
+        const firstLance = resolveFromUnits([
+            createBM('BL1-1'),
+            createBM('BL1-2'),
+            createBM('BL1-3'),
+            createBM('BL1-4'),
+        ], 'Inner Sphere', 'Mercenary');
+        const secondLance = resolveFromUnits([
+            createBM('BL2-1'),
+            createBM('BL2-2'),
+            createBM('BL2-3'),
+            createBM('BL2-4'),
+        ], 'Inner Sphere', 'Mercenary');
+
+        expect(underStrengthBattalion.length).toBe(1);
+        expect(underStrengthBattalion[0].name).toBe('Under-Strength Battalion');
+        expect(underStrengthBattalion[0].type).toBe('Battalion');
+
+        const result = resolveFromGroups('Inner Sphere', 'Mercenary', [
+            underStrengthBattalion[0],
+            thirdUnderStrengthCompany[0],
+            firstLance[0],
+            secondLance[0],
+        ]);
+
+        expect(result.length).toBe(2);
+        expect(result[0].name).toBe('Battalion');
+        expect(result[0].type).toBe('Battalion');
+        expect(result[0].children?.length).toBe(3);
+        expect(result[0].children?.filter(child => child.name === 'Under-Strength Company').length).toBe(2);
+        expect(result[0].children?.some(child => child.name === 'Company')).toBeTrue();
+        expect(result[0].children?.every(child => child.type === 'Company')).toBeTrue();
+        expect(result[1].name).toBe('Lance');
+        expect(result[1].type).toBe('Lance');
+        expect(result[1].leftoverUnits).toBeUndefined();
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 

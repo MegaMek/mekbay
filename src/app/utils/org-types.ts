@@ -120,9 +120,7 @@ export interface GroupSizeResult {
     name: string;
     type: OrgType | null;
     /** Matched modifier prefix ('' = regular) when this group came from an org rule. */
-    modifierKey?: string;
-    /** Resolved child-count/point-count for the matched modifier. */
-    modifierCount?: number;
+    modifierKey: string;
     /** Alias type for group-based counting (e.g. Nova also counts as Star). */
     countsAsType: OrgType | null;
     /** Cross-Organization evaluation */

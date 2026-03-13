@@ -55,8 +55,10 @@ import { getDynamicTierForModifier, getRepeatCountForTierDelta } from './org-tie
  * Core logic for determining organizational structure from a set of units.
  */
 
-export const EMPTY_RESULT: GroupSizeResult = { name: 'Force', type: null, countsAsType: null, tier: 0 };
-export const FOREIGN_EVALUATION = true;
+export const EMPTY_RESULT: GroupSizeResult = { name: 'Force', type: null, modifierKey: '', countsAsType: null, tier: 0 };
+const FOREIGN_EVALUATION = true;
+const ASSIMILATE_FIRST_FOR_SUBOPTIMAL_GROUPS = true;
+const ASSIMILATE_SUBOPTIMAL_GROUPS_LOWEST_TIER_FIRST = true;
 
 // ─── Unit helpers ──────────────────────────────────────────────────────────────
 
@@ -681,6 +683,7 @@ function buildRuleGroup(
     return {
         name: buildName(rule, prefix),
         type: rule.type,
+        modifierKey: prefix,
         countsAsType: rule.countsAs ?? null,
         tier: resolveTier(rule, prefix),
         ...extra,
@@ -916,6 +919,7 @@ function normalizeGroupsToOrg(
         return targets.map((target, index) => ({
             name: target.name,
             type: target.rule.type,
+            modifierKey: target.prefix,
             countsAsType: target.rule.countsAs ?? null,
             tier: target.tier,
             children: index === 0 ? g.children : undefined,
@@ -1058,6 +1062,7 @@ function allocateLeaves(
                         newGroups.push({
                             name: rule.type,
                             type: rule.type,
+                            modifierKey: '',
                             countsAsType: rule.countsAs ?? null,
                             tier: resolveTier(rule, ''),
                             units: subset,
@@ -1178,9 +1183,27 @@ function composeUpward(groups: GroupSizeResult[], rules: ReadonlyArray<OrgTypeRu
     let current = [...groups];
 
     for (let iter = 0; iter < 20 && current.length >= 2; iter++) {
+        if (ASSIMILATE_FIRST_FOR_SUBOPTIMAL_GROUPS) {
+            const assimilated = tryAssimilateExistingGroup(current, rules, context, true);
+            if (assimilated) {
+                current = assimilated;
+                continue;
+            }
+        }
+
         const best = findBestComposition(current, rules, context);
-        if (!best) break;
-        current = best;
+        if (best) {
+            current = best;
+            continue;
+        }
+
+        const assimilated = tryAssimilateExistingGroup(current, rules, context, false);
+        if (assimilated) {
+            current = assimilated;
+            continue;
+        }
+
+        break;
     }
 
     return current;
@@ -1223,17 +1246,145 @@ function findRuleForGroup(group: GroupSizeResult, rules: ReadonlyArray<OrgTypeRu
 }
 
 function getGroupModifier(rule: OrgTypeRule, group: GroupSizeResult): [string, number] | null {
-    for (const [prefix, count] of sortedModifiers(rule)) {
-        if (group.name === buildName(rule, prefix)) {
+    if (group.type === rule.type && group.modifierKey !== undefined) {
+        const modifier = rule.modifiers[group.modifierKey];
+        if (modifier != null) {
+            return [group.modifierKey, getModifierCount(modifier)];
+        }
+        if (group.modifierKey === '') {
+            return ['', getRegularCount(rule)];
+        }
+    }
+
+    return null;
+}
+
+interface AssimilationCandidate {
+    result: GroupSizeResult[];
+    regularizesSuboptimalGroup: boolean;
+    sourceTier: number;
+    targetTier: number;
+    absorbedCount: number;
+    targetCount: number;
+}
+
+function getAssimilationTargetModifier(
+    rule: OrgTypeComposed,
+    currentCount: number,
+    maxCount: number,
+): [string, number] | null {
+    const modifiers = sortedModifiers(rule);
+    const regularCount = getRegularCount(rule);
+
+    if (currentCount < regularCount) {
+        for (const [prefix, count] of modifiers) {
+            if (count >= regularCount && count <= maxCount) {
+                return [prefix, count];
+            }
+        }
+    }
+
+    for (const [prefix, count] of modifiers) {
+        if (count > currentCount && count <= maxCount) {
             return [prefix, count];
         }
     }
 
-    if (group.name === rule.type) {
-        return ['', getRegularCount(rule)];
+    return null;
+}
+
+function compareAssimilationCandidates(a: AssimilationCandidate, b: AssimilationCandidate): boolean {
+    if (a.regularizesSuboptimalGroup !== b.regularizesSuboptimalGroup) {
+        return a.regularizesSuboptimalGroup;
+    }
+    if (ASSIMILATE_SUBOPTIMAL_GROUPS_LOWEST_TIER_FIRST && a.sourceTier !== b.sourceTier) {
+        return a.sourceTier < b.sourceTier;
+    }
+    if (a.targetTier !== b.targetTier) return a.targetTier > b.targetTier;
+    if (a.absorbedCount !== b.absorbedCount) return a.absorbedCount < b.absorbedCount;
+    return a.targetCount > b.targetCount;
+}
+
+function tryAssimilateExistingGroup(
+    groups: GroupSizeResult[],
+    rules: ReadonlyArray<OrgTypeRule>,
+    context: SolverContext,
+    regularizeSuboptimalOnly: boolean,
+): GroupSizeResult[] | null {
+    let bestCandidate: AssimilationCandidate | null = null;
+
+    for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+        const group = groups[groupIndex];
+        const rule = findRuleForGroup(group, rules);
+        if (!rule || !isComposedRule(rule) || rule.strict) continue;
+
+        const modifier = getGroupModifier(rule, group);
+        if (!modifier) continue;
+
+    const regularCount = getRegularCount(rule);
+    const isSubregular = modifier[1] < regularCount;
+    if (regularizeSuboptimalOnly && !isSubregular) continue;
+    if (!regularizeSuboptimalOnly && isSubregular) continue;
+
+        const currentChildren = group.children;
+        if (!currentChildren || currentChildren.length === 0) continue;
+
+        const siblings = groups
+            .map((candidate, candidateIndex) => ({ group: candidate, candidateIndex }))
+            .filter(({ candidateIndex, group: candidate }) => {
+                if (candidateIndex === groupIndex) return false;
+                if (!groupMatchesSubsetConstraints(rule, candidate)) return false;
+
+                const acceptedTypes = getAcceptedChildTypes(rule);
+                return (
+                    (candidate.type && acceptedTypes.has(candidate.type)) ||
+                    (candidate.countsAsType && acceptedTypes.has(candidate.countsAsType))
+                );
+            });
+        if (siblings.length === 0) continue;
+
+        const targetModifier = getAssimilationTargetModifier(rule, modifier[1], modifier[1] + siblings.length);
+        if (!targetModifier) continue;
+
+        if (regularizeSuboptimalOnly && targetModifier[1] > regularCount) continue;
+
+        const absorbedCount = targetModifier[1] - modifier[1];
+        if (absorbedCount <= 0 || absorbedCount > siblings.length) continue;
+
+        for (const combination of collectValueCombinations(
+            siblings.map((_, index) => index),
+            absorbedCount,
+        )) {
+            const absorbedEntries = combination.map(index => siblings[index]);
+            const absorbedGroups = absorbedEntries.map(entry => entry.group);
+            const combinedChildren = [...currentChildren, ...absorbedGroups];
+            if (!canRuleComposeGroups(rule, combinedChildren, context)) continue;
+
+            const absorbedIndexSet = new Set(absorbedEntries.map(entry => entry.candidateIndex));
+            const upgradedGroup = buildRuleGroup(rule, targetModifier[0], {
+                children: combinedChildren,
+                priority: rule.priority,
+            });
+            const nextGroups = groups
+                .filter((_, candidateIndex) => candidateIndex !== groupIndex && !absorbedIndexSet.has(candidateIndex));
+            nextGroups.push(upgradedGroup);
+
+            const candidate: AssimilationCandidate = {
+                result: nextGroups,
+                regularizesSuboptimalGroup: isSubregular && targetModifier[1] >= regularCount,
+                sourceTier: group.tier,
+                targetTier: resolveTier(rule, targetModifier[0]),
+                absorbedCount,
+                targetCount: targetModifier[1],
+            };
+
+            if (!bestCandidate || compareAssimilationCandidates(candidate, bestCandidate)) {
+                bestCandidate = candidate;
+            }
+        }
     }
 
-    return null;
+    return bestCandidate?.result ?? null;
 }
 
 function compareCountPartitions(
@@ -1355,6 +1506,7 @@ function repackSameTypeGroups(
         return {
             name: buildName(rule, prefix),
             type: rule.type,
+            modifierKey: prefix,
             countsAsType: rule.countsAs ?? null,
             tier: resolveTier(rule, prefix),
             children,

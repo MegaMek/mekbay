@@ -201,9 +201,10 @@ function findGroupRuleState(
     for (const rule of rules) {
         if (rule.type !== group.type) continue;
 
-        for (const [prefix, count] of getSortedModifiers(rule)) {
-            if (buildRuleName(rule, prefix) === group.name) {
-                return { rule, prefix, count };
+        if (group.modifierKey !== undefined) {
+            const modifier = rule.modifiers[group.modifierKey];
+            if (modifier != null) {
+                return { rule, prefix: group.modifierKey, count: getModifierCount(modifier) };
             }
         }
     }
@@ -255,6 +256,7 @@ function promoteDisplayGroups(
             promoted[index] = {
                 ...promoted[index],
                 name: buildRuleName(state.rule, nextPrefix),
+                modifierKey: nextPrefix,
                 tier: resolveTier(state.rule, nextPrefix),
                 children: [
                     ...(promoted[index].children ?? []),
