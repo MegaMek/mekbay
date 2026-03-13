@@ -1531,13 +1531,8 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.BOT, page: 27 }],
         requirements: () => 'Clan only. At least two units in the Formation must be the same model (including the same OmniMek configuration)',
         validator: (units) => {
-            let duplicate = 0;
-            const seen: Record<string, boolean> = {};
-            for (const u of units) {
-                if (seen[u.getUnit().name]) duplicate++;
-                else seen[u.getUnit().name] = true;
-            }
-            return duplicate > 0;
+            const hasPair = new Set(units.map(u => u.getUnit().name)).size < units.length;
+            return hasPair; 
         },
     },
 
@@ -1575,23 +1570,16 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
+//            if (!units.every(u => u.getCrewMembers()[0].getSkill('gunnery', isAS) <= 3)) return false;
             const hasAF = units.filter(u =>
                 (isAS ? u.getUnit().as?.TP === 'AF' : u.getUnit().type === 'Aero')).length;
             if (hasAF !== 2) return false;
             const hasBM = units.filter(u =>
                 (isAS ? u.getUnit().as?.TP === 'BM' : u.getUnit().type === 'Mek')).length;
-                if(hasBM > 0) { 
-                    const hasHeavyMek = units.filter(u =>
-                    (isAS
-                        ? (u.getUnit().as?.TP === 'BM' && asGetSize(u.getUnit()) >= 3)
-                        : (u.getUnit().type === 'Mek' && cbtGetWeightClass(u.getUnit()) >= 3)
-                    )).length;
-                    const hasLightMek = units.filter(u =>
-                    (isAS
-                        ? (u.getUnit().as?.TP === 'BM' && asGetSize(u.getUnit()) === 1)
-                        : (u.getUnit().type === 'Mek' && cbtGetWeightClass(u.getUnit()) === 0)
-                    )).length;
-                    if(hasHeavyMek < 2 || hasLightMek > 0) return false;
+                if (hasBM > 0) { 
+                    const heavyMeks = units.filter(u => isAS ? (u.getUnit().as?.TP === 'BM' && asGetSize(u.getUnit()) >= 3) : (u.getUnit().type === 'Mek' && cbtGetWeightClass(u.getUnit()) >= 3)).length;
+                    const lightMeks = units.some(u => isAS ? (u.getUnit().as?.TP === 'BM' && asGetSize(u.getUnit()) === 1) : (u.getUnit().type === 'Mek' && cbtGetWeightClass(u.getUnit()) === 0));
+                    if (heavyMeks < 2 || lightMeks) return false;
                 }
             const hasBA = units.filter(u =>
                 (isAS ? u.getUnit().as?.TP === 'BA' : u.getUnit().subtype === 'Battle Armor')).length;
