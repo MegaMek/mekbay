@@ -55,7 +55,7 @@ import { GameSystem } from '../../models/common.model';
 import { getUnitsAverageTechBase, type TechBase } from '../../models/tech.model';
 import type { SerializedOrganization, OrgPlacedForce, OrgGroupData } from '../../models/organization.model';
 import { ForceEntryPreviewDialogComponent } from '../force-entry-preview-dialog/force-entry-preview-dialog.component';
-import { getAggregatedGroupsResult, getOrgFromForce, getOrgFromForceCollection } from '../../utils/org-namer.util';
+import { getAggregatedGroupsResult, getDisplayGroups, getOrgFromForce, getOrgFromForceCollection } from '../../utils/org-namer.util';
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2.0;
@@ -135,6 +135,12 @@ function getDominantFactionId(entries: LoadForceEntry[]): number | undefined {
 
 interface Rect { x: number; y: number; width: number; height: number }
 interface GroupPreview extends Rect { orgName: string; totals: string; factionId: number | undefined }
+
+interface PreviewOrgExtras {
+    targetGroupId: string;
+    entries: LoadForceEntry[];
+    childGroupResults?: GroupSizeResult[];
+}
 
 type ForceDropAction =
     | { type: 'join-group'; groupId: string }
@@ -216,6 +222,7 @@ interface ForceMetadata {
     factionName: string;
     techBase: TechBase;
     org: GroupSizeResult[];
+    displayGroups: GroupSizeResult[];
     aggregatedOrg: AggregatedGroupSizeResult;
     bvString: string;
     totalBv: number;
@@ -378,7 +385,7 @@ export class ForceOrgDialogComponent {
     // Drop preview state
     protected dropTargetGroupId = signal<string | null>(null);
     protected dropPreviewRect = signal<GroupPreview | null>(null);
-    private previewExtraForces = signal<{ targetGroupId: string; entries: LoadForceEntry[] } | null>(null);
+    private previewExtraForces = signal<PreviewOrgExtras | null>(null);
     /** Identity of the "other" target in the current new-group/create-parent preview. */
     private previewOtherId: string | null = null;
     /** Cached org metadata for the current preview (orgName, totals, factionId). */
@@ -471,10 +478,12 @@ export class ForceOrgDialogComponent {
                 if (totalPv > 0 && totalPv !== force.pv) bvString += ` (${totalPv.toLocaleString()})`;
             }
             const org = getOrgFromForce(force, factionName);
+            const displayGroups = getDisplayGroups(org, techBase, factionName);
             result.set(force.instanceId, {
                 factionName,
                 techBase,
                 org: org,
+                displayGroups,
                 aggregatedOrg: getAggregatedGroupsResult(org, techBase, factionName),
                 bvString,
                 totalBv,
@@ -535,6 +544,7 @@ export class ForceOrgDialogComponent {
         const placed = this.placedForces();
         const previewDescendants = this.previewDescendantsMap();
         const previewFactions = this.previewFactionIds();
+        const previewChildGroups = new Map<string, PreviewOrgExtras>(extra.childGroupResults ? [[extra.targetGroupId, extra]] : []);
         const result = new Map<string, { orgName: string; totals: string; factionId: number | undefined }>();
         const visited = new Set<string>();
         let currentId: string | null = extra.targetGroupId;
@@ -553,6 +563,7 @@ export class ForceOrgDialogComponent {
                     placed,
                     previewDescendants,
                     previewFactions,
+                    previewChildGroups,
                 );
                 result.set(currentId, {
                     orgName: this.getDisplayOrgResult(orgResult, entries, factionName).name,
@@ -622,6 +633,7 @@ export class ForceOrgDialogComponent {
         placed: PlacedForce[],
         descendantsOverride?: Map<string, LoadForceEntry[]>,
         factionIdsOverride?: Map<string, number | undefined>,
+        previewChildGroupsOverride?: Map<string, PreviewOrgExtras>,
     ): GroupSizeResult[] {
         const childGroups = groups.filter(g => g.parentGroupId === group.id);
         const factionId = factionIdsOverride?.get(group.id) ?? group.factionId();
@@ -638,22 +650,36 @@ export class ForceOrgDialogComponent {
             for (const entry of childEntries) {
                 childEntryIds.add(entry.instanceId);
             }
-            childGroupResults.push(
-                ...this.computeHierarchicalOrgResult(
-                    child,
-                    childEntries,
-                    groups,
-                    placed,
-                    descendantsOverride,
-                    factionIdsOverride,
-                ),
+            const childFactionId = factionIdsOverride?.get(child.id) ?? child.factionId();
+            const childFactionName = childFactionId !== undefined
+                ? this.getFactionName(childFactionId)
+                : (child.factionName() || 'Mercenary');
+            const childOrgResult = this.computeHierarchicalOrgResult(
+                child,
+                childEntries,
+                groups,
+                placed,
+                descendantsOverride,
+                factionIdsOverride,
+                previewChildGroupsOverride,
             );
+            childGroupResults.push(
+                ...this.getDisplayGroupsForEntries(childOrgResult, childEntries, childFactionName),
+            );
+        }
+
+        const previewChildGroup = previewChildGroupsOverride?.get(group.id);
+        if (previewChildGroup?.childGroupResults && previewChildGroup.childGroupResults.length > 0) {
+            for (const entry of previewChildGroup.entries) {
+                childEntryIds.add(entry.instanceId);
+            }
+            childGroupResults.push(...previewChildGroup.childGroupResults);
         }
 
         // Evaluate direct forces with the determined faction
         const directEntries = allEntries.filter(entry => !childEntryIds.has(entry.instanceId));
         for (const entry of directEntries) {
-            childGroupResults.push(...this.getForceOrgResults(entry));
+            childGroupResults.push(...this.getForceDisplayOrgResults(entry));
         }
 
         return this.computeOrgCollectionResult(allEntries, factionName, childGroupResults);
@@ -809,9 +835,29 @@ export class ForceOrgDialogComponent {
         );
     }
 
+    private getDisplayGroupsForEntries(
+        groups: GroupSizeResult[],
+        entries: LoadForceEntry[],
+        factionName: string,
+    ): GroupSizeResult[] {
+        return getDisplayGroups(
+            groups,
+            this.getEntriesTechBase(entries, factionName),
+            factionName,
+        );
+    }
+
     private getForceOrgResults(force: LoadForceEntry): GroupSizeResult[] {
         return this.forcesData().get(force.instanceId)?.org
             ?? getOrgFromForce(force, this.getFactionName(force.factionId));
+    }
+
+    private getForceDisplayOrgResults(force: LoadForceEntry): GroupSizeResult[] {
+        const cached = this.forcesData().get(force.instanceId)?.displayGroups;
+        if (cached) return cached;
+
+        const factionName = this.getFactionName(force.factionId);
+        return this.getDisplayGroupsForEntries(this.getForceOrgResults(force), [force], factionName);
     }
 
     private computeOrgCollectionResult(
@@ -1382,7 +1428,11 @@ export class ForceOrgDialogComponent {
                 this.previewOrgCache = null;
                 this.dropTargetGroupId.set(action.groupId);
                 this.dropPreviewRect.set(null);
-                this.previewExtraForces.set({ targetGroupId: action.groupId, entries: entries ?? [] });
+                this.previewExtraForces.set({
+                    targetGroupId: action.groupId,
+                    entries: entries ?? [],
+                    childGroupResults,
+                });
                 break;
             case 'rearrange':
                 this.previewOtherId = null;
@@ -1856,13 +1906,33 @@ export class ForceOrgDialogComponent {
                 if (grpAction?.type === 'create-parent') {
                     const draggedEntries = this.collectDescendantForces(draggedGrp.id, currentPlaced, currentGroups);
                     const otherEntries = this.collectDescendantForces(grpAction.other.id, currentPlaced, currentGroups);
+                    const draggedFactionName = draggedGrp.factionName() || 'Mercenary';
+                    const otherFactionName = grpAction.other.factionName() || 'Mercenary';
                     grpChildGroupResults = [];
                     if (draggedEntries.length > 0) {
-                        grpChildGroupResults.push(...this.computeHierarchicalOrgResult(draggedGrp, draggedEntries, currentGroups, currentPlaced));
+                        grpChildGroupResults.push(
+                            ...this.getDisplayGroupsForEntries(
+                                this.computeHierarchicalOrgResult(draggedGrp, draggedEntries, currentGroups, currentPlaced),
+                                draggedEntries,
+                                draggedFactionName,
+                            ),
+                        );
                     }
                     if (otherEntries.length > 0) {
-                        grpChildGroupResults.push(...this.computeHierarchicalOrgResult(grpAction.other, otherEntries, currentGroups, currentPlaced));
+                        grpChildGroupResults.push(
+                            ...this.getDisplayGroupsForEntries(
+                                this.computeHierarchicalOrgResult(grpAction.other, otherEntries, currentGroups, currentPlaced),
+                                otherEntries,
+                                otherFactionName,
+                            ),
+                        );
                     }
+                } else if (grpAction?.type === 'join-parent' && grpEntries && grpEntries.length > 0) {
+                    grpChildGroupResults = this.getDisplayGroupsForEntries(
+                        this.computeHierarchicalOrgResult(draggedGrp, grpEntries, currentGroups, currentPlaced),
+                        grpEntries,
+                        draggedGrp.factionName() || 'Mercenary',
+                    );
                 }
             }
             this.updateDropPreview(grpAction, this.groupRect(draggedGrp), grpOtherRect, grpEntries, grpChildGroupResults);
