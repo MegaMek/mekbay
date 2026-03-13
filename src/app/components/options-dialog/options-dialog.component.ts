@@ -49,6 +49,7 @@ import { PublicTagsService } from '../../services/public-tags.service';
 import { TagsService } from '../../services/tags.service';
 import { TaggingService } from '../../services/tagging.service';
 import { ToastService } from '../../services/toast.service';
+import { copyTextToClipboard } from '../../utils/clipboard.util';
 
 /*
  * Author: Drake
@@ -77,7 +78,7 @@ export class OptionsDialogComponent {
     toastService = inject(ToastService);
     destroyRef = inject(DestroyRef);
     isIOS = isIOS();
-    
+
     tabs = computed(() => {
         return ['General', 'Tags', 'Sheets', 'Alpha Strike', 'Advanced', 'Logs'];
     });
@@ -417,7 +418,7 @@ export class OptionsDialogComponent {
     async onAddSubscription(value: string) {
         this.subscriptionError.set('');
         const trimmed = value.trim();
-        
+
         if (!trimmed) {
             this.subscriptionError.set('Please enter a subscription in the format publicId:tagName');
             return;
@@ -515,5 +516,47 @@ export class OptionsDialogComponent {
 
     async onRenameTag(tagName: string) {
         await this.taggingService.renameTag(tagName);
+    }
+
+    async onShareUuid() {
+        const uuid = this.userUuid();
+        if (!uuid) return;
+
+        const action = await this.dialogsService.choose(
+            'Share User Identifier',
+            '',
+            [
+                { label: 'SHARE', value: 'share' },
+                { label: 'DISMISS', value: 'dismiss' }
+            ],
+            'dismiss',
+            {
+                messageHtml:
+                    '<p>Your User Identifier is a <strong>private key</strong> that controls access to your cloud data.</p>' +
+                    '<p>Only share it with yourself to sync your account across multiple devices.</p>' +
+                    '<strong>Do not share it with other people.</strong></p>'
+            }
+        );
+
+        if (action !== 'share') return;
+        this.shareText(uuid);
+    }
+
+    onSharePublicId() {
+        const publicId = this.userPublicId();
+        if (!publicId || publicId === 'Not registered') return;
+        this.shareText(publicId);
+    }
+
+    private shareText(text: string) {
+        if (navigator.share) {
+            navigator.share({ text }).catch(() => {
+                copyTextToClipboard(text);
+                this.toastService.showToast('Copied to clipboard.', 'success');
+            });
+        } else {
+            copyTextToClipboard(text);
+            this.toastService.showToast('Copied to clipboard.', 'success');
+        }
     }
 }

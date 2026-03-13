@@ -56,6 +56,7 @@
                     <input #uuidInput id="userUuid" class="bt-input" [class.error]="!!userUuidError" type="text"
                         [value]="userUuid()" (focus)="selectAll($event)" (keydown)="onUserUuidKeydown($event)" />
                     <button class="bt-button" (click)="onSetUuid(uuidInput.value)">APPLY</button>
+                    <button class="bt-button" (click)="onShareUuid()">SHARE</button>
                 </div>
                 @if (userUuidError) {<div class="error-msg">{{ userUuidError }}</div>}
                 <div class="description">
@@ -68,6 +69,7 @@
                 <label>Public ID:</label>
                 <div class="option-row">
                     <span class="readonly-value">{{ userPublicId() }}</span>
+                    <button class="bt-button" (click)="onSharePublicId()" [disabled]="userPublicId() === 'Not registered'">SHARE</button>
                 </div>
                 <div class="description">
                     <p>Your Public ID is assigned by the server and can be shared with others to let them subscribe to your public tags.</p>
