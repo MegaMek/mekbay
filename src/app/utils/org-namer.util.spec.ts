@@ -291,7 +291,7 @@ describe('org-namer aggregation flow', () => {
             units.push(createBM(`SOC-BM-${i + 1}`));
         }
 
-        const result = getOrgFromGroup(createLoadForceGroup(units), 'Society', 'Inner Sphere');
+        const result = getOrgFromGroup(createLoadForceGroup(units), 'Society', 'Clan');
 
         expect(result.length).toBe(14);
         expect(result.every(group => group.name === 'Sept')).toBeTrue();

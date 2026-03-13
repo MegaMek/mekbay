@@ -57,6 +57,7 @@ import { getDynamicTierForModifier, getRepeatCountForTierDelta } from './org-tie
 
 export const EMPTY_RESULT: GroupSizeResult = { name: 'Force', type: null, modifierKey: '', countsAsType: null, tier: 0 };
 const FOREIGN_EVALUATION = true;
+const FLATTEN_REEVALUATED_FOREIGN_GROUPS_BEFORE_COMPOSITION = false;
 const ASSIMILATE_FIRST_FOR_SUBOPTIMAL_GROUPS = true;
 const ASSIMILATE_SUBOPTIMAL_GROUPS_LOWEST_TIER_FIRST = true;
 
@@ -947,6 +948,26 @@ function collectUnassignedUnits(
     if (groups.length === 0 || allUnits.length === 0) return [];
 
     return subtractUnitsByOccurrence(allUnits, collectAllUnits(groups, context));
+}
+
+function flattenReevaluatedForeignGroups(groups: ReadonlyArray<GroupSizeResult>): GroupSizeResult[] {
+    return groups.flatMap(group => {
+        const children = group.children;
+        if (!children || children.length === 0) return [group];
+
+        const flattenedChildren = children.map(child => ({ ...child }));
+        if (group.leftoverUnits && group.leftoverUnits.length > 0) {
+            flattenedChildren[0] = {
+                ...flattenedChildren[0],
+                leftoverUnits: [
+                    ...(flattenedChildren[0].leftoverUnits ?? []),
+                    ...group.leftoverUnits,
+                ],
+            };
+        }
+
+        return flattenedChildren;
+    });
 }
 
 function attachTopLevelLeftovers(
@@ -2277,7 +2298,10 @@ class OrgSolver {
 
                 const groupUnits = collectGroupUnits(group, this.context);
                 if (groupUnits.length > 0) {
-                    return this.resolveFromUnits(groupUnits);
+                    const reevaluated = this.resolveFromUnits(groupUnits);
+                    return FLATTEN_REEVALUATED_FOREIGN_GROUPS_BEFORE_COMPOSITION
+                        ? flattenReevaluatedForeignGroups(reevaluated)
+                        : reevaluated;
                 }
 
                 return normalizeGroupsToOrg([group], this.rules, this.context);

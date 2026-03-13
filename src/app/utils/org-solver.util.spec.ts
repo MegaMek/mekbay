@@ -677,7 +677,7 @@ describe('resolveFromUnits', () => {
             createBM('BM1'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
+        const result = resolveFromUnits(units, 'Clan', 'Society');
 
         expect(result.length).toBe(1);
         expect(result[0].type).toBe('Un');
@@ -691,7 +691,7 @@ describe('resolveFromUnits', () => {
             createBM('BM2'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
+        const result = resolveFromUnits(units, 'Clan', 'Society');
 
         expect(result.length).toBe(2);
         expect(result.every(group => group.type === 'Un')).toBeTrue();
@@ -706,7 +706,7 @@ describe('resolveFromUnits', () => {
             createBM('BM2'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
+        const result = resolveFromUnits(units, 'Clan', 'Society');
 
         expect(result.length).toBe(1);
         expect(result[0].type).toBe('Trey');
@@ -727,7 +727,7 @@ describe('resolveFromUnits', () => {
             createCV('CV2'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
+        const result = resolveFromUnits(units, 'Clan', 'Society');
 
         expect(result.length).toBe(1);
         expect(result[0].name).toBe('Un');
@@ -744,7 +744,7 @@ describe('resolveFromUnits', () => {
 
         units.forEach(u => u.internal = 25);
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
+        const result = resolveFromUnits(units, 'Clan', 'Society');
 
         expect(result.length).toBe(1);
         expect(result[0].name).toBe('Un');
@@ -755,7 +755,7 @@ describe('resolveFromUnits', () => {
     it('resolves 3 battle armor troopers in Society as Un', () => {
         const battleArmor = createBA('BA1', [], 3);
 
-        const result = resolveFromUnits([battleArmor], 'Inner Sphere', 'Society');
+        const result = resolveFromUnits([battleArmor], 'Clan', 'Society');
 
         expect(result.length).toBe(1);
         expect(result[0].name).toBe('Un');
@@ -772,7 +772,7 @@ describe('resolveFromUnits', () => {
             createCV('CV1'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
+        const result = resolveFromUnits(units, 'Clan', 'Society');
         const descendantGroups = collectDescendantGroups(result[0]);
 
         expect(result.length).toBe(1);
@@ -804,7 +804,7 @@ describe('resolveFromUnits', () => {
         }
 
         const result = resolveFromUnits(units, 'Inner Sphere', 'Society', true);
-        const aggregated = getAggregatedGroupsResult(result, 'Inner Sphere', 'Society');
+        const aggregated = getAggregatedGroupsResult(result, 'Clan', 'Society');
 
         expect(result.length).toBe(14);
         expect(aggregated.name).toBe('14x Sept');
@@ -1217,7 +1217,7 @@ describe('resolveFromUnits', () => {
             createBM('BM7'),
         ];
 
-        const foreignGroup = resolveFromUnits(sourceUnits, 'Inner Sphere', 'Society');
+        const foreignGroup = resolveFromUnits(sourceUnits, 'Clan', 'Society');
 
         expect(foreignGroup.length).toBe(1);
         expect(foreignGroup[0].name).toBe('Sept');
@@ -1264,7 +1264,7 @@ describe('resolveFromUnits', () => {
             createBM('FS-A5'),
             createBM('FS-A6'),
             createBM('FS-A7'),
-        ], 'Inner Sphere', 'Society');
+        ], 'Clan', 'Society');
         const secondSept = resolveFromUnits([
             createBM('FS-B1'),
             createBM('FS-B2'),
@@ -1273,7 +1273,7 @@ describe('resolveFromUnits', () => {
             createBM('FS-B5'),
             createBM('FS-B6'),
             createBM('FS-B7'),
-        ], 'Inner Sphere', 'Society');
+        ], 'Clan', 'Society');
 
         expect(firstSept.length).toBe(1);
         expect(firstSept[0].name).toBe('Sept');
@@ -1294,6 +1294,49 @@ describe('resolveFromUnits', () => {
         expect(result[0].children?.length).toBe(2);
         expect(result[0].children?.every(child => child.name === 'Under-Strength Company')).toBeTrue();
         expect(result[0].children?.every(child => child.type === 'Company')).toBeTrue();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('re-evaluates real Sept groups independently before composing them upward for Clan', () => {
+        const firstSept = resolveFromUnits([
+            createBM('CL-A1'),
+            createBM('CL-A2'),
+            createBM('CL-A3'),
+            createBM('CL-A4'),
+            createBM('CL-A5'),
+            createBM('CL-A6'),
+            createBM('CL-A7'),
+        ], 'Clan', 'Society');
+        const secondSept = resolveFromUnits([
+            createBM('CL-B1'),
+            createBM('CL-B2'),
+            createBM('CL-B3'),
+            createBM('CL-B4'),
+            createBM('CL-B5'),
+            createBM('CL-B6'),
+            createBM('CL-B7'),
+        ], 'Clan', 'Society');
+
+        expect(firstSept.length).toBe(1);
+        expect(firstSept[0].name).toBe('Sept');
+        expect(firstSept[0].type).toBe('Sept');
+        expect(secondSept.length).toBe(1);
+        expect(secondSept[0].name).toBe('Sept');
+        expect(secondSept[0].type).toBe('Sept');
+
+        const result = resolveFromGroups('Clan', 'Clan Coyote', [
+            firstSept[0],
+            secondSept[0],
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Under-Strength Cluster');
+        expect(result[0].type).toBe('Cluster');
+        expect(result[0].modifierKey).toBe('Under-Strength ');
+        expect(result[0].children?.length).toBe(2);
+        expect(result[0].children?.every(child => child.name === 'Binary')).toBeTrue();
+        expect(result[0].children?.every(child => child.type === 'Binary')).toBeTrue();
+        expect(result[0].children?.every(child => child.modifierKey === '')).toBeTrue();
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
