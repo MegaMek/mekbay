@@ -93,6 +93,15 @@ import { PageInteractionOverlayComponent } from './overlay';
 const SWIPE_COMMIT_THRESHOLD = 0.15; // 15% of page width
 const SWIPE_VELOCITY_THRESHOLD = 300; // px/s for flick gesture
 
+type ShadowDirection = 'left' | 'right';
+
+interface ShadowDescriptor {
+    key: string;
+    unitIndex: number;
+    scaledLeftPosition: number;
+    direction: ShadowDirection;
+}
+
 @Component({
     selector: 'page-viewer',
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -235,6 +244,9 @@ export class PageViewerComponent implements AfterViewInit {
     private shadowPageCleanups: (() => void)[] = []; // Cleanup functions for shadow page event listeners
     private shadowRenderFrameId: number | null = null; // RAF handle for deferred shadow rendering
     private shadowRenderVersion = 0; // Version counter for async shadow rendering
+    private asyncNavigationVersion = 0; // Version counter for async keyboard/fallback navigation
+    private pendingDirectionalNavigation = 0; // Queued discrete left/right page moves while an animation is in flight
+    private pendingDirectionalTargetUnitId: string | null = null; // Target unit for the current discrete directional navigation animation
 
     // Interaction services - keyed by unit ID for persistence across renders
     private interactionServices = new Map<string, SvgInteractionService>();
@@ -923,6 +935,68 @@ export class PageViewerComponent implements AfterViewInit {
         swipeWrapper.style.transform = options.transform;
     }
 
+    private getCurrentSwipeWrapperTranslateX(): number {
+        const swipeWrapper = this.swipeWrapperRef().nativeElement;
+        const computedTransform = window.getComputedStyle(swipeWrapper).transform;
+
+        if (!computedTransform || computedTransform === 'none') {
+            return 0;
+        }
+
+        try {
+            return new DOMMatrixReadOnly(computedTransform).m41;
+        } catch {
+            const matrix3dMatch = computedTransform.match(/^matrix3d\((.+)\)$/);
+            if (matrix3dMatch) {
+                const values = matrix3dMatch[1].split(',').map(value => Number.parseFloat(value.trim()));
+                return Number.isFinite(values[12]) ? values[12] : 0;
+            }
+
+            const matrixMatch = computedTransform.match(/^matrix\((.+)\)$/);
+            if (matrixMatch) {
+                const values = matrixMatch[1].split(',').map(value => Number.parseFloat(value.trim()));
+                return Number.isFinite(values[4]) ? values[4] : 0;
+            }
+
+            return 0;
+        }
+    }
+
+    private reverseDirectionalNavigationToOrigin(): void {
+        const swipeWrapper = this.swipeWrapperRef().nativeElement;
+        const currentTranslateX = this.getCurrentSwipeWrapperTranslateX();
+        const scale = this.zoomPanService.scale();
+        const fullPageDistance = Math.max(1, (PAGE_WIDTH + PAGE_GAP) * scale);
+        const remainingDistance = Math.abs(currentTranslateX);
+
+        this.pendingDirectionalNavigation = 0;
+        this.pendingDirectionalTargetUnitId = null;
+        this.cancelSwipeAnimation();
+
+        if (remainingDistance < 1) {
+            swipeWrapper.style.transition = 'none';
+            swipeWrapper.style.transform = '';
+            this.displayUnit({ fromSwipe: true });
+            return;
+        }
+
+        swipeWrapper.style.transition = 'none';
+        swipeWrapper.style.transform = `translate3d(${currentTranslateX}px, 0, 0)`;
+
+        const durationMs = Math.max(90, Math.min(220, Math.round(220 * (remainingDistance / fullPageDistance))));
+
+        this.startSwipeAnimation({
+            durationMs,
+            easing: 'ease-out',
+            transform: 'translate3d(0, 0, 0)',
+            onComplete: () => {
+                swipeWrapper.style.transition = 'none';
+                swipeWrapper.style.transform = '';
+                this.displayUnit({ fromSwipe: true });
+            }
+        });
+    }
+
     private getSwipeVisibleOffsets(translateX: number): { left: number; right: number } {
         const container = this.containerRef().nativeElement;
         const scale = this.zoomPanService.scale();
@@ -1002,6 +1076,80 @@ export class PageViewerComponent implements AfterViewInit {
             cancelAnimationFrame(this.shadowRenderFrameId);
             this.shadowRenderFrameId = null;
         }
+    }
+
+    private getShadowKey(unitIndex: number, direction: ShadowDirection): string {
+        return `${direction}:${unitIndex}`;
+    }
+
+    private removeShadowPageElement(shadowElement: HTMLDivElement): void {
+        const cleanupIndex = this.shadowPageElements.indexOf(shadowElement);
+        if (cleanupIndex >= 0) {
+            const cleanup = this.shadowPageCleanups[cleanupIndex];
+            cleanup?.();
+            this.shadowPageCleanups.splice(cleanupIndex, 1);
+            this.shadowPageElements.splice(cleanupIndex, 1);
+        }
+
+        if (shadowElement.parentElement) {
+            shadowElement.parentElement.removeChild(shadowElement);
+        }
+
+        shadowElement.innerHTML = '';
+    }
+
+    private queueDirectionalNavigation(direction: 'left' | 'right'): void {
+        this.pendingDirectionalNavigation += direction === 'right' ? 1 : -1;
+    }
+
+    private flushQueuedDirectionalNavigation(): void {
+        if (this.pendingDirectionalNavigation === 0 || this.isSwiping || this.swipeAnimationCallback) {
+            return;
+        }
+
+        const direction: 'left' | 'right' = this.pendingDirectionalNavigation > 0 ? 'right' : 'left';
+        this.pendingDirectionalNavigation += direction === 'right' ? -1 : 1;
+
+        queueMicrotask(() => {
+            if (this.pendingDirectionalNavigation === 0 && this.isSwiping) {
+                return;
+            }
+            this.navigateByDirection(direction);
+        });
+    }
+
+    private interruptDirectionalNavigation(nextDirection: 'left' | 'right'): void {
+        if (!this.swipeAnimationCallback) {
+            this.queueDirectionalNavigation(nextDirection);
+            this.flushQueuedDirectionalNavigation();
+            return;
+        }
+
+        const currentDirection = this.pendingPagesToMove > 0
+            ? 'right'
+            : this.pendingPagesToMove < 0
+                ? 'left'
+                : null;
+
+        if (currentDirection && currentDirection !== nextDirection) {
+            this.reverseDirectionalNavigationToOrigin();
+            return;
+        }
+
+        this.queueDirectionalNavigation(nextDirection);
+
+        const committedTargetUnit = this.pendingDirectionalTargetUnitId
+            ? this.forceUnits().find((unit) => unit.id === this.pendingDirectionalTargetUnitId) as CBTForceUnit | undefined
+            : undefined;
+
+        this.cancelSwipeAnimation({ applyPendingMove: true, resetTransform: true });
+
+        if (committedTargetUnit) {
+            this.forceBuilder.selectUnit(committedTargetUnit);
+        }
+
+        this.pendingDirectionalTargetUnitId = null;
+        this.displayUnit({ fromSwipe: true });
     }
     
     /**
@@ -1473,6 +1621,7 @@ export class PageViewerComponent implements AfterViewInit {
         this.swipeUnitsToLoad = [];
         this.swipeDirection = 'none';
         this.lastSwipeTranslateX = 0;
+        this.pendingDirectionalTargetUnitId = null;
         
         // Clear lazy swipe state
         this.swipeLeftmostOffset = 0;
@@ -1894,6 +2043,11 @@ export class PageViewerComponent implements AfterViewInit {
      */
     navigateByDirection(direction: 'left' | 'right'): void {
         if (this.isSwiping) return;
+
+        if (this.swipeAnimationCallback) {
+            this.interruptDirectionalNavigation(direction);
+            return;
+        }
         
         const allUnits = this.forceUnits();
         const totalUnits = allUnits.length;
@@ -1912,6 +2066,7 @@ export class PageViewerComponent implements AfterViewInit {
             : (currentStartIndex + effectiveVisible) % totalUnits;
         const targetUnit = allUnits[targetIndex] as CBTForceUnit;
         if (!targetUnit) return;
+        this.pendingDirectionalTargetUnitId = targetUnit.id;
         
         // Check if there's an existing shadow page we can use
         const existingShadow = this.shadowPageElements.find(
@@ -1926,13 +2081,36 @@ export class PageViewerComponent implements AfterViewInit {
         
         // No shadow page exists - create temporary one and animate
         this.closeInteractionOverlays();
+        const navigationVersion = ++this.asyncNavigationVersion;
         
         // Load target unit first
         targetUnit.load().then(() => {
+            const currentUnits = this.forceUnits();
+            const currentEffectiveVisible = this.effectiveVisiblePageCount();
+            const currentStart = this.viewStartIndex();
+
+            if (navigationVersion !== this.asyncNavigationVersion
+                || this.isSwiping
+                || currentStart !== currentStartIndex
+                || currentEffectiveVisible !== effectiveVisible
+                || currentUnits.length === 0) {
+                return;
+            }
+
+            const resolvedTargetIndex = direction === 'left'
+                ? (currentStart - 1 + currentUnits.length) % currentUnits.length
+                : (currentStart + currentEffectiveVisible) % currentUnits.length;
+
+            if (resolvedTargetIndex !== targetIndex || currentUnits[resolvedTargetIndex] !== targetUnit) {
+                return;
+            }
+
             const svg = targetUnit.svg();
             if (!svg) {
                 // Fallback to instant navigation if no SVG
                 this.viewStartIndex.set(currentStartIndex + pagesToMove);
+                this.forceBuilder.selectUnit(targetUnit);
+                this.pendingDirectionalTargetUnitId = null;
                 this.displayUnit();
                 return;
             }
@@ -1982,6 +2160,8 @@ export class PageViewerComponent implements AfterViewInit {
     // ========== Unit Display ==========
 
     private displayUnit(options: { fromSwipe?: boolean } = {}): void {
+        this.asyncNavigationVersion++;
+
         const currentUnit = this.unit();
         const content = this.contentRef().nativeElement;
         const fromSwipe = options.fromSwipe ?? false;
@@ -2316,6 +2496,8 @@ export class PageViewerComponent implements AfterViewInit {
         
         // Render shadow pages if enabled (smart update - reuses existing shadows)
         this.scheduleRenderShadowPages();
+
+        this.flushQueuedDirectionalNavigation();
         
         // Mark initial render complete - allows resize handler to update shadows
         this.initialRenderComplete = true;
@@ -2378,14 +2560,19 @@ export class PageViewerComponent implements AfterViewInit {
         const lastPageScaledRight = lastPageUnscaledLeft * scale + scaledPageWidth;
         
         // Build list of desired shadow configurations
-        const desiredShadows: { unitIndex: number; scaledLeftPosition: number; direction: 'left' | 'right' }[] = [];
+        const desiredShadows: ShadowDescriptor[] = [];
         
         // Fill left side with shadow pages
         let leftPosition = firstPageScaledLeft - scaledPageStep;
         let leftUnitOffset = 1;
         while (leftPosition + scaledPageWidth > visibleLeft && leftUnitOffset < totalUnits) {
             const unitIndex = (startIndex - leftUnitOffset + totalUnits) % totalUnits;
-            desiredShadows.push({ unitIndex, scaledLeftPosition: leftPosition, direction: 'left' });
+            desiredShadows.push({
+                key: this.getShadowKey(unitIndex, 'left'),
+                unitIndex,
+                scaledLeftPosition: leftPosition,
+                direction: 'left'
+            });
             leftPosition -= scaledPageStep;
             leftUnitOffset++;
         }
@@ -2395,34 +2582,42 @@ export class PageViewerComponent implements AfterViewInit {
         let rightUnitOffset = effectiveVisible;
         while (rightPosition < visibleRight && rightUnitOffset < totalUnits) {
             const unitIndex = (startIndex + rightUnitOffset) % totalUnits;
-            desiredShadows.push({ unitIndex, scaledLeftPosition: rightPosition, direction: 'right' });
+            desiredShadows.push({
+                key: this.getShadowKey(unitIndex, 'right'),
+                unitIndex,
+                scaledLeftPosition: rightPosition,
+                direction: 'right'
+            });
             rightPosition += scaledPageStep;
             rightUnitOffset++;
         }
         
         // Also exclude units that are now active sheets
         const activeUnitIds = new Set(this.displayedUnits.map(u => u.id));
-        const desiredShadowMap = new Map(desiredShadows.map((shadow) => [shadow.unitIndex, shadow]));
+        const desiredShadowMap = new Map(desiredShadows.map((shadow) => [shadow.key, shadow]));
         
         // Smart cleanup: keep shadows that match desired positions, remove others
         const shadowsToKeep: HTMLDivElement[] = [];
-        const keptUnitIndices = new Set<number>();
+        const keptShadowKeys = new Set<string>();
+        const keptShadowCleanups: (() => void)[] = [];
         
-        for (const el of this.shadowPageElements) {
+        for (let shadowIndex = 0; shadowIndex < this.shadowPageElements.length; shadowIndex++) {
+            const el = this.shadowPageElements[shadowIndex];
             const shadowUnitIndex = parseInt(el.dataset['unitIndex'] ?? '-1', 10);
             const shadowUnitId = el.dataset['unitId'];
+            const shadowDirection = el.dataset['shadowDirection'] as ShadowDirection | undefined;
+            const shadowKey = shadowDirection ? this.getShadowKey(shadowUnitIndex, shadowDirection) : '';
             
             // Remove if this unit is now an active sheet
             if (shadowUnitId && activeUnitIds.has(shadowUnitId)) {
-                if (el.parentElement === content) {
-                    content.removeChild(el);
-                }
+                this.removeShadowPageElement(el);
+                shadowIndex--;
                 continue;
             }
             
             // Check if this shadow should still exist
-            const matchingDesired = desiredShadowMap.get(shadowUnitIndex);
-            if (matchingDesired && !keptUnitIndices.has(shadowUnitIndex)) {
+            const matchingDesired = desiredShadowMap.get(shadowKey);
+            if (matchingDesired && !keptShadowKeys.has(shadowKey)) {
                 // Update position in case it changed
                 el.style.left = `${matchingDesired.scaledLeftPosition}px`;
                 el.style.width = `${PAGE_WIDTH * scale}px`;
@@ -2437,19 +2632,20 @@ export class PageViewerComponent implements AfterViewInit {
                 }
                 
                 shadowsToKeep.push(el);
-                keptUnitIndices.add(shadowUnitIndex);
+                keptShadowCleanups.push(this.shadowPageCleanups[shadowIndex]);
+                keptShadowKeys.add(shadowKey);
             } else {
                 // Remove shadow that's no longer needed
-                if (el.parentElement === content) {
-                    content.removeChild(el);
-                }
+                this.removeShadowPageElement(el);
+                shadowIndex--;
             }
         }
         
         this.shadowPageElements = shadowsToKeep;
+        this.shadowPageCleanups = keptShadowCleanups;
         
         // Determine which shadows need to be created (not already covered)
-        const shadowsToCreate = desiredShadows.filter(s => !keptUnitIndices.has(s.unitIndex));
+        const shadowsToCreate = desiredShadows.filter(s => !keptShadowKeys.has(s.key));
         
         // If no new shadows needed, just apply fluff visibility and exit
         if (shadowsToCreate.length === 0) {
@@ -2568,7 +2764,7 @@ export class PageViewerComponent implements AfterViewInit {
         // Create incoming shadow pages that will slide into view during animation
         // These are the pages beyond the clicked shadow in the direction of movement
         if (direction) {
-            this.createIncomingShadowPages(targetIndex, direction, pagesToMove, scale, showFluff, allUnits as CBTForceUnit[]);
+            this.createIncomingShadowPages(clickedShadow, targetIndex, direction, pagesToMove, scale, showFluff, allUnits as CBTForceUnit[]);
         }
         
         const scaledPageWidth = PAGE_WIDTH * scale + PAGE_GAP * scale;
@@ -2605,6 +2801,7 @@ export class PageViewerComponent implements AfterViewInit {
                 
                 // Select the clicked shadow page's unit (after animation to prevent early re-render)
                 this.forceBuilder.selectUnit(unit);
+                this.pendingDirectionalTargetUnitId = null;
                 
                 // Re-render with new position
                 this.displayUnit({ fromSwipe: true });
@@ -2617,6 +2814,7 @@ export class PageViewerComponent implements AfterViewInit {
      * These are positioned beyond the current visible area in the direction of movement.
      */
     private createIncomingShadowPages(
+        clickedShadow: HTMLDivElement,
         targetIndex: number,
         direction: string,
         pagesToMove: number,
@@ -2627,12 +2825,6 @@ export class PageViewerComponent implements AfterViewInit {
         const totalUnits = allUnits.length;
         const scaledPageStep = (PAGE_WIDTH + PAGE_GAP) * scale;
         
-        // Find the clicked shadow to get its position as reference
-        const clickedShadow = this.shadowPageElements.find(
-            el => el.dataset['unitIndex'] === String(targetIndex)
-        );
-        if (!clickedShadow) return;
-        
         const clickedShadowLeft = parseFloat(clickedShadow.style.left) || 0;
         
         // Calculate how many incoming shadows we need
@@ -2641,8 +2833,12 @@ export class PageViewerComponent implements AfterViewInit {
         const incomingCount = Math.abs(pagesToMove);
         
         // Get existing shadow unit indices to avoid duplicates
-        const existingShadowIndices = new Set(
-            this.shadowPageElements.map(el => parseInt(el.dataset['unitIndex'] ?? '-1', 10))
+        const existingShadowKeys = new Set(
+            this.shadowPageElements.map((el) => {
+                const unitIndex = parseInt(el.dataset['unitIndex'] ?? '-1', 10);
+                const shadowDirection = el.dataset['shadowDirection'] as ShadowDirection | undefined;
+                return shadowDirection ? this.getShadowKey(unitIndex, shadowDirection) : '';
+            }).filter((key) => key.length > 0)
         );
         
         // Get active page unit IDs to avoid duplicates
@@ -2652,9 +2848,11 @@ export class PageViewerComponent implements AfterViewInit {
             // Calculate unit index for this incoming page
             const unitOffset = direction === 'right' ? i : -i;
             const incomingUnitIndex = (targetIndex + unitOffset + totalUnits) % totalUnits;
+            const shadowDirection = direction === 'right' ? 'right' : 'left';
+            const incomingShadowKey = this.getShadowKey(incomingUnitIndex, shadowDirection);
             
             // Skip if already exists as shadow or active page
-            if (existingShadowIndices.has(incomingUnitIndex)) continue;
+            if (existingShadowKeys.has(incomingShadowKey)) continue;
             const unit = allUnits[incomingUnitIndex];
             if (!unit || activeUnitIds.has(unit.id)) continue;
             
@@ -2665,10 +2863,9 @@ export class PageViewerComponent implements AfterViewInit {
             // Load the unit (fire and forget - may already be loaded)
             unit.load().then(() => {
                 // Check if we're still in animation (component might have moved on)
-                if (this.swipeAnimationCallback === null) return;
+                if (this.swipeAnimationCallback === null || !clickedShadow.isConnected) return;
                 
                 // Use unified helper to create shadow page with click handler
-                const shadowDirection = direction === 'right' ? 'right' : 'left';
                 this.createShadowPageElement(
                     unit,
                     incomingUnitIndex,
@@ -2732,6 +2929,7 @@ export class PageViewerComponent implements AfterViewInit {
         shadowWrapper.dataset['unitId'] = unit.id;
         shadowWrapper.dataset['unitIndex'] = String(unitIndex);
         shadowWrapper.dataset['shadowDirection'] = direction;
+        shadowWrapper.dataset['shadowKey'] = this.getShadowKey(unitIndex, direction);
         
         // Position the shadow page
         shadowWrapper.dataset['originalLeft'] = String(scaledLeftPosition / scale);
@@ -3096,6 +3294,8 @@ export class PageViewerComponent implements AfterViewInit {
     // ========== Cleanup ==========
 
     private cleanup(): void {
+        this.pendingDirectionalNavigation = 0;
+
         // Cancel any pending swipe animation
         if (this.swipeAnimationCallback) {
             this.cancelSwipeAnimation();
