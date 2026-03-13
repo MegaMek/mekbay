@@ -44,6 +44,7 @@ import { C3NetworkUtil } from '../utils/c3-network.util';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { LoggerService } from '../services/logger.service';
 import type { Faction } from './factions.model';
+import type { Era } from './eras.model';
 import { type FormationTypeDefinition, type FormationMatch, isNoFormation } from '../utils/formation-type.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
@@ -216,6 +217,8 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     owned = signal<boolean>(true); // Indicates if the user owns this force (false if it's a shared force)
     faction = signal<Faction | null>(null);
     factionLock: boolean = false; // If true, the force faction cannot be changed by the random generator
+    era = signal<Era | null>(null);
+    eraLock: boolean = false; // If true, the force era cannot be changed by the random generator
     c3Networks = this._c3Networks.asReadonly();
     /** Emits after each debounced mutation: subscribe to react to force changes. */
     public readonly changed = new Subject<void>();
@@ -591,6 +594,8 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             name: this.name,
             factionId: this.faction()?.id,
             factionLock: this.factionLock || undefined,
+            eraId: this.era()?.id,
+            eraLock: this.eraLock || undefined,
             groups: serializedGroups,
             c3Networks: this.c3Networks().length > 0 ? this.c3Networks() : undefined,
         };
@@ -676,6 +681,13 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                 this.faction.set(faction);
             }
 
+            // Resolve era from eraId
+            this.eraLock = sanitizedData.eraLock || false;
+            if (sanitizedData.eraId != null) {
+                const era = this.dataService.getEraById(sanitizedData.eraId) ?? null;
+                this.era.set(era);
+            }
+
             const logger = this.injector.get(LoggerService);
             const parsedGroups: UnitGroup<TUnit>[] = [];
             for (const g of sanitizedData.groups) {
@@ -740,6 +752,15 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                 this.faction.set(faction);
             } else {
                 this.faction.set(null);
+            }
+
+            // Resolve era from eraId
+            this.eraLock = sanitizedData.eraLock || false;
+            if (sanitizedData.eraId != null) {
+                const era = this.dataService.getEraById(sanitizedData.eraId) ?? null;
+                this.era.set(era);
+            } else {
+                this.era.set(null);
             }
 
             const incomingGroupsData = sanitizedData.groups || [];
