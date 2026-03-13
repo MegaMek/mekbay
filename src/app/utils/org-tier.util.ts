@@ -41,6 +41,19 @@ export function getEquivalentGroupCountAtTier(groupTier: number, baseTier: numbe
     return Math.pow(ORG_TIER_GROUPING_FACTOR, groupTier - baseTier);
 }
 
+export function getDynamicTierForModifier(
+    baseTier: number,
+    regularCount: number,
+    modifierCount: number,
+    dynamicTier: number,
+): number {
+    if (dynamicTier <= 0 || regularCount <= 0 || modifierCount <= 0 || modifierCount === regularCount) {
+        return baseTier;
+    }
+
+    return baseTier + (Math.log(modifierCount / regularCount) / Math.log(ORG_TIER_GROUPING_FACTOR)) * dynamicTier;
+}
+
 export function getAggregatedTier(groupTiers: ReadonlyArray<number>): number {
     if (groupTiers.length === 0) return 0;
 
