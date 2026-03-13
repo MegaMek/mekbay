@@ -100,6 +100,9 @@ function isPM(u: Unit): boolean {
     return u.type === 'ProtoMek';
 }
 
+const IS_REGULAR_STAR_GROUP = (group: GroupSizeResult): boolean => group.type === 'Star' && group.modifierKey === '';
+const IS_REGULAR_NOVA_GROUP = (group: GroupSizeResult): boolean => group.type === 'Nova' && group.modifierKey === '';
+
 /** Count helpers for customMatch — derive counts from Unit[] */
 function countBM(units: Unit[]): number { return units.filter(isBM).length; }
 function countBMOmni(units: Unit[]): number { return units.filter(u => isBM(u) && u.omni === 1).length; }
@@ -156,18 +159,22 @@ const CLAN_NOVA: OrgTypeLeaf = leafRule({
 const CLAN_BINARY: OrgTypeComposed = composedRule({
     type: 'Binary', strict: true, composedOfAny: ['Star'],
     modifiers: { '': 2 }, commandRank: 'Star Captain', tier: 1.8,
+    // groupFilter: groups => groups.every(IS_REGULAR_STAR_GROUP),
 });
 const CLAN_TRINARY: OrgTypeComposed = composedRule({
     type: 'Trinary', strict: true, composedOfAny: ['Star'],
     modifiers: { '': 3 }, commandRank: 'Star Captain', tier: 2,
+    // groupFilter: groups => groups.every(IS_REGULAR_STAR_GROUP),
 });
 const CLAN_SUPERNOVA_BINARY: OrgTypeComposed = composedRule({
     type: 'Supernova Binary', strict: true, priority: 2, countsAs: 'Binary',
     composedOfAny: ['Nova'], modifiers: { '': 2 }, commandRank: 'Nova Captain', tier: 2,
+    // groupFilter: groups => groups.every(IS_REGULAR_NOVA_GROUP),
 });
 const CLAN_SUPERNOVA_TRINARY: OrgTypeComposed = composedRule({
     type: 'Supernova Trinary', strict: true, priority: 1, countsAs: 'Trinary',
     composedOfAny: ['Nova'], modifiers: { '': 3 }, commandRank: 'Nova Captain', tier: 2.5,
+    // groupFilter: groups => groups.every(IS_REGULAR_NOVA_GROUP),
 });
 const CLAN_SUPERNOVA_TRINARY_FROM_BINARY: OrgTypeComposed = composedRule({
     type: 'Supernova Trinary', strict: true, priority: 1, countsAs: 'Trinary',
