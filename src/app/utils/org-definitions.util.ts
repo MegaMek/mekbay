@@ -216,6 +216,23 @@ const IS_SQUAD: OrgTypeLeaf = leafRule({
         return Infinity;
     },
 });
+const IS_PLATOON: OrgTypeLeaf = leafRule({
+    type: 'Platoon', countsAs: 'Lance', priority: 1, modifiers: { '': 1 }, commandRank: 'Lieutenant', tier: 1,
+    filter: (u) => isCI(u),
+    customMatch: (units) => {
+        const ciTroopers = sumCITroopers(units);
+        if (ciTroopers >= 6 && ciTroopers <= 32) return 0;
+        if (ciTroopers < 6) return (6 - ciTroopers) / 28;
+        return (ciTroopers - 32) / 28;
+    },
+});
+const IS_AIR_LANCE: OrgTypeComposed = composedRule({
+    type: 'Air Lance', countsAs: 'Lance', priority: 1, composedOfAny: ['Flight', 'Lance'], tier: 1.5,
+    requiredChildTypeCounts: { 'Flight': 1, 'Lance': 1 },
+    modifiers: { '': 2 },
+    commandRank: 'Lieutenant',
+    filter: (u) => !isInfantry(u),
+});
 const IS_SINGLE: OrgTypeLeaf = leafRule({
     type: 'Single', tier: 0, priority: -1,
     modifiers: { '': 1 },    
@@ -226,23 +243,6 @@ const IS_LANCE: OrgTypeLeaf = leafRule({
     modifiers: { 'Short ': 2, 'Under-Strength ': 3, '': 4, 'Reinforced ': 5, 'Fortified ': 6 },
     commandRank: 'Lieutenant',
     filter: (u) => !isCI(u),
-});
-const IS_AIR_LANCE: OrgTypeComposed = composedRule({
-    type: 'Air Lance', countsAs: 'Lance', priority: 1, composedOfAny: ['Flight', 'Lance'], tier: 1.5,
-    requiredChildTypeCounts: { 'Flight': 1, 'Lance': 1 },
-    modifiers: { '': 2 },
-    commandRank: 'Lieutenant',
-    filter: (u) => !isInfantry(u),
-});
-const IS_PLATOON: OrgTypeLeaf = leafRule({
-    type: 'Platoon', countsAs: 'Lance', priority: 1, modifiers: { '': 1 }, commandRank: 'Lieutenant', tier: 1,
-    filter: (u) => isCI(u),
-    customMatch: (units) => {
-        const ciTroopers = sumCITroopers(units);
-        if (ciTroopers >= 6 && ciTroopers <= 32) return 0;
-        if (ciTroopers < 6) return (6 - ciTroopers) / 28;
-        return (ciTroopers - 32) / 28;
-    },
 });
 const IS_COMPANY: OrgTypeComposed = composedRule({
     type: 'Company', composedOfAny: ['Lance', 'Flight'],
