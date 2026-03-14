@@ -67,4 +67,8 @@ export class AsLayoutLargeVessel1Component extends AsLayoutBaseComponent {
         const config = getLayoutForUnitType(this.asStats().TP);
         return config.cards[0]?.criticalHits ?? 'none';
     });
+
+    protected vesselFrameFill(): string {
+        return this.cardStyle() === 'monochrome' ? 'rgba(255, 255, 255, 0.7)' : 'rgb(227 236 237 / 0.7)';
+    }
 }

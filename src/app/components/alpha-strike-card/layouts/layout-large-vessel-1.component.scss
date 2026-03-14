@@ -1,5 +1,14 @@
 @use '../common.scss';
 
+:host {
+    --vessel-left-width: 57.5%;
+    --vessel-right-width: 41.8%;
+    --vessel-stats-height: 9.6%;
+    --vessel-armor-height: 23.4%;
+    --vessel-threshold-height: 9.6%;
+    --vessel-specials-min-height: 26%;
+}
+
 // Header Section
 .header-section {
     position: absolute;
@@ -69,9 +78,6 @@
     align-items: center;
 }
 
-// Main Content Area
-
-// Stats Container
 .stats-container {
     position: absolute;
     bottom: 12%;
@@ -93,7 +99,6 @@
     height: 100%;
 }
 
-// Row 1: stats-row-container aligned with era-icons
 .stats-row-container {
     grid-column: 1;
     grid-row: 1;
@@ -126,7 +131,6 @@
     }
 }
 
-// Row 2: armor-damage-row, damage-threshold (top-aligned)
 .armor-damage-row {
     grid-column: 1;
     grid-row: 2;
@@ -138,20 +142,16 @@
     align-self: start;
 }
 
-// Row 2-3: fluff-image starts after damage-threshold, spans down
 .spa-container {
     grid-column: 2;
     grid-row: 2 / 4;
     min-height: 0;
     overflow: hidden;
-    padding-top: 6em; // offset to start below damage-threshold
-    display: flex;
+    padding-top: 6em;
     position: relative;
-    display: flex;
     align-items: end;
 }
 
-// Row 3: critical-hits stretches to fill remaining space
 .critical-hits-container {
     grid-column: 1;
     grid-row: 3 / 5;
@@ -160,7 +160,6 @@
     justify-content: flex-end;
 }
 
-// Row 4: specials-box on right
 .specials-box {
     grid-column: 2;
     grid-row: 4;

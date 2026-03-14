@@ -35,7 +35,11 @@
     </div>
 
     <!-- PV Box -->
-    <div class="pv-box-background"></div>
+    <div class="pv-box-background" aria-hidden="true">
+        <svg class="pv-box-background-svg" viewBox="0 0 220 78" preserveAspectRatio="none">
+            <polygon class="pv-box-background-shape" points="0,0 220,0 220,78 40,78"></polygon>
+        </svg>
+    </div>
     <div class="pv-box">
         <div class="pv-text">{{ adjustedPV() }}</div>
         @if (basePV() != adjustedPV()) {
@@ -48,10 +52,14 @@
     <div class="stats-container-row">
         <div class="stats-container-column stats-left">
             <!-- Stats Box 1 - Type, Size, TMM, Movement -->
-            <div class="stats-box frame">
-                <div class="frame-background"></div>
+            <div class="stats-box">
+                <div class="stats-box-svg-shell" aria-hidden="true">
+                    <svg class="stats-box-svg" viewBox="0 0 345 72" preserveAspectRatio="none">
+                        <rect x="1.5" y="1.5" width="342" height="69" rx="7" ry="7" [attr.fill]="armorBoxFill()" stroke="#221F20" stroke-width="1.5"></rect>
+                    </svg>
+                </div>
 
-                <div class="frame-content">
+                <div class="stats-box-content">
                     <div class="stats-row wrappable" #wrappableRow>
                         <span class="stat-item"><span class="as-caption">TP:</span>&nbsp;<span class="as-value">{{ asStats().TP }}</span></span>
                         <span class="stat-item"><span class="as-caption">SZ:</span>&nbsp;<span class="as-value">{{ asStats().SZ }}</span></span>
@@ -73,149 +81,167 @@
             </div>
 
             <!-- Damage Box -->
-            <div class="damage-box frame">
-                <div class="frame-background"></div>
-                <div class="frame-content">
-                    <div class="damage-label as-value">DAMAGE</div>
-                    <div class="damage-ranges">
-                        <!-- Short Range -->
-                        <div class="damage-range">
-                            <div class="range-header range-header-background left" [class.thin]="hasExtremeRange()">S (0 | {{ toHitShort() }}+)</div>
-                            <div class="range-value as-value" [class.reduced]="weaponHits() > 0">{{ effectiveDamageS() }}</div>
-                            <div class="range-distance">{{ rangeShort() }}</div>
-                        </div>
+            <div class="damage-box">
+                <div class="damage-box-svg-shell">
+                    <svg class="damage-box-svg" [attr.viewBox]="'0 0 ' + damageBoxViewBoxWidth() + ' 76'" preserveAspectRatio="xMidYMid meet">
+                        <defs>
+                            @if (!isMonochrome()) {
+                                @for (range of damageRanges(); track range.key) {
+                                    <linearGradient [attr.id]="damageHeaderGradientId(range.key)" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop [attr.offset]="range.headerGradient.startOffset" stop-color="#5B504E" stop-opacity="0"></stop>
+                                        <stop [attr.offset]="range.headerGradient.solidStartOffset" stop-color="#5B504E" stop-opacity="1"></stop>
+                                        <stop [attr.offset]="range.headerGradient.solidEndOffset" stop-color="#5B504E" stop-opacity="1"></stop>
+                                        <stop [attr.offset]="range.headerGradient.endOffset" stop-color="#5B504E" stop-opacity="0"></stop>
+                                    </linearGradient>
+                                }
+                            }
+                        </defs>
+                        <rect x="1.5" y="1.5" [attr.width]="damageBoxViewBoxWidth() - 3" height="73" rx="7" ry="7" [attr.fill]="armorBoxFill()" stroke="#221F20" stroke-width="1.5"></rect>
 
-                        <!-- Medium Range -->
-                        <div class="damage-range">
-                            <div class="range-header range-header-background">M (+2 | {{ toHitMedium() }}+)</div>
-                            <div class="range-value as-value" [class.reduced]="weaponHits() > 0">{{ effectiveDamageM() }}</div>
-                            <div class="range-distance">{{ rangeMedium() }}</div>
-                        </div>
+                        <g transform="translate(18 38) rotate(-90)">
+                            <text x="0" y="0" text-anchor="middle" dominant-baseline="middle" class="damage-label-text-svg">DAMAGE</text>
+                        </g>
 
-                        <!-- Long Range -->
-                        <div class="damage-range">
-                            <div class="range-header range-header-background" [class.right]="!hasExtremeRange()">L (+4 | {{ toHitLong() }}+)</div>
-                            <div class="range-value as-value" [class.reduced]="weaponHits() > 0">{{ effectiveDamageL() }}</div>
-                            <div class="range-distance">{{ rangeLong() }}</div>
-                        </div>
-
-                        @if (hasExtremeRange()) {
-                            <!-- Extreme Range -->
-                            <div class="damage-range">
-                                <div class="range-header range-header-background right thin">E (+6 | {{ toHitExtreme() }}+)</div>
-                                <div class="range-value as-value" [class.reduced]="weaponHits() > 0">{{ effectiveDamageE() }}</div>
-                                <div class="range-distance">{{ rangeExtreme() }}</div>
-                            </div>
+                        @for (range of damageRanges(); track range.key) {
+                            <g [attr.transform]="'translate(' + range.centerX + ',0)'">
+                                @if (!isMonochrome()) {
+                                    <rect [attr.x]="-range.headerWidth / 2" y="7" [attr.width]="range.headerWidth" height="14" [attr.fill]="'url(#' + damageHeaderGradientId(range.key) + ')'" aria-hidden="true"></rect>
+                                }
+                                <text x="0" y="18" text-anchor="middle" class="damage-range-header-svg" [attr.fill]="isMonochrome() ? '#000' : '#fff'">{{ range.header }}</text>
+                                <text x="0" y="47" text-anchor="middle" class="damage-range-value-svg" [class.reduced]="weaponHits() > 0">{{ range.value }}</text>
+                                <text x="0" y="64" text-anchor="middle" class="damage-range-distance-svg">{{ range.distance }}</text>
+                            </g>
                         }
-                    </div>
+                    </svg>
                 </div>
             </div>
 
             <!-- Heat/OV Box -->
             @if (asStats().usesOV) {
-            <div class="heat-box frame">
-                <div class="frame-background"></div>
+            <div class="heat-box">
+                <div class="heat-box-svg-shell">
+                    @let hotDog = forceUnit()?.hasHotDog();
+                    <svg class="heat-box-svg" [attr.viewBox]="'0 0 ' + heatBoxViewBoxWidth() + ' ' + heatBoxViewBoxHeight()" preserveAspectRatio="xMidYMid meet">
+                        <defs>
+                            @if (!isMonochrome()) {
+                                <linearGradient [attr.id]="heatTitleGradientId()" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" stop-color="#5B504E" stop-opacity="0"></stop>
+                                    <stop offset="6.25%" stop-color="#5B504E" stop-opacity="1"></stop>
+                                    <stop offset="93.75%" stop-color="#5B504E" stop-opacity="1"></stop>
+                                    <stop offset="100%" stop-color="#5B504E" stop-opacity="0"></stop>
+                                </linearGradient>
+                            }
+                        </defs>
+                        <rect x="1.5" y="1.5" [attr.width]="heatBoxViewBoxWidth() - 3" [attr.height]="heatBoxViewBoxHeight() - 3" rx="7" ry="7" [attr.fill]="armorBoxFill()" stroke="#221F20" stroke-width="1.5"></rect>
 
-                <div class="frame-content">
-                    <div class="ov-value">
-                        <div class="as-caption">OV:&nbsp;</div>
-                        <div class="as-value">{{ asStats().OV }}</div>
-                    </div>
-                    <div class="frame-title-background heat-label">HEAT SCALE</div>
-                    <div class="heat-track">
-                        <!-- Heat 0 -->
-                        @let pendingHeatDelta = pendingHeat();
-                        @let effectiveHeat = heatLevel() + pendingHeatDelta;
-                        @let hotDog = forceUnit()?.hasHotDog();
-                        <div class="heat-level heat-0" 
-                             [class.hot-dog]="hotDog"
-                             [class.active]="heatLevel() === 0"
-                             [class.pending]="pendingHeatDelta !== 0 && effectiveHeat === 0">
-                            <span>0</span>
-                        </div>
-                        <!-- Heat 1 -->
-                        <div class="heat-level heat-1" 
-                             [class.hot-dog]="hotDog"
-                             [class.active]="heatLevel() === 1"
-                             [class.pending]="pendingHeatDelta !== 0 && effectiveHeat === 1">
-                            <span>1</span>
-                        </div>
-                        <!-- Heat 2 -->
-                        <div class="heat-level heat-2" 
-                             [class.hot-dog]="hotDog"
-                             [class.active]="heatLevel() === 2"
-                             [class.pending]="pendingHeatDelta !== 0 && effectiveHeat === 2">
-                            <span>2</span>
-                        </div>
-                        <!-- Heat 3 -->
-                        <div class="heat-level heat-3" 
-                             [class.hot-dog]="hotDog"
-                             [class.active]="heatLevel() === 3"
-                             [class.pending]="pendingHeatDelta !== 0 && effectiveHeat === 3">
-                            <span>3</span>
-                        </div>
-                        <!-- Heat 4 (Hot Dog ability) -->
-                        @if (hotDog) {
-                        <div class="heat-level heat-4" 
-                             [class.hot-dog]="hotDog"
-                             [class.active]="heatLevel() === 4"
-                             [class.pending]="pendingHeatDelta !== 0 && effectiveHeat === 4">
-                            <span>4</span>
-                        </div>
+                        <text x="9" y="30" class="heat-ov-caption-svg">OV:</text>
+                        <text x="54" y="30" class="heat-ov-value-svg">{{ asStats().OV }}</text>
+
+                        @if (!isMonochrome()) {
+                            <rect
+                                [attr.x]="heatTitleBandX()"
+                                [attr.y]="heatTitleBandY()"
+                                [attr.width]="heatTitleBandWidth()"
+                                [attr.height]="heatTitleBandHeight()"
+                                [attr.fill]="'url(#' + heatTitleGradientId() + ')'"
+                                aria-hidden="true">
+                            </rect>
                         }
-                        <!-- Shutdown -->
-                        <div class="heat-level heat-s" 
-                             [class.hot-dog]="hotDog"
-                             [class.active]="hotDog ? heatLevel() >= 5 : heatLevel() >= 4"
-                             [class.pending]="pendingHeatDelta !== 0 && (hotDog ? effectiveHeat >= 5 : effectiveHeat >= 4)">
-                            <span>S</span>
-                        </div>
-                    </div>
+                        <text [attr.x]="heatTitleCenterX()" [attr.y]="heatTitleTextY()" text-anchor="middle" dominant-baseline="middle" class="heat-label-svg" [attr.fill]="isMonochrome() ? '#000' : '#fff'">HEAT SCALE</text>
+
+                        <g class="heat-track" [attr.transform]="'translate(' + heatTrackStartX() + ',' + heatTrackStartY() + ')'">
+                            <rect x="0" y="0" [attr.width]="heatTrackTotalWidth()" [attr.height]="heatTrackHeight()" rx="8" ry="8" class="heat-track-background-svg"></rect>
+                            @for (level of heatTrackLevels(); track level.key) {
+                                <g
+                                    class="heat-level"
+                                    [class.hot-dog]="hotDog"
+                                    [class.active]="level.active"
+                                    [class.pending]="level.pending"
+                                    [class.heat-0]="level.key === '0'"
+                                    [class.heat-1]="level.key === '1'"
+                                    [class.heat-2]="level.key === '2'"
+                                    [class.heat-3]="level.key === '3'"
+                                    [class.heat-4]="level.key === '4'"
+                                    [class.heat-s]="level.key === 'S'"
+                                    [attr.transform]="'translate(' + level.x + ',0)'">
+                                    <path [attr.d]="heatLevelPath(level.width, level.roundLeft, level.roundRight)" class="heat-level-cell-svg"></path>
+                                    @if (!level.roundRight) {
+                                        <line [attr.x1]="level.width" y1="0" [attr.x2]="level.width" [attr.y2]="heatTrackHeight()" class="heat-level-divider-svg"></line>
+                                    }
+                                    <text [attr.x]="level.width / 2" [attr.y]="heatTrackHeight() / 2" text-anchor="middle" dominant-baseline="middle" class="heat-level-text-svg">{{ level.label }}</text>
+                                </g>
+                            }
+                        </g>
+                    </svg>
                 </div>
             </div>
             }
 
             <!-- Armor/Structure Box -->
-            <div class="armor-box frame">
-                <div class="frame-background"></div>
-                <div class="frame-content">
-                    <div class="pips-wrapper">
-                        <!-- Armor Pips -->
-                        <div class="pip-row" data-damage-type="armor">
-                            <span class="as-caption armor-caption">A:</span>
-                            <div class="pips">
-                                @for (pipState of armorPipStates(); track pipState.index) {
-                                <svg class="pip" 
-                                     [class.damaged]="pipState.isDamaged"
-                                     [class.pending-damage]="pipState.isPendingDamage"
-                                     [class.pending-heal]="pipState.isPendingHeal"
-                                     viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
-                                }
-                            </div>
-                        </div>
+            <div class="armor-box">
+                <div class="armor-box-svg-shell pips-wrapper">
+                    <svg class="armor-box-svg" [attr.viewBox]="'0 0 ' + armorBoxViewBoxWidth() + ' ' + armorBoxViewBoxHeight()" preserveAspectRatio="xMidYMid meet">
+                        <rect x="1.5" y="1.5" [attr.width]="armorBoxViewBoxWidth() - 3" [attr.height]="armorBoxViewBoxHeight() - 3" rx="7" ry="7" [attr.fill]="armorBoxFill()" stroke="#221F20" stroke-width="1.5"></rect>
 
-                        <!-- Structure Pips -->
-                        <div class="pip-row" data-damage-type="structure">
-                            <span class="as-caption armor-caption">S:</span>
-                            <div class="pips">
-                                @for (pipState of structurePipStates(); track pipState.index) {
-                                <svg class="pip structure" 
-                                     [class.damaged]="pipState.isDamaged"
-                                     [class.pending-damage]="pipState.isPendingDamage"
-                                     [class.pending-heal]="pipState.isPendingHeal"
-                                     viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
+                        <g data-damage-type="armor">
+                            <rect
+                                x="1.5"
+                                [attr.y]="damageTypeHitAreaY(armorPipRows())"
+                                [attr.width]="damageTypeHitAreaWidth(armorPipRows())"
+                                [attr.height]="damageTypeHitAreaHeight(armorPipRows())"
+                                class="armor-row-hit-area-svg">
+                            </rect>
+                            @for (row of armorPipRows(); track row.centerY) {
+                                @if ($first) {
+                                    <text x="9" [attr.y]="row.captionY" class="armor-box-caption-svg">A:</text>
                                 }
-                            </div>
-                        </div>
-                    </div>
+                                @for (pipState of row.pips; track pipState.index) {
+                                    <circle
+                                        [attr.cx]="armorStructurePipX($index)"
+                                        [attr.cy]="row.centerY"
+                                        r="8"
+                                        class="armor-pip-circle"
+                                        [class.damaged]="pipState.isDamaged"
+                                        [class.pending-damage]="pipState.isPendingDamage"
+                                        [class.pending-heal]="pipState.isPendingHeal">
+                                    </circle>
+                                }
+                            }
+                        </g>
 
-                    <!-- Thrust (for aerospace units) -->
-                    @if (asStats().usesTh) {
-                    <div class="thrust-display">
-                        <span class="as-caption">TH:</span>
-                        <span class="as-value">{{ asStats().Th }}</span>
-                    </div>
-                    }
+                        <g data-damage-type="structure">
+                            <rect
+                                x="1.5"
+                                [attr.y]="damageTypeHitAreaY(structurePipRows())"
+                                [attr.width]="damageTypeHitAreaWidth(structurePipRows())"
+                                [attr.height]="damageTypeHitAreaHeight(structurePipRows())"
+                                class="armor-row-hit-area-svg">
+                            </rect>
+                            @for (row of structurePipRows(); track row.centerY) {
+                                @if ($first) {
+                                    <text x="9" [attr.y]="row.captionY" class="armor-box-caption-svg">S:</text>
+                                }
+                                @for (pipState of row.pips; track pipState.index) {
+                                    <circle
+                                        [attr.cx]="armorStructurePipX($index)"
+                                        [attr.cy]="row.centerY"
+                                        r="8"
+                                        class="armor-pip-circle structure"
+                                        [class.damaged]="pipState.isDamaged"
+                                        [class.pending-damage]="pipState.isPendingDamage"
+                                        [class.pending-heal]="pipState.isPendingHeal">
+                                    </circle>
+                                }
+                            }
+                        </g>
+
+                        @if (asStats().usesTh) {
+                            <g class="thrust-display-svg">
+                                <text [attr.x]="armorBoxThrustLabelX()" [attr.y]="armorBoxThrustLabelY()" class="armor-box-caption-svg thrust-caption-svg">TH:</text>
+                                <text [attr.x]="armorBoxThrustValueX()" [attr.y]="armorBoxThrustValueY()" class="armor-box-thrust-value-svg">{{ asStats().Th }}</text>
+                            </g>
+                        }
+                    </svg>
                 </div>
             </div>
         </div>
@@ -256,9 +282,13 @@
     <!-- Specials Box -->
     @if (effectiveSpecials().length > 0) {
     <div class="stats-container-row">
-        <div class="specials-box frame">
-            <div class="frame-background"></div>
-            <div class="frame-content">
+        <div class="specials-box">
+            <div class="specials-box-svg-shell" aria-hidden="true">
+                <svg class="specials-box-svg" viewBox="0 0 600 33" preserveAspectRatio="none">
+                    <rect x="1.5" y="1.5" width="597" height="30" rx="7" ry="7" [attr.fill]="armorBoxFill()" stroke="#221F20" stroke-width="1.5"></rect>
+                </svg>
+            </div>
+            <div class="specials-box-content">
                 <span class="as-caption">SPECIAL:&nbsp;</span>
                 @for (item of effectiveSpecials(); track item.original; let isLast = $last) {
                 <span class="special-ability as-value" 
@@ -276,6 +306,11 @@
 <!-- Destroyed Overlay -->
 @if (isDestroyed()) {
 <div class="destroyed-overlay">
+    <div class="destroyed-overlay-svg-shell" aria-hidden="true">
+        <svg class="destroyed-overlay-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+            <rect x="0" y="0" width="100" height="100" class="destroyed-overlay-tint"></rect>
+        </svg>
+    </div>
     <span class="destroyed-text">DESTROYED</span>
 </div>
 }

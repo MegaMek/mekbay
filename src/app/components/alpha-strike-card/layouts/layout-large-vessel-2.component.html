@@ -1,116 +1,69 @@
-<div class="vessel-card-2">
-    <!-- Header with unit name -->
-    <div class="vessel-header">
-        @let alias = forceUnit()?.alias();
-        @if (alias) {
-            @let longChassis = alias.length > 30;
-            <span class="alphastrike-text vessel-name" [class.stroked]="cardStyle() != 'monochrome'" [class.long-chassis]="longChassis">{{ alias }}</span>
-            <span class="vessel-name-subtext">{{ unit().chassis | uppercase }} {{ unit().model | uppercase }}</span>
-        } @else {
-            @let longChassis = chassis().length > 30;
-            <span class="alphastrike-text vessel-name" [class.stroked]="cardStyle() != 'monochrome'" [class.long-chassis]="longChassis">{{ unit().chassis | uppercase }}</span>
-            <span class="vessel-model">{{ unit().model | uppercase }}</span>
-        }
-    </div>
+<svg class="vessel-card-svg" [attr.viewBox]="'0 0 ' + cardViewBoxWidth + ' ' + cardViewBoxHeight" preserveAspectRatio="xMidYMid meet">
+    <text x="30" [attr.y]="headerBaselineY()" class="vessel-title" [attr.font-size]="headerFontSize()">{{ headerTitle() }}</text>
 
-    <!-- Arc Damage Tables Grid -->
-    <div class="arc-damage-grid">
-        @for (arc of effectiveArcDamageData(); track arc.label) {
-        <div class="arc-damage-table frame">
-            <div class="frame-background"></div>
-            <div class="frame-content">
-                <!-- Arc Label (vertical) -->
-                <div class="arc-label-container">
-                    <span class="arc-label">{{ arc.label }}</span>
-                </div>
+    @let columns = arcTableColumns();
+    @for (table of arcTableLayouts(); track table.arc.label) {
+        <g [attr.transform]="'translate(' + table.x + ' ' + table.y + ')'">
+            <rect x="0.75" y="0.75" [attr.width]="arcTableWidth - 1.5" [attr.height]="arcTableHeight - 1.5" rx="7" ry="7" class="arc-table-frame"></rect>
 
-                <!-- Damage Table -->
-                <div class="damage-table" [class.has-cap]="hasCap()">
-                    <!-- Header Row -->
-                    <div class="table-header">
-                        <div class="range-col"></div>
-                        <div class="dmg-col">STD</div>
-                        @if (hasCap()) {<div class="dmg-col">CAP</div>}
-                        <div class="dmg-col">SCAP</div>
-                        <div class="dmg-col">MSL</div>
-                    </div>
+            <g [attr.transform]="'translate(25,' + (arcTableHeight / 2) + ') rotate(-90)'">
+                <text x="0" y="0" text-anchor="middle" dominant-baseline="middle" class="arc-label-svg" [attr.fill]="arcLabelFill()">{{ table.arc.label }}</text>
+            </g>
 
-                    <!-- S Row -->
-                    <div class="table-row">
-                        <div class="range-col">S ({{ toHitShort() }}+)</div>
-                        <div class="dmg-col">{{ arc.effDmgS }}</div>
-                        @if (hasCap()) {<div class="dmg-col">{{ arc.effCapS }}</div>}
-                        <div class="dmg-col">{{ arc.effScapS }}</div>
-                        <div class="dmg-col">{{ arc.effMslS }}</div>
-                    </div>
+            <line x1="48" y1="18" x2="44" [attr.y2]="arcTableHeight - 18" class="arc-table-divider-svg"></line>
+            <line x1="46" [attr.y1]="arcHeaderDividerY()" [attr.x2]="arcTableWidth - 18" [attr.y2]="arcHeaderDividerY()" class="arc-table-divider-svg"></line>
+            <line x1="160" [attr.y1]="arcHeaderDividerY()" [attr.x2]="arcTableWidth - 18" [attr.y2]="arcHeaderDividerY()" class="arc-table-heavy-divider-svg"></line>
 
-                    <!-- M Row -->
-                    <div class="table-row">
-                        <div class="range-col">M({{ toHitMedium() }}+)</div>
-                        <div class="dmg-col">{{ arc.effDmgM }}</div>
-                        @if (hasCap()) {<div class="dmg-col">{{ arc.effCapM }}</div>}
-                        <div class="dmg-col">{{ arc.effScapM }}</div>
-                        <div class="dmg-col">{{ arc.effMslM }}</div>
-                    </div>
+            @for (column of columns; track column.key) {
+                <text [attr.x]="column.centerX" y="29" text-anchor="middle" class="arc-table-header-svg">{{ column.label }}</text>
+            }
 
-                    <!-- L Row -->
-                    <div class="table-row">
-                        <div class="range-col">L ({{ toHitLong() }}+)</div>
-                        <div class="dmg-col">{{ arc.effDmgL }}</div>
-                        @if (hasCap()) {<div class="dmg-col">{{ arc.effCapL }}</div>}
-                        <div class="dmg-col">{{ arc.effScapL }}</div>
-                        <div class="dmg-col">{{ arc.effMslL }}</div>
-                    </div>
+            @for (row of arcRangeRows; track row.key) {
+                <line x1="46" [attr.y1]="arcLightDividerY(row.y)" [attr.x2]="arcTableWidth - 18" [attr.y2]="arcLightDividerY(row.y)" class="arc-table-light-divider-svg"></line>
+                <text x="56" [attr.y]="row.y" class="arc-table-range-svg">{{ row.label() }}</text>
+                @for (column of columns; track column.key) {
+                    <text [attr.x]="column.centerX" [attr.y]="row.y" text-anchor="middle" class="arc-table-value-svg">{{ arcColumnValue(table.arc, column.key, row.key) }}</text>
+                }
+            }
 
-                    <!-- E Row -->
-                    <div class="table-row">
-                        <div class="range-col">E ({{ toHitExtreme() }}+)</div>
-                        <div class="dmg-col">{{ arc.effDmgE }}</div>
-                        @if (hasCap()) {<div class="dmg-col">{{ arc.effCapE }}</div>}
-                        <div class="dmg-col">{{ arc.effScapE }}</div>
-                        <div class="dmg-col">{{ arc.effMslE }}</div>
-                    </div>
+            <line x1="46" [attr.y1]="arcSpeDividerY()" [attr.x2]="arcTableWidth - 18" [attr.y2]="arcSpeDividerY()" class="arc-table-light-divider-svg"></line>
+            <text x="56" y="225" class="arc-table-range-svg">SPE</text>
+            <text x="136" y="225" class="arc-table-spe-svg">{{ table.arc.spe ?? '' }}</text>
 
-                    @let columns = hasCap() ? 4 : 3;
-                    <!-- SPE Row -->
-                    <div class="table-row spe-row">
-                        <div class="range-col">SPE</div>
-                        <div class="dmg-col spe-value" [attr.colspan]="columns">{{ arc.spe ?? '' }}</div>
-                    </div>
+            <line x1="46" [attr.y1]="arcHeavyCritDividerY()" [attr.x2]="arcTableWidth - 18" [attr.y2]="arcHeavyCritDividerY()" class="arc-table-heavy-divider-svg"></line>
+            <text x="56" [attr.y]="arcCritRowY()" class="arc-table-range-svg">CRIT</text>
 
-                    <!-- CRIT Row -->
-                    <div class="table-row crit-row">
-                        <div class="range-col">CRIT</div>
-                        <div class="crit-pips-container">
-                            @for (col of range(columns); track col) {
-                            @let critKey = arc.shortLabel + '-' + getColumnName(col);
-                            <div class="crit-pip-group" [attr.data-crit]="critKey">
-                                @for (i of range(4); track i) {
-                                    <svg class="pip" 
-                                         [class.damaged]="isCritPipDamaged(critKey, i)"
-                                         [class.pending-damage]="isCritPipPendingDamage(critKey, i)"
-                                         [class.pending-heal]="isCritPipPendingHeal(critKey, i)"
-                                         viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
-                                }
-                            </div>
-                            }
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        }
-    </div>
+            @for (column of columns; track column.key; let columnIndex = $index) {
+                @let critKey = table.arc.shortLabel + '-' + column.key;
+                @if (!$first) {
+                    <line [attr.x1]="arcCritDividerX(columns, columnIndex - 1)" y1="247" [attr.x2]="arcCritDividerX(columns, columnIndex - 1)" y2="268" class="arc-table-divider-svg"></line>
+                }
+                @for (pipIndex of range(4); track pipIndex) {
+                    <circle
+                        [attr.cx]="arcCritPipX(columns, columnIndex, pipIndex)"
+                        [attr.cy]="arcCritPipY()"
+                        r="7.4"
+                        class="arc-crit-pip-circle"
+                        [class.damaged]="isCritPipDamaged(critKey, pipIndex)"
+                        [class.pending-damage]="isCritPipPendingDamage(critKey, pipIndex)"
+                        [class.pending-heal]="isCritPipPendingHeal(critKey, pipIndex)">
+                    </circle>
+                }
+            }
+        </g>
+    }
 
-    <!-- Weapon Criticals Note -->
-    <div class="weapon-criticals-note">
-        <span class="note-title">WEAPON CRITICALS</span>
-        <span class="note-text">Damage Value Reduced by 25% per hit. — Randomly determine an appropriate STD/@if(hasCap()){CAP/}SCAP/MSL column.</span>
-    </div>
-</div>
+    <text x="30" y="694" class="weapon-note-title">WEAPON CRITICALS:</text>
+    <text x="230" y="694" class="weapon-note-text">{{ weaponCriticalsText() }}</text>
+</svg>
 
 <!-- Destroyed Overlay -->
 @if (isDestroyed()) {
 <div class="destroyed-overlay">
+    <div class="destroyed-overlay-svg-shell" aria-hidden="true">
+        <svg class="destroyed-overlay-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+            <rect x="0" y="0" width="100" height="100" class="destroyed-overlay-tint"></rect>
+        </svg>
+    </div>
 </div>
 }

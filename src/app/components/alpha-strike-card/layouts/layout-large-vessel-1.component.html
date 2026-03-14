@@ -14,7 +14,11 @@
         }
     </div>
     <!-- PV Box -->
-    <div class="pv-box-background"></div>
+        <div class="pv-box-background" aria-hidden="true">
+            <svg class="pv-box-background-svg" viewBox="0 0 220 78" preserveAspectRatio="none">
+                <polygon class="pv-box-background-shape" points="0,0 220,0 220,78 40,78"></polygon>
+            </svg>
+        </div>
     <div class="pv-box">
         <div class="pv-text">{{ adjustedPV() }}</div>
         @if (basePV() != adjustedPV()) {
