@@ -17,6 +17,19 @@
       }
     },
     {
+      "name": "fonts",
+      "installMode": "prefetch",
+      "updateMode": "prefetch",
+      "resources": {
+        "files": [
+          "/fonts/*.otf",
+          "/fonts/*.ttf",
+          "/fonts/*.woff",
+          "/fonts/*.woff2"
+        ]
+      }
+    },
+    {
       "name": "assets",
       "installMode": "lazy",
       "updateMode": "prefetch",
