@@ -455,7 +455,7 @@ export class WsService {
      */
     public async sendAndWaitForResponse(payload: object, timeout: number = 5000): Promise<any | null> {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            console.warn('Cannot send: WebSocket not connected');
+            this.logger.warn('Cannot send: WebSocket not connected');
             return null;
         }
 
@@ -512,7 +512,7 @@ export class WsService {
      */
     public async subscribeToForceUpdates(instanceId: string, onRemoteUpdate: (data: SerializedForce) => void): Promise<void> {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            console.warn('Cannot subscribe: WebSocket not connected');
+            this.logger.warn('Cannot subscribe: WebSocket not connected');
             return;
         }
 

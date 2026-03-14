@@ -93,6 +93,15 @@ import { PageInteractionOverlayComponent } from './overlay';
 const SWIPE_COMMIT_THRESHOLD = 0.15; // 15% of page width
 const SWIPE_VELOCITY_THRESHOLD = 300; // px/s for flick gesture
 
+type ShadowDirection = 'left' | 'right';
+
+interface ShadowDescriptor {
+    key: string;
+    unitIndex: number;
+    scaledLeftPosition: number;
+    direction: ShadowDirection;
+}
+
 @Component({
     selector: 'page-viewer',
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -233,6 +242,11 @@ export class PageViewerComponent implements AfterViewInit {
     private pageElements: HTMLDivElement[] = [];
     private shadowPageElements: HTMLDivElement[] = []; // Cloned shadow pages for neighbor preview
     private shadowPageCleanups: (() => void)[] = []; // Cleanup functions for shadow page event listeners
+    private shadowRenderFrameId: number | null = null; // RAF handle for deferred shadow rendering
+    private shadowRenderVersion = 0; // Version counter for async shadow rendering
+    private asyncNavigationVersion = 0; // Version counter for async keyboard/fallback navigation
+    private pendingDirectionalNavigation = 0; // Queued discrete left/right page moves while an animation is in flight
+    private pendingDirectionalTargetUnitId: string | null = null; // Target unit for the current discrete directional navigation animation
 
     // Interaction services - keyed by unit ID for persistence across renders
     private interactionServices = new Map<string, SvgInteractionService>();
@@ -263,6 +277,7 @@ export class PageViewerComponent implements AfterViewInit {
     private isSwiping = false; // Whether we're currently in a swipe gesture
     private swipeVersion = 0; // Version counter to cancel stale animation callbacks
     private swipeAnimationCallback: (() => void) | null = null; // Current animation callback
+    private swipeAnimationTimeoutId: number | null = null; // Timeout fallback when transitionend is skipped
     private pendingPagesToMove = 0; // Pages to move when animation completes (used for cancellation)
 
     // Swipe state - slot-based system for smooth transitions
@@ -270,11 +285,18 @@ export class PageViewerComponent implements AfterViewInit {
     // SVGs are only attached to slots when they become visible
     private swipeSlots: HTMLDivElement[] = []; // Array of slot elements by position
     private swipeSlotUnitAssignments: (number | null)[] = []; // Which unit index is assigned to each slot
+    private swipeSlotSvgs: (SVGSVGElement | null)[] = []; // Root SVG currently attached to each slot
     private swipeTotalSlots = 0; // Total number of slots
     private swipeBasePositions: number[] = []; // Unscaled left position for each slot
     private swipeUnitsToLoad: CBTForceUnit[] = []; // Units that are pre-loaded for swipe
     private swipeDirection: 'left' | 'right' | 'none' = 'none'; // Current swipe direction for resolving conflicts
     private lastSwipeTranslateX = 0; // Track last translateX to determine direction
+    private pendingSwipeTranslateX = 0; // Latest swipe position waiting to be applied
+    private swipeMoveFrameId: number | null = null; // RAF handle for batched swipe DOM updates
+    private swipeRefreshPending = false; // Whether slot visibility needs recalculation on the next frame
+    private swipeExtendPending = false; // Whether slot inventory needs extension on the next frame
+    private lastSwipeVisibleOffsets: { left: number; right: number } | null = null; // Current visible offset window
+    private swipeLoadingUnitIndices = new Set<number>(); // Units currently loading during swipe extension
     
     // Lazy swipe state - track the range of created slots for dynamic extension
     private swipeLeftmostOffset = 0; // Leftmost slot offset from baseDisplayStartIndex
@@ -500,30 +522,14 @@ export class PageViewerComponent implements AfterViewInit {
      * Creates empty slot wrappers for all potential positions.
      * SVGs are only attached when their slot becomes visible.
      */
-    private async onSwipeStart(): Promise<void> {
+    private onSwipeStart(): void {
         if (!this.swipeAllowed()) return;
         
         // Cancel any pending animation callback from a previous swipe
         // This prevents stale callbacks from interfering with the new swipe
         this.swipeVersion++;
         if (this.swipeAnimationCallback) {
-            const swipeWrapper = this.swipeWrapperRef().nativeElement;
-            swipeWrapper.removeEventListener('transitionend', this.swipeAnimationCallback);
-            this.swipeAnimationCallback = null;
-            
-            // Apply the pending page move that the animation was heading toward
-            if (this.pendingPagesToMove !== 0) {
-                const totalUnits = this.forceUnits().length;
-                if (totalUnits > 0) {
-                    const newStartIndex = ((this.baseDisplayStartIndex + this.pendingPagesToMove) % totalUnits + totalUnits) % totalUnits;
-                    this.viewStartIndex.set(newStartIndex);
-                }
-                this.pendingPagesToMove = 0;
-            }
-            
-            // Reset the wrapper transform immediately since we're starting a new swipe
-            swipeWrapper.style.transition = 'none';
-            swipeWrapper.style.transform = '';
+            this.cancelSwipeAnimation({ applyPendingMove: true, resetTransform: true });
         }
         
         // Close any open interaction overlays before swiping
@@ -537,11 +543,14 @@ export class PageViewerComponent implements AfterViewInit {
         
         this.isSwiping = true;
         this.baseDisplayStartIndex = this.viewStartIndex();
+        this.pendingSwipeTranslateX = 0;
+        this.swipeRefreshPending = false;
+        this.lastSwipeVisibleOffsets = null;
+        this.containerRef().nativeElement.classList.add('swiping');
         
         const allUnits = this.forceUnits();
         const totalUnits = allUnits.length;
         const effectiveVisible = this.effectiveVisiblePageCount();
-        const viewportCapacity = this.visiblePageCount();
         
         // Cache all units for lazy slot extension
         this.swipeAllUnits = allUnits as CBTForceUnit[];
@@ -555,30 +564,26 @@ export class PageViewerComponent implements AfterViewInit {
         this.swipeLeftmostOffset = -initialLeftNeighbors;
         this.swipeRightmostOffset = effectiveVisible - 1 + initialRightNeighbors;
         
-        // Clamp to avoid creating more slots than units
-        const maxOffset = totalUnits - 1;
-        const totalRange = this.swipeRightmostOffset - this.swipeLeftmostOffset + 1;
-        if (totalRange > totalUnits) {
-            // We have more slots than units, adjust
-            this.swipeLeftmostOffset = -(Math.floor((totalUnits - effectiveVisible) / 2));
-            this.swipeRightmostOffset = this.swipeLeftmostOffset + totalUnits - 1;
-        }
-        
         // Pre-load initial units
         const indicesToPrepare = new Set<number>();
         for (let offset = this.swipeLeftmostOffset; offset <= this.swipeRightmostOffset; offset++) {
             const idx = (this.baseDisplayStartIndex + offset + totalUnits) % totalUnits;
             indicesToPrepare.add(idx);
         }
-        
-        this.swipeUnitsToLoad = Array.from(indicesToPrepare).map(idx => allUnits[idx] as CBTForceUnit);
-        await Promise.all(this.swipeUnitsToLoad.map(u => u.load()));
+
+        this.swipeUnitsToLoad = [];
         
         // Store base positions for visible pages
         this.swipeBasePositions = this.zoomPanService.getPagePositions(effectiveVisible);
+        this.lastSwipeVisibleOffsets = this.getSwipeVisibleOffsets(0);
         
         // Create initial slot-based swipe pages
         this.setupSwipeSlots();
+
+        // Load initial units after slot creation so fast flicks can't outrun slot setup.
+        for (const idx of indicesToPrepare) {
+            this.queueSwipeUnitLoad(idx);
+        }
     }
 
     /**
@@ -587,17 +592,19 @@ export class PageViewerComponent implements AfterViewInit {
      */
     private onSwipeMove(totalDx: number): void {
         if (!this.swipeAllowed() || !this.isSwiping) return;
-        
-        // Apply swipe transform to the wrapper
-        const swipeWrapper = this.swipeWrapperRef().nativeElement;
-        swipeWrapper.style.transition = 'none';
-        swipeWrapper.style.transform = `translateX(${totalDx}px)`;
-        
-        // Extend slots dynamically if user has swiped far enough
-        this.extendSwipeSlotsIfNeeded(totalDx);
-        
-        // Update SVG assignments based on current visibility
-        this.updateSwipeSlotVisibility(totalDx);
+
+        this.pendingSwipeTranslateX = totalDx;
+
+        const nextVisibleOffsets = this.getSwipeVisibleOffsets(totalDx);
+        const shouldRefresh = !this.lastSwipeVisibleOffsets
+            || nextVisibleOffsets.left !== this.lastSwipeVisibleOffsets.left
+            || nextVisibleOffsets.right !== this.lastSwipeVisibleOffsets.right;
+
+        if (shouldRefresh) {
+            this.lastSwipeVisibleOffsets = nextVisibleOffsets;
+        }
+
+        this.scheduleSwipeFrame({ refreshVisibility: shouldRefresh });
     }
 
     /**
@@ -609,6 +616,9 @@ export class PageViewerComponent implements AfterViewInit {
             this.cleanupSwipeState();
             return;
         }
+
+        this.cancelPendingSwipeFrame();
+        this.flushPendingSwipeFrame();
 
         const swipeWrapper = this.swipeWrapperRef().nativeElement;
         const scale = this.zoomPanService.scale();
@@ -656,10 +666,6 @@ export class PageViewerComponent implements AfterViewInit {
             // Using addOnly mode adds incoming SVGs without removing outgoing ones
             this.updateSwipeSlotVisibility(targetOffset, { addOnly: true });
             
-            // Animate to the target position
-            swipeWrapper.style.transition = 'transform 0.25s ease-out';
-            swipeWrapper.style.transform = `translateX(${targetOffset}px)`;
-
             // Store the pending move so we can apply it if cancelled
             this.pendingPagesToMove = pagesToMove;
 
@@ -667,9 +673,11 @@ export class PageViewerComponent implements AfterViewInit {
             const animationVersion = this.swipeVersion;
             
             // After animation completes, update state
-            const onAnimationEnd = () => {
-                swipeWrapper.removeEventListener('transitionend', onAnimationEnd);
-                this.swipeAnimationCallback = null;
+            this.startSwipeAnimation({
+                durationMs: 250,
+                easing: 'ease-out',
+                transform: `translate3d(${targetOffset}px, 0, 0)`,
+                onComplete: () => {
                 this.pendingPagesToMove = 0;
                 
                 // If a new swipe started during the animation, don't run cleanup
@@ -700,36 +708,27 @@ export class PageViewerComponent implements AfterViewInit {
                         this.forceBuilder.selectUnit(unitToSelect);
                     }
                 }
-            };
-            
-            // Store reference so we can cancel if a new swipe starts
-            this.swipeAnimationCallback = onAnimationEnd;
-            swipeWrapper.addEventListener('transitionend', onAnimationEnd, { once: true });
+                }
+            });
         } else {
-            // Snap back - animate to original position
-            swipeWrapper.style.transition = 'transform 0.2s ease-out';
-            swipeWrapper.style.transform = '';
-            
             // Capture version to detect if a new swipe started during animation
             const snapBackVersion = this.swipeVersion;
 
-            const onSnapBack = () => {
-                swipeWrapper.removeEventListener('transitionend', onSnapBack);
-                this.swipeAnimationCallback = null;
-                
-                // If a new swipe started during the animation, don't run cleanup
-                if (this.swipeVersion !== snapBackVersion) {
-                    return;
+            this.startSwipeAnimation({
+                durationMs: 200,
+                easing: 'ease-out',
+                transform: 'translate3d(0, 0, 0)',
+                onComplete: () => {
+                    // If a new swipe started during the animation, don't run cleanup
+                    if (this.swipeVersion !== snapBackVersion) {
+                        return;
+                    }
+                    
+                    this.cleanupSwipeState();
+                    // Restore normal display without full re-render
+                    this.displayUnit();
                 }
-                
-                this.cleanupSwipeState();
-                // Restore normal display without full re-render
-                this.displayUnit();
-            };
-            
-            // Store reference so we can cancel if a new swipe starts
-            this.swipeAnimationCallback = onSnapBack;
-            swipeWrapper.addEventListener('transitionend', onSnapBack, { once: true });
+            });
         }
     }
 
@@ -757,6 +756,7 @@ export class PageViewerComponent implements AfterViewInit {
         });
         this.swipeSlots = [];
         this.swipeSlotUnitAssignments = [];
+        this.swipeSlotSvgs = [];
         
         // Also clear the normal page elements temporarily
         this.pageElements.forEach(el => {
@@ -788,6 +788,7 @@ export class PageViewerComponent implements AfterViewInit {
             this.renderer.addClass(slotWrapper, 'page-wrapper');
             slotWrapper.dataset['slotIndex'] = String(slotIdx);
             slotWrapper.dataset['slotOffset'] = String(offset);
+            this.setPageWrapperContentState(slotWrapper, false);
             
             // Add neighbor-page class to all non-center slots
             const isNeighborSlot = offset < centerSlotStartOffset || offset > centerSlotEndOffset;
@@ -805,10 +806,350 @@ export class PageViewerComponent implements AfterViewInit {
             
             content.appendChild(slotWrapper);
             this.swipeSlots.push(slotWrapper);
+            this.swipeSlotSvgs.push(null);
         }
         
         // Initial SVG assignment
         this.updateSwipeSlotVisibility(0);
+    }
+
+    private scheduleSwipeFrame(options: { refreshVisibility?: boolean } = {}): void {
+        this.swipeRefreshPending = true;
+        this.swipeExtendPending = this.swipeExtendPending || (options.refreshVisibility ?? false);
+
+        if (this.swipeMoveFrameId !== null) {
+            return;
+        }
+
+        this.swipeMoveFrameId = requestAnimationFrame(() => {
+            this.swipeMoveFrameId = null;
+            this.flushPendingSwipeFrame();
+        });
+    }
+
+    private flushPendingSwipeFrame(): void {
+        if (!this.isSwiping) {
+            return;
+        }
+
+        if (this.swipeAnimationCallback) {
+            this.swipeRefreshPending = false;
+            this.swipeExtendPending = false;
+            return;
+        }
+
+        const swipeWrapper = this.swipeWrapperRef().nativeElement;
+        swipeWrapper.style.transition = 'none';
+        swipeWrapper.style.transform = `translate3d(${this.pendingSwipeTranslateX}px, 0, 0)`;
+
+        if (this.swipeExtendPending) {
+            this.swipeExtendPending = false;
+            this.extendSwipeSlotsIfNeeded(this.pendingSwipeTranslateX);
+        }
+
+        if (!this.swipeRefreshPending) {
+            return;
+        }
+
+        this.swipeRefreshPending = false;
+        this.updateSwipeSlotVisibility(this.pendingSwipeTranslateX);
+    }
+
+    private cancelPendingSwipeFrame(): void {
+        if (this.swipeMoveFrameId !== null) {
+            cancelAnimationFrame(this.swipeMoveFrameId);
+            this.swipeMoveFrameId = null;
+        }
+    }
+
+    private cancelSwipeAnimation(options: { applyPendingMove?: boolean; resetTransform?: boolean } = {}): void {
+        const swipeWrapper = this.swipeWrapperRef().nativeElement;
+
+        if (this.swipeAnimationCallback) {
+            swipeWrapper.removeEventListener('transitionend', this.swipeAnimationCallback);
+            this.swipeAnimationCallback = null;
+        }
+
+        if (this.swipeAnimationTimeoutId !== null) {
+            clearTimeout(this.swipeAnimationTimeoutId);
+            this.swipeAnimationTimeoutId = null;
+        }
+
+        if (options.applyPendingMove && this.pendingPagesToMove !== 0) {
+            const totalUnits = this.forceUnits().length;
+            if (totalUnits > 0) {
+                const newStartIndex = ((this.baseDisplayStartIndex + this.pendingPagesToMove) % totalUnits + totalUnits) % totalUnits;
+                this.viewStartIndex.set(newStartIndex);
+            }
+        }
+
+        this.pendingPagesToMove = 0;
+
+        if (options.resetTransform) {
+            swipeWrapper.style.transition = 'none';
+            swipeWrapper.style.transform = '';
+        }
+    }
+
+    private startSwipeAnimation(options: {
+        durationMs: number;
+        easing: string;
+        transform: string;
+        onComplete: () => void;
+    }): void {
+        const swipeWrapper = this.swipeWrapperRef().nativeElement;
+        let finished = false;
+
+        const finalize = () => {
+            if (finished) {
+                return;
+            }
+
+            finished = true;
+
+            if (this.swipeAnimationCallback) {
+                swipeWrapper.removeEventListener('transitionend', this.swipeAnimationCallback);
+                this.swipeAnimationCallback = null;
+            }
+
+            if (this.swipeAnimationTimeoutId !== null) {
+                clearTimeout(this.swipeAnimationTimeoutId);
+                this.swipeAnimationTimeoutId = null;
+            }
+
+            options.onComplete();
+        };
+
+        const onTransitionEnd = (event?: Event) => {
+            if (event && event.target !== swipeWrapper) {
+                return;
+            }
+            finalize();
+        };
+
+        this.swipeAnimationCallback = onTransitionEnd as () => void;
+        swipeWrapper.addEventListener('transitionend', onTransitionEnd);
+        this.swipeAnimationTimeoutId = window.setTimeout(finalize, options.durationMs + 80);
+
+        swipeWrapper.style.transition = `transform ${options.durationMs}ms ${options.easing}`;
+        swipeWrapper.style.transform = options.transform;
+    }
+
+    private getCurrentSwipeWrapperTranslateX(): number {
+        const swipeWrapper = this.swipeWrapperRef().nativeElement;
+        const computedTransform = window.getComputedStyle(swipeWrapper).transform;
+
+        if (!computedTransform || computedTransform === 'none') {
+            return 0;
+        }
+
+        try {
+            return new DOMMatrixReadOnly(computedTransform).m41;
+        } catch {
+            const matrix3dMatch = computedTransform.match(/^matrix3d\((.+)\)$/);
+            if (matrix3dMatch) {
+                const values = matrix3dMatch[1].split(',').map(value => Number.parseFloat(value.trim()));
+                return Number.isFinite(values[12]) ? values[12] : 0;
+            }
+
+            const matrixMatch = computedTransform.match(/^matrix\((.+)\)$/);
+            if (matrixMatch) {
+                const values = matrixMatch[1].split(',').map(value => Number.parseFloat(value.trim()));
+                return Number.isFinite(values[4]) ? values[4] : 0;
+            }
+
+            return 0;
+        }
+    }
+
+    private reverseDirectionalNavigationToOrigin(): void {
+        const swipeWrapper = this.swipeWrapperRef().nativeElement;
+        const currentTranslateX = this.getCurrentSwipeWrapperTranslateX();
+        const scale = this.zoomPanService.scale();
+        const fullPageDistance = Math.max(1, (PAGE_WIDTH + PAGE_GAP) * scale);
+        const remainingDistance = Math.abs(currentTranslateX);
+
+        this.pendingDirectionalNavigation = 0;
+        this.pendingDirectionalTargetUnitId = null;
+        this.cancelSwipeAnimation();
+
+        if (remainingDistance < 1) {
+            swipeWrapper.style.transition = 'none';
+            swipeWrapper.style.transform = '';
+            this.displayUnit({ fromSwipe: true });
+            return;
+        }
+
+        swipeWrapper.style.transition = 'none';
+        swipeWrapper.style.transform = `translate3d(${currentTranslateX}px, 0, 0)`;
+
+        const durationMs = Math.max(90, Math.min(220, Math.round(220 * (remainingDistance / fullPageDistance))));
+
+        this.startSwipeAnimation({
+            durationMs,
+            easing: 'ease-out',
+            transform: 'translate3d(0, 0, 0)',
+            onComplete: () => {
+                swipeWrapper.style.transition = 'none';
+                swipeWrapper.style.transform = '';
+                this.displayUnit({ fromSwipe: true });
+            }
+        });
+    }
+
+    private getSwipeVisibleOffsets(translateX: number): { left: number; right: number } {
+        const container = this.containerRef().nativeElement;
+        const scale = this.zoomPanService.scale();
+        const containerWidth = container.clientWidth;
+        const translate = this.zoomPanService.translate();
+        const scaledPageWidth = PAGE_WIDTH * scale;
+        const scaledPageStep = (PAGE_WIDTH + PAGE_GAP) * scale;
+        const baseLeft = (this.swipeBasePositions[0] ?? 0) * scale;
+        const visibleLeft = -translate.x - translateX;
+        const visibleRight = visibleLeft + containerWidth;
+
+        return {
+            left: Math.floor((visibleLeft - baseLeft) / scaledPageStep),
+            right: Math.ceil((visibleRight - baseLeft - scaledPageWidth) / scaledPageStep)
+        };
+    }
+
+    private queueSwipeUnitLoad(unitIndex: number): void {
+        const unit = this.swipeAllUnits[unitIndex];
+        if (!unit || this.swipeUnitsToLoad.includes(unit) || this.swipeLoadingUnitIndices.has(unitIndex)) {
+            return;
+        }
+
+        this.swipeUnitsToLoad.push(unit);
+        this.swipeLoadingUnitIndices.add(unitIndex);
+
+        unit.load().then(() => {
+            this.swipeLoadingUnitIndices.delete(unitIndex);
+
+            if (!this.isSwiping || this.swipeAnimationCallback || !this.swipeSlotUnitAssignments.includes(unitIndex)) {
+                return;
+            }
+
+            this.scheduleSwipeFrame({ refreshVisibility: true });
+        }).catch(() => {
+            this.swipeLoadingUnitIndices.delete(unitIndex);
+        });
+    }
+
+    private setPageWrapperContentState(wrapper: HTMLDivElement, hasSvg: boolean): void {
+        this.renderer[hasSvg ? 'addClass' : 'removeClass'](wrapper, 'has-svg');
+        this.renderer[hasSvg ? 'removeClass' : 'addClass'](wrapper, 'is-empty');
+    }
+
+    private updateMultipleVisibleClass(): void {
+        this.containerRef().nativeElement.classList.toggle('multiple-visible', this.effectiveVisiblePageCount() > 1);
+    }
+
+    private syncZoomPanTransformTargets(): void {
+        const pageWrappers = [...this.pageElements, ...this.shadowPageElements];
+        const canvasElements = this.displayedUnits
+            .map((unit) => this.canvasOverlayRefs.get(unit.id)?.location.nativeElement as HTMLElement | undefined)
+            .filter((element): element is HTMLElement => !!element && element.isConnected);
+
+        this.zoomPanService.setTransformTargets(pageWrappers, canvasElements);
+    }
+
+    private scheduleRenderShadowPages(): void {
+        if (this.isSwiping) {
+            return;
+        }
+
+        const requestVersion = ++this.shadowRenderVersion;
+
+        if (this.shadowRenderFrameId !== null) {
+            cancelAnimationFrame(this.shadowRenderFrameId);
+        }
+
+        this.shadowRenderFrameId = requestAnimationFrame(() => {
+            this.shadowRenderFrameId = null;
+            void this.renderShadowPages(requestVersion);
+        });
+    }
+
+    private cancelScheduledShadowRender(): void {
+        if (this.shadowRenderFrameId !== null) {
+            cancelAnimationFrame(this.shadowRenderFrameId);
+            this.shadowRenderFrameId = null;
+        }
+    }
+
+    private getShadowKey(unitIndex: number, direction: ShadowDirection): string {
+        return `${direction}:${unitIndex}`;
+    }
+
+    private removeShadowPageElement(shadowElement: HTMLDivElement): void {
+        const cleanupIndex = this.shadowPageElements.indexOf(shadowElement);
+        if (cleanupIndex >= 0) {
+            const cleanup = this.shadowPageCleanups[cleanupIndex];
+            cleanup?.();
+            this.shadowPageCleanups.splice(cleanupIndex, 1);
+            this.shadowPageElements.splice(cleanupIndex, 1);
+        }
+
+        if (shadowElement.parentElement) {
+            shadowElement.parentElement.removeChild(shadowElement);
+        }
+
+        shadowElement.innerHTML = '';
+    }
+
+    private queueDirectionalNavigation(direction: 'left' | 'right'): void {
+        this.pendingDirectionalNavigation += direction === 'right' ? 1 : -1;
+    }
+
+    private flushQueuedDirectionalNavigation(): void {
+        if (this.pendingDirectionalNavigation === 0 || this.isSwiping || this.swipeAnimationCallback) {
+            return;
+        }
+
+        const direction: 'left' | 'right' = this.pendingDirectionalNavigation > 0 ? 'right' : 'left';
+        this.pendingDirectionalNavigation += direction === 'right' ? -1 : 1;
+
+        queueMicrotask(() => {
+            if (this.pendingDirectionalNavigation === 0 && this.isSwiping) {
+                return;
+            }
+            this.navigateByDirection(direction);
+        });
+    }
+
+    private interruptDirectionalNavigation(nextDirection: 'left' | 'right'): void {
+        if (!this.swipeAnimationCallback) {
+            this.queueDirectionalNavigation(nextDirection);
+            this.flushQueuedDirectionalNavigation();
+            return;
+        }
+
+        const currentDirection = this.pendingPagesToMove > 0
+            ? 'right'
+            : this.pendingPagesToMove < 0
+                ? 'left'
+                : null;
+
+        if (currentDirection && currentDirection !== nextDirection) {
+            this.reverseDirectionalNavigationToOrigin();
+            return;
+        }
+
+        this.queueDirectionalNavigation(nextDirection);
+
+        const committedTargetUnit = this.pendingDirectionalTargetUnitId
+            ? this.forceUnits().find((unit) => unit.id === this.pendingDirectionalTargetUnitId) as CBTForceUnit | undefined
+            : undefined;
+
+        this.cancelSwipeAnimation({ applyPendingMove: true, resetTransform: true });
+
+        if (committedTargetUnit) {
+            this.forceBuilder.selectUnit(committedTargetUnit);
+        }
+
+        this.pendingDirectionalTargetUnitId = null;
+        this.displayUnit({ fromSwipe: true });
     }
     
     /**
@@ -818,28 +1159,13 @@ export class PageViewerComponent implements AfterViewInit {
      * @param translateX Current swipe translateX offset
      */
     private extendSwipeSlotsIfNeeded(translateX: number): void {
-        const container = this.containerRef().nativeElement;
-        const scale = this.zoomPanService.scale();
-        const containerWidth = container.clientWidth;
-        const translate = this.zoomPanService.translate();
         const totalUnits = this.swipeAllUnits.length;
         const effectiveVisible = this.effectiveVisiblePageCount();
         
         if (totalUnits === 0) return;
-        
-        // Calculate visible area bounds in content coordinates (accounting for swipe offset)
-        const visibleLeft = -translate.x - translateX;
-        const visibleRight = visibleLeft + containerWidth;
-        
-        // Calculate page dimensions
-        const scaledPageWidth = PAGE_WIDTH * scale;
-        const pageStep = PAGE_WIDTH + PAGE_GAP;
-        const scaledPageStep = pageStep * scale;
-        const baseLeft = (this.swipeBasePositions[0] ?? 0) * scale;
-        
-        // Calculate which offsets are currently visible
-        const leftmostVisibleOffset = Math.floor((visibleLeft - baseLeft) / scaledPageStep);
-        const rightmostVisibleOffset = Math.ceil((visibleRight - baseLeft - scaledPageWidth) / scaledPageStep);
+
+        const scale = this.zoomPanService.scale();
+        const { left: leftmostVisibleOffset, right: rightmostVisibleOffset } = this.getSwipeVisibleOffsets(translateX);
         
         // Add 1 buffer on each side for smooth scrolling
         const neededLeftOffset = leftmostVisibleOffset - 1;
@@ -849,8 +1175,7 @@ export class PageViewerComponent implements AfterViewInit {
         const maxRange = totalUnits - 1;
         
         // Check if we've already created all possible slots
-        const currentRange = this.swipeRightmostOffset - this.swipeLeftmostOffset;
-        if (currentRange >= maxRange) {
+        if ((this.swipeRightmostOffset - this.swipeLeftmostOffset) >= maxRange) {
             return; // Already have all units as slots
         }
         
@@ -859,7 +1184,7 @@ export class PageViewerComponent implements AfterViewInit {
         const centerSlotEndOffset = effectiveVisible - 1;
         
         // Extend left if needed
-        while (neededLeftOffset < this.swipeLeftmostOffset && currentRange < maxRange) {
+        while (neededLeftOffset < this.swipeLeftmostOffset && (this.swipeRightmostOffset - this.swipeLeftmostOffset) < maxRange) {
             const newOffset = this.swipeLeftmostOffset - 1;
             
             // Check if this would create a duplicate (wrap around)
@@ -877,6 +1202,7 @@ export class PageViewerComponent implements AfterViewInit {
             // Insert at beginning of arrays
             this.swipeSlots.unshift(slotWrapper);
             this.swipeSlotUnitAssignments.unshift(newUnitIndex);
+            this.swipeSlotSvgs.unshift(null);
             this.swipeTotalSlots++;
             
             // Update slot indices
@@ -885,15 +1211,11 @@ export class PageViewerComponent implements AfterViewInit {
             }
             
             // Load unit lazily
-            const unit = this.swipeAllUnits[newUnitIndex];
-            if (unit && !this.swipeUnitsToLoad.includes(unit)) {
-                this.swipeUnitsToLoad.push(unit);
-                unit.load(); // Fire and forget - will be available when needed
-            }
+            this.queueSwipeUnitLoad(newUnitIndex);
         }
         
         // Extend right if needed
-        while (neededRightOffset > this.swipeRightmostOffset && currentRange < maxRange) {
+        while (neededRightOffset > this.swipeRightmostOffset && (this.swipeRightmostOffset - this.swipeLeftmostOffset) < maxRange) {
             const newOffset = this.swipeRightmostOffset + 1;
             
             // Check if this would create a duplicate (wrap around)
@@ -911,14 +1233,11 @@ export class PageViewerComponent implements AfterViewInit {
             // Append to arrays
             this.swipeSlots.push(slotWrapper);
             this.swipeSlotUnitAssignments.push(newUnitIndex);
+            this.swipeSlotSvgs.push(null);
             this.swipeTotalSlots++;
             
             // Load unit lazily
-            const unit = this.swipeAllUnits[newUnitIndex];
-            if (unit && !this.swipeUnitsToLoad.includes(unit)) {
-                this.swipeUnitsToLoad.push(unit);
-                unit.load(); // Fire and forget - will be available when needed
-            }
+            this.queueSwipeUnitLoad(newUnitIndex);
         }
         
         // Trim slots that are too far out of view (keep 2 buffer slots beyond visible)
@@ -936,6 +1255,7 @@ export class PageViewerComponent implements AfterViewInit {
                 slotToRemove.innerHTML = '';
             }
             this.swipeSlotUnitAssignments.shift();
+            this.swipeSlotSvgs.shift();
             this.swipeLeftmostOffset++;
             this.swipeTotalSlots--;
         }
@@ -950,6 +1270,7 @@ export class PageViewerComponent implements AfterViewInit {
                 slotToRemove.innerHTML = '';
             }
             this.swipeSlotUnitAssignments.pop();
+            this.swipeSlotSvgs.pop();
             this.swipeRightmostOffset--;
             this.swipeTotalSlots--;
         }
@@ -965,6 +1286,7 @@ export class PageViewerComponent implements AfterViewInit {
         const slotWrapper = this.renderer.createElement('div') as HTMLDivElement;
         this.renderer.addClass(slotWrapper, 'page-wrapper');
         slotWrapper.dataset['slotOffset'] = String(offset);
+        this.setPageWrapperContentState(slotWrapper, false);
         
         // Add neighbor-page class to all non-center slots
         const isNeighborSlot = offset < centerStart || offset > centerEnd;
@@ -1022,14 +1344,18 @@ export class PageViewerComponent implements AfterViewInit {
         
         const allUnits = this.forceUnits();
         const visiblePages = this.effectiveVisiblePageCount();
-        const centerSlotStart = visiblePages; // Index of first center slot
-        const centerSlotEnd = visiblePages * 2 - 1; // Index of last center slot
+        const isCenterSlot = (slotIdx: number) => {
+            const slotOffset = Number(this.swipeSlots[slotIdx]?.dataset['slotOffset'] ?? Number.NaN);
+            return Number.isFinite(slotOffset) && slotOffset >= 0 && slotOffset < visiblePages;
+        };
         
         // Track which unit indices currently have their SVGs attached and in which slot
         const unitToSlotMap = new Map<number, number>(); // unitIndex -> slotIndex where SVG is attached
         
         // First pass: find which units have SVGs attached and mark visible slots
         const visibleSlotIndices: number[] = [];
+        const visibleSlotIndexSet = new Set<number>();
+        const slotVisibility = new Map<number, number>();
         
         for (let slotIdx = 0; slotIdx < this.swipeSlots.length; slotIdx++) {
             const slot = this.swipeSlots[slotIdx];
@@ -1040,11 +1366,17 @@ export class PageViewerComponent implements AfterViewInit {
             const isVisible = slotRight > visibleLeft && slotLeft < visibleRight;
             
             if (isVisible) {
+                const overlapLeft = Math.max(slotLeft, visibleLeft);
+                const overlapRight = Math.min(slotRight, visibleRight);
+                const overlapWidth = Math.max(0, overlapRight - overlapLeft);
+                const visibilityPercent = PAGE_WIDTH * scale > 0 ? overlapWidth / (PAGE_WIDTH * scale) : 0;
                 visibleSlotIndices.push(slotIdx);
+                visibleSlotIndexSet.add(slotIdx);
+                slotVisibility.set(slotIdx, visibilityPercent);
             }
             
             // Check if slot has an SVG
-            const svg = slot.querySelector('svg');
+            const svg = this.swipeSlotSvgs[slotIdx];
             if (svg) {
                 const unitIndex = this.swipeSlotUnitAssignments[slotIdx];
                 if (unitIndex !== null) {
@@ -1073,18 +1405,32 @@ export class PageViewerComponent implements AfterViewInit {
             } else {
                 // Multiple visible slots want the same unit - resolve conflict
                 // First, check if any is a center slot (always wins)
-                const centerSlot = slots.find(s => s >= centerSlotStart && s <= centerSlotEnd);
+                const centerSlot = slots.find((slotIdx) => isCenterSlot(slotIdx));
                 if (centerSlot !== undefined) {
                     winningSlotForUnit.set(unitIndex, centerSlot);
                 } else {
-                    // No center slot visible - use swipe direction
-                    // Swiping left = showing right pages = prefer higher slot index
-                    // Swiping right = showing left pages = prefer lower slot index
-                    if (this.swipeDirection === 'left') {
-                        winningSlotForUnit.set(unitIndex, Math.max(...slots));
-                    } else {
-                        winningSlotForUnit.set(unitIndex, Math.min(...slots));
+                    let winningSlot = slots[0];
+                    let winningVisibility = slotVisibility.get(winningSlot) ?? 0;
+
+                    for (const candidateSlot of slots.slice(1)) {
+                        const candidateVisibility = slotVisibility.get(candidateSlot) ?? 0;
+                        if (candidateVisibility > winningVisibility + 0.0001) {
+                            winningSlot = candidateSlot;
+                            winningVisibility = candidateVisibility;
+                            continue;
+                        }
+
+                        if (Math.abs(candidateVisibility - winningVisibility) <= 0.0001) {
+                            const preferHigherSlot = this.swipeDirection === 'left';
+                            if ((preferHigherSlot && candidateSlot > winningSlot)
+                                || (!preferHigherSlot && candidateSlot < winningSlot)) {
+                                winningSlot = candidateSlot;
+                                winningVisibility = candidateVisibility;
+                            }
+                        }
                     }
+
+                    winningSlotForUnit.set(unitIndex, winningSlot);
                 }
             }
         }
@@ -1095,16 +1441,18 @@ export class PageViewerComponent implements AfterViewInit {
             for (let slotIdx = 0; slotIdx < this.swipeSlots.length; slotIdx++) {
                 const slot = this.swipeSlots[slotIdx];
                 const unitIndex = this.swipeSlotUnitAssignments[slotIdx];
-                const svg = slot.querySelector('svg') as SVGSVGElement | null;
+                const svg = this.swipeSlotSvgs[slotIdx];
                 
                 if (!svg || svg.parentElement !== slot) continue;
                 
-                const isVisible = visibleSlotIndices.includes(slotIdx);
+                const isVisible = visibleSlotIndexSet.has(slotIdx);
                 const isWinningSlot = unitIndex !== null && winningSlotForUnit.get(unitIndex) === slotIdx;
                 
                 // Remove if not visible OR if visible but not the winning slot for this unit
                 if (!isVisible || !isWinningSlot) {
                     slot.removeChild(svg);
+                    this.swipeSlotSvgs[slotIdx] = null;
+                    this.setPageWrapperContentState(slot, false);
                     // Remove neighbor-visible class when removing
                     this.renderer.removeClass(slot, 'neighbor-visible');
                     if (unitIndex !== null) {
@@ -1124,16 +1472,7 @@ export class PageViewerComponent implements AfterViewInit {
         if (!addOnly && visiblePages === 1) {
             let maxVisibility = 0;
             for (const [, slotIdx] of winningSlotForUnit) {
-                const slot = this.swipeSlots[slotIdx];
-                const slotLeft = parseFloat(slot.style.left);
-                const slotRight = slotLeft + PAGE_WIDTH * scale;
-                
-                // Calculate how much of the slot is within the visible area
-                const overlapLeft = Math.max(slotLeft, visibleLeft);
-                const overlapRight = Math.min(slotRight, visibleRight);
-                const overlapWidth = Math.max(0, overlapRight - overlapLeft);
-                const slotWidth = PAGE_WIDTH * scale;
-                const visibilityPercent = slotWidth > 0 ? overlapWidth / slotWidth : 0;
+                const visibilityPercent = slotVisibility.get(slotIdx) ?? 0;
                 
                 if (visibilityPercent > maxVisibility) {
                     maxVisibility = visibilityPercent;
@@ -1159,7 +1498,7 @@ export class PageViewerComponent implements AfterViewInit {
             if (!svg) continue;
             
             // Check if this slot already has an SVG
-            const existingSvg = slot.querySelector('svg');
+            const existingSvg = this.swipeSlotSvgs[slotIdx];
             if (existingSvg) {
                 // In addOnly mode, skip if slot already has any SVG
                 if (addOnly) continue;
@@ -1193,12 +1532,10 @@ export class PageViewerComponent implements AfterViewInit {
             // Skip class updates in addOnly mode (we're just pre-attaching)
             if (!addOnly) {
                 // Check if this is a neighbor slot (non-center)
-                const isNeighborSlot = slotIdx < centerSlotStart || slotIdx > centerSlotEnd;
+                const isNeighborSlot = !isCenterSlot(slotIdx);
                 
                 // Add selected class if this is the current unit (only for center slots)
                 const isSelected = unit.id === this.unit()?.id;
-                const multipleVisible = visiblePages > 1;
-                this.containerRef().nativeElement.classList.toggle('multiple-visible', multipleVisible);
                 if (isSelected) {
                     this.renderer.addClass(slot, 'selected');
                 } else {
@@ -1217,7 +1554,10 @@ export class PageViewerComponent implements AfterViewInit {
             svg.style.transform = `scale(${scale})`;
             svg.style.transformOrigin = 'top left';
             slot.appendChild(svg);
+            this.swipeSlotSvgs[slotIdx] = svg;
+            this.setPageWrapperContentState(slot, true);
             unitToSlotMap.set(unitIndex, slotIdx);
+            this.applyFluffImageVisibilityToSvg(svg, this.optionsService.options().recordSheetCenterPanelContent === 'fluffImage');
             
             // Set up interactions if needed
             if (!this.readOnly()) {
@@ -1244,21 +1584,26 @@ export class PageViewerComponent implements AfterViewInit {
             this.cleanupUnusedCanvasOverlays(displayedUnitIds);
             this.cleanupUnusedInteractionOverlays(displayedUnitIds);
         }
-        
-        // Apply fluff image visibility to newly attached SVGs (neighbor pages during swipe)
-        this.setFluffImageVisibility();
     }
 
     /**
      * Cleans up swipe-specific state after swipe ends.
      */
     private cleanupSwipeState(): void {
+        this.cancelPendingSwipeFrame();
+
         const swipeWrapper = this.swipeWrapperRef().nativeElement;
         swipeWrapper.style.transition = '';
         swipeWrapper.style.transform = '';
         this.isSwiping = false;
         this.swipeAnimationCallback = null;
         this.pendingPagesToMove = 0;
+        this.pendingSwipeTranslateX = 0;
+        this.swipeRefreshPending = false;
+        this.swipeExtendPending = false;
+        this.lastSwipeVisibleOffsets = null;
+        this.swipeLoadingUnitIndices.clear();
+        this.containerRef().nativeElement.classList.remove('swiping');
         
         // Clear swipe slot elements (they'll be recreated by displayUnit)
         const content = this.contentRef().nativeElement;
@@ -1270,11 +1615,13 @@ export class PageViewerComponent implements AfterViewInit {
         });
         this.swipeSlots = [];
         this.swipeSlotUnitAssignments = [];
+        this.swipeSlotSvgs = [];
         this.swipeTotalSlots = 0;
         this.swipeBasePositions = [];
         this.swipeUnitsToLoad = [];
         this.swipeDirection = 'none';
         this.lastSwipeTranslateX = 0;
+        this.pendingDirectionalTargetUnitId = null;
         
         // Clear lazy swipe state
         this.swipeLeftmostOffset = 0;
@@ -1616,7 +1963,7 @@ export class PageViewerComponent implements AfterViewInit {
         } else if (this.initialRenderComplete) {
             // Only update shadow pages if initial render is complete
             // This prevents creating shadows with wrong scale during initialization
-            this.renderShadowPages();
+            this.scheduleRenderShadowPages();
         }
     }
 
@@ -1696,6 +2043,11 @@ export class PageViewerComponent implements AfterViewInit {
      */
     navigateByDirection(direction: 'left' | 'right'): void {
         if (this.isSwiping) return;
+
+        if (this.swipeAnimationCallback) {
+            this.interruptDirectionalNavigation(direction);
+            return;
+        }
         
         const allUnits = this.forceUnits();
         const totalUnits = allUnits.length;
@@ -1714,6 +2066,7 @@ export class PageViewerComponent implements AfterViewInit {
             : (currentStartIndex + effectiveVisible) % totalUnits;
         const targetUnit = allUnits[targetIndex] as CBTForceUnit;
         if (!targetUnit) return;
+        this.pendingDirectionalTargetUnitId = targetUnit.id;
         
         // Check if there's an existing shadow page we can use
         const existingShadow = this.shadowPageElements.find(
@@ -1728,13 +2081,36 @@ export class PageViewerComponent implements AfterViewInit {
         
         // No shadow page exists - create temporary one and animate
         this.closeInteractionOverlays();
+        const navigationVersion = ++this.asyncNavigationVersion;
         
         // Load target unit first
         targetUnit.load().then(() => {
+            const currentUnits = this.forceUnits();
+            const currentEffectiveVisible = this.effectiveVisiblePageCount();
+            const currentStart = this.viewStartIndex();
+
+            if (navigationVersion !== this.asyncNavigationVersion
+                || this.isSwiping
+                || currentStart !== currentStartIndex
+                || currentEffectiveVisible !== effectiveVisible
+                || currentUnits.length === 0) {
+                return;
+            }
+
+            const resolvedTargetIndex = direction === 'left'
+                ? (currentStart - 1 + currentUnits.length) % currentUnits.length
+                : (currentStart + currentEffectiveVisible) % currentUnits.length;
+
+            if (resolvedTargetIndex !== targetIndex || currentUnits[resolvedTargetIndex] !== targetUnit) {
+                return;
+            }
+
             const svg = targetUnit.svg();
             if (!svg) {
                 // Fallback to instant navigation if no SVG
                 this.viewStartIndex.set(currentStartIndex + pagesToMove);
+                this.forceBuilder.selectUnit(targetUnit);
+                this.pendingDirectionalTargetUnitId = null;
                 this.displayUnit();
                 return;
             }
@@ -1784,6 +2160,8 @@ export class PageViewerComponent implements AfterViewInit {
     // ========== Unit Display ==========
 
     private displayUnit(options: { fromSwipe?: boolean } = {}): void {
+        this.asyncNavigationVersion++;
+
         const currentUnit = this.unit();
         const content = this.contentRef().nativeElement;
         const fromSwipe = options.fromSwipe ?? false;
@@ -1971,6 +2349,7 @@ export class PageViewerComponent implements AfterViewInit {
                 if (svg.parentElement !== wrapper) {
                     wrapper.insertBefore(svg, wrapper.firstChild);
                 }
+                this.setPageWrapperContentState(wrapper, true);
 
                 // Maintain currentSvg semantics (first slot)
                 if (slotIndex === 0) {
@@ -2000,6 +2379,9 @@ export class PageViewerComponent implements AfterViewInit {
             // Keep zoom-pan centering aware of actual page count (unchanged)
             this.zoomPanService.setDisplayedPages(this.pageElements.length);
 
+            // Sync wrappers before applying transforms so width/height updates hit current pages.
+            this.syncZoomPanTransformTargets();
+
             // Ensure any newly attached SVGs receive the current transform.
             // Without this, swapped-in SVGs can render at the wrong scale after reorder.
             this.zoomPanService.applyCurrentTransform();
@@ -2008,13 +2390,14 @@ export class PageViewerComponent implements AfterViewInit {
             this.setFluffImageVisibility();
             
             // Re-render shadow pages
-            this.renderShadowPages();
+            this.scheduleRenderShadowPages();
         });
     }
 
     private renderPages(options: { fromSwipe?: boolean } = {}): void {
         const content = this.contentRef().nativeElement;
         const fromSwipe = options.fromSwipe ?? false;
+        this.updateMultipleVisibleClass();
 
         // Get page positions based on spaceEvenly setting
         const positions = this.zoomPanService.getPagePositions(this.displayedUnits.length);
@@ -2048,11 +2431,10 @@ export class PageViewerComponent implements AfterViewInit {
                 
                 // Store unit ID for click handling and selection
                 pageWrapper.dataset['unitId'] = unit.id;
+                this.setPageWrapperContentState(pageWrapper, true);
                 
                 // Add selected class if this is the current unit and multiple pages visible at rest
                 const isSelected = unit.id === this.unit()?.id;
-                const multipleVisible = this.effectiveVisiblePageCount() > 1;
-                this.containerRef().nativeElement.classList.toggle('multiple-visible', multipleVisible);
                 if (isSelected) {
                     this.renderer.addClass(pageWrapper, 'selected');
                 }
@@ -2102,6 +2484,9 @@ export class PageViewerComponent implements AfterViewInit {
         // Tell the service how many pages we're actually displaying
         this.zoomPanService.setDisplayedPages(this.pageElements.length);
 
+        // Sync wrappers before restoring transforms so current pages receive scaled dimensions.
+        this.syncZoomPanTransformTargets();
+
         // Update dimensions and restore view state
         this.updateDimensions();
         this.restoreViewState({ fromSwipe });
@@ -2110,7 +2495,9 @@ export class PageViewerComponent implements AfterViewInit {
         this.setFluffImageVisibility();
         
         // Render shadow pages if enabled (smart update - reuses existing shadows)
-        this.renderShadowPages();
+        this.scheduleRenderShadowPages();
+
+        this.flushQueuedDirectionalNavigation();
         
         // Mark initial render complete - allows resize handler to update shadows
         this.initialRenderComplete = true;
@@ -2127,8 +2514,12 @@ export class PageViewerComponent implements AfterViewInit {
      * - Only removes shadows that are no longer needed
      * - Only creates new shadows for positions not already covered
      */
-    private async renderShadowPages(): Promise<void> {
+    private async renderShadowPages(renderVersion: number = this.shadowRenderVersion): Promise<void> {
         const content = this.contentRef().nativeElement;
+
+        if (renderVersion !== this.shadowRenderVersion || this.isSwiping) {
+            return;
+        }
         
         // Only render if shadowPages is enabled
         if (!this.shadowPages()) {
@@ -2169,14 +2560,19 @@ export class PageViewerComponent implements AfterViewInit {
         const lastPageScaledRight = lastPageUnscaledLeft * scale + scaledPageWidth;
         
         // Build list of desired shadow configurations
-        const desiredShadows: { unitIndex: number; scaledLeftPosition: number; direction: 'left' | 'right' }[] = [];
+        const desiredShadows: ShadowDescriptor[] = [];
         
         // Fill left side with shadow pages
         let leftPosition = firstPageScaledLeft - scaledPageStep;
         let leftUnitOffset = 1;
         while (leftPosition + scaledPageWidth > visibleLeft && leftUnitOffset < totalUnits) {
             const unitIndex = (startIndex - leftUnitOffset + totalUnits) % totalUnits;
-            desiredShadows.push({ unitIndex, scaledLeftPosition: leftPosition, direction: 'left' });
+            desiredShadows.push({
+                key: this.getShadowKey(unitIndex, 'left'),
+                unitIndex,
+                scaledLeftPosition: leftPosition,
+                direction: 'left'
+            });
             leftPosition -= scaledPageStep;
             leftUnitOffset++;
         }
@@ -2186,36 +2582,42 @@ export class PageViewerComponent implements AfterViewInit {
         let rightUnitOffset = effectiveVisible;
         while (rightPosition < visibleRight && rightUnitOffset < totalUnits) {
             const unitIndex = (startIndex + rightUnitOffset) % totalUnits;
-            desiredShadows.push({ unitIndex, scaledLeftPosition: rightPosition, direction: 'right' });
+            desiredShadows.push({
+                key: this.getShadowKey(unitIndex, 'right'),
+                unitIndex,
+                scaledLeftPosition: rightPosition,
+                direction: 'right'
+            });
             rightPosition += scaledPageStep;
             rightUnitOffset++;
         }
         
-        // Build a set of desired unit indices for quick lookup
-        const desiredUnitIndices = new Set(desiredShadows.map(s => s.unitIndex));
-        
         // Also exclude units that are now active sheets
         const activeUnitIds = new Set(this.displayedUnits.map(u => u.id));
+        const desiredShadowMap = new Map(desiredShadows.map((shadow) => [shadow.key, shadow]));
         
         // Smart cleanup: keep shadows that match desired positions, remove others
         const shadowsToKeep: HTMLDivElement[] = [];
-        const keptUnitIndices = new Set<number>();
+        const keptShadowKeys = new Set<string>();
+        const keptShadowCleanups: (() => void)[] = [];
         
-        for (const el of this.shadowPageElements) {
+        for (let shadowIndex = 0; shadowIndex < this.shadowPageElements.length; shadowIndex++) {
+            const el = this.shadowPageElements[shadowIndex];
             const shadowUnitIndex = parseInt(el.dataset['unitIndex'] ?? '-1', 10);
             const shadowUnitId = el.dataset['unitId'];
+            const shadowDirection = el.dataset['shadowDirection'] as ShadowDirection | undefined;
+            const shadowKey = shadowDirection ? this.getShadowKey(shadowUnitIndex, shadowDirection) : '';
             
             // Remove if this unit is now an active sheet
             if (shadowUnitId && activeUnitIds.has(shadowUnitId)) {
-                if (el.parentElement === content) {
-                    content.removeChild(el);
-                }
+                this.removeShadowPageElement(el);
+                shadowIndex--;
                 continue;
             }
             
             // Check if this shadow should still exist
-            const matchingDesired = desiredShadows.find(d => d.unitIndex === shadowUnitIndex);
-            if (matchingDesired && !keptUnitIndices.has(shadowUnitIndex)) {
+            const matchingDesired = desiredShadowMap.get(shadowKey);
+            if (matchingDesired && !keptShadowKeys.has(shadowKey)) {
                 // Update position in case it changed
                 el.style.left = `${matchingDesired.scaledLeftPosition}px`;
                 el.style.width = `${PAGE_WIDTH * scale}px`;
@@ -2230,19 +2632,20 @@ export class PageViewerComponent implements AfterViewInit {
                 }
                 
                 shadowsToKeep.push(el);
-                keptUnitIndices.add(shadowUnitIndex);
+                keptShadowCleanups.push(this.shadowPageCleanups[shadowIndex]);
+                keptShadowKeys.add(shadowKey);
             } else {
                 // Remove shadow that's no longer needed
-                if (el.parentElement === content) {
-                    content.removeChild(el);
-                }
+                this.removeShadowPageElement(el);
+                shadowIndex--;
             }
         }
         
         this.shadowPageElements = shadowsToKeep;
+        this.shadowPageCleanups = keptShadowCleanups;
         
         // Determine which shadows need to be created (not already covered)
-        const shadowsToCreate = desiredShadows.filter(s => !keptUnitIndices.has(s.unitIndex));
+        const shadowsToCreate = desiredShadows.filter(s => !keptShadowKeys.has(s.key));
         
         // If no new shadows needed, just apply fluff visibility and exit
         if (shadowsToCreate.length === 0) {
@@ -2253,6 +2656,10 @@ export class PageViewerComponent implements AfterViewInit {
         // Pre-load shadow units to ensure SVGs are available
         const shadowUnits = shadowsToCreate.map(s => allUnits[s.unitIndex] as CBTForceUnit).filter(u => u);
         await Promise.all(shadowUnits.map(u => u.load()));
+
+        if (renderVersion !== this.shadowRenderVersion || this.isSwiping) {
+            return;
+        }
         
         const centerContent = this.optionsService.options().recordSheetCenterPanelContent;
         const showFluff = centerContent === 'fluffImage';
@@ -2271,6 +2678,8 @@ export class PageViewerComponent implements AfterViewInit {
                 showFluff
             );
         }
+
+        this.syncZoomPanTransformTargets();
     }
     
     /**
@@ -2283,19 +2692,17 @@ export class PageViewerComponent implements AfterViewInit {
      *                      incorrect lookups when the same unit appears on multiple sides)
      */
     private navigateToShadowPage(unit: CBTForceUnit, targetIndex: number, clickedShadow: HTMLDivElement): void {
+        // Cancel any pending animation callback from a previous navigation
+        if (this.swipeAnimationCallback) {
+            this.cancelSwipeAnimation({ applyPendingMove: true, resetTransform: true });
+            this.displayUnit({ fromSwipe: true });
+            return;
+        }
+
         const allUnits = this.forceUnits();
         const totalUnits = allUnits.length;
         const currentStartIndex = this.viewStartIndex();
         const effectiveVisible = this.effectiveVisiblePageCount();
-        
-        // Cancel any pending animation callback from a previous navigation
-        if (this.swipeAnimationCallback) {
-            const swipeWrapper = this.swipeWrapperRef().nativeElement;
-            swipeWrapper.removeEventListener('transitionend', this.swipeAnimationCallback);
-            this.swipeAnimationCallback = null;
-            swipeWrapper.style.transition = 'none';
-            swipeWrapper.style.transform = '';
-        }
         
         // Remove any stale 'leaving-page' classes from previous interrupted animations
         this.pageElements.forEach(el => this.renderer.removeClass(el, 'leaving-page'));
@@ -2354,69 +2761,52 @@ export class PageViewerComponent implements AfterViewInit {
             this.renderer.removeClass(clickedShadow, 'shadow-page');
         }
         
-        // Keep all shadow pages during animation - they will be cleared after animation ends
-        // Just mark the pages that will be leaving (sliding out of view)
-        // For each page in the direction we're moving away from, add leaving-page class
-        
-        // Add shadow styling to the active page(s) that will be leaving (sliding out)
-        // Right shadow clicked: leftmost active pages are leaving
-        // Left shadow clicked: rightmost active pages are leaving
-        const leavingPageIndex = direction === 'right' ? 0 : this.pageElements.length - 1;
-        const leavingPage = this.pageElements[leavingPageIndex];
-        if (leavingPage) {
-            this.renderer.addClass(leavingPage, 'leaving-page');
-        }
-        
         // Create incoming shadow pages that will slide into view during animation
         // These are the pages beyond the clicked shadow in the direction of movement
         if (direction) {
-            this.createIncomingShadowPages(targetIndex, direction, pagesToMove, scale, showFluff, allUnits as CBTForceUnit[]);
+            this.createIncomingShadowPages(clickedShadow, targetIndex, direction, pagesToMove, scale, showFluff, allUnits as CBTForceUnit[]);
         }
         
-        // Animate the swipe
-        const swipeWrapper = this.swipeWrapperRef().nativeElement;
         const scaledPageWidth = PAGE_WIDTH * scale + PAGE_GAP * scale;
         const targetOffset = -pagesToMove * scaledPageWidth;
+        const swipeWrapper = this.swipeWrapperRef().nativeElement;
         
         // Store state for animation
         this.swipeVersion++;
         this.pendingPagesToMove = pagesToMove;
         this.baseDisplayStartIndex = currentStartIndex;
         
-        // Animate to target position
-        swipeWrapper.style.transition = 'transform 0.3s ease-out';
-        swipeWrapper.style.transform = `translateX(${targetOffset}px)`;
-        
         const animationVersion = this.swipeVersion;
-        
-        const onAnimationEnd = () => {
-            swipeWrapper.removeEventListener('transitionend', onAnimationEnd);
-            this.swipeAnimationCallback = null;
-            this.pendingPagesToMove = 0;
-            
-            if (this.swipeVersion !== animationVersion) {
-                return;
+
+        this.startSwipeAnimation({
+            durationMs: 300,
+            easing: 'ease-out',
+            transform: `translate3d(${targetOffset}px, 0, 0)`,
+            onComplete: () => {
+                this.pendingPagesToMove = 0;
+                
+                if (this.swipeVersion !== animationVersion) {
+                    return;
+                }
+                
+                // Update view start index
+                const newStartIndex = ((currentStartIndex + pagesToMove) % totalUnits + totalUnits) % totalUnits;
+                this.viewStartIndex.set(newStartIndex);
+
+                // Reset wrapper transform before re-rendering the steady-state layout.
+                swipeWrapper.style.transition = 'none';
+                swipeWrapper.style.transform = '';
+                
+                // Note: Don't clear shadow pages here - displayUnit will do smart cleanup
+                
+                // Select the clicked shadow page's unit (after animation to prevent early re-render)
+                this.forceBuilder.selectUnit(unit);
+                this.pendingDirectionalTargetUnitId = null;
+                
+                // Re-render with new position
+                this.displayUnit({ fromSwipe: true });
             }
-            
-            // Update view start index
-            const newStartIndex = ((currentStartIndex + pagesToMove) % totalUnits + totalUnits) % totalUnits;
-            this.viewStartIndex.set(newStartIndex);
-            
-            // Reset transform
-            swipeWrapper.style.transition = 'none';
-            swipeWrapper.style.transform = '';
-            
-            // Note: Don't clear shadow pages here - displayUnit will do smart cleanup
-            
-            // Select the clicked shadow page's unit (after animation to prevent early re-render)
-            this.forceBuilder.selectUnit(unit);
-            
-            // Re-render with new position
-            this.displayUnit({ fromSwipe: true });
-        };
-        
-        this.swipeAnimationCallback = onAnimationEnd;
-        swipeWrapper.addEventListener('transitionend', onAnimationEnd, { once: true });
+        });
     }
     
     /**
@@ -2424,6 +2814,7 @@ export class PageViewerComponent implements AfterViewInit {
      * These are positioned beyond the current visible area in the direction of movement.
      */
     private createIncomingShadowPages(
+        clickedShadow: HTMLDivElement,
         targetIndex: number,
         direction: string,
         pagesToMove: number,
@@ -2434,12 +2825,6 @@ export class PageViewerComponent implements AfterViewInit {
         const totalUnits = allUnits.length;
         const scaledPageStep = (PAGE_WIDTH + PAGE_GAP) * scale;
         
-        // Find the clicked shadow to get its position as reference
-        const clickedShadow = this.shadowPageElements.find(
-            el => el.dataset['unitIndex'] === String(targetIndex)
-        );
-        if (!clickedShadow) return;
-        
         const clickedShadowLeft = parseFloat(clickedShadow.style.left) || 0;
         
         // Calculate how many incoming shadows we need
@@ -2448,8 +2833,12 @@ export class PageViewerComponent implements AfterViewInit {
         const incomingCount = Math.abs(pagesToMove);
         
         // Get existing shadow unit indices to avoid duplicates
-        const existingShadowIndices = new Set(
-            this.shadowPageElements.map(el => parseInt(el.dataset['unitIndex'] ?? '-1', 10))
+        const existingShadowKeys = new Set(
+            this.shadowPageElements.map((el) => {
+                const unitIndex = parseInt(el.dataset['unitIndex'] ?? '-1', 10);
+                const shadowDirection = el.dataset['shadowDirection'] as ShadowDirection | undefined;
+                return shadowDirection ? this.getShadowKey(unitIndex, shadowDirection) : '';
+            }).filter((key) => key.length > 0)
         );
         
         // Get active page unit IDs to avoid duplicates
@@ -2459,9 +2848,11 @@ export class PageViewerComponent implements AfterViewInit {
             // Calculate unit index for this incoming page
             const unitOffset = direction === 'right' ? i : -i;
             const incomingUnitIndex = (targetIndex + unitOffset + totalUnits) % totalUnits;
+            const shadowDirection = direction === 'right' ? 'right' : 'left';
+            const incomingShadowKey = this.getShadowKey(incomingUnitIndex, shadowDirection);
             
             // Skip if already exists as shadow or active page
-            if (existingShadowIndices.has(incomingUnitIndex)) continue;
+            if (existingShadowKeys.has(incomingShadowKey)) continue;
             const unit = allUnits[incomingUnitIndex];
             if (!unit || activeUnitIds.has(unit.id)) continue;
             
@@ -2472,10 +2863,9 @@ export class PageViewerComponent implements AfterViewInit {
             // Load the unit (fire and forget - may already be loaded)
             unit.load().then(() => {
                 // Check if we're still in animation (component might have moved on)
-                if (this.swipeAnimationCallback === null) return;
+                if (this.swipeAnimationCallback === null || !clickedShadow.isConnected) return;
                 
                 // Use unified helper to create shadow page with click handler
-                const shadowDirection = direction === 'right' ? 'right' : 'left';
                 this.createShadowPageElement(
                     unit,
                     incomingUnitIndex,
@@ -2492,6 +2882,8 @@ export class PageViewerComponent implements AfterViewInit {
      * Clears all shadow page elements.
      */
     private clearShadowPages(): void {
+        this.cancelScheduledShadowRender();
+
         // Run cleanup functions for shadow page event listeners
         this.shadowPageCleanups.forEach(cleanup => cleanup());
         this.shadowPageCleanups = [];
@@ -2504,6 +2896,7 @@ export class PageViewerComponent implements AfterViewInit {
             el.innerHTML = '';
         });
         this.shadowPageElements = [];
+        this.syncZoomPanTransformTargets();
     }
     
     /**
@@ -2532,9 +2925,11 @@ export class PageViewerComponent implements AfterViewInit {
         const shadowWrapper = this.renderer.createElement('div') as HTMLDivElement;
         this.renderer.addClass(shadowWrapper, 'page-wrapper');
         this.renderer.addClass(shadowWrapper, 'shadow-page');
+        this.setPageWrapperContentState(shadowWrapper, true);
         shadowWrapper.dataset['unitId'] = unit.id;
         shadowWrapper.dataset['unitIndex'] = String(unitIndex);
         shadowWrapper.dataset['shadowDirection'] = direction;
+        shadowWrapper.dataset['shadowKey'] = this.getShadowKey(unitIndex, direction);
         
         // Position the shadow page
         shadowWrapper.dataset['originalLeft'] = String(scaledLeftPosition / scale);
@@ -2566,6 +2961,7 @@ export class PageViewerComponent implements AfterViewInit {
         // Add to DOM and tracking array
         content.appendChild(shadowWrapper);
         this.shadowPageElements.push(shadowWrapper);
+        this.syncZoomPanTransformTargets();
         
         return shadowWrapper;
     }
@@ -2624,6 +3020,7 @@ export class PageViewerComponent implements AfterViewInit {
         this.pageElements = [];
         this.displayedUnits = [];
         this.displayedUnitIds.set([]);
+        this.syncZoomPanTransformTargets();
     }
 
     private getTotalPageCount(): number {
@@ -2674,14 +3071,13 @@ export class PageViewerComponent implements AfterViewInit {
      */
     private updateSelectedPageHighlight(): void {
         const currentUnitId = this.unit()?.id;
-        const multipleVisible = this.effectiveVisiblePageCount() > 1;
+        this.updateMultipleVisibleClass();
         
         this.pageElements.forEach((wrapper) => {
             const unitId = wrapper.dataset['unitId'];
             const isSelected = unitId === currentUnitId;
             
             // Update selected class
-            this.containerRef().nativeElement.classList.toggle('multiple-visible', multipleVisible);
             if (isSelected) {
                 this.renderer.addClass(wrapper, 'selected');
             } else {
@@ -2801,7 +3197,7 @@ export class PageViewerComponent implements AfterViewInit {
         if (allUnits.length === 0) {
             // Force is empty, clear display
             this.clearPages();
-            this.renderShadowPages(); // Clear shadow pages too
+            this.clearShadowPages();
             return;
         }
 
@@ -2898,13 +3294,11 @@ export class PageViewerComponent implements AfterViewInit {
     // ========== Cleanup ==========
 
     private cleanup(): void {
+        this.pendingDirectionalNavigation = 0;
+
         // Cancel any pending swipe animation
         if (this.swipeAnimationCallback) {
-            const swipeWrapper = this.swipeWrapperRef()?.nativeElement;
-            if (swipeWrapper) {
-                swipeWrapper.removeEventListener('transitionend', this.swipeAnimationCallback);
-            }
-            this.swipeAnimationCallback = null;
+            this.cancelSwipeAnimation();
         }
         
         if (this.resizeObserver) {

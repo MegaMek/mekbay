@@ -49,7 +49,9 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { ToastService } from '../../services/toast.service';
 import { type ForceAddModePickerData, ForceAddModePickerDialogComponent, type ForceAddModePickerResult } from '../force-add-mode-picker-dialog/force-add-mode-picker-dialog.component';
 import { firstValueFrom } from 'rxjs';
-import { OrgNamerUtil } from '../../utils/org-namer.util';
+import { getOrgFromForce, getOrgFromGroup, getAggregatedGroupsResult } from '../../utils/org-namer.util';
+import { getUnitsAverageTechBase } from '../../models/tech.model';
+import { Faction, FACTION_MERCENARY, FactionAffinity } from '../../models/factions.model';
 
 export interface ForceEntryPreviewDialogData {
     force: LoadForceEntry;
@@ -94,14 +96,12 @@ export class ForceEntryPreviewDialogComponent {
             .map(u => u.unit)
             .filter((u): u is Unit => !!u);
 
-        const factionName = this.force.factionId !== undefined
-            ? (this.dataService.getFactionById(this.force.factionId)?.name ?? 'Mercenary')
-            : 'Mercenary';
-        const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
-        const techBase = isComStarOrWoB ? '' : OrgNamerUtil.deriveTechBase(this.allUnits);
-
+        
+        const faction = this.dataService.getFactionById(this.force.factionId !== undefined ? this.force.factionId : FACTION_MERCENARY);
+        const factionName = faction ? faction.name : 'Mercenary';
+        const factionAffinity: FactionAffinity = faction ? faction.group : 'Mercenary';
         this.groupDisplayData = this.force.groups.map(group => {
-            const sizeResult = OrgNamerUtil.getOrgFromGroup(group, factionName, techBase);
+            const sizeResult = getAggregatedGroupsResult(getOrgFromGroup(group, factionName, factionAffinity), factionName, factionAffinity);
             const orgName = (sizeResult.name && sizeResult.name !== 'Force') ? sizeResult.name : null;
 
             let name: string;
@@ -122,8 +122,8 @@ export class ForceEntryPreviewDialogComponent {
             return { group, name, orgName, formationName };
         });
 
-        const forceResult = OrgNamerUtil.getOrgFromForce(this.force, factionName);
-        if (forceResult && forceResult.type) {
+        const forceResult = getAggregatedGroupsResult(getOrgFromForce(this.force, factionName, factionAffinity), factionName, factionAffinity);
+        if (forceResult.name !== 'Force') {
             this.forceOrgName = forceResult.name;
         }
 

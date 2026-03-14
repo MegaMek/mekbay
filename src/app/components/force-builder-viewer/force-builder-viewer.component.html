@@ -40,7 +40,7 @@
                     @if (isReadOnly && forceBuilderService.loadedForces().length === 1) {
                         <button class="bt-button btn-clone primary" (click)="forceBuilderService.requestCloneForce(slotForce)">CLONE FORCE TO EDIT</button>
                     }
-                    <div class="force-total">@if (slotForce.name && slotForce.groups().length > 1) {<span class="force-size-name">{{ slotForce.sizeName() }}</span> · }@if (slotForce.groups().length > 1) {Total {{ slotForce.gameSystem === 'as' ? 'PV' : 'BV' }}: {{ slotForce.totalBv() | number }}}</div>
+                    <div class="force-total">@if (slotForce.name && slotForce.groups().length > 1) {<span class="force-size-name">{{ slotForce.organizationalName() }}</span> · }@if (slotForce.groups().length > 1) {Total {{ slotForce.gameSystem === 'as' ? 'PV' : 'BV' }}: {{ slotForce.totalBv() | number }}}</div>
                     <button class="btn-remove" (click)="removeForceFromSlot($event, slotForce)" title="Remove force">
                         <svg width="12px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" xmlns="http://www.w3.org/2000/svg">
                             <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />

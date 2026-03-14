@@ -47,8 +47,9 @@ import type { Faction } from './factions.model';
 import { type FormationTypeDefinition, type FormationMatch, isNoFormation } from '../utils/formation-type.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
-import type { GroupSizeResult } from '../utils/org-solver.util';
-import { OrgNamerUtil } from '../utils/org-namer.util';
+import type { AggregatedGroupSizeResult } from '../utils/org-types';
+import { getOrgFromForce, getOrgFromGroup, getAggregatedGroupsResult } from '../utils/org-namer.util';
+import { getUnitsAverageTechBase, TechBase } from './tech.model';
 
 /*
  * Author: Drake
@@ -137,11 +138,17 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     }
 
     /** Structural evaluation result for this group (name + matched ForceType). */
-    sizeResult = computed<GroupSizeResult>(() => {
-        return OrgNamerUtil.getOrgFromGroup(this);
+    sizeResult = computed<AggregatedGroupSizeResult>(() => {
+        const groups = getOrgFromGroup(this);
+        const result = getAggregatedGroupsResult(
+            groups,
+            this.force.faction()?.name ?? 'Mercenary',
+            this.force.faction()?.group ?? 'Mercenary',
+        );
+        return result;
     });
 
-    sizeName = computed(() => {
+    organizationalName = computed(() => {
         return this.sizeResult().name;
     });
 
@@ -153,7 +160,7 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     groupDisplayName = computed<string>(() => {
         const name = this.name();
         if (name) return name;
-        return this.formationDisplayName() ?? this.sizeName();
+        return this.formationDisplayName() ?? this.organizationalName();
     });
 
     isFormationAlreadyInGroupName = computed<boolean>(() => {   
@@ -248,7 +255,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     displayName = computed<string>(() => {
         const name = this.name;
         if (!name) {
-            return this.sizeName();
+            return this.organizationalName();
         }
         return name;
     });
@@ -260,27 +267,21 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         }
     }
 
-    sizeName = computed(() => {
-        return OrgNamerUtil.getOrgFromForce(this).name;
+    sizeResult = computed<AggregatedGroupSizeResult>(() => {
+        const groups = getOrgFromForce(this);
+        return getAggregatedGroupsResult(
+            groups,
+            this.faction()?.name ?? 'Mercenary',
+            this.faction()?.group ?? 'Mercenary',
+        );
     });
 
-    techBase = computed((): string => {
-        const counts: Record<string, number> = {};
-        for (const unit of this.units()) {
-            const tb = unit.getUnit().techBase;
-            if (tb === 'Mixed') {
-                counts['Clan'] = (counts['Clan'] || 0) + 1;
-                counts['Inner Sphere'] = (counts['Inner Sphere'] || 0) + 1;
-            } else {
-                counts[tb] = (counts[tb] || 0) + 1;
-            }
-        }
-        let majority = 'Inner Sphere';
-        let max = 0;
-        for (const [tb, count] of Object.entries(counts)) {
-            if (count > max) { majority = tb; max = count; }
-        }
-        return majority;
+    organizationalName = computed(() => {
+        return this.sizeResult().name;
+    });
+
+    techBase = computed((): TechBase => {
+        return getUnitsAverageTechBase(this.units().map(u => u.getUnit()).filter((u): u is Unit => u !== undefined));
     });
 
     /**

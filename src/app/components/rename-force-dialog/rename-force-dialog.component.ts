@@ -44,7 +44,10 @@ import { type Faction, FACTION_MERCENARY } from '../../models/factions.model';
 import { ForceNamerUtil, type FactionDisplayInfo } from '../../utils/force-namer.util';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { FactionDropdownPanelComponent } from './faction-dropdown-panel.component';
-import { resolveFromGroups, type GroupSizeResult } from '../../utils/org-solver.util';
+import { EMPTY_RESULT, resolveFromGroups } from '../../utils/org-solver.util';
+import type { AggregatedGroupSizeResult, GroupSizeResult } from '../../utils/org-types';
+import { getAggregatedGroupsResult } from '../../utils/org-namer.util';
+import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-visuals.util';
 
 
 /*
@@ -73,7 +76,7 @@ export interface RenameForceDialogResult {
     <div class="wide-dialog">
       <div class="wide-dialog-body">
         <div class="form-fields">
-            <label class="field-label" for="name">{{ forceSizeName() }} Name</label>
+            <label class="field-label" for="name">{{ forceOrganizationalName() }} Name</label>
             <div class="input-wrapper">
                 <div class="name-input-wrapper">
                     <div
@@ -127,10 +130,15 @@ export interface RenameForceDialogResult {
                       <div class="faction-selector-eras">
                         @for (eraItem of display.eraAvailability; track eraItem.era.id) {
                           @if (eraItem.era.icon) {
-                            <img class="faction-selector-era-icon"
-                                 [src]="eraItem.era.icon"
-                                 [alt]="eraItem.era.name"
-                                 [class.unavailable]="!eraItem.isAvailable" />
+                            <span class="faction-selector-era-chip"
+                                    [class.past-era]="eraItem.isBeforeReferenceYear"
+                                        [title]="getEraTitle(eraItem)">
+                                <img class="faction-selector-era-icon"
+                                            [src]="eraItem.era.icon"
+                                    [alt]="eraItem.era.name"
+                                [class.unavailable]="!eraItem.isAvailable"
+                                [style.filter]="getEraIconFilter(eraItem)" />
+                            </span>
                           }
                         }
                       </div>
@@ -248,6 +256,25 @@ export interface RenameForceDialogResult {
             align-items: center;
         }
 
+        .faction-selector-era-chip {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2px;
+        }
+
+        .faction-selector-era-chip.past-era::before {
+            content: '';
+            position: absolute;
+            left: -2px;
+            top: -1px;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 0, 0, 0.2);
+            pointer-events: none;
+        }
+
         .faction-selector-era-icon {
             width: 1.2em;
             height: 1.2em;
@@ -255,7 +282,7 @@ export interface RenameForceDialogResult {
         }
 
         .faction-selector-era-icon.unavailable {
-            opacity: 0.15;
+            opacity: 0.18;
         }
 
         .placeholder {
@@ -305,6 +332,19 @@ export interface RenameForceDialogResult {
         .clear-btn:hover {
             color: #ff4444;
         }
+
+        @media (max-width: 500px) {
+            .faction-selector-era-chip {
+                padding: 0;
+            }
+        }
+
+        @media (max-width: 370px) {
+            .faction-selector-era-icon {
+                height: 0.9em;
+                width: 0.9em;
+            }
+        }
     `]
 })
 
@@ -342,25 +382,31 @@ export class RenameForceDialogComponent {
         );
     });
 
-    forceSizeResult = computed<GroupSizeResult | null>(() => {
+    forceSizeResult = computed<AggregatedGroupSizeResult>(() => {
         const units = this.data.force.units();
-        if (units.length === 0) return null;
+        if (units.length === 0) {
+            return {
+                name: EMPTY_RESULT.name,
+                tier: EMPTY_RESULT.tier,
+                groups: [],
+            };
+        }
         const factionName = this.selectedFaction()?.name ?? 'Mercenary';
-        const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
-        const techBase = isComStarOrWoB ? '' : this.data.force.techBase();
+        const factionAffinity = this.selectedFaction()?.group ?? 'Mercenary';
         const groupResults: GroupSizeResult[] = this.data.force.groups()
             .filter(g => g.units().length > 0)
-            .map(g => g.sizeResult());
-        return resolveFromGroups(techBase, factionName, groupResults);
+            .flatMap(g => g.sizeResult().groups ?? []);
+        const resolvedOrg = resolveFromGroups(factionName, factionAffinity, groupResults);
+        return getAggregatedGroupsResult(resolvedOrg, factionName, factionAffinity);
     });
 
-    forceSizeName = computed<string>(() => {
-        return this.forceSizeResult()?.name.toUpperCase() ?? 'FORCE';
+    forceOrganizationalName = computed<string>(() => {
+        return this.forceSizeResult().name;
     });
-    
+
     /** Placeholder name based force size. */
     placeholderName = computed<string>(() => {
-        return this.data.force.sizeName() ?? 'Force';
+        return this.data.force.organizationalName() ?? 'Force';
     });
 
     constructor() { }
@@ -467,4 +513,8 @@ export class RenameForceDialogComponent {
     close(value = null) {
         this.dialogRef.close(null);
     }
+
+    getEraTitle = buildFactionEraTitle;
+
+    getEraIconFilter = getFactionEraIconFilter;
 }

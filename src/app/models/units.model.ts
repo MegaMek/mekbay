@@ -36,7 +36,7 @@
  */
 import type { Equipment } from "./equipment.model";
 import type { Era } from "./eras.model";
-import type { TechBase } from "./common.model";
+import { TechBase } from "./tech.model";
 
 export type UnitType =
     | 'Aero'

@@ -110,6 +110,24 @@
         text-align: center;
     }
 
+    &.psr-modifiers {
+        text-wrap: auto;
+
+        .row {
+            align-items: flex-start;
+
+            span:first-child {
+                flex: 1 1 auto;
+                min-width: 0;
+            }
+
+            span:last-child {
+                flex: 0 0 auto;
+                font-weight: 700;
+            }
+        }
+    }
+
     .move-slider-container {
         position: relative;
         width: calc(100% - 40px);

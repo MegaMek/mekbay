@@ -53,19 +53,26 @@ import {
 // ─── Public Types ──────────────────────────────────────────────────────────────
 
 /** Display info for a faction in the faction selector. */
+export interface FactionEraDisplayInfo {
+    era: Era;
+    isAvailable: boolean;
+    isBeforeReferenceYear: boolean;
+    matchPercentage: number;
+}
+
 export interface FactionDisplayInfo {
     faction: Faction;
-    /** Match percentage (0–1) based on the force's unit composition, or 0 if not matching. */
+    /** Best match percentage (0–1) across eras eligible for the latest unit intro year. */
     matchPercentage: number;
-    /** True if the faction is among the composition-matching factions. */
+    /** True if the faction is among the composition-matching factions for eligible eras. */
     isMatching: boolean;
-    /** Per-era availability data for this faction. */
-    eraAvailability: { era: Era; isAvailable: boolean }[];
+    /** Per-era availability and match data for this faction. */
+    eraAvailability: FactionEraDisplayInfo[];
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
-const MIN_UNITS_PERCENTAGE = 0.7;
+const MIN_UNITS_PERCENTAGE = 0.65;
 
 /** Factions that get corporate-flavored names (e.g. "ComStar Apex Solutions"). */
 const CORPORATE_FACTIONS = new Set(['ComStar', 'Word of Blake']);
@@ -124,6 +131,45 @@ function randomOrdinal(): string {
     if (mod10 === 2) return `${n}nd`;
     if (mod10 === 3) return `${n}rd`;
     return `${n}th`;
+}
+
+function getReferenceYear(units: ForceUnit[]): number | null {
+    if (!units?.length) return null;
+    return units.reduce((max, unit) => Math.max(max, unit.getUnit().year), Number.NEGATIVE_INFINITY);
+}
+
+function getEraStartYear(era: Era): number {
+    return era.years.from ?? Number.NEGATIVE_INFINITY;
+}
+
+function getEraEndYear(era: Era): number {
+    return era.years.to ?? Number.POSITIVE_INFINITY;
+}
+
+function doesEraContainYear(era: Era, year: number): boolean {
+    return getEraStartYear(era) <= year && year <= getEraEndYear(era);
+}
+
+function getEligibleEras(eras: Era[], referenceYear: number | null): Era[] {
+    if (referenceYear == null) return [];
+    return eras.filter(era => getEraEndYear(era) >= referenceYear);
+}
+
+function getFactionEraUnitIds(faction: Faction, eraId: number): Set<number> | null {
+    return faction.eras[eraId] ?? null;
+}
+
+function getEraMatchPercentage(faction: Faction, eraId: number, unitIds: number[], totalUnits: number): number {
+    if (totalUnits === 0) return 0;
+
+    const eraUnitIds = getFactionEraUnitIds(faction, eraId);
+    if (!eraUnitIds) return 0;
+
+    let count = 0;
+    for (const id of unitIds) {
+        if (eraUnitIds.has(id)) count++;
+    }
+    return count / totalUnits;
 }
 
 // ─── Name Body Generators ──────────────────────────────────────────────────────
@@ -218,18 +264,14 @@ export class ForceNamerUtil {
 
     /**
      * Returns matching factions for a set of units.
-     * Map key is the Faction object, value is the highest match percentage across eras.
+     * Map key is the Faction object, value is the best match percentage across eligible eras.
      * @param minPercentage Minimum match threshold (default: MIN_UNITS_PERCENTAGE = 0.7).
      *                      Pass 0 to include all factions with any match.
      */
     public static getAvailableFactions(units: ForceUnit[], factions: Faction[], eras: Era[], minPercentage = MIN_UNITS_PERCENTAGE): Map<Faction, number> | null {
         if (!units?.length) return null;
-        const referenceYear = units.reduce(
-            (max, u) => Math.max(max, u.getUnit().year),
-            Number.NEGATIVE_INFINITY
-        );
-        const erasInOrAfter = eras.filter(e => referenceYear <= (e.years.to ?? Number.POSITIVE_INFINITY));
-        if (erasInOrAfter.length === 0) return null;
+        const eligibleEras = getEligibleEras(eras, getReferenceYear(units));
+        if (eligibleEras.length === 0) return null;
 
         const unitIds = units.map(u => u.getUnit().id);
         const totalUnits = units.length;
@@ -237,20 +279,16 @@ export class ForceNamerUtil {
 
         for (const faction of factions) {
             if (faction.id === FACTION_EXTINCT) continue;
-            let highestPercentage = 0;
-            for (const era of erasInOrAfter) {
-                const eraUnitIds = faction.eras[era.id];
-                if (!eraUnitIds) continue;
-                let count = 0;
-                for (const id of unitIds) {
-                    if (eraUnitIds.has(id)) count++;
-                }
-                if (count > 0) {
-                    highestPercentage = Math.max(highestPercentage, count / totalUnits);
-                }
+            let bestMatchPercentage = 0;
+            for (const era of eligibleEras) {
+                bestMatchPercentage = Math.max(
+                    bestMatchPercentage,
+                    getEraMatchPercentage(faction, era.id, unitIds, totalUnits)
+                );
             }
-            if (highestPercentage > 0 && highestPercentage >= minPercentage) {
-                results.set(faction, highestPercentage);
+
+            if (bestMatchPercentage > 0 && bestMatchPercentage >= minPercentage) {
+                results.set(faction, bestMatchPercentage);
             }
         }
         return results;
@@ -309,24 +347,29 @@ export class ForceNamerUtil {
         allFactions: Faction[],
         eras: Era[]
     ): FactionDisplayInfo[] {
-        const rawPctMap = this.getAvailableFactions(units, allFactions, eras, 0);
         const result: FactionDisplayInfo[] = [];
-        // Build a name-based lookup from the Faction-keyed map for the display loop
-        const pctByName = new Map<string, number>();
-        if (rawPctMap) {
-            for (const [faction, pct] of rawPctMap) pctByName.set(faction.name, pct);
-        }
+        const referenceYear = getReferenceYear(units);
+        const eligibleEraIds = new Set(getEligibleEras(eras, referenceYear).map(era => era.id));
+        const unitIds = units.map(unit => unit.getUnit().id);
+        const totalUnits = units.length;
 
         for (const faction of allFactions) {
             if (faction.id === FACTION_EXTINCT) continue;
-            const rawPct = pctByName.get(faction.name) ?? 0;
+            let rawPct = 0;
+            for (const era of eras) {
+                if (!eligibleEraIds.has(era.id)) continue;
+                rawPct = Math.max(rawPct, getEraMatchPercentage(faction, era.id, unitIds, totalUnits));
+            }
+
             result.push({
                 faction,
                 matchPercentage: rawPct,
                 isMatching: rawPct >= MIN_UNITS_PERCENTAGE,
                 eraAvailability: eras.map(era => ({
                     era,
-                    isAvailable: faction.eras[era.id] != null && (faction.eras[era.id] as Set<number>).size > 0
+                    isAvailable: faction.eras[era.id] != null && (faction.eras[era.id] as Set<number>).size > 0,
+                    isBeforeReferenceYear: referenceYear != null && getEraEndYear(era) < referenceYear,
+                    matchPercentage: getEraMatchPercentage(faction, era.id, unitIds, totalUnits)
                 }))
             });
         }

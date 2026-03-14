@@ -399,7 +399,7 @@ export class TagsService {
         // Check if old tag exists
         const oldEntry = tagData.tags[oldId];
         if (!oldEntry) {
-            console.warn(`[TagsService] Tag "${trimmedOld}" not found for renaming`);
+            this.logger.warn(`[TagsService] Tag "${trimmedOld}" not found for renaming`);
             return 'not-found';
         }
 

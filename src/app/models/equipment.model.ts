@@ -31,6 +31,7 @@
  * affiliated with Microsoft.
  */
 
+import { TechBaseAvailability } from './tech.model';
 import type { Unit } from './units.model';
 
 /*
@@ -41,7 +42,6 @@ import type { Unit } from './units.model';
 // Type Definitions
 // ============================================================================
 
-export type TechBase = 'IS' | 'Clan' | 'All';
 export type EquipmentType = 'weapon' | 'ammo' | 'misc' | 'armor';
 export type TechLevel = 'Introductory' | 'Standard' | 'Advanced' | 'Experimental' | 'Unofficial';
 export type RangeBrackets = 'short' | 'medium' | 'long' | 'extreme';
@@ -220,7 +220,7 @@ export interface TechAdvancement {
 }
 
 export interface TechData {
-    base: TechBase;
+    base: TechBaseAvailability;
     rating: string;
     level: TechLevel;
     availability: TechAvailability;
@@ -464,7 +464,7 @@ export class Equipment {
     get critSlots(): number { return this.stats.criticalSlots; }
     get svSlots(): number { return this.stats.svSlots; }
     get tankSlots(): number { return this.stats.tankSlots; }
-    get techBase(): TechBase { return this.tech.base; }
+    get techBase(): TechBaseAvailability { return this.tech.base; }
     get level(): TechLevel { return this.tech.level; }
     get rating(): string { return this.tech.rating; }
     get availability(): String { return [this.tech.availability.sl??'X', this.tech.availability.sw??'X', this.tech.availability.clan??'X', this.tech.availability.da??'X'].join('-'); }

@@ -313,6 +313,32 @@ export class C3NetworkUtil {
         return subNets;
     }
 
+    /** Walk a master/sub-master tree without revisiting cyclic links. */
+    private static collectNetworkTree(
+        network: SerializedC3NetworkGroup,
+        allNetworks: SerializedC3NetworkGroup[]
+    ): SerializedC3NetworkGroup[] {
+        const collected: SerializedC3NetworkGroup[] = [];
+        const visited = new Set<string>();
+        const stack = [network];
+
+        while (stack.length > 0) {
+            const current = stack.pop()!;
+            if (visited.has(current.id)) continue;
+
+            visited.add(current.id);
+            collected.push(current);
+
+            for (const subNet of this.findSubNetworks(current, allNetworks)) {
+                if (!visited.has(subNet.id)) {
+                    stack.push(subNet);
+                }
+            }
+        }
+
+        return collected;
+    }
+
     /** Get the depth of a network in the hierarchy */
     public static getNetworkDepth(
         network: SerializedC3NetworkGroup,
@@ -320,7 +346,14 @@ export class C3NetworkUtil {
     ): number {
         let depth = 0;
         let current: SerializedC3NetworkGroup | null = network;
+        const visited = new Set<string>();
+
         while (current) {
+            if (visited.has(current.id)) {
+                return C3_MAX_NETWORK_DEPTH + 1;
+            }
+
+            visited.add(current.id);
             const parent = this.findParentNetwork(current, allNetworks);
             if (parent) {
                 depth++;
@@ -337,13 +370,24 @@ export class C3NetworkUtil {
         network: SerializedC3NetworkGroup,
         allNetworks: SerializedC3NetworkGroup[]
     ): number {
-        const subNets = this.findSubNetworks(network, allNetworks);
-        if (subNets.length === 0) return 0;
         let maxSubDepth = 0;
-        for (const subNet of subNets) {
-            const subDepth = 1 + this.getSubTreeDepth(subNet, allNetworks);
-            if (subDepth > maxSubDepth) maxSubDepth = subDepth;
+        const visited = new Set<string>();
+        const stack: Array<{ network: SerializedC3NetworkGroup; depth: number }> = [{ network, depth: 0 }];
+
+        while (stack.length > 0) {
+            const current = stack.pop()!;
+            if (visited.has(current.network.id)) continue;
+
+            visited.add(current.network.id);
+            maxSubDepth = Math.max(maxSubDepth, current.depth);
+
+            for (const subNet of this.findSubNetworks(current.network, allNetworks)) {
+                if (!visited.has(subNet.id)) {
+                    stack.push({ network: subNet, depth: current.depth + 1 });
+                }
+            }
         }
+
         return maxSubDepth;
     }
 
@@ -358,11 +402,11 @@ export class C3NetworkUtil {
         allNetworks: SerializedC3NetworkGroup[]
     ): number {
         const unitIds = new Set<string>();
-        const collect = (net: SerializedC3NetworkGroup) => {
+
+        for (const net of this.collectNetworkTree(network, allNetworks)) {
             for (const id of this.getNetworkUnitIds(net)) unitIds.add(id);
-            for (const subNet of this.findSubNetworks(net, allNetworks)) collect(subNet);
-        };
-        collect(network);
+        }
+
         return unitIds.size;
     }
 
@@ -372,8 +416,14 @@ export class C3NetworkUtil {
         allNetworks: SerializedC3NetworkGroup[]
     ): SerializedC3NetworkGroup {
         let current = network;
+        const visited = new Set<string>();
         let parent = this.findParentNetwork(current, allNetworks);
         while (parent) {
+            if (visited.has(current.id)) {
+                break;
+            }
+
+            visited.add(current.id);
             current = parent;
             parent = this.findParentNetwork(current, allNetworks);
         }
@@ -996,21 +1046,13 @@ export class C3NetworkUtil {
 
         // 1. Remove networks where this unit is the master (including sub-networks)
         const networksToRemove = new Set<string>();
-        const collectNetworksToRemove = (masterId: string) => {
-            for (const net of result) {
-                if (net.masterId === masterId) {
-                    networksToRemove.add(net.id);
-                    // Also collect sub-networks (members that are masters)
-                    for (const member of net.members ?? []) {
-                        if (this.isMasterMember(member)) {
-                            const { unitId: subMasterId } = this.parseMember(member);
-                            collectNetworksToRemove(subMasterId);
-                        }
-                    }
-                }
+        for (const net of result) {
+            if (net.masterId !== unitId) continue;
+
+            for (const treeNet of this.collectNetworkTree(net, result)) {
+                networksToRemove.add(treeNet.id);
             }
-        };
-        collectNetworksToRemove(unitId);
+        }
         result = result.filter(n => !networksToRemove.has(n.id));
 
         // 2. Remove unit from peer networks
@@ -1190,11 +1232,11 @@ export class C3NetworkUtil {
         allUnits: CBTForceUnit[]
     ): CBTForceUnit[] {
         const unitIds = new Set<string>();
-        const collect = (net: SerializedC3NetworkGroup) => {
+
+        for (const net of this.collectNetworkTree(network, allNetworks)) {
             for (const id of this.getNetworkUnitIds(net)) unitIds.add(id);
-            for (const subNet of this.findSubNetworks(net, allNetworks)) collect(subNet);
-        };
-        collect(network);
+        }
+
         const unitMap = new Map(allUnits.map(u => [u.id, u]));
         const result: CBTForceUnit[] = [];
         for (const id of unitIds) {
@@ -1499,17 +1541,11 @@ export class C3NetworkUtil {
                 if (network.masterId === unitId) {
                     // Remove entire network tree where unit is master
                     const toRemove = new Set<string>();
-                    const collect = (masterId: string) => {
-                        for (const n of result) {
-                            if (n.masterId === masterId) {
-                                toRemove.add(n.id);
-                                for (const m of n.members ?? []) {
-                                    if (this.isMasterMember(m)) collect(this.parseMember(m).unitId);
-                                }
-                            }
-                        }
-                    };
-                    collect(unitId);
+
+                    for (const treeNet of this.collectNetworkTree(network, result)) {
+                        toRemove.add(treeNet.id);
+                    }
+
                     result = result.filter(n => !toRemove.has(n.id));
                 } else if (network.peerIds?.includes(unitId)) {
                     const idx = result.findIndex(n => n.id === network.id);
