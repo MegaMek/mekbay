@@ -60,6 +60,7 @@ const FOREIGN_UNITS_EVALUATION = true;
 const FLATTEN_REEVALUATED_FOREIGN_GROUPS_BEFORE_COMPOSITION = false;
 const ASSIMILATE_FIRST_FOR_SUBOPTIMAL_GROUPS = true;
 const ASSIMILATE_SUBOPTIMAL_GROUPS_LOWEST_TIER_FIRST = true;
+const SUBSET_COMPOSITION_COMBINATION_CAP = 1_000;
 
 // ─── Unit helpers ──────────────────────────────────────────────────────────────
 
@@ -1777,19 +1778,23 @@ interface ViableComposedRule {
     nonMatchingGroups: GroupSizeResult[];
 }
 
-function collectValueCombinations(values: ReadonlyArray<number>, size: number): number[][] {
+function collectValueCombinations(values: ReadonlyArray<number>, size: number, limit: number = Number.POSITIVE_INFINITY): number[][] {
     if (size < 1 || size > values.length) return [];
 
     const results: number[][] = [];
     const current: number[] = [];
+    let capped = false;
 
     function visit(start: number): void {
+        if (capped) return;
         if (current.length === size) {
             results.push([...current]);
+            if (results.length >= limit) capped = true;
             return;
         }
 
         for (let idx = start; idx <= values.length - (size - current.length); idx++) {
+            if (capped) return;
             current.push(values[idx]);
             visit(idx + 1);
             current.pop();
@@ -1804,6 +1809,7 @@ function collectConstrainedIndexCombinations(
     rule: OrgTypeComposed,
     eligibleGroups: ReadonlyArray<GroupSizeResult>,
     takeCount: number,
+    limit: number = Number.POSITIVE_INFINITY,
 ): number[][] | null {
     const requiredEntries = getRequiredChildTypeCountEntries(rule);
     if (requiredEntries.length === 0) return null;
@@ -1821,16 +1827,20 @@ function collectConstrainedIndexCombinations(
     const seen = new Set<string>();
     const chosen: number[] = [];
     const used = new Set<number>();
+    let capped = false;
 
     function pushResult(indices: ReadonlyArray<number>): void {
+        if (capped) return;
         const sorted = [...indices].sort((a, b) => a - b);
         const key = sorted.join(',');
         if (seen.has(key)) return;
         seen.add(key);
         results.push(sorted);
+        if (results.length >= limit) capped = true;
     }
 
     function visitBuckets(bucketIndex: number): void {
+        if (capped) return;
         if (bucketIndex === buckets.length) {
             const remainingNeeded = takeCount - chosen.length;
             if (remainingNeeded < 0) return;
@@ -1846,8 +1856,9 @@ function collectConstrainedIndexCombinations(
                 return;
             }
 
-            for (const extra of collectValueCombinations(remainingIndices, remainingNeeded)) {
+            for (const extra of collectValueCombinations(remainingIndices, remainingNeeded, limit - results.length)) {
                 pushResult([...chosen, ...extra]);
+                if (capped) return;
             }
             return;
         }
@@ -1857,6 +1868,7 @@ function collectConstrainedIndexCombinations(
         if (availableIndices.length < bucket.count) return;
 
         for (const combination of collectValueCombinations(availableIndices, bucket.count)) {
+            if (capped) return;
             for (const index of combination) {
                 used.add(index);
                 chosen.push(index);
@@ -1892,7 +1904,8 @@ function collectSubsetCompositionCandidates(
                 rule,
                 eligibleEntries.map(entry => entry.group),
                 takeCount,
-            ) ?? collectIndexCombinations(eligibleEntries.length, takeCount);
+                SUBSET_COMPOSITION_COMBINATION_CAP,
+            ) ?? collectIndexCombinations(eligibleEntries.length, takeCount, SUBSET_COMPOSITION_COMBINATION_CAP);
             for (const indices of combinations) {
                 const chosenGroups = indices.map(index => eligibleEntries[index].group);
                 if (!canRuleComposeGroups(rule, chosenGroups, context)) continue;
@@ -1931,19 +1944,23 @@ function collectSingleRuleCompositionCandidates(
         .filter(candidate => candidate.chosenIndices.length !== availableGroups.length);
 }
 
-function collectIndexCombinations(length: number, size: number): number[][] {
+function collectIndexCombinations(length: number, size: number, limit: number = Number.POSITIVE_INFINITY): number[][] {
     if (size < 1 || size > length) return [];
 
     const results: number[][] = [];
     const current: number[] = [];
+    let capped = false;
 
     function visit(start: number): void {
+        if (capped) return;
         if (current.length === size) {
             results.push([...current]);
+            if (results.length >= limit) capped = true;
             return;
         }
 
         for (let idx = start; idx <= length - (size - current.length); idx++) {
+            if (capped) return;
             current.push(idx);
             visit(idx + 1);
             current.pop();
