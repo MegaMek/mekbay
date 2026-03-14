@@ -103,6 +103,16 @@ body {
     cursor: default;
 }
 
+@media print {
+    :root {
+        color-scheme: light;
+    }
+    body,
+    html {    
+        background-color: white;
+    }
+}
+
 /* Hex symbol for movement display - scaled and raised like inch mark */
 .hex-symbol {
     line-height: 0;

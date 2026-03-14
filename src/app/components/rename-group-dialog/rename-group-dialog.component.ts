@@ -382,7 +382,7 @@ export class RenameGroupDialogComponent {
         if (sel && !isNoFormation(sel)) {
             return FormationNamerUtil.composeFormationDisplayName(sel, this.data.group);
         }
-        return this.data.group.sizeName() ?? 'Group';
+        return this.data.group.organizationalName() ?? 'Group';
     });
 
     constructor() { }
