@@ -31,6 +31,7 @@
  * affiliated with Microsoft.
  */
 
+import { FactionAffinity } from '../models/factions.model';
 import type { Unit } from '../models/units.model';
 import type {
     GroupSizeResult,
@@ -600,18 +601,13 @@ const CCOrg: OrgDefinition = {
  * Order matters: first match wins. IS is the default fallback.
  * To add a new org, append one entry here.
  */
-export const ORG_REGISTRY: { match: (techBase: string, factionName: string) => boolean; org: OrgDefinition }[] = [
-    { match: (_, f) => f === 'ComStar' || f === 'Word of Blake', org: ComStarOrg },
-    { match: (_, f) => f === 'Society', org: SocietyOrg },
-    { match: (_, f) => f.includes('Marian Hegemony'), org: MHOrg },
-    { match: (_, f) => f.includes('Dragoons'), org: WDOrg },
-    { match: (_, f) => f.includes('Capellan Confederation'), org: CCOrg },
-    { match: (_, f) => f.includes('Clan'), org: ClanOrg },
-    { match: (_, f) =>
-        f.includes('Rasalhague Dominion') || f.includes('Raven Alliance') || f.includes('Wolf Empire') ||
-        f.includes('Escorpion') || f.includes('Scorpion Empire') || f.includes('Alyina Mercantile League'),
-        org: ClanOrg,
-    },
+export const ORG_REGISTRY: { match: (factionName: string, factionAffinity: FactionAffinity) => boolean; org: OrgDefinition }[] = [
+    { match: (f, _) => f === 'ComStar' || f === 'Word of Blake', org: ComStarOrg },
+    { match: (f, _) => f === 'Society', org: SocietyOrg },
+    { match: (f, _) => f.includes('Marian Hegemony'), org: MHOrg },
+    { match: (f, _) => f.includes('Dragoons'), org: WDOrg },
+    { match: (f, _) => f.includes('Capellan Confederation'), org: CCOrg },
+    { match: (_, a) => a.includes('Clan'), org: ClanOrg },
     // ISOrg is the default fallback if no other org matches
 ];
 

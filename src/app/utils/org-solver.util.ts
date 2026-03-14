@@ -48,6 +48,7 @@ import {
 } from './org-definitions.util';
 import { TechBase } from '../models/tech.model';
 import { getDynamicTierForModifier, getRepeatCountForTierDelta } from './org-tier.util';
+import { FactionAffinity } from '../models/factions.model';
 
 /**
  * Author: Drake
@@ -2176,8 +2177,8 @@ function wrapResult(
 
 // ─── Org Resolution ────────────────────────────────────────────────────────────
 
-function resolveOrg(techBase: TechBase, factionName: string): OrgDefinition {
-    return ORG_REGISTRY.find(e => e.match(techBase, factionName))?.org ?? DEFAULT_ORG;
+function resolveOrg(factionName: string, factionAffinity: FactionAffinity): OrgDefinition {
+    return ORG_REGISTRY.find(e => e.match(factionName, factionAffinity))?.org ?? DEFAULT_ORG;
 }
 
 // ─── Public API ────────────────────────────────────────────────────────────────
@@ -2326,14 +2327,14 @@ class OrgSolver {
 /**
  * Evaluate a single group of units and return the structural result.
  */
-export function resolveFromUnits(units: Unit[], techBase: TechBase, factionName: string, hierarchicalAggregation: boolean = false): GroupSizeResult[] {
-    return new OrgSolver(resolveOrg(techBase, factionName), hierarchicalAggregation).resolveFromUnits(units);
+export function resolveFromUnits(units: Unit[], factionName: string, factionAffinity: FactionAffinity, hierarchicalAggregation: boolean = false): GroupSizeResult[] {
+    return new OrgSolver(resolveOrg(factionName, factionAffinity), hierarchicalAggregation).resolveFromUnits(units);
 }
 
 /**
  * Evaluate a force from pre-computed group results.
  * Groups are taken as-is (not deconstructed) and composed upward.
  */
-export function resolveFromGroups(techBase: TechBase, factionName: string, groupResults: GroupSizeResult[], hierarchicalAggregation: boolean = false): GroupSizeResult[] {
-    return new OrgSolver(resolveOrg(techBase, factionName), hierarchicalAggregation).resolveFromGroups(groupResults);
+export function resolveFromGroups(factionName: string, factionAffinity: FactionAffinity, groupResults: GroupSizeResult[], hierarchicalAggregation: boolean = false): GroupSizeResult[] {
+    return new OrgSolver(resolveOrg(factionName, factionAffinity), hierarchicalAggregation).resolveFromGroups(groupResults);
 }

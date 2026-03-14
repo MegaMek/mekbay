@@ -47,7 +47,7 @@ import type { Faction } from './factions.model';
 import { type FormationTypeDefinition, type FormationMatch, isNoFormation } from '../utils/formation-type.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
-import type { AggregatedGroupSizeResult, GroupSizeResult } from '../utils/org-types';
+import type { AggregatedGroupSizeResult } from '../utils/org-types';
 import { getOrgFromForce, getOrgFromGroup, getAggregatedGroupsResult } from '../utils/org-namer.util';
 import { getUnitsAverageTechBase, TechBase } from './tech.model';
 
@@ -142,8 +142,8 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
         const groups = getOrgFromGroup(this);
         const result = getAggregatedGroupsResult(
             groups,
-            this.force.techBase(),
             this.force.faction()?.name ?? 'Mercenary',
+            this.force.faction()?.group ?? 'Mercenary',
         );
         return result;
     });
@@ -271,8 +271,8 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         const groups = getOrgFromForce(this);
         return getAggregatedGroupsResult(
             groups,
-            this.techBase(),
             this.faction()?.name ?? 'Mercenary',
+            this.faction()?.group ?? 'Mercenary',
         );
     });
 

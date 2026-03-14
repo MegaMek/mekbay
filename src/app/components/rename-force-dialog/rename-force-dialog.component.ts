@@ -392,12 +392,12 @@ export class RenameForceDialogComponent {
             };
         }
         const factionName = this.selectedFaction()?.name ?? 'Mercenary';
-        const techBase = this.data.force.techBase();
+        const factionAffinity = this.selectedFaction()?.group ?? 'Mercenary';
         const groupResults: GroupSizeResult[] = this.data.force.groups()
             .filter(g => g.units().length > 0)
             .flatMap(g => g.sizeResult().groups ?? []);
-        const resolvedOrg = resolveFromGroups(techBase, factionName, groupResults);
-        return getAggregatedGroupsResult(resolvedOrg, techBase, factionName);
+        const resolvedOrg = resolveFromGroups(factionName, factionAffinity, groupResults);
+        return getAggregatedGroupsResult(resolvedOrg, factionName, factionAffinity);
     });
 
     forceOrganizationalName = computed<string>(() => {

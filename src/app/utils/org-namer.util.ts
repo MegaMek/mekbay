@@ -45,6 +45,7 @@ import {
     getEquivalentGroupCountAtTier,
     getTierForRepeatedGroup,
 } from './org-tier.util';
+import { FactionAffinity } from '../models/factions.model';
 
 /*
  * Author: Drake
@@ -53,37 +54,38 @@ import {
  */
 
 export function getOrgFromGroup(group: UnitGroup): GroupSizeResult[];
-export function getOrgFromGroup(group: LoadForceGroup, factionName: string, techBase: TechBase): GroupSizeResult[];
-export function getOrgFromGroup(group: UnitGroup | LoadForceGroup, factionName?: string, techBase?: TechBase): GroupSizeResult[] {
+export function getOrgFromGroup(group: LoadForceGroup, factionName: string, factionAffinity: FactionAffinity): GroupSizeResult[];
+export function getOrgFromGroup(group: UnitGroup | LoadForceGroup, factionName?: string, factionAffinity?: FactionAffinity): GroupSizeResult[] {
     if (group instanceof UnitGroup) {
         const force = group.force;
         const fn = force.faction()?.name ?? 'Mercenary';
+        const fa = force.faction()?.group ?? 'Mercenary';
         const allUnits = group.units().map(u => u.getUnit()).filter((u): u is Unit => u !== undefined);
-        return resolveFromUnits(allUnits, force.techBase(), fn);
+        return resolveFromUnits(allUnits, fn, fa);
     }
     const units = group.units
         .filter((u): u is typeof u & { unit: Unit } => u.unit !== undefined)
         .map(u => u.unit);
-    return resolveFromUnits(units, techBase!, factionName!);
+    return resolveFromUnits(units, factionName!, factionAffinity!);
 }
 
 export function getOrgFromForce(force: Force): GroupSizeResult[];
-export function getOrgFromForce(entry: LoadForceEntry, factionName: string): GroupSizeResult[];
-export function getOrgFromForce(forceOrEntry: Force | LoadForceEntry, factionName?: string): GroupSizeResult[] {
+export function getOrgFromForce(entry: LoadForceEntry, factionName: string, factionAffinity: FactionAffinity): GroupSizeResult[];
+export function getOrgFromForce(forceOrEntry: Force | LoadForceEntry, factionName?: string, factionAffinity?: FactionAffinity): GroupSizeResult[] {
     if (forceOrEntry instanceof LoadForceEntry) {
-        const fn = factionName || '';
-        const techBase = resolveTechBase(forceOrEntry.groups.flatMap(g => g.units), fn);
+        const fn = factionName || 'Mercenary';
+        const fa = factionAffinity || 'Mercenary';
         const groupResults = forceOrEntry.groups
             .filter(g => g.units.some(u => u.unit !== undefined))
-            .flatMap(g => getOrgFromGroup(g, fn, techBase));
-        return resolveFromGroups(techBase, fn, groupResults);
+            .flatMap(g => getOrgFromGroup(g, fn, fa));
+        return resolveFromGroups(fn, fa, groupResults);
     }
     const fn = forceOrEntry.faction()?.name ?? 'Mercenary';
-    const techBase = forceOrEntry.techBase();
+    const fa = forceOrEntry.faction()?.group ?? 'Mercenary';
     const groupResults = forceOrEntry.groups()
         .filter(g => g.units().length > 0)
         .flatMap(g => g.sizeResult().groups ?? []);
-    return resolveFromGroups(techBase, fn, groupResults);
+    return resolveFromGroups(fn, fa, groupResults);
 }
 
 /**
@@ -95,13 +97,13 @@ export function getOrgFromForce(forceOrEntry: Force | LoadForceEntry, factionNam
 export function getOrgFromForceCollection(
     entries: LoadForceEntry[],
     factionName: string,
+    factionAffinity: FactionAffinity,
     childGroupResults?: GroupSizeResult[],
 ): GroupSizeResult[] {
     if (entries.length === 0) return [EMPTY_RESULT];
-    const techBase = resolveTechBaseFromEntries(entries, factionName);
     const groupResults = childGroupResults
-        ?? entries.flatMap(e => getOrgFromForce(e, factionName));
-    return resolveFromGroups(techBase, factionName, groupResults);
+        ?? entries.flatMap(e => getOrgFromForce(e, factionName, factionAffinity));
+    return resolveFromGroups(factionName, factionAffinity, groupResults);
 }
 
 /**
@@ -115,10 +117,10 @@ export function getOrgFromForceCollection(
  */
 export function getAggregatedGroupsResult(
     groups: GroupSizeResult[],
-    techBase: TechBase,
     factionName: string,
+    factionAffinity: FactionAffinity,
 ): AggregatedGroupSizeResult {
-    const org = resolveOrg(techBase, factionName);
+    const org = resolveOrg(factionName, factionAffinity);
     if (groups.length === 0) {
         return {
             name: EMPTY_RESULT.name,
@@ -135,23 +137,23 @@ export function getAggregatedGroupsResult(
         };
     }
 
-    const displayGroups = getDisplayGroups(groups, techBase, factionName);
+    const displayGroups = getDisplayGroups(groups, factionName, factionAffinity);
     return aggregateGroupsResult(displayGroups, groups, org);
 }
 
 function getDisplayGroups(
     groups: GroupSizeResult[],
-    techBase: TechBase,
     factionName: string,
+    factionAffinity: FactionAffinity
 ): GroupSizeResult[] {
     if (groups.length <= 1) return groups;
 
-    const promotedGroups = promoteDisplayGroups(groups, resolveOrg(techBase, factionName));
-    return resolveFromGroups(techBase, factionName, promotedGroups, true);
+    const promotedGroups = promoteDisplayGroups(groups, resolveOrg(factionName, factionAffinity));
+    return resolveFromGroups(factionName, factionAffinity, promotedGroups, true);
 }
 
-function resolveOrg(techBase: TechBase, factionName: string): OrgDefinition {
-    return ORG_REGISTRY.find(entry => entry.match(techBase, factionName))?.org ?? DEFAULT_ORG;
+function resolveOrg(factionName: string, factionAffinity: FactionAffinity): OrgDefinition {
+    return ORG_REGISTRY.find(entry => entry.match(factionName, factionAffinity))?.org ?? DEFAULT_ORG;
 }
 
 function isComposedRule(rule: OrgTypeRule): rule is OrgTypeComposed {
