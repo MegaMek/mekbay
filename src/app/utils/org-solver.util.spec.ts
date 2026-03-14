@@ -783,6 +783,138 @@ describe('resolveFromUnits', () => {
         expect(descendantGroups.every(group => group.leftoverUnits === undefined)).toBeTrue();
     });
 
+    it('returns Force when customMatch enumeration exceeds the cap', () => {
+        const warnSpy = spyOn(console, 'warn');
+        const units: Unit[] = Array.from({ length: 18 }, (_, index) =>
+            createCI(`CI-CAP-${index + 1}`, 'Conventional Infantry', index + 1),
+        );
+
+        const result = resolveFromUnits(units, 'Federated Suns', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Force');
+        expect(result[0].type).toBeNull();
+        expect(
+            warnSpy.calls.allArgs().flatMap(args => args.map(arg => String(arg))).some(message =>
+                message.includes('Too many combinations') && message.includes('returning Force'),
+            ),
+        ).toBeTrue();
+    });
+
+    it('does not hit the cap for many conventional infantry with identical trooper counts', () => {
+        const warnSpy = spyOn(console, 'warn');
+        const units: Unit[] = Array.from({ length: 18 }, (_, index) => createCI(`CI-BUCKET-${index + 1}`));
+
+        const result = resolveFromUnits(units, 'Federated Suns', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Platoon');
+        expect(result[0].type).toBe('Platoon');
+        expect(result[0].units?.length).toBe(18);
+        expect(
+            warnSpy.calls.allArgs().flatMap(args => args.map(arg => String(arg))).some(message =>
+                message.includes('Too many combinations'),
+            ),
+        ).toBeFalse();
+    });
+
+    it('does not hit the cap for many battle armor squads with identical trooper counts', () => {
+        const warnSpy = spyOn(console, 'warn');
+        const units: Unit[] = Array.from({ length: 16 }, (_, index) => createBA(`BA-BUCKET-${index + 1}`, [], 4));
+
+        const result = resolveFromUnits(units, 'Federated Suns', 'Inner Sphere');
+
+        expect(result.length).toBeGreaterThan(0);
+        expect(result[0].name).not.toBe('Force');
+        expect(result[0].type).not.toBeNull();
+        expect(
+            warnSpy.calls.allArgs().flatMap(args => args.map(arg => String(arg))).some(message =>
+                message.includes('Too many combinations'),
+            ),
+        ).toBeFalse();
+    });
+
+    it('resolves 4 BA troopers as a Single for Inner Sphere orgs', () => {
+        const result = resolveFromUnits([createBA('IS-BA-1', [], 4)], 'Federated Suns', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Single');
+        expect(result[0].type).toBe('Single');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 4 conventional infantry troopers as a Squad for Inner Sphere orgs', () => {
+        const result = resolveFromUnits([createCI('IS-CI-SQ', 'Conventional Infantry', 4)], 'Federated Suns', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Squad');
+        expect(result[0].type).toBe('Squad');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 10 conventional infantry troopers as a Platoon for Inner Sphere orgs', () => {
+        const result = resolveFromUnits([createCI('IS-CI-PL', 'Conventional Infantry', 10)], 'Federated Suns', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Platoon');
+        expect(result[0].type).toBe('Platoon');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 4 conventional infantry troopers as a Squad for Dragoons orgs', () => {
+        const result = resolveFromUnits([createCI('WD-CI-SQ-1', 'Conventional Infantry', 4)], 'Wolf Dragoons', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Squad');
+        expect(result[0].type).toBe('Squad');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 10 conventional infantry troopers as a Platoon for Dragoons orgs', () => {
+        const result = resolveFromUnits([createCI('WD-CI-PL-1', 'Conventional Infantry', 10)], 'Wolf Dragoons', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Platoon');
+        expect(result[0].type).toBe('Platoon');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 32 conventional infantry troopers as a Platoon for Dragoons orgs', () => {
+        const result = resolveFromUnits([createCI('WD-CI-PL-2', 'Conventional Infantry', 32)], 'Wolf Dragoons', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Platoon');
+        expect(result[0].type).toBe('Platoon');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 4 BA troopers as a Single for Capellan orgs', () => {
+        const result = resolveFromUnits([createBA('CC-BA-1', [], 4)], 'Capellan Confederation', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Single');
+        expect(result[0].type).toBe('Single');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 4 conventional infantry troopers as a Squad for Capellan orgs', () => {
+        const result = resolveFromUnits([createCI('CC-CI-SQ', 'Conventional Infantry', 4)], 'Capellan Confederation', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Squad');
+        expect(result[0].type).toBe('Squad');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 10 conventional infantry troopers as a Platoon for Capellan orgs', () => {
+        const result = resolveFromUnits([createCI('CC-CI-PL', 'Conventional Infantry', 10)], 'Capellan Confederation', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Platoon');
+        expect(result[0].type).toBe('Platoon');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
     it('98 BM keeps 14 Sept groups under hierarchical aggregation', () => {
         const units: Unit[] = [];
         for (let i = 0; i < 98; i++) {
@@ -1022,6 +1154,37 @@ describe('resolveFromUnits', () => {
         expect(result[0].name).toBe('Nova');
         expect(result[0].type).toBe('Nova');
         expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('does not hit the Nova combination cap for a large mixed Clan force without battle armor', () => {
+        const warnSpy = spyOn(console, 'warn');
+        const units: Unit[] = [
+            ...Array.from({ length: 36 }, (_, index) => createBM(`Clan BM ${index + 1}`)),
+            ...Array.from({ length: 12 }, (_, index) =>
+                createBM(`Clan Omni BM ${index + 1}`, 'BattleMek Omni', true, ['OMNI']),
+            ),
+            ...Array.from({ length: 18 }, (_, index) => createCV(`Clan CV ${index + 1}`)),
+            ...Array.from({ length: 6 }, (_, index) => createCV(`Clan Omni CV ${index + 1}`, true, ['OMNI'])),
+            ...Array.from({ length: 12 }, (_, index) =>
+                createUnit(`Clan AF ${index + 1}`, 'Aero', 'Aerospace Fighter'),
+            ),
+            ...Array.from({ length: 6 }, (_, index) =>
+                createUnit(`Clan Omni AF ${index + 1}`, 'Aero', 'Aerospace Fighter', true, ['OMNI']),
+            ),
+            ...Array.from({ length: 8 }, (_, index) => createCI(`Clan CI ${index + 1}`)),
+        ];
+
+        const result = resolveFromUnits(units, 'Clan Test', 'HW Clan');
+        const allGroups = result.flatMap(group => [group, ...collectDescendantGroups(group)]);
+        const warnedMessages = warnSpy.calls.allArgs().flatMap(args => args.map(arg => String(arg)));
+
+        expect(result.length).toBeGreaterThan(0);
+        expect(allGroups.some(group => group.type === 'Nova')).toBeFalse();
+        expect(
+            warnedMessages.some(message =>
+                message.includes('Too many combinations') && message.includes('Nova'),
+            ),
+        ).toBeFalse();
     });
     
     it('resolves 10 BA (with MEC special) and 10 BM (with OMNI special) into a Supernova Binary', () => {

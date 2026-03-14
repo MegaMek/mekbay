@@ -95,7 +95,7 @@ export interface RenameGroupDialogResult {
             >&#10005;</button>
             }
           </div>
-          <p class="hint">If left empty, the formation name will be used</p>
+          <p class="hint">If left empty, the formation and organization name will be used</p>
         </div>
 
         <div class="form-fields">

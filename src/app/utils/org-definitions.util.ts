@@ -122,6 +122,32 @@ function sumCIMechanizedTroopers(units: Unit[]): number {
     return units.filter(u => isCI(u) && u.subtype === 'Mechanized Conventional Infantry').reduce((s, u) => s + (u.internal || 0), 0);
 }
 
+function getBattleArmorTransportBucketKey(unit: Unit): string {
+    if (isBA(unit)) {
+        const hasMEC = unit.as.specials.includes('MEC');
+        const hasXMEC = unit.as.specials.includes('XMEC');
+        if (hasMEC && hasXMEC) return 'ba:mec+xmec';
+        if (hasXMEC) return 'ba:xmec';
+        if (hasMEC) return 'ba:mec';
+    }
+    return 'other';
+}
+
+function getTransportFormationBucketKey(unit: Unit): string {
+    if (isBA(unit)) return getBattleArmorTransportBucketKey(unit);
+    if (isBM(unit)) return unit.omni === 1 ? 'bm:omni' : 'bm';
+    if (isCV(unit)) return unit.omni === 1 ? 'cv:omni' : 'cv';
+    if (isAero(unit)) return unit.omni === 1 ? 'af:omni' : 'af';
+    return `other`;
+}
+
+function getInfantryTrooperBucketKey(unit: Unit): string {
+    const troopers = unit.internal || 0;
+    if (isBA(unit)) return `ba:${troopers}`;
+    if (isCI(unit)) return `ci:${troopers}`;
+    return 'not-infantry';
+}
+
 // Shared Rules 
 // Rules reused across org definitions (e.g. WDOrg extends Clan + IS rules).
 
@@ -135,6 +161,7 @@ const CLAN_STAR: OrgTypeComposed = composedRule({
 const CLAN_NOVA: OrgTypeLeaf = leafRule({
     type: 'Nova', strict: true, priority: 1, countsAs: 'Star', modifiers: { '': 10 }, commandRank: 'Nova Commander', tier: 1.7,
     filter: (u) => isBM(u) || isCV(u) || isAero(u) || isBA(u),
+    customMatchBucketKey: getTransportFormationBucketKey,
     customMatchUnitCounts: [10],
     customMatch: (units) => {
         const ba = countBA(units);
@@ -212,6 +239,7 @@ const IS_WING: OrgTypeComposed = composedRule({
 const IS_SQUAD: OrgTypeLeaf = leafRule({
     type: 'Squad', modifiers: { '': 1 }, commandRank: 'Sergeant', tier: 0,
     filter: (u) => isInfantry(u),
+    customMatchBucketKey: getInfantryTrooperBucketKey,
     customMatch: (units) => {
         const baTroopers = sumBATroopers(units);
         const ciTroopers = sumCITroopers(units);
@@ -227,6 +255,7 @@ const IS_SQUAD: OrgTypeLeaf = leafRule({
 const IS_PLATOON: OrgTypeLeaf = leafRule({
     type: 'Platoon', countsAs: 'Lance', priority: 1, modifiers: { '': 1 }, commandRank: 'Lieutenant', tier: 1,
     filter: (u) => isCI(u),
+    customMatchBucketKey: getInfantryTrooperBucketKey,
     customMatch: (units) => {
         const ciTroopers = sumCITroopers(units);
         if (ciTroopers >= 6 && ciTroopers <= 32) return 0;
@@ -362,6 +391,7 @@ const ComStarOrg: OrgDefinition = {
         leafRule({
             type: 'Choir', strict: true, priority: 1, countsAs: 'Level II', modifiers: { '': 12 }, commandRank: 'Adept', tier: 1.6,
             filter: (u) => isBM(u) || isBA(u),
+            customMatchBucketKey: getTransportFormationBucketKey,
             customMatchUnitCounts: [12],
             customMatch: (units) => {
                 const bm = countBM(units);
@@ -558,6 +588,7 @@ const CCOrg: OrgDefinition = {
             type: 'Augmented Lance', countsAs: 'Lance', strict: true, priority: 1,
             modifiers: { '': 6 }, commandRank: 'Lieutenant', tier: 1.05,
             filter: (u) => isBM(u) || isCV(u) || isBA(u),
+            customMatchBucketKey: getTransportFormationBucketKey,
             customMatchUnitCounts: [6],
             customMatch: (units) => {
                 const bm = countBM(units); const bmOmni = countBMOmni(units);
