@@ -73,12 +73,14 @@ function unitPointTotal(units: Unit[], getPointRange: (u: Unit[]) => PointRange)
  */
 interface SolverContext {
     groupUnitCache: WeakMap<GroupSizeResult, Unit[]>;
+    abortWarning: string | null;
 }
 
 const GLOBAL_CUSTOM_MATCH_CACHE = new WeakMap<OrgTypeRule, Map<string, number>>();
 const GLOBAL_RULE_FILTER_CACHE = new WeakMap<OrgTypeRule, Map<string, boolean>>();
 const GLOBAL_CUSTOM_MATCH_CACHE_MAX_SIZE = 1000;
 const GLOBAL_RULE_FILTER_CACHE_MAX_SIZE = 1000;
+const CUSTOM_MATCH_COMBINATION_CAP = 50_000;
 
 function getOrCreateGlobalRuleCache<T>(
     store: WeakMap<OrgTypeRule, Map<string, T>>,
@@ -104,6 +106,12 @@ function setBoundedCacheValue<T>(memo: Map<string, T>, key: string, value: T, ma
             memo.delete(oldestKey);
         }
     }
+}
+
+function abortSolve(context: SolverContext, warning: string): void {
+    if (context.abortWarning) return;
+    context.abortWarning = warning;
+    console.warn(warning);
 }
 
 function collectGroupUnits(group: GroupSizeResult, context: SolverContext): Unit[] {
@@ -260,6 +268,13 @@ function buildUnitNameCountKey(
     return parts.join('|');
 }
 
+function getCustomMatchBucketKey(
+    rule: OrgTypeLeaf & Required<Pick<OrgTypeLeaf, 'customMatch'>>,
+    unit: Unit,
+): string {
+    return rule.customMatchBucketKey ? rule.customMatchBucketKey(unit) : unit.name;
+}
+
 function getAllowedCustomMatchUnitCounts(
     rule: OrgTypeLeaf,
     totalUnits: number,
@@ -341,7 +356,7 @@ function findValidShapes(
 ): { sameUnitCountBuckets: SameUnitCountBucket[]; shapes: Shape[] } {
     const sameUnitCountBuckets = new Map<string, Unit[]>();
     for (const u of eligible) {
-        const k = u.name;
+        const k = getCustomMatchBucketKey(rule, u);
         if (!sameUnitCountBuckets.has(k)) sameUnitCountBuckets.set(k, []);
         sameUnitCountBuckets.get(k)!.push(u);
     }
@@ -364,16 +379,19 @@ function findValidShapes(
     // Safety: cap total combinations at ~50k to prevent runaway enumeration.
     let totalCombos = 0;
     if (allowedUnitCounts) {
-        totalCombos = countConstrainedCombinations(maxPerBucket, allowedUnitCounts, 50_000);
+        totalCombos = countConstrainedCombinations(maxPerBucket, allowedUnitCounts, CUSTOM_MATCH_COMBINATION_CAP);
     } else {
         totalCombos = 1;
         for (const m of maxPerBucket) {
             totalCombos *= (m + 1);
-            if (totalCombos > 50_000) break;
+            if (totalCombos > CUSTOM_MATCH_COMBINATION_CAP) break;
         }
     }
-    if (totalCombos > 50_000) {
-        console.warn(`Too many combinations (${totalCombos}) for customMatch rule ${rule.type}, skipping shape enumeration`);
+    if (totalCombos > CUSTOM_MATCH_COMBINATION_CAP) {
+        abortSolve(
+            context,
+            `Too many combinations (${totalCombos}) for customMatch rule ${rule.type}, returning Force`,
+        );
         return { sameUnitCountBuckets: sameUnitCountBucketList, shapes: [] };
     }
 
@@ -1047,6 +1065,8 @@ function allocateLeaves(
         pool: Unit[],
         accumulated: GroupSizeResult[],
     ): void {
+        if (context.abortWarning) return;
+
         if (ruleIdx === cmRules.length) {
             // All customMatch rules processed, allocate remaining via affinity split
             const remaining = pool.length > 0
@@ -1065,6 +1085,7 @@ function allocateLeaves(
         // Branch 2+: try consuming via this rule (various k values)
         if (eligible.length > 0) {
             const { sameUnitCountBuckets, shapes } = findValidShapes(eligible, rule, context);
+            if (context.abortWarning) return;
             if (shapes.length > 0) {
                 const regularPts = getRegularCount(rule);
                 const totalPts = unitPointTotal(pool, getPointRange);
@@ -2237,6 +2258,7 @@ function betterResult(
 class OrgSolver {
     private readonly context: SolverContext = {
         groupUnitCache: new WeakMap<GroupSizeResult, Unit[]>(),
+        abortWarning: null,
     };
     private readonly rules: CompiledOrgRule[];
 
@@ -2247,12 +2269,19 @@ class OrgSolver {
         this.rules = compileRules(org.rules);
     }
 
-    resolveFromUnits(units: Unit[]): GroupSizeResult[] {
+    private resetAbortWarning(): void {
+        this.context.abortWarning = null;
+    }
+
+    private resolveFromUnitsInternal(units: Unit[]): GroupSizeResult[] {
         if (units.length === 0) {
             return [EMPTY_RESULT];
         }
 
         const leafCandidates = allocateLeaves(units, this.rules, this.org.getPointRange, this.context);
+        if (this.context.abortWarning) {
+            return [EMPTY_RESULT];
+        }
 
         let bestComposed: GroupSizeResult[] | null = null;
         let bestScore: {
@@ -2282,7 +2311,7 @@ class OrgSolver {
         return attachTopLevelLeftovers(bestComposed, units, this.context);
     }
 
-    resolveFromGroups(groupResults: GroupSizeResult[]): GroupSizeResult[] {
+    private resolveFromGroupsInternal(groupResults: GroupSizeResult[]): GroupSizeResult[] {
         if (groupResults.length === 0) {
             return [EMPTY_RESULT];
         }
@@ -2298,7 +2327,7 @@ class OrgSolver {
 
                 const groupUnits = collectGroupUnits(group, this.context);
                 if (groupUnits.length > 0) {
-                    const reevaluated = this.resolveFromUnits(groupUnits);
+                    const reevaluated = this.resolveFromUnitsInternal(groupUnits);
                     return FLATTEN_REEVALUATED_FOREIGN_GROUPS_BEFORE_COMPOSITION
                         ? flattenReevaluatedForeignGroups(reevaluated)
                         : reevaluated;
@@ -2308,6 +2337,10 @@ class OrgSolver {
             });
         } else {
             normalized = normalizeGroupsToOrg(groupResults, this.rules, this.context);
+        }
+
+        if (this.context.abortWarning) {
+            return [EMPTY_RESULT];
         }
 
         if (normalized.length === 1) {
@@ -2320,6 +2353,16 @@ class OrgSolver {
             allUnits,
             this.context,
         );
+    }
+
+    resolveFromUnits(units: Unit[]): GroupSizeResult[] {
+        this.resetAbortWarning();
+        return this.resolveFromUnitsInternal(units);
+    }
+
+    resolveFromGroups(groupResults: GroupSizeResult[]): GroupSizeResult[] {
+        this.resetAbortWarning();
+        return this.resolveFromGroupsInternal(groupResults);
     }
 }
 

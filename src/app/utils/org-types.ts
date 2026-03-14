@@ -203,6 +203,12 @@ export interface OrgTypeLeaf extends OrgTypeRuleBase {
      */
     readonly customMatch?: (units: Unit[]) => number;
     /**
+     * Optional structural bucket key for customMatch enumeration.
+     * Units with the same key are treated as interchangeable when building
+     * candidate subsets.
+     */
+    readonly customMatchBucketKey?: (unit: Unit) => string;
+    /**
      * Optional total unit counts worth enumerating for customMatch.
      * Use this when customMatch can only return 0 for specific subset sizes.
      */
