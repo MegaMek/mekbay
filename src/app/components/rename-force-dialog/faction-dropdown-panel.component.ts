@@ -156,7 +156,7 @@ import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-vis
                                  [src]="legendEraIcon"
                                  alt="Clan Invasion unavailable example" />
                         </span>
-                        <span class="legend-label">Faction not available in this era</span>
+                        <span class="legend-label">Faction doesn't exist in this era</span>
                     </div>
                     <div class="legend-icon-card">
                         <span class="era-chip legend-era-chip">
@@ -172,7 +172,7 @@ import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-vis
                                  [src]="legendEraIcon"
                                  alt="Clan Invasion glowing example" />
                         </span>
-                        <span class="legend-label">Faction and force units available</span>
+                        <span class="legend-label">Faction and force matching this era</span>
                     </div>
                 </div>
             </div>
@@ -186,8 +186,10 @@ import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-vis
         }
 
         .dropdown-shell {
+            box-sizing: border-box;
             display: flex;
             flex-direction: column;
+            height: 100%;
             min-height: 0;
         }
 
@@ -390,8 +392,29 @@ import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-vis
         }
 
         @media (max-width: 560px) {
+            .legend-footer {
+                padding: 4px;
+            }
+
             .legend-icons {
-                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 4px;
+            }
+
+            .legend-label {
+                font-size: 0.6em;
+            }
+        }
+
+        @media (max-width: 400px) {
+            .era-chip {
+                padding: 0;
+            }
+        }
+
+        @media (max-width: 340px) {
+            .era-icon {
+                height: 1.05em;
+                width: 1.05em;
             }
         }
     `],

@@ -74,65 +74,8 @@ export interface EditPilotResult {
     host: {
         class: 'fullscreen-dialog-host glass'
     },
-    template: `
-    <div class="wide-dialog">
-        <h2 class="wide-dialog-title">Warrior Data</h2>
-        <div class="wide-dialog-body">
-            <div class="form-fields">
-                <label class="field-label">Name</label>
-                <input #nameInput type="text" class="field-input" autocomplete="off" [value]="data.name || ''" maxlength="32" (keydown.enter)="submit()" />
-            </div>
-            <div class="form-row no-stack">
-                <div class="form-fields">
-                    <label class="field-label">{{ data.labelGunnery || 'Gunnery Skill' }}</label>
-                    <div #gunneryTrigger>
-                        <button class="bt-select skill-selector" (click)="toggleGunneryDropdown()">
-                            <span class="skill-selector-value">{{ currentGunnery() }}</span>
-                        </button>
-                    </div>
-                </div>
-                <div class="form-fields" [class.disabled]="!!data.disablePiloting">
-                    <label class="field-label">{{ data.labelPiloting || 'Piloting Skill' }}</label>
-                    <div #pilotingTrigger>
-                        <button class="bt-select skill-selector" [disabled]="!!data.disablePiloting" (click)="togglePilotingDropdown()">
-                            <span class="skill-selector-value">{{ currentPiloting() }}</span>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="wide-dialog-actions">
-            <button (click)="submit()" class="bt-button">CONFIRM</button>
-            @if (!data.disablePiloting && hasBvPreview) {
-            <button #matrixTrigger class="bt-button square" title="Skill Matrix" (click)="toggleMatrixView()">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="1" y="1" width="4" height="4" rx="0.5"/>
-                    <rect x="6" y="1" width="4" height="4" rx="0.5"/>
-                    <rect x="11" y="1" width="4" height="4" rx="0.5"/>
-                    <rect x="1" y="6" width="4" height="4" rx="0.5"/>
-                    <rect x="6" y="6" width="4" height="4" rx="0.5"/>
-                    <rect x="11" y="6" width="4" height="4" rx="0.5"/>
-                    <rect x="1" y="11" width="4" height="4" rx="0.5"/>
-                    <rect x="6" y="11" width="4" height="4" rx="0.5"/>
-                    <rect x="11" y="11" width="4" height="4" rx="0.5"/>
-                </svg>
-            </button>
-            }
-            <button (click)="close()" class="bt-button">DISMISS</button>
-        </div>
-    </div>
-    `,
-    styles: `
-        .skill-selector {
-            width: 100%;
-            text-align: center;
-            font-size: 1em;
-            padding: 8px 20px 8px 8px;
-        }
-        .skill-selector-value {
-            font-weight: 700;
-        }
-    `,
+    templateUrl: './edit-pilot-dialog.component.html',
+    styleUrls: ['./edit-pilot-dialog.component.scss']
 })
 export class EditPilotDialogComponent {
     nameInput = viewChild.required<ElementRef<HTMLInputElement>>('nameInput');

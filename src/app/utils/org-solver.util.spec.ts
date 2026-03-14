@@ -122,6 +122,7 @@ function createContuberniumGroup(unit: Unit, tag: 'infantry' | 'non-infantry'): 
     return {
         name: 'Contubernium',
         type: 'Contubernium',
+        modifierKey: '',
         countsAsType: null,
         tier: 0,
         units: [unit],
@@ -139,9 +140,27 @@ function createForeignGroup(
     return {
         name,
         type,
+        modifierKey: '',
         countsAsType,
         tier,
         units,
+    };
+}
+
+function createGroupResult(
+    name: string,
+    type: GroupSizeResult['type'],
+    modifierKey: string,
+    tier: number,
+    children?: GroupSizeResult[],
+): GroupSizeResult {
+    return {
+        name,
+        type,
+        modifierKey,
+        countsAsType: null,
+        tier,
+        children,
     };
 }
 
@@ -160,7 +179,7 @@ describe('resolveFromUnits', () => {
             createBM('BM4'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Random Inner Sphere Faction');
+        const result = resolveFromUnits(units, 'Random Inner Sphere Faction', 'Inner Sphere');
 
         expect(result[0].name).toBe('Lance');
         expect(result[0].type).toBe('Lance');
@@ -174,7 +193,7 @@ describe('resolveFromUnits', () => {
             createBM('BM3'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Random Inner Sphere Faction');
+        const result = resolveFromUnits(units, 'Random Inner Sphere Faction', 'Inner Sphere');
 
         expect(result[0].name).toBe('Under-Strength Lance');
         expect(result[0].type).toBe('Lance');
@@ -190,7 +209,7 @@ describe('resolveFromUnits', () => {
             createBM('BM5'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Random Inner Sphere Faction');
+        const result = resolveFromUnits(units, 'Random Inner Sphere Faction', 'Inner Sphere');
 
         expect(result[0].name).toBe('Reinforced Lance');
         expect(result[0].type).toBe('Lance');
@@ -207,7 +226,7 @@ describe('resolveFromUnits', () => {
             createBM('BM6'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Random Inner Sphere Faction');
+        const result = resolveFromUnits(units, 'Random Inner Sphere Faction', 'Inner Sphere');
 
         expect(result[0].name).toBe('Fortified Lance');
         expect(result[0].type).toBe('Lance');
@@ -225,11 +244,12 @@ describe('resolveFromUnits', () => {
             createBM('BM7'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Random Inner Sphere Faction');
+        const result = resolveFromUnits(units, 'Random Inner Sphere Faction', 'Inner Sphere');
 
         expect(result.length).toBe(1);
         expect(result[0].name).toBe('Under-Strength Company');
         expect(result[0].type).toBe('Company');
+        expect(result[0].modifierKey).toBe('Under-Strength ');
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
@@ -245,11 +265,344 @@ describe('resolveFromUnits', () => {
             createBM('BM8'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Random Inner Sphere Faction');
+        const result = resolveFromUnits(units, 'Random Inner Sphere Faction', 'Inner Sphere');
 
         expect(result.length).toBe(1);
         expect(result[0].name).toBe('Under-Strength Company');
         expect(result[0].type).toBe('Company');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('groups four lances into a Reinforced Company', () => {
+        const lanceGroups = [0, 1, 2, 3].map(lanceIndex =>
+            resolveFromUnits([
+                createBM(`L${lanceIndex + 1}-1`),
+                createBM(`L${lanceIndex + 1}-2`),
+                createBM(`L${lanceIndex + 1}-3`),
+                createBM(`L${lanceIndex + 1}-4`),
+            ], 'Inner Sphere', 'Mercenary')[0],
+        );
+
+        const result = resolveFromGroups('Inner Sphere', 'Mercenary', lanceGroups);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Reinforced Company');
+        expect(result[0].type).toBe('Company');
+        expect(result[0].modifierKey).toBe('Reinforced ');
+        expect(result[0].children?.length).toBe(4);
+        expect(result[0].children?.every(child => child.name === 'Lance')).toBeTrue();
+        expect(result[0].children?.every(child => child.type === 'Lance')).toBeTrue();
+        expect(result[0].children?.every(child => child.modifierKey === '')).toBeTrue();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('assimilates an Under-Strength Company and two lances into a Reinforced Company', () => {
+        const underStrengthCompany = resolveFromUnits([
+            createBM('CO-1'),
+            createBM('CO-2'),
+            createBM('CO-3'),
+            createBM('CO-4'),
+            createBM('CO-5'),
+            createBM('CO-6'),
+            createBM('CO-7'),
+            createBM('CO-8'),
+        ], 'Inner Sphere', 'Mercenary');
+        const firstLance = resolveFromUnits([
+            createBM('L1-1'),
+            createBM('L1-2'),
+            createBM('L1-3'),
+            createBM('L1-4'),
+        ], 'Inner Sphere', 'Mercenary');
+        const secondLance = resolveFromUnits([
+            createBM('L2-1'),
+            createBM('L2-2'),
+            createBM('L2-3'),
+            createBM('L2-4'),
+        ], 'Inner Sphere', 'Mercenary');
+
+        expect(underStrengthCompany.length).toBe(1);
+        expect(underStrengthCompany[0].name).toBe('Under-Strength Company');
+        expect(underStrengthCompany[0].type).toBe('Company');
+        expect(firstLance.length).toBe(1);
+        expect(firstLance[0].name).toBe('Lance');
+        expect(firstLance[0].type).toBe('Lance');
+        expect(secondLance.length).toBe(1);
+        expect(secondLance[0].name).toBe('Lance');
+        expect(secondLance[0].type).toBe('Lance');
+
+        const result = resolveFromGroups('Inner Sphere', 'Mercenary', [
+            underStrengthCompany[0],
+            firstLance[0],
+            secondLance[0],
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Reinforced Company');
+        expect(result[0].type).toBe('Company');
+        expect(result[0].children?.length).toBe(4);
+        expect(result[0].children?.every(child => child.name === 'Lance')).toBeTrue();
+        expect(result[0].children?.every(child => child.type === 'Lance')).toBeTrue();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('regularizes an Under-Strength Company before building upward from four additional lances', () => {
+        const underStrengthCompany = resolveFromUnits([
+            createBM('UPCO-1'),
+            createBM('UPCO-2'),
+            createBM('UPCO-3'),
+            createBM('UPCO-4'),
+            createBM('UPCO-5'),
+            createBM('UPCO-6'),
+            createBM('UPCO-7'),
+            createBM('UPCO-8'),
+        ], 'Inner Sphere', 'Mercenary');
+        const lanceGroups = [0, 1, 2, 3].map(lanceIndex =>
+            resolveFromUnits([
+                createBM(`UPL${lanceIndex + 1}-1`),
+                createBM(`UPL${lanceIndex + 1}-2`),
+                createBM(`UPL${lanceIndex + 1}-3`),
+                createBM(`UPL${lanceIndex + 1}-4`),
+            ], 'Inner Sphere', 'Mercenary')[0],
+        );
+
+        const result = resolveFromGroups('Inner Sphere', 'Mercenary', [
+            underStrengthCompany[0],
+            ...lanceGroups,
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Under-Strength Battalion');
+        expect(result[0].type).toBe('Battalion');
+        expect(result[0].modifierKey).toBe('Under-Strength ');
+        expect(result[0].children?.length).toBe(2);
+        expect(result[0].children?.every(child => child.type === 'Company')).toBeTrue();
+        expect(result[0].children?.every(child => child.name === 'Company')).toBeTrue();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('promotes a sub-regular company only to regular, not directly to reinforced', () => {
+        const firstUnderStrengthCompany = resolveFromUnits([
+            createBM('INV-BCO-1'),
+            createBM('INV-BCO-2'),
+            createBM('INV-BCO-3'),
+            createBM('INV-BCO-4'),
+            createBM('INV-BCO-5'),
+            createBM('INV-BCO-6'),
+            createBM('INV-BCO-7'),
+            createBM('INV-BCO-8'),
+        ], 'Inner Sphere', 'Mercenary');
+        const secondUnderStrengthCompany = resolveFromUnits([
+            createBM('INV-CCO-1'),
+            createBM('INV-CCO-2'),
+            createBM('INV-CCO-3'),
+            createBM('INV-CCO-4'),
+            createBM('INV-CCO-5'),
+            createBM('INV-CCO-6'),
+            createBM('INV-CCO-7'),
+            createBM('INV-CCO-8'),
+        ], 'Inner Sphere', 'Mercenary');
+        const underStrengthBattalion = resolveFromGroups('Inner Sphere', 'Mercenary', [
+            firstUnderStrengthCompany[0],
+            secondUnderStrengthCompany[0],
+        ]);
+        const thirdUnderStrengthCompany = resolveFromUnits([
+            createBM('INV-DCO-1'),
+            createBM('INV-DCO-2'),
+            createBM('INV-DCO-3'),
+            createBM('INV-DCO-4'),
+            createBM('INV-DCO-5'),
+            createBM('INV-DCO-6'),
+            createBM('INV-DCO-7'),
+            createBM('INV-DCO-8'),
+        ], 'Inner Sphere', 'Mercenary');
+        const firstLance = resolveFromUnits([
+            createBM('INV-L1-1'),
+            createBM('INV-L1-2'),
+            createBM('INV-L1-3'),
+            createBM('INV-L1-4'),
+        ], 'Inner Sphere', 'Mercenary');
+        const secondLance = resolveFromUnits([
+            createBM('INV-L2-1'),
+            createBM('INV-L2-2'),
+            createBM('INV-L2-3'),
+            createBM('INV-L2-4'),
+        ], 'Inner Sphere', 'Mercenary');
+
+        const result = resolveFromGroups('Inner Sphere', 'Mercenary', [
+            underStrengthBattalion[0],
+            thirdUnderStrengthCompany[0],
+            firstLance[0],
+            secondLance[0],
+        ]);
+
+        expect(result.length).toBe(2);
+        expect(result[0].name).toBe('Battalion');
+        expect(result[0].type).toBe('Battalion');
+        expect(result[0].modifierKey).toBe('');
+        expect(result[1].name).toBe('Lance');
+        expect(result[1].type).toBe('Lance');
+        expect(result[1].modifierKey).toBe('');
+    });
+
+    it('assimilates an Under-Strength Battalion, an Under-Strength Company, and two lances from the lowest tier first', () => {
+        const firstUnderStrengthCompany = resolveFromUnits([
+            createBM('BCO-1'),
+            createBM('BCO-2'),
+            createBM('BCO-3'),
+            createBM('BCO-4'),
+            createBM('BCO-5'),
+            createBM('BCO-6'),
+            createBM('BCO-7'),
+            createBM('BCO-8'),
+        ], 'Inner Sphere', 'Mercenary');
+        const secondUnderStrengthCompany = resolveFromUnits([
+            createBM('CCO-1'),
+            createBM('CCO-2'),
+            createBM('CCO-3'),
+            createBM('CCO-4'),
+            createBM('CCO-5'),
+            createBM('CCO-6'),
+            createBM('CCO-7'),
+            createBM('CCO-8'),
+        ], 'Inner Sphere', 'Mercenary');
+        const underStrengthBattalion = resolveFromGroups('Inner Sphere', 'Mercenary', [
+            firstUnderStrengthCompany[0],
+            secondUnderStrengthCompany[0],
+        ]);
+        const thirdUnderStrengthCompany = resolveFromUnits([
+            createBM('DCO-1'),
+            createBM('DCO-2'),
+            createBM('DCO-3'),
+            createBM('DCO-4'),
+            createBM('DCO-5'),
+            createBM('DCO-6'),
+            createBM('DCO-7'),
+            createBM('DCO-8'),
+        ], 'Inner Sphere', 'Mercenary');
+        const firstLance = resolveFromUnits([
+            createBM('BL1-1'),
+            createBM('BL1-2'),
+            createBM('BL1-3'),
+            createBM('BL1-4'),
+        ], 'Inner Sphere', 'Mercenary');
+        const secondLance = resolveFromUnits([
+            createBM('BL2-1'),
+            createBM('BL2-2'),
+            createBM('BL2-3'),
+            createBM('BL2-4'),
+        ], 'Inner Sphere', 'Mercenary');
+
+        expect(underStrengthBattalion.length).toBe(1);
+        expect(underStrengthBattalion[0].name).toBe('Under-Strength Battalion');
+        expect(underStrengthBattalion[0].type).toBe('Battalion');
+
+        const result = resolveFromGroups('Inner Sphere', 'Mercenary', [
+            underStrengthBattalion[0],
+            thirdUnderStrengthCompany[0],
+            firstLance[0],
+            secondLance[0],
+        ]);
+
+        expect(result.length).toBe(2);
+        expect(result[0].name).toBe('Battalion');
+        expect(result[0].type).toBe('Battalion');
+        expect(result[0].children?.length).toBe(3);
+        expect(result[0].children?.filter(child => child.name === 'Under-Strength Company').length).toBe(2);
+        expect(result[0].children?.some(child => child.name === 'Company')).toBeTrue();
+        expect(result[0].children?.every(child => child.type === 'Company')).toBeTrue();
+        expect(result[1].name).toBe('Lance');
+        expect(result[1].type).toBe('Lance');
+        expect(result[1].leftoverUnits).toBeUndefined();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('regularizes a Thin Level II with ten Level I into two regular Level II groups', () => {
+        const thinLevelII = resolveFromUnits([
+            createBM('CS-TL2-1'),
+            createBM('CS-TL2-2'),
+        ], 'ComStar', 'Inner Sphere');
+        const levelIs = Array.from({ length: 10 }, (_, index) =>
+            resolveFromUnits([
+                createBM(`CS-L1-${index + 1}`),
+            ], 'ComStar', 'Inner Sphere')[0],
+        );
+
+        expect(thinLevelII.length).toBe(1);
+        expect(thinLevelII[0].name).toBe('Thin Level II');
+        expect(thinLevelII[0].type).toBe('Level II');
+        expect(thinLevelII[0].modifierKey).toBe('Thin ');
+        expect(levelIs.every(group => group.name === 'Level I')).toBeTrue();
+        expect(levelIs.every(group => group.type === 'Level I')).toBeTrue();
+
+        const result = resolveFromGroups('ComStar', 'Inner Sphere', [
+            thinLevelII[0],
+            ...levelIs,
+        ]);
+
+        expect(result.length).toBe(2);
+        expect(result.every(group => group.name === 'Level II')).toBeTrue();
+        expect(result.every(group => group.type === 'Level II')).toBeTrue();
+        expect(result.every(group => group.modifierKey === '')).toBeTrue();
+        expect(result.every(group => group.children?.length === 6)).toBeTrue();
+        expect(result.every(group => group.children?.every(child => child.name === 'Level I'))).toBeTrue();
+        expect(result.every(group => group.leftoverUnits === undefined)).toBeTrue();
+    });
+
+    it('repackages two Demi-Level I groups into one regular Level I', () => {
+        const demiLevelIs = [
+            createGroupResult('Demi-Level I', 'Level I', 'Demi-', 0),
+            createGroupResult('Demi-Level I', 'Level I', 'Demi-', 0),
+        ];
+
+        const result = resolveFromGroups('ComStar', 'Inner Sphere', demiLevelIs);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Level I');
+        expect(result[0].type).toBe('Level I');
+        expect(result[0].modifierKey).toBe('');
+        expect(result[0].children?.length).toBe(2);
+        expect(result[0].children?.every(child => child.name === 'Demi-Level I')).toBeTrue();
+        expect(result[0].children?.every(child => child.modifierKey === 'Demi-')).toBeTrue();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('repackages twelve Demi-Level I groups into one regular Level II', () => {
+        const demiLevelIs = Array.from({ length: 12 }, () =>
+            createGroupResult('Demi-Level I', 'Level I', 'Demi-', 0),
+        );
+
+        const result = resolveFromGroups('ComStar', 'Inner Sphere', demiLevelIs);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Level II');
+        expect(result[0].type).toBe('Level II');
+        expect(result[0].modifierKey).toBe('');
+        expect(result[0].children?.length).toBe(6);
+        expect(result[0].children?.every(child => child.name === 'Level I')).toBeTrue();
+        expect(result[0].children?.every(child => child.modifierKey === '')).toBeTrue();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('groups thirty-six Level I into a Level III for ComStar', () => {
+        const levelIs = Array.from({ length: 36 }, (_, index) =>
+            resolveFromUnits([
+                createBM(`CS-L3-${index + 1}`),
+            ], 'ComStar', 'Inner Sphere')[0],
+        );
+
+        expect(levelIs.every(group => group.name === 'Level I')).toBeTrue();
+        expect(levelIs.every(group => group.type === 'Level I')).toBeTrue();
+
+        const result = resolveFromGroups('ComStar', 'Inner Sphere', levelIs);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Level III');
+        expect(result[0].type).toBe('Level III');
+        expect(result[0].modifierKey).toBe('');
+        expect(result[0].children?.length).toBe(6);
+        expect(result[0].children?.every(child => child.name === 'Level II')).toBeTrue();
+        expect(result[0].children?.every(child => child.type === 'Level II')).toBeTrue();
+        expect(result[0].children?.every(child => child.modifierKey === '')).toBeTrue();
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
@@ -263,7 +616,7 @@ describe('resolveFromUnits', () => {
             createBM('BM2'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Capellan Confederation');
+        const result = resolveFromUnits(units, 'Capellan Confederation', 'Inner Sphere');
 
         expect(result[0].type).toBe('Augmented Lance');
         expect(result[0].leftoverUnits).toBeUndefined();
@@ -281,7 +634,7 @@ describe('resolveFromUnits', () => {
             createBM('BM4'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Capellan Confederation');
+        const result = resolveFromUnits(units, 'Capellan Confederation', 'Inner Sphere');
 
         expect(result.length).toBe(1);
         expect(result[0].name).toBe('Under-Strength Company');
@@ -298,7 +651,7 @@ describe('resolveFromUnits', () => {
             createUnit('AF2', 'Aero', 'Aerospace Fighter'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Federated Suns');
+        const result = resolveFromUnits(units, 'Federated Suns', 'Inner Sphere');
 
         expect(result.length).toBe(1);
         expect(result[0].type).toBe('Air Lance');
@@ -311,7 +664,7 @@ describe('resolveFromUnits', () => {
             createUnit('AF1', 'Aero', 'Aerospace Fighter'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Federated Suns');
+        const result = resolveFromUnits(units, 'Federated Suns', 'Inner Sphere');
 
         expect(result.length).toBe(1);
         expect(result[0].type).toBe('Flight');
@@ -324,7 +677,7 @@ describe('resolveFromUnits', () => {
             createBM('BM1'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
+        const result = resolveFromUnits(units, 'Society', 'HW Clan');
 
         expect(result.length).toBe(1);
         expect(result[0].type).toBe('Un');
@@ -338,7 +691,7 @@ describe('resolveFromUnits', () => {
             createBM('BM2'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
+        const result = resolveFromUnits(units, 'Society', 'HW Clan');
 
         expect(result.length).toBe(2);
         expect(result.every(group => group.type === 'Un')).toBeTrue();
@@ -353,7 +706,7 @@ describe('resolveFromUnits', () => {
             createBM('BM2'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
+        const result = resolveFromUnits(units, 'Society', 'HW Clan');
 
         expect(result.length).toBe(1);
         expect(result[0].type).toBe('Trey');
@@ -374,7 +727,7 @@ describe('resolveFromUnits', () => {
             createCV('CV2'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
+        const result = resolveFromUnits(units, 'Society', 'HW Clan');
 
         expect(result.length).toBe(1);
         expect(result[0].name).toBe('Un');
@@ -391,7 +744,7 @@ describe('resolveFromUnits', () => {
 
         units.forEach(u => u.internal = 25);
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
+        const result = resolveFromUnits(units, 'Society', 'HW Clan');
 
         expect(result.length).toBe(1);
         expect(result[0].name).toBe('Un');
@@ -402,7 +755,7 @@ describe('resolveFromUnits', () => {
     it('resolves 3 battle armor troopers in Society as Un', () => {
         const battleArmor = createBA('BA1', [], 3);
 
-        const result = resolveFromUnits([battleArmor], 'Inner Sphere', 'Society');
+        const result = resolveFromUnits([battleArmor], 'Society', 'HW Clan');
 
         expect(result.length).toBe(1);
         expect(result[0].name).toBe('Un');
@@ -419,7 +772,7 @@ describe('resolveFromUnits', () => {
             createCV('CV1'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Society');
+        const result = resolveFromUnits(units, 'Society', 'HW Clan');
         const descendantGroups = collectDescendantGroups(result[0]);
 
         expect(result.length).toBe(1);
@@ -436,7 +789,7 @@ describe('resolveFromUnits', () => {
             units.push(createBM(`BM${i + 1}`));
         }
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Society', true);
+        const result = resolveFromUnits(units, 'Society', 'HW Clan', true);
 
         expect(result.length).toBe(14);
         expect(result.every(group => group.name === 'Sept')).toBeTrue();
@@ -450,8 +803,8 @@ describe('resolveFromUnits', () => {
             units.push(createBM(`BM${i + 1}`));
         }
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Society', true);
-        const aggregated = getAggregatedGroupsResult(result, 'Inner Sphere', 'Society');
+        const result = resolveFromUnits(units, 'Society', 'HW Clan', true);
+        const aggregated = getAggregatedGroupsResult(result, 'Society', 'HW Clan');
 
         expect(result.length).toBe(14);
         expect(aggregated.name).toBe('14x Sept');
@@ -468,7 +821,7 @@ describe('resolveFromUnits', () => {
             createUnit('AF1', 'Aero', 'Aerospace Fighter'),
         ];
 
-        const result = resolveFromUnits(units, 'Inner Sphere', 'Federated Suns');
+        const result = resolveFromUnits(units, 'Federated Suns', 'Inner Sphere');
 
         expect(result.length).toBe(1);
         expect(result[0].type).toBe('Air Lance');
@@ -489,7 +842,7 @@ describe('resolveFromUnits', () => {
             createContuberniumGroup(createCV('CV5'), 'non-infantry'),
         ];
 
-        const result = resolveFromGroups('Inner Sphere', 'Marian Hegemony', groupResults);
+        const result = resolveFromGroups('Marian Hegemony', 'Inner Sphere', groupResults);
 
         expect(result.length).toBe(1);
         expect(result[0].type).toBe('Maniple');
@@ -507,15 +860,15 @@ describe('resolveFromUnits', () => {
                 units.push(createBM(`IS-BM-${companyIndex + 1}-${unitIndex + 1}`));
             }
 
-            const companyResult = resolveFromUnits(units, 'Inner Sphere', 'Federated Suns');
+            const companyResult = resolveFromUnits(units, 'Federated Suns', 'Inner Sphere');
             expect(companyResult.length).toBe(1);
             expect(companyResult[0].type).toBe('Company');
             companyGroups.push(companyResult[0]);
         }
 
-        const firstPass = resolveFromGroups('Inner Sphere', 'Federated Suns', companyGroups);
-        const secondPass = resolveFromGroups('Inner Sphere', 'Federated Suns', firstPass);
-        const thirdPass = resolveFromGroups('Inner Sphere', 'Federated Suns', secondPass);
+        const firstPass = resolveFromGroups('Federated Suns', 'Inner Sphere', companyGroups);
+        const secondPass = resolveFromGroups('Federated Suns', 'Inner Sphere', firstPass);
+        const thirdPass = resolveFromGroups('Federated Suns', 'Inner Sphere', secondPass);
 
         for (const pass of [firstPass, secondPass, thirdPass]) {
             expect(pass.length).toBe(1);
@@ -542,17 +895,17 @@ describe('resolveFromUnits', () => {
                     createUnit(`IS-AF-${companyIndex + 1}-${airLanceIndex + 1}-2`, 'Aero', 'Aerospace Fighter'),
                 ];
 
-                const lanceResult = resolveFromUnits(lanceUnits, 'Inner Sphere', 'Federated Suns');
-                const flightResult = resolveFromUnits(flightUnits, 'Inner Sphere', 'Federated Suns');
+                const lanceResult = resolveFromUnits(lanceUnits, 'Federated Suns', 'Inner Sphere');
+                const flightResult = resolveFromUnits(flightUnits, 'Federated Suns', 'Inner Sphere');
 
                 expect(lanceResult.length).toBe(1);
                 expect(lanceResult[0].type).toBe('Lance');
                 expect(flightResult.length).toBe(1);
                 expect(flightResult[0].type).toBe('Flight');
 
-                const airLancePass1 = resolveFromGroups('Inner Sphere', 'Federated Suns', [lanceResult[0], flightResult[0]]);
-                const airLancePass2 = resolveFromGroups('Inner Sphere', 'Federated Suns', airLancePass1);
-                const airLancePass3 = resolveFromGroups('Inner Sphere', 'Federated Suns', airLancePass2);
+                const airLancePass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', [lanceResult[0], flightResult[0]]);
+                const airLancePass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', airLancePass1);
+                const airLancePass3 = resolveFromGroups('Federated Suns', 'Inner Sphere', airLancePass2);
 
                 for (const pass of [airLancePass1, airLancePass2, airLancePass3]) {
                     expect(pass.length).toBe(1);
@@ -567,9 +920,9 @@ describe('resolveFromUnits', () => {
                 airLances.push(airLancePass3[0]);
             }
 
-            const companyPass1 = resolveFromGroups('Inner Sphere', 'Federated Suns', airLances);
-            const companyPass2 = resolveFromGroups('Inner Sphere', 'Federated Suns', companyPass1);
-            const companyPass3 = resolveFromGroups('Inner Sphere', 'Federated Suns', companyPass2);
+            const companyPass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', airLances);
+            const companyPass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', companyPass1);
+            const companyPass3 = resolveFromGroups('Federated Suns', 'Inner Sphere', companyPass2);
 
             for (const pass of [companyPass1, companyPass2, companyPass3]) {
                 expect(pass.length).toBe(1);
@@ -590,9 +943,9 @@ describe('resolveFromUnits', () => {
                 buildAirLanceCompany(battalionIndex * 3 + 2),
             ];
 
-            const battalionPass1 = resolveFromGroups('Inner Sphere', 'Federated Suns', companies);
-            const battalionPass2 = resolveFromGroups('Inner Sphere', 'Federated Suns', battalionPass1);
-            const battalionPass3 = resolveFromGroups('Inner Sphere', 'Federated Suns', battalionPass2);
+            const battalionPass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', companies);
+            const battalionPass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', battalionPass1);
+            const battalionPass3 = resolveFromGroups('Federated Suns', 'Inner Sphere', battalionPass2);
 
             for (const pass of [battalionPass1, battalionPass2, battalionPass3]) {
                 expect(pass.length).toBe(1);
@@ -613,9 +966,9 @@ describe('resolveFromUnits', () => {
                 buildBattalion(regimentIndex * 3 + 2),
             ];
 
-            const regimentPass1 = resolveFromGroups('Inner Sphere', 'Federated Suns', battalions);
-            const regimentPass2 = resolveFromGroups('Inner Sphere', 'Federated Suns', regimentPass1);
-            const regimentPass3 = resolveFromGroups('Inner Sphere', 'Federated Suns', regimentPass2);
+            const regimentPass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', battalions);
+            const regimentPass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', regimentPass1);
+            const regimentPass3 = resolveFromGroups('Federated Suns', 'Inner Sphere', regimentPass2);
 
             for (const pass of [regimentPass1, regimentPass2, regimentPass3]) {
                 expect(pass.length).toBe(1);
@@ -635,9 +988,9 @@ describe('resolveFromUnits', () => {
             buildRegiment(2),
         ];
 
-        const brigadePass1 = resolveFromGroups('Inner Sphere', 'Federated Suns', regiments);
-        const brigadePass2 = resolveFromGroups('Inner Sphere', 'Federated Suns', brigadePass1);
-        const brigadePass3 = resolveFromGroups('Inner Sphere', 'Federated Suns', brigadePass2);
+        const brigadePass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', regiments);
+        const brigadePass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', brigadePass1);
+        const brigadePass3 = resolveFromGroups('Federated Suns', 'Inner Sphere', brigadePass2);
 
         for (const pass of [brigadePass1, brigadePass2, brigadePass3]) {
             expect(pass.length).toBe(1);
@@ -663,7 +1016,7 @@ describe('resolveFromUnits', () => {
             createBM('BM5', 'BattleMek Omni', true, ['OMNI'])
         ];
 
-        const result = resolveFromUnits(units, 'Clan', 'Clan Test');
+        const result = resolveFromUnits(units, 'Clan Test', 'HW Clan');
 
         expect(result.length).toBe(1);
         expect(result[0].name).toBe('Nova');
@@ -695,7 +1048,7 @@ describe('resolveFromUnits', () => {
             createBM('BM5', 'BattleMek Omni', true, ['OMNI'])
         ];
 
-        const result = resolveFromUnits(units, 'Clan', 'Clan Test');
+        const result = resolveFromUnits(units, 'Clan Test', 'HW Clan');
 
         expect(result.length).toBe(1);
         expect(result[0].name).toBe('Supernova Binary');
@@ -727,7 +1080,7 @@ describe('resolveFromUnits', () => {
             createBM('BM5', 'BattleMek Omni', true, ['OMNI'])
         ];
 
-        const result1 = resolveFromUnits(units1, 'Clan', 'Clan Test');
+        const result1 = resolveFromUnits(units1, 'Clan Test', 'HW Clan');
         
         expect(result1.length).toBe(1);
         expect(result1[0].name).toBe('Supernova Binary');
@@ -747,14 +1100,14 @@ describe('resolveFromUnits', () => {
             createBM('BM5', 'BattleMek Omni', true, ['OMNI'])
         ];
 
-        const result2 = resolveFromUnits(units2, 'Clan', 'Clan Test');
+        const result2 = resolveFromUnits(units2, 'Clan Test', 'HW Clan');
 
         expect(result2.length).toBe(1);
         expect(result2[0].name).toBe('Nova');
         expect(result2[0].type).toBe('Nova');
         expect(result2[0].leftoverUnits).toBeUndefined();
 
-        const result3 = resolveFromGroups('Clan', 'Clan Test', [
+        const result3 = resolveFromGroups('Clan Test', 'HW Clan', [
             result1[0],
             result2[0],
         ]);
@@ -780,7 +1133,7 @@ describe('resolveFromUnits', () => {
             createBM('BM2', 'BattleMek Omni', true, ['OMNI'])
         ];
 
-        const result = resolveFromUnits(units, 'Clan', 'Clan Test');
+        const result = resolveFromUnits(units, 'Clan Test', 'HW Clan');
 
         expect(result.length).toBe(1);
         expect(result[0].name).toBe('Nova');
@@ -804,7 +1157,7 @@ describe('resolveFromUnits', () => {
             createBM('BM1', 'BattleMek Omni', true, ['OMNI'])
         ];
 
-        const result = resolveFromUnits(units, 'Clan', 'Clan Test');
+        const result = resolveFromUnits(units, 'Clan Test', 'HW Clan');
 
         expect(result.length).toBe(1);
         expect(result[0].name).toBe('Binary');
@@ -831,7 +1184,7 @@ describe('resolveFromUnits', () => {
             createBM('BM1', 'BattleMek Omni', true, ['OMNI'])
         ];
 
-        const result = resolveFromUnits(units, 'Clan', 'Clan Test');
+        const result = resolveFromUnits(units, 'Clan Test', 'HW Clan');
 
         expect(result.length).toBe(1);
         expect(result[0].name).toBe('Trinary');
@@ -842,7 +1195,7 @@ describe('resolveFromUnits', () => {
     });
 
     it('crossgrades foreign groups to the nearest dynamic-tier modifier in the target org', () => {
-        const result = resolveFromGroups('Inner Sphere', 'Federated Suns', [
+        const result = resolveFromGroups('Federated Suns', 'Inner Sphere', [
             createForeignGroup('Sept', 'Sept', 1.6),
         ]);
 
@@ -864,13 +1217,13 @@ describe('resolveFromUnits', () => {
             createBM('BM7'),
         ];
 
-        const foreignGroup = resolveFromUnits(sourceUnits, 'Inner Sphere', 'Society');
+        const foreignGroup = resolveFromUnits(sourceUnits, 'Society', 'HW Clan');
 
         expect(foreignGroup.length).toBe(1);
         expect(foreignGroup[0].name).toBe('Sept');
         expect(foreignGroup[0].type).toBe('Sept');
 
-        const result = resolveFromGroups('Inner Sphere', 'Federated Suns', foreignGroup);
+        const result = resolveFromGroups('Federated Suns', 'Inner Sphere', foreignGroup);
 
         expect(result.length).toBe(1);
         expect(result[0].name).toBe('Under-Strength Company');
@@ -880,13 +1233,13 @@ describe('resolveFromUnits', () => {
     });
 
     it('re-evaluates each foreign parent group independently before upward composition', () => {
-        const result = resolveFromGroups('Inner Sphere', 'Federated Suns', [
-            createForeignGroup('Foreign Cell A', 'Sept', 1, null, [
+        const result = resolveFromGroups('Federated Suns', 'Inner Sphere', [
+            createForeignGroup('Foreign Cell A', null, 1, null, [
                 createBM('BM1'),
                 createBM('BM2'),
                 createBM('BM3'),
             ]),
-            createForeignGroup('Foreign Cell B', 'Sept', 1, null, [
+            createForeignGroup('Foreign Cell B', null, 1, null, [
                 createBM('BM4'),
                 createBM('BM5'),
                 createBM('BM6'),
@@ -902,8 +1255,93 @@ describe('resolveFromUnits', () => {
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
+    it('re-evaluates real Sept groups independently before composing them upward', () => {
+        const firstSept = resolveFromUnits([
+            createBM('FS-A1'),
+            createBM('FS-A2'),
+            createBM('FS-A3'),
+            createBM('FS-A4'),
+            createBM('FS-A5'),
+            createBM('FS-A6'),
+            createBM('FS-A7'),
+        ], 'Society', 'HW Clan');
+        const secondSept = resolveFromUnits([
+            createBM('FS-B1'),
+            createBM('FS-B2'),
+            createBM('FS-B3'),
+            createBM('FS-B4'),
+            createBM('FS-B5'),
+            createBM('FS-B6'),
+            createBM('FS-B7'),
+        ], 'Society', 'HW Clan');
+
+        expect(firstSept.length).toBe(1);
+        expect(firstSept[0].name).toBe('Sept');
+        expect(firstSept[0].type).toBe('Sept');
+        expect(secondSept.length).toBe(1);
+        expect(secondSept[0].name).toBe('Sept');
+        expect(secondSept[0].type).toBe('Sept');
+
+        const result = resolveFromGroups('Federated Suns', 'Inner Sphere', [
+            firstSept[0],
+            secondSept[0],
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Under-Strength Battalion');
+        expect(result[0].type).toBe('Battalion');
+        expect(result[0].modifierKey).toBe('Under-Strength ');
+        expect(result[0].children?.length).toBe(2);
+        expect(result[0].children?.every(child => child.name === 'Under-Strength Company')).toBeTrue();
+        expect(result[0].children?.every(child => child.type === 'Company')).toBeTrue();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('re-evaluates real Sept groups independently before composing them upward for Clan', () => {
+        const firstSept = resolveFromUnits([
+            createBM('CL-A1'),
+            createBM('CL-A2'),
+            createBM('CL-A3'),
+            createBM('CL-A4'),
+            createBM('CL-A5'),
+            createBM('CL-A6'),
+            createBM('CL-A7'),
+        ], 'Society', 'HW Clan');
+        const secondSept = resolveFromUnits([
+            createBM('CL-B1'),
+            createBM('CL-B2'),
+            createBM('CL-B3'),
+            createBM('CL-B4'),
+            createBM('CL-B5'),
+            createBM('CL-B6'),
+            createBM('CL-B7'),
+        ], 'Society', 'HW Clan');
+
+        expect(firstSept.length).toBe(1);
+        expect(firstSept[0].name).toBe('Sept');
+        expect(firstSept[0].type).toBe('Sept');
+        expect(secondSept.length).toBe(1);
+        expect(secondSept[0].name).toBe('Sept');
+        expect(secondSept[0].type).toBe('Sept');
+
+        const result = resolveFromGroups('Clan Coyote', 'HW Clan', [
+            firstSept[0],
+            secondSept[0],
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Under-Strength Cluster');
+        expect(result[0].type).toBe('Cluster');
+        expect(result[0].modifierKey).toBe('Under-Strength ');
+        expect(result[0].children?.length).toBe(2);
+        expect(result[0].children?.every(child => child.name === 'Binary')).toBeTrue();
+        expect(result[0].children?.every(child => child.type === 'Binary')).toBeTrue();
+        expect(result[0].children?.every(child => child.modifierKey === '')).toBeTrue();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
     it('crossgrades to the nearest target tier when a foreign tier sits between lower and upper targets', () => {
-        const result = resolveFromGroups('Inner Sphere', 'Federated Suns', [
+        const result = resolveFromGroups('Federated Suns', 'Inner Sphere', [
             createForeignGroup('Supernova Binary', 'Supernova Trinary', 2.5),
         ]);
 
@@ -915,7 +1353,7 @@ describe('resolveFromUnits', () => {
     });
 
     it('rounds crossgrade when a foreign tier matches target tier', () => {
-        const result = resolveFromGroups('Inner Sphere', 'Federated Suns', [
+        const result = resolveFromGroups('Federated Suns', 'Inner Sphere', [
             createForeignGroup('Level IV', 'Level IV', 3),
         ]);
 
@@ -927,7 +1365,7 @@ describe('resolveFromUnits', () => {
     });
 
     it('re-evaluates incompatible foreign units instead of tier-normalizing them', () => {
-        const result = resolveFromGroups('Inner Sphere', 'Federated Suns', [
+        const result = resolveFromGroups('Federated Suns', 'Inner Sphere', [
             createForeignGroup('Foreign Vehicle Cell', 'Force', 1, null, [createCV('CV1')]),
         ]);
 
@@ -938,7 +1376,7 @@ describe('resolveFromUnits', () => {
     });
 
     it('crossgrades one tier above the target org ceiling into three highest-tier synthetic groups', () => {
-        const result = resolveFromGroups('Inner Sphere', 'Society', [
+        const result = resolveFromGroups('Society', 'HW Clan', [
             createForeignGroup('Foreign Apex Group', 'Force', 2.6),
         ]);
 
@@ -950,7 +1388,7 @@ describe('resolveFromUnits', () => {
     });
 
     it('crossgrades two tiers above the target org ceiling into nine highest-tier synthetic groups', () => {
-        const result = resolveFromGroups('Inner Sphere', 'Society', [
+        const result = resolveFromGroups('Society', 'HW Clan', [
             createForeignGroup('Foreign Apex Group', 'Force', 3.6),
         ]);
 

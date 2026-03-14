@@ -31,6 +31,7 @@
  * affiliated with Microsoft.
  */
 
+import { FactionAffinity } from '../models/factions.model';
 import type { Unit } from '../models/units.model';
 import type {
     GroupSizeResult,
@@ -100,6 +101,9 @@ function isPM(u: Unit): boolean {
     return u.type === 'ProtoMek';
 }
 
+const IS_REGULAR_STAR_GROUP = (group: GroupSizeResult): boolean => group.type === 'Star' && group.modifierKey === '';
+const IS_REGULAR_NOVA_GROUP = (group: GroupSizeResult): boolean => group.type === 'Nova' && group.modifierKey === '';
+
 /** Count helpers for customMatch — derive counts from Unit[] */
 function countBM(units: Unit[]): number { return units.filter(isBM).length; }
 function countBMOmni(units: Unit[]): number { return units.filter(u => isBM(u) && u.omni === 1).length; }
@@ -156,18 +160,22 @@ const CLAN_NOVA: OrgTypeLeaf = leafRule({
 const CLAN_BINARY: OrgTypeComposed = composedRule({
     type: 'Binary', strict: true, composedOfAny: ['Star'],
     modifiers: { '': 2 }, commandRank: 'Star Captain', tier: 1.8,
+    // groupFilter: groups => groups.every(IS_REGULAR_STAR_GROUP),
 });
 const CLAN_TRINARY: OrgTypeComposed = composedRule({
     type: 'Trinary', strict: true, composedOfAny: ['Star'],
     modifiers: { '': 3 }, commandRank: 'Star Captain', tier: 2,
+    // groupFilter: groups => groups.every(IS_REGULAR_STAR_GROUP),
 });
 const CLAN_SUPERNOVA_BINARY: OrgTypeComposed = composedRule({
     type: 'Supernova Binary', strict: true, priority: 2, countsAs: 'Binary',
     composedOfAny: ['Nova'], modifiers: { '': 2 }, commandRank: 'Nova Captain', tier: 2,
+    // groupFilter: groups => groups.every(IS_REGULAR_NOVA_GROUP),
 });
 const CLAN_SUPERNOVA_TRINARY: OrgTypeComposed = composedRule({
     type: 'Supernova Trinary', strict: true, priority: 1, countsAs: 'Trinary',
     composedOfAny: ['Nova'], modifiers: { '': 3 }, commandRank: 'Nova Captain', tier: 2.5,
+    // groupFilter: groups => groups.every(IS_REGULAR_NOVA_GROUP),
 });
 const CLAN_SUPERNOVA_TRINARY_FROM_BINARY: OrgTypeComposed = composedRule({
     type: 'Supernova Trinary', strict: true, priority: 1, countsAs: 'Trinary',
@@ -216,6 +224,23 @@ const IS_SQUAD: OrgTypeLeaf = leafRule({
         return Infinity;
     },
 });
+const IS_PLATOON: OrgTypeLeaf = leafRule({
+    type: 'Platoon', countsAs: 'Lance', priority: 1, modifiers: { '': 1 }, commandRank: 'Lieutenant', tier: 1,
+    filter: (u) => isCI(u),
+    customMatch: (units) => {
+        const ciTroopers = sumCITroopers(units);
+        if (ciTroopers >= 6 && ciTroopers <= 32) return 0;
+        if (ciTroopers < 6) return (6 - ciTroopers) / 28;
+        return (ciTroopers - 32) / 28;
+    },
+});
+const IS_AIR_LANCE: OrgTypeComposed = composedRule({
+    type: 'Air Lance', countsAs: 'Lance', priority: 1, composedOfAny: ['Flight', 'Lance'], tier: 1.5,
+    requiredChildTypeCounts: { 'Flight': 1, 'Lance': 1 },
+    modifiers: { '': 2 },
+    commandRank: 'Lieutenant',
+    filter: (u) => !isInfantry(u),
+});
 const IS_SINGLE: OrgTypeLeaf = leafRule({
     type: 'Single', tier: 0, priority: -1,
     modifiers: { '': 1 },    
@@ -226,23 +251,6 @@ const IS_LANCE: OrgTypeLeaf = leafRule({
     modifiers: { 'Short ': 2, 'Under-Strength ': 3, '': 4, 'Reinforced ': 5, 'Fortified ': 6 },
     commandRank: 'Lieutenant',
     filter: (u) => !isCI(u),
-});
-const IS_AIR_LANCE: OrgTypeComposed = composedRule({
-    type: 'Air Lance', countsAs: 'Lance', priority: 1, composedOfAny: ['Flight', 'Lance'], tier: 1.5,
-    requiredChildTypeCounts: { 'Flight': 1, 'Lance': 1 },
-    modifiers: { '': 2 },
-    commandRank: 'Lieutenant',
-    filter: (u) => !isInfantry(u),
-});
-const IS_PLATOON: OrgTypeLeaf = leafRule({
-    type: 'Platoon', countsAs: 'Lance', priority: 1, modifiers: { '': 1 }, commandRank: 'Lieutenant', tier: 1,
-    filter: (u) => isCI(u),
-    customMatch: (units) => {
-        const ciTroopers = sumCITroopers(units);
-        if (ciTroopers >= 6 && ciTroopers <= 32) return 0;
-        if (ciTroopers < 6) return (6 - ciTroopers) / 28;
-        return (ciTroopers - 32) / 28;
-    },
 });
 const IS_COMPANY: OrgTypeComposed = composedRule({
     type: 'Company', composedOfAny: ['Lance', 'Flight'],
@@ -383,8 +391,10 @@ const ComStarOrg: OrgDefinition = {
             }, commandRank: 'Precentor', tier: 4,
         }),
         composedRule({
-            type: 'Level VI', composedOfAny: ['Level V'], modifiers: { '': 2, },
-            commandRank: 'Precentor Martial', tier: 5,
+            type: 'Level VI', composedOfAny: ['Level V'], modifiers: { 
+                'Under-Strength ': 2, '': 6, 'Reinforced ': 12
+             },
+            commandRank: 'Precentor Martial', tier: 5, dynamicTier: 1,
         }),
     ],
 };
@@ -591,18 +601,13 @@ const CCOrg: OrgDefinition = {
  * Order matters: first match wins. IS is the default fallback.
  * To add a new org, append one entry here.
  */
-export const ORG_REGISTRY: { match: (techBase: string, factionName: string) => boolean; org: OrgDefinition }[] = [
-    { match: (_, f) => f === 'ComStar' || f === 'Word of Blake', org: ComStarOrg },
-    { match: (_, f) => f === 'Society', org: SocietyOrg },
-    { match: (_, f) => f.includes('Marian Hegemony'), org: MHOrg },
-    { match: (_, f) => f.includes('Dragoons'), org: WDOrg },
-    { match: (_, f) => f.includes('Capellan Confederation'), org: CCOrg },
-    { match: (_, f) => f.includes('Clan'), org: ClanOrg },
-    { match: (_, f) =>
-        f.includes('Rasalhague Dominion') || f.includes('Raven Alliance') || f.includes('Wolf Empire') ||
-        f.includes('Escorpion') || f.includes('Scorpion Empire') || f.includes('Alyina Mercantile League'),
-        org: ClanOrg,
-    },
+export const ORG_REGISTRY: { match: (factionName: string, factionAffinity: FactionAffinity) => boolean; org: OrgDefinition }[] = [
+    { match: (f, _) => f === 'ComStar' || f === 'Word of Blake', org: ComStarOrg },
+    { match: (f, _) => f === 'Society', org: SocietyOrg },
+    { match: (f, _) => f.includes('Marian Hegemony'), org: MHOrg },
+    { match: (f, _) => f.includes('Dragoons'), org: WDOrg },
+    { match: (f, _) => f.includes('Capellan Confederation'), org: CCOrg },
+    { match: (_, a) => a.includes('Clan'), org: ClanOrg },
     // ISOrg is the default fallback if no other org matches
 ];
 

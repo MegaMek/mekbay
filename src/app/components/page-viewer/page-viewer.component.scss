@@ -107,20 +107,24 @@
     }
 }
 
+.page-viewer-container.swiping .page-wrapper {
+    transition: none;
+}
+
 /* Empty page wrapper during swipe - subtle border to show position */
-.page-wrapper:not(:has(svg)) {
+.page-wrapper.is-empty {
     outline: 1px solid var(--border-color);
     outline-offset: -1px;
 }
 
 /* Page wrapper with content (has SVG) shows white background */
-.page-wrapper:has(svg) {
+.page-wrapper.has-svg {
     background-color: #fff;
 }
 
 @media screen {
     :host-context(.night-mode) {
-        .page-wrapper:has(svg) {
+        .page-wrapper.has-svg {
             background-color: unset;
         }
     }

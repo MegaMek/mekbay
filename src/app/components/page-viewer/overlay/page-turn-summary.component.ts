@@ -156,6 +156,12 @@ export class PageTurnSummaryPanelComponent {
         return u.turnState().heatGeneratedFromDamagedEngine();
     });
 
+    psrModifiers = computed(() => {
+        const unit = this.unit();
+        if (!unit) return [];
+        return unit.PSRModifiers().modifiers.filter(modifier => modifier.pilotCheck !== undefined && modifier.pilotCheck !== 0);
+    });
+
     close() {
         const unitId = this.unit()?.id;
         this.overlayManager.closeManagedOverlay(`turnSummary-${unitId}`);

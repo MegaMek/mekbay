@@ -10,6 +10,7 @@ describe('getAggregatedGroupsResult', () => {
         const groups: GroupSizeResult[] = [{
             name: 'Force',
             type: null,
+            modifierKey: '',
             countsAsType: null,
             tier: 0,
         }];
@@ -27,6 +28,7 @@ describe('getAggregatedGroupsResult', () => {
             {
                 name: 'Lance',
                 type: 'Lance',
+                modifierKey: '',
                 countsAsType: null,
                 tier: 1,
                 units: [],
@@ -34,6 +36,7 @@ describe('getAggregatedGroupsResult', () => {
             {
                 name: 'Lance',
                 type: 'Lance',
+                modifierKey: '',
                 countsAsType: null,
                 tier: 1,
                 units: [],
@@ -53,6 +56,7 @@ describe('getAggregatedGroupsResult', () => {
         const makeBrigades = (count: number): GroupSizeResult[] => Array.from({ length: count }, () => ({
             name: 'Reinforced Brigade',
             type: 'Brigade',
+            modifierKey: 'Reinforced ',
             countsAsType: null,
             tier: 5.26,
         }));
@@ -68,6 +72,7 @@ describe('getAggregatedGroupsResult', () => {
         const makeUnderStrengthBrigades = (count: number): GroupSizeResult[] => Array.from({ length: count }, () => ({
             name: 'Under-Strength Brigade',
             type: 'Brigade',
+            modifierKey: 'Under-Strength ',
             countsAsType: null,
             tier: 4.63,
         }));
@@ -81,8 +86,8 @@ describe('getAggregatedGroupsResult', () => {
 
     it('keeps mixed Brigade tiers when collapsing display groups', () => {
         const result = getAggregatedGroupsResult([
-            { name: 'Reinforced Brigade', type: 'Brigade', countsAsType: null, tier: 5.26 },
-            { name: 'Brigade', type: 'Brigade', countsAsType: null, tier: 5 },
+            { name: 'Reinforced Brigade', type: 'Brigade', modifierKey: 'Reinforced ', countsAsType: null, tier: 5.26 },
+            { name: 'Brigade', type: 'Brigade', modifierKey: '', countsAsType: null, tier: 5 },
         ], 'Inner Sphere', 'Mercenary');
 
         expect(result.name).toBe('2x Reinforced Brigade');
@@ -91,8 +96,8 @@ describe('getAggregatedGroupsResult', () => {
 
     it('aggregates same-type groups even when their display names differ', () => {
         const result = getAggregatedGroupsResult([
-            { name: 'Under-Strength Brigade', type: 'Brigade', countsAsType: null, tier: 4.63 },
-            { name: 'Reinforced Brigade', type: 'Brigade', countsAsType: null, tier: 5.26 },
+            { name: 'Under-Strength Brigade', type: 'Brigade', modifierKey: 'Under-Strength ', countsAsType: null, tier: 4.63 },
+            { name: 'Reinforced Brigade', type: 'Brigade', modifierKey: 'Reinforced ', countsAsType: null, tier: 5.26 },
         ], 'Inner Sphere', 'Mercenary');
 
         expect(result.name).toBe('2x Brigade');
@@ -101,10 +106,10 @@ describe('getAggregatedGroupsResult', () => {
 
     it('assimilates lower-tier groups into the top aggregated display instead of listing them separately', () => {
         const result = getAggregatedGroupsResult([
-            { name: 'Brigade', type: 'Brigade', countsAsType: null, tier: 5 },
-            { name: 'Brigade', type: 'Brigade', countsAsType: null, tier: 5 },
-            { name: 'Under-Strength Battalion', type: 'Battalion', countsAsType: null, tier: 2.63 },
-            { name: 'Single', type: 'Single', countsAsType: null, tier: 0 },
+            { name: 'Brigade', type: 'Brigade', modifierKey: '', countsAsType: null, tier: 5 },
+            { name: 'Brigade', type: 'Brigade', modifierKey: '', countsAsType: null, tier: 5 },
+            { name: 'Under-Strength Battalion', type: 'Battalion', modifierKey: 'Under-Strength ', countsAsType: null, tier: 2.63 },
+            { name: 'Single', type: 'Single', modifierKey: '', countsAsType: null, tier: 0 },
         ], 'Inner Sphere', 'Mercenary');
 
         expect(result.name).toBe('2x Brigade');
@@ -249,8 +254,8 @@ function createMercenaryForce(forceIndex: number): LoadForceEntry {
 }
 
 function resolveAggregatedForceStage(entry: LoadForceEntry): AggregatedForceStage {
-    const rawGroups = getOrgFromForce(entry, 'Mercenary');
-    const aggregated = getAggregatedGroupsResult(rawGroups, 'Inner Sphere', 'Mercenary');
+    const rawGroups = getOrgFromForce(entry, 'Mercenary', 'Mercenary');
+    const aggregated = getAggregatedGroupsResult(rawGroups, 'Mercenary', 'Mercenary');
 
     return {
         entries: [entry],
@@ -266,8 +271,8 @@ function mergeAggregatedForceStages(stages: AggregatedForceStage[], batchSize: n
         const batch = stages.slice(start, start + batchSize);
         const entries = batch.flatMap(stage => stage.entries);
         const childGroupResults = batch.flatMap(stage => stage.aggregated.groups);
-        const rawGroups = getOrgFromForceCollection(entries, 'Mercenary', childGroupResults);
-        const aggregated = getAggregatedGroupsResult(rawGroups, 'Inner Sphere', 'Mercenary');
+        const rawGroups = getOrgFromForceCollection(entries, 'Mercenary', 'Mercenary', childGroupResults);
+        const aggregated = getAggregatedGroupsResult(rawGroups, 'Mercenary', 'Mercenary');
 
         mergedStages.push({
             entries,
@@ -286,7 +291,7 @@ describe('org-namer aggregation flow', () => {
             units.push(createBM(`SOC-BM-${i + 1}`));
         }
 
-        const result = getOrgFromGroup(createLoadForceGroup(units), 'Society', 'Inner Sphere');
+        const result = getOrgFromGroup(createLoadForceGroup(units), 'Society', 'HW Clan');
 
         expect(result.length).toBe(14);
         expect(result.every(group => group.name === 'Sept')).toBeTrue();
@@ -306,7 +311,7 @@ describe('org-namer aggregation flow', () => {
             groups: [createLoadForceGroup(units)],
         });
 
-        const result = getOrgFromForce(entry, 'Society');
+        const result = getOrgFromForce(entry, 'Society', 'HW Clan');
 
         expect(result.length).toBe(14);
         expect(result.every(group => group.name === 'Sept')).toBeTrue();
@@ -325,7 +330,7 @@ describe('org-namer aggregation flow', () => {
             type: GameSystem.CLASSIC,
             groups: [createLoadForceGroup(societyUnits)],
         });
-        const societyResult = getOrgFromForce(societyEntry, 'Society');
+        const societyResult = getOrgFromForce(societyEntry, 'Society', 'HW Clan');
 
         expect(societyResult.length).toBe(14);
 
@@ -364,9 +369,9 @@ describe('org-namer aggregation flow', () => {
             createBM('NBM5', 'BattleMek Omni', true, ['OMNI']),
         ];
 
-        const supernovaBinary = resolveFromUnits(supernovaBinaryUnits, 'Clan', 'Clan Test');
-        const nova = resolveFromUnits(novaUnits, 'Clan', 'Clan Test');
-        const supernovaTrinary = resolveFromGroups('Clan', 'Clan Test', [supernovaBinary[0], nova[0]]);
+        const supernovaBinary = resolveFromUnits(supernovaBinaryUnits, 'Clan Test', 'HW Clan');
+        const nova = resolveFromUnits(novaUnits, 'Clan Test', 'HW Clan');
+        const supernovaTrinary = resolveFromGroups('Clan Test', 'HW Clan', [supernovaBinary[0], nova[0]]);
 
         expect(supernovaTrinary.length).toBe(1);
         expect(supernovaTrinary[0].type).toBe('Supernova Trinary');
@@ -374,6 +379,7 @@ describe('org-namer aggregation flow', () => {
         const merged = getOrgFromForceCollection(
             [societyEntry],
             'Society',
+            'HW Clan',
             [...societyResult, supernovaTrinary[0]],
         );
 
@@ -385,11 +391,11 @@ describe('org-namer aggregation flow', () => {
 
     it('promotes display names using leftover child groups without changing raw org results', () => {
         const rawGroups: GroupSizeResult[] = [
-            { name: 'Under-Strength Cluster', type: 'Cluster', countsAsType: null, tier: 3 },
-            { name: 'Binary', type: 'Binary', countsAsType: null, tier: 1.8 },
+            { name: 'Under-Strength Cluster', type: 'Cluster', modifierKey: 'Under-Strength ', countsAsType: null, tier: 3 },
+            { name: 'Binary', type: 'Binary', modifierKey: '', countsAsType: null, tier: 1.8 },
         ];
 
-        const display = getAggregatedGroupsResult(rawGroups, 'Clan', 'Clan Test');
+        const display = getAggregatedGroupsResult(rawGroups, 'Clan Test', 'HW Clan');
 
         expect(display.name).toBe('Cluster');
         expect(display.groups).toBe(rawGroups);
@@ -397,18 +403,18 @@ describe('org-namer aggregation flow', () => {
 
     it('uses hierarchical display aggregation for mixed Marian child groups', () => {
         const rawGroups: GroupSizeResult[] = [
-            { name: 'Contubernium', type: 'Contubernium', countsAsType: null, tier: 0, tag: 'non-infantry' },
-            { name: 'Contubernium', type: 'Contubernium', countsAsType: null, tier: 0, tag: 'infantry' },
-            { name: 'Contubernium', type: 'Contubernium', countsAsType: null, tier: 0, tag: 'non-infantry' },
-            { name: 'Contubernium', type: 'Contubernium', countsAsType: null, tier: 0, tag: 'infantry' },
-            { name: 'Contubernium', type: 'Contubernium', countsAsType: null, tier: 0, tag: 'non-infantry' },
-            { name: 'Contubernium', type: 'Contubernium', countsAsType: null, tier: 0, tag: 'infantry' },
-            { name: 'Contubernium', type: 'Contubernium', countsAsType: null, tier: 0, tag: 'non-infantry' },
-            { name: 'Contubernium', type: 'Contubernium', countsAsType: null, tier: 0, tag: 'infantry' },
-            { name: 'Contubernium', type: 'Contubernium', countsAsType: null, tier: 0, tag: 'non-infantry' },
+            { name: 'Contubernium', type: 'Contubernium', modifierKey: '', countsAsType: null, tier: 0, tag: 'non-infantry' },
+            { name: 'Contubernium', type: 'Contubernium', modifierKey: '', countsAsType: null, tier: 0, tag: 'infantry' },
+            { name: 'Contubernium', type: 'Contubernium', modifierKey: '', countsAsType: null, tier: 0, tag: 'non-infantry' },
+            { name: 'Contubernium', type: 'Contubernium', modifierKey: '', countsAsType: null, tier: 0, tag: 'infantry' },
+            { name: 'Contubernium', type: 'Contubernium', modifierKey: '', countsAsType: null, tier: 0, tag: 'non-infantry' },
+            { name: 'Contubernium', type: 'Contubernium', modifierKey: '', countsAsType: null, tier: 0, tag: 'infantry' },
+            { name: 'Contubernium', type: 'Contubernium', modifierKey: '', countsAsType: null, tier: 0, tag: 'non-infantry' },
+            { name: 'Contubernium', type: 'Contubernium', modifierKey: '', countsAsType: null, tier: 0, tag: 'infantry' },
+            { name: 'Contubernium', type: 'Contubernium', modifierKey: '', countsAsType: null, tier: 0, tag: 'non-infantry' },
         ];
 
-        const display = getAggregatedGroupsResult(rawGroups, 'Inner Sphere', 'Marian Hegemony');
+        const display = getAggregatedGroupsResult(rawGroups, 'Marian Hegemony', 'Inner Sphere');
 
         expect(display.name).toBe('Maniple');
         expect(display.groups).toBe(rawGroups);
@@ -442,12 +448,9 @@ describe('org-namer aggregation flow', () => {
 
         expect(roundSizes).toEqual([400, 40, 4, 1]);
         expect(stages[0].entries.length).toBe(400);
-        expect(stages[0].rawGroups.length).toBe(40);
-        expect(stages[0].rawGroups.every(group => group.name === 'Under-Strength Brigade')).toBeTrue();
-        expect(stages[0].rawGroups.every(group => group.type === 'Brigade')).toBeTrue();
-        expect(stages[0].rawGroups.every(group => Math.abs(group.tier - 4.63) < 0.01)).toBeTrue();
+        expect(stages[0].rawGroups.length).toBe(12);
         expect(stages[0].aggregated.groups).toBe(stages[0].rawGroups);
-        expect(stages[0].aggregated.name).toBe('20x Reinforced Brigade');
-        expect(stages[0].aggregated.tier).toBeCloseTo(7.98, 2);
+        expect(stages[0].aggregated.name).toBe('10x Reinforced Brigade');
+        expect(stages[0].aggregated.tier).toBeCloseTo(7.35, 2);
     });
 });

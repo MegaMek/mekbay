@@ -301,6 +301,10 @@ export class OverlayManagerService {
                     if (overlayEl?.contains(targetNode) || (triggerEl && triggerEl.contains && triggerEl.contains(targetNode))) {
                         return;
                     }
+                    // Consume the pointerdown so underlying gesture handlers do not enter
+                    // pan/swipe mode before we decide whether this interaction is a click.
+                    ev.stopPropagation();
+                    ev.preventDefault();
                     // record start position and pointer id
                     entry.pointerStart = { id: ev.pointerId, x: ev.clientX, y: ev.clientY };
                 } catch { /* ignore */ }
@@ -519,9 +523,15 @@ export class OverlayManagerService {
         strategy.left(`${triggerRect.left}px`).top(`${top}px`);
         entry.overlayRef.updatePosition();
 
+        pane.style.maxHeight = `${maxPanelH}px`;
+        pane.style.boxSizing = 'border-box';
+
         // Constrain panel height
-        if (content && content !== scrollContainer) {
+        if (content) {
             content.style.maxHeight = `${maxPanelH}px`;
+            content.style.height = `${effectiveH}px`;
+            content.style.boxSizing = 'border-box';
+            content.style.overflow = 'hidden';
         }
         scrollContainer.style.maxHeight = `${maxScrollH}px`;
         scrollContainer.style.overflowY = 'auto';
