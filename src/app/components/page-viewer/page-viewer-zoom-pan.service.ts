@@ -77,6 +77,11 @@ export interface PageDimensions {
     height: number;
 }
 
+export interface PageTransformTarget {
+    wrapper: HTMLElement;
+    rootSvg: SVGSVGElement | null;
+}
+
 export interface SwipeCallbacks {
     onSwipeStart: () => void;
     onSwipeMove: (totalDx: number) => void;
@@ -136,7 +141,7 @@ export class PageViewerZoomPanService {
     private totalPages = 1;
     private nonInteractiveSelectors: string[] = [];
     private spaceEvenly = false;
-    private transformPageWrappers: HTMLElement[] = [];
+    private transformPageTargets: PageTransformTarget[] = [];
     private transformCanvasOverlays: HTMLElement[] = [];
 
     // Pointer tracking
@@ -228,8 +233,8 @@ export class PageViewerZoomPanService {
      * Update the elements affected by transform changes.
      * This avoids rescanning the DOM tree on every pan/zoom update.
      */
-    setTransformTargets(pageWrappers: HTMLElement[], canvasOverlays: HTMLElement[] = []): void {
-        this.transformPageWrappers = pageWrappers;
+    setTransformTargets(pageTargets: PageTransformTarget[], canvasOverlays: HTMLElement[] = []): void {
+        this.transformPageTargets = pageTargets;
         this.transformCanvasOverlays = canvasOverlays;
     }
 
@@ -906,7 +911,7 @@ export class PageViewerZoomPanService {
 
         // Apply scale directly to each root SVG element (direct children of page-wrappers)
         // This fixes iOS blurry rendering without double-scaling nested SVGs
-        this.transformPageWrappers.forEach((wrapper: HTMLElement) => {
+        this.transformPageTargets.forEach(({ wrapper, rootSvg }) => {
             // Get the original left position (unscaled)
             const originalLeft = parseFloat(wrapper.dataset['originalLeft'] || wrapper.style.left) || 0;
             // Store original left if not already stored
@@ -919,7 +924,6 @@ export class PageViewerZoomPanService {
             wrapper.style.height = `${PAGE_HEIGHT * scale}px`;
             
             // Scale only the direct SVG child (not nested SVGs)
-            const rootSvg = wrapper.querySelector(':scope > svg') as SVGSVGElement | null;
             if (rootSvg) {
                 rootSvg.style.transform = `scale(${scale})`;
                 rootSvg.style.transformOrigin = 'top left';

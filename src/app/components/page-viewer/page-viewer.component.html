@@ -1,19 +1,24 @@
-<div #container 
-     class="page-viewer-container" 
-     [class.at-min-zoom]="isFullyVisible()">
-    
+<viewer-stage #container
+              [swiping]="stageSwiping()"
+              [multipleVisible]="effectiveVisiblePageCount() > 1"
+              [atMinZoom]="isFullyVisible()">
     <!-- Swipe wrapper handles X translation during swipe (separate from zoom) -->
     <div #swipeWrapper class="swipe-wrapper">
         <!-- Content wrapper receives zoom/pan transforms, contains all pages -->
         <div #content class="page-content">
-            <!-- Pages (with canvas overlays) are rendered programmatically by the component -->
+            @for (page of rewriteActivePages(); track page.key) {
+                <viewer-page [descriptor]="page"></viewer-page>
+            }
+            @for (shadow of rewriteShadowPages(); track shadow.key) {
+                <viewer-shadow-page [descriptor]="shadow"></viewer-shadow-page>
+            }
         </div>
     </div>
-    
+
     <!-- Fixed interaction overlay container for single-page mode -->
     <!-- When only 1 page is visible, the overlay is placed here to stay fixed during zoom/pan -->
     <div #fixedOverlayContainer class="fixed-overlay-container"></div>
-</div>
+</viewer-stage>
 
 <!-- Canvas controls (FAB) - global for all canvases -->
 @if (!readOnly()) {

@@ -1,0 +1,11 @@
+<div #wrapper
+    class="page-wrapper shadow-page"
+     [class.dimmed]="descriptor().isDimmed"
+     [style.left.px]="descriptor().scaledLeft"
+    data-render-mode="declarative-shadow"
+     [attr.data-shadow-key]="descriptor().key"
+     [attr.data-unit-id]="descriptor().unitId"
+     [attr.data-unit-index]="descriptor().unitIndex"
+     [attr.data-shadow-direction]="descriptor().direction">
+    <ng-content></ng-content>
+</div>
