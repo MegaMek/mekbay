@@ -250,7 +250,7 @@ export class PageViewerComponent implements AfterViewInit {
 
     // Track displayed units
     private displayedUnits = signal<CBTForceUnit[]>([]);
-    private displayedUnitIds = computed(() => this.displayedUnits().map((unit) => unit.id));
+    readonly displayedUnitIds = computed(() => this.displayedUnits().map((unit) => unit.id));
 
     isPickerOpen = computed(() => {
         if (this.readOnly()) {
@@ -308,22 +308,6 @@ export class PageViewerComponent implements AfterViewInit {
         const visiblePages = this.effectiveVisiblePageCount();
         // Only allow swipe if we have more pages than can be shown at once
         return totalPages > visiblePages;
-    });
-
-    // Computed array of heat markers for template iteration
-    heatDiffMarkerArray = computed(() => {
-        const markers = this.heatDiffMarkers();
-        const displayedIds = this.displayedUnitIds();
-
-        return displayedIds.map((unitId, index) => {
-            const state = markers.get(unitId);
-            return {
-                index,
-                unitId,
-                data: state?.data ?? null,
-                visible: state?.visible ?? false
-            };
-        });
     });
 
     // Private state
@@ -1454,6 +1438,11 @@ export class PageViewerComponent implements AfterViewInit {
             
             untracked(() => {
                 this.heatDiffMarkers.update(markers => {
+                    const existing = markers.get(unitId);
+                    if (existing && existing.visible === visible && this.areHeatDiffMarkerDataEqual(existing.data, markerData)) {
+                        return markers;
+                    }
+
                     const newMarkers = new Map(markers);
                     newMarkers.set(unitId, { data: markerData, visible });
                     return newMarkers;
@@ -1488,7 +1477,19 @@ export class PageViewerComponent implements AfterViewInit {
             }
         });
         
-        toRemove.forEach(id => this.interactionServices.delete(id));
+        if (toRemove.length > 0) {
+            this.heatDiffMarkers.update((markers) => {
+                const nextMarkers = new Map(markers);
+                let didChange = false;
+
+                toRemove.forEach((id) => {
+                    didChange = nextMarkers.delete(id) || didChange;
+                    this.interactionServices.delete(id);
+                });
+
+                return didChange ? nextMarkers : markers;
+            });
+        }
     }
 
     private getOrCreateCanvasOverlay(pageWrapper: HTMLDivElement, unit: CBTForceUnit): void {
@@ -2329,6 +2330,27 @@ export class PageViewerComponent implements AfterViewInit {
         this.pageElements = [];
         this.displayedUnits.set([]);
         this.syncZoomPanTransformTargets();
+    }
+
+    private areHeatDiffMarkerDataEqual(
+        left: HeatDiffMarkerData | null | undefined,
+        right: HeatDiffMarkerData | null | undefined
+    ): boolean {
+        if (left === right) {
+            return true;
+        }
+
+        if (!left || !right) {
+            return left === right;
+        }
+
+        return left.el === right.el &&
+            left.heat === right.heat &&
+            left.currentHeat === right.currentHeat &&
+            left.containerRect.left === right.containerRect.left &&
+            left.containerRect.top === right.containerRect.top &&
+            left.containerRect.width === right.containerRect.width &&
+            left.containerRect.height === right.containerRect.height;
     }
 
     private getTotalPageCount(): number {

@@ -27,10 +27,11 @@
 
 <!-- Heat diff markers for each interaction service -->
 @if (!readOnly()) {
-    @for (marker of heatDiffMarkerArray(); track marker.unitId) {
+    @for (unitId of displayedUnitIds(); track unitId) {
+        @let markerState = heatDiffMarkers().get(unitId);
         <heat-diff-marker 
-            [data]="marker.data"
-            [visible]="marker.visible">
+            [data]="markerState?.data ?? null"
+            [visible]="markerState?.visible ?? false">
         </heat-diff-marker>
     }
 }
