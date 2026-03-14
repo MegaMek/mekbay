@@ -46,7 +46,6 @@ import {
     ORG_REGISTRY,
     DEFAULT_ORG,
 } from './org-definitions.util';
-import { TechBase } from '../models/tech.model';
 import { getDynamicTierForModifier, getRepeatCountForTierDelta } from './org-tier.util';
 import { FactionAffinity } from '../models/factions.model';
 
