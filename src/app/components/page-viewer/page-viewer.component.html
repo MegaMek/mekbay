@@ -27,7 +27,7 @@
 
 <!-- Heat diff markers for each interaction service -->
 @if (!readOnly()) {
-    @for (unitId of displayedUnitIds(); track unitId) {
+    @for (unitId of displayedUnitIds(); track $index) {
         @let markerState = heatDiffMarkers().get(unitId);
         <heat-diff-marker 
             [data]="markerState?.data ?? null"
