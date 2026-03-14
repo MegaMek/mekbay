@@ -32,7 +32,6 @@
  */
 
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
 import type { Era } from '../../models/eras.model';
 
 export interface EraDisplayInfo {
@@ -43,7 +42,6 @@ export interface EraDisplayInfo {
 @Component({
     selector: 'era-dropdown-panel',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [DecimalPipe],
     template: `
         <div class="dropdown-panel glass has-shadow framed-borders" data-scroll-container>
             <!-- None option -->
@@ -63,7 +61,8 @@ export interface EraDisplayInfo {
             @for (item of eras(); track item.era.id) {
                 <div class="dropdown-option"
                      [class.active]="selectedEraId() === item.era.id"
-                     (click)="onSelect(item.era)">
+                     [class.unavailable]="item.matchPercentage < 1"
+                     (click)="item.matchPercentage >= 1 ? onSelect(item.era) : null">
                     @if (item.era.icon) {
                         <img [src]="item.era.icon" class="era-icon" [alt]="item.era.name" />
                     } @else {
@@ -72,7 +71,6 @@ export interface EraDisplayInfo {
                     <div class="era-details">
                         <div class="era-header">
                             <span class="era-name">{{ item.era.name }}</span>
-                            <span class="match-badge">{{ (item.matchPercentage * 100) | number:'1.0-0' }}% match</span>
                         </div>
                         <span class="era-years">{{ item.era.years.from ?? '?' }}\u2013{{ item.era.years.to ?? 'present' }}</span>
                     </div>
@@ -116,6 +114,16 @@ export interface EraDisplayInfo {
             &:hover {
                 background: var(--bt-yellow-background-bright-transparent);
             }
+        }
+
+        .dropdown-option.unavailable {
+            cursor: not-allowed;
+            opacity: 0.4;
+            border-left-color: rgba(255, 60, 60, 0.4);
+        }
+
+        .dropdown-option.unavailable:hover {
+            background: rgba(255, 60, 60, 0.06);
         }
 
         .none-option {
@@ -175,14 +183,6 @@ export interface EraDisplayInfo {
         .era-years {
             font-size: 0.8em;
             color: var(--text-color-secondary);
-            white-space: nowrap;
-        }
-
-        .match-badge {
-            font-size: 0.8em;
-            color: var(--bt-yellow);
-            padding: 2px 6px;
-            background: rgba(240, 192, 64, 0.15);
             white-space: nowrap;
         }
 

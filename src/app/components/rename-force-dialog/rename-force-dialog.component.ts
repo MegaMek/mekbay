@@ -163,17 +163,14 @@ export interface RenameForceDialogResult {
         <div class="form-fields">
             <label class="field-label" for="era">Era</label>
             <div #eraTriggerWrapper class="input-wrapper">
-              <button id="era" class="era-selector bt-select" (click)="toggleEraDropdown()">
+              <button id="era" class="era-selector bt-select" [class.era-mismatch]="selectedEraDisplay() && selectedEraDisplay()!.matchPercentage < 1" (click)="toggleEraDropdown()">
                 @if (selectedEraDisplay(); as display) {
                   <div class="era-selector-content">
                     @if (display.era.icon) {
                       <img [src]="display.era.icon" class="era-selector-icon" [alt]="display.era.name" />
                     }
                     <div class="era-selector-details">
-                      <div class="era-selector-header">
-                        <span class="era-selector-name">{{ display.era.name }}</span>
-                        <span class="match-badge">{{ (display.matchPercentage * 100) | number:'1.0-0' }}% match</span>
-                      </div>
+                      <span class="era-selector-name">{{ display.era.name }}</span>
                       <span class="era-selector-years">{{ display.era.years.from ?? '?' }}&ndash;{{ display.era.years.to ?? 'present' }}</span>
                     </div>
                   </div>
@@ -392,18 +389,10 @@ export interface RenameForceDialogResult {
 
         .era-selector-details {
             display: flex;
-            flex-direction: column;
-            gap: 2px;
+            align-items: center;
+            gap: 8px;
             min-width: 0;
             flex: 1;
-        }
-
-        .era-selector-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 6px;
-            padding-right: 16px;
         }
 
         .era-selector-name {
@@ -413,6 +402,10 @@ export interface RenameForceDialogResult {
         .era-selector-years {
             font-size: 0.85em;
             color: var(--text-color-secondary);
+        }
+
+        .era-mismatch {
+            border-color: rgba(255, 60, 60, 0.4);
         }
     `]
 })
