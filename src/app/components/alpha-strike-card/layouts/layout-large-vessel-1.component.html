@@ -1,172 +1,228 @@
-<!-- Header Section -->
-
-<div class="header-section">
-    <div class="vessel-header">
-        @let alias = forceUnit()?.alias();
-        @if (alias) {
-            @let longAlias = alias.length > 30;
-            <span class="alphastrike-text vessel-name" [class.stroked]="cardStyle() != 'monochrome'" [class.long-chassis]="longAlias">{{ alias }}</span>
-            <span class="vessel-name-subtext">{{ unit().chassis | uppercase }} {{ unit().model | uppercase }}</span>
-        } @else {
-            @let longChassis = chassis().length > 30;
-            <span class="alphastrike-text vessel-name" [class.stroked]="cardStyle() != 'monochrome'" [class.long-chassis]="longChassis">{{ unit().chassis | uppercase }}</span>
-            <span class="vessel-model">{{ unit().model | uppercase }}</span>
+<svg class="vessel-card-svg" [attr.viewBox]="'0 0 ' + cardViewBoxWidth + ' ' + cardViewBoxHeight" preserveAspectRatio="xMidYMid meet">
+    <defs>
+        <linearGradient [attr.id]="critTitleGradientId" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#5B504E" stop-opacity="0"></stop>
+            <stop offset="6.25%" stop-color="#5B504E" stop-opacity="1"></stop>
+            <stop offset="93.75%" stop-color="#5B504E" stop-opacity="1"></stop>
+            <stop offset="100%" stop-color="#5B504E" stop-opacity="0"></stop>
+        </linearGradient>
+        @if (showImage()) {
+            @let imageBounds = imageLayout();
+            <clipPath [attr.id]="imageClipPathId">
+                <rect [attr.x]="imageBounds.x" [attr.y]="imageBounds.y" [attr.width]="imageBounds.width" [attr.height]="imageBounds.height" rx="4" ry="4"></rect>
+            </clipPath>
         }
-    </div>
-    <!-- PV Box -->
-        <div class="pv-box-background" aria-hidden="true">
-            <svg class="pv-box-background-svg" viewBox="0 0 220 78" preserveAspectRatio="none">
-                <polygon class="pv-box-background-shape" points="0,0 220,0 220,78 40,78"></polygon>
-            </svg>
-        </div>
-    <div class="pv-box">
-        <div class="pv-text">{{ adjustedPV() }}</div>
-        @if (basePV() != adjustedPV()) {
-        <div class="base-pv-text">Base PV: {{ basePV() }}</div>
+    </defs>
+
+    <g class="header-group">
+        <text
+            x="42"
+            [attr.y]="headerBaselineY()"
+            class="vessel-title-svg"
+            [attr.font-size]="headerFontSize()"
+            [attr.fill]="headerTitleFill()"
+            [attr.stroke]="headerTitleStroke()"
+            [attr.stroke-width]="cardStyle() === 'monochrome' ? 0 : 6"
+            stroke-linejoin="round"
+            paint-order="stroke fill">
+            {{ headerTitle() }}
+        </text>
+
+        @if (headerSubtitle()) {
+            <text
+                [attr.x]="subtitleX()"
+                [attr.y]="subtitleY()"
+                class="vessel-subtitle-svg"
+                [attr.fill]="accentTextFill()">
+                {{ headerSubtitle() }}
+            </text>
         }
-    </div>
-</div>
 
-<!-- Main Content Area -->
-<div class="stats-container">
-    <div class="stats-container-row">
-        <!-- Row 1 Left: Stats Row - Type, Size, Thrust, Skill -->
-        <div class="stats-row-container frame">
-            <div class="frame-background"></div>
-            <div class="frame-content">
-                <div class="stats-row">
-                    <span class="stat-item"><span class="as-caption">TP:</span><span class="as-value">{{
-                            asStats().TP }}</span></span>
-                    <span class="stat-item"><span class="as-caption">SZ:</span><span class="as-value">{{
-                            asStats().SZ }}</span></span>
-                    <span class="stat-item"><span class="as-caption">THR:</span><span class="as-value"
-                            [innerHTML]="movementDisplay()"></span></span>
-                    <span class="stat-item" [class.clickable]="interactive()"
-                        (click)="interactive() && onEditPilotClick()"><span class="as-caption">SKILL:</span><span
-                            class="as-value">{{ skill() }}</span></span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Row 1 Right: Era Icons -->
-        <div class="era-icons">
-            @for (item of eraAvailability(); track item.era.id) {
-            @if (item.era.icon) {
-            <img class="era-icon" [src]="item.era.icon" [alt]="item.era.name" [title]="item.era.name"
-                [class.unavailable]="!item.isAvailable" />
+        <g transform="translate(873 30)">
+            <polygon class="pv-box-background-shape" points="0,0 220,0 220,78 40,78"></polygon>
+            <text x="138" y="49" text-anchor="middle" dominant-baseline="middle" class="pv-text-svg">{{ adjustedPV() }}</text>
+            @if (basePV() != adjustedPV()) {
+                <text x="136" y="68" text-anchor="middle" class="base-pv-text-svg">Base PV: {{ basePV() }}</text>
             }
-            }
-        </div>
+        </g>
+    </g>
 
-        <!-- Row 2 Left: Armor Row -->
-        <div class="armor-damage-row frame">
-            <div class="frame-background"></div>
-            <div class="frame-content">
-                <div class="armor-section">
-                    <div class="section-label">ARMOR</div>
-                    <div class="section-value">{{ armorPips() }}</div>
-                </div>
-                <div class="damage-section">
-                    <div class="section-label">DAMAGE</div>
-                    <div class="damage-track" data-damage-track="armor" [class.has-pending]="pendingArmorChange() !== 0"
-                        [class.pending-damage]="pendingArmorChange() > 0"
-                        [class.pending-heal]="pendingArmorChange() < 0">
-                        @if (committedArmorDamage() > 0 || pendingArmorChange() > 0) {
-                        <span class="damage-value">{{ committedArmorDamage() }}</span>
-                        @if (pendingArmorChange() !== 0) {
-                        <span class="pending-value">{{ pendingArmorChange() >= 0 ? '+' : '' }}{{ pendingArmorChange()
-                            }}</span>
-                        }
-                        }
-                    </div>
-                </div>
-            </div>
+    <rect [attr.x]="statsBox.x + 0.75" [attr.y]="statsBox.y + 0.75" [attr.width]="statsBox.width - 1.5" [attr.height]="statsBox.height - 1.5" rx="7" ry="7" class="vessel-frame-svg" [attr.fill]="vesselFrameFill()"></rect>
+    <rect [attr.x]="armorBox.x + 0.75" [attr.y]="armorBox.y + 0.75" [attr.width]="armorBox.width - 1.5" [attr.height]="armorBox.height - 1.5" rx="7" ry="7" class="vessel-frame-svg" [attr.fill]="vesselFrameFill()"></rect>
+    <rect [attr.x]="thresholdBox.x + 0.75" [attr.y]="thresholdBox.y + 0.75" [attr.width]="thresholdBox.width - 1.5" [attr.height]="thresholdBox.height - 1.5" rx="7" ry="7" class="vessel-frame-svg" [attr.fill]="vesselFrameFill()"></rect>
+    <rect [attr.x]="imageBox.x + 0.75" [attr.y]="imageBox.y + 0.75" [attr.width]="imageBox.width - 1.5" [attr.height]="imageBox.height - 1.5" rx="7" ry="7" class="vessel-frame-svg" [attr.fill]="vesselFrameFill()"></rect>
+    @if (effectiveSpecials().length > 0) {
+        <rect [attr.x]="specialsBox.x + 0.75" [attr.y]="specialsBox.y + 0.75" [attr.width]="specialsBox.width - 1.5" [attr.height]="specialsBox.height - 1.5" rx="7" ry="7" class="vessel-frame-svg" [attr.fill]="vesselFrameFill()"></rect>
+    }
 
-            <!-- Structure Row -->
-            <div class="frame-content">
-                <div class="armor-section">
-                    <div class="section-label">STRUCTURE</div>
-                    <div class="section-value">{{ structurePips() }}</div>
-                </div>
-                <div class="damage-section">
-                    <div class="section-label">DAMAGE</div>
-                    <div class="damage-track" data-damage-track="structure"
-                        [class.has-pending]="pendingInternalChange() !== 0"
-                        [class.pending-damage]="pendingInternalChange() > 0"
-                        [class.pending-heal]="pendingInternalChange() < 0">
-                        @if (committedInternalDamage() > 0 || pendingInternalChange() > 0) {
-                        <span class="damage-value">{{ committedInternalDamage() }}</span>
-                        @if (pendingInternalChange() !== 0) {
-                        <span class="pending-value">{{ pendingInternalChange() >= 0 ? '+' : '' }}{{
-                            pendingInternalChange() }}</span>
-                        }
-                        }
-                    </div>
-                </div>
-            </div>
-        </div>
+    <g class="stats-row-svg">
+        <text x="48" y="198" class="stat-caption-svg">TP:</text>
+        <text x="108" y="198" class="stat-value-svg">{{ asStats().TP }}</text>
+        <text x="188" y="198" class="stat-caption-svg">SZ:</text>
+        <text x="248" y="198" class="stat-value-svg">{{ asStats().SZ }}</text>
+        <text x="332" y="198" class="stat-caption-svg">THR:</text>
+        <text x="422" y="198" class="stat-value-svg">{{ movementSvgText() }}</text>
+        <g [class.clickable-svg]="interactive()" (click)="interactive() && onEditPilotClick()">
+            <text x="502" y="198" class="stat-caption-svg">SKILL:</text>
+            <text x="592" y="198" text-anchor="end" class="stat-value-svg">{{ skill() }}</text>
+        </g>
+    </g>
 
-        <!-- Row 2 Right: Damage Threshold -->
-        <div class="damage-threshold-row-container frame">
-            <div class="frame-background"></div>
-            <div class="frame-content">
-                <div class="stats-row center">
-                    <span class="stat-item wide-spaced">
-                        <span class="as-value">{{ asStats().Th }}</span><span class="as-caption">DAMAGE THRESHOLD</span>
-                    </span>
-                </div>
-            </div>
-        </div>
+    @for (item of eraIconLayouts(); track item.era.id) {
+        <image
+            class="era-icon-svg"
+            [class.unavailable]="!item.isAvailable"
+            [attr.href]="item.era.icon"
+            [attr.x]="item.x"
+            [attr.y]="item.y"
+            [attr.width]="item.size"
+            [attr.height]="item.size"
+            preserveAspectRatio="xMidYMid meet">
+        </image>
+    }
 
-        <!-- Row 3-4 Left: Critical Hits Box -->
-        <div class="critical-hits-container">
-            @switch (criticalHitsVariant()) {
-            @case ('aerospace-1') {
-            <as-critical-hits-aerospace-1 [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" [interactive]="interactive()" (rollCritical)="onRollCriticalClick()" />
-            }
-            @case ('dropship-1') {
-            <as-critical-hits-dropship-1 [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" [interactive]="interactive()" (rollCritical)="onRollCriticalClick()" />
-            }
-            }
-        </div>
+    <g class="pips-wrapper" data-damage-type="armor">
+        <line x1="29" y1="312.5" x2="627" y2="312.5" class="box-divider-svg"></line>
+        <line x1="214" y1="246" x2="214" y2="379" class="box-divider-svg"></line>
 
-        <!-- Row 3 Right: SPAs -->
-        <div class="spa-container">
-            <!-- Unit Image -->
-            @if (imageUrl() && !imageLoadFailed()) {
-            <div class="fluff-image-container center-vertical">
-                <img class="fluff-image" [src]="imageUrl()" alt="Unit image" (error)="onImageError()" />
-            </div>
-            }
-            @let abilities = pilotAbilities();
-            @if (abilities.length > 0) {
-            <div class="pilot-abilities">
-                @for (ability of abilities; track formatPilotAbility(ability)) {
-                <div class="pilot-ability" (click)="onPilotAbilityClick(ability)">{{ formatPilotAbility(ability) }}</div>
+        <text x="120" y="270" text-anchor="middle" class="section-label-svg">ARMOR</text>
+        <text x="120" y="318" text-anchor="middle" class="section-value-svg">{{ armorPips() }}</text>
+        <text x="318" y="270" class="section-label-svg">DAMAGE</text>
+        <g class="damage-track" data-damage-track="armor" [class.pending-damage]="pendingArmorChange() > 0" [class.pending-heal]="pendingArmorChange() < 0">
+            <rect x="236" y="278" width="370" height="42" class="damage-track-hit-area-svg"></rect>
+            <line x1="246" y1="308" x2="604" y2="308" class="damage-track-line-svg"></line>
+            @if (hasVesselDamageDisplay('armor')) {
+                <text x="424" y="302" text-anchor="middle" class="damage-value-svg">{{ vesselDamageValue('armor') }}</text>
+                @if (vesselPendingValue('armor')) {
+                    <text x="466" y="302" class="pending-value-svg" [class.pending-damage]="pendingArmorChange() > 0" [class.pending-heal]="pendingArmorChange() < 0">{{ vesselPendingValue('armor') }}</text>
                 }
-            </div>
             }
-        </div>
+        </g>
+    </g>
 
-        <!-- Row 4 Right: Specials Box -->
-        @if (effectiveSpecials().length > 0) {
-        <div class="specials-box frame">
-            <div class="frame-background"></div>
-            <div class="frame-content">
-                <span class="as-caption">SPECIAL:&nbsp;</span>
-                @for (item of effectiveSpecials(); track item.original; let isLast = $last) {
-                <span class="special-ability as-value" 
-                      [attr.data-original]="item.original"
-                      [class.exhausted]="item.isExhausted || (item.maxCount && (item.consumedCount ?? 0) >= item.maxCount)"
-                      [class.has-consumed]="item.consumedCount"
-                      (click)="onSpecialClick(item, $event)">{{ item.effective }}@if (item.maxCount && item.consumedCount) {<span class="consumed-indicator">[{{ item.maxCount - item.consumedCount }}]</span>}@if (!isLast) {<span
-                        class="special-separator">,</span>}</span>&nbsp;
+    <g data-damage-type="structure">
+        <text x="120" y="345" text-anchor="middle" class="section-label-svg">STRUCTURE</text>
+        <text x="120" y="379" text-anchor="middle" class="section-value-svg">{{ structurePips() }}</text>
+        <text x="318" y="345" class="section-label-svg">DAMAGE</text>
+        <g class="damage-track" data-damage-track="structure" [class.pending-damage]="pendingInternalChange() > 0" [class.pending-heal]="pendingInternalChange() < 0">
+            <rect x="236" y="352" width="370" height="28" class="damage-track-hit-area-svg"></rect>
+            <line x1="246" y1="376" x2="604" y2="376" class="damage-track-line-svg"></line>
+            @if (hasVesselDamageDisplay('structure')) {
+                <text x="424" y="370" text-anchor="middle" class="damage-value-svg">{{ vesselDamageValue('structure') }}</text>
+                @if (vesselPendingValue('structure')) {
+                    <text x="466" y="370" class="pending-value-svg" [class.pending-damage]="pendingInternalChange() > 0" [class.pending-heal]="pendingInternalChange() < 0">{{ vesselPendingValue('structure') }}</text>
                 }
-            </div>
-        </div>
+            }
+        </g>
+    </g>
+
+    <g class="threshold-box-svg">
+        <text x="760" y="283" class="threshold-value-svg">{{ asStats().Th }}</text>
+        <text x="812" y="283" class="threshold-label-svg">DAMAGE THRESHOLD</text>
+    </g>
+
+    <svg class="critical-hits-svg" [attr.x]="criticalBox.x" [attr.y]="criticalBox.y" [attr.width]="criticalBox.width" [attr.height]="criticalBox.height" viewBox="0 0 262 148" preserveAspectRatio="xMidYMid meet">
+        <rect x="1.5" y="1.5" width="259" height="145" rx="7" ry="7" class="vessel-frame-svg" [attr.fill]="vesselFrameFill()"></rect>
+        @if (cardStyle() !== 'monochrome') {
+            <rect x="50" y="6" width="162" height="22" [attr.fill]="'url(#' + critTitleGradientId + ')'" aria-hidden="true"></rect>
         }
-    </div>
-</div>
+        <text x="131" y="24" text-anchor="middle" class="critical-title-svg" [attr.fill]="critTitleFill()">CRITICAL HITS</text>
+
+        @let crit = critLayout();
+        <g class="critical-row-svg" data-crit="crew" [attr.transform]="'translate(11,' + crit.crewY + ')'">
+            <text [attr.x]="crit.nameX" [attr.y]="crit.crewTextY" text-anchor="end" class="critical-name-svg" [attr.fill]="critNameFill()">CREW</text>
+            @if (critShowNumeric('crew', 2)) {
+                <text x="81" y="12" class="critical-count-svg" [attr.fill]="critCountFill('crew')">{{ critCommittedHits('crew') }}@if (critPendingChange('crew') !== 0) {<tspan [attr.fill]="critPendingDeltaFill('crew')">{{ critPendingDelta('crew') }}</tspan>}</text>
+                <circle cx="110" cy="6" r="6.35" class="critical-pip-circle damaged"></circle>
+            } @else {
+                @for (pipIndex of range(2); track pipIndex) {
+                    <circle
+                        [attr.cx]="85 + (pipIndex * 16)"
+                        cy="6"
+                        r="6.35"
+                        class="critical-pip-circle"
+                        [class.damaged]="isCritPipDamaged('crew', pipIndex)"
+                        [class.pending-damage]="isCritPipPendingDamage('crew', pipIndex)"
+                        [class.pending-heal]="isCritPipPendingHeal('crew', pipIndex)">
+                    </circle>
+                }
+            }
+            <text x="117" y="10.5" class="critical-brace-svg">&#123;</text>
+            <text x="124" [attr.y]="crit.crewLineOneY" class="critical-desc-svg critical-desc-tight-svg">+2 Weapon To-Hit Each</text>
+            <text x="124" [attr.y]="crit.crewLineTwoY" class="critical-desc-svg critical-desc-tight-svg">+2 Control Roll Each</text>
+        </g>
+
+        @for (row of crit.rows; track row.key) {
+            <g class="critical-row-svg" [attr.data-crit]="row.key" [attr.transform]="'translate(11,' + row.y + ')'">
+                <text [attr.x]="crit.nameX" [attr.y]="crit.crewTextY" text-anchor="end" class="critical-name-svg" [attr.fill]="critNameFill()">{{ row.name }}</text>
+                @if (critShowNumeric(row.key, row.maxPips)) {
+                    <text x="81" y="12" class="critical-count-svg" [attr.fill]="critCountFill(row.key)">{{ critCommittedHits(row.key) }}@if (critPendingChange(row.key) !== 0) {<tspan [attr.fill]="critPendingDeltaFill(row.key)">{{ critPendingDelta(row.key) }}</tspan>}</text>
+                    <circle cx="110" cy="6" r="6.35" class="critical-pip-circle damaged"></circle>
+                } @else {
+                    @for (pipIndex of range(row.maxPips); track pipIndex) {
+                        <circle
+                            [attr.cx]="85 + (pipIndex * 16)"
+                            cy="6"
+                            r="6.35"
+                            class="critical-pip-circle"
+                            [class.damaged]="isCritPipDamaged(row.key, pipIndex)"
+                            [class.pending-damage]="isCritPipPendingDamage(row.key, pipIndex)"
+                            [class.pending-heal]="isCritPipPendingHeal(row.key, pipIndex)">
+                        </circle>
+                    }
+                }
+                <text [attr.x]="critDescX(row.key, row.maxPips)" [attr.y]="crit.crewTextY" class="critical-desc-svg">{{ row.description }}</text>
+            </g>
+        }
+
+        <g [attr.transform]="'translate(11,' + crit.noteY + ')'">
+            <text [attr.x]="crit.nameX" [attr.y]="crit.noteTextY" text-anchor="end" class="critical-name-svg" [attr.fill]="critNameFill()">WEAPONS</text>
+            <text x="85" [attr.y]="crit.noteTextY" class="critical-desc-svg critical-note-svg">See Back...</text>
+        </g>
+
+        @if (interactive()) {
+            <g class="crit-roll-button-svg" transform="translate(228 4)" (click)="onRollCriticalClick()">
+                <rect x="0" y="0" width="28" height="28" rx="4" ry="4" class="crit-roll-button-box-svg"></rect>
+                <svg x="2" y="2" width="24" height="24" [attr.viewBox]="critRollIconViewBox" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+                    <path class="crit-roll-icon-path" [attr.d]="critRollIconPath"></path>
+                </svg>
+            </g>
+        }
+    </svg>
+
+    @if (showImage()) {
+        @let imageBounds = imageLayout();
+        <image
+            class="fluff-image-svg"
+            [attr.href]="imageUrl()"
+            [attr.x]="imageBounds.x"
+            [attr.y]="imageBounds.y"
+            [attr.width]="imageBounds.width"
+            [attr.height]="imageBounds.height"
+            preserveAspectRatio="xMidYMid meet"
+            [attr.clip-path]="'url(#' + imageClipPathId + ')'"
+            (error)="onImageError()">
+        </image>
+    }
+
+    @for (ability of abilityTextRuns(); track ability.text + ':' + ability.x + ':' + ability.y) {
+        <text [attr.x]="ability.x" [attr.y]="ability.y" class="pilot-ability-svg" (click)="onPilotAbilityClick(ability.item)">{{ ability.text }}</text>
+    }
+
+    @if (effectiveSpecials().length > 0) {
+        <text [attr.x]="specialsBox.x + 18" [attr.y]="specialsBox.y + 34" class="special-label-svg">SPECIAL:</text>
+        @for (special of specialTextRuns(); track special.item.original + ':' + special.x + ':' + special.y) {
+            <text
+                [attr.x]="special.x"
+                [attr.y]="special.y"
+                class="special-ability-svg"
+                [class.exhausted]="special.item.isExhausted || (special.item.maxCount && (special.item.consumedCount ?? 0) >= special.item.maxCount)"
+                (click)="onSpecialClick(special.item, $event)">
+                {{ special.text }}
+            </text>
+        }
+    }
+</svg>
 
 <!-- Destroyed Overlay -->
 @if (isDestroyed()) {
