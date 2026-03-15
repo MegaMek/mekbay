@@ -28,6 +28,8 @@ import {
 import { resolveOrgDefinitionSpec } from './org-registry.util';
 import {
 	getEquivalentGroupCountAtTier,
+	getDynamicTierForModifier,
+	getRepeatCountForTierDelta,
 } from './org-tier.util';
 import type {
 	GroupSizeResult,
@@ -178,18 +180,28 @@ export function resolveModifierTier(
 }
 
 export function getRuleModifierResolutions(
-	rule: Pick<OrgLeafCountRule, 'modifiers' | 'tier'>,
+	rule: Pick<OrgLeafCountRule, 'modifiers' | 'tier' | 'dynamicTier'>,
 ): OrgModifierResolution[] {
 	const cached = GLOBAL_RULE_MODIFIER_RESOLUTION_CACHE.get(rule as object);
 	if (cached) {
 		return cached as OrgModifierResolution[];
 	}
 
+	const regularModifier = rule.modifiers[''] ?? Object.values(rule.modifiers)[0];
+	const regularCount = regularModifier ? getModifierCount(regularModifier) : 0;
+
 	const resolved = Object.entries(rule.modifiers)
 		.map(([prefix, modifier]) => ({
 			prefix,
 			count: getModifierCount(modifier),
-			tier: resolveModifierTier(rule.tier, modifier),
+			tier: typeof modifier === 'object' && modifier.tier !== undefined
+				? modifier.tier
+				: getDynamicTierForModifier(
+					rule.tier,
+					regularCount,
+					getModifierCount(modifier),
+					rule.dynamicTier ?? 0,
+				),
 		}))
 		.sort((left, right) => right.count - left.count);
 
@@ -2356,8 +2368,44 @@ interface NormalizationTarget {
 	readonly modifierKey: string;
 	readonly countsAsType: GroupSizeResult['countsAsType'];
 	readonly tier: number;
+	readonly genericity: number;
 	readonly tag?: GroupSizeResult['tag'];
 	readonly priority?: number;
+}
+
+function getNormalizationTargetGenericity(rule: OrgRuleDefinition): number {
+	let genericity = 0;
+
+	if (rule.kind === 'composed-count') {
+		genericity += 100;
+		genericity += rule.childRoles.reduce((sum, childRole) => sum + childRole.matches.length, 0);
+		genericity -= rule.childRoles.reduce((sum, childRole) => (
+			sum
+			+ (childRole.onlyUnitTypes?.length ?? 0)
+			+ (childRole.requiredUnitTagsAny?.length ?? 0)
+			+ (childRole.requiredUnitTagsAll?.length ?? 0)
+			+ (childRole.requiredTagsAny?.length ?? 0)
+			+ (childRole.requiredTagsAll?.length ?? 0)
+		), 0);
+	} else if (rule.kind === 'composed-pattern') {
+		genericity += 80;
+	} else {
+		genericity += 10;
+	}
+
+	if (!rule.countsAs) {
+		genericity += 20;
+	}
+	if (!rule.priority) {
+		genericity += 20;
+	} else {
+		genericity -= rule.priority;
+	}
+	if ((rule.dynamicTier ?? 0) > 0) {
+		genericity += 10;
+	}
+
+	return genericity;
 }
 
 interface CompiledDefinitionSpec {
@@ -2399,6 +2447,7 @@ function getCompiledDefinitionSpec(definition: OrgDefinitionSpec): CompiledDefin
 			modifierKey: modifier.prefix,
 			countsAsType: rule.countsAs ?? null,
 			tier: modifier.tier,
+			genericity: getNormalizationTargetGenericity(rule),
 			tag: rule.tag,
 			priority: rule.priority,
 		})),
@@ -3052,7 +3101,7 @@ function normalizeGroupsToDefinition(
 
 	return groups.flatMap((group) => {
 		if (group.tier > highestTarget.tier) {
-			const copies = Math.max(1, Math.floor(getEquivalentGroupCountAtTier(group.tier, highestTarget.tier)));
+			const copies = getRepeatCountForTierDelta(group.tier, highestTarget.tier);
 			return Array.from({ length: copies }, () => ({
 				...highestTarget,
 				children: undefined,
@@ -3066,6 +3115,9 @@ function normalizeGroupsToDefinition(
 			const candidateDistance = Math.abs(candidate.tier - group.tier);
 			if (candidateDistance < bestDistance) {
 				return candidate;
+			}
+			if (candidateDistance === bestDistance && candidate.genericity !== best.genericity) {
+				return candidate.genericity > best.genericity ? candidate : best;
 			}
 			if (candidateDistance === bestDistance && candidate.tier < best.tier) {
 				return candidate;

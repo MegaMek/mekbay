@@ -2440,6 +2440,31 @@ describe('resolveFromUnits', () => {
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
+    it('resolves 75 conventional infantry troopers in Society as Un regardless of move type', () => {
+        const infantry = createUnit('CI75', 'Infantry', 'Mechanized Conventional Infantry', false, [], 75, 'Hover');
+
+        const result = resolveFromUnits([infantry], 'Society', 'HW Clan');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Un');
+        expect(result[0].type).toBe('Un');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('does not merge 2 PM plus 1 AF into a Society Un', () => {
+        const units: Unit[] = [
+            createUnit('PM1', 'ProtoMek', 'ProtoMek'),
+            createUnit('PM2', 'ProtoMek', 'ProtoMek'),
+            createUnit('AF1', 'Aero', 'Aerospace Fighter'),
+        ];
+
+        const result = resolveFromUnits(units, 'Society', 'HW Clan');
+
+        expect(result.length).toBe(1);
+        expect(result[0].type).toBeNull();
+        expect(result[0].leftoverUnits?.length).toBe(3);
+    });
+
     it('attaches Society leftovers only to the top-most group', () => {
         const units: Unit[] = [
             createBM('BM1'),

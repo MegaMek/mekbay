@@ -409,6 +409,13 @@ function compareGroupTierDescending(left: GroupSizeResult, right: GroupSizeResul
 	return left.name.localeCompare(right.name);
 }
 
+function isSameGroupSequence(
+	left: readonly GroupSizeResult[],
+	right: readonly GroupSizeResult[],
+): boolean {
+	return left.length === right.length && left.every((group, index) => group === right[index]);
+}
+
 function collectGroupUnits(
 	group: GroupSizeResult,
 	cache: WeakMap<GroupSizeResult, Unit[]>,
@@ -578,7 +585,8 @@ function getDisplayGroups(
 
 	const definition = resolveOrgDefinition(factionName, factionAffinity);
 	const promotedGroups = promoteDisplayGroups(groups, definition);
-	return collapseHighestTierGroupsForDisplay(promotedGroups, definition);
+	const collapsedGroups = collapseHighestTierGroupsForDisplay(promotedGroups, definition);
+	return isSameGroupSequence(groups, collapsedGroups) ? groups : collapsedGroups;
 }
 
 export function aggregateGroupsResult(
