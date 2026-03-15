@@ -1694,6 +1694,8 @@ function createFixtureUnit(name: keyof typeof BLUNDER_BRIGADE_UNIT_FIXTURES): Un
 }
 
 const BLUNDER_BRIGADE_MAX_SOLVE_MS = 500;
+const BLUNDER_BRIGADE_10X_MAX_SOLVE_MS = 1000;
+const BLUNDER_BRIGADE_COMPOSED_ONLY_MAX_SOLVE_MS = 1000;
 
 const BLUNDER_BRIGADE_GROUP_ONE_NAMES: Array<keyof typeof BLUNDER_BRIGADE_UNIT_FIXTURES> = [
     'BMNightsky_NGS5S',
@@ -1743,27 +1745,37 @@ const BLUNDER_BRIGADE_GROUP_ONE_NAMES: Array<keyof typeof BLUNDER_BRIGADE_UNIT_F
     'BMWarhammer_C3',
 ];
 
-function resolveBlunderBrigadeForce(): { groupResults: GroupSizeResult[]; result: GroupSizeResult[] } {
-    const groupOne: Unit[] = Array.from({ length: 10 }, (_, iteration) =>
-        BLUNDER_BRIGADE_GROUP_ONE_NAMES.map(name => createFixtureUnit(name)),
-    ).flat();
-    const groupTwo: Unit[] = [
-        'BMOstsol_OTL5M',
-        'BMNightsky_NGS5S',
-        'BMPuma_E',
-        'BMPuma_S',
-        'BMDasher_H',
-    ].map(name => createFixtureUnit(name));
-    const groupThree: Unit[] = [
-        'BMHatchetman_HCT5S',
-        'BMHussar_HSR400D',
-    ].map(name => createFixtureUnit(name));
+function buildBlunderBrigadeGroupResults(multiplier: number = 1): GroupSizeResult[] {
+    const groupResults: GroupSizeResult[] = [];
 
-    const groupResults = [
-        ...resolveFromUnits(groupOne, 'Wolf\'s Dragoons', 'Mercenary'),
-        ...resolveFromUnits(groupTwo, 'Wolf\'s Dragoons', 'Mercenary'),
-        ...resolveFromUnits(groupThree, 'Wolf\'s Dragoons', 'Mercenary'),
-    ];
+    for (let copy = 0; copy < multiplier; copy += 1) {
+        const groupOne: Unit[] = Array.from({ length: 10 }, () =>
+            BLUNDER_BRIGADE_GROUP_ONE_NAMES.map(name => createFixtureUnit(name)),
+        ).flat();
+        const groupTwo: Unit[] = [
+            'BMOstsol_OTL5M',
+            'BMNightsky_NGS5S',
+            'BMPuma_E',
+            'BMPuma_S',
+            'BMDasher_H',
+        ].map(name => createFixtureUnit(name));
+        const groupThree: Unit[] = [
+            'BMHatchetman_HCT5S',
+            'BMHussar_HSR400D',
+        ].map(name => createFixtureUnit(name));
+
+        groupResults.push(
+            ...resolveFromUnits(groupOne, 'Wolf\'s Dragoons', 'Mercenary'),
+            ...resolveFromUnits(groupTwo, 'Wolf\'s Dragoons', 'Mercenary'),
+            ...resolveFromUnits(groupThree, 'Wolf\'s Dragoons', 'Mercenary'),
+        );
+    }
+
+    return groupResults;
+}
+
+function resolveBlunderBrigadeForce(multiplier: number = 1): { groupResults: GroupSizeResult[]; result: GroupSizeResult[] } {
+    const groupResults = buildBlunderBrigadeGroupResults(multiplier);
 
     return {
         groupResults,
@@ -2921,6 +2933,30 @@ describe('resolveFromUnits', () => {
         expect(groupResults.length).toBeGreaterThan(0);
         expect(result.length).toBeGreaterThan(0);
         expect(elapsedMs).toBeLessThan(BLUNDER_BRIGADE_MAX_SOLVE_MS);
+    });
+
+    it('resolves the 10x Blunder Brigade 7415 Wolf\'s Dragoons force within the extended performance guardrail', () => {
+        const startedAt = Date.now();
+        const { groupResults, result } = resolveBlunderBrigadeForce(10);
+        const elapsedMs = Date.now() - startedAt;
+
+        expect(groupResults.length).toBeGreaterThan(0);
+        expect(result.length).toBeGreaterThan(0);
+        expect(result.every(group => group.name.length > 0)).toBeTrue();
+        expect(elapsedMs).toBeLessThan(BLUNDER_BRIGADE_10X_MAX_SOLVE_MS);
+    });
+
+    it('promotes a 10x Blunder Brigade pre-solved group set within the composed-only performance guardrail', () => {
+        const groupResults = buildBlunderBrigadeGroupResults(10);
+
+        const startedAt = Date.now();
+        const result = resolveFromGroups('Wolf\'s Dragoons', 'Mercenary', groupResults);
+        const elapsedMs = Date.now() - startedAt;
+
+        expect(groupResults.length).toBeGreaterThan(0);
+        expect(result.length).toBeGreaterThan(0);
+        expect(result.every(group => group.name.length > 0)).toBeTrue();
+        expect(elapsedMs).toBeLessThan(BLUNDER_BRIGADE_COMPOSED_ONLY_MAX_SOLVE_MS);
     });
 
     it('crossgrades foreign groups to the nearest dynamic-tier modifier in the target org', () => {
