@@ -2259,6 +2259,21 @@ describe('resolveFromUnits', () => {
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
+    it('aggregates 20 BM into 4x Level II for ComStar', () => {
+        const units = Array.from({ length: 20 }, (_, index) => createBM(`CS-L2X4-${index + 1}`));
+        const result = resolveFromUnits(units, 'ComStar', 'Inner Sphere');
+        const aggregated = getAggregatedGroupsResult(result, 'ComStar', 'Inner Sphere');
+
+        expect(result.length).toBe(4);
+        expect(result.every(group => group.type === 'Level II')).toBeTrue();
+        expect(result.every(group => group.children?.length === 5)).toBeTrue();
+        expect(result.every(group => group.children?.every(child => child.name === 'Level I'))).toBeTrue();
+        expect(result.every(group => group.children?.every(child => child.type === 'Level I'))).toBeTrue();
+        expect(result.every(group => group.leftoverUnits === undefined)).toBeTrue();
+        expect(aggregated.name).toBe('4x Level II');
+        expect(aggregated.groups).toBe(result);
+    });
+
     it('groups thirty-six Level I into a Level III for ComStar', () => {
         const levelIs = Array.from({ length: 36 }, (_, index) =>
             resolveFromUnits([
