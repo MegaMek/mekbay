@@ -23,7 +23,7 @@ import type {
     CIMoveClassBucketValue,
     CIMoveClassTag,
     CIMoveClassTrooperBucketValue,
-    FlightIdentityBucketValue,
+    FlightTypeBucketValue,
     DerivedUnitClassKey,
     GroupFacts,
     GroupSizeResult,
@@ -90,7 +90,6 @@ function getCIMoveClass(unit: Unit): CIMoveClass | null {
     if (unit.subtype === 'Motorized Conventional Infantry') {
         return 'motorized';
     }
-    if (unit.moveType === 'Jump') return 'jump';
 
     if (unit.subtype === 'Mechanized Conventional Infantry') {
         switch (unit.moveType) {
@@ -109,6 +108,8 @@ function getCIMoveClass(unit: Unit): CIMoveClass | null {
         }
     }
 
+    // Fallbacks just in case
+    if (unit.moveType === 'Jump') return 'jump';
     return 'foot';
 }
 
@@ -171,12 +172,12 @@ function isFlightEligible(facts: UnitFacts): boolean {
         || (unitType === 'SV' && hasFlightMoveType(facts.unit));
 }
 
-function getFlightIdentityBucketValue(facts: UnitFacts): FlightIdentityBucketValue {
+function getFlightTypeBucketValue(facts: UnitFacts): FlightTypeBucketValue {
     if (!isFlightEligible(facts)) {
         return 'not-flight';
     }
 
-    return `flight:${getNormalizedOrgUnitType(facts.unit)}|${facts.unit.type}|${facts.unit.chassis}|${facts.unit.model}`;
+    return `flight:${facts.unit.as.TP}`;
 }
 
 function getTransportBucketValue(facts: UnitFacts): TransportBucketValue {
@@ -401,7 +402,7 @@ export function createOrgRuleRegistry(
             classKey: (facts) => facts.classKey,
             ciMoveClass: (facts) => getCIMoveClassBucketValue(facts),
             ciMoveClassTroopers: (facts) => getCIMoveClassTrooperBucketValue(facts),
-            flightIdentity: (facts) => getFlightIdentityBucketValue(facts),
+            flightType: (facts) => getFlightTypeBucketValue(facts),
             infantryTroopers: (facts) => getInfantryTrooperBucketValue(facts),
             transport: (facts) => getTransportBucketValue(facts),
             ...registry?.unitBuckets,

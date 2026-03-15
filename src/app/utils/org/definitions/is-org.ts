@@ -19,7 +19,7 @@ export const IS_FLIGHT: OrgLeafCountRule = {
     commandRank: 'Lieutenant',
     tier: 1,
     unitSelector: 'flightEligible',
-    bucketBy: 'flightIdentity',
+    bucketBy: 'flightType',
     pointModel: 'fixed',
 };
 

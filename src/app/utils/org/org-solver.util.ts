@@ -135,10 +135,17 @@ interface SolveContext {
 	readonly groupSignatureCache: WeakMap<GroupSizeResult, string>;
 }
 
+const FOREIGN_UNITS_EVALUATION = true;
+const FLATTEN_REEVALUATED_FOREIGN_GROUPS_BEFORE_COMPOSITION = false;
+const MAX_LEAF_CANDIDATES = 256;
+const ASSIMILATE_FIRST_FOR_SUBOPTIMAL_GROUPS = true;
+const ASSIMILATE_SUBOPTIMAL_GROUPS_LOWEST_TIER_FIRST = true;
+
 const GLOBAL_RULE_MODIFIER_RESOLUTION_CACHE = new WeakMap<object, readonly OrgModifierResolution[]>();
 const GLOBAL_ACCEPTED_CHILD_TYPES_CACHE = new WeakMap<OrgComposedCountRule | OrgComposedPatternRule, ReadonlySet<GroupSizeResult['type']>>();
 const GLOBAL_COMPOSED_CONFIGURATION_CACHE = new WeakMap<OrgComposedCountRule, readonly ResolvedComposedCountConfiguration[]>();
 const GLOBAL_DEFINITION_CACHE = new WeakMap<OrgDefinitionSpec, CompiledDefinitionSpec>();
+
 
 export function getModifierCount(modifier: number | OrgTypeModifier): number {
 	return typeof modifier === 'object' ? modifier.count : modifier;
@@ -367,8 +374,11 @@ interface PlannedComposedCountRule {
 	readonly roleAvailability: readonly ComposedRoleAvailability[];
 	readonly emitted: readonly ComposedCountMatch[];
 	readonly groups: readonly GroupSizeResult[];
+	readonly leftoverAcceptedGroupFacts: readonly GroupFacts[];
 	readonly leftoverGroupFacts: readonly GroupFacts[];
 }
+
+type ComposedCandidateMode = 'all' | 'regular' | 'subregular';
 
 interface RoleMaskPool {
 	readonly roleIndices: number[];
@@ -838,6 +848,55 @@ function resolveComposedCountConfigurations(
 	return resolved;
 }
 
+function getRegularModifierResolution(modifierResolutions: readonly OrgModifierResolution[]): OrgModifierResolution {
+	return modifierResolutions.find((modifier) => modifier.prefix === '') ?? modifierResolutions[0];
+}
+
+function getModifierResolutionsForMode(
+	modifierResolutions: readonly OrgModifierResolution[],
+	mode: ComposedCandidateMode,
+): OrgModifierResolution[] {
+	if (mode === 'all') {
+		return [...modifierResolutions];
+	}
+
+	const regularModifier = getRegularModifierResolution(modifierResolutions);
+	if (mode === 'regular') {
+		return modifierResolutions.filter((modifier) => modifier.count === regularModifier.count);
+	}
+
+	return modifierResolutions.filter((modifier) => modifier.count < regularModifier.count);
+}
+
+function getAssimilationTargetModifier(
+	currentCount: number,
+	modifierResolutions: readonly OrgModifierResolution[],
+	maxCount: number,
+	regularizeSuboptimalOnly: boolean,
+): OrgModifierResolution | null {
+	const regularCount = getRegularModifierResolution(modifierResolutions).count;
+
+	if (currentCount < regularCount) {
+		for (const modifier of modifierResolutions) {
+			if (modifier.count >= regularCount && modifier.count <= maxCount) {
+				return modifier;
+			}
+		}
+	}
+
+	if (regularizeSuboptimalOnly) {
+		return null;
+	}
+
+	for (const modifier of modifierResolutions) {
+		if (modifier.count > currentCount && modifier.count <= maxCount) {
+			return modifier;
+		}
+	}
+
+	return null;
+}
+
 function tryConsumeComposedCountCopy(
 	childRoles: readonly OrgChildRoleSpec[],
 	childCount: number,
@@ -880,21 +939,25 @@ function planComposedCountConfiguration(
 	configuration: ResolvedComposedCountConfiguration,
 	workingGroups: ReadonlyArray<GroupFacts>,
 	registry: OrgRuleRegistry = DEFAULT_ORG_RULE_REGISTRY,
+	mode: ComposedCandidateMode = 'all',
 ): {
 	readonly emitted: readonly ComposedCountMatch[];
 	readonly groups: readonly GroupSizeResult[];
 	readonly leftoverGroupFacts: readonly GroupFacts[];
 } {
+	const acceptedGroups = getAcceptedGroupsForChildRoles(configuration.childRoles, workingGroups);
+	const acceptedSet = new Set(acceptedGroups);
+	const nonAcceptedGroups = workingGroups.filter((facts) => !acceptedSet.has(facts));
 	const bucketCandidates = buildBucketRoleMaskCandidates(
 		configuration.childRoles,
-		workingGroups,
+		acceptedGroups,
 		configuration.childMatchBucketBy,
 		registry,
 	);
 	const emitted: ComposedCountMatch[] = [];
 	const groups: GroupSizeResult[] = [];
 
-	for (const modifier of configuration.modifierResolutions) {
+	for (const modifier of getModifierResolutionsForMode(configuration.modifierResolutions, mode)) {
 		if (modifier.count <= 0) {
 			continue;
 		}
@@ -940,7 +1003,10 @@ function planComposedCountConfiguration(
 	return {
 		emitted,
 		groups,
-		leftoverGroupFacts: collectRemainingFactsFromBucketRoleMaskCandidates(bucketCandidates),
+		leftoverGroupFacts: [
+			...nonAcceptedGroups,
+			...collectRemainingFactsFromBucketRoleMaskCandidates(bucketCandidates),
+		],
 	};
 }
 
@@ -948,11 +1014,14 @@ function planComposedCountRule(
 	rule: OrgComposedCountRule,
 	allGroupFacts: ReadonlyArray<GroupFacts>,
 	registry: OrgRuleRegistry = DEFAULT_ORG_RULE_REGISTRY,
+	mode: ComposedCandidateMode = 'all',
 ): PlannedComposedCountRule {
 	const configurations = resolveComposedCountConfigurations(rule);
 	const acceptedGroups = rule.alternativeCompositions?.length
 		? getAcceptedGroupsForComposedConfigurations(configurations, allGroupFacts)
 		: getAcceptedGroupsForComposedRule(rule, allGroupFacts);
+	const acceptedSet = new Set(acceptedGroups);
+	const nonAcceptedGroups = allGroupFacts.filter((facts) => !acceptedSet.has(facts));
 	const bucketBy = rule.childBucketBy ?? configurations[0]?.childBucketBy;
 	const bucketCounts = bucketBy
 		? countBucketedGroupFacts(acceptedGroups, bucketBy, registry)
@@ -965,7 +1034,7 @@ function planComposedCountRule(
 	const groups: GroupSizeResult[] = [];
 
 	for (const configuration of configurations) {
-		const planned = planComposedCountConfiguration(rule, configuration, workingGroups, registry);
+		const planned = planComposedCountConfiguration(rule, configuration, workingGroups, registry, mode);
 		emitted.push(...planned.emitted);
 		groups.push(...planned.groups);
 		workingGroups = [...planned.leftoverGroupFacts];
@@ -977,7 +1046,8 @@ function planComposedCountRule(
 		roleAvailability,
 		emitted,
 		groups,
-		leftoverGroupFacts: workingGroups,
+		leftoverAcceptedGroupFacts: workingGroups,
+		leftoverGroupFacts: [...nonAcceptedGroups, ...workingGroups],
 	};
 }
 
@@ -1574,7 +1644,7 @@ export function evaluateComposedCountRule(
 		bucketCounts: planned.bucketCounts,
 		roleAvailability: planned.roleAvailability,
 		emitted: planned.emitted,
-		leftoverCount: planned.leftoverGroupFacts.length,
+		leftoverCount: planned.leftoverAcceptedGroupFacts.length,
 	};
 }
 
@@ -1582,8 +1652,9 @@ export function materializeComposedCountRule(
 	rule: OrgComposedCountRule,
 	allGroupFacts: ReadonlyArray<GroupFacts>,
 	registry: OrgRuleRegistry = DEFAULT_ORG_RULE_REGISTRY,
+	mode: ComposedCandidateMode = 'all',
 ): MaterializedGroupResolution {
-	const planned = planComposedCountRule(rule, allGroupFacts, registry);
+	const planned = planComposedCountRule(rule, allGroupFacts, registry, mode);
 	return {
 		groups: planned.groups,
 		leftoverGroupFacts: planned.leftoverGroupFacts,
@@ -1610,6 +1681,147 @@ export function evaluateRule(
 			return unreachableRule;
 		}
 	}
+}
+
+interface AssimilationCandidate {
+	readonly result: GroupSizeResult[];
+	readonly regularizesSuboptimalGroup: boolean;
+	readonly sourceTier: number;
+	readonly targetTier: number;
+	readonly absorbedCount: number;
+	readonly targetCount: number;
+}
+
+function compareAssimilationCandidates(left: AssimilationCandidate, right: AssimilationCandidate): boolean {
+	if (left.regularizesSuboptimalGroup !== right.regularizesSuboptimalGroup) {
+		return left.regularizesSuboptimalGroup;
+	}
+	if (ASSIMILATE_SUBOPTIMAL_GROUPS_LOWEST_TIER_FIRST && left.sourceTier !== right.sourceTier) {
+		return left.sourceTier < right.sourceTier;
+	}
+	if (left.targetTier !== right.targetTier) {
+		return left.targetTier > right.targetTier;
+	}
+	if (left.absorbedCount !== right.absorbedCount) {
+		return left.absorbedCount < right.absorbedCount;
+	}
+	return left.targetCount > right.targetCount;
+}
+
+function tryAssimilateExistingGroup(
+	groups: ReadonlyArray<GroupSizeResult>,
+	definition: OrgDefinitionSpec,
+	solveContext: SolveContext,
+	regularizeSuboptimalOnly: boolean,
+): GroupSizeResult[] | null {
+	let bestCandidate: AssimilationCandidate | null = null;
+	const compiled = getCompiledDefinitionSpec(definition);
+
+	for (const [groupIndex, group] of groups.entries()) {
+		if (!group.type || !group.children || group.children.length === 0) {
+			continue;
+		}
+
+		for (const rule of compiled.composedCountRules) {
+			if (rule.type !== group.type) {
+				continue;
+			}
+
+			for (const configuration of resolveComposedCountConfigurations(rule)) {
+				const currentModifier = configuration.modifierResolutions.find((modifier) => modifier.prefix === group.modifierKey);
+				if (!currentModifier) {
+					continue;
+				}
+
+				const regularModifier = getRegularModifierResolution(configuration.modifierResolutions);
+				const isSubregular = currentModifier.count < regularModifier.count;
+				if (regularizeSuboptimalOnly && !isSubregular) {
+					continue;
+				}
+				if (!regularizeSuboptimalOnly && isSubregular) {
+					continue;
+				}
+
+				const siblings = groups
+					.map((candidate, candidateIndex) => ({ candidate, candidateIndex }))
+					.filter(({ candidateIndex, candidate }) => {
+						if (candidateIndex === groupIndex) {
+							return false;
+						}
+						const candidateFacts = compileGroupFactsList([candidate], solveContext.unitFactsMap, solveContext.groupUnitCache)[0];
+						return configuration.childRoles.some((role) => matchesGroupFactsRole(candidateFacts, role));
+					});
+
+				const targetModifier = getAssimilationTargetModifier(
+					currentModifier.count,
+					configuration.modifierResolutions,
+					currentModifier.count + siblings.length,
+					regularizeSuboptimalOnly,
+				);
+				if (!targetModifier) {
+					continue;
+				}
+
+				const absorbedCount = targetModifier.count - currentModifier.count;
+				if (absorbedCount <= 0 || absorbedCount > siblings.length) {
+					continue;
+				}
+
+				const sortedSiblings = [...siblings].sort((left, right) =>
+					ASSIMILATE_SUBOPTIMAL_GROUPS_LOWEST_TIER_FIRST
+						? left.candidate.tier - right.candidate.tier || left.candidate.name.localeCompare(right.candidate.name)
+						: right.candidate.tier - left.candidate.tier || left.candidate.name.localeCompare(right.candidate.name),
+				);
+				const absorbedEntries = sortedSiblings.slice(0, absorbedCount);
+				const combinedChildren = [...group.children, ...absorbedEntries.map((entry) => entry.candidate)];
+				const combinedFacts = compileGroupFactsList(combinedChildren, solveContext.unitFactsMap, solveContext.groupUnitCache);
+				const bucketCandidates = buildBucketRoleMaskCandidates(
+					configuration.childRoles,
+					combinedFacts,
+					configuration.childMatchBucketBy,
+					definition.registry,
+				);
+				const plannedCopy = tryPlanCopyFromBucketRoleMaskCandidates(
+					configuration.childRoles,
+					targetModifier.count,
+					bucketCandidates,
+				);
+				if (!plannedCopy) {
+					continue;
+				}
+
+				const upgradedGroup: GroupSizeResult = {
+					name: `${targetModifier.prefix}${rule.type}`,
+					type: rule.type,
+					modifierKey: targetModifier.prefix,
+					countsAsType: rule.countsAs ?? null,
+					tier: targetModifier.tier,
+					tag: rule.tag,
+					priority: rule.priority,
+					children: materializePlannedBucketCopy(plannedCopy).map((facts) => facts.group),
+				};
+
+				const absorbedIndexSet = new Set(absorbedEntries.map((entry) => entry.candidateIndex));
+				const nextGroups = groups.filter((_, candidateIndex) => candidateIndex !== groupIndex && !absorbedIndexSet.has(candidateIndex));
+				nextGroups.push(upgradedGroup);
+
+				const candidate: AssimilationCandidate = {
+					result: nextGroups,
+					regularizesSuboptimalGroup: isSubregular && targetModifier.count >= regularModifier.count,
+					sourceTier: group.tier,
+					targetTier: targetModifier.tier,
+					absorbedCount,
+					targetCount: targetModifier.count,
+				};
+
+				if (!bestCandidate || compareAssimilationCandidates(candidate, bestCandidate)) {
+					bestCandidate = candidate;
+				}
+			}
+		}
+	}
+
+	return bestCandidate?.result ?? null;
 }
 
 export function evaluateOrgDefinition(
@@ -1655,10 +1867,6 @@ export const EMPTY_RESULT: GroupSizeResult = {
 	tier: 0,
 };
 
-const FOREIGN_UNITS_EVALUATION = true;
-const FLATTEN_REEVALUATED_FOREIGN_GROUPS_BEFORE_COMPOSITION = false;
-const MAX_LEAF_CANDIDATES = 256;
-
 interface LeafAllocationCandidate {
 	readonly groups: readonly GroupSizeResult[];
 	readonly leftoverUnitFacts: readonly UnitFacts[];
@@ -1666,6 +1874,7 @@ interface LeafAllocationCandidate {
 
 interface ResultScore {
 	readonly priorityWithoutLeftovers: number;
+	readonly leftoverUnitCount: number;
 	readonly maxTier: number;
 	readonly rawPriority: number;
 	readonly groupCount: number;
@@ -1806,6 +2015,7 @@ function scoreResolvedGroups(
 
 	return {
 		priorityWithoutLeftovers,
+		leftoverUnitCount,
 		maxTier,
 		rawPriority: priorityWithoutLeftovers,
 		groupCount: groups.length,
@@ -1816,6 +2026,9 @@ function scoreResolvedGroups(
 function betterResolvedResult(left: ResultScore, right: ResultScore): boolean {
 	if (left.priorityWithoutLeftovers !== right.priorityWithoutLeftovers) {
 		return left.priorityWithoutLeftovers > right.priorityWithoutLeftovers;
+	}
+	if (left.leftoverUnitCount !== right.leftoverUnitCount) {
+		return left.leftoverUnitCount < right.leftoverUnitCount;
 	}
 	if (left.maxTier !== right.maxTier) {
 		return left.maxTier > right.maxTier;
@@ -2060,13 +2273,14 @@ function collectComposedCandidates(
 	definition: OrgDefinitionSpec,
 	groupFactsMemo: Map<string, GroupFacts[]>,
 	solveContext: SolveContext,
+	mode: ComposedCandidateMode = 'all',
 ): GroupSizeResult[][] {
 	const stateKey = buildGroupsStateKey(groups, solveContext);
 	const groupFacts = getStateGroupFacts(groups, stateKey, groupFactsMemo, solveContext);
 	const candidates: GroupSizeResult[][] = [];
 
 	for (const rule of getCompiledDefinitionSpec(definition).composedCountRules) {
-		const materialized = materializeComposedCountRule(rule, groupFacts, definition.registry);
+		const materialized = materializeComposedCountRule(rule, groupFacts, definition.registry, mode);
 		if (materialized.groups.length === 0) {
 			continue;
 		}
@@ -2080,27 +2294,26 @@ function collectComposedCandidates(
 	return candidates;
 }
 
-function composeGroupsUpward(
+function resolveBestComposedCandidate(
 	groups: ReadonlyArray<GroupSizeResult>,
 	definition: OrgDefinitionSpec,
 	solveContext: SolveContext,
-	memo: Map<string, GroupSizeResult[]> = new Map(),
-	groupFactsMemo: Map<string, GroupFacts[]> = new Map(),
-	promoteMemo: Map<string, boolean> = new Map(),
-): GroupSizeResult[] {
-	const sortedGroups = sortGroupsByTier(groups);
-	const key = buildGroupsStateKey(sortedGroups, solveContext);
-	const cached = memo.get(key);
-	if (cached) {
-		return cached;
-	}
+	candidateGroupsList: ReadonlyArray<ReadonlyArray<GroupSizeResult>>,
+	memo: Map<string, GroupSizeResult[]>,
+	groupFactsMemo: Map<string, GroupFacts[]>,
+	promoteMemo: Map<string, boolean>,
+): GroupSizeResult[] | null {
+	let bestGroups: GroupSizeResult[] | null = null;
+	let bestScore: ResultScore | null = null;
 
-	let bestGroups = sortedGroups;
-	let bestScore = scoreResolvedGroups(bestGroups, 0);
-
-	for (const candidateGroups of collectComposedCandidates(sortedGroups, definition, groupFactsMemo, solveContext)) {
+	for (const candidateGroups of candidateGroupsList) {
 		const resolvedCandidate = composeGroupsUpward(candidateGroups, definition, solveContext, memo, groupFactsMemo, promoteMemo);
 		const candidateScore = scoreResolvedGroups(resolvedCandidate, 0);
+		if (!bestGroups || !bestScore) {
+			bestGroups = resolvedCandidate;
+			bestScore = candidateScore;
+			continue;
+		}
 
 		const promoteBonus = canPromoteFurther(resolvedCandidate, definition, groupFactsMemo, promoteMemo, solveContext);
 		const currentPromoteBonus = canPromoteFurther(bestGroups, definition, groupFactsMemo, promoteMemo, solveContext);
@@ -2118,8 +2331,56 @@ function composeGroupsUpward(
 		}
 	}
 
-	memo.set(key, bestGroups);
 	return bestGroups;
+}
+
+function composeGroupsUpward(
+	groups: ReadonlyArray<GroupSizeResult>,
+	definition: OrgDefinitionSpec,
+	solveContext: SolveContext,
+	memo: Map<string, GroupSizeResult[]> = new Map(),
+	groupFactsMemo: Map<string, GroupFacts[]> = new Map(),
+	promoteMemo: Map<string, boolean> = new Map(),
+): GroupSizeResult[] {
+	const sortedGroups = sortGroupsByTier(groups);
+	const key = buildGroupsStateKey(sortedGroups, solveContext);
+	const cached = memo.get(key);
+	if (cached) {
+		return cached;
+	}
+
+	if (ASSIMILATE_FIRST_FOR_SUBOPTIMAL_GROUPS) {
+		const assimilated = tryAssimilateExistingGroup(sortedGroups, definition, solveContext, true);
+		if (assimilated) {
+			const resolved = composeGroupsUpward(assimilated, definition, solveContext, memo, groupFactsMemo, promoteMemo);
+			memo.set(key, resolved);
+			return resolved;
+		}
+	}
+
+	const regularCandidates = collectComposedCandidates(sortedGroups, definition, groupFactsMemo, solveContext, 'regular');
+	const regularBest = resolveBestComposedCandidate(sortedGroups, definition, solveContext, regularCandidates, memo, groupFactsMemo, promoteMemo);
+	if (regularBest) {
+		memo.set(key, regularBest);
+		return regularBest;
+	}
+
+	const subregularCandidates = collectComposedCandidates(sortedGroups, definition, groupFactsMemo, solveContext, 'subregular');
+	const subregularBest = resolveBestComposedCandidate(sortedGroups, definition, solveContext, subregularCandidates, memo, groupFactsMemo, promoteMemo);
+	if (subregularBest) {
+		memo.set(key, subregularBest);
+		return subregularBest;
+	}
+
+	const assimilated = tryAssimilateExistingGroup(sortedGroups, definition, solveContext, false);
+	if (assimilated) {
+		const resolved = composeGroupsUpward(assimilated, definition, solveContext, memo, groupFactsMemo, promoteMemo);
+		memo.set(key, resolved);
+		return resolved;
+	}
+
+	memo.set(key, sortedGroups);
+	return sortedGroups;
 }
 
 function resolveFromUnitsForDefinition(

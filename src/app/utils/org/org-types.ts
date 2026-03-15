@@ -162,7 +162,7 @@ export type BuiltInOrgBucketName =
     | 'classKey'
     | 'ciMoveClass'
     | 'ciMoveClassTroopers'
-    | 'flightIdentity'
+    | 'flightType'
     | 'infantryTroopers'
     | 'transport'
     | 'promotionBasic'
@@ -196,8 +196,8 @@ export type CIMoveClassTrooperBucketValue = `CI:${CIMoveClass}:${number}` | 'not
 export type CIMoveClassTag = `ci:${CIMoveClass}`;
 export type BuiltInInfantryTrooperBucketValue = `BA:${number}` | `CI:${number}` | 'not-infantry';
 export type InfantryTrooperBucketValue = BuiltInInfantryTrooperBucketValue;
-export type BuiltInFlightIdentityBucketValue = `flight:${string}` | 'not-flight';
-export type FlightIdentityBucketValue = BuiltInFlightIdentityBucketValue;
+export type BuiltInFlightTypeBucketValue = `flight:${string}` | 'not-flight';
+export type FlightTypeBucketValue = BuiltInFlightTypeBucketValue;
 export type BuiltInTransportBucketValue =
     | UnitClassKey
     | 'BA:mec'
@@ -212,7 +212,7 @@ export type PromotionWithUnitKindsBucketValue =
 export type BuiltInUnitBucketValue =
     | UnitClassKey
     | CIMoveClassTrooperBucketValue
-    | FlightIdentityBucketValue
+    | FlightTypeBucketValue
     | InfantryTrooperBucketValue
     | TransportBucketValue;
 export type BuiltInGroupBucketValue =

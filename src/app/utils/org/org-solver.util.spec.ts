@@ -314,11 +314,11 @@ describe('org-solver.util', () => {
             createFlightEligibleUnit('SV Non-Flyer', 'Guardian', 'SV', 'Tank'),
         ]);
 
-        const flightIdentity = DEFAULT_ORG_RULE_REGISTRY.unitBuckets.flightIdentity;
+        const flightType = DEFAULT_ORG_RULE_REGISTRY.unitBuckets.flightType;
 
-        expect(flightIdentity?.(units[0])).toBe('not-flight');
-        expect(flightIdentity?.(units[1])).toBe('flight:AF|Aero|Chassis Jet|Model Jet');
-        expect(flightIdentity?.(units[2])).toBe('not-flight');
+        expect(flightType?.(units[0])).toBe('not-flight');
+        expect(flightType?.(units[1])).toBe('flight:AF');
+        expect(flightType?.(units[2])).toBe('not-flight');
     });
 
     it('evaluates leaf-count rules by selector and modifier sizes', () => {
