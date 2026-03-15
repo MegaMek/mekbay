@@ -143,6 +143,7 @@ const MAX_LEAF_CANDIDATES = 256;
 const MAX_SAME_TYPE_REPACK_BUCKET_SIZE = 12;
 const MAX_SAME_TYPE_REPACK_TOTAL_COUNT = 36;
 const MAX_SAME_TYPE_REPACK_TIER = 2;
+const MAX_HIERARCHICAL_COLLAPSE_GROUPS = 6;
 
 const GLOBAL_RULE_MODIFIER_RESOLUTION_CACHE = new WeakMap<object, readonly OrgModifierResolution[]>();
 const GLOBAL_ACCEPTED_CHILD_TYPES_CACHE = new WeakMap<OrgComposedCountRule | OrgComposedPatternRule, ReadonlySet<GroupSizeResult['type']>>();
@@ -2691,12 +2692,13 @@ function resolveBestComposedCandidate(
 	memo: Map<string, GroupSizeResult[]>,
 	groupFactsMemo: Map<string, GroupFacts[]>,
 	promoteMemo: Map<string, boolean>,
+	allowSameTypeRepack: boolean,
 ): GroupSizeResult[] | null {
 	let bestGroups: GroupSizeResult[] | null = null;
 	let bestScore: ResultScore | null = null;
 
 	for (const candidateGroups of candidateGroupsList) {
-		const resolvedCandidate = composeGroupsUpward(candidateGroups, definition, solveContext, memo, groupFactsMemo, promoteMemo);
+		const resolvedCandidate = composeGroupsUpward(candidateGroups, definition, solveContext, memo, groupFactsMemo, promoteMemo, allowSameTypeRepack);
 		const candidateScore = scoreResolvedGroups(resolvedCandidate, 0);
 		if (!bestGroups || !bestScore) {
 			bestGroups = resolvedCandidate;
@@ -2723,6 +2725,69 @@ function resolveBestComposedCandidate(
 	return bestGroups;
 }
 
+function getMaxGroupTier(groups: ReadonlyArray<GroupSizeResult>): number {
+	let maxTier = Number.NEGATIVE_INFINITY;
+	for (const group of groups) {
+		if (group.tier > maxTier) {
+			maxTier = group.tier;
+		}
+	}
+	return maxTier;
+}
+
+function collapseHighestTierGroups(
+	groups: ReadonlyArray<GroupSizeResult>,
+	definition: OrgDefinitionSpec,
+	solveContext: SolveContext,
+): GroupSizeResult[] {
+	let current = [...groups];
+
+	for (let iteration = 0; iteration < 20 && current.length > 1; iteration += 1) {
+		current = sortGroupsByTier(current);
+		const highestTier = current[0]?.tier;
+		if (highestTier === undefined) {
+			break;
+		}
+
+		const highestGroups = current.filter((group) => group.tier === highestTier);
+		const lowerGroups = current.filter((group) => group.tier !== highestTier);
+		const composedHighest = composeGroupsUpward(highestGroups, definition, solveContext, new Map(), new Map(), new Map(), false);
+		if (
+			composedHighest.length < highestGroups.length
+			|| getMaxGroupTier(composedHighest) > highestTier
+		) {
+			current = [...lowerGroups, ...composedHighest];
+			continue;
+		}
+
+		break;
+	}
+
+	return sortGroupsByTier(current);
+}
+
+function wrapResolvedGroups(
+	groups: ReadonlyArray<GroupSizeResult>,
+	definition: OrgDefinitionSpec,
+	solveContext: SolveContext,
+	hierarchicalAggregation: boolean,
+): GroupSizeResult[] {
+	if (groups.length === 0) {
+		return [EMPTY_RESULT];
+	}
+	if (groups.length === 1) {
+		return [...groups];
+	}
+	if (!hierarchicalAggregation) {
+		return sortGroupsByTier(groups);
+	}
+	if (groups.length > MAX_HIERARCHICAL_COLLAPSE_GROUPS) {
+		return sortGroupsByTier(groups);
+	}
+
+	return collapseHighestTierGroups(groups, definition, solveContext);
+}
+
 function composeGroupsUpward(
 	groups: ReadonlyArray<GroupSizeResult>,
 	definition: OrgDefinitionSpec,
@@ -2730,6 +2795,7 @@ function composeGroupsUpward(
 	memo: Map<string, GroupSizeResult[]> = new Map(),
 	groupFactsMemo: Map<string, GroupFacts[]> = new Map(),
 	promoteMemo: Map<string, boolean> = new Map(),
+	allowSameTypeRepack: boolean = true,
 ): GroupSizeResult[] {
 	const sortedGroups = sortGroupsByTier(groups);
 	const key = buildGroupsStateKey(sortedGroups, solveContext);
@@ -2741,28 +2807,30 @@ function composeGroupsUpward(
 	if (ASSIMILATE_FIRST_FOR_SUBOPTIMAL_GROUPS) {
 		const assimilated = tryAssimilateExistingGroup(sortedGroups, definition, solveContext, true);
 		if (assimilated) {
-			const resolved = composeGroupsUpward(assimilated, definition, solveContext, memo, groupFactsMemo, promoteMemo);
+			const resolved = composeGroupsUpward(assimilated, definition, solveContext, memo, groupFactsMemo, promoteMemo, allowSameTypeRepack);
 			memo.set(key, resolved);
 			return resolved;
 		}
 	}
 
-	const repackedSameTypeGroups = tryRepackSameTypeGroups(sortedGroups, definition);
-	if (repackedSameTypeGroups) {
-		const resolved = composeGroupsUpward(repackedSameTypeGroups, definition, solveContext, memo, groupFactsMemo, promoteMemo);
-		memo.set(key, resolved);
-		return resolved;
+	if (allowSameTypeRepack) {
+		const repackedSameTypeGroups = tryRepackSameTypeGroups(sortedGroups, definition);
+		if (repackedSameTypeGroups) {
+			const resolved = composeGroupsUpward(repackedSameTypeGroups, definition, solveContext, memo, groupFactsMemo, promoteMemo, allowSameTypeRepack);
+			memo.set(key, resolved);
+			return resolved;
+		}
 	}
 
 	const regularCandidates = collectComposedCandidates(sortedGroups, definition, groupFactsMemo, solveContext, 'regular');
-	const regularBest = resolveBestComposedCandidate(sortedGroups, definition, solveContext, regularCandidates, memo, groupFactsMemo, promoteMemo);
+	const regularBest = resolveBestComposedCandidate(sortedGroups, definition, solveContext, regularCandidates, memo, groupFactsMemo, promoteMemo, allowSameTypeRepack);
 	if (regularBest) {
 		memo.set(key, regularBest);
 		return regularBest;
 	}
 
 	const subregularCandidates = collectComposedCandidates(sortedGroups, definition, groupFactsMemo, solveContext, 'subregular');
-	const subregularBest = resolveBestComposedCandidate(sortedGroups, definition, solveContext, subregularCandidates, memo, groupFactsMemo, promoteMemo);
+	const subregularBest = resolveBestComposedCandidate(sortedGroups, definition, solveContext, subregularCandidates, memo, groupFactsMemo, promoteMemo, allowSameTypeRepack);
 	if (subregularBest) {
 		memo.set(key, subregularBest);
 		return subregularBest;
@@ -2770,7 +2838,7 @@ function composeGroupsUpward(
 
 	const assimilated = tryAssimilateExistingGroup(sortedGroups, definition, solveContext, false);
 	if (assimilated) {
-		const resolved = composeGroupsUpward(assimilated, definition, solveContext, memo, groupFactsMemo, promoteMemo);
+		const resolved = composeGroupsUpward(assimilated, definition, solveContext, memo, groupFactsMemo, promoteMemo, allowSameTypeRepack);
 		memo.set(key, resolved);
 		return resolved;
 	}
@@ -2782,6 +2850,7 @@ function composeGroupsUpward(
 function resolveFromUnitsForDefinition(
 	definition: OrgDefinitionSpec,
 	units: ReadonlyArray<Unit>,
+	hierarchicalAggregation: boolean = false,
 ): GroupSizeResult[] {
 	if (units.length === 0) {
 		return [EMPTY_RESULT];
@@ -2804,7 +2873,12 @@ function resolveFromUnitsForDefinition(
 			continue;
 		}
 
-		const composedGroups = composeGroupsUpward(candidate.groups, definition, solveContext);
+		const composedGroups = wrapResolvedGroups(
+			composeGroupsUpward(candidate.groups, definition, solveContext),
+			definition,
+			solveContext,
+			hierarchicalAggregation,
+		);
 		const resolvedGroups = attachTopLevelLeftovers(
 			composedGroups,
 			candidate.leftoverUnitFacts.map((facts) => facts.unit),
@@ -2870,6 +2944,7 @@ function normalizeGroupsToDefinition(
 function resolveFromGroupsForDefinition(
 	definition: OrgDefinitionSpec,
 	groupResults: ReadonlyArray<GroupSizeResult>,
+	hierarchicalAggregation: boolean = false,
 ): GroupSizeResult[] {
 	if (groupResults.length === 0) {
 		return [EMPTY_RESULT];
@@ -2919,7 +2994,12 @@ function resolveFromGroupsForDefinition(
 		normalizedGroups = normalizeGroupsToDefinition(groupResults, definition);
 	}
 
-	return composeGroupsUpward(normalizedGroups, definition, solveContext);
+	return wrapResolvedGroups(
+		composeGroupsUpward(normalizedGroups, definition, solveContext),
+		definition,
+		solveContext,
+		hierarchicalAggregation,
+	);
 }
 
 function composeFactionOrgFromUnits(
@@ -2928,8 +3008,11 @@ function composeFactionOrgFromUnits(
 	factionAffinity: FactionAffinity,
 	hierarchicalAggregation: boolean = false,
 ): GroupSizeResult[] {
-	void hierarchicalAggregation;
-	return resolveFromUnitsForDefinition(resolveOrgDefinitionSpec(factionName, factionAffinity), units);
+	return resolveFromUnitsForDefinition(
+		resolveOrgDefinitionSpec(factionName, factionAffinity),
+		units,
+		hierarchicalAggregation,
+	);
 }
 
 function composeFactionOrgFromGroups(
@@ -2938,8 +3021,11 @@ function composeFactionOrgFromGroups(
 	groupResults: GroupSizeResult[],
 	hierarchicalAggregation: boolean = false,
 ): GroupSizeResult[] {
-	void hierarchicalAggregation;
-	return resolveFromGroupsForDefinition(resolveOrgDefinitionSpec(factionName, factionAffinity), groupResults);
+	return resolveFromGroupsForDefinition(
+		resolveOrgDefinitionSpec(factionName, factionAffinity),
+		groupResults,
+		hierarchicalAggregation,
+	);
 }
 
 export function resolveFromUnits(

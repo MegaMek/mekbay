@@ -73,6 +73,15 @@ import type {
     PromotionBasicBucketValue,
 } from './org-types';
 
+
+type UnitFixture = {
+    type: Unit['type'];
+    subtype: Unit['subtype'];
+    omni?: boolean;
+    specials?: string[];
+    internal?: number;
+};
+
 function createUnit(
     name: string,
     type: UnitType,
@@ -1595,104 +1604,6 @@ describe('org-solver.util', () => {
         }));
     });
 });
-describe('legacy resolver compatibility', () => {
-type UnitFixture = {
-    type: Unit['type'];
-    subtype: Unit['subtype'];
-    omni?: boolean;
-    specials?: string[];
-    internal?: number;
-};
-
-    function createUnit(
-    name: string,
-    type: Unit['type'],
-    subtype: Unit['subtype'],
-    isOmni: boolean = false,
-    specials: string[] = [],
-    internal: number = 1,
-): Unit {
-    return {    
-        name: name,
-        id: -1,        
-        chassis: `Chassis ${name}`,
-        model: `Model ${name}`,
-        year: 3151,
-        weightClass: 'Medium',
-        tons: 50,
-        offSpeedFactor: 0,
-        bv: 0,
-        pv: 0,
-        cost: 0,
-        level: 0,
-        techBase: 'Inner Sphere',
-        techRating: 'D',
-        type,
-        subtype,
-        omni: isOmni ? 1 : 0,
-        engine: 'Fusion',
-        engineRating: 0,
-        engineHS: 0,
-        engineHSType: 'Heat Sink',
-        source: [],
-        role: '',
-        armorType: '',
-        structureType: '',
-        armor: 0,
-        armorPer: 0,
-        internal,
-        heat: 0,
-        dissipation: 0,
-        moveType: 'Tracked',
-        walk: 0,
-        walk2: 0,
-        run: 0,
-        run2: 0,
-        jump: 0,
-        jump2: 0,
-        umu: 0,
-        c3: '',
-        dpt: 0,
-        comp: [],
-        su: 0,
-        crewSize: 1,
-        quirks: [],
-        features: [],
-        icon: '',
-        sheets: [],
-        as: {
-            TP: type === 'Mek' ? 'BM' : 'CV',
-            PV: 0,
-            SZ: 0,
-            TMM: 0,
-            usesOV: false,
-            OV: 0,
-            MV: '0',
-            MVm: {},
-            usesTh: false,
-            Th: 0,
-            Arm: 0,
-            Str: 0,
-            specials: specials,
-            dmg: {
-                dmgS: '0',
-                dmgM: '0',
-                dmgL: '0',
-                dmgE: '0',
-            },
-            usesE: false,
-            usesArcs: false,
-        },
-        _searchKey: '',
-        _displayType: '',
-        _maxRange: 0,
-        _dissipationEfficiency: 0,
-        _mdSumNoPhysical: 0,
-        _mdSumNoPhysicalNoOneshots: 0,
-        _nameTags: [],
-        _chassisTags: [],
-    };
-}
 
 function createCV(name: string, isOmni: boolean = false, specials: string[] = []): Unit {
     return createUnit(name, 'Tank', 'Combat Vehicle', isOmni, specials);
@@ -3174,6 +3085,5 @@ describe('resolveFromUnits', () => {
         expect(result.every(group => group.leftoverUnits === undefined)).toBeTrue();
     });
 
-});
 });
 
