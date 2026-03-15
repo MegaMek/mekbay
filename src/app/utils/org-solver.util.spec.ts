@@ -186,6 +186,84 @@ function createFixtureUnit(name: keyof typeof BLUNDER_BRIGADE_UNIT_FIXTURES): Un
     );
 }
 
+const BLUNDER_BRIGADE_MAX_SOLVE_MS = 500;
+
+const BLUNDER_BRIGADE_GROUP_ONE_NAMES: Array<keyof typeof BLUNDER_BRIGADE_UNIT_FIXTURES> = [
+    'BMNightsky_NGS5S',
+    'BMOstsol_OTL5M',
+    'BMOrion_ON1KMuller',
+    'CVThumperArtilleryVehicle',
+    'CIFootPlatoonFWLM_SRM3035',
+    'CIFootPlatoonComStar_SRM',
+    'BMPuma_E',
+    'BMPuma_S',
+    'BMDasher_H',
+    'BMRyoken_E',
+    'BMVenom_SDR9K',
+    'BMAwesome_AWS9Q',
+    'BMStalker_STK5S',
+    'BMKomodo_KIM2',
+    'BMAnvil_ANV3M',
+    'BMWarDog_WRDG02FC',
+    'BMGrandTitan_TITN10M',
+    'BMTempest_TMP3MA',
+    'BMTempest_TMP3M',
+    'BMTempest_TMP3G',
+    'BMJavelin_JVN10FFireJavelin',
+    'BMJavelin_JVN11AFireJavelin',
+    'CVDemolisherHeavyTank_Clan',
+    'CVPikeSupportVehicle_Clan',
+    'CVBadgerCTrackedTransport_A',
+    'CVBadgerCTrackedTransport_B',
+    'BMScarabus_SCB9A',
+    'BMHatchetman_HCT3F',
+    'BMFirestarter_FS9OE',
+    'BMAxman_AXM1N',
+    'BMHatchetman_HCT5S',
+    'BMHussar_HSR400D',
+    'BMThunderbolt_TDR9W',
+    'BMThunder_THR1L',
+    'BMOrion_ON1M',
+    'BMOrion_ON1K',
+    'BMMarauderIIC',
+    'BMHighlanderIIC',
+    'BMHoplite_HOP4D',
+    'BMHoplite_C',
+    'BMVictor_C',
+    'BMShogun_C',
+    'BMImp_C',
+    'BMWarhammer_C2',
+    'BMWarhammer_C3',
+];
+
+function resolveBlunderBrigadeForce(): { groupResults: GroupSizeResult[]; result: GroupSizeResult[] } {
+    const groupOne: Unit[] = Array.from({ length: 10 }, (_, iteration) =>
+        BLUNDER_BRIGADE_GROUP_ONE_NAMES.map(name => createFixtureUnit(name)),
+    ).flat();
+    const groupTwo: Unit[] = [
+        'BMOstsol_OTL5M',
+        'BMNightsky_NGS5S',
+        'BMPuma_E',
+        'BMPuma_S',
+        'BMDasher_H',
+    ].map(name => createFixtureUnit(name));
+    const groupThree: Unit[] = [
+        'BMHatchetman_HCT5S',
+        'BMHussar_HSR400D',
+    ].map(name => createFixtureUnit(name));
+
+    const groupResults = [
+        ...resolveFromUnits(groupOne, 'Wolf\'s Dragoons', 'Mercenary'),
+        ...resolveFromUnits(groupTwo, 'Wolf\'s Dragoons', 'Mercenary'),
+        ...resolveFromUnits(groupThree, 'Wolf\'s Dragoons', 'Mercenary'),
+    ];
+
+    return {
+        groupResults,
+        result: resolveFromGroups('Wolf\'s Dragoons', 'Mercenary', groupResults),
+    };
+}
+
 function createContuberniumGroup(unit: Unit, tag: 'infantry' | 'non-infantry'): GroupSizeResult {
     return {
         name: 'Contubernium',
@@ -1426,75 +1504,21 @@ describe('resolveFromUnits', () => {
     });
 
     it('resolves the Blunder Brigade 7415 Wolf\'s Dragoons force without freezing', () => {
-        const groupOne: Unit[] = [
-            'BMNightsky_NGS5S',
-            'BMOstsol_OTL5M',
-            'BMOrion_ON1KMuller',
-            'CVThumperArtilleryVehicle',
-            'CIFootPlatoonFWLM_SRM3035',
-            'CIFootPlatoonComStar_SRM',
-            'BMPuma_E',
-            'BMPuma_S',
-            'BMDasher_H',
-            'BMRyoken_E',
-            'BMVenom_SDR9K',
-            'BMAwesome_AWS9Q',
-            'BMStalker_STK5S',
-            'BMKomodo_KIM2',
-            'BMAnvil_ANV3M',
-            'BMWarDog_WRDG02FC',
-            'BMGrandTitan_TITN10M',
-            'BMTempest_TMP3MA',
-            'BMTempest_TMP3M',
-            'BMTempest_TMP3G',
-            'BMJavelin_JVN10FFireJavelin',
-            'BMJavelin_JVN11AFireJavelin',
-            'CVDemolisherHeavyTank_Clan',
-            'CVPikeSupportVehicle_Clan',
-            'CVBadgerCTrackedTransport_A',
-            'CVBadgerCTrackedTransport_B',
-            'BMScarabus_SCB9A',
-            'BMHatchetman_HCT3F',
-            'BMFirestarter_FS9OE',
-            'BMAxman_AXM1N',
-            'BMHatchetman_HCT5S',
-            'BMHussar_HSR400D',
-            'BMThunderbolt_TDR9W',
-            'BMThunder_THR1L',
-            'BMOrion_ON1M',
-            'BMOrion_ON1K',
-            'BMMarauderIIC',
-            'BMHighlanderIIC',
-            'BMHoplite_HOP4D',
-            'BMHoplite_C',
-            'BMVictor_C',
-            'BMShogun_C',
-            'BMImp_C',
-            'BMWarhammer_C2',
-            'BMWarhammer_C3',
-        ].map(name => createFixtureUnit(name));
-        const groupTwo: Unit[] = [
-            'BMOstsol_OTL5M',
-            'BMNightsky_NGS5S',
-            'BMPuma_E',
-            'BMPuma_S',
-            'BMDasher_H',
-        ].map(name => createFixtureUnit(name));
-        const groupThree: Unit[] = [
-            'BMHatchetman_HCT5S',
-            'BMHussar_HSR400D',
-        ].map(name => createFixtureUnit(name));
-
-        const groupResults = [
-            ...resolveFromUnits(groupOne, 'Wolf\'s Dragoons', 'Mercenary'),
-            ...resolveFromUnits(groupTwo, 'Wolf\'s Dragoons', 'Mercenary'),
-            ...resolveFromUnits(groupThree, 'Wolf\'s Dragoons', 'Mercenary'),
-        ];
-        const result = resolveFromGroups('Wolf\'s Dragoons', 'Mercenary', groupResults);
+        const { groupResults, result } = resolveBlunderBrigadeForce();
 
         expect(groupResults.length).toBeGreaterThan(0);
         expect(result.length).toBeGreaterThan(0);
         expect(result.every(group => group.name.length > 0)).toBeTrue();
+    });
+
+    it('resolves the Blunder Brigade 7415 Wolf\'s Dragoons force within the performance guardrail', () => {
+        const startedAt = Date.now();
+        const { groupResults, result } = resolveBlunderBrigadeForce();
+        const elapsedMs = Date.now() - startedAt;
+
+        expect(groupResults.length).toBeGreaterThan(0);
+        expect(result.length).toBeGreaterThan(0);
+        expect(elapsedMs).toBeLessThan(BLUNDER_BRIGADE_MAX_SOLVE_MS);
     });
 
     it('crossgrades foreign groups to the nearest dynamic-tier modifier in the target org', () => {
