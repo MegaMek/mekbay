@@ -140,11 +140,15 @@ const FLATTEN_REEVALUATED_FOREIGN_GROUPS_BEFORE_COMPOSITION = false;
 const MAX_LEAF_CANDIDATES = 256;
 const ASSIMILATE_FIRST_FOR_SUBOPTIMAL_GROUPS = true;
 const ASSIMILATE_SUBOPTIMAL_GROUPS_LOWEST_TIER_FIRST = true;
+const MAX_SAME_TYPE_REPACK_BUCKET_SIZE = 12;
+const MAX_SAME_TYPE_REPACK_TOTAL_COUNT = 36;
+const MAX_SAME_TYPE_REPACK_TIER = 2;
 
 const GLOBAL_RULE_MODIFIER_RESOLUTION_CACHE = new WeakMap<object, readonly OrgModifierResolution[]>();
 const GLOBAL_ACCEPTED_CHILD_TYPES_CACHE = new WeakMap<OrgComposedCountRule | OrgComposedPatternRule, ReadonlySet<GroupSizeResult['type']>>();
 const GLOBAL_COMPOSED_CONFIGURATION_CACHE = new WeakMap<OrgComposedCountRule, readonly ResolvedComposedCountConfiguration[]>();
 const GLOBAL_DEFINITION_CACHE = new WeakMap<OrgDefinitionSpec, CompiledDefinitionSpec>();
+const GLOBAL_SAME_TYPE_REPACK_PARTITION_CACHE = new WeakMap<object, Map<number, readonly number[] | null>>();
 
 
 export function getModifierCount(modifier: number | OrgTypeModifier): number {
@@ -874,10 +878,11 @@ function getAssimilationTargetModifier(
 	maxCount: number,
 	regularizeSuboptimalOnly: boolean,
 ): OrgModifierResolution | null {
+	const ascendingModifiers = [...modifierResolutions].sort((left, right) => left.count - right.count);
 	const regularCount = getRegularModifierResolution(modifierResolutions).count;
 
 	if (currentCount < regularCount) {
-		for (const modifier of modifierResolutions) {
+		for (const modifier of ascendingModifiers) {
 			if (modifier.count >= regularCount && modifier.count <= maxCount) {
 				return modifier;
 			}
@@ -888,7 +893,7 @@ function getAssimilationTargetModifier(
 		return null;
 	}
 
-	for (const modifier of modifierResolutions) {
+	for (const modifier of ascendingModifiers) {
 		if (modifier.count > currentCount && modifier.count <= maxCount) {
 			return modifier;
 		}
@@ -1437,29 +1442,31 @@ export function materializeLeafCountRule(
 	);
 	const groups: GroupSizeResult[] = [];
 
-	for (const modifier of getRuleModifierResolutions(rule)) {
-		if (modifier.count <= 0) {
-			continue;
+	for (const [bucketKey, bucketUnits] of workingBuckets) {
+		const plan = buildLeafCountAllocationPlan(rule, bucketUnits.length);
+		for (const [index, entry] of plan.entries.entries()) {
+			const takeAllRemaining = plan.consumesAll && index === plan.entries.length - 1;
+			const selectedUnits = takeAllRemaining
+				? bucketUnits.splice(0, bucketUnits.length)
+				: bucketUnits.splice(0, Math.min(entry.modifier.count, bucketUnits.length));
+			if (selectedUnits.length === 0) {
+				continue;
+			}
+
+			groups.push({
+				name: `${entry.modifier.prefix}${rule.type}`,
+				type: rule.type,
+				modifierKey: entry.modifier.prefix,
+				countsAsType: rule.countsAs ?? null,
+				tier: entry.modifier.tier,
+				tag: rule.tag,
+				priority: rule.priority,
+				units: selectedUnits.map((unitFacts) => unitFacts.unit),
+			});
 		}
 
-		for (const [bucketKey, bucketUnits] of workingBuckets) {
-			while (bucketUnits.length >= modifier.count) {
-				const selectedUnits = bucketUnits.splice(0, modifier.count);
-				groups.push({
-					name: `${modifier.prefix}${rule.type}`,
-					type: rule.type,
-					modifierKey: modifier.prefix,
-					countsAsType: rule.countsAs ?? null,
-					tier: modifier.tier,
-					tag: rule.tag,
-					priority: rule.priority,
-					units: selectedUnits.map((unitFacts) => unitFacts.unit),
-				});
-			}
-
-			if (bucketUnits.length === 0) {
-				workingBuckets.delete(bucketKey);
-			}
+		if (bucketUnits.length === 0) {
+			workingBuckets.delete(bucketKey);
 		}
 	}
 
@@ -1467,6 +1474,141 @@ export function materializeLeafCountRule(
 		groups,
 		leftoverUnitFacts: Array.from(workingBuckets.values()).flat(),
 	};
+}
+
+interface LeafCountPlanEntry {
+	readonly modifier: OrgModifierResolution;
+}
+
+interface LeafCountAllocationPlan {
+	readonly entries: readonly LeafCountPlanEntry[];
+	readonly consumesAll: boolean;
+}
+
+function getAscendingModifierResolutions(rule: OrgLeafCountRule): OrgModifierResolution[] {
+	return [...getRuleModifierResolutions(rule)].sort((left, right) => left.count - right.count);
+}
+
+function selectExactLeafModifier(
+	modifierResolutions: readonly OrgModifierResolution[],
+	targetCount: number,
+): OrgModifierResolution | null {
+	const exactMatches = modifierResolutions.filter((modifier) => modifier.count === targetCount);
+	if (exactMatches.length === 0) {
+		return null;
+	}
+
+	return exactMatches.find((modifier) => modifier.prefix === '') ?? exactMatches[0];
+}
+
+function selectSubregularLeafModifier(
+	modifierResolutions: readonly OrgModifierResolution[],
+	regularCount: number,
+	targetCount: number,
+): OrgModifierResolution | null {
+	let best: OrgModifierResolution | null = null;
+	for (const modifier of modifierResolutions) {
+		if (modifier.count < regularCount && modifier.count <= targetCount) {
+			if (!best || modifier.count > best.count) {
+				best = modifier;
+			}
+		}
+	}
+
+	return best;
+}
+
+function selectClosestLeafModifier(
+	modifierResolutions: readonly OrgModifierResolution[],
+	targetCount: number,
+): OrgModifierResolution | null {
+	let best: OrgModifierResolution | null = null;
+	let bestDistance = Number.POSITIVE_INFINITY;
+
+	for (const modifier of modifierResolutions) {
+		const distance = Math.abs(modifier.count - targetCount);
+		if (!best || distance < bestDistance || (distance === bestDistance && modifier.count > best.count)) {
+			best = modifier;
+			bestDistance = distance;
+		}
+	}
+
+	return best;
+}
+
+function buildLeafCountAllocationPlan(
+	rule: OrgLeafCountRule,
+	totalCount: number,
+): LeafCountAllocationPlan {
+	if (totalCount <= 0) {
+		return { entries: [], consumesAll: false };
+	}
+
+	const modifierResolutions = getAscendingModifierResolutions(rule);
+	const regularModifier = getRegularModifierResolution(modifierResolutions);
+	const exactModifier = selectExactLeafModifier(modifierResolutions, totalCount);
+	if (exactModifier) {
+		return { entries: [{ modifier: exactModifier }], consumesAll: true };
+	}
+
+	const regularInstances = Math.floor(totalCount / regularModifier.count);
+	if (regularInstances === 0) {
+		const subregularModifier = selectSubregularLeafModifier(modifierResolutions, regularModifier.count, totalCount);
+		if (subregularModifier) {
+			return { entries: [{ modifier: subregularModifier }], consumesAll: true };
+		}
+
+		const minimumCount = modifierResolutions[0]?.count ?? 0;
+		if (totalCount < minimumCount) {
+			return { entries: [], consumesAll: false };
+		}
+
+		const closestModifier = selectClosestLeafModifier(modifierResolutions, totalCount);
+		return closestModifier
+			? { entries: [{ modifier: closestModifier }], consumesAll: true }
+			: { entries: [], consumesAll: false };
+	}
+
+	const entries: LeafCountPlanEntry[] = Array.from(
+		{ length: regularInstances },
+		() => ({ modifier: regularModifier }),
+	);
+	const leftoverCount = totalCount - (regularInstances * regularModifier.count);
+	if (leftoverCount <= 0) {
+		return { entries, consumesAll: true };
+	}
+
+	const subregularModifier = selectSubregularLeafModifier(modifierResolutions, regularModifier.count, leftoverCount);
+	if (subregularModifier) {
+		entries.push({ modifier: subregularModifier });
+		return { entries, consumesAll: true };
+	}
+
+	const maximumCount = modifierResolutions[modifierResolutions.length - 1]?.count ?? regularModifier.count;
+	if (maximumCount > regularModifier.count) {
+		const closestModifier = selectClosestLeafModifier(modifierResolutions, regularModifier.count + leftoverCount);
+		if (closestModifier) {
+			entries[entries.length - 1] = { modifier: closestModifier };
+			return { entries, consumesAll: true };
+		}
+	}
+
+	return { entries, consumesAll: false };
+}
+
+function getLeafCountPlanConsumedCount(
+	plan: LeafCountAllocationPlan,
+	availableCount: number,
+): number {
+	if (plan.entries.length === 0) {
+		return 0;
+	}
+
+	if (!plan.consumesAll) {
+		return plan.entries.reduce((sum, entry) => sum + entry.modifier.count, 0);
+	}
+
+	return availableCount;
 }
 
 export function evaluateLeafPatternRule(
@@ -1692,6 +1834,11 @@ interface AssimilationCandidate {
 	readonly targetCount: number;
 }
 
+interface SameTypeRepackEntry {
+	readonly group: GroupSizeResult;
+	readonly count: number;
+}
+
 function compareAssimilationCandidates(left: AssimilationCandidate, right: AssimilationCandidate): boolean {
 	if (left.regularizesSuboptimalGroup !== right.regularizesSuboptimalGroup) {
 		return left.regularizesSuboptimalGroup;
@@ -1706,6 +1853,248 @@ function compareAssimilationCandidates(left: AssimilationCandidate, right: Assim
 		return left.absorbedCount < right.absorbedCount;
 	}
 	return left.targetCount > right.targetCount;
+}
+
+function compareCountPartitions(
+	left: readonly number[],
+	right: readonly number[],
+	regularCount: number,
+): boolean {
+	if (left.length !== right.length) {
+		return left.length < right.length;
+	}
+
+	const leftRegularDistance = left.reduce((sum, count) => sum + Math.abs(count - regularCount), 0);
+	const rightRegularDistance = right.reduce((sum, count) => sum + Math.abs(count - regularCount), 0);
+	if (leftRegularDistance !== rightRegularDistance) {
+		return leftRegularDistance < rightRegularDistance;
+	}
+
+	for (let index = 0; index < left.length; index += 1) {
+		if (left[index] !== right[index]) {
+			return left[index] > right[index];
+		}
+	}
+
+	return false;
+}
+
+function partitionCountToModifierCounts(
+	modifierResolutions: readonly OrgModifierResolution[],
+	totalCount: number,
+): number[] | null {
+	const cacheKey = modifierResolutions as object;
+	let cachedPartitions = GLOBAL_SAME_TYPE_REPACK_PARTITION_CACHE.get(cacheKey);
+	if (!cachedPartitions) {
+		cachedPartitions = new Map<number, readonly number[] | null>();
+		GLOBAL_SAME_TYPE_REPACK_PARTITION_CACHE.set(cacheKey, cachedPartitions);
+	}
+
+	if (cachedPartitions.has(totalCount)) {
+		const cached = cachedPartitions.get(totalCount);
+		return cached ? [...cached] : null;
+	}
+
+	const counts = Array.from(new Set(modifierResolutions.map((modifier) => modifier.count))).sort((left, right) => right - left);
+	const regularCount = getRegularModifierResolution(modifierResolutions).count;
+	let best: number[] | null = null;
+
+	function visit(remaining: number, current: number[], startIndex: number): void {
+		const largestAvailableCount = counts[startIndex] ?? counts[counts.length - 1] ?? 0;
+		if (largestAvailableCount > 0 && best) {
+			const minimumAdditionalGroups = Math.ceil(remaining / largestAvailableCount);
+			if (current.length + minimumAdditionalGroups > best.length) {
+				return;
+			}
+		}
+
+		if (remaining === 0) {
+			const candidate = [...current].sort((left, right) => right - left);
+			if (!best || compareCountPartitions(candidate, best, regularCount)) {
+				best = candidate;
+			}
+			return;
+		}
+
+		if (best && current.length >= best.length) {
+			return;
+		}
+
+		for (let index = startIndex; index < counts.length; index += 1) {
+			const count = counts[index];
+			if (count > remaining) {
+				continue;
+			}
+			current.push(count);
+			visit(remaining - count, current, index);
+			current.pop();
+		}
+	}
+
+	visit(totalCount, [], 0);
+	cachedPartitions.set(totalCount, best ? [...best] : null);
+	return best;
+}
+
+function assignGroupsToModifierCounts(
+	entries: ReadonlyArray<SameTypeRepackEntry>,
+	targetCounts: ReadonlyArray<number>,
+): GroupSizeResult[][] | null {
+	const sortedEntries = [...entries].sort((left, right) => right.count - left.count);
+	const buckets = targetCounts.map((target) => ({ target, groups: [] as GroupSizeResult[], total: 0 }));
+
+	function visit(entryIndex: number): boolean {
+		if (entryIndex === sortedEntries.length) {
+			return buckets.every((bucket) => bucket.total === bucket.target);
+		}
+
+		const entry = sortedEntries[entryIndex];
+		for (const bucket of buckets) {
+			if (bucket.total + entry.count > bucket.target) {
+				continue;
+			}
+			bucket.groups.push(entry.group);
+			bucket.total += entry.count;
+			if (visit(entryIndex + 1)) {
+				return true;
+			}
+			bucket.groups.pop();
+			bucket.total -= entry.count;
+		}
+
+		return false;
+	}
+
+	return visit(0) ? buckets.map((bucket) => bucket.groups) : null;
+}
+
+function findRuleForSameTypeRepack(
+	group: GroupSizeResult,
+	definition: OrgDefinitionSpec,
+): OrgRuleDefinition | null {
+	if (!group.type) {
+		return null;
+	}
+
+	for (const rule of definition.rules) {
+		if (rule.type !== group.type) {
+			continue;
+		}
+		if (getRuleModifierResolutions(rule).some((modifier) => modifier.prefix === group.modifierKey)) {
+			return rule;
+		}
+	}
+
+	return null;
+}
+
+function tryRepackSameTypeGroups(
+	groups: ReadonlyArray<GroupSizeResult>,
+	definition: OrgDefinitionSpec,
+): GroupSizeResult[] | null {
+	const groupsByType = new Map<string, GroupSizeResult[]>();
+	for (const group of groups) {
+		if (!group.type) {
+			continue;
+		}
+		const bucket = groupsByType.get(group.type);
+		if (bucket) {
+			bucket.push(group);
+			continue;
+		}
+		groupsByType.set(group.type, [group]);
+	}
+
+	for (const bucket of groupsByType.values()) {
+		if (bucket.length < 2) {
+			continue;
+		}
+		if (bucket.length > MAX_SAME_TYPE_REPACK_BUCKET_SIZE) {
+			continue;
+		}
+		if (bucket[0].tier > MAX_SAME_TYPE_REPACK_TIER) {
+			continue;
+		}
+
+		const rule = findRuleForSameTypeRepack(bucket[0], definition);
+		if (!rule || bucket.some((group) => group.type !== bucket[0].type)) {
+			continue;
+		}
+
+		const modifierResolutions = getRuleModifierResolutions(rule);
+		const entries = bucket.map((group) => {
+			const modifier = modifierResolutions.find((resolution) => resolution.prefix === group.modifierKey);
+			return modifier ? { group, count: modifier.count } : null;
+		});
+		if (entries.some((entry) => entry === null)) {
+			continue;
+		}
+
+		const repackEntries = entries as SameTypeRepackEntry[];
+		const distinctModifierCount = new Set(repackEntries.map((entry) => entry.count)).size;
+		if (distinctModifierCount === 1 && repackEntries.length <= 2) {
+			continue;
+		}
+		const totalCount = repackEntries.reduce((sum, entry) => sum + entry.count, 0);
+		if (totalCount > MAX_SAME_TYPE_REPACK_TOTAL_COUNT) {
+			continue;
+		}
+		const maximumModifierCount = modifierResolutions[0]?.count ?? 0;
+		if (maximumModifierCount <= 0) {
+			continue;
+		}
+		const minimumPossibleGroupCount = Math.ceil(totalCount / maximumModifierCount);
+		if (minimumPossibleGroupCount >= bucket.length) {
+			continue;
+		}
+		const targetCounts = partitionCountToModifierCounts(modifierResolutions, totalCount);
+		if (!targetCounts || targetCounts.length >= bucket.length) {
+			continue;
+		}
+
+		const assigned = assignGroupsToModifierCounts(repackEntries, targetCounts);
+		if (!assigned) {
+			continue;
+		}
+
+		const modifierLookup = new Map<number, OrgModifierResolution[]>();
+		for (const modifier of modifierResolutions) {
+			const existing = modifierLookup.get(modifier.count);
+			if (existing) {
+				existing.push(modifier);
+				continue;
+			}
+			modifierLookup.set(modifier.count, [modifier]);
+		}
+
+		const bucketSet = new Set(bucket);
+		const repackedGroups = assigned.map((children) => {
+			const childCount = children.reduce((sum, child) => {
+				const modifier = modifierResolutions.find((resolution) => resolution.prefix === child.modifierKey);
+				return sum + (modifier?.count ?? 0);
+			}, 0);
+			const candidateModifiers = modifierLookup.get(childCount) ?? [getRegularModifierResolution(modifierResolutions)];
+			const modifier = candidateModifiers.find((candidate) => candidate.prefix === '') ?? candidateModifiers[0];
+
+			return {
+				name: `${modifier.prefix}${rule.type}`,
+				type: rule.type,
+				modifierKey: modifier.prefix,
+				countsAsType: rule.countsAs ?? null,
+				tier: modifier.tier,
+				tag: rule.tag,
+				priority: rule.priority,
+				children,
+			} satisfies GroupSizeResult;
+		});
+
+		return [
+			...groups.filter((group) => !bucketSet.has(group)),
+			...repackedGroups,
+		];
+	}
+
+	return null;
 }
 
 function tryAssimilateExistingGroup(
@@ -2356,6 +2745,13 @@ function composeGroupsUpward(
 			memo.set(key, resolved);
 			return resolved;
 		}
+	}
+
+	const repackedSameTypeGroups = tryRepackSameTypeGroups(sortedGroups, definition);
+	if (repackedSameTypeGroups) {
+		const resolved = composeGroupsUpward(repackedSameTypeGroups, definition, solveContext, memo, groupFactsMemo, promoteMemo);
+		memo.set(key, resolved);
+		return resolved;
 	}
 
 	const regularCandidates = collectComposedCandidates(sortedGroups, definition, groupFactsMemo, solveContext, 'regular');

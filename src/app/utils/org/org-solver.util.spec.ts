@@ -2322,6 +2322,32 @@ describe('resolveFromUnits', () => {
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
+    it('groups 6 BM into an Fortified Lance for Inner Sphere', () => {
+        const units = Array.from({ length: 6 }, (_, index) => createBM(`IS-HL2-${index + 1}`));
+        const result = resolveFromUnits(units, 'Inner Sphere', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Fortified Lance');
+        expect(result[0].type).toBe('Lance');
+        expect(result[0].modifierKey).toBe('Fortified ');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('groups 9 BM into an Heavy Level II for ComStar', () => {
+        const units = Array.from({ length: 9 }, (_, index) => createBM(`CS-HL2-${index + 1}`));
+        const result = resolveFromUnits(units, 'ComStar', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Heavy Level II');
+        expect(result[0].type).toBe('Level II');
+        expect(result[0].modifierKey).toBe('Heavy ');
+        expect(result[0].children?.length).toBe(9);
+        expect(result[0].children?.every(child => child.name === 'Level I')).toBeTrue();
+        expect(result[0].children?.every(child => child.type === 'Level I')).toBeTrue();
+        expect(result[0].children?.every(child => child.modifierKey === '')).toBeTrue();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
     it('groups thirty-six Level I into a Level III for ComStar', () => {
         const levelIs = Array.from({ length: 36 }, (_, index) =>
             resolveFromUnits([
