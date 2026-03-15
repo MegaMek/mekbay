@@ -2,10 +2,12 @@ import { type Force, UnitGroup } from '../../models/force.model';
 import { FactionAffinity } from '../../models/factions.model';
 import { LoadForceEntry, type LoadForceGroup } from '../../models/load-force-entry.model';
 import type { Unit } from '../../models/units.model';
+import { buildUnitFactsMap, compileGroupFactsList } from './org-facts.util';
 import { resolveOrgDefinitionSpec } from './org-registry.util';
 import {
 	EMPTY_RESULT,
 	evaluateFactionOrgDefinition,
+	materializeComposedCountRule,
 	resolveFromGroups,
 	resolveFromUnits,
 	type OrgDefinitionEvaluation,
@@ -407,6 +409,138 @@ function compareGroupTierDescending(left: GroupSizeResult, right: GroupSizeResul
 	return left.name.localeCompare(right.name);
 }
 
+function collectGroupUnits(
+	group: GroupSizeResult,
+	cache: WeakMap<GroupSizeResult, Unit[]>,
+): Unit[] {
+	const cached = cache.get(group);
+	if (cached) {
+		return cached;
+	}
+
+	const units: Unit[] = [];
+	if (group.units) {
+		units.push(...group.units);
+	}
+	if (group.children) {
+		for (const child of group.children) {
+			units.push(...collectGroupUnits(child, cache));
+		}
+	}
+
+	cache.set(group, units);
+	return units;
+}
+
+function isComposedCountRule(rule: OrgRuleDefinition): rule is OrgComposedCountRule {
+	return rule.kind === 'composed-count';
+}
+
+function getMaxGroupTier(groups: readonly GroupSizeResult[]): number {
+	let maxTier = Number.NEGATIVE_INFINITY;
+	for (const group of groups) {
+		if (group.tier > maxTier) {
+			maxTier = group.tier;
+		}
+	}
+	return maxTier;
+}
+
+interface DisplayCollapseScore {
+	readonly maxTier: number;
+	readonly aggregatedTier: number;
+	readonly groupCount: number;
+	readonly tierSum: number;
+}
+
+function scoreDisplayCollapse(groups: readonly GroupSizeResult[]): DisplayCollapseScore {
+	return {
+		maxTier: getMaxGroupTier(groups),
+		aggregatedTier: getAggregatedTier(groups.map((group) => group.tier)),
+		groupCount: groups.length,
+		tierSum: groups.reduce((sum, group) => sum + group.tier, 0),
+	};
+}
+
+function betterDisplayCollapse(left: DisplayCollapseScore, right: DisplayCollapseScore): boolean {
+	if (left.maxTier !== right.maxTier) {
+		return left.maxTier > right.maxTier;
+	}
+	if (left.groupCount !== right.groupCount) {
+		return left.groupCount < right.groupCount;
+	}
+	if (left.aggregatedTier !== right.aggregatedTier) {
+		return left.aggregatedTier > right.aggregatedTier;
+	}
+	return left.tierSum > right.tierSum;
+}
+
+function materializeDisplayCompositionCandidate(
+	groups: readonly GroupSizeResult[],
+	rule: OrgComposedCountRule,
+	definition: OrgDefinitionSpec,
+): GroupSizeResult[] | null {
+	const groupUnitCache = new WeakMap<GroupSizeResult, Unit[]>();
+	const unitFactsMap = buildUnitFactsMap(groups.flatMap((group) => collectGroupUnits(group, groupUnitCache)));
+	const groupFacts = compileGroupFactsList(groups, unitFactsMap, groupUnitCache);
+	const materialized = materializeComposedCountRule(rule, groupFacts, definition.registry);
+	if (materialized.groups.length === 0) {
+		return null;
+	}
+
+	const candidate = [
+		...materialized.leftoverGroupFacts.map((facts) => facts.group),
+		...materialized.groups,
+	].sort(compareGroupTierDescending);
+	return candidate;
+}
+
+function collapseHighestTierGroupsForDisplay(
+	groups: GroupSizeResult[],
+	definition: OrgDefinitionSpec,
+): GroupSizeResult[] {
+	let current = [...groups].sort(compareGroupTierDescending);
+	const composedRules = definition.rules.filter(isComposedCountRule);
+
+	for (let iteration = 0; iteration < 20 && current.length > 1; iteration += 1) {
+		const highestTier = current[0]?.tier;
+		if (highestTier === undefined) {
+			break;
+		}
+
+		const highestGroups = current.filter((group) => group.tier === highestTier);
+		const lowerGroups = current.filter((group) => group.tier !== highestTier);
+		let bestCandidate: GroupSizeResult[] | null = null;
+		let bestScore: DisplayCollapseScore | null = null;
+
+		for (const rule of composedRules) {
+			const candidate = materializeDisplayCompositionCandidate(highestGroups, rule, definition);
+			if (!candidate) {
+				continue;
+			}
+
+			const maxTier = getMaxGroupTier(candidate);
+			if (candidate.length >= highestGroups.length && maxTier <= highestTier) {
+				continue;
+			}
+
+			const score = scoreDisplayCollapse(candidate);
+			if (!bestCandidate || !bestScore || betterDisplayCollapse(score, bestScore)) {
+				bestCandidate = candidate;
+				bestScore = score;
+			}
+		}
+
+		if (!bestCandidate) {
+			break;
+		}
+
+		current = [...lowerGroups, ...bestCandidate].sort(compareGroupTierDescending);
+	}
+
+	return current;
+}
+
 export function getAggregatedGroupsResult(
 	groups: GroupSizeResult[],
 	factionName: string,
@@ -442,8 +576,9 @@ function getDisplayGroups(
 		return groups;
 	}
 
-	const promotedGroups = promoteDisplayGroups(groups, resolveOrgDefinition(factionName, factionAffinity));
-	return resolveFromGroups(factionName, factionAffinity, promotedGroups, true);
+	const definition = resolveOrgDefinition(factionName, factionAffinity);
+	const promotedGroups = promoteDisplayGroups(groups, definition);
+	return collapseHighestTierGroupsForDisplay(promotedGroups, definition);
 }
 
 export function aggregateGroupsResult(

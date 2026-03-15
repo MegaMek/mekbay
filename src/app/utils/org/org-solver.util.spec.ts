@@ -95,6 +95,9 @@ function createUnit(
         if (type === 'Mek') return 'BM';
         if (type === 'ProtoMek') return 'PM';
         if (type === 'Infantry') return subtype === 'Battle Armor' ? 'BA' : 'CI';
+        if (type === 'VTOL') {
+            return 'CV';
+        }
         if (type === 'Aero') {
             return subtype === 'Conventional Fighter' ? 'CF' : 'AF';
         }
@@ -319,13 +322,13 @@ describe('org-solver.util', () => {
     it('buckets flight identity only for units that are flight-eligible', () => {
         const units = compileUnitFactsList([
             createFlightEligibleUnit('SV Flyer 1', 'Chopper', 'SV', 'VTOL', { v: 10 }),
-            createFlightEligibleUnit('SV Flyer 2', 'Jet', 'SV', 'Aero', { g: 8 }),
+            createFlightEligibleUnit('SV Flyer 2', 'Jet', 'AF', 'Aero', { g: 8 }),
             createFlightEligibleUnit('SV Non-Flyer', 'Guardian', 'SV', 'Tank'),
         ]);
 
         const flightType = DEFAULT_ORG_RULE_REGISTRY.unitBuckets.flightType;
 
-        expect(flightType?.(units[0])).toBe('not-flight');
+        expect(flightType?.(units[0])).toBe('flight:SV');
         expect(flightType?.(units[1])).toBe('flight:AF');
         expect(flightType?.(units[2])).toBe('not-flight');
     });

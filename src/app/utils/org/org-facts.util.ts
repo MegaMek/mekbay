@@ -169,7 +169,7 @@ function isFlightEligible(facts: UnitFacts): boolean {
     const unitType = getNormalizedOrgUnitType(facts.unit);
     return unitType === 'AF'
         || unitType === 'CF'
-        || (unitType === 'SV' && hasFlightMoveType(facts.unit));
+        || ((unitType === 'SV' || unitType === 'CV') && hasFlightMoveType(facts.unit));
 }
 
 function getFlightTypeBucketValue(facts: UnitFacts): FlightTypeBucketValue {
@@ -374,7 +374,7 @@ export function createOrgRuleRegistry(
             flightEligible: (facts) => isFlightEligible(facts),
             infantry: (facts) => isBA(facts.unit) || isCI(facts.unit),
             nonInfantry: (facts) => !isBA(facts.unit) && !isCI(facts.unit),
-            nonConventionalInfantry: (facts) => !isCI(facts.unit),
+            nonConventionalInfantry: (facts) => !isCI(facts.unit) && !facts.tags.has('aero'),
             nonAero: (facts) => !facts.tags.has('aero'),
             omni: (facts) => facts.tags.has('omni'),
             transportMec: (facts) => facts.tags.has('transport.mec'),
