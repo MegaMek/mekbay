@@ -31,8 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { FactionAffinity } from '../models/factions.model';
-import type { Unit } from '../models/units.model';
+import { FactionAffinity } from '../../models/factions.model';
+import type { Unit } from '../../models/units.model';
 import type {
     GroupSizeResult,
     OrgDefinition,

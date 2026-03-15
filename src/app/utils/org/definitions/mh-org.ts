@@ -1,0 +1,115 @@
+import { DEFAULT_ORG_RULE_REGISTRY } from '../org-facts.util';
+import type {
+    OrgComposedCountRule,
+    OrgDefinitionSpec,
+    OrgLeafCountRule,
+    OrgLeafPatternRule,
+} from '../org-types';
+import {
+    createExactCIComposedRule,
+    createExactCISquadRule,
+} from './common';
+
+export const MH_CONTUBERNIUM_NON_INFANTRY: OrgLeafCountRule = {
+    kind: 'leaf-count',
+    type: 'Contubernium',
+    tag: 'non-infantry',
+    modifiers: { '': 1 },
+    commandRank: 'Miles probatus',
+    tier: 0,
+    unitSelector: 'nonConventionalInfantry',
+    pointModel: 'fixed',
+};
+
+export const MH_CONTUBERNIUM_INFANTRY: OrgLeafPatternRule = createExactCISquadRule({
+    type: 'Contubernium',
+    commandRank: 'Miles probatus',
+    tier: 0,
+    entries: [
+        { moveClass: 'foot', troopers: 10 },
+        { moveClass: 'motorized', troopers: 10 },
+        { moveClass: 'scuba', troopers: 10 },
+        { moveClass: 'jump', troopers: 10 },
+        { moveClass: 'mechanized-vtol', troopers: 5 },
+        { moveClass: 'mechanized-hover', troopers: 5 },
+        { moveClass: 'mechanized-wheeled', troopers: 5 },
+        { moveClass: 'mechanized-tracked', troopers: 5 },
+        { moveClass: 'mechanized-submarine', troopers: 5 },
+    ],
+});
+
+export const MH_CENTURY_NON_INFANTRY: OrgComposedCountRule = {
+    kind: 'composed-count',
+    type: 'Century',
+    modifiers: { '': 5 },
+    commandRank: 'Centurion',
+    tier: 1,
+    childRoles: [{ role: 'contubernium', matches: ['Contubernium'], requiredTagsAll: ['non-infantry'] }],
+    childBucketBy: 'promotionBasic',
+};
+
+export const MH_CENTURY_INFANTRY: OrgComposedCountRule = createExactCIComposedRule({
+    type: 'Century',
+    commandRank: 'Centurion',
+    tier: 1,
+    childType: 'Contubernium',
+    childRole: 'contubernium',
+    entries: [
+        { moveClass: 'foot', counts: { '': 10 } },
+        { moveClass: 'motorized', counts: { '': 10 } },
+        { moveClass: 'scuba', counts: { '': 10 } },
+        { moveClass: 'jump', counts: { '': 5 } },
+        { moveClass: 'mechanized-vtol', counts: { '': 4 } },
+        { moveClass: 'mechanized-hover', counts: { '': 4 } },
+        { moveClass: 'mechanized-wheeled', counts: { '': 4 } },
+        { moveClass: 'mechanized-tracked', counts: { '': 4 } },
+        { moveClass: 'mechanized-submarine', counts: { '': 4 } },
+    ],
+});
+
+export const MH_MANIPLE: OrgComposedCountRule = {
+    kind: 'composed-count',
+    type: 'Maniple',
+    modifiers: { '': 2 },
+    commandRank: 'Principes',
+    tier: 2,
+    childRoles: [{ role: 'century', matches: ['Century'] }],
+    childBucketBy: 'promotionBasic',
+};
+
+export const MH_COHORT: OrgComposedCountRule = {
+    kind: 'composed-count',
+    type: 'Cohort',
+    modifiers: { '': 3 },
+    commandRank: 'Legatus',
+    tier: 3,
+    childRoles: [{ role: 'maniple', matches: ['Maniple'] }],
+    childBucketBy: 'promotionBasic',
+};
+
+export const MH_LEGION: OrgComposedCountRule = {
+    kind: 'composed-count',
+    type: 'Legion',
+    modifiers: { '': 4 },
+    commandRank: 'General',
+    tier: 4,
+    childRoles: [{ role: 'cohort', matches: ['Cohort'] }],
+    childBucketBy: 'promotionBasic',
+};
+
+export const MH_CORE_ORG: OrgDefinitionSpec = {
+    rules: [
+        MH_CONTUBERNIUM_NON_INFANTRY,
+        MH_CONTUBERNIUM_INFANTRY,
+        MH_CENTURY_NON_INFANTRY,
+        MH_CENTURY_INFANTRY,
+        MH_MANIPLE,
+        MH_COHORT,
+        MH_LEGION,
+    ],
+    registry: DEFAULT_ORG_RULE_REGISTRY,
+    distanceFactor: 0.2,
+    minDistance: 2,
+    groupDistanceFactor: 0.5,
+    groupMinDistance: 1,
+};

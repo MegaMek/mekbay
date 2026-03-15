@@ -49,7 +49,7 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { ToastService } from '../../services/toast.service';
 import { type ForceAddModePickerData, ForceAddModePickerDialogComponent, type ForceAddModePickerResult } from '../force-add-mode-picker-dialog/force-add-mode-picker-dialog.component';
 import { firstValueFrom } from 'rxjs';
-import { getOrgFromForce, getOrgFromGroup, getAggregatedGroupsResult } from '../../utils/org-namer.util';
+import { getOrgFromForce, getOrgFromGroup } from '../../utils/org-namer.util';
 import { getUnitsAverageTechBase } from '../../models/tech.model';
 import { Faction, FACTION_MERCENARY, FactionAffinity } from '../../models/factions.model';
 
@@ -101,7 +101,7 @@ export class ForceEntryPreviewDialogComponent {
         const factionName = faction ? faction.name : 'Mercenary';
         const factionAffinity: FactionAffinity = faction ? faction.group : 'Mercenary';
         this.groupDisplayData = this.force.groups.map(group => {
-            const sizeResult = getAggregatedGroupsResult(getOrgFromGroup(group, factionName, factionAffinity), factionName, factionAffinity);
+            const sizeResult = getOrgFromGroup(group, factionName, factionAffinity);
             const orgName = (sizeResult.name && sizeResult.name !== 'Force') ? sizeResult.name : null;
 
             let name: string;
@@ -122,7 +122,7 @@ export class ForceEntryPreviewDialogComponent {
             return { group, name, orgName, formationName };
         });
 
-        const forceResult = getAggregatedGroupsResult(getOrgFromForce(this.force, factionName, factionAffinity), factionName, factionAffinity);
+        const forceResult = getOrgFromForce(this.force, factionName, factionAffinity);
         if (forceResult.name !== 'Force') {
             this.forceOrgName = forceResult.name;
         }

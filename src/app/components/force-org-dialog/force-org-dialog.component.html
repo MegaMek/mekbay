@@ -187,11 +187,11 @@
                 <!-- Force name -->
                 <foreignObject x="50" y="6" [attr.width]="CARD_WIDTH - 90" height="36" class="force-name-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-name">
-                        {{ pf.force.name || metadata?.aggregatedOrg?.name }}
+                        {{ pf.force.name || metadata?.org?.name }}
                     </div>
                     @if (pf.force.name) {
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-org">
-                        {{ metadata?.aggregatedOrg?.name }}
+                        {{ metadata?.org?.name }}
                     </div>
                     }
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-value">
@@ -331,9 +331,9 @@
                     }
                 </div>
                 <div class="sidebar-force-info">
-                    <div class="sidebar-force-name">{{ force.name || metadata?.aggregatedOrg?.name }}</div>
+                    <div class="sidebar-force-name">{{ force.name || metadata?.org?.name }}</div>
                     @if (force.name) {
-                    <div class="sidebar-force-org">{{ metadata?.aggregatedOrg?.name }}</div>
+                    <div class="sidebar-force-org">{{ metadata?.org?.name }}</div>
                     }
                     <div class="sidebar-force-value">{{ metadata?.bvString }}</div>
                 </div>
@@ -395,9 +395,9 @@
         </div>
         <div class="drag-ghost-info">
             <div class="drag-ghost-name">{{ sidebarDragForce()!.name ||
-                metatada?.aggregatedOrg?.name }}</div>
+                metatada?.org?.name }}</div>
             @if (sidebarDragForce()!.name) {
-            <div class="drag-ghost-org">{{ metatada?.aggregatedOrg?.name }}</div>
+            <div class="drag-ghost-org">{{ metatada?.org?.name }}</div>
             }
             <div class="drag-ghost-value">{{ metatada?.bvString }}</div>
         </div>

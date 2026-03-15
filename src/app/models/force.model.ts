@@ -47,8 +47,8 @@ import type { Faction } from './factions.model';
 import { type FormationTypeDefinition, type FormationMatch, isNoFormation } from '../utils/formation-type.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
-import type { AggregatedGroupSizeResult } from '../utils/org-types';
-import { getOrgFromForce, getOrgFromGroup, getAggregatedGroupsResult } from '../utils/org-namer.util';
+import type { OrgSizeResult } from '../utils/org/org-types';
+import { getOrgFromForce, getOrgFromGroup } from '../utils/org-namer.util';
 import { getUnitsAverageTechBase, TechBase } from './tech.model';
 
 /*
@@ -138,14 +138,8 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     }
 
     /** Structural evaluation result for this group (name + matched ForceType). */
-    sizeResult = computed<AggregatedGroupSizeResult>(() => {
-        const groups = getOrgFromGroup(this);
-        const result = getAggregatedGroupsResult(
-            groups,
-            this.force.faction()?.name ?? 'Mercenary',
-            this.force.faction()?.group ?? 'Mercenary',
-        );
-        return result;
+    sizeResult = computed<OrgSizeResult>(() => {
+        return getOrgFromGroup(this);
     });
 
     organizationalName = computed(() => {
@@ -267,13 +261,8 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         }
     }
 
-    sizeResult = computed<AggregatedGroupSizeResult>(() => {
-        const groups = getOrgFromForce(this);
-        return getAggregatedGroupsResult(
-            groups,
-            this.faction()?.name ?? 'Mercenary',
-            this.faction()?.group ?? 'Mercenary',
-        );
+    sizeResult = computed<OrgSizeResult>(() => {
+        return getOrgFromForce(this);
     });
 
     organizationalName = computed(() => {

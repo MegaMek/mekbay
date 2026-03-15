@@ -1,10 +1,9 @@
 import { GameSystem } from '../models/common.model';
 import { LoadForceEntry, type LoadForceGroup } from '../models/load-force-entry.model';
 import type { Unit } from '../models/units.model';
-import type { GroupSizeResult } from './org-types';
-import { resolveFromGroups, resolveFromUnits } from './org-solver.util';
+import type { GroupSizeResult } from './org/org-types';
+import { resolveFromGroups, resolveFromUnits } from './org/org-solver.util';
 import { aggregateGroupsResult, getAggregatedGroupsResult, getOrgFromForce, getOrgFromForceCollection, getOrgFromGroup } from './org-namer.util';
-
 describe('getAggregatedGroupsResult', () => {
     it('passes through a single input group without upgrades or conversions', () => {
         const groups: GroupSizeResult[] = [{
@@ -23,7 +22,7 @@ describe('getAggregatedGroupsResult', () => {
         expect(result.groups[0]).toBe(groups[0]);
     });
 
-    it('preserves the original structural groups when computing an aggregated display result', () => {
+    it('returns the solved display tree when computing an aggregated display result', () => {
         const groups: GroupSizeResult[] = [
             {
                 name: 'Lance',
@@ -47,9 +46,11 @@ describe('getAggregatedGroupsResult', () => {
 
         expect(result.name).toBe('Under-Strength Company');
         expect(result.tier).toBe(1.5);
-        expect(result.groups).toBe(groups);
-        expect(result.groups.length).toBe(2);
-        expect(result.groups.every(group => group.type === 'Lance')).toBeTrue();
+        expect(result.groups.length).toBe(1);
+        expect(result.groups[0].name).toBe('Under-Strength Company');
+        expect(result.groups[0].type).toBe('Company');
+        expect(result.groups[0].children?.length).toBe(2);
+        expect(result.groups[0].children?.every(group => group.type === 'Lance')).toBeTrue();
     });
 
     it('cycles multiplier names across regular-and-above modifiers after the highest modifier is exceeded', () => {
@@ -229,6 +230,7 @@ function createLoadForceGroup(units: Unit[]): LoadForceGroup {
 
 interface AggregatedForceStage {
     entries: LoadForceEntry[];
+    orgResult: ReturnType<typeof getOrgFromForce>;
     rawGroups: GroupSizeResult[];
     aggregated: ReturnType<typeof getAggregatedGroupsResult>;
 }
@@ -254,11 +256,13 @@ function createMercenaryForce(forceIndex: number): LoadForceEntry {
 }
 
 function resolveAggregatedForceStage(entry: LoadForceEntry): AggregatedForceStage {
-    const rawGroups = getOrgFromForce(entry, 'Mercenary', 'Mercenary');
+    const orgResult = getOrgFromForce(entry, 'Mercenary', 'Mercenary');
+    const rawGroups = [...orgResult.groups];
     const aggregated = getAggregatedGroupsResult(rawGroups, 'Mercenary', 'Mercenary');
 
     return {
         entries: [entry],
+        orgResult,
         rawGroups,
         aggregated,
     };
@@ -270,12 +274,14 @@ function mergeAggregatedForceStages(stages: AggregatedForceStage[], batchSize: n
     for (let start = 0; start < stages.length; start += batchSize) {
         const batch = stages.slice(start, start + batchSize);
         const entries = batch.flatMap(stage => stage.entries);
-        const childGroupResults = batch.flatMap(stage => stage.aggregated.groups);
-        const rawGroups = getOrgFromForceCollection(entries, 'Mercenary', 'Mercenary', childGroupResults);
+        const childGroupResults = batch.flatMap(stage => stage.orgResult.groups);
+        const orgResult = getOrgFromForceCollection(entries, 'Mercenary', 'Mercenary', childGroupResults);
+        const rawGroups = [...orgResult.groups];
         const aggregated = getAggregatedGroupsResult(rawGroups, 'Mercenary', 'Mercenary');
 
         mergedStages.push({
             entries,
+            orgResult,
             rawGroups,
             aggregated,
         });
@@ -292,11 +298,12 @@ describe('org-namer aggregation flow', () => {
         }
 
         const result = getOrgFromGroup(createLoadForceGroup(units), 'Society', 'HW Clan');
+        const rawGroups = [...result.groups];
 
-        expect(result.length).toBe(14);
-        expect(result.every(group => group.name === 'Sept')).toBeTrue();
-        expect(result.every(group => group.type === 'Sept')).toBeTrue();
-        expect(aggregateGroupsResult(result).name).toBe('14x Sept');
+        expect(result.name).toBe('14x Sept');
+        expect(rawGroups.length).toBe(14);
+        expect(rawGroups.every(group => group.name === 'Sept')).toBeTrue();
+        expect(aggregateGroupsResult(rawGroups).name).toBe('14x Sept');
     });
 
     it('keeps raw Sept groups in getOrgFromForce and aggregates only for display', () => {
@@ -312,11 +319,12 @@ describe('org-namer aggregation flow', () => {
         });
 
         const result = getOrgFromForce(entry, 'Society', 'HW Clan');
+        const rawGroups = [...result.groups];
 
-        expect(result.length).toBe(14);
-        expect(result.every(group => group.name === 'Sept')).toBeTrue();
-        expect(result.every(group => group.type === 'Sept')).toBeTrue();
-        expect(aggregateGroupsResult(result).name).toBe('14x Sept');
+        expect(result.name).toBe('14x Sept');
+        expect(rawGroups.length).toBe(14);
+        expect(rawGroups.every(group => group.name === 'Sept')).toBeTrue();
+        expect(aggregateGroupsResult(rawGroups).name).toBe('14x Sept');
     });
 
     it('lets display aggregation grow when a Society stack is merged with a foreign Supernova Trinary', () => {
@@ -332,7 +340,7 @@ describe('org-namer aggregation flow', () => {
         });
         const societyResult = getOrgFromForce(societyEntry, 'Society', 'HW Clan');
 
-        expect(societyResult.length).toBe(14);
+        expect(societyResult.groups.length).toBe(14);
 
         const supernovaBinaryUnits: Unit[] = [
             createBA('BA1', ['MEC'], 5),
@@ -380,13 +388,17 @@ describe('org-namer aggregation flow', () => {
             [societyEntry],
             'Society',
             'HW Clan',
-            [...societyResult, supernovaTrinary[0]],
+            [
+                ...societyResult.groups,
+                supernovaTrinary[0],
+            ],
         );
+        const mergedRawGroups = [...merged.groups];
 
-        expect(merged.length).toBe(19);
-        expect(merged.every(group => group.name === 'Sept')).toBeTrue();
-        expect(merged.every(group => group.type === 'Sept')).toBeTrue();
-        expect(aggregateGroupsResult(merged).name).toBe('19x Sept');
+        expect(merged.name).toBe('19x Sept');
+        expect(mergedRawGroups.length).toBe(19);
+        expect(mergedRawGroups.every(group => group.name === 'Sept')).toBeTrue();
+        expect(aggregateGroupsResult(mergedRawGroups).name).toBe('19x Sept');
     });
 
     it('promotes display names using leftover child groups without changing raw org results', () => {
@@ -398,7 +410,7 @@ describe('org-namer aggregation flow', () => {
         const display = getAggregatedGroupsResult(rawGroups, 'Clan Test', 'HW Clan');
 
         expect(display.name).toBe('Cluster');
-        expect(display.groups).toBe(rawGroups);
+        expect(display.groups.length).toBe(1);
     });
 
     it('uses hierarchical display aggregation for mixed Marian child groups', () => {
@@ -426,7 +438,6 @@ describe('org-namer aggregation flow', () => {
         const firstStage = stages[0];
 
         expect(stages.every(stage => stage.rawGroups.length > 0)).toBeTrue();
-        expect(stages.every(stage => stage.aggregated.groups === stage.rawGroups)).toBeTrue();
         expect(new Set(stages.map(stage => stage.aggregated.name)).size).toBeGreaterThan(1);
 
         expect(firstStage.rawGroups.length).toBe(1);

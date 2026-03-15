@@ -1,0 +1,167 @@
+import { ASUnitTypeCode } from '../../../models/units.model';
+import { DEFAULT_ORG_RULE_REGISTRY } from '../org-facts.util';
+import type {
+    OrgComposedCountRule,
+    OrgDefinitionSpec,
+    OrgLeafCountRule,
+    OrgLeafPatternRule,
+} from '../org-types';
+import {
+    CLAN_CLUSTER,
+    CLAN_NOVA,
+    CLAN_POINT,
+    CLAN_SUPERNOVA_BINARY,
+    CLAN_SUPERNOVA_TRINARY,
+} from './clan-org';
+import {
+    IS_FLIGHT,
+    IS_PLATOON,
+    IS_REGIMENT,
+    IS_SINGLE,
+    IS_SQUAD,
+    IS_SQUADRON,
+    IS_WING,
+} from './is-org';
+
+export const WD_POINT_UNIT_TYPES = ['BM', 'IM', 'CV', 'SV', 'PM', 'BA', 'SC', 'WS', 'SS', 'JS', 'DA', 'DS', 'BD'] as const satisfies readonly ASUnitTypeCode[];
+export const WD_SINGLE_UNIT_TYPES = ['BM', 'IM', 'CV', 'SV', 'PM', 'SC', 'WS', 'SS', 'JS', 'DA', 'DS', 'BD'] as const satisfies readonly ASUnitTypeCode[];
+
+export const WD_SINGLE: OrgLeafCountRule = {
+    ... IS_SINGLE,
+    commandRank: 'Sergeant',
+    unitSelector: WD_SINGLE_UNIT_TYPES,
+};
+
+export const WD_POINT: OrgLeafCountRule = {
+    ... CLAN_POINT,
+    commandRank: 'Sergeant',
+    unitSelector: WD_POINT_UNIT_TYPES,
+};
+
+export const WD_NOVA: OrgLeafPatternRule = {
+    ...CLAN_NOVA,
+    commandRank: 'Lieutenant',
+};
+
+export const WD_SUPERNOVA_BINARY: OrgComposedCountRule = {
+    ...CLAN_SUPERNOVA_BINARY,
+    commandRank: 'Captain',
+};
+
+export const WD_SUPERNOVA_TRINARY: OrgComposedCountRule = {
+    ...CLAN_SUPERNOVA_TRINARY,
+    commandRank: 'Captain',
+};
+
+export const WD_LANCE: OrgComposedCountRule = {
+    kind: 'composed-count',
+    type: 'Lance',
+    modifiers: { 'Short ': 2, 'Under-Strength ': 3, '': 4, 'Reinforced ': 5, 'Fortified ': 6 },
+    commandRank: 'Lieutenant',
+    tier: 1,
+    childRoles: [{ role: 'single', matches: ['Single'] }],
+    childBucketBy: 'promotionWithUnitKinds',
+};
+
+export const WD_STAR: OrgComposedCountRule = {
+    kind: 'composed-count',
+    type: 'Star',
+    modifiers: {
+        'Half ': 2,
+        'Short ': 3,
+        'Under-Strength ': 4,
+        '': 5,
+        'Reinforced ': 6,
+        'Fortified ': 7,
+    },
+    commandRank: 'Lieutenant',
+    tier: 1,
+    childRoles: [{ role: 'point', matches: ['Point'] }],
+    childBucketBy: 'promotionWithUnitKinds',
+};
+
+export const WD_BINARY: OrgComposedCountRule = {
+    kind: 'composed-count',
+    type: 'Binary',
+    countsAs: 'Company',
+    modifiers: { '': 2 },
+    commandRank: 'Captain',
+    tier: 1.8,
+    childRoles: [{ role: 'star', matches: ['Star'] }],
+    childBucketBy: 'promotionBasic',
+};
+
+export const WD_TRINARY: OrgComposedCountRule = {
+    kind: 'composed-count',
+    type: 'Trinary',
+    countsAs: 'Company',
+    modifiers: { '': 3 },
+    commandRank: 'Captain',
+    tier: 2,
+    childRoles: [{ role: 'star', matches: ['Star'] }],
+    childBucketBy: 'promotionBasic',
+};
+
+export const WD_CLUSTER: OrgComposedCountRule = {
+    ...CLAN_CLUSTER,
+    priority: 1,
+    countsAs: 'Battalion',
+    commandRank: 'Major',
+    childRoles: [{ role: 'line', matches: ['Binary', 'Trinary'] }],
+};
+
+export const WD_COMPANY: OrgComposedCountRule = {
+    kind: 'composed-count',
+    type: 'Company',
+    modifiers: { 'Under-Strength ': { count: 2, tier: 1.5 }, '': 3, 'Reinforced ': 4 },
+    commandRank: 'Captain',
+    tier: 2,
+    dynamicTier: 1,
+    childRoles: [
+        { role: 'lance', matches: ['Lance'], min: 1 },
+        { role: 'line', matches: ['Lance', 'Star'] },
+    ],
+    childBucketBy: 'promotionBasic',
+};
+
+export const WD_BATTALION: OrgComposedCountRule = {
+    kind: 'composed-count',
+    type: 'Battalion',
+    modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
+    commandRank: 'Major',
+    tier: 3,
+    dynamicTier: 1,
+    childRoles: [
+        { role: 'company', matches: ['Company'], min: 1, onlyUnitTypes: WD_POINT_UNIT_TYPES },
+        { role: 'line', matches: ['Company', 'Binary', 'Trinary'], onlyUnitTypes: WD_POINT_UNIT_TYPES },
+    ],
+    childBucketBy: 'promotionBasic',
+};
+
+export const WD_CORE_ORG: OrgDefinitionSpec = {
+    rules: [
+        IS_FLIGHT,
+        IS_SQUADRON,
+        IS_WING,
+        IS_SQUAD,
+        IS_PLATOON,
+        WD_NOVA,
+        WD_SUPERNOVA_BINARY,
+        WD_SUPERNOVA_TRINARY,
+        WD_POINT,
+        WD_SINGLE,
+        WD_LANCE,
+        WD_STAR,
+        WD_BINARY,
+        WD_TRINARY,
+        WD_CLUSTER,
+        WD_COMPANY,
+        WD_BATTALION,
+        IS_REGIMENT,
+    ],
+    registry: DEFAULT_ORG_RULE_REGISTRY,
+    distanceFactor: 0.2,
+    minDistance: 2,
+    groupDistanceFactor: 0.25,
+    groupMinDistance: 1,
+};

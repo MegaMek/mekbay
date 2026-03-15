@@ -44,9 +44,9 @@ import { type Faction, FACTION_MERCENARY } from '../../models/factions.model';
 import { ForceNamerUtil, type FactionDisplayInfo } from '../../utils/force-namer.util';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { FactionDropdownPanelComponent } from './faction-dropdown-panel.component';
-import { EMPTY_RESULT, resolveFromGroups } from '../../utils/org-solver.util';
-import type { AggregatedGroupSizeResult, GroupSizeResult } from '../../utils/org-types';
-import { getAggregatedGroupsResult } from '../../utils/org-namer.util';
+import { EMPTY_RESULT } from '../../utils/org-solver.util';
+import type { OrgSizeResult } from '../../utils/org/org-types';
+import { getOrgFromForce } from '../../utils/org-namer.util';
 import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-visuals.util';
 
 
@@ -382,22 +382,19 @@ export class RenameForceDialogComponent {
         );
     });
 
-    forceSizeResult = computed<AggregatedGroupSizeResult>(() => {
+    forceSizeResult = computed<OrgSizeResult>(() => {
         const units = this.data.force.units();
         if (units.length === 0) {
             return {
                 name: EMPTY_RESULT.name,
                 tier: EMPTY_RESULT.tier,
                 groups: [],
+                formations: [],
             };
         }
         const factionName = this.selectedFaction()?.name ?? 'Mercenary';
         const factionAffinity = this.selectedFaction()?.group ?? 'Mercenary';
-        const groupResults: GroupSizeResult[] = this.data.force.groups()
-            .filter(g => g.units().length > 0)
-            .flatMap(g => g.sizeResult().groups ?? []);
-        const resolvedOrg = resolveFromGroups(factionName, factionAffinity, groupResults);
-        return getAggregatedGroupsResult(resolvedOrg, factionName, factionAffinity);
+        return getOrgFromForce(this.data.force, factionName, factionAffinity);
     });
 
     forceOrganizationalName = computed<string>(() => {
