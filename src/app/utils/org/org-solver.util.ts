@@ -433,6 +433,27 @@ function getPatternRefTotal(
     return values.reduce((sum, bucketValue) => sum + (allocation.get(bucketValue) ?? 0), 0);
 }
 
+function parseBucketNumericValue(bucketValue: string): number {
+    const match = /:(\d+)$/.exec(bucketValue);
+    return match ? Number(match[1]) : 0;
+}
+
+function getPatternRefNumericTotal(
+    ref: OrgPatternReferenceName,
+    allocation: ReadonlyMap<string, number>,
+    pattern: OrgPatternSpec,
+    availableBucketValues: readonly string[],
+): number {
+    const values = pattern.bucketGroups?.[ref]
+        ? resolvePatternBucketValues(pattern.bucketGroups[ref], availableBucketValues)
+        : [String(ref)];
+
+    return values.reduce(
+        (sum, bucketValue) => sum + parseBucketNumericValue(bucketValue) * (allocation.get(bucketValue) ?? 0),
+        0,
+    );
+}
+
 function getTargetDistance(value: number, target: number | { min: number; max: number }): number {
     if (typeof target === 'number') {
         return Math.abs(value - target);
@@ -472,7 +493,7 @@ function evaluatePatternScoreTerm(
             return Math.max(0, left - right) * weight;
         }
         case 'numeric-target': {
-            const value = getPatternRefTotal(term.ref, allocation, pattern, availableBucketValues);
+            const value = getPatternRefNumericTotal(term.ref, allocation, pattern, availableBucketValues);
             const divisor = term.divisor ?? 1;
             return (getTargetDistance(value, term.target) / divisor) * weight;
         }
@@ -1201,6 +1222,10 @@ function materializeLeafRulesByStage(
             continue;
         }
 
+        if (stage === 'regular' && (rule.priority ?? 0) < 0) {
+			continue;
+		}
+
         const descriptor = getRuleModifierDescriptor(rule);
         const targetSteps = stage === 'regular'
             ? [descriptor.regularStep]
@@ -1295,8 +1320,21 @@ function getRuleByType(context: ResolveContext, type: GroupSizeResult['type']): 
     return context.composedCountRules.find((rule) => rule.type === type);
 }
 
+function getAnyRuleByType(
+    context: ResolveContext,
+    type: GroupSizeResult['type'],
+): OrgLeafCountRule | OrgLeafPatternRule | OrgComposedCountRule | undefined {
+    if (!type) {
+        return undefined;
+    }
+
+    return context.leafCountRules.find((rule) => rule.type === type)
+        ?? context.leafPatternRules.find((rule) => rule.type === type)
+        ?? context.composedCountRules.find((rule) => rule.type === type);
+}
+
 function getModifierBandForGroup(group: GroupSizeResult, context: ResolveContext): ModifierBand {
-    const rule = getRuleByType(context, group.type);
+    const rule = getAnyRuleByType(context, group.type);
     if (!rule) {
         return group.modifierKey === '' ? 'regular' : 'sub-regular';
     }
@@ -1347,6 +1385,21 @@ function compareResolvedState(left: ResolvedState, right: ResolvedState, context
 
 function materializeResolvedState(state: ResolvedState): GroupSizeResult[] {
     return attachLeftoverUnits(normalizeTopLevelGroups(state.groups), state.leftoverUnits);
+}
+
+function pickBestResolvedState(
+    states: readonly ResolvedState[],
+    context: ResolveContext,
+): ResolvedState {
+    let best = states[0] ?? { groups: [], leftoverUnits: [] };
+
+    for (const candidate of states.slice(1)) {
+        if (compareResolvedState(candidate, best, context) < 0) {
+            best = candidate;
+        }
+    }
+
+    return best;
 }
 
 function getRuleTierByType(context: ResolveContext, type: GroupSizeResult['type']): number | null {
@@ -1701,8 +1754,7 @@ function resolveWithDefinition(
         candidateStates.push({ groups: [wholeComposed], leftoverUnits: [] });
     }
 
-    const bestState = candidateStates.sort((left, right) => compareResolvedState(left, right, context))[0]
-        ?? { groups: [], leftoverUnits };
+    const bestState = pickBestResolvedState(candidateStates, context);
 
     return materializeResolvedState(bestState);
 }
