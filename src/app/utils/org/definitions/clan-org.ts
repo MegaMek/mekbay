@@ -140,6 +140,16 @@ export const CLAN_TRINARY: OrgComposedCountRule = {
     tier: 2,
     childRoles: [{ matches: ['Star'] }],
     childBucketBy: 'promotionBasic',
+    alternativeCompositions: [
+        {
+            modifiers: { '': 2 },
+            childRoles: [
+                { matches: ['Binary'], min: 1 },
+                { matches: ['Star'], min: 1 },
+            ],
+            childBucketBy: 'promotionBasic',
+        },
+    ],
 };
 
 export const CLAN_SUPERNOVA_BINARY: OrgComposedCountRule = {

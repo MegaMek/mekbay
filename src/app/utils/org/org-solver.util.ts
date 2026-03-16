@@ -1829,7 +1829,18 @@ function getResolveContext(definition: OrgDefinitionSpec): ResolveContext {
         leafPatternRules: definition.rules.filter((rule): rule is OrgLeafPatternRule => rule.kind === 'leaf-pattern')
             .sort((left, right) => right.tier - left.tier || getRulePriority(right) - getRulePriority(left)),
         composedCountRules: definition.rules.filter((rule): rule is OrgComposedCountRule => rule.kind === 'composed-count')
-            .sort((left, right) => left.tier - right.tier || getRulePriority(right) - getRulePriority(left)),
+            .sort((left, right) => {
+                const leftChildTier = getMinimumChildTierForRule(left, { definition } as ResolveContext);
+                const rightChildTier = getMinimumChildTierForRule(right, { definition } as ResolveContext);
+
+                if (leftChildTier !== rightChildTier) {
+                    return leftChildTier - rightChildTier;
+                }
+                if (left.tier !== right.tier) {
+                    return right.tier - left.tier;
+                }
+                return getRulePriority(right) - getRulePriority(left);
+            }),
     };
 }
 
