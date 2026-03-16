@@ -1300,6 +1300,138 @@ describe('org-solver.util', () => {
         }));
     });
 
+    it('evaluates the Clan supernova and cluster composed rules', () => {
+        const supernovaGroups = [
+            createBattleMekGroup('Supernova Binary A', 'Supernova Binary', 2, 20, 'Binary'),
+            createBattleMekGroup('Nova A', 'Nova', 1.7, 10, 'Star'),
+        ].map((group) => compileGroupFacts(group));
+        const clusterGroups = [
+            createBattleMekGroup('Binary A', 'Binary', 1.8, 10),
+            createBattleMekGroup('Binary B', 'Binary', 1.8, 10),
+            createBattleMekGroup('Trinary A', 'Trinary', 2, 15),
+        ].map((group) => compileGroupFacts(group));
+
+        const supernovaTrinaryResult = evaluateComposedCountRule(CLAN_SUPERNOVA_TRINARY, supernovaGroups);
+        const clusterResult = evaluateComposedCountRule(CLAN_CLUSTER, clusterGroups);
+
+        expect(supernovaTrinaryResult.emitted).toEqual([
+            jasmine.objectContaining({ modifierKey: '', perGroupCount: 2, copies: 1, tier: 2.5 }),
+        ]);
+        expect(supernovaTrinaryResult.leftoverCount).toBe(0);
+        expect(clusterResult.emitted).toEqual([
+            jasmine.objectContaining({ modifierKey: '', perGroupCount: 3, copies: 1, tier: 3 }),
+        ]);
+        expect(clusterResult.leftoverCount).toBe(0);
+    });
+
+    it('materializes composed-count rules into parent groups with preserved children', () => {
+        const groups = materializeComposedCountRule(IS_COMPANY, [
+            compileGroupFacts(createLance('Lance A', ['A1', 'A2', 'A3', 'A4'])),
+            compileGroupFacts(createLance('Lance B', ['B1', 'B2', 'B3', 'B4'])),
+            compileGroupFacts(createLance('Lance C', ['C1', 'C2', 'C3', 'C4'])),
+        ]);
+
+        expect(groups.groups).toEqual([
+            jasmine.objectContaining({ name: 'Company', type: 'Company', modifierKey: '' }),
+        ]);
+        expect(groups.groups[0].children?.length).toBe(3);
+        expect(groups.groups[0].children?.every((child) => child.type === 'Lance')).toBeTrue();
+        expect(groups.leftoverGroupFacts).toEqual([]);
+    });
+
+    it('evaluates the Wolf\'s Dragoons mixed company and battalion rules', () => {
+        const companyGroups = [
+            createLance('Lance A', ['L1', 'L2', 'L3', 'L4']),
+            createBattleMekGroup('Star A', 'Star', 1, 5),
+            createBattleMekGroup('Star B', 'Star', 1, 5),
+        ].map((group) => compileGroupFacts(group));
+        const battalionGroups = [
+            createBattleMekGroup('Company A', 'Company', 2, 12),
+            createBattleMekGroup('Binary A', 'Binary', 1.8, 10, 'Company'),
+            createBattleMekGroup('Trinary A', 'Trinary', 2, 15, 'Company'),
+        ].map((group) => compileGroupFacts(group));
+
+        const companyResult = evaluateComposedCountRule(WD_COMPANY, companyGroups);
+        const battalionResult = evaluateComposedCountRule(WD_BATTALION, battalionGroups);
+
+        expect(companyResult.emitted).toEqual([
+            jasmine.objectContaining({ modifierKey: '', perGroupCount: 3, copies: 1, tier: 2 }),
+        ]);
+        expect(companyResult.leftoverCount).toBe(0);
+        expect(battalionResult.emitted).toEqual([
+            jasmine.objectContaining({ modifierKey: '', perGroupCount: 3, copies: 1, tier: 3 }),
+        ]);
+        expect(battalionResult.leftoverCount).toBe(0);
+    });
+
+    it('evaluates the Wolf\'s Dragoons single selector without BA, CI, or aerospace', () => {
+        const units = compileUnitFactsList([
+            createUnit('WD Mek', 'Mek', 'BattleMek'),
+            createUnit('WD Tank', 'Tank', 'Combat Vehicle'),
+            createUnit('WD BA', 'Infantry', 'Battle Armor', false, [], 4),
+            createUnit('WD CI', 'Infantry', 'Conventional Infantry', false, [], 10),
+            createAero('WD Aero'),
+        ]);
+
+        const result = evaluateLeafCountRule(WD_SINGLE, units);
+
+        expect(result.eligibleUnits.map((facts) => facts.unit.name)).toEqual([
+            'WD Mek',
+            'WD Tank',
+        ]);
+        expect(result.emitted).toEqual([
+            { modifierKey: '', perGroupCount: 1, copies: 2, tier: 0 },
+        ]);
+        expect(result.leftoverCount).toBe(0);
+    });
+
+    it('evaluates the Wolf\'s Dragoons point selector with BA but without CI or aerospace', () => {
+        const units = compileUnitFactsList([
+            createUnit('WD Mek', 'Mek', 'BattleMek'),
+            createUnit('WD Tank', 'Tank', 'Combat Vehicle'),
+            createUnit('WD BA', 'Infantry', 'Battle Armor', false, [], 4),
+            createUnit('WD CI', 'Infantry', 'Conventional Infantry', false, [], 10),
+            createAero('WD Aero'),
+        ]);
+
+        const result = evaluateLeafCountRule(WD_POINT, units);
+
+        expect(result.eligibleUnits.map((facts) => facts.unit.name)).toEqual([
+            'WD Mek',
+            'WD Tank',
+            'WD BA',
+        ]);
+        expect(result.emitted).toEqual([
+            { modifierKey: '', perGroupCount: 1, copies: 3, tier: 0 },
+        ]);
+        expect(result.leftoverCount).toBe(0);
+    });
+
+    it('evaluates the Wolf\'s Dragoons lance from Singles, not Points', () => {
+        const singleGroups = [
+            createBattleMekGroup('Single A', 'Single', 0, 1),
+            createBattleMekGroup('Single B', 'Single', 0, 1),
+            createBattleMekGroup('Single C', 'Single', 0, 1),
+            createBattleMekGroup('Single D', 'Single', 0, 1),
+        ].map((group) => compileGroupFacts(group));
+        const pointGroups = [
+            createBattleMekGroup('Point A', 'Point', 0, 1),
+            createBattleMekGroup('Point B', 'Point', 0, 1),
+            createBattleMekGroup('Point C', 'Point', 0, 1),
+            createBattleMekGroup('Point D', 'Point', 0, 1),
+        ].map((group) => compileGroupFacts(group));
+
+        const singleResult = evaluateComposedCountRule(WD_LANCE, singleGroups);
+        const pointResult = evaluateComposedCountRule(WD_LANCE, pointGroups);
+
+        expect(singleResult.emitted).toEqual([
+            jasmine.objectContaining({ modifierKey: '', perGroupCount: 4, copies: 1, tier: 1 }),
+        ]);
+        expect(singleResult.leftoverCount).toBe(0);
+        expect(pointResult.acceptedGroups.length).toBe(0);
+        expect(pointResult.emitted).toEqual([]);
+    });
+
     it('resolves new-path org definitions by faction registry', () => {
         expect(resolveOrgDefinitionSpec('Word of Blake', 'Inner Sphere')).toBe(COMSTAR_CORE_ORG);
         expect(resolveOrgDefinitionSpec('Capellan Confederation', 'Inner Sphere')).toBe(CC_CORE_ORG);
@@ -1325,6 +1457,63 @@ describe('org-solver.util', () => {
         const novaEvaluation = result.ruleEvaluations.get(WD_NOVA);
 
         expect(novaEvaluation).toEqual(jasmine.objectContaining({
+            leftoverCount: 0,
+        }));
+    });
+
+    it('evaluates a fallback faction org definition through the registry helper', () => {
+        const units = [
+            createUnit('IS Mek 1', 'Mek', 'BattleMek'),
+            createUnit('IS Mek 2', 'Mek', 'BattleMek'),
+            createUnit('IS Mek 3', 'Mek', 'BattleMek'),
+            createUnit('IS Mek 4', 'Mek', 'BattleMek'),
+        ];
+
+        const result = evaluateFactionOrgDefinition('Federated Suns', 'Inner Sphere', units);
+        const lanceEvaluation = result.ruleEvaluations.get(IS_LANCE);
+
+        expect(lanceEvaluation).toEqual(jasmine.objectContaining({
+            leftoverCount: 0,
+        }));
+    });
+
+    it('evaluates the real Wolf\'s Dragoons core definitions module', () => {
+        const units = [
+            ...Array.from({ length: 5 }, (_, index) =>
+                createUnit(`WD BM ${index + 1}`, 'Mek', 'BattleMek Omni', true),
+            ),
+            ...Array.from({ length: 5 }, (_, index) =>
+                createUnit(`WD BA ${index + 1}`, 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+            ),
+            createUnit('WD CI 1', 'Infantry', 'Conventional Infantry', false, [], 10),
+        ];
+        const groups = [
+            createLance('WD Lance A', ['WL1', 'WL2', 'WL3', 'WL4']),
+            createBattleMekGroup('WD Star A', 'Star', 1, 5),
+            createBattleMekGroup('WD Star B', 'Star', 1, 5),
+            createBattleMekGroup('WD Company A', 'Company', 2, 12),
+            createBattleMekGroup('WD Binary A', 'Binary', 1.8, 10, 'Company'),
+            createBattleMekGroup('WD Trinary A', 'Trinary', 2, 15, 'Company'),
+        ];
+
+        const result = evaluateOrgDefinition(WD_CORE_ORG, units, groups);
+
+        const novaEvaluation = result.ruleEvaluations.get(WD_NOVA);
+        const platoonRule = WD_CORE_ORG.rules.find((rule) => rule.type === 'Platoon');
+        const platoonEvaluation = platoonRule ? result.ruleEvaluations.get(platoonRule) : undefined;
+        const companyEvaluation = result.ruleEvaluations.get(WD_COMPANY);
+        const battalionEvaluation = result.ruleEvaluations.get(WD_BATTALION);
+
+        expect(novaEvaluation).toEqual(jasmine.objectContaining({
+            leftoverCount: 0,
+        }));
+        expect(platoonEvaluation).toEqual(jasmine.objectContaining({
+            leftoverCount: 0,
+        }));
+        expect(companyEvaluation).toEqual(jasmine.objectContaining({
+            leftoverCount: 0,
+        }));
+        expect(battalionEvaluation).toEqual(jasmine.objectContaining({
             leftoverCount: 0,
         }));
     });
