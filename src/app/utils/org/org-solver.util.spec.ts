@@ -312,6 +312,18 @@ describe('org-solver.util', () => {
         expect(DEFAULT_ORG_RULE_REGISTRY.unitBuckets.ciMoveClassTroopers?.(units[2])).toBe('CI:mechanized-hover:5');
     });
 
+    it('assigns distinct unit ids to duplicate-name units', () => {
+        const unitA = createUnit('Foot Infantry', 'Infantry', 'Conventional Infantry', false, [], 18, 'Tracked');
+        const unitB = createUnit('Foot Infantry', 'Infantry', 'Conventional Infantry', false, [], 18, 'Tracked');
+        unitA.id = 101;
+        unitB.id = 101;
+
+        const units = compileUnitFactsList([unitA, unitB]);
+
+        expect(units[0].unit.name).toBe(units[1].unit.name);
+        expect(units[0].unitId).not.toBe(units[1].unitId);
+    });
+
     it('buckets flight identity only for units that are flight-eligible', () => {
         const units = compileUnitFactsList([
             createFlightEligibleUnit('SV Flyer 1', 'Chopper', 'SV', 'VTOL', { v: 10 }),
