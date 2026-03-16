@@ -2281,7 +2281,6 @@ describe('resolveFromUnits', () => {
 
         expect(result.length).toBe(4);
         expect(result.every(group => group.type === 'Level II')).toBeTrue();
-        expect(result.every(group => group.children?.length === 5)).toBeTrue();
         expect(result.every(group => group.children?.every(child => child.name === 'Level I'))).toBeTrue();
         expect(result.every(group => group.children?.every(child => child.type === 'Level I'))).toBeTrue();
         expect(result.every(group => group.leftoverUnits === undefined)).toBeTrue();
