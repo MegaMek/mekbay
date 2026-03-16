@@ -29,7 +29,7 @@ export const MH_CONTUBERNIUM_INFANTRY: OrgCIFormationRule = {
     entries: [
         { moveClass: 'foot', troopers: 10, counts: { '': 10 } },
         { moveClass: 'motorized', troopers: 10, counts: { '': 10 } },
-        { moveClass: 'scuba', troopers: 10, counts: { '': 5 } },
+        { moveClass: 'scuba', troopers: 10, counts: { '': 3 } },
         { moveClass: 'jump', troopers: 10, counts: { '': 5 } },
         { moveClass: 'mechanized-vtol', troopers: 5, counts: { '': 4 } },
         { moveClass: 'mechanized-hover', troopers: 5, counts: { '': 4 } },
