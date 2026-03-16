@@ -2354,6 +2354,7 @@ interface LeafAllocationCandidate {
 }
 
 interface ResultScore {
+	readonly whole: boolean;
 	readonly priorityWithoutLeftovers: number;
 	readonly leftoverUnitCount: number;
 	readonly maxTier: number;
@@ -2509,7 +2510,34 @@ function collectAllGroupUnits(
 	return groups.flatMap((group) => collectGroupUnits(group, groupUnitCache));
 }
 
+function isWholeTopLevelGroup(
+	group: GroupSizeResult,
+	definition: OrgDefinitionSpec,
+): boolean {
+	if (!group.type) {
+		return false;
+	}
+
+	const rule = definition.rules.find((candidate) =>
+		candidate.type === group.type
+		&& getRuleModifierResolutions(candidate).some((modifier) => modifier.prefix === group.modifierKey),
+	);
+    if (!rule) {
+		return false;
+	}
+
+	const modifierResolutions = getRuleModifierResolutions(rule);
+	const currentModifier = modifierResolutions.find((modifier) => modifier.prefix === group.modifierKey);
+	if (!currentModifier) {
+		return false;
+	}
+
+	const regularModifier = getRegularModifierResolution(modifierResolutions);
+	return currentModifier.count >= regularModifier.count;
+}
+
 function scoreResolvedGroups(
+	definition: OrgDefinitionSpec,
 	groups: ReadonlyArray<GroupSizeResult>,
 	leftoverUnitCount: number,
 ): ResultScore {
@@ -2527,11 +2555,15 @@ function scoreResolvedGroups(
 		tierSum += group.tier;
 	}
 
-	const priorityWithoutLeftovers = groups.length === 1 && leftoverUnitCount === 0
+	const whole = groups.length === 1
+		&& leftoverUnitCount === 0
+		&& isWholeTopLevelGroup(groups[0], definition);
+	const priorityWithoutLeftovers = whole
 		? rawPriority
 		: 0;
 
 	return {
+		whole,
 		priorityWithoutLeftovers,
 		leftoverUnitCount,
 		maxTier,
@@ -2542,6 +2574,9 @@ function scoreResolvedGroups(
 }
 
 function betterResolvedResult(left: ResultScore, right: ResultScore): boolean {
+	if (left.whole !== right.whole) {
+		return left.whole;
+	}
 	if (left.priorityWithoutLeftovers !== right.priorityWithoutLeftovers) {
 		return left.priorityWithoutLeftovers > right.priorityWithoutLeftovers;
 	}
@@ -2846,6 +2881,59 @@ function collectComposedCandidates(
 	return candidates;
 }
 
+function collectWholeComposedCandidates(
+	groups: ReadonlyArray<GroupSizeResult>,
+	definition: OrgDefinitionSpec,
+	groupFacts: ReadonlyArray<GroupFacts>,
+): GroupSizeResult[][] {
+	if (groups.length === 0) {
+		return [];
+	}
+
+	const candidates: GroupSizeResult[][] = [];
+
+	for (const rule of getCompiledDefinitionSpec(definition).composedCountRules) {
+		for (const configuration of resolveComposedCountConfigurations(rule)) {
+			const regularModifier = getRegularModifierResolution(configuration.modifierResolutions);
+
+			for (const modifier of configuration.modifierResolutions) {
+				if (modifier.count !== groups.length || modifier.count < regularModifier.count) {
+					continue;
+				}
+
+				const consumedIndices = tryConsumeComposedCountCopy(
+					configuration.childRoles,
+					modifier.count,
+					groupFacts,
+					configuration.childMatchBucketBy,
+					definition.registry,
+				);
+				if (!consumedIndices || consumedIndices.length !== groups.length) {
+					continue;
+				}
+
+				const consumedIndexSet = new Set(consumedIndices);
+				if (consumedIndexSet.size !== groups.length) {
+					continue;
+				}
+
+				candidates.push([{
+					name: `${modifier.prefix}${rule.type}`,
+					type: rule.type,
+					modifierKey: modifier.prefix,
+					countsAsType: rule.countsAs ?? null,
+					tier: modifier.tier,
+					tag: rule.tag,
+					priority: rule.priority,
+					children: groups.filter((_, index) => consumedIndexSet.has(index)),
+				}]);
+			}
+		}
+	}
+
+	return candidates;
+}
+
 function resolveBestComposedCandidate(
 	groups: ReadonlyArray<GroupSizeResult>,
 	definition: OrgDefinitionSpec,
@@ -2864,7 +2952,7 @@ function resolveBestComposedCandidate(
 
 	for (const candidateGroups of candidateGroupsList) {
 		const resolvedCandidate = composeGroupsUpward(candidateGroups, definition, solveContext, memo, groupFactsMemo, promoteMemo, composedCandidateMemo, assimilationMemo, repackMemo, allowSameTypeRepack);
-		const candidateScore = scoreResolvedGroups(resolvedCandidate, 0);
+		const candidateScore = scoreResolvedGroups(definition, resolvedCandidate, 0);
 		if (!bestGroups || !bestScore) {
 			bestGroups = resolvedCandidate;
 			bestScore = candidateScore;
@@ -2973,6 +3061,14 @@ function composeGroupsUpward(
 	}
 	const stateGroupFacts = getStateGroupFacts(sortedGroups, key, groupFactsMemo, solveContext);
 	const abstractStateKey = buildAbstractGroupsStateKey(stateGroupFacts);
+	const wholeCandidates = collectWholeComposedCandidates(sortedGroups, definition, stateGroupFacts);
+	if (wholeCandidates.length > 0) {
+		const wholeBest = resolveBestComposedCandidate(sortedGroups, definition, solveContext, wholeCandidates, memo, groupFactsMemo, promoteMemo, composedCandidateMemo, assimilationMemo, repackMemo, allowSameTypeRepack);
+		if (wholeBest) {
+			memo.set(key, wholeBest);
+			return wholeBest;
+		}
+	}
 
 	if (ASSIMILATE_FIRST_FOR_SUBOPTIMAL_GROUPS) {
 		const assimilationKey = `${abstractStateKey}|subregular`;
@@ -3064,7 +3160,7 @@ function resolveFromUnitsForDefinition(
 		}
 
 		const composedGroups = wrapResolvedGroups(
-			composeGroupsUpward(candidate.groups, definition, solveContext),
+			composeGroupsUpward(candidate.groups, definition, solveContext, new Map(), new Map(), new Map(), new Map(), new Map(), new Map(), hierarchicalAggregation),
 			definition,
 			solveContext,
 			hierarchicalAggregation,
@@ -3073,7 +3169,7 @@ function resolveFromUnitsForDefinition(
 			composedGroups,
 			candidate.leftoverUnitFacts.map((facts) => facts.unit),
 		);
-		const score = scoreResolvedGroups(resolvedGroups, candidate.leftoverUnitFacts.length);
+		const score = scoreResolvedGroups(definition, resolvedGroups, candidate.leftoverUnitFacts.length);
 
 		if (!bestScore || betterResolvedResult(score, bestScore)) {
 			bestResult = resolvedGroups;
@@ -3188,7 +3284,7 @@ function resolveFromGroupsForDefinition(
 	}
 
 	return wrapResolvedGroups(
-		composeGroupsUpward(normalizedGroups, definition, solveContext),
+		composeGroupsUpward(normalizedGroups, definition, solveContext, new Map(), new Map(), new Map(), new Map(), new Map(), new Map(), hierarchicalAggregation),
 		definition,
 		solveContext,
 		hierarchicalAggregation,
