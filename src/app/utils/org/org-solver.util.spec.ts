@@ -1884,38 +1884,28 @@ describe('org-solver.util resolve parity', () => {
         expect(result[1].modifierKey).toBe('');
     });
 
-    it('repackages two Demi-Level I groups into one regular Level I', () => {
-        const demiLevelIs = [
-            createGroupResult('Demi-Level I', 'Level I', 'Demi-', 0),
-            createGroupResult('Demi-Level I', 'Level I', 'Demi-', 0),
-        ];
-
-        const result = resolveFromGroups('ComStar', 'Inner Sphere', demiLevelIs);
+    it('resolves an 18-trooper ComStar foot CI unit as a Demi-Level I', () => {
+        const result = resolveFromUnits([
+            createUnit('CS Demi CI', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg'),
+        ], 'ComStar', 'Inner Sphere');
 
         expect(result.length).toBe(1);
-        expect(result[0].name).toBe('Level I');
+        expect(result[0].name).toBe('Demi-Level I');
         expect(result[0].type).toBe('Level I');
-        expect(result[0].modifierKey).toBe('');
-        expect(result[0].children?.length).toBe(2);
-        expect(result[0].children?.every((child) => child.name === 'Demi-Level I')).toBeTrue();
-        expect(result[0].children?.every((child) => child.modifierKey === 'Demi-')).toBeTrue();
+        expect(result[0].modifierKey).toBe('Demi-');
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
-    it('repackages twelve Demi-Level I groups into one regular Level II', () => {
-        const demiLevelIs = Array.from({ length: 12 }, () =>
-            createGroupResult('Demi-Level I', 'Level I', 'Demi-', 0),
-        );
+    it('materializes an 8-trooper battle armor unit as two semantic squads', () => {
+        const result = materializeLeafPatternRule(IS_BA_SQUAD, compileUnitFactsList([
+            createUnit('BA Pair', 'Infantry', 'Battle Armor', false, ['MEC'], 8),
+        ]));
 
-        const result = resolveFromGroups('ComStar', 'Inner Sphere', demiLevelIs);
-
-        expect(result.length).toBe(1);
-        expect(result[0].name).toBe('Level II');
-        expect(result[0].type).toBe('Level II');
-        expect(result[0].modifierKey).toBe('');
-        expect(result[0].children?.length).toBe(6);
-        expect(result[0].children?.every((child) => child.name === 'Level I')).toBeTrue();
-        expect(result[0].children?.every((child) => child.modifierKey === '')).toBeTrue();
-        expect(result[0].leftoverUnits).toBeUndefined();
+        expect(result.groups.length).toBe(2);
+        expect(result.groups.every((group) => group.name === 'Squad')).toBeTrue();
+        expect(result.groups.every((group) => group.type === 'Squad')).toBeTrue();
+        expect(result.groups.every((group) => group.units?.length === 1)).toBeTrue();
+        expect(result.groups.every((group) => group.units?.[0].internal === 4)).toBeTrue();
+        expect(result.leftoverUnitFacts).toEqual([]);
     });
 });

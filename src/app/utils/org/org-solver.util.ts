@@ -1,6 +1,7 @@
 import type { FactionAffinity } from '../../models/factions.model';
 import type { Unit } from '../../models/units.model';
 import {
+    compileUnitFacts,
     compileGroupFacts,
     compileGroupFactsList,
     compileUnitFactsList,
@@ -305,6 +306,125 @@ function groupUnitsByBucket(
         }
     }
     return buckets;
+}
+
+function getNumericTargetValue(target: number | { min: number; max: number }): number | null {
+    return typeof target === 'number' ? target : null;
+}
+
+function getInfantrySplitSizesForPattern(rule: OrgLeafPatternRule, pattern: OrgPatternSpec, facts: UnitFacts): number[] {
+    const splitSizes = new Set<number>();
+    const unitType = facts.unit.as.TP;
+
+    if (rule.bucketBy === 'ciMoveClassTroopers') {
+        const moveClassPrefix = DEFAULT_ORG_RULE_REGISTRY.unitBuckets.ciMoveClass?.(facts);
+        if (moveClassPrefix && moveClassPrefix !== 'not-ci') {
+            Object.entries(pattern.demands ?? {}).forEach(([key, count]) => {
+                if (count === 1 && key.startsWith(`${moveClassPrefix}:`)) {
+                    const troopers = Number(key.slice(key.lastIndexOf(':') + 1));
+                    if (Number.isFinite(troopers) && troopers > 0) {
+                        splitSizes.add(troopers);
+                    }
+                }
+            });
+        }
+    }
+
+    if (rule.bucketBy === 'infantryTroopers') {
+        Object.entries(pattern.demands ?? {}).forEach(([key, count]) => {
+            if (count !== 1) {
+                return;
+            }
+            if ((unitType === 'BA' && key.startsWith('BA:')) || (unitType === 'CI' && key.startsWith('CI:'))) {
+                const troopers = Number(key.slice(key.lastIndexOf(':') + 1));
+                if (Number.isFinite(troopers) && troopers > 0) {
+                    splitSizes.add(troopers);
+                }
+            }
+        });
+
+        for (const scoreTerm of pattern.matchMode === 'score' ? pattern.scoreTerms : []) {
+            if (scoreTerm.kind !== 'numeric-target' && scoreTerm.kind !== 'target') {
+                continue;
+            }
+            const matcher = pattern.bucketGroups?.[scoreTerm.ref];
+            if (!matcher || !('prefix' in matcher)) {
+                continue;
+            }
+            if ((unitType === 'BA' && matcher.prefix !== 'BA:') || (unitType === 'CI' && matcher.prefix !== 'CI:')) {
+                continue;
+            }
+            const numericTarget = getNumericTargetValue(scoreTerm.target);
+            if (numericTarget && numericTarget > 0) {
+                splitSizes.add(numericTarget);
+            }
+        }
+    }
+
+    return [...splitSizes];
+}
+
+function getInfantrySplitSizeForRule(rule: OrgLeafPatternRule, facts: UnitFacts): number | null {
+    if (!facts.scalars.isBA && !facts.scalars.isCI) {
+        return null;
+    }
+
+    const splitSizes = new Set<number>();
+    for (const pattern of rule.patterns) {
+        getInfantrySplitSizesForPattern(rule, pattern, facts).forEach((size) => splitSizes.add(size));
+    }
+
+    if (splitSizes.size !== 1) {
+        return null;
+    }
+
+    return [...splitSizes][0] ?? null;
+}
+
+function cloneInfantryUnit(unit: Unit, troopers: number, partIndex: number): Unit {
+    return {
+        ...unit,
+        name: `${unit.name} [${partIndex}]`,
+        internal: troopers,
+        source: [...unit.source],
+        comp: [...unit.comp],
+        quirks: [...unit.quirks],
+        features: [...unit.features],
+        sheets: [...unit.sheets],
+        as: {
+            ...unit.as,
+            MVm: { ...unit.as.MVm },
+            specials: [...unit.as.specials],
+            dmg: { ...unit.as.dmg },
+        },
+        _nameTags: [...unit._nameTags],
+        _chassisTags: [...unit._chassisTags],
+    };
+}
+
+function expandInfantryUnitsForLeafPattern(rule: OrgLeafPatternRule, eligibleUnits: readonly UnitFacts[]): UnitFacts[] {
+    const expanded: UnitFacts[] = [];
+
+    for (const facts of eligibleUnits) {
+        const splitSize = getInfantrySplitSizeForRule(rule, facts);
+        if (!splitSize || facts.scalars.troopers <= splitSize) {
+            expanded.push(facts);
+            continue;
+        }
+
+        if (facts.scalars.troopers % splitSize !== 0) {
+            expanded.push(facts);
+            continue;
+        }
+
+        const fullCopies = facts.scalars.troopers / splitSize;
+
+        for (let copyIndex = 0; copyIndex < fullCopies; copyIndex += 1) {
+            expanded.push(compileUnitFacts(cloneInfantryUnit(facts.unit, splitSize, copyIndex + 1), copyIndex));
+        }
+    }
+
+    return expanded;
 }
 
 function makeGroupName(type: string | null, modifierKey: string): string {
@@ -810,7 +930,10 @@ export function evaluateLeafPatternRule(
     unitFacts: readonly UnitFacts[],
     registry: OrgRuleRegistry = DEFAULT_ORG_RULE_REGISTRY,
 ): LeafPatternEvaluationResult {
-    const eligibleUnits = unitFacts.filter((facts) => matchesUnitSelectors(facts, rule.unitSelector, registry));
+    const eligibleUnits = expandInfantryUnitsForLeafPattern(
+        rule,
+        unitFacts.filter((facts) => matchesUnitSelectors(facts, rule.unitSelector, registry)),
+    );
     const unitsByBucket = groupUnitsByBucket(eligibleUnits, rule.bucketBy, registry);
     const emitted: LeafPatternEmission[] = [];
     const usedUnitIds = new Set<string>();
@@ -858,7 +981,10 @@ function materializeLeafPatternWithCandidates(
     unitFacts: readonly UnitFacts[],
     registry: OrgRuleRegistry,
 ): { groups: GroupSizeResult[]; leftoverUnitFacts: UnitFacts[] } {
-    const eligibleUnits = unitFacts.filter((facts) => matchesUnitSelectors(facts, rule.unitSelector, registry));
+    const eligibleUnits = expandInfantryUnitsForLeafPattern(
+        rule,
+        unitFacts.filter((facts) => matchesUnitSelectors(facts, rule.unitSelector, registry)),
+    );
     const ineligibleUnits = unitFacts.filter((facts) => !matchesUnitSelectors(facts, rule.unitSelector, registry));
     const unitsByBucket = groupUnitsByBucket(eligibleUnits, rule.bucketBy, registry);
     const descriptor = getRuleModifierDescriptor(rule);
