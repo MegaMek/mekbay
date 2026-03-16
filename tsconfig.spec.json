@@ -10,5 +10,5 @@
   },
   "include": [
     "src/**/*.ts"
-, "src/app/utils/org/org-solver.util.spec.REFERENCE"  ]
+  ]
 }

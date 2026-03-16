@@ -8,7 +8,7 @@
   },
   "include": [
     "src/**/*.ts"
-, "src/app/utils/org/org-solver.util.spec.REFERENCE"  ],
+  ],
   "exclude": [
     "src/**/*.spec.ts",
     "src/sw.ts"
