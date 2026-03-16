@@ -48,6 +48,7 @@ interface ExactCIComposedRuleOptions {
 	readonly priority?: number;
 	readonly commandRank?: string;
 	readonly tier: number;
+	readonly requireRegularForPromotion?: boolean;
 	readonly entries: readonly CIFormationEntry[];
 	readonly childType?: OrgType;
 }
@@ -135,6 +136,7 @@ export function createExactCIComposedRule(options: ExactCIComposedRuleOptions): 
 		childRoles: primary.childRoles,
 		childBucketBy: 'promotionBasic',
 		childMatchBucketBy: 'ciMoveClass',
+		requireRegularForPromotion: options.requireRegularForPromotion,
 		alternativeCompositions: alternatives.map((configuration) => ({
 			modifiers: configuration.modifiers,
 			childRoles: configuration.childRoles,

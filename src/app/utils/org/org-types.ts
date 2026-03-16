@@ -426,6 +426,7 @@ export interface OrgComposedCountRule extends OrgRuleMetadata {
     readonly childRoles: readonly OrgChildRoleSpec[];
     readonly childBucketBy?: OrgBucketName;
     readonly childMatchBucketBy?: OrgBucketName;
+    readonly requireRegularForPromotion?: boolean;
     readonly alternativeCompositions?: readonly OrgComposedCountAlternativeSpec[];
 }
 

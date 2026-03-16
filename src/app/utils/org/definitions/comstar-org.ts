@@ -47,6 +47,7 @@ export const COMSTAR_LEVEL_I_FROM_SQUADS: OrgComposedCountRule = createExactCICo
     type: 'Level I',
     commandRank: 'Acolyte',
     tier: 0,
+    requireRegularForPromotion: true,
     entries: [
         { moveClass: 'foot', counts: { 'Demi-': 3, '': 6 } },
         { moveClass: 'motorized', counts: { 'Demi-': 3, '': 6 } },

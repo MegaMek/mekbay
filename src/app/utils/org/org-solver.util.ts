@@ -381,10 +381,10 @@ function getInfantrySplitSizeForRule(rule: OrgLeafPatternRule, facts: UnitFacts)
     return [...splitSizes][0] ?? null;
 }
 
-function cloneInfantryUnit(unit: Unit, troopers: number, partIndex: number): Unit {
+function cloneInfantryUnit(unit: Unit, troopers: number, partIndex: number, sourceUnitId: string): Unit {
     return {
         ...unit,
-        name: `${unit.name} [${partIndex}]`,
+        name: `${unit.name} [${sourceUnitId}:${partIndex}]`,
         internal: troopers,
         source: [...unit.source],
         comp: [...unit.comp],
@@ -420,7 +420,7 @@ function expandInfantryUnitsForLeafPattern(rule: OrgLeafPatternRule, eligibleUni
         const fullCopies = facts.scalars.troopers / splitSize;
 
         for (let copyIndex = 0; copyIndex < fullCopies; copyIndex += 1) {
-            expanded.push(compileUnitFacts(cloneInfantryUnit(facts.unit, splitSize, copyIndex + 1), copyIndex));
+            expanded.push(compileUnitFacts(cloneInfantryUnit(facts.unit, splitSize, copyIndex + 1, facts.unitId), copyIndex));
         }
     }
 
@@ -1497,7 +1497,7 @@ function materializeComposedRulesByStage(
     context: ResolveContext,
     stage: 'regular' | 'sub-regular' | 'all',
 ): { groups: GroupSizeResult[]; leftoverFacts: GroupFacts[] } {
-    let remainingFacts = [...groupFacts];
+    let remainingFacts = groupFacts.filter((facts) => !isBlockedSubRegularPromotionChild(facts.group, context));
     const groups: GroupSizeResult[] = [];
 
     for (const rule of context.composedCountRules) {
@@ -1522,6 +1522,26 @@ function materializeComposedRulesByStage(
     }
 
     return { groups, leftoverFacts: remainingFacts };
+}
+
+function isBlockedSubRegularPromotionChild(
+    group: GroupSizeResult,
+    context: ResolveContext,
+): boolean {
+    if (!group.type) {
+        return false;
+    }
+
+    const rule = context.composedCountRules.find((candidate) =>
+        candidate.type === group.type && candidate.requireRegularForPromotion,
+    );
+    if (!rule) {
+        return false;
+    }
+
+    const descriptor = getRuleModifierDescriptor(rule);
+    const step = descriptor.stepsAscending.find((candidate) => candidate.modifierKey === group.modifierKey);
+    return step?.relativeBand === 'sub-regular';
 }
 
 function attachLeftoverUnits(groups: GroupSizeResult[], leftoverUnits: readonly UnitFacts[]): GroupSizeResult[] {
@@ -1663,9 +1683,12 @@ function getEligibleChildFacts(
     parent: GroupSizeResult,
     rule: OrgComposedCountRule,
     candidateFacts: readonly GroupFacts[],
+    context: ResolveContext,
 ): GroupFacts[] {
     return candidateFacts.filter((facts) =>
-        facts.tier < parent.tier && rule.childRoles.some((role) => groupMatchesRole(facts, role)),
+        !isBlockedSubRegularPromotionChild(facts.group, context)
+        && facts.tier < parent.tier
+        && rule.childRoles.some((role) => groupMatchesRole(facts, role)),
     );
 }
 
@@ -1688,6 +1711,10 @@ function resolveWholeComposedCandidate(
     guard: SolverGuard,
 ): GroupSizeResult | null {
     if (groups.length === 0) {
+        return null;
+    }
+
+    if (groups.some((group) => isBlockedSubRegularPromotionChild(group, context))) {
         return null;
     }
 
@@ -1721,6 +1748,51 @@ function resolveWholeComposedCandidate(
     }
 
     return best;
+}
+
+function canRepairSubRegularGroupForPromotion(
+    group: GroupSizeResult,
+    rule: OrgComposedCountRule,
+): boolean {
+    if (!rule.requireRegularForPromotion || group.type !== rule.type || !group.children || group.children.length === 0) {
+        return false;
+    }
+
+    const descriptor = getRuleModifierDescriptor(rule);
+    const step = descriptor.stepsAscending.find((candidate) => candidate.modifierKey === group.modifierKey);
+    return step?.relativeBand === 'sub-regular';
+}
+
+function repairSubRegularGroupsForPromotion(
+    groups: readonly GroupSizeResult[],
+    context: ResolveContext,
+): GroupSizeResult[] {
+    let pool = [...groups];
+
+    for (const rule of context.composedCountRules) {
+        if (!rule.requireRegularForPromotion) {
+            continue;
+        }
+
+        const candidates = pool.filter((group) => canRepairSubRegularGroupForPromotion(group, rule));
+        if (candidates.length === 0) {
+            continue;
+        }
+
+        const flattenedChildren = candidates.flatMap((group) => group.children ?? []);
+        const repackaged = materializeComposedCountRule(rule, compileGroupFactsList(flattenedChildren), context.definition.registry);
+        if (repackaged.groups.length === 0) {
+            continue;
+        }
+
+        const candidateSet = new Set(candidates);
+        pool = [
+            ...pool.filter((group) => !candidateSet.has(group)),
+            ...repackaged.groups,
+        ];
+    }
+
+    return pool;
 }
 
 function runRegularPromotionLoop(
@@ -1832,7 +1904,7 @@ function preAssimilateUnderRegularGroups(
         }
 
         const remainingFacts = compileGroupFactsList(pool.filter((candidate) => candidate !== group));
-        const roleMatches = getEligibleChildFacts(group, rule, remainingFacts);
+        const roleMatches = getEligibleChildFacts(group, rule, remainingFacts, context);
         const addition = findConcreteComposition(roleMatches, rule.childRoles, needed, guard);
         if (!addition) {
             continue;
@@ -1886,7 +1958,7 @@ function assimilateLeftoversIntoParents(
         }
 
         const availableFacts = compileGroupFactsList(pool.filter((candidate) => candidate !== parent));
-        const matchingFacts = getEligibleChildFacts(parent, rule, availableFacts);
+        const matchingFacts = getEligibleChildFacts(parent, rule, availableFacts, context);
 
         let upgradedParent = parent;
         let usedGroups: GroupSizeResult[] = [];
@@ -1953,6 +2025,8 @@ function resolveWithDefinition(
         ...regularLeafResult.groups,
     ];
     const leftoverUnits = [...regularLeafResult.leftover];
+
+    pool = repairSubRegularGroupsForPromotion(pool, context);
 
     pool = preAssimilateUnderRegularGroups(pool, context, guard);
 
