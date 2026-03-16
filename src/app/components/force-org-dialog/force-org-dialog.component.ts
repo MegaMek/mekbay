@@ -800,18 +800,6 @@ export class ForceOrgDialogComponent {
         return getUnitsAverageTechBase(units);
     }
 
-    private getEntriesTechBase(entries: LoadForceEntry[], factionName: string): TechBase {
-        return this.computeEntriesTechBaseUncached(entries, factionName);
-    }
-
-    private getAggregatedOrgResult(
-        groups: GroupSizeResult[],
-        factionName: string,
-        factionAffinity: FactionAffinity,
-    ): OrgSizeResult {
-        return getOrgFromForceCollection([], factionName, factionAffinity, groups);
-    }
-
     private getForceOrgResults(force: LoadForceEntry): GroupSizeResult[] {
         const metadata = this.forcesData().get(force.instanceId);
         const faction = metadata?.faction ?? this.getFaction(force.factionId);

@@ -40,6 +40,14 @@ import type { ASUnitTypeCode, Unit } from '../../models/units.model';
  * No runtime code — only types and interfaces live here.
  */
 
+export const EMPTY_RESULT: GroupSizeResult = {
+	name: 'Force',
+	type: null,
+	modifierKey: '',
+	countsAsType: null,
+	tier: 0,
+};
+
 export type OrgType =
     // Generic
     | 'Force'
