@@ -48,6 +48,9 @@ import {
     DEFAULT_ORG_RULE_REGISTRY,
 } from './org-facts.util';
 import {
+    getAggregatedGroupsResult,
+} from './org-namer.util';
+import {
     DEFAULT_ORG_SPEC,
     resolveOrgDefinitionSpec,
 } from './org-registry.util';
@@ -1695,6 +1698,10 @@ function createBM(
     return createUnit(name, 'Mek', subtype, isOmni, specials);
 }
 
+function createCV(name: string, isOmni: boolean = false, specials: string[] = []): Unit {
+    return createUnit(name, 'Tank', 'Combat Vehicle', isOmni, specials);
+}
+
 function createGroupResult(
     name: string,
     type: GroupSizeResult['type'],
@@ -1896,6 +1903,84 @@ describe('org-solver.util resolve parity', () => {
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
+    it('resolves two 18-trooper ComStar foot CI units as a regular Level I', () => {
+        const result = resolveFromUnits([
+            createUnit('CS Demi CI 1', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg'),
+            createUnit('CS Demi CI 2', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg'),
+        ], 'ComStar', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Level I');
+        expect(result[0].type).toBe('Level I');
+        expect(result[0].modifierKey).toBe('');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves two same-name 18-trooper ComStar foot CI units as a regular Level I', () => {
+        const result = resolveFromUnits([
+            createUnit('CS Demi CI', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg'),
+            createUnit('CS Demi CI', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg'),
+        ], 'ComStar', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Level I');
+        expect(result[0].type).toBe('Level I');
+        expect(result[0].modifierKey).toBe('');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('repackages two Demi-Level I groups into one regular Level I before higher-tier promotion', () => {
+        const demiOne = resolveFromUnits([
+            createUnit('CS Demi Group A', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg'),
+        ], 'ComStar', 'Inner Sphere');
+        const demiTwo = resolveFromUnits([
+            createUnit('CS Demi Group B', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg'),
+        ], 'ComStar', 'Inner Sphere');
+
+        expect(demiOne.length).toBe(1);
+        expect(demiOne[0].name).toBe('Demi-Level I');
+        expect(demiTwo.length).toBe(1);
+        expect(demiTwo[0].name).toBe('Demi-Level I');
+
+        const result = resolveFromGroups('ComStar', 'Inner Sphere', [
+            demiOne[0],
+            demiTwo[0],
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Level I');
+        expect(result[0].type).toBe('Level I');
+        expect(result[0].modifierKey).toBe('');
+        expect(result[0].children?.length).toBe(6);
+        expect(result[0].children?.every((child) => child.name === 'Squad')).toBeTrue();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('does not allow a Demi-Level I to count toward Level II promotion before it repairs to regular', () => {
+        const regularLevelIs = Array.from({ length: 5 }, (_, index) =>
+            resolveFromUnits([
+                createBM(`CS Regular L1 ${index + 1}`),
+            ], 'ComStar', 'Inner Sphere')[0],
+        );
+        const demiLevelI = resolveFromUnits([
+            createUnit('CS Demi Repair Block', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg'),
+        ], 'ComStar', 'Inner Sphere')[0];
+
+        const result = resolveFromGroups('ComStar', 'Inner Sphere', [
+            ...regularLevelIs,
+            demiLevelI,
+        ]);
+
+        expect(result.length).toBe(2);
+        expect(result[0].name).toBe('Under-Strength Level II');
+        expect(result[0].type).toBe('Level II');
+        expect(result[0].modifierKey).toBe('Under-Strength ');
+        expect(result[0].children?.length).toBe(5);
+        expect(result[1].name).toBe('Demi-Level I');
+        expect(result[1].type).toBe('Level I');
+        expect(result[1].modifierKey).toBe('Demi-');
+    });
+
     it('materializes an 8-trooper battle armor unit as two semantic squads', () => {
         const result = materializeLeafPatternRule(IS_BA_SQUAD, compileUnitFactsList([
             createUnit('BA Pair', 'Infantry', 'Battle Armor', false, ['MEC'], 8),
@@ -1907,5 +1992,268 @@ describe('org-solver.util resolve parity', () => {
         expect(result.groups.every((group) => group.units?.length === 1)).toBeTrue();
         expect(result.groups.every((group) => group.units?.[0].internal === 4)).toBeTrue();
         expect(result.leftoverUnitFacts).toEqual([]);
+    });
+});
+
+function createForeignGroup(
+    name: string,
+    type: GroupSizeResult['type'],
+    tier: number,
+    countsAsType: GroupSizeResult['countsAsType'] = null,
+    units?: Unit[],
+): GroupSizeResult {
+    return {
+        name,
+        type,
+        modifierKey: '',
+        countsAsType,
+        tier,
+        units,
+    };
+}
+
+describe('org-solver.util aggregation and foreign parity', () => {
+    it('aggregates 20 BM into 3x Level II for ComStar', () => {
+        const units = Array.from({ length: 20 }, (_, index) => createBM(`CS-L2X3-${index + 1}`));
+        const result = resolveFromUnits(units, 'ComStar', 'Inner Sphere');
+        const aggregated = getAggregatedGroupsResult(result, 'ComStar', 'Inner Sphere');
+        const childModifierKeys = result.map((group) => group.children?.[0]?.modifierKey);
+
+        expect(result.length).toBe(3);
+        expect(result.every((group) => group.type === 'Level II')).toBeTrue();
+        expect(result.every((group) => group.children?.every((child) => child.name === 'Level I'))).toBeTrue();
+        expect(result.every((group) => group.children?.every((child) => child.type === 'Level I'))).toBeTrue();
+        expect(result.every((group) => group.leftoverUnits === undefined)).toBeTrue();
+        expect(childModifierKeys.filter((modifierKey) => modifierKey === '')).toHaveSize(1);
+        expect(childModifierKeys.filter((modifierKey) => modifierKey === 'Reinforced ')).toHaveSize(2);
+        expect(aggregated.name).toBe('3x Level II');
+        expect(aggregated.groups).toBe(result);
+    });
+
+    it('aggregates 18 BM into 3x Level II for ComStar', () => {
+        const units = Array.from({ length: 18 }, (_, index) => createBM(`CS-L2X3-${index + 1}`));
+        const result = resolveFromUnits(units, 'ComStar', 'Inner Sphere');
+        const aggregated = getAggregatedGroupsResult(result, 'ComStar', 'Inner Sphere');
+
+        expect(result.length).toBe(3);
+        expect(result.every((group) => group.name === 'Level II')).toBeTrue();
+        expect(result.every((group) => group.type === 'Level II')).toBeTrue();
+        expect(result.every((group) => group.children?.every((child) => child.name === 'Level I'))).toBeTrue();
+        expect(result.every((group) => group.children?.every((child) => child.type === 'Level I'))).toBeTrue();
+        expect(result.every((group) => group.leftoverUnits === undefined)).toBeTrue();
+        expect(aggregated.name).toBe('3x Level II');
+        expect(aggregated.groups).toBe(result);
+    });
+
+    it('aggregates 10 BM into 2x Level II for ComStar', () => {
+        const units = Array.from({ length: 10 }, (_, index) => createBM(`CS-L2X2-${index + 1}`));
+        const result = resolveFromUnits(units, 'ComStar', 'Inner Sphere');
+        const aggregated = getAggregatedGroupsResult(result, 'ComStar', 'Inner Sphere');
+
+        expect(result.length).toBe(2);
+        expect(result.every((group) => group.type === 'Level II')).toBeTrue();
+        expect(result.every((group) => group.children?.every((child) => child.name === 'Level I'))).toBeTrue();
+        expect(result.every((group) => group.children?.every((child) => child.type === 'Level I'))).toBeTrue();
+        expect(result.every((group) => group.leftoverUnits === undefined)).toBeTrue();
+        expect(aggregated.name).toBe('2x Level II');
+        expect(aggregated.groups).toBe(result);
+    });
+
+    it('crossgrades foreign groups to the nearest dynamic-tier modifier in the target org', () => {
+        const result = resolveFromGroups('Federated Suns', 'Inner Sphere', [
+            createForeignGroup('Sept', 'Sept', 1.6),
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Under-Strength Company');
+        expect(result[0].type).toBe('Company');
+        expect(result[0].tier).toBeCloseTo(1.5, 5);
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('crossgrades a real resolved foreign group through the public APIs', () => {
+        const sourceUnits: Unit[] = [
+            createBM('BM1'),
+            createBM('BM2'),
+            createBM('BM3'),
+            createBM('BM4'),
+            createBM('BM5'),
+            createBM('BM6'),
+            createBM('BM7'),
+        ];
+
+        const foreignGroup = resolveFromUnits(sourceUnits, 'Society', 'HW Clan');
+
+        expect(foreignGroup.length).toBe(1);
+        expect(foreignGroup[0].name).toBe('Sept');
+        expect(foreignGroup[0].type).toBe('Sept');
+
+        const result = resolveFromGroups('Federated Suns', 'Inner Sphere', foreignGroup);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Under-Strength Company');
+        expect(result[0].type).toBe('Company');
+        expect(result[0].tier).toBeCloseTo(1.5, 5);
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('re-evaluates each foreign parent group independently before upward composition', () => {
+        const result = resolveFromGroups('Federated Suns', 'Inner Sphere', [
+            createForeignGroup('Foreign Cell A', null, 1, null, [
+                createBM('BM1'),
+                createBM('BM2'),
+                createBM('BM3'),
+            ]),
+            createForeignGroup('Foreign Cell B', null, 1, null, [
+                createBM('BM4'),
+                createBM('BM5'),
+                createBM('BM6'),
+            ]),
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Under-Strength Company');
+        expect(result[0].type).toBe('Company');
+        expect(result[0].children?.length).toBe(2);
+        expect(result[0].children?.every((child) => child.name === 'Under-Strength Lance')).toBeTrue();
+        expect(result[0].children?.every((child) => child.type === 'Lance')).toBeTrue();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('re-evaluates real Sept groups independently before composing them upward', () => {
+        const firstSept = resolveFromUnits([
+            createBM('FS-A1'),
+            createBM('FS-A2'),
+            createBM('FS-A3'),
+            createBM('FS-A4'),
+            createBM('FS-A5'),
+            createBM('FS-A6'),
+            createBM('FS-A7'),
+        ], 'Society', 'HW Clan');
+        const secondSept = resolveFromUnits([
+            createBM('FS-B1'),
+            createBM('FS-B2'),
+            createBM('FS-B3'),
+            createBM('FS-B4'),
+            createBM('FS-B5'),
+            createBM('FS-B6'),
+            createBM('FS-B7'),
+        ], 'Society', 'HW Clan');
+
+        expect(firstSept.length).toBe(1);
+        expect(firstSept[0].name).toBe('Sept');
+        expect(firstSept[0].type).toBe('Sept');
+        expect(secondSept.length).toBe(1);
+        expect(secondSept[0].name).toBe('Sept');
+        expect(secondSept[0].type).toBe('Sept');
+
+        const result = resolveFromGroups('Federated Suns', 'Inner Sphere', [
+            firstSept[0],
+            secondSept[0],
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Under-Strength Battalion');
+        expect(result[0].type).toBe('Battalion');
+        expect(result[0].modifierKey).toBe('Under-Strength ');
+        expect(result[0].children?.length).toBe(2);
+        expect(result[0].children?.every((child) => child.name === 'Under-Strength Company')).toBeTrue();
+        expect(result[0].children?.every((child) => child.type === 'Company')).toBeTrue();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('re-evaluates real Sept groups independently before composing them upward for Clan', () => {
+        const firstSept = resolveFromUnits([
+            createBM('CL-A1'),
+            createBM('CL-A2'),
+            createBM('CL-A3'),
+            createBM('CL-A4'),
+            createBM('CL-A5'),
+            createBM('CL-A6'),
+            createBM('CL-A7'),
+        ], 'Society', 'HW Clan');
+        const secondSept = resolveFromUnits([
+            createBM('CL-B1'),
+            createBM('CL-B2'),
+            createBM('CL-B3'),
+            createBM('CL-B4'),
+            createBM('CL-B5'),
+            createBM('CL-B6'),
+            createBM('CL-B7'),
+        ], 'Society', 'HW Clan');
+
+        const result = resolveFromGroups('Clan Coyote', 'HW Clan', [
+            firstSept[0],
+            secondSept[0],
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Under-Strength Cluster');
+        expect(result[0].type).toBe('Cluster');
+        expect(result[0].modifierKey).toBe('Under-Strength ');
+        expect(result[0].children?.length).toBe(2);
+        expect(result[0].children?.every((child) => child.name === 'Binary')).toBeTrue();
+        expect(result[0].children?.every((child) => child.type === 'Binary')).toBeTrue();
+        expect(result[0].children?.every((child) => child.modifierKey === '')).toBeTrue();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('crossgrades to the nearest target tier when a foreign tier sits between lower and upper targets', () => {
+        const result = resolveFromGroups('Federated Suns', 'Inner Sphere', [
+            createForeignGroup('Supernova Binary', 'Supernova Trinary', 2.5),
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Under-Strength Battalion');
+        expect(result[0].type).toBe('Battalion');
+        expect(result[0].tier).toBeCloseTo(2.63, 2);
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('rounds crossgrade when a foreign tier matches target tier', () => {
+        const result = resolveFromGroups('Federated Suns', 'Inner Sphere', [
+            createForeignGroup('Level IV', 'Level IV', 3),
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Battalion');
+        expect(result[0].type).toBe('Battalion');
+        expect(result[0].tier).toBeCloseTo(3, 5);
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('re-evaluates incompatible foreign units instead of tier-normalizing them', () => {
+        const result = resolveFromGroups('Federated Suns', 'Inner Sphere', [
+            createForeignGroup('Foreign Vehicle Cell', 'Force', 1, null, [createCV('CV1')]),
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Single');
+        expect(result[0].type).toBe('Single');
+        expect(result[0].tier).toBe(0);
+    });
+
+    it('crossgrades one tier above the target org ceiling into three highest-tier synthetic groups', () => {
+        const result = resolveFromGroups('Society', 'HW Clan', [
+            createForeignGroup('Foreign Apex Group', 'Force', 2.6),
+        ]);
+
+        expect(result.length).toBe(3);
+        expect(result.every((group) => group.name === 'Sept')).toBeTrue();
+        expect(result.every((group) => group.type === 'Sept')).toBeTrue();
+        expect(result.every((group) => group.tier === 1.6)).toBeTrue();
+        expect(result.every((group) => group.leftoverUnits === undefined)).toBeTrue();
+    });
+
+    it('crossgrades two tiers above the target org ceiling into nine highest-tier synthetic groups', () => {
+        const result = resolveFromGroups('Society', 'HW Clan', [
+            createForeignGroup('Foreign Apex Group', 'Force', 3.6),
+        ]);
+
+        expect(result.length).toBe(9);
+        expect(result.every((group) => group.name === 'Sept')).toBeTrue();
+        expect(result.every((group) => group.type === 'Sept')).toBeTrue();
+        expect(result.every((group) => group.tier === 1.6)).toBeTrue();
+        expect(result.every((group) => group.leftoverUnits === undefined)).toBeTrue();
     });
 });
