@@ -26,6 +26,9 @@ module.exports = function (config) {
     reporters: ['progress', 'kjhtml'],
     browsers: ['Chrome'],
     restartOnFileChange: true,
+    browserNoActivityTimeout: 120000,
+    browserDisconnectTimeout: 10000,
+    browserDisconnectTolerance: 2,
     client: {
       clearContext: false,
     },
