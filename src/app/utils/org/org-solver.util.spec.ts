@@ -1087,6 +1087,46 @@ describe('org-solver.util', () => {
         expect(infantryResult.leftoverCount).toBe(0);
     });
 
+    it('does not mix Marian infantry move classes when building Century fragments', () => {
+        const materialized = materializeCIFormationRule(MH_CENTURY_INFANTRY, compileUnitFactsList([
+            createUnit('Foot CI A', 'Infantry', 'Conventional Infantry', false, [], 20, 'Leg'),
+            createUnit('Motorized CI A', 'Infantry', 'Motorized Conventional Infantry', false, [], 80, 'Wheeled'),
+        ]));
+
+        expect(materialized.groups.every((group) => group.type === 'Contubernium')).toBeTrue();
+        expect(materialized.groups).toContain(jasmine.objectContaining({
+            name: '2x Contubernium',
+            type: 'Contubernium',
+            count: 2,
+        }));
+        expect(materialized.groups).toContain(jasmine.objectContaining({
+            name: '8x Contubernium',
+            type: 'Contubernium',
+            count: 8,
+        }));
+        expect(materialized.groups.some((group) => group.type === 'Century')).toBeFalse();
+        expect(materialized.leftoverUnitFacts).toEqual([]);
+        expect(materialized.leftoverUnitAllocations).toEqual([]);
+    });
+
+    it('does not mix Marian mechanized infantry move classes into a Century', () => {
+        const materialized = materializeCIFormationRule(MH_CENTURY_INFANTRY, compileUnitFactsList([
+            createUnit('VTOL CI', 'Infantry', 'Mechanized Conventional Infantry', false, [], 10, 'VTOL'),
+            createUnit('Hover CI', 'Infantry', 'Mechanized Conventional Infantry', false, [], 10, 'Hover'),
+            createUnit('Wheeled CI', 'Infantry', 'Mechanized Conventional Infantry', false, [], 10, 'Wheeled'),
+            createUnit('Tracked CI', 'Infantry', 'Mechanized Conventional Infantry', false, [], 10, 'Tracked'),
+            createUnit('Submarine CI', 'Infantry', 'Mechanized Conventional Infantry', false, [], 10, 'Submarine'),
+        ]));
+
+        expect(materialized.groups).toHaveSize(5);
+        expect(materialized.groups.every((group) => group.name === '2x Contubernium')).toBeTrue();
+        expect(materialized.groups.every((group) => group.type === 'Contubernium')).toBeTrue();
+        expect(materialized.groups.every((group) => group.count === 2)).toBeTrue();
+        expect(materialized.groups.some((group) => group.type === 'Century')).toBeFalse();
+        expect(materialized.leftoverUnitFacts).toEqual([]);
+        expect(materialized.leftoverUnitAllocations).toEqual([]);
+    });
+
     it('evaluates the Capellan augmented composed chain', () => {
         const augmentedLances = [
             { name: 'AL A', type: 'Augmented Lance', modifierKey: '', countsAsType: 'Lance', tier: 0.99 },
