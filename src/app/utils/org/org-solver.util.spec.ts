@@ -2350,6 +2350,19 @@ describe('org-solver.util aggregation and foreign parity', () => {
         expect(aggregated.groups).toBe(result);
     });
 
+    it('aggregates 98 BM into 14x Sept for Society', () => {
+        const units = Array.from({ length: 98 }, (_, index) => createBM(`SOC-SEPT-${index + 1}`));
+        const result = resolveFromUnits(units, 'Society', 'HW Clan');
+        const aggregated = getAggregatedGroupsResult(result, 'Society', 'HW Clan');
+
+        expect(result.length).toBe(14);
+        expect(result.every((group) => group.name === 'Sept')).toBeTrue();
+        expect(result.every((group) => group.type === 'Sept')).toBeTrue();
+        expect(result.every((group) => group.leftoverUnits === undefined)).toBeTrue();
+        expect(aggregated.name).toBe('14x Sept');
+        expect(aggregated.groups).toBe(result);
+    });
+
     it('aggregates 18 BM into 3x Level II for ComStar', () => {
         const units = Array.from({ length: 18 }, (_, index) => createBM(`CS-L2X3-${index + 1}`));
         const result = resolveFromUnits(units, 'ComStar', 'Inner Sphere');
