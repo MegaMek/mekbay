@@ -115,7 +115,7 @@ export const CC_AUGMENTED_COMPANY: OrgComposedCountRule = {
     modifiers: { '': 2, 'Reinforced ': 3 },
     commandRank: 'Captain',
     tier: IS_COMPANY.tier + 0.01,
-    childRoles: [{ role: 'augmentedLance', matches: ['Augmented Lance'] }],
+    childRoles: [{ matches: ['Augmented Lance'] }],
     childBucketBy: 'promotionBasic',
 };
 
@@ -127,7 +127,7 @@ export const CC_AUGMENTED_BATTALION: OrgComposedCountRule = {
     modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 },
     commandRank: 'Major',
     tier: IS_BATTALION.tier + 0.01,
-    childRoles: [{ role: 'augmentedCompany', matches: ['Augmented Company'] }],
+    childRoles: [{ matches: ['Augmented Company'] }],
     childBucketBy: 'promotionBasic',
 };
 
@@ -139,8 +139,8 @@ export const CC_AUGMENTED_REGIMENT: OrgComposedCountRule = {
     commandRank: 'General',
     tier: IS_REGIMENT.tier + 0.01,
     childRoles: [
-        { role: 'augmentedBattalion', matches: ['Augmented Battalion'], min: 1 },
-        { role: 'line', matches: ['Augmented Battalion', 'Battalion', 'Wing'] },
+        { matches: ['Augmented Battalion'], min: 1 },
+        { matches: ['Augmented Battalion', 'Battalion', 'Wing'] },
     ],
     childBucketBy: 'promotionBasic',
 };

@@ -47,7 +47,6 @@ export const COMSTAR_LEVEL_I_FROM_SQUADS: OrgComposedCountRule = createExactCICo
     type: 'Level I',
     commandRank: 'Acolyte',
     tier: 0,
-    childRole: 'squad',
     entries: [
         { moveClass: 'foot', counts: { 'Demi-': 3, '': 6 } },
         { moveClass: 'motorized', counts: { 'Demi-': 3, '': 6 } },
@@ -76,7 +75,7 @@ export const COMSTAR_LEVEL_II: OrgComposedCountRule = {
     },
     commandRank: 'Adept',
     tier: 1,
-    childRoles: [{ role: 'levelI', matches: ['Level I'] }],
+    childRoles: [{ matches: ['Level I'] }],
     childBucketBy: 'promotionBasic',
 };
 
@@ -122,7 +121,7 @@ export const COMSTAR_LEVEL_III: OrgComposedCountRule = {
     modifiers: { 'Under-Strength ': 5, '': 6, 'Reinforced ': 7 },
     commandRank: 'Adept (Demi-Precentor)',
     tier: 2,
-    childRoles: [{ role: 'levelII', matches: ['Level II'] }],
+    childRoles: [{ matches: ['Level II'] }],
     childBucketBy: 'promotionBasic',
 };
 
@@ -132,7 +131,7 @@ export const COMSTAR_LEVEL_IV: OrgComposedCountRule = {
     modifiers: { 'Under-Strength ': 5, '': 6, 'Reinforced ': 7 },
     commandRank: 'Precentor',
     tier: 3,
-    childRoles: [{ role: 'levelIII', matches: ['Level III'] }],
+    childRoles: [{ matches: ['Level III'] }],
     childBucketBy: 'promotionBasic',
 };
 
@@ -142,7 +141,7 @@ export const COMSTAR_LEVEL_V: OrgComposedCountRule = {
     modifiers: { 'Under-Strength ': 5, '': 6, 'Reinforced ': 7 },
     commandRank: 'Precentor',
     tier: 4,
-    childRoles: [{ role: 'levelIV', matches: ['Level IV'] }],
+    childRoles: [{ matches: ['Level IV'] }],
     childBucketBy: 'promotionBasic',
 };
 
@@ -153,7 +152,7 @@ export const COMSTAR_LEVEL_VI: OrgComposedCountRule = {
     commandRank: 'Precentor Martial',
     tier: 5,
     dynamicTier: 1,
-    childRoles: [{ role: 'levelV', matches: ['Level V'] }],
+    childRoles: [{ matches: ['Level V'] }],
     childBucketBy: 'promotionBasic',
 };
 

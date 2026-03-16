@@ -50,7 +50,6 @@ interface ExactCIComposedRuleOptions {
 	readonly tier: number;
 	readonly entries: readonly CIFormationEntry[];
 	readonly childType?: OrgType;
-	readonly childRole?: string;
 }
 
 function getCIMoveClassTag(moveClass: CIMoveClass): UnitFactTag {
@@ -106,7 +105,6 @@ export function createExactCIComposedRule(options: ExactCIComposedRuleOptions): 
 			modifiers: counts,
 			childRoles: [
 				{
-					role: options.childRole ?? 'ci',
 					matches: [options.childType ?? 'Squad'],
 					min: Math.min(...Object.values(counts)),
 					onlyUnitTypes: ['CI'] as const,

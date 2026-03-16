@@ -318,7 +318,6 @@ export interface OrgRuleMetadata extends Omit<OrgTypeRuleBase, 'filter' | 'stric
 }
 
 export interface OrgChildRoleSpec {
-    readonly role: string;
     readonly matches: readonly OrgType[];
     readonly min?: number;
     readonly max?: number;

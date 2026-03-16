@@ -86,13 +86,6 @@ interface ComposedCountEmission extends LeafCountEmission {
     readonly compositionIndex: number;
 }
 
-interface RoleAvailability {
-    readonly role: string;
-    readonly min: number | undefined;
-    readonly max: number | undefined;
-    readonly count: number;
-}
-
 export interface LeafCountEvaluationResult {
     readonly eligibleUnits: readonly UnitFacts[];
     readonly emitted: readonly LeafCountEmission[];
@@ -107,7 +100,6 @@ export interface LeafPatternEvaluationResult {
 
 export interface ComposedCountEvaluationResult {
     readonly acceptedGroups: readonly GroupFacts[];
-    readonly roleAvailability: readonly RoleAvailability[];
     readonly emitted: readonly ComposedCountEmission[];
     readonly leftoverCount: number;
 }
@@ -849,18 +841,6 @@ function groupMatchesRole(group: GroupFacts, role: OrgChildRoleSpec): boolean {
     return true;
 }
 
-function roleAvailabilityForGroups(
-    groups: readonly GroupFacts[],
-    childRoles: readonly OrgChildRoleSpec[],
-): RoleAvailability[] {
-    return childRoles.map((role) => ({
-        role: role.role,
-        min: role.min,
-        max: role.max,
-        count: groups.filter((group) => groupMatchesRole(group, role)).length,
-    }));
-}
-
 function buildCompositionConfigs(rule: OrgComposedCountRule): CompositionConfig[] {
     const configs: CompositionConfig[] = [
         {
@@ -1026,7 +1006,6 @@ export function evaluateComposedCountRule(
     const evaluations = configs.map((config) => ({
         config,
         candidates: materializeComposedConfig(groupFacts, config, registry, guard),
-        roleAvailability: roleAvailabilityForGroups(groupFacts, config.childRoles),
     }));
     const best = evaluations.sort((left, right) => {
         if (left.candidates.length !== right.candidates.length) {
@@ -1050,7 +1029,6 @@ export function evaluateComposedCountRule(
 
     return {
         acceptedGroups,
-        roleAvailability: best?.roleAvailability ?? roleAvailabilityForGroups(groupFacts, rule.childRoles),
         emitted,
         leftoverCount: groupFacts.length - usedGroups,
     };

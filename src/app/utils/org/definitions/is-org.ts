@@ -29,7 +29,7 @@ export const IS_SQUADRON: OrgComposedCountRule = {
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
     commandRank: 'Captain',
     tier: 2,
-    childRoles: [{ role: 'flight', matches: ['Flight'] }],
+    childRoles: [{ matches: ['Flight'] }],
     childBucketBy: 'promotionBasic',
 };
 
@@ -39,7 +39,7 @@ export const IS_WING: OrgComposedCountRule = {
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
     commandRank: 'Major',
     tier: 4,
-    childRoles: [{ role: 'squadron', matches: ['Squadron'] }],
+    childRoles: [{ matches: ['Squadron'] }],
     childBucketBy: 'promotionBasic',
 };
 
@@ -89,7 +89,6 @@ export const IS_PLATOON: OrgComposedCountRule = createExactCIComposedRule({
     priority: 1,
     commandRank: 'Lieutenant',
     tier: 1,
-    childRole: 'squad',
     entries: [
         { moveClass: 'foot', counts: { '': 4 } },
         { moveClass: 'motorized', counts: { '': 4 } },
@@ -112,8 +111,8 @@ export const IS_AIR_LANCE: OrgComposedCountRule = {
     commandRank: 'Lieutenant',
     tier: 1.5,
     childRoles: [
-        { role: 'flight', matches: ['Flight'], min: 1 },
-        { role: 'lance', matches: ['Lance'], min: 1, onlyUnitTypes: ['BM'] },
+        { matches: ['Flight'], min: 1 },
+        { matches: ['Lance'], min: 1, onlyUnitTypes: ['BM'] },
     ],
     childBucketBy: 'promotionWithUnitKinds',
 };
@@ -145,7 +144,7 @@ export const IS_COMPANY: OrgComposedCountRule = {
     commandRank: 'Captain',
     tier: 2,
     dynamicTier: 1,
-    childRoles: [{ role: 'line', matches: ['Lance', 'Flight'] }],
+    childRoles: [{ matches: ['Lance', 'Flight'] }],
     childBucketBy: 'promotionBasic',
 };
 
@@ -156,7 +155,7 @@ export const IS_BATTALION: OrgComposedCountRule = {
     commandRank: 'Major',
     tier: 3,
     dynamicTier: 1,
-    childRoles: [{ role: 'line', matches: ['Company', 'Squadron'] }],
+    childRoles: [{ matches: ['Company', 'Squadron'] }],
     childBucketBy: 'promotionBasic',
 };
 
@@ -167,7 +166,7 @@ export const IS_REGIMENT: OrgComposedCountRule = {
     commandRank: 'Colonel',
     tier: 4,
     dynamicTier: 1,
-    childRoles: [{ role: 'line', matches: ['Battalion', 'Wing'] }],
+    childRoles: [{ matches: ['Battalion', 'Wing'] }],
     childBucketBy: 'promotionBasic',
 };
 
@@ -178,7 +177,7 @@ export const IS_BRIGADE: OrgComposedCountRule = {
     commandRank: 'General',
     tier: 5,
     dynamicTier: 1,
-    childRoles: [{ role: 'regiment', matches: ['Regiment'] }],
+    childRoles: [{ matches: ['Regiment'] }],
     childBucketBy: 'promotionBasic',
 };
 

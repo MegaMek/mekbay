@@ -94,7 +94,7 @@ export const SOCIETY_TREY: OrgComposedCountRule = {
     type: 'Trey',
     modifiers: { '': 3 },
     tier: 0.8,
-    childRoles: [{ role: 'un', matches: ['Un'] }],
+    childRoles: [{ matches: ['Un'] }],
     childBucketBy: 'promotionBasic',
 };
 
@@ -103,7 +103,7 @@ export const SOCIETY_SEPT: OrgComposedCountRule = {
     type: 'Sept',
     modifiers: { '': 7 },
     tier: 1.6,
-    childRoles: [{ role: 'un', matches: ['Un'] }],
+    childRoles: [{ matches: ['Un'] }],
     childBucketBy: 'promotionBasic',
 };
 

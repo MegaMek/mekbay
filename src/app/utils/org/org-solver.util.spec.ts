@@ -368,7 +368,7 @@ describe('org-solver.util', () => {
             modifiers: { '': 3 },
             tier: 2,
             childRoles: [
-                { role: 'lance', matches: ['Lance'], min: 1 },
+                { matches: ['Lance'], min: 1 },
             ],
         };
         const groups = [
@@ -381,9 +381,6 @@ describe('org-solver.util', () => {
         const result = evaluateComposedCountRule(rule, groups);
 
         expect(result.acceptedGroups.length).toBe(4);
-        expect(result.roleAvailability).toEqual([
-            { role: 'lance', min: 1, max: undefined, count: 4 },
-        ]);
         expect(result.emitted).toEqual([
             { modifierKey: '', perGroupCount: 3, copies: 1, tier: 2, compositionIndex: 0 },
         ]);
@@ -396,13 +393,13 @@ describe('org-solver.util', () => {
             type: 'Supernova Trinary',
             modifiers: { '': 3 },
             tier: 2.5,
-            childRoles: [{ role: 'nova', matches: ['Nova'] }],
+            childRoles: [{ matches: ['Nova'] }],
             alternativeCompositions: [
                 {
                     modifiers: { '': 2 },
                     childRoles: [
-                        { role: 'binary', matches: ['Supernova Binary'], min: 1 },
-                        { role: 'nova', matches: ['Nova'], min: 1 },
+                        { matches: ['Supernova Binary'], min: 1 },
+                        { matches: ['Nova'], min: 1 },
                     ],
                 },
             ],
@@ -430,7 +427,7 @@ describe('org-solver.util', () => {
             type: 'Platoon',
             modifiers: { '': 2 },
             tier: 1,
-            childRoles: [{ role: 'squad', matches: ['Squad'] }],
+            childRoles: [{ matches: ['Squad'] }],
             childMatchBucketBy: 'ciMoveClass',
         };
         const rawGroups: GroupSizeResult[] = [
@@ -465,7 +462,7 @@ describe('org-solver.util', () => {
             type: 'Platoon',
             modifiers: { '': 2 },
             tier: 1,
-            childRoles: [{ role: 'squad', matches: ['Squad'] }],
+            childRoles: [{ matches: ['Squad'] }],
             childMatchBucketBy: 'ciMoveClass',
         };
         const rawGroups: GroupSizeResult[] = [
@@ -595,10 +592,6 @@ describe('org-solver.util', () => {
 
         const result = evaluateComposedCountRule(IS_AIR_LANCE, groups);
 
-        expect(result.roleAvailability).toEqual([
-            { role: 'flight', min: 1, max: undefined, count: 1 },
-            { role: 'lance', min: 1, max: undefined, count: 1 },
-        ]);
         expect(result.emitted).toEqual([
             { modifierKey: '', perGroupCount: 2, copies: 1, tier: 1.5, compositionIndex: 0 },
         ]);

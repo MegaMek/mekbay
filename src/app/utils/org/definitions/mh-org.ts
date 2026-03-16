@@ -44,7 +44,7 @@ export const MH_CENTURY_NON_INFANTRY: OrgComposedCountRule = {
     modifiers: { '': 5 },
     commandRank: 'Centurion',
     tier: 1,
-    childRoles: [{ role: 'contubernium', matches: ['Contubernium'], requiredTagsAll: ['non-infantry'] }],
+    childRoles: [{ matches: ['Contubernium'], requiredTagsAll: ['non-infantry'] }],
     childBucketBy: 'promotionBasic',
 };
 
@@ -53,7 +53,6 @@ export const MH_CENTURY_INFANTRY: OrgComposedCountRule = createExactCIComposedRu
     commandRank: 'Centurion',
     tier: 1,
     childType: 'Contubernium',
-    childRole: 'contubernium',
     entries: [
         { moveClass: 'foot', counts: { '': 10 } },
         { moveClass: 'motorized', counts: { '': 10 } },
@@ -73,7 +72,7 @@ export const MH_MANIPLE: OrgComposedCountRule = {
     modifiers: { '': 2 },
     commandRank: 'Principes',
     tier: 2,
-    childRoles: [{ role: 'century', matches: ['Century'] }],
+    childRoles: [{ matches: ['Century'] }],
     childBucketBy: 'promotionBasic',
 };
 
@@ -83,7 +82,7 @@ export const MH_COHORT: OrgComposedCountRule = {
     modifiers: { '': 3 },
     commandRank: 'Legatus',
     tier: 3,
-    childRoles: [{ role: 'maniple', matches: ['Maniple'] }],
+    childRoles: [{ matches: ['Maniple'] }],
     childBucketBy: 'promotionBasic',
 };
 
@@ -93,7 +92,7 @@ export const MH_LEGION: OrgComposedCountRule = {
     modifiers: { '': 4 },
     commandRank: 'General',
     tier: 4,
-    childRoles: [{ role: 'cohort', matches: ['Cohort'] }],
+    childRoles: [{ matches: ['Cohort'] }],
     childBucketBy: 'promotionBasic',
 };
 

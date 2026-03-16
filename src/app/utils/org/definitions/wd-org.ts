@@ -59,7 +59,7 @@ export const WD_LANCE: OrgComposedCountRule = {
     modifiers: { 'Short ': 2, 'Under-Strength ': 3, '': 4, 'Reinforced ': 5, 'Fortified ': 6 },
     commandRank: 'Lieutenant',
     tier: 1,
-    childRoles: [{ role: 'single', matches: ['Single'] }],
+    childRoles: [{ matches: ['Single'] }],
     childBucketBy: 'promotionWithUnitKinds',
 };
 
@@ -76,7 +76,7 @@ export const WD_STAR: OrgComposedCountRule = {
     },
     commandRank: 'Lieutenant',
     tier: 1,
-    childRoles: [{ role: 'point', matches: ['Point'] }],
+    childRoles: [{ matches: ['Point'] }],
     childBucketBy: 'promotionWithUnitKinds',
 };
 
@@ -87,7 +87,7 @@ export const WD_BINARY: OrgComposedCountRule = {
     modifiers: { '': 2 },
     commandRank: 'Captain',
     tier: 1.8,
-    childRoles: [{ role: 'star', matches: ['Star'] }],
+    childRoles: [{ matches: ['Star'] }],
     childBucketBy: 'promotionBasic',
 };
 
@@ -98,7 +98,7 @@ export const WD_TRINARY: OrgComposedCountRule = {
     modifiers: { '': 3 },
     commandRank: 'Captain',
     tier: 2,
-    childRoles: [{ role: 'star', matches: ['Star'] }],
+    childRoles: [{ matches: ['Star'] }],
     childBucketBy: 'promotionBasic',
 };
 
@@ -107,7 +107,7 @@ export const WD_CLUSTER: OrgComposedCountRule = {
     priority: 1,
     countsAs: 'Battalion',
     commandRank: 'Major',
-    childRoles: [{ role: 'line', matches: ['Binary', 'Trinary'] }],
+    childRoles: [{ matches: ['Binary', 'Trinary'] }],
 };
 
 export const WD_COMPANY: OrgComposedCountRule = {
@@ -118,8 +118,8 @@ export const WD_COMPANY: OrgComposedCountRule = {
     tier: 2,
     dynamicTier: 1,
     childRoles: [
-        { role: 'lance', matches: ['Lance'], min: 1 },
-        { role: 'line', matches: ['Lance', 'Star'] },
+        { matches: ['Lance'], min: 1 },
+        { matches: ['Lance', 'Star'] },
     ],
     childBucketBy: 'promotionBasic',
 };
@@ -132,8 +132,8 @@ export const WD_BATTALION: OrgComposedCountRule = {
     tier: 3,
     dynamicTier: 1,
     childRoles: [
-        { role: 'company', matches: ['Company'], min: 1, onlyUnitTypes: WD_POINT_UNIT_TYPES },
-        { role: 'line', matches: ['Company', 'Binary', 'Trinary'], onlyUnitTypes: WD_POINT_UNIT_TYPES },
+        { matches: ['Company'], min: 1, onlyUnitTypes: WD_POINT_UNIT_TYPES },
+        { matches: ['Company', 'Binary', 'Trinary'], onlyUnitTypes: WD_POINT_UNIT_TYPES },
     ],
     childBucketBy: 'promotionBasic',
 };
