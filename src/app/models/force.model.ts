@@ -139,7 +139,9 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
 
     /** Structural evaluation result for this group (name + matched ForceType). */
     sizeResult = computed<OrgSizeResult>(() => {
-        return getOrgFromGroup(this);
+        const result = getOrgFromGroup(this);
+        console.log(result);
+        return result;
     });
 
     organizationalName = computed(() => {
@@ -262,7 +264,9 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     }
 
     sizeResult = computed<OrgSizeResult>(() => {
-        return getOrgFromForce(this);
+        const result = getOrgFromForce(this);
+        console.log(result);
+        return result;
     });
 
     organizationalName = computed(() => {
