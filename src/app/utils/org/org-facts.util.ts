@@ -126,9 +126,12 @@ function incrementCount<Key extends string>(map: Map<Key, number>, key: Key, amo
     map.set(key, (map.get(key) ?? 0) + amount);
 }
 
-function buildUnitFactsId(unit: Unit, index?: number): string {
-    const baseId = `${unit.name}:${unit.id}`;
-    return index === undefined ? baseId : `${baseId}:${index}`;
+let nextUnitFactId = 0;
+
+function allocateUnitFactId(): number {
+    const factId = nextUnitFactId;
+    nextUnitFactId += 1;
+    return factId;
 }
 
 export function getUnitClassKey(unit: Unit): UnitClassKey {
@@ -247,7 +250,7 @@ export function compileUnitFacts(unit: Unit, index?: number): UnitFacts {
 
     return {
         unit,
-        unitId: buildUnitFactsId(unit, index),
+        factId: allocateUnitFactId(),
         classKey: getUnitClassKey(unit),
         tags,
         scalars: {

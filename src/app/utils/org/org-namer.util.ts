@@ -116,6 +116,7 @@ function getSameTypeAggregatedDisplay(
 
 	const aggregatedTier = getAggregatedTier(groups.map((group) => group.tier));
 	const regularStep = modifierSteps.find((step) => step.modifierKey === '') ?? modifierSteps[0];
+	const regularCount = regularStep.count;
 	const equivalentRegularCount = groups.reduce(
 		(sum, group) => sum + getEquivalentGroupCountAtTier(group.tier, regularStep.tier),
 		0,
@@ -123,7 +124,7 @@ function getSameTypeAggregatedDisplay(
 	const maxRepeatCount = Math.max(1, Math.ceil(equivalentRegularCount));
 
 	let best: { name: string; tier: number; repeatCount: number; modifierCount: number } | null = null;
-	for (let repeatCount = 1; repeatCount <= maxRepeatCount; repeatCount += 1) {
+	for (let repeatCount = groups.length > 1 ? 2 : 1; repeatCount <= maxRepeatCount; repeatCount += 1) {
 		for (const step of modifierSteps) {
 			const candidateTier = getTierForRepeatedGroup(step.tier, repeatCount);
 			if (candidateTier - aggregatedTier > 0.0001) {
@@ -132,7 +133,7 @@ function getSameTypeAggregatedDisplay(
 
 			const name = repeatCount === 1
 				? `${step.modifierKey}${first.type}`
-				: `${repeatCount}x ${step.modifierKey}${first.type}`;
+				: `${repeatCount}x ${first.type}`;
 			const candidate = {
 				name,
 				tier: candidateTier,
@@ -143,7 +144,11 @@ function getSameTypeAggregatedDisplay(
 			if (!best
 				|| candidate.tier > best.tier
 				|| (candidate.tier === best.tier && candidate.repeatCount < best.repeatCount)
-				|| (candidate.tier === best.tier && candidate.repeatCount === best.repeatCount && candidate.modifierCount > best.modifierCount)) {
+				|| (
+					candidate.tier === best.tier
+					&& candidate.repeatCount === best.repeatCount
+					&& Math.abs(candidate.modifierCount - regularCount) < Math.abs(best.modifierCount - regularCount)
+				)) {
 				best = candidate;
 			}
 		}
@@ -163,6 +168,15 @@ export function getAggregatedGroupsResult(
 ): OrgSizeResult {
 	if (groups.length <= 1) {
 		return aggregateGroupsResult(groups);
+	}
+
+	const first = groups[0];
+	if (first?.type && groups.every((group) =>
+		group.type === first.type
+		&& group.tag === first.tag
+		&& group.countsAsType === first.countsAsType,
+	)) {
+		return toOrgSizeResult(`${groups.length}x ${first.type}`, getAggregatedTier(groups.map((group) => group.tier)), groups);
 	}
 
 	const sameTypeDisplay = getSameTypeAggregatedDisplay(groups, factionName, factionAffinity);

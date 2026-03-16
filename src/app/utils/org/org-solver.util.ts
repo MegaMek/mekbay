@@ -10,6 +10,7 @@ import {
 import { resolveOrgDefinitionSpec } from './org-registry.util';
 import {
     getDynamicTierForModifier,
+    getRepeatCountForTierDelta,
 } from './org-tier.util';
 import {
     EMPTY_RESULT,
@@ -161,6 +162,7 @@ interface FinalStateScore {
     readonly highestTier: number;
     readonly totalPriority: number;
     readonly topLevelGroupCount: number;
+    readonly highestTierGroupCount: number;
     readonly leftoverCount: number;
 }
 
@@ -381,10 +383,9 @@ function getInfantrySplitSizeForRule(rule: OrgLeafPatternRule, facts: UnitFacts)
     return [...splitSizes][0] ?? null;
 }
 
-function cloneInfantryUnit(unit: Unit, troopers: number, partIndex: number, sourceUnitId: string): Unit {
+function cloneInfantryUnit(unit: Unit, troopers: number): Unit {
     return {
         ...unit,
-        name: `${unit.name} [${sourceUnitId}:${partIndex}]`,
         internal: troopers,
         source: [...unit.source],
         comp: [...unit.comp],
@@ -420,7 +421,7 @@ function expandInfantryUnitsForLeafPattern(rule: OrgLeafPatternRule, eligibleUni
         const fullCopies = facts.scalars.troopers / splitSize;
 
         for (let copyIndex = 0; copyIndex < fullCopies; copyIndex += 1) {
-            expanded.push(compileUnitFacts(cloneInfantryUnit(facts.unit, splitSize, copyIndex + 1, facts.unitId), copyIndex));
+            expanded.push(compileUnitFacts(cloneInfantryUnit(facts.unit, splitSize), copyIndex));
         }
     }
 
@@ -882,9 +883,9 @@ function consumePatternCandidate(
     workingUnits: Map<string, UnitFacts[]>,
     candidate: ConcretePatternCandidate,
 ): void {
-    const selectedIds = new Set(candidate.units.map((unit) => unit.unitId));
+    const selectedIds = new Set(candidate.units.map((unit) => unit.factId));
     for (const [bucketValue, units] of workingUnits.entries()) {
-        const remaining = units.filter((unit) => !selectedIds.has(unit.unitId));
+        const remaining = units.filter((unit) => !selectedIds.has(unit.factId));
         workingUnits.set(bucketValue, remaining);
     }
 }
@@ -936,7 +937,7 @@ export function evaluateLeafPatternRule(
     );
     const unitsByBucket = groupUnitsByBucket(eligibleUnits, rule.bucketBy, registry);
     const emitted: LeafPatternEmission[] = [];
-    const usedUnitIds = new Set<string>();
+    const usedFactIds = new Set<number>();
     const descriptor = getRuleModifierDescriptor(rule);
     const guard = createSolverGuard();
 
@@ -949,7 +950,7 @@ export function evaluateLeafPatternRule(
         } else {
             groupedSelections.set(selection.patternIndex, [selection.candidate]);
         }
-        selection.candidate.units.forEach((unit) => usedUnitIds.add(unit.unitId));
+        selection.candidate.units.forEach((unit) => usedFactIds.add(unit.factId));
     }
 
     Array.from(groupedSelections.entries())
@@ -972,7 +973,7 @@ export function evaluateLeafPatternRule(
     return {
         eligibleUnits,
         emitted,
-        leftoverCount: eligibleUnits.filter((facts) => !usedUnitIds.has(facts.unitId)).length,
+        leftoverCount: eligibleUnits.filter((facts) => !usedFactIds.has(facts.factId)).length,
     };
 }
 
@@ -988,19 +989,19 @@ function materializeLeafPatternWithCandidates(
     const ineligibleUnits = unitFacts.filter((facts) => !matchesUnitSelectors(facts, rule.unitSelector, registry));
     const unitsByBucket = groupUnitsByBucket(eligibleUnits, rule.bucketBy, registry);
     const descriptor = getRuleModifierDescriptor(rule);
-    const selectedUnitIds = new Set<string>();
+    const selectedFactIds = new Set<number>();
     const groups: GroupSizeResult[] = [];
     const guard = createSolverGuard();
 
     const selections = materializeLeafPatternsShared(rule.patterns, unitsByBucket, guard);
     for (const selection of selections) {
         groups.push(createLeafGroup(rule, getPatternModifierStep(descriptor, selection.pattern.copySize), selection.candidate.units));
-        selection.candidate.units.forEach((unit) => selectedUnitIds.add(unit.unitId));
+        selection.candidate.units.forEach((unit) => selectedFactIds.add(unit.factId));
     }
 
     const leftoverUnitFacts = [
         ...ineligibleUnits,
-        ...eligibleUnits.filter((facts) => !selectedUnitIds.has(facts.unitId)),
+        ...eligibleUnits.filter((facts) => !selectedFactIds.has(facts.factId)),
     ];
 
     return { groups, leftoverUnitFacts };
@@ -1023,7 +1024,7 @@ export function materializeLeafCountRule(
     const ineligibleUnits = unitFacts.filter((facts) => !matchesUnitSelectors(facts, rule.unitSelector, registry));
     const descriptor = getRuleModifierDescriptor(rule);
     const groups: GroupSizeResult[] = [];
-    const usedUnitIds = new Set<string>();
+    const usedFactIds = new Set<number>();
 
     for (const bucketUnits of groupUnitsByBucket(eligibleUnits, rule.bucketBy, registry).values()) {
         let remaining = [...bucketUnits];
@@ -1031,7 +1032,7 @@ export function materializeLeafCountRule(
             while (remaining.length >= step.count) {
                 const selected = remaining.slice(0, step.count);
                 remaining = remaining.slice(step.count);
-                selected.forEach((facts) => usedUnitIds.add(facts.unitId));
+                selected.forEach((facts) => usedFactIds.add(facts.factId));
                 groups.push(createLeafGroup(rule, step, selected));
             }
         }
@@ -1041,7 +1042,7 @@ export function materializeLeafCountRule(
         groups,
         leftoverUnitFacts: [
             ...ineligibleUnits,
-            ...eligibleUnits.filter((facts) => !usedUnitIds.has(facts.unitId)),
+            ...eligibleUnits.filter((facts) => !usedFactIds.has(facts.factId)),
         ],
     };
 }
@@ -1205,6 +1206,7 @@ function materializeComposedConfig(
     config: CompositionConfig,
     registry: OrgRuleRegistry,
     guard: SolverGuard,
+    allowedModifierKeys?: ReadonlySet<string>,
 ): ConcreteCompositionCandidate[] {
     const candidates: ConcreteCompositionCandidate[] = [];
     const remainingByBucket = new Map<string, GroupFacts[]>();
@@ -1222,6 +1224,9 @@ function materializeComposedConfig(
     for (const bucketGroups of remainingByBucket.values()) {
         let working = [...bucketGroups];
         for (const step of config.modifierDescriptor.stepsDescending) {
+            if (allowedModifierKeys && !allowedModifierKeys.has(step.modifierKey)) {
+                continue;
+            }
             let producedGroups = 0;
             while (working.length >= step.count && producedGroups < MAX_COMPOSED_GROUPS_PER_CONFIG && !shouldAbortSearch(guard)) {
                 const selection = findConcreteComposition(working, config.childRoles, step.count, guard);
@@ -1241,6 +1246,42 @@ function materializeComposedConfig(
     }
 
     return candidates;
+}
+
+function materializeComposedCountRuleInternal(
+    rule: OrgComposedCountRule,
+    groupFacts: readonly GroupFacts[],
+    registry: OrgRuleRegistry,
+    allowedModifierKeys?: ReadonlySet<string>,
+): MaterializedComposedGroupResult {
+    const configs = buildCompositionConfigs(rule);
+    const guard = createSolverGuard();
+    const evaluations = configs.map((config) => ({
+        config,
+        candidates: materializeComposedConfig(groupFacts, config, registry, guard, allowedModifierKeys),
+    }));
+    const best = evaluations.sort((left, right) => {
+        if (left.candidates.length !== right.candidates.length) {
+            return right.candidates.length - left.candidates.length;
+        }
+        const leftUsed = left.candidates.reduce((sum, candidate) => sum + candidate.groups.length, 0);
+        const rightUsed = right.candidates.reduce((sum, candidate) => sum + candidate.groups.length, 0);
+        return rightUsed - leftUsed;
+    })[0];
+
+    if (!best) {
+        return { groups: [], leftoverGroupFacts: [...groupFacts] };
+    }
+
+    const groups = best.candidates.map((candidate) =>
+        createComposedGroup(rule, candidate.modifierStep, candidate.groups.map((group) => group.group)),
+    );
+    const usedGroupObjects = new Set(best.candidates.flatMap((candidate) => candidate.groups.map((group) => group.group)));
+
+    return {
+        groups,
+        leftoverGroupFacts: groupFacts.filter((group) => !usedGroupObjects.has(group.group)),
+    };
 }
 
 export function evaluateComposedCountRule(
@@ -1290,34 +1331,7 @@ export function materializeComposedCountRule(
     groupFacts: readonly GroupFacts[],
     registry: OrgRuleRegistry = DEFAULT_ORG_RULE_REGISTRY,
 ): MaterializedComposedGroupResult {
-    const configs = buildCompositionConfigs(rule);
-    const guard = createSolverGuard();
-    const evaluations = configs.map((config) => ({
-        config,
-        candidates: materializeComposedConfig(groupFacts, config, registry, guard),
-    }));
-    const best = evaluations.sort((left, right) => {
-        if (left.candidates.length !== right.candidates.length) {
-            return right.candidates.length - left.candidates.length;
-        }
-        const leftUsed = left.candidates.reduce((sum, candidate) => sum + candidate.groups.length, 0);
-        const rightUsed = right.candidates.reduce((sum, candidate) => sum + candidate.groups.length, 0);
-        return rightUsed - leftUsed;
-    })[0];
-
-    if (!best) {
-        return { groups: [], leftoverGroupFacts: [...groupFacts] };
-    }
-
-    const groups = best.candidates.map((candidate) =>
-        createComposedGroup(rule, candidate.modifierStep, candidate.groups.map((group) => group.group)),
-    );
-    const usedGroupObjects = new Set(best.candidates.flatMap((candidate) => candidate.groups.map((group) => group.group)));
-
-    return {
-        groups,
-        leftoverGroupFacts: groupFacts.filter((group) => !usedGroupObjects.has(group.group)),
-    };
+    return materializeComposedCountRuleInternal(rule, groupFacts, registry);
 }
 
 export function evaluateOrgDefinition(
@@ -1467,7 +1481,7 @@ function materializeLeafRulesByStage(
 
         const eligibleUnits = remaining.filter((facts) => matchesUnitSelectors(facts, rule.unitSelector, registry));
         const ineligibleUnits = remaining.filter((facts) => !matchesUnitSelectors(facts, rule.unitSelector, registry));
-        const usedIds = new Set<string>();
+        const usedIds = new Set<number>();
         const nextGroups: GroupSizeResult[] = [];
 
         for (const bucketUnits of groupUnitsByBucket(eligibleUnits, rule.bucketBy, registry).values()) {
@@ -1476,7 +1490,7 @@ function materializeLeafRulesByStage(
                 while (working.length >= step.count) {
                     const selected = working.slice(0, step.count);
                     working = working.slice(step.count);
-                    selected.forEach((facts) => usedIds.add(facts.unitId));
+                    selected.forEach((facts) => usedIds.add(facts.factId));
                     nextGroups.push(createLeafGroup(rule, step, selected));
                 }
             }
@@ -1485,7 +1499,7 @@ function materializeLeafRulesByStage(
         groups.push(...nextGroups);
         remaining = [
             ...ineligibleUnits,
-            ...eligibleUnits.filter((facts) => !usedIds.has(facts.unitId)),
+            ...eligibleUnits.filter((facts) => !usedIds.has(facts.factId)),
         ];
     }
 
@@ -1501,15 +1515,17 @@ function materializeComposedRulesByStage(
     const groups: GroupSizeResult[] = [];
 
     for (const rule of context.composedCountRules) {
-        const materialized = materializeComposedCountRule(rule, remainingFacts, context.definition.registry);
+        const allowedModifierKeys = stage === 'all'
+            ? undefined
+            : new Set((stage === 'regular'
+                ? [getRuleModifierDescriptor(rule).regularStep]
+                : getRuleModifierDescriptor(rule).subRegularStepsDescending).map((step) => step.modifierKey));
+        const materialized = materializeComposedCountRuleInternal(rule, remainingFacts, context.definition.registry, allowedModifierKeys);
         if (stage !== 'all') {
-            const descriptor = getRuleModifierDescriptor(rule);
-            const allowedModifierKeys = new Set((stage === 'regular' ? [descriptor.regularStep] : descriptor.subRegularStepsDescending).map((step) => step.modifierKey));
-            const allowedGroups = materialized.groups.filter((group) => allowedModifierKeys.has(group.modifierKey));
-            if (allowedGroups.length > 0) {
-                groups.push(...allowedGroups);
-                const allowedObjects = new Set(allowedGroups.flatMap((group) => group.children ?? []));
-                remainingFacts = remainingFacts.filter((facts) => !allowedObjects.has(facts.group));
+            if (materialized.groups.length > 0) {
+                groups.push(...materialized.groups);
+                const usedObjects = new Set(materialized.groups.flatMap((group) => group.children ?? []));
+                remainingFacts = remainingFacts.filter((facts) => !usedObjects.has(facts.group));
                 continue;
             }
             continue;
@@ -1595,6 +1611,7 @@ function scoreResolvedState(state: ResolvedState, context: ResolveContext): Fina
     const topLevelGroupCount = state.groups.length;
     const leftoverCount = state.leftoverUnits.length;
     const highestTier = state.groups.length > 0 ? Math.max(...state.groups.map((group) => group.tier)) : 0;
+    const highestTierGroupCount = state.groups.filter((group) => group.tier === highestTier).length;
     const totalPriority = state.groups.reduce((sum, group) => sum + (group.priority ?? 0), 0);
     const isWhole = topLevelGroupCount === 1
         && leftoverCount === 0
@@ -1605,6 +1622,7 @@ function scoreResolvedState(state: ResolvedState, context: ResolveContext): Fina
         highestTier,
         totalPriority,
         topLevelGroupCount,
+        highestTierGroupCount,
         leftoverCount,
     };
 }
@@ -1627,6 +1645,9 @@ function compareResolvedState(left: ResolvedState, right: ResolvedState, context
     }
     if (leftScore.topLevelGroupCount !== rightScore.topLevelGroupCount) {
         return leftScore.topLevelGroupCount - rightScore.topLevelGroupCount;
+    }
+    if (leftScore.highestTierGroupCount !== rightScore.highestTierGroupCount) {
+        return rightScore.highestTierGroupCount - leftScore.highestTierGroupCount;
     }
 
     return 0;
@@ -1844,6 +1865,9 @@ function runLeftoverImprovementLoop(
         }
         previousSignature = signature;
 
+        const assimilated = assimilateLeftoversIntoParents(pool, context, guard);
+        pool = runRegularPromotionLoop(assimilated, context, guard);
+
         const subRegularPromotion = materializeComposedRulesByStage(compileGroupFactsList(pool), context, 'sub-regular');
         if (subRegularPromotion.groups.length > 0) {
             const usedChildren = new Set(subRegularPromotion.groups.flatMap((group) => group.children ?? []));
@@ -1853,8 +1877,7 @@ function runLeftoverImprovementLoop(
             ];
         }
 
-        const assimilated = assimilateLeftoversIntoParents(pool, context, guard);
-        pool = runRegularPromotionLoop(assimilated, context, guard);
+        pool = runRegularPromotionLoop(pool, context, guard);
     }
 
     return pool;
@@ -1994,6 +2017,7 @@ function assimilateLeftoversIntoParents(
                 tier: targetStep.tier,
                 children: [...(upgradedParent.children ?? []), ...addition],
             };
+            break;
         }
 
         if (usedGroups.length > 0 || upgradedParent !== parent) {
@@ -2007,6 +2031,131 @@ function assimilateLeftoversIntoParents(
 
 function normalizeTopLevelGroups(groups: readonly GroupSizeResult[]): GroupSizeResult[] {
     return [...groups].sort(compareGroupScore);
+}
+
+function collectAllGroupUnits(group: GroupSizeResult): Unit[] {
+    const result: Unit[] = [];
+
+    if (group.units) {
+        result.push(...group.units);
+    }
+    if (group.leftoverUnits) {
+        result.push(...group.leftoverUnits);
+    }
+    if (group.children) {
+        for (const child of group.children) {
+            result.push(...collectAllGroupUnits(child));
+        }
+    }
+
+    return result;
+}
+
+function isNativeGroupForDefinition(group: GroupSizeResult, definition: OrgDefinitionSpec): boolean {
+    const knownTypes = new Set(definition.rules.map((rule) => rule.type));
+
+    return (group.type !== null && knownTypes.has(group.type))
+        || (group.countsAsType !== null && knownTypes.has(group.countsAsType));
+}
+
+function createSyntheticGroupForRule(
+    rule: OrgLeafCountRule | OrgLeafPatternRule | OrgComposedCountRule,
+    modifierStep: ModifierStep,
+): GroupSizeResult {
+    return {
+        name: makeGroupName(rule.type, modifierStep.modifierKey),
+        type: rule.type,
+        modifierKey: modifierStep.modifierKey,
+        countsAsType: rule.countsAs ?? null,
+        tier: modifierStep.tier,
+        tag: rule.tag,
+        priority: rule.priority,
+    };
+}
+
+function getCrossgradeCandidates(
+    context: ResolveContext,
+): Array<{ rule: OrgLeafCountRule | OrgLeafPatternRule | OrgComposedCountRule; step: ModifierStep }> {
+    const candidateRules = context.composedCountRules.length > 0
+        ? context.composedCountRules
+        : context.definition.rules.filter((rule): rule is OrgLeafCountRule | OrgLeafPatternRule | OrgComposedCountRule =>
+            rule.kind === 'leaf-count' || rule.kind === 'leaf-pattern' || rule.kind === 'composed-count',
+        );
+
+    return candidateRules.flatMap((rule) =>
+        getRuleModifierDescriptor(rule).stepsAscending.map((step) => ({ rule, step })),
+    );
+}
+
+function crossgradeTierOnlyForeignGroup(
+    group: GroupSizeResult,
+    context: ResolveContext,
+): GroupSizeResult[] {
+    const candidates = getCrossgradeCandidates(context);
+    if (candidates.length === 0) {
+        return [group];
+    }
+
+    const highestTier = Math.max(...candidates.map((candidate) => candidate.step.tier));
+    if (group.tier - highestTier > 0.0001) {
+        const highestCandidates = candidates.filter((candidate) => Math.abs(candidate.step.tier - highestTier) < 0.0001);
+        const chosen = highestCandidates
+            .map((candidate) => createSyntheticGroupForRule(candidate.rule, candidate.step))
+            .sort(compareGroupScore)[0];
+
+        if (!chosen) {
+            return [group];
+        }
+
+        const repeatCount = getRepeatCountForTierDelta(group.tier, chosen.tier);
+        return Array.from({ length: repeatCount }, () => ({ ...chosen }));
+    }
+
+    const chosen = candidates
+        .sort((left, right) => {
+            const leftDistance = Math.abs(left.step.tier - group.tier);
+            const rightDistance = Math.abs(right.step.tier - group.tier);
+
+            if (leftDistance !== rightDistance) {
+                return leftDistance - rightDistance;
+            }
+
+            if (left.rule.tier !== right.rule.tier) {
+                return right.rule.tier - left.rule.tier;
+            }
+
+            return compareGroupScore(
+                createSyntheticGroupForRule(left.rule, left.step),
+                createSyntheticGroupForRule(right.rule, right.step),
+            );
+        })[0];
+
+    return chosen ? [createSyntheticGroupForRule(chosen.rule, chosen.step)] : [group];
+}
+
+function preprocessGroupsForDefinition(
+    definition: OrgDefinitionSpec,
+    groupResults: readonly GroupSizeResult[],
+): GroupSizeResult[] {
+    const context = getResolveContext(definition);
+    const normalized: GroupSizeResult[] = [];
+
+    for (const group of groupResults) {
+        if (isNativeGroupForDefinition(group, definition)) {
+            normalized.push(group);
+            continue;
+        }
+
+        const descendantUnits = collectAllGroupUnits(group);
+        if (descendantUnits.length > 0) {
+            normalized.push(...resolveWithDefinition(definition, descendantUnits, []));
+            continue;
+        }
+
+        normalized.push(...crossgradeTierOnlyForeignGroup(group, context));
+    }
+
+    return normalized;
 }
 
 function resolveWithDefinition(
@@ -2030,11 +2179,19 @@ function resolveWithDefinition(
 
     pool = preAssimilateUnderRegularGroups(pool, context, guard);
 
-    const regularPool = runRegularPromotionLoop(pool, context, guard);
+    const wholeComposedFromInitial = resolveWholeComposedCandidate(pool, context, createSolverGuard());
+    const initialImprovedPool = runLeftoverImprovementLoop(pool, context, createSolverGuard());
+
+    const regularPool = runRegularPromotionLoop(pool, context, createSolverGuard());
     const candidateStates: ResolvedState[] = [
         { groups: regularPool, leftoverUnits },
-        { groups: runLeftoverImprovementLoop(regularPool, context, guard), leftoverUnits },
+        { groups: runLeftoverImprovementLoop(regularPool, context, createSolverGuard()), leftoverUnits },
+        { groups: initialImprovedPool, leftoverUnits },
     ];
+
+    if (wholeComposedFromInitial) {
+        candidateStates.push({ groups: [wholeComposedFromInitial], leftoverUnits: [] });
+    }
 
     if (leftoverUnits.length > 0) {
         const subRegularLeafResult = materializeLeafRulesByStage(leftoverUnits, context, 'sub-regular');
@@ -2052,7 +2209,7 @@ function resolveWithDefinition(
         candidateStates.push({ groups: [wholeLeaf], leftoverUnits: [] });
     }
 
-    const wholeComposed = resolveWholeComposedCandidate(regularPool, context, guard);
+    const wholeComposed = resolveWholeComposedCandidate(regularPool, context, createSolverGuard());
     if (wholeComposed) {
         candidateStates.push({ groups: [wholeComposed], leftoverUnits: [] });
     }
@@ -2079,5 +2236,5 @@ export function resolveFromGroups(
     _hierarchicalAggregation: boolean = false,
 ): GroupSizeResult[] {
     const definition = resolveOrgDefinitionSpec(factionName, factionAffinity);
-    return resolveWithDefinition(definition, [], groupResults);
+    return resolveWithDefinition(definition, [], preprocessGroupsForDefinition(definition, groupResults));
 }

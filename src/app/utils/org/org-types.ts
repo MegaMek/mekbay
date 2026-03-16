@@ -281,7 +281,7 @@ export interface UnitFactScalars {
  */
 export interface UnitFacts {
     readonly unit: Unit;
-    readonly unitId: string;
+    readonly factId: number;
     readonly classKey: UnitClassKey;
     readonly tags: ReadonlySet<UnitFactTag>;
     readonly scalars: UnitFactScalars;

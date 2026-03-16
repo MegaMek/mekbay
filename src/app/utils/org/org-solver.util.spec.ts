@@ -312,16 +312,14 @@ describe('org-solver.util', () => {
         expect(DEFAULT_ORG_RULE_REGISTRY.unitBuckets.ciMoveClassTroopers?.(units[2])).toBe('CI:mechanized-hover:5');
     });
 
-    it('assigns distinct unit ids to duplicate-name units', () => {
+    it('assigns distinct fact ids to duplicate-name units', () => {
         const unitA = createUnit('Foot Infantry', 'Infantry', 'Conventional Infantry', false, [], 18, 'Tracked');
         const unitB = createUnit('Foot Infantry', 'Infantry', 'Conventional Infantry', false, [], 18, 'Tracked');
-        unitA.id = 101;
-        unitB.id = 101;
 
         const units = compileUnitFactsList([unitA, unitB]);
 
         expect(units[0].unit.name).toBe(units[1].unit.name);
-        expect(units[0].unitId).not.toBe(units[1].unitId);
+        expect(units[0].factId).not.toBe(units[1].factId);
     });
 
     it('buckets flight identity only for units that are flight-eligible', () => {
@@ -2029,15 +2027,15 @@ describe('org-solver.util aggregation and foreign parity', () => {
         const units = Array.from({ length: 20 }, (_, index) => createBM(`CS-L2X3-${index + 1}`));
         const result = resolveFromUnits(units, 'ComStar', 'Inner Sphere');
         const aggregated = getAggregatedGroupsResult(result, 'ComStar', 'Inner Sphere');
-        const childModifierKeys = result.map((group) => group.children?.[0]?.modifierKey);
+        const parentModifierKeys = result.map((group) => group.modifierKey);
 
         expect(result.length).toBe(3);
         expect(result.every((group) => group.type === 'Level II')).toBeTrue();
         expect(result.every((group) => group.children?.every((child) => child.name === 'Level I'))).toBeTrue();
         expect(result.every((group) => group.children?.every((child) => child.type === 'Level I'))).toBeTrue();
         expect(result.every((group) => group.leftoverUnits === undefined)).toBeTrue();
-        expect(childModifierKeys.filter((modifierKey) => modifierKey === '')).toHaveSize(1);
-        expect(childModifierKeys.filter((modifierKey) => modifierKey === 'Reinforced ')).toHaveSize(2);
+        expect(parentModifierKeys.filter((modifierKey) => modifierKey === '')).toHaveSize(1);
+        expect(parentModifierKeys.filter((modifierKey) => modifierKey === 'Reinforced ')).toHaveSize(2);
         expect(aggregated.name).toBe('3x Level II');
         expect(aggregated.groups).toBe(result);
     });
