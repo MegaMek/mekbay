@@ -2274,18 +2274,33 @@ describe('resolveFromUnits', () => {
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
-    it('aggregates 20 BM into 4x Level II for ComStar', () => {
+    it('aggregates 20 BM into 3x Level II for ComStar', () => {
         const units = Array.from({ length: 20 }, (_, index) => createBM(`CS-L2X4-${index + 1}`));
         const result = resolveFromUnits(units, 'ComStar', 'Inner Sphere');
         const aggregated = getAggregatedGroupsResult(result, 'ComStar', 'Inner Sphere');
-
-        expect(result.length).toBe(4);
+        // It should make 1 Level II (Regular) and 2 Level II (Reinforced)
+        // by spreading the two Level I leftovers into 
+        expect(result.length).toBe(3);
         expect(result.every(group => group.type === 'Level II')).toBeTrue();
         expect(result.every(group => group.children?.every(child => child.name === 'Level I'))).toBeTrue();
         expect(result.every(group => group.children?.every(child => child.type === 'Level I'))).toBeTrue();
         expect(result.every(group => group.leftoverUnits === undefined)).toBeTrue();
-        expect(aggregated.name).toBe('4x Level II');
+        expect(aggregated.name).toBe('3x Level II');
         expect(aggregated.groups).toBe(result);
+    });
+
+    it('aggregates 10 BM into 2x Level II for ComStar', () => {
+        const units = Array.from({ length: 10 }, (_, index) => createBM(`CS-L2X4-${index + 1}`));
+        const result = resolveFromUnits(units, 'ComStar', 'Inner Sphere');
+        const aggregated = getAggregatedGroupsResult(result, 'ComStar', 'Inner Sphere');
+
+        expect(result.length).toBe(2);
+        expect(result.every(group => group.type === 'Level II')).toBeTrue();
+        expect(result.every(group => group.children?.every(child => child.name === 'Level I'))).toBeTrue();
+        expect(result.every(group => group.children?.every(child => child.type === 'Level I'))).toBeTrue();
+        expect(result.every(group => group.leftoverUnits === undefined)).toBeTrue();
+        expect(aggregated.name).toBe('2x Level II');
+        expect(aggregated.groups).toBe(result);2
     });
 
     it('groups thirty-six Level I into a Level III for ComStar', () => {
@@ -2884,6 +2899,9 @@ describe('resolveFromUnits', () => {
         expect(result.length).toBe(1);
         expect(result[0].name).toBe('Binary');
         expect(result[0].type).toBe('Binary');
+        expect(result[0].children?.length).toBe(2);
+        expect(result[0].children?.every((child) => child.type === 'Star')).toBeTrue();
+        expect(result[0].children?.map((child) => child.modifierKey).sort()).toEqual(['', 'Reinforced ']);
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
