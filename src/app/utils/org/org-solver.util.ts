@@ -129,6 +129,12 @@ interface ConcretePatternCandidate extends PatternCandidate {
     readonly units: readonly UnitFacts[];
 }
 
+interface PatternSelection {
+    readonly patternIndex: number;
+    readonly pattern: OrgPatternSpec;
+    readonly candidate: ConcretePatternCandidate;
+}
+
 interface CompositionConfig {
     readonly index: number;
     readonly childRoles: readonly OrgChildRoleSpec[];
@@ -677,6 +683,128 @@ function materializePatternGreedy(
     return candidates;
 }
 
+function getPatternModifierStep(
+    descriptor: RuleModifierDescriptor,
+    copySize: number,
+): ModifierStep {
+    return descriptor.stepsAscending.find((step) => step.count === copySize) ?? descriptor.regularStep;
+}
+
+function cloneWorkingUnits(
+    source: ReadonlyMap<string, UnitFacts[]>,
+): Map<string, UnitFacts[]> {
+    const clone = new Map<string, UnitFacts[]>();
+    for (const [bucketValue, units] of source.entries()) {
+        clone.set(bucketValue, [...units]);
+    }
+    return clone;
+}
+
+function buildWorkingBucketUnits(
+    unitsByBucket: ReadonlyMap<string, readonly UnitFacts[]>,
+): Map<string, UnitFacts[]> {
+    const working = new Map<string, UnitFacts[]>();
+    for (const [bucketValue, units] of unitsByBucket.entries()) {
+        working.set(bucketValue, [...units]);
+    }
+    return working;
+}
+
+function materializeSinglePatternCandidate(
+    pattern: OrgPatternSpec,
+    workingUnits: ReadonlyMap<string, UnitFacts[]>,
+    guard: SolverGuard,
+): ConcretePatternCandidate | null {
+    const bucketCounts = new Map<string, number>();
+    for (const [bucketValue, units] of workingUnits.entries()) {
+        if (units.length > 0) {
+            bucketCounts.set(bucketValue, units.length);
+        }
+    }
+
+    const next = enumeratePatternCandidates(bucketCounts, pattern, guard)[0];
+    if (!next) {
+        return null;
+    }
+
+    const candidateUnits = cloneWorkingUnits(workingUnits);
+    const selectedUnits: UnitFacts[] = [];
+    for (const [bucketValue, count] of next.allocation.entries()) {
+        const units = candidateUnits.get(bucketValue) ?? [];
+        if (units.length < count) {
+            return null;
+        }
+        selectedUnits.push(...units.splice(0, count));
+    }
+
+    if (selectedUnits.length === 0) {
+        return null;
+    }
+
+    return {
+        allocation: next.allocation,
+        score: next.score,
+        units: selectedUnits,
+    };
+}
+
+function comparePatternSelections(left: PatternSelection, right: PatternSelection): number {
+    if (left.candidate.score !== right.candidate.score) {
+        return left.candidate.score - right.candidate.score;
+    }
+    if (left.pattern.copySize !== right.pattern.copySize) {
+        return right.pattern.copySize - left.pattern.copySize;
+    }
+    return left.patternIndex - right.patternIndex;
+}
+
+function consumePatternCandidate(
+    workingUnits: Map<string, UnitFacts[]>,
+    candidate: ConcretePatternCandidate,
+): void {
+    const selectedIds = new Set(candidate.units.map((unit) => unit.unitId));
+    for (const [bucketValue, units] of workingUnits.entries()) {
+        const remaining = units.filter((unit) => !selectedIds.has(unit.unitId));
+        workingUnits.set(bucketValue, remaining);
+    }
+}
+
+function materializeLeafPatternsShared(
+    patterns: readonly OrgPatternSpec[],
+    unitsByBucket: ReadonlyMap<string, readonly UnitFacts[]>,
+    guard: SolverGuard,
+): PatternSelection[] {
+    const workingUnits = buildWorkingBucketUnits(unitsByBucket);
+    const selections: PatternSelection[] = [];
+    let iterations = 0;
+
+    while (iterations < MAX_PATTERN_GREEDY_ITERATIONS && !shouldAbortSearch(guard)) {
+        iterations += 1;
+        const candidates: PatternSelection[] = [];
+
+        patterns.forEach((pattern, patternIndex) => {
+            if (shouldAbortSearch(guard)) {
+                return;
+            }
+            const candidate = materializeSinglePatternCandidate(pattern, workingUnits, guard);
+            if (!candidate) {
+                return;
+            }
+            candidates.push({ patternIndex, pattern, candidate });
+        });
+
+        if (candidates.length === 0) {
+            break;
+        }
+
+        const chosenSelection = [...candidates].sort(comparePatternSelections)[0];
+        consumePatternCandidate(workingUnits, chosenSelection.candidate);
+        selections.push(chosenSelection);
+    }
+
+    return selections;
+}
+
 export function evaluateLeafPatternRule(
     rule: OrgLeafPatternRule,
     unitFacts: readonly UnitFacts[],
@@ -689,30 +817,34 @@ export function evaluateLeafPatternRule(
     const descriptor = getRuleModifierDescriptor(rule);
     const guard = createSolverGuard();
 
-    rule.patterns.forEach((pattern, patternIndex) => {
-        if (shouldAbortSearch(guard)) {
-            return;
+    const selections = materializeLeafPatternsShared(rule.patterns, unitsByBucket, guard);
+    const groupedSelections = new Map<number, ConcretePatternCandidate[]>();
+    for (const selection of selections) {
+        const existing = groupedSelections.get(selection.patternIndex);
+        if (existing) {
+            existing.push(selection.candidate);
+        } else {
+            groupedSelections.set(selection.patternIndex, [selection.candidate]);
         }
-        const concrete = materializePatternGreedy(pattern, unitsByBucket, guard);
-        if (concrete.length === 0) {
-            return;
-        }
-        const copies = concrete.length;
-        for (const candidate of concrete) {
-            for (const unit of candidate.units) {
-                usedUnitIds.add(unit.unitId);
-            }
-        }
-        emitted.push({
-            modifierKey: descriptor.regularStep.modifierKey,
-            perGroupCount: pattern.copySize,
-            copies,
-            tier: descriptor.regularStep.tier,
-            patternIndex,
-            score: concrete.reduce((sum, candidate) => sum + candidate.score, 0) / copies,
-            allocations: concrete.map((candidate) => candidate.allocation),
+        selection.candidate.units.forEach((unit) => usedUnitIds.add(unit.unitId));
+    }
+
+    Array.from(groupedSelections.entries())
+        .sort(([leftIndex], [rightIndex]) => leftIndex - rightIndex)
+        .forEach(([patternIndex, concrete]) => {
+            const pattern = rule.patterns[patternIndex];
+            const step = getPatternModifierStep(descriptor, pattern.copySize);
+            const copies = concrete.length;
+            emitted.push({
+                modifierKey: step.modifierKey,
+                perGroupCount: pattern.copySize,
+                copies,
+                tier: step.tier,
+                patternIndex,
+                score: concrete.reduce((sum, candidate) => sum + candidate.score, 0) / copies,
+                allocations: concrete.map((candidate) => candidate.allocation),
+            });
         });
-    });
 
     return {
         eligibleUnits,
@@ -734,18 +866,11 @@ function materializeLeafPatternWithCandidates(
     const groups: GroupSizeResult[] = [];
     const guard = createSolverGuard();
 
-    rule.patterns.forEach((pattern) => {
-        if (shouldAbortSearch(guard)) {
-            return;
-        }
-        const candidates = materializePatternGreedy(pattern, unitsByBucket, guard);
-        for (const candidate of candidates) {
-            groups.push(createLeafGroup(rule, descriptor.regularStep, candidate.units));
-            for (const unit of candidate.units) {
-                selectedUnitIds.add(unit.unitId);
-            }
-        }
-    });
+    const selections = materializeLeafPatternsShared(rule.patterns, unitsByBucket, guard);
+    for (const selection of selections) {
+        groups.push(createLeafGroup(rule, getPatternModifierStep(descriptor, selection.pattern.copySize), selection.candidate.units));
+        selection.candidate.units.forEach((unit) => selectedUnitIds.add(unit.unitId));
+    }
 
     const leftoverUnitFacts = [
         ...ineligibleUnits,
@@ -1030,7 +1155,7 @@ export function evaluateComposedCountRule(
     return {
         acceptedGroups,
         emitted,
-        leftoverCount: groupFacts.length - usedGroups,
+        leftoverCount: acceptedGroups.length - usedGroups,
     };
 }
 

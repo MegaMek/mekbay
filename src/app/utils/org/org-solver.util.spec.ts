@@ -319,6 +319,44 @@ describe('org-solver.util', () => {
         expect(flightType?.(units[2])).toBe('not-flight');
     });
 
+    it('evaluates Flight only from identical eligible air units', () => {
+        const units = compileUnitFactsList([
+            createFlightEligibleUnit('AF 1', 'Seydlitz', 'AF', 'Aero'),
+            createFlightEligibleUnit('AF 2', 'Seydlitz', 'AF', 'Aero'),
+            createFlightEligibleUnit('AF 3', 'Seydlitz', 'AF', 'Aero'),
+            createFlightEligibleUnit('CF 1', 'Lucifer', 'CF', 'Aero'),
+        ]);
+
+        const result = evaluateLeafCountRule(IS_FLIGHT, units);
+
+        expect(result.eligibleUnits.length).toBe(4);
+        expect(result.emitted).toEqual([
+            { modifierKey: 'Reinforced ', perGroupCount: 3, copies: 1, tier: 1 },
+            { modifierKey: 'Under-Strength ', perGroupCount: 1, copies: 1, tier: 1 },
+        ]);
+        expect(result.leftoverCount).toBe(0);
+    });
+
+    it('accepts SV units in Flight only when they have a flight-capable MVm profile', () => {
+        const units = compileUnitFactsList([
+            createFlightEligibleUnit('SV Flyer 1', 'Fighter', 'SV', 'Aero', { a: 8 }),
+            createFlightEligibleUnit('SV Flyer 2', 'Fighter', 'SV', 'Aero', { a: 8 }),
+            createFlightEligibleUnit('SV Non-Flyer', 'Hover Truck', 'SV', 'Tank'),
+        ]);
+
+        const result = evaluateLeafCountRule(IS_FLIGHT, units);
+
+        expect(result.eligibleUnits.length).toBe(2);
+        expect(result.eligibleUnits.map((facts) => facts.unit.name)).toEqual([
+            'SV Flyer 1',
+            'SV Flyer 2',
+        ]);
+        expect(result.emitted).toEqual([
+            { modifierKey: '', perGroupCount: 2, copies: 1, tier: 1 },
+        ]);
+        expect(result.leftoverCount).toBe(0);
+    });
+
     it('evaluates leaf-count rules by selector and modifier sizes', () => {
         const rule: OrgLeafCountRule = {
             kind: 'leaf-count',
@@ -551,6 +589,67 @@ describe('org-solver.util', () => {
         expect(result.leftoverCount).toBe(0);
     });
 
+    it('materializes Nova leaf-pattern rules into a concrete top-level group', () => {
+        const result = materializeLeafPatternRule(CLAN_NOVA, compileUnitFactsList([
+            createUnit('Carrier 1', 'Mek', 'BattleMek Omni', true),
+            createUnit('Carrier 2', 'Mek', 'BattleMek Omni', true),
+            createUnit('Carrier 3', 'Mek', 'BattleMek Omni', true),
+            createUnit('Carrier 4', 'Mek', 'BattleMek Omni', true),
+            createUnit('Carrier 5', 'Mek', 'BattleMek Omni', true),
+            createUnit('BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 2', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 3', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 4', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 5', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+        ]));
+
+        expect(result.groups).toEqual([
+            jasmine.objectContaining({ name: 'Nova', type: 'Nova', modifierKey: '' }),
+        ]);
+        expect(result.groups[0].units?.length).toBe(10);
+        expect(result.leftoverUnitFacts).toEqual([]);
+    });
+
+    it('rejects non-5-and-5 Nova formations even when all units are otherwise eligible', () => {
+        const units = compileUnitFactsList([
+            createUnit('Carrier 1', 'Tank', 'Combat Vehicle Omni', true),
+            createUnit('Carrier 2', 'Tank', 'Combat Vehicle', false),
+            createUnit('Carrier 3', 'Tank', 'Combat Vehicle', false),
+            createUnit('Carrier 4', 'Tank', 'Combat Vehicle', false),
+            createUnit('Carrier 5', 'Tank', 'Combat Vehicle', false),
+            createUnit('Carrier 6', 'Tank', 'Combat Vehicle', false),
+            createUnit('BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 2', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 3', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 4', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+        ]);
+
+        const result = evaluateLeafPatternRule(CLAN_NOVA, units);
+
+        expect(result.emitted).toEqual([]);
+        expect(result.leftoverCount).toBe(10);
+    });
+
+    it('rejects Nova leaf-pattern rules when battle armor is not transport-qualified', () => {
+        const units = compileUnitFactsList([
+            createAero('Carrier 1', true),
+            createAero('Carrier 2', true),
+            createAero('Carrier 3', true),
+            createAero('Carrier 4', true),
+            createAero('Carrier 5', true),
+            createUnit('BA 1', 'Infantry', 'Battle Armor', false, [], 4),
+            createUnit('BA 2', 'Infantry', 'Battle Armor', false, [], 4),
+            createUnit('BA 3', 'Infantry', 'Battle Armor', false, [], 4),
+            createUnit('BA 4', 'Infantry', 'Battle Armor', false, [], 4),
+            createUnit('BA 5', 'Infantry', 'Battle Armor', false, [], 4),
+        ]);
+
+        const result = evaluateLeafPatternRule(CLAN_NOVA, units);
+
+        expect(result.emitted).toEqual([]);
+        expect(result.leftoverCount).toBe(10);
+    });
+
     it('evaluates Battle Armor Squad from an exact four-trooper unit', () => {
         const units = compileUnitFactsList([
             createUnit('BA Squad', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
@@ -566,6 +665,17 @@ describe('org-solver.util', () => {
             score: 0,
         }));
         expect(result.leftoverCount).toBe(0);
+    });
+
+    it('rejects an Inner Sphere CI Squad when the move-class troop count is not exact', () => {
+        const units = compileUnitFactsList([
+            createUnit('CI Squad', 'Infantry', 'Conventional Infantry', false, [], 8, 'Tracked'),
+        ]);
+
+        const result = evaluateLeafPatternRule(IS_SQUAD, units);
+
+        expect(result.emitted).toEqual([]);
+        expect(result.leftoverCount).toBe(1);
     });
 
     it('evaluates an Inner Sphere Platoon from four same-motive Squads', () => {
@@ -584,6 +694,110 @@ describe('org-solver.util', () => {
         expect(result.leftoverCount).toBe(0);
     });
 
+    it('rejects an Inner Sphere Platoon when Squads do not share a move class', () => {
+        const squads = materializeLeafPatternRule(IS_SQUAD, compileUnitFactsList([
+            createUnit('Foot Squad 1', 'Infantry', 'Conventional Infantry', false, [], 7, 'Tracked'),
+            createUnit('Foot Squad 2', 'Infantry', 'Conventional Infantry', false, [], 7, 'Tracked'),
+            createUnit('Foot Squad 3', 'Infantry', 'Conventional Infantry', false, [], 7, 'Tracked'),
+            createUnit('Jump Squad', 'Infantry', 'Conventional Infantry', false, [], 7, 'Jump'),
+        ])).groups;
+
+        const result = evaluateComposedCountRule(IS_PLATOON, compileGroupFactsList(squads));
+
+        expect(result.emitted).toEqual([]);
+        expect(result.leftoverCount).toBe(4);
+    });
+
+    it('evaluates a Clan Point from four jump Squads', () => {
+        const squads = materializeLeafPatternRule(CLAN_CI_SQUAD, compileUnitFactsList([
+            createUnit('Jump Squad 1', 'Infantry', 'Conventional Infantry', false, [], 5, 'Jump'),
+            createUnit('Jump Squad 2', 'Infantry', 'Conventional Infantry', false, [], 5, 'Jump'),
+            createUnit('Jump Squad 3', 'Infantry', 'Conventional Infantry', false, [], 5, 'Jump'),
+            createUnit('Jump Squad 4', 'Infantry', 'Conventional Infantry', false, [], 5, 'Jump'),
+        ])).groups;
+
+        const result = evaluateComposedCountRule(CLAN_CI_POINT, compileGroupFactsList(squads));
+
+        expect(result.emitted).toEqual([
+            jasmine.objectContaining({ modifierKey: '', perGroupCount: 4, copies: 1, tier: 0, compositionIndex: 0 }),
+        ]);
+        expect(result.leftoverCount).toBe(0);
+    });
+
+    it('evaluates a ComStar Level I from five jump Squads', () => {
+        const squads = materializeLeafPatternRule(COMSTAR_CI_SQUAD, compileUnitFactsList([
+            createUnit('Jump Squad 1', 'Infantry', 'Conventional Infantry', false, [], 6, 'Jump'),
+            createUnit('Jump Squad 2', 'Infantry', 'Conventional Infantry', false, [], 6, 'Jump'),
+            createUnit('Jump Squad 3', 'Infantry', 'Conventional Infantry', false, [], 6, 'Jump'),
+            createUnit('Jump Squad 4', 'Infantry', 'Conventional Infantry', false, [], 6, 'Jump'),
+            createUnit('Jump Squad 5', 'Infantry', 'Conventional Infantry', false, [], 6, 'Jump'),
+        ])).groups;
+
+        const groupFacts = compileGroupFactsList(squads);
+        const result = evaluateComposedCountRule(COMSTAR_LEVEL_I_FROM_SQUADS, groupFacts);
+        const materialized = materializeComposedCountRule(COMSTAR_LEVEL_I_FROM_SQUADS, groupFacts);
+
+        expect(result.emitted).toEqual([
+            jasmine.objectContaining({ modifierKey: '', perGroupCount: 5, copies: 1, tier: 0 }),
+        ]);
+        expect(materialized.groups).toEqual([
+            jasmine.objectContaining({ type: 'Level I', modifierKey: '', tier: 0 }),
+        ]);
+        expect(result.leftoverCount).toBe(0);
+    });
+
+    it('consumes leaf-pattern units only once across multiple modifier sizes', () => {
+        const rule: OrgLeafPatternRule = {
+            kind: 'leaf-pattern',
+            type: 'Lance',
+            modifiers: { '': 2, 'Single ': 1 },
+            tier: 1,
+            unitSelector: 'BM',
+            bucketBy: 'classKey',
+            patterns: [
+                {
+                    copySize: 2,
+                    demands: { BM: 2 },
+                },
+                {
+                    copySize: 1,
+                    demands: { BM: 1 },
+                },
+            ],
+        };
+        const units = compileUnitFactsList([
+            createUnit('Mek 1', 'Mek', 'BattleMek'),
+            createUnit('Mek 2', 'Mek', 'BattleMek'),
+            createUnit('Mek 3', 'Mek', 'BattleMek'),
+        ]);
+
+        const result = evaluateLeafPatternRule(rule, units);
+
+        expect(result.emitted).toEqual([
+            { modifierKey: '', perGroupCount: 2, copies: 1, tier: 1, patternIndex: 0, score: 0, allocations: [new Map([['BM', 2]])] },
+            { modifierKey: 'Single ', perGroupCount: 1, copies: 1, tier: 1, patternIndex: 1, score: 0, allocations: [new Map([['BM', 1]])] },
+        ]);
+        expect(result.leftoverCount).toBe(0);
+    });
+
+    it('evaluates Lance as a leaf-count rule while excluding conventional infantry', () => {
+        const units = compileUnitFactsList([
+            createUnit('Mek 1', 'Mek', 'BattleMek'),
+            createUnit('Mek 2', 'Mek', 'BattleMek'),
+            createUnit('Tank 1', 'Tank', 'Combat Vehicle'),
+            createUnit('BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('CI 1', 'Infantry', 'Conventional Infantry', false, [], 24),
+        ]);
+
+        const result = evaluateLeafCountRule(IS_LANCE, units);
+
+        expect(result.eligibleUnits.length).toBe(4);
+        expect(result.emitted).toEqual([
+            { modifierKey: '', perGroupCount: 4, copies: 1, tier: 1 },
+        ]);
+        expect(result.leftoverCount).toBe(0);
+    });
+
     it('evaluates Air Lance from one Flight and one Lance', () => {
         const groups = [
             createFlight('Flight A', ['A1', 'A2']),
@@ -596,6 +810,32 @@ describe('org-solver.util', () => {
             { modifierKey: '', perGroupCount: 2, copies: 1, tier: 1.5, compositionIndex: 0 },
         ]);
         expect(result.leftoverCount).toBe(0);
+    });
+
+    it('rejects Air Lance when the lance child includes non-BM units', () => {
+        const mixedLance: GroupSizeResult = {
+            name: 'Mixed Lance',
+            type: 'Lance',
+            modifierKey: '',
+            countsAsType: null,
+            tier: 1,
+            units: [
+                createUnit('Mek 1', 'Mek', 'BattleMek'),
+                createUnit('Mek 2', 'Mek', 'BattleMek'),
+                createUnit('Mek 3', 'Mek', 'BattleMek'),
+                createUnit('Tank 1', 'Tank', 'Combat Vehicle'),
+            ],
+        };
+
+        const groups = [
+            createFlight('Flight A', ['A1', 'A2']),
+            mixedLance,
+        ].map((group) => compileGroupFacts(group));
+
+        const result = evaluateComposedCountRule(IS_AIR_LANCE, groups);
+
+        expect(result.emitted).toEqual([]);
+        expect(result.leftoverCount).toBe(1);
     });
 
     it('evaluates Level II from Level I groups', () => {
@@ -613,6 +853,117 @@ describe('org-solver.util', () => {
         expect(result.emitted).toEqual([
             { modifierKey: '', perGroupCount: 6, copies: 1, tier: 1, compositionIndex: 0 },
         ]);
+        expect(result.leftoverCount).toBe(0);
+    });
+
+    it('rejects Choir when battle armor cannot be carried one-for-one by the available meks', () => {
+        const units = compileUnitFactsList([
+            createUnit('Omni Mek 1', 'Mek', 'BattleMek Omni', true),
+            createUnit('Omni Mek 2', 'Mek', 'BattleMek Omni', true),
+            createUnit('Omni Mek 3', 'Mek', 'BattleMek Omni', true),
+            createUnit('Omni Mek 4', 'Mek', 'BattleMek Omni', true),
+            createUnit('Omni Mek 5', 'Mek', 'BattleMek Omni', true),
+            createUnit('Mek 6', 'Mek', 'BattleMek'),
+            createUnit('BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 2', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 3', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 4', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 5', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 6', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+        ]);
+
+        const result = evaluateLeafPatternRule(COMSTAR_CHOIR, units);
+
+        expect(result.emitted).toEqual([]);
+        expect(result.leftoverCount).toBe(12);
+    });
+
+    it('evaluates Choir when MEC and XMEC battle armor can be carried by the available meks', () => {
+        const units = compileUnitFactsList([
+            createUnit('Omni Mek 1', 'Mek', 'BattleMek Omni', true),
+            createUnit('Omni Mek 2', 'Mek', 'BattleMek Omni', true),
+            createUnit('Omni Mek 3', 'Mek', 'BattleMek Omni', true),
+            createUnit('Omni Mek 4', 'Mek', 'BattleMek Omni', true),
+            createUnit('Omni Mek 5', 'Mek', 'BattleMek Omni', true),
+            createUnit('Mek 6', 'Mek', 'BattleMek'),
+            createUnit('BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 2', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 3', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 4', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 5', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 6', 'Infantry', 'Battle Armor', false, ['XMEC'], 4),
+        ]);
+
+        const result = evaluateLeafPatternRule(COMSTAR_CHOIR, units);
+
+        expect(result.emitted).toHaveSize(1);
+        expect(result.emitted[0]).toEqual(jasmine.objectContaining({
+            modifierKey: '',
+            perGroupCount: 12,
+            copies: 1,
+            score: 0,
+        }));
+        expect(result.leftoverCount).toBe(0);
+    });
+
+    it('rejects Choir when it has no transport-qualified battle armor pairing', () => {
+        const units = compileUnitFactsList([
+            createUnit('Mek 1', 'Mek', 'BattleMek'),
+            createUnit('Mek 2', 'Mek', 'BattleMek'),
+            createUnit('Mek 3', 'Mek', 'BattleMek'),
+            createUnit('Mek 4', 'Mek', 'BattleMek'),
+            createUnit('Mek 5', 'Mek', 'BattleMek'),
+            createUnit('Mek 6', 'Mek', 'BattleMek'),
+            createUnit('BA 1', 'Infantry', 'Battle Armor', false, [], 4),
+            createUnit('BA 2', 'Infantry', 'Battle Armor', false, [], 4),
+            createUnit('BA 3', 'Infantry', 'Battle Armor', false, [], 4),
+            createUnit('BA 4', 'Infantry', 'Battle Armor', false, [], 4),
+            createUnit('BA 5', 'Infantry', 'Battle Armor', false, [], 4),
+            createUnit('BA 6', 'Infantry', 'Battle Armor', false, [], 4),
+        ]);
+
+        const result = evaluateLeafPatternRule(COMSTAR_CHOIR, units);
+
+        expect(result.emitted).toEqual([]);
+        expect(result.leftoverCount).toBe(12);
+    });
+
+    it('evaluates Augmented Lance with MEC penalties against available omni carriers', () => {
+        const units = compileUnitFactsList([
+            createUnit('Carrier 1', 'Mek', 'BattleMek', false),
+            createUnit('Carrier 2', 'Mek', 'BattleMek', false),
+            createUnit('Carrier 3', 'Mek', 'BattleMek', false),
+            createUnit('Carrier 4', 'Mek', 'BattleMek', false),
+            createUnit('BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 2', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+        ]);
+
+        const result = evaluateLeafPatternRule(CC_AUGMENTED_LANCE, units);
+
+        expect(result.emitted).toHaveSize(1);
+        expect(result.emitted[0]).toEqual(jasmine.objectContaining({
+            modifierKey: '',
+            perGroupCount: 6,
+            copies: 1,
+            score: 2,
+        }));
+        expect(result.leftoverCount).toBe(0);
+    });
+
+    it('penalizes non-qualified battle armor in Augmented Lance matching', () => {
+        const units = compileUnitFactsList([
+            createUnit('Carrier 1', 'Mek', 'BattleMek'),
+            createUnit('Carrier 2', 'Mek', 'BattleMek'),
+            createUnit('Carrier 3', 'Mek', 'BattleMek'),
+            createUnit('Carrier 4', 'Mek', 'BattleMek'),
+            createUnit('BA 1', 'Infantry', 'Battle Armor', false, [], 4),
+            createUnit('BA 2', 'Infantry', 'Battle Armor', false, [], 4),
+        ]);
+
+        const result = evaluateLeafPatternRule(CC_AUGMENTED_LANCE, units);
+
+        expect(result.emitted).toHaveSize(1);
+        expect(result.emitted[0]?.score).toBe(4);
         expect(result.leftoverCount).toBe(0);
     });
 
