@@ -1,6 +1,10 @@
 import type { ASUnitTypeCode, MoveType, Unit, UnitSubtype, UnitType } from '../../models/units.model';
 import {
+    CC_AUGMENTED_BATTALION,
+    CC_AUGMENTED_COMPANY,
     CC_AUGMENTED_LANCE,
+    CC_AUGMENTED_REGIMENT,
+    CC_CORE_ORG,
     CLAN_CI_POINT,
     CLAN_CI_SQUAD,
     CLAN_CLUSTER,
@@ -993,8 +997,312 @@ describe('org-solver.util', () => {
         }));
     });
 
+    it('evaluates Trey and Sept from Un groups', () => {
+        const treyGroups = [
+            createUn('Un A', ['A1']),
+            createUn('Un B', ['B1']),
+            createUn('Un C', ['C1']),
+        ].map((group) => compileGroupFacts(group));
+        const septGroups = [
+            createUn('Un A', ['A1']),
+            createUn('Un B', ['B1']),
+            createUn('Un C', ['C1']),
+            createUn('Un D', ['D1']),
+            createUn('Un E', ['E1']),
+            createUn('Un F', ['F1']),
+            createUn('Un G', ['G1']),
+        ].map((group) => compileGroupFacts(group));
+
+        const treyResult = evaluateComposedCountRule(SOCIETY_TREY, treyGroups);
+        const septResult = evaluateComposedCountRule(SOCIETY_SEPT, septGroups);
+
+        expect(treyResult.emitted).toEqual([
+            jasmine.objectContaining({ modifierKey: '', perGroupCount: 3, copies: 1, tier: 0.8 }),
+        ]);
+        expect(treyResult.leftoverCount).toBe(0);
+        expect(septResult.emitted).toEqual([
+            jasmine.objectContaining({ modifierKey: '', perGroupCount: 7, copies: 1, tier: 1.6 }),
+        ]);
+        expect(septResult.leftoverCount).toBe(0);
+    });
+
+    it('evaluates Marian Century variants from tagged Contubernium groups', () => {
+        const nonInfantryGroups = [
+            createContubernium('C1', 'non-infantry', [createUnit('Mek 1', 'Mek', 'BattleMek')]),
+            createContubernium('C2', 'non-infantry', [createUnit('Mek 2', 'Mek', 'BattleMek')]),
+            createContubernium('C3', 'non-infantry', [createUnit('Mek 3', 'Mek', 'BattleMek')]),
+            createContubernium('C4', 'non-infantry', [createUnit('Mek 4', 'Mek', 'BattleMek')]),
+            createContubernium('C5', 'non-infantry', [createUnit('Mek 5', 'Mek', 'BattleMek')]),
+        ].map((group) => compileGroupFacts(group));
+        const infantryGroups = [
+            createContubernium('I1', 'infantry', [createUnit('CI 1', 'Infantry', 'Conventional Infantry', false, [], 10)]),
+            createContubernium('I2', 'infantry', [createUnit('CI 2', 'Infantry', 'Conventional Infantry', false, [], 10)]),
+            createContubernium('I3', 'infantry', [createUnit('CI 3', 'Infantry', 'Conventional Infantry', false, [], 10)]),
+            createContubernium('I4', 'infantry', [createUnit('CI 4', 'Infantry', 'Conventional Infantry', false, [], 10)]),
+            createContubernium('I5', 'infantry', [createUnit('CI 5', 'Infantry', 'Conventional Infantry', false, [], 10)]),
+            createContubernium('I6', 'infantry', [createUnit('CI 6', 'Infantry', 'Conventional Infantry', false, [], 10)]),
+            createContubernium('I7', 'infantry', [createUnit('CI 7', 'Infantry', 'Conventional Infantry', false, [], 10)]),
+            createContubernium('I8', 'infantry', [createUnit('CI 8', 'Infantry', 'Conventional Infantry', false, [], 10)]),
+            createContubernium('I9', 'infantry', [createUnit('CI 9', 'Infantry', 'Conventional Infantry', false, [], 10)]),
+            createContubernium('I10', 'infantry', [createUnit('CI 10', 'Infantry', 'Conventional Infantry', false, [], 10)]),
+        ].map((group) => compileGroupFacts(group));
+
+        const nonInfantryResult = evaluateComposedCountRule(MH_CENTURY_NON_INFANTRY, nonInfantryGroups);
+        const infantryResult = evaluateComposedCountRule(MH_CENTURY_INFANTRY, infantryGroups);
+
+        expect(nonInfantryResult.emitted).toEqual([
+            jasmine.objectContaining({ modifierKey: '', perGroupCount: 5, copies: 1, tier: 1 }),
+        ]);
+        expect(nonInfantryResult.leftoverCount).toBe(0);
+        expect(infantryResult.emitted).toEqual([
+            jasmine.objectContaining({ modifierKey: '', perGroupCount: 10, copies: 1, tier: 1 }),
+        ]);
+        expect(infantryResult.leftoverCount).toBe(0);
+    });
+
+    it('evaluates the Capellan augmented composed chain', () => {
+        const augmentedLances = [
+            { name: 'AL A', type: 'Augmented Lance', modifierKey: '', countsAsType: 'Lance', tier: 0.99 },
+            { name: 'AL B', type: 'Augmented Lance', modifierKey: '', countsAsType: 'Lance', tier: 0.99 },
+            { name: 'AL C', type: 'Augmented Lance', modifierKey: '', countsAsType: 'Lance', tier: 0.99 },
+            { name: 'AL D', type: 'Augmented Lance', modifierKey: '', countsAsType: 'Lance', tier: 0.99 },
+        ] as GroupSizeResult[];
+        const augmentedCompanies = [
+            { name: 'AC A', type: 'Augmented Company', modifierKey: '', countsAsType: 'Company', tier: 1.95 },
+            { name: 'AC B', type: 'Augmented Company', modifierKey: '', countsAsType: 'Company', tier: 1.95 },
+            { name: 'AC C', type: 'Augmented Company', modifierKey: '', countsAsType: 'Company', tier: 1.95 },
+            { name: 'AC D', type: 'Augmented Company', modifierKey: '', countsAsType: 'Company', tier: 1.95 },
+        ] as GroupSizeResult[];
+        const augmentedBattalions = [
+            { name: 'AB A', type: 'Augmented Battalion', modifierKey: '', countsAsType: 'Battalion', tier: 3 },
+            { name: 'AB B', type: 'Augmented Battalion', modifierKey: '', countsAsType: 'Battalion', tier: 3 },
+            { name: 'AB C', type: 'Augmented Battalion', modifierKey: '', countsAsType: 'Battalion', tier: 3 },
+            { name: 'Battalion A', type: 'Battalion', modifierKey: '', countsAsType: null, tier: 3 },
+        ] as GroupSizeResult[];
+
+        const companyResult = evaluateComposedCountRule(CC_AUGMENTED_COMPANY, augmentedLances.map((group) => compileGroupFacts(group)));
+        const battalionResult = evaluateComposedCountRule(CC_AUGMENTED_BATTALION, augmentedCompanies.map((group) => compileGroupFacts(group)));
+        const regimentResult = evaluateComposedCountRule(CC_AUGMENTED_REGIMENT, augmentedBattalions.map((group) => compileGroupFacts(group)));
+
+        expect(companyResult.emitted).toEqual([
+            jasmine.objectContaining({ modifierKey: 'Reinforced ', perGroupCount: 3, copies: 1, tier: 2.01 }),
+        ]);
+        expect(battalionResult.emitted).toEqual([
+            jasmine.objectContaining({ modifierKey: '', perGroupCount: 4, copies: 1, tier: 3.01 }),
+        ]);
+        expect(regimentResult.emitted).toEqual([
+            jasmine.objectContaining({ modifierKey: '', perGroupCount: 4, copies: 1, tier: 4.01 }),
+        ]);
+    });
+
+    it('evaluates the real IS core definitions module', () => {
+        const units = [
+            createUnit('Mek 1', 'Mek', 'BattleMek'),
+            createUnit('Mek 2', 'Mek', 'BattleMek'),
+            createUnit('Mek 3', 'Mek', 'BattleMek'),
+            createUnit('BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('CI 1', 'Infantry', 'Conventional Infantry', false, [], 24),
+        ];
+        const groups = [
+            createFlight('Flight A', ['A1', 'A2']),
+            createLance('Lance A', ['L1', 'L2', 'L3', 'L4']),
+            createLance('Lance B', ['L5', 'L6', 'L7', 'L8']),
+            createLance('Lance C', ['L9', 'L10', 'L11', 'L12']),
+        ];
+
+        const result = evaluateOrgDefinition(IS_CORE_ORG, units, groups);
+
+        const lanceEvaluation = result.ruleEvaluations.get(IS_LANCE);
+        const airLanceEvaluation = result.ruleEvaluations.get(IS_AIR_LANCE);
+        const companyEvaluation = result.ruleEvaluations.get(IS_COMPANY);
+
+        expect(lanceEvaluation).toEqual(jasmine.objectContaining({
+            leftoverCount: 0,
+        }));
+        expect(airLanceEvaluation).toEqual(jasmine.objectContaining({
+            leftoverCount: 2,
+        }));
+        expect(companyEvaluation).toEqual(jasmine.objectContaining({
+            leftoverCount: 0,
+        }));
+    });
+
+    it('evaluates the real ComStar core definitions module', () => {
+        const units = [
+            createUnit('Level I Unit', 'Mek', 'BattleMek'),
+            createUnit('Choir Mek 1', 'Mek', 'BattleMek Omni', true),
+            createUnit('Choir Mek 2', 'Mek', 'BattleMek Omni', true),
+            createUnit('Choir Mek 3', 'Mek', 'BattleMek Omni', true),
+            createUnit('Choir Mek 4', 'Mek', 'BattleMek Omni', true),
+            createUnit('Choir Mek 5', 'Mek', 'BattleMek Omni', true),
+            createUnit('Choir Mek 6', 'Mek', 'BattleMek'),
+            createUnit('Choir BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('Choir BA 2', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('Choir BA 3', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('Choir BA 4', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('Choir BA 5', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('Choir BA 6', 'Infantry', 'Battle Armor', false, ['XMEC'], 4),
+        ];
+        const groups = [
+            createLevelI('Level I A', ['A1']),
+            createLevelI('Level I B', ['B1']),
+            createLevelI('Level I C', ['C1']),
+            createLevelI('Level I D', ['D1']),
+            createLevelI('Level I E', ['E1']),
+            createLevelI('Level I F', ['F1']),
+            createLevelI('Level I G', ['G1']),
+            createLevelI('Level I H', ['H1']),
+            createLevelI('Level I I', ['I1']),
+            createLevelI('Level I J', ['J1']),
+            createLevelI('Level I K', ['K1']),
+            createLevelI('Level I L', ['L1']),
+            { name: 'Level II A', type: 'Level II', modifierKey: '', countsAsType: null, tier: 1 },
+            { name: 'Level II B', type: 'Level II', modifierKey: '', countsAsType: null, tier: 1 },
+            { name: 'Level II C', type: 'Level II', modifierKey: '', countsAsType: null, tier: 1 },
+            { name: 'Level II D', type: 'Level II', modifierKey: '', countsAsType: null, tier: 1 },
+            { name: 'Level II E', type: 'Level II', modifierKey: '', countsAsType: null, tier: 1 },
+            { name: 'Level II F', type: 'Level II', modifierKey: '', countsAsType: null, tier: 1 },
+        ] as GroupSizeResult[];
+
+        const result = evaluateOrgDefinition(COMSTAR_CORE_ORG, units, groups);
+
+        const choirEvaluation = result.ruleEvaluations.get(COMSTAR_CHOIR);
+        const levelIiEvaluation = result.ruleEvaluations.get(COMSTAR_LEVEL_II);
+        const levelIiiEvaluation = result.ruleEvaluations.get(COMSTAR_CORE_ORG.rules[3]);
+
+        expect(choirEvaluation).toEqual(jasmine.objectContaining({
+            leftoverCount: 1,
+        }));
+        expect(levelIiEvaluation).toEqual(jasmine.objectContaining({
+            leftoverCount: 0,
+        }));
+        expect(levelIiiEvaluation).toEqual(jasmine.objectContaining({
+            leftoverCount: 0,
+        }));
+    });
+
+    it('evaluates the real Society core definitions module', () => {
+        const units = [
+            createUnit('Un Unit', 'Mek', 'BattleMek'),
+            createUnit('Battle Armor', 'Infantry', 'Battle Armor', false, ['MEC'], 3),
+            createUnit('Proto', 'ProtoMek', 'ProtoMek'),
+            createAero('Aero'),
+        ];
+        const groups = [
+            createUn('Un A', ['A1']),
+            createUn('Un B', ['B1']),
+            createUn('Un C', ['C1']),
+            createUn('Un D', ['D1']),
+            createUn('Un E', ['E1']),
+            createUn('Un F', ['F1']),
+            createUn('Un G', ['G1']),
+        ];
+
+        const result = evaluateOrgDefinition(SOCIETY_CORE_ORG, units, groups);
+
+        const unEvaluation = result.ruleEvaluations.get(SOCIETY_CORE_ORG.rules[0]);
+        const treyEvaluation = result.ruleEvaluations.get(SOCIETY_TREY);
+        const septEvaluation = result.ruleEvaluations.get(SOCIETY_SEPT);
+
+        expect(unEvaluation).toEqual(jasmine.objectContaining({
+            leftoverCount: 0,
+        }));
+        expect(treyEvaluation).toEqual(jasmine.objectContaining({
+            leftoverCount: 1,
+        }));
+        expect(septEvaluation).toEqual(jasmine.objectContaining({
+            leftoverCount: 0,
+        }));
+    });
+
+    it('evaluates the real Marian Hegemony core definitions module', () => {
+        const units = [
+            createUnit('Mek', 'Mek', 'BattleMek'),
+            createUnit('BA', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+            createUnit('CI', 'Infantry', 'Conventional Infantry', false, [], 10),
+            createUnit('Mech CI', 'Infantry', 'Mechanized Conventional Infantry', false, [], 5),
+        ];
+        const groups = [
+            createContubernium('C1', 'non-infantry', [createUnit('Mek 1', 'Mek', 'BattleMek')]),
+            createContubernium('C2', 'non-infantry', [createUnit('Mek 2', 'Mek', 'BattleMek')]),
+            createContubernium('C3', 'non-infantry', [createUnit('Mek 3', 'Mek', 'BattleMek')]),
+            createContubernium('C4', 'non-infantry', [createUnit('Mek 4', 'Mek', 'BattleMek')]),
+            createContubernium('C5', 'non-infantry', [createUnit('Mek 5', 'Mek', 'BattleMek')]),
+            createContubernium('I1', 'infantry', [createUnit('CI 1', 'Infantry', 'Conventional Infantry', false, [], 10)]),
+            createContubernium('I2', 'infantry', [createUnit('CI 2', 'Infantry', 'Conventional Infantry', false, [], 10)]),
+            createContubernium('I3', 'infantry', [createUnit('CI 3', 'Infantry', 'Conventional Infantry', false, [], 10)]),
+            createContubernium('I4', 'infantry', [createUnit('CI 4', 'Infantry', 'Conventional Infantry', false, [], 10)]),
+            createContubernium('I5', 'infantry', [createUnit('CI 5', 'Infantry', 'Conventional Infantry', false, [], 10)]),
+            createContubernium('I6', 'infantry', [createUnit('CI 6', 'Infantry', 'Conventional Infantry', false, [], 10)]),
+            createContubernium('I7', 'infantry', [createUnit('CI 7', 'Infantry', 'Conventional Infantry', false, [], 10)]),
+            createContubernium('I8', 'infantry', [createUnit('CI 8', 'Infantry', 'Conventional Infantry', false, [], 10)]),
+            createContubernium('I9', 'infantry', [createUnit('CI 9', 'Infantry', 'Conventional Infantry', false, [], 10)]),
+            createContubernium('I10', 'infantry', [createUnit('CI 10', 'Infantry', 'Conventional Infantry', false, [], 10)]),
+            { name: 'Maniple A', type: 'Maniple', modifierKey: '', countsAsType: null, tier: 2 },
+            { name: 'Maniple B', type: 'Maniple', modifierKey: '', countsAsType: null, tier: 2 },
+            { name: 'Cohort A', type: 'Cohort', modifierKey: '', countsAsType: null, tier: 3 },
+            { name: 'Cohort B', type: 'Cohort', modifierKey: '', countsAsType: null, tier: 3 },
+            { name: 'Cohort C', type: 'Cohort', modifierKey: '', countsAsType: null, tier: 3 },
+            { name: 'Cohort D', type: 'Cohort', modifierKey: '', countsAsType: null, tier: 3 },
+        ] as GroupSizeResult[];
+
+        const result = evaluateOrgDefinition(MH_CORE_ORG, units, groups);
+
+        const centuryNonInfantryEvaluation = result.ruleEvaluations.get(MH_CENTURY_NON_INFANTRY);
+        const centuryInfantryEvaluation = result.ruleEvaluations.get(MH_CENTURY_INFANTRY);
+        const legionEvaluation = result.ruleEvaluations.get(MH_LEGION);
+
+        expect(centuryNonInfantryEvaluation).toEqual(jasmine.objectContaining({
+            leftoverCount: 0,
+        }));
+        expect(centuryInfantryEvaluation).toEqual(jasmine.objectContaining({
+            leftoverCount: 0,
+        }));
+        expect(legionEvaluation).toEqual(jasmine.objectContaining({
+            leftoverCount: 0,
+        }));
+    });
+
+    it('evaluates the real Capellan core definitions module', () => {
+        const units = [
+            createUnit('Mek 1', 'Mek', 'BattleMek'),
+            createUnit('Mek 2', 'Mek', 'BattleMek'),
+            createUnit('Mek 3', 'Mek', 'BattleMek'),
+            createUnit('Mek 4', 'Mek', 'BattleMek'),
+            createUnit('BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 2', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+        ];
+        const groups = [
+            { name: 'Augmented Company A', type: 'Augmented Company', modifierKey: '', countsAsType: 'Company', tier: 1.95 },
+            { name: 'Augmented Company B', type: 'Augmented Company', modifierKey: '', countsAsType: 'Company', tier: 1.95 },
+            { name: 'Augmented Company C', type: 'Augmented Company', modifierKey: '', countsAsType: 'Company', tier: 1.95 },
+            { name: 'Augmented Company D', type: 'Augmented Company', modifierKey: '', countsAsType: 'Company', tier: 1.95 },
+            { name: 'Augmented Battalion A', type: 'Augmented Battalion', modifierKey: '', countsAsType: 'Battalion', tier: 3 },
+            { name: 'Augmented Battalion B', type: 'Augmented Battalion', modifierKey: '', countsAsType: 'Battalion', tier: 3 },
+            { name: 'Augmented Battalion C', type: 'Augmented Battalion', modifierKey: '', countsAsType: 'Battalion', tier: 3 },
+            { name: 'Battalion A', type: 'Battalion', modifierKey: '', countsAsType: null, tier: 3 },
+        ] as GroupSizeResult[];
+
+        const result = evaluateOrgDefinition(CC_CORE_ORG, units, groups);
+
+        const augmentedLanceEvaluation = result.ruleEvaluations.get(CC_AUGMENTED_LANCE);
+        const augmentedCompanyEvaluation = result.ruleEvaluations.get(CC_AUGMENTED_COMPANY);
+        const augmentedRegimentEvaluation = result.ruleEvaluations.get(CC_AUGMENTED_REGIMENT);
+
+        expect(augmentedLanceEvaluation).toEqual(jasmine.objectContaining({
+            leftoverCount: 0,
+        }));
+        expect(augmentedCompanyEvaluation).toEqual(jasmine.objectContaining({
+            leftoverCount: 0,
+        }));
+        expect(augmentedRegimentEvaluation).toEqual(jasmine.objectContaining({
+            leftoverCount: 0,
+        }));
+    });
+
     it('resolves new-path org definitions by faction registry', () => {
         expect(resolveOrgDefinitionSpec('Word of Blake', 'Inner Sphere')).toBe(COMSTAR_CORE_ORG);
+        expect(resolveOrgDefinitionSpec('Capellan Confederation', 'Inner Sphere')).toBe(CC_CORE_ORG);
         expect(resolveOrgDefinitionSpec('Wolf\'s Dragoons', 'Mercenary')).toBe(WD_CORE_ORG);
         expect(resolveOrgDefinitionSpec('Unknown Clan', 'HW Clan')).toBe(CLAN_CORE_ORG);
     });
