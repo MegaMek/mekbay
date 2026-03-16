@@ -1387,6 +1387,20 @@ describe('org-solver.util', () => {
         expect(clusterResult.leftoverCount).toBe(0);
     });
 
+    it('evaluates a Clan Trinary from Binary plus Star via alternative composition', () => {
+        const groups = [
+            createBattleMekGroup('Binary A', 'Binary', 1.8, 10),
+            createBattleMekGroup('Star A', 'Star', 1, 5),
+        ].map((group) => compileGroupFacts(group));
+
+        const result = evaluateComposedCountRule(CLAN_TRINARY, groups);
+
+        expect(result.emitted).toEqual([
+            jasmine.objectContaining({ modifierKey: '', perGroupCount: 2, copies: 1, tier: 2 }),
+        ]);
+        expect(result.leftoverCount).toBe(0);
+    });
+
     it('materializes composed-count rules into parent groups with preserved children', () => {
         const groups = materializeComposedCountRule(IS_COMPANY, [
             compileGroupFacts(createLance('Lance A', ['A1', 'A2', 'A3', 'A4'])),
@@ -2057,6 +2071,248 @@ describe('org-solver.util resolve parity', () => {
         expect(result.groups.every((group) => group.units?.[0].internal === 4)).toBeTrue();
         expect(result.leftoverUnitFacts).toEqual([]);
     });
+
+    it('resolves 1 BM in Society as Un', () => {
+        const result = resolveFromUnits([createBM('BM1')], 'Society', 'HW Clan');
+
+        expect(result.length).toBe(1);
+        expect(result[0].type).toBe('Un');
+        expect(result[0].name).toBe('Un');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 2 BM in Society as 2x Un', () => {
+        const result = resolveFromUnits([
+            createBM('BM1'),
+            createBM('BM2'),
+        ], 'Society', 'HW Clan');
+
+        expect(result.length).toBe(2);
+        expect(result.every((group) => group.type === 'Un')).toBeTrue();
+        expect(result.every((group) => group.name === 'Un')).toBeTrue();
+        expect(result.every((group) => group.leftoverUnits === undefined)).toBeTrue();
+    });
+
+    it('resolves 3 BM in Society as Trey', () => {
+        const result = resolveFromUnits([
+            createBM('BM1'),
+            createBM('BM1'),
+            createBM('BM2'),
+        ], 'Society', 'HW Clan');
+
+        expect(result.length).toBe(1);
+        expect(result[0].type).toBe('Trey');
+        expect(result[0].name).toBe('Trey');
+        expect(result[0].children?.length).toBe(3);
+        expect(result[0].children?.every((group) => group.type === 'Un')).toBeTrue();
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 7 CV in Society as Un', () => {
+        const result = resolveFromUnits([
+            createCV('CV1'),
+            createCV('CV1'),
+            createCV('CV1'),
+            createCV('CV1'),
+            createCV('CV1'),
+            createCV('CV1'),
+            createCV('CV2'),
+        ], 'Society', 'HW Clan');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Un');
+        expect(result[0].type).toBe('Un');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 3 battle armor troopers in Society as Un', () => {
+        const result = resolveFromUnits([
+            createUnit('BA1', 'Infantry', 'Battle Armor', false, [], 3),
+        ], 'Society', 'HW Clan');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Un');
+        expect(result[0].type).toBe('Un');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 75 conventional infantry troopers in Society as Un regardless of move type', () => {
+        const result = resolveFromUnits([
+            createUnit('CI75', 'Infantry', 'Mechanized Conventional Infantry', false, [], 75, 'Hover'),
+        ], 'Society', 'HW Clan');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Un');
+        expect(result[0].type).toBe('Un');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('does not merge 2 PM plus 1 AF into a Society Un', () => {
+        const result = resolveFromUnits([
+            createUnit('PM1', 'ProtoMek', 'ProtoMek'),
+            createUnit('PM2', 'ProtoMek', 'ProtoMek'),
+            createUnit('AF1', 'Aero', 'Aerospace Fighter'),
+        ], 'Society', 'HW Clan');
+
+        expect(result.length).toBe(1);
+        expect(result[0].type).toBeNull();
+        expect(result[0].leftoverUnits?.length).toBe(3);
+    });
+
+    it('resolves 2 BM plus 1 AF as Air Lance', () => {
+        const result = resolveFromUnits([
+            createBM('BM1'),
+            createBM('BM2'),
+            createAero('AF1'),
+        ], 'Federated Suns', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].type).toBe('Air Lance');
+        expect(result[0].name).toBe('Air Lance');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 5 BA (with MEC special) and 5 BM (with OMNI special) into a Nova', () => {
+        const result = resolveFromUnits([
+            createUnit('BA1', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+            createUnit('BA2', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+            createUnit('BA3', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+            createUnit('BA4', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+            createUnit('BA5', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+            createBM('BM1', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM2', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM3', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM4', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM5', 'BattleMek Omni', true, ['OMNI']),
+        ], 'Clan Test', 'HW Clan');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Nova');
+        expect(result[0].type).toBe('Nova');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 10 BA (with MEC special) and 10 BM (with OMNI special) into a Supernova Binary', () => {
+        const result = resolveFromUnits([
+            ...Array.from({ length: 10 }, (_, index) =>
+                createUnit(`BA${index + 1}`, 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+            ),
+            ...Array.from({ length: 10 }, (_, index) =>
+                createBM(`BM${index + 1}`, 'BattleMek Omni', true, ['OMNI']),
+            ),
+        ], 'Clan Test', 'HW Clan');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Supernova Binary');
+        expect(result[0].type).toBe('Supernova Binary');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 10BA+10BM and 5BA+5BM in Supernova Trinary', () => {
+        const supernovaBinary = resolveFromUnits([
+            ...Array.from({ length: 10 }, (_, index) =>
+                createUnit(`SN-BA${index + 1}`, 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+            ),
+            ...Array.from({ length: 10 }, (_, index) =>
+                createBM(`SN-BM${index + 1}`, 'BattleMek Omni', true, ['OMNI']),
+            ),
+        ], 'Clan Test', 'HW Clan');
+
+        expect(supernovaBinary.length).toBe(1);
+        expect(supernovaBinary[0].name).toBe('Supernova Binary');
+        expect(supernovaBinary[0].type).toBe('Supernova Binary');
+
+        const nova = resolveFromUnits([
+            ...Array.from({ length: 5 }, (_, index) =>
+                createUnit(`NV-BA${index + 1}`, 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+            ),
+            ...Array.from({ length: 5 }, (_, index) =>
+                createBM(`NV-BM${index + 1}`, 'BattleMek Omni', true, ['OMNI']),
+            ),
+        ], 'Clan Test', 'HW Clan');
+
+        expect(nova.length).toBe(1);
+        expect(nova[0].name).toBe('Nova');
+        expect(nova[0].type).toBe('Nova');
+
+        const result = resolveFromGroups('Clan Test', 'HW Clan', [
+            supernovaBinary[0],
+            nova[0],
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Supernova Trinary');
+        expect(result[0].type).toBe('Supernova Trinary');
+        expect(result[0].leftoverUnits).toBeUndefined();
+        expect(result[0].children?.length).toBe(2);
+    });
+
+    it('resolves 10 BM and 5 full BA squads into a Trinary instead of a Binary', () => {
+        const pointGroups = [
+            ...Array.from({ length: 10 }, (_, index) =>
+                resolveFromUnits([
+                    createBM(`TRI-BM${index + 1}`, 'BattleMek Omni', true, ['OMNI']),
+                ], 'Clan Test', 'HW Clan')[0],
+            ),
+            ...Array.from({ length: 5 }, (_, index) =>
+                resolveFromUnits([
+                    createUnit(`TRI-BA${index + 1}`, 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+                ], 'Clan Test', 'HW Clan')[0],
+            ),
+        ];
+
+        expect(pointGroups).toHaveSize(15);
+        expect(pointGroups.every((group) => group.type === 'Point')).toBeTrue();
+
+        const result = resolveFromGroups('Clan Test', 'HW Clan', pointGroups);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Trinary');
+        expect(result[0].type).toBe('Trinary');
+        expect(result[0].leftoverUnits).toBeUndefined();
+        expect(result[0].children?.length).toBe(3);
+        expect(result[0].children?.every((child) => child.type === 'Star')).toBeTrue();
+    });
+
+    it('resolves 5 BA (MEC/XMEC) and 5 BM (OMNI and not) into a Nova', () => {
+        const result = resolveFromUnits([
+            createUnit('BA1', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+            createUnit('BA1b', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+            createUnit('BA2', 'Infantry', 'Battle Armor', false, ['XMEC'], 5),
+            createUnit('BA2b', 'Infantry', 'Battle Armor', false, ['XMEC'], 5),
+            createUnit('BA3', 'Infantry', 'Battle Armor', false, ['XMEC'], 5),
+            createBM('BM1', 'BattleMek Omni'),
+            createBM('BM2', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM1b', 'BattleMek Omni'),
+            createBM('BM2b', 'BattleMek Omni', true, ['OMNI']),
+            createBM('BM2c', 'BattleMek Omni', true, ['OMNI']),
+        ], 'Clan Test', 'HW Clan');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Nova');
+        expect(result[0].type).toBe('Nova');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 5 BA with MEC and 6 OMNI BM into a Binary instead of a Nova plus leftover', () => {
+        const result = resolveFromUnits([
+            ...Array.from({ length: 5 }, (_, index) =>
+                createUnit(`BIN-BA${index + 1}`, 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+            ),
+            ...Array.from({ length: 6 }, (_, index) =>
+                createBM(`BIN-BM${index + 1}`, 'BattleMek Omni', true, ['OMNI']),
+            ),
+        ], 'Clan Test', 'HW Clan');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Binary');
+        expect(result[0].type).toBe('Binary');
+        expect(result[0].leftoverUnits).toBeUndefined();
+        expect(result[0].children?.length).toBe(2);
+        expect(result[0].children?.every((child) => child.type === 'Star')).toBeTrue();
+        expect(result[0].children?.map((child) => child.modifierKey).sort()).toEqual(['', 'Reinforced ']);
+    });
+
 });
 
 function createForeignGroup(
@@ -2305,6 +2561,158 @@ describe('org-solver.util aggregation and foreign parity', () => {
 
         expect(listed.name).toBe('Single');
         expect(listed.tier).toBe(-1);
+    });
+
+    it('keeps Inner Sphere repeated group aggregation stable across multiple passes', () => {
+        const companyGroups: GroupSizeResult[] = [];
+
+        for (let companyIndex = 0; companyIndex < 9; companyIndex += 1) {
+            const companyResult = resolveFromUnits(
+                Array.from({ length: 12 }, (_, unitIndex) =>
+                    createBM(`IS-BM-${companyIndex + 1}-${unitIndex + 1}`),
+                ),
+                'Federated Suns',
+                'Inner Sphere',
+            );
+
+            expect(companyResult.length).toBe(1);
+            expect(companyResult[0].type).toBe('Company');
+            companyGroups.push(companyResult[0]);
+        }
+
+        const firstPass = resolveFromGroups('Federated Suns', 'Inner Sphere', companyGroups);
+        const secondPass = resolveFromGroups('Federated Suns', 'Inner Sphere', firstPass);
+        const thirdPass = resolveFromGroups('Federated Suns', 'Inner Sphere', secondPass);
+
+        for (const pass of [firstPass, secondPass, thirdPass]) {
+            expect(pass.length).toBe(1);
+            expect(pass[0].name).toBe('Regiment');
+            expect(pass[0].type).toBe('Regiment');
+            expect(pass[0].children?.length).toBe(3);
+            expect(pass[0].children?.every((child) => child.type === 'Battalion')).toBeTrue();
+            expect(pass[0].leftoverUnits).toBeUndefined();
+        }
+    });
+
+    it('repeatedly aggregates Inner Sphere Lance and Flight groups up through Air Lances and a Brigade', () => {
+        function buildAirLanceCompany(companyIndex: number): GroupSizeResult {
+            const airLances: GroupSizeResult[] = [];
+
+            for (let airLanceIndex = 0; airLanceIndex < 3; airLanceIndex += 1) {
+                const lanceResult = resolveFromUnits(
+                    Array.from({ length: 4 }, (_, unitIndex) =>
+                        createBM(`IS-L-${companyIndex + 1}-${airLanceIndex + 1}-${unitIndex + 1}`),
+                    ),
+                    'Federated Suns',
+                    'Inner Sphere',
+                );
+                const flightResult = resolveFromUnits([
+                    createAero(`IS-AF-${companyIndex + 1}-${airLanceIndex + 1}-1`),
+                    createAero(`IS-AF-${companyIndex + 1}-${airLanceIndex + 1}-2`),
+                ], 'Federated Suns', 'Inner Sphere');
+
+                expect(lanceResult.length).toBe(1);
+                expect(lanceResult[0].type).toBe('Lance');
+                expect(flightResult.length).toBe(1);
+                expect(flightResult[0].type).toBe('Flight');
+
+                const airLancePass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', [lanceResult[0], flightResult[0]]);
+                const airLancePass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', airLancePass1);
+                const airLancePass3 = resolveFromGroups('Federated Suns', 'Inner Sphere', airLancePass2);
+
+                for (const pass of [airLancePass1, airLancePass2, airLancePass3]) {
+                    expect(pass.length).toBe(1);
+                    expect(pass[0].type).toBe('Air Lance');
+                    expect(pass[0].name).toBe('Air Lance');
+                    expect(pass[0].children?.length).toBe(2);
+                    expect(pass[0].children?.some((child) => child.type === 'Lance')).toBeTrue();
+                    expect(pass[0].children?.some((child) => child.type === 'Flight')).toBeTrue();
+                    expect(pass[0].leftoverUnits).toBeUndefined();
+                }
+
+                airLances.push(airLancePass3[0]);
+            }
+
+            const companyPass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', airLances);
+            const companyPass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', companyPass1);
+            const companyPass3 = resolveFromGroups('Federated Suns', 'Inner Sphere', companyPass2);
+
+            for (const pass of [companyPass1, companyPass2, companyPass3]) {
+                expect(pass.length).toBe(1);
+                expect(pass[0].type).toBe('Company');
+                expect(pass[0].name).toBe('Company');
+                expect(pass[0].children?.length).toBe(3);
+                expect(pass[0].children?.every((child) => child.type === 'Air Lance')).toBeTrue();
+                expect(pass[0].leftoverUnits).toBeUndefined();
+            }
+
+            return companyPass3[0];
+        }
+
+        function buildBattalion(battalionIndex: number): GroupSizeResult {
+            const companies = [
+                buildAirLanceCompany(battalionIndex * 3),
+                buildAirLanceCompany(battalionIndex * 3 + 1),
+                buildAirLanceCompany(battalionIndex * 3 + 2),
+            ];
+
+            const battalionPass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', companies);
+            const battalionPass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', battalionPass1);
+            const battalionPass3 = resolveFromGroups('Federated Suns', 'Inner Sphere', battalionPass2);
+
+            for (const pass of [battalionPass1, battalionPass2, battalionPass3]) {
+                expect(pass.length).toBe(1);
+                expect(pass[0].name).toBe('Battalion');
+                expect(pass[0].type).toBe('Battalion');
+                expect(pass[0].children?.length).toBe(3);
+                expect(pass[0].children?.every((child) => child.type === 'Company')).toBeTrue();
+                expect(pass[0].leftoverUnits).toBeUndefined();
+            }
+
+            return battalionPass3[0];
+        }
+
+        function buildRegiment(regimentIndex: number): GroupSizeResult {
+            const battalions = [
+                buildBattalion(regimentIndex * 3),
+                buildBattalion(regimentIndex * 3 + 1),
+                buildBattalion(regimentIndex * 3 + 2),
+            ];
+
+            const regimentPass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', battalions);
+            const regimentPass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', regimentPass1);
+            const regimentPass3 = resolveFromGroups('Federated Suns', 'Inner Sphere', regimentPass2);
+
+            for (const pass of [regimentPass1, regimentPass2, regimentPass3]) {
+                expect(pass.length).toBe(1);
+                expect(pass[0].name).toBe('Regiment');
+                expect(pass[0].type).toBe('Regiment');
+                expect(pass[0].children?.length).toBe(3);
+                expect(pass[0].children?.every((child) => child.type === 'Battalion')).toBeTrue();
+                expect(pass[0].leftoverUnits).toBeUndefined();
+            }
+
+            return regimentPass3[0];
+        }
+
+        const regiments = [
+            buildRegiment(0),
+            buildRegiment(1),
+            buildRegiment(2),
+        ];
+
+        const brigadePass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', regiments);
+        const brigadePass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', brigadePass1);
+        const brigadePass3 = resolveFromGroups('Federated Suns', 'Inner Sphere', brigadePass2);
+
+        for (const pass of [brigadePass1, brigadePass2, brigadePass3]) {
+            expect(pass.length).toBe(1);
+            expect(pass[0].name).toBe('Brigade');
+            expect(pass[0].type).toBe('Brigade');
+            expect(pass[0].children?.length).toBe(3);
+            expect(pass[0].children?.every((child) => child.type === 'Regiment')).toBeTrue();
+            expect(pass[0].leftoverUnits).toBeUndefined();
+        }
     });
 
     it('crossgrades foreign groups to the nearest dynamic-tier modifier in the target org', () => {
