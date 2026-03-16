@@ -136,7 +136,6 @@
         "test": {
           "builder": "@angular/build:karma",
           "options": {
-            "karmaConfig": "karma.conf.cjs",
             "tsConfig": "tsconfig.spec.json",
             "assets": [
               {

@@ -2,7 +2,7 @@ import { GameSystem } from '../models/common.model';
 import { LoadForceEntry, type LoadForceGroup } from '../models/load-force-entry.model';
 import type { Unit } from '../models/units.model';
 import type { GroupSizeResult } from './org/org-types';
-import { resolveFromGroups, resolveFromUnits } from './org/org-solver.util';
+import { resolveFromGroups, resolveFromUnits } from './org-solver.util';
 import { aggregateGroupsResult, getAggregatedGroupsResult, getOrgFromForce, getOrgFromForceCollection, getOrgFromGroup } from './org-namer.util';
 describe('getAggregatedGroupsResult', () => {
     it('passes through a single input group without upgrades or conversions', () => {
