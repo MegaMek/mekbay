@@ -6,7 +6,6 @@ import {
     CC_AUGMENTED_REGIMENT,
     CC_CORE_ORG,
     CLAN_CI_POINT,
-    CLAN_CI_SQUAD,
     CLAN_CLUSTER,
     CLAN_CORE_ORG,
     CLAN_NOVA,
@@ -14,7 +13,6 @@ import {
     CLAN_SUPERNOVA_TRINARY,
     CLAN_TRINARY,
     COMSTAR_CHOIR,
-    COMSTAR_CI_SQUAD,
     COMSTAR_CORE_ORG,
     COMSTAR_LEVEL_I_FROM_SQUADS,
     COMSTAR_LEVEL_II,
@@ -25,7 +23,6 @@ import {
     IS_FLIGHT,
     IS_LANCE,
     IS_PLATOON,
-    IS_SQUAD,
     MH_CENTURY_INFANTRY,
     MH_CENTURY_NON_INFANTRY,
     MH_LEGION,
@@ -51,16 +48,21 @@ import {
     getAggregatedGroupsResult,
 } from './org-namer.util';
 import {
+    getDynamicTierForModifier,
+} from './org-tier.util';
+import {
     DEFAULT_ORG_SPEC,
     resolveOrgDefinitionSpec,
 } from './org-registry.util';
 import {
     evaluateComposedCountRule,
+    evaluateCIFormationRule,
     evaluateFactionOrgDefinition,
     evaluateLeafCountRule,
     evaluateLeafPatternRule,
     evaluateOrgDefinition,
     materializeComposedCountRule,
+    materializeCIFormationRule,
     materializeLeafCountRule,
     materializeLeafPatternRule,
     resolveFromGroups,
@@ -684,26 +686,27 @@ describe('org-solver.util', () => {
         expect(result.leftoverCount).toBe(0);
     });
 
-    it('rejects an Inner Sphere CI Squad when the move-class troop count is not exact', () => {
+    it('materializes an Inner Sphere Squad plus leftover trooper from a non-exact unit', () => {
         const units = compileUnitFactsList([
             createUnit('CI Squad', 'Infantry', 'Conventional Infantry', false, [], 8, 'Tracked'),
         ]);
 
-        const result = evaluateLeafPatternRule(IS_SQUAD, units);
+        const result = materializeCIFormationRule(IS_PLATOON, units);
 
-        expect(result.emitted).toEqual([]);
-        expect(result.leftoverCount).toBe(1);
+        expect(result.groups).toHaveSize(1);
+        expect(result.groups[0]).toEqual(jasmine.objectContaining({ name: 'Squad', type: 'Squad', count: 1 }));
+        expect(result.leftoverUnitAllocations).toEqual([
+            jasmine.objectContaining({ troopers: 1 }),
+        ]);
     });
 
-    it('evaluates an Inner Sphere Platoon from four same-motive Squads', () => {
-        const squads = materializeLeafPatternRule(IS_SQUAD, compileUnitFactsList([
+    it('evaluates an Inner Sphere Platoon directly from same-motive troopers', () => {
+        const result = evaluateCIFormationRule(IS_PLATOON, compileUnitFactsList([
             createUnit('CI Squad 1', 'Infantry', 'Conventional Infantry', false, [], 7, 'Tracked'),
             createUnit('CI Squad 2', 'Infantry', 'Conventional Infantry', false, [], 7, 'Tracked'),
             createUnit('CI Squad 3', 'Infantry', 'Conventional Infantry', false, [], 7, 'Tracked'),
             createUnit('CI Squad 4', 'Infantry', 'Conventional Infantry', false, [], 7, 'Tracked'),
-        ])).groups;
-
-        const result = evaluateComposedCountRule(IS_PLATOON, compileGroupFactsList(squads));
+        ]));
 
         expect(result.emitted).toEqual([
             jasmine.objectContaining({ modifierKey: '', perGroupCount: 4, copies: 1, tier: 1 }),
@@ -711,48 +714,48 @@ describe('org-solver.util', () => {
         expect(result.leftoverCount).toBe(0);
     });
 
-    it('rejects an Inner Sphere Platoon when Squads do not share a move class', () => {
-        const squads = materializeLeafPatternRule(IS_SQUAD, compileUnitFactsList([
+    it('keeps different move classes separated in Inner Sphere infantry formation output', () => {
+        const result = materializeCIFormationRule(IS_PLATOON, compileUnitFactsList([
             createUnit('Foot Squad 1', 'Infantry', 'Conventional Infantry', false, [], 7, 'Tracked'),
             createUnit('Foot Squad 2', 'Infantry', 'Conventional Infantry', false, [], 7, 'Tracked'),
             createUnit('Foot Squad 3', 'Infantry', 'Conventional Infantry', false, [], 7, 'Tracked'),
             createUnit('Jump Squad', 'Infantry', 'Conventional Infantry', false, [], 7, 'Jump'),
-        ])).groups;
+        ]));
 
-        const result = evaluateComposedCountRule(IS_PLATOON, compileGroupFactsList(squads));
-
-        expect(result.emitted).toEqual([]);
-        expect(result.leftoverCount).toBe(4);
+        expect(result.groups).toHaveSize(2);
+        expect(result.groups).toContain(jasmine.objectContaining({ name: '3x Squad', type: 'Squad', count: 3 }));
+        expect(result.groups).toContain(jasmine.objectContaining({ name: 'Squad', type: 'Squad', count: 1 }));
     });
 
-    it('evaluates a Clan Point from four jump Squads', () => {
-        const squads = materializeLeafPatternRule(CLAN_CI_SQUAD, compileUnitFactsList([
+    it('evaluates a Clan Point directly from four jump squads worth of troopers', () => {
+        const result = evaluateCIFormationRule(CLAN_CI_POINT, compileUnitFactsList([
             createUnit('Jump Squad 1', 'Infantry', 'Conventional Infantry', false, [], 5, 'Jump'),
             createUnit('Jump Squad 2', 'Infantry', 'Conventional Infantry', false, [], 5, 'Jump'),
             createUnit('Jump Squad 3', 'Infantry', 'Conventional Infantry', false, [], 5, 'Jump'),
             createUnit('Jump Squad 4', 'Infantry', 'Conventional Infantry', false, [], 5, 'Jump'),
-        ])).groups;
-
-        const result = evaluateComposedCountRule(CLAN_CI_POINT, compileGroupFactsList(squads));
+        ]));
 
         expect(result.emitted).toEqual([
-            jasmine.objectContaining({ modifierKey: '', perGroupCount: 4, copies: 1, tier: 0, compositionIndex: 0 }),
+            jasmine.objectContaining({ modifierKey: '', perGroupCount: 4, copies: 1, tier: 0 }),
         ]);
         expect(result.leftoverCount).toBe(0);
     });
 
-    it('evaluates a ComStar Level I from five jump Squads', () => {
-        const squads = materializeLeafPatternRule(COMSTAR_CI_SQUAD, compileUnitFactsList([
+    it('evaluates a ComStar Level I directly from five jump squads worth of troopers', () => {
+        const result = evaluateCIFormationRule(COMSTAR_LEVEL_I_FROM_SQUADS, compileUnitFactsList([
             createUnit('Jump Squad 1', 'Infantry', 'Conventional Infantry', false, [], 6, 'Jump'),
             createUnit('Jump Squad 2', 'Infantry', 'Conventional Infantry', false, [], 6, 'Jump'),
             createUnit('Jump Squad 3', 'Infantry', 'Conventional Infantry', false, [], 6, 'Jump'),
             createUnit('Jump Squad 4', 'Infantry', 'Conventional Infantry', false, [], 6, 'Jump'),
             createUnit('Jump Squad 5', 'Infantry', 'Conventional Infantry', false, [], 6, 'Jump'),
-        ])).groups;
-
-        const groupFacts = compileGroupFactsList(squads);
-        const result = evaluateComposedCountRule(COMSTAR_LEVEL_I_FROM_SQUADS, groupFacts);
-        const materialized = materializeComposedCountRule(COMSTAR_LEVEL_I_FROM_SQUADS, groupFacts);
+        ]));
+        const materialized = materializeCIFormationRule(COMSTAR_LEVEL_I_FROM_SQUADS, compileUnitFactsList([
+            createUnit('Jump Squad 1', 'Infantry', 'Conventional Infantry', false, [], 6, 'Jump'),
+            createUnit('Jump Squad 2', 'Infantry', 'Conventional Infantry', false, [], 6, 'Jump'),
+            createUnit('Jump Squad 3', 'Infantry', 'Conventional Infantry', false, [], 6, 'Jump'),
+            createUnit('Jump Squad 4', 'Infantry', 'Conventional Infantry', false, [], 6, 'Jump'),
+            createUnit('Jump Squad 5', 'Infantry', 'Conventional Infantry', false, [], 6, 'Jump'),
+        ]));
 
         expect(result.emitted).toEqual([
             jasmine.objectContaining({ modifierKey: '', perGroupCount: 5, copies: 1, tier: 0 }),
@@ -1061,7 +1064,18 @@ describe('org-solver.util', () => {
         ].map((group) => compileGroupFacts(group));
 
         const nonInfantryResult = evaluateComposedCountRule(MH_CENTURY_NON_INFANTRY, nonInfantryGroups);
-        const infantryResult = evaluateComposedCountRule(MH_CENTURY_INFANTRY, infantryGroups);
+        const infantryResult = evaluateCIFormationRule(MH_CENTURY_INFANTRY, compileUnitFactsList([
+            createUnit('CI 1', 'Infantry', 'Conventional Infantry', false, [], 10),
+            createUnit('CI 2', 'Infantry', 'Conventional Infantry', false, [], 10),
+            createUnit('CI 3', 'Infantry', 'Conventional Infantry', false, [], 10),
+            createUnit('CI 4', 'Infantry', 'Conventional Infantry', false, [], 10),
+            createUnit('CI 5', 'Infantry', 'Conventional Infantry', false, [], 10),
+            createUnit('CI 6', 'Infantry', 'Conventional Infantry', false, [], 10),
+            createUnit('CI 7', 'Infantry', 'Conventional Infantry', false, [], 10),
+            createUnit('CI 8', 'Infantry', 'Conventional Infantry', false, [], 10),
+            createUnit('CI 9', 'Infantry', 'Conventional Infantry', false, [], 10),
+            createUnit('CI 10', 'Infantry', 'Conventional Infantry', false, [], 10),
+        ]));
 
         expect(nonInfantryResult.emitted).toEqual([
             jasmine.objectContaining({ modifierKey: '', perGroupCount: 5, copies: 1, tier: 1 }),
@@ -1181,15 +1195,11 @@ describe('org-solver.util', () => {
 
         const choirEvaluation = result.ruleEvaluations.get(COMSTAR_CHOIR);
         const levelIiEvaluation = result.ruleEvaluations.get(COMSTAR_LEVEL_II);
-        const levelIiiEvaluation = result.ruleEvaluations.get(COMSTAR_CORE_ORG.rules[3]);
 
         expect(choirEvaluation).toEqual(jasmine.objectContaining({
             leftoverCount: 1,
         }));
         expect(levelIiEvaluation).toEqual(jasmine.objectContaining({
-            leftoverCount: 0,
-        }));
-        expect(levelIiiEvaluation).toEqual(jasmine.objectContaining({
             leftoverCount: 0,
         }));
     });
@@ -1521,7 +1531,7 @@ describe('org-solver.util', () => {
             leftoverCount: 0,
         }));
         expect(platoonEvaluation).toEqual(jasmine.objectContaining({
-            leftoverCount: 0,
+            leftoverCount: 1,
         }));
         expect(companyEvaluation).toEqual(jasmine.objectContaining({
             leftoverCount: 0,
@@ -1910,6 +1920,10 @@ describe('org-solver.util resolve parity', () => {
         expect(result[0].name).toBe('Demi-Level I');
         expect(result[0].type).toBe('Level I');
         expect(result[0].modifierKey).toBe('Demi-');
+        expect(result[0].children).toBeUndefined();
+        expect(result[0].unitAllocations).toEqual([
+            jasmine.objectContaining({ troopers: 18 }),
+        ]);
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
@@ -1961,8 +1975,8 @@ describe('org-solver.util resolve parity', () => {
         expect(result[0].name).toBe('Level I');
         expect(result[0].type).toBe('Level I');
         expect(result[0].modifierKey).toBe('');
-        expect(result[0].children?.length).toBe(6);
-        expect(result[0].children?.every((child) => child.name === 'Squad')).toBeTrue();
+        expect(result[0].children).toBeUndefined();
+        expect(result[0].unitAllocations?.reduce((sum, allocation) => sum + allocation.troopers, 0)).toBe(36);
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
@@ -2067,6 +2081,190 @@ describe('org-solver.util aggregation and foreign parity', () => {
         expect(result.every((group) => group.leftoverUnits === undefined)).toBeTrue();
         expect(aggregated.name).toBe('2x Level II');
         expect(aggregated.groups).toBe(result);
+    });
+
+    it('uses count when aggregating repeated homogeneous groups for display', () => {
+        const countedSepts: GroupSizeResult[] = [
+            { name: 'Sept', type: 'Sept', modifierKey: '', countsAsType: null, tier: 1.6, count: 7 },
+            { name: 'Sept', type: 'Sept', modifierKey: '', countsAsType: null, tier: 1.6, count: 7 },
+        ];
+
+        const aggregated = getAggregatedGroupsResult(countedSepts, 'Society', 'HW Clan');
+
+        expect(aggregated.name).toBe('14x Sept');
+        expect(aggregated.tier).toBeGreaterThan(1.6);
+    });
+
+    it('cycles same-type display aggregation through regular and above modifiers only', () => {
+        const underStrengthBrigadeTier = getDynamicTierForModifier(5, 3, 2, 1);
+        const underStrengthBrigade = (): GroupSizeResult => ({
+            name: 'Under-Strength Brigade',
+            type: 'Brigade',
+            modifierKey: 'Under-Strength ',
+            countsAsType: null,
+            tier: underStrengthBrigadeTier,
+        });
+
+        expect(getAggregatedGroupsResult([
+            underStrengthBrigade(),
+            underStrengthBrigade(),
+        ], 'Federated Suns', 'Inner Sphere').name).toBe('Reinforced Brigade');
+
+        expect(getAggregatedGroupsResult([
+            underStrengthBrigade(),
+            underStrengthBrigade(),
+            underStrengthBrigade(),
+        ], 'Federated Suns', 'Inner Sphere').name).toBe('2x Brigade');
+
+        expect(getAggregatedGroupsResult([
+            underStrengthBrigade(),
+            underStrengthBrigade(),
+            underStrengthBrigade(),
+            underStrengthBrigade(),
+
+        ], 'Federated Suns', 'Inner Sphere').name).toBe('2x Reinforced Brigade');
+
+        expect(getAggregatedGroupsResult([
+            underStrengthBrigade(),
+            underStrengthBrigade(),
+            underStrengthBrigade(),
+            underStrengthBrigade(),
+            underStrengthBrigade(),
+        ], 'Federated Suns', 'Inner Sphere').name).toBe('3x Brigade');
+
+        const regularStrengthBrigade = (): GroupSizeResult => ({
+            name: 'Brigade',
+            type: 'Brigade',
+            modifierKey: '',
+            countsAsType: null,
+            tier: 5,
+        });
+
+        expect(getAggregatedGroupsResult([
+            regularStrengthBrigade(),
+            regularStrengthBrigade(),
+        ], 'Federated Suns', 'Inner Sphere').name).toBe('2x Brigade');
+
+        expect(getAggregatedGroupsResult([
+            regularStrengthBrigade(),
+            underStrengthBrigade(),
+        ], 'Federated Suns', 'Inner Sphere').name).toBe('Reinforced Brigade');
+
+        expect(getAggregatedGroupsResult([
+            regularStrengthBrigade(),
+            underStrengthBrigade(),
+            underStrengthBrigade(),
+        ], 'Federated Suns', 'Inner Sphere').name).toBe('2x Brigade');
+    });
+
+    it('renders troop allocation totals explicitly for flat CI results', () => {
+        const result = resolveFromUnits([
+            createUnit('CS Demi CI', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg'),
+        ], 'ComStar', 'Inner Sphere');
+
+        const aggregated = getAggregatedGroupsResult(result, 'ComStar', 'Inner Sphere');
+
+        expect(aggregated.name).toBe('Demi-Level I (18 troopers)');
+    });
+
+    it('pools partial Inner Sphere CI units into virtual squad fragments before forming platoons', () => {
+        const result = resolveFromUnits(
+            Array.from({ length: 8 }, (_, index) =>
+                createUnit(`IS Foot CI ${index + 1}`, 'Infantry', 'Conventional Infantry', false, [], 4, 'Leg'),
+            ),
+            'Federated Suns',
+            'Inner Sphere',
+        );
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Platoon');
+        expect(result[0].type).toBe('Platoon');
+        expect(result[0].unitAllocations?.reduce((sum, allocation) => sum + allocation.troopers, 0)).toBe(28);
+        expect(result[0].leftoverUnitAllocations?.reduce((sum, allocation) => sum + allocation.troopers, 0)).toBe(4);
+        expect(result[0].leftoverUnits?.length).toBe(1);
+    });
+
+    it('lists final groups by total tier while preserving foreign names when aggregate mode is disabled', () => {
+        const listed = getAggregatedGroupsResult([
+            { name: 'Squadron', type: 'Squadron', modifierKey: '', countsAsType: null, tier: 2 },
+            { name: 'Squadron', type: 'Squadron', modifierKey: '', countsAsType: null, tier: 2 },
+            { name: 'Level III', type: 'Level III', modifierKey: '', countsAsType: null, tier: 3 },
+            { name: 'Level III', type: 'Level III', modifierKey: '', countsAsType: null, tier: 3 },
+            { name: 'Level III', type: 'Level III', modifierKey: '', countsAsType: null, tier: 3 },
+            {
+                name: 'Under-Strength Regiment',
+                type: 'Regiment',
+                modifierKey: 'Under-Strength ',
+                countsAsType: null,
+                tier: getDynamicTierForModifier(4, 3, 2, 1),
+            },
+            { name: 'Brigade', type: 'Brigade', modifierKey: '', countsAsType: null, tier: 5 },
+            {
+                name: 'Under-Strength Company',
+                type: 'Company',
+                modifierKey: 'Under-Strength ',
+                countsAsType: null,
+                tier: 1.5,
+                foreignDisplayName: 'Sept',
+            },
+            {
+                name: 'Under-Strength Company',
+                type: 'Company',
+                modifierKey: 'Under-Strength ',
+                countsAsType: null,
+                tier: 1.5,
+                foreignDisplayName: 'Sept',
+            },
+            {
+                name: 'Under-Strength Company',
+                type: 'Company',
+                modifierKey: 'Under-Strength ',
+                countsAsType: null,
+                tier: 1.5,
+                foreignDisplayName: 'Sept',
+            },
+            {
+                name: 'Under-Strength Company',
+                type: 'Company',
+                modifierKey: 'Under-Strength ',
+                countsAsType: null,
+                tier: 1.5,
+                foreignDisplayName: 'Sept',
+            },
+        ], 'Federated Suns', 'Inner Sphere', { aggregateEquivalentGroups: false });
+
+        expect(listed.name).toBe('Brigade + 3x Level III + Under-Strength Regiment + 4x Sept + 2x Squadron');
+    });
+
+    it('drops display-only entries below the configured threshold after aggregation', () => {
+        const listed = getAggregatedGroupsResult([
+            { name: 'Brigade', type: 'Brigade', modifierKey: '', countsAsType: null, tier: 5 },
+            {
+                name: 'Under-Strength Company',
+                type: 'Company',
+                modifierKey: 'Under-Strength ',
+                countsAsType: null,
+                tier: 1.5,
+            },
+            { name: 'Level I', type: 'Level I', modifierKey: '', countsAsType: null, tier: 1 },
+        ], 'Federated Suns', 'Inner Sphere', {
+            aggregateEquivalentGroups: false,
+            displayThresholdTier: 2,
+        });
+
+        expect(listed.name).toBe('Brigade');
+        expect(listed.groups).toHaveSize(3);
+    });
+
+    it('keeps the only displayable group even when it sits below the threshold', () => {
+        const listed = getAggregatedGroupsResult([
+            { name: 'Single', type: 'Single', modifierKey: '', countsAsType: null, tier: -1 },
+        ], 'Federated Suns', 'Inner Sphere', {
+            displayThresholdTier: 0,
+        });
+
+        expect(listed.name).toBe('Single');
+        expect(listed.tier).toBe(-1);
     });
 
     it('crossgrades foreign groups to the nearest dynamic-tier modifier in the target org', () => {

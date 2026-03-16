@@ -7,10 +7,20 @@ import { resolveFromGroups, resolveFromUnits } from './org-solver.util';
 import { EMPTY_RESULT, type GroupSizeResult, type OrgSizeResult } from './org-types';
 import { getAggregatedTier, getEquivalentGroupCountAtTier, getTierForRepeatedGroup } from './org-tier.util';
 
+export interface OrgNamingOptions {
+	readonly aggregateEquivalentGroups?: boolean;
+	readonly displayThresholdTier?: number;
+}
+
 interface DisplayModifierStep {
 	readonly modifierKey: string;
 	readonly count: number;
 	readonly tier: number;
+}
+
+interface GroupDisplayOptions {
+	readonly includeAllocationSummary?: boolean;
+	readonly preserveForeignNames?: boolean;
 }
 
 function toOrgSizeResult(name: string, tier: number, groups: readonly GroupSizeResult[]): OrgSizeResult {
@@ -21,27 +31,112 @@ function toOrgSizeResult(name: string, tier: number, groups: readonly GroupSizeR
 	};
 }
 
-function getEquivalentName(groups: readonly GroupSizeResult[]): string {
+function getGroupDisplayCount(group: GroupSizeResult): number {
+	return Math.max(1, group.count ?? 1);
+}
+
+function getTotalGroupDisplayCount(groups: readonly GroupSizeResult[]): number {
+	return groups.reduce((sum, group) => sum + getGroupDisplayCount(group), 0);
+}
+
+function getExpandedGroupTiers(groups: readonly GroupSizeResult[]): number[] {
+	return groups.flatMap((group) => Array.from({ length: getGroupDisplayCount(group) }, () => group.tier));
+}
+
+function getAggregatedDisplayTier(groups: readonly GroupSizeResult[]): number {
+	return getAggregatedTier(getExpandedGroupTiers(groups));
+}
+
+function getDisplayThresholdTier(options: OrgNamingOptions): number {
+	return options.displayThresholdTier ?? 0;
+}
+
+function filterGroupsForDisplay(
+	groups: readonly GroupSizeResult[],
+	options: OrgNamingOptions,
+): GroupSizeResult[] {
+	if (groups.length <= 1) {
+		return [...groups];
+	}
+
+	const thresholdTier = getDisplayThresholdTier(options);
+	const filtered = groups.filter((group) => group.tier >= thresholdTier);
+	return filtered.length > 0 ? filtered : [...groups];
+}
+
+function getAllocatedTrooperCount(group: GroupSizeResult): number | null {
+	if (!group.unitAllocations || group.unitAllocations.length === 0) {
+		return null;
+	}
+
+	const trooperCount = group.unitAllocations.reduce((sum, allocation) => sum + allocation.troopers, 0);
+	return trooperCount > 0 ? trooperCount : null;
+}
+
+
+function getGroupTypeDisplayName(group: GroupSizeResult, preserveForeignNames = false): string {
+	if (preserveForeignNames && group.foreignDisplayName) {
+		return group.foreignDisplayName;
+	}
+
+	if (!group.type) {
+		return group.name;
+	}
+
+	return `${group.modifierKey}${group.type}`;
+}
+
+function getGroupDisplayName(group: GroupSizeResult, options: GroupDisplayOptions = {}): string {
+	const includeAllocationSummary = options.includeAllocationSummary ?? true;
+	const preserveForeignNames = options.preserveForeignNames ?? false;
+	const displayCount = getGroupDisplayCount(group);
+	const baseName = displayCount > 1
+		? `${displayCount}x ${getGroupTypeDisplayName(group, preserveForeignNames)}`
+		: getGroupTypeDisplayName(group, preserveForeignNames);
+
+	if (!includeAllocationSummary) {
+		return baseName;
+	}
+
+	const allocatedTroopers = getAllocatedTrooperCount(group);
+	return allocatedTroopers ? `${baseName} (${allocatedTroopers} troopers)` : baseName;
+}
+
+function getEquivalentName(groups: readonly GroupSizeResult[], options: GroupDisplayOptions = {}): string {
 	if (groups.length === 0) {
 		return EMPTY_RESULT.name;
 	}
 	if (groups.length === 1) {
-		return groups[0].name;
+		return getGroupDisplayName(groups[0], options);
 	}
 
-	const [highest] = [...groups].sort((left, right) => right.tier - left.tier);
-	return `${groups.length}x ${highest.name}`;
+	const first = groups[0];
+	const isHomogeneous = groups.every((group) =>
+		group.type === first?.type
+		&& group.tag === first?.tag
+		&& group.countsAsType === first?.countsAsType,
+	);
+	if (!isHomogeneous) {
+		return groups
+			.map((group) => getGroupDisplayName(group, { ...options, includeAllocationSummary: false }))
+			.join(' + ');
+	}
+
+	const baseLabel = first
+		? getGroupTypeDisplayName({ ...first, modifierKey: '' }, options.preserveForeignNames ?? false)
+		: EMPTY_RESULT.name;
+	return `${getTotalGroupDisplayCount(groups)}x ${baseLabel}`;
 }
 
-export function aggregateGroupsResult(groups: readonly GroupSizeResult[]): OrgSizeResult {
+export function aggregateGroupsResult(groups: readonly GroupSizeResult[], options: GroupDisplayOptions = {}): OrgSizeResult {
 	if (groups.length === 0) {
 		return toOrgSizeResult(EMPTY_RESULT.name, EMPTY_RESULT.tier, []);
 	}
 	if (groups.length === 1) {
-		return toOrgSizeResult(groups[0].name, groups[0].tier, groups);
+		return toOrgSizeResult(getGroupDisplayName(groups[0], options), getAggregatedDisplayTier(groups), groups);
 	}
 
-	return toOrgSizeResult(getEquivalentName(groups), getAggregatedTier(groups.map((group) => group.tier)), groups);
+	return toOrgSizeResult(getEquivalentName(groups, options), getAggregatedDisplayTier(groups), groups);
 }
 
 function getModifierCount(value: number | { count: number; tier?: number }): number {
@@ -113,27 +208,36 @@ function getSameTypeAggregatedDisplay(
 	if (!modifierSteps || modifierSteps.length === 0) {
 		return null;
 	}
+	if (new Set(modifierSteps.map((step) => step.tier.toFixed(4))).size <= 1) {
+		return null;
+	}
 
-	const aggregatedTier = getAggregatedTier(groups.map((group) => group.tier));
 	const regularStep = modifierSteps.find((step) => step.modifierKey === '') ?? modifierSteps[0];
 	const regularCount = regularStep.count;
 	const equivalentRegularCount = groups.reduce(
-		(sum, group) => sum + getEquivalentGroupCountAtTier(group.tier, regularStep.tier),
+		(sum, group) => sum + (getEquivalentGroupCountAtTier(group.tier, regularStep.tier) * getGroupDisplayCount(group)),
 		0,
 	);
+	const aggregatedDisplayTier = equivalentRegularCount > 0
+		? regularStep.tier + (Math.log(equivalentRegularCount) / Math.log(3))
+		: getAggregatedDisplayTier(groups);
 	const maxRepeatCount = Math.max(1, Math.ceil(equivalentRegularCount));
 
 	let best: { name: string; tier: number; repeatCount: number; modifierCount: number } | null = null;
-	for (let repeatCount = groups.length > 1 ? 2 : 1; repeatCount <= maxRepeatCount; repeatCount += 1) {
-		for (const step of modifierSteps) {
+	for (let repeatCount = 1; repeatCount <= maxRepeatCount; repeatCount += 1) {
+		const stepsForRepeat = repeatCount === 1
+			? modifierSteps
+			: modifierSteps.filter((step) => step.tier >= regularStep.tier - 0.0001);
+
+		for (const step of stepsForRepeat) {
 			const candidateTier = getTierForRepeatedGroup(step.tier, repeatCount);
-			if (candidateTier - aggregatedTier > 0.0001) {
+			if (candidateTier - aggregatedDisplayTier > 0.0001) {
 				continue;
 			}
 
 			const name = repeatCount === 1
 				? `${step.modifierKey}${first.type}`
-				: `${repeatCount}x ${first.type}`;
+				: `${repeatCount}x ${step.modifierKey}${first.type}`;
 			const candidate = {
 				name,
 				tier: candidateTier,
@@ -161,41 +265,108 @@ function getSameTypeAggregatedDisplay(
 	return toOrgSizeResult(best.name, best.tier, groups);
 }
 
+interface ListedDisplayBucket {
+	readonly label: string;
+	readonly groups: GroupSizeResult[];
+	readonly tier: number;
+}
+
+function getListedDisplayBuckets(groups: readonly GroupSizeResult[]): ListedDisplayBucket[] {
+	const buckets = new Map<string, GroupSizeResult[]>();
+
+	for (const group of groups) {
+		const label = getGroupTypeDisplayName(group, true);
+		const key = `${label}::${group.tier}`;
+		const bucket = buckets.get(key);
+		if (bucket) {
+			bucket.push(group);
+			continue;
+		}
+
+		buckets.set(key, [group]);
+	}
+
+	return Array.from(buckets.entries())
+		.map(([key, bucketGroups]) => ({
+			label: key.slice(0, key.lastIndexOf('::')),
+			groups: bucketGroups,
+			tier: getAggregatedDisplayTier(bucketGroups),
+		}))
+		.sort((left, right) => right.tier - left.tier || left.label.localeCompare(right.label));
+}
+
+function getListedGroupsResult(groups: readonly GroupSizeResult[], options: OrgNamingOptions = {}): OrgSizeResult {
+	const displayGroups = filterGroupsForDisplay(groups, options);
+
+	if (displayGroups.length <= 1) {
+		const display = aggregateGroupsResult(displayGroups, {
+			includeAllocationSummary: true,
+			preserveForeignNames: true,
+		});
+		return toOrgSizeResult(display.name, display.tier, groups);
+	}
+
+	const buckets = getListedDisplayBuckets(displayGroups);
+	const name = buckets
+		.map((bucket) => {
+			const totalCount = getTotalGroupDisplayCount(bucket.groups);
+			return totalCount > 1 ? `${totalCount}x ${bucket.label}` : bucket.label;
+		})
+		.join(' + ');
+
+	return toOrgSizeResult(name, getAggregatedDisplayTier(displayGroups), groups);
+}
+
 export function getAggregatedGroupsResult(
 	groups: readonly GroupSizeResult[],
 	factionName: string,
 	factionAffinity: FactionAffinity,
+	options: OrgNamingOptions = {},
 ): OrgSizeResult {
+	const aggregateEquivalentGroups = options.aggregateEquivalentGroups ?? true;
+	const displayGroups = filterGroupsForDisplay(groups, options);
+
 	if (groups.length <= 1) {
-		return aggregateGroupsResult(groups);
+		return aggregateGroupsResult(groups, {
+			includeAllocationSummary: true,
+			preserveForeignNames: !aggregateEquivalentGroups,
+		});
 	}
 
-	const first = groups[0];
-	if (first?.type && groups.every((group) =>
-		group.type === first.type
-		&& group.tag === first.tag
-		&& group.countsAsType === first.countsAsType,
-	)) {
-		return toOrgSizeResult(`${groups.length}x ${first.type}`, getAggregatedTier(groups.map((group) => group.tier)), groups);
+	if (!aggregateEquivalentGroups) {
+		return getListedGroupsResult(groups, options);
 	}
 
-	const sameTypeDisplay = getSameTypeAggregatedDisplay(groups, factionName, factionAffinity);
+	if (displayGroups.length <= 1) {
+		const display = aggregateGroupsResult(displayGroups, {
+			includeAllocationSummary: true,
+			preserveForeignNames: false,
+		});
+		return toOrgSizeResult(display.name, display.tier, groups);
+	}
+
+	const sameTypeDisplay = getSameTypeAggregatedDisplay(displayGroups, factionName, factionAffinity);
 	if (sameTypeDisplay) {
 		return sameTypeDisplay;
 	}
 
-	const resolved = resolveFromGroups(factionName, factionAffinity, groups, true);
-	if (resolved.length > 0 && resolved.length < groups.length) {
+	const resolved = resolveFromGroups(factionName, factionAffinity, displayGroups, true);
+	if (resolved.length > 0 && resolved.length < displayGroups.length) {
 		const display = aggregateGroupsResult(resolved);
 		return toOrgSizeResult(display.name, display.tier, resolved);
 	}
 
-	const aggregated = aggregateGroupsResult(groups);
+	const aggregated = aggregateGroupsResult(displayGroups);
 	return toOrgSizeResult(aggregated.name, aggregated.tier, groups);
 }
 
-function getResolvedOrgResult(groups: readonly GroupSizeResult[], factionName: string, factionAffinity: FactionAffinity): OrgSizeResult {
-	const display = getAggregatedGroupsResult(groups, factionName, factionAffinity);
+function getResolvedOrgResult(
+	groups: readonly GroupSizeResult[],
+	factionName: string,
+	factionAffinity: FactionAffinity,
+	options: OrgNamingOptions = {},
+): OrgSizeResult {
+	const display = getAggregatedGroupsResult(groups, factionName, factionAffinity, options);
 	return toOrgSizeResult(display.name, display.tier, groups);
 }
 
@@ -214,49 +385,55 @@ function getGroupResultsFromLoadForceGroup(
 	return resolveFromUnits(units, factionName, factionAffinity);
 }
 
-export function getOrgFromGroup(group: UnitGroup, factionName: string, factionAffinity: FactionAffinity): OrgSizeResult;
-export function getOrgFromGroup(group: UnitGroup): OrgSizeResult;
-export function getOrgFromGroup(group: LoadForceGroup, factionName: string, factionAffinity: FactionAffinity): OrgSizeResult;
-export function getOrgFromGroup(group: UnitGroup | LoadForceGroup, factionName?: string, factionAffinity?: FactionAffinity): OrgSizeResult {
+export function getOrgFromGroup(group: UnitGroup, factionName: string, factionAffinity: FactionAffinity, options?: OrgNamingOptions): OrgSizeResult;
+export function getOrgFromGroup(group: UnitGroup, options?: OrgNamingOptions): OrgSizeResult;
+export function getOrgFromGroup(group: LoadForceGroup, factionName: string, factionAffinity: FactionAffinity, options?: OrgNamingOptions): OrgSizeResult;
+export function getOrgFromGroup(group: UnitGroup | LoadForceGroup, factionOrOptions?: string | OrgNamingOptions, factionAffinity?: FactionAffinity, options: OrgNamingOptions = {}): OrgSizeResult {
+	const resolvedOptions = typeof factionOrOptions === 'object' ? factionOrOptions : options;
+	const explicitFactionName = typeof factionOrOptions === 'string' ? factionOrOptions : undefined;
+
 	if (group instanceof UnitGroup) {
 		const force = group.force;
-		const resolvedFactionName = factionName ?? force.faction()?.name ?? 'Mercenary';
+		const resolvedFactionName = explicitFactionName ?? force.faction()?.name ?? 'Mercenary';
 		const resolvedFactionAffinity = factionAffinity ?? force.faction()?.group ?? 'Mercenary';
 		const allUnits = group.units().map((unit) => unit.getUnit()).filter((unit): unit is Unit => unit !== undefined);
 		const rawGroups = resolveFromUnits(allUnits, resolvedFactionName, resolvedFactionAffinity);
-		return getResolvedOrgResult(rawGroups, resolvedFactionName, resolvedFactionAffinity);
+		return getResolvedOrgResult(rawGroups, resolvedFactionName, resolvedFactionAffinity, resolvedOptions);
 	}
 
-	const resolvedFactionName = factionName ?? 'Mercenary';
+	const resolvedFactionName = explicitFactionName ?? 'Mercenary';
 	const resolvedFactionAffinity = factionAffinity ?? 'Mercenary';
 	const units = group.units
 		.filter((unit): unit is typeof unit & { unit: Unit } => unit.unit !== undefined)
 		.map((unit) => unit.unit);
 	const rawGroups = resolveFromUnits(units, resolvedFactionName, resolvedFactionAffinity);
-	return getResolvedOrgResult(rawGroups, resolvedFactionName, resolvedFactionAffinity);
+	return getResolvedOrgResult(rawGroups, resolvedFactionName, resolvedFactionAffinity, resolvedOptions);
 }
 
-export function getOrgFromForce(force: Force, factionName: string, factionAffinity: FactionAffinity): OrgSizeResult;
-export function getOrgFromForce(force: Force): OrgSizeResult;
-export function getOrgFromForce(entry: LoadForceEntry, factionName: string, factionAffinity: FactionAffinity): OrgSizeResult;
-export function getOrgFromForce(forceOrEntry: Force | LoadForceEntry, factionName?: string, factionAffinity?: FactionAffinity): OrgSizeResult {
+export function getOrgFromForce(force: Force, factionName: string, factionAffinity: FactionAffinity, options?: OrgNamingOptions): OrgSizeResult;
+export function getOrgFromForce(force: Force, options?: OrgNamingOptions): OrgSizeResult;
+export function getOrgFromForce(entry: LoadForceEntry, factionName: string, factionAffinity: FactionAffinity, options?: OrgNamingOptions): OrgSizeResult;
+export function getOrgFromForce(forceOrEntry: Force | LoadForceEntry, factionOrOptions?: string | OrgNamingOptions, factionAffinity?: FactionAffinity, options: OrgNamingOptions = {}): OrgSizeResult {
+	const resolvedOptions = typeof factionOrOptions === 'object' ? factionOrOptions : options;
+	const explicitFactionName = typeof factionOrOptions === 'string' ? factionOrOptions : undefined;
+
 	if (forceOrEntry instanceof LoadForceEntry) {
-		const resolvedFactionName = factionName ?? 'Mercenary';
+		const resolvedFactionName = explicitFactionName ?? 'Mercenary';
 		const resolvedFactionAffinity = factionAffinity ?? 'Mercenary';
 		const groupResults = forceOrEntry.groups
 			.filter((group) => group.units.some((unit) => unit.unit !== undefined))
 			.flatMap((group) => getGroupResultsFromLoadForceGroup(group, resolvedFactionName, resolvedFactionAffinity));
 		const rawGroups = resolveFromGroups(resolvedFactionName, resolvedFactionAffinity, groupResults);
-		return getResolvedOrgResult(rawGroups, resolvedFactionName, resolvedFactionAffinity);
+		return getResolvedOrgResult(rawGroups, resolvedFactionName, resolvedFactionAffinity, resolvedOptions);
 	}
 
-	const resolvedFactionName = factionName ?? forceOrEntry.faction()?.name ?? 'Mercenary';
+	const resolvedFactionName = explicitFactionName ?? forceOrEntry.faction()?.name ?? 'Mercenary';
 	const resolvedFactionAffinity = factionAffinity ?? forceOrEntry.faction()?.group ?? 'Mercenary';
 	const groupResults = forceOrEntry.groups()
 		.filter((group) => group.units().length > 0)
 		.flatMap((group) => getGroupResultsFromOrgResult(group.sizeResult()));
 	const rawGroups = resolveFromGroups(resolvedFactionName, resolvedFactionAffinity, groupResults);
-	return getResolvedOrgResult(rawGroups, resolvedFactionName, resolvedFactionAffinity);
+	return getResolvedOrgResult(rawGroups, resolvedFactionName, resolvedFactionAffinity, resolvedOptions);
 }
 
 export function getOrgFromForceCollection(
@@ -264,13 +441,14 @@ export function getOrgFromForceCollection(
 	factionName: string,
 	factionAffinity: FactionAffinity,
 	childGroupResults?: readonly GroupSizeResult[],
+	options: OrgNamingOptions = {},
 ): OrgSizeResult {
 	const rawGroups = childGroupResults
 		? [...childGroupResults]
 		: entries.flatMap((entry) =>
 			entry.groups.flatMap((group) => getGroupResultsFromLoadForceGroup(group, factionName, factionAffinity)),
 		);
-	const display = getAggregatedGroupsResult(rawGroups, factionName, factionAffinity);
+	const display = getAggregatedGroupsResult(rawGroups, factionName, factionAffinity, options);
 	return toOrgSizeResult(display.name, display.tier, rawGroups);
 }
 

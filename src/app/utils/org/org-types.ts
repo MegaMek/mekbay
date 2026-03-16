@@ -117,11 +117,20 @@ export interface GroupSizeResult {
     modifierKey: string;
     countsAsType: OrgType | null;
     tier: number;
+    count?: number;
+    foreignDisplayName?: string;
     children?: GroupSizeResult[];
     units?: Unit[];
+    unitAllocations?: GroupUnitAllocation[];
     leftoverUnits?: Unit[];
+    leftoverUnitAllocations?: GroupUnitAllocation[];
     tag?: OrgGroupTag;
     priority?: number;
+}
+
+export interface GroupUnitAllocation {
+    readonly unit: Unit;
+    readonly troopers: number;
 }
 
 export interface OrgSizeResult {
@@ -335,6 +344,12 @@ export interface OrgComposedCountAlternativeSpec {
     readonly childMatchBucketBy?: OrgBucketName;
 }
 
+export interface OrgCIFormationEntry {
+    readonly moveClass: CIMoveClass;
+    readonly troopers: number;
+    readonly counts: Readonly<Record<string, number>>;
+}
+
 export interface OrgPatternTargetScoreTerm {
 	readonly kind: 'target';
 	readonly ref: OrgPatternReferenceName;
@@ -430,6 +445,15 @@ export interface OrgComposedCountRule extends OrgRuleMetadata {
     readonly alternativeCompositions?: readonly OrgComposedCountAlternativeSpec[];
 }
 
+export interface OrgCIFormationRule extends OrgRuleMetadata {
+    readonly kind: 'ci-formation';
+    readonly unitSelector: OrgSelectorName | readonly OrgSelectorName[];
+    readonly fragmentType: OrgType;
+    readonly fragmentTier: number;
+    readonly entries: readonly OrgCIFormationEntry[];
+    readonly requireRegularForPromotion?: boolean;
+}
+
 /**
  * Declarative pattern-based composed rule.
  *
@@ -447,6 +471,7 @@ export interface OrgComposedPatternRule extends OrgRuleMetadata {
 export type OrgRuleDefinition =
     | OrgLeafCountRule
     | OrgLeafPatternRule
+    | OrgCIFormationRule
     | OrgComposedCountRule
     | OrgComposedPatternRule;
 

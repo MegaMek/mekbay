@@ -6,6 +6,7 @@ import {
     compileGroupFactsList,
     compileUnitFactsList,
     DEFAULT_ORG_RULE_REGISTRY,
+    getCIMoveClass,
 } from './org-facts.util';
 import { resolveOrgDefinitionSpec } from './org-registry.util';
 import {
@@ -16,8 +17,11 @@ import {
     EMPTY_RESULT,
     type GroupFacts,
     type GroupSizeResult,
+    type GroupUnitAllocation,
     type OrgBucketName,
     type OrgBucketValue,
+    type OrgCIFormationEntry,
+    type OrgCIFormationRule,
     type OrgChildRoleSpec,
     type OrgComposedCountAlternativeSpec,
     type OrgComposedCountRule,
@@ -88,6 +92,12 @@ interface ComposedCountEmission extends LeafCountEmission {
     readonly compositionIndex: number;
 }
 
+export interface CIFormationEvaluationResult {
+    readonly eligibleUnits: readonly UnitFacts[];
+    readonly emitted: readonly LeafCountEmission[];
+    readonly leftoverCount: number;
+}
+
 export interface LeafCountEvaluationResult {
     readonly eligibleUnits: readonly UnitFacts[];
     readonly emitted: readonly LeafCountEmission[];
@@ -152,6 +162,7 @@ interface ConcreteCompositionCandidate {
 
 interface ResolveContext {
     readonly definition: OrgDefinitionSpec;
+    readonly ciFormationRules: readonly OrgCIFormationRule[];
     readonly leafCountRules: readonly OrgLeafCountRule[];
     readonly leafPatternRules: readonly OrgLeafPatternRule[];
     readonly composedCountRules: readonly OrgComposedCountRule[];
@@ -169,6 +180,12 @@ interface FinalStateScore {
 interface ResolvedState {
     readonly groups: readonly GroupSizeResult[];
     readonly leftoverUnits: readonly UnitFacts[];
+    readonly leftoverUnitAllocations: readonly GroupUnitAllocation[];
+}
+
+interface CIFragmentToken {
+    readonly moveClass: NonNullable<ReturnType<typeof getCIMoveClass>>;
+    readonly allocations: readonly GroupUnitAllocation[];
 }
 
 function createSolverGuard(): SolverGuard {
@@ -464,6 +481,421 @@ function createComposedGroup(
         tag: rule.tag,
         priority: rule.priority,
     };
+}
+
+function makeCountedGroupName(type: string, count: number): string {
+    return count <= 1 ? type : `${count}x ${type}`;
+}
+
+function aggregateTokenAllocations(tokens: readonly CIFragmentToken[]): GroupUnitAllocation[] {
+    const allocationByUnit = new Map<Unit, number>();
+
+    for (const token of tokens) {
+        for (const allocation of token.allocations) {
+            allocationByUnit.set(allocation.unit, (allocationByUnit.get(allocation.unit) ?? 0) + allocation.troopers);
+        }
+    }
+
+    return Array.from(allocationByUnit.entries()).map(([unit, troopers]) => ({ unit, troopers }));
+}
+
+function getUnitsFromAllocations(allocations: readonly GroupUnitAllocation[]): Unit[] {
+    return allocations.map((allocation) => allocation.unit);
+}
+
+function getCIEntryDescriptor(
+    rule: OrgCIFormationRule,
+    entry: OrgCIFormationEntry,
+): RuleModifierDescriptor {
+    return getRuleModifierDescriptor({
+        modifiers: entry.counts,
+        tier: rule.tier,
+        dynamicTier: rule.dynamicTier,
+    });
+}
+
+function createCIParentGroup(
+    rule: OrgCIFormationRule,
+    modifierStep: ModifierStep,
+    tokens: readonly CIFragmentToken[],
+): GroupSizeResult {
+    const unitAllocations = aggregateTokenAllocations(tokens);
+    return {
+        name: makeGroupName(rule.type, modifierStep.modifierKey),
+        type: rule.type,
+        modifierKey: modifierStep.modifierKey,
+        countsAsType: rule.countsAs ?? null,
+        tier: modifierStep.tier,
+        units: getUnitsFromAllocations(unitAllocations),
+        unitAllocations,
+        tag: rule.tag,
+        priority: rule.priority,
+    };
+}
+
+function createCIFragmentGroup(
+    rule: OrgCIFormationRule,
+    count: number,
+    tokens: readonly CIFragmentToken[],
+): GroupSizeResult {
+    const unitAllocations = aggregateTokenAllocations(tokens);
+    return {
+        name: makeCountedGroupName(rule.fragmentType, count),
+        type: rule.fragmentType,
+        modifierKey: '',
+        countsAsType: null,
+        tier: rule.fragmentTier,
+        count,
+        units: getUnitsFromAllocations(unitAllocations),
+        unitAllocations,
+        tag: rule.tag,
+        priority: rule.priority,
+    };
+}
+
+function partitionAllocationsToFragments(
+    moveClass: NonNullable<ReturnType<typeof getCIMoveClass>>,
+    allocations: readonly GroupUnitAllocation[],
+    troopersPerFragment: number,
+): { tokens: CIFragmentToken[]; leftoverAllocations: GroupUnitAllocation[] } {
+    const working = allocations
+        .filter((allocation) => allocation.troopers > 0)
+        .map((allocation) => ({ ...allocation }));
+    const tokens: CIFragmentToken[] = [];
+    let allocationIndex = 0;
+
+    while (allocationIndex < working.length) {
+        const remainingTroopersAvailable = working
+            .slice(allocationIndex)
+            .reduce((sum, allocation) => sum + allocation.troopers, 0);
+        if (remainingTroopersAvailable < troopersPerFragment) {
+            break;
+        }
+
+        let remainingTroopers = troopersPerFragment;
+        const fragmentAllocations: GroupUnitAllocation[] = [];
+        let cursor = allocationIndex;
+
+        while (cursor < working.length && remainingTroopers > 0) {
+            const allocation = working[cursor];
+            if (allocation.troopers <= 0) {
+                cursor += 1;
+                continue;
+            }
+
+            const consumedTroopers = Math.min(allocation.troopers, remainingTroopers);
+            fragmentAllocations.push({ unit: allocation.unit, troopers: consumedTroopers });
+            allocation.troopers -= consumedTroopers;
+            remainingTroopers -= consumedTroopers;
+
+            if (allocation.troopers <= 0) {
+                cursor += 1;
+            }
+        }
+
+        if (remainingTroopers > 0) {
+            break;
+        }
+
+        while (allocationIndex < working.length && working[allocationIndex].troopers <= 0) {
+            allocationIndex += 1;
+        }
+
+        tokens.push({
+            moveClass,
+            allocations: fragmentAllocations,
+        });
+    }
+
+    return {
+        tokens,
+        leftoverAllocations: working
+            .filter((allocation) => allocation.troopers > 0)
+            .map((allocation) => ({ unit: allocation.unit, troopers: allocation.troopers })),
+    };
+}
+
+function getMoveClassFromAllocations(allocations: readonly GroupUnitAllocation[]): NonNullable<ReturnType<typeof getCIMoveClass>> | null {
+    const moveClasses = new Set(
+        allocations
+            .map((allocation) => getCIMoveClass(allocation.unit))
+            .filter((moveClass): moveClass is NonNullable<ReturnType<typeof getCIMoveClass>> => moveClass !== null),
+    );
+
+    return moveClasses.size === 1 ? [...moveClasses][0] : null;
+}
+
+function sliceAllocationsToTokens(
+    allocations: readonly GroupUnitAllocation[],
+    moveClass: NonNullable<ReturnType<typeof getCIMoveClass>>,
+    troopersPerFragment: number,
+): CIFragmentToken[] | null {
+    const partitioned = partitionAllocationsToFragments(moveClass, allocations, troopersPerFragment);
+    if (partitioned.leftoverAllocations.length > 0) {
+        return null;
+    }
+
+    return partitioned.tokens;
+}
+
+function getModifierStepForGroup(
+    rule: OrgCIFormationRule,
+    entry: OrgCIFormationEntry,
+    group: GroupSizeResult,
+): ModifierStep | null {
+    return getCIEntryDescriptor(rule, entry).stepsAscending.find((step) => step.modifierKey === group.modifierKey) ?? null;
+}
+
+function getCIFragmentTokensFromGroup(
+    rule: OrgCIFormationRule,
+    group: GroupSizeResult,
+    entryByMoveClass: ReadonlyMap<NonNullable<ReturnType<typeof getCIMoveClass>>, OrgCIFormationEntry>,
+): CIFragmentToken[] | null {
+    const allocations = group.unitAllocations
+        ?? group.units?.map((unit) => ({ unit, troopers: unit.internal || 0 }))
+        ?? [];
+    if (allocations.length === 0) {
+        return null;
+    }
+
+    const moveClass = getMoveClassFromAllocations(allocations);
+    if (!moveClass) {
+        return null;
+    }
+
+    const entry = entryByMoveClass.get(moveClass);
+    if (!entry) {
+        return null;
+    }
+
+    if (group.type === rule.fragmentType) {
+        const tokens = sliceAllocationsToTokens(allocations, moveClass, entry.troopers);
+        if (!tokens) {
+            return null;
+        }
+        const expectedCount = group.count ?? tokens.length;
+        return tokens.length === expectedCount ? tokens : null;
+    }
+
+    if (group.type !== rule.type) {
+        return null;
+    }
+
+    const step = getModifierStepForGroup(rule, entry, group);
+    if (!step) {
+        return null;
+    }
+
+    const tokens = sliceAllocationsToTokens(allocations, moveClass, entry.troopers);
+    if (!tokens) {
+        return null;
+    }
+
+    return tokens.length === step.count ? tokens : null;
+}
+
+function materializeCIFormationTokens(
+    rule: OrgCIFormationRule,
+    tokens: readonly CIFragmentToken[],
+    entry: OrgCIFormationEntry,
+): GroupSizeResult[] {
+    const descriptor = getCIEntryDescriptor(rule, entry);
+    const groups: GroupSizeResult[] = [];
+    let remaining = [...tokens];
+
+    for (const step of descriptor.stepsDescending) {
+        if (step.count === 1 && rule.type === rule.fragmentType) {
+            continue;
+        }
+        while (remaining.length >= step.count) {
+            const selected = remaining.slice(0, step.count);
+            remaining = remaining.slice(step.count);
+            groups.push(createCIParentGroup(rule, step, selected));
+        }
+    }
+
+    if (remaining.length > 0) {
+        groups.push(createCIFragmentGroup(rule, remaining.length, remaining));
+    }
+
+    return groups;
+}
+
+export function evaluateCIFormationRule(
+    rule: OrgCIFormationRule,
+    unitFacts: readonly UnitFacts[],
+    registry: OrgRuleRegistry = DEFAULT_ORG_RULE_REGISTRY,
+): CIFormationEvaluationResult {
+    const eligibleUnits = unitFacts.filter((facts) => matchesUnitSelectors(facts, rule.unitSelector, registry));
+    const emitted: LeafCountEmission[] = [];
+    const entryByMoveClass = new Map(rule.entries.map((entry) => [entry.moveClass, entry]));
+    let leftoverCount = 0;
+
+    const allocationsByMoveClass = new Map<NonNullable<ReturnType<typeof getCIMoveClass>>, GroupUnitAllocation[]>();
+    for (const facts of eligibleUnits) {
+        const moveClass = getCIMoveClass(facts.unit);
+        if (!moveClass || !entryByMoveClass.has(moveClass)) {
+            leftoverCount += 1;
+            continue;
+        }
+
+        const existing = allocationsByMoveClass.get(moveClass);
+        const allocation = { unit: facts.unit, troopers: facts.scalars.troopers };
+        if (existing) {
+            existing.push(allocation);
+        } else {
+            allocationsByMoveClass.set(moveClass, [allocation]);
+        }
+    }
+
+    for (const [moveClass, allocations] of allocationsByMoveClass.entries()) {
+        const entry = entryByMoveClass.get(moveClass);
+        if (!entry) {
+            continue;
+        }
+        const partitioned = partitionAllocationsToFragments(moveClass, allocations, entry.troopers);
+        const tokens = partitioned.tokens;
+        if (partitioned.leftoverAllocations.length > 0) {
+            leftoverCount += partitioned.leftoverAllocations.length;
+        }
+        const descriptor = getCIEntryDescriptor(rule, entry);
+        let remaining = tokens.length;
+        for (const step of descriptor.stepsDescending) {
+            const copies = Math.floor(remaining / step.count);
+            if (copies <= 0) {
+                continue;
+            }
+            emitted.push({
+                modifierKey: step.modifierKey,
+                perGroupCount: step.count,
+                copies,
+                tier: step.tier,
+            });
+            remaining -= copies * step.count;
+        }
+        if (remaining > 0) {
+            emitted.push({
+                modifierKey: '',
+                perGroupCount: 1,
+                copies: remaining,
+                tier: rule.fragmentTier,
+            });
+        }
+    }
+
+    return {
+        eligibleUnits,
+        emitted,
+        leftoverCount,
+    };
+}
+
+export function materializeCIFormationRule(
+    rule: OrgCIFormationRule,
+    unitFacts: readonly UnitFacts[],
+    registry: OrgRuleRegistry = DEFAULT_ORG_RULE_REGISTRY,
+): { groups: GroupSizeResult[]; leftoverUnitFacts: UnitFacts[]; leftoverUnitAllocations: GroupUnitAllocation[] } {
+    const eligibleUnits = unitFacts.filter((facts) => matchesUnitSelectors(facts, rule.unitSelector, registry));
+    const ineligibleUnits = unitFacts.filter((facts) => !matchesUnitSelectors(facts, rule.unitSelector, registry));
+    const entryByMoveClass = new Map(rule.entries.map((entry) => [entry.moveClass, entry]));
+    const leftoverUnitFacts: UnitFacts[] = [];
+    const leftoverUnitAllocations: GroupUnitAllocation[] = [];
+    const allocationsByMoveClass = new Map<NonNullable<ReturnType<typeof getCIMoveClass>>, GroupUnitAllocation[]>();
+
+    for (const facts of eligibleUnits) {
+        const moveClass = getCIMoveClass(facts.unit);
+        if (!moveClass || !entryByMoveClass.has(moveClass)) {
+            leftoverUnitFacts.push(facts);
+            continue;
+        }
+
+        const existing = allocationsByMoveClass.get(moveClass);
+        const allocation = { unit: facts.unit, troopers: facts.scalars.troopers };
+        if (existing) {
+            existing.push(allocation);
+        } else {
+            allocationsByMoveClass.set(moveClass, [allocation]);
+        }
+    }
+
+    const groups: GroupSizeResult[] = [];
+    for (const [moveClass, allocations] of allocationsByMoveClass.entries()) {
+        const entry = entryByMoveClass.get(moveClass);
+        if (!entry) {
+            continue;
+        }
+        const partitioned = partitionAllocationsToFragments(moveClass, allocations, entry.troopers);
+        const tokens = partitioned.tokens;
+        leftoverUnitAllocations.push(...partitioned.leftoverAllocations);
+        groups.push(...materializeCIFormationTokens(rule, tokens, entry));
+    }
+
+    return {
+        groups,
+        leftoverUnitFacts: [...ineligibleUnits, ...leftoverUnitFacts],
+        leftoverUnitAllocations,
+    };
+}
+
+function normalizeCIFormationGroups(
+    pool: readonly GroupSizeResult[],
+    context: ResolveContext,
+): GroupSizeResult[] {
+    let nextPool = [...pool];
+
+    for (const rule of context.ciFormationRules) {
+        const entryByMoveClass = new Map(rule.entries.map((entry) => [entry.moveClass, entry]));
+        const groupFacts = compileGroupFactsList(nextPool);
+        const candidates = groupFacts.filter((facts) => {
+            if (facts.type !== rule.fragmentType && facts.type !== rule.type) {
+                return false;
+            }
+            const ciCount = facts.unitTypeCounts.get('CI') ?? 0;
+            return ciCount > 0 && facts.unitTypeCounts.size === 1;
+        });
+        if (candidates.length === 0) {
+            continue;
+        }
+
+        const replacementGroups: GroupSizeResult[] = [];
+        const consumedGroups = new Set<GroupSizeResult>();
+        const tokensByMoveClass = new Map<NonNullable<ReturnType<typeof getCIMoveClass>>, CIFragmentToken[]>();
+
+        for (const facts of candidates) {
+            const tokens = getCIFragmentTokensFromGroup(rule, facts.group, entryByMoveClass);
+            if (!tokens) {
+                continue;
+            }
+            consumedGroups.add(facts.group);
+            for (const token of tokens) {
+                const existing = tokensByMoveClass.get(token.moveClass);
+                if (existing) {
+                    existing.push(token);
+                } else {
+                    tokensByMoveClass.set(token.moveClass, [token]);
+                }
+            }
+        }
+
+        if (consumedGroups.size === 0) {
+            continue;
+        }
+
+        for (const [moveClass, tokens] of tokensByMoveClass.entries()) {
+            const entry = entryByMoveClass.get(moveClass);
+            if (!entry) {
+                continue;
+            }
+            replacementGroups.push(...materializeCIFormationTokens(rule, tokens, entry));
+        }
+
+        nextPool = [
+            ...nextPool.filter((group) => !consumedGroups.has(group)),
+            ...replacementGroups,
+        ];
+    }
+
+    return nextPool;
 }
 
 function consumeUnitsBySteps(
@@ -1352,6 +1784,9 @@ export function evaluateOrgDefinition(
             case 'leaf-pattern':
                 ruleEvaluations.set(rule, evaluateLeafPatternRule(rule, unitFacts, registry));
                 break;
+            case 'ci-formation':
+                ruleEvaluations.set(rule, evaluateCIFormationRule(rule, unitFacts, registry));
+                break;
             case 'composed-count':
                 ruleEvaluations.set(rule, evaluateComposedCountRule(rule, groupFacts, registry));
                 break;
@@ -1387,6 +1822,8 @@ function compareGroupScore(left: GroupSizeResult, right: GroupSizeResult): numbe
 function getResolveContext(definition: OrgDefinitionSpec): ResolveContext {
     return {
         definition,
+        ciFormationRules: definition.rules.filter((rule): rule is OrgCIFormationRule => rule.kind === 'ci-formation')
+            .sort((left, right) => right.tier - left.tier || getRulePriority(right) - getRulePriority(left)),
         leafCountRules: definition.rules.filter((rule): rule is OrgLeafCountRule => rule.kind === 'leaf-count')
             .sort((left, right) => right.tier - left.tier || getRulePriority(right) - getRulePriority(left)),
         leafPatternRules: definition.rules.filter((rule): rule is OrgLeafPatternRule => rule.kind === 'leaf-pattern')
@@ -1402,6 +1839,16 @@ function resolveWholeLeafCandidate(
 ): GroupSizeResult | null {
     const registry = context.definition.registry;
     let best: GroupSizeResult | null = null;
+
+    for (const rule of context.ciFormationRules) {
+        const materialized = materializeCIFormationRule(rule, unitFacts, registry);
+        if (materialized.groups.length === 1 && materialized.leftoverUnitFacts.length === 0 && materialized.leftoverUnitAllocations.length === 0) {
+            const candidate = materialized.groups[0];
+            if (!best || compareGroupScore(candidate, best) < 0) {
+                best = candidate;
+            }
+        }
+    }
 
     const allLeafRules: Array<OrgLeafCountRule | OrgLeafPatternRule> = [
         ...context.leafPatternRules,
@@ -1444,10 +1891,20 @@ function materializeLeafRulesByStage(
     unitFacts: readonly UnitFacts[],
     context: ResolveContext,
     stage: 'regular' | 'sub-regular' | 'all',
-): { groups: GroupSizeResult[]; leftover: UnitFacts[] } {
+): { groups: GroupSizeResult[]; leftover: UnitFacts[]; leftoverUnitAllocations: GroupUnitAllocation[] } {
     const registry = context.definition.registry;
     let remaining = [...unitFacts];
     const groups: GroupSizeResult[] = [];
+    const leftoverUnitAllocations: GroupUnitAllocation[] = [];
+
+    if (stage !== 'sub-regular') {
+        for (const rule of context.ciFormationRules) {
+            const materialized = materializeCIFormationRule(rule, remaining, registry);
+            groups.push(...materialized.groups);
+            remaining = [...materialized.leftoverUnitFacts];
+            leftoverUnitAllocations.push(...materialized.leftoverUnitAllocations);
+        }
+    }
 
     const leafRules: Array<OrgLeafCountRule | OrgLeafPatternRule> = [
         ...context.leafPatternRules,
@@ -1503,7 +1960,7 @@ function materializeLeafRulesByStage(
         ];
     }
 
-    return { groups, leftover: remaining };
+    return { groups, leftover: remaining, leftoverUnitAllocations };
 }
 
 function materializeComposedRulesByStage(
@@ -1550,6 +2007,8 @@ function isBlockedSubRegularPromotionChild(
 
     const rule = context.composedCountRules.find((candidate) =>
         candidate.type === group.type && candidate.requireRegularForPromotion,
+    ) ?? context.ciFormationRules.find((candidate) =>
+        candidate.type === group.type && candidate.requireRegularForPromotion,
     );
     if (!rule) {
         return false;
@@ -1560,21 +2019,31 @@ function isBlockedSubRegularPromotionChild(
     return step?.relativeBand === 'sub-regular';
 }
 
-function attachLeftoverUnits(groups: GroupSizeResult[], leftoverUnits: readonly UnitFacts[]): GroupSizeResult[] {
-    if (leftoverUnits.length === 0) {
+function attachLeftoverUnits(
+    groups: GroupSizeResult[],
+    leftoverUnits: readonly UnitFacts[],
+    leftoverUnitAllocations: readonly GroupUnitAllocation[],
+): GroupSizeResult[] {
+    if (leftoverUnits.length === 0 && leftoverUnitAllocations.length === 0) {
         return groups;
     }
+    const attachedLeftoverUnits = Array.from(new Set([
+        ...leftoverUnits.map((facts) => facts.unit),
+        ...leftoverUnitAllocations.map((allocation) => allocation.unit),
+    ]));
     if (groups.length === 0) {
         return [{
             ...EMPTY_RESULT,
-            leftoverUnits: leftoverUnits.map((facts) => facts.unit),
+            leftoverUnits: attachedLeftoverUnits,
+            leftoverUnitAllocations: [...leftoverUnitAllocations],
         }];
     }
     const sorted = [...groups].sort(compareGroupScore);
     const [top, ...rest] = sorted;
     return [{
         ...top,
-        leftoverUnits: leftoverUnits.map((facts) => facts.unit),
+        leftoverUnits: attachedLeftoverUnits,
+        leftoverUnitAllocations: [...leftoverUnitAllocations],
     }, ...rest];
 }
 
@@ -1588,12 +2057,13 @@ function getRuleByType(context: ResolveContext, type: GroupSizeResult['type']): 
 function getAnyRuleByType(
     context: ResolveContext,
     type: GroupSizeResult['type'],
-): OrgLeafCountRule | OrgLeafPatternRule | OrgComposedCountRule | undefined {
+): OrgLeafCountRule | OrgLeafPatternRule | OrgCIFormationRule | OrgComposedCountRule | undefined {
     if (!type) {
         return undefined;
     }
 
-    return context.leafCountRules.find((rule) => rule.type === type)
+    return context.ciFormationRules.find((rule) => rule.type === type || rule.fragmentType === type)
+        ?? context.leafCountRules.find((rule) => rule.type === type)
         ?? context.leafPatternRules.find((rule) => rule.type === type)
         ?? context.composedCountRules.find((rule) => rule.type === type);
 }
@@ -1609,7 +2079,7 @@ function getModifierBandForGroup(group: GroupSizeResult, context: ResolveContext
 
 function scoreResolvedState(state: ResolvedState, context: ResolveContext): FinalStateScore {
     const topLevelGroupCount = state.groups.length;
-    const leftoverCount = state.leftoverUnits.length;
+    const leftoverCount = state.leftoverUnits.length + state.leftoverUnitAllocations.length;
     const highestTier = state.groups.length > 0 ? Math.max(...state.groups.map((group) => group.tier)) : 0;
     const highestTierGroupCount = state.groups.filter((group) => group.tier === highestTier).length;
     const totalPriority = state.groups.reduce((sum, group) => sum + (group.priority ?? 0), 0);
@@ -1654,14 +2124,14 @@ function compareResolvedState(left: ResolvedState, right: ResolvedState, context
 }
 
 function materializeResolvedState(state: ResolvedState): GroupSizeResult[] {
-    return attachLeftoverUnits(normalizeTopLevelGroups(state.groups), state.leftoverUnits);
+    return attachLeftoverUnits(normalizeTopLevelGroups(state.groups), state.leftoverUnits, state.leftoverUnitAllocations);
 }
 
 function pickBestResolvedState(
     states: readonly ResolvedState[],
     context: ResolveContext,
 ): ResolvedState {
-    let best = states[0] ?? { groups: [], leftoverUnits: [] };
+    let best = states[0] ?? { groups: [], leftoverUnits: [], leftoverUnitAllocations: [] };
 
     for (const candidate of states.slice(1)) {
         if (compareResolvedState(candidate, best, context) < 0) {
@@ -2133,6 +2603,20 @@ function crossgradeTierOnlyForeignGroup(
     return chosen ? [createSyntheticGroupForRule(chosen.rule, chosen.step)] : [group];
 }
 
+function applyForeignDisplayName(
+    groups: readonly GroupSizeResult[],
+    foreignDisplayName?: string,
+): GroupSizeResult[] {
+    if (!foreignDisplayName) {
+        return [...groups];
+    }
+
+    return groups.map((group) => ({
+        ...group,
+        foreignDisplayName,
+    }));
+}
+
 function preprocessGroupsForDefinition(
     definition: OrgDefinitionSpec,
     groupResults: readonly GroupSizeResult[],
@@ -2146,13 +2630,15 @@ function preprocessGroupsForDefinition(
             continue;
         }
 
+        const foreignDisplayName = group.foreignDisplayName ?? group.name;
+
         const descendantUnits = collectAllGroupUnits(group);
         if (descendantUnits.length > 0) {
-            normalized.push(...resolveWithDefinition(definition, descendantUnits, []));
+            normalized.push(...applyForeignDisplayName(resolveWithDefinition(definition, descendantUnits, []), foreignDisplayName));
             continue;
         }
 
-        normalized.push(...crossgradeTierOnlyForeignGroup(group, context));
+        normalized.push(...applyForeignDisplayName(crossgradeTierOnlyForeignGroup(group, context), foreignDisplayName));
     }
 
     return normalized;
@@ -2174,6 +2660,9 @@ function resolveWithDefinition(
         ...regularLeafResult.groups,
     ];
     const leftoverUnits = [...regularLeafResult.leftover];
+    const leftoverUnitAllocations = [...regularLeafResult.leftoverUnitAllocations];
+
+    pool = normalizeCIFormationGroups(pool, context);
 
     pool = repairSubRegularGroupsForPromotion(pool, context);
 
@@ -2184,13 +2673,13 @@ function resolveWithDefinition(
 
     const regularPool = runRegularPromotionLoop(pool, context, createSolverGuard());
     const candidateStates: ResolvedState[] = [
-        { groups: regularPool, leftoverUnits },
-        { groups: runLeftoverImprovementLoop(regularPool, context, createSolverGuard()), leftoverUnits },
-        { groups: initialImprovedPool, leftoverUnits },
+        { groups: regularPool, leftoverUnits, leftoverUnitAllocations },
+        { groups: runLeftoverImprovementLoop(regularPool, context, createSolverGuard()), leftoverUnits, leftoverUnitAllocations },
+        { groups: initialImprovedPool, leftoverUnits, leftoverUnitAllocations },
     ];
 
     if (wholeComposedFromInitial) {
-        candidateStates.push({ groups: [wholeComposedFromInitial], leftoverUnits: [] });
+        candidateStates.push({ groups: [wholeComposedFromInitial], leftoverUnits: [], leftoverUnitAllocations: [] });
     }
 
     if (leftoverUnits.length > 0) {
@@ -2202,16 +2691,17 @@ function resolveWithDefinition(
         candidateStates.push({
             groups: runLeftoverImprovementLoop(fallbackRegularPool, context, guard),
             leftoverUnits: subRegularLeafResult.leftover,
+            leftoverUnitAllocations: [...leftoverUnitAllocations, ...subRegularLeafResult.leftoverUnitAllocations],
         });
     }
 
     if (wholeLeaf) {
-        candidateStates.push({ groups: [wholeLeaf], leftoverUnits: [] });
+        candidateStates.push({ groups: [wholeLeaf], leftoverUnits: [], leftoverUnitAllocations: [] });
     }
 
     const wholeComposed = resolveWholeComposedCandidate(regularPool, context, createSolverGuard());
     if (wholeComposed) {
-        candidateStates.push({ groups: [wholeComposed], leftoverUnits: [] });
+        candidateStates.push({ groups: [wholeComposed], leftoverUnits: [], leftoverUnitAllocations: [] });
     }
 
     const bestState = pickBestResolvedState(candidateStates, context);

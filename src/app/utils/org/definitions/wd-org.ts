@@ -18,7 +18,6 @@ import {
     IS_PLATOON,
     IS_REGIMENT,
     IS_SINGLE,
-    IS_SQUAD,
     IS_SQUADRON,
     IS_WING,
 } from './is-org';
@@ -143,7 +142,6 @@ export const WD_CORE_ORG: OrgDefinitionSpec = {
         IS_FLIGHT,
         IS_SQUADRON,
         IS_WING,
-        IS_SQUAD,
         IS_PLATOON,
         WD_NOVA,
         WD_SUPERNOVA_BINARY,

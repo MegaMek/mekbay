@@ -1,13 +1,12 @@
 import { DEFAULT_ORG_RULE_REGISTRY } from '../org-facts.util';
 import type {
+    OrgCIFormationRule,
     OrgComposedCountRule,
     OrgDefinitionSpec,
     OrgLeafCountRule,
     OrgLeafPatternRule,
 } from '../org-types';
 import {
-    createExactCIComposedRule,
-    createExactCISquadRule,
     TRANSPORT_BA_ALL_BUCKETS,
     TRANSPORT_BA_MEC_BUCKETS,
     TRANSPORT_BA_QUALIFIED_BUCKETS,
@@ -26,40 +25,28 @@ export const COMSTAR_LEVEL_I: OrgLeafCountRule = {
     pointModel: 'fixed',
 };
 
-export const COMSTAR_CI_SQUAD: OrgLeafPatternRule = createExactCISquadRule({
-    type: 'Squad',
-    commandRank: 'Acolyte',
-    tier: 0,
-    entries: [
-        { moveClass: 'foot', troopers: 6 },
-        { moveClass: 'motorized', troopers: 6 },
-        { moveClass: 'scuba', troopers: 6 },
-        { moveClass: 'jump', troopers: 6 },
-        { moveClass: 'mechanized-vtol', troopers: 5 },
-        { moveClass: 'mechanized-hover', troopers: 5 },
-        { moveClass: 'mechanized-wheeled', troopers: 6 },
-        { moveClass: 'mechanized-tracked', troopers: 6 },
-        { moveClass: 'mechanized-submarine', troopers: 6 },
-    ],
-});
-
-export const COMSTAR_LEVEL_I_FROM_SQUADS: OrgComposedCountRule = createExactCIComposedRule({
+export const COMSTAR_LEVEL_I_FROM_SQUADS: OrgCIFormationRule = {
+    kind: 'ci-formation',
     type: 'Level I',
+    fragmentType: 'Squad',
+    fragmentTier: 0,
+    modifiers: { 'Demi-': 3, '': 6 },
+    unitSelector: 'CI',
     commandRank: 'Acolyte',
     tier: 0,
     requireRegularForPromotion: true,
     entries: [
-        { moveClass: 'foot', counts: { 'Demi-': 3, '': 6 } },
-        { moveClass: 'motorized', counts: { 'Demi-': 3, '': 6 } },
-        { moveClass: 'scuba', counts: { 'Demi-': 3, '': 6 } },
-        { moveClass: 'jump', counts: { '': 5 } },
-        { moveClass: 'mechanized-vtol', counts: { '': 4 } },
-        { moveClass: 'mechanized-hover', counts: { '': 4 } },
-        { moveClass: 'mechanized-wheeled', counts: { '': 4 } },
-        { moveClass: 'mechanized-tracked', counts: { '': 4 } },
-        { moveClass: 'mechanized-submarine', counts: { '': 4 } },
+        { moveClass: 'foot', troopers: 6, counts: { 'Demi-': 3, '': 6 } },
+        { moveClass: 'motorized', troopers: 6, counts: { 'Demi-': 3, '': 6 } },
+        { moveClass: 'scuba', troopers: 6, counts: { 'Demi-': 3, '': 6 } },
+        { moveClass: 'jump', troopers: 6, counts: { '': 5 } },
+        { moveClass: 'mechanized-vtol', troopers: 5, counts: { '': 4 } },
+        { moveClass: 'mechanized-hover', troopers: 5, counts: { '': 4 } },
+        { moveClass: 'mechanized-wheeled', troopers: 6, counts: { '': 4 } },
+        { moveClass: 'mechanized-tracked', troopers: 6, counts: { '': 4 } },
+        { moveClass: 'mechanized-submarine', troopers: 6, counts: { '': 4 } },
     ],
-});
+};
 
 export const COMSTAR_LEVEL_II: OrgComposedCountRule = {
     kind: 'composed-count',
@@ -160,7 +147,6 @@ export const COMSTAR_LEVEL_VI: OrgComposedCountRule = {
 export const COMSTAR_CORE_ORG: OrgDefinitionSpec = {
     rules: [
         COMSTAR_LEVEL_I,
-        COMSTAR_CI_SQUAD,
         COMSTAR_LEVEL_I_FROM_SQUADS,
         COMSTAR_LEVEL_II,
         COMSTAR_CHOIR,

@@ -13,7 +13,6 @@ import {
     IS_PLATOON,
     IS_REGIMENT,
     IS_SINGLE,
-    IS_SQUAD,
     IS_SQUADRON,
     IS_WING,
 } from './is-org';
@@ -151,7 +150,6 @@ export const CC_CORE_ORG: OrgDefinitionSpec = {
         IS_SQUADRON,
         IS_WING,
         IS_BA_SQUAD,
-        IS_SQUAD,
         IS_PLATOON,
         IS_SINGLE,
         IS_LANCE,

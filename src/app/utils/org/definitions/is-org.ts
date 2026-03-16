@@ -1,13 +1,12 @@
 import { DEFAULT_ORG_RULE_REGISTRY } from '../org-facts.util';
 import type {
+    OrgCIFormationRule,
     OrgComposedCountRule,
     OrgDefinitionSpec,
     OrgLeafCountRule,
     OrgLeafPatternRule,
 } from '../org-types';
 import {
-    createExactCIComposedRule,
-    createExactCISquadRule,
     INFANTRY_BA_TROOPER_BUCKETS,
 } from './common';
 
@@ -66,41 +65,29 @@ export const IS_BA_SQUAD: OrgLeafPatternRule = {
     ],
 };
 
-export const IS_SQUAD: OrgLeafPatternRule = createExactCISquadRule({
-    type: 'Squad',
-    commandRank: 'Sergeant',
-    tier: 0,
-    entries: [
-        { moveClass: 'foot', troopers: 7 },
-        { moveClass: 'scuba', troopers: 7 },
-        { moveClass: 'motorized', troopers: 7 },
-        { moveClass: 'jump', troopers: 7 },
-        { moveClass: 'mechanized-vtol', troopers: 5 },
-        { moveClass: 'mechanized-hover', troopers: 5 },
-        { moveClass: 'mechanized-wheeled', troopers: 6 },
-        { moveClass: 'mechanized-tracked', troopers: 7 },
-        { moveClass: 'mechanized-submarine', troopers: 5 },
-    ],
-});
-
-export const IS_PLATOON: OrgComposedCountRule = createExactCIComposedRule({
+export const IS_PLATOON: OrgCIFormationRule = {
+    kind: 'ci-formation',
     type: 'Platoon',
+    fragmentType: 'Squad',
+    fragmentTier: 0,
+    modifiers: { '': 4 },
+    unitSelector: 'CI',
     countsAs: 'Lance',
     priority: 1,
     commandRank: 'Lieutenant',
     tier: 1,
     entries: [
-        { moveClass: 'foot', counts: { '': 4 } },
-        { moveClass: 'motorized', counts: { '': 4 } },
-        { moveClass: 'scuba', counts: { '': 4 } },
-        { moveClass: 'jump', counts: { '': 3 } },
-        { moveClass: 'mechanized-vtol', counts: { '': 4 } },
-        { moveClass: 'mechanized-hover', counts: { '': 4 } },
-        { moveClass: 'mechanized-wheeled', counts: { '': 4 } },
-        { moveClass: 'mechanized-tracked', counts: { '': 4 } },
-        { moveClass: 'mechanized-submarine', counts: { '': 4 } },
+        { moveClass: 'foot', troopers: 7, counts: { '': 4 } },
+        { moveClass: 'motorized', troopers: 7, counts: { '': 4 } },
+        { moveClass: 'scuba', troopers: 7, counts: { '': 4 } },
+        { moveClass: 'jump', troopers: 7, counts: { '': 3 } },
+        { moveClass: 'mechanized-vtol', troopers: 5, counts: { '': 4 } },
+        { moveClass: 'mechanized-hover', troopers: 5, counts: { '': 4 } },
+        { moveClass: 'mechanized-wheeled', troopers: 6, counts: { '': 4 } },
+        { moveClass: 'mechanized-tracked', troopers: 7, counts: { '': 4 } },
+        { moveClass: 'mechanized-submarine', troopers: 5, counts: { '': 4 } },
     ],
-});
+};
 
 export const IS_AIR_LANCE: OrgComposedCountRule = {
     kind: 'composed-count',
@@ -187,7 +174,6 @@ export const IS_CORE_ORG: OrgDefinitionSpec = {
         IS_SQUADRON,
         IS_WING,
         IS_BA_SQUAD,
-        IS_SQUAD,
         IS_PLATOON,
         IS_SINGLE,
         IS_LANCE,

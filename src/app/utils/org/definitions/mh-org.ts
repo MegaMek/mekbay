@@ -1,14 +1,10 @@
 import { DEFAULT_ORG_RULE_REGISTRY } from '../org-facts.util';
 import type {
+    OrgCIFormationRule,
     OrgComposedCountRule,
     OrgDefinitionSpec,
     OrgLeafCountRule,
-    OrgLeafPatternRule,
 } from '../org-types';
-import {
-    createExactCIComposedRule,
-    createExactCISquadRule,
-} from './common';
 
 export const MH_CONTUBERNIUM_NON_INFANTRY: OrgLeafCountRule = {
     kind: 'leaf-count',
@@ -21,22 +17,27 @@ export const MH_CONTUBERNIUM_NON_INFANTRY: OrgLeafCountRule = {
     pointModel: 'fixed',
 };
 
-export const MH_CONTUBERNIUM_INFANTRY: OrgLeafPatternRule = createExactCISquadRule({
+export const MH_CONTUBERNIUM_INFANTRY: OrgCIFormationRule = {
+    kind: 'ci-formation',
     type: 'Contubernium',
+    fragmentType: 'Contubernium',
+    fragmentTier: 0,
+    modifiers: { '': 1 },
+    unitSelector: 'CI',
     commandRank: 'Miles probatus',
     tier: 0,
     entries: [
-        { moveClass: 'foot', troopers: 10 },
-        { moveClass: 'motorized', troopers: 10 },
-        { moveClass: 'scuba', troopers: 10 },
-        { moveClass: 'jump', troopers: 10 },
-        { moveClass: 'mechanized-vtol', troopers: 5 },
-        { moveClass: 'mechanized-hover', troopers: 5 },
-        { moveClass: 'mechanized-wheeled', troopers: 5 },
-        { moveClass: 'mechanized-tracked', troopers: 5 },
-        { moveClass: 'mechanized-submarine', troopers: 5 },
+        { moveClass: 'foot', troopers: 10, counts: { '': 1 } },
+        { moveClass: 'motorized', troopers: 10, counts: { '': 1 } },
+        { moveClass: 'scuba', troopers: 10, counts: { '': 1 } },
+        { moveClass: 'jump', troopers: 10, counts: { '': 1 } },
+        { moveClass: 'mechanized-vtol', troopers: 5, counts: { '': 1 } },
+        { moveClass: 'mechanized-hover', troopers: 5, counts: { '': 1 } },
+        { moveClass: 'mechanized-wheeled', troopers: 5, counts: { '': 1 } },
+        { moveClass: 'mechanized-tracked', troopers: 5, counts: { '': 1 } },
+        { moveClass: 'mechanized-submarine', troopers: 5, counts: { '': 1 } },
     ],
-});
+};
 
 export const MH_CENTURY_NON_INFANTRY: OrgComposedCountRule = {
     kind: 'composed-count',
@@ -48,23 +49,27 @@ export const MH_CENTURY_NON_INFANTRY: OrgComposedCountRule = {
     childBucketBy: 'promotionBasic',
 };
 
-export const MH_CENTURY_INFANTRY: OrgComposedCountRule = createExactCIComposedRule({
+export const MH_CENTURY_INFANTRY: OrgCIFormationRule = {
+    kind: 'ci-formation',
     type: 'Century',
+    fragmentType: 'Contubernium',
+    fragmentTier: 0,
+    modifiers: { '': 10 },
+    unitSelector: 'CI',
     commandRank: 'Centurion',
     tier: 1,
-    childType: 'Contubernium',
     entries: [
-        { moveClass: 'foot', counts: { '': 10 } },
-        { moveClass: 'motorized', counts: { '': 10 } },
-        { moveClass: 'scuba', counts: { '': 10 } },
-        { moveClass: 'jump', counts: { '': 5 } },
-        { moveClass: 'mechanized-vtol', counts: { '': 4 } },
-        { moveClass: 'mechanized-hover', counts: { '': 4 } },
-        { moveClass: 'mechanized-wheeled', counts: { '': 4 } },
-        { moveClass: 'mechanized-tracked', counts: { '': 4 } },
-        { moveClass: 'mechanized-submarine', counts: { '': 4 } },
+        { moveClass: 'foot', troopers: 10, counts: { '': 10 } },
+        { moveClass: 'motorized', troopers: 10, counts: { '': 10 } },
+        { moveClass: 'scuba', troopers: 10, counts: { '': 10 } },
+        { moveClass: 'jump', troopers: 10, counts: { '': 5 } },
+        { moveClass: 'mechanized-vtol', troopers: 5, counts: { '': 4 } },
+        { moveClass: 'mechanized-hover', troopers: 5, counts: { '': 4 } },
+        { moveClass: 'mechanized-wheeled', troopers: 5, counts: { '': 4 } },
+        { moveClass: 'mechanized-tracked', troopers: 5, counts: { '': 4 } },
+        { moveClass: 'mechanized-submarine', troopers: 5, counts: { '': 4 } },
     ],
-});
+};
 
 export const MH_MANIPLE: OrgComposedCountRule = {
     kind: 'composed-count',

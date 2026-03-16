@@ -27,6 +27,7 @@ import type {
     DerivedUnitClassKey,
     GroupFacts,
     GroupSizeResult,
+    GroupUnitAllocation,
     InfantryTrooperBucketValue,
     OrgChildTypeCountKey,
     OrgRuleRegistry,
@@ -75,7 +76,7 @@ function getNormalizedOrgUnitType(unit: Unit): Unit['as']['TP'] {
     return unit.as.TP;
 }
 
-function getCIMoveClass(unit: Unit): CIMoveClass | null {
+export function getCIMoveClass(unit: Unit): CIMoveClass | null {
     if (!isCI(unit)) {
         return null;
     }
@@ -289,6 +290,10 @@ export function buildUnitFactsMap(units: ReadonlyArray<Unit>): WeakMap<Unit, Uni
 export function collectGroupUnits(group: GroupSizeResult): Unit[] {
     const result: Unit[] = [];
 
+    if (group.unitAllocations) {
+        result.push(...group.unitAllocations.map((allocation) => allocation.unit));
+    }
+
     if (group.units) {
         result.push(...group.units);
     }
@@ -300,6 +305,18 @@ export function collectGroupUnits(group: GroupSizeResult): Unit[] {
     }
 
     return result;
+}
+
+function getGroupUnitAllocations(group: GroupSizeResult): GroupUnitAllocation[] | null {
+    if (group.unitAllocations && group.unitAllocations.length > 0) {
+        return [...group.unitAllocations];
+    }
+
+    if (group.units && group.units.length > 0) {
+        return group.units.map((unit) => ({ unit, troopers: unit.internal || 0 }));
+    }
+
+    return null;
 }
 
 export function compileGroupFacts(
@@ -323,13 +340,18 @@ export function compileGroupFacts(
         }
     }
 
-    const groupUnits = groupUnitCache?.get(group) ?? collectGroupUnits(group);
+    const directAllocations = getGroupUnitAllocations(group);
+    const groupUnits = directAllocations?.map((allocation) => allocation.unit)
+        ?? groupUnitCache?.get(group)
+        ?? collectGroupUnits(group);
     if (groupUnitCache && !groupUnitCache.has(group)) {
         groupUnitCache.set(group, groupUnits);
     }
 
-    for (const [index, unit] of groupUnits.entries()) {
-        const facts = unitFactsMap?.get(unit) ?? compileUnitFacts(unit, index);
+    const allocations = directAllocations ?? groupUnits.map((unit) => ({ unit, troopers: unit.internal || 0 }));
+
+    for (const [index, allocation] of allocations.entries()) {
+        const facts = unitFactsMap?.get(allocation.unit) ?? compileUnitFacts(allocation.unit, index);
         const normalizedUnitType = getNormalizedOrgUnitType(facts.unit);
 
         incrementCount(unitTypeCounts, normalizedUnitType);
@@ -339,7 +361,8 @@ export function compileGroupFacts(
         }
         for (const [key, value] of Object.entries(facts.scalars)) {
             if (typeof value === 'number') {
-                incrementCount(unitScalarSums, key as UnitNumericScalarName, value);
+                const numericValue = key === 'troopers' ? allocation.troopers : value;
+                incrementCount(unitScalarSums, key as UnitNumericScalarName, numericValue);
             }
         }
     }

@@ -1,13 +1,12 @@
 import { DEFAULT_ORG_RULE_REGISTRY } from '../org-facts.util';
 import type {
+    OrgCIFormationRule,
     OrgComposedCountRule,
     OrgDefinitionSpec,
     OrgLeafCountRule,
     OrgLeafPatternRule,
 } from '../org-types';
 import {
-    createExactCIComposedRule,
-    createExactCISquadRule,
     TRANSPORT_AF_CARRIER_BUCKETS,
     TRANSPORT_AF_OMNI_CARRIER_BUCKETS,
     TRANSPORT_BA_MEC_BUCKETS,
@@ -31,39 +30,27 @@ export const CLAN_POINT: OrgLeafCountRule = {
     pointModel: 'fixed',
 };
 
-export const CLAN_CI_SQUAD: OrgLeafPatternRule = createExactCISquadRule({
-    type: 'Squad',
-    commandRank: 'Point Commander',
-    tier: 0,
-    entries: [
-        { moveClass: 'foot', troopers: 5 },
-        { moveClass: 'motorized', troopers: 5 },
-        { moveClass: 'scuba', troopers: 5 },
-        { moveClass: 'jump', troopers: 5 },
-        { moveClass: 'mechanized-vtol', troopers: 5 },
-        { moveClass: 'mechanized-hover', troopers: 5 },
-        { moveClass: 'mechanized-wheeled', troopers: 5 },
-        { moveClass: 'mechanized-tracked', troopers: 5 },
-        { moveClass: 'mechanized-submarine', troopers: 5 },
-    ],
-});
-
-export const CLAN_CI_POINT: OrgComposedCountRule = createExactCIComposedRule({
+export const CLAN_CI_POINT: OrgCIFormationRule = {
+    kind: 'ci-formation',
     type: 'Point',
+    fragmentType: 'Squad',
+    fragmentTier: 0,
+    modifiers: { '': 5 },
+    unitSelector: 'CI',
     commandRank: 'Point Commander',
     tier: 0,
     entries: [
-        { moveClass: 'foot', counts: { '': 5 } },
-        { moveClass: 'motorized', counts: { '': 5 } },
-        { moveClass: 'scuba', counts: { '': 5 } },
-        { moveClass: 'jump', counts: { '': 4 } },
-        { moveClass: 'mechanized-vtol', counts: { '': 4 } },
-        { moveClass: 'mechanized-hover', counts: { '': 4 } },
-        { moveClass: 'mechanized-wheeled', counts: { '': 4 } },
-        { moveClass: 'mechanized-tracked', counts: { '': 4 } },
-        { moveClass: 'mechanized-submarine', counts: { '': 4 } },
+        { moveClass: 'foot', troopers: 5, counts: { '': 5 } },
+        { moveClass: 'motorized', troopers: 5, counts: { '': 5 } },
+        { moveClass: 'scuba', troopers: 5, counts: { '': 5 } },
+        { moveClass: 'jump', troopers: 5, counts: { '': 4 } },
+        { moveClass: 'mechanized-vtol', troopers: 5, counts: { '': 4 } },
+        { moveClass: 'mechanized-hover', troopers: 5, counts: { '': 4 } },
+        { moveClass: 'mechanized-wheeled', troopers: 5, counts: { '': 4 } },
+        { moveClass: 'mechanized-tracked', troopers: 5, counts: { '': 4 } },
+        { moveClass: 'mechanized-submarine', troopers: 5, counts: { '': 4 } },
     ],
-});
+};
 
 export const CLAN_STAR: OrgComposedCountRule = {
     kind: 'composed-count',
@@ -214,7 +201,6 @@ export const CLAN_CORE_ORG: OrgDefinitionSpec = {
         CLAN_NOVA,
         CLAN_SUPERNOVA_BINARY,
         CLAN_SUPERNOVA_TRINARY,
-        CLAN_CI_SQUAD,
         CLAN_CI_POINT,
         CLAN_POINT,
         CLAN_STAR,
