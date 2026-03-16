@@ -82,7 +82,6 @@ export const MH_LEGION: OrgComposedCountRule = {
 export const MH_CORE_ORG: OrgDefinitionSpec = {
     rules: [
         MH_CONTUBERNIUM_NON_INFANTRY,
-        MH_CONTUBERNIUM_INFANTRY,
         MH_CENTURY_NON_INFANTRY,
         MH_CENTURY_INFANTRY,
         MH_MANIPLE,
