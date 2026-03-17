@@ -269,8 +269,7 @@ interface CanonicalPromotionFuture {
 }
 
 interface ResolvedState {
-    readonly groups?: readonly GroupSizeResult[];
-    readonly canonicalState?: CanonicalGroupPoolState;
+    readonly canonicalState: CanonicalGroupPoolState;
     readonly leftoverUnits: readonly UnitFacts[];
     readonly leftoverUnitAllocations: readonly GroupUnitAllocation[];
 }
@@ -3351,15 +3350,6 @@ function getAnyRuleByType(
         ?? context.composedPatternRules.find((rule) => rule.type === type);
 }
 
-function getModifierBandForGroup(group: GroupSizeResult, context: ResolveContext): ModifierBand {
-    const rule = getAnyRuleByType(context, group.type);
-    if (!rule) {
-        return group.modifierKey === '' ? 'regular' : 'sub-regular';
-    }
-    const metadata = getRuleStageMetadata(context, rule);
-    return metadata.descriptor.stepsAscending.find((step) => step.modifierKey === group.modifierKey)?.relativeBand ?? 'regular';
-}
-
 function getModifierBandForGroupFacts(group: GroupFacts, context: ResolveContext): ModifierBand {
     const rule = getAnyRuleByType(context, group.type);
     if (!rule) {
@@ -3370,33 +3360,12 @@ function getModifierBandForGroupFacts(group: GroupFacts, context: ResolveContext
 }
 
 function scoreResolvedState(state: ResolvedState, context: ResolveContext): FinalStateScore {
-    if (state.canonicalState) {
-        const baseScore = scoreCanonicalGroupPoolState(state.canonicalState, context);
-        const leftoverCount = state.leftoverUnits.length + state.leftoverUnitAllocations.length;
-
-        return {
-            ...baseScore,
-            isWhole: baseScore.isWhole && leftoverCount === 0,
-            leftoverCount,
-        };
-    }
-
-    const groups = state.groups ?? [];
-    const topLevelGroupCount = groups.length;
+    const baseScore = scoreCanonicalGroupPoolState(state.canonicalState, context);
     const leftoverCount = state.leftoverUnits.length + state.leftoverUnitAllocations.length;
-    const highestTier = groups.length > 0 ? Math.max(...groups.map((group) => group.tier)) : 0;
-    const highestTierGroupCount = groups.filter((group) => group.tier === highestTier).length;
-    const totalPriority = groups.reduce((sum, group) => sum + (group.priority ?? 0), 0);
-    const isWhole = topLevelGroupCount === 1
-        && leftoverCount === 0
-        && getModifierBandForGroup(groups[0], context) !== 'sub-regular';
 
     return {
-        isWhole,
-        highestTier,
-        totalPriority,
-        topLevelGroupCount,
-        highestTierGroupCount,
+        ...baseScore,
+        isWhole: baseScore.isWhole && leftoverCount === 0,
         leftoverCount,
     };
 }
@@ -3451,18 +3420,26 @@ function compareFinalStateScores(leftScore: FinalStateScore, rightScore: FinalSt
 }
 
 function materializeResolvedState(state: ResolvedState): GroupSizeResult[] {
-    const groups = state.canonicalState
-        ? materializeCanonicalGroupPoolState(state.canonicalState)
-        : (state.groups ?? []);
-
-    return attachLeftoverUnits(normalizeTopLevelGroups(groups), state.leftoverUnits, state.leftoverUnitAllocations);
+    return attachLeftoverUnits(
+        normalizeTopLevelGroups(materializeCanonicalGroupPoolState(state.canonicalState)),
+        state.leftoverUnits,
+        state.leftoverUnitAllocations,
+    );
 }
 
 function pickBestResolvedState(
     states: readonly ResolvedState[],
     context: ResolveContext,
 ): ResolvedState {
-    let best = states[0] ?? { groups: [], leftoverUnits: [], leftoverUnitAllocations: [] };
+    let best = states[0];
+
+    if (!best) {
+        return {
+            canonicalState: createCanonicalGroupPoolStateFromRecords([]),
+            leftoverUnits: [],
+            leftoverUnitAllocations: [],
+        };
+    }
 
     for (const candidate of states.slice(1)) {
         if (compareResolvedState(candidate, best, context) < 0) {
