@@ -1,4 +1,5 @@
 import type { ASUnitTypeCode, MoveType, Unit, UnitSubtype, UnitType } from '../../models/units.model';
+import { LoadForceEntry } from '../../models/load-force-entry.model';
 import {
     CC_AUGMENTED_BATTALION,
     CC_AUGMENTED_COMPANY,
@@ -48,6 +49,8 @@ import {
 } from './org-facts.util';
 import {
     getAggregatedGroupsResult,
+    getOrgFromForce,
+    getOrgFromForceCollection,
 } from './org-namer.util';
 import {
     getDynamicTierForModifier,
@@ -79,6 +82,7 @@ import type {
     OrgDefinitionSpec,
     OrgLeafCountRule,
     OrgLeafPatternRule,
+    OrgSizeResult,
     PromotionBasicBucketValue,
 } from './org-types';
 
@@ -2094,6 +2098,95 @@ function buildVerifiedMixedRoleRegiments(): GroupSizeResult[] {
     ];
 }
 
+function createLoadForceEntry(instanceId: string, units: readonly Unit[]): LoadForceEntry {
+    return new LoadForceEntry({
+        instanceId,
+        name: `Force ${instanceId}`,
+        groups: [{
+            units: units.map((unit) => ({ unit, destroyed: false })),
+        }],
+    });
+}
+
+function resolveDialogLikeOrgCollection(
+    descendantEntries: readonly LoadForceEntry[],
+    directEntries: readonly LoadForceEntry[],
+    childResults: readonly OrgSizeResult[] = [],
+    factionName: string = 'Federated Suns',
+    factionAffinity: 'Inner Sphere' = 'Inner Sphere',
+): OrgSizeResult {
+    const directGroups = directEntries.flatMap((entry) => getOrgFromForce(entry, factionName, factionAffinity).groups);
+    return getOrgFromForceCollection(
+        descendantEntries,
+        factionName,
+        factionAffinity,
+        [...childResults.flatMap((result) => result.groups), ...directGroups],
+    );
+}
+
+function buildDialogLikeRepeatedCompanyRegiments(): { readonly regiments: readonly OrgSizeResult[]; readonly entries: readonly LoadForceEntry[] } {
+    function buildCompanyEntry(companyIndex: number): LoadForceEntry {
+        return createLoadForceEntry(
+            `force-${companyIndex + 1}`,
+            Array.from({ length: 12 }, (_, unitIndex) => createBM(`Atlas`)),
+        );
+    }
+
+    function buildBattalion(battalionIndex: number): { readonly result: OrgSizeResult; readonly entries: readonly LoadForceEntry[] } {
+        const companyEntries = [
+            buildCompanyEntry(battalionIndex * 3),
+            buildCompanyEntry(battalionIndex * 3 + 1),
+            buildCompanyEntry(battalionIndex * 3 + 2),
+        ];
+
+        for (const entry of companyEntries) {
+            const companyOrg = getOrgFromForce(entry, 'Federated Suns', 'Inner Sphere');
+            expect(companyOrg.groups).toHaveSize(1);
+            expect(companyOrg.groups[0].type).toBe('Company');
+            expect(companyOrg.name).toBe('Company');
+        }
+
+        const battalionPass1 = resolveDialogLikeOrgCollection(companyEntries, companyEntries);
+        const battalionPass2 = getOrgFromForceCollection(companyEntries, 'Federated Suns', 'Inner Sphere', battalionPass1.groups);
+        const battalionPass3 = getOrgFromForceCollection(companyEntries, 'Federated Suns', 'Inner Sphere', battalionPass2.groups);
+
+        for (const pass of [battalionPass1, battalionPass2, battalionPass3]) {
+            expect(pass.name).toBe('Battalion');
+            expect(pass.groups).toHaveSize(3);
+            expect(pass.groups.every((group) => group.type === 'Company')).toBeTrue();
+        }
+
+        return { result: battalionPass3, entries: companyEntries };
+    }
+
+    function buildRegiment(regimentIndex: number): { readonly result: OrgSizeResult; readonly entries: readonly LoadForceEntry[] } {
+        const battalions = [
+            buildBattalion(regimentIndex * 3),
+            buildBattalion(regimentIndex * 3 + 1),
+            buildBattalion(regimentIndex * 3 + 2),
+        ];
+        const regimentEntries = battalions.flatMap((battalion) => battalion.entries);
+        const regimentPass1 = resolveDialogLikeOrgCollection(regimentEntries, [], battalions.map((battalion) => battalion.result));
+        const regimentPass2 = getOrgFromForceCollection(regimentEntries, 'Federated Suns', 'Inner Sphere', regimentPass1.groups);
+        const regimentPass3 = getOrgFromForceCollection(regimentEntries, 'Federated Suns', 'Inner Sphere', regimentPass2.groups);
+
+        for (const pass of [regimentPass1, regimentPass2, regimentPass3]) {
+            expect(pass.name).toBe('Regiment');
+            expect(pass.groups).toHaveSize(9);
+            expect(pass.groups.every((group) => group.type === 'Company')).toBeTrue();
+        }
+
+        return { result: regimentPass3, entries: regimentEntries };
+    }
+
+    const regiments = [buildRegiment(0), buildRegiment(1), buildRegiment(2)];
+
+    return {
+        regiments: regiments.map((regiment) => regiment.result),
+        entries: regiments.flatMap((regiment) => regiment.entries),
+    };
+}
+
 let cachedMixedRolePerfRegiments: readonly GroupSizeResult[] | null = null;
 
 function getMixedRolePerfRegiments(): readonly GroupSizeResult[] {
@@ -3057,6 +3150,27 @@ describe('org-solver.util aggregation and foreign parity', () => {
             expect(pass[0].children?.length).toBe(3);
             expect(pass[0].children?.every((child) => child.type === 'Regiment')).toBeTrue();
             expect(pass[0].leftoverUnits).toBeUndefined();
+        }
+    });
+
+    it('repeatedly aggregates nested LoadForceEntry groups through getOrgFromForceCollection like force-org-dialog', () => {
+        const { regiments, entries } = buildDialogLikeRepeatedCompanyRegiments();
+
+        expect(regiments).toHaveSize(3);
+        for (const regiment of regiments) {
+            expect(regiment.name).toBe('Regiment');
+            expect(regiment.groups).toHaveSize(9);
+            expect(regiment.groups.every((group) => group.type === 'Company')).toBeTrue();
+        }
+
+        const brigadePass1 = getOrgFromForceCollection(entries, 'Federated Suns', 'Inner Sphere', regiments.flatMap((regiment) => regiment.groups));
+        const brigadePass2 = getOrgFromForceCollection(entries, 'Federated Suns', 'Inner Sphere', brigadePass1.groups);
+        const brigadePass3 = getOrgFromForceCollection(entries, 'Federated Suns', 'Inner Sphere', brigadePass2.groups);
+
+        for (const pass of [brigadePass1, brigadePass2, brigadePass3]) {
+            expect(pass.name).toBe('Brigade');
+            expect(pass.groups).toHaveSize(27);
+            expect(pass.groups.every((group) => group.type === 'Company')).toBeTrue();
         }
     });
 
