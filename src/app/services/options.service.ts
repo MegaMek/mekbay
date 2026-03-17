@@ -65,6 +65,7 @@ const DEFAULT_OPTIONS: Options = {
     ASUseAutomations: true,
     ASVehiclesCriticalHitTable: 'default',
     ASUnifiedDamagePicker: true,
+    ASPrintRosterSummary: false,
 };
 
 @Injectable({ providedIn: 'root' })
@@ -92,6 +93,7 @@ export class OptionsService {
         ASVehiclesCriticalHitTable: DEFAULT_OPTIONS.ASVehiclesCriticalHitTable,
         ASUseAutomations: DEFAULT_OPTIONS.ASUseAutomations,
         ASUnifiedDamagePicker: DEFAULT_OPTIONS.ASUnifiedDamagePicker,
+        ASPrintRosterSummary: DEFAULT_OPTIONS.ASPrintRosterSummary,
     });
 
     constructor() {
@@ -123,6 +125,7 @@ export class OptionsService {
             ASVehiclesCriticalHitTable: saved?.ASVehiclesCriticalHitTable ?? DEFAULT_OPTIONS.ASVehiclesCriticalHitTable,
             ASUseAutomations: saved?.ASUseAutomations ?? DEFAULT_OPTIONS.ASUseAutomations,
             ASUnifiedDamagePicker: saved?.ASUnifiedDamagePicker ?? DEFAULT_OPTIONS.ASUnifiedDamagePicker,
+            ASPrintRosterSummary: saved?.ASPrintRosterSummary ?? DEFAULT_OPTIONS.ASPrintRosterSummary,
         });
     }
 

@@ -1366,7 +1366,7 @@ export class ForceBuilderService {
             CBTPrintUtil.multipagePrint(sheetService, optionsService, currentForce.units());
         } else if (currentForce instanceof ASForce) {
             const optionsService = this.injector.get(OptionsService);
-            ASPrintUtil.multipagePrint(appRef, this.injector, optionsService, currentForce.groups(), false, true);
+            ASPrintUtil.multipagePrint(appRef, this.injector, optionsService, currentForce.groups(), false, true, currentForce);
         }
     }
 
