@@ -1902,6 +1902,90 @@ function createGroupResult(
     };
 }
 
+function getPerfTimestampMs(): number {
+    return globalThis.performance?.now() ?? Date.now();
+}
+
+function measureMedianScenarioMs(run: () => void, iterations: number = 3): { medianMs: number; durations: number[] } {
+    run();
+
+    const durations: number[] = [];
+    for (let iteration = 0; iteration < iterations; iteration += 1) {
+        const startedAtMs = getPerfTimestampMs();
+        run();
+        durations.push(getPerfTimestampMs() - startedAtMs);
+    }
+
+    const sortedDurations = [...durations].sort((left, right) => left - right);
+    return {
+        medianMs: sortedDurations[Math.floor(sortedDurations.length / 2)] ?? 0,
+        durations,
+    };
+}
+
+function buildInnerSphereCompanyGroups(): GroupSizeResult[] {
+    const companyGroups: GroupSizeResult[] = [];
+
+    for (let companyIndex = 0; companyIndex < 9; companyIndex += 1) {
+        const companyResult = resolveFromUnits(
+            Array.from({ length: 12 }, (_, unitIndex) =>
+                createBM(`IS-BM-${companyIndex + 1}-${unitIndex + 1}`),
+            ),
+            'Federated Suns',
+            'Inner Sphere',
+        );
+
+        companyGroups.push(companyResult[0]);
+    }
+
+    return companyGroups;
+}
+
+function buildAirLanceCompanyForPerf(companyIndex: number): GroupSizeResult {
+    const airLances: GroupSizeResult[] = [];
+
+    for (let airLanceIndex = 0; airLanceIndex < 3; airLanceIndex += 1) {
+        const lanceResult = resolveFromUnits(
+            Array.from({ length: 4 }, (_, unitIndex) =>
+                createBM(`IS-L-${companyIndex + 1}-${airLanceIndex + 1}-${unitIndex + 1}`),
+            ),
+            'Federated Suns',
+            'Inner Sphere',
+        );
+        const flightResult = resolveFromUnits([
+            createAero(`IS-AF-${companyIndex + 1}-${airLanceIndex + 1}-1`),
+            createAero(`IS-AF-${companyIndex + 1}-${airLanceIndex + 1}-2`),
+        ], 'Federated Suns', 'Inner Sphere');
+
+        const airLancePass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', [lanceResult[0], flightResult[0]]);
+        const airLancePass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', airLancePass1);
+        const airLancePass3 = resolveFromGroups('Federated Suns', 'Inner Sphere', airLancePass2);
+        airLances.push(airLancePass3[0]);
+    }
+
+    return resolveFromGroups('Federated Suns', 'Inner Sphere', airLances)[0];
+}
+
+function buildBattalionForPerf(battalionIndex: number): GroupSizeResult {
+    const companies = [
+        buildAirLanceCompanyForPerf(battalionIndex * 3),
+        buildAirLanceCompanyForPerf(battalionIndex * 3 + 1),
+        buildAirLanceCompanyForPerf(battalionIndex * 3 + 2),
+    ];
+
+    return resolveFromGroups('Federated Suns', 'Inner Sphere', companies)[0];
+}
+
+function buildRegimentForPerf(regimentIndex: number): GroupSizeResult {
+    const battalions = [
+        buildBattalionForPerf(regimentIndex * 3),
+        buildBattalionForPerf(regimentIndex * 3 + 1),
+        buildBattalionForPerf(regimentIndex * 3 + 2),
+    ];
+
+    return resolveFromGroups('Federated Suns', 'Inner Sphere', battalions)[0];
+}
+
 describe('org-solver.util resolve parity', () => {
     it('resolves 4 BM in a Lance', () => {
         const units: Unit[] = [
@@ -3154,5 +3238,65 @@ describe('org-solver.util aggregation and foreign parity', () => {
         expect(result.every((group) => group.type === 'Sept')).toBeTrue();
         expect(result.every((group) => group.tier === 1.6)).toBeTrue();
         expect(result.every((group) => group.leftoverUnits === undefined)).toBeTrue();
+    });
+});
+
+describe('org-solver.util performance guards', () => {
+    it('keeps the baseline Inner Sphere lance solve cheap', () => {
+        const measurement = measureMedianScenarioMs(() => {
+            const result = resolveFromUnits([
+                createBM('PERF-BM-1'),
+                createBM('PERF-BM-2'),
+                createBM('PERF-BM-3'),
+                createBM('PERF-BM-4'),
+            ], 'Federated Suns', 'Inner Sphere');
+
+            expect(result.length).toBe(1);
+            expect(result[0].type).toBe('Lance');
+            expect(getLastOrgSolveMetrics()?.timedOut).toBeFalse();
+        });
+
+        expect(measurement.medianMs)
+            .withContext(`durations=${measurement.durations.join(',')}`)
+            .toBeLessThan(5);
+    });
+
+    it('keeps repeated composed-only aggregation of companies to a regiment cheap', () => {
+        const measurement = measureMedianScenarioMs(() => {
+            const companyGroups = buildInnerSphereCompanyGroups();
+            const firstPass = resolveFromGroups('Federated Suns', 'Inner Sphere', companyGroups);
+            const secondPass = resolveFromGroups('Federated Suns', 'Inner Sphere', firstPass);
+            const thirdPass = resolveFromGroups('Federated Suns', 'Inner Sphere', secondPass);
+
+            expect(thirdPass.length).toBe(1);
+            expect(thirdPass[0].type).toBe('Regiment');
+            expect(getLastOrgSolveMetrics()?.timedOut).toBeFalse();
+        });
+
+        expect(measurement.medianMs)
+            .withContext(`durations=${measurement.durations.join(',')}`)
+            .toBeLessThan(50);
+    });
+
+    it('keeps repeated mixed-role aggregation through Air Lances up to a Brigade bounded', () => {
+        const measurement = measureMedianScenarioMs(() => {
+            const regiments = [
+                buildRegimentForPerf(0),
+                buildRegimentForPerf(1),
+                buildRegimentForPerf(2),
+            ];
+
+            const brigadePass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', regiments);
+            const brigadePass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', brigadePass1);
+            const brigadePass3 = resolveFromGroups('Federated Suns', 'Inner Sphere', brigadePass2);
+
+            expect(brigadePass3.length).toBe(1);
+            expect(brigadePass3[0].type).toBe('Brigade');
+            expect(getLastOrgSolveMetrics()?.timedOut).toBeFalse();
+        }, 2);
+
+        expect(measurement.medianMs)
+            .withContext(`durations=${measurement.durations.join(',')}`)
+            .toBeLessThan(50);
     });
 });

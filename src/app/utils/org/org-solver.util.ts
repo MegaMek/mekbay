@@ -412,7 +412,7 @@ function createSolverGuard(): SolverGuard {
 }
 
 function getSolveTimestampMs(): number {
-    return Date.now();
+    return globalThis.performance?.now() ?? Date.now();
 }
 
 function addMetricDuration(metrics: MutableOrgSolveMetrics | null, key: keyof Pick<
