@@ -1,5 +1,5 @@
 import type { FactionAffinity } from '../../models/factions.model';
-import type { Unit } from '../../models/units.model';
+import type { ASUnitTypeCode, Unit } from '../../models/units.model';
 import {
     compileUnitFacts,
     collectGroupUnits,
@@ -44,7 +44,10 @@ import {
     type OrgSizeResult,
     type OrgTypeModifier,
     type OrgUnitBucketName,
+    type UnitClassKey,
+    type UnitFactTag,
     type UnitFacts,
+    type UnitNumericScalarName,
 } from './org-types';
 
 export { EMPTY_RESULT } from './org-types';
@@ -225,6 +228,7 @@ interface PlannedGroupRecord {
     readonly recordId: number;
     readonly facts: GroupFacts;
     readonly producedPlan?: AbstractProducedGroupPlan;
+    readonly atomicPlan?: AbstractAtomicGroupPlan;
     materializedGroup?: GroupSizeResult;
     materialize: () => GroupSizeResult;
 }
@@ -233,6 +237,11 @@ interface AbstractProducedGroupPlan {
     readonly rule: OrgComposedCountRule | OrgComposedPatternRule;
     readonly modifierStep: ModifierStep;
     readonly childRecords: readonly PlannedGroupRecord[];
+}
+
+interface AbstractAtomicGroupPlan {
+    readonly kind: 'leaf' | 'ci-parent' | 'ci-fragment';
+    readonly materializeAtomicGroup: () => GroupSizeResult;
 }
 
 interface ResolveContext {
@@ -270,6 +279,15 @@ interface CIFragmentToken {
     readonly moveClass: NonNullable<ReturnType<typeof getCIMoveClass>>;
     readonly allocations: readonly GroupUnitAllocation[];
 }
+
+const ABSTRACT_UNIT_BUCKET_NAMES: readonly OrgUnitBucketName[] = [
+    'classKey',
+    'ciMoveClass',
+    'ciMoveClassTroopers',
+    'flightType',
+    'infantryTroopers',
+    'transport',
+];
 
 function createSolverGuard(): SolverGuard {
     return {
@@ -517,6 +535,202 @@ function createComposedGroup(
         tag: rule.tag,
         priority: rule.priority,
     };
+}
+
+function createAtomicGroupTemplate(
+    type: string,
+    modifierKey: string,
+    countsAsType: GroupSizeResult['countsAsType'],
+    tier: number,
+    tag: GroupSizeResult['tag'],
+    priority: GroupSizeResult['priority'],
+): GroupSizeResult {
+    return {
+        name: makeGroupName(type, modifierKey),
+        type: type as GroupSizeResult['type'],
+        modifierKey,
+        countsAsType,
+        tier,
+        provenance: 'produced-group',
+        tag,
+        priority,
+    };
+}
+
+function createAtomicFragmentTemplate(
+    type: string,
+    count: number,
+    tier: number,
+    tag: GroupSizeResult['tag'],
+    priority: GroupSizeResult['priority'],
+): GroupSizeResult {
+    return {
+        name: makeCountedGroupName(type, count),
+        type: type as GroupSizeResult['type'],
+        modifierKey: '',
+        countsAsType: null,
+        tier,
+        count,
+        provenance: 'produced-group',
+        tag,
+        priority,
+    };
+}
+
+function buildAbstractGroupFactsFromUnits(
+    groupTemplate: GroupSizeResult,
+    units: readonly UnitFacts[],
+    unitAllocations?: readonly GroupUnitAllocation[],
+): GroupFacts {
+    const unitTypeCounts = new Map<ASUnitTypeCode, number>();
+    const unitClassCounts = new Map<UnitClassKey, number>();
+    const unitTagCounts = new Map<UnitFactTag, number>();
+    const unitScalarSums = new Map<UnitNumericScalarName, number>();
+    const descendantUnitBucketCounts = new Map<OrgUnitBucketName, Map<OrgBucketValue, number>>();
+
+    for (const bucketName of ABSTRACT_UNIT_BUCKET_NAMES) {
+        descendantUnitBucketCounts.set(bucketName, new Map<OrgBucketValue, number>());
+    }
+
+    const allocationByUnit = new Map(units.map((facts) => [facts.unit, unitAllocations?.find((allocation) => allocation.unit === facts.unit)?.troopers ?? facts.scalars.troopers]));
+
+    for (const facts of units) {
+        const troopers = allocationByUnit.get(facts.unit) ?? facts.scalars.troopers;
+        const unitType = getNormalizedOrgUnitType(facts.unit);
+        unitTypeCounts.set(unitType, (unitTypeCounts.get(unitType) ?? 0) + 1);
+        unitClassCounts.set(facts.classKey, (unitClassCounts.get(facts.classKey) ?? 0) + 1);
+        for (const tag of facts.tags) {
+            unitTagCounts.set(tag, (unitTagCounts.get(tag) ?? 0) + 1);
+        }
+        for (const [key, value] of Object.entries(facts.scalars)) {
+            if (typeof value === 'number') {
+                const numericValue = key === 'troopers' ? troopers : value;
+                unitScalarSums.set(key as UnitNumericScalarName, (unitScalarSums.get(key as UnitNumericScalarName) ?? 0) + numericValue);
+            }
+        }
+        for (const bucketName of ABSTRACT_UNIT_BUCKET_NAMES) {
+            const bucketCounts = descendantUnitBucketCounts.get(bucketName)!;
+            const bucketValue = getUnitBucketValue(bucketName, facts, DEFAULT_ORG_RULE_REGISTRY) as OrgBucketValue;
+            bucketCounts.set(bucketValue, (bucketCounts.get(bucketValue) ?? 0) + 1);
+        }
+    }
+
+    return {
+        groupFactId: allocateSyntheticGroupFactId(),
+        group: groupTemplate,
+        type: groupTemplate.type,
+        countsAsType: groupTemplate.countsAsType,
+        modifierKey: groupTemplate.modifierKey,
+        tier: groupTemplate.tier,
+        provenance: 'produced-group',
+        tag: groupTemplate.tag,
+        priority: groupTemplate.priority,
+        directChildCount: 0,
+        childTypeCounts: new Map(),
+        unitTypeCounts,
+        unitClassCounts,
+        unitTagCounts,
+        unitScalarSums,
+        descendantUnitBucketCounts,
+    };
+}
+
+function createAbstractAtomicGroupRecord(
+    facts: GroupFacts,
+    materializeAtomicGroup: () => GroupSizeResult,
+    kind: AbstractAtomicGroupPlan['kind'],
+): PlannedGroupRecord {
+    const record: PlannedGroupRecord = {
+        recordId: facts.groupFactId,
+        facts,
+        atomicPlan: {
+            kind,
+            materializeAtomicGroup,
+        },
+        materialize: () => {
+            if (!record.materializedGroup) {
+                record.materializedGroup = record.atomicPlan!.materializeAtomicGroup();
+            }
+            return record.materializedGroup;
+        },
+    };
+
+    return record;
+}
+
+function createAbstractLeafGroupRecord(
+    rule: OrgLeafCountRule | OrgLeafPatternRule,
+    modifierStep: ModifierStep,
+    units: readonly UnitFacts[],
+): PlannedGroupRecord {
+    const template = createAtomicGroupTemplate(
+        rule.type,
+        modifierStep.modifierKey,
+        rule.countsAs ?? null,
+        modifierStep.tier,
+        rule.tag,
+        rule.priority,
+    );
+    const facts = buildAbstractGroupFactsFromUnits(template, units);
+
+    return createAbstractAtomicGroupRecord(
+        facts,
+        () => createLeafGroup(rule, modifierStep, units),
+        'leaf',
+    );
+}
+
+function createAbstractCIParentRecord(
+    rule: OrgCIFormationRule,
+    modifierStep: ModifierStep,
+    tokens: readonly CIFragmentToken[],
+    unitFactsByUnit: ReadonlyMap<Unit, UnitFacts>,
+): PlannedGroupRecord {
+    const allocations = aggregateTokenAllocations(tokens);
+    const units = allocations
+        .map((allocation) => unitFactsByUnit.get(allocation.unit))
+        .filter((facts): facts is UnitFacts => !!facts);
+    const template = createAtomicGroupTemplate(
+        rule.type,
+        modifierStep.modifierKey,
+        rule.countsAs ?? null,
+        modifierStep.tier,
+        rule.tag,
+        rule.priority,
+    );
+    const facts = buildAbstractGroupFactsFromUnits(template, units, allocations);
+
+    return createAbstractAtomicGroupRecord(
+        facts,
+        () => createCIParentGroup(rule, modifierStep, tokens),
+        'ci-parent',
+    );
+}
+
+function createAbstractCIFragmentRecord(
+    rule: OrgCIFormationRule,
+    count: number,
+    tokens: readonly CIFragmentToken[],
+    unitFactsByUnit: ReadonlyMap<Unit, UnitFacts>,
+): PlannedGroupRecord {
+    const allocations = aggregateTokenAllocations(tokens);
+    const units = allocations
+        .map((allocation) => unitFactsByUnit.get(allocation.unit))
+        .filter((facts): facts is UnitFacts => !!facts);
+    const template = createAtomicFragmentTemplate(
+        rule.fragmentType,
+        count,
+        rule.fragmentTier,
+        rule.tag,
+        rule.priority,
+    );
+    const facts = buildAbstractGroupFactsFromUnits(template, units, allocations);
+
+    return createAbstractAtomicGroupRecord(
+        facts,
+        () => createCIFragmentGroup(rule, count, tokens),
+        'ci-fragment',
+    );
 }
 
 function getPreferredUnitTypeKey(facts: UnitFacts): string {
@@ -849,6 +1063,34 @@ function materializeCIFormationTokens(
     return groups;
 }
 
+function materializeCIFormationTokenRecords(
+    rule: OrgCIFormationRule,
+    tokens: readonly CIFragmentToken[],
+    entry: OrgCIFormationEntry,
+    unitFactsByUnit: ReadonlyMap<Unit, UnitFacts>,
+): PlannedGroupRecord[] {
+    const descriptor = getCIEntryDescriptor(rule, entry);
+    const groups: PlannedGroupRecord[] = [];
+    let remaining = [...tokens];
+
+    for (const step of descriptor.stepsDescending) {
+        if (step.count === 1 && rule.type === rule.fragmentType) {
+            continue;
+        }
+        while (remaining.length >= step.count) {
+            const selected = remaining.slice(0, step.count);
+            remaining = remaining.slice(step.count);
+            groups.push(createAbstractCIParentRecord(rule, step, selected, unitFactsByUnit));
+        }
+    }
+
+    if (remaining.length > 0) {
+        groups.push(createAbstractCIFragmentRecord(rule, remaining.length, remaining, unitFactsByUnit));
+    }
+
+    return groups;
+}
+
 export function evaluateCIFormationRule(
     rule: OrgCIFormationRule,
     unitFacts: readonly UnitFacts[],
@@ -960,6 +1202,53 @@ export function materializeCIFormationRule(
 
     return {
         groups,
+        leftoverUnitFacts: [...ineligibleUnits, ...leftoverUnitFacts],
+        leftoverUnitAllocations,
+    };
+}
+
+function materializeCIFormationRuleRecords(
+    rule: OrgCIFormationRule,
+    unitFacts: readonly UnitFacts[],
+    registry: OrgRuleRegistry = DEFAULT_ORG_RULE_REGISTRY,
+): { records: PlannedGroupRecord[]; leftoverUnitFacts: UnitFacts[]; leftoverUnitAllocations: GroupUnitAllocation[] } {
+    const eligibleUnits = unitFacts.filter((facts) => matchesUnitSelectors(facts, rule.unitSelector, registry));
+    const ineligibleUnits = unitFacts.filter((facts) => !matchesUnitSelectors(facts, rule.unitSelector, registry));
+    const entryByMoveClass = new Map(rule.entries.map((entry) => [entry.moveClass, entry]));
+    const unitFactsByUnit = new Map(eligibleUnits.map((facts) => [facts.unit, facts]));
+    const leftoverUnitFacts: UnitFacts[] = [];
+    const leftoverUnitAllocations: GroupUnitAllocation[] = [];
+    const allocationsByMoveClass = new Map<NonNullable<ReturnType<typeof getCIMoveClass>>, GroupUnitAllocation[]>();
+
+    for (const facts of eligibleUnits) {
+        const moveClass = getCIMoveClass(facts.unit);
+        if (!moveClass || !entryByMoveClass.has(moveClass)) {
+            leftoverUnitFacts.push(facts);
+            continue;
+        }
+
+        const existing = allocationsByMoveClass.get(moveClass);
+        const allocation = { unit: facts.unit, troopers: facts.scalars.troopers };
+        if (existing) {
+            existing.push(allocation);
+        } else {
+            allocationsByMoveClass.set(moveClass, [allocation]);
+        }
+    }
+
+    const records: PlannedGroupRecord[] = [];
+    for (const [moveClass, allocations] of allocationsByMoveClass.entries()) {
+        const entry = entryByMoveClass.get(moveClass);
+        if (!entry) {
+            continue;
+        }
+        const partitioned = partitionAllocationsToFragments(moveClass, allocations, entry.troopers);
+        leftoverUnitAllocations.push(...partitioned.leftoverAllocations);
+        records.push(...materializeCIFormationTokenRecords(rule, partitioned.tokens, entry, unitFactsByUnit));
+    }
+
+    return {
+        records,
         leftoverUnitFacts: [...ineligibleUnits, ...leftoverUnitFacts],
         leftoverUnitAllocations,
     };
@@ -1563,6 +1852,33 @@ function materializeLeafPatternWithCandidates(
     return { groups, leftoverUnitFacts };
 }
 
+function materializeLeafPatternWithCandidateRecords(
+    rule: OrgLeafPatternRule,
+    unitFacts: readonly UnitFacts[],
+    registry: OrgRuleRegistry,
+): { records: PlannedGroupRecord[]; leftoverUnitFacts: UnitFacts[] } {
+    const eligibleUnits = unitFacts.filter((facts) => matchesUnitSelectors(facts, rule.unitSelector, registry));
+    const ineligibleUnits = unitFacts.filter((facts) => !matchesUnitSelectors(facts, rule.unitSelector, registry));
+    const unitsByBucket = groupUnitsByBucket(eligibleUnits, rule.bucketBy, registry);
+    const descriptor = getRuleModifierDescriptor(rule);
+    const selectedFactIds = new Set<number>();
+    const records: PlannedGroupRecord[] = [];
+    const guard = createSolverGuard();
+
+    const selections = materializeLeafPatternsShared(rule.patterns, unitsByBucket, guard);
+    for (const selection of selections) {
+        records.push(createAbstractLeafGroupRecord(rule, getPatternModifierStep(descriptor, selection.pattern.copySize), selection.candidate.units));
+        selection.candidate.units.forEach((unit) => selectedFactIds.add(unit.factId));
+    }
+
+    const leftoverUnitFacts = [
+        ...ineligibleUnits,
+        ...eligibleUnits.filter((facts) => !selectedFactIds.has(facts.factId)),
+    ];
+
+    return { records, leftoverUnitFacts };
+}
+
 export function materializeLeafPatternRule(
     rule: OrgLeafPatternRule,
     unitFacts: readonly UnitFacts[],
@@ -1611,6 +1927,53 @@ export function materializeLeafCountRule(
 
     return {
         groups,
+        leftoverUnitFacts: [
+            ...ineligibleUnits,
+            ...eligibleUnits.filter((facts) => !usedFactIds.has(facts.factId)),
+        ],
+    };
+}
+
+function materializeLeafCountRuleRecords(
+    rule: OrgLeafCountRule,
+    unitFacts: readonly UnitFacts[],
+    registry: OrgRuleRegistry = DEFAULT_ORG_RULE_REGISTRY,
+): { records: PlannedGroupRecord[]; leftoverUnitFacts: UnitFacts[] } {
+    const eligibleUnits = unitFacts.filter((facts) => matchesUnitSelectors(facts, rule.unitSelector, registry));
+    const ineligibleUnits = unitFacts.filter((facts) => !matchesUnitSelectors(facts, rule.unitSelector, registry));
+    const descriptor = getRuleModifierDescriptor(rule);
+    const records: PlannedGroupRecord[] = [];
+    const usedFactIds = new Set<number>();
+
+    for (const bucketUnits of groupUnitsByBucket(eligibleUnits, rule.bucketBy, registry).values()) {
+        const preferredLeftovers: UnitFacts[] = [];
+
+        for (const preferredUnits of groupUnitsByPreferredType(bucketUnits).values()) {
+            let remaining = [...preferredUnits];
+            for (const step of descriptor.stepsDescending) {
+                while (remaining.length >= step.count) {
+                    const selected = remaining.slice(0, step.count);
+                    remaining = remaining.slice(step.count);
+                    selected.forEach((facts) => usedFactIds.add(facts.factId));
+                    records.push(createAbstractLeafGroupRecord(rule, step, selected));
+                }
+            }
+            preferredLeftovers.push(...remaining);
+        }
+
+        let mixedRemaining = preferredLeftovers;
+        for (const step of descriptor.stepsDescending) {
+            while (mixedRemaining.length >= step.count) {
+                const selected = mixedRemaining.slice(0, step.count);
+                mixedRemaining = mixedRemaining.slice(step.count);
+                selected.forEach((facts) => usedFactIds.add(facts.factId));
+                records.push(createAbstractLeafGroupRecord(rule, step, selected));
+            }
+        }
+    }
+
+    return {
+        records,
         leftoverUnitFacts: [
             ...ineligibleUnits,
             ...eligibleUnits.filter((facts) => !usedFactIds.has(facts.factId)),
@@ -2800,14 +3163,21 @@ function resolveWholeLeafCandidate(
     unitFacts: readonly UnitFacts[],
     context: ResolveContext,
 ): GroupSizeResult | null {
+    return resolveWholeLeafCandidateRecord(unitFacts, context)?.materialize() ?? null;
+}
+
+function resolveWholeLeafCandidateRecord(
+    unitFacts: readonly UnitFacts[],
+    context: ResolveContext,
+): PlannedGroupRecord | null {
     const registry = context.definition.registry;
-    let best: GroupSizeResult | null = null;
+    let best: PlannedGroupRecord | null = null;
 
     for (const rule of context.ciFormationRules) {
-        const materialized = materializeCIFormationRule(rule, unitFacts, registry);
-        if (materialized.groups.length === 1 && materialized.leftoverUnitFacts.length === 0 && materialized.leftoverUnitAllocations.length === 0) {
-            const candidate = materialized.groups[0];
-            if (!best || compareGroupScore(candidate, best) < 0) {
+        const materialized = materializeCIFormationRuleRecords(rule, unitFacts, registry);
+        if (materialized.records.length === 1 && materialized.leftoverUnitFacts.length === 0 && materialized.leftoverUnitAllocations.length === 0) {
+            const candidate = materialized.records[0];
+            if (!best || compareGroupScore(candidate.materialize(), best.materialize()) < 0) {
                 best = candidate;
             }
         }
@@ -2820,20 +3190,20 @@ function resolveWholeLeafCandidate(
 
     for (const rule of allLeafRules) {
         if (rule.kind === 'leaf-count') {
-            const materialized = materializeLeafCountRule(rule, unitFacts, registry);
-            if (materialized.groups.length === 1 && materialized.leftoverUnitFacts.length === 0) {
-                const candidate = materialized.groups[0];
-                if (!best || compareGroupScore(candidate, best) < 0) {
+            const materialized = materializeLeafCountRuleRecords(rule, unitFacts, registry);
+            if (materialized.records.length === 1 && materialized.leftoverUnitFacts.length === 0) {
+                const candidate = materialized.records[0];
+                if (!best || compareGroupScore(candidate.materialize(), best.materialize()) < 0) {
                     best = candidate;
                 }
             }
             continue;
         }
 
-        const materialized = materializeLeafPatternRule(rule, unitFacts, registry);
-        if (materialized.groups.length === 1 && materialized.leftoverUnitFacts.length === 0) {
-            const candidate = materialized.groups[0];
-            if (!best || compareGroupScore(candidate, best) < 0) {
+        const materialized = materializeLeafPatternWithCandidateRecords(rule, unitFacts, registry);
+        if (materialized.records.length === 1 && materialized.leftoverUnitFacts.length === 0) {
+            const candidate = materialized.records[0];
+            if (!best || compareGroupScore(candidate.materialize(), best.materialize()) < 0) {
                 best = candidate;
             }
         }
@@ -2934,6 +3304,88 @@ function materializeLeafRulesByStage(
     return { groups, leftover: remaining, leftoverUnitAllocations };
 }
 
+function materializeLeafRulesByStageRecords(
+    unitFacts: readonly UnitFacts[],
+    context: ResolveContext,
+    stage: RuleExecutionStage,
+): { records: PlannedGroupRecord[]; leftover: UnitFacts[]; leftoverUnitAllocations: GroupUnitAllocation[] } {
+    const registry = context.definition.registry;
+    let remaining = [...unitFacts];
+    const records: PlannedGroupRecord[] = [];
+    const leftoverUnitAllocations: GroupUnitAllocation[] = [];
+
+    if (stage !== 'sub-regular') {
+        for (const rule of context.ciFormationRules) {
+            const materialized = materializeCIFormationRuleRecords(rule, remaining, registry);
+            records.push(...materialized.records);
+            remaining = [...materialized.leftoverUnitFacts];
+            leftoverUnitAllocations.push(...materialized.leftoverUnitAllocations);
+        }
+    }
+
+    const leafRules: Array<OrgLeafCountRule | OrgLeafPatternRule> = [
+        ...context.leafPatternRules,
+        ...context.leafCountRules,
+    ];
+
+    for (const rule of leafRules) {
+        const metadata = getRuleStageMetadata(context, rule);
+
+        if (rule.kind === 'leaf-pattern') {
+            if (!metadata.participatesInRegularStage || stage === 'sub-regular') {
+                continue;
+            }
+            const materialized = materializeLeafPatternWithCandidateRecords(rule, remaining, registry);
+            records.push(...materialized.records);
+            remaining = [...materialized.leftoverUnitFacts];
+            continue;
+        }
+
+        const targetSteps = getModifierStepForRuleStage(metadata, stage);
+        if (targetSteps.length === 0) {
+            continue;
+        }
+
+        const eligibleUnits = remaining.filter((facts) => matchesUnitSelectors(facts, rule.unitSelector, registry));
+        const ineligibleUnits = remaining.filter((facts) => !matchesUnitSelectors(facts, rule.unitSelector, registry));
+        const usedIds = new Set<number>();
+
+        for (const bucketUnits of groupUnitsByBucket(eligibleUnits, rule.bucketBy, registry).values()) {
+            const preferredLeftovers: UnitFacts[] = [];
+
+            for (const preferredUnits of groupUnitsByPreferredType(bucketUnits).values()) {
+                let working = [...preferredUnits];
+                for (const step of targetSteps) {
+                    while (working.length >= step.count) {
+                        const selected = working.slice(0, step.count);
+                        working = working.slice(step.count);
+                        selected.forEach((facts) => usedIds.add(facts.factId));
+                        records.push(createAbstractLeafGroupRecord(rule, step, selected));
+                    }
+                }
+                preferredLeftovers.push(...working);
+            }
+
+            let mixedWorking = preferredLeftovers;
+            for (const step of targetSteps) {
+                while (mixedWorking.length >= step.count) {
+                    const selected = mixedWorking.slice(0, step.count);
+                    mixedWorking = mixedWorking.slice(step.count);
+                    selected.forEach((facts) => usedIds.add(facts.factId));
+                    records.push(createAbstractLeafGroupRecord(rule, step, selected));
+                }
+            }
+        }
+
+        remaining = [
+            ...ineligibleUnits,
+            ...eligibleUnits.filter((facts) => !usedIds.has(facts.factId)),
+        ];
+    }
+
+    return { records, leftover: remaining, leftoverUnitAllocations };
+}
+
 function materializeComposedRulesByStage(
     groupFacts: readonly GroupFacts[],
     context: ResolveContext,
@@ -2964,6 +3416,50 @@ function materializeComposedRulesByStage(
     }
 
     return { groups, leftoverFacts: [...blockedFacts, ...remainingFacts] };
+}
+
+function materializeComposedRulesByStageState(
+    initialState: CanonicalGroupPoolState,
+    context: ResolveContext,
+    stage: RuleExecutionStage,
+): CanonicalGroupPoolState {
+    const blockedFacts = initialState.groupFacts.filter((facts) => isBlockedSubRegularPromotionChildFacts(facts, context));
+    let state = createCanonicalGroupPoolStateFromRecords(
+        initialState.groups.filter((group) => !isBlockedSubRegularPromotionChildFacts(group.facts, context)),
+    );
+
+    for (const rule of getOrderedComposedRules(context)) {
+        const allowedModifierKeys = getAllowedModifierKeysForStage(getRuleStageMetadata(context, rule), stage);
+        const abstractCandidates = rule.kind === 'composed-count'
+            ? planComposedCountRuleInternal(rule, state.groupFacts, context.definition.registry, createSolverGuard(), allowedModifierKeys)
+            : planComposedPatternRuleInternal(rule, state.groupFacts, context.definition.registry, createSolverGuard(), allowedModifierKeys);
+
+        if (abstractCandidates.length === 0) {
+            continue;
+        }
+
+        const plannedCandidates = resolvePlannedCompositionCandidates(abstractCandidates, state.recordByGroupFactId);
+        const usedChildren = new Set(plannedCandidates.flatMap((candidate) => candidate.groups.map((group) => group.recordId)));
+        const producedGroups = plannedCandidates.map((candidate) => createAbstractComposedGroupRecord(
+            rule,
+            candidate.modifierStep,
+            candidate.groups,
+        ));
+        state = createSuccessorCanonicalGroupPoolState(state, producedGroups, usedChildren);
+    }
+
+    if (blockedFacts.length === 0) {
+        return state;
+    }
+
+    const blockedRecords = blockedFacts
+        .map((facts) => initialState.recordByGroupFactId.get(facts.groupFactId))
+        .filter((record): record is PlannedGroupRecord => !!record);
+
+    return createCanonicalGroupPoolStateFromRecords([
+        ...blockedRecords,
+        ...state.groups,
+    ]);
 }
 
 function isBlockedSubRegularPromotionChild(
@@ -3732,7 +4228,17 @@ function runSingleTierRegularPromotionStep(
     initialPool: readonly GroupSizeResult[],
     context: ResolveContext,
 ): GroupSizeResult[] {
-    let poolState = createCanonicalGroupPoolState(initialPool);
+    return materializeCanonicalGroupPoolState(runSingleTierRegularPromotionStepState(
+        createCanonicalGroupPoolState(initialPool),
+        context,
+    ));
+}
+
+function runSingleTierRegularPromotionStepState(
+    initialState: CanonicalGroupPoolState,
+    context: ResolveContext,
+): CanonicalGroupPoolState {
+    let poolState = initialState;
     let remainingFacts = poolState.groupFacts.filter((facts) => !isBlockedSubRegularPromotionChildFacts(facts, context));
     const candidateChildTiers = getOrderedComposedRules(context)
         .filter((rule) => {
@@ -3743,7 +4249,7 @@ function runSingleTierRegularPromotionStep(
     const targetChildTier = candidateChildTiers.length > 0 ? Math.min(...candidateChildTiers) : null;
 
     if (targetChildTier === null) {
-        return [...initialPool];
+        return initialState;
     }
 
     for (const rule of getOrderedComposedRules(context)) {
@@ -3799,7 +4305,7 @@ function runSingleTierRegularPromotionStep(
         remainingFacts = remainingFacts.filter((facts) => !usedObjects.has(facts.groupFactId));
     }
 
-    return materializeCanonicalGroupPoolState(poolState);
+    return poolState;
 }
 
 function searchBestRegularPromotionPoolState(
@@ -3890,34 +4396,38 @@ function runLeftoverImprovementLoop(
     context: ResolveContext,
     guard: SolverGuard,
 ): GroupSizeResult[] {
-    let pool = [...initialPool];
+    return materializeCanonicalGroupPoolState(runLeftoverImprovementLoopState(
+        createCanonicalGroupPoolState(initialPool),
+        context,
+        guard,
+    ));
+}
+
+function runLeftoverImprovementLoopState(
+    initialState: CanonicalGroupPoolState,
+    context: ResolveContext,
+    guard: SolverGuard,
+): CanonicalGroupPoolState {
+    let state = initialState;
     let previousSignature = '';
     let iteration = 0;
 
     while (iteration < MAX_PROMOTION_LOOP_ITERATIONS && !shouldAbortSearch(guard)) {
         iteration += 1;
-        const signature = createCanonicalGroupPoolState(pool).signature.key;
+        const signature = state.signature.key;
         if (signature === previousSignature) {
             break;
         }
         previousSignature = signature;
 
-        const stepped = runSingleTierRegularPromotionStep(pool, context);
-        const assimilated = assimilateLeftoversIntoParents(stepped, context, guard);
-        pool = runRegularPromotionLoop(assimilated, context, guard);
-
-        const subRegularPromotion = materializeComposedRulesByStage(compileGroupFactsList(pool), context, 'sub-regular');
-        if (subRegularPromotion.groups.length > 0) {
-            pool = [
-                ...subRegularPromotion.leftoverFacts.map((facts) => facts.group),
-                ...subRegularPromotion.groups,
-            ];
-        }
-
-        pool = runRegularPromotionLoop(pool, context, guard);
+        const stepped = runSingleTierRegularPromotionStepState(state, context);
+        const assimilated = assimilateLeftoversIntoParentState(stepped, context, guard);
+        state = searchBestRegularPromotionPoolStateFromState(assimilated, context, guard);
+        state = materializeComposedRulesByStageState(state, context, 'sub-regular');
+        state = searchBestRegularPromotionPoolStateFromState(state, context, guard);
     }
 
-    return pool;
+    return state;
 }
 
 function preAssimilateUnderRegularGroups(
@@ -4400,19 +4910,17 @@ function resolveWithDefinition(
     const context = getResolveContext(definition);
     const guard = createSolverGuard();
     const compiledUnits = compileUnitFactsList(units);
-    const wholeLeaf = groups.length === 0 ? resolveWholeLeafCandidate(compiledUnits, context) : null;
+    const wholeLeafRecord = groups.length === 0 ? resolveWholeLeafCandidateRecord(compiledUnits, context) : null;
 
-    const regularLeafResult = materializeLeafRulesByStage(compiledUnits, context, 'regular');
-    let pool = [
-        ...groups,
-        ...regularLeafResult.groups,
-    ];
+    const normalizedInputGroups = normalizeCIFormationGroups(groups, context);
+    const regularLeafResult = materializeLeafRulesByStageRecords(compiledUnits, context, 'regular');
     const leftoverUnits = [...regularLeafResult.leftover];
     const leftoverUnitAllocations = [...regularLeafResult.leftoverUnitAllocations];
 
-    pool = normalizeCIFormationGroups(pool, context);
-
-    let initialPoolState = createCanonicalGroupPoolState(pool);
+    let initialPoolState = createCanonicalGroupPoolStateFromRecords([
+        ...normalizedInputGroups.map((group) => createConcretePlannedGroupRecord(group)),
+        ...regularLeafResult.records,
+    ]);
     initialPoolState = repairSubRegularGroupsForPromotionState(initialPoolState, context);
     initialPoolState = preAssimilateUnderRegularGroupState(initialPoolState, context, guard);
 
@@ -4445,8 +4953,8 @@ function resolveWithDefinition(
         });
     }
 
-    if (wholeLeaf) {
-        candidateStates.push({ groups: [wholeLeaf], leftoverUnits: [], leftoverUnitAllocations: [] });
+    if (wholeLeafRecord) {
+        candidateStates.push({ canonicalState: createCanonicalGroupPoolStateFromRecords([wholeLeafRecord]), leftoverUnits: [], leftoverUnitAllocations: [] });
     }
 
     const wholeComposedState = resolveWholeComposedCandidateState(regularPoolState, context, createSolverGuard());

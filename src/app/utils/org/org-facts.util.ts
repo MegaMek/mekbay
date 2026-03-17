@@ -17,7 +17,7 @@
  * if not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { Unit } from '../../models/units.model';
+import type { ASUnitTypeCode, Unit } from '../../models/units.model';
 import type {
     CIMoveClass,
     CIMoveClassBucketValue,
@@ -52,6 +52,35 @@ const ORG_UNIT_BUCKET_NAMES: readonly OrgUnitBucketName[] = [
     'transport',
 ];
 
+const ORG_UNIT_TYPE_CODES: readonly ASUnitTypeCode[] = [
+    'AF',
+    'BA',
+    'BD',
+    'BM',
+    'CF',
+    'CI',
+    'CV',
+    'DA',
+    'DS',
+    'IM',
+    'JS',
+    'MS',
+    'PM',
+    'SC',
+    'SS',
+    'SV',
+    'WS',
+];
+
+function createUnitTypeSelectors(): Partial<Record<ASUnitTypeCode, (facts: UnitFacts) => boolean>> {
+    return Object.fromEntries(
+        ORG_UNIT_TYPE_CODES.map((unitType) => [
+            unitType,
+            (facts: UnitFacts) => getNormalizedOrgUnitType(facts.unit) === unitType,
+        ]),
+    ) as Partial<Record<ASUnitTypeCode, (facts: UnitFacts) => boolean>>;
+}
+
 function isAero(unit: Unit): boolean {
     return unit.type === 'Aero';
 }
@@ -77,14 +106,6 @@ function isPM(unit: Unit): boolean {
 }
 
 export function getNormalizedOrgUnitType(unit: Unit): Unit['as']['TP'] {
-    if (isBA(unit)) return 'BA';
-    if (isCI(unit)) return 'CI';
-    if (isBM(unit)) return 'BM';
-    if (isCV(unit)) return 'CV';
-    if (isPM(unit)) return 'PM';
-    if (isAero(unit)) {
-        return unit.subtype === 'Conventional Fighter' ? 'CF' : 'AF';
-    }
     return unit.as.TP;
 }
 
@@ -444,23 +465,7 @@ export function createOrgRuleRegistry(
             omni: (facts) => facts.tags.has('omni'),
             transportMec: (facts) => facts.tags.has('transport.mec'),
             transportXmec: (facts) => facts.tags.has('transport.xmec'),
-            AF: (facts) => getNormalizedOrgUnitType(facts.unit) === 'AF',
-            BA: (facts) => getNormalizedOrgUnitType(facts.unit) === 'BA',
-            BD: (facts) => getNormalizedOrgUnitType(facts.unit) === 'BD',
-            BM: (facts) => getNormalizedOrgUnitType(facts.unit) === 'BM',
-            CF: (facts) => getNormalizedOrgUnitType(facts.unit) === 'CF',
-            CI: (facts) => getNormalizedOrgUnitType(facts.unit) === 'CI',
-            CV: (facts) => getNormalizedOrgUnitType(facts.unit) === 'CV',
-            DA: (facts) => getNormalizedOrgUnitType(facts.unit) === 'DA',
-            DS: (facts) => getNormalizedOrgUnitType(facts.unit) === 'DS',
-            IM: (facts) => getNormalizedOrgUnitType(facts.unit) === 'IM',
-            JS: (facts) => getNormalizedOrgUnitType(facts.unit) === 'JS',
-            MS: (facts) => getNormalizedOrgUnitType(facts.unit) === 'MS',
-            PM: (facts) => getNormalizedOrgUnitType(facts.unit) === 'PM',
-            SC: (facts) => getNormalizedOrgUnitType(facts.unit) === 'SC',
-            SS: (facts) => getNormalizedOrgUnitType(facts.unit) === 'SS',
-            SV: (facts) => getNormalizedOrgUnitType(facts.unit) === 'SV',
-            WS: (facts) => getNormalizedOrgUnitType(facts.unit) === 'WS',
+            ...createUnitTypeSelectors(),
             ...registry?.unitSelectors,
         },
         unitBuckets: {
