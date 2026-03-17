@@ -24,11 +24,13 @@ import {
     type OrgBucketValue,
     type OrgCIFormationEntry,
     type OrgCIFormationRule,
+    type OrgChildTypeCountKey,
     type OrgChildRoleSpec,
     type OrgComposedCountAlternativeSpec,
     type OrgComposedCountRule,
     type OrgComposedPatternRule,
     type OrgDefinitionSpec,
+    type OrgGroupProvenance,
     type OrgLeafCountRule,
     type OrgLeafPatternRule,
     type OrgPatternBucketMatcher,
@@ -53,6 +55,7 @@ const MAX_COMPOSED_GROUPS_PER_CONFIG = 2_000;
 const MAX_PROMOTION_LOOP_ITERATIONS = 64;
 
 type ModifierBand = 'sub-regular' | 'regular' | 'super-regular';
+type RuleExecutionStage = 'regular' | 'sub-regular' | 'all';
 
 interface SolverGuard {
     readonly deadline: number;
@@ -75,6 +78,15 @@ interface RuleModifierDescriptor {
     readonly regularStep: ModifierStep;
     readonly subRegularStepsDescending: readonly ModifierStep[];
     readonly superRegularStepsDescending: readonly ModifierStep[];
+}
+
+interface CompiledRuleStageMetadata {
+    readonly descriptor: RuleModifierDescriptor;
+    readonly allowedModifierKeysByStage: Readonly<Record<RuleExecutionStage, ReadonlySet<string> | null>>;
+    readonly participatesInRegularStage: boolean;
+    readonly participatesInSubRegularStage: boolean;
+    readonly blocksSubRegularPromotionChildren: boolean;
+    readonly canEmitExactSuperRegularWholeLeaf: boolean;
 }
 
 interface LeafCountEmission {
@@ -182,9 +194,17 @@ interface AbstractCompositionCandidate {
 }
 
 interface CanonicalGroupPoolState {
-    readonly groups: readonly GroupSizeResult[];
+    readonly groups: readonly PlannedGroupRecord[];
     readonly groupFacts: readonly GroupFacts[];
+    readonly recordByGroup: ReadonlyMap<GroupSizeResult, PlannedGroupRecord>;
+    readonly signatureCounts: ReadonlyMap<string, number>;
     readonly key: string;
+}
+
+interface PlannedGroupRecord {
+    readonly facts: GroupFacts;
+    materializedGroup?: GroupSizeResult;
+    materialize: () => GroupSizeResult;
 }
 
 interface ResolveContext {
@@ -194,6 +214,7 @@ interface ResolveContext {
     readonly leafPatternRules: readonly OrgLeafPatternRule[];
     readonly composedCountRules: readonly OrgComposedCountRule[];
     readonly composedPatternRules: readonly OrgComposedPatternRule[];
+    readonly ruleStageMetadata: ReadonlyMap<OrgRuleDefinition, CompiledRuleStageMetadata>;
 }
 
 interface FinalStateScore {
@@ -290,6 +311,69 @@ function getRuleModifierDescriptor(rule: Pick<OrgRuleDefinition, 'modifiers' | '
     };
 }
 
+function compileRuleStageMetadata(rule: OrgRuleDefinition): CompiledRuleStageMetadata {
+    const descriptor = getRuleModifierDescriptor(rule);
+    const regularModifierKeys = new Set([descriptor.regularStep.modifierKey]);
+    const subRegularModifierKeys = new Set(descriptor.subRegularStepsDescending.map((step) => step.modifierKey));
+    const allModifierKeys = new Set(descriptor.stepsDescending.map((step) => step.modifierKey));
+    const isLeafPatternRule = rule.kind === 'leaf-pattern';
+    const isLeafCountRule = rule.kind === 'leaf-count';
+    const participatesInRegularStage = isLeafPatternRule || !isLeafCountRule || (rule.priority ?? 0) >= 0;
+    const participatesInSubRegularStage = !isLeafPatternRule && subRegularModifierKeys.size > 0;
+    const blocksSubRegularPromotionChildren = rule.kind === 'ci-formation' || rule.kind === 'composed-count'
+        ? !!rule.requireRegularForPromotion
+        : false;
+    const canEmitExactSuperRegularWholeLeaf = (rule.kind === 'leaf-count' || rule.kind === 'leaf-pattern')
+        && descriptor.superRegularStepsDescending.length > 0;
+
+    return {
+        descriptor,
+        allowedModifierKeysByStage: {
+            regular: participatesInRegularStage ? regularModifierKeys : new Set<string>(),
+            'sub-regular': participatesInSubRegularStage ? subRegularModifierKeys : new Set<string>(),
+            all: allModifierKeys,
+        },
+        participatesInRegularStage,
+        participatesInSubRegularStage,
+        blocksSubRegularPromotionChildren,
+        canEmitExactSuperRegularWholeLeaf,
+    };
+}
+
+function getRuleStageMetadata(
+    context: ResolveContext,
+    rule: OrgRuleDefinition,
+): CompiledRuleStageMetadata {
+    return context.ruleStageMetadata.get(rule) ?? compileRuleStageMetadata(rule);
+}
+
+function getAllowedModifierKeysForStage(
+    metadata: CompiledRuleStageMetadata,
+    stage: RuleExecutionStage,
+): ReadonlySet<string> | undefined {
+    return stage === 'all' ? undefined : metadata.allowedModifierKeysByStage[stage] ?? undefined;
+}
+
+function getModifierStepForRuleStage(
+    metadata: CompiledRuleStageMetadata,
+    stage: RuleExecutionStage,
+): readonly ModifierStep[] {
+    if (stage === 'regular') {
+        return metadata.participatesInRegularStage ? [metadata.descriptor.regularStep] : [];
+    }
+    if (stage === 'sub-regular') {
+        return metadata.participatesInSubRegularStage ? metadata.descriptor.subRegularStepsDescending : [];
+    }
+    return metadata.descriptor.stepsDescending;
+}
+
+function isSubRegularModifierKey(
+    metadata: CompiledRuleStageMetadata,
+    modifierKey: string,
+): boolean {
+    return metadata.allowedModifierKeysByStage['sub-regular']?.has(modifierKey) ?? false;
+}
+
 function getRuleRegistry(definition?: OrgDefinitionSpec, registry?: OrgRuleRegistry): OrgRuleRegistry {
     return registry ?? definition?.registry ?? DEFAULT_ORG_RULE_REGISTRY;
 }
@@ -370,6 +454,7 @@ function createLeafGroup(
         modifierKey: modifierStep.modifierKey,
         countsAsType: rule.countsAs ?? null,
         tier: modifierStep.tier,
+        provenance: 'produced-group',
         units: units.map((facts) => facts.unit),
         tag: rule.tag,
         priority: rule.priority,
@@ -387,6 +472,7 @@ function createComposedGroup(
         modifierKey: modifierStep.modifierKey,
         countsAsType: rule.countsAs ?? null,
         tier: modifierStep.tier,
+        provenance: 'produced-group',
         children: [...children],
         tag: rule.tag,
         priority: rule.priority,
@@ -525,6 +611,7 @@ function createCIParentGroup(
         modifierKey: modifierStep.modifierKey,
         countsAsType: rule.countsAs ?? null,
         tier: modifierStep.tier,
+        provenance: 'produced-group',
         units: getUnitsFromAllocations(unitAllocations),
         unitAllocations,
         tag: rule.tag,
@@ -544,6 +631,7 @@ function createCIFragmentGroup(
         modifierKey: '',
         countsAsType: null,
         tier: rule.fragmentTier,
+        provenance: 'produced-group',
         count,
         units: getUnitsFromAllocations(unitAllocations),
         unitAllocations,
@@ -1992,43 +2080,29 @@ function getAbstractPlanLeftoverGroups(
     return entries.flatMap((entry) => entry.groups.slice(consumedCounts.get(entry) ?? 0));
 }
 
-function findConcreteComposition(
+function findAbstractCompositionSelection(
     groups: readonly GroupFacts[],
     childRoles: readonly OrgChildRoleSpec[],
     targetCount: number,
     guard: SolverGuard,
     selectionPredicate?: (selected: readonly GroupFacts[]) => boolean,
 ): GroupFacts[] | null {
-    const sortedGroups = [...groups].sort((left, right) => left.tier - right.tier);
-    const selected: GroupFacts[] = [];
-
-    function visit(index: number): boolean {
-        guard.compositionVisits += 1;
-        if (guard.compositionVisits > MAX_COMPOSITION_SEARCH_VISITS || shouldAbortSearch(guard)) {
-            return false;
-        }
-        if (selected.length === targetCount) {
-            return canAssignGroupsToRoles(selected, childRoles, guard)
-                && (!selectionPredicate || selectionPredicate(selected));
-        }
-        if (index >= sortedGroups.length) {
-            return false;
-        }
-        const remainingSlots = targetCount - selected.length;
-        const remainingGroups = sortedGroups.length - index;
-        if (remainingGroups < remainingSlots) {
-            return false;
-        }
-
-        selected.push(sortedGroups[index]);
-        if (visit(index + 1)) {
-            return true;
-        }
-        selected.pop();
-        return visit(index + 1);
+    const entries = buildCountedCompositionEntries(groups, childRoles);
+    if (entries.length === 0) {
+        return null;
     }
 
-    return visit(0) ? [...selected] : null;
+    const availableCounts = entries.map((entry) => entry.groups.length);
+    const selection = enumerateAbstractSelections(entries, availableCounts, childRoles, targetCount, guard)
+        .find((candidateSelection) => {
+            if (!selectionPredicate) {
+                return true;
+            }
+
+            return selectionPredicate(getPreviewGroupsForAbstractSelection(entries, candidateSelection));
+        });
+
+    return selection ? getPreviewGroupsForAbstractSelection(entries, selection) : null;
 }
 
 function planComposedConfig(
@@ -2205,6 +2279,25 @@ function materializeComposedCountRuleInternal(
     };
 }
 
+function planComposedCountRuleInternal(
+    rule: OrgComposedCountRule,
+    groupFacts: readonly GroupFacts[],
+    registry: OrgRuleRegistry,
+    guard: SolverGuard,
+    allowedModifierKeys?: ReadonlySet<string>,
+): readonly AbstractCompositionCandidate[] {
+    const configs = buildCompositionConfigs(rule);
+    const evaluations = configs.map((config) => ({
+        config,
+        ...planComposedConfig(groupFacts, config, registry, guard, allowedModifierKeys),
+    }));
+    const best = evaluations.sort((left, right) => {
+        return compareAbstractCompositionPlans(right.candidates, left.candidates);
+    })[0];
+
+    return best?.candidates ?? [];
+}
+
 export function evaluateComposedCountRule(
     rule: OrgComposedCountRule,
     groupFacts: readonly GroupFacts[],
@@ -2362,6 +2455,10 @@ function getOrderedComposedRules(
 }
 
 function getResolveContext(definition: OrgDefinitionSpec): ResolveContext {
+    const ruleStageMetadata = new Map<OrgRuleDefinition, CompiledRuleStageMetadata>(
+        definition.rules.map((rule) => [rule, compileRuleStageMetadata(rule)]),
+    );
+
     return {
         definition,
         ciFormationRules: definition.rules.filter((rule): rule is OrgCIFormationRule => rule.kind === 'ci-formation')
@@ -2396,6 +2493,7 @@ function getResolveContext(definition: OrgDefinitionSpec): ResolveContext {
                 }
                 return getRulePriority(right) - getRulePriority(left);
             }),
+            ruleStageMetadata,
     };
 }
 
@@ -2456,7 +2554,7 @@ function removeUsedUnitFacts(
 function materializeLeafRulesByStage(
     unitFacts: readonly UnitFacts[],
     context: ResolveContext,
-    stage: 'regular' | 'sub-regular' | 'all',
+    stage: RuleExecutionStage,
 ): { groups: GroupSizeResult[]; leftover: UnitFacts[]; leftoverUnitAllocations: GroupUnitAllocation[] } {
     const registry = context.definition.registry;
     let remaining = [...unitFacts];
@@ -2478,8 +2576,10 @@ function materializeLeafRulesByStage(
     ];
 
     for (const rule of leafRules) {
+        const metadata = getRuleStageMetadata(context, rule);
+
         if (rule.kind === 'leaf-pattern') {
-            if (stage !== 'regular' && stage !== 'all') {
+            if (!metadata.participatesInRegularStage || stage === 'sub-regular') {
                 continue;
             }
             const materialized = materializeLeafPatternRule(rule, remaining, registry);
@@ -2488,16 +2588,7 @@ function materializeLeafRulesByStage(
             continue;
         }
 
-        if (stage === 'regular' && (rule.priority ?? 0) < 0) {
-			continue;
-		}
-
-        const descriptor = getRuleModifierDescriptor(rule);
-        const targetSteps = stage === 'regular'
-            ? [descriptor.regularStep]
-            : stage === 'sub-regular'
-                ? descriptor.subRegularStepsDescending
-                : descriptor.stepsDescending;
+        const targetSteps = getModifierStepForRuleStage(metadata, stage);
         if (targetSteps.length === 0) {
             continue;
         }
@@ -2547,17 +2638,13 @@ function materializeLeafRulesByStage(
 function materializeComposedRulesByStage(
     groupFacts: readonly GroupFacts[],
     context: ResolveContext,
-    stage: 'regular' | 'sub-regular' | 'all',
+    stage: RuleExecutionStage,
 ): { groups: GroupSizeResult[]; leftoverFacts: GroupFacts[] } {
     let remainingFacts = groupFacts.filter((facts) => !isBlockedSubRegularPromotionChild(facts.group, context));
     const groups: GroupSizeResult[] = [];
 
     for (const rule of getOrderedComposedRules(context)) {
-        const allowedModifierKeys = stage === 'all'
-            ? undefined
-            : new Set((stage === 'regular'
-                ? [getRuleModifierDescriptor(rule).regularStep]
-                : getRuleModifierDescriptor(rule).subRegularStepsDescending).map((step) => step.modifierKey));
+        const allowedModifierKeys = getAllowedModifierKeysForStage(getRuleStageMetadata(context, rule), stage);
         const materialized = rule.kind === 'composed-count'
             ? materializeComposedCountRuleInternal(rule, remainingFacts, context.definition.registry, allowedModifierKeys)
             : materializeComposedPatternRuleInternal(rule, remainingFacts, context.definition.registry, allowedModifierKeys);
@@ -2597,9 +2684,7 @@ function isBlockedSubRegularPromotionChild(
         return false;
     }
 
-    const descriptor = getRuleModifierDescriptor(rule);
-    const step = descriptor.stepsAscending.find((candidate) => candidate.modifierKey === group.modifierKey);
-    return step?.relativeBand === 'sub-regular';
+    return isSubRegularModifierKey(getRuleStageMetadata(context, rule), group.modifierKey);
 }
 
 function attachLeftoverUnits(
@@ -2657,8 +2742,8 @@ function getModifierBandForGroup(group: GroupSizeResult, context: ResolveContext
     if (!rule) {
         return group.modifierKey === '' ? 'regular' : 'sub-regular';
     }
-    const descriptor = getRuleModifierDescriptor(rule);
-    return descriptor.stepsAscending.find((step) => step.modifierKey === group.modifierKey)?.relativeBand ?? 'regular';
+    const metadata = getRuleStageMetadata(context, rule);
+    return metadata.descriptor.stepsAscending.find((step) => step.modifierKey === group.modifierKey)?.relativeBand ?? 'regular';
 }
 
 function scoreResolvedState(state: ResolvedState, context: ResolveContext): FinalStateScore {
@@ -2832,15 +2917,18 @@ function resolveWholeComposedCandidate(
 
 function canRepairSubRegularGroupForPromotion(
     group: GroupSizeResult,
+    context: ResolveContext,
     rule: OrgComposedCountRule,
 ): boolean {
-    if (!rule.requireRegularForPromotion || group.type !== rule.type || !group.children || group.children.length === 0) {
+    if (!rule.requireRegularForPromotion
+        || group.provenance !== 'input-group'
+        || group.type !== rule.type
+        || !group.children
+        || group.children.length === 0) {
         return false;
     }
 
-    const descriptor = getRuleModifierDescriptor(rule);
-    const step = descriptor.stepsAscending.find((candidate) => candidate.modifierKey === group.modifierKey);
-    return step?.relativeBand === 'sub-regular';
+    return isSubRegularModifierKey(getRuleStageMetadata(context, rule), group.modifierKey);
 }
 
 function repairSubRegularGroupsForPromotion(
@@ -2854,7 +2942,7 @@ function repairSubRegularGroupsForPromotion(
             continue;
         }
 
-        const candidates = pool.filter((group) => canRepairSubRegularGroupForPromotion(group, rule));
+        const candidates = pool.filter((group) => canRepairSubRegularGroupForPromotion(group, context, rule));
         if (candidates.length === 0) {
             continue;
         }
@@ -2876,24 +2964,93 @@ function repairSubRegularGroupsForPromotion(
 }
 
 function createCanonicalGroupPoolState(groups: readonly GroupSizeResult[]): CanonicalGroupPoolState {
-    const groupFacts = compileGroupFactsList(groups);
-    const counts = new Map<string, number>();
+    return createCanonicalGroupPoolStateFromRecords(groups.map((group) => createConcretePlannedGroupRecord(group)));
+}
 
-    for (const facts of groupFacts) {
-        const key = getGroupFactsSignatureKey(facts);
-        counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-
-    const key = [...counts.entries()]
+function getCanonicalGroupPoolStateKey(signatureCounts: ReadonlyMap<string, number>): string {
+    return [...signatureCounts.entries()]
+        .filter(([, count]) => count > 0)
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([key, count]) => `${key}::${count}`)
         .join('###');
+}
+
+function createCanonicalGroupPoolStateFromRecords(
+    groups: readonly PlannedGroupRecord[],
+    signatureCounts?: ReadonlyMap<string, number>,
+): CanonicalGroupPoolState {
+    const groupFacts = groups.map((group) => group.facts);
+    const counts = new Map<string, number>();
+
+    if (signatureCounts) {
+        for (const [key, count] of signatureCounts.entries()) {
+            if (count > 0) {
+                counts.set(key, count);
+            }
+        }
+    } else {
+        for (const facts of groupFacts) {
+            const key = getGroupFactsSignatureKey(facts);
+            counts.set(key, (counts.get(key) ?? 0) + 1);
+        }
+    }
 
     return {
         groups,
         groupFacts,
-        key,
+        recordByGroup: new Map(groups.map((group) => [group.facts.group, group])),
+        signatureCounts: counts,
+        key: getCanonicalGroupPoolStateKey(counts),
     };
+}
+
+function materializeCanonicalGroupPoolState(state: CanonicalGroupPoolState): GroupSizeResult[] {
+    return state.groups.map((group) => group.materialize());
+}
+
+function decrementSignatureCount(
+    counts: Map<string, number>,
+    key: string,
+): void {
+    const nextCount = (counts.get(key) ?? 0) - 1;
+    if (nextCount > 0) {
+        counts.set(key, nextCount);
+        return;
+    }
+
+    counts.delete(key);
+}
+
+function incrementSignatureCount(
+    counts: Map<string, number>,
+    key: string,
+): void {
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+}
+
+function createSuccessorCanonicalGroupPoolState(
+    state: CanonicalGroupPoolState,
+    producedGroups: readonly PlannedGroupRecord[],
+    usedChildren: ReadonlySet<GroupSizeResult>,
+): CanonicalGroupPoolState {
+    const remainingGroups = state.groups.filter((group) => !usedChildren.has(group.facts.group));
+    const producedFacts = producedGroups.map((group) => group.facts);
+    const nextCounts = new Map(state.signatureCounts);
+
+    for (const facts of state.groupFacts) {
+        if (usedChildren.has(facts.group)) {
+            decrementSignatureCount(nextCounts, getGroupFactsSignatureKey(facts));
+        }
+    }
+
+    for (const facts of producedFacts) {
+        incrementSignatureCount(nextCounts, getGroupFactsSignatureKey(facts));
+    }
+
+    return createCanonicalGroupPoolStateFromRecords(
+        [...remainingGroups, ...producedGroups],
+        nextCounts,
+    );
 }
 
 function compareGroupPoolStates(
@@ -2902,8 +3059,8 @@ function compareGroupPoolStates(
     context: ResolveContext,
 ): number {
     return compareResolvedState(
-        { groups: left.groups, leftoverUnits: [], leftoverUnitAllocations: [] },
-        { groups: right.groups, leftoverUnits: [], leftoverUnitAllocations: [] },
+        { groups: materializeCanonicalGroupPoolState(left), leftoverUnits: [], leftoverUnitAllocations: [] },
+        { groups: materializeCanonicalGroupPoolState(right), leftoverUnits: [], leftoverUnitAllocations: [] },
         context,
     );
 }
@@ -2922,23 +3079,46 @@ function getRegularPromotionSuccessors(
             break;
         }
 
-        const allowedModifierKeys = new Set([getRuleModifierDescriptor(rule).regularStep.modifierKey]);
-        const materialized = rule.kind === 'composed-count'
-            ? materializeComposedCountRuleInternal(rule, promotableFacts, context.definition.registry, allowedModifierKeys)
-            : materializeComposedPatternRuleInternal(rule, promotableFacts, context.definition.registry, allowedModifierKeys);
+        const allowedModifierKeys = getAllowedModifierKeysForStage(getRuleStageMetadata(context, rule), 'regular');
+        let successorState: CanonicalGroupPoolState | null = null;
 
-        if (materialized.groups.length === 0) {
-            continue;
+        if (rule.kind === 'composed-count') {
+            const abstractCandidates = planComposedCountRuleInternal(
+                rule,
+                promotableFacts,
+                context.definition.registry,
+                guard,
+                allowedModifierKeys,
+            );
+            if (abstractCandidates.length === 0) {
+                continue;
+            }
+
+            const concreteCandidates = materializeAbstractCompositionPlan(abstractCandidates);
+            const usedChildren = new Set(concreteCandidates.flatMap((candidate) => candidate.groups.map((group) => group.group)));
+            const producedGroups = concreteCandidates.map((candidate) => createAbstractComposedGroupRecord(
+                rule,
+                candidate.modifierStep,
+                candidate.groups
+                    .map((group) => state.recordByGroup.get(group.group))
+                    .filter((group): group is PlannedGroupRecord => !!group),
+            ));
+            successorState = createSuccessorCanonicalGroupPoolState(state, producedGroups, usedChildren);
+        } else {
+            const materialized = materializeComposedPatternRuleInternal(rule, promotableFacts, context.definition.registry, allowedModifierKeys);
+            if (materialized.groups.length === 0) {
+                continue;
+            }
+
+            const usedChildren = new Set(materialized.groups.flatMap((group) => group.children ?? []));
+            successorState = createSuccessorCanonicalGroupPoolState(
+                state,
+                materialized.groups.map((group) => createConcretePlannedGroupRecord(group)),
+                usedChildren,
+            );
         }
 
-        const usedChildren = new Set(materialized.groups.flatMap((group) => group.children ?? []));
-        const nextPool = [
-            ...state.groups.filter((group) => !usedChildren.has(group)),
-            ...materialized.groups,
-        ];
-        const successorState = createCanonicalGroupPoolState(nextPool);
-
-        if (seen.has(successorState.key)) {
+        if (!successorState || seen.has(successorState.key)) {
             continue;
         }
 
@@ -2953,8 +3133,8 @@ function runSingleTierRegularPromotionStep(
     initialPool: readonly GroupSizeResult[],
     context: ResolveContext,
 ): GroupSizeResult[] {
-    let remainingFacts = compileGroupFactsList(initialPool.filter((group) => !isBlockedSubRegularPromotionChild(group, context)));
-    const groups: GroupSizeResult[] = [];
+    let poolState = createCanonicalGroupPoolState(initialPool);
+    let remainingFacts = poolState.groupFacts.filter((facts) => !isBlockedSubRegularPromotionChild(facts.group, context));
     const candidateChildTiers = getOrderedComposedRules(context)
         .filter((rule) => {
             const childTier = getMinimumChildTierForRule(rule, context);
@@ -2972,24 +3152,49 @@ function runSingleTierRegularPromotionStep(
             continue;
         }
 
-        const allowedModifierKeys = new Set([getRuleModifierDescriptor(rule).regularStep.modifierKey]);
-        const materialized = rule.kind === 'composed-count'
-            ? materializeComposedCountRuleInternal(rule, remainingFacts, context.definition.registry, allowedModifierKeys)
-            : materializeComposedPatternRuleInternal(rule, remainingFacts, context.definition.registry, allowedModifierKeys);
+        const allowedModifierKeys = getAllowedModifierKeysForStage(getRuleStageMetadata(context, rule), 'regular');
+        if (rule.kind === 'composed-count') {
+            const abstractCandidates = planComposedCountRuleInternal(
+                rule,
+                remainingFacts,
+                context.definition.registry,
+                createSolverGuard(),
+                allowedModifierKeys,
+            );
+            if (abstractCandidates.length === 0) {
+                continue;
+            }
 
+            const concreteCandidates = materializeAbstractCompositionPlan(abstractCandidates);
+            const usedObjects = new Set(concreteCandidates.flatMap((candidate) => candidate.groups.map((group) => group.group)));
+            const producedGroups = concreteCandidates.map((candidate) => createAbstractComposedGroupRecord(
+                rule,
+                candidate.modifierStep,
+                candidate.groups
+                    .map((group) => poolState.recordByGroup.get(group.group))
+                    .filter((group): group is PlannedGroupRecord => !!group),
+            ));
+
+            poolState = createSuccessorCanonicalGroupPoolState(poolState, producedGroups, usedObjects);
+            remainingFacts = remainingFacts.filter((facts) => !usedObjects.has(facts.group));
+            continue;
+        }
+
+        const materialized = materializeComposedPatternRuleInternal(rule, remainingFacts, context.definition.registry, allowedModifierKeys);
         if (materialized.groups.length === 0) {
             continue;
         }
 
-        groups.push(...materialized.groups);
         const usedObjects = new Set(materialized.groups.flatMap((group) => group.children ?? []));
+        poolState = createSuccessorCanonicalGroupPoolState(
+            poolState,
+            materialized.groups.map((group) => createConcretePlannedGroupRecord(group)),
+            usedObjects,
+        );
         remainingFacts = remainingFacts.filter((facts) => !usedObjects.has(facts.group));
     }
 
-    return [
-        ...initialPool.filter((group) => remainingFacts.some((facts) => facts.group === group) || isBlockedSubRegularPromotionChild(group, context)),
-        ...groups,
-    ];
+    return materializeCanonicalGroupPoolState(poolState);
 }
 
 function searchBestRegularPromotionPool(
@@ -3022,7 +3227,7 @@ function searchBestRegularPromotionPool(
         return best;
     }
 
-    return [...visit(createCanonicalGroupPoolState(initialPool)).groups];
+    return materializeCanonicalGroupPoolState(visit(createCanonicalGroupPoolState(initialPool)));
 }
 
 function runRegularPromotionLoop(
@@ -3082,7 +3287,7 @@ function preAssimilateUnderRegularGroups(
             if (!rule) {
                 return false;
             }
-            return group.modifierKey !== '' && getRuleModifierDescriptor(rule).subRegularStepsDescending.some((step) => step.modifierKey === group.modifierKey);
+            return group.modifierKey !== '' && isSubRegularModifierKey(getRuleStageMetadata(context, rule), group.modifierKey);
         })
         .sort((left, right) => {
             const leftRule = left.type ? ruleByType.get(left.type) : undefined;
@@ -3101,7 +3306,7 @@ function preAssimilateUnderRegularGroups(
         if (!rule) {
             continue;
         }
-        const descriptor = getRuleModifierDescriptor(rule);
+        const descriptor = getRuleStageMetadata(context, rule).descriptor;
         const currentStep = descriptor.stepsAscending.find((step) => step.modifierKey === group.modifierKey);
         if (!currentStep) {
             continue;
@@ -3114,7 +3319,7 @@ function preAssimilateUnderRegularGroups(
 
         const remainingFacts = compileGroupFactsList(pool.filter((candidate) => candidate !== group));
         const roleMatches = getEligibleChildFacts(group, rule, remainingFacts, context);
-        const addition = findConcreteComposition(roleMatches, rule.childRoles, needed, guard);
+        const addition = findAbstractCompositionSelection(roleMatches, rule.childRoles, needed, guard);
         if (!addition) {
             continue;
         }
@@ -3159,7 +3364,7 @@ function assimilateLeftoversIntoParents(
         if (!rule) {
             continue;
         }
-        const descriptor = getRuleModifierDescriptor(rule);
+        const descriptor = getRuleStageMetadata(context, rule).descriptor;
         const currentStep = descriptor.stepsAscending.find((step) => step.modifierKey === parent.modifierKey) ?? descriptor.regularStep;
         const nextSteps = descriptor.stepsAscending.filter((step) => step.count > currentStep.count);
         if (nextSteps.length === 0) {
@@ -3184,7 +3389,7 @@ function assimilateLeftoversIntoParents(
                 currentCount = Math.max(currentCount, targetStep.count);
                 continue;
             }
-            const selection = findConcreteComposition(
+            const selection = findAbstractCompositionSelection(
                 matchingFacts.filter((facts) => !usedGroups.includes(facts.group)),
                 rule.childRoles,
                 needed,
@@ -3254,9 +3459,109 @@ function createSyntheticGroupForRule(
         modifierKey: modifierStep.modifierKey,
         countsAsType: rule.countsAs ?? null,
         tier: modifierStep.tier,
+        provenance: 'produced-group',
         tag: rule.tag,
         priority: rule.priority,
     };
+}
+
+function createConcretePlannedGroupRecord(group: GroupSizeResult): PlannedGroupRecord {
+    const facts = compileGroupFacts(group);
+
+    return {
+        facts,
+        materializedGroup: group,
+        materialize: () => group,
+    };
+}
+
+function copyReadonlyCountMap<Key extends string>(source: ReadonlyMap<Key, number>): Map<Key, number> {
+    return new Map(source.entries());
+}
+
+function sumReadonlyCountMaps<Key extends string>(
+    children: readonly GroupFacts[],
+    select: (child: GroupFacts) => ReadonlyMap<Key, number>,
+): Map<Key, number> {
+    const result = new Map<Key, number>();
+
+    for (const child of children) {
+        for (const [key, count] of select(child).entries()) {
+            result.set(key, (result.get(key) ?? 0) + count);
+        }
+    }
+
+    return result;
+}
+
+function createAbstractComposedGroupRecord(
+    rule: OrgComposedCountRule,
+    modifierStep: ModifierStep,
+    childRecords: readonly PlannedGroupRecord[],
+): PlannedGroupRecord {
+    const materializedGroupTemplate: GroupSizeResult = {
+        name: makeGroupName(rule.type, modifierStep.modifierKey),
+        type: rule.type,
+        modifierKey: modifierStep.modifierKey,
+        countsAsType: rule.countsAs ?? null,
+        tier: modifierStep.tier,
+        provenance: 'produced-group',
+        children: childRecords.map((child) => child.facts.group),
+        tag: rule.tag,
+        priority: rule.priority,
+    };
+    const childFacts = childRecords.map((record) => record.facts);
+    const childTypeCounts = new Map<OrgChildTypeCountKey, number>();
+
+    for (const child of childFacts) {
+        const childTypeKey = child.type ?? 'null';
+        childTypeCounts.set(childTypeKey, (childTypeCounts.get(childTypeKey) ?? 0) + 1);
+        if (child.countsAsType) {
+            const countsAsKey = `countsAs:${child.countsAsType}` as OrgChildTypeCountKey;
+            childTypeCounts.set(countsAsKey, (childTypeCounts.get(countsAsKey) ?? 0) + 1);
+        }
+        if (child.tag) {
+            const tagKey = `tag:${child.tag}` as OrgChildTypeCountKey;
+            childTypeCounts.set(tagKey, (childTypeCounts.get(tagKey) ?? 0) + 1);
+        }
+    }
+
+    const facts: GroupFacts = {
+        group: materializedGroupTemplate,
+        type: rule.type,
+        countsAsType: rule.countsAs ?? null,
+        modifierKey: modifierStep.modifierKey,
+        tier: modifierStep.tier,
+        provenance: 'produced-group',
+        tag: rule.tag,
+        childTypeCounts,
+        unitTypeCounts: sumReadonlyCountMaps(childFacts, (child) => child.unitTypeCounts),
+        unitClassCounts: sumReadonlyCountMaps(childFacts, (child) => child.unitClassCounts),
+        unitTagCounts: sumReadonlyCountMaps(childFacts, (child) => child.unitTagCounts),
+        unitScalarSums: sumReadonlyCountMaps(childFacts, (child) => child.unitScalarSums),
+    };
+    const record: PlannedGroupRecord = {
+        facts,
+        materialize: () => {
+            if (!record.materializedGroup) {
+                materializedGroupTemplate.children = childRecords.map((child) => child.materialize());
+                record.materializedGroup = materializedGroupTemplate;
+            }
+            return record.materializedGroup;
+        },
+    };
+
+    return record;
+}
+
+function markGroupsWithProvenance(
+    groups: readonly GroupSizeResult[],
+    provenance: OrgGroupProvenance,
+): GroupSizeResult[] {
+    return groups.map((group) => ({
+        ...group,
+        provenance,
+    }));
 }
 
 function getCrossgradeCandidates(
@@ -3269,7 +3574,7 @@ function getCrossgradeCandidates(
         );
 
     return candidateRules.flatMap((rule) =>
-        getRuleModifierDescriptor(rule).stepsAscending.map((step) => ({ rule, step })),
+        getRuleStageMetadata(context, rule).descriptor.stepsAscending.map((step) => ({ rule, step })),
     );
 }
 
@@ -3450,5 +3755,5 @@ export function resolveFromGroups(
     _hierarchicalAggregation: boolean = false,
 ): GroupSizeResult[] {
     const definition = resolveOrgDefinitionSpec(factionName, factionAffinity);
-    return resolveWithDefinition(definition, [], preprocessGroupsForDefinition(definition, groupResults));
+    return resolveWithDefinition(definition, [], preprocessGroupsForDefinition(definition, markGroupsWithProvenance(groupResults, 'input-group')));
 }

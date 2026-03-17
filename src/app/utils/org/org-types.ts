@@ -118,6 +118,7 @@ export interface GroupSizeResult {
     countsAsType: OrgType | null;
     tier: number;
     count?: number;
+    provenance?: OrgGroupProvenance;
     foreignDisplayName?: string;
     children?: GroupSizeResult[];
     units?: Unit[];
@@ -132,6 +133,8 @@ export interface GroupUnitAllocation {
     readonly unit: Unit;
     readonly troopers: number;
 }
+
+export type OrgGroupProvenance = 'input-group' | 'produced-group';
 
 export interface OrgSizeResult {
     readonly name: string;
@@ -308,6 +311,7 @@ export interface GroupFacts {
     readonly countsAsType: OrgType | null;
     readonly modifierKey: string;
     readonly tier: number;
+    readonly provenance: OrgGroupProvenance;
     readonly tag?: OrgGroupTag;
     readonly childTypeCounts: ReadonlyMap<OrgChildTypeCountKey, number>;
     readonly unitTypeCounts: ReadonlyMap<ASUnitTypeCode, number>;

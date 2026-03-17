@@ -28,6 +28,7 @@ import type {
     GroupFacts,
     GroupSizeResult,
     GroupUnitAllocation,
+    OrgGroupProvenance,
     InfantryTrooperBucketValue,
     OrgChildTypeCountKey,
     OrgRuleRegistry,
@@ -318,6 +319,10 @@ function getGroupUnitAllocations(group: GroupSizeResult): GroupUnitAllocation[] 
     return null;
 }
 
+function getGroupProvenance(group: GroupSizeResult): OrgGroupProvenance {
+    return group.provenance ?? 'produced-group';
+}
+
 export function compileGroupFacts(
     group: GroupSizeResult,
     unitFactsMap?: WeakMap<Unit, UnitFacts>,
@@ -372,6 +377,7 @@ export function compileGroupFacts(
         countsAsType: group.countsAsType,
         modifierKey: group.modifierKey,
         tier: group.tier,
+        provenance: getGroupProvenance(group),
         tag: group.tag,
         childTypeCounts,
         unitTypeCounts,
