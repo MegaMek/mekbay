@@ -388,17 +388,17 @@ export function getAggregatedGroupsResult(
 		return toOrgSizeResult(display.name, display.tier, groups);
 	}
 
-	const sameTypeDisplay = getSameTypeAggregatedDisplay(displayGroups, factionName, factionAffinity);
-	if (sameTypeDisplay) {
-		return sameTypeDisplay;
-	}
-
 	if (canReresolveAggregatedGroups(displayGroups)) {
 		const resolved = resolveFromGroups(factionName, factionAffinity, displayGroups, true);
 		if (resolved.length > 0 && resolved.length < displayGroups.length) {
 			const display = aggregateGroupsResult(resolved);
 			return toOrgSizeResult(display.name, display.tier, resolved);
 		}
+	}
+
+	const sameTypeDisplay = getSameTypeAggregatedDisplay(displayGroups, factionName, factionAffinity);
+	if (sameTypeDisplay) {
+		return sameTypeDisplay;
 	}
 
 	const aggregated = aggregateGroupsResult(displayGroups);
@@ -488,12 +488,14 @@ export function getOrgFromForceCollection(
 	childGroupResults?: readonly GroupSizeResult[],
 	options: OrgNamingOptions = {},
 ): OrgSizeResult {
-	const rawGroups = childGroupResults
+	const inputGroups = childGroupResults
 		? [...childGroupResults]
 		: entries.flatMap((entry) =>
 			entry.groups.flatMap((group) => getGroupResultsFromLoadForceGroup(group, factionName, factionAffinity)),
 		);
-	const display = getAggregatedGroupsResult(rawGroups, factionName, factionAffinity, options);
-	return toOrgSizeResult(display.name, display.tier, rawGroups);
+	const resolvedGroups = resolveFromGroups(factionName, factionAffinity, inputGroups, true);
+	const finalGroups = resolvedGroups.length > 0 ? resolvedGroups : inputGroups;
+	const display = getAggregatedGroupsResult(finalGroups, factionName, factionAffinity, options);
+	return toOrgSizeResult(display.name, display.tier, finalGroups);
 }
 

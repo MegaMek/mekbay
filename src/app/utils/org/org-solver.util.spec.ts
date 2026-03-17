@@ -2152,8 +2152,8 @@ function buildDialogLikeRepeatedCompanyRegiments(): { readonly regiments: readon
 
         for (const pass of [battalionPass1, battalionPass2, battalionPass3]) {
             expect(pass.name).toBe('Battalion');
-            expect(pass.groups).toHaveSize(3);
-            expect(pass.groups.every((group) => group.type === 'Company')).toBeTrue();
+            expect(pass.groups).toHaveSize(1);
+            expect(pass.groups[0].type).toBe('Battalion');
         }
 
         return { result: battalionPass3, entries: companyEntries };
@@ -2172,8 +2172,8 @@ function buildDialogLikeRepeatedCompanyRegiments(): { readonly regiments: readon
 
         for (const pass of [regimentPass1, regimentPass2, regimentPass3]) {
             expect(pass.name).toBe('Regiment');
-            expect(pass.groups).toHaveSize(9);
-            expect(pass.groups.every((group) => group.type === 'Company')).toBeTrue();
+            expect(pass.groups).toHaveSize(1);
+            expect(pass.groups[0].type).toBe('Regiment');
         }
 
         return { result: regimentPass3, entries: regimentEntries };
@@ -3159,8 +3159,8 @@ describe('org-solver.util aggregation and foreign parity', () => {
         expect(regiments).toHaveSize(3);
         for (const regiment of regiments) {
             expect(regiment.name).toBe('Regiment');
-            expect(regiment.groups).toHaveSize(9);
-            expect(regiment.groups.every((group) => group.type === 'Company')).toBeTrue();
+            expect(regiment.groups).toHaveSize(1);
+            expect(regiment.groups[0].type).toBe('Regiment');
         }
 
         const brigadePass1 = getOrgFromForceCollection(entries, 'Federated Suns', 'Inner Sphere', regiments.flatMap((regiment) => regiment.groups));
@@ -3169,9 +3169,24 @@ describe('org-solver.util aggregation and foreign parity', () => {
 
         for (const pass of [brigadePass1, brigadePass2, brigadePass3]) {
             expect(pass.name).toBe('Brigade');
-            expect(pass.groups).toHaveSize(27);
-            expect(pass.groups.every((group) => group.type === 'Company')).toBeTrue();
+            expect(pass.groups).toHaveSize(1);
+            expect(pass.groups[0].type).toBe('Brigade');
         }
+    });
+
+    it('prefers a real higher-tier org name over repeated same-type display labels for regular groups', () => {
+        const companies = [
+            { name: 'Company A', type: 'Company', modifierKey: '', countsAsType: null, tier: 2 },
+            { name: 'Company B', type: 'Company', modifierKey: '', countsAsType: null, tier: 2 },
+            { name: 'Company C', type: 'Company', modifierKey: '', countsAsType: null, tier: 2 },
+        ] satisfies GroupSizeResult[];
+
+        const aggregated = getAggregatedGroupsResult(companies, 'Federated Suns', 'Inner Sphere');
+
+        expect(aggregated.name).toBe('Battalion');
+        expect(aggregated.groups).toEqual([
+            jasmine.objectContaining({ type: 'Battalion', name: 'Battalion' }),
+        ]);
     });
 
     it('crossgrades foreign groups to the nearest dynamic-tier modifier in the target org', () => {
