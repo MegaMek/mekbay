@@ -56,6 +56,21 @@ const MAX_PROMOTION_LOOP_ITERATIONS = 64;
 
 let nextSyntheticGroupFactId = -1;
 
+interface MutableOrgSolveMetrics {
+    regularPromotionSearches: number;
+    regularPromotionResultCacheHits: number;
+    regularPromotionResultCacheMisses: number;
+    regularPromotionMemoHits: number;
+    regularPromotionMemoMisses: number;
+    regularPromotionSuccessorCacheHits: number;
+    regularPromotionSuccessorCacheMisses: number;
+    regularPromotionSuccessorStates: number;
+    timedOut: boolean;
+}
+
+let activeOrgSolveMetrics: MutableOrgSolveMetrics | null = null;
+let lastOrgSolveMetrics: OrgSolveMetrics | null = null;
+
 type ModifierBand = 'sub-regular' | 'regular' | 'super-regular';
 type RuleExecutionStage = 'regular' | 'sub-regular' | 'all';
 
@@ -72,6 +87,42 @@ interface ModifierStep {
     readonly tier: number;
     readonly relativeBand: ModifierBand;
     readonly distanceFromRegular: number;
+}
+
+function createMutableOrgSolveMetrics(): MutableOrgSolveMetrics {
+    return {
+        regularPromotionSearches: 0,
+        regularPromotionResultCacheHits: 0,
+        regularPromotionResultCacheMisses: 0,
+        regularPromotionMemoHits: 0,
+        regularPromotionMemoMisses: 0,
+        regularPromotionSuccessorCacheHits: 0,
+        regularPromotionSuccessorCacheMisses: 0,
+        regularPromotionSuccessorStates: 0,
+        timedOut: false,
+    };
+}
+
+function snapshotOrgSolveMetrics(metrics: MutableOrgSolveMetrics | null): OrgSolveMetrics | null {
+    if (!metrics) {
+        return null;
+    }
+
+    return {
+        regularPromotionSearches: metrics.regularPromotionSearches,
+        regularPromotionResultCacheHits: metrics.regularPromotionResultCacheHits,
+        regularPromotionResultCacheMisses: metrics.regularPromotionResultCacheMisses,
+        regularPromotionMemoHits: metrics.regularPromotionMemoHits,
+        regularPromotionMemoMisses: metrics.regularPromotionMemoMisses,
+        regularPromotionSuccessorCacheHits: metrics.regularPromotionSuccessorCacheHits,
+        regularPromotionSuccessorCacheMisses: metrics.regularPromotionSuccessorCacheMisses,
+        regularPromotionSuccessorStates: metrics.regularPromotionSuccessorStates,
+        timedOut: metrics.timedOut,
+    };
+}
+
+export function getLastOrgSolveMetrics(): OrgSolveMetrics | null {
+    return lastOrgSolveMetrics;
 }
 
 interface RuleModifierDescriptor {
@@ -140,6 +191,18 @@ export interface MaterializedLeafUnitResult {
 export interface MaterializedComposedGroupResult {
     readonly groups: readonly GroupSizeResult[];
     readonly leftoverGroupFacts: readonly GroupFacts[];
+}
+
+export interface OrgSolveMetrics {
+    readonly regularPromotionSearches: number;
+    readonly regularPromotionResultCacheHits: number;
+    readonly regularPromotionResultCacheMisses: number;
+    readonly regularPromotionMemoHits: number;
+    readonly regularPromotionMemoMisses: number;
+    readonly regularPromotionSuccessorCacheHits: number;
+    readonly regularPromotionSuccessorCacheMisses: number;
+    readonly regularPromotionSuccessorStates: number;
+    readonly timedOut: boolean;
 }
 
 export interface OrgDefinitionEvaluationResult {
@@ -249,6 +312,7 @@ interface ResolveContext {
     readonly orderedComposedRules: readonly (OrgComposedCountRule | OrgComposedPatternRule)[];
     readonly minimumChildTierByRule: ReadonlyMap<OrgComposedCountRule | OrgComposedPatternRule, number>;
     readonly ruleStageMetadata: ReadonlyMap<OrgRuleDefinition, CompiledRuleStageMetadata>;
+    readonly exactRegularPromotionResultBySignature: Map<string, CanonicalGroupPoolState>;
 }
 
 interface FinalStateScore {
@@ -3120,7 +3184,8 @@ function getResolveContext(definition: OrgDefinitionSpec): ResolveContext {
         composedPatternRules,
         orderedComposedRules,
         minimumChildTierByRule,
-            ruleStageMetadata,
+        ruleStageMetadata,
+        exactRegularPromotionResultBySignature: new Map<string, CanonicalGroupPoolState>(),
     };
 }
 
@@ -4000,16 +4065,46 @@ function searchBestRegularPromotionPoolStateFromState(
     context: ResolveContext,
     guard: SolverGuard,
 ): CanonicalGroupPoolState {
+    const metrics = activeOrgSolveMetrics;
+    const cachedResult = context.exactRegularPromotionResultBySignature.get(initialState.signature.key);
+    if (cachedResult) {
+        if (metrics) {
+            metrics.regularPromotionResultCacheHits += 1;
+        }
+        return cachedResult;
+    }
+
+    if (metrics) {
+        metrics.regularPromotionResultCacheMisses += 1;
+        metrics.regularPromotionSearches += 1;
+    }
+
     const memo = new Map<string, CanonicalPromotionFuture>();
     const successorsBySignature = new Map<string, readonly CanonicalGroupPoolState[]>();
+
+    function finalize(result: CanonicalGroupPoolState): CanonicalGroupPoolState {
+        if (!guard.timedOut) {
+            context.exactRegularPromotionResultBySignature.set(initialState.signature.key, result);
+        }
+        return result;
+    }
 
     function getCachedSuccessors(state: CanonicalGroupPoolState): readonly CanonicalGroupPoolState[] {
         const cached = successorsBySignature.get(state.signature.key);
         if (cached) {
+            if (metrics) {
+                metrics.regularPromotionSuccessorCacheHits += 1;
+            }
             return cached;
         }
 
+        if (metrics) {
+            metrics.regularPromotionSuccessorCacheMisses += 1;
+        }
         const successors = getRegularPromotionSuccessors(state, context, guard);
+        if (metrics) {
+            metrics.regularPromotionSuccessorStates += successors.length;
+        }
         successorsBySignature.set(state.signature.key, successors);
         return successors;
     }
@@ -4017,7 +4112,14 @@ function searchBestRegularPromotionPoolStateFromState(
     function visit(state: CanonicalGroupPoolState): CanonicalPromotionFuture {
         const cached = memo.get(state.signature.key);
         if (cached) {
+            if (metrics) {
+                metrics.regularPromotionMemoHits += 1;
+            }
             return cached;
+        }
+
+        if (metrics) {
+            metrics.regularPromotionMemoMisses += 1;
         }
 
         let bestFuture: CanonicalPromotionFuture = {
@@ -4051,19 +4153,19 @@ function searchBestRegularPromotionPoolStateFromState(
         safety += 1;
         const future = memo.get(currentState.signature.key);
         if (!future?.nextSignatureKey) {
-            return currentState;
+            return finalize(currentState);
         }
 
         const nextState = getCachedSuccessors(currentState)
             .find((candidate) => candidate.signature.key === future.nextSignatureKey);
         if (!nextState) {
-            return currentState;
+            return finalize(currentState);
         }
 
         currentState = nextState;
     }
 
-    return currentState;
+    return finalize(currentState);
 }
 function runLeftoverImprovementLoopState(
     initialState: CanonicalGroupPoolState,
@@ -4543,6 +4645,9 @@ function resolveWithDefinition(
     units: readonly Unit[],
     groups: readonly GroupSizeResult[],
 ): GroupSizeResult[] {
+    activeOrgSolveMetrics = createMutableOrgSolveMetrics();
+    lastOrgSolveMetrics = null;
+
     const context = getResolveContext(definition);
     const guard = createSolverGuard();
     const compiledUnits = compileUnitFactsList(units);
@@ -4598,6 +4703,12 @@ function resolveWithDefinition(
     }
 
     const bestState = pickBestResolvedState(candidateStates, context);
+
+    if (activeOrgSolveMetrics) {
+        activeOrgSolveMetrics.timedOut = guard.timedOut;
+    }
+    lastOrgSolveMetrics = snapshotOrgSolveMetrics(activeOrgSolveMetrics);
+    activeOrgSolveMetrics = null;
 
     return materializeResolvedState(bestState);
 }

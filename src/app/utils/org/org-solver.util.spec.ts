@@ -64,6 +64,7 @@ import {
     evaluateLeafCountRule,
     evaluateLeafPatternRule,
     evaluateOrgDefinition,
+    getLastOrgSolveMetrics,
     materializeComposedCountRule,
     materializeComposedPatternRule,
     materializeCIFormationRule,
@@ -1704,6 +1705,44 @@ describe('org-solver.util', () => {
         expect(result[0].modifierKey).toBe('Under-Strength ');
         expect(result[0].children?.length).toBe(2);
         expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('records last-run regular promotion metrics per solve without accumulating across runs', () => {
+        resolveFromUnits([
+            createUnit('METRIC-1', 'Mek', 'BattleMek'),
+            createUnit('METRIC-2', 'Mek', 'BattleMek'),
+            createUnit('METRIC-3', 'Mek', 'BattleMek'),
+            createUnit('METRIC-4', 'Mek', 'BattleMek'),
+        ], 'Federated Suns', 'Inner Sphere');
+
+        const firstMetrics = getLastOrgSolveMetrics();
+
+        expect(firstMetrics).not.toBeNull();
+        expect(firstMetrics?.regularPromotionSearches).toBeGreaterThan(0);
+        expect(firstMetrics?.regularPromotionResultCacheHits).toBeGreaterThan(0);
+        expect(firstMetrics?.regularPromotionResultCacheMisses).toBeGreaterThan(0);
+        expect(firstMetrics?.regularPromotionMemoMisses).toBeGreaterThan(0);
+        expect(firstMetrics?.regularPromotionSuccessorCacheMisses).toBeGreaterThan(0);
+        expect(firstMetrics?.timedOut).toBeFalse();
+
+        resolveFromUnits([
+            createUnit('METRIC-5', 'Mek', 'BattleMek'),
+            createUnit('METRIC-6', 'Mek', 'BattleMek'),
+            createUnit('METRIC-7', 'Mek', 'BattleMek'),
+            createUnit('METRIC-8', 'Mek', 'BattleMek'),
+        ], 'Federated Suns', 'Inner Sphere');
+
+        const secondMetrics = getLastOrgSolveMetrics();
+
+        expect(secondMetrics).not.toBeNull();
+        expect(secondMetrics?.regularPromotionSearches).toBe(firstMetrics?.regularPromotionSearches);
+        expect(secondMetrics?.regularPromotionResultCacheHits).toBe(firstMetrics?.regularPromotionResultCacheHits);
+        expect(secondMetrics?.regularPromotionResultCacheMisses).toBe(firstMetrics?.regularPromotionResultCacheMisses);
+        expect(secondMetrics?.regularPromotionMemoMisses).toBeGreaterThan(0);
+        expect(secondMetrics?.regularPromotionSuccessorCacheMisses).toBeGreaterThan(0);
+        expect(secondMetrics?.regularPromotionMemoMisses).toBe(firstMetrics?.regularPromotionMemoMisses);
+        expect(secondMetrics?.regularPromotionSuccessorCacheMisses).toBe(firstMetrics?.regularPromotionSuccessorCacheMisses);
+        expect(secondMetrics?.timedOut).toBeFalse();
     });
 
     it('regularizes an Under-Strength Company before building upward from four additional lances', () => {
