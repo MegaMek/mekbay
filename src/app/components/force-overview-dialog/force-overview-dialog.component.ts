@@ -77,7 +77,7 @@ type ForceTableRow =
  * State for the overview that can be persisted.
  */
 export interface OverviewState {
-    viewMode: 'expanded' | 'compact';
+    viewMode: 'expanded' | 'compact' | 'table';
     sortKey: string;
     sortDirection: 'asc' | 'desc';
 }
@@ -149,7 +149,7 @@ export class ForceOverviewDialogComponent {
     );
 
     /** Current view mode */
-    viewMode = signal<'expanded' | 'compact'>(DEFAULT_OVERVIEW_STATE.viewMode);
+    viewMode = signal<'expanded' | 'compact' | 'table'>(DEFAULT_OVERVIEW_STATE.viewMode);
 
     /** Current sort key */
     selectedSort = signal<string>(DEFAULT_OVERVIEW_STATE.sortKey);
@@ -176,12 +176,26 @@ export class ForceOverviewDialogComponent {
     /** Whether this is an Alpha Strike force */
     isAlphaStrike = computed(() => this.gameService.isAlphaStrike());
 
-    /** Whether table mode is active (AS + expanded view + wide enough viewport) */
-    readonly isTableMode = computed(() => 
-        this.viewMode() === 'expanded' && 
-        this.isAlphaStrike() && 
-        this.layoutService.windowWidth() >= 1100
-    );
+    /** Whether table mode is active */
+    readonly isTableMode = computed(() => this.viewMode() === 'table' && this.isAlphaStrike());
+
+    readonly nextViewMode = computed<'compact' | 'expanded' | 'table'>(() => {
+        const current = this.viewMode();
+        if (!this.isAlphaStrike()) {
+            return current === 'compact' ? 'expanded' : 'compact';
+        }
+
+        if (current === 'compact') return 'expanded';
+        if (current === 'expanded') return 'table';
+        return 'compact';
+    });
+
+    readonly nextViewModeTitle = computed(() => {
+        const next = this.nextViewMode();
+        if (next === 'compact') return 'Switch to compact view';
+        if (next === 'expanded') return 'Switch to expanded view';
+        return 'Switch to table view';
+    });
 
     /** Whether to use hex movement */
     readonly useHex = computed(() => this.optionsService.options().ASUseHex);
@@ -456,7 +470,7 @@ export class ForceOverviewDialogComponent {
 
     /** Toggle between expanded and compact view modes */
     toggleViewMode(): void {
-        this.viewMode.update(v => v === 'expanded' ? 'compact' : 'expanded');
+        this.viewMode.set(this.nextViewMode());
     }
 
     /** Set the sort key */

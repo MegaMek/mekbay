@@ -259,18 +259,22 @@
         </button>
     </div>
     <button type="button" class="bt-button view-toggle-btn" (click)="toggleViewMode()" 
-        [title]="viewMode() === 'expanded' ? 'Switch to compact view' : 'Switch to expanded view'">
-        @if (viewMode() === 'expanded') {
+        [title]="nextViewModeTitle()">
+        @if (nextViewMode() === 'compact') {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="3" width="7" height="7" rx="1"/>
-                <rect x="14" y="3" width="7" height="7" rx="1"/>
-                <rect x="3" y="14" width="7" height="7" rx="1"/>
-                <rect x="14" y="14" width="7" height="7" rx="1"/>
+                <rect x="2.5" y="2.5" width="8" height="8" rx="1"/>
+                <rect x="13.5" y="2.5" width="8" height="8" rx="1"/>
+                <rect x="2.5" y="13.5" width="8" height="8" rx="1"/>
+                <rect x="13.5" y="13.5" width="8" height="8" rx="1"/>
+            </svg>
+        } @else if (nextViewMode() === 'expanded') {
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2.5" y="3" width="19" height="7" rx="1"/>
+                <rect x="2.5" y="14" width="19" height="7" rx="1"/>
             </svg>
         } @else {
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="4" width="18" height="6" rx="1"/>
-                <rect x="3" y="14" width="18" height="6" rx="1"/>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                <path d="M23 24H0V0h23V24zM16 22h5v-4h-5v4zM9 22h5v-4H9v4zM2 22h5v-4H2v4zM16 16h5V6h-5v4h5v2h-5v4zM9 16h5v-4H9v4zM2 16h5v-4H2v4zM9 10h5V6H9v4zM2 10h5V6H2v4zM2 4h19V2H2v2z" />
             </svg>
         }
     </button>
