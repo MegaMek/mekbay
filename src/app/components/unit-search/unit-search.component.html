@@ -144,32 +144,6 @@
     <div class="results-dropdown framed-borders" [class.expanded]="this.expandedView()">
         <div class="results-dropdown-content">
             @if (this.filtersService.filteredUnits().length > 0) {
-            <!-- Table Header for AS Table View (expanded only, not in card or compact view) -->
-            @if (this.expandedView() && gameService.isAlphaStrike() && viewMode() === 'list') {
-            <div class="as-table-header"
-                 [class.sort-asc]="filtersService.selectedSortDirection() === 'asc'"
-                 [class.sort-desc]="filtersService.selectedSortDirection() === 'desc'">
-                <div class="as-th as-th-icon"></div>
-                <div class="as-th as-th-name as-th-sortable" [class.sort-active]="isSortActive('name')" (click)="onHeaderSort('name')">Name</div>
-                <div class="as-th as-th-year as-th-sortable" [class.sort-active]="isSortActive('year')" (click)="onHeaderSort('year')">Year</div>
-                <div class="as-th as-th-type as-th-sortable" [class.sort-active]="isSortActive('as.TP')" (click)="onHeaderSort('as.TP')">Type</div>
-                <div class="as-th as-th-role as-th-sortable" [class.sort-active]="isSortActive('role')" (click)="onHeaderSort('role')">Role</div>
-                <div class="as-th as-th-pv as-th-sortable" [class.sort-active]="isSortActive('as.PV')" (click)="onHeaderSort('as.PV')">PV</div>
-                <div class="as-th as-th-sz as-th-sortable" [class.sort-active]="isSortActive('as.SZ')" (click)="onHeaderSort('as.SZ')">SZ</div>
-                <div class="as-th as-th-mv as-th-sortable" [class.sort-active]="isSortActive('as._mv')" (click)="onHeaderSort('as._mv')">MV</div>
-                <div class="as-th as-th-tmm as-th-sortable" [class.sort-active]="isSortActive('as.TMM')" (click)="onHeaderSort('as.TMM')">TMM</div>
-                <div class="as-th as-th-dmg as-th-sortable" [class.sort-active]="isSortActive('as.damage')" (click)="onHeaderSort('as.dmg._dmgS', 'as.damage')">S/M/L</div>
-                <div class="as-th as-th-arm as-th-sortable" [class.sort-active]="isSortActive('as.Arm')" (click)="onHeaderSort('as.Arm')">A</div>
-                <div class="as-th as-th-str as-th-sortable" [class.sort-active]="isSortActive('as.Str')" (click)="onHeaderSort('as.Str')">S</div>
-                <div class="as-th as-th-ov as-th-sortable" [class.sort-active]="isSortActive('as.OV')" (click)="onHeaderSort('as.OV')">OV</div>
-                @if (asTableSortSlotHeader(); as sortHeader) {
-                <div class="as-th as-th-sort-slot">{{ sortHeader }}</div>
-                }
-                <div class="as-th as-th-specials">Special</div>
-                <div class="as-th as-th-tags">Tags</div>
-            </div>
-            }
-
             @if (viewMode() === 'chassis') {
             <!-- Compact Chassis-Grouped View -->
             <div class="chassis-view-grid" [class.has-sort-slot]="chassisSortSlotHeader()">
@@ -216,6 +190,99 @@
                         }
                     </div>
                 }
+            </div>
+            } @else if (this.expandedView() && gameService.isAlphaStrike() && viewMode() === 'list') {
+            <div class="as-table-scroll" [class.has-sort-slot]="asTableSortSlotHeader()">
+                <div class="as-table-header"
+                     [class.has-sort-slot]="asTableSortSlotHeader()"
+                     [class.sort-asc]="filtersService.selectedSortDirection() === 'asc'"
+                     [class.sort-desc]="filtersService.selectedSortDirection() === 'desc'">
+                    <div class="as-th as-th-icon"></div>
+                    <div class="as-th as-th-name as-th-sortable" [class.sort-active]="isSortActive('name')" (click)="onHeaderSort('name')">Name</div>
+                    <div class="as-th as-th-year as-th-sortable" [class.sort-active]="isSortActive('year')" (click)="onHeaderSort('year')">Year</div>
+                    <div class="as-th as-th-type as-th-sortable" [class.sort-active]="isSortActive('as.TP')" (click)="onHeaderSort('as.TP')">Type</div>
+                    <div class="as-th as-th-role as-th-sortable" [class.sort-active]="isSortActive('role')" (click)="onHeaderSort('role')">Role</div>
+                    <div class="as-th as-th-pv as-th-sortable" [class.sort-active]="isSortActive('as.PV')" (click)="onHeaderSort('as.PV')">PV</div>
+                    <div class="as-th as-th-sz as-th-sortable" [class.sort-active]="isSortActive('as.SZ')" (click)="onHeaderSort('as.SZ')">SZ</div>
+                    <div class="as-th as-th-mv as-th-sortable" [class.sort-active]="isSortActive('as._mv')" (click)="onHeaderSort('as._mv')">MV</div>
+                    <div class="as-th as-th-tmm as-th-sortable" [class.sort-active]="isSortActive('as.TMM')" (click)="onHeaderSort('as.TMM')">TMM</div>
+                    <div class="as-th as-th-dmg as-th-sortable" [class.sort-active]="isSortActive('as.damage')" (click)="onHeaderSort('as.dmg._dmgS', 'as.damage')">S/M/L</div>
+                    <div class="as-th as-th-arm as-th-sortable" [class.sort-active]="isSortActive('as.Arm')" (click)="onHeaderSort('as.Arm')">A</div>
+                    <div class="as-th as-th-str as-th-sortable" [class.sort-active]="isSortActive('as.Str')" (click)="onHeaderSort('as.Str')">S</div>
+                    <div class="as-th as-th-ov as-th-sortable" [class.sort-active]="isSortActive('as.OV')" (click)="onHeaderSort('as.OV')">OV</div>
+                    @if (asTableSortSlotHeader(); as sortHeader) {
+                    <div class="as-th as-th-sort-slot">{{ sortHeader }}</div>
+                    }
+                    <div class="as-th as-th-specials">Special</div>
+                    <div class="as-th as-th-tags">Tags</div>
+                </div>
+
+                <cdk-virtual-scroll-viewport class="results-dropdown-viewport as-table-viewport"
+                    [class.has-sort-slot]="asTableSortSlotHeader()"
+                    [itemSize]="this.itemSize()"
+                    [style.--item-size.px]="this.itemSize()"
+                    minBufferPx="900" maxBufferPx="1600" tabindex="0">
+                    <div class="results-dropdown-item"
+                        *cdkVirtualFor="let unit of this.filtersService.filteredUnits(); let i = index; trackBy: trackByUnitId"
+                        [class.selected]="isUnitSelected(unit)"
+                        [class.active]="activeIndex() === i"
+                        [class.panel-selected]="showInlinePanel() && inlinePanelUnit()?.name === unit.name"
+                        (pointerenter)="activeIndex.set(i)">
+
+                        <unit-card-expanded class="as-card-view"
+                            longPress
+                            (shortPress)="onUnitCardClick(unit, $event)"
+                            (longPress)="multiSelectUnit(unit, $event)"
+                            [unit]="unit"
+                            [gunnery]="gunnery"
+                            [useHex]="useHex()"
+                            [sortKey]="currentSortKey()"
+                            [isSelected]="isUnitSelected(unit)"
+                            [sortSlotLabel]="currentSortSlotLabel()"
+                            [searchTokens]="this.filtersService.searchTokens()"
+                            (tagClick)="onAddTag($event)">
+                        </unit-card-expanded>
+
+                        <div class="as-table-row"
+                            [class.has-sort-slot]="asTableSortSlotHeader()"
+                            longPress
+                            (shortPress)="onUnitCardClick(unit, $event)"
+                            (longPress)="multiSelectUnit(unit, $event)">
+                            <div class="as-td as-td-icon"><unit-icon [unit]="unit" [size]="36"></unit-icon></div>
+                            <div class="as-td as-td-name">
+                                <span class="as-td-model" [innerHTML]="highlight(unit.model)"></span>
+                                <span class="as-td-chassis" [innerHTML]="highlight(unit.chassis)"></span>
+                            </div>
+                            <div class="as-td as-td-year" [class.sort-slot]="isSortActive('year')">
+                                @if (unit._era?.img) {
+                                <img class="as-era-icon" [src]="unit._era?.img" [alt]="unit._era?.name || 'Era'" [title]="unit._era?.name || ''" />
+                                }
+                                <span>{{ unit.year ?? '—' }}</span>
+                            </div>
+                            <div class="as-td as-td-type" [class.sort-slot]="isSortActive('as.TP')" [tooltip]="unitTypeDisplayNames[unit.as.TP]">{{ unit.as.TP }}</div>
+                            <div class="as-td as-td-role" [class.sort-slot]="isSortActive('role')">{{ unit.role !== 'None' ? unit.role : '' }}</div>
+                            <div class="as-td as-td-pv" [class.sort-slot]="isSortActive('as.PV')">{{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:false }}</div>
+                            <div class="as-td as-td-sz" [class.sort-slot]="isSortActive('as.SZ')">{{ unit.as.SZ }}</div>
+                            <div class="as-td as-td-mv" [class.sort-slot]="isSortActive('as._mv')" [innerHTML]="formatASMovement(unit)"></div>
+                            <div class="as-td as-td-tmm" [class.sort-slot]="isSortActive('as.TMM')">{{ unit.as.TMM ?? '—' }}</div>
+                            <div class="as-td as-td-dmg" [class.sort-slot]="isSortActive('as.damage')">@if (!unit.as.usesArcs) { {{ unit.as.dmg.dmgS }}/{{ unit.as.dmg.dmgM }}/{{ unit.as.dmg.dmgL }} }</div>
+                            <div class="as-td as-td-arm" [class.sort-slot]="isSortActive('as.Arm')">{{ unit.as.Arm }}</div>
+                            <div class="as-td as-td-str" [class.sort-slot]="isSortActive('as.Str')">{{ unit.as.Str }}</div>
+                            <div class="as-td as-td-ov" [class.sort-slot]="isSortActive('as.OV')">@if (unit.as.usesOV) { {{ unit.as.OV }} }</div>
+                            @if (getAsTableSortSlot(unit); as sortValue) {
+                            <div class="as-td as-td-sort-slot sort-slot">{{ sortValue }}</div>
+                            }
+                            <div class="as-td as-td-specials">
+                                @for (special of unit.as.specials; let i = $index; track i) {
+                                <span class="special-pill" (click)="showAbilityInfoDialog(special); $event.stopPropagation()" title="Click for details">{{ special }}</span>
+                                }
+                            </div>
+                            <div class="as-td as-td-tags">
+                                <unit-tags [unit]="unit" mode="full" size="small" (tagClick)="onAddTag($event)" />
+                            </div>
+                        </div>
+                    </div>
+                </cdk-virtual-scroll-viewport>
             </div>
             } @else {
             <cdk-virtual-scroll-viewport class="results-dropdown-viewport" [itemSize]="this.itemSize()"
