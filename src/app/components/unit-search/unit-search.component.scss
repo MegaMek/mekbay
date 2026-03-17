@@ -715,6 +715,7 @@
     /* Column widths */
     .as-th-icon, .as-td-icon { width: 40px; flex-shrink: 0; }
     .as-th-name, .as-td-name { flex: 1 1 180px; min-width: 120px; }
+    .as-th-year, .as-td-year { width: 65px; text-align: center; }
     .as-th-type, .as-td-type { width: 50px; text-align: center; }
     .as-th-role, .as-td-role { width: 130px; }
     .as-th-pv, .as-td-pv { width: 45px; text-align: right; font-weight: bold; }
@@ -739,6 +740,22 @@
     .as-td-name {
         display: flex;
         flex-direction: column;
+    }
+
+    .as-td-year {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        white-space: nowrap;
+        text-align: right;
+    }
+
+    .as-era-icon {
+        width: 20px;
+        height: 20px;
+        object-fit: contain;
+        flex-shrink: 0;
     }
 
     .as-td-chassis {

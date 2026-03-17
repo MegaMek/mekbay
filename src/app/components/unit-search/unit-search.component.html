@@ -151,6 +151,7 @@
                  [class.sort-desc]="filtersService.selectedSortDirection() === 'desc'">
                 <div class="as-th as-th-icon"></div>
                 <div class="as-th as-th-name as-th-sortable" [class.sort-active]="isSortActive('name')" (click)="onHeaderSort('name')">Name</div>
+                <div class="as-th as-th-year as-th-sortable" [class.sort-active]="isSortActive('year')" (click)="onHeaderSort('year')">Year</div>
                 <div class="as-th as-th-type as-th-sortable" [class.sort-active]="isSortActive('as.TP')" (click)="onHeaderSort('as.TP')">Type</div>
                 <div class="as-th as-th-role as-th-sortable" [class.sort-active]="isSortActive('role')" (click)="onHeaderSort('role')">Role</div>
                 <div class="as-th as-th-pv as-th-sortable" [class.sort-active]="isSortActive('as.PV')" (click)="onHeaderSort('as.PV')">PV</div>
@@ -252,6 +253,12 @@
                             <div class="as-td as-td-name">
                                 <span class="as-td-model" [innerHTML]="highlight(unit.model)"></span>
                                 <span class="as-td-chassis" [innerHTML]="highlight(unit.chassis)"></span>
+                            </div>
+                            <div class="as-td as-td-year" [class.sort-slot]="isSortActive('year')">
+                                @if (unit._era?.img) {
+                                <img class="as-era-icon" [src]="unit._era?.img" [alt]="unit._era?.name || 'Era'" [title]="unit._era?.name || ''" />
+                                }
+                                <span>{{ unit.year ?? '—' }}</span>
                             </div>
                             <div class="as-td as-td-type" [class.sort-slot]="isSortActive('as.TP')" [tooltip]="unitTypeDisplayNames[unit.as.TP]">{{ unit.as.TP }}</div>
                             <div class="as-td as-td-role" [class.sort-slot]="isSortActive('role')">{{ unit.role !== 'None' ? unit.role : '' }}</div>
