@@ -500,7 +500,7 @@ export class UnitSearchComponent {
                 {
                     id: 'movement',
                     header: 'Move',
-                    track: '60px',
+                    track: '96px',
                     cellTemplate: classicMovementCell,
                     sortKey: 'walk',
                     sortGroupKey: 'movement',
