@@ -466,8 +466,8 @@
     }
 }
 
-.table-group-name-area:hover:not(:has(.btn-formation-info:hover)) .table-group-name.clickable,
-.table-group-name-area:hover:not(:has(.btn-formation-info:hover)) .table-group-formation.clickable {
+.table-group-name.clickable:hover,
+.table-group-formation.clickable:hover {
     color: var(--bt-yellow);
 }
 

@@ -57,8 +57,8 @@
     min-height: var(--mb-data-table-item-size, 48px);
     box-sizing: border-box;
     border-bottom: 1px solid #444;
-    cursor: pointer;
     transition: background-color 0.2s;
+    cursor: pointer;
 }
 
 .mb-data-table-row-item:hover,
@@ -87,6 +87,7 @@
 .mb-data-table-full-row {
     min-height: var(--mb-data-table-item-size, 48px);
     box-sizing: border-box;
+    cursor: initial;
 }
 
 .mb-data-table-cell {
