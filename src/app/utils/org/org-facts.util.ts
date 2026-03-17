@@ -140,11 +140,18 @@ function incrementCount<Key extends string>(map: Map<Key, number>, key: Key, amo
 }
 
 let nextUnitFactId = 0;
+let nextGroupFactId = 0;
 
 function allocateUnitFactId(): number {
     const factId = nextUnitFactId;
     nextUnitFactId += 1;
     return factId;
+}
+
+function allocateGroupFactId(): number {
+    const groupFactId = nextGroupFactId;
+    nextGroupFactId += 1;
+    return groupFactId;
 }
 
 export function getUnitClassKey(unit: Unit): UnitClassKey {
@@ -395,6 +402,7 @@ export function compileGroupFacts(
     }
 
     return {
+        groupFactId: allocateGroupFactId(),
         group,
         type: group.type,
         countsAsType: group.countsAsType,
@@ -402,6 +410,7 @@ export function compileGroupFacts(
         tier: group.tier,
         provenance: getGroupProvenance(group),
         tag: group.tag,
+        priority: group.priority,
         childTypeCounts,
         unitTypeCounts,
         unitClassCounts,

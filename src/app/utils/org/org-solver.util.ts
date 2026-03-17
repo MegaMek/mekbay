@@ -56,6 +56,8 @@ const MAX_PATTERN_GREEDY_ITERATIONS = 2_000;
 const MAX_COMPOSED_GROUPS_PER_CONFIG = 2_000;
 const MAX_PROMOTION_LOOP_ITERATIONS = 64;
 
+let nextSyntheticGroupFactId = -1;
+
 type ModifierBand = 'sub-regular' | 'regular' | 'super-regular';
 type RuleExecutionStage = 'regular' | 'sub-regular' | 'all';
 
@@ -215,14 +217,22 @@ interface CanonicalGroupPoolSignature {
 interface CanonicalGroupPoolState {
     readonly groups: readonly PlannedGroupRecord[];
     readonly groupFacts: readonly GroupFacts[];
-    readonly recordByGroup: ReadonlyMap<GroupSizeResult, PlannedGroupRecord>;
+    readonly recordByGroupFactId: ReadonlyMap<number, PlannedGroupRecord>;
     readonly signature: CanonicalGroupPoolSignature;
 }
 
 interface PlannedGroupRecord {
+    readonly recordId: number;
     readonly facts: GroupFacts;
+    readonly producedPlan?: AbstractProducedGroupPlan;
     materializedGroup?: GroupSizeResult;
     materialize: () => GroupSizeResult;
+}
+
+interface AbstractProducedGroupPlan {
+    readonly rule: OrgComposedCountRule | OrgComposedPatternRule;
+    readonly modifierStep: ModifierStep;
+    readonly childRecords: readonly PlannedGroupRecord[];
 }
 
 interface ResolveContext {
@@ -245,7 +255,8 @@ interface FinalStateScore {
 }
 
 interface ResolvedState {
-    readonly groups: readonly GroupSizeResult[];
+    readonly groups?: readonly GroupSizeResult[];
+    readonly canonicalState?: CanonicalGroupPoolState;
     readonly leftoverUnits: readonly UnitFacts[];
     readonly leftoverUnitAllocations: readonly GroupUnitAllocation[];
 }
@@ -262,6 +273,12 @@ function createSolverGuard(): SolverGuard {
         compositionVisits: 0,
         timedOut: false,
     };
+}
+
+function allocateSyntheticGroupFactId(): number {
+    const groupFactId = nextSyntheticGroupFactId;
+    nextSyntheticGroupFactId -= 1;
+    return groupFactId;
 }
 
 function shouldAbortSearch(guard: SolverGuard): boolean {
@@ -964,7 +981,7 @@ function normalizeCIFormationGroups(
         }
 
         const replacementGroups: GroupSizeResult[] = [];
-        const consumedGroups = new Set<GroupSizeResult>();
+        const consumedGroupFactIds = new Set<number>();
         const tokensByMoveClass = new Map<NonNullable<ReturnType<typeof getCIMoveClass>>, CIFragmentToken[]>();
 
         for (const facts of candidates) {
@@ -972,7 +989,7 @@ function normalizeCIFormationGroups(
             if (!tokens) {
                 continue;
             }
-            consumedGroups.add(facts.group);
+            consumedGroupFactIds.add(facts.groupFactId);
             for (const token of tokens) {
                 const existing = tokensByMoveClass.get(token.moveClass);
                 if (existing) {
@@ -983,7 +1000,7 @@ function normalizeCIFormationGroups(
             }
         }
 
-        if (consumedGroups.size === 0) {
+        if (consumedGroupFactIds.size === 0) {
             continue;
         }
 
@@ -996,7 +1013,9 @@ function normalizeCIFormationGroups(
         }
 
         nextPool = [
-            ...nextPool.filter((group) => !consumedGroups.has(group)),
+            ...groupFacts
+                .filter((facts) => !consumedGroupFactIds.has(facts.groupFactId))
+                .map((facts) => facts.group),
             ...replacementGroups,
         ];
     }
@@ -2269,7 +2288,7 @@ function materializeAbstractCompositionPlan(
 
 function resolvePlannedCompositionCandidates(
     candidates: readonly AbstractCompositionCandidate[],
-    recordByGroup: ReadonlyMap<GroupSizeResult, PlannedGroupRecord>,
+    recordByGroupFactId: ReadonlyMap<number, PlannedGroupRecord>,
 ): PlannedCompositionCandidate[] {
     const availableGroups = new Map<CountedCompositionEntry, PlannedGroupRecord[]>();
 
@@ -2285,7 +2304,7 @@ function resolvePlannedCompositionCandidates(
             let remaining = availableGroups.get(entry);
             if (!remaining) {
                 remaining = entry.groups
-                    .map((group) => recordByGroup.get(group.group))
+                    .map((group) => recordByGroupFactId.get(group.groupFactId))
                     .filter((group): group is PlannedGroupRecord => !!group);
                 availableGroups.set(entry, remaining);
             }
@@ -2501,11 +2520,11 @@ function materializeComposedPatternRuleInternal(
     const groups = concreteCandidates.map((candidate) =>
         createComposedGroup(rule, candidate.modifierStep, candidate.groups.map((group) => group.group)),
     );
-    const usedGroupObjects = new Set(concreteCandidates.flatMap((candidate) => candidate.groups.map((group) => group.group)));
+    const usedGroupFactIds = new Set(concreteCandidates.flatMap((candidate) => candidate.groups.map((group) => group.groupFactId)));
 
     return {
         groups,
-        leftoverGroupFacts: groupFacts.filter((group) => !usedGroupObjects.has(group.group)),
+        leftoverGroupFacts: groupFacts.filter((group) => !usedGroupFactIds.has(group.groupFactId)),
     };
 }
 
@@ -2546,11 +2565,11 @@ function materializeComposedCountRuleInternal(
     const groups = concreteCandidates.map((candidate) =>
         createComposedGroup(rule, candidate.modifierStep, candidate.groups.map((group) => group.group)),
     );
-    const usedGroupObjects = new Set(concreteCandidates.flatMap((candidate) => candidate.groups.map((group) => group.group)));
+    const usedGroupFactIds = new Set(concreteCandidates.flatMap((candidate) => candidate.groups.map((group) => group.groupFactId)));
 
     return {
         groups,
-        leftoverGroupFacts: groupFacts.filter((group) => !usedGroupObjects.has(group.group)),
+        leftoverGroupFacts: groupFacts.filter((group) => !usedGroupFactIds.has(group.groupFactId)),
     };
 }
 
@@ -2915,6 +2934,7 @@ function materializeComposedRulesByStage(
     context: ResolveContext,
     stage: RuleExecutionStage,
 ): { groups: GroupSizeResult[]; leftoverFacts: GroupFacts[] } {
+    const blockedFacts = groupFacts.filter((facts) => isBlockedSubRegularPromotionChild(facts.group, context));
     let remainingFacts = groupFacts.filter((facts) => !isBlockedSubRegularPromotionChild(facts.group, context));
     const groups: GroupSizeResult[] = [];
 
@@ -2926,8 +2946,7 @@ function materializeComposedRulesByStage(
         if (stage !== 'all') {
             if (materialized.groups.length > 0) {
                 groups.push(...materialized.groups);
-                const usedObjects = new Set(materialized.groups.flatMap((group) => group.children ?? []));
-                remainingFacts = remainingFacts.filter((facts) => !usedObjects.has(facts.group));
+                remainingFacts = [...materialized.leftoverGroupFacts];
                 continue;
             }
             continue;
@@ -2939,7 +2958,7 @@ function materializeComposedRulesByStage(
         }
     }
 
-    return { groups, leftoverFacts: remainingFacts };
+    return { groups, leftoverFacts: [...blockedFacts, ...remainingFacts] };
 }
 
 function isBlockedSubRegularPromotionChild(
@@ -2960,6 +2979,26 @@ function isBlockedSubRegularPromotionChild(
     }
 
     return isSubRegularModifierKey(getRuleStageMetadata(context, rule), group.modifierKey);
+}
+
+function isBlockedSubRegularPromotionChildFacts(
+    facts: Pick<GroupFacts, 'type' | 'modifierKey'>,
+    context: ResolveContext,
+): boolean {
+    if (!facts.type) {
+        return false;
+    }
+
+    const rule = context.composedCountRules.find((candidate) =>
+        candidate.type === facts.type && candidate.requireRegularForPromotion,
+    ) ?? context.ciFormationRules.find((candidate) =>
+        candidate.type === facts.type && candidate.requireRegularForPromotion,
+    );
+    if (!rule) {
+        return false;
+    }
+
+    return isSubRegularModifierKey(getRuleStageMetadata(context, rule), facts.modifierKey);
 }
 
 function attachLeftoverUnits(
@@ -3031,14 +3070,26 @@ function getModifierBandForGroupFacts(group: GroupFacts, context: ResolveContext
 }
 
 function scoreResolvedState(state: ResolvedState, context: ResolveContext): FinalStateScore {
-    const topLevelGroupCount = state.groups.length;
+    if (state.canonicalState) {
+        const baseScore = scoreCanonicalGroupPoolState(state.canonicalState, context);
+        const leftoverCount = state.leftoverUnits.length + state.leftoverUnitAllocations.length;
+
+        return {
+            ...baseScore,
+            isWhole: baseScore.isWhole && leftoverCount === 0,
+            leftoverCount,
+        };
+    }
+
+    const groups = state.groups ?? [];
+    const topLevelGroupCount = groups.length;
     const leftoverCount = state.leftoverUnits.length + state.leftoverUnitAllocations.length;
-    const highestTier = state.groups.length > 0 ? Math.max(...state.groups.map((group) => group.tier)) : 0;
-    const highestTierGroupCount = state.groups.filter((group) => group.tier === highestTier).length;
-    const totalPriority = state.groups.reduce((sum, group) => sum + (group.priority ?? 0), 0);
+    const highestTier = groups.length > 0 ? Math.max(...groups.map((group) => group.tier)) : 0;
+    const highestTierGroupCount = groups.filter((group) => group.tier === highestTier).length;
+    const totalPriority = groups.reduce((sum, group) => sum + (group.priority ?? 0), 0);
     const isWhole = topLevelGroupCount === 1
         && leftoverCount === 0
-        && getModifierBandForGroup(state.groups[0], context) !== 'sub-regular';
+        && getModifierBandForGroup(groups[0], context) !== 'sub-regular';
 
     return {
         isWhole,
@@ -3054,7 +3105,7 @@ function scoreCanonicalGroupPoolState(state: CanonicalGroupPoolState, context: R
     const topLevelGroupCount = state.groupFacts.length;
     const highestTier = topLevelGroupCount > 0 ? Math.max(...state.groupFacts.map((group) => group.tier)) : 0;
     const highestTierGroupCount = state.groupFacts.filter((group) => group.tier === highestTier).length;
-    const totalPriority = state.groupFacts.reduce((sum, group) => sum + (group.group.priority ?? 0), 0);
+    const totalPriority = state.groupFacts.reduce((sum, group) => sum + (group.priority ?? 0), 0);
     const isWhole = topLevelGroupCount === 1
         && getModifierBandForGroupFacts(state.groupFacts[0], context) !== 'sub-regular';
 
@@ -3095,7 +3146,11 @@ function compareResolvedState(left: ResolvedState, right: ResolvedState, context
 }
 
 function materializeResolvedState(state: ResolvedState): GroupSizeResult[] {
-    return attachLeftoverUnits(normalizeTopLevelGroups(state.groups), state.leftoverUnits, state.leftoverUnitAllocations);
+    const groups = state.canonicalState
+        ? materializeCanonicalGroupPoolState(state.canonicalState)
+        : (state.groups ?? []);
+
+    return attachLeftoverUnits(normalizeTopLevelGroups(groups), state.leftoverUnits, state.leftoverUnitAllocations);
 }
 
 function pickBestResolvedState(
@@ -3148,7 +3203,7 @@ function getEligibleChildFacts(
     context: ResolveContext,
 ): GroupFacts[] {
     return candidateFacts.filter((facts) =>
-        !isBlockedSubRegularPromotionChild(facts.group, context)
+        !isBlockedSubRegularPromotionChildFacts(facts, context)
         && facts.tier < parent.tier
         && rule.childRoles.some((role) => groupMatchesRole(facts, role)),
     );
@@ -3244,20 +3299,23 @@ function repairSubRegularGroupsForPromotion(
             continue;
         }
 
-        const candidates = pool.filter((group) => canRepairSubRegularGroupForPromotion(group, context, rule));
+        const poolFacts = compileGroupFactsList(pool);
+        const candidates = poolFacts.filter((facts) => canRepairSubRegularGroupForPromotion(facts.group, context, rule));
         if (candidates.length === 0) {
             continue;
         }
 
-        const flattenedChildren = candidates.flatMap((group) => group.children ?? []);
+        const flattenedChildren = candidates.flatMap((facts) => facts.group.children ?? []);
         const repackaged = materializeComposedCountRule(rule, compileGroupFactsList(flattenedChildren), context.definition.registry);
         if (repackaged.groups.length === 0) {
             continue;
         }
 
-        const candidateSet = new Set(candidates);
+        const candidateFactIds = new Set(candidates.map((facts) => facts.groupFactId));
         pool = [
-            ...pool.filter((group) => !candidateSet.has(group)),
+            ...poolFacts
+                .filter((facts) => !candidateFactIds.has(facts.groupFactId))
+                .map((facts) => facts.group),
             ...repackaged.groups,
         ];
     }
@@ -3311,7 +3369,7 @@ function createCanonicalGroupPoolStateFromRecords(
     return {
         groups,
         groupFacts,
-        recordByGroup: new Map(groups.map((group) => [group.facts.group, group])),
+        recordByGroupFactId: new Map(groups.map((group) => [group.facts.groupFactId, group])),
         signature: createCanonicalGroupPoolSignature(counts),
     };
 }
@@ -3343,14 +3401,14 @@ function incrementSignatureCount(
 function createSuccessorCanonicalGroupPoolState(
     state: CanonicalGroupPoolState,
     producedGroups: readonly PlannedGroupRecord[],
-    usedChildren: ReadonlySet<GroupSizeResult>,
+    usedChildren: ReadonlySet<number>,
 ): CanonicalGroupPoolState {
-    const remainingGroups = state.groups.filter((group) => !usedChildren.has(group.facts.group));
+    const remainingGroups = state.groups.filter((group) => !usedChildren.has(group.recordId));
     const producedFacts = producedGroups.map((group) => group.facts);
     const nextCounts = new Map(state.signature.counts);
 
     for (const facts of state.groupFacts) {
-        if (usedChildren.has(facts.group)) {
+        if (usedChildren.has(facts.groupFactId)) {
             decrementSignatureCount(nextCounts, getGroupFactsSignatureKey(facts));
         }
     }
@@ -3416,7 +3474,7 @@ function getRegularPromotionSuccessors(
     context: ResolveContext,
     guard: SolverGuard,
 ): CanonicalGroupPoolState[] {
-    const promotableFacts = state.groupFacts.filter((facts) => !isBlockedSubRegularPromotionChild(facts.group, context));
+    const promotableFacts = state.groupFacts.filter((facts) => !isBlockedSubRegularPromotionChildFacts(facts, context));
     const successors: CanonicalGroupPoolState[] = [];
 
     for (const rule of getOrderedComposedRules(context)) {
@@ -3439,8 +3497,8 @@ function getRegularPromotionSuccessors(
                 continue;
             }
 
-            const plannedCandidates = resolvePlannedCompositionCandidates(abstractCandidates, state.recordByGroup);
-            const usedChildren = new Set(plannedCandidates.flatMap((candidate) => candidate.groups.map((group) => group.facts.group)));
+            const plannedCandidates = resolvePlannedCompositionCandidates(abstractCandidates, state.recordByGroupFactId);
+            const usedChildren = new Set(plannedCandidates.flatMap((candidate) => candidate.groups.map((group) => group.recordId)));
             const producedGroups = plannedCandidates.map((candidate) => createAbstractComposedGroupRecord(
                 rule,
                 candidate.modifierStep,
@@ -3459,8 +3517,8 @@ function getRegularPromotionSuccessors(
                 continue;
             }
 
-            const plannedCandidates = resolvePlannedCompositionCandidates(abstractCandidates, state.recordByGroup);
-            const usedChildren = new Set(plannedCandidates.flatMap((candidate) => candidate.groups.map((group) => group.facts.group)));
+            const plannedCandidates = resolvePlannedCompositionCandidates(abstractCandidates, state.recordByGroupFactId);
+            const usedChildren = new Set(plannedCandidates.flatMap((candidate) => candidate.groups.map((group) => group.recordId)));
             const producedGroups = plannedCandidates.map((candidate) => createAbstractComposedGroupRecord(
                 rule,
                 candidate.modifierStep,
@@ -3484,7 +3542,7 @@ function runSingleTierRegularPromotionStep(
     context: ResolveContext,
 ): GroupSizeResult[] {
     let poolState = createCanonicalGroupPoolState(initialPool);
-    let remainingFacts = poolState.groupFacts.filter((facts) => !isBlockedSubRegularPromotionChild(facts.group, context));
+    let remainingFacts = poolState.groupFacts.filter((facts) => !isBlockedSubRegularPromotionChildFacts(facts, context));
     const candidateChildTiers = getOrderedComposedRules(context)
         .filter((rule) => {
             const childTier = getMinimumChildTierForRule(rule, context);
@@ -3515,8 +3573,8 @@ function runSingleTierRegularPromotionStep(
                 continue;
             }
 
-            const plannedCandidates = resolvePlannedCompositionCandidates(abstractCandidates, poolState.recordByGroup);
-            const usedObjects = new Set(plannedCandidates.flatMap((candidate) => candidate.groups.map((group) => group.facts.group)));
+            const plannedCandidates = resolvePlannedCompositionCandidates(abstractCandidates, poolState.recordByGroupFactId);
+            const usedObjects = new Set(plannedCandidates.flatMap((candidate) => candidate.groups.map((group) => group.recordId)));
             const producedGroups = plannedCandidates.map((candidate) => createAbstractComposedGroupRecord(
                 rule,
                 candidate.modifierStep,
@@ -3524,7 +3582,7 @@ function runSingleTierRegularPromotionStep(
             ));
 
             poolState = createSuccessorCanonicalGroupPoolState(poolState, producedGroups, usedObjects);
-            remainingFacts = remainingFacts.filter((facts) => !usedObjects.has(facts.group));
+            remainingFacts = remainingFacts.filter((facts) => !usedObjects.has(facts.groupFactId));
             continue;
         }
 
@@ -3539,25 +3597,25 @@ function runSingleTierRegularPromotionStep(
             continue;
         }
 
-        const plannedCandidates = resolvePlannedCompositionCandidates(abstractCandidates, poolState.recordByGroup);
-        const usedObjects = new Set(plannedCandidates.flatMap((candidate) => candidate.groups.map((group) => group.facts.group)));
+        const plannedCandidates = resolvePlannedCompositionCandidates(abstractCandidates, poolState.recordByGroupFactId);
+        const usedObjects = new Set(plannedCandidates.flatMap((candidate) => candidate.groups.map((group) => group.recordId)));
         const producedGroups = plannedCandidates.map((candidate) => createAbstractComposedGroupRecord(
             rule,
             candidate.modifierStep,
             candidate.groups,
         ));
         poolState = createSuccessorCanonicalGroupPoolState(poolState, producedGroups, usedObjects);
-        remainingFacts = remainingFacts.filter((facts) => !usedObjects.has(facts.group));
+        remainingFacts = remainingFacts.filter((facts) => !usedObjects.has(facts.groupFactId));
     }
 
     return materializeCanonicalGroupPoolState(poolState);
 }
 
-function searchBestRegularPromotionPool(
+function searchBestRegularPromotionPoolState(
     initialPool: readonly GroupSizeResult[],
     context: ResolveContext,
     guard: SolverGuard,
-): GroupSizeResult[] {
+): CanonicalGroupPoolState {
     const memo = new Map<string, CanonicalGroupPoolState>();
 
     function visit(state: CanonicalGroupPoolState): CanonicalGroupPoolState {
@@ -3583,7 +3641,15 @@ function searchBestRegularPromotionPool(
         return best;
     }
 
-    return materializeCanonicalGroupPoolState(visit(createCanonicalGroupPoolState(initialPool)));
+    return visit(createCanonicalGroupPoolState(initialPool));
+}
+
+function searchBestRegularPromotionPool(
+    initialPool: readonly GroupSizeResult[],
+    context: ResolveContext,
+    guard: SolverGuard,
+): GroupSizeResult[] {
+    return materializeCanonicalGroupPoolState(searchBestRegularPromotionPoolState(initialPool, context, guard));
 }
 
 function runRegularPromotionLoop(
@@ -3617,9 +3683,8 @@ function runLeftoverImprovementLoop(
 
         const subRegularPromotion = materializeComposedRulesByStage(compileGroupFactsList(pool), context, 'sub-regular');
         if (subRegularPromotion.groups.length > 0) {
-            const usedChildren = new Set(subRegularPromotion.groups.flatMap((group) => group.children ?? []));
             pool = [
-                ...pool.filter((group) => !usedChildren.has(group)),
+                ...subRegularPromotion.leftoverFacts.map((facts) => facts.group),
                 ...subRegularPromotion.groups,
             ];
         }
@@ -3637,13 +3702,13 @@ function preAssimilateUnderRegularGroups(
 ): GroupSizeResult[] {
     let pool = [...groups];
     const ruleByType = new Map(context.composedCountRules.map((rule) => [rule.type, rule]));
-    const underRegularGroups = [...pool]
-        .filter((group) => {
-            const rule = group.type ? ruleByType.get(group.type) : undefined;
+    const underRegularGroups = compileGroupFactsList(pool)
+        .filter((facts) => {
+            const rule = facts.type ? ruleByType.get(facts.type) : undefined;
             if (!rule) {
                 return false;
             }
-            return group.modifierKey !== '' && isSubRegularModifierKey(getRuleStageMetadata(context, rule), group.modifierKey);
+            return facts.modifierKey !== '' && isSubRegularModifierKey(getRuleStageMetadata(context, rule), facts.modifierKey);
         })
         .sort((left, right) => {
             const leftRule = left.type ? ruleByType.get(left.type) : undefined;
@@ -3657,9 +3722,15 @@ function preAssimilateUnderRegularGroups(
             return left.tier - right.tier;
         });
 
-    for (const group of underRegularGroups) {
-        const rule = group.type ? ruleByType.get(group.type) : undefined;
+    for (const currentGroupFacts of underRegularGroups) {
+        const group = currentGroupFacts.group;
+        const rule = currentGroupFacts.type ? ruleByType.get(currentGroupFacts.type) : undefined;
         if (!rule) {
+            continue;
+        }
+        const poolFacts = compileGroupFactsList(pool);
+        const nextCurrentGroupFacts = poolFacts.find((facts) => facts.group === group);
+        if (!nextCurrentGroupFacts) {
             continue;
         }
         const descriptor = getRuleStageMetadata(context, rule).descriptor;
@@ -3673,15 +3744,20 @@ function preAssimilateUnderRegularGroups(
             continue;
         }
 
-        const remainingFacts = compileGroupFactsList(pool.filter((candidate) => candidate !== group));
+        const remainingFacts = poolFacts.filter((facts) => facts.groupFactId !== nextCurrentGroupFacts.groupFactId);
         const roleMatches = getEligibleChildFacts(group, rule, remainingFacts, context);
         const addition = findAbstractCompositionSelection(roleMatches, rule.childRoles, needed, guard);
         if (!addition) {
             continue;
         }
 
+        const additionFactIds = new Set(addition.map((facts) => facts.groupFactId));
         const additionGroups = addition.map((facts) => facts.group);
-        pool = pool.filter((candidate) => candidate !== group && !additionGroups.includes(candidate));
+        pool = [
+            ...remainingFacts
+                .filter((facts) => !additionFactIds.has(facts.groupFactId))
+                .map((facts) => facts.group),
+        ];
         pool.push({
             ...group,
             name: makeGroupName(group.type, descriptor.regularStep.modifierKey),
@@ -3701,8 +3777,8 @@ function assimilateLeftoversIntoParents(
 ): GroupSizeResult[] {
     let pool = [...groups];
     const ruleByType = new Map(context.composedCountRules.map((rule) => [rule.type, rule]));
-    const sortedParents = [...pool]
-        .filter((group) => group.type !== null && ruleByType.has(group.type))
+    const sortedParents = compileGroupFactsList(pool)
+        .filter((facts) => facts.type !== null && ruleByType.has(facts.type))
         .sort((left, right) => {
             const leftRule = left.type ? ruleByType.get(left.type) : undefined;
             const rightRule = right.type ? ruleByType.get(right.type) : undefined;
@@ -3715,9 +3791,15 @@ function assimilateLeftoversIntoParents(
             return left.tier - right.tier;
         });
 
-    for (const parent of sortedParents) {
-        const rule = parent.type ? ruleByType.get(parent.type) : undefined;
+    for (const currentParentFacts of sortedParents) {
+        const parent = currentParentFacts.group;
+        const rule = currentParentFacts.type ? ruleByType.get(currentParentFacts.type) : undefined;
         if (!rule) {
+            continue;
+        }
+        const poolFacts = compileGroupFactsList(pool);
+        const nextCurrentParentFacts = poolFacts.find((facts) => facts.group === parent);
+        if (!nextCurrentParentFacts) {
             continue;
         }
         const descriptor = getRuleStageMetadata(context, rule).descriptor;
@@ -3727,11 +3809,11 @@ function assimilateLeftoversIntoParents(
             continue;
         }
 
-        const availableFacts = compileGroupFactsList(pool.filter((candidate) => candidate !== parent));
+        const availableFacts = poolFacts.filter((facts) => facts.groupFactId !== nextCurrentParentFacts.groupFactId);
         const matchingFacts = getEligibleChildFacts(parent, rule, availableFacts, context);
 
         let upgradedParent = parent;
-        let usedGroups: GroupSizeResult[] = [];
+        const usedGroupFactIds = new Set<number>();
         let currentCount = getCurrentStructuralCount(parent, descriptor);
         for (const targetStep of nextSteps) {
             const needed = targetStep.count - currentCount;
@@ -3746,7 +3828,7 @@ function assimilateLeftoversIntoParents(
                 continue;
             }
             const selection = findAbstractCompositionSelection(
-                matchingFacts.filter((facts) => !usedGroups.includes(facts.group)),
+                matchingFacts.filter((facts) => !usedGroupFactIds.has(facts.groupFactId)),
                 rule.childRoles,
                 needed,
                 guard,
@@ -3754,8 +3836,8 @@ function assimilateLeftoversIntoParents(
             if (!selection) {
                 break;
             }
+            selection.forEach((facts) => usedGroupFactIds.add(facts.groupFactId));
             const addition = selection.map((facts) => facts.group);
-            usedGroups = [...usedGroups, ...addition];
             currentCount += addition.length;
             upgradedParent = {
                 ...upgradedParent,
@@ -3767,8 +3849,10 @@ function assimilateLeftoversIntoParents(
             break;
         }
 
-        if (usedGroups.length > 0 || upgradedParent !== parent) {
-            pool = pool.filter((candidate) => candidate !== parent && !usedGroups.includes(candidate));
+        if (usedGroupFactIds.size > 0 || upgradedParent !== parent) {
+            pool = availableFacts
+                .filter((facts) => !usedGroupFactIds.has(facts.groupFactId))
+                .map((facts) => facts.group);
             pool.push(upgradedParent);
         }
     }
@@ -3825,9 +3909,26 @@ function createConcretePlannedGroupRecord(group: GroupSizeResult): PlannedGroupR
     const facts = compileGroupFacts(group);
 
     return {
+        recordId: facts.groupFactId,
         facts,
         materializedGroup: group,
         materialize: () => group,
+    };
+}
+
+function createAbstractProducedGroupTemplate(
+    rule: OrgComposedCountRule | OrgComposedPatternRule,
+    modifierStep: ModifierStep,
+): GroupSizeResult {
+    return {
+        name: makeGroupName(rule.type, modifierStep.modifierKey),
+        type: rule.type,
+        modifierKey: modifierStep.modifierKey,
+        countsAsType: rule.countsAs ?? null,
+        tier: modifierStep.tier,
+        provenance: 'produced-group',
+        tag: rule.tag,
+        priority: rule.priority,
     };
 }
 
@@ -3878,17 +3979,8 @@ function createAbstractComposedGroupRecord(
     modifierStep: ModifierStep,
     childRecords: readonly PlannedGroupRecord[],
 ): PlannedGroupRecord {
-    const materializedGroupTemplate: GroupSizeResult = {
-        name: makeGroupName(rule.type, modifierStep.modifierKey),
-        type: rule.type,
-        modifierKey: modifierStep.modifierKey,
-        countsAsType: rule.countsAs ?? null,
-        tier: modifierStep.tier,
-        provenance: 'produced-group',
-        children: childRecords.map((child) => child.facts.group),
-        tag: rule.tag,
-        priority: rule.priority,
-    };
+    const groupFactId = allocateSyntheticGroupFactId();
+    const materializedGroupTemplate = createAbstractProducedGroupTemplate(rule, modifierStep);
     const childFacts = childRecords.map((record) => record.facts);
     const childTypeCounts = new Map<OrgChildTypeCountKey, number>();
 
@@ -3906,6 +3998,7 @@ function createAbstractComposedGroupRecord(
     }
 
     const facts: GroupFacts = {
+        groupFactId,
         group: materializedGroupTemplate,
         type: rule.type,
         countsAsType: rule.countsAs ?? null,
@@ -3921,10 +4014,16 @@ function createAbstractComposedGroupRecord(
         descendantUnitBucketCounts: sumReadonlyNestedCountMaps(childFacts, (child) => child.descendantUnitBucketCounts),
     };
     const record: PlannedGroupRecord = {
+        recordId: groupFactId,
         facts,
+        producedPlan: {
+            rule,
+            modifierStep,
+            childRecords,
+        },
         materialize: () => {
             if (!record.materializedGroup) {
-                materializedGroupTemplate.children = childRecords.map((child) => child.materialize());
+                materializedGroupTemplate.children = record.producedPlan?.childRecords.map((child) => child.materialize()) ?? [];
                 record.materializedGroup = materializedGroupTemplate;
             }
             return record.materializedGroup;
@@ -4080,9 +4179,10 @@ function resolveWithDefinition(
     const wholeComposedFromInitial = resolveWholeComposedCandidate(pool, context, createSolverGuard());
     const initialImprovedPool = runLeftoverImprovementLoop(pool, context, createSolverGuard());
 
-    const regularPool = runRegularPromotionLoop(pool, context, createSolverGuard());
+    const regularPoolState = searchBestRegularPromotionPoolState(pool, context, createSolverGuard());
+    const regularPool = materializeCanonicalGroupPoolState(regularPoolState);
     const candidateStates: ResolvedState[] = [
-        { groups: regularPool, leftoverUnits, leftoverUnitAllocations },
+        { canonicalState: regularPoolState, leftoverUnits, leftoverUnitAllocations },
         { groups: runLeftoverImprovementLoop(regularPool, context, createSolverGuard()), leftoverUnits, leftoverUnitAllocations },
         { groups: initialImprovedPool, leftoverUnits, leftoverUnitAllocations },
     ];

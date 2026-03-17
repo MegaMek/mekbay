@@ -319,6 +319,7 @@ export interface UnitFacts {
  * rules. Group facts should be computed when groups are created and reused.
  */
 export interface GroupFacts {
+    readonly groupFactId: number;
     readonly group: GroupSizeResult;
     readonly type: OrgType | null;
     readonly countsAsType: OrgType | null;
@@ -326,6 +327,7 @@ export interface GroupFacts {
     readonly tier: number;
     readonly provenance: OrgGroupProvenance;
     readonly tag?: OrgGroupTag;
+    readonly priority?: number;
     readonly childTypeCounts: ReadonlyMap<OrgChildTypeCountKey, number>;
     readonly unitTypeCounts: ReadonlyMap<ASUnitTypeCode, number>;
     readonly unitClassCounts: ReadonlyMap<UnitClassKey, number>;
