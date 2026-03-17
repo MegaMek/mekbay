@@ -16,6 +16,7 @@
     overflow: hidden;
     flex: 0 0 auto;
     min-width: 0;
+    background-color: #333;
 }
 
 .mb-data-table-viewport {
@@ -94,6 +95,10 @@
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.mb-data-table-header-cell {
+    background-color: inherit;
 }
 
 .mb-data-table-header-cell.align-center,

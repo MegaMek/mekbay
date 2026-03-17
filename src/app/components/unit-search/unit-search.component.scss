@@ -727,6 +727,27 @@
     text-overflow: ellipsis;
 }
 
+.cbt-td-type,
+.cbt-td-subtype,
+.cbt-td-rules,
+.cbt-td-tech,
+.cbt-td-armor,
+.cbt-td-structure,
+.cbt-td-network {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cbt-td-bv,
+.cbt-td-tons,
+.cbt-td-firepower,
+.cbt-td-dpt,
+.cbt-td-cost,
+.cbt-td-mv {
+    white-space: nowrap;
+}
+
 .as-td-specials {
     display: flex;
     flex-wrap: wrap;
