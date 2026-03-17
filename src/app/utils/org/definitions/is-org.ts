@@ -1,14 +1,11 @@
+import { ASUnitTypeCode } from '../../../models/units.model';
 import { DEFAULT_ORG_RULE_REGISTRY } from '../org-facts.util';
 import type {
     OrgCIFormationRule,
     OrgComposedCountRule,
     OrgDefinitionSpec,
     OrgLeafCountRule,
-    OrgLeafPatternRule,
 } from '../org-types';
-import {
-    INFANTRY_BA_TROOPER_BUCKETS,
-} from './common';
 
 export const IS_FLIGHT: OrgLeafCountRule = {
     kind: 'leaf-count',
@@ -42,27 +39,26 @@ export const IS_WING: OrgComposedCountRule = {
     childBucketBy: 'promotionBasic',
 };
 
-export const IS_BA_SQUAD: OrgLeafPatternRule = {
-    kind: 'leaf-pattern',
+export const IS_BA_SQUAD: OrgLeafCountRule = {
+    kind: 'leaf-count',
     type: 'Squad',
     modifiers: { '': 1 },
     commandRank: 'Sergeant',
     tier: 0,
     unitSelector: 'BA',
-    bucketBy: 'infantryTroopers',
-    patterns: [
-        {
-            copySize: 1,
-            matchMode: 'score',
-            bucketGroups: {
-                baTroopers: INFANTRY_BA_TROOPER_BUCKETS,
-            },
-            demands: { baTroopers: 1 },
-            scoreTerms: [
-                { kind: 'numeric-target', ref: 'baTroopers', target: 4, divisor: 4 },
-            ],
-        },
-    ],
+    pointModel: 'fixed',
+};
+
+export const IS_BA_PLATOON: OrgComposedCountRule = {
+    kind: 'composed-count',
+    type: 'Platoon',
+    modifiers: { '': 4 },
+    countsAs: 'Lance',
+    priority: 1,
+    commandRank: 'Lieutenant',
+    tier: 1,
+    childRoles: [{ matches: ['Squad'], onlyUnitTypes: ['BA'] }],
+    childBucketBy: 'promotionBasic',
 };
 
 export const IS_PLATOON: OrgCIFormationRule = {
@@ -110,7 +106,7 @@ export const IS_SINGLE: OrgLeafCountRule = {
     priority: -1,
     modifiers: { '': 1 },
     tier: 0,
-    unitSelector: 'nonConventionalInfantry',
+    unitSelector: 'nonInfantry',
     pointModel: 'fixed',
 };
 
@@ -120,7 +116,7 @@ export const IS_LANCE: OrgLeafCountRule = {
     modifiers: { 'Short ': 2, 'Under-Strength ': 3, '': 4, 'Reinforced ': 5, 'Fortified ': 6 },
     commandRank: 'Lieutenant',
     tier: 1,
-    unitSelector: 'nonConventionalInfantry',
+    unitSelector: 'nonInfantry',
     pointModel: 'fixed',
 };
 
@@ -174,6 +170,7 @@ export const IS_CORE_ORG: OrgDefinitionSpec = {
         IS_SQUADRON,
         IS_WING,
         IS_BA_SQUAD,
+        IS_BA_PLATOON,
         IS_PLATOON,
         IS_SINGLE,
         IS_LANCE,

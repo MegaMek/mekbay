@@ -64,7 +64,7 @@ function isPM(unit: Unit): boolean {
     return unit.type === 'ProtoMek';
 }
 
-function getNormalizedOrgUnitType(unit: Unit): Unit['as']['TP'] {
+export function getNormalizedOrgUnitType(unit: Unit): Unit['as']['TP'] {
     if (isBA(unit)) return 'BA';
     if (isCI(unit)) return 'CI';
     if (isBM(unit)) return 'BM';
@@ -146,7 +146,6 @@ export function getUnitClassKey(unit: Unit): UnitClassKey {
 }
 
 function getInfantryTrooperBucketValue(facts: UnitFacts): InfantryTrooperBucketValue {
-    if (isBA(facts.unit)) return `BA:${facts.scalars.troopers}`;
     if (isCI(facts.unit)) return `CI:${facts.scalars.troopers}`;
     return 'not-infantry';
 }

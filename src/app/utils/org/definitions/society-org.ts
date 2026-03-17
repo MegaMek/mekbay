@@ -23,19 +23,13 @@ const SOCIETY_RULE_REGISTRY = createOrgRuleRegistry({
     },
 });
 
-export const SOCIETY_BA_UN: OrgLeafPatternRule = {
-    kind: 'leaf-pattern',
+export const SOCIETY_BA_UN: OrgLeafCountRule = {
+    kind: 'leaf-count',
     type: 'Un',
-    modifiers: { '': 1 },
+    modifiers: { '': 3 },
     tier: 0,
     unitSelector: 'BA',
-    bucketBy: 'infantryTroopers',
-    patterns: [
-        {
-            copySize: 1,
-            demands: { 'BA:3': 1 },
-        },
-    ],
+    pointModel: 'fixed',
 };
 
 export const SOCIETY_CI_UN: OrgLeafPatternRule = {

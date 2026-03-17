@@ -2,9 +2,9 @@ import { ASUnitTypeCode } from '../../../models/units.model';
 import { DEFAULT_ORG_RULE_REGISTRY } from '../org-facts.util';
 import type {
     OrgComposedCountRule,
+    OrgComposedPatternRule,
     OrgDefinitionSpec,
     OrgLeafCountRule,
-    OrgLeafPatternRule,
 } from '../org-types';
 import {
     CLAN_CLUSTER,
@@ -37,7 +37,7 @@ export const WD_POINT: OrgLeafCountRule = {
     unitSelector: WD_POINT_UNIT_TYPES,
 };
 
-export const WD_NOVA: OrgLeafPatternRule = {
+export const WD_NOVA: OrgComposedPatternRule = {
     ...CLAN_NOVA,
     commandRank: 'Lieutenant',
 };

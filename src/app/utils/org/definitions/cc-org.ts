@@ -5,6 +5,7 @@ import type {
     OrgLeafPatternRule,
 } from '../org-types';
 import {
+    IS_BA_PLATOON,
     IS_BATTALION,
     IS_BA_SQUAD,
     IS_COMPANY,
@@ -150,6 +151,7 @@ export const CC_CORE_ORG: OrgDefinitionSpec = {
         IS_SQUADRON,
         IS_WING,
         IS_BA_SQUAD,
+        IS_BA_PLATOON,
         IS_PLATOON,
         IS_SINGLE,
         IS_LANCE,

@@ -2,9 +2,9 @@ import { DEFAULT_ORG_RULE_REGISTRY } from '../org-facts.util';
 import type {
     OrgCIFormationRule,
     OrgComposedCountRule,
+    OrgComposedPatternRule,
     OrgDefinitionSpec,
     OrgLeafCountRule,
-    OrgLeafPatternRule,
 } from '../org-types';
 import {
     TRANSPORT_AF_CARRIER_BUCKETS,
@@ -69,15 +69,17 @@ export const CLAN_STAR: OrgComposedCountRule = {
     childBucketBy: 'promotionBasic',
 };
 
-export const CLAN_NOVA: OrgLeafPatternRule = {
-    kind: 'leaf-pattern',
+export const CLAN_NOVA: OrgComposedPatternRule = {
+    kind: 'composed-pattern',
     type: 'Nova',
-    priority: 1,
     countsAs: 'Star',
-    modifiers: { '': 10 },
+    modifiers: { '': 2 },
     commandRank: 'Nova Commander',
-    tier: 1.7,
-    unitSelector: ['BM', 'CV', 'AF', 'CF', 'BA'],
+    tier: 1.9,
+    childRoles: [
+        { matches: ['Star'], min: 1, max: 1, onlyUnitTypes: ['BA'] },
+        { matches: ['Star'], min: 1, max: 1, onlyUnitTypes: ['BM', 'CV', 'AF', 'CF'] },
+    ],
     bucketBy: 'transport',
     patterns: [
         {
@@ -155,11 +157,10 @@ export const CLAN_TRINARY: OrgComposedCountRule = {
 export const CLAN_SUPERNOVA_BINARY: OrgComposedCountRule = {
     kind: 'composed-count',
     type: 'Supernova Binary',
-    priority: 2,
     countsAs: 'Binary',
     modifiers: { '': 2 },
     commandRank: 'Nova Captain',
-    tier: 2,
+    tier: 2.1,
     childRoles: [{ matches: ['Nova'] }],
     childBucketBy: 'promotionBasic',
 };
@@ -167,7 +168,6 @@ export const CLAN_SUPERNOVA_BINARY: OrgComposedCountRule = {
 export const CLAN_SUPERNOVA_TRINARY: OrgComposedCountRule = {
     kind: 'composed-count',
     type: 'Supernova Trinary',
-    priority: 1,
     countsAs: 'Trinary',
     modifiers: { '': 3 },
     commandRank: 'Nova Captain',

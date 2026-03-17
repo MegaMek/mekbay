@@ -10,6 +10,7 @@ import {
     CLAN_CORE_ORG,
     CLAN_NOVA,
     CLAN_POINT,
+    CLAN_STAR,
     CLAN_SUPERNOVA_TRINARY,
     CLAN_TRINARY,
     COMSTAR_CHOIR,
@@ -17,6 +18,7 @@ import {
     COMSTAR_LEVEL_I_FROM_SQUADS,
     COMSTAR_LEVEL_II,
     IS_AIR_LANCE,
+    IS_BA_PLATOON,
     IS_BA_SQUAD,
     IS_COMPANY,
     IS_CORE_ORG,
@@ -56,12 +58,14 @@ import {
 } from './org-registry.util';
 import {
     evaluateComposedCountRule,
+    evaluateComposedPatternRule,
     evaluateCIFormationRule,
     evaluateFactionOrgDefinition,
     evaluateLeafCountRule,
     evaluateLeafPatternRule,
     evaluateOrgDefinition,
     materializeComposedCountRule,
+    materializeComposedPatternRule,
     materializeCIFormationRule,
     materializeLeafCountRule,
     materializeLeafPatternRule,
@@ -582,106 +586,115 @@ describe('org-solver.util', () => {
         expect(bucketKey).toBe('Star|null||BM:1|CV:1|AF:1|CF:0|BA:1|CI:1|PM:1');
     });
 
-    it('evaluates Nova leaf-pattern rules for a perfect omni-mek carrier formation', () => {
-        const units = compileUnitFactsList([
-            createUnit('Carrier 1', 'Mek', 'BattleMek Omni', true),
-            createUnit('Carrier 2', 'Mek', 'BattleMek Omni', true),
-            createUnit('Carrier 3', 'Mek', 'BattleMek Omni', true),
-            createUnit('Carrier 4', 'Mek', 'BattleMek Omni', true),
-            createUnit('Carrier 5', 'Mek', 'BattleMek Omni', true),
+    it('evaluates Nova composed-pattern rules for a BA Star plus omni-mek Star', () => {
+        const battleArmorStar = resolveFromUnits([
             createUnit('BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
             createUnit('BA 2', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
             createUnit('BA 3', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
             createUnit('BA 4', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
             createUnit('BA 5', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
-        ]);
+        ], 'Clan Test', 'HW Clan');
+        const carrierStar = resolveFromUnits([
+            createUnit('Carrier 1', 'Mek', 'BattleMek Omni', true),
+            createUnit('Carrier 2', 'Mek', 'BattleMek Omni', true),
+            createUnit('Carrier 3', 'Mek', 'BattleMek Omni', true),
+            createUnit('Carrier 4', 'Mek', 'BattleMek Omni', true),
+            createUnit('Carrier 5', 'Mek', 'BattleMek Omni', true),
+        ], 'Clan Test', 'HW Clan');
 
-        const result = evaluateLeafPatternRule(CLAN_NOVA, units);
+        const result = evaluateComposedPatternRule(CLAN_NOVA, compileGroupFactsList([battleArmorStar[0], carrierStar[0]]));
 
         expect(result.emitted).toHaveSize(1);
         expect(result.emitted[0]).toEqual(jasmine.objectContaining({
             modifierKey: '',
-            perGroupCount: 10,
+            perGroupCount: 2,
             copies: 1,
-            patternIndex: 0,
         }));
         expect(result.leftoverCount).toBe(0);
     });
 
-    it('materializes Nova leaf-pattern rules into a concrete top-level group', () => {
-        const result = materializeLeafPatternRule(CLAN_NOVA, compileUnitFactsList([
-            createUnit('Carrier 1', 'Mek', 'BattleMek Omni', true),
-            createUnit('Carrier 2', 'Mek', 'BattleMek Omni', true),
-            createUnit('Carrier 3', 'Mek', 'BattleMek Omni', true),
-            createUnit('Carrier 4', 'Mek', 'BattleMek Omni', true),
-            createUnit('Carrier 5', 'Mek', 'BattleMek Omni', true),
+    it('materializes Nova composed-pattern rules into a concrete top-level group', () => {
+        const battleArmorStar = resolveFromUnits([
             createUnit('BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
             createUnit('BA 2', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
             createUnit('BA 3', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
             createUnit('BA 4', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
             createUnit('BA 5', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
-        ]));
+        ], 'Clan Test', 'HW Clan');
+        const carrierStar = resolveFromUnits([
+            createUnit('Carrier 1', 'Mek', 'BattleMek Omni', true),
+            createUnit('Carrier 2', 'Mek', 'BattleMek Omni', true),
+            createUnit('Carrier 3', 'Mek', 'BattleMek Omni', true),
+            createUnit('Carrier 4', 'Mek', 'BattleMek Omni', true),
+            createUnit('Carrier 5', 'Mek', 'BattleMek Omni', true),
+        ], 'Clan Test', 'HW Clan');
+
+        const result = materializeComposedPatternRule(CLAN_NOVA, compileGroupFactsList([battleArmorStar[0], carrierStar[0]]));
 
         expect(result.groups).toEqual([
             jasmine.objectContaining({ name: 'Nova', type: 'Nova', modifierKey: '' }),
         ]);
-        expect(result.groups[0].units?.length).toBe(10);
-        expect(result.leftoverUnitFacts).toEqual([]);
+        expect(result.groups[0].children?.length).toBe(2);
+        expect(result.leftoverGroupFacts).toEqual([]);
     });
 
-    it('rejects non-5-and-5 Nova formations even when all units are otherwise eligible', () => {
-        const units = compileUnitFactsList([
+    it('rejects non-5-and-5 Nova formations even when Stars are otherwise eligible', () => {
+        const battleArmorStar = resolveFromUnits([
+            createUnit('BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 2', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 3', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 4', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 5', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+        ], 'Clan Test', 'HW Clan');
+        const carrierStar = resolveFromUnits([
             createUnit('Carrier 1', 'Tank', 'Combat Vehicle Omni', true),
             createUnit('Carrier 2', 'Tank', 'Combat Vehicle', false),
             createUnit('Carrier 3', 'Tank', 'Combat Vehicle', false),
             createUnit('Carrier 4', 'Tank', 'Combat Vehicle', false),
             createUnit('Carrier 5', 'Tank', 'Combat Vehicle', false),
             createUnit('Carrier 6', 'Tank', 'Combat Vehicle', false),
-            createUnit('BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
-            createUnit('BA 2', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
-            createUnit('BA 3', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
-            createUnit('BA 4', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
-        ]);
+        ], 'Clan Test', 'HW Clan');
 
-        const result = evaluateLeafPatternRule(CLAN_NOVA, units);
+        const result = evaluateComposedPatternRule(CLAN_NOVA, compileGroupFactsList([battleArmorStar[0], carrierStar[0]]));
 
         expect(result.emitted).toEqual([]);
-        expect(result.leftoverCount).toBe(10);
+        expect(result.leftoverCount).toBe(2);
     });
 
-    it('rejects Nova leaf-pattern rules when battle armor is not transport-qualified', () => {
-        const units = compileUnitFactsList([
-            createAero('Carrier 1', true),
-            createAero('Carrier 2', true),
-            createAero('Carrier 3', true),
-            createAero('Carrier 4', true),
-            createAero('Carrier 5', true),
+    it('rejects Nova composed-pattern rules when battle armor is not transport-qualified', () => {
+        const battleArmorStar = resolveFromUnits([
             createUnit('BA 1', 'Infantry', 'Battle Armor', false, [], 4),
             createUnit('BA 2', 'Infantry', 'Battle Armor', false, [], 4),
             createUnit('BA 3', 'Infantry', 'Battle Armor', false, [], 4),
             createUnit('BA 4', 'Infantry', 'Battle Armor', false, [], 4),
             createUnit('BA 5', 'Infantry', 'Battle Armor', false, [], 4),
-        ]);
+        ], 'Clan Test', 'HW Clan');
+        const carrierStar = resolveFromUnits([
+            createAero('Carrier 1', true),
+            createAero('Carrier 2', true),
+            createAero('Carrier 3', true),
+            createAero('Carrier 4', true),
+            createAero('Carrier 5', true),
+        ], 'Clan Test', 'HW Clan');
 
-        const result = evaluateLeafPatternRule(CLAN_NOVA, units);
+        const result = evaluateComposedPatternRule(CLAN_NOVA, compileGroupFactsList([battleArmorStar[0], carrierStar[0]]));
 
         expect(result.emitted).toEqual([]);
-        expect(result.leftoverCount).toBe(10);
+        expect(result.leftoverCount).toBe(1);
     });
 
-    it('evaluates Battle Armor Squad from an exact four-trooper unit', () => {
+    it('evaluates Battle Armor Squad from a single BA unit regardless of trooper count', () => {
         const units = compileUnitFactsList([
-            createUnit('BA Squad', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA Squad', 'Infantry', 'Battle Armor', false, ['MEC'], 6),
         ]);
 
-        const result = evaluateLeafPatternRule(IS_BA_SQUAD, units);
+        const result = evaluateLeafCountRule(IS_BA_SQUAD, units);
 
         expect(result.emitted).toHaveSize(1);
         expect(result.emitted[0]).toEqual(jasmine.objectContaining({
             modifierKey: '',
             perGroupCount: 1,
             copies: 1,
-            score: 0,
         }));
         expect(result.leftoverCount).toBe(0);
     });
@@ -800,7 +813,7 @@ describe('org-solver.util', () => {
         expect(result.leftoverCount).toBe(0);
     });
 
-    it('evaluates Lance as a leaf-count rule while excluding conventional infantry', () => {
+    it('evaluates Lance as a leaf-count rule while excluding conventional infantry and battle armor', () => {
         const units = compileUnitFactsList([
             createUnit('Mek 1', 'Mek', 'BattleMek'),
             createUnit('Mek 2', 'Mek', 'BattleMek'),
@@ -811,9 +824,9 @@ describe('org-solver.util', () => {
 
         const result = evaluateLeafCountRule(IS_LANCE, units);
 
-        expect(result.eligibleUnits.length).toBe(4);
+        expect(result.eligibleUnits.length).toBe(3);
         expect(result.emitted).toEqual([
-            { modifierKey: '', perGroupCount: 4, copies: 1, tier: 1 },
+            { modifierKey: 'Under-Strength ', perGroupCount: 3, copies: 1, tier: 1 },
         ]);
         expect(result.leftoverCount).toBe(0);
     });
@@ -1190,7 +1203,7 @@ describe('org-solver.util', () => {
             leftoverCount: 2,
         }));
         expect(companyEvaluation).toEqual(jasmine.objectContaining({
-            leftoverCount: 0,
+            leftoverCount: 1,
         }));
     });
 
@@ -1268,7 +1281,7 @@ describe('org-solver.util', () => {
         const septEvaluation = result.ruleEvaluations.get(SOCIETY_SEPT);
 
         expect(unEvaluation).toEqual(jasmine.objectContaining({
-            leftoverCount: 0,
+            leftoverCount: 1,
         }));
         expect(treyEvaluation).toEqual(jasmine.objectContaining({
             leftoverCount: 1,
@@ -1582,7 +1595,7 @@ describe('org-solver.util', () => {
         const battalionEvaluation = result.ruleEvaluations.get(WD_BATTALION);
 
         expect(novaEvaluation).toEqual(jasmine.objectContaining({
-            leftoverCount: 0,
+            leftoverCount: 2,
         }));
         expect(platoonEvaluation).toEqual(jasmine.objectContaining({
             leftoverCount: 1,
@@ -2059,17 +2072,33 @@ describe('org-solver.util resolve parity', () => {
         expect(result[1].modifierKey).toBe('Demi-');
     });
 
-    it('materializes an 8-trooper battle armor unit as two semantic squads', () => {
-        const result = materializeLeafPatternRule(IS_BA_SQUAD, compileUnitFactsList([
+    it('materializes a battle armor unit as one semantic squad regardless of trooper count', () => {
+        const result = materializeLeafCountRule(IS_BA_SQUAD, compileUnitFactsList([
             createUnit('BA Pair', 'Infantry', 'Battle Armor', false, ['MEC'], 8),
         ]));
 
-        expect(result.groups.length).toBe(2);
-        expect(result.groups.every((group) => group.name === 'Squad')).toBeTrue();
-        expect(result.groups.every((group) => group.type === 'Squad')).toBeTrue();
-        expect(result.groups.every((group) => group.units?.length === 1)).toBeTrue();
-        expect(result.groups.every((group) => group.units?.[0].internal === 4)).toBeTrue();
+        expect(result.groups.length).toBe(1);
+        expect(result.groups[0].name).toBe('Squad');
+        expect(result.groups[0].type).toBe('Squad');
+        expect(result.groups[0].units?.length).toBe(1);
+        expect(result.groups[0].units?.[0].internal).toBe(8);
         expect(result.leftoverUnitFacts).toEqual([]);
+    });
+
+    it('evaluates an Inner Sphere Platoon from four BA squads', () => {
+        const squadFacts = compileGroupFactsList(materializeLeafCountRule(IS_BA_SQUAD, compileUnitFactsList([
+            createUnit('BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 1),
+            createUnit('BA 2', 'Infantry', 'Battle Armor', false, ['MEC'], 3),
+            createUnit('BA 3', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+            createUnit('BA 4', 'Infantry', 'Battle Armor', false, ['MEC'], 6),
+        ])).groups);
+
+        const result = evaluateComposedCountRule(IS_BA_PLATOON, squadFacts);
+
+        expect(result.emitted).toEqual([
+            jasmine.objectContaining({ modifierKey: '', perGroupCount: 4, copies: 1, tier: 1, compositionIndex: 0 }),
+        ]);
+        expect(result.leftoverCount).toBe(0);
     });
 
     it('resolves 1 BM in Society as Un', () => {
@@ -2125,9 +2154,11 @@ describe('org-solver.util resolve parity', () => {
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
-    it('resolves 3 battle armor troopers in Society as Un', () => {
+    it('resolves 3 battle armor units in Society as Un regardless of trooper count', () => {
         const result = resolveFromUnits([
-            createUnit('BA1', 'Infantry', 'Battle Armor', false, [], 3),
+            createUnit('BA1', 'Infantry', 'Battle Armor', false, [], 1),
+            createUnit('BA2', 'Infantry', 'Battle Armor', false, [], 4),
+            createUnit('BA3', 'Infantry', 'Battle Armor', false, [], 6),
         ], 'Society', 'HW Clan');
 
         expect(result.length).toBe(1);
@@ -2172,13 +2203,13 @@ describe('org-solver.util resolve parity', () => {
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
-    it('resolves 5 BA (with MEC special) and 5 BM (with OMNI special) into a Nova', () => {
+    it('resolves 5 BA and 5 BM into a Nova regardless of BA trooper count', () => {
         const result = resolveFromUnits([
-            createUnit('BA1', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
-            createUnit('BA2', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
-            createUnit('BA3', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
-            createUnit('BA4', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
-            createUnit('BA5', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+            createUnit('BA1', 'Infantry', 'Battle Armor', false, ['MEC'], 1),
+            createUnit('BA2', 'Infantry', 'Battle Armor', false, ['MEC'], 2),
+            createUnit('BA3', 'Infantry', 'Battle Armor', false, ['MEC'], 3),
+            createUnit('BA4', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA5', 'Infantry', 'Battle Armor', false, ['MEC'], 6),
             createBM('BM1', 'BattleMek Omni', true, ['OMNI']),
             createBM('BM2', 'BattleMek Omni', true, ['OMNI']),
             createBM('BM3', 'BattleMek Omni', true, ['OMNI']),
@@ -2274,6 +2305,21 @@ describe('org-solver.util resolve parity', () => {
         expect(result[0].children?.every((child) => child.type === 'Star')).toBeTrue();
     });
 
+    it('prefers same-type Stars before mixed fallback when enough units exist', () => {
+        const pointMaterialized = materializeLeafCountRule(CLAN_POINT, compileUnitFactsList([
+            ...Array.from({ length: 5 }, (_, index) => createUnit(`PREF-BA${index + 1}`, 'Infantry', 'Battle Armor', false, ['MEC'], 5)),
+            ...Array.from({ length: 5 }, (_, index) => createBM(`PREF-BM${index + 1}`)),
+            ...Array.from({ length: 5 }, (_, index) => createUnit(`PREF-PM${index + 1}`, 'ProtoMek', 'ProtoMek')),
+            ...Array.from({ length: 5 }, (_, index) => createUnit(`PREF-CV${index + 1}`, 'Tank', 'Combat Vehicle')),
+        ]));
+
+        const starEvaluation = evaluateComposedCountRule(CLAN_STAR, compileGroupFactsList(pointMaterialized.groups));
+
+        expect(starEvaluation.emitted).toHaveSize(4);
+        expect(starEvaluation.emitted.every((emission) => emission.perGroupCount === 5)).toBeTrue();
+        expect(starEvaluation.leftoverCount).toBe(0);
+    });
+
     it('resolves 5 BA (MEC/XMEC) and 5 BM (OMNI and not) into a Nova', () => {
         const result = resolveFromUnits([
             createUnit('BA1', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
@@ -2289,6 +2335,32 @@ describe('org-solver.util resolve parity', () => {
         ], 'Clan Test', 'HW Clan');
 
         expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Nova');
+        expect(result[0].type).toBe('Nova');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves a Clan Nova from one BA Star and one carrier Star', () => {
+        const battleArmorStar = resolveFromUnits([
+            ...Array.from({ length: 5 }, (_, index) =>
+                createUnit(`NOVA-BA${index + 1}`, 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+            ),
+        ], 'Clan Test', 'HW Clan');
+
+        const carrierStar = resolveFromUnits([
+            ...Array.from({ length: 5 }, (_, index) =>
+                createBM(`NOVA-BM${index + 1}`, 'BattleMek Omni', true, ['OMNI']),
+            ),
+        ], 'Clan Test', 'HW Clan');
+
+        expect(battleArmorStar).toHaveSize(1);
+        expect(battleArmorStar[0].type).toBe('Star');
+        expect(carrierStar).toHaveSize(1);
+        expect(carrierStar[0].type).toBe('Star');
+
+        const result = resolveFromGroups('Clan Test', 'HW Clan', [battleArmorStar[0], carrierStar[0]]);
+
+        expect(result).toHaveSize(1);
         expect(result[0].name).toBe('Nova');
         expect(result[0].type).toBe('Nova');
         expect(result[0].leftoverUnits).toBeUndefined();
@@ -2491,6 +2563,22 @@ describe('org-solver.util aggregation and foreign parity', () => {
         expect(result[0].unitAllocations?.reduce((sum, allocation) => sum + allocation.troopers, 0)).toBe(28);
         expect(result[0].leftoverUnitAllocations?.reduce((sum, allocation) => sum + allocation.troopers, 0)).toBe(4);
         expect(result[0].leftoverUnits?.length).toBe(1);
+    });
+
+    it('resolves four Inner Sphere BA units as a Platoon instead of a Lance', () => {
+        const result = resolveFromUnits([
+            createUnit('IS BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 1),
+            createUnit('IS BA 2', 'Infantry', 'Battle Armor', false, ['MEC'], 2),
+            createUnit('IS BA 3', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('IS BA 4', 'Infantry', 'Battle Armor', false, ['MEC'], 6),
+        ], 'Federated Suns', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Platoon');
+        expect(result[0].type).toBe('Platoon');
+        expect(result[0].countsAsType).toBe('Lance');
+        expect(result[0].children?.length).toBe(4);
+        expect(result[0].children?.every((child) => child.type === 'Squad')).toBeTrue();
     });
 
     it('lists final groups by total tier while preserving foreign names when aggregate mode is disabled', () => {

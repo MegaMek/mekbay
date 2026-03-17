@@ -463,6 +463,8 @@ export interface OrgCIFormationRule extends OrgRuleMetadata {
 export interface OrgComposedPatternRule extends OrgRuleMetadata {
     readonly kind: 'composed-pattern';
     readonly childRoles: readonly OrgChildRoleSpec[];
+    readonly bucketBy: OrgBucketName;
+    readonly patterns: readonly OrgPatternSpec[];
     readonly childBucketBy?: OrgBucketName;
     readonly childMatchBucketBy?: OrgBucketName;
     readonly constraints?: readonly OrgConstraintSpec[];
