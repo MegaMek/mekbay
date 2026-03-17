@@ -411,6 +411,7 @@ export function compileGroupFacts(
         provenance: getGroupProvenance(group),
         tag: group.tag,
         priority: group.priority,
+        directChildCount: group.children?.length ?? 0,
         childTypeCounts,
         unitTypeCounts,
         unitClassCounts,

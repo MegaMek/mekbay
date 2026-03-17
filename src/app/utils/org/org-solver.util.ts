@@ -254,6 +254,11 @@ interface FinalStateScore {
     readonly leftoverCount: number;
 }
 
+interface CanonicalPromotionFuture {
+    readonly finalScore: FinalStateScore;
+    readonly nextSignatureKey?: string;
+}
+
 interface ResolvedState {
     readonly groups?: readonly GroupSizeResult[];
     readonly canonicalState?: CanonicalGroupPoolState;
@@ -3123,6 +3128,11 @@ function compareResolvedState(left: ResolvedState, right: ResolvedState, context
     const leftScore = scoreResolvedState(left, context);
     const rightScore = scoreResolvedState(right, context);
 
+    return compareFinalStateScores(leftScore, rightScore);
+}
+
+function compareFinalStateScores(leftScore: FinalStateScore, rightScore: FinalStateScore): number {
+
     if (leftScore.isWhole !== rightScore.isWhole) {
         return leftScore.isWhole ? -1 : 1;
     }
@@ -3194,6 +3204,15 @@ function getCurrentStructuralCount(
     const impliedCount = step?.count ?? descriptor.regularStep.count;
     const explicitCount = group.children?.length ?? 0;
     return Math.max(impliedCount, explicitCount);
+}
+
+function getCurrentStructuralCountFacts(
+    facts: Pick<GroupFacts, 'modifierKey' | 'directChildCount'>,
+    descriptor: RuleModifierDescriptor,
+): number {
+    const step = descriptor.stepsAscending.find((candidate) => candidate.modifierKey === facts.modifierKey);
+    const impliedCount = step?.count ?? descriptor.regularStep.count;
+    return Math.max(impliedCount, facts.directChildCount);
 }
 
 function getEligibleChildFacts(
@@ -3272,6 +3291,64 @@ function resolveWholeComposedCandidate(
     return best;
 }
 
+function resolveWholeComposedCandidateRecord(
+    state: CanonicalGroupPoolState,
+    context: ResolveContext,
+    guard: SolverGuard,
+): PlannedGroupRecord | null {
+    if (state.groups.length === 0) {
+        return null;
+    }
+
+    if (state.groupFacts.some((facts) => isBlockedSubRegularPromotionChildFacts(facts, context))) {
+        return null;
+    }
+
+    const registry = context.definition.registry;
+    let best: PlannedGroupRecord | null = null;
+
+    for (const rule of getOrderedComposedRules(context)) {
+        const configs = rule.kind === 'composed-count'
+            ? buildCompositionConfigs(rule)
+            : [buildPatternCompositionConfig(rule)];
+        for (const config of configs) {
+            if (shouldAbortSearch(guard)) {
+                return best;
+            }
+            if (!isSingleBucketMatch(state.groupFacts, config.childMatchBucketBy, registry)) {
+                continue;
+            }
+            if (!canAssignGroupsToRoles(state.groupFacts, config.childRoles, guard)) {
+                continue;
+            }
+            if (rule.kind === 'composed-pattern' && !matchesComposedPatternSelection(rule, state.groupFacts, registry)) {
+                continue;
+            }
+
+            for (const step of config.modifierDescriptor.stepsDescending) {
+                if (step.count !== state.groups.length || step.relativeBand === 'sub-regular') {
+                    continue;
+                }
+                const candidate = createAbstractComposedGroupRecord(rule, step, state.groups);
+                if (!best || compareGroupScore(candidate.materialize(), best.materialize()) < 0) {
+                    best = candidate;
+                }
+            }
+        }
+    }
+
+    return best;
+}
+
+function resolveWholeComposedCandidateState(
+    state: CanonicalGroupPoolState,
+    context: ResolveContext,
+    guard: SolverGuard,
+): CanonicalGroupPoolState | null {
+    const record = resolveWholeComposedCandidateRecord(state, context, guard);
+    return record ? createCanonicalGroupPoolStateFromRecords([record]) : null;
+}
+
 function canRepairSubRegularGroupForPromotion(
     group: GroupSizeResult,
     context: ResolveContext,
@@ -3288,39 +3365,172 @@ function canRepairSubRegularGroupForPromotion(
     return isSubRegularModifierKey(getRuleStageMetadata(context, rule), group.modifierKey);
 }
 
-function repairSubRegularGroupsForPromotion(
-    groups: readonly GroupSizeResult[],
+function canRepairSubRegularGroupForPromotionFacts(
+    facts: Pick<GroupFacts, 'provenance' | 'type' | 'modifierKey' | 'directChildCount'>,
     context: ResolveContext,
-): GroupSizeResult[] {
-    let pool = [...groups];
+    rule: OrgComposedCountRule,
+): boolean {
+    if (!rule.requireRegularForPromotion
+        || facts.provenance !== 'input-group'
+        || facts.type !== rule.type
+        || facts.directChildCount <= 0) {
+        return false;
+    }
+
+    return isSubRegularModifierKey(getRuleStageMetadata(context, rule), facts.modifierKey);
+}
+
+function copyReadonlyNestedCountMap<Key extends string>(
+    source: ReadonlyMap<Key, ReadonlyMap<OrgBucketValue, number>>,
+): Map<Key, Map<OrgBucketValue, number>> {
+    const result = new Map<Key, Map<OrgBucketValue, number>>();
+
+    for (const [key, nested] of source.entries()) {
+        result.set(key, new Map(nested.entries()));
+    }
+
+    return result;
+}
+
+function incrementMutableCountMap<Key extends string>(
+    target: Map<Key, number>,
+    source: ReadonlyMap<Key, number>,
+): void {
+    for (const [key, count] of source.entries()) {
+        target.set(key, (target.get(key) ?? 0) + count);
+    }
+}
+
+function incrementMutableNestedCountMap<Key extends string>(
+    target: Map<Key, Map<OrgBucketValue, number>>,
+    source: ReadonlyMap<Key, ReadonlyMap<OrgBucketValue, number>>,
+): void {
+    for (const [bucketName, nested] of source.entries()) {
+        let merged = target.get(bucketName);
+        if (!merged) {
+            merged = new Map<OrgBucketValue, number>();
+            target.set(bucketName, merged);
+        }
+
+        for (const [bucketValue, count] of nested.entries()) {
+            merged.set(bucketValue, (merged.get(bucketValue) ?? 0) + count);
+        }
+    }
+}
+
+function createUpdatedParentRecord(
+    parentRecord: PlannedGroupRecord,
+    rule: OrgComposedCountRule,
+    modifierStep: ModifierStep,
+    addedChildren: readonly PlannedGroupRecord[],
+): PlannedGroupRecord {
+    const baseFacts = parentRecord.facts;
+    const childTypeCounts = copyReadonlyCountMap(baseFacts.childTypeCounts);
+    const unitTypeCounts = copyReadonlyCountMap(baseFacts.unitTypeCounts);
+    const unitClassCounts = copyReadonlyCountMap(baseFacts.unitClassCounts);
+    const unitTagCounts = copyReadonlyCountMap(baseFacts.unitTagCounts);
+    const unitScalarSums = copyReadonlyCountMap(baseFacts.unitScalarSums);
+    const descendantUnitBucketCounts = copyReadonlyNestedCountMap(baseFacts.descendantUnitBucketCounts);
+
+    for (const childRecord of addedChildren) {
+        const child = childRecord.facts;
+        const childTypeKey = child.type ?? 'null';
+        childTypeCounts.set(childTypeKey, (childTypeCounts.get(childTypeKey) ?? 0) + 1);
+        if (child.countsAsType) {
+            const countsAsKey = `countsAs:${child.countsAsType}` as OrgChildTypeCountKey;
+            childTypeCounts.set(countsAsKey, (childTypeCounts.get(countsAsKey) ?? 0) + 1);
+        }
+        if (child.tag) {
+            const tagKey = `tag:${child.tag}` as OrgChildTypeCountKey;
+            childTypeCounts.set(tagKey, (childTypeCounts.get(tagKey) ?? 0) + 1);
+        }
+
+        incrementMutableCountMap(unitTypeCounts, child.unitTypeCounts);
+        incrementMutableCountMap(unitClassCounts, child.unitClassCounts);
+        incrementMutableCountMap(unitTagCounts, child.unitTagCounts);
+        incrementMutableCountMap(unitScalarSums, child.unitScalarSums);
+        incrementMutableNestedCountMap(descendantUnitBucketCounts, child.descendantUnitBucketCounts);
+    }
+
+    const facts: GroupFacts = {
+        ...baseFacts,
+        group: createAbstractProducedGroupTemplate(rule, modifierStep),
+        modifierKey: modifierStep.modifierKey,
+        tier: modifierStep.tier,
+        directChildCount: baseFacts.directChildCount + addedChildren.length,
+        childTypeCounts,
+        unitTypeCounts,
+        unitClassCounts,
+        unitTagCounts,
+        unitScalarSums,
+        descendantUnitBucketCounts,
+    };
+
+    const updatedRecord: PlannedGroupRecord = {
+        recordId: parentRecord.recordId,
+        facts,
+        materialize: () => {
+            if (!updatedRecord.materializedGroup) {
+                const baseGroup = parentRecord.materialize();
+                updatedRecord.materializedGroup = {
+                    ...baseGroup,
+                    name: makeGroupName(rule.type, modifierStep.modifierKey),
+                    modifierKey: modifierStep.modifierKey,
+                    tier: modifierStep.tier,
+                    children: [
+                        ...(baseGroup.children ?? []),
+                        ...addedChildren.map((child) => child.materialize()),
+                    ],
+                };
+            }
+
+            return updatedRecord.materializedGroup;
+        },
+    };
+
+    return updatedRecord;
+}
+
+function repairSubRegularGroupsForPromotionState(
+    initialState: CanonicalGroupPoolState,
+    context: ResolveContext,
+): CanonicalGroupPoolState {
+    let state = initialState;
 
     for (const rule of context.composedCountRules) {
         if (!rule.requireRegularForPromotion) {
             continue;
         }
 
-        const poolFacts = compileGroupFactsList(pool);
-        const candidates = poolFacts.filter((facts) => canRepairSubRegularGroupForPromotion(facts.group, context, rule));
+        const candidates = state.groupFacts.filter((facts) => canRepairSubRegularGroupForPromotionFacts(facts, context, rule));
         if (candidates.length === 0) {
             continue;
         }
 
-        const flattenedChildren = candidates.flatMap((facts) => facts.group.children ?? []);
+        const flattenedChildren = candidates.flatMap((facts) => state.recordByGroupFactId.get(facts.groupFactId)?.materialize().children ?? []);
         const repackaged = materializeComposedCountRule(rule, compileGroupFactsList(flattenedChildren), context.definition.registry);
         if (repackaged.groups.length === 0) {
             continue;
         }
 
         const candidateFactIds = new Set(candidates.map((facts) => facts.groupFactId));
-        pool = [
-            ...poolFacts
-                .filter((facts) => !candidateFactIds.has(facts.groupFactId))
-                .map((facts) => facts.group),
-            ...repackaged.groups,
-        ];
+        state = createCanonicalGroupPoolStateFromRecords([
+            ...state.groups.filter((group) => !candidateFactIds.has(group.facts.groupFactId)),
+            ...repackaged.groups.map((group) => createConcretePlannedGroupRecord(group)),
+        ]);
     }
 
-    return pool;
+    return state;
+}
+
+function repairSubRegularGroupsForPromotion(
+    groups: readonly GroupSizeResult[],
+    context: ResolveContext,
+): GroupSizeResult[] {
+    return materializeCanonicalGroupPoolState(repairSubRegularGroupsForPromotionState(
+        createCanonicalGroupPoolState(groups),
+        context,
+    ));
 }
 
 function createCanonicalGroupPoolState(groups: readonly GroupSizeResult[]): CanonicalGroupPoolState {
@@ -3431,26 +3641,7 @@ function compareGroupPoolStates(
     const leftScore = scoreCanonicalGroupPoolState(left, context);
     const rightScore = scoreCanonicalGroupPoolState(right, context);
 
-    if (leftScore.isWhole !== rightScore.isWhole) {
-        return leftScore.isWhole ? -1 : 1;
-    }
-    if (leftScore.highestTier !== rightScore.highestTier) {
-        return rightScore.highestTier - leftScore.highestTier;
-    }
-    if (leftScore.leftoverCount !== rightScore.leftoverCount) {
-        return leftScore.leftoverCount - rightScore.leftoverCount;
-    }
-    if (leftScore.topLevelGroupCount !== rightScore.topLevelGroupCount) {
-        return leftScore.topLevelGroupCount - rightScore.topLevelGroupCount;
-    }
-    if (leftScore.highestTierGroupCount !== rightScore.highestTierGroupCount) {
-        return rightScore.highestTierGroupCount - leftScore.highestTierGroupCount;
-    }
-    if (leftScore.isWhole && rightScore.isWhole && leftScore.totalPriority !== rightScore.totalPriority) {
-        return rightScore.totalPriority - leftScore.totalPriority;
-    }
-
-    return 0;
+    return compareFinalStateScores(leftScore, rightScore);
 }
 
 function retainDominantCanonicalGroupPoolStates(
@@ -3616,15 +3807,25 @@ function searchBestRegularPromotionPoolState(
     context: ResolveContext,
     guard: SolverGuard,
 ): CanonicalGroupPoolState {
-    const memo = new Map<string, CanonicalGroupPoolState>();
+    return searchBestRegularPromotionPoolStateFromState(createCanonicalGroupPoolState(initialPool), context, guard);
+}
 
-    function visit(state: CanonicalGroupPoolState): CanonicalGroupPoolState {
+function searchBestRegularPromotionPoolStateFromState(
+    initialState: CanonicalGroupPoolState,
+    context: ResolveContext,
+    guard: SolverGuard,
+): CanonicalGroupPoolState {
+    const memo = new Map<string, CanonicalPromotionFuture>();
+
+    function visit(state: CanonicalGroupPoolState): CanonicalPromotionFuture {
         const cached = memo.get(state.signature.key);
         if (cached) {
             return cached;
         }
 
-        let best = state;
+        let bestFuture: CanonicalPromotionFuture = {
+            finalScore: scoreCanonicalGroupPoolState(state, context),
+        };
 
         for (const successor of getRegularPromotionSuccessors(state, context, guard)) {
             if (shouldAbortSearch(guard)) {
@@ -3632,16 +3833,40 @@ function searchBestRegularPromotionPoolState(
             }
 
             const candidate = visit(successor);
-            if (compareGroupPoolStates(candidate, best, context) < 0) {
-                best = candidate;
+            if (compareFinalStateScores(candidate.finalScore, bestFuture.finalScore) < 0) {
+                bestFuture = {
+                    finalScore: candidate.finalScore,
+                    nextSignatureKey: successor.signature.key,
+                };
             }
         }
 
-        memo.set(state.signature.key, best);
-        return best;
+        memo.set(state.signature.key, bestFuture);
+        return bestFuture;
     }
 
-    return visit(createCanonicalGroupPoolState(initialPool));
+    visit(initialState);
+
+    let currentState = initialState;
+    let safety = 0;
+
+    while (safety < MAX_PROMOTION_LOOP_ITERATIONS * 4) {
+        safety += 1;
+        const future = memo.get(currentState.signature.key);
+        if (!future?.nextSignatureKey) {
+            return currentState;
+        }
+
+        const nextState = getRegularPromotionSuccessors(currentState, context, createSolverGuard())
+            .find((candidate) => candidate.signature.key === future.nextSignatureKey);
+        if (!nextState) {
+            return currentState;
+        }
+
+        currentState = nextState;
+    }
+
+    return currentState;
 }
 
 function searchBestRegularPromotionPool(
@@ -3700,9 +3925,21 @@ function preAssimilateUnderRegularGroups(
     context: ResolveContext,
     guard: SolverGuard,
 ): GroupSizeResult[] {
-    let pool = [...groups];
+    return materializeCanonicalGroupPoolState(preAssimilateUnderRegularGroupState(
+        createCanonicalGroupPoolState(groups),
+        context,
+        guard,
+    ));
+}
+
+function preAssimilateUnderRegularGroupState(
+    initialState: CanonicalGroupPoolState,
+    context: ResolveContext,
+    guard: SolverGuard,
+): CanonicalGroupPoolState {
+    let state = initialState;
     const ruleByType = new Map(context.composedCountRules.map((rule) => [rule.type, rule]));
-    const underRegularGroups = compileGroupFactsList(pool)
+    const underRegularGroups = state.groupFacts
         .filter((facts) => {
             const rule = facts.type ? ruleByType.get(facts.type) : undefined;
             if (!rule) {
@@ -3723,51 +3960,48 @@ function preAssimilateUnderRegularGroups(
         });
 
     for (const currentGroupFacts of underRegularGroups) {
-        const group = currentGroupFacts.group;
         const rule = currentGroupFacts.type ? ruleByType.get(currentGroupFacts.type) : undefined;
         if (!rule) {
             continue;
         }
-        const poolFacts = compileGroupFactsList(pool);
-        const nextCurrentGroupFacts = poolFacts.find((facts) => facts.group === group);
+        const nextCurrentGroupFacts = state.groupFacts.find((facts) => facts.groupFactId === currentGroupFacts.groupFactId);
         if (!nextCurrentGroupFacts) {
             continue;
         }
+        const currentRecord = state.recordByGroupFactId.get(nextCurrentGroupFacts.groupFactId);
+        if (!currentRecord) {
+            continue;
+        }
         const descriptor = getRuleStageMetadata(context, rule).descriptor;
-        const currentStep = descriptor.stepsAscending.find((step) => step.modifierKey === group.modifierKey);
+        const currentStep = descriptor.stepsAscending.find((step) => step.modifierKey === nextCurrentGroupFacts.modifierKey);
         if (!currentStep) {
             continue;
         }
-        const currentCount = getCurrentStructuralCount(group, descriptor);
+        const currentCount = getCurrentStructuralCountFacts(nextCurrentGroupFacts, descriptor);
         const needed = descriptor.regularStep.count - currentCount;
         if (needed <= 0) {
             continue;
         }
 
-        const remainingFacts = poolFacts.filter((facts) => facts.groupFactId !== nextCurrentGroupFacts.groupFactId);
-        const roleMatches = getEligibleChildFacts(group, rule, remainingFacts, context);
+        const remainingFacts = state.groupFacts.filter((facts) => facts.groupFactId !== nextCurrentGroupFacts.groupFactId);
+        const roleMatches = getEligibleChildFacts(currentRecord.materialize(), rule, remainingFacts, context);
         const addition = findAbstractCompositionSelection(roleMatches, rule.childRoles, needed, guard);
         if (!addition) {
             continue;
         }
 
         const additionFactIds = new Set(addition.map((facts) => facts.groupFactId));
-        const additionGroups = addition.map((facts) => facts.group);
-        pool = [
-            ...remainingFacts
-                .filter((facts) => !additionFactIds.has(facts.groupFactId))
-                .map((facts) => facts.group),
-        ];
-        pool.push({
-            ...group,
-            name: makeGroupName(group.type, descriptor.regularStep.modifierKey),
-            modifierKey: descriptor.regularStep.modifierKey,
-            tier: descriptor.regularStep.tier,
-            children: [...(group.children ?? []), ...additionGroups],
-        });
+        const addedChildren = addition
+            .map((facts) => state.recordByGroupFactId.get(facts.groupFactId))
+            .filter((record): record is PlannedGroupRecord => !!record);
+        const updatedRecord = createUpdatedParentRecord(currentRecord, rule, descriptor.regularStep, addedChildren);
+        state = createCanonicalGroupPoolStateFromRecords([
+            ...state.groups.filter((group) => group.recordId !== currentRecord.recordId && !additionFactIds.has(group.facts.groupFactId)),
+            updatedRecord,
+        ]);
     }
 
-    return pool;
+    return state;
 }
 
 function assimilateLeftoversIntoParents(
@@ -3775,9 +4009,21 @@ function assimilateLeftoversIntoParents(
     context: ResolveContext,
     guard: SolverGuard,
 ): GroupSizeResult[] {
-    let pool = [...groups];
+    return materializeCanonicalGroupPoolState(assimilateLeftoversIntoParentState(
+        createCanonicalGroupPoolState(groups),
+        context,
+        guard,
+    ));
+}
+
+function assimilateLeftoversIntoParentState(
+    initialState: CanonicalGroupPoolState,
+    context: ResolveContext,
+    guard: SolverGuard,
+): CanonicalGroupPoolState {
+    let state = initialState;
     const ruleByType = new Map(context.composedCountRules.map((rule) => [rule.type, rule]));
-    const sortedParents = compileGroupFactsList(pool)
+    const sortedParents = state.groupFacts
         .filter((facts) => facts.type !== null && ruleByType.has(facts.type))
         .sort((left, right) => {
             const leftRule = left.type ? ruleByType.get(left.type) : undefined;
@@ -3792,38 +4038,35 @@ function assimilateLeftoversIntoParents(
         });
 
     for (const currentParentFacts of sortedParents) {
-        const parent = currentParentFacts.group;
         const rule = currentParentFacts.type ? ruleByType.get(currentParentFacts.type) : undefined;
         if (!rule) {
             continue;
         }
-        const poolFacts = compileGroupFactsList(pool);
-        const nextCurrentParentFacts = poolFacts.find((facts) => facts.group === parent);
+        const nextCurrentParentFacts = state.groupFacts.find((facts) => facts.groupFactId === currentParentFacts.groupFactId);
         if (!nextCurrentParentFacts) {
             continue;
         }
+        const currentRecord = state.recordByGroupFactId.get(nextCurrentParentFacts.groupFactId);
+        if (!currentRecord) {
+            continue;
+        }
         const descriptor = getRuleStageMetadata(context, rule).descriptor;
-        const currentStep = descriptor.stepsAscending.find((step) => step.modifierKey === parent.modifierKey) ?? descriptor.regularStep;
+        const currentStep = descriptor.stepsAscending.find((step) => step.modifierKey === nextCurrentParentFacts.modifierKey) ?? descriptor.regularStep;
         const nextSteps = descriptor.stepsAscending.filter((step) => step.count > currentStep.count);
         if (nextSteps.length === 0) {
             continue;
         }
 
-        const availableFacts = poolFacts.filter((facts) => facts.groupFactId !== nextCurrentParentFacts.groupFactId);
-        const matchingFacts = getEligibleChildFacts(parent, rule, availableFacts, context);
+        const availableFacts = state.groupFacts.filter((facts) => facts.groupFactId !== nextCurrentParentFacts.groupFactId);
+        const matchingFacts = getEligibleChildFacts(currentRecord.materialize(), rule, availableFacts, context);
 
-        let upgradedParent = parent;
+        let upgradedRecord = currentRecord;
         const usedGroupFactIds = new Set<number>();
-        let currentCount = getCurrentStructuralCount(parent, descriptor);
+        let currentCount = getCurrentStructuralCountFacts(nextCurrentParentFacts, descriptor);
         for (const targetStep of nextSteps) {
             const needed = targetStep.count - currentCount;
             if (needed <= 0) {
-                upgradedParent = {
-                    ...upgradedParent,
-                    name: makeGroupName(rule.type, targetStep.modifierKey),
-                    modifierKey: targetStep.modifierKey,
-                    tier: targetStep.tier,
-                };
+                upgradedRecord = createUpdatedParentRecord(upgradedRecord, rule, targetStep, []);
                 currentCount = Math.max(currentCount, targetStep.count);
                 continue;
             }
@@ -3837,27 +4080,23 @@ function assimilateLeftoversIntoParents(
                 break;
             }
             selection.forEach((facts) => usedGroupFactIds.add(facts.groupFactId));
-            const addition = selection.map((facts) => facts.group);
-            currentCount += addition.length;
-            upgradedParent = {
-                ...upgradedParent,
-                name: makeGroupName(rule.type, targetStep.modifierKey),
-                modifierKey: targetStep.modifierKey,
-                tier: targetStep.tier,
-                children: [...(upgradedParent.children ?? []), ...addition],
-            };
+            const additionRecords = selection
+                .map((facts) => state.recordByGroupFactId.get(facts.groupFactId))
+                .filter((record): record is PlannedGroupRecord => !!record);
+            currentCount += additionRecords.length;
+            upgradedRecord = createUpdatedParentRecord(upgradedRecord, rule, targetStep, additionRecords);
             break;
         }
 
-        if (usedGroupFactIds.size > 0 || upgradedParent !== parent) {
-            pool = availableFacts
-                .filter((facts) => !usedGroupFactIds.has(facts.groupFactId))
-                .map((facts) => facts.group);
-            pool.push(upgradedParent);
+        if (usedGroupFactIds.size > 0 || upgradedRecord !== currentRecord) {
+            state = createCanonicalGroupPoolStateFromRecords([
+                ...state.groups.filter((group) => group.recordId !== currentRecord.recordId && !usedGroupFactIds.has(group.facts.groupFactId)),
+                upgradedRecord,
+            ]);
         }
     }
 
-    return pool;
+    return state;
 }
 
 function normalizeTopLevelGroups(groups: readonly GroupSizeResult[]): GroupSizeResult[] {
@@ -4006,6 +4245,7 @@ function createAbstractComposedGroupRecord(
         tier: modifierStep.tier,
         provenance: 'produced-group',
         tag: rule.tag,
+        directChildCount: childRecords.length,
         childTypeCounts,
         unitTypeCounts: sumReadonlyCountMaps(childFacts, (child) => child.unitTypeCounts),
         unitClassCounts: sumReadonlyCountMaps(childFacts, (child) => child.unitClassCounts),
@@ -4172,14 +4412,15 @@ function resolveWithDefinition(
 
     pool = normalizeCIFormationGroups(pool, context);
 
-    pool = repairSubRegularGroupsForPromotion(pool, context);
+    let initialPoolState = createCanonicalGroupPoolState(pool);
+    initialPoolState = repairSubRegularGroupsForPromotionState(initialPoolState, context);
+    initialPoolState = preAssimilateUnderRegularGroupState(initialPoolState, context, guard);
 
-    pool = preAssimilateUnderRegularGroups(pool, context, guard);
+    const wholeComposedFromInitialState = resolveWholeComposedCandidateState(initialPoolState, context, createSolverGuard());
+    const initialPoolMaterialized = materializeCanonicalGroupPoolState(initialPoolState);
+    const initialImprovedPool = runLeftoverImprovementLoop(initialPoolMaterialized, context, createSolverGuard());
 
-    const wholeComposedFromInitial = resolveWholeComposedCandidate(pool, context, createSolverGuard());
-    const initialImprovedPool = runLeftoverImprovementLoop(pool, context, createSolverGuard());
-
-    const regularPoolState = searchBestRegularPromotionPoolState(pool, context, createSolverGuard());
+    const regularPoolState = searchBestRegularPromotionPoolStateFromState(initialPoolState, context, createSolverGuard());
     const regularPool = materializeCanonicalGroupPoolState(regularPoolState);
     const candidateStates: ResolvedState[] = [
         { canonicalState: regularPoolState, leftoverUnits, leftoverUnitAllocations },
@@ -4187,8 +4428,8 @@ function resolveWithDefinition(
         { groups: initialImprovedPool, leftoverUnits, leftoverUnitAllocations },
     ];
 
-    if (wholeComposedFromInitial && leftoverUnits.length === 0 && leftoverUnitAllocations.length === 0) {
-        candidateStates.push({ groups: [wholeComposedFromInitial], leftoverUnits: [], leftoverUnitAllocations: [] });
+    if (wholeComposedFromInitialState && leftoverUnits.length === 0 && leftoverUnitAllocations.length === 0) {
+        candidateStates.push({ canonicalState: wholeComposedFromInitialState, leftoverUnits: [], leftoverUnitAllocations: [] });
     }
 
     if (leftoverUnits.length > 0) {
@@ -4208,9 +4449,9 @@ function resolveWithDefinition(
         candidateStates.push({ groups: [wholeLeaf], leftoverUnits: [], leftoverUnitAllocations: [] });
     }
 
-    const wholeComposed = resolveWholeComposedCandidate(regularPool, context, createSolverGuard());
-    if (wholeComposed && leftoverUnits.length === 0 && leftoverUnitAllocations.length === 0) {
-        candidateStates.push({ groups: [wholeComposed], leftoverUnits: [], leftoverUnitAllocations: [] });
+    const wholeComposedState = resolveWholeComposedCandidateState(regularPoolState, context, createSolverGuard());
+    if (wholeComposedState && leftoverUnits.length === 0 && leftoverUnitAllocations.length === 0) {
+        candidateStates.push({ canonicalState: wholeComposedState, leftoverUnits: [], leftoverUnitAllocations: [] });
     }
 
     const bestState = pickBestResolvedState(candidateStates, context);

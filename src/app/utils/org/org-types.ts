@@ -328,6 +328,7 @@ export interface GroupFacts {
     readonly provenance: OrgGroupProvenance;
     readonly tag?: OrgGroupTag;
     readonly priority?: number;
+    readonly directChildCount: number;
     readonly childTypeCounts: ReadonlyMap<OrgChildTypeCountKey, number>;
     readonly unitTypeCounts: ReadonlyMap<ASUnitTypeCode, number>;
     readonly unitClassCounts: ReadonlyMap<UnitClassKey, number>;
