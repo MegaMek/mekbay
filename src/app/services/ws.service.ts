@@ -83,6 +83,10 @@ export class WsService {
     private globalErrorHandler: ((message: string) => void) | null = null;
     private lastRegisteredUuid = '';
 
+    private getCurrentUuid(): string {
+        return this.userStateService.uuid().trim();
+    }
+
     constructor() {
         this.initializeService();
         this.setupUserStateHandler();
@@ -140,7 +144,7 @@ export class WsService {
     private handleNetworkOnline(): void {
         this.shouldReconnect = true;
         this.reconnectAttempt = 0; // Reset backoff when network returns
-        if (!this.wsConnected() && !this.isConnecting) {
+        if (!this.wsConnected() && !this.isConnecting && this.getCurrentUuid()) {
             this.clearReconnectTimer();
             this.scheduleReconnect();
         }
@@ -158,7 +162,7 @@ export class WsService {
      * Connect to WebSocket server
      */
     private connect(): void {
-        if (!this.wsUrl || this.isConnecting || (this.ws && this.ws.readyState === WebSocket.CONNECTING)) {
+        if (!this.wsUrl || !this.getCurrentUuid() || this.isConnecting || (this.ws && this.ws.readyState === WebSocket.CONNECTING)) {
             return;
         }
 
@@ -206,6 +210,15 @@ export class WsService {
      * Handle WebSocket open event
      */
     private handleOpen(): void {
+        const uuid = this.getCurrentUuid();
+        if (!uuid) {
+            this.logger.warn('WebSocket opened before uuid was available; closing and waiting for user state.');
+            this.isConnecting = false;
+            this.wsConnected.set(false);
+            this.closeWebSocket(false);
+            return;
+        }
+
         this.logger.info('WebSocket connected');
         this.isConnecting = false;
         this.reconnectAttempt = 0; // Reset backoff on successful connection
@@ -223,7 +236,7 @@ export class WsService {
         this.wsConnected.set(false);
 
         // Only attempt reconnection if we should reconnect and network is online
-        if (this.shouldReconnect && navigator.onLine) {
+        if (this.shouldReconnect && navigator.onLine && this.getCurrentUuid()) {
             this.scheduleReconnect();
         }
     }
@@ -285,7 +298,11 @@ export class WsService {
      * Register this session with the server
      */
     private registerSession(): void {
-        const uuid = this.userStateService.uuid();
+        const uuid = this.getCurrentUuid();
+        if (!uuid) {
+            this.logger.warn('Skipping WebSocket registration because uuid is not available.');
+            return;
+        }
         this.lastRegisteredUuid = uuid;
         try {
             this.send({ action: 'register', sessionId: this.wsSessionId, uuid, version: PROTOCOL_VERSION });
@@ -312,6 +329,10 @@ export class WsService {
      * Schedule a reconnection attempt
      */
     private scheduleReconnect(): void {
+        if (!this.getCurrentUuid()) {
+            this.logger.info('Skipping reconnect scheduling because uuid is not available yet.');
+            return;
+        }
         this.clearReconnectTimer();
         const delay = this.getReconnectDelay();
         this.reconnectAttempt++;
