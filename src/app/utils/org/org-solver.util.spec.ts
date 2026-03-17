@@ -1986,6 +1986,128 @@ function buildRegimentForPerf(regimentIndex: number): GroupSizeResult {
     return resolveFromGroups('Federated Suns', 'Inner Sphere', battalions)[0];
 }
 
+function buildVerifiedMixedRoleRegiments(): GroupSizeResult[] {
+    function buildAirLanceCompany(companyIndex: number): GroupSizeResult {
+        const airLances: GroupSizeResult[] = [];
+
+        for (let airLanceIndex = 0; airLanceIndex < 3; airLanceIndex += 1) {
+            const lanceResult = resolveFromUnits(
+                Array.from({ length: 4 }, (_, unitIndex) =>
+                    createBM(`IS-L-${companyIndex + 1}-${airLanceIndex + 1}-${unitIndex + 1}`),
+                ),
+                'Federated Suns',
+                'Inner Sphere',
+            );
+            const flightResult = resolveFromUnits([
+                createAero(`IS-AF-${companyIndex + 1}-${airLanceIndex + 1}-1`),
+                createAero(`IS-AF-${companyIndex + 1}-${airLanceIndex + 1}-2`),
+            ], 'Federated Suns', 'Inner Sphere');
+
+            expect(lanceResult.length).toBe(1);
+            expect(lanceResult[0].type).toBe('Lance');
+            expect(flightResult.length).toBe(1);
+            expect(flightResult[0].type).toBe('Flight');
+
+            const airLancePass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', [lanceResult[0], flightResult[0]]);
+            const airLancePass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', airLancePass1);
+            const airLancePass3 = resolveFromGroups('Federated Suns', 'Inner Sphere', airLancePass2);
+
+            for (const pass of [airLancePass1, airLancePass2, airLancePass3]) {
+                expect(pass.length).toBe(1);
+                expect(pass[0].type).toBe('Air Lance');
+                expect(pass[0].name).toBe('Air Lance');
+                expect(pass[0].children?.length).toBe(2);
+                expect(pass[0].children?.some((child) => child.type === 'Lance')).toBeTrue();
+                expect(pass[0].children?.some((child) => child.type === 'Flight')).toBeTrue();
+                expect(pass[0].leftoverUnits).toBeUndefined();
+            }
+
+            airLances.push(airLancePass3[0]);
+        }
+
+        const companyPass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', airLances);
+        const companyPass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', companyPass1);
+        const companyPass3 = resolveFromGroups('Federated Suns', 'Inner Sphere', companyPass2);
+
+        for (const pass of [companyPass1, companyPass2, companyPass3]) {
+            expect(pass.length).toBe(1);
+            expect(pass[0].type).toBe('Company');
+            expect(pass[0].name).toBe('Company');
+            expect(pass[0].children?.length).toBe(3);
+            expect(pass[0].children?.every((child) => child.type === 'Air Lance')).toBeTrue();
+            expect(pass[0].leftoverUnits).toBeUndefined();
+        }
+
+        return companyPass3[0];
+    }
+
+    function buildBattalion(battalionIndex: number): GroupSizeResult {
+        const companies = [
+            buildAirLanceCompany(battalionIndex * 3),
+            buildAirLanceCompany(battalionIndex * 3 + 1),
+            buildAirLanceCompany(battalionIndex * 3 + 2),
+        ];
+
+        const battalionPass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', companies);
+        const battalionPass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', battalionPass1);
+        const battalionPass3 = resolveFromGroups('Federated Suns', 'Inner Sphere', battalionPass2);
+
+        for (const pass of [battalionPass1, battalionPass2, battalionPass3]) {
+            expect(pass.length).toBe(1);
+            expect(pass[0].name).toBe('Battalion');
+            expect(pass[0].type).toBe('Battalion');
+            expect(pass[0].children?.length).toBe(3);
+            expect(pass[0].children?.every((child) => child.type === 'Company')).toBeTrue();
+            expect(pass[0].leftoverUnits).toBeUndefined();
+        }
+
+        return battalionPass3[0];
+    }
+
+    function buildRegiment(regimentIndex: number): GroupSizeResult {
+        const battalions = [
+            buildBattalion(regimentIndex * 3),
+            buildBattalion(regimentIndex * 3 + 1),
+            buildBattalion(regimentIndex * 3 + 2),
+        ];
+
+        const regimentPass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', battalions);
+        const regimentPass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', regimentPass1);
+        const regimentPass3 = resolveFromGroups('Federated Suns', 'Inner Sphere', regimentPass2);
+
+        for (const pass of [regimentPass1, regimentPass2, regimentPass3]) {
+            expect(pass.length).toBe(1);
+            expect(pass[0].name).toBe('Regiment');
+            expect(pass[0].type).toBe('Regiment');
+            expect(pass[0].children?.length).toBe(3);
+            expect(pass[0].children?.every((child) => child.type === 'Battalion')).toBeTrue();
+            expect(pass[0].leftoverUnits).toBeUndefined();
+        }
+
+        return regimentPass3[0];
+    }
+
+    return [
+        buildRegiment(0),
+        buildRegiment(1),
+        buildRegiment(2),
+    ];
+}
+
+let cachedMixedRolePerfRegiments: readonly GroupSizeResult[] | null = null;
+
+function getMixedRolePerfRegiments(): readonly GroupSizeResult[] {
+    if (!cachedMixedRolePerfRegiments) {
+        cachedMixedRolePerfRegiments = [
+            buildRegimentForPerf(0),
+            buildRegimentForPerf(1),
+            buildRegimentForPerf(2),
+        ];
+    }
+
+    return cachedMixedRolePerfRegiments;
+}
+
 describe('org-solver.util resolve parity', () => {
     it('resolves 4 BM in a Lance', () => {
         const units: Unit[] = [
@@ -2922,111 +3044,7 @@ describe('org-solver.util aggregation and foreign parity', () => {
     });
 
     it('repeatedly aggregates Inner Sphere Lance and Flight groups up through Air Lances and a Brigade', () => {
-        function buildAirLanceCompany(companyIndex: number): GroupSizeResult {
-            const airLances: GroupSizeResult[] = [];
-
-            for (let airLanceIndex = 0; airLanceIndex < 3; airLanceIndex += 1) {
-                const lanceResult = resolveFromUnits(
-                    Array.from({ length: 4 }, (_, unitIndex) =>
-                        createBM(`IS-L-${companyIndex + 1}-${airLanceIndex + 1}-${unitIndex + 1}`),
-                    ),
-                    'Federated Suns',
-                    'Inner Sphere',
-                );
-                const flightResult = resolveFromUnits([
-                    createAero(`IS-AF-${companyIndex + 1}-${airLanceIndex + 1}-1`),
-                    createAero(`IS-AF-${companyIndex + 1}-${airLanceIndex + 1}-2`),
-                ], 'Federated Suns', 'Inner Sphere');
-
-                expect(lanceResult.length).toBe(1);
-                expect(lanceResult[0].type).toBe('Lance');
-                expect(flightResult.length).toBe(1);
-                expect(flightResult[0].type).toBe('Flight');
-
-                const airLancePass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', [lanceResult[0], flightResult[0]]);
-                const airLancePass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', airLancePass1);
-                const airLancePass3 = resolveFromGroups('Federated Suns', 'Inner Sphere', airLancePass2);
-
-                for (const pass of [airLancePass1, airLancePass2, airLancePass3]) {
-                    expect(pass.length).toBe(1);
-                    expect(pass[0].type).toBe('Air Lance');
-                    expect(pass[0].name).toBe('Air Lance');
-                    expect(pass[0].children?.length).toBe(2);
-                    expect(pass[0].children?.some((child) => child.type === 'Lance')).toBeTrue();
-                    expect(pass[0].children?.some((child) => child.type === 'Flight')).toBeTrue();
-                    expect(pass[0].leftoverUnits).toBeUndefined();
-                }
-
-                airLances.push(airLancePass3[0]);
-            }
-
-            const companyPass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', airLances);
-            const companyPass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', companyPass1);
-            const companyPass3 = resolveFromGroups('Federated Suns', 'Inner Sphere', companyPass2);
-
-            for (const pass of [companyPass1, companyPass2, companyPass3]) {
-                expect(pass.length).toBe(1);
-                expect(pass[0].type).toBe('Company');
-                expect(pass[0].name).toBe('Company');
-                expect(pass[0].children?.length).toBe(3);
-                expect(pass[0].children?.every((child) => child.type === 'Air Lance')).toBeTrue();
-                expect(pass[0].leftoverUnits).toBeUndefined();
-            }
-
-            return companyPass3[0];
-        }
-
-        function buildBattalion(battalionIndex: number): GroupSizeResult {
-            const companies = [
-                buildAirLanceCompany(battalionIndex * 3),
-                buildAirLanceCompany(battalionIndex * 3 + 1),
-                buildAirLanceCompany(battalionIndex * 3 + 2),
-            ];
-
-            const battalionPass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', companies);
-            const battalionPass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', battalionPass1);
-            const battalionPass3 = resolveFromGroups('Federated Suns', 'Inner Sphere', battalionPass2);
-
-            for (const pass of [battalionPass1, battalionPass2, battalionPass3]) {
-                expect(pass.length).toBe(1);
-                expect(pass[0].name).toBe('Battalion');
-                expect(pass[0].type).toBe('Battalion');
-                expect(pass[0].children?.length).toBe(3);
-                expect(pass[0].children?.every((child) => child.type === 'Company')).toBeTrue();
-                expect(pass[0].leftoverUnits).toBeUndefined();
-            }
-
-            return battalionPass3[0];
-        }
-
-        function buildRegiment(regimentIndex: number): GroupSizeResult {
-            const battalions = [
-                buildBattalion(regimentIndex * 3),
-                buildBattalion(regimentIndex * 3 + 1),
-                buildBattalion(regimentIndex * 3 + 2),
-            ];
-
-            const regimentPass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', battalions);
-            const regimentPass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', regimentPass1);
-            const regimentPass3 = resolveFromGroups('Federated Suns', 'Inner Sphere', regimentPass2);
-
-            for (const pass of [regimentPass1, regimentPass2, regimentPass3]) {
-                expect(pass.length).toBe(1);
-                expect(pass[0].name).toBe('Regiment');
-                expect(pass[0].type).toBe('Regiment');
-                expect(pass[0].children?.length).toBe(3);
-                expect(pass[0].children?.every((child) => child.type === 'Battalion')).toBeTrue();
-                expect(pass[0].leftoverUnits).toBeUndefined();
-            }
-
-            return regimentPass3[0];
-        }
-
-        const regiments = [
-            buildRegiment(0),
-            buildRegiment(1),
-            buildRegiment(2),
-        ];
+        const regiments = buildVerifiedMixedRoleRegiments();
 
         const brigadePass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', regiments);
         const brigadePass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', brigadePass1);
@@ -3262,8 +3280,9 @@ describe('org-solver.util performance guards', () => {
     });
 
     it('keeps repeated composed-only aggregation of companies to a regiment cheap', () => {
+        const companyGroups = buildInnerSphereCompanyGroups();
+
         const measurement = measureMedianScenarioMs(() => {
-            const companyGroups = buildInnerSphereCompanyGroups();
             const firstPass = resolveFromGroups('Federated Suns', 'Inner Sphere', companyGroups);
             const secondPass = resolveFromGroups('Federated Suns', 'Inner Sphere', firstPass);
             const thirdPass = resolveFromGroups('Federated Suns', 'Inner Sphere', secondPass);
@@ -3279,13 +3298,21 @@ describe('org-solver.util performance guards', () => {
     });
 
     it('keeps repeated mixed-role aggregation through Air Lances up to a Brigade bounded', () => {
-        const measurement = measureMedianScenarioMs(() => {
-            const regiments = [
-                buildRegimentForPerf(0),
-                buildRegimentForPerf(1),
-                buildRegimentForPerf(2),
-            ];
+        const regiments = getMixedRolePerfRegiments();
 
+        const firstPassMeasurement = measureMedianScenarioMs(() => {
+            const brigadePass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', regiments);
+
+            expect(brigadePass1.length).toBe(1);
+            expect(brigadePass1[0].type).toBe('Brigade');
+            expect(getLastOrgSolveMetrics()?.timedOut).toBeFalse();
+        }, 2);
+
+        expect(firstPassMeasurement.medianMs)
+            .withContext(`first-pass durations=${firstPassMeasurement.durations.join(',')}`)
+            .toBeLessThan(50);
+
+        const measurement = measureMedianScenarioMs(() => {
             const brigadePass1 = resolveFromGroups('Federated Suns', 'Inner Sphere', regiments);
             const brigadePass2 = resolveFromGroups('Federated Suns', 'Inner Sphere', brigadePass1);
             const brigadePass3 = resolveFromGroups('Federated Suns', 'Inner Sphere', brigadePass2);
@@ -3297,6 +3324,6 @@ describe('org-solver.util performance guards', () => {
 
         expect(measurement.medianMs)
             .withContext(`durations=${measurement.durations.join(',')}`)
-            .toBeLessThan(50);
+            .toBeLessThan(20);
     });
 });

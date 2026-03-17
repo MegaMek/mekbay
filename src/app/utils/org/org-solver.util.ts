@@ -296,9 +296,16 @@ interface PlannedCompositionCandidate {
 }
 
 interface CountedCompositionEntry {
+    readonly id: string;
     readonly key: string;
-    readonly groups: readonly GroupFacts[];
+    readonly representativeGroup: GroupFacts;
+    readonly availableCount: number;
     readonly matchingRoleIndexes: readonly number[];
+}
+
+interface CountedCompositionInventory {
+    readonly entries: readonly CountedCompositionEntry[];
+    readonly groupsByEntryId: ReadonlyMap<string, readonly GroupFacts[]>;
 }
 
 interface AbstractCompositionCandidate {
@@ -306,6 +313,11 @@ interface AbstractCompositionCandidate {
     readonly signatureCounts: readonly number[];
     readonly compositionIndex: number;
     readonly modifierStep: ModifierStep;
+}
+
+interface AbstractCompositionPlanResult {
+    readonly candidates: readonly AbstractCompositionCandidate[];
+    readonly groupsByEntryId: ReadonlyMap<string, readonly GroupFacts[]>;
 }
 
 interface CanonicalGroupPoolSignatureEntry {
@@ -401,6 +413,22 @@ const ABSTRACT_UNIT_BUCKET_NAMES: readonly OrgUnitBucketName[] = [
 
 const resolveContextTemplateByDefinition = new WeakMap<OrgDefinitionSpec, ResolveContextTemplate>();
 const compiledRuleStageMetadataByRule = new WeakMap<OrgRuleDefinition, CompiledRuleStageMetadata>();
+const compiledGroupFactsByGroup = new WeakMap<GroupSizeResult, GroupFacts>();
+
+function getCompiledGroupFacts(group: GroupSizeResult): GroupFacts {
+    const cached = compiledGroupFactsByGroup.get(group);
+    if (cached) {
+        return cached;
+    }
+
+    const facts = compileGroupFacts(group);
+    compiledGroupFactsByGroup.set(group, facts);
+    return facts;
+}
+
+function getCompiledGroupFactsList(groups: readonly GroupSizeResult[]): GroupFacts[] {
+    return groups.map((group) => getCompiledGroupFacts(group));
+}
 
 function createSolverGuard(): SolverGuard {
     return {
@@ -1408,7 +1436,7 @@ function normalizeCIFormationGroups(
 
     for (const rule of context.ciFormationRules) {
         const entryByMoveClass = new Map(rule.entries.map((entry) => [entry.moveClass, entry]));
-        const groupFacts = compileGroupFactsList(nextPool);
+        const groupFacts = getCompiledGroupFactsList(nextPool);
         const candidates = groupFacts.filter((facts) => {
             if (facts.type !== rule.fragmentType && facts.type !== rule.type) {
                 return false;
@@ -2219,10 +2247,10 @@ function getGroupFactsSignatureKey(group: GroupFacts): string {
     ].join('||');
 }
 
-function buildCountedCompositionEntries(
+function buildCountedCompositionInventory(
     groups: readonly GroupFacts[],
     childRoles: readonly OrgChildRoleSpec[],
-): CountedCompositionEntry[] {
+): CountedCompositionInventory {
     const byKey = new Map<string, GroupFacts[]>();
 
     for (const group of groups) {
@@ -2235,19 +2263,28 @@ function buildCountedCompositionEntries(
         }
     }
 
-    return [...byKey.entries()]
-        .map(([key, bucketGroups]) => ({
-            key,
-            groups: bucketGroups,
-            matchingRoleIndexes: childRoles
-                .map((role, roleIndex) => ({ role, roleIndex }))
-                .filter(({ role }) => groupMatchesRole(bucketGroups[0], role))
-                .map(({ roleIndex }) => roleIndex),
-        }))
+    const groupsByEntryId = new Map<string, readonly GroupFacts[]>();
+    const entries = [...byKey.entries()]
+        .map(([key, bucketGroups]) => {
+            const representativeGroup = bucketGroups[0];
+            const id = `${key}@@${representativeGroup.groupFactId}`;
+            groupsByEntryId.set(id, bucketGroups);
+
+            return {
+                id,
+                key,
+                representativeGroup,
+                availableCount: bucketGroups.length,
+                matchingRoleIndexes: childRoles
+                    .map((role, roleIndex) => ({ role, roleIndex }))
+                    .filter(({ role }) => groupMatchesRole(representativeGroup, role))
+                    .map(({ roleIndex }) => roleIndex),
+            };
+        })
         .filter((entry) => entry.matchingRoleIndexes.length > 0)
         .sort((left, right) => {
-            const leftGroup = left.groups[0];
-            const rightGroup = right.groups[0];
+            const leftGroup = left.representativeGroup;
+            const rightGroup = right.representativeGroup;
 
             if (leftGroup.tier !== rightGroup.tier) {
                 return leftGroup.tier - rightGroup.tier;
@@ -2255,6 +2292,11 @@ function buildCountedCompositionEntries(
 
             return left.key.localeCompare(right.key);
         });
+
+    return {
+        entries,
+        groupsByEntryId,
+    };
 }
 
 function canAssignSignatureCountsToRoles(
@@ -2478,6 +2520,7 @@ function enumerateAbstractSelectionsViaRoleInventory(
     targetCount: number,
     guard: SolverGuard,
     selectionPredicate?: (selected: readonly GroupFacts[]) => boolean,
+    groupsByEntryId?: ReadonlyMap<string, readonly GroupFacts[]>,
 ): readonly number[][] {
     if (entries.length === 0 || targetCount <= 0) {
         return [];
@@ -2523,7 +2566,7 @@ function enumerateAbstractSelectionsViaRoleInventory(
             return;
         }
 
-        if (selectionPredicate && !selectionPredicate(getPreviewGroupsForAbstractSelection(entries, selection))) {
+        if (selectionPredicate && groupsByEntryId && !selectionPredicate(getPreviewGroupsForAbstractSelection(entries, selection, groupsByEntryId))) {
             return;
         }
 
@@ -2619,7 +2662,7 @@ function planCountedCompositionsFromEntries(
         return [];
     }
 
-    const initialCounts = entries.map((entry) => entry.groups.length);
+    const initialCounts = entries.map((entry) => entry.availableCount);
     const steps = config.modifierDescriptor.stepsDescending.filter((step) => !allowedModifierKeys || allowedModifierKeys.has(step.modifierKey));
     const transitionMemo = new Map<string, readonly number[][]>();
     const planMemo = new Map<string, readonly AbstractCompositionCandidate[]>();
@@ -2699,7 +2742,7 @@ function planCountedCompositions(
     allowedModifierKeys?: ReadonlySet<string>,
 ): readonly AbstractCompositionCandidate[] {
     return planCountedCompositionsFromEntries(
-        buildCountedCompositionEntries(groups, config.childRoles),
+        buildCountedCompositionInventory(groups, config.childRoles).entries,
         config,
         guard,
         allowedModifierKeys,
@@ -2708,8 +2751,9 @@ function planCountedCompositions(
 
 function materializeAbstractCompositionPlan(
     candidates: readonly AbstractCompositionCandidate[],
+    groupsByEntryId: ReadonlyMap<string, readonly GroupFacts[]>,
 ): ConcreteCompositionCandidate[] {
-    const availableGroups = new Map<CountedCompositionEntry, GroupFacts[]>();
+    const availableGroups = new Map<string, GroupFacts[]>();
 
     return candidates.map((candidate) => {
         const selectedGroups: GroupFacts[] = [];
@@ -2720,10 +2764,10 @@ function materializeAbstractCompositionPlan(
                 return;
             }
 
-            let remaining = availableGroups.get(entry);
+            let remaining = availableGroups.get(entry.id);
             if (!remaining) {
-                remaining = [...entry.groups];
-                availableGroups.set(entry, remaining);
+                remaining = [...(groupsByEntryId.get(entry.id) ?? [])];
+                availableGroups.set(entry.id, remaining);
             }
 
             for (let taken = 0; taken < count; taken += 1) {
@@ -2744,9 +2788,10 @@ function materializeAbstractCompositionPlan(
 
 function resolvePlannedCompositionCandidates(
     candidates: readonly AbstractCompositionCandidate[],
+    groupsByEntryId: ReadonlyMap<string, readonly GroupFacts[]>,
     recordByGroupFactId: ReadonlyMap<number, PlannedGroupRecord>,
 ): PlannedCompositionCandidate[] {
-    const availableGroups = new Map<CountedCompositionEntry, PlannedGroupRecord[]>();
+    const availableGroups = new Map<string, PlannedGroupRecord[]>();
 
     return candidates.map((candidate) => {
         const selectedGroups: PlannedGroupRecord[] = [];
@@ -2757,12 +2802,12 @@ function resolvePlannedCompositionCandidates(
                 return;
             }
 
-            let remaining = availableGroups.get(entry);
+            let remaining = availableGroups.get(entry.id);
             if (!remaining) {
-                remaining = entry.groups
+                remaining = (groupsByEntryId.get(entry.id) ?? [])
                     .map((group) => recordByGroupFactId.get(group.groupFactId))
                     .filter((group): group is PlannedGroupRecord => !!group);
-                availableGroups.set(entry, remaining);
+                availableGroups.set(entry.id, remaining);
             }
 
             for (let taken = 0; taken < count; taken += 1) {
@@ -2784,6 +2829,7 @@ function resolvePlannedCompositionCandidates(
 function getPreviewGroupsForAbstractSelection(
     entries: readonly CountedCompositionEntry[],
     signatureCounts: readonly number[],
+    groupsByEntryId: ReadonlyMap<string, readonly GroupFacts[]>,
 ): GroupFacts[] {
     const groups: GroupFacts[] = [];
 
@@ -2793,7 +2839,7 @@ function getPreviewGroupsForAbstractSelection(
             return;
         }
 
-        groups.push(...entry.groups.slice(0, count));
+        groups.push(...(groupsByEntryId.get(entry.id) ?? []).slice(0, count));
     });
 
     return groups;
@@ -2802,8 +2848,9 @@ function getPreviewGroupsForAbstractSelection(
 function getAbstractPlanLeftoverGroups(
     entries: readonly CountedCompositionEntry[],
     candidates: readonly AbstractCompositionCandidate[],
+    groupsByEntryId: ReadonlyMap<string, readonly GroupFacts[]>,
 ): GroupFacts[] {
-    const consumedCounts = new Map<CountedCompositionEntry, number>();
+    const consumedCounts = new Map<string, number>();
 
     for (const candidate of candidates) {
         candidate.signatureCounts.forEach((count, entryIndex) => {
@@ -2811,11 +2858,11 @@ function getAbstractPlanLeftoverGroups(
             if (!entry || count <= 0) {
                 return;
             }
-            consumedCounts.set(entry, (consumedCounts.get(entry) ?? 0) + count);
+            consumedCounts.set(entry.id, (consumedCounts.get(entry.id) ?? 0) + count);
         });
     }
 
-    return entries.flatMap((entry) => entry.groups.slice(consumedCounts.get(entry) ?? 0));
+    return entries.flatMap((entry) => (groupsByEntryId.get(entry.id) ?? []).slice(consumedCounts.get(entry.id) ?? 0));
 }
 
 function findAbstractCompositionSelection(
@@ -2825,12 +2872,13 @@ function findAbstractCompositionSelection(
     guard: SolverGuard,
     selectionPredicate?: (selected: readonly GroupFacts[]) => boolean,
 ): GroupFacts[] | null {
-    const entries = buildCountedCompositionEntries(groups, childRoles);
+    const inventory = buildCountedCompositionInventory(groups, childRoles);
+    const entries = inventory.entries;
     if (entries.length === 0) {
         return null;
     }
 
-    const availableCounts = entries.map((entry) => entry.groups.length);
+    const availableCounts = entries.map((entry) => entry.availableCount);
     const selection = enumerateAbstractSelectionsViaRoleInventory(
         entries,
         availableCounts,
@@ -2838,9 +2886,10 @@ function findAbstractCompositionSelection(
         targetCount,
         guard,
         selectionPredicate,
+        inventory.groupsByEntryId,
     )[0];
 
-    return selection ? getPreviewGroupsForAbstractSelection(entries, selection) : null;
+    return selection ? getPreviewGroupsForAbstractSelection(entries, selection, inventory.groupsByEntryId) : null;
 }
 
 function planComposedConfig(
@@ -2849,7 +2898,7 @@ function planComposedConfig(
     registry: OrgRuleRegistry,
     guard: SolverGuard,
     allowedModifierKeys?: ReadonlySet<string>,
-): { readonly entries: readonly CountedCompositionEntry[]; readonly candidates: readonly AbstractCompositionCandidate[] } {
+): { readonly entries: readonly CountedCompositionEntry[]; readonly candidates: readonly AbstractCompositionCandidate[]; readonly groupsByEntryId: ReadonlyMap<string, readonly GroupFacts[]> } {
     const remainingByBucket = new Map<string, GroupFacts[]>();
 
     for (const group of groups) {
@@ -2864,15 +2913,17 @@ function planComposedConfig(
 
     const entries: CountedCompositionEntry[] = [];
     const candidates: AbstractCompositionCandidate[] = [];
+    const groupsByEntryId = new Map<string, readonly GroupFacts[]>();
     const shouldPreferHomogeneousLeafChildren = shouldPreferHomogeneousChildren(config.childRoles)
         && groups.every((group) => !group.group.children || group.group.children.length === 0);
 
     const materializeBucketGroupSet = (bucketGroups: readonly GroupFacts[]): GroupFacts[] => {
-        const bucketEntries = buildCountedCompositionEntries(bucketGroups, config.childRoles);
-        const abstractPlan = planCountedCompositionsFromEntries(bucketEntries, config, guard, allowedModifierKeys);
-        entries.push(...bucketEntries);
+        const inventory = buildCountedCompositionInventory(bucketGroups, config.childRoles);
+        const abstractPlan = planCountedCompositionsFromEntries(inventory.entries, config, guard, allowedModifierKeys);
+        entries.push(...inventory.entries);
+        inventory.groupsByEntryId.forEach((value, key) => groupsByEntryId.set(key, value));
         candidates.push(...abstractPlan);
-        return getAbstractPlanLeftoverGroups(bucketEntries, abstractPlan);
+        return getAbstractPlanLeftoverGroups(inventory.entries, abstractPlan, inventory.groupsByEntryId);
     };
 
     for (const bucketGroups of remainingByBucket.values()) {
@@ -2889,7 +2940,7 @@ function planComposedConfig(
         materializeBucketGroupSet(preferredLeftovers);
     }
 
-    return { entries, candidates };
+    return { entries, candidates, groupsByEntryId };
 }
 
 function planPatternComposedConfig(
@@ -2899,7 +2950,7 @@ function planPatternComposedConfig(
     registry: OrgRuleRegistry,
     guard: SolverGuard,
     allowedModifierKeys?: ReadonlySet<string>,
-): { readonly entries: readonly CountedCompositionEntry[]; readonly candidates: readonly AbstractCompositionCandidate[] } {
+): { readonly entries: readonly CountedCompositionEntry[]; readonly candidates: readonly AbstractCompositionCandidate[]; readonly groupsByEntryId: ReadonlyMap<string, readonly GroupFacts[]> } {
     const remainingByBucket = new Map<string, GroupFacts[]>();
 
     for (const group of groups) {
@@ -2914,11 +2965,13 @@ function planPatternComposedConfig(
 
     const entries: CountedCompositionEntry[] = [];
     const candidates: AbstractCompositionCandidate[] = [];
+    const groupsByEntryId = new Map<string, readonly GroupFacts[]>();
 
     const planBucketGroupSet = (bucketGroups: readonly GroupFacts[]): GroupFacts[] => {
-        const bucketEntries = buildCountedCompositionEntries(bucketGroups, config.childRoles);
+        const inventory = buildCountedCompositionInventory(bucketGroups, config.childRoles);
+        const bucketEntries = inventory.entries;
         const abstractPlan: AbstractCompositionCandidate[] = [];
-        let availableCounts = bucketEntries.map((entry) => entry.groups.length);
+        let availableCounts = bucketEntries.map((entry) => entry.availableCount);
 
         for (const step of config.modifierDescriptor.stepsDescending) {
             if (allowedModifierKeys && !allowedModifierKeys.has(step.modifierKey)) {
@@ -2932,7 +2985,7 @@ function planPatternComposedConfig(
                 const selection = enumerateAbstractSelections(bucketEntries, availableCounts, config.childRoles, step.count, guard)
                     .find((candidateSelection) => matchesComposedPatternSelection(
                         rule,
-                        getPreviewGroupsForAbstractSelection(bucketEntries, candidateSelection),
+                        getPreviewGroupsForAbstractSelection(bucketEntries, candidateSelection, inventory.groupsByEntryId),
                         registry,
                     ));
                 if (!selection) {
@@ -2951,15 +3004,16 @@ function planPatternComposedConfig(
         }
 
         entries.push(...bucketEntries);
+        inventory.groupsByEntryId.forEach((value, key) => groupsByEntryId.set(key, value));
         candidates.push(...abstractPlan);
-        return getAbstractPlanLeftoverGroups(bucketEntries, abstractPlan);
+        return getAbstractPlanLeftoverGroups(bucketEntries, abstractPlan, inventory.groupsByEntryId);
     };
 
     for (const bucketGroups of remainingByBucket.values()) {
         planBucketGroupSet(bucketGroups);
     }
 
-    return { entries, candidates };
+    return { entries, candidates, groupsByEntryId };
 }
 
 function materializeComposedPatternRuleInternal(
@@ -2971,7 +3025,7 @@ function materializeComposedPatternRuleInternal(
     const config = buildPatternCompositionConfig(rule);
     const guard = createSolverGuard();
     const planned = planPatternComposedConfig(rule, groupFacts, config, registry, guard, allowedModifierKeys);
-    const concreteCandidates = materializeAbstractCompositionPlan(planned.candidates);
+    const concreteCandidates = materializeAbstractCompositionPlan(planned.candidates, planned.groupsByEntryId);
 
     const groups = concreteCandidates.map((candidate) =>
         createComposedGroup(rule, candidate.modifierStep, candidate.groups.map((group) => group.group)),
@@ -2990,10 +3044,13 @@ function planComposedPatternRuleInternal(
     registry: OrgRuleRegistry,
     guard: SolverGuard,
     allowedModifierKeys?: ReadonlySet<string>,
-): readonly AbstractCompositionCandidate[] {
+): AbstractCompositionPlanResult {
     const config = buildPatternCompositionConfig(rule);
     const planned = planPatternComposedConfig(rule, groupFacts, config, registry, guard, allowedModifierKeys);
-    return planned.candidates;
+    return {
+        candidates: planned.candidates,
+        groupsByEntryId: planned.groupsByEntryId,
+    };
 }
 
 function materializeComposedCountRuleInternal(
@@ -3016,7 +3073,7 @@ function materializeComposedCountRuleInternal(
         return { groups: [], leftoverGroupFacts: [...groupFacts] };
     }
 
-    const concreteCandidates = materializeAbstractCompositionPlan(best.candidates);
+    const concreteCandidates = materializeAbstractCompositionPlan(best.candidates, best.groupsByEntryId);
 
     const groups = concreteCandidates.map((candidate) =>
         createComposedGroup(rule, candidate.modifierStep, candidate.groups.map((group) => group.group)),
@@ -3035,7 +3092,7 @@ function planComposedCountRuleInternal(
     registry: OrgRuleRegistry,
     guard: SolverGuard,
     allowedModifierKeys?: ReadonlySet<string>,
-): readonly AbstractCompositionCandidate[] {
+): AbstractCompositionPlanResult {
     const configs = buildCompositionConfigs(rule);
     const evaluations = configs.map((config) => ({
         config,
@@ -3045,7 +3102,10 @@ function planComposedCountRuleInternal(
         return compareAbstractCompositionPlans(right.candidates, left.candidates);
     })[0];
 
-    return best?.candidates ?? [];
+    return {
+        candidates: best?.candidates ?? [],
+        groupsByEntryId: best?.groupsByEntryId ?? new Map<string, readonly GroupFacts[]>(),
+    };
 }
 
 export function evaluateComposedCountRule(
@@ -3140,7 +3200,7 @@ export function evaluateOrgDefinition(
     groups: readonly GroupSizeResult[] = [],
 ): OrgDefinitionEvaluationResult {
     const unitFacts = compileUnitFactsList(units);
-    const groupFacts = compileGroupFactsList(groups);
+    const groupFacts = getCompiledGroupFactsList(groups);
     const registry = getRuleRegistry(definition);
     const ruleEvaluations = new Map<OrgRuleDefinition, unknown>();
 
@@ -3455,11 +3515,15 @@ function materializeComposedRulesByStageState(
             allowedModifierKeys,
         );
 
-        if (abstractCandidates.length === 0) {
+        if (abstractCandidates.candidates.length === 0) {
             continue;
         }
 
-        const plannedCandidates = resolvePlannedCompositionCandidates(abstractCandidates, state.recordByGroupFactId);
+        const plannedCandidates = resolvePlannedCompositionCandidates(
+            abstractCandidates.candidates,
+            abstractCandidates.groupsByEntryId,
+            state.recordByGroupFactId,
+        );
         const usedChildren = new Set(plannedCandidates.flatMap((candidate) => candidate.groups.map((group) => group.recordId)));
         const producedGroups = plannedCandidates.map((candidate) => createAbstractComposedGroupRecord(
             rule,
@@ -3663,7 +3727,7 @@ function planComposedRuleInternal(
     registry: OrgRuleRegistry,
     guard: SolverGuard,
     allowedModifierKeys?: ReadonlySet<string>,
-): readonly AbstractCompositionCandidate[] {
+): AbstractCompositionPlanResult {
     return rule.kind === 'composed-count'
         ? planComposedCountRuleInternal(rule, groupFacts, registry, guard, allowedModifierKeys)
         : planComposedPatternRuleInternal(rule, groupFacts, registry, guard, allowedModifierKeys);
@@ -3671,14 +3735,14 @@ function planComposedRuleInternal(
 
 function buildPlannedPromotionResult(
     rule: OrgComposedCountRule | OrgComposedPatternRule,
-    abstractCandidates: readonly AbstractCompositionCandidate[],
+    plan: AbstractCompositionPlanResult,
     recordByGroupFactId: ReadonlyMap<number, PlannedGroupRecord>,
 ): { readonly usedChildren: ReadonlySet<number>; readonly producedGroups: readonly PlannedGroupRecord[] } | null {
-    if (abstractCandidates.length === 0) {
+    if (plan.candidates.length === 0) {
         return null;
     }
 
-    const plannedCandidates = resolvePlannedCompositionCandidates(abstractCandidates, recordByGroupFactId);
+    const plannedCandidates = resolvePlannedCompositionCandidates(plan.candidates, plan.groupsByEntryId, recordByGroupFactId);
     const usedChildren = new Set(plannedCandidates.flatMap((candidate) => candidate.groups.map((group) => group.recordId)));
     const producedGroups = plannedCandidates.map((candidate) => createAbstractComposedGroupRecord(
         rule,
@@ -3944,11 +4008,15 @@ function repairSubRegularGroupsForPromotionState(
             context.definition.registry,
             createSolverGuard(),
         );
-        if (abstractCandidates.length === 0) {
+        if (abstractCandidates.candidates.length === 0) {
             continue;
         }
 
-        const plannedCandidates = resolvePlannedCompositionCandidates(abstractCandidates, childState.recordByGroupFactId);
+        const plannedCandidates = resolvePlannedCompositionCandidates(
+            abstractCandidates.candidates,
+            abstractCandidates.groupsByEntryId,
+            childState.recordByGroupFactId,
+        );
         const repackagedRecords = plannedCandidates.map((candidate) => createAbstractComposedGroupRecord(
             rule,
             candidate.modifierStep,
@@ -4495,6 +4563,46 @@ function isStableSingleGroupResolveResult(group: GroupSizeResult, context: Resol
         && !group.leftoverUnitAllocations;
 }
 
+function isStableNativeRegularGroupInput(group: GroupSizeResult, context: ResolveContext): boolean {
+    return isStableSingleGroupResolveResult(group, context)
+        && group.provenance === 'input-group'
+        && group.modifierKey === '';
+}
+
+function finalizeResolvedCandidates(
+    candidateStates: readonly ResolvedState[],
+    regularPoolState: CanonicalGroupPoolState,
+    context: ResolveContext,
+    metrics: MutableOrgSolveMetrics,
+    solveStartedAtMs: number,
+    guard: SolverGuard,
+): GroupSizeResult[] {
+    let phaseStartedAtMs = getSolveTimestampMs();
+    const wholeComposedState = resolveWholeComposedCandidateState(regularPoolState, context, createSolverGuard());
+    addMetricDuration(metrics, 'wholeComposedMs', phaseStartedAtMs);
+
+    const allResolvedStates = [...candidateStates];
+    const primaryState = allResolvedStates[0];
+    if (wholeComposedState && primaryState && primaryState.leftoverUnits.length === 0 && primaryState.leftoverUnitAllocations.length === 0) {
+        allResolvedStates.push({ canonicalState: wholeComposedState, leftoverUnits: [], leftoverUnitAllocations: [] });
+    }
+
+    const bestState = pickBestResolvedState(allResolvedStates, context);
+
+    phaseStartedAtMs = getSolveTimestampMs();
+    const materialized = materializeResolvedState(bestState);
+    addMetricDuration(metrics, 'finalMaterializationMs', phaseStartedAtMs);
+
+    if (activeOrgSolveMetrics) {
+        activeOrgSolveMetrics.timedOut = guard.timedOut;
+    }
+    addMetricDuration(metrics, 'totalSolveMs', solveStartedAtMs);
+    lastOrgSolveMetrics = snapshotOrgSolveMetrics(activeOrgSolveMetrics);
+    activeOrgSolveMetrics = null;
+
+    return materialized;
+}
+
 function createSyntheticGroupForRule(
     rule: OrgLeafCountRule | OrgLeafPatternRule | OrgComposedCountRule,
     modifierStep: ModifierStep,
@@ -4512,7 +4620,7 @@ function createSyntheticGroupForRule(
 }
 
 function createConcretePlannedGroupRecord(group: GroupSizeResult): PlannedGroupRecord {
-    const facts = compileGroupFacts(group);
+    const facts = getCompiledGroupFacts(group);
 
     return {
         recordId: facts.groupFactId,
@@ -4793,14 +4901,19 @@ function resolveWithDefinition(
         ...normalizedInputGroups.map((group) => createConcretePlannedGroupRecord(group)),
         ...regularLeafResult.records,
     ]);
+    const canSkipInitialGroupRepair = compiledUnits.length === 0
+        && normalizedInputGroups.length > 0
+        && normalizedInputGroups.every((group) => isStableNativeRegularGroupInput(group, context));
 
-    phaseStartedAtMs = getSolveTimestampMs();
-    initialPoolState = repairSubRegularGroupsForPromotionState(initialPoolState, context);
-    addMetricDuration(metrics, 'initialRepairMs', phaseStartedAtMs);
+    if (!canSkipInitialGroupRepair) {
+        phaseStartedAtMs = getSolveTimestampMs();
+        initialPoolState = repairSubRegularGroupsForPromotionState(initialPoolState, context);
+        addMetricDuration(metrics, 'initialRepairMs', phaseStartedAtMs);
 
-    phaseStartedAtMs = getSolveTimestampMs();
-    initialPoolState = preAssimilateUnderRegularGroupState(initialPoolState, context, guard);
-    addMetricDuration(metrics, 'initialAssimilationMs', phaseStartedAtMs);
+        phaseStartedAtMs = getSolveTimestampMs();
+        initialPoolState = preAssimilateUnderRegularGroupState(initialPoolState, context, guard);
+        addMetricDuration(metrics, 'initialAssimilationMs', phaseStartedAtMs);
+    }
 
     phaseStartedAtMs = getSolveTimestampMs();
     const wholeComposedFromInitialState = resolveWholeComposedCandidateState(initialPoolState, context, createSolverGuard());
@@ -4850,28 +4963,7 @@ function resolveWithDefinition(
         candidateStates.push({ canonicalState: createCanonicalGroupPoolStateFromRecords([wholeLeafRecord]), leftoverUnits: [], leftoverUnitAllocations: [] });
     }
 
-    phaseStartedAtMs = getSolveTimestampMs();
-    const wholeComposedState = resolveWholeComposedCandidateState(regularPoolState, context, createSolverGuard());
-    addMetricDuration(metrics, 'wholeComposedMs', phaseStartedAtMs);
-
-    if (wholeComposedState && leftoverUnits.length === 0 && leftoverUnitAllocations.length === 0) {
-        candidateStates.push({ canonicalState: wholeComposedState, leftoverUnits: [], leftoverUnitAllocations: [] });
-    }
-
-    const bestState = pickBestResolvedState(candidateStates, context);
-
-    phaseStartedAtMs = getSolveTimestampMs();
-    const materialized = materializeResolvedState(bestState);
-    addMetricDuration(metrics, 'finalMaterializationMs', phaseStartedAtMs);
-
-    if (activeOrgSolveMetrics) {
-        activeOrgSolveMetrics.timedOut = guard.timedOut;
-    }
-    addMetricDuration(metrics, 'totalSolveMs', solveStartedAtMs);
-    lastOrgSolveMetrics = snapshotOrgSolveMetrics(activeOrgSolveMetrics);
-    activeOrgSolveMetrics = null;
-
-    return materialized;
+    return finalizeResolvedCandidates(candidateStates, regularPoolState, context, metrics, solveStartedAtMs, guard);
 }
 
 export function resolveFromUnits(
