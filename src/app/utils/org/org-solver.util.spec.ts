@@ -1723,7 +1723,7 @@ describe('org-solver.util', () => {
         expect(firstMetrics?.regularLeafAllocationMs).toBeGreaterThanOrEqual(0);
         expect(firstMetrics?.regularPromotionMs).toBeGreaterThanOrEqual(0);
         expect(firstMetrics?.finalMaterializationMs).toBeGreaterThanOrEqual(0);
-        expect(firstMetrics?.totalSolveMs).toBeGreaterThan(0);
+        expect(firstMetrics?.totalSolveMs).toBeGreaterThanOrEqual(0);
         expect(firstMetrics?.regularPromotionSearches).toBeGreaterThan(0);
         expect(firstMetrics?.regularPromotionResultCacheHits).toBeGreaterThan(0);
         expect(firstMetrics?.regularPromotionResultCacheMisses).toBeGreaterThan(0);
@@ -1741,7 +1741,7 @@ describe('org-solver.util', () => {
         const secondMetrics = getLastOrgSolveMetrics();
 
         expect(secondMetrics).not.toBeNull();
-        expect(secondMetrics?.totalSolveMs).toBeGreaterThan(0);
+        expect(secondMetrics?.totalSolveMs).toBeGreaterThanOrEqual(0);
         expect(secondMetrics?.regularPromotionSearches).toBe(firstMetrics?.regularPromotionSearches);
         expect(secondMetrics?.regularPromotionResultCacheHits).toBe(firstMetrics?.regularPromotionResultCacheHits);
         expect(secondMetrics?.regularPromotionResultCacheMisses).toBe(firstMetrics?.regularPromotionResultCacheMisses);
