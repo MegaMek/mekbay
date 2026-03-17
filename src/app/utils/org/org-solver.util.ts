@@ -57,6 +57,17 @@ const MAX_PROMOTION_LOOP_ITERATIONS = 64;
 let nextSyntheticGroupFactId = -1;
 
 interface MutableOrgSolveMetrics {
+    factCompilationMs: number;
+    inputNormalizationMs: number;
+    regularLeafAllocationMs: number;
+    initialRepairMs: number;
+    initialAssimilationMs: number;
+    wholeComposedMs: number;
+    leftoverImprovementMs: number;
+    regularPromotionMs: number;
+    subRegularFallbackMs: number;
+    finalMaterializationMs: number;
+    totalSolveMs: number;
     regularPromotionSearches: number;
     regularPromotionResultCacheHits: number;
     regularPromotionResultCacheMisses: number;
@@ -91,6 +102,17 @@ interface ModifierStep {
 
 function createMutableOrgSolveMetrics(): MutableOrgSolveMetrics {
     return {
+        factCompilationMs: 0,
+        inputNormalizationMs: 0,
+        regularLeafAllocationMs: 0,
+        initialRepairMs: 0,
+        initialAssimilationMs: 0,
+        wholeComposedMs: 0,
+        leftoverImprovementMs: 0,
+        regularPromotionMs: 0,
+        subRegularFallbackMs: 0,
+        finalMaterializationMs: 0,
+        totalSolveMs: 0,
         regularPromotionSearches: 0,
         regularPromotionResultCacheHits: 0,
         regularPromotionResultCacheMisses: 0,
@@ -109,6 +131,17 @@ function snapshotOrgSolveMetrics(metrics: MutableOrgSolveMetrics | null): OrgSol
     }
 
     return {
+        factCompilationMs: metrics.factCompilationMs,
+        inputNormalizationMs: metrics.inputNormalizationMs,
+        regularLeafAllocationMs: metrics.regularLeafAllocationMs,
+        initialRepairMs: metrics.initialRepairMs,
+        initialAssimilationMs: metrics.initialAssimilationMs,
+        wholeComposedMs: metrics.wholeComposedMs,
+        leftoverImprovementMs: metrics.leftoverImprovementMs,
+        regularPromotionMs: metrics.regularPromotionMs,
+        subRegularFallbackMs: metrics.subRegularFallbackMs,
+        finalMaterializationMs: metrics.finalMaterializationMs,
+        totalSolveMs: metrics.totalSolveMs,
         regularPromotionSearches: metrics.regularPromotionSearches,
         regularPromotionResultCacheHits: metrics.regularPromotionResultCacheHits,
         regularPromotionResultCacheMisses: metrics.regularPromotionResultCacheMisses,
@@ -194,6 +227,17 @@ export interface MaterializedComposedGroupResult {
 }
 
 export interface OrgSolveMetrics {
+    readonly factCompilationMs: number;
+    readonly inputNormalizationMs: number;
+    readonly regularLeafAllocationMs: number;
+    readonly initialRepairMs: number;
+    readonly initialAssimilationMs: number;
+    readonly wholeComposedMs: number;
+    readonly leftoverImprovementMs: number;
+    readonly regularPromotionMs: number;
+    readonly subRegularFallbackMs: number;
+    readonly finalMaterializationMs: number;
+    readonly totalSolveMs: number;
     readonly regularPromotionSearches: number;
     readonly regularPromotionResultCacheHits: number;
     readonly regularPromotionResultCacheMisses: number;
@@ -365,6 +409,31 @@ function createSolverGuard(): SolverGuard {
         compositionVisits: 0,
         timedOut: false,
     };
+}
+
+function getSolveTimestampMs(): number {
+    return Date.now();
+}
+
+function addMetricDuration(metrics: MutableOrgSolveMetrics | null, key: keyof Pick<
+    MutableOrgSolveMetrics,
+    'factCompilationMs'
+    | 'inputNormalizationMs'
+    | 'regularLeafAllocationMs'
+    | 'initialRepairMs'
+    | 'initialAssimilationMs'
+    | 'wholeComposedMs'
+    | 'leftoverImprovementMs'
+    | 'regularPromotionMs'
+    | 'subRegularFallbackMs'
+    | 'finalMaterializationMs'
+    | 'totalSolveMs'
+>, startedAtMs: number): void {
+    if (!metrics) {
+        return;
+    }
+
+    metrics[key] += Math.max(0, getSolveTimestampMs() - startedAtMs);
 }
 
 function allocateSyntheticGroupFactId(): number {
@@ -4697,14 +4766,26 @@ function resolveWithDefinition(
 ): GroupSizeResult[] {
     activeOrgSolveMetrics = createMutableOrgSolveMetrics();
     lastOrgSolveMetrics = null;
+    const solveStartedAtMs = getSolveTimestampMs();
+    const metrics = activeOrgSolveMetrics;
 
     const context = getResolveContext(definition);
     const guard = createSolverGuard();
+
+    let phaseStartedAtMs = getSolveTimestampMs();
     const compiledUnits = compileUnitFactsList(units);
+    addMetricDuration(metrics, 'factCompilationMs', phaseStartedAtMs);
+
     const wholeLeafRecord = groups.length === 0 ? resolveWholeLeafCandidateRecord(compiledUnits, context) : null;
 
+    phaseStartedAtMs = getSolveTimestampMs();
     const normalizedInputGroups = normalizeCIFormationGroups(groups, context);
+    addMetricDuration(metrics, 'inputNormalizationMs', phaseStartedAtMs);
+
+    phaseStartedAtMs = getSolveTimestampMs();
     const regularLeafResult = materializeLeafRulesByStageRecords(compiledUnits, context, 'regular');
+    addMetricDuration(metrics, 'regularLeafAllocationMs', phaseStartedAtMs);
+
     const leftoverUnits = [...regularLeafResult.leftover];
     const leftoverUnitAllocations = [...regularLeafResult.leftoverUnitAllocations];
 
@@ -4712,16 +4793,34 @@ function resolveWithDefinition(
         ...normalizedInputGroups.map((group) => createConcretePlannedGroupRecord(group)),
         ...regularLeafResult.records,
     ]);
+
+    phaseStartedAtMs = getSolveTimestampMs();
     initialPoolState = repairSubRegularGroupsForPromotionState(initialPoolState, context);
+    addMetricDuration(metrics, 'initialRepairMs', phaseStartedAtMs);
+
+    phaseStartedAtMs = getSolveTimestampMs();
     initialPoolState = preAssimilateUnderRegularGroupState(initialPoolState, context, guard);
+    addMetricDuration(metrics, 'initialAssimilationMs', phaseStartedAtMs);
 
+    phaseStartedAtMs = getSolveTimestampMs();
     const wholeComposedFromInitialState = resolveWholeComposedCandidateState(initialPoolState, context, createSolverGuard());
-    const initialImprovedPoolState = runLeftoverImprovementLoopState(initialPoolState, context, createSolverGuard());
+    addMetricDuration(metrics, 'wholeComposedMs', phaseStartedAtMs);
 
+    phaseStartedAtMs = getSolveTimestampMs();
+    const initialImprovedPoolState = runLeftoverImprovementLoopState(initialPoolState, context, createSolverGuard());
+    addMetricDuration(metrics, 'leftoverImprovementMs', phaseStartedAtMs);
+
+    phaseStartedAtMs = getSolveTimestampMs();
     const regularPoolState = searchBestRegularPromotionPoolStateFromState(initialPoolState, context, createSolverGuard());
+    addMetricDuration(metrics, 'regularPromotionMs', phaseStartedAtMs);
+
+    phaseStartedAtMs = getSolveTimestampMs();
+    const improvedRegularPoolState = runLeftoverImprovementLoopState(regularPoolState, context, createSolverGuard());
+    addMetricDuration(metrics, 'leftoverImprovementMs', phaseStartedAtMs);
+
     const candidateStates: ResolvedState[] = [
         { canonicalState: regularPoolState, leftoverUnits, leftoverUnitAllocations },
-        { canonicalState: runLeftoverImprovementLoopState(regularPoolState, context, createSolverGuard()), leftoverUnits, leftoverUnitAllocations },
+        { canonicalState: improvedRegularPoolState, leftoverUnits, leftoverUnitAllocations },
         { canonicalState: initialImprovedPoolState, leftoverUnits, leftoverUnitAllocations },
     ];
 
@@ -4730,14 +4829,18 @@ function resolveWithDefinition(
     }
 
     if (leftoverUnits.length > 0) {
+        phaseStartedAtMs = getSolveTimestampMs();
         const subRegularLeafResult = materializeLeafRulesByStageRecords(leftoverUnits, context, 'sub-regular');
         const fallbackInitialState = createCanonicalGroupPoolStateFromRecords([
             ...regularPoolState.groups,
             ...subRegularLeafResult.records,
         ]);
         const fallbackRegularPoolState = searchBestRegularPromotionPoolStateFromState(fallbackInitialState, context, guard);
+        const fallbackImprovedPoolState = runLeftoverImprovementLoopState(fallbackRegularPoolState, context, guard);
+        addMetricDuration(metrics, 'subRegularFallbackMs', phaseStartedAtMs);
+
         candidateStates.push({
-            canonicalState: runLeftoverImprovementLoopState(fallbackRegularPoolState, context, guard),
+            canonicalState: fallbackImprovedPoolState,
             leftoverUnits: subRegularLeafResult.leftover,
             leftoverUnitAllocations: [...leftoverUnitAllocations, ...subRegularLeafResult.leftoverUnitAllocations],
         });
@@ -4747,20 +4850,28 @@ function resolveWithDefinition(
         candidateStates.push({ canonicalState: createCanonicalGroupPoolStateFromRecords([wholeLeafRecord]), leftoverUnits: [], leftoverUnitAllocations: [] });
     }
 
+    phaseStartedAtMs = getSolveTimestampMs();
     const wholeComposedState = resolveWholeComposedCandidateState(regularPoolState, context, createSolverGuard());
+    addMetricDuration(metrics, 'wholeComposedMs', phaseStartedAtMs);
+
     if (wholeComposedState && leftoverUnits.length === 0 && leftoverUnitAllocations.length === 0) {
         candidateStates.push({ canonicalState: wholeComposedState, leftoverUnits: [], leftoverUnitAllocations: [] });
     }
 
     const bestState = pickBestResolvedState(candidateStates, context);
 
+    phaseStartedAtMs = getSolveTimestampMs();
+    const materialized = materializeResolvedState(bestState);
+    addMetricDuration(metrics, 'finalMaterializationMs', phaseStartedAtMs);
+
     if (activeOrgSolveMetrics) {
         activeOrgSolveMetrics.timedOut = guard.timedOut;
     }
+    addMetricDuration(metrics, 'totalSolveMs', solveStartedAtMs);
     lastOrgSolveMetrics = snapshotOrgSolveMetrics(activeOrgSolveMetrics);
     activeOrgSolveMetrics = null;
 
-    return materializeResolvedState(bestState);
+    return materialized;
 }
 
 export function resolveFromUnits(
