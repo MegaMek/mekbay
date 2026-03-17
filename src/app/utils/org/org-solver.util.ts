@@ -1595,66 +1595,6 @@ function enumeratePatternCandidates(
     return candidates.sort((left, right) => left.score - right.score);
 }
 
-function cloneBucketCounts(source: ReadonlyMap<string, number>): Map<string, number> {
-    return new Map(source.entries());
-}
-
-function subtractAllocation(
-    bucketCounts: Map<string, number>,
-    allocation: ReadonlyMap<string, number>,
-): void {
-    for (const [bucketValue, count] of allocation.entries()) {
-        const nextValue = (bucketCounts.get(bucketValue) ?? 0) - count;
-        if (nextValue <= 0) {
-            bucketCounts.delete(bucketValue);
-        } else {
-            bucketCounts.set(bucketValue, nextValue);
-        }
-    }
-}
-
-function materializePatternGreedy(
-    pattern: OrgPatternSpec,
-    bucketUnits: ReadonlyMap<string, readonly UnitFacts[]>,
-    guard: SolverGuard,
-): ConcretePatternCandidate[] {
-    const bucketCounts = new Map<string, number>();
-    for (const [bucketValue, units] of bucketUnits.entries()) {
-        bucketCounts.set(bucketValue, units.length);
-    }
-
-    const workingUnits = new Map<string, UnitFacts[]>();
-    for (const [bucketValue, units] of bucketUnits.entries()) {
-        workingUnits.set(bucketValue, [...units]);
-    }
-
-    const candidates: ConcretePatternCandidate[] = [];
-    let iterations = 0;
-    while (iterations < MAX_PATTERN_GREEDY_ITERATIONS && !shouldAbortSearch(guard)) {
-        iterations += 1;
-        const next = enumeratePatternCandidates(bucketCounts, pattern, guard)[0];
-        if (!next) {
-            break;
-        }
-        const selectedUnits: UnitFacts[] = [];
-        for (const [bucketValue, count] of next.allocation.entries()) {
-            const units = workingUnits.get(bucketValue) ?? [];
-            selectedUnits.push(...units.splice(0, count));
-        }
-        if (selectedUnits.length === 0) {
-            break;
-        }
-        subtractAllocation(bucketCounts, next.allocation);
-        candidates.push({
-            allocation: next.allocation,
-            score: next.score,
-            units: selectedUnits,
-        });
-    }
-
-    return candidates;
-}
-
 function getPatternModifierStep(
     descriptor: RuleModifierDescriptor,
     copySize: number,
@@ -3099,6 +3039,16 @@ function compareGroupScore(left: GroupSizeResult, right: GroupSizeResult): numbe
     return (right.priority ?? 0) - (left.priority ?? 0);
 }
 
+function compareGroupFactsScore(
+    left: Pick<GroupFacts, 'tier' | 'priority'>,
+    right: Pick<GroupFacts, 'tier' | 'priority'>,
+): number {
+    if (left.tier !== right.tier) {
+        return right.tier - left.tier;
+    }
+    return (right.priority ?? 0) - (left.priority ?? 0);
+}
+
 function getOrderedComposedRules(
     context: ResolveContext,
 ): readonly (OrgComposedCountRule | OrgComposedPatternRule)[] {
@@ -3159,13 +3109,6 @@ function getResolveContext(definition: OrgDefinitionSpec): ResolveContext {
     };
 }
 
-function resolveWholeLeafCandidate(
-    unitFacts: readonly UnitFacts[],
-    context: ResolveContext,
-): GroupSizeResult | null {
-    return resolveWholeLeafCandidateRecord(unitFacts, context)?.materialize() ?? null;
-}
-
 function resolveWholeLeafCandidateRecord(
     unitFacts: readonly UnitFacts[],
     context: ResolveContext,
@@ -3177,7 +3120,7 @@ function resolveWholeLeafCandidateRecord(
         const materialized = materializeCIFormationRuleRecords(rule, unitFacts, registry);
         if (materialized.records.length === 1 && materialized.leftoverUnitFacts.length === 0 && materialized.leftoverUnitAllocations.length === 0) {
             const candidate = materialized.records[0];
-            if (!best || compareGroupScore(candidate.materialize(), best.materialize()) < 0) {
+            if (!best || compareGroupFactsScore(candidate.facts, best.facts) < 0) {
                 best = candidate;
             }
         }
@@ -3193,7 +3136,7 @@ function resolveWholeLeafCandidateRecord(
             const materialized = materializeLeafCountRuleRecords(rule, unitFacts, registry);
             if (materialized.records.length === 1 && materialized.leftoverUnitFacts.length === 0) {
                 const candidate = materialized.records[0];
-                if (!best || compareGroupScore(candidate.materialize(), best.materialize()) < 0) {
+                if (!best || compareGroupFactsScore(candidate.facts, best.facts) < 0) {
                     best = candidate;
                 }
             }
@@ -3203,105 +3146,13 @@ function resolveWholeLeafCandidateRecord(
         const materialized = materializeLeafPatternWithCandidateRecords(rule, unitFacts, registry);
         if (materialized.records.length === 1 && materialized.leftoverUnitFacts.length === 0) {
             const candidate = materialized.records[0];
-            if (!best || compareGroupScore(candidate.materialize(), best.materialize()) < 0) {
+            if (!best || compareGroupFactsScore(candidate.facts, best.facts) < 0) {
                 best = candidate;
             }
         }
     }
 
     return best;
-}
-
-function removeUsedUnitFacts(
-    available: readonly UnitFacts[],
-    groups: readonly GroupSizeResult[],
-): UnitFacts[] {
-    const usedUnits = new Set(groups.flatMap((group) => (group.units ?? []).map((unit) => unit)));
-    return available.filter((facts) => !usedUnits.has(facts.unit));
-}
-
-function materializeLeafRulesByStage(
-    unitFacts: readonly UnitFacts[],
-    context: ResolveContext,
-    stage: RuleExecutionStage,
-): { groups: GroupSizeResult[]; leftover: UnitFacts[]; leftoverUnitAllocations: GroupUnitAllocation[] } {
-    const registry = context.definition.registry;
-    let remaining = [...unitFacts];
-    const groups: GroupSizeResult[] = [];
-    const leftoverUnitAllocations: GroupUnitAllocation[] = [];
-
-    if (stage !== 'sub-regular') {
-        for (const rule of context.ciFormationRules) {
-            const materialized = materializeCIFormationRule(rule, remaining, registry);
-            groups.push(...materialized.groups);
-            remaining = [...materialized.leftoverUnitFacts];
-            leftoverUnitAllocations.push(...materialized.leftoverUnitAllocations);
-        }
-    }
-
-    const leafRules: Array<OrgLeafCountRule | OrgLeafPatternRule> = [
-        ...context.leafPatternRules,
-        ...context.leafCountRules,
-    ];
-
-    for (const rule of leafRules) {
-        const metadata = getRuleStageMetadata(context, rule);
-
-        if (rule.kind === 'leaf-pattern') {
-            if (!metadata.participatesInRegularStage || stage === 'sub-regular') {
-                continue;
-            }
-            const materialized = materializeLeafPatternRule(rule, remaining, registry);
-            groups.push(...materialized.groups);
-            remaining = [...materialized.leftoverUnitFacts];
-            continue;
-        }
-
-        const targetSteps = getModifierStepForRuleStage(metadata, stage);
-        if (targetSteps.length === 0) {
-            continue;
-        }
-
-        const eligibleUnits = remaining.filter((facts) => matchesUnitSelectors(facts, rule.unitSelector, registry));
-        const ineligibleUnits = remaining.filter((facts) => !matchesUnitSelectors(facts, rule.unitSelector, registry));
-        const usedIds = new Set<number>();
-        const nextGroups: GroupSizeResult[] = [];
-
-        for (const bucketUnits of groupUnitsByBucket(eligibleUnits, rule.bucketBy, registry).values()) {
-            const preferredLeftovers: UnitFacts[] = [];
-
-            for (const preferredUnits of groupUnitsByPreferredType(bucketUnits).values()) {
-                let working = [...preferredUnits];
-                for (const step of targetSteps) {
-                    while (working.length >= step.count) {
-                        const selected = working.slice(0, step.count);
-                        working = working.slice(step.count);
-                        selected.forEach((facts) => usedIds.add(facts.factId));
-                        nextGroups.push(createLeafGroup(rule, step, selected));
-                    }
-                }
-                preferredLeftovers.push(...working);
-            }
-
-            let mixedWorking = preferredLeftovers;
-            for (const step of targetSteps) {
-                while (mixedWorking.length >= step.count) {
-                    const selected = mixedWorking.slice(0, step.count);
-                    mixedWorking = mixedWorking.slice(step.count);
-                    selected.forEach((facts) => usedIds.add(facts.factId));
-                    nextGroups.push(createLeafGroup(rule, step, selected));
-                }
-            }
-        }
-
-        groups.push(...nextGroups);
-        remaining = [
-            ...ineligibleUnits,
-            ...eligibleUnits.filter((facts) => !usedIds.has(facts.factId)),
-        ];
-    }
-
-    return { groups, leftover: remaining, leftoverUnitAllocations };
 }
 
 function materializeLeafRulesByStageRecords(
@@ -3386,38 +3237,6 @@ function materializeLeafRulesByStageRecords(
     return { records, leftover: remaining, leftoverUnitAllocations };
 }
 
-function materializeComposedRulesByStage(
-    groupFacts: readonly GroupFacts[],
-    context: ResolveContext,
-    stage: RuleExecutionStage,
-): { groups: GroupSizeResult[]; leftoverFacts: GroupFacts[] } {
-    const blockedFacts = groupFacts.filter((facts) => isBlockedSubRegularPromotionChild(facts.group, context));
-    let remainingFacts = groupFacts.filter((facts) => !isBlockedSubRegularPromotionChild(facts.group, context));
-    const groups: GroupSizeResult[] = [];
-
-    for (const rule of getOrderedComposedRules(context)) {
-        const allowedModifierKeys = getAllowedModifierKeysForStage(getRuleStageMetadata(context, rule), stage);
-        const materialized = rule.kind === 'composed-count'
-            ? materializeComposedCountRuleInternal(rule, remainingFacts, context.definition.registry, allowedModifierKeys)
-            : materializeComposedPatternRuleInternal(rule, remainingFacts, context.definition.registry, allowedModifierKeys);
-        if (stage !== 'all') {
-            if (materialized.groups.length > 0) {
-                groups.push(...materialized.groups);
-                remainingFacts = [...materialized.leftoverGroupFacts];
-                continue;
-            }
-            continue;
-        }
-
-        if (materialized.groups.length > 0) {
-            groups.push(...materialized.groups);
-            remainingFacts = [...materialized.leftoverGroupFacts];
-        }
-    }
-
-    return { groups, leftoverFacts: [...blockedFacts, ...remainingFacts] };
-}
-
 function materializeComposedRulesByStageState(
     initialState: CanonicalGroupPoolState,
     context: ResolveContext,
@@ -3460,26 +3279,6 @@ function materializeComposedRulesByStageState(
         ...blockedRecords,
         ...state.groups,
     ]);
-}
-
-function isBlockedSubRegularPromotionChild(
-    group: GroupSizeResult,
-    context: ResolveContext,
-): boolean {
-    if (!group.type) {
-        return false;
-    }
-
-    const rule = context.composedCountRules.find((candidate) =>
-        candidate.type === group.type && candidate.requireRegularForPromotion,
-    ) ?? context.ciFormationRules.find((candidate) =>
-        candidate.type === group.type && candidate.requireRegularForPromotion,
-    );
-    if (!rule) {
-        return false;
-    }
-
-    return isSubRegularModifierKey(getRuleStageMetadata(context, rule), group.modifierKey);
 }
 
 function isBlockedSubRegularPromotionChildFacts(
@@ -3712,7 +3511,7 @@ function getCurrentStructuralCountFacts(
 }
 
 function getEligibleChildFacts(
-    parent: GroupSizeResult,
+    parent: Pick<GroupFacts, 'tier'>,
     rule: OrgComposedCountRule,
     candidateFacts: readonly GroupFacts[],
     context: ResolveContext,
@@ -3735,56 +3534,6 @@ function isSingleBucketMatch(
 
     const bucketValues = new Set(groups.map((group) => getGroupBucketValue(bucketBy, group, registry)));
     return bucketValues.size === 1;
-}
-
-function resolveWholeComposedCandidate(
-    groups: readonly GroupSizeResult[],
-    context: ResolveContext,
-    guard: SolverGuard,
-): GroupSizeResult | null {
-    if (groups.length === 0) {
-        return null;
-    }
-
-    if (groups.some((group) => isBlockedSubRegularPromotionChild(group, context))) {
-        return null;
-    }
-
-    const compiledGroups = compileGroupFactsList(groups);
-    const registry = context.definition.registry;
-    let best: GroupSizeResult | null = null;
-
-    for (const rule of getOrderedComposedRules(context)) {
-        const configs = rule.kind === 'composed-count'
-            ? buildCompositionConfigs(rule)
-            : [buildPatternCompositionConfig(rule)];
-        for (const config of configs) {
-            if (shouldAbortSearch(guard)) {
-                return best;
-            }
-            if (!isSingleBucketMatch(compiledGroups, config.childMatchBucketBy, registry)) {
-                continue;
-            }
-            if (!canAssignGroupsToRoles(compiledGroups, config.childRoles, guard)) {
-                continue;
-            }
-            if (rule.kind === 'composed-pattern' && !matchesComposedPatternSelection(rule, compiledGroups, registry)) {
-                continue;
-            }
-
-            for (const step of config.modifierDescriptor.stepsDescending) {
-                if (step.count !== groups.length || step.relativeBand === 'sub-regular') {
-                    continue;
-                }
-                const candidate = createComposedGroup(rule, step, groups);
-                if (!best || compareGroupScore(candidate, best) < 0) {
-                    best = candidate;
-                }
-            }
-        }
-    }
-
-    return best;
 }
 
 function resolveWholeComposedCandidateRecord(
@@ -3826,7 +3575,7 @@ function resolveWholeComposedCandidateRecord(
                     continue;
                 }
                 const candidate = createAbstractComposedGroupRecord(rule, step, state.groups);
-                if (!best || compareGroupScore(candidate.materialize(), best.materialize()) < 0) {
+                if (!best || compareGroupFactsScore(candidate.facts, best.facts) < 0) {
                     best = candidate;
                 }
             }
@@ -4003,34 +3752,35 @@ function repairSubRegularGroupsForPromotionState(
             continue;
         }
 
-        const flattenedChildren = candidates.flatMap((facts) => state.recordByGroupFactId.get(facts.groupFactId)?.materialize().children ?? []);
-        const repackaged = materializeComposedCountRule(rule, compileGroupFactsList(flattenedChildren), context.definition.registry);
-        if (repackaged.groups.length === 0) {
+        const flattenedChildren = candidates.flatMap((facts) => facts.group.children ?? []);
+        const childState = createCanonicalGroupPoolStateFromRecords(
+            flattenedChildren.map((group) => createConcretePlannedGroupRecord(group)),
+        );
+        const abstractCandidates = planComposedCountRuleInternal(
+            rule,
+            childState.groupFacts,
+            context.definition.registry,
+            createSolverGuard(),
+        );
+        if (abstractCandidates.length === 0) {
             continue;
         }
+
+        const plannedCandidates = resolvePlannedCompositionCandidates(abstractCandidates, childState.recordByGroupFactId);
+        const repackagedRecords = plannedCandidates.map((candidate) => createAbstractComposedGroupRecord(
+            rule,
+            candidate.modifierStep,
+            candidate.groups,
+        ));
 
         const candidateFactIds = new Set(candidates.map((facts) => facts.groupFactId));
         state = createCanonicalGroupPoolStateFromRecords([
             ...state.groups.filter((group) => !candidateFactIds.has(group.facts.groupFactId)),
-            ...repackaged.groups.map((group) => createConcretePlannedGroupRecord(group)),
+            ...repackagedRecords,
         ]);
     }
 
     return state;
-}
-
-function repairSubRegularGroupsForPromotion(
-    groups: readonly GroupSizeResult[],
-    context: ResolveContext,
-): GroupSizeResult[] {
-    return materializeCanonicalGroupPoolState(repairSubRegularGroupsForPromotionState(
-        createCanonicalGroupPoolState(groups),
-        context,
-    ));
-}
-
-function createCanonicalGroupPoolState(groups: readonly GroupSizeResult[]): CanonicalGroupPoolState {
-    return createCanonicalGroupPoolStateFromRecords(groups.map((group) => createConcretePlannedGroupRecord(group)));
 }
 
 function getCanonicalGroupPoolSignatureEntries(signatureCounts: ReadonlyMap<string, number>): CanonicalGroupPoolSignatureEntry[] {
@@ -4224,16 +3974,6 @@ function getRegularPromotionSuccessors(
     return retainDominantCanonicalGroupPoolStates(successors, context);
 }
 
-function runSingleTierRegularPromotionStep(
-    initialPool: readonly GroupSizeResult[],
-    context: ResolveContext,
-): GroupSizeResult[] {
-    return materializeCanonicalGroupPoolState(runSingleTierRegularPromotionStepState(
-        createCanonicalGroupPoolState(initialPool),
-        context,
-    ));
-}
-
 function runSingleTierRegularPromotionStepState(
     initialState: CanonicalGroupPoolState,
     context: ResolveContext,
@@ -4308,14 +4048,6 @@ function runSingleTierRegularPromotionStepState(
     return poolState;
 }
 
-function searchBestRegularPromotionPoolState(
-    initialPool: readonly GroupSizeResult[],
-    context: ResolveContext,
-    guard: SolverGuard,
-): CanonicalGroupPoolState {
-    return searchBestRegularPromotionPoolStateFromState(createCanonicalGroupPoolState(initialPool), context, guard);
-}
-
 function searchBestRegularPromotionPoolStateFromState(
     initialState: CanonicalGroupPoolState,
     context: ResolveContext,
@@ -4374,35 +4106,6 @@ function searchBestRegularPromotionPoolStateFromState(
 
     return currentState;
 }
-
-function searchBestRegularPromotionPool(
-    initialPool: readonly GroupSizeResult[],
-    context: ResolveContext,
-    guard: SolverGuard,
-): GroupSizeResult[] {
-    return materializeCanonicalGroupPoolState(searchBestRegularPromotionPoolState(initialPool, context, guard));
-}
-
-function runRegularPromotionLoop(
-    initialPool: readonly GroupSizeResult[],
-    context: ResolveContext,
-    guard: SolverGuard,
-): GroupSizeResult[] {
-    return searchBestRegularPromotionPool(initialPool, context, guard);
-}
-
-function runLeftoverImprovementLoop(
-    initialPool: readonly GroupSizeResult[],
-    context: ResolveContext,
-    guard: SolverGuard,
-): GroupSizeResult[] {
-    return materializeCanonicalGroupPoolState(runLeftoverImprovementLoopState(
-        createCanonicalGroupPoolState(initialPool),
-        context,
-        guard,
-    ));
-}
-
 function runLeftoverImprovementLoopState(
     initialState: CanonicalGroupPoolState,
     context: ResolveContext,
@@ -4429,19 +4132,6 @@ function runLeftoverImprovementLoopState(
 
     return state;
 }
-
-function preAssimilateUnderRegularGroups(
-    groups: readonly GroupSizeResult[],
-    context: ResolveContext,
-    guard: SolverGuard,
-): GroupSizeResult[] {
-    return materializeCanonicalGroupPoolState(preAssimilateUnderRegularGroupState(
-        createCanonicalGroupPoolState(groups),
-        context,
-        guard,
-    ));
-}
-
 function preAssimilateUnderRegularGroupState(
     initialState: CanonicalGroupPoolState,
     context: ResolveContext,
@@ -4494,7 +4184,7 @@ function preAssimilateUnderRegularGroupState(
         }
 
         const remainingFacts = state.groupFacts.filter((facts) => facts.groupFactId !== nextCurrentGroupFacts.groupFactId);
-        const roleMatches = getEligibleChildFacts(currentRecord.materialize(), rule, remainingFacts, context);
+        const roleMatches = getEligibleChildFacts(currentRecord.facts, rule, remainingFacts, context);
         const addition = findAbstractCompositionSelection(roleMatches, rule.childRoles, needed, guard);
         if (!addition) {
             continue;
@@ -4513,19 +4203,6 @@ function preAssimilateUnderRegularGroupState(
 
     return state;
 }
-
-function assimilateLeftoversIntoParents(
-    groups: readonly GroupSizeResult[],
-    context: ResolveContext,
-    guard: SolverGuard,
-): GroupSizeResult[] {
-    return materializeCanonicalGroupPoolState(assimilateLeftoversIntoParentState(
-        createCanonicalGroupPoolState(groups),
-        context,
-        guard,
-    ));
-}
-
 function assimilateLeftoversIntoParentState(
     initialState: CanonicalGroupPoolState,
     context: ResolveContext,
@@ -4568,7 +4245,7 @@ function assimilateLeftoversIntoParentState(
         }
 
         const availableFacts = state.groupFacts.filter((facts) => facts.groupFactId !== nextCurrentParentFacts.groupFactId);
-        const matchingFacts = getEligibleChildFacts(currentRecord.materialize(), rule, availableFacts, context);
+        const matchingFacts = getEligibleChildFacts(currentRecord.facts, rule, availableFacts, context);
 
         let upgradedRecord = currentRecord;
         const usedGroupFactIds = new Set<number>();
@@ -4925,15 +4602,13 @@ function resolveWithDefinition(
     initialPoolState = preAssimilateUnderRegularGroupState(initialPoolState, context, guard);
 
     const wholeComposedFromInitialState = resolveWholeComposedCandidateState(initialPoolState, context, createSolverGuard());
-    const initialPoolMaterialized = materializeCanonicalGroupPoolState(initialPoolState);
-    const initialImprovedPool = runLeftoverImprovementLoop(initialPoolMaterialized, context, createSolverGuard());
+    const initialImprovedPoolState = runLeftoverImprovementLoopState(initialPoolState, context, createSolverGuard());
 
     const regularPoolState = searchBestRegularPromotionPoolStateFromState(initialPoolState, context, createSolverGuard());
-    const regularPool = materializeCanonicalGroupPoolState(regularPoolState);
     const candidateStates: ResolvedState[] = [
         { canonicalState: regularPoolState, leftoverUnits, leftoverUnitAllocations },
-        { groups: runLeftoverImprovementLoop(regularPool, context, createSolverGuard()), leftoverUnits, leftoverUnitAllocations },
-        { groups: initialImprovedPool, leftoverUnits, leftoverUnitAllocations },
+        { canonicalState: runLeftoverImprovementLoopState(regularPoolState, context, createSolverGuard()), leftoverUnits, leftoverUnitAllocations },
+        { canonicalState: initialImprovedPoolState, leftoverUnits, leftoverUnitAllocations },
     ];
 
     if (wholeComposedFromInitialState && leftoverUnits.length === 0 && leftoverUnitAllocations.length === 0) {
@@ -4941,13 +4616,14 @@ function resolveWithDefinition(
     }
 
     if (leftoverUnits.length > 0) {
-        const subRegularLeafResult = materializeLeafRulesByStage(leftoverUnits, context, 'sub-regular');
-        const fallbackRegularPool = runRegularPromotionLoop([
-            ...regularPool,
-            ...subRegularLeafResult.groups,
-        ], context, guard);
+        const subRegularLeafResult = materializeLeafRulesByStageRecords(leftoverUnits, context, 'sub-regular');
+        const fallbackInitialState = createCanonicalGroupPoolStateFromRecords([
+            ...regularPoolState.groups,
+            ...subRegularLeafResult.records,
+        ]);
+        const fallbackRegularPoolState = searchBestRegularPromotionPoolStateFromState(fallbackInitialState, context, guard);
         candidateStates.push({
-            groups: runLeftoverImprovementLoop(fallbackRegularPool, context, guard),
+            canonicalState: runLeftoverImprovementLoopState(fallbackRegularPoolState, context, guard),
             leftoverUnits: subRegularLeafResult.leftover,
             leftoverUnitAllocations: [...leftoverUnitAllocations, ...subRegularLeafResult.leftoverUnitAllocations],
         });
