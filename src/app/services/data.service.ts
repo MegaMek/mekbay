@@ -52,7 +52,6 @@ import { LoadForceEntry, type LoadForceGroup, type LoadForceUnit } from '../mode
 import { LoggerService } from './logger.service';
 import { type SerializedOperation, LoadOperationEntry, type OperationForceInfo } from '../models/operation.model';
 import { type SerializedOrganization, LoadOrganizationEntry } from '../models/organization.model';
-import type { DialogsService } from './dialogs.service';
 import { firstValueFrom, Subject } from 'rxjs';
 import { GameSystem, REMOTE_HOST } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
@@ -61,6 +60,7 @@ import type { Sourcebook, Sourcebooks } from '../models/sourcebook.model';
 import type { MULUnitSources, MULUnitSourcesData } from '../models/mul-unit-sources.model';
 import { removeAccents } from '../utils/string.util';
 import { getForcePacks } from '../models/forcepacks.model';
+import { naturalCompare } from '../utils/sort.util';
 
 /*
  * Author: Drake
@@ -234,6 +234,7 @@ export class DataService {
             getFromLocalStorage: async () => (await this.dbService.getQuirks()) ?? null,
             putInLocalStorage: async (data: Quirks) => this.dbService.saveQuirks(data),
             preprocess: (data: Quirks): Quirks => {
+                data.quirks.sort((a, b) => naturalCompare(a.name, b.name));
                 // Quirks index
                 const quirksMap = new Map<string, Quirk>();
                 for (const quirk of data.quirks) {
@@ -249,6 +250,7 @@ export class DataService {
             getFromLocalStorage: async () => (await this.dbService.getFactions()) ?? null,
             putInLocalStorage: async (data: Factions) => this.dbService.saveFactions(data),
             preprocess: (data: Factions): Factions => {
+                data.factions.sort((a, b) => naturalCompare(a.name, b.name));
                 this.factionNameMap.clear();
                 this.factionIdMap.clear();
                 for (const faction of data.factions) {
@@ -268,6 +270,7 @@ export class DataService {
             getFromLocalStorage: async () => (await this.dbService.getEras()) ?? null,
             putInLocalStorage: async (data: Eras) => this.dbService.saveEras(data),
             preprocess: (data: Eras): Eras => {
+                data.eras.sort((a, b) => this.compareEras(a, b));
                 this.eraNameMap.clear();
                 this.eraIdMap.clear();
                 for (const era of data.eras) {
@@ -484,6 +487,22 @@ export class DataService {
             return 'Weapon';
         }
         return type;
+    }
+
+    private compareEras(a: Era, b: Era): number {
+        const aFrom = a.years.from ?? 0;
+        const bFrom = b.years.from ?? 0;
+        if (aFrom !== bFrom) {
+            return aFrom - bFrom;
+        }
+
+        const aTo = a.years.to ?? Number.MAX_SAFE_INTEGER;
+        const bTo = b.years.to ?? Number.MAX_SAFE_INTEGER;
+        if (aTo !== bTo) {
+            return aTo - bTo;
+        }
+
+        return a.id - b.id;
     }
 
     public static removeAccents(str: string): string {

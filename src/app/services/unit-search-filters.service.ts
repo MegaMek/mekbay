@@ -83,7 +83,19 @@ function sortAvailableDropdownOptions(options: string[], predefinedOrder?: strin
         const remainingSorted = Array.from(optionsSet).sort(naturalCompare);
         return [...sortedOptions, ...remainingSorted];
     }
-    return options.sort(naturalCompare);
+    return [...options].sort(naturalCompare);
+}
+
+function sortDropdownOptionObjects<T extends { name: string }>(options: T[], predefinedOrder?: string[]): T[] {
+    if (!predefinedOrder || predefinedOrder.length === 0) {
+        return options;
+    }
+
+    const optionMap = new Map(options.map(option => [option.name, option]));
+    const sortedNames = sortAvailableDropdownOptions(Array.from(optionMap.keys()), predefinedOrder);
+    return sortedNames
+        .map(name => optionMap.get(name))
+        .filter((option): option is T => option !== undefined);
 }
 
 /**
@@ -1533,7 +1545,7 @@ export class UnitSearchFiltersService {
                         }
                         // When factions are selected, only check their specific eras
                         const erasToCheck = selectedFactionsAvailableEraIds.size > 0
-                            ? Array.from(selectedFactionsAvailableEraIds, id => this.dataService.getEraById(id)).filter((e): e is Era => !!e)
+                            ? this.dataService.getEras().filter(era => selectedFactionsAvailableEraIds.has(era.id))
                             : this.dataService.getEras();
                         availableOptions = erasToCheck
                             .filter(era => setHasAny(era.units as Set<number>, contextUnitIds))
@@ -1984,6 +1996,8 @@ export class UnitSearchFiltersService {
                         }
                     }
                 }
+
+                availableOptions = sortDropdownOptionObjects(availableOptions, conf.sortOptions);
 
                 result[conf.key] = {
                     type: 'dropdown',

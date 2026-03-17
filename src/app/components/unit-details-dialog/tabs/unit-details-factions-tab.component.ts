@@ -61,7 +61,7 @@ export class UnitDetailsFactionTabComponent {
         if (!u) return [];
 
         const unitId = u.id;
-        const allEras = this.dataService.getEras().sort((a, b) => (a.years.from || 0) - (b.years.from || 0));
+        const allEras = this.dataService.getEras();
         const allFactions = this.dataService.getFactions();
         const availability: FactionAvailability[] = [];
 
