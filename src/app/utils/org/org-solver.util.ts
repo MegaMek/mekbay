@@ -3594,22 +3594,6 @@ function resolveWholeComposedCandidateState(
     return record ? createCanonicalGroupPoolStateFromRecords([record]) : null;
 }
 
-function canRepairSubRegularGroupForPromotion(
-    group: GroupSizeResult,
-    context: ResolveContext,
-    rule: OrgComposedCountRule,
-): boolean {
-    if (!rule.requireRegularForPromotion
-        || group.provenance !== 'input-group'
-        || group.type !== rule.type
-        || !group.children
-        || group.children.length === 0) {
-        return false;
-    }
-
-    return isSubRegularModifierKey(getRuleStageMetadata(context, rule), group.modifierKey);
-}
-
 function canRepairSubRegularGroupForPromotionFacts(
     facts: Pick<GroupFacts, 'provenance' | 'type' | 'modifierKey' | 'directChildCount'>,
     context: ResolveContext,
