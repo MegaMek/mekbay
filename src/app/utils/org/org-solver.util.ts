@@ -1,8 +1,6 @@
 import type { FactionAffinity } from '../../models/factions.model';
 import type { ASUnitTypeCode, Unit } from '../../models/units.model';
 import {
-    compileUnitFacts,
-    collectGroupUnits,
     compileGroupFacts,
     compileGroupFactsList,
     compileUnitFactsList,
@@ -20,13 +18,11 @@ import {
     type GroupFacts,
     type GroupSizeResult,
     type GroupUnitAllocation,
-    type OrgBucketName,
     type OrgBucketValue,
     type OrgCIFormationEntry,
     type OrgCIFormationRule,
     type OrgChildTypeCountKey,
     type OrgChildRoleSpec,
-    type OrgComposedCountAlternativeSpec,
     type OrgComposedCountRule,
     type OrgComposedPatternRule,
     type OrgDefinitionSpec,
@@ -41,7 +37,6 @@ import {
     type OrgPatternSpec,
     type OrgRuleDefinition,
     type OrgRuleRegistry,
-    type OrgSizeResult,
     type OrgTypeModifier,
     type OrgUnitBucketName,
     type UnitClassKey,
