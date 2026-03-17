@@ -3348,6 +3348,14 @@ function preprocessGroupsForDefinition(
 
         const foreignDisplayName = group.foreignDisplayName ?? group.name;
 
+        // Concrete foreign org groups should crossgrade as completed parents.
+        // Generic wrappers like Force, or type-less foreign buckets, still need
+        // descendant-unit re-evaluation under the target definition.
+        if (group.type && group.type !== 'Force') {
+            normalized.push(...applyForeignDisplayName(crossgradeTierOnlyForeignGroup(group, context), foreignDisplayName));
+            continue;
+        }
+
         const descendantUnits = collectAllGroupUnits(group);
         if (descendantUnits.length > 0) {
             normalized.push(...applyForeignDisplayName(resolveWithDefinition(definition, descendantUnits, []), foreignDisplayName));
