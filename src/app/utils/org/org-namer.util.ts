@@ -2,15 +2,108 @@ import { type Force, UnitGroup } from '../../models/force.model';
 import { FactionAffinity } from '../../models/factions.model';
 import { LoadForceEntry, type LoadForceGroup } from '../../models/load-force-entry.model';
 import type { Unit } from '../../models/units.model';
-import { resolveOrgDefinitionSpec } from './org-registry.util';
 import { resolveFromGroups, resolveFromUnits } from './org-solver.util';
-import { EMPTY_RESULT, type GroupSizeResult, type OrgSizeResult } from './org-types';
-import { getAggregatedTier, getEquivalentGroupCountAtTier, getTierForRepeatedGroup } from './org-tier.util';
+import { type GroupSizeResult, type OrgSizeResult } from './org-types';
 
+/**
+ * Author: Drake
+ * 
+ * This module provides utilities for generating human-readable organizational names and summaries 
+ * based on the structure of forces and groups.
+ */
 export interface OrgNamingOptions {
 	readonly aggregateEquivalentGroups?: boolean;
 	readonly displayThresholdTier?: number;
 }
+
+// Public API
+
+export function getOrgFromGroup(group: UnitGroup, factionName: string, factionAffinity: FactionAffinity, options?: OrgNamingOptions): OrgSizeResult;
+export function getOrgFromGroup(group: UnitGroup, options?: OrgNamingOptions): OrgSizeResult;
+export function getOrgFromGroup(group: LoadForceGroup, factionName: string, factionAffinity: FactionAffinity, options?: OrgNamingOptions): OrgSizeResult;
+export function getOrgFromGroup(group: UnitGroup | LoadForceGroup, factionOrOptions?: string | OrgNamingOptions, factionAffinity?: FactionAffinity, options: OrgNamingOptions = {}): OrgSizeResult {
+	const resolvedOptions = typeof factionOrOptions === 'object' ? factionOrOptions : options;
+	const explicitFactionName = typeof factionOrOptions === 'string' ? factionOrOptions : undefined;
+
+	if (group instanceof UnitGroup) {
+		const force = group.force;
+		const resolvedFactionName = explicitFactionName ?? force.faction()?.name ?? 'Mercenary';
+		const resolvedFactionAffinity = factionAffinity ?? force.faction()?.group ?? 'Mercenary';
+		const allUnits = group.units().map((unit) => unit.getUnit()).filter((unit): unit is Unit => unit !== undefined);
+		const rawGroups = resolveFromUnits(allUnits, resolvedFactionName, resolvedFactionAffinity);
+		return getResolvedOrgResult(rawGroups, resolvedFactionName, resolvedFactionAffinity, resolvedOptions);
+	}
+
+	const resolvedFactionName = explicitFactionName ?? 'Mercenary';
+	const resolvedFactionAffinity = factionAffinity ?? 'Mercenary';
+	const units = group.units
+		.filter((unit): unit is typeof unit & { unit: Unit } => unit.unit !== undefined)
+		.map((unit) => unit.unit);
+	const rawGroups = resolveFromUnits(units, resolvedFactionName, resolvedFactionAffinity);
+	return getResolvedOrgResult(rawGroups, resolvedFactionName, resolvedFactionAffinity, resolvedOptions);
+}
+
+export function getOrgFromForce(force: Force, factionName: string, factionAffinity: FactionAffinity, options?: OrgNamingOptions): OrgSizeResult;
+export function getOrgFromForce(force: Force, options?: OrgNamingOptions): OrgSizeResult;
+export function getOrgFromForce(entry: LoadForceEntry, factionName: string, factionAffinity: FactionAffinity, options?: OrgNamingOptions): OrgSizeResult;
+export function getOrgFromForce(forceOrEntry: Force | LoadForceEntry, factionOrOptions?: string | OrgNamingOptions, factionAffinity?: FactionAffinity, options: OrgNamingOptions = {}): OrgSizeResult {
+	const resolvedOptions = typeof factionOrOptions === 'object' ? factionOrOptions : options;
+	const explicitFactionName = typeof factionOrOptions === 'string' ? factionOrOptions : undefined;
+
+	if (forceOrEntry instanceof LoadForceEntry) {
+		const resolvedFactionName = explicitFactionName ?? 'Mercenary';
+		const resolvedFactionAffinity = factionAffinity ?? 'Mercenary';
+		const groupResults = forceOrEntry.groups
+			.filter((group) => group.units.some((unit) => unit.unit !== undefined))
+			.flatMap((group) => getGroupResultsFromLoadForceGroup(group, resolvedFactionName, resolvedFactionAffinity));
+		const rawGroups = resolveFromGroups(resolvedFactionName, resolvedFactionAffinity, groupResults);
+		return getResolvedOrgResult(rawGroups, resolvedFactionName, resolvedFactionAffinity, resolvedOptions);
+	}
+
+	const resolvedFactionName = explicitFactionName ?? forceOrEntry.faction()?.name ?? 'Mercenary';
+	const resolvedFactionAffinity = factionAffinity ?? forceOrEntry.faction()?.group ?? 'Mercenary';
+	const groupResults = forceOrEntry.groups()
+		.filter((group) => group.units().length > 0)
+		.flatMap((group) => group.sizeResult().groups);
+	const rawGroups = resolveFromGroups(resolvedFactionName, resolvedFactionAffinity, groupResults);
+	return getResolvedOrgResult(rawGroups, resolvedFactionName, resolvedFactionAffinity, resolvedOptions);
+}
+
+// Internal utilities
+
+function getGroupResultsFromLoadForceGroup(
+	group: LoadForceGroup,
+	factionName: string,
+	factionAffinity: FactionAffinity,
+): GroupSizeResult[] {
+	const units = group.units
+		.filter((entry): entry is typeof entry & { unit: Unit } => entry.unit !== undefined)
+		.map((entry) => entry.unit);
+	return resolveFromUnits(units, factionName, factionAffinity);
+}
+
+function getResolvedOrgResult(
+	groups: readonly GroupSizeResult[],
+	factionName: string,
+	factionAffinity: FactionAffinity,
+	options: OrgNamingOptions = {},
+): OrgSizeResult {
+	//const display = getAggregatedGroupsResult(groups, factionName, factionAffinity, options);
+	// return toOrgSizeResult(display.name, display.tier, groups);
+	return toOrgSizeResult('DUMMY', 0, groups);
+}
+
+function toOrgSizeResult(name: string, tier: number, groups: readonly GroupSizeResult[]): OrgSizeResult {
+	return {
+		name,
+		tier,
+		groups,
+	};
+}
+
+
+
+/*
 
 interface DisplayModifierStep {
 	readonly modifierKey: string;
@@ -29,12 +122,49 @@ interface HeterogeneousDisplayBucket {
 	readonly representative: GroupSizeResult;
 }
 
-function toOrgSizeResult(name: string, tier: number, groups: readonly GroupSizeResult[]): OrgSizeResult {
-	return {
-		name,
-		tier,
-		groups,
-	};
+export function getAggregatedGroupsResult(
+	groups: readonly GroupSizeResult[],
+	factionName: string,
+	factionAffinity: FactionAffinity,
+	options: OrgNamingOptions = {},
+): OrgSizeResult {
+	const aggregateEquivalentGroups = options.aggregateEquivalentGroups ?? true;
+	const displayGroups = filterGroupsForDisplay(groups, options);
+
+	if (groups.length <= 1) {
+		return aggregateGroupsResult(groups, {
+			includeAllocationSummary: true,
+			preserveForeignNames: !aggregateEquivalentGroups,
+		});
+	}
+
+	if (!aggregateEquivalentGroups) {
+		return getListedGroupsResult(groups, options);
+	}
+
+	if (displayGroups.length <= 1) {
+		const display = aggregateGroupsResult(displayGroups, {
+			includeAllocationSummary: true,
+			preserveForeignNames: false,
+		});
+		return toOrgSizeResult(display.name, display.tier, groups);
+	}
+
+	if (canReresolveAggregatedGroups(displayGroups)) {
+		const resolved = resolveFromGroups(factionName, factionAffinity, displayGroups, true);
+		if (resolved.length > 0 && resolved.length < displayGroups.length) {
+			const display = aggregateGroupsResult(resolved);
+			return toOrgSizeResult(display.name, display.tier, resolved);
+		}
+	}
+
+	const sameTypeDisplay = getSameTypeAggregatedDisplay(displayGroups, factionName, factionAffinity);
+	if (sameTypeDisplay) {
+		return sameTypeDisplay;
+	}
+
+	const aggregated = aggregateGroupsResult(displayGroups);
+	return toOrgSizeResult(aggregated.name, aggregated.tier, groups);
 }
 
 function getGroupDisplayCount(group: GroupSizeResult): number {
@@ -360,127 +490,6 @@ function getListedGroupsResult(groups: readonly GroupSizeResult[], options: OrgN
 	return toOrgSizeResult(name, getAggregatedDisplayTier(displayGroups), groups);
 }
 
-export function getAggregatedGroupsResult(
-	groups: readonly GroupSizeResult[],
-	factionName: string,
-	factionAffinity: FactionAffinity,
-	options: OrgNamingOptions = {},
-): OrgSizeResult {
-	const aggregateEquivalentGroups = options.aggregateEquivalentGroups ?? true;
-	const displayGroups = filterGroupsForDisplay(groups, options);
-
-	if (groups.length <= 1) {
-		return aggregateGroupsResult(groups, {
-			includeAllocationSummary: true,
-			preserveForeignNames: !aggregateEquivalentGroups,
-		});
-	}
-
-	if (!aggregateEquivalentGroups) {
-		return getListedGroupsResult(groups, options);
-	}
-
-	if (displayGroups.length <= 1) {
-		const display = aggregateGroupsResult(displayGroups, {
-			includeAllocationSummary: true,
-			preserveForeignNames: false,
-		});
-		return toOrgSizeResult(display.name, display.tier, groups);
-	}
-
-	if (canReresolveAggregatedGroups(displayGroups)) {
-		const resolved = resolveFromGroups(factionName, factionAffinity, displayGroups, true);
-		if (resolved.length > 0 && resolved.length < displayGroups.length) {
-			const display = aggregateGroupsResult(resolved);
-			return toOrgSizeResult(display.name, display.tier, resolved);
-		}
-	}
-
-	const sameTypeDisplay = getSameTypeAggregatedDisplay(displayGroups, factionName, factionAffinity);
-	if (sameTypeDisplay) {
-		return sameTypeDisplay;
-	}
-
-	const aggregated = aggregateGroupsResult(displayGroups);
-	return toOrgSizeResult(aggregated.name, aggregated.tier, groups);
-}
-
-function getResolvedOrgResult(
-	groups: readonly GroupSizeResult[],
-	factionName: string,
-	factionAffinity: FactionAffinity,
-	options: OrgNamingOptions = {},
-): OrgSizeResult {
-	const display = getAggregatedGroupsResult(groups, factionName, factionAffinity, options);
-	return toOrgSizeResult(display.name, display.tier, groups);
-}
-
-function getGroupResultsFromOrgResult(result: OrgSizeResult): GroupSizeResult[] {
-	return [...result.groups];
-}
-
-function getGroupResultsFromLoadForceGroup(
-	group: LoadForceGroup,
-	factionName: string,
-	factionAffinity: FactionAffinity,
-): GroupSizeResult[] {
-	const units = group.units
-		.filter((entry): entry is typeof entry & { unit: Unit } => entry.unit !== undefined)
-		.map((entry) => entry.unit);
-	return resolveFromUnits(units, factionName, factionAffinity);
-}
-
-export function getOrgFromGroup(group: UnitGroup, factionName: string, factionAffinity: FactionAffinity, options?: OrgNamingOptions): OrgSizeResult;
-export function getOrgFromGroup(group: UnitGroup, options?: OrgNamingOptions): OrgSizeResult;
-export function getOrgFromGroup(group: LoadForceGroup, factionName: string, factionAffinity: FactionAffinity, options?: OrgNamingOptions): OrgSizeResult;
-export function getOrgFromGroup(group: UnitGroup | LoadForceGroup, factionOrOptions?: string | OrgNamingOptions, factionAffinity?: FactionAffinity, options: OrgNamingOptions = {}): OrgSizeResult {
-	const resolvedOptions = typeof factionOrOptions === 'object' ? factionOrOptions : options;
-	const explicitFactionName = typeof factionOrOptions === 'string' ? factionOrOptions : undefined;
-
-	if (group instanceof UnitGroup) {
-		const force = group.force;
-		const resolvedFactionName = explicitFactionName ?? force.faction()?.name ?? 'Mercenary';
-		const resolvedFactionAffinity = factionAffinity ?? force.faction()?.group ?? 'Mercenary';
-		const allUnits = group.units().map((unit) => unit.getUnit()).filter((unit): unit is Unit => unit !== undefined);
-		const rawGroups = resolveFromUnits(allUnits, resolvedFactionName, resolvedFactionAffinity);
-		return getResolvedOrgResult(rawGroups, resolvedFactionName, resolvedFactionAffinity, resolvedOptions);
-	}
-
-	const resolvedFactionName = explicitFactionName ?? 'Mercenary';
-	const resolvedFactionAffinity = factionAffinity ?? 'Mercenary';
-	const units = group.units
-		.filter((unit): unit is typeof unit & { unit: Unit } => unit.unit !== undefined)
-		.map((unit) => unit.unit);
-	const rawGroups = resolveFromUnits(units, resolvedFactionName, resolvedFactionAffinity);
-	return getResolvedOrgResult(rawGroups, resolvedFactionName, resolvedFactionAffinity, resolvedOptions);
-}
-
-export function getOrgFromForce(force: Force, factionName: string, factionAffinity: FactionAffinity, options?: OrgNamingOptions): OrgSizeResult;
-export function getOrgFromForce(force: Force, options?: OrgNamingOptions): OrgSizeResult;
-export function getOrgFromForce(entry: LoadForceEntry, factionName: string, factionAffinity: FactionAffinity, options?: OrgNamingOptions): OrgSizeResult;
-export function getOrgFromForce(forceOrEntry: Force | LoadForceEntry, factionOrOptions?: string | OrgNamingOptions, factionAffinity?: FactionAffinity, options: OrgNamingOptions = {}): OrgSizeResult {
-	const resolvedOptions = typeof factionOrOptions === 'object' ? factionOrOptions : options;
-	const explicitFactionName = typeof factionOrOptions === 'string' ? factionOrOptions : undefined;
-
-	if (forceOrEntry instanceof LoadForceEntry) {
-		const resolvedFactionName = explicitFactionName ?? 'Mercenary';
-		const resolvedFactionAffinity = factionAffinity ?? 'Mercenary';
-		const groupResults = forceOrEntry.groups
-			.filter((group) => group.units.some((unit) => unit.unit !== undefined))
-			.flatMap((group) => getGroupResultsFromLoadForceGroup(group, resolvedFactionName, resolvedFactionAffinity));
-		const rawGroups = resolveFromGroups(resolvedFactionName, resolvedFactionAffinity, groupResults);
-		return getResolvedOrgResult(rawGroups, resolvedFactionName, resolvedFactionAffinity, resolvedOptions);
-	}
-
-	const resolvedFactionName = explicitFactionName ?? forceOrEntry.faction()?.name ?? 'Mercenary';
-	const resolvedFactionAffinity = factionAffinity ?? forceOrEntry.faction()?.group ?? 'Mercenary';
-	const groupResults = forceOrEntry.groups()
-		.filter((group) => group.units().length > 0)
-		.flatMap((group) => getGroupResultsFromOrgResult(group.sizeResult()));
-	const rawGroups = resolveFromGroups(resolvedFactionName, resolvedFactionAffinity, groupResults);
-	return getResolvedOrgResult(rawGroups, resolvedFactionName, resolvedFactionAffinity, resolvedOptions);
-}
-
 export function getOrgFromForceCollection(
 	entries: readonly LoadForceEntry[],
 	factionName: string,
@@ -499,3 +508,4 @@ export function getOrgFromForceCollection(
 	return toOrgSizeResult(display.name, display.tier, finalGroups);
 }
 
+*/

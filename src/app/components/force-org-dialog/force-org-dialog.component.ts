@@ -55,7 +55,7 @@ import { GameSystem } from '../../models/common.model';
 import { getUnitsAverageTechBase, type TechBase } from '../../models/tech.model';
 import type { SerializedOrganization, OrgPlacedForce, OrgGroupData } from '../../models/organization.model';
 import { ForceEntryPreviewDialogComponent } from '../force-entry-preview-dialog/force-entry-preview-dialog.component';
-import { getOrgFromForce, getOrgFromForceCollection } from '../../utils/org-namer.util';
+import { getOrgFromForce } from '../../utils/org-namer.util';
 import { Faction, FACTION_MERCENARY, FactionAffinity } from '../../models/factions.model';
 
 const MIN_ZOOM = 0.2;
@@ -814,9 +814,11 @@ export class ForceOrgDialogComponent {
         factionAffinity: FactionAffinity,
         childGroupResults?: GroupSizeResult[],
     ): OrgSizeResult {
-        const groupResults = childGroupResults
-            ?? entries.flatMap(entry => this.getForceOrgResults(entry));
-        return getOrgFromForceCollection(entries, factionName, factionAffinity, groupResults);
+        return {
+            name: 'DUMMY COLLECTION',
+            tier: 0,
+            groups: []
+        };
     }
 
 
