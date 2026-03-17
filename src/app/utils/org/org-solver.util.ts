@@ -3256,6 +3256,7 @@ function materializeComposedRulesByStageState(
     initialState: CanonicalGroupPoolState,
     context: ResolveContext,
     stage: RuleExecutionStage,
+    guard: SolverGuard,
 ): CanonicalGroupPoolState {
     const blockedFacts = initialState.groupFacts.filter((facts) => isBlockedSubRegularPromotionChildFacts(facts, context));
     let state = createCanonicalGroupPoolStateFromRecords(
@@ -3264,9 +3265,13 @@ function materializeComposedRulesByStageState(
 
     for (const rule of getOrderedComposedRules(context)) {
         const allowedModifierKeys = getAllowedModifierKeysForStage(getRuleStageMetadata(context, rule), stage);
-        const abstractCandidates = rule.kind === 'composed-count'
-            ? planComposedCountRuleInternal(rule, state.groupFacts, context.definition.registry, createSolverGuard(), allowedModifierKeys)
-            : planComposedPatternRuleInternal(rule, state.groupFacts, context.definition.registry, createSolverGuard(), allowedModifierKeys);
+        const abstractCandidates = planComposedRuleInternal(
+            rule,
+            state.groupFacts,
+            context.definition.registry,
+            guard,
+            allowedModifierKeys,
+        );
 
         if (abstractCandidates.length === 0) {
             continue;
@@ -3952,6 +3957,7 @@ function getRegularPromotionSuccessors(
 function runSingleTierRegularPromotionStepState(
     initialState: CanonicalGroupPoolState,
     context: ResolveContext,
+    guard: SolverGuard,
 ): CanonicalGroupPoolState {
     let poolState = initialState;
     let remainingFacts = poolState.groupFacts.filter((facts) => !isBlockedSubRegularPromotionChildFacts(facts, context));
@@ -3975,7 +3981,7 @@ function runSingleTierRegularPromotionStepState(
         const allowedModifierKeys = getAllowedModifierKeysForStage(getRuleStageMetadata(context, rule), 'regular');
         const plannedResult = buildPlannedPromotionResult(
             rule,
-            planComposedRuleInternal(rule, remainingFacts, context.definition.registry, createSolverGuard(), allowedModifierKeys),
+            planComposedRuleInternal(rule, remainingFacts, context.definition.registry, guard, allowedModifierKeys),
             poolState.recordByGroupFactId,
         );
         if (!plannedResult) {
@@ -4076,10 +4082,10 @@ function runLeftoverImprovementLoopState(
         }
         previousSignature = signature;
 
-        const stepped = runSingleTierRegularPromotionStepState(state, context);
+        const stepped = runSingleTierRegularPromotionStepState(state, context, guard);
         const assimilated = assimilateLeftoversIntoParentState(stepped, context, guard);
         state = searchBestRegularPromotionPoolStateFromState(assimilated, context, guard);
-        state = materializeComposedRulesByStageState(state, context, 'sub-regular');
+        state = materializeComposedRulesByStageState(state, context, 'sub-regular', guard);
         state = searchBestRegularPromotionPoolStateFromState(state, context, guard);
     }
 
