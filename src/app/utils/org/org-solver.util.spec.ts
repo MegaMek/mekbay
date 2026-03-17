@@ -1836,6 +1836,52 @@ describe('org-solver.util resolve parity', () => {
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
+    it('lists 3 BM and 3 BA as an Under-Strength Lance plus 3x Squad', () => {
+        const result = resolveFromUnits([
+            createBM('BM1'),
+            createBM('BM2'),
+            createBM('BM3'),
+            createUnit('BA1', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA2', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA3', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+        ], 'Random Inner Sphere Faction', 'Inner Sphere');
+
+        const aggregated = getAggregatedGroupsResult(result, 'Random Inner Sphere Faction', 'Inner Sphere');
+        expect(aggregated.name).toBe('Under-Strength Lance + 3x Squad');
+    });
+
+    it('lists 3 BM and 4 BA as an Under-Strength Lance plus Platoon', () => {
+        const result = resolveFromUnits([
+            createBM('BM1'),
+            createBM('BM2'),
+            createBM('BM3'),
+            createUnit('BA1', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA2', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA3', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA4', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+        ], 'Random Inner Sphere Faction', 'Inner Sphere');
+
+        const aggregated = getAggregatedGroupsResult(result, 'Random Inner Sphere Faction', 'Inner Sphere');
+        expect(aggregated.name).toBe('Under-Strength Company');
+    });
+
+    it('lists 3 BM and 6 BA as an Under-Strength Lance plus Platoon plus 2x Squad', () => {
+        const result = resolveFromUnits([
+            createBM('BM1'),
+            createBM('BM2'),
+            createBM('BM3'),
+            createUnit('BA1', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA2', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA3', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA4', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA5', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA6', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+        ], 'Random Inner Sphere Faction', 'Inner Sphere');
+
+        const aggregated = getAggregatedGroupsResult(result, 'Random Inner Sphere Faction', 'Inner Sphere');
+        expect(aggregated.name).toBe('Under-Strength Company + 2x Squad');
+    });
+
     it('resolves 5 BM in a Reinforced Lance', () => {
         const units: Unit[] = [
             createBM('BM1'),

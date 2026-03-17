@@ -23,6 +23,12 @@ interface GroupDisplayOptions {
 	readonly preserveForeignNames?: boolean;
 }
 
+interface HeterogeneousDisplayBucket {
+	readonly label: string;
+	readonly count: number;
+	readonly representative: GroupSizeResult;
+}
+
 function toOrgSizeResult(name: string, tier: number, groups: readonly GroupSizeResult[]): OrgSizeResult {
 	return {
 		name,
@@ -48,7 +54,7 @@ function getAggregatedDisplayTier(groups: readonly GroupSizeResult[]): number {
 }
 
 function getDisplayThresholdTier(options: OrgNamingOptions): number {
-	return options.displayThresholdTier ?? 0;
+	return options.displayThresholdTier ?? Number.NEGATIVE_INFINITY;
 }
 
 function filterGroupsForDisplay(
@@ -117,8 +123,41 @@ function getEquivalentName(groups: readonly GroupSizeResult[], options: GroupDis
 		&& group.countsAsType === first?.countsAsType,
 	);
 	if (!isHomogeneous) {
-		return groups
-			.map((group) => getGroupDisplayName(group, { ...options, includeAllocationSummary: false }))
+		const bucketsByLabel = new Map<string, HeterogeneousDisplayBucket>();
+
+		for (const group of groups) {
+			const label = getGroupTypeDisplayName(group, options.preserveForeignNames ?? false);
+			const existing = bucketsByLabel.get(label);
+			if (existing) {
+				bucketsByLabel.set(label, {
+					...existing,
+					count: existing.count + getGroupDisplayCount(group),
+				});
+				continue;
+			}
+
+			bucketsByLabel.set(label, {
+				label,
+				count: getGroupDisplayCount(group),
+				representative: group,
+			});
+		}
+
+		return [...bucketsByLabel.values()]
+			.sort((left, right) => {
+				if (left.representative.tier !== right.representative.tier) {
+					return right.representative.tier - left.representative.tier;
+				}
+				const leftIsSubRegular = left.representative.modifierKey !== '';
+				const rightIsSubRegular = right.representative.modifierKey !== '';
+				if (leftIsSubRegular !== rightIsSubRegular) {
+					return leftIsSubRegular ? -1 : 1;
+				}
+				return left.label.localeCompare(right.label);
+			})
+			.map((bucket) => {
+				return bucket.count > 1 ? `${bucket.count}x ${bucket.label}` : bucket.label;
+			})
 			.join(' + ');
 	}
 
@@ -126,6 +165,10 @@ function getEquivalentName(groups: readonly GroupSizeResult[], options: GroupDis
 		? getGroupTypeDisplayName({ ...first, modifierKey: '' }, options.preserveForeignNames ?? false)
 		: EMPTY_RESULT.name;
 	return `${getTotalGroupDisplayCount(groups)}x ${baseLabel}`;
+}
+
+function canReresolveAggregatedGroups(groups: readonly GroupSizeResult[]): boolean {
+	return groups.every((group) => group.modifierKey === '');
 }
 
 export function aggregateGroupsResult(groups: readonly GroupSizeResult[], options: GroupDisplayOptions = {}): OrgSizeResult {
@@ -350,10 +393,12 @@ export function getAggregatedGroupsResult(
 		return sameTypeDisplay;
 	}
 
-	const resolved = resolveFromGroups(factionName, factionAffinity, displayGroups, true);
-	if (resolved.length > 0 && resolved.length < displayGroups.length) {
-		const display = aggregateGroupsResult(resolved);
-		return toOrgSizeResult(display.name, display.tier, resolved);
+	if (canReresolveAggregatedGroups(displayGroups)) {
+		const resolved = resolveFromGroups(factionName, factionAffinity, displayGroups, true);
+		if (resolved.length > 0 && resolved.length < displayGroups.length) {
+			const display = aggregateGroupsResult(resolved);
+			return toOrgSizeResult(display.name, display.tier, resolved);
+		}
 	}
 
 	const aggregated = aggregateGroupsResult(displayGroups);

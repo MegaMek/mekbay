@@ -1955,6 +1955,24 @@ function materializeAbstractCompositionPlan(
     });
 }
 
+function getPreviewGroupsForAbstractSelection(
+    entries: readonly CountedCompositionEntry[],
+    signatureCounts: readonly number[],
+): GroupFacts[] {
+    const groups: GroupFacts[] = [];
+
+    signatureCounts.forEach((count, entryIndex) => {
+        const entry = entries[entryIndex];
+        if (!entry || count <= 0) {
+            return;
+        }
+
+        groups.push(...entry.groups.slice(0, count));
+    });
+
+    return groups;
+}
+
 function getAbstractPlanLeftoverGroups(
     entries: readonly CountedCompositionEntry[],
     candidates: readonly AbstractCompositionCandidate[],
@@ -2062,18 +2080,17 @@ function planComposedConfig(
     return { entries, candidates };
 }
 
-function materializeComposedPatternRuleInternal(
+function planPatternComposedConfig(
     rule: OrgComposedPatternRule,
-    groupFacts: readonly GroupFacts[],
+    groups: readonly GroupFacts[],
+    config: PatternCompositionConfig,
     registry: OrgRuleRegistry,
+    guard: SolverGuard,
     allowedModifierKeys?: ReadonlySet<string>,
-): MaterializedComposedGroupResult {
-    const config = buildPatternCompositionConfig(rule);
-    const guard = createSolverGuard();
-    const candidates: ConcreteCompositionCandidate[] = [];
+): { readonly entries: readonly CountedCompositionEntry[]; readonly candidates: readonly AbstractCompositionCandidate[] } {
     const remainingByBucket = new Map<string, GroupFacts[]>();
 
-    for (const group of groupFacts) {
+    for (const group of groups) {
         const bucketKey = getGroupBucketValue(config.childMatchBucketBy, group, registry);
         const existing = remainingByBucket.get(bucketKey);
         if (existing) {
@@ -2083,46 +2100,71 @@ function materializeComposedPatternRuleInternal(
         }
     }
 
-    const materializeBucketGroupSet = (bucketGroups: readonly GroupFacts[]): GroupFacts[] => {
-        let working = [...bucketGroups];
+    const entries: CountedCompositionEntry[] = [];
+    const candidates: AbstractCompositionCandidate[] = [];
+
+    const planBucketGroupSet = (bucketGroups: readonly GroupFacts[]): GroupFacts[] => {
+        const bucketEntries = buildCountedCompositionEntries(bucketGroups, config.childRoles);
+        const abstractPlan: AbstractCompositionCandidate[] = [];
+        let availableCounts = bucketEntries.map((entry) => entry.groups.length);
+
         for (const step of config.modifierDescriptor.stepsDescending) {
             if (allowedModifierKeys && !allowedModifierKeys.has(step.modifierKey)) {
                 continue;
             }
+
             let producedGroups = 0;
-            while (working.length >= step.count && producedGroups < MAX_COMPOSED_GROUPS_PER_CONFIG && !shouldAbortSearch(guard)) {
-                const selection = findConcreteComposition(
-                    working,
-                    config.childRoles,
-                    step.count,
-                    guard,
-                    (selected) => matchesComposedPatternSelection(rule, selected, registry),
-                );
+            while (!shouldAbortSearch(guard)
+                && producedGroups < MAX_COMPOSED_GROUPS_PER_CONFIG
+                && availableCounts.reduce((sum, count) => sum + count, 0) >= step.count) {
+                const selection = enumerateAbstractSelections(bucketEntries, availableCounts, config.childRoles, step.count, guard)
+                    .find((candidateSelection) => matchesComposedPatternSelection(
+                        rule,
+                        getPreviewGroupsForAbstractSelection(bucketEntries, candidateSelection),
+                        registry,
+                    ));
                 if (!selection) {
                     break;
                 }
-                producedGroups += 1;
-                candidates.push({
-                    groups: selection,
+
+                abstractPlan.push({
+                    entries: bucketEntries,
+                    signatureCounts: selection,
                     compositionIndex: 0,
                     modifierStep: step,
                 });
-                const selectedIds = new Set(selection.map((group) => group.group));
-                working = working.filter((group) => !selectedIds.has(group.group));
+                availableCounts = availableCounts.map((count, index) => count - (selection[index] ?? 0));
+                producedGroups += 1;
             }
         }
 
-        return working;
+        entries.push(...bucketEntries);
+        candidates.push(...abstractPlan);
+        return getAbstractPlanLeftoverGroups(bucketEntries, abstractPlan);
     };
 
     for (const bucketGroups of remainingByBucket.values()) {
-        materializeBucketGroupSet(bucketGroups);
+        planBucketGroupSet(bucketGroups);
     }
 
-    const groups = candidates.map((candidate) =>
+    return { entries, candidates };
+}
+
+function materializeComposedPatternRuleInternal(
+    rule: OrgComposedPatternRule,
+    groupFacts: readonly GroupFacts[],
+    registry: OrgRuleRegistry,
+    allowedModifierKeys?: ReadonlySet<string>,
+): MaterializedComposedGroupResult {
+    const config = buildPatternCompositionConfig(rule);
+    const guard = createSolverGuard();
+    const planned = planPatternComposedConfig(rule, groupFacts, config, registry, guard, allowedModifierKeys);
+    const concreteCandidates = materializeAbstractCompositionPlan(planned.candidates);
+
+    const groups = concreteCandidates.map((candidate) =>
         createComposedGroup(rule, candidate.modifierStep, candidate.groups.map((group) => group.group)),
     );
-    const usedGroupObjects = new Set(candidates.flatMap((candidate) => candidate.groups.map((group) => group.group)));
+    const usedGroupObjects = new Set(concreteCandidates.flatMap((candidate) => candidate.groups.map((group) => group.group)));
 
     return {
         groups,
@@ -2220,19 +2262,19 @@ export function evaluateComposedPatternRule(
     const acceptedGroups = groupFacts.filter((group) =>
         rule.childRoles.some((role) => groupMatchesRole(group, role)),
     );
-    const materialized = materializeComposedPatternRuleInternal(rule, groupFacts, registry);
-    const descriptor = getRuleModifierDescriptor(rule);
-    const emitted: ComposedCountEmission[] = materialized.groups.map((group) => {
-        const step = descriptor.stepsAscending.find((candidate) => candidate.modifierKey === group.modifierKey) ?? descriptor.regularStep;
-        return {
-            modifierKey: group.modifierKey,
-            perGroupCount: step.count,
-            copies: 1,
-            tier: group.tier,
-            compositionIndex: 0,
-        };
-    });
-    const usedGroups = materialized.groups.reduce((sum, group) => sum + (group.children?.length ?? 0), 0);
+    const config = buildPatternCompositionConfig(rule);
+    const guard = createSolverGuard();
+    const planned = planPatternComposedConfig(rule, groupFacts, config, registry, guard);
+    const emitted: ComposedCountEmission[] = planned.candidates.map((candidate) => ({
+        modifierKey: candidate.modifierStep.modifierKey,
+        perGroupCount: candidate.modifierStep.count,
+        copies: 1,
+        tier: candidate.modifierStep.tier,
+        compositionIndex: candidate.compositionIndex,
+    }));
+    const usedGroups = planned.candidates.reduce((sum, candidate) => (
+        sum + candidate.signatureCounts.reduce((countSum, count) => countSum + count, 0)
+    ), 0);
 
     return {
         acceptedGroups,
@@ -3352,7 +3394,7 @@ function resolveWithDefinition(
         { groups: initialImprovedPool, leftoverUnits, leftoverUnitAllocations },
     ];
 
-    if (wholeComposedFromInitial) {
+    if (wholeComposedFromInitial && leftoverUnits.length === 0 && leftoverUnitAllocations.length === 0) {
         candidateStates.push({ groups: [wholeComposedFromInitial], leftoverUnits: [], leftoverUnitAllocations: [] });
     }
 
@@ -3374,7 +3416,7 @@ function resolveWithDefinition(
     }
 
     const wholeComposed = resolveWholeComposedCandidate(regularPool, context, createSolverGuard());
-    if (wholeComposed) {
+    if (wholeComposed && leftoverUnits.length === 0 && leftoverUnitAllocations.length === 0) {
         candidateStates.push({ groups: [wholeComposed], leftoverUnits: [], leftoverUnitAllocations: [] });
     }
 
