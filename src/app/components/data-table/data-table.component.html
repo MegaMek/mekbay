@@ -30,7 +30,10 @@
         <div class="mb-data-table-row-item"
             *cdkVirtualFor="let row of rows(); let i = index; trackBy: trackRow"
             [ngClass]="resolveRowClass(row, i)"
-            (click)="onRowClick(row, i, $event)">
+            longPress
+            (shortPress)="onRowClick(row, i, $event)"
+            (longPress)="onRowLongPress(row, i, $event)"
+            (pointerenter)="onRowPointerEnter(row, i, $event)">
             @if (isFullRowRow(row, i) && fullRowTemplate(); as rowTemplate) {
             <div class="mb-data-table-full-row"
                 [style.width]="tableWidth()"

@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, signal, type ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, type input, viewChild, ChangeDetectorRef, DestroyRef, untracked, type ComponentRef } from '@angular/core';
+import { Component, signal, type ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, type input, viewChild, ChangeDetectorRef, DestroyRef, untracked, type ComponentRef, type TemplateRef } from '@angular/core';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
@@ -76,6 +76,7 @@ import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expan
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import { formatMovement } from '../../utils/as-common.util';
 import type { UnitType } from '../../models/units.model';
+import { DataTableComponent, type DataTableCellContext, type DataTableColumn, type DataTableRowClickEvent, type DataTableRowLongPressEvent, type DataTableRowPointerEnterEvent, type DataTableSortEvent } from '../data-table/data-table.component';
 
 /** Grouped chassis entry for compact view */
 export interface ChassisGroup {
@@ -96,7 +97,7 @@ export interface ChassisGroup {
 @Component({
     selector: 'unit-search',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, TooltipDirective, MultiSelectDropdownComponent, AdjustedPV, FormatNumberPipe, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, SemanticGuideComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent],
+    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, TooltipDirective, MultiSelectDropdownComponent, AdjustedPV, FormatNumberPipe, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, SemanticGuideComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.scss',
     host: {
@@ -191,6 +192,15 @@ export class UnitSearchComponent {
     advBtn = viewChild.required<ElementRef<HTMLButtonElement>>('advBtn');
     favBtn = viewChild.required<ElementRef<HTMLButtonElement>>('favBtn');
     advPanel = viewChild<ElementRef<HTMLElement>>('advPanel');
+    resultsDataTable = viewChild<DataTableComponent<Unit>>(DataTableComponent);
+    private readonly tableIconCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableIconCell');
+    private readonly tableNameCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableNameCell');
+    private readonly tableYearCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableYearCell');
+    private readonly tableTypeCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableTypeCell');
+    private readonly tablePvCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tablePvCell');
+    private readonly tableMovementCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableMovementCell');
+    private readonly tableSpecialsCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableSpecialsCell');
+    private readonly tableTagsCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableTagsCell');
 
     /** Query the active dropdown element directly from DOM to avoid viewChild retention */
     private getActiveDropdownElement(): HTMLElement | null {
@@ -213,11 +223,12 @@ export class UnitSearchComponent {
 
     /**
      * Current results view mode.
-     * - 'list'    : default list / table view
+        * - 'list'    : default list view
      * - 'card'    : AS card grid (Alpha Strike only)
      * - 'chassis' : compact chassis-grouped view
+        * - 'table'   : AS table view
      */
-    viewMode = signal<'list' | 'card' | 'chassis'>('list');
+        viewMode = signal<'list' | 'card' | 'chassis' | 'table'>('list');
 
 
 
@@ -232,7 +243,15 @@ export class UnitSearchComponent {
         return this.expandedView() && this.layoutService.windowWidth() >= this.INLINE_PANEL_MIN_WIDTH;
     });
 
-    readonly asTableScrollLeft = signal(0);
+    readonly isTableMode = computed(() => this.gameService.isAlphaStrike() && this.viewMode() === 'table');
+
+    readonly currentViewModeTitle = computed(() => {
+        const mode = this.viewMode();
+        if (mode === 'chassis') return 'Chassis View';
+        if (mode === 'card') return 'Card View';
+        if (mode === 'table') return 'Table View';
+        return 'List View';
+    });
 
     /**
      * Units grouped by chassis+type for compact view.
@@ -275,18 +294,6 @@ export class UnitSearchComponent {
 
         return Array.from(map.values());
     });
-
-    onAsTableViewportScroll() {
-        const viewport = this.viewport();
-        if (!viewport) {
-            return;
-        }
-
-        const scrollLeft = viewport.elementRef.nativeElement.scrollLeft;
-        if (this.asTableScrollLeft() !== scrollLeft) {
-            this.asTableScrollLeft.set(scrollLeft);
-        }
-    }
 
     /** Index of the currently selected unit in the filtered list */
     private inlinePanelIndex = computed(() => {
@@ -348,6 +355,183 @@ export class UnitSearchComponent {
         // Key is not displayed in table - return the label
         const opt: SortOption | undefined = this.SORT_OPTIONS.find(o => o.key === key);
         return opt?.slotLabel || opt?.label || key;
+    });
+
+    readonly unitSearchTableMinWidth = computed(() => this.asTableSortSlotHeader() ? '1534px' : '1446px');
+
+    readonly unitSearchTableColumns = computed<readonly DataTableColumn<Unit>[]>(() => {
+        const iconCell = this.tableIconCell();
+        const nameCell = this.tableNameCell();
+        const yearCell = this.tableYearCell();
+        const typeCell = this.tableTypeCell();
+        const pvCell = this.tablePvCell();
+        const movementCell = this.tableMovementCell();
+        const specialsCell = this.tableSpecialsCell();
+        const tagsCell = this.tableTagsCell();
+
+        if (!iconCell || !nameCell || !yearCell || !typeCell || !pvCell || !movementCell || !specialsCell || !tagsCell) {
+            return [];
+        }
+
+        const columns: DataTableColumn<Unit>[] = [
+            {
+                id: 'icon',
+                header: '',
+                track: '40px',
+                cellTemplate: iconCell,
+                align: 'center',
+            },
+            {
+                id: 'name',
+                header: 'Name',
+                track: 'minmax(320px, 1.35fr)',
+                cellTemplate: nameCell,
+                sortKey: 'name',
+                sortActive: this.isSortActive('name'),
+            },
+            {
+                id: 'year',
+                header: 'Year',
+                track: '72px',
+                cellTemplate: yearCell,
+                sortKey: 'year',
+                sortActive: this.isSortActive('year'),
+                cellClass: this.tableCellClass('as-td-year', this.isSortActive('year')),
+                align: 'center',
+            },
+            {
+                id: 'type',
+                header: 'Type',
+                track: '50px',
+                cellTemplate: typeCell,
+                sortKey: 'as.TP',
+                sortActive: this.isSortActive('as.TP'),
+                cellClass: this.tableCellClass('as-td-type', this.isSortActive('as.TP')),
+                align: 'center',
+            },
+            {
+                id: 'role',
+                header: 'Role',
+                track: '130px',
+                value: unit => unit.role !== 'None' ? unit.role : '',
+                sortKey: 'role',
+                sortActive: this.isSortActive('role'),
+                cellClass: this.tableCellClass('as-td-role', this.isSortActive('role')),
+            },
+            {
+                id: 'pv',
+                header: 'PV',
+                track: '45px',
+                cellTemplate: pvCell,
+                sortKey: 'as.PV',
+                sortActive: this.isSortActive('as.PV'),
+                cellClass: this.tableCellClass('as-td-pv is-bold', this.isSortActive('as.PV')),
+                align: 'right',
+            },
+            {
+                id: 'sz',
+                header: 'SZ',
+                track: '30px',
+                value: unit => unit.as.SZ,
+                sortKey: 'as.SZ',
+                sortActive: this.isSortActive('as.SZ'),
+                cellClass: this.tableCellClass('as-td-sz', this.isSortActive('as.SZ')),
+                align: 'center',
+            },
+            {
+                id: 'mv',
+                header: 'MV',
+                track: '65px',
+                cellTemplate: movementCell,
+                sortKey: 'as._mv',
+                sortActive: this.isSortActive('as._mv'),
+                cellClass: this.tableCellClass('as-td-mv', this.isSortActive('as._mv')),
+                align: 'center',
+            },
+            {
+                id: 'tmm',
+                header: 'TMM',
+                track: '40px',
+                value: unit => unit.as.TMM ?? '—',
+                sortKey: 'as.TMM',
+                sortActive: this.isSortActive('as.TMM'),
+                cellClass: this.tableCellClass('as-td-tmm', this.isSortActive('as.TMM')),
+                align: 'center',
+            },
+            {
+                id: 'damage',
+                header: 'S/M/L',
+                track: '60px',
+                value: unit => !unit.as.usesArcs ? `${unit.as.dmg.dmgS}/${unit.as.dmg.dmgM}/${unit.as.dmg.dmgL}` : '',
+                sortKey: 'as.dmg._dmgS',
+                sortGroupKey: 'as.damage',
+                sortActive: this.isSortActive('as.damage'),
+                cellClass: this.tableCellClass('as-td-dmg', this.isSortActive('as.damage')),
+                align: 'center',
+            },
+            {
+                id: 'arm',
+                header: 'A',
+                track: '40px',
+                value: unit => unit.as.Arm,
+                sortKey: 'as.Arm',
+                sortActive: this.isSortActive('as.Arm'),
+                cellClass: this.tableCellClass('as-td-arm', this.isSortActive('as.Arm')),
+                align: 'center',
+            },
+            {
+                id: 'str',
+                header: 'S',
+                track: '40px',
+                value: unit => unit.as.Str,
+                sortKey: 'as.Str',
+                sortActive: this.isSortActive('as.Str'),
+                cellClass: this.tableCellClass('as-td-str', this.isSortActive('as.Str')),
+                align: 'center',
+            },
+            {
+                id: 'ov',
+                header: 'OV',
+                track: '30px',
+                value: unit => unit.as.usesOV ? unit.as.OV : '',
+                sortKey: 'as.OV',
+                sortActive: this.isSortActive('as.OV'),
+                cellClass: this.tableCellClass('as-td-ov', this.isSortActive('as.OV')),
+                align: 'center',
+            },
+        ];
+
+        if (this.asTableSortSlotHeader()) {
+            columns.push({
+                id: 'sort-slot',
+                header: this.asTableSortSlotHeader() ?? '',
+                track: '80px',
+                value: unit => this.getAsTableSortSlot(unit) ?? '',
+                headerClass: 'as-th-sort-slot',
+                cellClass: 'as-td-sort-slot sort-slot',
+                align: 'center',
+            });
+        }
+
+        columns.push(
+            {
+                id: 'specials',
+                header: 'Special',
+                track: 'minmax(220px, 1fr)',
+                cellTemplate: specialsCell,
+            },
+            {
+                id: 'tags',
+                header: 'Tags',
+                track: '120px',
+                cellTemplate: tagsCell,
+                headerClass: 'as-th-tags',
+                cellClass: 'as-td-tags',
+                align: 'right',
+            },
+        );
+
+        return columns;
     });
 
     /** Current sort key for expanded card highlighting */
@@ -480,7 +664,15 @@ export class UnitSearchComponent {
         effect(() => {
             const isAS = this.gameService.isAlphaStrike();
             untracked(() => {
-                if (!isAS && this.viewMode() === 'card') {
+                if (!isAS && (this.viewMode() === 'card' || this.viewMode() === 'table')) {
+                    this.viewMode.set('list');
+                }
+            });
+        });
+        effect(() => {
+            const isExpanded = this.expandedView();
+            untracked(() => {
+                if (!isExpanded && this.viewMode() === 'table') {
                     this.viewMode.set('list');
                 }
             });
@@ -781,6 +973,12 @@ export class UnitSearchComponent {
         return index;
     }
 
+    readonly unitTableRowClass = (unit: Unit, index: number) => ({
+        'is-selected': this.isUnitSelected(unit),
+        'is-active': this.activeIndex() === index,
+        'is-panel-selected': this.showInlinePanel() && this.inlinePanelUnit()?.name === unit.name,
+    });
+
     focusInput() {
         afterNextRender(() => {
             try { this.syntaxInput()?.focus(); } catch { /* ignore */ }
@@ -934,7 +1132,7 @@ export class UnitSearchComponent {
     }
 
     clearAdvFilters() {
-        this.viewport()?.scrollToIndex(0);
+        this.currentViewport()?.scrollToIndex(0);
         this.filtersService.resetFilters();
         this.activeIndex.set(null);
     }
@@ -1036,7 +1234,7 @@ export class UnitSearchComponent {
     }
 
     private scrollToIndex(index: number) {
-        this.viewport()?.scrollToIndex(index, 'smooth');
+        this.currentViewport()?.scrollToIndex(index, 'smooth');
     }
 
     /**
@@ -1044,7 +1242,7 @@ export class UnitSearchComponent {
      * If scrolling is needed, positions the item at the nearest edge (top or bottom).
      */
     private scrollToMakeVisible(index: number) {
-        const vp = this.viewport();
+        const vp = this.currentViewport();
         if (!vp) return;
 
         const vpElement = vp.elementRef.nativeElement;
@@ -1058,7 +1256,7 @@ export class UnitSearchComponent {
         }
 
         // Find the rendered items
-        const items = vpElement.querySelectorAll('.results-dropdown-item:not(.no-results)');
+        const items = vpElement.querySelectorAll('.results-dropdown-item:not(.no-results), .mb-data-table-row-item');
         const localIndex = index - renderedRange.start;
 
         if (localIndex < 0 || localIndex >= items.length) {
@@ -1221,6 +1419,22 @@ export class UnitSearchComponent {
             this.filtersService.setSortOrder(sortKey);
             this.filtersService.setSortDirection('asc');
         }
+    }
+
+    onUnitTableSort(event: DataTableSortEvent): void {
+        this.onHeaderSort(event.sortKey, event.groupKey);
+    }
+
+    onUnitTableRowClick(event: DataTableRowClickEvent<Unit>): void {
+        this.onUnitCardClick(event.row, event.event);
+    }
+
+    onUnitTableRowLongPress(event: DataTableRowLongPressEvent<Unit>): void {
+        this.multiSelectUnit(event.row, event.event);
+    }
+
+    onUnitTableRowPointerEnter(event: DataTableRowPointerEnterEvent<Unit>): void {
+        this.activeIndex.set(event.index);
     }
 
     isSortActive(...keysOrGroups: string[]): boolean {
@@ -1398,7 +1612,7 @@ export class UnitSearchComponent {
         window.removeEventListener('pointercancel', this.onAdvPanelDragEnd);
     };
 
-    multiSelectUnit(unit: Unit, event?: MouseEvent) {
+    multiSelectUnit(unit: Unit, event?: Event) {
         event?.stopPropagation();
         const selected = new Set(this.selectedUnits());
         if (selected.has(unit.name)) {
@@ -1535,6 +1749,14 @@ export class UnitSearchComponent {
             .join('/');
     }
 
+    private tableCellClass(base: string, active: boolean): string {
+        return active ? `${base} sort-slot` : base;
+    }
+
+    private currentViewport(): CdkVirtualScrollViewport | undefined {
+        return this.resultsDataTable()?.getViewport() ?? this.viewport();
+    }
+
     toggleExpandedView() {
         const isExpanded = this.expandedView();
 
@@ -1555,15 +1777,37 @@ export class UnitSearchComponent {
 
     /**
      * Cycle through view modes.
-     * AS:  list → card → chassis → list
+     * AS:  list → card → chassis → table → list
      * CBT: list → chassis → list
      */
     cycleViewMode() {
         const current = this.viewMode();
         const isAS = this.gameService.isAlphaStrike();
+        const isExpanded = this.expandedView();
         if (isAS) {
-            // list → card → chassis → list
-            this.viewMode.set(current === 'list' ? 'card' : current === 'card' ? 'chassis' : 'list');
+            // Compact: list → card → chassis → list
+            // Expanded: list → card → chassis → table → list
+            if (!isExpanded) {
+                this.viewMode.set(
+                    current === 'list'
+                        ? 'card'
+                        : current === 'card'
+                            ? 'chassis'
+                            : 'list'
+                );
+                return;
+            }
+
+            // list → card → chassis → table → list
+            this.viewMode.set(
+                current === 'list'
+                    ? 'card'
+                    : current === 'card'
+                        ? 'chassis'
+                        : current === 'chassis'
+                            ? 'table'
+                            : 'list'
+            );
         } else {
             // list → chassis → list
             this.viewMode.set(current === 'list' ? 'chassis' : 'list');

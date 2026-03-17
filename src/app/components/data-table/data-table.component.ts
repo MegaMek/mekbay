@@ -34,6 +34,7 @@
 import { CommonModule, NgTemplateOutlet } from '@angular/common';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { Component, computed, input, output, signal, TemplateRef, viewChild } from '@angular/core';
+import { LongPressDirective } from '../../directives/long-press.directive';
 
 export type DataTableClassValue = string | string[] | Set<string> | Record<string, boolean> | null | undefined;
 
@@ -77,9 +78,21 @@ export interface DataTableRowClickEvent<T> {
     event: MouseEvent;
 }
 
+export interface DataTableRowLongPressEvent<T> {
+    row: T;
+    index: number;
+    event: PointerEvent;
+}
+
+export interface DataTableRowPointerEnterEvent<T> {
+    row: T;
+    index: number;
+    event: PointerEvent;
+}
+
 @Component({
     selector: 'mb-data-table',
-    imports: [CommonModule, NgTemplateOutlet, ScrollingModule],
+    imports: [CommonModule, NgTemplateOutlet, ScrollingModule, LongPressDirective],
     templateUrl: './data-table.component.html',
     styleUrl: './data-table.component.scss'
 })
@@ -98,6 +111,8 @@ export class DataTableComponent<T> {
 
     readonly sort = output<DataTableSortEvent>();
     readonly rowClick = output<DataTableRowClickEvent<T>>();
+    readonly rowLongPress = output<DataTableRowLongPressEvent<T>>();
+    readonly rowPointerEnter = output<DataTableRowPointerEnterEvent<T>>();
 
     private readonly viewport = viewChild(CdkVirtualScrollViewport);
     readonly scrollLeft = signal(0);
@@ -136,6 +151,34 @@ export class DataTableComponent<T> {
         }
 
         this.rowClick.emit({ row, index, event });
+    }
+
+    onRowLongPress(row: T, index: number, event: PointerEvent) {
+        if (this.isFullRowRow(row, index)) {
+            return;
+        }
+
+        this.rowLongPress.emit({ row, index, event });
+    }
+
+    onRowPointerEnter(row: T, index: number, event: PointerEvent) {
+        if (this.isFullRowRow(row, index)) {
+            return;
+        }
+
+        this.rowPointerEnter.emit({ row, index, event });
+    }
+
+    getViewport(): CdkVirtualScrollViewport | undefined {
+        return this.viewport();
+    }
+
+    scrollToIndex(index: number, behavior: ScrollBehavior = 'auto') {
+        this.viewport()?.scrollToIndex(index, behavior);
+    }
+
+    scrollToOffset(offset: number, behavior: ScrollBehavior = 'auto') {
+        this.viewport()?.scrollToOffset(offset, behavior);
     }
 
     trackRow = (index: number, row: T) => this.rowTrackBy()(index, row);

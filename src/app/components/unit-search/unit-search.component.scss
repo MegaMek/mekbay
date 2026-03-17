@@ -654,303 +654,113 @@
     color: var(--bt-yellow);
 }
 
-/* Alpha Strike Table View (>= 1200px) */
-.as-table-header {
-    display: none;
-}
-
-.as-table-row {
-    display: none;
-}
-
 .as-card-view {
     display: flex;
 }
 
-.as-table-scroll {
-    display: contents;
+.unit-search-as-table {
+    flex: 1;
+    min-height: 0;
 }
 
-@container results-container (min-width: 1200px) {
-    .as-table-scroll {
-        --as-table-inline-padding: 12px;
-        --as-table-inline-end-padding: 20px;
-        --as-table-columns: 40px minmax(320px, 1.35fr) 72px 50px 130px 45px 30px 65px 40px 60px 40px 40px 30px minmax(220px, 1fr) 120px;
-        --as-table-columns-with-slot: 40px minmax(320px, 1.35fr) 72px 50px 130px 45px 30px 65px 40px 60px 40px 40px 30px 80px minmax(220px, 1fr) 120px;
-        --as-table-min-width: 1446px;
-        --as-table-min-width-with-slot: 1534px;
-        --as-table-width: max(var(--as-table-min-width), 100%);
-        --as-table-width-with-slot: max(var(--as-table-min-width-with-slot), 100%);
-        display: flex;
-        flex-direction: column;
-        flex: 1;
-        min-height: 0;
-        min-width: 0;
-        overflow: hidden;
-    }
+.unit-search-as-table .mb-data-table-row-item {
+    min-height: 48px;
+    padding: 4px 0;
+}
 
-    .as-table-header-viewport {
-        overflow: hidden;
-        flex: 0 0 auto;
-        min-width: 0;
-    }
+.as-th,
+.as-td {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 
-    .as-table-viewport {
-        scrollbar-gutter: stable;
-        width: 100%;
-        min-width: 0;
-        flex: 1;
-        min-height: 0;
-        background-color: #222;
-        overflow-x: auto !important;
-        overflow-y: auto !important;
-        align-self: stretch;
-    }
+.as-th-tags {
+    text-align: right;
+}
 
-    .as-table-viewport::-webkit-scrollbar-corner {
-        background-color: #222;
-    }
+.as-td-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
 
-    .as-table-viewport.has-sort-slot {
-        width: 100%;
-        min-width: 0;
-    }
+.as-td-name {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
 
-    .as-table-viewport .cdk-virtual-scroll-content-wrapper {
-        width: var(--as-table-width);
-        min-width: var(--as-table-width);
-    }
+.as-td-year {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    white-space: nowrap;
+}
 
-    .as-table-viewport.has-sort-slot .cdk-virtual-scroll-content-wrapper {
-        width: var(--as-table-width-with-slot);
-        min-width: var(--as-table-width-with-slot);
-    }
+.as-era-icon {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
 
-    .as-table-header {
-        display: grid;
-        grid-template-columns: var(--as-table-columns);
-        align-items: center;
-        gap: 8px;
-        width: var(--as-table-width);
-        min-width: var(--as-table-width);
-        box-sizing: border-box;
-        padding: 8px var(--as-table-inline-end-padding) 8px var(--as-table-inline-padding);
-        background-color: #333;
-        border-bottom: 2px solid #555;
-        font-weight: bold;
-        font-size: 0.85em;
-        color: var(--text-color-secondary);
-        z-index: 4;
-        will-change: transform;
-    }
+.as-td-chassis {
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 
-    .as-table-header.has-sort-slot,
-    .as-table-row.has-sort-slot {
-        grid-template-columns: var(--as-table-columns-with-slot);
-    }
+.as-td-model {
+    font-size: 0.85em;
+    color: var(--text-color-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 
-    .as-table-header.has-sort-slot {
-        width: var(--as-table-width-with-slot);
-        min-width: var(--as-table-width-with-slot);
-    }
-    
-    .results-dropdown-item.selected {
-        background-color: var(--bt-yellow-background-transparent);
-        &:hover {
-            background-color: var(--bt-yellow-background-bright-transparent);
-        }
-    }
+.as-td-role {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 
-    .as-table-row {
-        display: grid;
-        grid-template-columns: var(--as-table-columns);
-        align-items: center;
-        gap: 8px;
-        width: var(--as-table-width);
-        min-width: var(--as-table-width);
-        box-sizing: border-box;
-        padding: 0 var(--as-table-inline-end-padding) 0 var(--as-table-inline-padding);
-    }
+.as-td-specials {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    min-width: 0;
+    width: 100%;
+}
 
-    .as-table-row.has-sort-slot {
-        width: var(--as-table-width-with-slot);
-        min-width: var(--as-table-width-with-slot);
-    }
+.as-td-specials .special-pill {
+    padding: 1px 4px;
+    font-size: 0.8em;
+}
 
-    .as-card-view {
-        display: none;
-    }
+.as-td-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    align-items: center;
+    justify-content: flex-end;
+    width: 100%;
+}
 
-    /* Common column styles */
-    .as-th, .as-td {
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
+.as-td-tags .tag {
+    padding: 1px 4px;
+    font-size: 0.8em;
+}
 
-    .as-th-type, .as-td-type,
-    .as-th-year, .as-td-year,
-    .as-th-sz, .as-td-sz,
-    .as-th-mv, .as-td-mv,
-    .as-th-tmm, .as-td-tmm,
-    .as-th-dmg, .as-td-dmg,
-    .as-th-arm, .as-td-arm,
-    .as-th-str, .as-td-str,
-    .as-th-ov, .as-td-ov,
-    .as-th-sort-slot, .as-td-sort-slot {
-        text-align: center;
-    }
+.as-td-tags .add-tag-btn {
+    padding: 2px;
+}
 
-    .as-th-tags {
-        text-align: right;
-    }
-
-    .as-th-pv, .as-td-pv {
-        text-align: right;
-        font-weight: bold;
-    }
-
-    /* Table cell content styles */
-    .as-td-icon {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .as-td-name {
-        display: flex;
-        flex-direction: column;
-        width: 100%;
-    }
-
-    .as-td-year {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 4px;
-        white-space: nowrap;
-    }
-
-    .as-era-icon {
-        width: 20px;
-        height: 20px;
-        object-fit: contain;
-        flex-shrink: 0;
-    }
-
-    .as-td-chassis {
-        font-weight: bold;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    .as-td-model {
-        font-size: 0.85em;
-        color: var(--text-color-secondary);
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    .as-td-role {
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    .as-td-specials {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 2px;
-        min-width: 0;
-        width: 100%;
-    }
-
-    .as-td-specials .special-pill {
-        padding: 1px 4px;
-        font-size: 0.8em;
-    }
-
-    .as-td-tags {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 2px;
-        align-items: center;
-        justify-content: flex-end;
-        width: 100%;
-        max-width: 160px;
-        justify-self: end;
-    }
-
-    .as-td-tags .tag {
-        padding: 1px 4px;
-        font-size: 0.8em;
-    }
-
-    .as-td-tags .add-tag-btn {
-        padding: 2px;
-    }
-
-    .as-td-tags .add-tag-btn svg {
-        width: 14px;
-        height: 14px;
-    }
-
-    .as-td.sort-slot {
-        color: var(--bt-yellow);
-    }
-
-    .as-th-sortable {
-        cursor: pointer;
-        user-select: none;
-        white-space: nowrap;
-        overflow: visible;
-
-        &:hover {
-            color: var(--text-color-primary, #fff);
-        }
-
-        &.sort-active {
-            color: var(--bt-yellow);
-        }
-
-        /* Arrow appears after text with 4px gap but takes zero layout width
-           (negative margin-right cancels the space) so text-align centering is unaffected */
-        &.sort-active::after {
-            content: '';
-            display: inline-block;
-            vertical-align: middle;
-            width: 0;
-            height: 0;
-            margin-left: 2px;
-            margin-right: -12px;
-            border-left: 4px solid transparent;
-            border-right: 4px solid transparent;
-        }
-
-        .sort-asc &.sort-active::after {
-            border-bottom: 5px solid currentColor;
-        }
-
-        .sort-desc &.sort-active::after {
-            border-top: 5px solid currentColor;
-        }
-    }
-
-    /* Adjust row items in table view (only when AS table row is visible) */
-    .results-dropdown-item:has(.as-table-row) {
-        min-height: 48px;
-        padding: 4px 0;
-        width: var(--as-table-width);
-        min-width: var(--as-table-width);
-        box-sizing: border-box;
-    }
-
-    .results-dropdown-item:has(.as-table-row.has-sort-slot) {
-        width: var(--as-table-width-with-slot);
-        min-width: var(--as-table-width-with-slot);
-    }
+.as-td-tags .add-tag-btn svg {
+    width: 14px;
+    height: 14px;
 }
 
 /* Chord indicator toast */
