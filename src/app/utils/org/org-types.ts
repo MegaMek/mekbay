@@ -188,6 +188,19 @@ export type BuiltInOrgBucketName =
     | 'promotionBasic'
     | 'promotionWithUnitKinds';
 export type OrgBucketName = BuiltInOrgBucketName;
+export type BuiltInOrgUnitBucketName =
+    | 'classKey'
+    | 'ciMoveClass'
+    | 'ciMoveClassTroopers'
+    | 'flightType'
+    | 'infantryTroopers'
+    | 'transport';
+export type OrgUnitBucketName = BuiltInOrgUnitBucketName;
+export type BuiltInOrgGroupBucketName =
+    | 'ciMoveClass'
+    | 'promotionBasic'
+    | 'promotionWithUnitKinds';
+export type OrgGroupBucketName = BuiltInOrgGroupBucketName;
 export type BuiltInUnitClassKey =
     | 'AF'
     | 'AF:omni'
@@ -318,6 +331,7 @@ export interface GroupFacts {
     readonly unitClassCounts: ReadonlyMap<UnitClassKey, number>;
     readonly unitTagCounts: ReadonlyMap<UnitFactTag, number>;
     readonly unitScalarSums: ReadonlyMap<UnitNumericScalarName, number>;
+    readonly descendantUnitBucketCounts: ReadonlyMap<OrgUnitBucketName, ReadonlyMap<OrgBucketValue, number>>;
 }
 
 export interface OrgConstraintSpec {
@@ -344,8 +358,8 @@ export interface OrgChildRoleSpec {
 export interface OrgComposedCountAlternativeSpec {
     readonly childRoles: readonly OrgChildRoleSpec[];
     readonly modifiers: Record<string, number | OrgTypeModifier>;
-    readonly childBucketBy?: OrgBucketName;
-    readonly childMatchBucketBy?: OrgBucketName;
+    readonly childBucketBy?: OrgGroupBucketName;
+    readonly childMatchBucketBy?: OrgGroupBucketName;
 }
 
 export interface OrgCIFormationEntry {
@@ -418,7 +432,7 @@ export interface OrgLeafCountRule extends OrgRuleMetadata {
     readonly kind: 'leaf-count';
     readonly unitSelector: OrgSelectorName | readonly OrgSelectorName[];
     readonly pointModel: 'fixed' | 'range';
-    readonly bucketBy?: OrgBucketName;
+    readonly bucketBy?: OrgUnitBucketName;
 }
 
 /**
@@ -430,7 +444,7 @@ export interface OrgLeafCountRule extends OrgRuleMetadata {
 export interface OrgLeafPatternRule extends OrgRuleMetadata {
     readonly kind: 'leaf-pattern';
     readonly unitSelector: OrgSelectorName | readonly OrgSelectorName[];
-    readonly bucketBy: OrgBucketName;
+    readonly bucketBy: OrgUnitBucketName;
     readonly patterns: readonly OrgPatternSpec[];
 }
 
@@ -443,8 +457,8 @@ export interface OrgLeafPatternRule extends OrgRuleMetadata {
 export interface OrgComposedCountRule extends OrgRuleMetadata {
     readonly kind: 'composed-count';
     readonly childRoles: readonly OrgChildRoleSpec[];
-    readonly childBucketBy?: OrgBucketName;
-    readonly childMatchBucketBy?: OrgBucketName;
+    readonly childBucketBy?: OrgGroupBucketName;
+    readonly childMatchBucketBy?: OrgGroupBucketName;
     readonly requireRegularForPromotion?: boolean;
     readonly alternativeCompositions?: readonly OrgComposedCountAlternativeSpec[];
 }
@@ -467,10 +481,10 @@ export interface OrgCIFormationRule extends OrgRuleMetadata {
 export interface OrgComposedPatternRule extends OrgRuleMetadata {
     readonly kind: 'composed-pattern';
     readonly childRoles: readonly OrgChildRoleSpec[];
-    readonly bucketBy: OrgBucketName;
+    readonly bucketBy: OrgUnitBucketName;
     readonly patterns: readonly OrgPatternSpec[];
-    readonly childBucketBy?: OrgBucketName;
-    readonly childMatchBucketBy?: OrgBucketName;
+    readonly childBucketBy?: OrgGroupBucketName;
+    readonly childMatchBucketBy?: OrgGroupBucketName;
     readonly constraints?: readonly OrgConstraintSpec[];
 }
 
@@ -489,8 +503,8 @@ export type OrgRuleDefinition =
  */
 export interface OrgRuleRegistry {
     readonly unitSelectors: Readonly<Partial<Record<OrgSelectorName, (facts: UnitFacts) => boolean>>>;
-    readonly unitBuckets: Readonly<Partial<Record<OrgBucketName, (facts: UnitFacts) => OrgBucketValue>>>;
-    readonly groupBuckets: Readonly<Partial<Record<OrgBucketName, (facts: GroupFacts) => OrgBucketValue>>>;
+    readonly unitBuckets: Readonly<Partial<Record<OrgUnitBucketName, (facts: UnitFacts) => OrgBucketValue>>>;
+    readonly groupBuckets: Readonly<Partial<Record<OrgGroupBucketName, (facts: GroupFacts) => OrgBucketValue>>>;
 }
 
 /**

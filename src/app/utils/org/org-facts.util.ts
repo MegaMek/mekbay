@@ -31,7 +31,9 @@ import type {
     OrgGroupProvenance,
     InfantryTrooperBucketValue,
     OrgChildTypeCountKey,
+    OrgBucketValue,
     OrgRuleRegistry,
+    OrgUnitBucketName,
     PromotionBasicBucketValue,
     PromotionWithUnitKindsBucketValue,
     TransportBucketValue,
@@ -40,6 +42,15 @@ import type {
     UnitNumericScalarName,
     UnitFacts,
 } from './org-types';
+
+const ORG_UNIT_BUCKET_NAMES: readonly OrgUnitBucketName[] = [
+    'classKey',
+    'ciMoveClass',
+    'ciMoveClassTroopers',
+    'flightType',
+    'infantryTroopers',
+    'transport',
+];
 
 function isAero(unit: Unit): boolean {
     return unit.type === 'Aero';
@@ -333,6 +344,11 @@ export function compileGroupFacts(
     const unitClassCounts = new Map<UnitClassKey, number>();
     const unitTagCounts = new Map<UnitFactTag, number>();
     const unitScalarSums = new Map<UnitNumericScalarName, number>();
+    const descendantUnitBucketCounts = new Map<OrgUnitBucketName, Map<OrgBucketValue, number>>();
+
+    for (const bucketName of ORG_UNIT_BUCKET_NAMES) {
+        descendantUnitBucketCounts.set(bucketName, new Map<OrgBucketValue, number>());
+    }
 
     for (const child of group.children ?? []) {
         incrementCount(childTypeCounts, child.type ?? 'null');
@@ -369,6 +385,13 @@ export function compileGroupFacts(
                 incrementCount(unitScalarSums, key as UnitNumericScalarName, numericValue);
             }
         }
+
+        incrementCount(descendantUnitBucketCounts.get('classKey')!, facts.classKey);
+        incrementCount(descendantUnitBucketCounts.get('ciMoveClass')!, getCIMoveClassBucketValue(facts));
+        incrementCount(descendantUnitBucketCounts.get('ciMoveClassTroopers')!, getCIMoveClassTrooperBucketValue(facts));
+        incrementCount(descendantUnitBucketCounts.get('flightType')!, getFlightTypeBucketValue(facts));
+        incrementCount(descendantUnitBucketCounts.get('infantryTroopers')!, getInfantryTrooperBucketValue(facts));
+        incrementCount(descendantUnitBucketCounts.get('transport')!, getTransportBucketValue(facts));
     }
 
     return {
@@ -384,6 +407,7 @@ export function compileGroupFacts(
         unitClassCounts,
         unitTagCounts,
         unitScalarSums,
+        descendantUnitBucketCounts,
     };
 }
 

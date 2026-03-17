@@ -30,6 +30,7 @@ import {
     type OrgComposedCountRule,
     type OrgComposedPatternRule,
     type OrgDefinitionSpec,
+    type OrgGroupBucketName,
     type OrgGroupProvenance,
     type OrgLeafCountRule,
     type OrgLeafPatternRule,
@@ -42,6 +43,7 @@ import {
     type OrgRuleRegistry,
     type OrgSizeResult,
     type OrgTypeModifier,
+    type OrgUnitBucketName,
     type UnitFacts,
 } from './org-types';
 
@@ -165,17 +167,23 @@ interface CompositionConfig {
     readonly index: number;
     readonly childRoles: readonly OrgChildRoleSpec[];
     readonly modifierDescriptor: RuleModifierDescriptor;
-    readonly childMatchBucketBy?: OrgBucketName;
+    readonly childMatchBucketBy?: OrgGroupBucketName;
 }
 
 interface PatternCompositionConfig {
     readonly childRoles: readonly OrgChildRoleSpec[];
     readonly modifierDescriptor: RuleModifierDescriptor;
-    readonly childMatchBucketBy?: OrgBucketName;
+    readonly childMatchBucketBy?: OrgGroupBucketName;
 }
 
 interface ConcreteCompositionCandidate {
     readonly groups: readonly GroupFacts[];
+    readonly compositionIndex: number;
+    readonly modifierStep: ModifierStep;
+}
+
+interface PlannedCompositionCandidate {
+    readonly groups: readonly PlannedGroupRecord[];
     readonly compositionIndex: number;
     readonly modifierStep: ModifierStep;
 }
@@ -193,12 +201,22 @@ interface AbstractCompositionCandidate {
     readonly modifierStep: ModifierStep;
 }
 
+interface CanonicalGroupPoolSignatureEntry {
+    readonly key: string;
+    readonly count: number;
+}
+
+interface CanonicalGroupPoolSignature {
+    readonly entries: readonly CanonicalGroupPoolSignatureEntry[];
+    readonly counts: ReadonlyMap<string, number>;
+    readonly key: string;
+}
+
 interface CanonicalGroupPoolState {
     readonly groups: readonly PlannedGroupRecord[];
     readonly groupFacts: readonly GroupFacts[];
     readonly recordByGroup: ReadonlyMap<GroupSizeResult, PlannedGroupRecord>;
-    readonly signatureCounts: ReadonlyMap<string, number>;
-    readonly key: string;
+    readonly signature: CanonicalGroupPoolSignature;
 }
 
 interface PlannedGroupRecord {
@@ -394,7 +412,7 @@ function matchesUnitSelectors(
 }
 
 function getUnitBucketValue(
-    bucketBy: OrgBucketName | undefined,
+    bucketBy: OrgUnitBucketName | undefined,
     facts: UnitFacts,
     registry: OrgRuleRegistry,
 ): string {
@@ -406,7 +424,7 @@ function getUnitBucketValue(
 }
 
 function getGroupBucketValue(
-    bucketBy: OrgBucketName | undefined,
+    bucketBy: OrgGroupBucketName | undefined,
     facts: GroupFacts,
     registry: OrgRuleRegistry,
 ): string {
@@ -423,7 +441,7 @@ function getGroupBucketValue(
 
 function groupUnitsByBucket(
     units: readonly UnitFacts[],
-    bucketBy: OrgBucketName | undefined,
+    bucketBy: OrgUnitBucketName | undefined,
     registry: OrgRuleRegistry,
 ): Map<string, UnitFacts[]> {
     const buckets = new Map<string, UnitFacts[]>();
@@ -529,16 +547,17 @@ function shouldPreferHomogeneousChildren(childRoles: readonly OrgChildRoleSpec[]
 
 function getComposedPatternBucketCounts(
     groups: readonly GroupFacts[],
-    bucketBy: OrgBucketName,
-    registry: OrgRuleRegistry,
+    bucketBy: OrgUnitBucketName,
 ): Map<string, number> {
     const bucketCounts = new Map<string, number>();
 
     for (const group of groups) {
-        for (const unit of collectGroupUnits(group.group)) {
-            const facts = compileUnitFacts(unit);
-            const bucketValue = getUnitBucketValue(bucketBy, facts, registry);
-            bucketCounts.set(bucketValue, (bucketCounts.get(bucketValue) ?? 0) + 1);
+        const descendantCounts = group.descendantUnitBucketCounts.get(bucketBy);
+        if (!descendantCounts) {
+            continue;
+        }
+        for (const [bucketValue, count] of descendantCounts.entries()) {
+            bucketCounts.set(`${bucketValue}`, (bucketCounts.get(`${bucketValue}`) ?? 0) + count);
         }
     }
 
@@ -558,7 +577,7 @@ function matchesComposedPatternSelection(
     selectedGroups: readonly GroupFacts[],
     registry: OrgRuleRegistry,
 ): boolean {
-    const bucketCounts = getComposedPatternBucketCounts(selectedGroups, rule.bucketBy, registry);
+    const bucketCounts = getComposedPatternBucketCounts(selectedGroups, rule.bucketBy);
     const availableBucketValues = [...bucketCounts.keys()];
     const totalCount = [...bucketCounts.values()].reduce((sum, count) => sum + count, 0);
 
@@ -2043,6 +2062,45 @@ function materializeAbstractCompositionPlan(
     });
 }
 
+function resolvePlannedCompositionCandidates(
+    candidates: readonly AbstractCompositionCandidate[],
+    recordByGroup: ReadonlyMap<GroupSizeResult, PlannedGroupRecord>,
+): PlannedCompositionCandidate[] {
+    const availableGroups = new Map<CountedCompositionEntry, PlannedGroupRecord[]>();
+
+    return candidates.map((candidate) => {
+        const selectedGroups: PlannedGroupRecord[] = [];
+
+        candidate.signatureCounts.forEach((count, entryIndex) => {
+            const entry = candidate.entries[entryIndex];
+            if (!entry) {
+                return;
+            }
+
+            let remaining = availableGroups.get(entry);
+            if (!remaining) {
+                remaining = entry.groups
+                    .map((group) => recordByGroup.get(group.group))
+                    .filter((group): group is PlannedGroupRecord => !!group);
+                availableGroups.set(entry, remaining);
+            }
+
+            for (let taken = 0; taken < count; taken += 1) {
+                const group = remaining.shift();
+                if (group) {
+                    selectedGroups.push(group);
+                }
+            }
+        });
+
+        return {
+            groups: selectedGroups,
+            compositionIndex: candidate.compositionIndex,
+            modifierStep: candidate.modifierStep,
+        };
+    });
+}
+
 function getPreviewGroupsForAbstractSelection(
     entries: readonly CountedCompositionEntry[],
     signatureCounts: readonly number[],
@@ -2244,6 +2302,18 @@ function materializeComposedPatternRuleInternal(
         groups,
         leftoverGroupFacts: groupFacts.filter((group) => !usedGroupObjects.has(group.group)),
     };
+}
+
+function planComposedPatternRuleInternal(
+    rule: OrgComposedPatternRule,
+    groupFacts: readonly GroupFacts[],
+    registry: OrgRuleRegistry,
+    guard: SolverGuard,
+    allowedModifierKeys?: ReadonlySet<string>,
+): readonly AbstractCompositionCandidate[] {
+    const config = buildPatternCompositionConfig(rule);
+    const planned = planPatternComposedConfig(rule, groupFacts, config, registry, guard, allowedModifierKeys);
+    return planned.candidates;
 }
 
 function materializeComposedCountRuleInternal(
@@ -2746,6 +2816,15 @@ function getModifierBandForGroup(group: GroupSizeResult, context: ResolveContext
     return metadata.descriptor.stepsAscending.find((step) => step.modifierKey === group.modifierKey)?.relativeBand ?? 'regular';
 }
 
+function getModifierBandForGroupFacts(group: GroupFacts, context: ResolveContext): ModifierBand {
+    const rule = getAnyRuleByType(context, group.type);
+    if (!rule) {
+        return group.modifierKey === '' ? 'regular' : 'sub-regular';
+    }
+    const metadata = getRuleStageMetadata(context, rule);
+    return metadata.descriptor.stepsAscending.find((step) => step.modifierKey === group.modifierKey)?.relativeBand ?? 'regular';
+}
+
 function scoreResolvedState(state: ResolvedState, context: ResolveContext): FinalStateScore {
     const topLevelGroupCount = state.groups.length;
     const leftoverCount = state.leftoverUnits.length + state.leftoverUnitAllocations.length;
@@ -2763,6 +2842,24 @@ function scoreResolvedState(state: ResolvedState, context: ResolveContext): Fina
         topLevelGroupCount,
         highestTierGroupCount,
         leftoverCount,
+    };
+}
+
+function scoreCanonicalGroupPoolState(state: CanonicalGroupPoolState, context: ResolveContext): FinalStateScore {
+    const topLevelGroupCount = state.groupFacts.length;
+    const highestTier = topLevelGroupCount > 0 ? Math.max(...state.groupFacts.map((group) => group.tier)) : 0;
+    const highestTierGroupCount = state.groupFacts.filter((group) => group.tier === highestTier).length;
+    const totalPriority = state.groupFacts.reduce((sum, group) => sum + (group.group.priority ?? 0), 0);
+    const isWhole = topLevelGroupCount === 1
+        && getModifierBandForGroupFacts(state.groupFacts[0], context) !== 'sub-regular';
+
+    return {
+        isWhole,
+        highestTier,
+        totalPriority,
+        topLevelGroupCount,
+        highestTierGroupCount,
+        leftoverCount: 0,
     };
 }
 
@@ -2854,7 +2951,7 @@ function getEligibleChildFacts(
 
 function isSingleBucketMatch(
     groups: readonly GroupFacts[],
-    bucketBy: OrgBucketName | undefined,
+    bucketBy: OrgGroupBucketName | undefined,
     registry: OrgRuleRegistry,
 ): boolean {
     if (!bucketBy || groups.length <= 1) {
@@ -2967,12 +3064,23 @@ function createCanonicalGroupPoolState(groups: readonly GroupSizeResult[]): Cano
     return createCanonicalGroupPoolStateFromRecords(groups.map((group) => createConcretePlannedGroupRecord(group)));
 }
 
-function getCanonicalGroupPoolStateKey(signatureCounts: ReadonlyMap<string, number>): string {
+function getCanonicalGroupPoolSignatureEntries(signatureCounts: ReadonlyMap<string, number>): CanonicalGroupPoolSignatureEntry[] {
     return [...signatureCounts.entries()]
         .filter(([, count]) => count > 0)
         .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, count]) => `${key}::${count}`)
-        .join('###');
+        .map(([key, count]) => ({ key, count }));
+}
+
+function createCanonicalGroupPoolSignature(
+    signatureCounts: ReadonlyMap<string, number>,
+): CanonicalGroupPoolSignature {
+    const entries = getCanonicalGroupPoolSignatureEntries(signatureCounts);
+
+    return {
+        entries,
+        counts: new Map(entries.map((entry) => [entry.key, entry.count])),
+        key: entries.map((entry) => `${entry.key}::${entry.count}`).join('###'),
+    };
 }
 
 function createCanonicalGroupPoolStateFromRecords(
@@ -2999,8 +3107,7 @@ function createCanonicalGroupPoolStateFromRecords(
         groups,
         groupFacts,
         recordByGroup: new Map(groups.map((group) => [group.facts.group, group])),
-        signatureCounts: counts,
-        key: getCanonicalGroupPoolStateKey(counts),
+        signature: createCanonicalGroupPoolSignature(counts),
     };
 }
 
@@ -3035,7 +3142,7 @@ function createSuccessorCanonicalGroupPoolState(
 ): CanonicalGroupPoolState {
     const remainingGroups = state.groups.filter((group) => !usedChildren.has(group.facts.group));
     const producedFacts = producedGroups.map((group) => group.facts);
-    const nextCounts = new Map(state.signatureCounts);
+    const nextCounts = new Map(state.signature.counts);
 
     for (const facts of state.groupFacts) {
         if (usedChildren.has(facts.group)) {
@@ -3058,11 +3165,45 @@ function compareGroupPoolStates(
     right: CanonicalGroupPoolState,
     context: ResolveContext,
 ): number {
-    return compareResolvedState(
-        { groups: materializeCanonicalGroupPoolState(left), leftoverUnits: [], leftoverUnitAllocations: [] },
-        { groups: materializeCanonicalGroupPoolState(right), leftoverUnits: [], leftoverUnitAllocations: [] },
-        context,
-    );
+    const leftScore = scoreCanonicalGroupPoolState(left, context);
+    const rightScore = scoreCanonicalGroupPoolState(right, context);
+
+    if (leftScore.isWhole !== rightScore.isWhole) {
+        return leftScore.isWhole ? -1 : 1;
+    }
+    if (leftScore.highestTier !== rightScore.highestTier) {
+        return rightScore.highestTier - leftScore.highestTier;
+    }
+    if (leftScore.leftoverCount !== rightScore.leftoverCount) {
+        return leftScore.leftoverCount - rightScore.leftoverCount;
+    }
+    if (leftScore.topLevelGroupCount !== rightScore.topLevelGroupCount) {
+        return leftScore.topLevelGroupCount - rightScore.topLevelGroupCount;
+    }
+    if (leftScore.highestTierGroupCount !== rightScore.highestTierGroupCount) {
+        return rightScore.highestTierGroupCount - leftScore.highestTierGroupCount;
+    }
+    if (leftScore.isWhole && rightScore.isWhole && leftScore.totalPriority !== rightScore.totalPriority) {
+        return rightScore.totalPriority - leftScore.totalPriority;
+    }
+
+    return 0;
+}
+
+function retainDominantCanonicalGroupPoolStates(
+    states: readonly CanonicalGroupPoolState[],
+    context: ResolveContext,
+): CanonicalGroupPoolState[] {
+    const bestByKey = new Map<string, CanonicalGroupPoolState>();
+
+    for (const state of states) {
+        const existing = bestByKey.get(state.signature.key);
+        if (!existing || compareGroupPoolStates(state, existing, context) < 0) {
+            bestByKey.set(state.signature.key, state);
+        }
+    }
+
+    return [...bestByKey.values()];
 }
 
 function getRegularPromotionSuccessors(
@@ -3072,7 +3213,6 @@ function getRegularPromotionSuccessors(
 ): CanonicalGroupPoolState[] {
     const promotableFacts = state.groupFacts.filter((facts) => !isBlockedSubRegularPromotionChild(facts.group, context));
     const successors: CanonicalGroupPoolState[] = [];
-    const seen = new Set<string>();
 
     for (const rule of getOrderedComposedRules(context)) {
         if (shouldAbortSearch(guard)) {
@@ -3094,39 +3234,44 @@ function getRegularPromotionSuccessors(
                 continue;
             }
 
-            const concreteCandidates = materializeAbstractCompositionPlan(abstractCandidates);
-            const usedChildren = new Set(concreteCandidates.flatMap((candidate) => candidate.groups.map((group) => group.group)));
-            const producedGroups = concreteCandidates.map((candidate) => createAbstractComposedGroupRecord(
+            const plannedCandidates = resolvePlannedCompositionCandidates(abstractCandidates, state.recordByGroup);
+            const usedChildren = new Set(plannedCandidates.flatMap((candidate) => candidate.groups.map((group) => group.facts.group)));
+            const producedGroups = plannedCandidates.map((candidate) => createAbstractComposedGroupRecord(
                 rule,
                 candidate.modifierStep,
-                candidate.groups
-                    .map((group) => state.recordByGroup.get(group.group))
-                    .filter((group): group is PlannedGroupRecord => !!group),
+                candidate.groups,
             ));
             successorState = createSuccessorCanonicalGroupPoolState(state, producedGroups, usedChildren);
         } else {
-            const materialized = materializeComposedPatternRuleInternal(rule, promotableFacts, context.definition.registry, allowedModifierKeys);
-            if (materialized.groups.length === 0) {
+            const abstractCandidates = planComposedPatternRuleInternal(
+                rule,
+                promotableFacts,
+                context.definition.registry,
+                guard,
+                allowedModifierKeys,
+            );
+            if (abstractCandidates.length === 0) {
                 continue;
             }
 
-            const usedChildren = new Set(materialized.groups.flatMap((group) => group.children ?? []));
-            successorState = createSuccessorCanonicalGroupPoolState(
-                state,
-                materialized.groups.map((group) => createConcretePlannedGroupRecord(group)),
-                usedChildren,
-            );
+            const plannedCandidates = resolvePlannedCompositionCandidates(abstractCandidates, state.recordByGroup);
+            const usedChildren = new Set(plannedCandidates.flatMap((candidate) => candidate.groups.map((group) => group.facts.group)));
+            const producedGroups = plannedCandidates.map((candidate) => createAbstractComposedGroupRecord(
+                rule,
+                candidate.modifierStep,
+                candidate.groups,
+            ));
+            successorState = createSuccessorCanonicalGroupPoolState(state, producedGroups, usedChildren);
         }
 
-        if (!successorState || seen.has(successorState.key)) {
+        if (!successorState) {
             continue;
         }
 
-        seen.add(successorState.key);
         successors.push(successorState);
     }
 
-    return successors;
+    return retainDominantCanonicalGroupPoolStates(successors, context);
 }
 
 function runSingleTierRegularPromotionStep(
@@ -3165,14 +3310,12 @@ function runSingleTierRegularPromotionStep(
                 continue;
             }
 
-            const concreteCandidates = materializeAbstractCompositionPlan(abstractCandidates);
-            const usedObjects = new Set(concreteCandidates.flatMap((candidate) => candidate.groups.map((group) => group.group)));
-            const producedGroups = concreteCandidates.map((candidate) => createAbstractComposedGroupRecord(
+            const plannedCandidates = resolvePlannedCompositionCandidates(abstractCandidates, poolState.recordByGroup);
+            const usedObjects = new Set(plannedCandidates.flatMap((candidate) => candidate.groups.map((group) => group.facts.group)));
+            const producedGroups = plannedCandidates.map((candidate) => createAbstractComposedGroupRecord(
                 rule,
                 candidate.modifierStep,
-                candidate.groups
-                    .map((group) => poolState.recordByGroup.get(group.group))
-                    .filter((group): group is PlannedGroupRecord => !!group),
+                candidate.groups,
             ));
 
             poolState = createSuccessorCanonicalGroupPoolState(poolState, producedGroups, usedObjects);
@@ -3180,17 +3323,25 @@ function runSingleTierRegularPromotionStep(
             continue;
         }
 
-        const materialized = materializeComposedPatternRuleInternal(rule, remainingFacts, context.definition.registry, allowedModifierKeys);
-        if (materialized.groups.length === 0) {
+        const abstractCandidates = planComposedPatternRuleInternal(
+            rule,
+            remainingFacts,
+            context.definition.registry,
+            createSolverGuard(),
+            allowedModifierKeys,
+        );
+        if (abstractCandidates.length === 0) {
             continue;
         }
 
-        const usedObjects = new Set(materialized.groups.flatMap((group) => group.children ?? []));
-        poolState = createSuccessorCanonicalGroupPoolState(
-            poolState,
-            materialized.groups.map((group) => createConcretePlannedGroupRecord(group)),
-            usedObjects,
-        );
+        const plannedCandidates = resolvePlannedCompositionCandidates(abstractCandidates, poolState.recordByGroup);
+        const usedObjects = new Set(plannedCandidates.flatMap((candidate) => candidate.groups.map((group) => group.facts.group)));
+        const producedGroups = plannedCandidates.map((candidate) => createAbstractComposedGroupRecord(
+            rule,
+            candidate.modifierStep,
+            candidate.groups,
+        ));
+        poolState = createSuccessorCanonicalGroupPoolState(poolState, producedGroups, usedObjects);
         remainingFacts = remainingFacts.filter((facts) => !usedObjects.has(facts.group));
     }
 
@@ -3205,7 +3356,7 @@ function searchBestRegularPromotionPool(
     const memo = new Map<string, CanonicalGroupPoolState>();
 
     function visit(state: CanonicalGroupPoolState): CanonicalGroupPoolState {
-        const cached = memo.get(state.key);
+        const cached = memo.get(state.signature.key);
         if (cached) {
             return cached;
         }
@@ -3223,7 +3374,7 @@ function searchBestRegularPromotionPool(
             }
         }
 
-        memo.set(state.key, best);
+        memo.set(state.signature.key, best);
         return best;
     }
 
@@ -3249,7 +3400,7 @@ function runLeftoverImprovementLoop(
 
     while (iteration < MAX_PROMOTION_LOOP_ITERATIONS && !shouldAbortSearch(guard)) {
         iteration += 1;
-        const signature = createCanonicalGroupPoolState(pool).key;
+        const signature = createCanonicalGroupPoolState(pool).signature.key;
         if (signature === previousSignature) {
             break;
         }
@@ -3494,8 +3645,31 @@ function sumReadonlyCountMaps<Key extends string>(
     return result;
 }
 
+function sumReadonlyNestedCountMaps<Key extends string>(
+    children: readonly GroupFacts[],
+    select: (child: GroupFacts) => ReadonlyMap<Key, ReadonlyMap<OrgBucketValue, number>>,
+): Map<Key, Map<OrgBucketValue, number>> {
+    const result = new Map<Key, Map<OrgBucketValue, number>>();
+
+    for (const child of children) {
+        for (const [bucketName, bucketCounts] of select(child).entries()) {
+            let mergedCounts = result.get(bucketName);
+            if (!mergedCounts) {
+                mergedCounts = new Map<OrgBucketValue, number>();
+                result.set(bucketName, mergedCounts);
+            }
+
+            for (const [bucketValue, count] of bucketCounts.entries()) {
+                mergedCounts.set(bucketValue, (mergedCounts.get(bucketValue) ?? 0) + count);
+            }
+        }
+    }
+
+    return result;
+}
+
 function createAbstractComposedGroupRecord(
-    rule: OrgComposedCountRule,
+    rule: OrgComposedCountRule | OrgComposedPatternRule,
     modifierStep: ModifierStep,
     childRecords: readonly PlannedGroupRecord[],
 ): PlannedGroupRecord {
@@ -3539,6 +3713,7 @@ function createAbstractComposedGroupRecord(
         unitClassCounts: sumReadonlyCountMaps(childFacts, (child) => child.unitClassCounts),
         unitTagCounts: sumReadonlyCountMaps(childFacts, (child) => child.unitTagCounts),
         unitScalarSums: sumReadonlyCountMaps(childFacts, (child) => child.unitScalarSums),
+        descendantUnitBucketCounts: sumReadonlyNestedCountMaps(childFacts, (child) => child.descendantUnitBucketCounts),
     };
     const record: PlannedGroupRecord = {
         facts,
