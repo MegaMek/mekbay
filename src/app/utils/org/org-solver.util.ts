@@ -309,11 +309,17 @@ interface ResolveContext {
     readonly leafPatternRules: readonly OrgLeafPatternRule[];
     readonly composedCountRules: readonly OrgComposedCountRule[];
     readonly composedPatternRules: readonly OrgComposedPatternRule[];
+    readonly knownGroupTypes: ReadonlySet<string>;
+    readonly ruleTierByType: ReadonlyMap<string, number>;
+    readonly composedCountRuleByType: ReadonlyMap<string, OrgComposedCountRule>;
+    readonly anyRuleByType: ReadonlyMap<string, OrgLeafCountRule | OrgLeafPatternRule | OrgCIFormationRule | OrgComposedCountRule | OrgComposedPatternRule>;
     readonly orderedComposedRules: readonly (OrgComposedCountRule | OrgComposedPatternRule)[];
     readonly minimumChildTierByRule: ReadonlyMap<OrgComposedCountRule | OrgComposedPatternRule, number>;
     readonly ruleStageMetadata: ReadonlyMap<OrgRuleDefinition, CompiledRuleStageMetadata>;
     readonly exactRegularPromotionResultBySignature: Map<string, CanonicalGroupPoolState>;
 }
+
+type ResolveContextTemplate = Omit<ResolveContext, 'exactRegularPromotionResultBySignature'>;
 
 interface FinalStateScore {
     readonly isWhole: boolean;
@@ -348,6 +354,9 @@ const ABSTRACT_UNIT_BUCKET_NAMES: readonly OrgUnitBucketName[] = [
     'infantryTroopers',
     'transport',
 ];
+
+const resolveContextTemplateByDefinition = new WeakMap<OrgDefinitionSpec, ResolveContextTemplate>();
+const compiledRuleStageMetadataByRule = new WeakMap<OrgRuleDefinition, CompiledRuleStageMetadata>();
 
 function createSolverGuard(): SolverGuard {
     return {
@@ -430,6 +439,11 @@ function getRuleModifierDescriptor(rule: Pick<OrgRuleDefinition, 'modifiers' | '
 }
 
 function compileRuleStageMetadata(rule: OrgRuleDefinition): CompiledRuleStageMetadata {
+    const cached = compiledRuleStageMetadataByRule.get(rule);
+    if (cached) {
+        return cached;
+    }
+
     const descriptor = getRuleModifierDescriptor(rule);
     const regularModifierKeys = new Set([descriptor.regularStep.modifierKey]);
     const subRegularModifierKeys = new Set(descriptor.subRegularStepsDescending.map((step) => step.modifierKey));
@@ -444,7 +458,7 @@ function compileRuleStageMetadata(rule: OrgRuleDefinition): CompiledRuleStageMet
     const canEmitExactSuperRegularWholeLeaf = (rule.kind === 'leaf-count' || rule.kind === 'leaf-pattern')
         && descriptor.superRegularStepsDescending.length > 0;
 
-    return {
+    const metadata = {
         descriptor,
         allowedModifierKeysByStage: {
             regular: participatesInRegularStage ? regularModifierKeys : new Set<string>(),
@@ -456,6 +470,9 @@ function compileRuleStageMetadata(rule: OrgRuleDefinition): CompiledRuleStageMet
         blocksSubRegularPromotionChildren,
         canEmitExactSuperRegularWholeLeaf,
     };
+
+    compiledRuleStageMetadataByRule.set(rule, metadata);
+    return metadata;
 }
 
 function getRuleStageMetadata(
@@ -3159,32 +3176,63 @@ function getMinimumChildTierForComposedRule(
 }
 
 function getResolveContext(definition: OrgDefinitionSpec): ResolveContext {
-    const ruleStageMetadata = new Map<OrgRuleDefinition, CompiledRuleStageMetadata>(
-        definition.rules.map((rule) => [rule, compileRuleStageMetadata(rule)]),
-    );
-    const composedRules = definition.rules.filter((rule): rule is OrgComposedCountRule | OrgComposedPatternRule =>
-        rule.kind === 'composed-count' || rule.kind === 'composed-pattern',
-    );
-    const minimumChildTierByRule = new Map<OrgComposedCountRule | OrgComposedPatternRule, number>(
-        composedRules.map((rule) => [rule, getMinimumChildTierForComposedRule(rule, definition)]),
-    );
-    const orderedComposedRules = [...composedRules].sort((left, right) => compareOrderedComposedRules(left, right, minimumChildTierByRule));
-    const composedCountRules = orderedComposedRules.filter((rule): rule is OrgComposedCountRule => rule.kind === 'composed-count');
-    const composedPatternRules = orderedComposedRules.filter((rule): rule is OrgComposedPatternRule => rule.kind === 'composed-pattern');
+    let template = resolveContextTemplateByDefinition.get(definition);
+    if (!template) {
+        const knownGroupTypes = new Set<string>();
+        const ruleTierByType = new Map<string, number>();
+        const composedCountRuleByType = new Map<string, OrgComposedCountRule>();
+        const anyRuleByType = new Map<string, OrgLeafCountRule | OrgLeafPatternRule | OrgCIFormationRule | OrgComposedCountRule | OrgComposedPatternRule>();
+
+        for (const rule of definition.rules) {
+            knownGroupTypes.add(rule.type);
+            ruleTierByType.set(rule.type, rule.tier);
+            if (!anyRuleByType.has(rule.type)) {
+                anyRuleByType.set(rule.type, rule);
+            }
+            if (rule.kind === 'ci-formation' && !anyRuleByType.has(rule.fragmentType)) {
+                anyRuleByType.set(rule.fragmentType, rule);
+            }
+            if (rule.kind === 'composed-count' && !composedCountRuleByType.has(rule.type)) {
+                composedCountRuleByType.set(rule.type, rule);
+            }
+        }
+
+        const ruleStageMetadata = new Map<OrgRuleDefinition, CompiledRuleStageMetadata>(
+            definition.rules.map((rule) => [rule, compileRuleStageMetadata(rule)]),
+        );
+        const composedRules = definition.rules.filter((rule): rule is OrgComposedCountRule | OrgComposedPatternRule =>
+            rule.kind === 'composed-count' || rule.kind === 'composed-pattern',
+        );
+        const minimumChildTierByRule = new Map<OrgComposedCountRule | OrgComposedPatternRule, number>(
+            composedRules.map((rule) => [rule, getMinimumChildTierForComposedRule(rule, definition)]),
+        );
+        const orderedComposedRules = [...composedRules].sort((left, right) => compareOrderedComposedRules(left, right, minimumChildTierByRule));
+        const composedCountRules = orderedComposedRules.filter((rule): rule is OrgComposedCountRule => rule.kind === 'composed-count');
+        const composedPatternRules = orderedComposedRules.filter((rule): rule is OrgComposedPatternRule => rule.kind === 'composed-pattern');
+
+        template = {
+            definition,
+            ciFormationRules: definition.rules.filter((rule): rule is OrgCIFormationRule => rule.kind === 'ci-formation')
+                .sort((left, right) => right.tier - left.tier || getRulePriority(right) - getRulePriority(left)),
+            leafCountRules: definition.rules.filter((rule): rule is OrgLeafCountRule => rule.kind === 'leaf-count')
+                .sort((left, right) => right.tier - left.tier || getRulePriority(right) - getRulePriority(left)),
+            leafPatternRules: definition.rules.filter((rule): rule is OrgLeafPatternRule => rule.kind === 'leaf-pattern')
+                .sort((left, right) => right.tier - left.tier || getRulePriority(right) - getRulePriority(left)),
+            composedCountRules,
+            composedPatternRules,
+            knownGroupTypes,
+            ruleTierByType,
+            composedCountRuleByType,
+            anyRuleByType,
+            orderedComposedRules,
+            minimumChildTierByRule,
+            ruleStageMetadata,
+        };
+        resolveContextTemplateByDefinition.set(definition, template);
+    }
 
     return {
-        definition,
-        ciFormationRules: definition.rules.filter((rule): rule is OrgCIFormationRule => rule.kind === 'ci-formation')
-            .sort((left, right) => right.tier - left.tier || getRulePriority(right) - getRulePriority(left)),
-        leafCountRules: definition.rules.filter((rule): rule is OrgLeafCountRule => rule.kind === 'leaf-count')
-            .sort((left, right) => right.tier - left.tier || getRulePriority(right) - getRulePriority(left)),
-        leafPatternRules: definition.rules.filter((rule): rule is OrgLeafPatternRule => rule.kind === 'leaf-pattern')
-            .sort((left, right) => right.tier - left.tier || getRulePriority(right) - getRulePriority(left)),
-        composedCountRules,
-        composedPatternRules,
-        orderedComposedRules,
-        minimumChildTierByRule,
-        ruleStageMetadata,
+        ...template,
         exactRegularPromotionResultBySignature: new Map<string, CanonicalGroupPoolState>(),
     };
 }
@@ -3418,7 +3466,7 @@ function getRuleByType(context: ResolveContext, type: GroupSizeResult['type']): 
     if (!type) {
         return undefined;
     }
-    return context.composedCountRules.find((rule) => rule.type === type);
+    return context.composedCountRuleByType.get(type);
 }
 
 function getAnyRuleByType(
@@ -3429,11 +3477,7 @@ function getAnyRuleByType(
         return undefined;
     }
 
-    return context.ciFormationRules.find((rule) => rule.type === type || rule.fragmentType === type)
-        ?? context.leafCountRules.find((rule) => rule.type === type)
-        ?? context.leafPatternRules.find((rule) => rule.type === type)
-        ?? context.composedCountRules.find((rule) => rule.type === type)
-        ?? context.composedPatternRules.find((rule) => rule.type === type);
+    return context.anyRuleByType.get(type);
 }
 
 function getModifierBandForGroupFacts(group: GroupFacts, context: ResolveContext): ModifierBand {
@@ -3537,7 +3581,7 @@ function pickBestResolvedState(
 }
 
 function getRuleTierByType(context: ResolveContext, type: GroupSizeResult['type']): number | null {
-    return getRuleTierByTypeFromDefinition(context.definition, type);
+    return type ? (context.ruleTierByType.get(type) ?? null) : null;
 }
 
 function getMinimumChildTierForRule(rule: OrgComposedCountRule | OrgComposedPatternRule, context: ResolveContext): number {
@@ -4369,11 +4413,17 @@ function collectAllGroupUnits(group: GroupSizeResult): Unit[] {
     return result;
 }
 
-function isNativeGroupForDefinition(group: GroupSizeResult, definition: OrgDefinitionSpec): boolean {
-    const knownTypes = new Set(definition.rules.map((rule) => rule.type));
+function isNativeGroupForContext(group: GroupSizeResult, context: ResolveContext): boolean {
+    return (group.type !== null && context.knownGroupTypes.has(group.type))
+        || (group.countsAsType !== null && context.knownGroupTypes.has(group.countsAsType));
+}
 
-    return (group.type !== null && knownTypes.has(group.type))
-        || (group.countsAsType !== null && knownTypes.has(group.countsAsType));
+function isStableSingleGroupResolveResult(group: GroupSizeResult, context: ResolveContext): boolean {
+    return group.type !== null
+        && group.type !== 'Force'
+        && isNativeGroupForContext(group, context)
+        && !group.leftoverUnits
+        && !group.leftoverUnitAllocations;
 }
 
 function createSyntheticGroupForRule(
@@ -4613,7 +4663,7 @@ function preprocessGroupsForDefinition(
     const normalized: GroupSizeResult[] = [];
 
     for (const group of groupResults) {
-        if (isNativeGroupForDefinition(group, definition)) {
+        if (isNativeGroupForContext(group, context)) {
             normalized.push(group);
             continue;
         }
@@ -4730,5 +4780,10 @@ export function resolveFromGroups(
     _hierarchicalAggregation: boolean = false,
 ): GroupSizeResult[] {
     const definition = resolveOrgDefinitionSpec(factionName, factionAffinity);
+    const context = getResolveContext(definition);
+    if (groupResults.length === 1 && isStableSingleGroupResolveResult(groupResults[0], context)) {
+        return [groupResults[0]];
+    }
+
     return resolveWithDefinition(definition, [], preprocessGroupsForDefinition(definition, markGroupsWithProvenance(groupResults, 'input-group')));
 }
