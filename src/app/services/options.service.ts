@@ -47,6 +47,8 @@ const DEFAULT_OPTIONS: Options = {
     c3NetworkConnectionsAboveNodes: false,
     automaticallyConvertFiltersToSemantic: false,
     unitSearchExpandedViewLayout: 'panel-list-filters',
+    unitSearchViewMode: 'list',
+    forceOverviewViewMode: 'compact',
     
     // Classic
     sheetsColor: 'normal',
@@ -89,6 +91,8 @@ export class OptionsService {
         automaticallyConvertFiltersToSemantic: DEFAULT_OPTIONS.automaticallyConvertFiltersToSemantic,
         allowMultipleActiveSheets: DEFAULT_OPTIONS.allowMultipleActiveSheets,
         unitSearchExpandedViewLayout: DEFAULT_OPTIONS.unitSearchExpandedViewLayout,
+        unitSearchViewMode: DEFAULT_OPTIONS.unitSearchViewMode,
+        forceOverviewViewMode: DEFAULT_OPTIONS.forceOverviewViewMode,
         ASVehiclesCriticalHitTable: DEFAULT_OPTIONS.ASVehiclesCriticalHitTable,
         ASUseAutomations: DEFAULT_OPTIONS.ASUseAutomations,
         ASUnifiedDamagePicker: DEFAULT_OPTIONS.ASUnifiedDamagePicker,
@@ -120,6 +124,8 @@ export class OptionsService {
             automaticallyConvertFiltersToSemantic: saved?.automaticallyConvertFiltersToSemantic ?? DEFAULT_OPTIONS.automaticallyConvertFiltersToSemantic,
             allowMultipleActiveSheets: saved?.allowMultipleActiveSheets ?? DEFAULT_OPTIONS.allowMultipleActiveSheets,
             unitSearchExpandedViewLayout: saved?.unitSearchExpandedViewLayout ?? DEFAULT_OPTIONS.unitSearchExpandedViewLayout,
+            unitSearchViewMode: saved?.unitSearchViewMode ?? DEFAULT_OPTIONS.unitSearchViewMode,
+            forceOverviewViewMode: saved?.forceOverviewViewMode ?? DEFAULT_OPTIONS.forceOverviewViewMode,
             ASVehiclesCriticalHitTable: saved?.ASVehiclesCriticalHitTable ?? DEFAULT_OPTIONS.ASVehiclesCriticalHitTable,
             ASUseAutomations: saved?.ASUseAutomations ?? DEFAULT_OPTIONS.ASUseAutomations,
             ASUnifiedDamagePicker: saved?.ASUnifiedDamagePicker ?? DEFAULT_OPTIONS.ASUnifiedDamagePicker,

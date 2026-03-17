@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, computed, type DestroyRef, type ElementRef, inject, signal, TemplateRef, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, type DestroyRef, type ElementRef, inject, signal, TemplateRef, untracked, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DragDropModule, type CdkDragDrop, type CdkDragMove } from '@angular/cdk/drag-drop';
@@ -149,7 +149,7 @@ export class ForceOverviewDialogComponent {
     );
 
     /** Current view mode */
-    viewMode = signal<'expanded' | 'compact' | 'table'>(DEFAULT_OVERVIEW_STATE.viewMode);
+    viewMode = signal<'expanded' | 'compact' | 'table'>(this.optionsService.options().forceOverviewViewMode);
 
     /** Current sort key */
     selectedSort = signal<string>(DEFAULT_OVERVIEW_STATE.sortKey);
@@ -191,11 +191,27 @@ export class ForceOverviewDialogComponent {
     });
 
     readonly nextViewModeTitle = computed(() => {
+        const current = this.viewMode();
         const next = this.nextViewMode();
-        if (next === 'compact') return 'Switch to compact view';
-        if (next === 'expanded') return 'Switch to expanded view';
-        return 'Switch to table view';
+        const currentLabel = current === 'compact' ? 'Compact View' : current === 'expanded' ? 'Expanded View' : 'Table View';
+        const nextLabel = next === 'compact' ? 'Compact View' : next === 'expanded' ? 'Expanded View' : 'Table View';
+        return `${currentLabel}. Click to switch to ${nextLabel}.`;
     });
+
+    constructor() {
+        effect(() => {
+            const savedViewMode = this.optionsService.options().forceOverviewViewMode;
+            const normalizedViewMode = this.normalizeViewMode(savedViewMode);
+            untracked(() => {
+                if (this.viewMode() !== normalizedViewMode) {
+                    this.viewMode.set(normalizedViewMode);
+                }
+                if (savedViewMode !== normalizedViewMode) {
+                    void this.optionsService.setOption('forceOverviewViewMode', normalizedViewMode);
+                }
+            });
+        });
+    }
 
     /** Whether to use hex movement */
     readonly useHex = computed(() => this.optionsService.options().ASUseHex);
@@ -470,7 +486,7 @@ export class ForceOverviewDialogComponent {
 
     /** Toggle between expanded and compact view modes */
     toggleViewMode(): void {
-        this.viewMode.set(this.nextViewMode());
+        this.setViewMode(this.nextViewMode());
     }
 
     /** Set the sort key */
@@ -926,5 +942,18 @@ export class ForceOverviewDialogComponent {
             return fu.pilotSkill();
         }
         return 4; // Default
+    }
+
+    private normalizeViewMode(viewMode: 'expanded' | 'compact' | 'table'): 'expanded' | 'compact' | 'table' {
+        if (!this.isAlphaStrike() && viewMode === 'table') {
+            return 'compact';
+        }
+        return viewMode;
+    }
+
+    private setViewMode(viewMode: 'expanded' | 'compact' | 'table') {
+        const normalizedViewMode = this.normalizeViewMode(viewMode);
+        this.viewMode.set(normalizedViewMode);
+        void this.optionsService.setOption('forceOverviewViewMode', normalizedViewMode);
     }
 }

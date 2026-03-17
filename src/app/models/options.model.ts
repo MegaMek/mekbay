@@ -60,6 +60,8 @@ export interface Options {
     automaticallyConvertFiltersToSemantic: boolean;
     allowMultipleActiveSheets: boolean;
     unitSearchExpandedViewLayout: 'panel-list-filters' | 'filters-list-panel';
+    unitSearchViewMode: 'list' | 'card' | 'chassis' | 'table';
+    forceOverviewViewMode: 'expanded' | 'compact' | 'table';
     ASUseAutomations: boolean;
     ASVehiclesCriticalHitTable: 'default' | 'scouringSands';
     ASUnifiedDamagePicker: boolean;

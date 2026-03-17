@@ -228,7 +228,7 @@ export class UnitSearchComponent {
      * - 'chassis' : compact chassis-grouped view
         * - 'table'   : AS table view
      */
-        viewMode = signal<'list' | 'card' | 'chassis' | 'table'>('list');
+        viewMode = signal<'list' | 'card' | 'chassis' | 'table'>(this.optionsService.options().unitSearchViewMode);
 
 
 
@@ -665,7 +665,7 @@ export class UnitSearchComponent {
             const isAS = this.gameService.isAlphaStrike();
             untracked(() => {
                 if (!isAS && (this.viewMode() === 'card' || this.viewMode() === 'table')) {
-                    this.viewMode.set('list');
+                    this.setViewMode('list');
                 }
             });
         });
@@ -673,7 +673,19 @@ export class UnitSearchComponent {
             const isExpanded = this.expandedView();
             untracked(() => {
                 if (!isExpanded && this.viewMode() === 'table') {
-                    this.viewMode.set('list');
+                    this.setViewMode('list');
+                }
+            });
+        });
+        effect(() => {
+            const savedViewMode = this.optionsService.options().unitSearchViewMode;
+            const normalizedViewMode = this.normalizeViewMode(savedViewMode);
+            untracked(() => {
+                if (this.viewMode() !== normalizedViewMode) {
+                    this.viewMode.set(normalizedViewMode);
+                }
+                if (savedViewMode !== normalizedViewMode) {
+                    void this.optionsService.setOption('unitSearchViewMode', normalizedViewMode);
                 }
             });
         });
@@ -1757,6 +1769,22 @@ export class UnitSearchComponent {
         return this.resultsDataTable()?.getViewport() ?? this.viewport();
     }
 
+    private normalizeViewMode(viewMode: 'list' | 'card' | 'chassis' | 'table'): 'list' | 'card' | 'chassis' | 'table' {
+        if (!this.gameService.isAlphaStrike() && (viewMode === 'card' || viewMode === 'table')) {
+            return 'list';
+        }
+        if (!this.expandedView() && viewMode === 'table') {
+            return 'list';
+        }
+        return viewMode;
+    }
+
+    private setViewMode(viewMode: 'list' | 'card' | 'chassis' | 'table') {
+        const normalizedViewMode = this.normalizeViewMode(viewMode);
+        this.viewMode.set(normalizedViewMode);
+        void this.optionsService.setOption('unitSearchViewMode', normalizedViewMode);
+    }
+
     toggleExpandedView() {
         const isExpanded = this.expandedView();
 
@@ -1788,7 +1816,7 @@ export class UnitSearchComponent {
             // Compact: list → card → chassis → list
             // Expanded: list → card → chassis → table → list
             if (!isExpanded) {
-                this.viewMode.set(
+                this.setViewMode(
                     current === 'list'
                         ? 'card'
                         : current === 'card'
@@ -1799,7 +1827,7 @@ export class UnitSearchComponent {
             }
 
             // list → card → chassis → table → list
-            this.viewMode.set(
+            this.setViewMode(
                 current === 'list'
                     ? 'card'
                     : current === 'card'
@@ -1810,7 +1838,7 @@ export class UnitSearchComponent {
             );
         } else {
             // list → chassis → list
-            this.viewMode.set(current === 'list' ? 'chassis' : 'list');
+            this.setViewMode(current === 'list' ? 'chassis' : 'list');
         }
     }
 
@@ -1828,7 +1856,7 @@ export class UnitSearchComponent {
         this.immediateSearchText.set(newSearch);
         this.filtersService.searchText.set(newSearch);
         // Switch back to list view to show variants
-        this.viewMode.set('list');
+        this.setViewMode('list');
     }
 
     openShareSearch(event: MouseEvent) {
