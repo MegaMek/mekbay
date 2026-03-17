@@ -193,10 +193,12 @@
             </div>
             } @else if (this.expandedView() && gameService.isAlphaStrike() && viewMode() === 'list') {
             <div class="as-table-scroll" [class.has-sort-slot]="asTableSortSlotHeader()">
+                <div class="as-table-header-viewport">
                 <div class="as-table-header"
                      [class.has-sort-slot]="asTableSortSlotHeader()"
                      [class.sort-asc]="filtersService.selectedSortDirection() === 'asc'"
-                     [class.sort-desc]="filtersService.selectedSortDirection() === 'desc'">
+                     [class.sort-desc]="filtersService.selectedSortDirection() === 'desc'"
+                     [style.transform]="'translateX(-' + asTableScrollLeft() + 'px)'">
                     <div class="as-th as-th-icon"></div>
                     <div class="as-th as-th-name as-th-sortable" [class.sort-active]="isSortActive('name')" (click)="onHeaderSort('name')">Name</div>
                     <div class="as-th as-th-year as-th-sortable" [class.sort-active]="isSortActive('year')" (click)="onHeaderSort('year')">Year</div>
@@ -216,11 +218,13 @@
                     <div class="as-th as-th-specials">Special</div>
                     <div class="as-th as-th-tags">Tags</div>
                 </div>
+                </div>
 
                 <cdk-virtual-scroll-viewport class="results-dropdown-viewport as-table-viewport"
                     [class.has-sort-slot]="asTableSortSlotHeader()"
                     [itemSize]="this.itemSize()"
                     [style.--item-size.px]="this.itemSize()"
+                    (scroll)="onAsTableViewportScroll()"
                     minBufferPx="900" maxBufferPx="1600" tabindex="0">
                     <div class="results-dropdown-item"
                         *cdkVirtualFor="let unit of this.filtersService.filteredUnits(); let i = index; trackBy: trackByUnitId"

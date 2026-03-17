@@ -232,6 +232,8 @@ export class UnitSearchComponent {
         return this.expandedView() && this.layoutService.windowWidth() >= this.INLINE_PANEL_MIN_WIDTH;
     });
 
+    readonly asTableScrollLeft = signal(0);
+
     /**
      * Units grouped by chassis+type for compact view.
      * Each group contains summary info (BV range, tonnage, year range, variant count).
@@ -273,6 +275,18 @@ export class UnitSearchComponent {
 
         return Array.from(map.values());
     });
+
+    onAsTableViewportScroll() {
+        const viewport = this.viewport();
+        if (!viewport) {
+            return;
+        }
+
+        const scrollLeft = viewport.elementRef.nativeElement.scrollLeft;
+        if (this.asTableScrollLeft() !== scrollLeft) {
+            this.asTableScrollLeft.set(scrollLeft);
+        }
+    }
 
     /** Index of the currently selected unit in the filtered list */
     private inlinePanelIndex = computed(() => {

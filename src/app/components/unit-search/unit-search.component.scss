@@ -686,23 +686,34 @@
         flex: 1;
         min-height: 0;
         min-width: 0;
-        overflow-x: auto;
-        overflow-y: hidden;
+        overflow: hidden;
+    }
+
+    .as-table-header-viewport {
+        overflow: hidden;
+        flex: 0 0 auto;
+        min-width: 0;
     }
 
     .as-table-viewport {
         scrollbar-gutter: stable;
-        width: var(--as-table-width);
-        min-width: var(--as-table-width);
+        width: 100%;
+        min-width: 0;
         flex: 1;
         min-height: 0;
-        overflow-x: hidden !important;
-        align-self: flex-start;
+        background-color: #222;
+        overflow-x: auto !important;
+        overflow-y: auto !important;
+        align-self: stretch;
+    }
+
+    .as-table-viewport::-webkit-scrollbar-corner {
+        background-color: #222;
     }
 
     .as-table-viewport.has-sort-slot {
-        width: var(--as-table-width-with-slot);
-        min-width: var(--as-table-width-with-slot);
+        width: 100%;
+        min-width: 0;
     }
 
     .as-table-viewport .cdk-virtual-scroll-content-wrapper {
@@ -730,6 +741,7 @@
         font-size: 0.85em;
         color: var(--text-color-secondary);
         z-index: 4;
+        will-change: transform;
     }
 
     .as-table-header.has-sort-slot,
