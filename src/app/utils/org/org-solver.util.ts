@@ -1718,18 +1718,29 @@ function serializeReadonlyMap(map: ReadonlyMap<string, number>): string {
         .join('|');
 }
 
+function serializeNestedReadonlyMap(
+    map: ReadonlyMap<string, ReadonlyMap<string, number>>,
+): string {
+    return [...map.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, value]) => `${key}=>${serializeReadonlyMap(value)}`)
+        .join('||');
+}
+
 function getGroupFactsSignatureKey(group: GroupFacts): string {
     return [
         group.type ?? 'null',
         group.countsAsType ?? 'null',
         group.modifierKey,
         String(group.tier),
+        group.provenance,
         group.tag ?? '',
         serializeReadonlyMap(group.childTypeCounts),
         serializeReadonlyMap(group.unitTypeCounts),
         serializeReadonlyMap(group.unitClassCounts),
         serializeReadonlyMap(group.unitTagCounts),
         serializeReadonlyMap(group.unitScalarSums),
+        serializeNestedReadonlyMap(group.descendantUnitBucketCounts),
     ].join('||');
 }
 
@@ -1921,6 +1932,21 @@ function compareAbstractCompositionPlans(
     return 0;
 }
 
+function isBetterAbstractCompositionPlan(
+    left: readonly AbstractCompositionCandidate[],
+    right: readonly AbstractCompositionCandidate[],
+): boolean {
+    return compareAbstractCompositionPlans(left, right) > 0;
+}
+
+function sumSignatureCounts(counts: readonly number[]): number {
+    return counts.reduce((sum, count) => sum + count, 0);
+}
+
+function serializeSignatureCounts(counts: readonly number[]): string {
+    return counts.join(',');
+}
+
 function compareModifierStepPreference(left: ModifierStep, right: ModifierStep): number {
     const leftBandScore = left.relativeBand === 'regular' ? 3 : left.relativeBand === 'super-regular' ? 2 : 1;
     const rightBandScore = right.relativeBand === 'regular' ? 3 : right.relativeBand === 'super-regular' ? 2 : 1;
@@ -1970,6 +1996,144 @@ function compareModifierPreferenceBucketKeys(leftKey: string, rightKey: string):
     return 0;
 }
 
+function enumerateAbstractSelectionsViaRoleInventory(
+    entries: readonly CountedCompositionEntry[],
+    availableCounts: readonly number[],
+    childRoles: readonly OrgChildRoleSpec[],
+    targetCount: number,
+    guard: SolverGuard,
+    selectionPredicate?: (selected: readonly GroupFacts[]) => boolean,
+): readonly number[][] {
+    if (entries.length === 0 || targetCount <= 0) {
+        return [];
+    }
+
+    const selections: number[][] = [];
+    const selectionKeys = new Set<string>();
+    const selectedCounts = new Array(entries.length).fill(0);
+    const roleCounts = new Array(childRoles.length).fill(0);
+    const suffixAvailableCounts = new Array(entries.length + 1).fill(0);
+    const suffixRoleCapacities = Array.from({ length: entries.length + 1 }, () => new Array(childRoles.length).fill(0));
+
+    for (let entryIndex = entries.length - 1; entryIndex >= 0; entryIndex -= 1) {
+        suffixAvailableCounts[entryIndex] = suffixAvailableCounts[entryIndex + 1] + (availableCounts[entryIndex] ?? 0);
+        for (let roleIndex = 0; roleIndex < childRoles.length; roleIndex += 1) {
+            suffixRoleCapacities[entryIndex][roleIndex] = suffixRoleCapacities[entryIndex + 1][roleIndex];
+        }
+        for (const roleIndex of entries[entryIndex].matchingRoleIndexes) {
+            suffixRoleCapacities[entryIndex][roleIndex] += availableCounts[entryIndex] ?? 0;
+        }
+    }
+
+    function canStillSatisfyRoleMinimums(startEntryIndex: number): boolean {
+        return childRoles.every((role, roleIndex) => {
+            const min = role.min ?? 0;
+            return roleCounts[roleIndex] >= min
+                || roleCounts[roleIndex] + suffixRoleCapacities[startEntryIndex][roleIndex] >= min;
+        });
+    }
+
+    function hasSatisfiedRoleMinimums(): boolean {
+        return childRoles.every((role, roleIndex) => roleCounts[roleIndex] >= (role.min ?? 0));
+    }
+
+    function pushSelection(): void {
+        if (!hasSatisfiedRoleMinimums()) {
+            return;
+        }
+
+        const selection = [...selectedCounts];
+        const selectionKey = serializeSignatureCounts(selection);
+        if (selectionKeys.has(selectionKey)) {
+            return;
+        }
+
+        if (selectionPredicate && !selectionPredicate(getPreviewGroupsForAbstractSelection(entries, selection))) {
+            return;
+        }
+
+        selectionKeys.add(selectionKey);
+        selections.push(selection);
+    }
+
+    function distributeAcrossMatchingRoles(
+        matchingRoleIndexes: readonly number[],
+        matchIndex: number,
+        remainingCount: number,
+        next: () => void,
+    ): void {
+        guard.compositionVisits += 1;
+        if (guard.compositionVisits > MAX_COMPOSITION_SEARCH_VISITS || shouldAbortSearch(guard)) {
+            return;
+        }
+
+        if (matchIndex >= matchingRoleIndexes.length) {
+            if (remainingCount === 0) {
+                next();
+            }
+            return;
+        }
+
+        const roleIndex = matchingRoleIndexes[matchIndex];
+        const role = childRoles[roleIndex];
+        const max = role.max ?? Number.POSITIVE_INFINITY;
+        const maxAssignable = Math.min(remainingCount, Math.max(0, max - roleCounts[roleIndex]));
+
+        for (let assigned = maxAssignable; assigned >= 0; assigned -= 1) {
+            roleCounts[roleIndex] += assigned;
+            distributeAcrossMatchingRoles(matchingRoleIndexes, matchIndex + 1, remainingCount - assigned, next);
+            roleCounts[roleIndex] -= assigned;
+        }
+    }
+
+    function visit(entryIndex: number, remainingCount: number): void {
+        guard.compositionVisits += 1;
+        if (guard.compositionVisits > MAX_COMPOSITION_SEARCH_VISITS || shouldAbortSearch(guard)) {
+            return;
+        }
+
+        if (remainingCount === 0) {
+            pushSelection();
+            return;
+        }
+
+        if (entryIndex >= entries.length || suffixAvailableCounts[entryIndex] < remainingCount) {
+            return;
+        }
+
+        if (!canStillSatisfyRoleMinimums(entryIndex)) {
+            return;
+        }
+
+        const entry = entries[entryIndex];
+        const maxTake = Math.min(availableCounts[entryIndex] ?? 0, remainingCount);
+        for (let take = maxTake; take >= 0; take -= 1) {
+            selectedCounts[entryIndex] = take;
+
+            if (take === 0) {
+                visit(entryIndex + 1, remainingCount);
+                selectedCounts[entryIndex] = 0;
+                continue;
+            }
+
+            if (entry.matchingRoleIndexes.length === 0) {
+                selectedCounts[entryIndex] = 0;
+                continue;
+            }
+
+            distributeAcrossMatchingRoles(entry.matchingRoleIndexes, 0, take, () => {
+                if (canStillSatisfyRoleMinimums(entryIndex + 1)) {
+                    visit(entryIndex + 1, remainingCount - take);
+                }
+            });
+            selectedCounts[entryIndex] = 0;
+        }
+    }
+
+    visit(0, targetCount);
+    return selections;
+}
+
 function planCountedCompositionsFromEntries(
     entries: readonly CountedCompositionEntry[],
     config: CompositionConfig,
@@ -1980,36 +2144,77 @@ function planCountedCompositionsFromEntries(
         return [];
     }
 
-    const plan: AbstractCompositionCandidate[] = [];
-    let availableCounts = entries.map((entry) => entry.groups.length);
+    const initialCounts = entries.map((entry) => entry.groups.length);
+    const steps = config.modifierDescriptor.stepsDescending.filter((step) => !allowedModifierKeys || allowedModifierKeys.has(step.modifierKey));
+    const transitionMemo = new Map<string, readonly number[][]>();
+    const planMemo = new Map<string, readonly AbstractCompositionCandidate[]>();
 
-    for (const step of config.modifierDescriptor.stepsDescending) {
-        if (allowedModifierKeys && !allowedModifierKeys.has(step.modifierKey)) {
-            continue;
+    function getTransitions(availableCounts: readonly number[], step: ModifierStep): readonly number[][] {
+        const transitionKey = `${step.modifierKey}::${serializeSignatureCounts(availableCounts)}`;
+        const cached = transitionMemo.get(transitionKey);
+        if (cached) {
+            return cached;
         }
 
-        let producedGroups = 0;
-        while (!shouldAbortSearch(guard)
-            && producedGroups < MAX_COMPOSED_GROUPS_PER_CONFIG
-            && availableCounts.reduce((sum, count) => sum + count, 0) >= step.count) {
-            const selections = enumerateAbstractSelections(entries, availableCounts, config.childRoles, step.count, guard);
-            const selection = selections[0];
-            if (!selection) {
-                break;
-            }
-
-            plan.push({
-                entries,
-                signatureCounts: selection,
-                compositionIndex: config.index,
-                modifierStep: step,
-            });
-            availableCounts = availableCounts.map((count, index) => count - (selection[index] ?? 0));
-            producedGroups += 1;
-        }
+        const transitions = enumerateAbstractSelectionsViaRoleInventory(
+            entries,
+            availableCounts,
+            config.childRoles,
+            step.count,
+            guard,
+        );
+        transitionMemo.set(transitionKey, transitions);
+        return transitions;
     }
 
-    return plan;
+    function visit(availableCounts: readonly number[]): readonly AbstractCompositionCandidate[] {
+        const stateKey = serializeSignatureCounts(availableCounts);
+        const cached = planMemo.get(stateKey);
+        if (cached) {
+            return cached;
+        }
+
+        const totalAvailable = sumSignatureCounts(availableCounts);
+
+        for (const step of steps) {
+            if (shouldAbortSearch(guard) || totalAvailable < step.count) {
+                continue;
+            }
+
+            let bestForStep: readonly AbstractCompositionCandidate[] = [];
+
+            for (const selection of getTransitions(availableCounts, step)) {
+                const nextCounts = availableCounts.map((count, index) => count - (selection[index] ?? 0));
+                const candidate: readonly AbstractCompositionCandidate[] = [
+                    {
+                        entries,
+                        signatureCounts: selection,
+                        compositionIndex: config.index,
+                        modifierStep: step,
+                    },
+                    ...visit(nextCounts),
+                ];
+
+                if (candidate.length > MAX_COMPOSED_GROUPS_PER_CONFIG) {
+                    continue;
+                }
+
+                if (bestForStep.length === 0 || isBetterAbstractCompositionPlan(candidate, bestForStep)) {
+                    bestForStep = candidate;
+                }
+            }
+
+            if (bestForStep.length > 0) {
+                planMemo.set(stateKey, bestForStep);
+                return bestForStep;
+            }
+        }
+
+        planMemo.set(stateKey, []);
+        return [];
+    }
+
+    return visit(initialCounts);
 }
 
 function planCountedCompositions(
@@ -2151,14 +2356,14 @@ function findAbstractCompositionSelection(
     }
 
     const availableCounts = entries.map((entry) => entry.groups.length);
-    const selection = enumerateAbstractSelections(entries, availableCounts, childRoles, targetCount, guard)
-        .find((candidateSelection) => {
-            if (!selectionPredicate) {
-                return true;
-            }
-
-            return selectionPredicate(getPreviewGroupsForAbstractSelection(entries, candidateSelection));
-        });
+    const selection = enumerateAbstractSelectionsViaRoleInventory(
+        entries,
+        availableCounts,
+        childRoles,
+        targetCount,
+        guard,
+        selectionPredicate,
+    )[0];
 
     return selection ? getPreviewGroupsForAbstractSelection(entries, selection) : null;
 }

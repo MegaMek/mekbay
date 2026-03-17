@@ -448,6 +448,56 @@ describe('org-solver.util', () => {
         expect(result.leftoverCount).toBe(1);
     });
 
+    it('finds better composed-count futures across overlapping role signatures', () => {
+        const rule: OrgComposedCountRule = {
+            kind: 'composed-count',
+            type: 'Company',
+            modifiers: { '': 2 },
+            tier: 2,
+            childRoles: [
+                { matches: ['Augmented Lance'], min: 1 },
+                { matches: ['Augmented Lance', 'Lance'], min: 1 },
+            ],
+        };
+
+        const groups = [
+            createBattleMekGroup('Augmented Lance A', 'Augmented Lance', 1, 5, 'Lance'),
+            createBattleMekGroup('Augmented Lance B', 'Augmented Lance', 1, 5, 'Lance'),
+            createBattleMekGroup('Lance A', 'Lance', 1, 4),
+            createBattleMekGroup('Lance B', 'Lance', 1, 4),
+        ].map((group) => compileGroupFacts(group));
+
+        // Abstraction
+        const result = evaluateComposedCountRule(rule, groups);
+        const materialized = materializeComposedCountRule(rule, groups);
+
+        expect(result.emitted).toEqual([
+            { modifierKey: '', perGroupCount: 2, copies: 1, tier: 2, compositionIndex: 0 },
+            { modifierKey: '', perGroupCount: 2, copies: 1, tier: 2, compositionIndex: 0 },
+        ]);
+
+        // Materialization
+        expect(result.leftoverCount).toBe(0);
+        expect(materialized.groups).toEqual([
+            jasmine.objectContaining({ name: 'Company', type: 'Company', modifierKey: '' }),
+            jasmine.objectContaining({ name: 'Company', type: 'Company', modifierKey: '' }),
+        ]);
+        expect(materialized.groups.every((group) => group.children?.length === 2)).toBeTrue();
+        expect(
+            materialized.groups
+                .map((group) => group.children?.map((child) => child.name).sort().join('|'))
+                .sort(),
+        ).toEqual([
+            'Augmented Lance A|Lance A',
+            'Augmented Lance B|Lance B',
+        ]);
+        expect(materialized.groups.map((group) => group.children?.map((child) => child.type))).toEqual([
+            ['Augmented Lance', 'Lance'],
+            ['Augmented Lance', 'Lance'],
+        ]);
+        expect(materialized.leftoverGroupFacts).toEqual([]);
+    });
+
     it('evaluates composed-count rules with alternative child compositions', () => {
         const rule: OrgComposedCountRule = {
             kind: 'composed-count',
