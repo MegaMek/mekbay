@@ -62,6 +62,8 @@ export interface SerializedForce {
     name: string;
     factionId?: number;
     factionLock?: boolean;
+    eraId?: number;
+    eraLock?: boolean;
     bv?: number;
     pv?: number;
     owned?: boolean;
@@ -404,6 +406,8 @@ export const CBT_SERIALIZED_FORCE_SCHEMA = Sanitizer.schema<CBTSerializedForce>(
     .string('name', { default: 'Unnamed Force' })
     .boolean('factionLock')
     .number('factionId')
+    .number('eraId')
+    .boolean('eraLock')
     .number('bv')
     .boolean('owned', { default: true })
     .custom('groups', (value: unknown) => {
@@ -561,6 +565,8 @@ export const AS_SERIALIZED_FORCE_SCHEMA = Sanitizer.schema<ASSerializedForce>()
     .string('name', { default: 'Unnamed Force' })
     .boolean('factionLock')
     .number('factionId')
+    .number('eraId')
+    .boolean('eraLock')
     .number('pv')
     .boolean('owned', { default: true })
     .custom('groups', (value: unknown) => {

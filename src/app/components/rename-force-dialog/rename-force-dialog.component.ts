@@ -40,7 +40,8 @@ import { outputToObservable } from '@angular/core/rxjs-interop';
 import { DecimalPipe } from '@angular/common';
 import { DataService } from '../../services/data.service';
 import type { Force } from '../../models/force.model';
-import { type Faction, FACTION_MERCENARY } from '../../models/factions.model';
+import type { Faction } from '../../models/factions.model';
+import type { Era } from '../../models/eras.model';
 import { ForceNamerUtil, type FactionDisplayInfo } from '../../utils/force-namer.util';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { FactionDropdownPanelComponent } from './faction-dropdown-panel.component';
@@ -48,6 +49,9 @@ import { EMPTY_RESULT, resolveFromGroups } from '../../utils/org-solver.util';
 import type { AggregatedGroupSizeResult, GroupSizeResult } from '../../utils/org-types';
 import { getAggregatedGroupsResult } from '../../utils/org-namer.util';
 import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-visuals.util';
+import { EraDropdownPanelComponent, type EraDisplayInfo } from './era-dropdown-panel.component';
+
+
 
 
 /*
@@ -61,6 +65,7 @@ export interface RenameForceDialogData {
 export interface RenameForceDialogResult {
     name: string;
     faction: Faction | null;
+    era: Era | null;
     action: 'confirm' | 'unset';
 }
 
@@ -123,9 +128,7 @@ export interface RenameForceDialogResult {
                     <div class="faction-selector-details">
                       <div class="faction-selector-header">
                         <span class="faction-selector-name">{{ display.faction.name }}</span>
-                        @if (display.faction.id !== FACTION_MERCENARY) {
-                          <span class="match-badge">{{ (display.matchPercentage * 100) | number:'1.0-0' }}% match</span>
-                        }
+                        <span class="match-badge">{{ (display.matchPercentage * 100) | number:'1.0-0' }}% match</span>
                       </div>
                       <div class="faction-selector-eras">
                         @for (eraItem of display.eraAvailability; track eraItem.era.id) {
@@ -154,6 +157,27 @@ export interface RenameForceDialogResult {
                 (click)="fillRandomFaction()"
                 aria-label="Pick random faction"
               ></button>
+            </div>
+        </div>
+
+        <div class="form-fields">
+            <label class="field-label" for="era">Era</label>
+            <div #eraTriggerWrapper class="input-wrapper">
+              <button id="era" class="era-selector bt-select" [class.era-mismatch]="selectedEraDisplay() && selectedEraDisplay()!.matchPercentage < 1" (click)="toggleEraDropdown()">
+                @if (selectedEraDisplay(); as display) {
+                  <div class="era-selector-content">
+                    @if (display.era.icon) {
+                      <img [src]="display.era.icon" class="era-selector-icon" [alt]="display.era.name" />
+                    }
+                    <div class="era-selector-details">
+                      <span class="era-selector-name">{{ display.era.name }}</span>
+                      <span class="era-selector-years">{{ display.era.years.from ?? '?' }}&ndash;{{ display.era.years.to ?? 'present' }}</span>
+                    </div>
+                  </div>
+                } @else {
+                  <span class="placeholder">None</span>
+                }
+              </button>
             </div>
         </div>
       </div>
@@ -345,15 +369,65 @@ export interface RenameForceDialogResult {
                 width: 0.9em;
             }
         }
+
+        .era-selector {
+            box-sizing: border-box;
+            flex: 1 1 auto;
+            min-width: 0;
+            padding: 10px 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            text-align: left;
+            font-size: 1em;
+        }
+
+        .era-selector:hover {
+            border-color: #666;
+        }
+
+        .era-selector-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+        }
+
+        .era-selector-icon {
+            width: 2.4em;
+            height: 2.4em;
+            object-fit: contain;
+            flex-shrink: 0;
+        }
+
+        .era-selector-details {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .era-selector-name {
+            font-weight: 600;
+        }
+
+        .era-selector-years {
+            font-size: 0.85em;
+            color: var(--text-color-secondary);
+        }
+
+        .era-mismatch {
+            border-color: rgba(255, 60, 60, 0.4);
+        }
     `]
 })
 
 export class RenameForceDialogComponent {
-    readonly FACTION_MERCENARY = FACTION_MERCENARY;
-
     inputRef = viewChild.required<ElementRef<HTMLDivElement>>('inputRef');
     factionTrigger = viewChild.required<ElementRef<HTMLButtonElement>>('factionTrigger');
     factionTriggerWrapper = viewChild.required<ElementRef<HTMLDivElement>>('factionTriggerWrapper');
+    eraTriggerWrapper = viewChild.required<ElementRef<HTMLDivElement>>('eraTriggerWrapper');
 
     public dialogRef: DialogRef<RenameForceDialogResult | null, RenameForceDialogComponent> = inject(DialogRef);
     readonly data: RenameForceDialogData = inject(DIALOG_DATA);
@@ -366,6 +440,33 @@ export class RenameForceDialogComponent {
     nameHasText = signal<boolean>(!!this.data.force.name);
 
     selectedFaction = signal<Faction | null>(this.data.force.faction());
+    selectedEra = signal<Era | null>(this.data.force.era());
+
+    eraDisplayList = computed<EraDisplayInfo[]>(() => {
+        const eras = this.dataService.getEras();
+        const units = this.data.force.units();
+        if (units.length === 0) {
+            return eras.map(era => ({ era, matchPercentage: 0 }));
+        }
+        const unitIds = units.map(u => u.getUnit().id);
+        const totalUnits = units.length;
+        return eras.map(era => {
+            const eraUnits = era.units;
+            let count = 0;
+            for (const id of unitIds) {
+                if (eraUnits instanceof Set ? eraUnits.has(id) : (eraUnits as number[]).includes(id)) {
+                    count++;
+                }
+            }
+            return { era, matchPercentage: count / totalUnits };
+        });
+    });
+
+    selectedEraDisplay = computed<EraDisplayInfo | null>(() => {
+        const era = this.selectedEra();
+        if (!era) return null;
+        return this.eraDisplayList().find(e => e.era.id === era.id) ?? null;
+    });
 
     selectedFactionDisplay = computed<FactionDisplayInfo | null>(() => {
         const faction = this.selectedFaction();
@@ -431,11 +532,44 @@ export class RenameForceDialogComponent {
         }
     }
 
+    toggleEraDropdown(): void {
+        this.overlayManager.closeManagedOverlay('era-dropdown');
+
+        const eraTriggerWrapper = this.eraTriggerWrapper();
+        if (!eraTriggerWrapper) return;
+
+        const portal = new ComponentPortal(EraDropdownPanelComponent, null, this.injector);
+
+        const { componentRef } = this.overlayManager.createManagedOverlay(
+            'era-dropdown',
+            eraTriggerWrapper,
+            portal,
+            {
+                closeOnOutsideClick: true,
+                panelClass: 'era-dropdown-overlay',
+                matchTriggerWidth: true,
+                anchorActiveSelector: '.dropdown-option.active, .none-option.active'
+            }
+        );
+
+        componentRef.setInput('eras', this.eraDisplayList());
+        componentRef.setInput('selectedEraId', this.selectedEra()?.id ?? null);
+
+        outputToObservable(componentRef.instance.selected)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((era: Era | null) => {
+                this.overlayManager.closeManagedOverlay('era-dropdown');
+                if (era?.id === this.selectedEra()?.id) return;
+                this.selectedEra.set(era);
+            });
+    }
+
     submit() {
         const value = this.inputRef().nativeElement.textContent?.trim() || '';
         this.dialogRef.close({
             name: value,
             faction: this.selectedFaction(),
+            era: this.selectedEra(),
             action: 'confirm'
         });
     }
@@ -444,6 +578,7 @@ export class RenameForceDialogComponent {
         this.dialogRef.close({
             name: '',
             faction: null,
+            era: null,
             action: 'unset'
         });
     }

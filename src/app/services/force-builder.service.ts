@@ -39,6 +39,7 @@ import { DataService } from './data.service';
 import { LayoutService } from './layout.service';
 import { ForceNamerUtil } from '../utils/force-namer.util';
 import type { Faction } from '../models/factions.model';
+import type { Era } from '../models/eras.model';
 import type { FormationNamerUtil } from '../utils/formation-namer.util';
 import { ConfirmDialogComponent, type ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
 import { firstValueFrom, Subject } from 'rxjs';
@@ -664,6 +665,7 @@ export class ForceBuilderService {
             instance: null,
             operation: null,
             factionId: null,
+            eraId: null,
             sel: null
         });
     }
@@ -1154,7 +1156,19 @@ export class ForceBuilderService {
     }
 
     generateFactionAndForceNameIfNeeded(force: Force, respectFilter: boolean = false): void {
-        if (!force || force.factionLock) {
+        if (!force) {
+            return;
+        }
+
+        // Pick era from filter if not locked
+        if (!force.eraLock && respectFilter) {
+            const era = this.pickEraFromFilter();
+            if (era && era.id !== force.era()?.id) {
+                force.era.set(era);
+            }
+        }
+
+        if (force.factionLock) {
             return;
         }
 
@@ -1177,6 +1191,28 @@ export class ForceBuilderService {
             ForceNamerUtil.generateForceNameForFaction(faction),
             false
         );
+    }
+
+    /**
+     * Checks the active unit search era filter and picks the first era from it.
+     * Returns null if no era filter is active or no matching eras are found.
+     */
+    private pickEraFromFilter(): Era | null {
+        try {
+            const filtersService = this.injector.get(UnitSearchFiltersService);
+            const filterState = filtersService.effectiveFilterState();
+            const eraFilter = filterState['era'];
+            if (!eraFilter?.interactedWith || !eraFilter.value) {
+                return null;
+            }
+            const selectedEraNames = eraFilter.value as string[];
+            if (!Array.isArray(selectedEraNames) || selectedEraNames.length === 0) {
+                return null;
+            }
+            return this.dataService.getEraByName(selectedEraNames[0]) ?? null;
+        } catch {
+            return null;
+        }
     }
 
     /**
@@ -1330,7 +1366,7 @@ export class ForceBuilderService {
             CBTPrintUtil.multipagePrint(sheetService, optionsService, currentForce.units());
         } else if (currentForce instanceof ASForce) {
             const optionsService = this.injector.get(OptionsService);
-            ASPrintUtil.multipagePrint(appRef, this.injector, optionsService, currentForce.groups());
+            ASPrintUtil.multipagePrint(appRef, this.injector, optionsService, currentForce.groups(), false, true);
         }
     }
 
@@ -1462,6 +1498,7 @@ export class ForceBuilderService {
                 instance: params.instance,
                 operation: params.operation,
                 factionId: params.factionId,
+                eraId: params.eraId,
                 sel
             });
         });
@@ -1472,7 +1509,7 @@ export class ForceBuilderService {
         const op = this.currentOperation();
         if (op) {
             // Operation loaded: only emit the operation ID, no force-level params
-            return { gs: null, units: null, name: null, instance: null, operation: op.operationId, factionId: null };
+            return { gs: null, units: null, name: null, instance: null, operation: op.operationId, factionId: null, eraId: null };
         }
         const params = buildMultiForceQueryParams(this.loadedForces());
         return { ...params, operation: null };
@@ -1628,6 +1665,18 @@ export class ForceBuilderService {
                         if (faction) {
 
                             newForce.factionLock = true; // lock faction since it was explicitly set in URL
+                        }
+                    }
+                }
+                // Restore era from URL param
+                const eraIdParam = params.get('eraId');
+                if (eraIdParam) {
+                    const eraId = parseInt(eraIdParam, 10);
+                    if (!isNaN(eraId)) {
+                        const era = this.dataService.getEraById(eraId) ?? null;
+                        newForce.era.set(era);
+                        if (era) {
+                            newForce.eraLock = true;
                         }
                     }
                 }
@@ -2448,11 +2497,15 @@ export class ForceBuilderService {
         if (result.action === 'unset') {
             force.factionLock = false;
             force.faction.set(null);
+            force.eraLock = false;
+            force.era.set(null);
             force.setName('');
             this.generateFactionAndForceNameIfNeeded(force);
         } else {
             force.factionLock = true;
             force.faction.set(result.faction);
+            force.eraLock = result.era != null;
+            force.era.set(result.era);
             force.setName(result.name);
         }
     }

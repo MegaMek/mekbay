@@ -59,6 +59,7 @@ export interface ForceQueryParams {
     instance: string | null;
     operation: string | null;
     factionId: number | null;
+    eraId: number | null;
 }
 
 export interface UnitShareLinks {
@@ -90,7 +91,7 @@ export function buildUnitShareLinks(
  */
 export function buildForceQueryParams(force: Force | null): ForceQueryParams {
     if (!force) {
-        return { gs: null, units: null, name: null, instance: null, operation: null, factionId: null };
+        return { gs: null, units: null, name: null, instance: null, operation: null, factionId: null, eraId: null };
     }
     const instanceId = force.instanceId();
     const groups = force.groups() || [];
@@ -106,7 +107,8 @@ export function buildForceQueryParams(force: Force | null): ForceQueryParams {
         name: forceName || null,
         instance: instanceId || null,
         operation: null,
-        factionId: force.faction()?.id ?? null
+        factionId: force.faction()?.id ?? null,
+        eraId: force.era()?.id ?? null
     };
 }
 
@@ -121,7 +123,7 @@ export function buildForceQueryParams(force: Force | null): ForceQueryParams {
  */
 export function buildMultiForceQueryParams(slots: ForceSlot[]): ForceQueryParams {
     if (slots.length === 0) {
-        return { gs: null, units: null, name: null, instance: null, operation: null, factionId: null };
+        return { gs: null, units: null, name: null, instance: null, operation: null, factionId: null, eraId: null };
     }
 
     // Collect instance IDs from saved forces, with alignment prefix
@@ -143,6 +145,7 @@ export function buildMultiForceQueryParams(slots: ForceSlot[]): ForceQueryParams
     let units: string | null = null;
     let name: string | null = null;
     let factionId: number | null = null;
+    let eraId: number | null = null;
 
     if (unsavedForce) {
         gs = unsavedForce.gameSystem;
@@ -152,6 +155,7 @@ export function buildMultiForceQueryParams(slots: ForceSlot[]): ForceQueryParams
         const forceName = unsavedForce.units().length > 0 ? unsavedForce.name : undefined;
         name = forceName || null;
         factionId = unsavedForce.faction()?.id ?? null;
+        eraId = unsavedForce.era()?.id ?? null;
     }
 
     return {
@@ -160,7 +164,8 @@ export function buildMultiForceQueryParams(slots: ForceSlot[]): ForceQueryParams
         name,
         instance: instanceEntries.length > 0 ? instanceEntries.join(',') : null,
         operation: null,
-        factionId
+        factionId,
+        eraId
     };
 }
 
