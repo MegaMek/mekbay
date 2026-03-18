@@ -36,6 +36,7 @@
  * 
  * Syntax:
  *   - Simple filters: field=value, field>value, etc.
+ *   - Exclusive filters: field==value
  *   - Grouping: (filter1 filter2) - filters inside are AND'd by default
  *   - Boolean operators: OR, AND (case insensitive)
  *   - Nested groups: ((type=Mek bv>1000) OR (type=Aero bv<1500)) AND (firepower>=50)
@@ -48,6 +49,7 @@
  * 
  * Examples:
  *   type=Mek bv>1000                    -> type=Mek AND bv>1000 (implicit AND)
+ *   faction==Draco*                     -> exclusive faction match with no other factions present
  *   type=Mek OR type=Aero               -> type=Mek OR type=Aero
  *   (type=Mek bv>1000) OR type=Aero     -> (type=Mek AND bv>1000) OR type=Aero
  *   ((a=1) OR (b=2)) AND (c=3)          -> (a=1 OR b=2) AND c=3
@@ -320,6 +322,9 @@ function tryParseFilterToken(
     if (input.slice(i, i + 2) === '!=') {
         operator = '!=';
         i += 2;
+    } else if (input.slice(i, i + 2) === '==') {
+        operator = '==';
+        i += 2;
     } else if (input.slice(i, i + 2) === '&=') {
         operator = '&=';
         i += 2;
@@ -344,10 +349,14 @@ function tryParseFilterToken(
     
     // Validate operator for filter type
     if (conf && conf.type === AdvFilterType.DROPDOWN) {
-        const validDropdownOperators: SemanticOperator[] = ['=', '!=', '&='];
+        const validDropdownOperators: SemanticOperator[] = ['=', '==', '!=', '&='];
         if (!validDropdownOperators.includes(operator)) {
             return null;
         }
+    }
+
+    if (operator === '==' && (!conf || (conf.type !== AdvFilterType.DROPDOWN && conf.type !== AdvFilterType.SEMANTIC))) {
+        return null;
     }
     
     if (operator === '&=' && conf && conf.type !== AdvFilterType.DROPDOWN && conf.type !== AdvFilterType.SEMANTIC) {
@@ -1201,6 +1210,8 @@ function evaluateExternalFilter(
             expandedValues.push(val);
         }
     }
+
+    const allowedNames = new Set(expandedValues.map(val => val.toLowerCase()));
     
     // Handle operators
     if (operator === '!=') {
@@ -1211,6 +1222,17 @@ function evaluateExternalFilter(
             }
         }
         return true;
+    } else if (operator === '==') {
+        if (!getAllNames) {
+            return expandedValues.some(val => checkMembership(val));
+        }
+
+        const unitNames = getAllNames().filter(name => checkMembership(name));
+        if (unitNames.length === 0) {
+            return false;
+        }
+
+        return unitNames.every(name => allowedNames.has(name.toLowerCase()));
     } else if (operator === '&=') {
         // AND: unit must match ALL of the values (with wildcard expansion, at least one per original pattern)
         for (const val of values) {
@@ -1433,23 +1455,23 @@ function evaluateDropdownFilter(
     
     // Normalize unit value(s) to array
     const unitValues = Array.isArray(unitValue) ? unitValue : [unitValue];
-    let unitStrings = unitValues.map(v => String(v).toLowerCase());
-    
-    // Include display names for matching (allows matching by both key and display name)
-    // For example, source filter: key "TR:3050" can match "Technical Readout: 3050"
-    if (context.getDisplayName) {
-        const displayNames: string[] = [];
-        for (const val of unitValues) {
-            const displayName = context.getDisplayName(conf.key, String(val));
-            if (displayName && displayName.toLowerCase() !== String(val).toLowerCase()) {
-                displayNames.push(displayName.toLowerCase());
+    const unitEntries = unitValues.map(v => {
+        const raw = String(v);
+        const rawLower = raw.toLowerCase();
+        const candidates = new Set<string>([rawLower]);
+
+        if (context.getDisplayName) {
+            const displayName = context.getDisplayName(conf.key, raw);
+            if (displayName) {
+                candidates.add(displayName.toLowerCase());
             }
         }
-        // Combine keys and display names for matching
-        if (displayNames.length > 0) {
-            unitStrings = [...unitStrings, ...displayNames];
-        }
-    }
+
+        return {
+            rawLower,
+            candidates
+        };
+    });
     
     // Apply value normalizer if defined (motive code 'j' -> 'Jump')
     const normalizeValue = conf.valueNormalizer || ((v: string) => v);
@@ -1457,6 +1479,24 @@ function evaluateDropdownFilter(
     // Check if we need quantity counting (for countable filters like equipment)
     const needsQuantityCounting = conf.countable && context.getCountableValues;
     const countableValues = needsQuantityCounting ? context.getCountableValues!(unit, conf.key) : null;
+
+    const getMatchedEntries = (name: string) => {
+        if (name.includes('*')) {
+            const regex = wildcardToRegex(name);
+            return unitEntries.filter(entry => Array.from(entry.candidates).some(candidate => regex.test(candidate)));
+        }
+
+        const lowerName = name.toLowerCase();
+        return unitEntries.filter(entry => entry.candidates.has(lowerName));
+    };
+
+    const getMatchCount = (matchedEntries: typeof unitEntries) => {
+        if (!countableValues) {
+            return matchedEntries.length;
+        }
+
+        return matchedEntries.reduce((total, entry) => total + (countableValues.get(entry.rawLower) || 0), 0);
+    };
     
     // For &= (AND) operator, ALL values must match
     if (operator === '&=') {
@@ -1466,40 +1506,9 @@ function evaluateDropdownFilter(
                 ? parseValueWithQuantity(val) 
                 : { name: val, constraint: null };
             const normalizedName = normalizeValue(name);
-            const lowerName = normalizedName.toLowerCase();
-            const isWildcard = name.includes('*');
-            
-            let matchFound = false;
-            let matchCount = 0;
-            
-            if (isWildcard) {
-                const regex = wildcardToRegex(name);
-                for (const uv of unitStrings) {
-                    if (regex.test(uv)) {
-                        matchFound = true;
-                        if (countableValues) {
-                            // Sum counts for all matching items
-                            for (const [itemName, count] of countableValues) {
-                                if (regex.test(itemName.toLowerCase())) {
-                                    matchCount += count;
-                                }
-                            }
-                        }
-                        break;
-                    }
-                }
-            } else {
-                matchFound = unitStrings.some(uv => uv === lowerName);
-                if (matchFound && countableValues) {
-                    // Find the count for this specific item (case-insensitive)
-                    for (const [itemName, count] of countableValues) {
-                        if (itemName.toLowerCase() === lowerName) {
-                            matchCount = count;
-                            break;
-                        }
-                    }
-                }
-            }
+            const matchedEntries = getMatchedEntries(normalizedName);
+            const matchFound = matchedEntries.length > 0;
+            const matchCount = getMatchCount(matchedEntries);
             
             if (!matchFound) return false; // AND requires all to be present
             
@@ -1512,6 +1521,34 @@ function evaluateDropdownFilter(
         }
         return true; // All AND values matched
     }
+
+    if (operator === '==') {
+        const matchedEntryNames = new Set<string>();
+
+        for (const val of values) {
+            const { name, constraint } = needsQuantityCounting
+                ? parseValueWithQuantity(val)
+                : { name: val, constraint: null };
+            const normalizedName = normalizeValue(name);
+            const matchedEntries = getMatchedEntries(normalizedName);
+            const matchFound = matchedEntries.length > 0;
+            const matchCount = getMatchCount(matchedEntries);
+
+            let quantityMatch = true;
+            if (needsQuantityCounting && matchFound) {
+                const effectiveConstraint = constraint ?? { operator: '>=', count: 1 } as QuantityConstraint;
+                quantityMatch = checkQuantityConstraint(matchCount, effectiveConstraint, false);
+            }
+
+            if (matchFound && quantityMatch) {
+                for (const entry of matchedEntries) {
+                    matchedEntryNames.add(entry.rawLower);
+                }
+            }
+        }
+
+        return matchedEntryNames.size > 0 && unitEntries.every(entry => matchedEntryNames.has(entry.rawLower));
+    }
     
     // For = (OR) and != operators
     for (const val of values) {
@@ -1520,40 +1557,9 @@ function evaluateDropdownFilter(
             ? parseValueWithQuantity(val) 
             : { name: val, constraint: null };
         const normalizedName = normalizeValue(name);
-        const lowerName = normalizedName.toLowerCase();
-        const isWildcard = name.includes('*');
-        
-        let matchFound = false;
-        let matchCount = 0;
-        
-        if (isWildcard) {
-            const regex = wildcardToRegex(name);
-            for (const uv of unitStrings) {
-                if (regex.test(uv)) {
-                    matchFound = true;
-                    if (countableValues) {
-                        // Sum counts for all matching items
-                        for (const [itemName, count] of countableValues) {
-                            if (regex.test(itemName.toLowerCase())) {
-                                matchCount += count;
-                            }
-                        }
-                    }
-                    break;
-                }
-            }
-        } else {
-            matchFound = unitStrings.some(uv => uv === lowerName);
-            if (matchFound && countableValues) {
-                // Find the count for this specific item (case-insensitive)
-                for (const [itemName, count] of countableValues) {
-                    if (itemName.toLowerCase() === lowerName) {
-                        matchCount = count;
-                        break;
-                    }
-                }
-            }
-        }
+        const matchedEntries = getMatchedEntries(normalizedName);
+        const matchFound = matchedEntries.length > 0;
+        const matchCount = getMatchCount(matchedEntries);
         
         // Handle quantity constraint
         let quantityMatch = true;
@@ -1601,7 +1607,7 @@ function evaluateSemanticFilter(
         
         if (operator === '!=') {
             if (matches) return false;
-        } else if (operator === '=' || operator === '&=') {
+        } else if (operator === '=' || operator === '==' || operator === '&=') {
             if (matches) return true;
         }
     }

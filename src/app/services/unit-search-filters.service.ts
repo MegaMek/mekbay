@@ -1729,6 +1729,7 @@ export class UnitSearchFiltersService {
                     const currentFilterValue = filterStateEntry?.interactedWith ? filterStateEntry.value : {};
                     const currentSelection = currentFilterValue as MultiStateSelection;
                     const wildcardPatternsMultistate = filterStateEntry?.wildcardPatterns;
+                    const isExclusiveSemantic = filterStateEntry?.exclusive ?? false;
                     let semanticOnlyMultistate = false;
                     let displayItemsMultistate: SemanticDisplayItem[] | undefined;
 
@@ -1773,7 +1774,7 @@ export class UnitSearchFiltersService {
                             return false;
                         });
 
-                        if (hasAdvancedQuantity) {
+                        if (hasAdvancedQuantity || isExclusiveSemantic) {
                             semanticOnlyMultistate = true;
                             displayItemsMultistate = activeSelections.map(([name, sel]) => {
                                 let suffix = '';
@@ -1825,6 +1826,13 @@ export class UnitSearchFiltersService {
                                     state: sel.state as 'or' | 'and' | 'not'
                                 };
                             });
+
+                            if (isExclusiveSemantic && displayItemsMultistate.length > 0) {
+                                displayItemsMultistate[0] = {
+                                    ...displayItemsMultistate[0],
+                                    text: `==${displayItemsMultistate[0].text}`
+                                };
+                            }
                         }
                     }
 
@@ -1888,6 +1896,7 @@ export class UnitSearchFiltersService {
                 let displayText: string | undefined;
                 const availableOptionNames = new Set(availableOptions.map(o => o.name));
                 const wildcardPatterns = filterStateEntry?.wildcardPatterns;
+                const isExclusiveSemantic = filterStateEntry?.exclusive ?? false;
 
                 // If there are wildcard patterns, this is semantic-only
                 if (wildcardPatterns && wildcardPatterns.length > 0) {
@@ -1896,6 +1905,9 @@ export class UnitSearchFiltersService {
                         const prefix = wp.state === 'not' ? '!' : '';
                         return prefix + wp.pattern;
                     }).join(', ');
+                    if (isExclusiveSemantic) {
+                        displayText = `==${displayText}`;
+                    }
                 } else if (conf.multistate) {
                     // For multistate dropdowns, check MultiStateSelection
                     const selection = filterValue as MultiStateSelection;
@@ -1977,6 +1989,9 @@ export class UnitSearchFiltersService {
                                 }
                                 return prefix + name + suffix;
                             }).join(', ');
+                        } else if (isExclusiveSemantic && activeSelections.length > 0) {
+                            semanticOnly = true;
+                            displayText = `==${activeSelections.map(([name]) => name).join(', ')}`;
                         }
                     }
                 } else {
@@ -1993,6 +2008,11 @@ export class UnitSearchFiltersService {
                                     ...(displayNameFn ? { displayName: displayNameFn(v) } : {})
                                 });
                             }
+                        }
+
+                        if (isExclusiveSemantic) {
+                            semanticOnly = true;
+                            displayText = `==${selectedValues.join(', ')}`;
                         }
                     }
                 }

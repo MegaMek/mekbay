@@ -47,6 +47,7 @@ const semanticKeyMapCache = new Map<GameSystem, Map<string, AdvFilterConfig>>();
  * 
  * Operators:
  *   =   Include/equal (supports range syntax for numeric: field=min-max)
+ *   ==  Exclusive include (dropdown/semantic only; matched values must be the only values present)
  *   !=  Exclude/not equal (supports range syntax for numeric: field!=min-max)
  *   >   Greater than (single value only)
  *   <   Less than (single value only)
@@ -65,12 +66,13 @@ const semanticKeyMapCache = new Map<GameSystem, Map<string, AdvFilterConfig>>();
  *   tmm=2-5                        -> TMM range 2 to 5 (include)
  *   tmm!=2-3                       -> TMM excludes range 2 to 3
  *   tmm>=2 tmm<=5                  -> TMM >= 2 AND <= 5
+ *   faction==ComStar               -> unit must match ComStar and no other factions
  *   faction=ComStar,"Draconis Combine"  -> faction includes both
  *   faction!=ComStar               -> faction excludes ComStar
  *   bv>=1000 bv<=2000              -> BV range 1000-2000
  */
 
-export type SemanticOperator = '=' | '!=' | '&=' | '>' | '<' | '>=' | '<=';
+export type SemanticOperator = '=' | '==' | '!=' | '&=' | '>' | '<' | '>=' | '<=';
 
 export interface SemanticToken {
     field: string;           // The semantic key (e.g., 'tmm', 'faction')
@@ -92,6 +94,7 @@ export interface SemanticFilterState {
         displayText?: string;                // For range filters: formatted effective ranges (e.g., "0-10, 20-30")
         semanticOnly?: boolean;              // True if this filter can't be shown in UI
         wildcardPatterns?: WildcardPattern[];  // For dropdown filters: wildcard patterns (e.g., "AC*")
+        exclusive?: boolean;                // True when semantic text used == for exclusive matching
     };
 }
 
@@ -625,6 +628,7 @@ export function tokensToFilterState(
                 const selection: MultiStateSelection = {};
                 const wildcardPatterns: WildcardPattern[] = [];
                 let semanticOnly = false;
+                let exclusive = false;
                 
                 // For countable filters, collect all constraints per name first, then merge
                 const countableConstraints = new Map<string, {
@@ -634,6 +638,11 @@ export function tokensToFilterState(
 
                 for (const token of fieldTokens) {
                     const state: 'or' | 'and' | 'not' = token.operator === '!=' ? 'not' : (token.operator === '&=' ? 'and' : 'or');
+
+                    if (token.operator === '==') {
+                        exclusive = true;
+                        semanticOnly = true;
+                    }
 
                     for (const val of token.values) {
                         // Check if this is a wildcard pattern
@@ -773,7 +782,8 @@ export function tokensToFilterState(
                         value: selection,
                         interactedWith: true,
                         wildcardPatterns: wildcardPatterns.length > 0 ? wildcardPatterns : undefined,
-                        semanticOnly: semanticOnly || undefined
+                        semanticOnly: semanticOnly || undefined,
+                        exclusive: exclusive || undefined
                     };
                 }
 
@@ -782,13 +792,17 @@ export function tokensToFilterState(
                 const values: string[] = [];
                 const wildcardPatterns: WildcardPattern[] = [];
                 let semanticOnly = false;
+                let exclusive = false;
 
                 for (const token of fieldTokens) {
                     const state: 'or' | 'and' | 'not' = token.operator === '!=' ? 'not' : (token.operator === '&=' ? 'and' : 'or');
                     
                     // Mark as semantic-only if using exclude or AND operators (not representable in simple UI)
-                    if (token.operator === '!=' || token.operator === '&=') {
+                    if (token.operator === '!=' || token.operator === '&=' || token.operator === '==') {
                         semanticOnly = true;
+                    }
+                    if (token.operator === '==') {
+                        exclusive = true;
                     }
                     
                     for (const val of token.values) {
@@ -811,7 +825,8 @@ export function tokensToFilterState(
                         value: Array.from(new Set(values)), // Deduplicate
                         interactedWith: true,
                         wildcardPatterns: wildcardPatterns.length > 0 ? wildcardPatterns : undefined,
-                        semanticOnly: semanticOnly || undefined
+                        semanticOnly: semanticOnly || undefined,
+                        exclusive: exclusive || undefined
                     };
                 }
             }
@@ -821,9 +836,13 @@ export function tokensToFilterState(
             const orValues: string[] = [];
             const andValues: string[] = [];
             const wildcardPatterns: WildcardPattern[] = [];
+            let exclusive = false;
 
             for (const token of fieldTokens) {
                 const state: 'or' | 'and' | 'not' = token.operator === '!=' ? 'not' : (token.operator === '&=' ? 'and' : 'or');
+                if (token.operator === '==') {
+                    exclusive = true;
+                }
                 
                 for (const val of token.values) {
                     if (val.includes('*')) {
@@ -854,7 +873,8 @@ export function tokensToFilterState(
                     value: Array.from(new Set(orValues)), // Deduplicate OR values
                     interactedWith: true,
                     wildcardPatterns: allPatterns.length > 0 ? allPatterns : undefined,
-                    semanticOnly: true // SEMANTIC filters are always semantic-only
+                    semanticOnly: true, // SEMANTIC filters are always semantic-only
+                    exclusive: exclusive || undefined
                 };
             }
         }
@@ -920,6 +940,8 @@ export function filterStateToSemanticText(
             }
 
         } else if (conf.type === AdvFilterType.DROPDOWN) {
+            const extState = state as SemanticFilterState[string];
+            const includeOperator = extState.exclusive ? '==' : '=';
             if (conf.multistate) {
                 const selection = state.value as MultiStateSelection;
                 const includeValues: string[] = [];
@@ -941,7 +963,7 @@ export function filterStateToSemanticText(
 
                 if (includeValues.length > 0) {
                     const formatted = includeValues.map(v => formatValue(v)).join(',');
-                    parts.push(`${semanticKey}=${formatted}`);
+                    parts.push(`${semanticKey}${includeOperator}${formatted}`);
                 }
                 if (excludeValues.length > 0) {
                     const formatted = excludeValues.map(v => formatValue(v)).join(',');
@@ -952,7 +974,7 @@ export function filterStateToSemanticText(
                 const values = state.value as string[];
                 if (values.length > 0) {
                     const formatted = values.map(v => formatValue(v)).join(',');
-                    parts.push(`${semanticKey}=${formatted}`);
+                    parts.push(`${semanticKey}${includeOperator}${formatted}`);
                 }
             }
         }
