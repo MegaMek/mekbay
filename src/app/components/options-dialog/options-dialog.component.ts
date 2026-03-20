@@ -87,6 +87,7 @@ export class OptionsDialogComponent {
     subscriptionInput = viewChild<ElementRef<HTMLInputElement>>('subscriptionInput');
     userUuid = computed(() => this.userStateService.uuid() || '');
     userPublicId = computed(() => this.userStateService.publicId() || 'Not registered');
+    showUserUuid = signal(false);
     subscribedTags = computed(() => {
         this.publicTagsService.version(); // depend on version for reactivity
         return this.publicTagsService.getSubscribedTags();
@@ -279,6 +280,10 @@ export class OptionsDialogComponent {
     selectAll(event: FocusEvent) {
         const input = event.target as HTMLInputElement;
         input.select();
+    }
+
+    toggleUserUuidVisibility() {
+        this.showUserUuid.update(value => !value);
     }
 
     async onPurgeCache() {
