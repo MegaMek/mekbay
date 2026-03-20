@@ -193,6 +193,7 @@ export class UnitSearchComponent {
     advBtn = viewChild.required<ElementRef<HTMLButtonElement>>('advBtn');
     favBtn = viewChild.required<ElementRef<HTMLButtonElement>>('favBtn');
     advPanel = viewChild<ElementRef<HTMLElement>>('advPanel');
+    resultsDropdown = viewChild<ElementRef<HTMLElement>>('resultsDropdown');
     resultsDataTable = viewChild<DataTableComponent<Unit>>(DataTableComponent);
     private readonly tableIconCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableIconCell');
     private readonly tableNameCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableNameCell');
@@ -248,6 +249,26 @@ export class UnitSearchComponent {
     });
 
     readonly isTableMode = computed(() => this.viewMode() === 'table');
+    private readonly cardViewMinWidthPx = 300;
+    private readonly cardViewGapPx = 4;
+    private readonly cardViewRowPaddingPx = 4;
+    private readonly resultsDropdownWidth = signal(0);
+    readonly cardViewColumnCount = computed(() => {
+        const measuredWidth = this.resultsDropdownWidth();
+        const availableWidth = Math.max(0, measuredWidth - (this.cardViewRowPaddingPx * 2));
+        return Math.max(1, Math.floor((availableWidth + this.cardViewGapPx) / (this.cardViewMinWidthPx + this.cardViewGapPx)));
+    });
+    readonly cardViewRows = computed(() => {
+        const units = this.filtersService.filteredUnits();
+        const columnCount = this.cardViewColumnCount();
+        const rows: Unit[][] = [];
+
+        for (let index = 0; index < units.length; index += columnCount) {
+            rows.push(units.slice(index, index + columnCount));
+        }
+
+        return rows;
+    });
 
     readonly currentViewModeTitle = computed(() => {
         const mode = this.viewMode();
@@ -856,9 +877,18 @@ export class UnitSearchComponent {
      */
     readonly isComplexQuery = computed(() => this.filtersService.isComplexQuery());
 
-    itemSize = signal(75);
+    private readonly listItemSize = signal(75);
+    readonly cardItemHeight = signal(220);
+    readonly itemSize = computed(() => {
+        if (this.viewMode() === 'card' && this.gameService.isAlphaStrike()) {
+            return this.cardItemHeight();
+        }
+
+        return this.listItemSize();
+    });
 
     private resizeObserver?: ResizeObserver;
+    private resultsResizeObserver?: ResizeObserver;
     private advPanelDragStartX = 0;
     private advPanelDragStartWidth = 0;
 
@@ -931,6 +961,26 @@ export class UnitSearchComponent {
                 this.updateResultsDropdownPosition();
             }
         });
+        effect((cleanup) => {
+            const dropdown = this.resultsDropdown()?.nativeElement;
+            if (!dropdown) {
+                this.resultsDropdownWidth.set(0);
+                return;
+            }
+
+            this.resultsResizeObserver?.disconnect();
+            this.resultsResizeObserver = new ResizeObserver(entries => {
+                const width = entries[0]?.contentRect.width ?? dropdown.clientWidth;
+                this.resultsDropdownWidth.set(width);
+            });
+            this.resultsResizeObserver.observe(dropdown);
+            this.resultsDropdownWidth.set(dropdown.clientWidth);
+
+            cleanup(() => {
+                this.resultsResizeObserver?.disconnect();
+                this.resultsResizeObserver = undefined;
+            });
+        });
         // Track pending afterNextRender callbacks to cancel on effect re-run or destroy
         let pendingResizeObserverRef: { destroy: () => void } | null = null;
 
@@ -980,15 +1030,37 @@ export class UnitSearchComponent {
             }
             clearTimeout(this.filterChordTimer);
             this.resizeObserver?.disconnect();
+            this.resultsResizeObserver?.disconnect();
             this.overlayManager.closeAllManagedOverlays();
         });
+    }
+
+    trackCardRow = (index: number, row: Unit[]) => row[0]?.name ?? index;
+
+    getCardUnitIndex(rowIndex: number, columnIndex: number): number {
+        return rowIndex * this.cardViewColumnCount() + columnIndex;
+    }
+
+    private getViewportItemIndex(index: number): number {
+        if (this.viewMode() === 'card' && this.gameService.isAlphaStrike()) {
+            return Math.floor(index / this.cardViewColumnCount());
+        }
+        return index;
+    }
+
+    private getDefaultListItemSize(): number {
+        return 75;
+    }
+
+    private getDefaultCardItemHeight(): number {
+        return 220;
     }
 
     private setupItemHeightTracking() {
         const DEBOUNCE_MS = 100;
         /** Max consecutive gap-correction attempts to prevent infinite loops */
         const MAX_GAP_CORRECTIONS = 3;
-        let prevExpandedView: boolean | undefined;
+        let prevLayoutKey: string | undefined;
         let gapCorrectionPending: { destroy: () => void } | null = null;
         let gapCorrectionCount = 0;
 
@@ -1074,13 +1146,26 @@ export class UnitSearchComponent {
             const dropdown = this.getActiveDropdownElement();
             if (!dropdown) return;
 
+            if (this.viewMode() === 'card' && this.gameService.isAlphaStrike()) {
+                const cardRow = dropdown.querySelector('.card-view-row') as HTMLElement | null;
+                if (!cardRow) return;
+
+                const measuredHeight = Math.round(cardRow.offsetHeight);
+                if (measuredHeight > 0 && this.cardItemHeight() !== measuredHeight) {
+                    this.cardItemHeight.set(measuredHeight);
+                }
+
+                return;
+            }
+
             const items = dropdown.querySelectorAll('.results-dropdown-item:not(.no-results)');
             if (items.length === 0) return;
+
             const heights = Array.from(items).slice(0, 100).map(el => (el as HTMLElement).offsetHeight);
-            let avg = Math.round(heights.reduce((a, b) => a + b, 0) / heights.length);
-            const currentAvg = this.itemSize();
+            const avg = Math.round(heights.reduce((a, b) => a + b, 0) / heights.length);
+            const currentAvg = this.listItemSize();
             if (currentAvg !== avg) {
-                this.itemSize.set(avg);
+                this.listItemSize.set(avg);
             }
 
             // Always schedule a gap check after measurement, regardless of whether
@@ -1106,6 +1191,8 @@ export class UnitSearchComponent {
 
         effect(() => {
             const currentExpandedView = this.expandedView();
+            const currentViewMode = this.viewMode();
+            const currentLayoutKey = `${currentExpandedView}:${currentViewMode}`;
 
             // Cancel any pending timer and reset itemSize when view mode changes
             untracked(() => {
@@ -1116,16 +1203,18 @@ export class UnitSearchComponent {
                 gapCorrectionPending?.destroy();
                 gapCorrectionPending = null;
                 gapCorrectionCount = 0;
-                // Reset to default on view mode change (will be refined by height tracking)
-                if (prevExpandedView !== undefined && prevExpandedView !== currentExpandedView) {
-                    this.itemSize.set(75);
+                // Reset to defaults on view mode change (will be refined by height tracking)
+                if (prevLayoutKey !== undefined && prevLayoutKey !== currentLayoutKey) {
+                    this.listItemSize.set(this.getDefaultListItemSize());
+                    this.cardItemHeight.set(this.getDefaultCardItemHeight());
                 }
-                prevExpandedView = currentExpandedView;
+                prevLayoutKey = currentLayoutKey;
             });
 
             if (!this.resultsVisible()) return;
             this.layoutService.isMobile();
             this.gameService.currentGameSystem();
+            this.resultsDropdownWidth();
             if (currentExpandedView) {
                 this.layoutService.windowWidth();
                 this.filtersService.advOpen();
@@ -1470,7 +1559,7 @@ export class UnitSearchComponent {
     }
 
     private scrollToIndex(index: number) {
-        this.currentViewport()?.scrollToIndex(index, 'smooth');
+        this.currentViewport()?.scrollToIndex(this.getViewportItemIndex(index), 'smooth');
     }
 
     /**
@@ -1480,24 +1569,25 @@ export class UnitSearchComponent {
     private scrollToMakeVisible(index: number) {
         const vp = this.currentViewport();
         if (!vp) return;
+        const viewportIndex = this.getViewportItemIndex(index);
 
         const vpElement = vp.elementRef.nativeElement;
         const renderedRange = vp.getRenderedRange();
 
         // Check if the item is within the rendered range
-        if (index < renderedRange.start || index >= renderedRange.end) {
+        if (viewportIndex < renderedRange.start || viewportIndex >= renderedRange.end) {
             // Item is not rendered at all, need to scroll to it
-            vp.scrollToIndex(index, 'smooth');
+            vp.scrollToIndex(viewportIndex, 'smooth');
             return;
         }
 
         // Find the rendered items
-        const items = vpElement.querySelectorAll('.results-dropdown-item:not(.no-results), .mb-data-table-row-item');
-        const localIndex = index - renderedRange.start;
+        const items = vpElement.querySelectorAll('.results-dropdown-item:not(.no-results), .mb-data-table-row-item, .card-view-row');
+        const localIndex = viewportIndex - renderedRange.start;
 
         if (localIndex < 0 || localIndex >= items.length) {
             // Safety fallback
-            vp.scrollToIndex(index, 'smooth');
+            vp.scrollToIndex(viewportIndex, 'smooth');
             return;
         }
 

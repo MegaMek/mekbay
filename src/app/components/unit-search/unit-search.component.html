@@ -146,7 +146,7 @@
     </unit-details-panel>
     }
 
-    <div class="results-dropdown framed-borders" [class.expanded]="this.expandedView()">
+    <div #resultsDropdown class="results-dropdown framed-borders" [class.expanded]="this.expandedView()">
         <div class="results-dropdown-content">
             @if (this.filtersService.filteredUnits().length > 0) {
             @if (viewMode() === 'chassis') {
@@ -176,26 +176,30 @@
                 }
             </div>
             } @else if (viewMode() === 'card' && gameService.isAlphaStrike()) {
-            <!-- Card View Grid (replaces virtual scroll) -->
-            <div class="card-view-grid">
-                @for (unit of this.filtersService.filteredUnits(); track unit.name) {
+            <cdk-virtual-scroll-viewport class="results-dropdown-viewport card-view-viewport"
+                [itemSize]="this.itemSize()"
+                [style.--item-size.px]="this.itemSize()"
+                [style.--card-columns]="cardViewColumnCount()"
+                minBufferPx="900" maxBufferPx="1600" tabindex="0">
+                <div class="card-view-row"
+                    *cdkVirtualFor="let row of cardViewRows(); let rowIndex = index; trackBy: trackCardRow">
+                    @for (unit of row; let columnIndex = $index; track unit.name) {
                     <div class="card-view-cell"
-                         longPress
-                         [class.selected]="isUnitSelected(unit)"
-                         (shortPress)="onUnitCardClick(unit, $event)"
-                         (longPress)="multiSelectUnit(unit)">
-                        @defer (on viewport) {
+                        longPress
+                        [class.selected]="isUnitSelected(unit)"
+                        [class.active]="activeIndex() === getCardUnitIndex(rowIndex, columnIndex)"
+                        (pointerenter)="activeIndex.set(getCardUnitIndex(rowIndex, columnIndex))"
+                        (shortPress)="onUnitCardClick(unit, $event)"
+                        (longPress)="multiSelectUnit(unit)">
                         <alpha-strike-card
                             [unit]="unit"
                             [useHex]="useHex()"
                             [cardStyle]="cardStyle()"
                             [isSelected]="isUnitSelected(unit)" />
-                        } @placeholder {
-                        <div class="card-view-placeholder"></div>
-                        }
                     </div>
-                }
-            </div>
+                    }
+                </div>
+            </cdk-virtual-scroll-viewport>
             } @else if (this.expandedView() && isTableMode()) {
             <mb-data-table class="unit-search-as-table"
                 [rows]="this.filtersService.filteredUnits()"

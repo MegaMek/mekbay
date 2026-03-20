@@ -284,20 +284,37 @@
 }
 
 /* Card View Grid */
-.card-view-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 4px;
-    padding: 4px;
-    overflow-y: auto;
-    flex: 1;
-    min-height: 0;
+.card-view-viewport {
+    --card-columns: 1;
 }
 
+.card-view-viewport .cdk-virtual-scroll-content-wrapper {
+    width: 100%;
+}
+
+.card-view-row {
+    display: grid;
+    grid-template-columns: repeat(var(--card-columns), minmax(0, 1fr));
+    gap: 4px;
+    padding: 4px;
+    box-sizing: border-box;
+    align-items: start;
+}
 
 .card-view-cell {
     cursor: pointer;
     position: relative;
+    min-width: 0;
+
+    &.active::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        outline: 2px solid var(--background-highlight);
+        outline-offset: -2px;
+        pointer-events: none;
+        z-index: 4;
+    }
 
     &.selected {
         &::after {
