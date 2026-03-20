@@ -42,6 +42,7 @@ export enum Rulebook {
     ASCE = "Alpha Strike: Commander's Edition",
     ASC = "Alpha Strike: Companion",
     ASC_ERR16 = "Alpha Strike Companion Errata v1.6 (2022)",
+    BOT = "Battle of Tukayyid",
     CO = "BattleTech: Campaign Operations"
 }
 
