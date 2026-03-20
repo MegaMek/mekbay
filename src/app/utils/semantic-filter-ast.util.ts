@@ -61,6 +61,7 @@ import type { GameSystem } from '../models/common.model';
 import { ADVANCED_FILTERS, type AdvFilterConfig, AdvFilterType } from '../services/unit-search-filters.service';
 import { type SemanticOperator, type SemanticToken, buildSemanticKeyMap, VIRTUAL_SEMANTIC_KEYS, parseValues, parseValueWithQuantity, type QuantityConstraint } from './semantic-filter.util';
 import { wildcardToRegex } from './string.util';
+import { checkQuantityConstraint as checkQuantityConstraintCore } from './unit-search-shared.util';
 
 // ============================================================================
 // Helpers
@@ -89,13 +90,6 @@ function isEscapeSequence(input: string, pos: number): boolean {
  */
 export function unescapeText(text: string): string {
     return text.replace(/\\([()=><!'"&\\])/g, '$1');
-}
-
-/**
- * @deprecated Use unescapeText instead
- */
-export function unescapeParens(text: string): string {
-    return unescapeText(text);
 }
 
 // ============================================================================
@@ -1024,12 +1018,12 @@ export function isComplexQuery(ast: GroupASTNode): boolean {
 export interface EvaluatorContext {
     /** Get a property value from a unit by key path (e.g., 'as.PV', 'bv') */
     getProperty: (unit: any, key: string) => any;
+    /** Get a stable unit identifier for candidate prefiltering. */
+    getUnitId: (unit: any) => string;
     /** Get adjusted BV for a unit (with pilot skill modifiers) */
     getAdjustedBV?: (unit: any) => number;
     /** Get adjusted PV for a unit (with pilot skill modifiers) */
     getAdjustedPV?: (unit: any) => number;
-    /** Total ranges for numeric filters */
-    totalRanges: Record<string, [number, number]>;
     /** Current game system */
     gameSystem: GameSystem;
     /** Match text against a unit's searchable text (chassis, model, etc.) */
@@ -1064,6 +1058,179 @@ export interface EvaluatorContext {
      * @returns The display name, or undefined if no lookup exists
      */
     getDisplayName?: (filterKey: string, value: string) => string | undefined;
+    /** Get indexed unit ids for an exact stored filter value. */
+    getIndexedUnitIds?: (filterKey: string, value: string) => ReadonlySet<string | number> | undefined;
+    /** Get all stored values available in an index for a filter key. */
+    getIndexedFilterValues?: (filterKey: string) => readonly string[];
+}
+
+type ParsedRangeValue =
+    | { type: 'range'; min: number; max: number }
+    | { type: 'single'; num: number };
+
+const RANGE_VALUE_PATTERN = /^(-?\d+(?:\.\d+)?)[-~](-?\d+(?:\.\d+)?)$/;
+const FILTER_CONFIGS_BY_SEMANTIC_KEY = new Map<string, AdvFilterConfig[]>();
+const sortedFilterConfigsCache = new WeakMap<EvaluatorContext, Map<string, readonly AdvFilterConfig[]>>();
+const parsedRangeValuesCache = new WeakMap<SemanticToken, ParsedRangeValue[]>();
+
+for (const filterConfig of ADVANCED_FILTERS) {
+    const semanticKey = filterConfig.semanticKey || filterConfig.key;
+    const matchingConfigs = FILTER_CONFIGS_BY_SEMANTIC_KEY.get(semanticKey);
+    if (matchingConfigs) {
+        matchingConfigs.push(filterConfig);
+    } else {
+        FILTER_CONFIGS_BY_SEMANTIC_KEY.set(semanticKey, [filterConfig]);
+    }
+}
+
+function getSortedFilterConfigs(context: EvaluatorContext, semanticKey: string): readonly AdvFilterConfig[] {
+    let contextCache = sortedFilterConfigsCache.get(context);
+    if (!contextCache) {
+        contextCache = new Map<string, readonly AdvFilterConfig[]>();
+        sortedFilterConfigsCache.set(context, contextCache);
+    }
+
+    const cached = contextCache.get(semanticKey);
+    if (cached) {
+        return cached;
+    }
+
+    const matchingFilters = FILTER_CONFIGS_BY_SEMANTIC_KEY.get(semanticKey) ?? [];
+    const currentGame: AdvFilterConfig[] = [];
+    const gameAgnostic: AdvFilterConfig[] = [];
+    const otherGame: AdvFilterConfig[] = [];
+    for (const filterConfig of matchingFilters) {
+        if (filterConfig.game === context.gameSystem) currentGame.push(filterConfig);
+        else if (!filterConfig.game) gameAgnostic.push(filterConfig);
+        else otherGame.push(filterConfig);
+    }
+
+    const sorted = [...currentGame, ...gameAgnostic, ...otherGame];
+    contextCache.set(semanticKey, sorted);
+    return sorted;
+}
+
+function preParseRangeValues(values: string[]): ParsedRangeValue[] {
+    const parsedValues: ParsedRangeValue[] = [];
+    for (const value of values) {
+        const rangeMatch = value.match(RANGE_VALUE_PATTERN);
+        if (rangeMatch) {
+            parsedValues.push({
+                type: 'range',
+                min: parseFloat(rangeMatch[1]),
+                max: parseFloat(rangeMatch[2]),
+            });
+            continue;
+        }
+
+        const num = parseFloat(value);
+        if (!Number.isNaN(num)) {
+            parsedValues.push({ type: 'single', num });
+        }
+    }
+    return parsedValues;
+}
+
+function getParsedRangeValues(filter: SemanticToken): ParsedRangeValue[] {
+    let cached = parsedRangeValuesCache.get(filter);
+    if (!cached) {
+        cached = preParseRangeValues(filter.values);
+        parsedRangeValuesCache.set(filter, cached);
+    }
+    return cached;
+}
+
+interface ExternalFilterRuntimeCache {
+    allNamesByKey: Map<string, string[]>;
+    expandedValuesByKey: Map<string, Map<string, string[]>>;
+    unitMatchedNamesByKey: WeakMap<any, Map<string, Set<string>>>;
+}
+
+const externalFilterRuntimeCache = new WeakMap<EvaluatorContext, ExternalFilterRuntimeCache>();
+
+function getExternalFilterRuntimeCache(context: EvaluatorContext): ExternalFilterRuntimeCache {
+    let cache = externalFilterRuntimeCache.get(context);
+    if (!cache) {
+        cache = {
+            allNamesByKey: new Map<string, string[]>(),
+            expandedValuesByKey: new Map<string, Map<string, string[]>>(),
+            unitMatchedNamesByKey: new WeakMap<any, Map<string, Set<string>>>(),
+        };
+        externalFilterRuntimeCache.set(context, cache);
+    }
+    return cache;
+}
+
+function getCachedExternalNames(
+    context: EvaluatorContext,
+    filterKey: string,
+    getAllNames?: () => string[]
+): string[] {
+    const runtimeCache = getExternalFilterRuntimeCache(context);
+    const cachedNames = runtimeCache.allNamesByKey.get(filterKey);
+    if (cachedNames) {
+        return cachedNames;
+    }
+
+    const names = getAllNames ? getAllNames() : [];
+    runtimeCache.allNamesByKey.set(filterKey, names);
+    return names;
+}
+
+function expandExternalFilterValue(
+    context: EvaluatorContext,
+    filterKey: string,
+    value: string,
+    allNames: string[]
+): string[] {
+    const runtimeCache = getExternalFilterRuntimeCache(context);
+    let valueCache = runtimeCache.expandedValuesByKey.get(filterKey);
+    if (!valueCache) {
+        valueCache = new Map<string, string[]>();
+        runtimeCache.expandedValuesByKey.set(filterKey, valueCache);
+    }
+
+    const cached = valueCache.get(value);
+    if (cached) {
+        return cached;
+    }
+
+    const expanded = value.includes('*')
+        ? allNames.filter(name => wildcardToRegex(value).test(name))
+        : [value];
+
+    valueCache.set(value, expanded);
+    return expanded;
+}
+
+function getUnitMatchedExternalNames(
+    context: EvaluatorContext,
+    unit: any,
+    filterKey: string,
+    allNames: string[],
+    checkMembership: (name: string) => boolean,
+): Set<string> {
+    const runtimeCache = getExternalFilterRuntimeCache(context);
+    let unitCache = runtimeCache.unitMatchedNamesByKey.get(unit);
+    if (!unitCache) {
+        unitCache = new Map<string, Set<string>>();
+        runtimeCache.unitMatchedNamesByKey.set(unit, unitCache);
+    }
+
+    const cached = unitCache.get(filterKey);
+    if (cached) {
+        return cached;
+    }
+
+    const matchedNames = new Set<string>();
+    for (const name of allNames) {
+        if (checkMembership(name)) {
+            matchedNames.add(name.toLowerCase());
+        }
+    }
+
+    unitCache.set(filterKey, matchedNames);
+    return matchedNames;
 }
 
 /**
@@ -1075,7 +1242,8 @@ function evaluateSingleFilterConfig(
     operator: SemanticOperator,
     values: string[],
     unit: any,
-    context: EvaluatorContext
+    context: EvaluatorContext,
+    parsedRangeValues: ParsedRangeValue[],
 ): boolean {
     // Handle external filters (era, faction) - these use ID-based lookups
     if (conf.external) {
@@ -1094,7 +1262,7 @@ function evaluateSingleFilterConfig(
         const mvValues = context.getASMovementValues(unit);
         if (mvValues.length === 0) return operator === '!=';
         // For range filter, check if ANY value matches the range
-        return evaluateRangeFilterMultiValue(mvValues, operator, values, conf);
+        return evaluateRangeFilterMultiValue(mvValues, operator, parsedRangeValues, conf);
     } else if (conf.countable && context.getCountableValues) {
         // For countable filters (equipment, etc.), get names from counts
         const counts = context.getCountableValues(unit, conf.key);
@@ -1105,7 +1273,7 @@ function evaluateSingleFilterConfig(
     
     // Handle different filter types
     if (conf.type === AdvFilterType.RANGE) {
-        return evaluateRangeFilter(unitValue, operator, values, conf);
+        return evaluateRangeFilter(unitValue, operator, parsedRangeValues, conf);
     } else if (conf.type === AdvFilterType.DROPDOWN) {
         return evaluateDropdownFilter(unit, unitValue, operator, values, conf, context);
     } else if (conf.type === AdvFilterType.SEMANTIC) {
@@ -1127,17 +1295,129 @@ function evaluateFilter(
     unit: any,
     context: EvaluatorContext
 ): boolean {
-    // Find ALL matching filter configs for this semantic key
-    // This allows filters like 'type' to match both CLASSIC and ALPHA_STRIKE variants
-    const matchingFilters = ADVANCED_FILTERS.filter(f => 
+    const sortedFilters = getSortedFilterConfigs(context, filter.field);
+    if (sortedFilters.length === 0) return true; // Unknown filter - pass through
+
+    const { operator, values } = filter;
+    const parsedRangeValues = getParsedRangeValues(filter);
+    
+    // For != (exclude) operator, ALL configs must pass (AND logic for exclusion)
+    // For other operators, ANY config can match (OR logic for inclusion)
+    if (operator === '!=') {
+        // Exclusion: unit must NOT match ANY of the configs
+        return sortedFilters.every(conf => 
+            evaluateSingleFilterConfig(conf, operator, values, unit, context, parsedRangeValues)
+        );
+    } else {
+        // Inclusion: unit must match AT LEAST ONE config
+        return sortedFilters.some(conf => 
+            evaluateSingleFilterConfig(conf, operator, values, unit, context, parsedRangeValues)
+        );
+    }
+}
+
+function matchIndexedStoredValues(
+    filterKey: string,
+    rawValue: string,
+    context: EvaluatorContext
+): string[] {
+    const storedValues = context.getIndexedFilterValues?.(filterKey) ?? [];
+    if (storedValues.length === 0) {
+        return [];
+    }
+
+    const normalizedSearch = rawValue.toLowerCase();
+    const isWildcard = rawValue.includes('*');
+    const matcher = isWildcard ? wildcardToRegex(rawValue) : null;
+    const matchedValues: string[] = [];
+
+    for (const storedValue of storedValues) {
+        const displayName = context.getDisplayName?.(filterKey, storedValue);
+        const candidates = displayName && displayName !== storedValue
+            ? [storedValue, displayName]
+            : [storedValue];
+
+        const matches = isWildcard
+            ? candidates.some(candidate => matcher!.test(candidate))
+            : candidates.some(candidate => candidate.toLowerCase() === normalizedSearch);
+
+        if (matches) {
+            matchedValues.push(storedValue);
+        }
+    }
+
+    return matchedValues;
+}
+
+function buildIndexedCandidateSetForConfig(
+    conf: AdvFilterConfig,
+    operator: SemanticOperator,
+    values: string[],
+    context: EvaluatorContext
+): Set<string | number> | null {
+    if (!context.getIndexedUnitIds || !context.getIndexedFilterValues) {
+        return null;
+    }
+    if (conf.type !== AdvFilterType.DROPDOWN || conf.countable || operator === '!=') {
+        return null;
+    }
+
+    const addStoredValueUnits = (storedValue: string, target: Set<string | number>): void => {
+        const unitIds = context.getIndexedUnitIds?.(conf.key, storedValue);
+        if (!unitIds) {
+            return;
+        }
+        for (const unitId of unitIds) {
+            target.add(unitId);
+        }
+    };
+
+    if (operator === '=' || operator === '==') {
+        const candidateIds = new Set<string | number>();
+        for (const value of values) {
+            for (const storedValue of matchIndexedStoredValues(conf.key, value, context)) {
+                addStoredValueUnits(storedValue, candidateIds);
+            }
+        }
+        return candidateIds;
+    }
+
+    if (operator === '&=') {
+        let candidateIds: Set<string | number> | null = null;
+        for (const value of values) {
+            const valueCandidateIds = new Set<string | number>();
+            for (const storedValue of matchIndexedStoredValues(conf.key, value, context)) {
+                addStoredValueUnits(storedValue, valueCandidateIds);
+            }
+
+            if (candidateIds === null) {
+                candidateIds = valueCandidateIds;
+                continue;
+            }
+
+            for (const unitId of Array.from(candidateIds)) {
+                if (!valueCandidateIds.has(unitId)) {
+                    candidateIds.delete(unitId);
+                }
+            }
+        }
+        return candidateIds ?? new Set<string | number>();
+    }
+
+    return null;
+}
+
+function getIndexedCandidateIdsForFilter(
+    filter: SemanticToken,
+    context: EvaluatorContext
+): Set<string | number> | null {
+    const matchingFilters = ADVANCED_FILTERS.filter(f =>
         (f.semanticKey || f.key) === filter.field
     );
-    
-    if (matchingFilters.length === 0) return true; // Unknown filter - pass through
-    
-    const { operator, values } = filter;
-    
-    // Sort configs: prefer current game mode first, then game-agnostic, then other
+    if (matchingFilters.length === 0) {
+        return null;
+    }
+
     const sortedFilters: typeof matchingFilters = [];
     const gameAgnostic: typeof matchingFilters = [];
     const otherGame: typeof matchingFilters = [];
@@ -1148,19 +1428,78 @@ function evaluateFilter(
     }
     for (const f of gameAgnostic) sortedFilters.push(f);
     for (const f of otherGame) sortedFilters.push(f);
-    
-    // For != (exclude) operator, ALL configs must pass (AND logic for exclusion)
-    // For other operators, ANY config can match (OR logic for inclusion)
-    if (operator === '!=') {
-        // Exclusion: unit must NOT match ANY of the configs
-        return sortedFilters.every(conf => 
-            evaluateSingleFilterConfig(conf, operator, values, unit, context)
-        );
-    } else {
-        // Inclusion: unit must match AT LEAST ONE config
-        return sortedFilters.some(conf => 
-            evaluateSingleFilterConfig(conf, operator, values, unit, context)
-        );
+
+    const candidateSets: Set<string | number>[] = [];
+    for (const conf of sortedFilters) {
+        const candidateSet = buildIndexedCandidateSetForConfig(conf, filter.operator, filter.values, context);
+        if (!candidateSet) {
+            return null;
+        }
+        candidateSets.push(candidateSet);
+    }
+
+    const combined = new Set<string | number>();
+    for (const candidateSet of candidateSets) {
+        for (const unitId of candidateSet) {
+            combined.add(unitId);
+        }
+    }
+    return combined;
+}
+
+function getIndexedCandidateIdsForNode(
+    node: ASTNode,
+    context: EvaluatorContext
+): Set<string | number> | null {
+    switch (node.type) {
+        case 'text':
+            return null;
+        case 'filter':
+            return getIndexedCandidateIdsForFilter(node.token, context);
+        case 'group':
+            if (node.children.length === 0) {
+                return null;
+            }
+
+            if (node.operator === 'AND') {
+                const childCandidates = node.children
+                    .map(child => getIndexedCandidateIdsForNode(child, context))
+                    .filter((candidate): candidate is Set<string | number> => candidate !== null);
+
+                if (childCandidates.length === 0) {
+                    return null;
+                }
+
+                const intersection = new Set<string | number>(childCandidates[0]);
+                for (let index = 1; index < childCandidates.length; index++) {
+                    const candidateSet = childCandidates[index];
+                    for (const unitId of Array.from(intersection)) {
+                        if (!candidateSet.has(unitId)) {
+                            intersection.delete(unitId);
+                        }
+                    }
+                }
+                return intersection;
+            }
+
+            const branchCandidates: Set<string | number>[] = [];
+            for (const child of node.children) {
+                const candidateSet = getIndexedCandidateIdsForNode(child, context);
+                if (!candidateSet) {
+                    return null;
+                }
+                branchCandidates.push(candidateSet);
+            }
+
+            const union = new Set<string | number>();
+            for (const candidateSet of branchCandidates) {
+                for (const unitId of candidateSet) {
+                    union.add(unitId);
+                }
+            }
+            return union;
+        default:
+            return null;
     }
 }
 
@@ -1192,26 +1531,10 @@ function evaluateExternalFilter(
         // External filter handler not provided, pass through
         return true;
     }
-    
-    // Expand wildcard patterns to actual names
-    const expandedValues: string[] = [];
-    for (const val of values) {
-        if (val.includes('*') && getAllNames) {
-            // Wildcard pattern - match against all available names
-            const regex = wildcardToRegex(val);
-            const allNames = getAllNames();
-            for (const name of allNames) {
-                if (regex.test(name)) {
-                    expandedValues.push(name);
-                }
-            }
-        } else {
-            // Regular value
-            expandedValues.push(val);
-        }
-    }
 
-    const allowedNames = new Set(expandedValues.map(val => val.toLowerCase()));
+    const filterKey = conf.key;
+    const allNames = getCachedExternalNames(context, filterKey, getAllNames);
+    const expandedValues = values.flatMap(value => expandExternalFilterValue(context, filterKey, value, allNames));
     
     // Handle operators
     if (operator === '!=') {
@@ -1223,26 +1546,47 @@ function evaluateExternalFilter(
         }
         return true;
     } else if (operator === '==') {
-        if (!getAllNames) {
+        const allowedNames = new Set(expandedValues.map(val => val.toLowerCase()));
+        const unitMatchedNames = allNames.length > 0
+            ? getUnitMatchedExternalNames(context, unit, filterKey, allNames, checkMembership)
+            : null;
+
+        if (!unitMatchedNames) {
             return expandedValues.some(val => checkMembership(val));
         }
 
-        const unitNames = getAllNames().filter(name => checkMembership(name));
-        if (unitNames.length === 0) {
+        if (unitMatchedNames.size === 0) {
             return false;
         }
 
-        return unitNames.every(name => allowedNames.has(name.toLowerCase()));
+        for (const name of unitMatchedNames) {
+            if (!allowedNames.has(name)) {
+                return false;
+            }
+        }
+        return true;
     } else if (operator === '&=') {
+        const unitMatchedNames = allNames.length > 0
+            ? getUnitMatchedExternalNames(context, unit, filterKey, allNames, checkMembership)
+            : null;
+
+        if (unitMatchedNames) {
+            for (const value of values) {
+                const matches = expandExternalFilterValue(context, filterKey, value, allNames);
+                if (matches.length === 0 || !matches.some(name => unitMatchedNames.has(name.toLowerCase()))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         // AND: unit must match ALL of the values (with wildcard expansion, at least one per original pattern)
         for (const val of values) {
             if (val.includes('*') && getAllNames) {
                 // For wildcard AND, at least one matching name must be satisfied
-                const regex = wildcardToRegex(val);
-                const allNames = getAllNames();
                 let matchFound = false;
-                for (const name of allNames) {
-                    if (regex.test(name) && checkMembership(name)) {
+                for (const name of expandExternalFilterValue(context, filterKey, val, allNames)) {
+                    if (checkMembership(name)) {
                         matchFound = true;
                         break;
                     }
@@ -1270,7 +1614,7 @@ function evaluateExternalFilter(
 function evaluateRangeFilter(
     unitValue: any,
     operator: SemanticOperator,
-    values: string[],
+    parsedValues: ParsedRangeValue[],
     conf: AdvFilterConfig
 ): boolean {
     if (unitValue == null) return false;
@@ -1283,13 +1627,9 @@ function evaluateRangeFilter(
         return true; // Pass through ignored values
     }
     
-    // Parse the filter value(s)
-    for (const val of values) {
-        // Check for range syntax (e.g., "100-200" or "100~200")
-        const rangeMatch = val.match(/^(-?\d+(?:\.\d+)?)[-~](-?\d+(?:\.\d+)?)$/);
-        if (rangeMatch) {
-            const min = parseFloat(rangeMatch[1]);
-            const max = parseFloat(rangeMatch[2]);
+    for (const parsedValue of parsedValues) {
+        if (parsedValue.type === 'range') {
+            const { min, max } = parsedValue;
             const inRange = numValue >= min && numValue <= max;
             
             if (operator === '!=') {
@@ -1299,10 +1639,8 @@ function evaluateRangeFilter(
             }
             continue;
         }
-        
-        // Single numeric value
-        const filterNum = parseFloat(val);
-        if (isNaN(filterNum)) continue;
+
+        const filterNum = parsedValue.num;
         
         switch (operator) {
             case '=':
@@ -1338,7 +1676,7 @@ function evaluateRangeFilter(
 function evaluateRangeFilterMultiValue(
     unitValues: number[],
     operator: SemanticOperator,
-    values: string[],
+    parsedValues: ParsedRangeValue[],
     conf: AdvFilterConfig
 ): boolean {
     if (unitValues.length === 0) return operator === '!=';
@@ -1348,49 +1686,39 @@ function evaluateRangeFilterMultiValue(
     if (operator === '!=') {
         // All values must not match any of the filter values
         for (const unitValue of unitValues) {
-            for (const val of values) {
-                const rangeMatch = val.match(/^(-?\d+(?:\.\d+)?)[-~](-?\d+(?:\.\d+)?)$/);
-                if (rangeMatch) {
-                    const min = parseFloat(rangeMatch[1]);
-                    const max = parseFloat(rangeMatch[2]);
-                    if (unitValue >= min && unitValue <= max) return false;
+            for (const parsedValue of parsedValues) {
+                if (parsedValue.type === 'range') {
+                    if (unitValue >= parsedValue.min && unitValue <= parsedValue.max) return false;
                     continue;
                 }
-                const filterNum = parseFloat(val);
-                if (!isNaN(filterNum) && unitValue === filterNum) return false;
+                if (unitValue === parsedValue.num) return false;
             }
         }
         return true;
     } else {
         // At least one value must match the range
         for (const unitValue of unitValues) {
-            for (const val of values) {
-                const rangeMatch = val.match(/^(-?\d+(?:\.\d+)?)[-~](-?\d+(?:\.\d+)?)$/);
-                if (rangeMatch) {
-                    const min = parseFloat(rangeMatch[1]);
-                    const max = parseFloat(rangeMatch[2]);
-                    if (unitValue >= min && unitValue <= max) return true;
+            for (const parsedValue of parsedValues) {
+                if (parsedValue.type === 'range') {
+                    if (unitValue >= parsedValue.min && unitValue <= parsedValue.max) return true;
                     continue;
                 }
-                const filterNum = parseFloat(val);
-                if (!isNaN(filterNum)) {
-                    switch (operator) {
-                        case '=':
-                            if (unitValue === filterNum) return true;
-                            break;
-                        case '>':
-                            if (unitValue > filterNum) return true;
-                            break;
-                        case '>=':
-                            if (unitValue >= filterNum) return true;
-                            break;
-                        case '<':
-                            if (unitValue < filterNum) return true;
-                            break;
-                        case '<=':
-                            if (unitValue <= filterNum) return true;
-                            break;
-                    }
+                switch (operator) {
+                    case '=':
+                        if (unitValue === parsedValue.num) return true;
+                        break;
+                    case '>':
+                        if (unitValue > parsedValue.num) return true;
+                        break;
+                    case '>=':
+                        if (unitValue >= parsedValue.num) return true;
+                        break;
+                    case '<':
+                        if (unitValue < parsedValue.num) return true;
+                        break;
+                    case '<=':
+                        if (unitValue <= parsedValue.num) return true;
+                        break;
                 }
             }
         }
@@ -1404,40 +1732,18 @@ function evaluateRangeFilterMultiValue(
 function checkQuantityConstraint(
     unitCount: number,
     constraint: QuantityConstraint | null,
-    isNot: boolean
 ): boolean {
     // No constraint means "at least 1"
     if (!constraint) {
         return unitCount >= 1;
     }
-    
-    const { operator, count, countMax } = constraint;
-    
-    // Range constraint (count to countMax)
-    if (countMax !== undefined) {
-        const inRange = unitCount >= count && unitCount <= countMax;
-        // For != (NOT), we want to exclude if IN range
-        // For = (include), we want to include if IN range
-        return operator === '!=' ? !inRange : inRange;
-    }
-    
-    // Single value constraint with explicit operator
-    switch (operator) {
-        case '=':
-            return unitCount === count;
-        case '!=':
-            return unitCount !== count;
-        case '>':
-            return unitCount > count;
-        case '>=':
-            return unitCount >= count;
-        case '<':
-            return unitCount < count;
-        case '<=':
-            return unitCount <= count;
-        default:
-            return unitCount >= count;
-    }
+
+    return checkQuantityConstraintCore(
+        unitCount,
+        constraint.count,
+        constraint.operator,
+        constraint.countMax,
+    );
 }
 
 /**
@@ -1514,7 +1820,7 @@ function evaluateDropdownFilter(
             
             // Check quantity constraint if we have counts
             if (needsQuantityCounting && constraint) {
-                if (!checkQuantityConstraint(matchCount, constraint, false)) {
+                if (!checkQuantityConstraint(matchCount, constraint)) {
                     return false;
                 }
             }
@@ -1537,7 +1843,7 @@ function evaluateDropdownFilter(
             let quantityMatch = true;
             if (needsQuantityCounting && matchFound) {
                 const effectiveConstraint = constraint ?? { operator: '>=', count: 1 } as QuantityConstraint;
-                quantityMatch = checkQuantityConstraint(matchCount, effectiveConstraint, false);
+                quantityMatch = checkQuantityConstraint(matchCount, effectiveConstraint);
             }
 
             if (matchFound && quantityMatch) {
@@ -1566,7 +1872,7 @@ function evaluateDropdownFilter(
         if (needsQuantityCounting && matchFound) {
             // If no explicit constraint, default to "at least 1"
             const effectiveConstraint = constraint ?? { operator: '>=', count: 1 } as QuantityConstraint;
-            quantityMatch = checkQuantityConstraint(matchCount, effectiveConstraint, operator === '!=');
+            quantityMatch = checkQuantityConstraint(matchCount, effectiveConstraint);
         }
         
         if (operator === '!=') {
@@ -1680,8 +1986,19 @@ export function filterUnitsWithAST(
     const hasFilters = hasFilterNodes(ast);
     const hasText = context.matchesText && hasTextNodes(ast);
     if (!hasFilters && !hasText) return units;
-    
-    return units.filter(unit => evaluateASTNode(ast, unit, context));
+
+    let candidateUnits = units;
+    if (context.getIndexedUnitIds && context.getIndexedFilterValues) {
+        const candidateIds = getIndexedCandidateIdsForNode(ast, context);
+        if (candidateIds) {
+            candidateUnits = units.filter(unit => {
+                const unitId = context.getUnitId(unit);
+                return candidateIds.has(unitId);
+            });
+        }
+    }
+
+    return candidateUnits.filter(unit => evaluateASTNode(ast, unit, context));
 }
 
 /**

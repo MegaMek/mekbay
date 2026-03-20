@@ -32,8 +32,9 @@
  */
 
 import type { GameSystem } from '../models/common.model';
-import { ADVANCED_FILTERS, type AdvFilterConfig, AdvFilterType } from '../services/unit-search-filters.service';
+import { AdvFilterType, ADVANCED_FILTERS, type AdvFilterConfig } from '../services/unit-search-filters.model';
 import type { CountOperator, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
+import { getAdvancedFilterConfigByKey } from './unit-search-filter-config.util';
 
 // Cache for semantic key maps
 const semanticKeyMapCache = new Map<GameSystem, Map<string, AdvFilterConfig>>();
@@ -903,7 +904,7 @@ export function filterStateToSemanticText(
     for (const [key, state] of Object.entries(filterState)) {
         if (!state.interactedWith) continue;
 
-        const conf = ADVANCED_FILTERS.find(f => f.key === key);
+        const conf = getAdvancedFilterConfigByKey(key);
         if (!conf) continue;
         // Allow all filters to be serialized - semantic mode works across game modes
 
@@ -945,6 +946,7 @@ export function filterStateToSemanticText(
             if (conf.multistate) {
                 const selection = state.value as MultiStateSelection;
                 const includeValues: string[] = [];
+                const andValues: string[] = [];
                 const excludeValues: string[] = [];
 
                 for (const [name, sel] of Object.entries(selection)) {
@@ -956,26 +958,95 @@ export function filterStateToSemanticText(
                     
                     if (sel.state === 'not') {
                         excludeValues.push(formattedValue);
-                    } else if (sel.state === 'or' || sel.state === 'and') {
+                    } else if (sel.state === 'and') {
+                        andValues.push(formattedValue);
+                    } else if (sel.state === 'or') {
                         includeValues.push(formattedValue);
                     }
                 }
 
+                for (const pattern of extState.wildcardPatterns ?? []) {
+                    if (pattern.state === 'not') {
+                        excludeValues.push(pattern.pattern);
+                    } else if (pattern.state === 'and') {
+                        andValues.push(pattern.pattern);
+                    } else {
+                        includeValues.push(pattern.pattern);
+                    }
+                }
+
                 if (includeValues.length > 0) {
-                    const formatted = includeValues.map(v => formatValue(v)).join(',');
+                    const formatted = Array.from(new Set(includeValues)).map(v => formatValue(v)).join(',');
                     parts.push(`${semanticKey}${includeOperator}${formatted}`);
                 }
+                if (andValues.length > 0) {
+                    const formatted = Array.from(new Set(andValues)).map(v => formatValue(v)).join(',');
+                    parts.push(`${semanticKey}&=${formatted}`);
+                }
                 if (excludeValues.length > 0) {
-                    const formatted = excludeValues.map(v => formatValue(v)).join(',');
+                    const formatted = Array.from(new Set(excludeValues)).map(v => formatValue(v)).join(',');
                     parts.push(`${semanticKey}!=${formatted}`);
                 }
 
             } else {
                 const values = state.value as string[];
-                if (values.length > 0) {
-                    const formatted = values.map(v => formatValue(v)).join(',');
+                const includeValues = [...values];
+                const excludeValues: string[] = [];
+                const andValues: string[] = [];
+
+                for (const pattern of extState.wildcardPatterns ?? []) {
+                    if (pattern.state === 'not') {
+                        excludeValues.push(pattern.pattern);
+                    } else if (pattern.state === 'and') {
+                        andValues.push(pattern.pattern);
+                    } else {
+                        includeValues.push(pattern.pattern);
+                    }
+                }
+
+                if (includeValues.length > 0) {
+                    const formatted = Array.from(new Set(includeValues)).map(v => formatValue(v)).join(',');
                     parts.push(`${semanticKey}${includeOperator}${formatted}`);
                 }
+                if (andValues.length > 0) {
+                    const formatted = Array.from(new Set(andValues)).map(v => formatValue(v)).join(',');
+                    parts.push(`${semanticKey}&=${formatted}`);
+                }
+                if (excludeValues.length > 0) {
+                    const formatted = Array.from(new Set(excludeValues)).map(v => formatValue(v)).join(',');
+                    parts.push(`${semanticKey}!=${formatted}`);
+                }
+            }
+        } else if (conf.type === AdvFilterType.SEMANTIC) {
+            const extState = state as SemanticFilterState[string];
+            const includeOperator = extState.exclusive ? '==' : '=';
+            const orValues = Array.isArray(state.value)
+                ? (state.value as string[])
+                : [];
+            const andValues: string[] = [];
+            const excludeValues: string[] = [];
+
+            for (const pattern of extState.wildcardPatterns ?? []) {
+                if (pattern.state === 'and') {
+                    andValues.push(pattern.pattern);
+                } else if (pattern.state === 'not') {
+                    excludeValues.push(pattern.pattern);
+                } else {
+                    orValues.push(pattern.pattern);
+                }
+            }
+
+            if (orValues.length > 0) {
+                const formatted = Array.from(new Set(orValues)).map(v => formatValue(v)).join(',');
+                parts.push(`${semanticKey}${includeOperator}${formatted}`);
+            }
+            if (andValues.length > 0) {
+                const formatted = Array.from(new Set(andValues)).map(v => formatValue(v)).join(',');
+                parts.push(`${semanticKey}&=${formatted}`);
+            }
+            if (excludeValues.length > 0) {
+                const formatted = Array.from(new Set(excludeValues)).map(v => formatValue(v)).join(',');
+                parts.push(`${semanticKey}!=${formatted}`);
             }
         }
     }
@@ -1006,24 +1077,26 @@ function formatValueWithQuantity(
     count: number,
     countMax?: number
 ): string {
-    const formattedName = formatValue(name);
-    
+    let value = name;
+
     // Range constraint
     if (countMax !== undefined) {
         const rangeStr = `${count}-${countMax}`;
         if (operator === '!=') {
-            return `${formattedName}:!${rangeStr}`;
+            value = `${name}:!${rangeStr}`;
+        } else {
+            value = `${name}:${rangeStr}`;
         }
-        return `${formattedName}:${rangeStr}`;
+        return value;
     }
-    
+
     // Single value constraint
-    const op = operator ?? '=';
+    const op = operator ?? (count > 1 ? '>=' : '=');
     if (op === '=' && count === 1) {
         // Default case, no suffix needed
-        return formattedName;
+        return name;
     }
-    
+
     // Format operator
     let opStr: string;
     switch (op) {
@@ -1036,6 +1109,7 @@ function formatValueWithQuantity(
         default:
             opStr = op;
     }
-    
-    return `${formattedName}:${opStr}${count}`;
+
+    value = `${name}:${opStr}${count}`;
+    return value;
 }
