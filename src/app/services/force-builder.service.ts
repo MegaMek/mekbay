@@ -71,7 +71,7 @@ import { UrlStateService } from './url-state.service';
 import { canAntiMech } from '../utils/infantry.util';
 import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import type { ResolvedPack } from '../utils/force-pack.util';
-import { buildMultiForceQueryParams, parseForceFromUrl, type ForceQueryParams } from '../utils/force-url.util';
+import { buildMultiForceQueryParams, parseForceFromUrl, type ForceQueryParams, type ForceUrlUnitLookupMode } from '../utils/force-url.util';
 import { CBTPrintUtil } from '../utils/cbtprint.util';
 import { ASPrintUtil } from '../utils/asprint.util';
 import type { ForceSlot, ForceAlignment } from '../models/force-slot.model';
@@ -1599,9 +1599,10 @@ export class ForceBuilderService {
      * Core logic for loading forces from URLSearchParams.
      * Shared between startup initialization and in-app captured URL handling.
      *
-     * Handles:
-     * - instance= (comma-separated cloud force IDs, with optional 'enemy:' prefix)
-     * - units= (inline unsaved force with name/gs params)
+    * Handles:
+    * - instance= (comma-separated cloud force IDs, with optional 'enemy:' prefix)
+    * - units= (inline unsaved force using unit names)
+    * - mul_ids= (inline unsaved force using MUL IDs)
      *
      * @param params The URLSearchParams to read from
      * @param defaultAlignment Alignment for forces without an explicit prefix
@@ -1639,9 +1640,12 @@ export class ForceBuilderService {
             }
         }
 
-        // Handle units= param (unsaved inline force)
+        // Handle units=/mul_ids= params (unsaved inline force)
         const unitsParam = params.get('units');
-        if (unitsParam) {
+        const mulIdsParam = params.get('mul_ids');
+        const inlineUnitsParam = unitsParam || mulIdsParam;
+        const unitLookupMode: ForceUrlUnitLookupMode = unitsParam ? 'name' : 'mulId';
+        if (inlineUnitsParam) {
             const forceNameParam = params.get('name');
             const gameSystemParam = params.get('gs') ?? GameSystem.CLASSIC;
             let newForce: Force;
@@ -1680,7 +1684,7 @@ export class ForceBuilderService {
                         }
                     }
                 }
-                const forceUnits = this.parseUnitsFromUrl(newForce, unitsParam);
+                const forceUnits = this.parseUnitsFromUrl(newForce, inlineUnitsParam, unitLookupMode);
                 if (forceUnits.length > 0) {
                     this.logger.info(`ForceBuilderService: Loaded ${forceUnits.length} units from URL.`);
                     newForce.removeEmptyGroups();
@@ -1707,12 +1711,12 @@ export class ForceBuilderService {
     }
 
     /**
-     * Parses units from URL parameter with group support.
+     * Parses inline force units from URL parameters with group support.
      * New format: groupName~unit1,unit2|groupName2~unit3,unit4
      * Legacy format (backward compatible): unit1,unit2,unit3
      */
-    private parseUnitsFromUrl(force: Force, unitsParam: string): ForceUnit[] {
-        return parseForceFromUrl(force, unitsParam, this.dataService.getUnits(), this.logger);
+    private parseUnitsFromUrl(force: Force, unitsParam: string, lookupMode: ForceUrlUnitLookupMode = 'name'): ForceUnit[] {
+        return parseForceFromUrl(force, unitsParam, this.dataService.getUnits(), this.logger, lookupMode);
     }
 
 

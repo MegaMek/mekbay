@@ -67,6 +67,8 @@ export interface UnitShareLinks {
     appUrl: string;
 }
 
+export type ForceUrlUnitLookupMode = 'name' | 'mulId';
+
 export function buildUnitShareLinks(
     origin: string,
     pathname: string,
@@ -261,9 +263,16 @@ export function parseForceFromUrl(
     force: Force,
     unitsParam: string,
     allUnits: Unit[],
-    logger?: UrlParseLogger
+    logger?: UrlParseLogger,
+    lookupMode: ForceUrlUnitLookupMode = 'name'
 ): ForceUnit[] {
-    const unitMap = new Map(allUnits.map(u => [u.name, u]));
+    const unitMap = new Map<string, Unit>();
+    for (const unit of allUnits) {
+        const key = lookupMode === 'mulId' ? `${unit.id}` : unit.name;
+        if (!unitMap.has(key)) {
+            unitMap.set(key, unit);
+        }
+    }
     const allForceUnits: ForceUnit[] = [];
 
     // Check if it's the new group format (contains '|' or '~')
@@ -312,12 +321,12 @@ export function parseForceFromUrl(
             }
 
             // Parse units for this group
-            const groupUnits = parseUnitUrlParams(force, unitsStr, unitMap, group, logger);
+            const groupUnits = parseUnitUrlParams(force, unitsStr, unitMap, group, logger, lookupMode);
             allForceUnits.push(...groupUnits);
         }
     } else {
         // Legacy format without groups: all units in default group
-        const groupUnits = parseUnitUrlParams(force, unitsParam, unitMap, undefined, logger);
+        const groupUnits = parseUnitUrlParams(force, unitsParam, unitMap, undefined, logger, lookupMode);
         allForceUnits.push(...groupUnits);
     }
 
@@ -339,7 +348,8 @@ export function parseUnitUrlParams(
     unitsStr: string,
     unitMap: Map<string, Unit>,
     group?: UnitGroup,
-    logger?: UrlParseLogger
+    logger?: UrlParseLogger,
+    lookupMode: ForceUrlUnitLookupMode = 'name'
 ): ForceUnit[] {
     if (!unitsStr.trim()) return [];
 
@@ -350,11 +360,12 @@ export function parseUnitUrlParams(
         if (!unitParam.trim()) continue;
 
         const parts = unitParam.split(':');
-        const unitName = parts[0];
-        const unit = unitMap.get(unitName);
+        const lookupValue = parts[0];
+        const unit = unitMap.get(lookupValue);
 
         if (!unit) {
-            logger?.warn(`Unit "${unitName}" not found in data`);
+            const lookupLabel = lookupMode === 'mulId' ? 'MUL ID' : 'name';
+            logger?.warn(`Unit with ${lookupLabel} "${lookupValue}" not found in data`);
             continue;
         }
 
