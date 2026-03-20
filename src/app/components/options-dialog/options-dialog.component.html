@@ -311,6 +311,14 @@
                     <option value="false">No</option>
                 </select>
             </div>
+            <div class="option-row">
+                <label for="ASPrintRosterSummary">Include roster summary:</label>
+                <select id="ASPrintRosterSummary" class="bt-select" [value]="optionsService.options().ASPrintRosterSummary"
+                    (change)="onASPrintRosterSummaryChange($event)">
+                    <option value="false">No (default)</option>
+                    <option value="true">Yes</option>
+                </select>
+            </div>
             <div class="option-section-title">Rules</div>
             <div class="option-col">
                 <div class="option-row">
