@@ -80,6 +80,13 @@ function formatArcDamage(arc: AlphaStrikeArcStats | undefined, type: 'STD' | 'CA
     return `${dmg.dmgS}/${dmg.dmgM}/${dmg.dmgL}/${dmg.dmgE}`;
 }
 
+function getMergedUnitTags(unit: Unit): string {
+    const merged = new Set<string>();
+    for (const tag of unit._chassisTags ?? []) merged.add(tag);
+    for (const tag of unit._nameTags ?? []) merged.add(tag);
+    return Array.from(merged).join(', ');
+}
+
 /**
  * Converts units to CBT (Classic BattleTech) export format.
  */
@@ -102,6 +109,7 @@ function unitToCBTRow(unit: Unit): Record<string, unknown> {
         engine: unit.engine,
         engineRating: unit.engineRating,
         source: unit.source?.join(', ') ?? '',
+        tags: getMergedUnitTags(unit),
         role: unit.role,
         armorType: unit.armorType,
         structureType: unit.structureType,
@@ -130,7 +138,7 @@ function unitToCBTRow(unit: Unit): Record<string, unknown> {
         lifeBoats: unit.capital?.lifeBoats ?? '',
         gravDecks: unit.capital?.gravDecks?.join(', ') ?? '',
         sailIntegrity: unit.capital?.sailIntegrity ?? '',
-        kfIntegrity: unit.capital?.kfIntegrity ?? ''
+        kfIntegrity: unit.capital?.kfIntegrity ?? '',
     };
 }
 
@@ -154,6 +162,7 @@ function unitToASRow(unit: Unit): Record<string, unknown> {
         techBase: unit.techBase,
         techRating: unit.techRating,
         source: unit.source?.join(', ') ?? '',
+        tags: getMergedUnitTags(unit),
         role: unit.role,
         SZ: as?.SZ ?? '',
         usesOV: as?.usesOV ?? '',
