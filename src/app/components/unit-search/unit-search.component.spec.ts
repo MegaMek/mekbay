@@ -20,6 +20,7 @@ import { UnitSearchComponent } from './unit-search.component';
 
 describe('UnitSearchComponent card virtualization', () => {
     const filteredUnitsSignal = signal<Unit[]>([]);
+    const currentGameSystemSignal = signal(GameSystem.ALPHA_STRIKE);
     const optionsSignal = signal({
         ASUseHex: false,
         ASCardStyle: 'monochrome',
@@ -66,8 +67,8 @@ describe('UnitSearchComponent card virtualization', () => {
     };
 
     const gameServiceStub = {
-        isAlphaStrike: () => true,
-        currentGameSystem: () => GameSystem.ALPHA_STRIKE,
+        isAlphaStrike: computed(() => currentGameSystemSignal() === GameSystem.ALPHA_STRIKE),
+        currentGameSystem: currentGameSystemSignal,
     };
 
     const optionsServiceStub = {
@@ -134,6 +135,7 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.selectedSort.set('name');
         filtersServiceStub.selectedSortDirection.set('asc');
         savedSearchesServiceStub.version.set(0);
+        currentGameSystemSignal.set(GameSystem.ALPHA_STRIKE);
 
         await TestBed.configureTestingModule({
             imports: [UnitSearchComponent],
@@ -238,5 +240,49 @@ describe('UnitSearchComponent card virtualization', () => {
         (component as any).scrollToIndex(4);
 
         expect(scrollToIndex).toHaveBeenCalledOnceWith(1, 'smooth');
+    });
+
+    it('toggles the visible advanced filter set locally without changing the global game mode', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+
+        fixture.detectChanges();
+
+        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.ALPHA_STRIKE);
+        expect(component.dropdownFilters().some(filter => filter.key === 'as.TP')).toBeTrue();
+        expect(component.dropdownFilters().some(filter => filter.key === 'type')).toBeFalse();
+
+        component.setAdvPanelFilterGameSystem(GameSystem.CLASSIC);
+        fixture.detectChanges();
+
+        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.CLASSIC);
+        expect(component.dropdownFilters().some(filter => filter.key === 'type')).toBeTrue();
+        expect(component.dropdownFilters().some(filter => filter.key === 'as.TP')).toBeFalse();
+        expect(currentGameSystemSignal()).toBe(GameSystem.ALPHA_STRIKE);
+    });
+
+    it('resyncs the visible advanced filter set when the global game mode changes', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+
+        fixture.detectChanges();
+        component.setAdvPanelFilterGameSystem(GameSystem.CLASSIC);
+        fixture.detectChanges();
+
+        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.CLASSIC);
+
+        currentGameSystemSignal.set(GameSystem.CLASSIC);
+        fixture.detectChanges();
+        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.CLASSIC);
+
+        component.setAdvPanelFilterGameSystem(GameSystem.ALPHA_STRIKE);
+        fixture.detectChanges();
+        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.ALPHA_STRIKE);
+
+        currentGameSystemSignal.set(GameSystem.ALPHA_STRIKE);
+        fixture.detectChanges();
+        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.ALPHA_STRIKE);
+        expect(component.dropdownFilters().some(filter => filter.key === 'as.TP')).toBeTrue();
+        expect(component.dropdownFilters().some(filter => filter.key === 'type')).toBeFalse();
     });
 });

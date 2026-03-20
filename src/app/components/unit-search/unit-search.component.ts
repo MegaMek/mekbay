@@ -70,7 +70,7 @@ import { SyntaxInputComponent } from '../syntax-input/syntax-input.component';
 import { SavedSearchesService } from '../../services/saved-searches.service';
 import { generateUUID } from '../../services/ws.service';
 import { GameSystem } from '../../models/common.model';
-import { AS_TYPE_DISPLAY_NAMES, RANGE_FILTERS } from '../../services/unit-search-filters.model';
+import { AS_TYPE_DISPLAY_NAMES, DROPDOWN_FILTERS, RANGE_FILTERS } from '../../services/unit-search-filters.model';
 import { UnitDetailsPanelComponent } from '../unit-details-panel/unit-details-panel.component';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
@@ -107,6 +107,7 @@ export interface ChassisGroup {
     }
 })
 export class UnitSearchComponent {
+    readonly gameSystemEnum = GameSystem;
     layoutService = inject(LayoutService);
     filtersService = inject(UnitSearchFiltersService);
     dataService = inject(DataService);
@@ -132,8 +133,24 @@ export class UnitSearchComponent {
     public readonly SORT_OPTIONS = SORT_OPTIONS;
     readonly unitTypeDisplayNames = AS_TYPE_DISPLAY_NAMES;
 
-    readonly dropdownFilters = this.filtersService.dropdownConfigs;
-    readonly rangeFilters = this.filtersService.rangeConfigs;
+    readonly advPanelFilterGameSystem = signal<GameSystem>(this.gameService.currentGameSystem());
+    readonly dropdownFilters = computed(() => {
+        const gameSystem = this.advPanelFilterGameSystem();
+        return DROPDOWN_FILTERS.filter(f => !f.game || f.game === gameSystem);
+    });
+    readonly rangeFilters = computed(() => {
+        const gameSystem = this.advPanelFilterGameSystem();
+        return RANGE_FILTERS.filter(f => !f.game || f.game === gameSystem);
+    });
+    readonly otherAdvPanelFilterGameSystem = computed(() => this.getOtherGameSystem(this.advPanelFilterGameSystem()));
+    readonly otherAdvPanelFilterGameSystemHasActiveFilters = computed(() => {
+        const filterState = this.filtersService.effectiveFilterState();
+        const otherGameSystem = this.otherAdvPanelFilterGameSystem();
+
+        return [...DROPDOWN_FILTERS, ...RANGE_FILTERS].some(filter => (
+            filter.game === otherGameSystem && filterState[filter.key]?.interactedWith
+        ));
+    });
 
     private searchDebounceTimer: any;
     private heightTrackingDebounceTimer: any;
@@ -835,12 +852,24 @@ export class UnitSearchComponent {
         return this.advOpen() || this.resultsVisible();
     });
 
+    /**
+     * Non-reactive flag tracking whether the results panel was visible on the last check.
+     * Used to avoid flickering: when the panel is already visible, we keep showing
+     * (possibly stale) results while the worker processes instead of hiding/showing.
+     */
+    private wasResultsVisible = false;
+
     public readonly resultsVisible = computed(() => {
         if (this.expandedView()) {
             return true;
         }
-        return (this.focused() || this.advOpen() || this.unitDetailsDialogOpen()) &&
+        const wantsVisible = (this.focused() || this.advOpen() || this.unitDetailsDialogOpen()) &&
             (this.filtersService.searchText() || this.isAdvActive());
+        if (!wantsVisible) return false;
+        // If search results are current, show immediately
+        if (this.filtersService.isSearchSettled()) return true;
+        // Search pending: only show if panel was already visible (avoid flash on first show)
+        return this.wasResultsVisible;
     });
 
     /**
@@ -893,6 +922,15 @@ export class UnitSearchComponent {
     private advPanelDragStartWidth = 0;
 
     constructor() {
+        // Track panel visibility for flicker prevention (must be a plain boolean, not a signal,
+        // so the computed reads it as a snapshot without creating a reactive dependency)
+        effect(() => {
+            this.wasResultsVisible = this.resultsVisible();
+        });
+        effect(() => {
+            const currentGameSystem = this.gameSystem();
+            untracked(() => this.advPanelFilterGameSystem.set(currentGameSystem));
+        });
         // Sync immediateSearchText when searchText changes externally (favorites, etc.)
         // We use untracked to avoid re-triggering when we set immediateSearchText
         effect(() => {
@@ -1322,7 +1360,7 @@ export class UnitSearchComponent {
             clearTimeout(this.searchDebounceTimer);
         }
         this.searchDebounceTimer = setTimeout(() => {
-            this.filtersService.searchText.set(val);
+            this.filtersService.setSearchText(val);
             this.activeIndex.set(null);
         }, this.SEARCH_DEBOUNCE_MS);
     }
@@ -1456,6 +1494,20 @@ export class UnitSearchComponent {
         this.activeIndex.set(null);
     }
 
+    setAdvPanelFilterGameSystem(gameSystem: GameSystem) {
+        this.advPanelFilterGameSystem.set(gameSystem);
+    }
+
+    toggleAdvPanelFilterGameSystem() {
+        this.advPanelFilterGameSystem.set(this.otherAdvPanelFilterGameSystem());
+    }
+
+    advPanelFilterGameSystemToggleTitle() {
+        return this.otherAdvPanelFilterGameSystem() === GameSystem.CLASSIC
+            ? 'Show BattleTech filters'
+            : 'Show Alpha Strike filters';
+    }
+
     clearAdvFilters() {
         this.currentViewport()?.scrollToIndex(0);
         this.filtersService.resetFilters();
@@ -1465,6 +1517,12 @@ export class UnitSearchComponent {
     isAdvActive() {
         const state = this.filtersService.filterState();
         return Object.values(state).some(s => s.interactedWith) || this.filtersService.bvPvLimit() > 0;
+    }
+
+    private getOtherGameSystem(gameSystem: GameSystem): GameSystem {
+        return gameSystem === GameSystem.CLASSIC
+            ? GameSystem.ALPHA_STRIKE
+            : GameSystem.CLASSIC;
     }
 
     onDocumentKeydown(event: KeyboardEvent) {

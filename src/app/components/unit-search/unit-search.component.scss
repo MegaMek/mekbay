@@ -459,16 +459,26 @@
 .adv-panel-header {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    margin-bottom: 16px;
+    gap: 8px;
+    margin-bottom: 8px;
 
     &.two-columns {
         flex-direction: row;
         align-items: stretch;
 
+        .adv-panel-actions {
+            flex: 0 1 auto;
+        }
+        
         .clear-btn {
-            white-space: wrap;
-            line-height: 1.5;
+            padding-top: 4px;
+            padding-bottom: 4px;
+            line-height: 1.3em;
+        }
+
+        > .adv-filter-system-toggle {
+            flex: 0 0 auto;
+            align-self: stretch;
         }
 
         .pilot-skills-section {
@@ -477,6 +487,8 @@
             flex-direction: row;
             align-items: center;
             gap: 16px;
+            padding-top: 4px;
+            padding-bottom: 4px;
         }
 
         .pilot-skills-controls {
@@ -489,10 +501,46 @@
     }
 }
 
+.adv-panel-actions {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+}
+
 .clear-btn {
-    width: 100%;
+    flex: 1 1 auto;
+    width: auto;
     padding: 8px;
     margin-bottom: 0;
+    white-space: normal;
+    line-height: 1.5;
+}
+
+.adv-filter-system-toggle {
+    flex: 0 0 42px;
+    min-width: 42px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.adv-filter-system-toggle svg {
+    display: block;
+    max-width: 24px;
+    max-height: 26px;
+}
+
+.adv-filter-system-toggle.active {
+    color: #eaae3f;
+
+    .as-stroke {
+        stroke: #fff200;
+    }
+
+    .as-fill {
+        fill: #d22027;
+    }
 }
 
 :host ::ng-deep .matchHighlight {
