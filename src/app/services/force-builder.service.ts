@@ -670,10 +670,10 @@ export class ForceBuilderService {
         });
     }
 
-    async createNewForce(name: string = ''): Promise<Force | null> {
+    async createNewForce(name: string = '', gameSystemOverride?: GameSystem): Promise<Force | null> {
         // Lazy inject GameService to avoid circular dependency
         const gameService = this.injector.get(GameService);
-        const gameSystem = gameService.currentGameSystem();
+        const gameSystem = gameSystemOverride ?? gameService.currentGameSystem();
         let newForce: Force | null = null;
         if (gameSystem === GameSystem.ALPHA_STRIKE) {
             newForce = new ASForce(name, this.dataService, this.unitInitializer, this.injector);
@@ -694,10 +694,10 @@ export class ForceBuilderService {
      * @param gunnerySkill Optional gunnery skill to set for the crew
      * @param pilotingSkill Optional piloting skill to set for the crew
      */
-    async addUnit(unit: Unit, gunnerySkill?: number, pilotingSkill?: number, group?: UnitGroup): Promise<ForceUnit | null> {
+    async addUnit(unit: Unit, gunnerySkill?: number, pilotingSkill?: number, group?: UnitGroup, gameSystemOverride?: GameSystem): Promise<ForceUnit | null> {
         let targetForce = this.smartCurrentForce();
         if (!targetForce) {
-            targetForce = await this.createNewForce();
+            targetForce = await this.createNewForce('', gameSystemOverride);
             if (!targetForce) {
                 return null;
             }
