@@ -39,8 +39,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { outputToObservable } from '@angular/core/rxjs-interop';
 import { DecimalPipe } from '@angular/common';
 import { DataService } from '../../services/data.service';
-import type { Force } from '../../models/force.model';
-import type { Faction } from '../../models/factions.model';
+import { getEraUnitValidationSummary, type Force } from '../../models/force.model';
+import { FACTION_EXTINCT, type Faction } from '../../models/factions.model';
 import type { Era } from '../../models/eras.model';
 import { ForceNamerUtil, type FactionDisplayInfo } from '../../utils/force-namer.util';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
@@ -452,17 +452,16 @@ export class RenameForceDialogComponent {
         if (units.length === 0) {
             return eras.map(era => ({ era, matchPercentage: 100 }));
         }
-        const unitIds = units.map(u => u.getUnit().id);
-        const totalUnits = units.length;
+        const extinctFaction = this.dataService.getFactionById(FACTION_EXTINCT) ?? null;
+
         return eras.map(era => {
-            const eraUnits = era.units;
-            let count = 0;
-            for (const id of unitIds) {
-                if (eraUnits instanceof Set ? eraUnits.has(id) : (eraUnits as number[]).includes(id)) {
-                    count++;
-                }
-            }
-            return { era, matchPercentage: count / totalUnits };
+            const validation = getEraUnitValidationSummary(units, era, eras, extinctFaction);
+            return {
+                era,
+                matchPercentage: validation.totalUnits > 0
+                    ? validation.validUnits / validation.totalUnits
+                    : 1,
+            };
         });
     });
 
