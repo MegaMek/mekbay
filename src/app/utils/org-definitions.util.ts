@@ -639,6 +639,11 @@ export const ORG_REGISTRY: { match: (factionName: string, factionAffinity: Facti
     { match: (f, _) => f.includes('Dragoons'), org: WDOrg },
     { match: (f, _) => f.includes('Capellan Confederation'), org: CCOrg },
     { match: (_, a) => a.includes('Clan'), org: ClanOrg },
+    { match: (_, f) =>
+        f.includes('Rasalhague Dominion') || f.includes('Raven Alliance') || f.includes('Wolf Empire') ||
+        f.includes('Escorpion') || f.includes('Scorpion Empire') || f.includes('Alyina Mercantile League'),
+        org: ClanOrg,
+    },
     // ISOrg is the default fallback if no other org matches
 ];
 
