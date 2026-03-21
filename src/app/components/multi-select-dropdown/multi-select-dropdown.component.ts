@@ -111,8 +111,9 @@ export class MultiSelectDropdownComponent {
     showUnavailableToggle = computed(() => this.multistate() && this.options().some(o => o.available === false));
     isOpen = signal(false);
     filterText = signal('');
-    /** Bumped after dropdown renders to force height recalculation */
-    private layoutVersion = signal(0);
+    private static readonly DEFAULT_MAX_HEIGHT = 248;
+    private static readonly MIN_MAX_HEIGHT = 200;
+    private openMaxHeight = signal(MultiSelectDropdownComponent.DEFAULT_MAX_HEIGHT);
     readonly virtualScrollThreshold = 80;
     readonly optionItemSize = 44;
 
@@ -156,31 +157,10 @@ export class MultiSelectDropdownComponent {
     });
 
     maxHeightOptions = computed(() => {
-        const windowHeight = this.layoutService.windowHeight();
-        const isOpen = this.isOpen();
-        this.layoutVersion(); // Force recalc after render
-        
-        // Default when closed or elements not ready
-        if (!isOpen) return 248;
-        
-        const dropdown = this.optionsDropdownEl()?.nativeElement;
-        if (!dropdown) return 248;
-        
-        const rect = dropdown.getBoundingClientRect();
-        
-        // If dropdown isn't visible yet (hidden attribute still applied), use default
-        if (rect.height === 0) return 248;
-        
-        // Check if filter row is visible
-        const hasFilterRow = this.options().length > 20 || this.showUnavailableToggle();
-        const filterRowHeight = hasFilterRow ? 50 : 0;
-        const bottomPadding = 16;
-        
-        // Calculate available height from dropdown top to viewport bottom
-        const availableForList = windowHeight - rect.top - filterRowHeight - bottomPadding;
-        
-        // Minimum height of 200px to ensure usability
-        return Math.max(200, availableForList);
+        if (!this.isOpen()) {
+            return MultiSelectDropdownComponent.DEFAULT_MAX_HEIGHT;
+        }
+        return this.openMaxHeight();
     });
 
     filteredOptions = computed(() => {
@@ -254,6 +234,44 @@ export class MultiSelectDropdownComponent {
                 document.removeEventListener('click', this.onOutsideDocumentClick, true);
             });
         });
+
+        effect(() => {
+            if (!this.isOpen() || !this.useVirtualScroll()) {
+                return;
+            }
+
+            this.openMaxHeight();
+            afterNextRender(() => {
+                if (this.destroyed || !this.isOpen()) {
+                    return;
+                }
+
+                this.optionsViewport()?.checkViewportSize();
+            }, { injector: this.injector });
+        });
+    }
+
+    private measureDropdownMaxHeight(): number {
+        const dropdown = this.optionsDropdownEl()?.nativeElement;
+        if (!dropdown) {
+            return MultiSelectDropdownComponent.DEFAULT_MAX_HEIGHT;
+        }
+
+        const rect = dropdown.getBoundingClientRect();
+        if (rect.height === 0) {
+            return MultiSelectDropdownComponent.DEFAULT_MAX_HEIGHT;
+        }
+
+        const hasFilterRow = this.options().length > 20 || this.showUnavailableToggle();
+        const filterRowHeight = hasFilterRow ? 50 : 0;
+        const bottomPadding = 16;
+        const availableForList = this.layoutService.windowHeight() - rect.top - filterRowHeight - bottomPadding;
+
+        return Math.max(MultiSelectDropdownComponent.MIN_MAX_HEIGHT, availableForList);
+    }
+
+    private captureOpenHeight() {
+        this.openMaxHeight.set(this.measureDropdownMaxHeight());
     }
 
     onPointerDown(event: PointerEvent) {
@@ -264,17 +282,19 @@ export class MultiSelectDropdownComponent {
         if (this.semanticOnly()) return;
         const wasMouse = this.lastPointerType === 'mouse';
         this.lastPointerType = '';
-        this.isOpen.set(!this.isOpen());
-        if (this.isOpen()) {
+        const nextIsOpen = !this.isOpen();
+        this.isOpen.set(nextIsOpen);
+        if (nextIsOpen) {
             // notify other instances
             document.dispatchEvent(new CustomEvent('multi-select-dropdown-open', { detail: this }));
+        } else {
+            this.openMaxHeight.set(MultiSelectDropdownComponent.DEFAULT_MAX_HEIGHT);
         }
         this.filterText.set('');
         afterNextRender(() => {
             if (this.destroyed) return;
             if (this.isOpen()) {
-                // Bump layout version to recalculate max height now that dropdown is visible
-                this.layoutVersion.update(v => v + 1);
+                this.captureOpenHeight();
                 if (wasMouse) {
                     const inputEl = this.filterInput()?.nativeElement;
                     if (inputEl) {
@@ -292,8 +312,7 @@ export class MultiSelectDropdownComponent {
         this.filterText.set('');
         afterNextRender(() => {
             if (this.destroyed) return;
-            // Bump layout version to recalculate max height now that dropdown is visible
-            this.layoutVersion.update(v => v + 1);
+            this.captureOpenHeight();
             
             const options = this.filteredOptions();
             const optionIndex = options.findIndex(option => option.name === optionName);

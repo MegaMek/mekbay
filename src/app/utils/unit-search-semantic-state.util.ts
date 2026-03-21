@@ -39,9 +39,9 @@ import {
     type SemanticToken,
 } from './semantic-filter.util';
 import { isComplexQuery, parseSemanticQueryAST, type ParseResult } from './semantic-filter-ast.util';
-import { getAdvancedFilterConfigByKey, getAdvancedFilterConfigBySemanticField } from './unit-search-filter-config.util';
+import { getAdvancedFilterConfigByKey, getAdvancedFilterConfigBySemanticField, getDropdownOptionSource } from './unit-search-filter-config.util';
 import { type AdvFilterConfig, AdvFilterType, type FilterState } from '../services/unit-search-filters.model';
-import { isCommittedSemanticToken } from './unit-search-shared.util';
+import { hasUnclosedQuote, isCommittedSemanticToken } from './unit-search-shared.util';
 
 export interface UnitSearchSemanticStateDependencies {
     getDropdownOptionUniverse: (filterKey: string) => readonly string[];
@@ -49,36 +49,11 @@ export interface UnitSearchSemanticStateDependencies {
     getDisplayName: (filterKey: string, value: string) => string | undefined;
 }
 
-export interface BuildPromotedSearchTextArgs extends UnitSearchSemanticStateDependencies {
+interface BuildPromotedSearchTextArgs extends UnitSearchSemanticStateDependencies {
     rawText: string;
     gameSystem: GameSystem;
     manualState: FilterState;
     totalRanges: Record<string, [number, number]>;
-}
-
-function hasUnclosedQuote(text: string): boolean {
-    let activeQuote: '"' | "'" | null = null;
-
-    for (let i = 0; i < text.length; i++) {
-        const char = text[i];
-        if (char === '\\') {
-            i++;
-            continue;
-        }
-
-        if (activeQuote) {
-            if (char === activeQuote) {
-                activeQuote = null;
-            }
-            continue;
-        }
-
-        if (char === '"' || char === "'") {
-            activeQuote = char;
-        }
-    }
-
-    return activeQuote !== null;
 }
 
 export function getCommittedSemanticTokens(tokens: SemanticToken[]): SemanticToken[] {
@@ -98,7 +73,7 @@ function getCanonicalDropdownLookup(
         }
     };
 
-    const values = conf.external
+    const values = getDropdownOptionSource(conf) === 'external'
         ? dependencies.getExternalDropdownValues(conf.key)
         : dependencies.getDropdownOptionUniverse(conf.key);
 

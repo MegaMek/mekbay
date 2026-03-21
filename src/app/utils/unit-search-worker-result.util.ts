@@ -36,7 +36,7 @@ import type { Unit } from '../models/units.model';
 import type { SearchTelemetrySnapshot } from '../services/unit-search-filters.model';
 import type { UnitSearchWorkerResultMessage } from './unit-search-worker-protocol.util';
 
-export interface WorkerResultTelemetryContext {
+interface WorkerResultTelemetryContext {
     timestamp: number;
     gameSystem: GameSystem;
     sortKey: string;

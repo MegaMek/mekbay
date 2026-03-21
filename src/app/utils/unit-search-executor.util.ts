@@ -42,7 +42,7 @@ import { wildcardToRegex } from './string.util';
 import { getNowMs, getProperty, getUnitComponentData, isCommittedSemanticToken, measureStage } from './unit-search-shared.util';
 import { applyFilterStateToUnits, type UnitFilterKernelDependencies } from './unit-filter-kernel.util';
 
-export interface UnitSearchExecutionRequest {
+interface UnitSearchExecutionRequest {
     units: Unit[];
     parsedQuery: ParseResult;
     searchTokens: SearchTokensGroup[];
@@ -65,7 +65,7 @@ export interface UnitSearchExecutionRequest {
     getIndexedFilterValues?: (filterKey: string) => readonly string[];
 }
 
-export interface UnitSearchExecutionResult {
+interface UnitSearchExecutionResult {
     results: Unit[];
     telemetryStages: SearchTelemetryStage[];
     totalMs: number;

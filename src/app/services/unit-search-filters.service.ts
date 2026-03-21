@@ -36,24 +36,23 @@ import type { Unit } from '../models/units.model';
 import type { Era } from '../models/eras.model';
 import type { Faction } from '../models/factions.model';
 import { DataService } from './data.service';
-import type { MultiState, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
+import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { getForcePacks } from '../models/forcepacks.model';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
-import { computeRelevanceScore, naturalCompare, compareUnitsByName } from '../utils/sort.util';
 import { parseSearchQuery, type SearchTokensGroup } from '../utils/search.util';
 import { OptionsService } from './options.service';
 import { LoggerService } from './logger.service';
-import { matchesSearch } from '../utils/search.util';
 import { GameSystem } from '../models/common.model';
 import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 import { filterStateToSemanticText, tokensToFilterState, type WildcardPattern } from '../utils/semantic-filter.util';
-import { parseSemanticQueryAST, type ParseResult, type ParseError, filterUnitsWithAST, type EvaluatorContext, isComplexQuery, getMatchingTextForUnit } from '../utils/semantic-filter-ast.util';
-import { getAdvOptionsContextSnapshot, getSnapshotAvailabilityNames, getSnapshotAvailableNames, getSnapshotComponentCounts, getSnapshotForcePackNames, getSnapshotUnitIds, type AdvOptionsContextSnapshot } from '../utils/unit-search-adv-options.util';
+import { parseSemanticQueryAST, type ParseResult, type ParseError, isComplexQuery } from '../utils/semantic-filter-ast.util';
+import { getSnapshotForcePackNames, type AdvOptionsContextSnapshot } from '../utils/unit-search-adv-options.util';
+import { buildUnitSearchAdvOptions } from '../utils/unit-search-adv-options-builder.util';
 import type { UnitSearchDropdownValuesDependencies } from '../utils/unit-search-dropdown-values.util';
-import { applyFilterStateToUnits, type UnitFilterKernelDependencies } from '../utils/unit-filter-kernel.util';
-import { getAdvancedFilterConfigByKey, getAdvancedFilterConfigBySemanticField } from '../utils/unit-search-filter-config.util';
+import { type UnitFilterKernelDependencies } from '../utils/unit-filter-kernel.util';
+import { getAdvancedFilterConfigByKey } from '../utils/unit-search-filter-config.util';
 import { buildUnitSearchQueryParameters, parseAndValidateCompactFiltersFromUrl, parseUnitSearchScalarUrlState } from '../utils/unit-search-url-filters.util';
 import { generatePublicTagsParam, mergePublicTagReferences, parsePublicTagsParam } from '../utils/unit-search-public-tags-url.util';
 import {
@@ -63,7 +62,7 @@ import {
     getSemanticFilterKeysFromParsed,
     type UnitSearchSemanticStateDependencies,
 } from '../utils/unit-search-semantic-state.util';
-import { getMergedTags, getNowMs, getProperty, getUnitComponentData, measureStage } from '../utils/unit-search-shared.util';
+import { getProperty, getUnitComponentData, measureStage } from '../utils/unit-search-shared.util';
 import { executeUnitSearch } from '../utils/unit-search-executor.util';
 import { UnitSearchWorkerClient } from '../utils/unit-search-worker-client.util';
 import { SEARCH_WORKER_FACTORY } from '../utils/unit-search-worker-factory.util';
@@ -81,179 +80,11 @@ import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
 import { FACTION_EXTINCT } from '../models/factions.model';
 import { resolveFactionNamesFromFilter } from '../utils/faction-filter.util';
+import { sortAvailableDropdownOptions, sortDropdownOptionObjects } from '../utils/unit-search-dropdown-sort.util';
 import type { UnitSearchWorkerCorpusSnapshot, UnitSearchWorkerQueryRequest, UnitSearchWorkerResultMessage } from '../utils/unit-search-worker-protocol.util';
-import { ADVANCED_FILTERS, AS_MOVEMENT_MODE_DISPLAY_NAMES, type AdvFilterConfig, type AdvFilterOptions, type AdvOptionsTelemetryFilterStage, type AdvOptionsTelemetrySnapshot, AdvFilterType, type FilterState, DROPDOWN_FILTERS, RANGE_FILTERS, type DropdownFilterConfig, type RangeFilterConfig, type SearchTelemetrySnapshot, type SearchTelemetryStage, type SemanticDisplayItem, type SerializedSearchFilter, SORT_OPTIONS } from './unit-search-filters.model';
+import { ADVANCED_FILTERS, type AdvFilterConfig, type AdvOptionsTelemetrySnapshot, AdvFilterType, type FilterState, DROPDOWN_FILTERS, RANGE_FILTERS, type DropdownFilterConfig, type RangeFilterConfig, type SearchTelemetrySnapshot, type SearchTelemetryStage, type SerializedSearchFilter } from './unit-search-filters.model';
 export * from './unit-search-filters.model';
 
-function sortAvailableDropdownOptions(options: string[], predefinedOrder?: string[]): string[] {
-    if (predefinedOrder && predefinedOrder.length > 0) {
-        const optionsSet = new Set(options);
-        const sortedOptions: string[] = [];
-        for (const predefinedOpt of predefinedOrder) {
-            if (predefinedOpt.endsWith('*')) {
-                const prefix = predefinedOpt.slice(0, -1);
-                // Smart sort for matching options
-                const matchingOptions = Array.from(optionsSet)
-                    .filter(o => typeof o === 'string' && o.startsWith(prefix))
-                    .sort((a, b) => naturalCompare(a, b));
-                for (const match of matchingOptions) {
-                    sortedOptions.push(match);
-                    optionsSet.delete(match);
-                }
-            } else if (optionsSet.has(predefinedOpt)) {
-                sortedOptions.push(predefinedOpt);
-                optionsSet.delete(predefinedOpt);
-            }
-        }
-        const remainingSorted = Array.from(optionsSet).sort(naturalCompare);
-        return [...sortedOptions, ...remainingSorted];
-    }
-    return [...options].sort(naturalCompare);
-}
-
-function sortDropdownOptionObjects<T extends { name: string }>(options: T[], predefinedOrder?: string[]): T[] {
-    if (!predefinedOrder || predefinedOrder.length === 0) {
-        return options;
-    }
-
-    const optionMap = new Map(options.map(option => [option.name, option]));
-    const sortedNames = sortAvailableDropdownOptions(Array.from(optionMap.keys()), predefinedOrder);
-    return sortedNames
-        .map(name => optionMap.get(name))
-        .filter((option): option is T => option !== undefined);
-}
-
-function hasAdvancedQuantitySelections(selection: MultiStateSelection): boolean {
-    return Object.values(selection).some(sel => {
-        if (!sel || sel.state === false) {
-            return false;
-        }
-        if (sel.countIncludeRanges || sel.countExcludeRanges) return true;
-        if (sel.countMax !== undefined) return true;
-        if (sel.countOperator && sel.countOperator !== '>=') return true;
-        return false;
-    });
-}
-
-function getSemanticSelectionSuffix(selection: MultiStateSelection[string], countable: boolean): string {
-    if (!selection || !countable) {
-        return '';
-    }
-
-    if (selection.countOperator && selection.countOperator !== '=') {
-        if (selection.countMax !== undefined) {
-            const rangePrefix = selection.countOperator === '!=' ? '!' : '';
-            return `:${rangePrefix}${selection.count}-${selection.countMax}`;
-        }
-
-        return `:${selection.countOperator}${selection.count}`;
-    }
-
-    if (selection.countIncludeRanges || selection.countExcludeRanges) {
-        const parts: string[] = [];
-
-        if (selection.countIncludeRanges) {
-            for (const [min, max] of selection.countIncludeRanges) {
-                if (min === max) {
-                    parts.push(`${min}`);
-                } else if (max === Infinity) {
-                    parts.push(`>=${min}`);
-                } else {
-                    parts.push(`${min}-${max}`);
-                }
-            }
-        }
-
-        if (selection.countExcludeRanges) {
-            for (const [min, max] of selection.countExcludeRanges) {
-                if (min === max) {
-                    parts.push(`!${min}`);
-                } else {
-                    parts.push(`!${min}-${max}`);
-                }
-            }
-        }
-
-        return parts.length > 0 ? `:${parts.join(',')}` : '';
-    }
-
-    return selection.count > 1 ? `:${selection.count}` : '';
-}
-
-function buildSemanticDisplayItems(
-    selection: MultiStateSelection,
-    countable: boolean,
-    exclusive: boolean,
-    wildcardPatterns?: WildcardPattern[],
-): SemanticDisplayItem[] | undefined {
-    const items: SemanticDisplayItem[] = [];
-    const hasWildcards = !!wildcardPatterns && wildcardPatterns.length > 0;
-    const hasAdvancedQuantity = hasAdvancedQuantitySelections(selection);
-
-    if (!hasWildcards && !hasAdvancedQuantity && !exclusive) {
-        return undefined;
-    }
-
-    if (hasWildcards) {
-        for (const wildcardPattern of wildcardPatterns ?? []) {
-            items.push({
-                text: wildcardPattern.pattern,
-                state: wildcardPattern.state,
-            });
-        }
-    }
-
-    for (const [name, sel] of Object.entries(selection)) {
-        if (!sel || sel.state === false) {
-            continue;
-        }
-
-        items.push({
-            text: name + (hasWildcards ? '' : getSemanticSelectionSuffix(sel, countable)),
-            state: sel.state as SemanticDisplayItem['state'],
-        });
-    }
-
-    if (exclusive && items.length > 0) {
-        items[0] = {
-            ...items[0],
-            text: `==${items[0].text}`,
-        };
-    }
-
-    return items.length > 0 ? items : undefined;
-}
-
-function semanticDisplayItemsToText(items: SemanticDisplayItem[]): string {
-    return items.map(item => {
-        if (item.text.startsWith('==') && item.state === 'not') {
-            return `==!${item.text.slice(2)}`;
-        }
-
-        if (item.state === 'not') {
-            return `!${item.text}`;
-        }
-
-        return item.text;
-    }).join(', ');
-}
-
-const PREBUILT_ADV_DROPDOWN_KEYS = new Set([
-    'type',
-    'subtype',
-    'techBase',
-    'role',
-    'weightClass',
-    'level',
-    'c3',
-    'moveType',
-    'as.TP',
-    'as._motive',
-    'era',
-    'faction',
-    'source',
-]);
-const INDEXED_MULTISTATE_DROPDOWN_KEYS = new Set(['_tags', 'as.specials', 'componentName', 'features', 'quirks']);
 const FORCE_PACK_OPTION_UNIVERSE = getForcePacks().map(pack => ({ name: pack.name }));
 
 /** Check if any element in sourceSet exists in targetSet. */
@@ -286,10 +117,10 @@ export class UnitSearchFiltersService {
         'source': (v) => this.dataService.getSourcebookTitle(v),
     };
 
-    private buildPrebuiltDropdownOptions(
+    private buildIndexedDropdownOptions(
         conf: AdvFilterConfig,
         contextUnits: Unit[],
-        displayNameFn?: (value: string) => string,
+        displayNameFn?: (value: string) => string | undefined,
         contextUnitIds?: ReadonlySet<string>,
     ): { name: string; img?: string; displayName?: string; available?: boolean }[] {
         const universe = this.dataService.getDropdownOptionUniverse(conf.key);
@@ -495,8 +326,7 @@ export class UnitSearchFiltersService {
 
     private getDropdownValuesDependencies(): UnitSearchDropdownValuesDependencies {
         return {
-            isIndexedUniverseKey: (filterKey: string) => PREBUILT_ADV_DROPDOWN_KEYS.has(filterKey) || INDEXED_MULTISTATE_DROPDOWN_KEYS.has(filterKey),
-            getIndexedUniverseNames: (filterKey: string) => this.getIndexedUniverseNames(filterKey),
+            getDropdownOptionUniverse: (filterKey: string) => this.getIndexedUniverseNames(filterKey),
             getExternalDropdownValues: (filterKey: string) => {
                 if (filterKey === 'era') {
                     return this.dataService.getEras().map(era => era.name);
@@ -1047,28 +877,16 @@ export class UnitSearchFiltersService {
 
     private collectIndexedAvailabilityNames(
         filterKey: string,
-        units: Unit[],
+        optionNames: readonly string[],
+        contextUnitIds: ReadonlySet<string>,
         isComponentFilter: boolean,
     ): Set<string> {
         const availableNames = new Set<string>();
 
-        if (isComponentFilter) {
-            for (const unit of units) {
-                const cached = getUnitComponentData(unit);
-                for (const name of cached.names) {
-                    availableNames.add(name);
-                }
-            }
-            return availableNames;
-        }
-
-        for (const unit of units) {
-            const propValue = getProperty(unit, filterKey);
-            const values = Array.isArray(propValue) ? propValue : [propValue];
-            for (const value of values) {
-                if (value != null && value !== '') {
-                    availableNames.add(String(value));
-                }
+        for (const optionName of optionNames) {
+            const indexedIds = this.dataService.getIndexedUnitIds(filterKey, optionName);
+            if (indexedIds && setHasAny(indexedIds, contextUnitIds)) {
+                availableNames.add(isComponentFilter ? optionName.toLowerCase() : optionName);
             }
         }
 
@@ -1461,401 +1279,38 @@ export class UnitSearchFiltersService {
     // Advanced filter options
     advOptions = computed(() => {
         if (!this.isDataReady()) return {};
-
-        const advOptionsStartedAt = getNowMs();
-        const result: Record<string, AdvFilterOptions> = {};
-        const filterTelemetry: AdvOptionsTelemetryFilterStage[] = [];
         const state = this.effectiveFilterState();
         this.tagsVersion();
 
-        let baseUnits = this.units;
-        const baseUnitCount = baseUnits.length;
-
-        // Pre-filter by text search so dropdown/range options cascade from it.
-        // Only for non-complex queries (complex queries hide the UI dropdowns anyway).
-        const textSearch = this.effectiveTextSearch();
-        if (textSearch) {
-            const textTokens = parseSearchQuery(textSearch);
-            baseUnits = baseUnits.filter(u => {
-                const searchableText = u._searchKey || `${u.chassis ?? ''} ${u.model ?? ''}`.toLowerCase();
-                return matchesSearch(searchableText, textTokens, true);
-            });
-        }
-
-        const activeFilterKeys = new Set(
-            Object.entries(state)
-                .filter(([, filterState]) => filterState.interactedWith)
-                .map(([key]) => key),
-        );
-        const fullyFilteredUnits = activeFilterKeys.size === 0
-            ? baseUnits
-            : applyFilterStateToUnits({
-                units: baseUnits,
-                state,
-                dependencies: this.getUnitFilterKernelDependencies(),
-            });
-        const contextUnitsCache = new Map<string, Unit[]>();
-        const contextSnapshotCache = new WeakMap<Unit[], AdvOptionsContextSnapshot>();
-
-        const pushAdvOptionsTelemetry = (
-            conf: AdvFilterConfig,
-            startedAt: number,
-            contextDerivationMs: number,
-            contextUnitCount: number,
-            contextStrategy: 'fully-filtered' | 'base-units' | 'excluded-filter',
-            options?: { available?: boolean }[],
-        ) => {
-            const stage: AdvOptionsTelemetryFilterStage = {
-                key: conf.key,
-                type: conf.type === AdvFilterType.RANGE ? 'range' : 'dropdown',
-                durationMs: getNowMs() - startedAt,
-                contextDerivationMs,
-                contextUnitCount,
-                contextStrategy,
-                interacted: state[conf.key]?.interactedWith ?? false,
-            };
-
-            if (options) {
-                stage.optionCount = options.length;
-                stage.availableOptionCount = options.filter(option => option.available !== false).length;
-            }
-
-            filterTelemetry.push(stage);
-        };
-
-        for (const conf of ADVANCED_FILTERS) {
-            // Skip semantic-only filters (they're only available via semantic mode)
-            if (conf.type === AdvFilterType.SEMANTIC) continue;
-
-            const filterStartedAt = getNowMs();
-
-            let label = conf.label;
-            if (conf.key === 'internal') {
-                label = this.dynamicInternalLabel();
-            }
-            const filterStateEntry = state[conf.key];
-            let contextStrategy: 'fully-filtered' | 'base-units' | 'excluded-filter' = 'fully-filtered';
-            const contextDerivationStartedAt = getNowMs();
-            let contextUnits = fullyFilteredUnits;
-            if (filterStateEntry?.interactedWith) {
-                if (activeFilterKeys.size === 1) {
-                    contextStrategy = 'base-units';
-                    contextUnits = baseUnits;
-                } else {
-                    contextStrategy = 'excluded-filter';
-                    let cachedContextUnits = contextUnitsCache.get(conf.key);
-                    if (!cachedContextUnits) {
-                        cachedContextUnits = applyFilterStateToUnits({
-                            units: baseUnits,
-                            state,
-                            skipKey: conf.key,
-                            dependencies: this.getUnitFilterKernelDependencies(),
-                        });
-                        contextUnitsCache.set(conf.key, cachedContextUnits);
-                    }
-                    contextUnits = cachedContextUnits;
-                }
-            }
-            const contextDerivationMs = getNowMs() - contextDerivationStartedAt;
-            let availableOptions: { name: string, img?: string, displayName?: string, available?: boolean }[] = [];
-            if (conf.type === AdvFilterType.DROPDOWN) {
-                const displayNameFn = conf.displayNameFn ?? this.displayNameFns[conf.key];
-                const contextSnapshot = getAdvOptionsContextSnapshot(contextSnapshotCache, contextUnits);
-                const contextUnitIds = getSnapshotUnitIds(contextSnapshot, contextUnits);
-                if (PREBUILT_ADV_DROPDOWN_KEYS.has(conf.key)) {
-                    availableOptions = this.buildPrebuiltDropdownOptions(conf, contextUnits, displayNameFn, contextUnitIds);
-                }
-                else if (conf.external) {
-                    if (conf.key === 'forcePack') {
-                        availableOptions = this.buildForcePackDropdownOptions(contextSnapshot, contextUnits);
-                    }
-                }
-                else if (conf.multistate) {
-                    const isComponentFilter = conf.key === 'componentName';
-                    const currentFilter = state[conf.key];
-                    const hasQuantityFilters = conf.countable && isComponentFilter
-                        && currentFilter?.interactedWith && currentFilter.value &&
-                        Object.values(currentFilter.value as MultiStateSelection).some(selection => selection.count > 1);
-                    const usesIndexedUniverse = INDEXED_MULTISTATE_DROPDOWN_KEYS.has(conf.key);
-                    const availableNames = usesIndexedUniverse
-                        ? this.getIndexedUniverseNames(conf.key)
-                        : getSnapshotAvailableNames(contextSnapshot, conf.key, contextUnits, isComponentFilter);
-                    const constrainedAvailableNameSet = currentFilter?.interactedWith && currentFilter.value
-                        ? this.collectConstrainedMultistateAvailabilityNames(
-                            conf.key,
-                            contextUnits,
-                            currentFilter.value as MultiStateSelection,
-                            isComponentFilter,
-                        )
-                        : null;
-
-                    const sortedNames = usesIndexedUniverse
-                        ? this.getSortedIndexedUniverseNames(conf)
-                        : sortAvailableDropdownOptions(availableNames, conf.sortOptions);
-                    const availableNameSet = constrainedAvailableNameSet
-                        ?? (usesIndexedUniverse
-                            ? this.collectIndexedAvailabilityNames(conf.key, contextUnits, isComponentFilter)
-                            : getSnapshotAvailabilityNames(contextSnapshot, conf.key, contextUnits, isComponentFilter));
-
-                    // Precompute total counts per component name
-                    let totalCountsMap: Map<string, number> | null = null;
-                    if (hasQuantityFilters) {
-                        totalCountsMap = getSnapshotComponentCounts(contextSnapshot, contextUnits);
-                    }
-
-                    // Create options with availability flag and count
-                    const optionsWithAvailability = sortedNames.map(name => {
-                        const normalizedName = isComponentFilter ? name.toLowerCase() : name;
-                        const option: { name: string; available: boolean; count?: number } = {
-                            name,
-                            available: availableNameSet.has(normalizedName)
-                        };
-
-                        // Add count only if needed and for component filters
-                        // Use lowercase lookup since cache stores lowercase keys
-                        if (totalCountsMap) {
-                            option.count = totalCountsMap.get(normalizedName) || 0;
-                        }
-
-                        return option;
-                    });
-
-                    // Check for semantic-only mode (advanced quantity constraints or wildcard patterns)
-                    const filterStateEntry = state[conf.key];
-                    const currentFilterValue = filterStateEntry?.interactedWith ? filterStateEntry.value : {};
-                    const currentSelection = currentFilterValue as MultiStateSelection;
-                    const wildcardPatternsMultistate = filterStateEntry?.wildcardPatterns;
-                    const isExclusiveSemantic = filterStateEntry?.exclusive ?? false;
-                    const displayItemsMultistate = currentSelection && typeof currentSelection === 'object'
-                        ? buildSemanticDisplayItems(
-                            currentSelection,
-                            !!conf.countable,
-                            isExclusiveSemantic,
-                            wildcardPatternsMultistate,
-                        )
-                        : undefined;
-                    const semanticOnlyMultistate = displayItemsMultistate !== undefined;
-
-                    result[conf.key] = {
-                        type: 'dropdown',
-                        label,
-                        options: optionsWithAvailability,
-                        value: currentFilterValue,
-                        interacted: filterStateEntry?.interactedWith ?? false,
-                        semanticOnly: semanticOnlyMultistate,
-                        displayItems: displayItemsMultistate
-                    };
-                    pushAdvOptionsTelemetry(conf, filterStartedAt, contextDerivationMs, contextUnits.length, contextStrategy, optionsWithAvailability);
-                    continue;
-                } else {
-                    const optionSet = new Set<string>();
-                    if (conf.key === 'source') {
-                        // For source filter, flatten the array of sources per unit
-                        for (const u of contextUnits) {
-                            const val = getProperty(u, conf.key);
-                            if (Array.isArray(val)) {
-                                for (const v of val) {
-                                    if (v != null && v !== '') optionSet.add(v);
-                                }
-                            } else if (val != null && val !== '') {
-                                optionSet.add(val);
-                            }
-                        }
-                    } else if (conf.key === 'as._motive') {
-                        // For AS motive filter, getProperty returns array of display names
-                        for (const u of contextUnits) {
-                            const val = getProperty(u, conf.key);
-                            if (Array.isArray(val)) {
-                                for (const v of val) {
-                                    if (v != null && v !== '') optionSet.add(v);
-                                }
-                            }
-                        }
-                    } else {
-                        for (const u of contextUnits) {
-                            const v = getProperty(u, conf.key);
-                            if (v != null && v !== '') optionSet.add(v);
-                        }
-                    }
-                    const allOptions = Array.from(optionSet);
-                    const sortedOptions = sortAvailableDropdownOptions(allOptions, conf.sortOptions);
-                    
-                    availableOptions = sortedOptions.map(name => ({
-                        name,
-                        ...(displayNameFn ? { displayName: displayNameFn(name) } : {})
-                    }));
-                }
-
-                // Get the filter state value
-                const filterStateEntry = state[conf.key];
-                const isInteracted = filterStateEntry?.interactedWith ?? false;
-                const filterValue = isInteracted ? filterStateEntry.value : [];
-
-                // Check for semantic-only: values in the filter that aren't in available options,
-                // OR if there are wildcard patterns (which are always semantic-only)
-                let semanticOnly = filterStateEntry?.semanticOnly ?? false;
-                let displayText: string | undefined;
-                let displayItems: SemanticDisplayItem[] | undefined;
-                const availableOptionNames = new Set(availableOptions.map(o => o.name));
-                const wildcardPatterns = filterStateEntry?.wildcardPatterns;
-                const isExclusiveSemantic = filterStateEntry?.exclusive ?? false;
-
-                // If there are wildcard patterns, this is semantic-only
-                if (wildcardPatterns && wildcardPatterns.length > 0) {
-                    semanticOnly = true;
-                    if (conf.multistate) {
-                        const selection = filterValue as MultiStateSelection;
-                        if (selection && typeof selection === 'object') {
-                            displayItems = buildSemanticDisplayItems(
-                                selection,
-                                !!conf.countable,
-                                isExclusiveSemantic,
-                                wildcardPatterns,
-                            );
-                        }
-                    } else {
-                        displayText = wildcardPatterns.map(wp => {
-                            const prefix = wp.state === 'not' ? '!' : '';
-                            return prefix + wp.pattern;
-                        }).join(', ');
-                        if (isExclusiveSemantic) {
-                            displayText = `==${displayText}`;
-                        }
-                    }
-                } else if (conf.multistate) {
-                    // For multistate dropdowns, check MultiStateSelection
-                    const selection = filterValue as MultiStateSelection;
-                    if (selection && typeof selection === 'object') {
-                        const activeSelections = Object.entries(selection)
-                            .filter(([_, sel]) => sel.state !== false);
-                        
-                        const unavailableSelections = activeSelections.filter(([name, _]) => !availableOptionNames.has(name));
-                        
-                        // Check for quantity constraints that can't be shown in UI
-                        // UI can only represent: no operator (implicit >=1) or >= operator
-                        const hasAdvancedQuantity = hasAdvancedQuantitySelections(selection);
-                        
-                        // Add unavailable selected values back to the options list so the
-                        // user can still deselect them (prevents the dropdown from locking).
-                        if (unavailableSelections.length > 0) {
-                            for (const [name] of unavailableSelections) {
-                                availableOptions.push({
-                                    name,
-                                    available: false,
-                                    ...(displayNameFn ? { displayName: displayNameFn(name) } : {})
-                                });
-                            }
-                        }
-
-                        if (hasAdvancedQuantity) {
-                            // Semantic only mode for advanced quantity constraints
-                            semanticOnly = true;
-                            displayItems = buildSemanticDisplayItems(
-                                selection,
-                                !!conf.countable,
-                                false,
-                            );
-                            displayText = displayItems ? semanticDisplayItemsToText(displayItems) : undefined;
-                        } else if (isExclusiveSemantic && activeSelections.length > 0) {
-                            semanticOnly = true;
-                            displayText = `==${activeSelections.map(([name]) => name).join(', ')}`;
-                        }
-                    }
-                } else {
-                    // For regular dropdowns, check string array
-                    const selectedValues = filterValue as string[];
-                    if (selectedValues && Array.isArray(selectedValues) && selectedValues.length > 0) {
-                        // Add unavailable selected values back to the options list so the
-                        // user can still deselect them (prevents the dropdown from locking).
-                        for (const v of selectedValues) {
-                            if (!availableOptionNames.has(v)) {
-                                availableOptions.push({
-                                    name: v,
-                                    available: false,
-                                    ...(displayNameFn ? { displayName: displayNameFn(v) } : {})
-                                });
-                            }
-                        }
-
-                        if (isExclusiveSemantic) {
-                            semanticOnly = true;
-                            displayText = `==${selectedValues.join(', ')}`;
-                        }
-                    }
-                }
-
-                availableOptions = sortDropdownOptionObjects(availableOptions, conf.sortOptions);
-
-                result[conf.key] = {
-                    type: 'dropdown',
-                    label,
-                    options: availableOptions,
-                    value: filterValue,
-                    interacted: isInteracted,
-                    semanticOnly,
-                    displayText,
-                    displayItems
-                };
-                pushAdvOptionsTelemetry(conf, filterStartedAt, contextDerivationMs, contextUnits.length, contextStrategy, availableOptions);
-            }
-            else if (conf.type === AdvFilterType.RANGE) {
-                const totalRange = this.totalRangesCache[conf.key] || [0, 0];
-                const availableRange = this.getAvailableRangeForUnits(
-                    contextUnits,
-                    conf,
-                    totalRange as [number, number],
-                );
-
-                // Get the original filter value (before clamping) for visualization
-                const filterStateEntry = state[conf.key];
-                const isInteracted = filterStateEntry?.interactedWith ?? false;
-                const originalValue: [number, number] = isInteracted ? filterStateEntry.value : availableRange;
-
-                // Clamp both min and max to the available range for thumb positions
-                let clampedMin = Math.max(availableRange[0], Math.min(originalValue[0], availableRange[1]));
-                let clampedMax = Math.min(availableRange[1], Math.max(originalValue[1], availableRange[0]));
-                if (clampedMin > clampedMax) [clampedMin, clampedMax] = [clampedMax, clampedMin];
-                const clampedValue: [number, number] = [clampedMin, clampedMax];
-
-                // Get semantic-only properties from filter state
-                const semanticOnly = filterStateEntry?.semanticOnly ?? false;
-
-                // For visualization: show the ORIGINAL set range (before clamping) as includeRanges
-                // If semantic has multiple disjoint ranges, use those; otherwise use original value
-                const semanticIncludeRanges = filterStateEntry?.includeRanges;
-                const includeRanges: [number, number][] | undefined =
-                    semanticIncludeRanges ?? (isInteracted ? [originalValue] : undefined);
-
-                const excludeRanges = filterStateEntry?.excludeRanges;
-                const displayText = filterStateEntry?.displayText;
-
-                result[conf.key] = {
-                    type: 'range',
-                    label,
-                    totalRange: totalRange,
-                    options: availableRange as [number, number],
-                    value: clampedValue,
-                    interacted: isInteracted,
-                    semanticOnly,
-                    includeRanges,
-                    excludeRanges,
-                    displayText
-                };
-                pushAdvOptionsTelemetry(conf, filterStartedAt, contextDerivationMs, contextUnits.length, contextStrategy);
-            }
-        }
-
-        const advOptionsSnapshot: AdvOptionsTelemetrySnapshot = {
-            timestamp: Date.now(),
-            query: this.searchText().trim(),
+        const advOptionsResult = buildUnitSearchAdvOptions({
+            advancedFilters: ADVANCED_FILTERS,
+            state,
+            units: this.units,
+            queryText: this.searchText(),
+            textSearch: this.effectiveTextSearch(),
+            isComplexQuery: this.isComplexQuery(),
+            totalRanges: this.totalRangesCache,
+            dynamicInternalLabel: this.dynamicInternalLabel(),
             gameSystem: this.gameService.currentGameSystem(),
-            complex: this.isComplexQuery(),
-            baseUnitCount,
-            textFilteredUnitCount: baseUnits.length,
-            visibleFilterCount: Object.keys(result).length,
-            filters: filterTelemetry,
-            totalMs: getNowMs() - advOptionsStartedAt,
-        };
+            getUnitFilterKernelDependencies: () => this.getUnitFilterKernelDependencies(),
+            buildIndexedDropdownOptions: (conf, contextUnits, displayNameFn, contextUnitIds) =>
+                this.buildIndexedDropdownOptions(conf, contextUnits, displayNameFn, contextUnitIds),
+            buildForcePackDropdownOptions: (snapshot, contextUnits) => this.buildForcePackDropdownOptions(snapshot, contextUnits),
+            getIndexedUniverseNames: filterKey => this.getIndexedUniverseNames(filterKey),
+            getSortedIndexedUniverseNames: conf => this.getSortedIndexedUniverseNames(conf),
+            collectIndexedAvailabilityNames: (filterKey, optionNames, contextUnitIds, isComponentFilter) =>
+                this.collectIndexedAvailabilityNames(filterKey, optionNames, contextUnitIds, isComponentFilter),
+            collectConstrainedMultistateAvailabilityNames: (filterKey, units, selection, isComponentFilter) =>
+                this.collectConstrainedMultistateAvailabilityNames(filterKey, units, selection, isComponentFilter),
+            getAvailableRangeForUnits: (units, conf, fallbackRange) => this.getAvailableRangeForUnits(units, conf, fallbackRange),
+            getDisplayName: (filterKey, value) => {
+                const conf = getAdvancedFilterConfigByKey(filterKey);
+                const fn = conf?.displayNameFn ?? this.displayNameFns[filterKey];
+                return fn?.(value);
+            },
+        });
+
+        const advOptionsSnapshot = advOptionsResult.telemetry;
         const publishVersion = ++this.advOptionsTelemetryPublishVersion;
         queueMicrotask(() => {
             if (this.advOptionsTelemetryPublishVersion !== publishVersion) {
@@ -1864,7 +1319,7 @@ export class UnitSearchFiltersService {
             this.advOptionsTelemetryState.set(advOptionsSnapshot);
         });
 
-        return result;
+        return advOptionsResult.options;
     });
 
 

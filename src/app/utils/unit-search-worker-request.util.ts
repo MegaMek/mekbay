@@ -37,19 +37,19 @@ import { filterStateToSemanticText } from './semantic-filter.util';
 import type { UnitSearchWorkerCorpusSnapshot, UnitSearchWorkerIndexSnapshot, UnitSearchWorkerQueryRequest } from './unit-search-worker-protocol.util';
 import type { FilterState } from '../services/unit-search-filters.model';
 
-export interface UnitSearchWorkerCorpusCache {
+interface UnitSearchWorkerCorpusCache {
     version: string | null;
     snapshot: UnitSearchWorkerCorpusSnapshot | null;
 }
 
-export interface BuildWorkerExecutionQueryArgs {
+interface BuildWorkerExecutionQueryArgs {
     effectiveFilterState: FilterState;
     effectiveTextSearch: string;
     gameSystem: GameSystem;
     totalRangesCache: Record<string, [number, number]>;
 }
 
-export interface BuildWorkerSearchRequestArgs {
+interface BuildWorkerSearchRequestArgs {
     revision: number;
     corpusVersion: string;
     executionQuery: string;

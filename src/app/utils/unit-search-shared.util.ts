@@ -91,7 +91,7 @@ export function getNowMs(): number {
     return globalThis.performance?.now?.() ?? Date.now();
 }
 
-function hasUnclosedQuote(text: string): boolean {
+export function hasUnclosedQuote(text: string): boolean {
     let activeQuote: '"' | '\'' | null = null;
 
     for (let index = 0; index < text.length; index++) {
