@@ -38,7 +38,6 @@ import { AlphaStrikeCardComponent } from '../../alpha-strike-card/alpha-strike-c
 import { getCardCountForUnitType } from '../../alpha-strike-card/card-layout.config';
 import { OptionsService } from '../../../services/options.service';
 import { ToastService } from '../../../services/toast.service';
-import { ASCardExportUtil } from '../../../utils/as-card-export.util';
 
 @Component({
     selector: 'unit-details-card-tab',
@@ -63,72 +62,4 @@ export class UnitDetailsCardTabComponent {
 
     readonly useHex = computed<boolean>(() => this.optionsService.options().ASUseHex);
     readonly cardStyle = computed<'colored' | 'monochrome'>(() => this.optionsService.options().ASCardStyle);
-
-    async onDownloadCards(): Promise<void> {
-        if (this.exportInProgress()) {
-            return;
-        }
-
-        this.exportInProgress.set(true);
-
-        try {
-            const unit = this.unit();
-            const cardIndices = this.cardIndices();
-
-            for (const cardIndex of cardIndices) {
-                const previewWindow = window.open('about:blank', '_blank');
-                if (!previewWindow) {
-                    throw new Error('Preview tab was blocked by the browser.');
-                }
-
-                await ASCardExportUtil.openCardJpegInNewTab(
-                    this.appRef,
-                    this.injector,
-                    this.optionsService,
-                    {
-                        unit,
-                        cardIndex,
-                        useHex: this.useHex(),
-                        cardStyle: this.cardStyle(),
-                        width: 2240,
-                        height: 1600,
-                    },
-                    this.buildFileName(unit, cardIndex, cardIndices.length),
-                    previewWindow,
-                );
-            }
-
-            this.toastService.showToast(
-                cardIndices.length > 1
-                    ? `Opened ${cardIndices.length} Alpha Strike card previews`
-                    : 'Opened Alpha Strike card preview',
-                'success'
-            );
-        } catch (error) {
-            console.error('Failed to export Alpha Strike card JPEG:', error);
-            this.toastService.showToast('Failed to export Alpha Strike card JPEG', 'error');
-        } finally {
-            this.exportInProgress.set(false);
-        }
-    }
-
-    private buildFileName(unit: Unit, cardIndex: number, totalCards: number): string {
-        const parts = [unit.chassis, unit.model, 'alpha-strike-card']
-            .map((part) => this.sanitizeFilePart(part))
-            .filter((part) => part.length > 0);
-
-        if (totalCards > 1) {
-            parts.push(`card-${cardIndex + 1}`);
-        }
-
-        return `${parts.join('-') || 'alpha-strike-card'}.jpg`;
-    }
-
-    private sanitizeFilePart(value: string | null | undefined): string {
-        return (value ?? '')
-            .trim()
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-+|-+$/g, '');
-    }
 }

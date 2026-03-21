@@ -9,12 +9,4 @@
             class="alpha-strike-card-panel">
         </alpha-strike-card>
     }
-
-    <button
-        type="button"
-        class="bt-button primary export-button"
-        [disabled]="exportInProgress()"
-        (click)="onDownloadCards()">
-        {{ exportInProgress() ? 'RENDERING...' : 'OPEN JPG' }}
-    </button>
 </div>
