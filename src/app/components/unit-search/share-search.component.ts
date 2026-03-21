@@ -181,6 +181,7 @@ export class ShareSearchDialogComponent {
         const origin = window.location.origin || '';
         // We get the query Parameters from the force builder
         const queryParameters = this.unitSearchFilters.queryParameters();
+        queryParameters.gs = this.gameService.currentGameSystem(); // Ensure game system is included in shared URL
 
         const instanceTree = this.router.createUrlTree([], {
             relativeTo: this.route,

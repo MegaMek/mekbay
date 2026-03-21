@@ -172,7 +172,6 @@
     color: var(--text-color);
     cursor: pointer;
     transition: color 0.2s;
-    padding: 0 18px;
 }
 
 .force-faction-icon {
@@ -237,6 +236,7 @@
     }
 }
 
+.force-name-area,
 .group-name-area {
     display: flex;
     align-items: center;

@@ -33,7 +33,7 @@
 
 import { type ApplicationRef, type ComponentRef, createComponent, EnvironmentInjector, type Injector } from '@angular/core';
 import type { ASForceUnit } from '../models/as-force-unit.model';
-import type { UnitGroup } from '../models/force.model';
+import type { Force, UnitGroup } from '../models/force.model';
 import { AlphaStrikeCardComponent } from '../components/alpha-strike-card/alpha-strike-card.component';
 import { getLayoutForUnitType } from '../components/alpha-strike-card/card-layout.config';
 import type { OptionsService } from '../services/options.service';
@@ -80,7 +80,8 @@ export class ASPrintUtil {
         optionsService: OptionsService,
         groups: UnitGroup<ASForceUnit>[],
         clean: boolean = false,
-        triggerPrint: boolean = true
+        triggerPrint: boolean = true,
+        force?: Force
     ): Promise<void> {
         const allUnits = groups.flatMap(g => g.units());
         if (allUnits.length === 0) {
@@ -108,6 +109,13 @@ export class ASPrintUtil {
         const { overlay, cardComponentRefs } = useFixedLayout
             ? await this.createFixedPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups)
             : await this.createFlexPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups);
+
+        // Append roster summary page if enabled
+        const printRosterSummary = optionsService.options().ASPrintRosterSummary;
+        if (printRosterSummary && force) {
+            const rosterPage = this.createRosterSummaryPage(groups, force);
+            overlay.appendChild(rosterPage);
+        }
 
         // Wait for fonts and images to load
         if ((document as any).fonts?.ready) {
@@ -539,6 +547,8 @@ export class ASPrintUtil {
                 margin-left: 0.05in;
             }
 
+            ${this.getRosterSummaryStyles()}
+
             @media print {
                 body, html {
                     margin: 0 !important;
@@ -559,6 +569,11 @@ export class ASPrintUtil {
                 .as-print-page.last-page {
                     page-break-after: auto;
                     break-after: auto;
+                }
+
+                .as-roster-summary {
+                    page-break-before: always;
+                    break-before: page;
                 }
 
                 @page {
@@ -629,6 +644,8 @@ export class ASPrintUtil {
                 margin-left: 0.05in;
             }
 
+            ${this.getRosterSummaryStyles()}
+
             @media print {
                 body, html {
                     margin: 0 !important;
@@ -638,12 +655,17 @@ export class ASPrintUtil {
                 body.as-multipage-container-active > *:not(#as-multipage-container) {
                     display: none !important;
                 }
-                
+
                 .as-flex-container.as-group-break {
                     page-break-after: always;
                     break-after: page;
                 }
-                
+
+                .as-roster-summary {
+                    page-break-before: always;
+                    break-before: page;
+                }
+
                 @page {
                     size: auto;
                     margin: 0.25in !important;
@@ -651,6 +673,186 @@ export class ASPrintUtil {
 
             }
         `;
+    }
+
+    /**
+     * Returns shared CSS styles for the roster summary table.
+     */
+    private static getRosterSummaryStyles(): string {
+        return `
+            .as-roster-summary {
+                background: white;
+                padding: 0.2in 0;
+                font-family: sans-serif;
+                color: #222;
+            }
+
+            .as-roster-header {
+                display: flex;
+                align-items: baseline;
+                gap: 0.1in;
+                padding: 0 0.04in 0.08in;
+                border-bottom: 2px solid #333;
+                margin-bottom: 0.1in;
+            }
+
+            .as-roster-faction {
+                font-size: 10pt;
+                color: #555;
+            }
+
+            .as-roster-faction::after {
+                content: ':';
+                margin-left: 2px;
+            }
+
+            .as-roster-force-name {
+                font-size: 12pt;
+                font-weight: 700;
+            }
+
+            .as-roster-table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 8pt;
+            }
+
+            .as-roster-table th {
+                font-weight: 700;
+                text-align: left;
+                padding: 2px 4px;
+                border-bottom: 1.5px solid #555;
+                white-space: nowrap;
+            }
+
+            .as-roster-table td {
+                padding: 2px 4px;
+                border-bottom: 0.5px solid #ddd;
+                vertical-align: top;
+                white-space: nowrap;
+            }
+
+            .as-roster-table td.as-roster-specials {
+                font-size: 7pt;
+                color: #555;
+                white-space: normal;
+                max-width: 2.5in;
+            }
+
+            .as-roster-footer {
+                text-align: right;
+                font-weight: 700;
+                font-size: 11pt;
+                margin-top: 0.1in;
+                padding: 0.05in 0.04in;
+                border-top: 2px solid #333;
+            }
+        `;
+    }
+
+    /**
+     * Creates a roster summary page with a table of all units.
+     */
+    private static createRosterSummaryPage(groups: UnitGroup<ASForceUnit>[], force: Force): HTMLElement {
+        const container = document.createElement('div');
+        container.className = 'as-roster-summary';
+
+        // Header
+        const header = document.createElement('div');
+        header.className = 'as-roster-header';
+        const parts: string[] = [];
+        const faction = force.faction();
+        if (faction) {
+            let factionLabel = faction.name;
+            if (faction.group && faction.group !== faction.name) {
+                factionLabel += ` \u00B7 ${faction.group}`;
+            }
+            parts.push(factionLabel);
+        }
+        const era = force.era();
+        if (era) {
+            parts.push(era.name);
+        }
+        if (parts.length > 0) {
+            const factionSpan = document.createElement('span');
+            factionSpan.className = 'as-roster-faction';
+            factionSpan.textContent = parts.join(' \u00B7 ');
+            header.appendChild(factionSpan);
+        }
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'as-roster-force-name';
+        nameSpan.textContent = force.name || '';
+        header.appendChild(nameSpan);
+        container.appendChild(header);
+
+        // Table
+        const table = document.createElement('table');
+        table.className = 'as-roster-table';
+
+        // Table header
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        const columns = ['Unit', 'TP', 'SZ', 'Skill', 'PV', 'Role', 'MV', 'S', 'M', 'L', 'A+S', 'OV', 'Specials'];
+        for (const col of columns) {
+            const th = document.createElement('th');
+            th.textContent = col;
+            headerRow.appendChild(th);
+        }
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        // Table body
+        const tbody = document.createElement('tbody');
+        let totalPv = 0;
+
+        for (const group of groups) {
+            for (const forceUnit of group.units()) {
+                const unit = forceUnit.getUnit();
+                const as = unit.as;
+                const adjustedPv = forceUnit.adjustedPv();
+                totalPv += adjustedPv;
+
+                const row = document.createElement('tr');
+
+                const unitName = [unit.chassis, unit.model].filter(Boolean).join(' ');
+                const cells = [
+                    unitName,
+                    as.TP,
+                    String(as.SZ),
+                    String(forceUnit.pilotSkill()),
+                    String(adjustedPv),
+                    unit.role || '',
+                    as.MV,
+                    as.dmg.dmgS,
+                    as.dmg.dmgM,
+                    as.dmg.dmgL,
+                    `${as.Arm}+${as.Str}`,
+                    String(as.OV),
+                    (as.specials || []).join(', ')
+                ];
+
+                for (let i = 0; i < cells.length; i++) {
+                    const td = document.createElement('td');
+                    td.textContent = cells[i];
+                    if (i === columns.length - 1) {
+                        td.className = 'as-roster-specials';
+                    }
+                    row.appendChild(td);
+                }
+
+                tbody.appendChild(row);
+            }
+        }
+        table.appendChild(tbody);
+        container.appendChild(table);
+
+        // Footer with total PV
+        const footer = document.createElement('div');
+        footer.className = 'as-roster-footer';
+        footer.textContent = `Total PV: ${totalPv}`;
+        container.appendChild(footer);
+
+        return container;
     }
 
     /**

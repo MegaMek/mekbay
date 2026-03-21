@@ -3,6 +3,14 @@ import { resolveFromGroups, resolveFromUnits } from './org-solver.util';
 import { getAggregatedGroupsResult } from './org-namer.util';
 import type { GroupSizeResult } from './org-types';
 
+type UnitFixture = {
+    type: Unit['type'];
+    subtype: Unit['subtype'];
+    omni?: boolean;
+    specials?: string[];
+    internal?: number;
+};
+
     function createUnit(
     name: string,
     type: Unit['type'],
@@ -116,6 +124,144 @@ function createCI(
     internal: number = 1,
 ): Unit {
     return createUnit(name, 'Infantry', subtype, false, [], internal);
+}
+
+const BLUNDER_BRIGADE_UNIT_FIXTURES: Record<string, UnitFixture> = {
+    BMAnvil_ANV3M: { type: 'Mek', subtype: 'BattleMek', specials: ['ECM', 'ENE', 'JMPW1'] },
+    BMAwesome_AWS9Q: { type: 'Mek', subtype: 'BattleMek', specials: ['ECM', 'ENE'] },
+    BMAxman_AXM1N: { type: 'Mek', subtype: 'BattleMek', specials: ['AC2/2/-', 'CASE', 'MEL'] },
+    BMDasher_H: { type: 'Mek', subtype: 'BattleMek Omni', omni: true, specials: ['ENE', 'OMNI'] },
+    BMFirestarter_FS9OE: { type: 'Mek', subtype: 'BattleMek Omni', omni: true, specials: ['MEL', 'OMNI', 'REAR0*/-/-'] },
+    BMGrandTitan_TITN10M: { type: 'Mek', subtype: 'BattleMek', specials: ['AMS', 'IF1', 'REAR1/-/-'] },
+    BMHatchetman_HCT3F: { type: 'Mek', subtype: 'BattleMek', specials: ['AC1/1/-', 'MEL'] },
+    BMHatchetman_HCT5S: { type: 'Mek', subtype: 'BattleMek', specials: ['CASE', 'FLK1/1/1', 'MEL'] },
+    BMHighlanderIIC: { type: 'Mek', subtype: 'BattleMek', specials: ['CASE', 'IF1'] },
+    BMHoplite_C: { type: 'Mek', subtype: 'BattleMek', specials: ['CASE', 'IF1'] },
+    BMHoplite_HOP4D: { type: 'Mek', subtype: 'BattleMek', specials: ['FLK1/1/1', 'IF0*'] },
+    BMHussar_HSR400D: { type: 'Mek', subtype: 'BattleMek', specials: ['FLK1/1/1'] },
+    BMImp_C: { type: 'Mek', subtype: 'BattleMek', specials: ['CASE', 'IF1'] },
+    BMJavelin_JVN10FFireJavelin: { type: 'Mek', subtype: 'BattleMek', specials: ['ENE'] },
+    BMJavelin_JVN11AFireJavelin: { type: 'Mek', subtype: 'BattleMek', specials: ['ENE'] },
+    BMKomodo_KIM2: { type: 'Mek', subtype: 'BattleMek', specials: ['AMS', 'ECM', 'TAG'] },
+    BMMarauderIIC: { type: 'Mek', subtype: 'BattleMek', specials: ['ENE'] },
+    BMNightsky_NGS5S: { type: 'Mek', subtype: 'BattleMek', specials: ['ENE', 'MEL'] },
+    BMOrion_ON1K: { type: 'Mek', subtype: 'BattleMek', specials: ['IF1'] },
+    BMOrion_ON1KMuller: { type: 'Mek', subtype: 'BattleMek', specials: ['ARTS-1'] },
+    BMOrion_ON1M: { type: 'Mek', subtype: 'BattleMek', specials: ['CASE', 'FLK1/1/1', 'IF1', 'LRM1/1/1', 'SNARC'] },
+    BMOstsol_OTL5M: { type: 'Mek', subtype: 'BattleMek', specials: ['AMS', 'REAR1/1/-'] },
+    BMPuma_E: { type: 'Mek', subtype: 'BattleMek Omni', omni: true, specials: ['CASE', 'OMNI'] },
+    BMPuma_S: { type: 'Mek', subtype: 'BattleMek Omni', omni: true, specials: ['CASE', 'ECM', 'OMNI', 'PRB', 'RCN'] },
+    BMRyoken_E: { type: 'Mek', subtype: 'BattleMek Omni', omni: true, specials: ['CASE', 'OMNI', 'PRB', 'RCN'] },
+    BMScarabus_SCB9A: { type: 'Mek', subtype: 'BattleMek', specials: ['ECM', 'ENE', 'MEL', 'TAG'] },
+    BMShogun_C: { type: 'Mek', subtype: 'BattleMek', specials: ['CASE', 'IF2'] },
+    BMStalker_STK5S: { type: 'Mek', subtype: 'BattleMek', specials: ['AMS', 'CASE', 'IF1'] },
+    BMTempest_TMP3G: { type: 'Mek', subtype: 'BattleMek', specials: [] },
+    BMTempest_TMP3M: { type: 'Mek', subtype: 'BattleMek', specials: [] },
+    BMTempest_TMP3MA: { type: 'Mek', subtype: 'BattleMek', specials: ['AC1/1/-'] },
+    BMThunder_THR1L: { type: 'Mek', subtype: 'BattleMek', specials: ['AC2/2/-', 'CASE', 'IF0*'] },
+    BMThunderbolt_TDR9W: { type: 'Mek', subtype: 'BattleMek', specials: ['CASE', 'IF1'] },
+    BMVenom_SDR9K: { type: 'Mek', subtype: 'BattleMek', specials: ['ENE'] },
+    BMVictor_C: { type: 'Mek', subtype: 'BattleMek', specials: [] },
+    BMWarDog_WRDG02FC: { type: 'Mek', subtype: 'BattleMek', specials: ['AMS', 'ECM', 'REAR0*/-/-'] },
+    BMWarhammer_C2: { type: 'Mek', subtype: 'BattleMek', specials: [] },
+    BMWarhammer_C3: { type: 'Mek', subtype: 'BattleMek', specials: ['CASE', 'ECM'] },
+    CIFootPlatoonComStar_SRM: { type: 'Infantry', subtype: 'Conventional Infantry', internal: 24, specials: ['AM', 'CAR3'] },
+    CIFootPlatoonFWLM_SRM3035: { type: 'Infantry', subtype: 'Conventional Infantry', internal: 24, specials: ['CAR3'] },
+    CVBadgerCTrackedTransport_A: { type: 'Tank', subtype: 'Combat Vehicle Omni', omni: true, specials: ['CASE', 'IT5', 'OMNI', 'SRCH', 'TUR(3/2/-)'] },
+    CVBadgerCTrackedTransport_B: { type: 'Tank', subtype: 'Combat Vehicle Omni', omni: true, specials: ['CASE', 'IT5', 'OMNI', 'SRCH', 'TUR(2/2/-)'] },
+    CVDemolisherHeavyTank_Clan: { type: 'Tank', subtype: 'Combat Vehicle', specials: ['CASE', 'FLK3/3/-', 'SRCH', 'TUR(5/5/-,FLK3/3/-)'] },
+    CVPikeSupportVehicle_Clan: { type: 'Tank', subtype: 'Combat Vehicle', specials: ['CASE', 'SRCH', 'TUR(2/2/2)'] },
+    CVThumperArtilleryVehicle: { type: 'Tank', subtype: 'Combat Vehicle', specials: ['ARTT-1', 'EE', 'REAR0*/-/-', 'SRCH'] },
+};
+
+function createFixtureUnit(name: keyof typeof BLUNDER_BRIGADE_UNIT_FIXTURES): Unit {
+    const fixture = BLUNDER_BRIGADE_UNIT_FIXTURES[name];
+    return createUnit(
+        name,
+        fixture.type,
+        fixture.subtype,
+        fixture.omni ?? false,
+        fixture.specials ?? [],
+        fixture.internal ?? 1,
+    );
+}
+
+const BLUNDER_BRIGADE_MAX_SOLVE_MS = 500;
+
+const BLUNDER_BRIGADE_GROUP_ONE_NAMES: Array<keyof typeof BLUNDER_BRIGADE_UNIT_FIXTURES> = [
+    'BMNightsky_NGS5S',
+    'BMOstsol_OTL5M',
+    'BMOrion_ON1KMuller',
+    'CVThumperArtilleryVehicle',
+    'CIFootPlatoonFWLM_SRM3035',
+    'CIFootPlatoonComStar_SRM',
+    'BMPuma_E',
+    'BMPuma_S',
+    'BMDasher_H',
+    'BMRyoken_E',
+    'BMVenom_SDR9K',
+    'BMAwesome_AWS9Q',
+    'BMStalker_STK5S',
+    'BMKomodo_KIM2',
+    'BMAnvil_ANV3M',
+    'BMWarDog_WRDG02FC',
+    'BMGrandTitan_TITN10M',
+    'BMTempest_TMP3MA',
+    'BMTempest_TMP3M',
+    'BMTempest_TMP3G',
+    'BMJavelin_JVN10FFireJavelin',
+    'BMJavelin_JVN11AFireJavelin',
+    'CVDemolisherHeavyTank_Clan',
+    'CVPikeSupportVehicle_Clan',
+    'CVBadgerCTrackedTransport_A',
+    'CVBadgerCTrackedTransport_B',
+    'BMScarabus_SCB9A',
+    'BMHatchetman_HCT3F',
+    'BMFirestarter_FS9OE',
+    'BMAxman_AXM1N',
+    'BMHatchetman_HCT5S',
+    'BMHussar_HSR400D',
+    'BMThunderbolt_TDR9W',
+    'BMThunder_THR1L',
+    'BMOrion_ON1M',
+    'BMOrion_ON1K',
+    'BMMarauderIIC',
+    'BMHighlanderIIC',
+    'BMHoplite_HOP4D',
+    'BMHoplite_C',
+    'BMVictor_C',
+    'BMShogun_C',
+    'BMImp_C',
+    'BMWarhammer_C2',
+    'BMWarhammer_C3',
+];
+
+function resolveBlunderBrigadeForce(): { groupResults: GroupSizeResult[]; result: GroupSizeResult[] } {
+    const groupOne: Unit[] = Array.from({ length: 1 }, (_, iteration) =>
+        BLUNDER_BRIGADE_GROUP_ONE_NAMES.map(name => createFixtureUnit(name)),
+    ).flat();
+    const groupTwo: Unit[] = [
+        'BMOstsol_OTL5M',
+        'BMNightsky_NGS5S',
+        'BMPuma_E',
+        'BMPuma_S',
+        'BMDasher_H',
+    ].map(name => createFixtureUnit(name));
+    const groupThree: Unit[] = [
+        'BMHatchetman_HCT5S',
+        'BMHussar_HSR400D',
+    ].map(name => createFixtureUnit(name));
+
+    const groupResults = [
+        ...resolveFromUnits(groupOne, 'Wolf\'s Dragoons', 'Mercenary'),
+        ...resolveFromUnits(groupTwo, 'Wolf\'s Dragoons', 'Mercenary'),
+        ...resolveFromUnits(groupThree, 'Wolf\'s Dragoons', 'Mercenary'),
+    ];
+
+    return {
+        groupResults,
+        result: resolveFromGroups('Wolf\'s Dragoons', 'Mercenary', groupResults),
+    };
 }
 
 function createContuberniumGroup(unit: Unit, tag: 'infantry' | 'non-infantry'): GroupSizeResult {
@@ -783,6 +929,138 @@ describe('resolveFromUnits', () => {
         expect(descendantGroups.every(group => group.leftoverUnits === undefined)).toBeTrue();
     });
 
+    it('returns Force when customMatch enumeration exceeds the cap', () => {
+        const warnSpy = spyOn(console, 'warn');
+        const units: Unit[] = Array.from({ length: 18 }, (_, index) =>
+            createCI(`CI-CAP-${index + 1}`, 'Conventional Infantry', index + 1),
+        );
+
+        const result = resolveFromUnits(units, 'Federated Suns', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Force');
+        expect(result[0].type).toBeNull();
+        expect(
+            warnSpy.calls.allArgs().flatMap(args => args.map(arg => String(arg))).some(message =>
+                message.includes('Too many combinations') && message.includes('returning Force'),
+            ),
+        ).toBeTrue();
+    });
+
+    it('does not hit the cap for many conventional infantry with identical trooper counts', () => {
+        const warnSpy = spyOn(console, 'warn');
+        const units: Unit[] = Array.from({ length: 18 }, (_, index) => createCI(`CI-BUCKET-${index + 1}`));
+
+        const result = resolveFromUnits(units, 'Federated Suns', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Platoon');
+        expect(result[0].type).toBe('Platoon');
+        expect(result[0].units?.length).toBe(18);
+        expect(
+            warnSpy.calls.allArgs().flatMap(args => args.map(arg => String(arg))).some(message =>
+                message.includes('Too many combinations'),
+            ),
+        ).toBeFalse();
+    });
+
+    it('does not hit the cap for many battle armor squads with identical trooper counts', () => {
+        const warnSpy = spyOn(console, 'warn');
+        const units: Unit[] = Array.from({ length: 16 }, (_, index) => createBA(`BA-BUCKET-${index + 1}`, [], 4));
+
+        const result = resolveFromUnits(units, 'Federated Suns', 'Inner Sphere');
+
+        expect(result.length).toBeGreaterThan(0);
+        expect(result[0].name).not.toBe('Force');
+        expect(result[0].type).not.toBeNull();
+        expect(
+            warnSpy.calls.allArgs().flatMap(args => args.map(arg => String(arg))).some(message =>
+                message.includes('Too many combinations'),
+            ),
+        ).toBeFalse();
+    });
+
+    it('resolves 4 BA troopers as a Single for Inner Sphere orgs', () => {
+        const result = resolveFromUnits([createBA('IS-BA-1', [], 4)], 'Federated Suns', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Single');
+        expect(result[0].type).toBe('Single');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 4 conventional infantry troopers as a Squad for Inner Sphere orgs', () => {
+        const result = resolveFromUnits([createCI('IS-CI-SQ', 'Conventional Infantry', 4)], 'Federated Suns', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Squad');
+        expect(result[0].type).toBe('Squad');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 10 conventional infantry troopers as a Platoon for Inner Sphere orgs', () => {
+        const result = resolveFromUnits([createCI('IS-CI-PL', 'Conventional Infantry', 10)], 'Federated Suns', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Platoon');
+        expect(result[0].type).toBe('Platoon');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 4 conventional infantry troopers as a Squad for Dragoons orgs', () => {
+        const result = resolveFromUnits([createCI('WD-CI-SQ-1', 'Conventional Infantry', 4)], 'Wolf Dragoons', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Squad');
+        expect(result[0].type).toBe('Squad');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 10 conventional infantry troopers as a Platoon for Dragoons orgs', () => {
+        const result = resolveFromUnits([createCI('WD-CI-PL-1', 'Conventional Infantry', 10)], 'Wolf Dragoons', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Platoon');
+        expect(result[0].type).toBe('Platoon');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 32 conventional infantry troopers as a Platoon for Dragoons orgs', () => {
+        const result = resolveFromUnits([createCI('WD-CI-PL-2', 'Conventional Infantry', 32)], 'Wolf Dragoons', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Platoon');
+        expect(result[0].type).toBe('Platoon');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 4 BA troopers as a Single for Capellan orgs', () => {
+        const result = resolveFromUnits([createBA('CC-BA-1', [], 4)], 'Capellan Confederation', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Single');
+        expect(result[0].type).toBe('Single');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 4 conventional infantry troopers as a Squad for Capellan orgs', () => {
+        const result = resolveFromUnits([createCI('CC-CI-SQ', 'Conventional Infantry', 4)], 'Capellan Confederation', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Squad');
+        expect(result[0].type).toBe('Squad');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves 10 conventional infantry troopers as a Platoon for Capellan orgs', () => {
+        const result = resolveFromUnits([createCI('CC-CI-PL', 'Conventional Infantry', 10)], 'Capellan Confederation', 'Inner Sphere');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Platoon');
+        expect(result[0].type).toBe('Platoon');
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
     it('98 BM keeps 14 Sept groups under hierarchical aggregation', () => {
         const units: Unit[] = [];
         for (let i = 0; i < 98; i++) {
@@ -1023,6 +1301,37 @@ describe('resolveFromUnits', () => {
         expect(result[0].type).toBe('Nova');
         expect(result[0].leftoverUnits).toBeUndefined();
     });
+
+    it('does not hit the Nova combination cap for a large mixed Clan force without battle armor', () => {
+        const warnSpy = spyOn(console, 'warn');
+        const units: Unit[] = [
+            ...Array.from({ length: 36 }, (_, index) => createBM(`Clan BM ${index + 1}`)),
+            ...Array.from({ length: 12 }, (_, index) =>
+                createBM(`Clan Omni BM ${index + 1}`, 'BattleMek Omni', true, ['OMNI']),
+            ),
+            ...Array.from({ length: 18 }, (_, index) => createCV(`Clan CV ${index + 1}`)),
+            ...Array.from({ length: 6 }, (_, index) => createCV(`Clan Omni CV ${index + 1}`, true, ['OMNI'])),
+            ...Array.from({ length: 12 }, (_, index) =>
+                createUnit(`Clan AF ${index + 1}`, 'Aero', 'Aerospace Fighter'),
+            ),
+            ...Array.from({ length: 6 }, (_, index) =>
+                createUnit(`Clan Omni AF ${index + 1}`, 'Aero', 'Aerospace Fighter', true, ['OMNI']),
+            ),
+            ...Array.from({ length: 8 }, (_, index) => createCI(`Clan CI ${index + 1}`)),
+        ];
+
+        const result = resolveFromUnits(units, 'Clan Test', 'HW Clan');
+        const allGroups = result.flatMap(group => [group, ...collectDescendantGroups(group)]);
+        const warnedMessages = warnSpy.calls.allArgs().flatMap(args => args.map(arg => String(arg)));
+
+        expect(result.length).toBeGreaterThan(0);
+        expect(allGroups.some(group => group.type === 'Nova')).toBeFalse();
+        expect(
+            warnedMessages.some(message =>
+                message.includes('Too many combinations') && message.includes('Nova'),
+            ),
+        ).toBeFalse();
+    });
     
     it('resolves 10 BA (with MEC special) and 10 BM (with OMNI special) into a Supernova Binary', () => {
         const units: Unit[] = [
@@ -1192,6 +1501,24 @@ describe('resolveFromUnits', () => {
         expect(result[0].leftoverUnits).toBeUndefined();
         expect(result[0].children?.length).toBe(3);
         expect(result[0].children?.every(child => child.type === 'Star')).toBeTrue();
+    });
+
+    it('resolves the Blunder Brigade 7415 Wolf\'s Dragoons force without freezing', () => {
+        const { groupResults, result } = resolveBlunderBrigadeForce();
+
+        expect(groupResults.length).toBeGreaterThan(0);
+        expect(result.length).toBeGreaterThan(0);
+        expect(result.every(group => group.name.length > 0)).toBeTrue();
+    });
+
+    it('resolves the Blunder Brigade 7415 Wolf\'s Dragoons force within the performance guardrail', () => {
+        const startedAt = Date.now();
+        const { groupResults, result } = resolveBlunderBrigadeForce();
+        const elapsedMs = Date.now() - startedAt;
+
+        expect(groupResults.length).toBeGreaterThan(0);
+        expect(result.length).toBeGreaterThan(0);
+        expect(elapsedMs).toBeLessThan(BLUNDER_BRIGADE_MAX_SOLVE_MS);
     });
 
     it('crossgrades foreign groups to the nearest dynamic-tier modifier in the target org', () => {

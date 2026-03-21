@@ -1,0 +1,64 @@
+<div class="mb-data-table"
+    [class.sort-asc]="sortDirection() === 'asc'"
+    [class.sort-desc]="sortDirection() === 'desc'">
+    <div class="mb-data-table-header-viewport">
+        <div class="mb-data-table-header"
+            [style.grid-template-columns]="gridTemplate()"
+            [style.width]="tableWidth()"
+            [style.min-width]="tableWidth()"
+            [style.transform]="'translateX(-' + scrollLeft() + 'px)'">
+            @for (column of columns(); track column.id) {
+            <div class="mb-data-table-cell mb-data-table-header-cell"
+                [class.is-sortable]="!!column.sortKey"
+                [class.sort-active]="column.sortActive"
+                [class.align-center]="column.align === 'center'"
+                [class.align-right]="column.align === 'right'"
+                [ngClass]="column.headerClass"
+                (click)="onHeaderClick(column, $event)">{{ column.header }}</div>
+            }
+        </div>
+    </div>
+
+    <cdk-virtual-scroll-viewport
+        class="mb-data-table-viewport"
+        [itemSize]="itemSize()"
+        [style.--mb-data-table-item-size.px]="itemSize()"
+        [minBufferPx]="minBufferPx()"
+        [maxBufferPx]="maxBufferPx()"
+        (scroll)="onViewportScroll()"
+        tabindex="0">
+        <div class="mb-data-table-row-item"
+            *cdkVirtualFor="let row of rows(); let i = index; trackBy: trackRow"
+            [ngClass]="resolveRowClass(row, i)"
+            longPress
+            (shortPress)="onRowClick(row, i, $event)"
+            (longPress)="onRowLongPress(row, i, $event)"
+            (pointerenter)="onRowPointerEnter(row, i, $event)">
+            @if (isFullRowRow(row, i) && fullRowTemplate(); as rowTemplate) {
+            <div class="mb-data-table-full-row"
+                [style.width]="tableWidth()"
+                [style.min-width]="tableWidth()">
+                <ng-container [ngTemplateOutlet]="rowTemplate" [ngTemplateOutletContext]="rowContext(row, i)"></ng-container>
+            </div>
+            } @else {
+            <div class="mb-data-table-row"
+                [style.grid-template-columns]="gridTemplate()"
+                [style.width]="tableWidth()"
+                [style.min-width]="tableWidth()">
+                @for (column of columns(); track column.id) {
+                <div class="mb-data-table-cell mb-data-table-body-cell"
+                    [class.align-center]="column.align === 'center'"
+                    [class.align-right]="column.align === 'right'"
+                    [ngClass]="resolveCellClass(column, row, i)">
+                    @if (column.cellTemplate; as cellTemplate) {
+                    <ng-container [ngTemplateOutlet]="cellTemplate" [ngTemplateOutletContext]="cellContext(row, column, i)"></ng-container>
+                    } @else {
+                    {{ cellValue(column, row, i) }}
+                    }
+                </div>
+                }
+            </div>
+            }
+        </div>
+    </cdk-virtual-scroll-viewport>
+</div>

@@ -32,12 +32,12 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, signal, type ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, type input, viewChild, ChangeDetectorRef, DestroyRef, untracked, type ComponentRef } from '@angular/core';
+import { Component, signal, type ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, type input, viewChild, ChangeDetectorRef, DestroyRef, untracked, type ComponentRef, type TemplateRef } from '@angular/core';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
-import { UnitSearchFiltersService, SORT_OPTIONS, type SortOption, type SerializedSearchFilter } from '../../services/unit-search-filters.service';
+import { SORT_OPTIONS, type SortOption, type SerializedSearchFilter } from '../../services/unit-search-filters.model';
 import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
 import type { Unit } from '../../models/units.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -70,12 +70,15 @@ import { SyntaxInputComponent } from '../syntax-input/syntax-input.component';
 import { SavedSearchesService } from '../../services/saved-searches.service';
 import { generateUUID } from '../../services/ws.service';
 import { GameSystem } from '../../models/common.model';
-import { AS_TYPE_DISPLAY_NAMES, RANGE_FILTERS } from '../../services/unit-search-filters.model';
+import { AS_TYPE_DISPLAY_NAMES, DROPDOWN_FILTERS, RANGE_FILTERS } from '../../services/unit-search-filters.model';
 import { UnitDetailsPanelComponent } from '../unit-details-panel/unit-details-panel.component';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import { formatMovement } from '../../utils/as-common.util';
 import type { UnitType } from '../../models/units.model';
+import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
+import { DataTableComponent, type DataTableCellContext, type DataTableColumn, type DataTableRowClickEvent, type DataTableRowLongPressEvent, type DataTableRowPointerEnterEvent, type DataTableSortEvent } from '../data-table/data-table.component';
+import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 
 /** Grouped chassis entry for compact view */
 export interface ChassisGroup {
@@ -96,7 +99,7 @@ export interface ChassisGroup {
 @Component({
     selector: 'unit-search',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, TooltipDirective, MultiSelectDropdownComponent, AdjustedPV, FormatNumberPipe, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, SemanticGuideComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent],
+    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, TooltipDirective, MultiSelectDropdownComponent, AdjustedPV, FormatNumberPipe, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, SemanticGuideComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.scss',
     host: {
@@ -105,6 +108,7 @@ export interface ChassisGroup {
     }
 })
 export class UnitSearchComponent {
+    readonly gameSystemEnum = GameSystem;
     layoutService = inject(LayoutService);
     filtersService = inject(UnitSearchFiltersService);
     dataService = inject(DataService);
@@ -130,8 +134,24 @@ export class UnitSearchComponent {
     public readonly SORT_OPTIONS = SORT_OPTIONS;
     readonly unitTypeDisplayNames = AS_TYPE_DISPLAY_NAMES;
 
-    readonly dropdownFilters = this.filtersService.dropdownConfigs;
-    readonly rangeFilters = this.filtersService.rangeConfigs;
+    readonly advPanelFilterGameSystem = signal<GameSystem>(this.gameService.currentGameSystem());
+    readonly dropdownFilters = computed(() => {
+        const gameSystem = this.advPanelFilterGameSystem();
+        return DROPDOWN_FILTERS.filter(f => !f.game || f.game === gameSystem);
+    });
+    readonly rangeFilters = computed(() => {
+        const gameSystem = this.advPanelFilterGameSystem();
+        return RANGE_FILTERS.filter(f => !f.game || f.game === gameSystem);
+    });
+    readonly otherAdvPanelFilterGameSystem = computed(() => this.getOtherGameSystem(this.advPanelFilterGameSystem()));
+    readonly otherAdvPanelFilterGameSystemHasActiveFilters = computed(() => {
+        const filterState = this.filtersService.effectiveFilterState();
+        const otherGameSystem = this.otherAdvPanelFilterGameSystem();
+
+        return [...DROPDOWN_FILTERS, ...RANGE_FILTERS].some(filter => (
+            filter.game === otherGameSystem && filterState[filter.key]?.interactedWith
+        ));
+    });
 
     private searchDebounceTimer: any;
     private heightTrackingDebounceTimer: any;
@@ -191,6 +211,19 @@ export class UnitSearchComponent {
     advBtn = viewChild.required<ElementRef<HTMLButtonElement>>('advBtn');
     favBtn = viewChild.required<ElementRef<HTMLButtonElement>>('favBtn');
     advPanel = viewChild<ElementRef<HTMLElement>>('advPanel');
+    resultsDropdown = viewChild<ElementRef<HTMLElement>>('resultsDropdown');
+    resultsDataTable = viewChild<DataTableComponent<Unit>>(DataTableComponent);
+    private readonly tableIconCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableIconCell');
+    private readonly tableNameCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableNameCell');
+    private readonly tableYearCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableYearCell');
+    private readonly tableTypeCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableTypeCell');
+    private readonly tableBvCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableBvCell');
+    private readonly tableTonsCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableTonsCell');
+    private readonly tablePvCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tablePvCell');
+    private readonly tableMovementCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableMovementCell');
+    private readonly tableClassicMovementCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableClassicMovementCell');
+    private readonly tableSpecialsCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableSpecialsCell');
+    private readonly tableTagsCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableTagsCell');
 
     /** Query the active dropdown element directly from DOM to avoid viewChild retention */
     private getActiveDropdownElement(): HTMLElement | null {
@@ -211,13 +244,14 @@ export class UnitSearchComponent {
     selectedUnits = signal<Set<string>>(new Set());
     private unitDetailsDialogOpen = signal(false);
 
-    /**
-     * Current results view mode.
-     * - 'list'    : default list / table view
-     * - 'card'    : AS card grid (Alpha Strike only)
-     * - 'chassis' : compact chassis-grouped view
-     */
-    viewMode = signal<'list' | 'card' | 'chassis'>('list');
+     /**
+      * Current results view mode.
+      * - 'list'    : default list view
+      * - 'card'    : AS card grid (Alpha Strike only)
+      * - 'chassis' : compact chassis-grouped view
+      * - 'table'   : expanded table view
+      */
+     viewMode = signal<'list' | 'card' | 'chassis' | 'table'>(this.optionsService.options().unitSearchViewMode);
 
 
 
@@ -230,6 +264,36 @@ export class UnitSearchComponent {
     /** Whether to show the inline details panel (expanded view + sufficient screen width) */
     showInlinePanel = computed(() => {
         return this.expandedView() && this.layoutService.windowWidth() >= this.INLINE_PANEL_MIN_WIDTH;
+    });
+
+    readonly isTableMode = computed(() => this.viewMode() === 'table');
+    private readonly cardViewMinWidthPx = 300;
+    private readonly cardViewGapPx = 4;
+    private readonly cardViewRowPaddingPx = 4;
+    private readonly resultsDropdownWidth = signal(0);
+    readonly cardViewColumnCount = computed(() => {
+        const measuredWidth = this.resultsDropdownWidth();
+        const availableWidth = Math.max(0, measuredWidth - (this.cardViewRowPaddingPx * 2));
+        return Math.max(1, Math.floor((availableWidth + this.cardViewGapPx) / (this.cardViewMinWidthPx + this.cardViewGapPx)));
+    });
+    readonly cardViewRows = computed(() => {
+        const units = this.filtersService.filteredUnits();
+        const columnCount = this.cardViewColumnCount();
+        const rows: Unit[][] = [];
+
+        for (let index = 0; index < units.length; index += columnCount) {
+            rows.push(units.slice(index, index + columnCount));
+        }
+
+        return rows;
+    });
+
+    readonly currentViewModeTitle = computed(() => {
+        const mode = this.viewMode();
+        if (mode === 'chassis') return 'Chassis View';
+        if (mode === 'card') return 'Card View';
+        if (mode === 'table') return 'Table View';
+        return 'List View';
     });
 
     /**
@@ -336,6 +400,403 @@ export class UnitSearchComponent {
         return opt?.slotLabel || opt?.label || key;
     });
 
+    readonly cbtTableSortSlotHeader = computed((): string | null => {
+        const key = this.filtersService.selectedSort();
+        if (!key) return null;
+
+        if (UnitSearchComponent.CBT_TABLE_VISIBLE_KEYS.includes(key)) return null;
+
+        for (const groupName of UnitSearchComponent.CBT_TABLE_VISIBLE_GROUPS) {
+            const group = UnitSearchComponent.SORT_KEY_GROUPS[groupName];
+            if (group && group.includes(key)) return null;
+        }
+
+        const opt: SortOption | undefined = this.SORT_OPTIONS.find(o => o.key === key);
+        return opt?.slotLabel || opt?.label || key;
+    });
+
+    readonly unitSearchTableMinWidth = computed(() => {
+        if (this.gameService.isAlphaStrike()) {
+            return this.asTableSortSlotHeader() ? '1534px' : '1446px';
+        }
+
+        return this.cbtTableSortSlotHeader() ? '1878px' : '1782px';
+    });
+
+    readonly unitSearchTableColumns = computed<readonly DataTableColumn<Unit>[]>(() => {
+        const iconCell = this.tableIconCell();
+        const nameCell = this.tableNameCell();
+        const yearCell = this.tableYearCell();
+        const typeCell = this.tableTypeCell();
+        const bvCell = this.tableBvCell();
+        const tonsCell = this.tableTonsCell();
+        const pvCell = this.tablePvCell();
+        const movementCell = this.tableMovementCell();
+        const classicMovementCell = this.tableClassicMovementCell();
+        const specialsCell = this.tableSpecialsCell();
+        const tagsCell = this.tableTagsCell();
+
+        if (!iconCell || !nameCell || !yearCell || !tagsCell) {
+            return [];
+        }
+
+        if (!this.gameService.isAlphaStrike()) {
+            if (!bvCell || !tonsCell || !classicMovementCell) {
+                return [];
+            }
+
+            const columns: DataTableColumn<Unit>[] = [
+                {
+                    id: 'icon',
+                    header: '',
+                    track: '40px',
+                    cellTemplate: iconCell,
+                    align: 'center',
+                },
+                {
+                    id: 'name',
+                    header: 'Name',
+                    track: 'minmax(320px, 1.35fr)',
+                    cellTemplate: nameCell,
+                    sortKey: 'name',
+                    sortActive: this.isSortActive('name'),
+                },
+                {
+                    id: 'type',
+                    header: 'Type',
+                    track: '100px',
+                    value: unit => unit.type,
+                    sortKey: 'type',
+                    sortActive: this.isSortActive('type'),
+                    cellClass: this.tableCellClass('cbt-td-type', this.isSortActive('type')),
+                },
+                {
+                    id: 'subtype',
+                    header: 'Subtype',
+                    track: '130px',
+                    value: unit => this.formatClassicSubtype(unit),
+                    sortKey: 'subtype',
+                    sortActive: this.isSortActive('subtype'),
+                    cellClass: this.tableCellClass('cbt-td-subtype', this.isSortActive('subtype')),
+                },
+                {
+                    id: 'role',
+                    header: 'Role',
+                    track: '130px',
+                    value: unit => unit.role !== 'None' ? unit.role : '',
+                    sortKey: 'role',
+                    sortActive: this.isSortActive('role'),
+                    cellClass: this.tableCellClass('as-td-role', this.isSortActive('role')),
+                },
+                {
+                    id: 'bv',
+                    header: 'BV',
+                    track: '78px',
+                    cellTemplate: bvCell,
+                    sortKey: 'bv',
+                    sortActive: this.isSortActive('bv'),
+                    cellClass: this.tableCellClass('cbt-td-bv is-bold', this.isSortActive('bv')),
+                    align: 'right',
+                },
+                {
+                    id: 'tons',
+                    header: 'Tons',
+                    track: '64px',
+                    cellTemplate: tonsCell,
+                    sortKey: 'tons',
+                    sortActive: this.isSortActive('tons'),
+                    cellClass: this.tableCellClass('cbt-td-tons', this.isSortActive('tons')),
+                    align: 'right',
+                },
+                {
+                    id: 'year',
+                    header: 'Year',
+                    track: '72px',
+                    cellTemplate: yearCell,
+                    sortKey: 'year',
+                    sortActive: this.isSortActive('year'),
+                    cellClass: this.tableCellClass('as-td-year', this.isSortActive('year')),
+                    align: 'center',
+                },
+                {
+                    id: 'rules',
+                    header: 'Rules',
+                    track: '108px',
+                    value: unit => unit.level,
+                    sortKey: 'level',
+                    sortActive: this.isSortActive('level'),
+                    cellClass: this.tableCellClass('cbt-td-rules', this.isSortActive('level')),
+                },
+                {
+                    id: 'tech',
+                    header: 'Tech',
+                    track: '100px',
+                    value: unit => unit.techBase,
+                    sortKey: 'techBase',
+                    sortActive: this.isSortActive('techBase'),
+                    cellClass: this.tableCellClass('cbt-td-tech', this.isSortActive('techBase')),
+                },
+                {
+                    id: 'movement',
+                    header: 'Move',
+                    track: '96px',
+                    cellTemplate: classicMovementCell,
+                    sortKey: 'walk',
+                    sortGroupKey: 'movement',
+                    sortActive: this.isSortActive('movement'),
+                    cellClass: this.tableCellClass('cbt-td-mv', this.isSortActive('movement')),
+                },
+                {
+                    id: 'armor',
+                    header: 'Armor',
+                    track: '72px',
+                    value: unit => unit.armor,
+                    sortKey: 'armor',
+                    sortActive: this.isSortActive('armor'),
+                    cellClass: this.tableCellClass('cbt-td-armor', this.isSortActive('armor')),
+                    align: 'right',
+                },
+                {
+                    id: 'structure',
+                    header: 'Structure',
+                    track: '86px',
+                    value: unit => unit.internal,
+                    sortKey: 'internal',
+                    sortActive: this.isSortActive('internal'),
+                    cellClass: this.tableCellClass('cbt-td-structure', this.isSortActive('internal')),
+                    align: 'right',
+                },
+                {
+                    id: 'firepower',
+                    header: 'Firepower',
+                    track: '88px',
+                    value: unit => this.formatClassicStat(unit._mdSumNoPhysical),
+                    sortKey: '_mdSumNoPhysical',
+                    sortActive: this.isSortActive('_mdSumNoPhysical'),
+                    cellClass: this.tableCellClass('cbt-td-firepower', this.isSortActive('_mdSumNoPhysical')),
+                    align: 'right',
+                },
+                {
+                    id: 'damage-per-turn',
+                    header: 'Dmg/Turn',
+                    track: '92px',
+                    value: unit => this.formatClassicStat(unit.dpt),
+                    sortKey: 'dpt',
+                    sortActive: this.isSortActive('dpt'),
+                    cellClass: this.tableCellClass('cbt-td-dpt', this.isSortActive('dpt')),
+                    align: 'right',
+                },
+                {
+                    id: 'network',
+                    header: 'Network',
+                    track: '96px',
+                    value: unit => unit.c3 ?? '',
+                    sortKey: 'c3',
+                    sortActive: this.isSortActive('c3'),
+                    cellClass: this.tableCellClass('cbt-td-network', this.isSortActive('c3')),
+                },
+                {
+                    id: 'cost',
+                    header: 'Cost',
+                    track: '110px',
+                    value: unit => unit.cost ? FormatNumberPipe.formatValue(unit.cost, true, false) : '',
+                    sortKey: 'cost',
+                    sortActive: this.isSortActive('cost'),
+                    cellClass: this.tableCellClass('cbt-td-cost', this.isSortActive('cost')),
+                    align: 'right',
+                },
+            ];
+
+            if (this.cbtTableSortSlotHeader()) {
+                columns.push({
+                    id: 'sort-slot',
+                    header: this.cbtTableSortSlotHeader() ?? '',
+                    track: '100px',
+                    value: unit => this.getClassicTableSortSlot(unit) ?? '',
+                    headerClass: 'as-th-sort-slot',
+                    cellClass: 'as-td-sort-slot sort-slot',
+                    align: 'center',
+                });
+            }
+
+            columns.push({
+                id: 'tags',
+                header: 'Tags',
+                track: '120px',
+                cellTemplate: tagsCell,
+                headerClass: 'as-th-tags',
+                cellClass: 'as-td-tags',
+                align: 'right',
+            });
+
+            return columns;
+        }
+
+        if (!typeCell || !pvCell || !movementCell || !specialsCell) {
+            return [];
+        }
+
+        const columns: DataTableColumn<Unit>[] = [
+            {
+                id: 'icon',
+                header: '',
+                track: '40px',
+                cellTemplate: iconCell,
+                align: 'center',
+            },
+            {
+                id: 'name',
+                header: 'Name',
+                track: 'minmax(320px, 1.35fr)',
+                cellTemplate: nameCell,
+                sortKey: 'name',
+                sortActive: this.isSortActive('name'),
+            },
+            {
+                id: 'year',
+                header: 'Year',
+                track: '72px',
+                cellTemplate: yearCell,
+                sortKey: 'year',
+                sortActive: this.isSortActive('year'),
+                cellClass: this.tableCellClass('as-td-year', this.isSortActive('year')),
+                align: 'center',
+            },
+            {
+                id: 'type',
+                header: 'Type',
+                track: '50px',
+                cellTemplate: typeCell,
+                sortKey: 'as.TP',
+                sortActive: this.isSortActive('as.TP'),
+                cellClass: this.tableCellClass('as-td-type', this.isSortActive('as.TP')),
+                align: 'center',
+            },
+            {
+                id: 'role',
+                header: 'Role',
+                track: '130px',
+                value: unit => unit.role !== 'None' ? unit.role : '',
+                sortKey: 'role',
+                sortActive: this.isSortActive('role'),
+                cellClass: this.tableCellClass('as-td-role', this.isSortActive('role')),
+            },
+            {
+                id: 'pv',
+                header: 'PV',
+                track: '45px',
+                cellTemplate: pvCell,
+                sortKey: 'as.PV',
+                sortActive: this.isSortActive('as.PV'),
+                cellClass: this.tableCellClass('as-td-pv is-bold', this.isSortActive('as.PV')),
+                align: 'right',
+            },
+            {
+                id: 'sz',
+                header: 'SZ',
+                track: '30px',
+                value: unit => unit.as.SZ,
+                sortKey: 'as.SZ',
+                sortActive: this.isSortActive('as.SZ'),
+                cellClass: this.tableCellClass('as-td-sz', this.isSortActive('as.SZ')),
+                align: 'center',
+            },
+            {
+                id: 'mv',
+                header: 'MV',
+                track: '65px',
+                cellTemplate: movementCell,
+                sortKey: 'as._mv',
+                sortActive: this.isSortActive('as._mv'),
+                cellClass: this.tableCellClass('as-td-mv', this.isSortActive('as._mv')),
+                align: 'center',
+            },
+            {
+                id: 'tmm',
+                header: 'TMM',
+                track: '40px',
+                value: unit => unit.as.TMM ?? '—',
+                sortKey: 'as.TMM',
+                sortActive: this.isSortActive('as.TMM'),
+                cellClass: this.tableCellClass('as-td-tmm', this.isSortActive('as.TMM')),
+                align: 'center',
+            },
+            {
+                id: 'damage',
+                header: 'S/M/L',
+                track: '60px',
+                value: unit => !unit.as.usesArcs ? `${unit.as.dmg.dmgS}/${unit.as.dmg.dmgM}/${unit.as.dmg.dmgL}` : '',
+                sortKey: 'as.dmg._dmgS',
+                sortGroupKey: 'as.damage',
+                sortActive: this.isSortActive('as.damage'),
+                cellClass: this.tableCellClass('as-td-dmg', this.isSortActive('as.damage')),
+                align: 'center',
+            },
+            {
+                id: 'arm',
+                header: 'A',
+                track: '40px',
+                value: unit => unit.as.Arm,
+                sortKey: 'as.Arm',
+                sortActive: this.isSortActive('as.Arm'),
+                cellClass: this.tableCellClass('as-td-arm', this.isSortActive('as.Arm')),
+                align: 'center',
+            },
+            {
+                id: 'str',
+                header: 'S',
+                track: '40px',
+                value: unit => unit.as.Str,
+                sortKey: 'as.Str',
+                sortActive: this.isSortActive('as.Str'),
+                cellClass: this.tableCellClass('as-td-str', this.isSortActive('as.Str')),
+                align: 'center',
+            },
+            {
+                id: 'ov',
+                header: 'OV',
+                track: '30px',
+                value: unit => unit.as.usesOV ? unit.as.OV : '',
+                sortKey: 'as.OV',
+                sortActive: this.isSortActive('as.OV'),
+                cellClass: this.tableCellClass('as-td-ov', this.isSortActive('as.OV')),
+                align: 'center',
+            },
+        ];
+
+        if (this.asTableSortSlotHeader()) {
+            columns.push({
+                id: 'sort-slot',
+                header: this.asTableSortSlotHeader() ?? '',
+                track: '80px',
+                value: unit => this.getAsTableSortSlot(unit) ?? '',
+                headerClass: 'as-th-sort-slot',
+                cellClass: 'as-td-sort-slot sort-slot',
+                align: 'center',
+            });
+        }
+
+        columns.push(
+            {
+                id: 'specials',
+                header: 'Special',
+                track: 'minmax(220px, 1fr)',
+                cellTemplate: specialsCell,
+            },
+            {
+                id: 'tags',
+                header: 'Tags',
+                track: '120px',
+                cellTemplate: tagsCell,
+                headerClass: 'as-th-tags',
+                cellClass: 'as-td-tags',
+                align: 'right',
+            },
+        );
+
+        return columns;
+    });
+
     /** Current sort key for expanded card highlighting */
     readonly currentSortKey = computed(() => this.filtersService.selectedSort());
 
@@ -392,12 +853,24 @@ export class UnitSearchComponent {
         return this.advOpen() || this.resultsVisible();
     });
 
+    /**
+     * Non-reactive flag tracking whether the results panel was visible on the last check.
+     * Used to avoid flickering: when the panel is already visible, we keep showing
+     * (possibly stale) results while the worker processes instead of hiding/showing.
+     */
+    private wasResultsVisible = false;
+
     public readonly resultsVisible = computed(() => {
         if (this.expandedView()) {
             return true;
         }
-        return (this.focused() || this.advOpen() || this.unitDetailsDialogOpen()) &&
+        const wantsVisible = (this.focused() || this.advOpen() || this.unitDetailsDialogOpen()) &&
             (this.filtersService.searchText() || this.isAdvActive());
+        if (!wantsVisible) return false;
+        // If search results are current, show immediately
+        if (this.filtersService.isSearchSettled()) return true;
+        // Search pending: only show if panel was already visible (avoid flash on first show)
+        return this.wasResultsVisible;
     });
 
     /**
@@ -434,13 +907,31 @@ export class UnitSearchComponent {
      */
     readonly isComplexQuery = computed(() => this.filtersService.isComplexQuery());
 
-    itemSize = signal(75);
+    private readonly listItemSize = signal(75);
+    readonly cardItemHeight = signal(220);
+    readonly itemSize = computed(() => {
+        if (this.viewMode() === 'card' && this.gameService.isAlphaStrike()) {
+            return this.cardItemHeight();
+        }
+
+        return this.listItemSize();
+    });
 
     private resizeObserver?: ResizeObserver;
+    private resultsResizeObserver?: ResizeObserver;
     private advPanelDragStartX = 0;
     private advPanelDragStartWidth = 0;
 
     constructor() {
+        // Track panel visibility for flicker prevention (must be a plain boolean, not a signal,
+        // so the computed reads it as a snapshot without creating a reactive dependency)
+        effect(() => {
+            this.wasResultsVisible = this.resultsVisible();
+        });
+        effect(() => {
+            const currentGameSystem = this.gameSystem();
+            untracked(() => this.advPanelFilterGameSystem.set(currentGameSystem));
+        });
         // Sync immediateSearchText when searchText changes externally (favorites, etc.)
         // We use untracked to avoid re-triggering when we set immediateSearchText
         effect(() => {
@@ -462,12 +953,32 @@ export class UnitSearchComponent {
             this.savedSearchesService.version(); // Subscribe to changes
             untracked(() => this.refreshFavoritesOverlay());
         });
-        // When switching game system from AS to CBT, reset card view to list
+        // Card view is AS-only, so drop it when the game system changes away from AS.
         effect(() => {
             const isAS = this.gameService.isAlphaStrike();
             untracked(() => {
                 if (!isAS && this.viewMode() === 'card') {
-                    this.viewMode.set('list');
+                    this.setViewMode('list');
+                }
+            });
+        });
+        effect(() => {
+            const isExpanded = this.expandedView();
+            untracked(() => {
+                if (!isExpanded && this.viewMode() === 'table') {
+                    this.setViewMode('list');
+                }
+            });
+        });
+        effect(() => {
+            const savedViewMode = this.optionsService.options().unitSearchViewMode;
+            const normalizedViewMode = this.normalizeViewMode(savedViewMode);
+            untracked(() => {
+                if (this.viewMode() !== normalizedViewMode) {
+                    this.viewMode.set(normalizedViewMode);
+                }
+                if (savedViewMode !== normalizedViewMode) {
+                    void this.optionsService.setOption('unitSearchViewMode', normalizedViewMode);
                 }
             });
         });
@@ -488,6 +999,26 @@ export class UnitSearchComponent {
                 this.layoutService.windowHeight();
                 this.updateResultsDropdownPosition();
             }
+        });
+        effect((cleanup) => {
+            const dropdown = this.resultsDropdown()?.nativeElement;
+            if (!dropdown) {
+                this.resultsDropdownWidth.set(0);
+                return;
+            }
+
+            this.resultsResizeObserver?.disconnect();
+            this.resultsResizeObserver = new ResizeObserver(entries => {
+                const width = entries[0]?.contentRect.width ?? dropdown.clientWidth;
+                this.resultsDropdownWidth.set(width);
+            });
+            this.resultsResizeObserver.observe(dropdown);
+            this.resultsDropdownWidth.set(dropdown.clientWidth);
+
+            cleanup(() => {
+                this.resultsResizeObserver?.disconnect();
+                this.resultsResizeObserver = undefined;
+            });
         });
         // Track pending afterNextRender callbacks to cancel on effect re-run or destroy
         let pendingResizeObserverRef: { destroy: () => void } | null = null;
@@ -538,15 +1069,37 @@ export class UnitSearchComponent {
             }
             clearTimeout(this.filterChordTimer);
             this.resizeObserver?.disconnect();
+            this.resultsResizeObserver?.disconnect();
             this.overlayManager.closeAllManagedOverlays();
         });
+    }
+
+    trackCardRow = (index: number, row: Unit[]) => row[0]?.name ?? index;
+
+    getCardUnitIndex(rowIndex: number, columnIndex: number): number {
+        return rowIndex * this.cardViewColumnCount() + columnIndex;
+    }
+
+    private getViewportItemIndex(index: number): number {
+        if (this.viewMode() === 'card' && this.gameService.isAlphaStrike()) {
+            return Math.floor(index / this.cardViewColumnCount());
+        }
+        return index;
+    }
+
+    private getDefaultListItemSize(): number {
+        return 75;
+    }
+
+    private getDefaultCardItemHeight(): number {
+        return 220;
     }
 
     private setupItemHeightTracking() {
         const DEBOUNCE_MS = 100;
         /** Max consecutive gap-correction attempts to prevent infinite loops */
         const MAX_GAP_CORRECTIONS = 3;
-        let prevExpandedView: boolean | undefined;
+        let prevLayoutKey: string | undefined;
         let gapCorrectionPending: { destroy: () => void } | null = null;
         let gapCorrectionCount = 0;
 
@@ -632,13 +1185,26 @@ export class UnitSearchComponent {
             const dropdown = this.getActiveDropdownElement();
             if (!dropdown) return;
 
+            if (this.viewMode() === 'card' && this.gameService.isAlphaStrike()) {
+                const cardRow = dropdown.querySelector('.card-view-row') as HTMLElement | null;
+                if (!cardRow) return;
+
+                const measuredHeight = Math.round(cardRow.offsetHeight);
+                if (measuredHeight > 0 && this.cardItemHeight() !== measuredHeight) {
+                    this.cardItemHeight.set(measuredHeight);
+                }
+
+                return;
+            }
+
             const items = dropdown.querySelectorAll('.results-dropdown-item:not(.no-results)');
             if (items.length === 0) return;
+
             const heights = Array.from(items).slice(0, 100).map(el => (el as HTMLElement).offsetHeight);
-            let avg = Math.round(heights.reduce((a, b) => a + b, 0) / heights.length);
-            const currentAvg = this.itemSize();
+            const avg = Math.round(heights.reduce((a, b) => a + b, 0) / heights.length);
+            const currentAvg = this.listItemSize();
             if (currentAvg !== avg) {
-                this.itemSize.set(avg);
+                this.listItemSize.set(avg);
             }
 
             // Always schedule a gap check after measurement, regardless of whether
@@ -664,6 +1230,8 @@ export class UnitSearchComponent {
 
         effect(() => {
             const currentExpandedView = this.expandedView();
+            const currentViewMode = this.viewMode();
+            const currentLayoutKey = `${currentExpandedView}:${currentViewMode}`;
 
             // Cancel any pending timer and reset itemSize when view mode changes
             untracked(() => {
@@ -674,16 +1242,18 @@ export class UnitSearchComponent {
                 gapCorrectionPending?.destroy();
                 gapCorrectionPending = null;
                 gapCorrectionCount = 0;
-                // Reset to default on view mode change (will be refined by height tracking)
-                if (prevExpandedView !== undefined && prevExpandedView !== currentExpandedView) {
-                    this.itemSize.set(75);
+                // Reset to defaults on view mode change (will be refined by height tracking)
+                if (prevLayoutKey !== undefined && prevLayoutKey !== currentLayoutKey) {
+                    this.listItemSize.set(this.getDefaultListItemSize());
+                    this.cardItemHeight.set(this.getDefaultCardItemHeight());
                 }
-                prevExpandedView = currentExpandedView;
+                prevLayoutKey = currentLayoutKey;
             });
 
             if (!this.resultsVisible()) return;
             this.layoutService.isMobile();
             this.gameService.currentGameSystem();
+            this.resultsDropdownWidth();
             if (currentExpandedView) {
                 this.layoutService.windowWidth();
                 this.filtersService.advOpen();
@@ -767,6 +1337,12 @@ export class UnitSearchComponent {
         return index;
     }
 
+    readonly unitTableRowClass = (unit: Unit, index: number) => ({
+        'is-selected': this.isUnitSelected(unit),
+        'is-active': this.activeIndex() === index,
+        'is-panel-selected': this.showInlinePanel() && this.inlinePanelUnit()?.name === unit.name,
+    });
+
     focusInput() {
         afterNextRender(() => {
             try { this.syntaxInput()?.focus(); } catch { /* ignore */ }
@@ -785,7 +1361,7 @@ export class UnitSearchComponent {
             clearTimeout(this.searchDebounceTimer);
         }
         this.searchDebounceTimer = setTimeout(() => {
-            this.filtersService.searchText.set(val);
+            this.filtersService.setSearchText(val);
             this.activeIndex.set(null);
         }, this.SEARCH_DEBOUNCE_MS);
     }
@@ -919,8 +1495,22 @@ export class UnitSearchComponent {
         this.activeIndex.set(null);
     }
 
+    setAdvPanelFilterGameSystem(gameSystem: GameSystem) {
+        this.advPanelFilterGameSystem.set(gameSystem);
+    }
+
+    toggleAdvPanelFilterGameSystem() {
+        this.advPanelFilterGameSystem.set(this.otherAdvPanelFilterGameSystem());
+    }
+
+    advPanelFilterGameSystemToggleTitle() {
+        return this.otherAdvPanelFilterGameSystem() === GameSystem.CLASSIC
+            ? 'Show BattleTech filters'
+            : 'Show Alpha Strike filters';
+    }
+
     clearAdvFilters() {
-        this.viewport()?.scrollToIndex(0);
+        this.currentViewport()?.scrollToIndex(0);
         this.filtersService.resetFilters();
         this.activeIndex.set(null);
     }
@@ -928,6 +1518,12 @@ export class UnitSearchComponent {
     isAdvActive() {
         const state = this.filtersService.filterState();
         return Object.values(state).some(s => s.interactedWith) || this.filtersService.bvPvLimit() > 0;
+    }
+
+    private getOtherGameSystem(gameSystem: GameSystem): GameSystem {
+        return gameSystem === GameSystem.CLASSIC
+            ? GameSystem.ALPHA_STRIKE
+            : GameSystem.CLASSIC;
     }
 
     onDocumentKeydown(event: KeyboardEvent) {
@@ -1022,7 +1618,7 @@ export class UnitSearchComponent {
     }
 
     private scrollToIndex(index: number) {
-        this.viewport()?.scrollToIndex(index, 'smooth');
+        this.currentViewport()?.scrollToIndex(this.getViewportItemIndex(index), 'smooth');
     }
 
     /**
@@ -1030,26 +1626,27 @@ export class UnitSearchComponent {
      * If scrolling is needed, positions the item at the nearest edge (top or bottom).
      */
     private scrollToMakeVisible(index: number) {
-        const vp = this.viewport();
+        const vp = this.currentViewport();
         if (!vp) return;
+        const viewportIndex = this.getViewportItemIndex(index);
 
         const vpElement = vp.elementRef.nativeElement;
         const renderedRange = vp.getRenderedRange();
 
         // Check if the item is within the rendered range
-        if (index < renderedRange.start || index >= renderedRange.end) {
+        if (viewportIndex < renderedRange.start || viewportIndex >= renderedRange.end) {
             // Item is not rendered at all, need to scroll to it
-            vp.scrollToIndex(index, 'smooth');
+            vp.scrollToIndex(viewportIndex, 'smooth');
             return;
         }
 
         // Find the rendered items
-        const items = vpElement.querySelectorAll('.results-dropdown-item:not(.no-results)');
-        const localIndex = index - renderedRange.start;
+        const items = vpElement.querySelectorAll('.results-dropdown-item:not(.no-results), .mb-data-table-row-item, .card-view-row');
+        const localIndex = viewportIndex - renderedRange.start;
 
         if (localIndex < 0 || localIndex >= items.length) {
             // Safety fallback
-            vp.scrollToIndex(index, 'smooth');
+            vp.scrollToIndex(viewportIndex, 'smooth');
             return;
         }
 
@@ -1209,6 +1806,22 @@ export class UnitSearchComponent {
         }
     }
 
+    onUnitTableSort(event: DataTableSortEvent): void {
+        this.onHeaderSort(event.sortKey, event.groupKey);
+    }
+
+    onUnitTableRowClick(event: DataTableRowClickEvent<Unit>): void {
+        this.onUnitCardClick(event.row, event.event);
+    }
+
+    onUnitTableRowLongPress(event: DataTableRowLongPressEvent<Unit>): void {
+        this.multiSelectUnit(event.row, event.event);
+    }
+
+    onUnitTableRowPointerEnter(event: DataTableRowPointerEnterEvent<Unit>): void {
+        this.activeIndex.set(event.index);
+    }
+
     isSortActive(...keysOrGroups: string[]): boolean {
         const currentSort = this.filtersService.selectedSort();
         if (!currentSort) return false;
@@ -1229,8 +1842,10 @@ export class UnitSearchComponent {
      * Keys always visible in the AS table row.
      * Used by both asTableSortSlotHeader and getAsTableSortSlot.
      */
-    private static readonly AS_TABLE_VISIBLE_KEYS = ['name', 'as.TP', 'role', 'as.PV', 'as.SZ', 'as._mv', 'as.TMM', 'as.Arm', 'as.Str', 'as.OV'];
+    private static readonly AS_TABLE_VISIBLE_KEYS = ['name', 'year', 'as.TP', 'role', 'as.PV', 'as.SZ', 'as._mv', 'as.TMM', 'as.Arm', 'as.Str', 'as.OV'];
     private static readonly AS_TABLE_VISIBLE_GROUPS = ['as.damage'];
+    private static readonly CBT_TABLE_VISIBLE_KEYS = ['name', 'type', 'subtype', 'role', 'bv', 'tons', 'year', 'level', 'techBase', 'moveType', 'armor', 'internal', '_mdSumNoPhysical', 'dpt', 'c3', 'cost'];
+    private static readonly CBT_TABLE_VISIBLE_GROUPS = ['movement'];
 
     /**
      * Get the sort slot value for AS table row view.
@@ -1249,12 +1864,21 @@ export class UnitSearchComponent {
             if (group && group.includes(key)) return null;
         }
 
-        // Key is not displayed in table - return the formatted value
-        const raw = this.getNestedProperty(unit, key);
-        if (raw == null) return '—';
+        return this.formatTableSortSlotValue(unit, key);
+    }
 
-        const numeric = typeof raw === 'number';
-        return numeric ? FormatNumberPipe.formatValue(raw, true, false) : String(raw);
+    getClassicTableSortSlot(unit: Unit): string | null {
+        const key = this.filtersService.selectedSort();
+        if (!key) return null;
+
+        if (UnitSearchComponent.CBT_TABLE_VISIBLE_KEYS.includes(key)) return null;
+
+        for (const groupName of UnitSearchComponent.CBT_TABLE_VISIBLE_GROUPS) {
+            const group = UnitSearchComponent.SORT_KEY_GROUPS[groupName];
+            if (group && group.includes(key)) return null;
+        }
+
+        return this.formatTableSortSlotValue(unit, key);
     }
 
     /**
@@ -1296,6 +1920,76 @@ export class UnitSearchComponent {
             cur = cur[p];
         }
         return cur;
+    }
+
+    formatClassicMovement(unit: Unit): string {
+        if (!unit.walk) return '';
+
+        let movement = `${unit.walk} / ${unit.run}`;
+        if (unit.run2 && unit.run2 !== unit.run) {
+            movement += ` [${unit.run2}]`;
+        }
+        if (unit.jump) {
+            movement += ` / ${unit.jump}`;
+        }
+        if (unit.umu) {
+            movement += ` / ${unit.umu}`;
+        }
+
+        return movement;
+    }
+
+    formatClassicSubtype(unit: Unit): string {
+        return unit.subtype && unit.subtype !== unit.type ? unit.subtype : '';
+    }
+
+    formatArmorType(armorType: string | undefined): string {
+        if (!armorType) return '';
+        return armorType.endsWith(' Armor') ? armorType.slice(0, -6) : armorType;
+    }
+
+    formatStructureType(structureType: string | undefined): string {
+        if (!structureType) return '';
+        return structureType.endsWith(' Structure') ? structureType.slice(0, -10) : structureType;
+    }
+
+    private formatTableSortSlotValue(unit: Unit, key: string): string {
+        if (UnitSearchComponent.SORT_KEY_GROUPS['movement'].includes(key)) {
+            return this.formatClassicMovement(unit) || '—';
+        }
+
+        if (key === 'subtype') {
+            return this.formatClassicSubtype(unit) || '—';
+        }
+
+        const raw = this.getNestedProperty(unit, key);
+        if (raw == null) return '—';
+
+        return typeof raw === 'number' ? FormatNumberPipe.formatValue(raw, true, false) : String(raw);
+    }
+
+    formatClassicStat(value: number | undefined): string {
+        if (value === undefined || value === null) {
+            return '—';
+        }
+        return FormatNumberPipe.formatValue(value, true, false);
+    }
+
+    formatClassicBv(unit: Unit, gunnery: number, piloting: number): string {
+        return FormatNumberPipe.formatValue(BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting), true, false);
+    }
+
+    formatTons(tons: number | undefined): string {
+        if (tons === undefined) return '';
+
+        const format = (value: number) => Math.round(value * 100) / 100;
+        if (tons < 1000) {
+            return `${format(tons)}`;
+        }
+        if (tons < 1000000) {
+            return `${format(tons / 1000)}k`;
+        }
+        return `${format(tons / 1000000)}M`;
     }
 
     async onAddTag({ unit, event }: TagClickEvent) {
@@ -1384,7 +2078,7 @@ export class UnitSearchComponent {
         window.removeEventListener('pointercancel', this.onAdvPanelDragEnd);
     };
 
-    multiSelectUnit(unit: Unit, event?: MouseEvent) {
+    multiSelectUnit(unit: Unit, event?: Event) {
         event?.stopPropagation();
         const selected = new Set(this.selectedUnits());
         if (selected.has(unit.name)) {
@@ -1521,6 +2215,30 @@ export class UnitSearchComponent {
             .join('/');
     }
 
+    private tableCellClass(base: string, active: boolean): string {
+        return active ? `${base} sort-slot` : base;
+    }
+
+    private currentViewport(): CdkVirtualScrollViewport | undefined {
+        return this.resultsDataTable()?.getViewport() ?? this.viewport();
+    }
+
+    private normalizeViewMode(viewMode: 'list' | 'card' | 'chassis' | 'table'): 'list' | 'card' | 'chassis' | 'table' {
+        if (!this.gameService.isAlphaStrike() && viewMode === 'card') {
+            return 'list';
+        }
+        if (!this.expandedView() && viewMode === 'table') {
+            return 'list';
+        }
+        return viewMode;
+    }
+
+    private setViewMode(viewMode: 'list' | 'card' | 'chassis' | 'table') {
+        const normalizedViewMode = this.normalizeViewMode(viewMode);
+        this.viewMode.set(normalizedViewMode);
+        void this.optionsService.setOption('unitSearchViewMode', normalizedViewMode);
+    }
+
     toggleExpandedView() {
         const isExpanded = this.expandedView();
 
@@ -1541,18 +2259,50 @@ export class UnitSearchComponent {
 
     /**
      * Cycle through view modes.
-     * AS:  list → card → chassis → list
-     * CBT: list → chassis → list
+     * AS:  list → card → chassis → table → list
+        * CBT: list → chassis → table → list
      */
     cycleViewMode() {
         const current = this.viewMode();
         const isAS = this.gameService.isAlphaStrike();
+        const isExpanded = this.expandedView();
         if (isAS) {
-            // list → card → chassis → list
-            this.viewMode.set(current === 'list' ? 'card' : current === 'card' ? 'chassis' : 'list');
+            // Compact: list → card → chassis → list
+            // Expanded: list → card → chassis → table → list
+            if (!isExpanded) {
+                this.setViewMode(
+                    current === 'list'
+                        ? 'card'
+                        : current === 'card'
+                            ? 'chassis'
+                            : 'list'
+                );
+                return;
+            }
+
+            // list → card → chassis → table → list
+            this.setViewMode(
+                current === 'list'
+                    ? 'card'
+                    : current === 'card'
+                        ? 'chassis'
+                        : current === 'chassis'
+                            ? 'table'
+                            : 'list'
+            );
         } else {
-            // list → chassis → list
-            this.viewMode.set(current === 'list' ? 'chassis' : 'list');
+            if (!isExpanded) {
+                this.setViewMode(current === 'list' ? 'chassis' : 'list');
+                return;
+            }
+
+            this.setViewMode(
+                current === 'list'
+                    ? 'chassis'
+                    : current === 'chassis'
+                        ? 'table'
+                        : 'list'
+            );
         }
     }
 
@@ -1570,7 +2320,7 @@ export class UnitSearchComponent {
         this.immediateSearchText.set(newSearch);
         this.filtersService.searchText.set(newSearch);
         // Switch back to list view to show variants
-        this.viewMode.set('list');
+        this.setViewMode('list');
     }
 
     openShareSearch(event: MouseEvent) {

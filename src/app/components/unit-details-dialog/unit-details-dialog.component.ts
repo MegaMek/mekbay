@@ -393,8 +393,42 @@ export class UnitDetailsDialogComponent {
         this._addUnit(true);
     }
 
+    /**
+     * When adding the first unit, if the active tab doesn't match the current game system,
+     * ask the user which game system to use for the new force.
+     * Returns the chosen GameSystem, or `null` if the user cancelled.
+     */
+    private async resolveGameSystemForFirstUnit(): Promise<GameSystem | undefined | null> {
+        // Only relevant when no force exists yet (first unit creates the force)
+        if (this.forceBuilderService.smartCurrentForce()) return undefined;
+
+        const tab = this.activeTab();
+        const gameSystem = this.gameService.currentGameSystem();
+        const isMismatch =
+            (tab === 'Sheet' && gameSystem === GameSystem.ALPHA_STRIKE) ||
+            (tab === 'Card' && gameSystem === GameSystem.CLASSIC);
+        if (!isMismatch) return undefined;
+
+        const ref = this.dialogsService.createDialog<GameSystem | undefined>(ConfirmDialogComponent, {
+            data: <ConfirmDialogData<GameSystem>>{
+                title: 'Game System',
+                message: 'Which game system should the new force use?',
+                buttons: [
+                    { label: 'Classic BattleTech', value: GameSystem.CLASSIC },
+                    { label: 'Alpha Strike', value: GameSystem.ALPHA_STRIKE },
+                ]
+            }
+        });
+        const chosen = await firstValueFrom(ref.closed);
+        return chosen ?? null; // null = cancelled
+    }
+
     private async _addUnit(keepOpen: boolean) {
         if (this.data.selectMode) return;
+
+        const gameSystemOverride = await this.resolveGameSystemForFirstUnit();
+        if (gameSystemOverride === null) return; // user cancelled
+
         const selectedUnit = (this.unit instanceof ForceUnit) ? this.unit.getUnit() : this.unit;
         let gunnery;
         let piloting;
@@ -411,7 +445,9 @@ export class UnitDetailsDialogComponent {
         const addedUnit = await this.forceBuilderService.addUnit(
             selectedUnit,
             gunnery,
-            piloting
+            piloting,
+            undefined,
+            gameSystemOverride
         );
         if (addedUnit) {
             this.toastService.showToast(`${selectedUnit.chassis} ${selectedUnit.model} added to the force.`, 'success');
@@ -424,6 +460,10 @@ export class UnitDetailsDialogComponent {
 
     async onAddMultiple() {
         if (this.data.selectMode) return;
+
+        const gameSystemOverride = await this.resolveGameSystemForFirstUnit();
+        if (gameSystemOverride === null) return; // user cancelled
+
         const ref = this.dialogsService.createDialog<number | undefined>(ConfirmDialogComponent, {
             data: <ConfirmDialogData<number>>{
                 title: 'Add Multiple',
@@ -458,7 +498,7 @@ export class UnitDetailsDialogComponent {
 
         let addedCount = 0;
         for (let i = 0; i < count; i++) {
-            const added = await this.forceBuilderService.addUnit(selectedUnit, gunnery, piloting);
+            const added = await this.forceBuilderService.addUnit(selectedUnit, gunnery, piloting, undefined, gameSystemOverride);
             if (added) addedCount++;
         }
         if (addedCount > 0) {

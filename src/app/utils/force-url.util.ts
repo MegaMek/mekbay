@@ -59,12 +59,15 @@ export interface ForceQueryParams {
     instance: string | null;
     operation: string | null;
     factionId: number | null;
+    eraId: number | null;
 }
 
 export interface UnitShareLinks {
     httpsUrl: string;
     appUrl: string;
 }
+
+export type ForceUrlUnitLookupMode = 'name' | 'mulId';
 
 export function buildUnitShareLinks(
     origin: string,
@@ -90,7 +93,7 @@ export function buildUnitShareLinks(
  */
 export function buildForceQueryParams(force: Force | null): ForceQueryParams {
     if (!force) {
-        return { gs: null, units: null, name: null, instance: null, operation: null, factionId: null };
+        return { gs: null, units: null, name: null, instance: null, operation: null, factionId: null, eraId: null };
     }
     const instanceId = force.instanceId();
     const groups = force.groups() || [];
@@ -106,7 +109,8 @@ export function buildForceQueryParams(force: Force | null): ForceQueryParams {
         name: forceName || null,
         instance: instanceId || null,
         operation: null,
-        factionId: force.faction()?.id ?? null
+        factionId: force.faction()?.id ?? null,
+        eraId: force.era()?.id ?? null
     };
 }
 
@@ -121,7 +125,7 @@ export function buildForceQueryParams(force: Force | null): ForceQueryParams {
  */
 export function buildMultiForceQueryParams(slots: ForceSlot[]): ForceQueryParams {
     if (slots.length === 0) {
-        return { gs: null, units: null, name: null, instance: null, operation: null, factionId: null };
+        return { gs: null, units: null, name: null, instance: null, operation: null, factionId: null, eraId: null };
     }
 
     // Collect instance IDs from saved forces, with alignment prefix
@@ -143,6 +147,7 @@ export function buildMultiForceQueryParams(slots: ForceSlot[]): ForceQueryParams
     let units: string | null = null;
     let name: string | null = null;
     let factionId: number | null = null;
+    let eraId: number | null = null;
 
     if (unsavedForce) {
         gs = unsavedForce.gameSystem;
@@ -152,6 +157,7 @@ export function buildMultiForceQueryParams(slots: ForceSlot[]): ForceQueryParams
         const forceName = unsavedForce.units().length > 0 ? unsavedForce.name : undefined;
         name = forceName || null;
         factionId = unsavedForce.faction()?.id ?? null;
+        eraId = unsavedForce.era()?.id ?? null;
     }
 
     return {
@@ -160,7 +166,8 @@ export function buildMultiForceQueryParams(slots: ForceSlot[]): ForceQueryParams
         name,
         instance: instanceEntries.length > 0 ? instanceEntries.join(',') : null,
         operation: null,
-        factionId
+        factionId,
+        eraId
     };
 }
 
@@ -256,9 +263,16 @@ export function parseForceFromUrl(
     force: Force,
     unitsParam: string,
     allUnits: Unit[],
-    logger?: UrlParseLogger
+    logger?: UrlParseLogger,
+    lookupMode: ForceUrlUnitLookupMode = 'name'
 ): ForceUnit[] {
-    const unitMap = new Map(allUnits.map(u => [u.name, u]));
+    const unitMap = new Map<string, Unit>();
+    for (const unit of allUnits) {
+        const key = lookupMode === 'mulId' ? `${unit.id}` : unit.name;
+        if (!unitMap.has(key)) {
+            unitMap.set(key, unit);
+        }
+    }
     const allForceUnits: ForceUnit[] = [];
 
     // Check if it's the new group format (contains '|' or '~')
@@ -307,12 +321,12 @@ export function parseForceFromUrl(
             }
 
             // Parse units for this group
-            const groupUnits = parseUnitUrlParams(force, unitsStr, unitMap, group, logger);
+            const groupUnits = parseUnitUrlParams(force, unitsStr, unitMap, group, logger, lookupMode);
             allForceUnits.push(...groupUnits);
         }
     } else {
         // Legacy format without groups: all units in default group
-        const groupUnits = parseUnitUrlParams(force, unitsParam, unitMap, undefined, logger);
+        const groupUnits = parseUnitUrlParams(force, unitsParam, unitMap, undefined, logger, lookupMode);
         allForceUnits.push(...groupUnits);
     }
 
@@ -334,7 +348,8 @@ export function parseUnitUrlParams(
     unitsStr: string,
     unitMap: Map<string, Unit>,
     group?: UnitGroup,
-    logger?: UrlParseLogger
+    logger?: UrlParseLogger,
+    lookupMode: ForceUrlUnitLookupMode = 'name'
 ): ForceUnit[] {
     if (!unitsStr.trim()) return [];
 
@@ -345,11 +360,12 @@ export function parseUnitUrlParams(
         if (!unitParam.trim()) continue;
 
         const parts = unitParam.split(':');
-        const unitName = parts[0];
-        const unit = unitMap.get(unitName);
+        const lookupValue = parts[0];
+        const unit = unitMap.get(lookupValue);
 
         if (!unit) {
-            logger?.warn(`Unit "${unitName}" not found in data`);
+            const lookupLabel = lookupMode === 'mulId' ? 'MUL ID' : 'name';
+            logger?.warn(`Unit with ${lookupLabel} "${lookupValue}" not found in data`);
             continue;
         }
 

@@ -6,7 +6,7 @@
     </div>
 </div>
 
-<div class="dialog-content" #scrollContainer>
+<div class="dialog-content" #scrollContainer [class.table-mode]="isTableMode()">
     <div class="units-list" 
         id="force-groups"
         [class.compact]="viewMode() === 'compact'" 
@@ -18,30 +18,102 @@
         [cdkDropListAutoScrollDisabled]="true"
         [cdkDropListDisabled]="!canDragDrop()"
         (cdkDropListDropped)="dropGroup($event)">
-        <!-- Table Header for AS Table View -->
         @if (isTableMode()) {
-            <div class="as-table-header"
-                 [class.sort-asc]="selectedSortDirection() === 'asc'"
-                 [class.sort-desc]="selectedSortDirection() === 'desc'">
-                <div class="as-th as-th-icon"></div>
-                <div class="as-th as-th-name as-th-sortable" [class.sort-active]="isSortActive('name')" (click)="onHeaderSort('name')">Name</div>
-                <div class="as-th as-th-type as-th-sortable" [class.sort-active]="isSortActive('as.TP')" (click)="onHeaderSort('as.TP')">Type</div>
-                <div class="as-th as-th-role as-th-sortable" [class.sort-active]="isSortActive('role')" (click)="onHeaderSort('role')">Role</div>
-                <div class="as-th as-th-pv as-th-sortable" [class.sort-active]="isSortActive('as.PV')" (click)="onHeaderSort('as.PV')">PV</div>
-                <div class="as-th as-th-skill">Skill</div>
-                <div class="as-th as-th-sz as-th-sortable" [class.sort-active]="isSortActive('as.SZ')" (click)="onHeaderSort('as.SZ')">SZ</div>
-                <div class="as-th as-th-mv as-th-sortable" [class.sort-active]="isSortActive('as._mv')" (click)="onHeaderSort('as._mv')">MV</div>
-                <div class="as-th as-th-tmm as-th-sortable" [class.sort-active]="isSortActive('as.TMM')" (click)="onHeaderSort('as.TMM')">TMM</div>
-                <div class="as-th as-th-dmg as-th-sortable" [class.sort-active]="isSortActive('as.damage')" (click)="onHeaderSort('as.dmg._dmgS', 'as.damage')">S/M/L</div>
-                <div class="as-th as-th-arm as-th-sortable" [class.sort-active]="isSortActive('as.Arm')" (click)="onHeaderSort('as.Arm')">A</div>
-                <div class="as-th as-th-str as-th-sortable" [class.sort-active]="isSortActive('as.Str')" (click)="onHeaderSort('as.Str')">S</div>
-                <div class="as-th as-th-ov as-th-sortable" [class.sort-active]="isSortActive('as.OV')" (click)="onHeaderSort('as.OV')">OV</div>
-                @if (asTableSortSlotHeader(); as sortHeader) {
-                    <div class="as-th as-th-sort-slot">{{ sortHeader }}</div>
+            <mb-data-table class="force-as-table"
+                [rows]="forceTableRows()"
+                [columns]="forceTableColumns()"
+                [itemSize]="48"
+                [minWidth]="forceTableMinWidth()"
+                [sortDirection]="selectedSortDirection()"
+                [rowTrackBy]="trackByForceUnitId"
+                [fullRowTemplate]="tableGroupRow"
+                [isFullRow]="isForceTableGroupRow"
+                [minBufferPx]="720"
+                [maxBufferPx]="1440"
+                (sort)="onForceTableSort($event)"
+                (rowClick)="onForceTableRowClick($event)">
+            </mb-data-table>
+
+            <ng-template #tableGroupRow let-row>
+                @if (row.kind === 'group') {
+                <div class="table-group-row">
+                    <div class="table-group-name-area">
+                        <span class="table-group-name" [class.clickable]="!isReadOnly()"
+                            (click)="onGroupNameClick(row.group)"
+                            [title]="isReadOnly() ? '' : 'Click to rename'">{{ row.group.groupDisplayName() }}</span>
+                        @if (row.group.activeFormation()) {
+                        <span class="table-group-formation-wrapper">
+                            @if (!row.group.isFormationAlreadyInGroupName()) {
+                            <span class="table-group-formation" [class.clickable]="!isReadOnly()"
+                                (click)="onGroupNameClick(row.group)">{{ row.group.formationDisplayName() }}</span>
+                            }
+                            @if (row.group.hasValidFormation()) {
+                            <button class="btn-formation-info" (click)="showFormationInfo($event, row.group)" title="Formation info">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                            </button>
+                            } @else {
+                            <button class="btn-formation-info formation-mismatch" (click)="showFormationInfo($event, row.group)" [title]="getFormationMismatchTitle(row.group)">
+                                <svg fill="currentColor" width="14" height="14" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z"/></svg>
+                            </button>
+                            }
+                        </span>
+                        }
+                    </div>
+                    <div class="table-group-footer">
+                        <span class="table-group-bv">{{ isAlphaStrike() ? 'PV' : 'BV' }}: {{ row.group.totalBV() | number }}</span>
+                    </div>
+                </div>
                 }
-                <div class="as-th as-th-specials">Special</div>
-            </div>
-        }
+            </ng-template>
+
+            <ng-template #tableIconCell let-row>
+                @if (row.kind === 'unit') {
+                <div class="as-td as-td-icon"><unit-icon [unit]="row.vm.unit" [size]="36"></unit-icon></div>
+                }
+            </ng-template>
+
+            <ng-template #tableNameCell let-row>
+                @if (row.kind === 'unit') {
+                <div class="as-td as-td-name">
+                    <span class="as-td-model">{{ row.vm.unit.model }}</span>
+                    <span class="as-td-chassis">{{ row.vm.unit.chassis }}@if (row.vm.forceUnit.alias(); as alias) { <span class="as-td-alias">({{ alias }})</span>}</span>
+                </div>
+                }
+            </ng-template>
+
+            <ng-template #tableYearCell let-row>
+                @if (row.kind === 'unit') {
+                <div class="as-td as-td-year">
+                    @if (row.vm.unit._era?.img) {
+                    <img class="as-era-icon" [src]="row.vm.unit._era?.img" [alt]="row.vm.unit._era?.name || 'Era'" [title]="row.vm.unit._era?.name || ''" />
+                    }
+                    <span>{{ row.vm.unit.year ?? '—' }}</span>
+                </div>
+                }
+            </ng-template>
+
+            <ng-template #tableSkillCell let-row>
+                @if (row.kind === 'unit') {
+                <div class="as-td as-td-skill clickable" (click)="onPilotClick(row.vm.forceUnit); $event.stopPropagation()" title="Click to edit pilot">{{ getPilotSkill(row.vm) }}</div>
+                }
+            </ng-template>
+
+            <ng-template #tableMovementCell let-row>
+                @if (row.kind === 'unit') {
+                <div class="as-td as-td-mv" [innerHTML]="formatASMovement(row.vm.unit)"></div>
+                }
+            </ng-template>
+
+            <ng-template #tableSpecialsCell let-row>
+                @if (row.kind === 'unit') {
+                <div class="as-td as-td-specials">
+                    @for (special of row.vm.unit.as.specials; let i = $index; track i) {
+                    <span class="special-pill" (click)="showAbilityInfoDialog(special); $event.stopPropagation()" title="Click for details">{{ special }}</span>
+                    }
+                </div>
+                }
+            </ng-template>
+        } @else {
         @for (group of groups(); let gi = $index; track group.id) {
             <div class="group-container" cdkDrag
                 [cdkDragDisabled]="!canDragDrop() || hasSingleGroup()"
@@ -116,47 +188,17 @@
                         }
                     } @else {
                         @for (vm of getSortedUnitsForGroup(group); let last = $last; track vm.forceUnit.id) {
-                            @if (isTableMode()) {
-                                <!-- AS Table Row View -->
-                                <div class="as-table-row" (click)="onUnitClick(vm)">
-                                    <div class="as-td as-td-icon"><unit-icon [unit]="vm.unit" [size]="36"></unit-icon></div>
-                                    <div class="as-td as-td-name">
-                                        <span class="as-td-model">{{ vm.unit.model }}</span>
-                                        <span class="as-td-chassis">{{ vm.unit.chassis }}@if (vm.forceUnit.alias(); as alias) { <span class="as-td-alias">({{ alias }})</span>}</span>
-                                    </div>
-                                    <div class="as-td as-td-type" [class.sort-slot]="isSortActive('as.TP')">{{ vm.unit.as.TP }}</div>
-                                    <div class="as-td as-td-role" [class.sort-slot]="isSortActive('role')">{{ vm.unit.role !== 'None' ? vm.unit.role : '' }}</div>
-                                    <div class="as-td as-td-pv" [class.sort-slot]="isSortActive('as.PV')">{{ vm.unit.as.PV | adjustedPV:getPilotSkill(vm) | formatNumber:true:false }}</div>
-                                    <div class="as-td as-td-skill clickable" (click)="onPilotClick(vm.forceUnit); $event.stopPropagation()" title="Click to edit pilot">{{ getPilotSkill(vm) }}</div>
-                                    <div class="as-td as-td-sz" [class.sort-slot]="isSortActive('as.SZ')">{{ vm.unit.as.SZ }}</div>
-                                    <div class="as-td as-td-mv" [class.sort-slot]="isSortActive('as._mv')" [innerHTML]="formatASMovement(vm.unit)"></div>
-                                    <div class="as-td as-td-tmm" [class.sort-slot]="isSortActive('as.TMM')">{{ vm.unit.as.TMM }}</div>
-                                    <div class="as-td as-td-dmg" [class.sort-slot]="isSortActive('as.damage')">@if (!vm.unit.as.usesArcs) { {{ vm.unit.as.dmg.dmgS }}/{{ vm.unit.as.dmg.dmgM }}/{{ vm.unit.as.dmg.dmgL }} }</div>
-                                    <div class="as-td as-td-arm" [class.sort-slot]="isSortActive('as.Arm')">{{ vm.unit.as.Arm }}</div>
-                                    <div class="as-td as-td-str" [class.sort-slot]="isSortActive('as.Str')">{{ vm.unit.as.Str }}</div>
-                                    <div class="as-td as-td-ov" [class.sort-slot]="isSortActive('as.OV')">@if (vm.unit.as.usesOV) { {{ vm.unit.as.OV }} }</div>
-                                    @if (getAsTableSortSlot(vm); as sortValue) {
-                                        <div class="as-td as-td-sort-slot sort-slot">{{ sortValue }}</div>
-                                    }
-                                    <div class="as-td as-td-specials">
-                                        @for (special of vm.unit.as.specials; let i = $index; track i) {
-                                            <span class="special-pill" (click)="showAbilityInfoDialog(special); $event.stopPropagation()" title="Click for details">{{ special }}</span>
-                                        }
-                                    </div>
-                                </div>
-                            } @else {
-                                <!-- Expanded Card View (AS or BT) -->
-                                <unit-card-expanded
-                                    [unit]="vm.forceUnit"
-                                    [expandedView]="true"
-                                    [sortKey]="selectedSort()"
-                                    [sortSlotLabel]="selectedSortLabel()"
-                                    [useHex]="useHex()"
-                                    (cardClick)="onUnitClick(vm)"
-                                    (tagClick)="onTagClick($event)"
-                                    (pilotClick)="onPilotClick($event)">
-                                </unit-card-expanded>
-                            }
+                            <!-- Expanded Card View (AS or BT) -->
+                            <unit-card-expanded
+                                [unit]="vm.forceUnit"
+                                [expandedView]="true"
+                                [sortKey]="selectedSort()"
+                                [sortSlotLabel]="selectedSortLabel()"
+                                [useHex]="useHex()"
+                                (cardClick)="onUnitClick(vm)"
+                                (tagClick)="onTagClick($event)"
+                                (pilotClick)="onPilotClick($event)">
+                            </unit-card-expanded>
                             @if (!last && !isTableMode()) {
                                 <hr class="divider" />
                             }
@@ -176,6 +218,7 @@
                 (cdkDropListDropped)="dropForNewGroup($event)">
                 <div class="new-group-placeholder">Drop units here to form a new group</div>
             </div>
+        }
         }
     </div>
 </div>
@@ -216,18 +259,22 @@
         </button>
     </div>
     <button type="button" class="bt-button view-toggle-btn" (click)="toggleViewMode()" 
-        [title]="viewMode() === 'expanded' ? 'Switch to compact view' : 'Switch to expanded view'">
-        @if (viewMode() === 'expanded') {
+        [title]="nextViewModeTitle()">
+        @if (viewMode() === 'compact') {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="3" width="7" height="7" rx="1"/>
-                <rect x="14" y="3" width="7" height="7" rx="1"/>
-                <rect x="3" y="14" width="7" height="7" rx="1"/>
-                <rect x="14" y="14" width="7" height="7" rx="1"/>
+                <rect x="2.5" y="2.5" width="8" height="8" rx="1"/>
+                <rect x="13.5" y="2.5" width="8" height="8" rx="1"/>
+                <rect x="2.5" y="13.5" width="8" height="8" rx="1"/>
+                <rect x="13.5" y="13.5" width="8" height="8" rx="1"/>
+            </svg>
+        } @else if (viewMode() === 'expanded') {
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2.5" y="3" width="19" height="7" rx="1"/>
+                <rect x="2.5" y="14" width="19" height="7" rx="1"/>
             </svg>
         } @else {
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="4" width="18" height="6" rx="1"/>
-                <rect x="3" y="14" width="18" height="6" rx="1"/>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                <path d="M21.167 22H2V2h19.167v20zM15.333 20.333H19.5V17h-4.167v3.333zM9.5 20.333h4.167V17H9.5v3.333zM3.667 20.333h4.167V17H3.667v3.333zM15.333 15.333H19.5V7h-4.167v3.333H19.5V12h-4.167v3.333zM9.5 15.333h4.167V12H9.5v3.333zM3.667 15.333h4.167V12H3.667v3.333zM9.5 10.333h4.167V7H9.5v3.333zM3.667 10.333h4.167V7H3.667v3.333zM3.667 5.333H19.5V3.667H3.667v1.666z" />
             </svg>
         }
     </button>
