@@ -43,8 +43,8 @@
     </button>
     <button type="button" class="bt-button card-view-btn square"
         (click)="cycleViewMode()"
-        [title]="viewMode() === 'chassis' ? 'Chassis View' : viewMode() === 'card' ? 'Card View' : 'List View'"
-        [attr.aria-label]="viewMode() === 'chassis' ? 'Chassis View' : viewMode() === 'card' ? 'Card View' : 'List View'">
+        [title]="currentViewModeTitle()"
+        [attr.aria-label]="currentViewModeTitle()">
         @if (viewMode() === 'chassis') {
         <!-- Chassis view -->
         <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -59,6 +59,11 @@
             <line x1="4.5" y1="12" x2="12" y2="12"/>
             <line x1="4.5" y1="16" x2="10" y2="16"/>
             <rect x="14.5" y="8" width="4" height="4"/>
+        </svg>
+        } @else if (viewMode() === 'table') {
+        <!-- Table view -->
+        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <path d="M21.167 22H2V2h19.167v20zM15.333 20.333H19.5V17h-4.167v3.333zM9.5 20.333h4.167V17H9.5v3.333zM3.667 20.333h4.167V17H3.667v3.333zM15.333 15.333H19.5V7h-4.167v3.333H19.5V12h-4.167v3.333zM9.5 15.333h4.167V12H9.5v3.333zM3.667 15.333h4.167V12H3.667v3.333zM9.5 10.333h4.167V7H9.5v3.333zM3.667 10.333h4.167V7H3.667v3.333zM3.667 5.333H19.5V3.667H3.667v1.666z" />
         </svg>
         } @else {
         <!-- List view -->
@@ -141,34 +146,9 @@
     </unit-details-panel>
     }
 
-    <div class="results-dropdown framed-borders" [class.expanded]="this.expandedView()">
+    <div #resultsDropdown class="results-dropdown framed-borders" [class.expanded]="this.expandedView()">
         <div class="results-dropdown-content">
             @if (this.filtersService.filteredUnits().length > 0) {
-            <!-- Table Header for AS Table View (expanded only, not in card or compact view) -->
-            @if (this.expandedView() && gameService.isAlphaStrike() && viewMode() === 'list') {
-            <div class="as-table-header"
-                 [class.sort-asc]="filtersService.selectedSortDirection() === 'asc'"
-                 [class.sort-desc]="filtersService.selectedSortDirection() === 'desc'">
-                <div class="as-th as-th-icon"></div>
-                <div class="as-th as-th-name as-th-sortable" [class.sort-active]="isSortActive('name')" (click)="onHeaderSort('name')">Name</div>
-                <div class="as-th as-th-type as-th-sortable" [class.sort-active]="isSortActive('as.TP')" (click)="onHeaderSort('as.TP')">Type</div>
-                <div class="as-th as-th-role as-th-sortable" [class.sort-active]="isSortActive('role')" (click)="onHeaderSort('role')">Role</div>
-                <div class="as-th as-th-pv as-th-sortable" [class.sort-active]="isSortActive('as.PV')" (click)="onHeaderSort('as.PV')">PV</div>
-                <div class="as-th as-th-sz as-th-sortable" [class.sort-active]="isSortActive('as.SZ')" (click)="onHeaderSort('as.SZ')">SZ</div>
-                <div class="as-th as-th-mv as-th-sortable" [class.sort-active]="isSortActive('as._mv')" (click)="onHeaderSort('as._mv')">MV</div>
-                <div class="as-th as-th-tmm as-th-sortable" [class.sort-active]="isSortActive('as.TMM')" (click)="onHeaderSort('as.TMM')">TMM</div>
-                <div class="as-th as-th-dmg as-th-sortable" [class.sort-active]="isSortActive('as.damage')" (click)="onHeaderSort('as.dmg._dmgS', 'as.damage')">S/M/L</div>
-                <div class="as-th as-th-arm as-th-sortable" [class.sort-active]="isSortActive('as.Arm')" (click)="onHeaderSort('as.Arm')">A</div>
-                <div class="as-th as-th-str as-th-sortable" [class.sort-active]="isSortActive('as.Str')" (click)="onHeaderSort('as.Str')">S</div>
-                <div class="as-th as-th-ov as-th-sortable" [class.sort-active]="isSortActive('as.OV')" (click)="onHeaderSort('as.OV')">OV</div>
-                @if (asTableSortSlotHeader(); as sortHeader) {
-                <div class="as-th as-th-sort-slot">{{ sortHeader }}</div>
-                }
-                <div class="as-th as-th-specials">Special</div>
-                <div class="as-th as-th-tags">Tags</div>
-            </div>
-            }
-
             @if (viewMode() === 'chassis') {
             <!-- Compact Chassis-Grouped View -->
             <div class="chassis-view-grid" [class.has-sort-slot]="chassisSortSlotHeader()">
@@ -196,26 +176,104 @@
                 }
             </div>
             } @else if (viewMode() === 'card' && gameService.isAlphaStrike()) {
-            <!-- Card View Grid (replaces virtual scroll) -->
-            <div class="card-view-grid">
-                @for (unit of this.filtersService.filteredUnits(); track unit.name) {
+            <cdk-virtual-scroll-viewport class="results-dropdown-viewport card-view-viewport"
+                [itemSize]="this.itemSize()"
+                [style.--item-size.px]="this.itemSize()"
+                [style.--card-columns]="cardViewColumnCount()"
+                minBufferPx="900" maxBufferPx="1600" tabindex="0">
+                <div class="card-view-row"
+                    *cdkVirtualFor="let row of cardViewRows(); let rowIndex = index; trackBy: trackCardRow">
+                    @for (unit of row; let columnIndex = $index; track unit.name) {
                     <div class="card-view-cell"
-                         longPress
-                         [class.selected]="isUnitSelected(unit)"
-                         (shortPress)="onUnitCardClick(unit, $event)"
-                         (longPress)="multiSelectUnit(unit)">
-                        @defer (on viewport) {
+                        longPress
+                        [class.selected]="isUnitSelected(unit)"
+                        [class.active]="activeIndex() === getCardUnitIndex(rowIndex, columnIndex)"
+                        (pointerenter)="activeIndex.set(getCardUnitIndex(rowIndex, columnIndex))"
+                        (shortPress)="onUnitCardClick(unit, $event)"
+                        (longPress)="multiSelectUnit(unit)">
                         <alpha-strike-card
                             [unit]="unit"
                             [useHex]="useHex()"
                             [cardStyle]="cardStyle()"
                             [isSelected]="isUnitSelected(unit)" />
-                        } @placeholder {
-                        <div class="card-view-placeholder"></div>
-                        }
                     </div>
-                }
-            </div>
+                    }
+                </div>
+            </cdk-virtual-scroll-viewport>
+            } @else if (this.expandedView() && isTableMode()) {
+            <mb-data-table class="unit-search-as-table"
+                [rows]="this.filtersService.filteredUnits()"
+                [columns]="unitSearchTableColumns()"
+                [itemSize]="48"
+                [minWidth]="unitSearchTableMinWidth()"
+                [sortDirection]="filtersService.selectedSortDirection()"
+                [rowTrackBy]="trackByUnitId"
+                [rowClass]="unitTableRowClass"
+                [minBufferPx]="900"
+                [maxBufferPx]="1600"
+                (sort)="onUnitTableSort($event)"
+                (rowClick)="onUnitTableRowClick($event)"
+                (rowLongPress)="onUnitTableRowLongPress($event)"
+                (rowPointerEnter)="onUnitTableRowPointerEnter($event)">
+            </mb-data-table>
+
+            <ng-template #tableIconCell let-unit>
+                <div class="as-td as-td-icon"><unit-icon [unit]="unit" [size]="36"></unit-icon></div>
+            </ng-template>
+
+            <ng-template #tableNameCell let-unit>
+                <div class="as-td as-td-name">
+                    <span class="as-td-model" [innerHTML]="highlight(unit.model)"></span>
+                    <span class="as-td-chassis" [innerHTML]="highlight(unit.chassis)"></span>
+                </div>
+            </ng-template>
+
+            <ng-template #tableYearCell let-unit>
+                <div class="as-td as-td-year">
+                    @if (unit._era?.img) {
+                    <img class="as-era-icon" [src]="unit._era?.img" [alt]="unit._era?.name || 'Era'" [title]="unit._era?.name || ''" />
+                    }
+                    <span>{{ unit.year ?? '—' }}</span>
+                </div>
+            </ng-template>
+
+            <ng-template #tableBvCell let-unit>
+                <div class="as-td cbt-td-bv">{{ formatClassicBv(unit, gunnery, piloting) }}</div>
+            </ng-template>
+
+            <ng-template #tableTonsCell let-unit>
+                <div class="as-td cbt-td-tons">{{ formatTons(unit.tons) }}</div>
+            </ng-template>
+
+            <ng-template #tableTypeCell let-unit>
+                <div class="as-td as-td-type" [tooltip]="unitTypeDisplayNames[unit.as.TP]">{{ unit.as.TP }}</div>
+            </ng-template>
+
+            <ng-template #tablePvCell let-unit>
+                <div class="as-td as-td-pv">{{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:false }}</div>
+            </ng-template>
+
+            <ng-template #tableMovementCell let-unit>
+                <div class="as-td as-td-mv" [innerHTML]="formatASMovement(unit)"></div>
+            </ng-template>
+
+            <ng-template #tableClassicMovementCell let-unit>
+                <div class="as-td cbt-td-mv">{{ formatClassicMovement(unit) }}</div>
+            </ng-template>
+
+            <ng-template #tableSpecialsCell let-unit>
+                <div class="as-td as-td-specials">
+                    @for (special of unit.as.specials; let i = $index; track i) {
+                    <span class="special-pill" (click)="showAbilityInfoDialog(special); $event.stopPropagation()" title="Click for details">{{ special }}</span>
+                    }
+                </div>
+            </ng-template>
+
+            <ng-template #tableTagsCell let-unit>
+                <div class="as-td as-td-tags">
+                    <unit-tags [unit]="unit" mode="full" size="small" (tagClick)="onAddTag($event)" />
+                </div>
+            </ng-template>
             } @else {
             <cdk-virtual-scroll-viewport class="results-dropdown-viewport" [itemSize]="this.itemSize()"
                 [style.--item-size.px]="this.itemSize()" minBufferPx="900" maxBufferPx="1600" tabindex="0">
@@ -243,38 +301,6 @@
                             [searchTokens]="this.filtersService.searchTokens()"
                             (tagClick)="onAddTag($event)">
                         </unit-card-expanded>
-                        <!-- AS Table Row View (visible at >= 1200px) -->
-                        <div class="as-table-row"
-                            longPress
-                            (shortPress)="onUnitCardClick(unit, $event)"
-                            (longPress)="multiSelectUnit(unit, $event)">
-                            <div class="as-td as-td-icon"><unit-icon [unit]="unit" [size]="36"></unit-icon></div>
-                            <div class="as-td as-td-name">
-                                <span class="as-td-model" [innerHTML]="highlight(unit.model)"></span>
-                                <span class="as-td-chassis" [innerHTML]="highlight(unit.chassis)"></span>
-                            </div>
-                            <div class="as-td as-td-type" [class.sort-slot]="isSortActive('as.TP')" [tooltip]="unitTypeDisplayNames[unit.as.TP]">{{ unit.as.TP }}</div>
-                            <div class="as-td as-td-role" [class.sort-slot]="isSortActive('role')">{{ unit.role !== 'None' ? unit.role : '' }}</div>
-                            <div class="as-td as-td-pv" [class.sort-slot]="isSortActive('as.PV')">{{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:false }}</div>
-                            <div class="as-td as-td-sz" [class.sort-slot]="isSortActive('as.SZ')">{{ unit.as.SZ }}</div>
-                            <div class="as-td as-td-mv" [class.sort-slot]="isSortActive('as._mv')" [innerHTML]="formatASMovement(unit)"></div>
-                            <div class="as-td as-td-tmm" [class.sort-slot]="isSortActive('as.TMM')">{{ unit.as.TMM ?? '—' }}</div>
-                            <div class="as-td as-td-dmg" [class.sort-slot]="isSortActive('as.damage')">@if (!unit.as.usesArcs) { {{ unit.as.dmg.dmgS }}/{{ unit.as.dmg.dmgM }}/{{ unit.as.dmg.dmgL }} }</div>
-                            <div class="as-td as-td-arm" [class.sort-slot]="isSortActive('as.Arm')">{{ unit.as.Arm }}</div>
-                            <div class="as-td as-td-str" [class.sort-slot]="isSortActive('as.Str')">{{ unit.as.Str }}</div>
-                            <div class="as-td as-td-ov" [class.sort-slot]="isSortActive('as.OV')">@if (unit.as.usesOV) { {{ unit.as.OV }} }</div>
-                            @if (getAsTableSortSlot(unit); as sortValue) {
-                            <div class="as-td as-td-sort-slot sort-slot">{{ sortValue }}</div>
-                            }
-                            <div class="as-td as-td-specials">
-                                @for (special of unit.as.specials; let i = $index; track i) {
-                                <span class="special-pill" (click)="showAbilityInfoDialog(special); $event.stopPropagation()" title="Click for details">{{ special }}</span>
-                                }
-                            </div>
-                            <div class="as-td as-td-tags">
-                                <unit-tags [unit]="unit" mode="full" size="small" (tagClick)="onAddTag($event)" />
-                            </div>
-                        </div>
                         } @else {
                         <!-- BT Expanded Card -->
                         <unit-card-expanded
@@ -398,7 +424,34 @@
     [style.height]="advPanelStyle().height"
     [class.docked]="advPanelDocked()" [class.docked-left]="advPanelDocked() && filtersOnLeft()">
     <div class="adv-panel-header" [class.two-columns]="advPanelStyle().columnsCount === 2">
-        <button (click)="clearAdvFilters()" type="button" class="bt-button clear-btn">RESET FILTERS</button>
+        <div class="adv-panel-actions">
+            <button (click)="clearAdvFilters()" type="button" class="bt-button clear-btn">RESET FILTERS</button>
+            @if (advPanelStyle().columnsCount !== 2) {
+            <button type="button" class="bt-button square adv-filter-system-toggle"
+                [class.active]="otherAdvPanelFilterGameSystemHasActiveFilters()"
+                [title]="advPanelFilterGameSystemToggleTitle()"
+                [attr.aria-label]="advPanelFilterGameSystemToggleTitle()"
+                (click)="toggleAdvPanelFilterGameSystem()">
+                @if (otherAdvPanelFilterGameSystem() === gameSystemEnum.CLASSIC) {
+                <svg width="21" height="26" viewBox="0 0 21 25.9" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                    <g transform="translate(-.02)">
+                        <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
+                            <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
+                            <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
+                        </g>
+                    </g>
+                </svg>
+                } @else {
+                <svg width="24" height="19" viewBox="0 0 14.6 11.5" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                    <g transform="translate(-2.47,-1.1)">
+                        <path class="as-stroke" transform="translate(3,12)" d="m5.15-10.3 1.53 10.3h-2.74l-0.13-1.85h-0.96l-0.16 1.85h-2.766l1.356-10.3zm-1.42 6.63c-0.13-1.16-0.27-2.6-0.4-4.31-0.27 1.97-0.44 3.4-0.51 4.31zm9.77-3.5h-2.5v-0.76c0-0.35 0-0.58-0.1-0.68s-0.2-0.14-0.3-0.14c-0.2 0-0.3 0.1-0.4 0.19-0.1 0.13-0.1 0.33-0.1 0.6 0 0.34 0 0.6 0.1 0.77s0.4 0.38 0.8 0.63c1.2 0.71 1.9 1.29 2.2 1.74s0.5 1.18 0.5 2.19c0 0.73-0.1 1.27-0.3 1.62-0.1 0.347-0.5 0.64-1 0.877-0.5 0.233-1 0.349-1.7 0.349-0.73 0-1.33-0.135-1.83-0.406s-0.9-0.618-1-1.04c-0.1-0.41-0.2-1.01-0.2-1.78v-0.67h2.53v1.25c0 0.39 0 0.63 0.1 0.74s0.2 0.17 0.3 0.17c0.2 0 0.3-0.1 0.4-0.21 0.1-0.14 0.2-0.35 0.2-0.62 0-0.61-0.1-1-0.3-1.19-0.1-0.19-0.5-0.5-1.23-0.94-0.7-0.44-1.1-0.76-1.4-0.95-0.2-0.2-0.4-0.48-0.5-0.83s-0.2-0.8-0.2-1.34c0-0.79 0.1-1.37 0.3-1.73 0.2-0.37 0.5-0.66 1-0.87 0.4-0.2 0.9-0.3 1.63-0.3 0.7 0 1.3 0.1 1.8 0.3 0.5 0.25 0.8 0.55 0.9 0.89 0.2 0.34 0.3 0.92 0.3 1.74z" fill="none" stroke="currentColor" stroke-miterlimit="3.226" stroke-width=".8" />
+                        <path class="as-fill" transform="translate(3,12)" d="m5.15-10.3 1.53 10.3h-2.74l-0.13-1.85h-0.96l-0.16 1.85h-2.766l1.356-10.3zm-1.42 6.63c-0.13-1.16-0.27-2.6-0.4-4.31-0.27 1.97-0.44 3.4-0.51 4.31zm9.77-3.5h-2.5v-0.76c0-0.35 0-0.58-0.1-0.68s-0.2-0.14-0.3-0.14c-0.2 0-0.3 0.1-0.4 0.19-0.1 0.13-0.1 0.33-0.1 0.6 0 0.34 0 0.6 0.1 0.77s0.4 0.38 0.8 0.63c1.2 0.71 1.9 1.29 2.2 1.74s0.5 1.18 0.5 2.19c0 0.73-0.1 1.27-0.3 1.62-0.1 0.347-0.5 0.64-1 0.877-0.5 0.233-1 0.349-1.7 0.349-0.73 0-1.33-0.135-1.83-0.406s-0.9-0.618-1-1.04c-0.1-0.41-0.2-1.01-0.2-1.78v-0.67h2.53v1.25c0 0.39 0 0.63 0.1 0.74s0.2 0.17 0.3 0.17c0.2 0 0.3-0.1 0.4-0.21 0.1-0.14 0.2-0.35 0.2-0.62 0-0.61-0.1-1-0.3-1.19-0.1-0.19-0.5-0.5-1.23-0.94-0.7-0.44-1.1-0.76-1.4-0.95-0.2-0.2-0.4-0.48-0.5-0.83s-0.2-0.8-0.2-1.34c0-0.79 0.1-1.37 0.3-1.73 0.2-0.37 0.5-0.66 1-0.87 0.4-0.2 0.9-0.3 1.63-0.3 0.7 0 1.3 0.1 1.8 0.3 0.5 0.25 0.8 0.55 0.9 0.89 0.2 0.34 0.3 0.92 0.3 1.74z" fill="#444" />
+                    </g>
+                </svg>
+                }
+            </button>
+            }
+        </div>
         <div class="pilot-skills-section framed-borders">
             <div class="pilot-skills-controls">
                 @if (gameService.isAlphaStrike()) {
@@ -458,6 +511,31 @@
                 }
             </div>
         </div>
+        @if (advPanelStyle().columnsCount === 2) {
+        <button type="button" class="bt-button adv-filter-system-toggle"
+            [class.active]="otherAdvPanelFilterGameSystemHasActiveFilters()"
+            [title]="advPanelFilterGameSystemToggleTitle()"
+            [attr.aria-label]="advPanelFilterGameSystemToggleTitle()"
+            (click)="toggleAdvPanelFilterGameSystem()">
+            @if (otherAdvPanelFilterGameSystem() === gameSystemEnum.CLASSIC) {
+            <svg width="21" height="26" viewBox="0 0 21 25.9" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                <g transform="translate(-.02)">
+                    <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
+                        <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
+                        <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
+                    </g>
+                </g>
+            </svg>
+            } @else {
+            <svg width="24" height="19" viewBox="0 0 14.6 11.5" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                <g transform="translate(-2.47,-1.1)">
+                    <path class="as-stroke" transform="translate(3,12)" d="m5.15-10.3 1.53 10.3h-2.74l-0.13-1.85h-0.96l-0.16 1.85h-2.766l1.356-10.3zm-1.42 6.63c-0.13-1.16-0.27-2.6-0.4-4.31-0.27 1.97-0.44 3.4-0.51 4.31zm9.77-3.5h-2.5v-0.76c0-0.35 0-0.58-0.1-0.68s-0.2-0.14-0.3-0.14c-0.2 0-0.3 0.1-0.4 0.19-0.1 0.13-0.1 0.33-0.1 0.6 0 0.34 0 0.6 0.1 0.77s0.4 0.38 0.8 0.63c1.2 0.71 1.9 1.29 2.2 1.74s0.5 1.18 0.5 2.19c0 0.73-0.1 1.27-0.3 1.62-0.1 0.347-0.5 0.64-1 0.877-0.5 0.233-1 0.349-1.7 0.349-0.73 0-1.33-0.135-1.83-0.406s-0.9-0.618-1-1.04c-0.1-0.41-0.2-1.01-0.2-1.78v-0.67h2.53v1.25c0 0.39 0 0.63 0.1 0.74s0.2 0.17 0.3 0.17c0.2 0 0.3-0.1 0.4-0.21 0.1-0.14 0.2-0.35 0.2-0.62 0-0.61-0.1-1-0.3-1.19-0.1-0.19-0.5-0.5-1.23-0.94-0.7-0.44-1.1-0.76-1.4-0.95-0.2-0.2-0.4-0.48-0.5-0.83s-0.2-0.8-0.2-1.34c0-0.79 0.1-1.37 0.3-1.73 0.2-0.37 0.5-0.66 1-0.87 0.4-0.2 0.9-0.3 1.63-0.3 0.7 0 1.3 0.1 1.8 0.3 0.5 0.25 0.8 0.55 0.9 0.89 0.2 0.34 0.3 0.92 0.3 1.74z" fill="none" stroke="currentColor" stroke-miterlimit="3.226" stroke-width=".8" />
+                    <path class="as-fill" transform="translate(3,12)" d="m5.15-10.3 1.53 10.3h-2.74l-0.13-1.85h-0.96l-0.16 1.85h-2.766l1.356-10.3zm-1.42 6.63c-0.13-1.16-0.27-2.6-0.4-4.31-0.27 1.97-0.44 3.4-0.51 4.31zm9.77-3.5h-2.5v-0.76c0-0.35 0-0.58-0.1-0.68s-0.2-0.14-0.3-0.14c-0.2 0-0.3 0.1-0.4 0.19-0.1 0.13-0.1 0.33-0.1 0.6 0 0.34 0 0.6 0.1 0.77s0.4 0.38 0.8 0.63c1.2 0.71 1.9 1.29 2.2 1.74s0.5 1.18 0.5 2.19c0 0.73-0.1 1.27-0.3 1.62-0.1 0.347-0.5 0.64-1 0.877-0.5 0.233-1 0.349-1.7 0.349-0.73 0-1.33-0.135-1.83-0.406s-0.9-0.618-1-1.04c-0.1-0.41-0.2-1.01-0.2-1.78v-0.67h2.53v1.25c0 0.39 0 0.63 0.1 0.74s0.2 0.17 0.3 0.17c0.2 0 0.3-0.1 0.4-0.21 0.1-0.14 0.2-0.35 0.2-0.62 0-0.61-0.1-1-0.3-1.19-0.1-0.19-0.5-0.5-1.23-0.94-0.7-0.44-1.1-0.76-1.4-0.95-0.2-0.2-0.4-0.48-0.5-0.83s-0.2-0.8-0.2-1.34c0-0.79 0.1-1.37 0.3-1.73 0.2-0.37 0.5-0.66 1-0.87 0.4-0.2 0.9-0.3 1.63-0.3 0.7 0 1.3 0.1 1.8 0.3 0.5 0.25 0.8 0.55 0.9 0.89 0.2 0.34 0.3 0.92 0.3 1.74z" fill="#444" />
+                </g>
+            </svg>
+            }
+        </button>
+        }
     </div>
     <div class="adv-panel-content" [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
         @if (isComplexQuery()) {
@@ -496,7 +574,7 @@
                     rangeOpts?.label }}
                     @if (rangeOpts?.displayText) {
                     <span class="effective-range" title="Effective range after exclusions">
-                        ✓ {{ rangeOpts?.displayText }}
+                        {{ rangeOpts?.displayText }}
                     </span>
                     } @else {
                     <span class="range-values">

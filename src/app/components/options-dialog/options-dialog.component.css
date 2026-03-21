@@ -24,6 +24,18 @@
   width: 50%;
 }
 
+.sensitive-input-wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.sensitive-input-wrapper .bt-input {
+  flex: 1;
+  min-width: 0;
+  padding-right: 40px;
+}
+
 .option-col {
   display: flex;
   flex-direction: column;
@@ -244,4 +256,34 @@ input {
   vertical-align: middle;
   display: inline-block;
   margin: 0 0.1em;
+}
+
+.sensitive-toggle {
+  position: absolute;
+  right: 4px;
+  top: 0;
+  bottom: 0;
+  margin: auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #999;
+  cursor: pointer;
+  transition: color 0.2s;
+  line-height: 1;
+  z-index: 1;
+}
+
+.sensitive-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+
+.sensitive-toggle:hover {
+  color: var(--text-color);
 }

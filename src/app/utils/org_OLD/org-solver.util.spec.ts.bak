@@ -237,7 +237,7 @@ const BLUNDER_BRIGADE_GROUP_ONE_NAMES: Array<keyof typeof BLUNDER_BRIGADE_UNIT_F
 ];
 
 function resolveBlunderBrigadeForce(): { groupResults: GroupSizeResult[]; result: GroupSizeResult[] } {
-    const groupOne: Unit[] = Array.from({ length: 10 }, (_, iteration) =>
+    const groupOne: Unit[] = Array.from({ length: 1 }, (_, iteration) =>
         BLUNDER_BRIGADE_GROUP_ONE_NAMES.map(name => createFixtureUnit(name)),
     ).flat();
     const groupTwo: Unit[] = [
