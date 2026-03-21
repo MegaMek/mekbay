@@ -368,6 +368,10 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             }
         }
 
+        if (faction && !hasFactionEraAvailability(faction, era.id)) {
+            warnings.push(`${faction.name} does not exist in this era.`);
+        }
+
         if (invalidTrackedUnits > 0) {
             const unitLabel = invalidTrackedUnits === 1 ? 'unit is' : 'units are';
             warnings.push(`${invalidTrackedUnits} ${unitLabel} not listed in the ${era.name} era.`);
@@ -381,10 +385,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         if (invalidYearFallbackUnits > 0) {
             const unitLabel = invalidYearFallbackUnits === 1 ? 'unit is' : 'units are';
             warnings.push(`${invalidYearFallbackUnits} ${unitLabel} newer than this era ends in ${era.years.to}.`);
-        }
-
-        if (faction && !hasFactionEraAvailability(faction, era.id)) {
-            warnings.push(`${faction.name} does not exist in this era.`);
         }
 
         return warnings.length > 0 ? warnings.join(' ') : null;
