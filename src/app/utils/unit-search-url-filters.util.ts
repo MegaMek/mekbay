@@ -38,7 +38,7 @@ import { getAvailableDropdownValuesMap, type UnitSearchDropdownValuesDependencie
 import { AdvFilterType, type FilterState, SORT_OPTIONS } from '../services/unit-search-filters.model';
 import { getAdvancedFilterConfigByKey } from './unit-search-filter-config.util';
 
-export interface ParsedUnitSearchScalarUrlState {
+interface ParsedUnitSearchScalarUrlState {
     searchText: string | null;
     sortKey: string | null;
     sortDirection: 'asc' | 'desc' | null;
@@ -49,7 +49,7 @@ export interface ParsedUnitSearchScalarUrlState {
     hasFilters: boolean;
 }
 
-export interface UnitSearchQueryParametersArgs {
+interface UnitSearchQueryParametersArgs {
     searchText: string;
     filterState: FilterState;
     semanticKeys: ReadonlySet<string>;
@@ -62,7 +62,7 @@ export interface UnitSearchQueryParametersArgs {
     publicTagsParam: string | null;
 }
 
-export interface UnitSearchQueryParameters {
+interface UnitSearchQueryParameters {
     [key: string]: string | number | null | undefined;
     q: string | null;
     filters: string | null;
@@ -126,7 +126,7 @@ export function parseUnitSearchScalarUrlState(
     };
 }
 
-export function generateCompactFiltersParam(state: FilterState): string | null {
+function generateCompactFiltersParam(state: FilterState): string | null {
     const parts: string[] = [];
 
     for (const [key, filterState] of Object.entries(state)) {
@@ -202,7 +202,7 @@ export function buildUnitSearchQueryParameters({
     };
 }
 
-export function parseCompactFiltersFromUrl(filtersParam: string): FilterState {
+function parseCompactFiltersFromUrl(filtersParam: string): FilterState {
     const filterState: FilterState = {};
     const parts = filtersParam.split('|');
 
@@ -276,7 +276,7 @@ export function parseCompactFiltersFromUrl(filtersParam: string): FilterState {
     return filterState;
 }
 
-export function validateParsedFiltersFromUrl(
+function validateParsedFiltersFromUrl(
     parsedFilters: FilterState,
     dropdownValuesDependencies: UnitSearchDropdownValuesDependencies,
 ): FilterState {

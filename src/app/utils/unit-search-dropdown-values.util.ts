@@ -42,7 +42,7 @@ export interface UnitSearchDropdownValuesDependencies {
     getProperty: (unit: Unit, key?: string) => unknown;
 }
 
-export function getAvailableDropdownValues(
+function getAvailableDropdownValues(
     conf: AdvFilterConfig,
     dependencies: UnitSearchDropdownValuesDependencies,
 ): Set<string> {

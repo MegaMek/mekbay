@@ -51,7 +51,7 @@ export interface UnitFilterKernelDependencies {
     getForcePackChassisTypeSet: (packName: string) => ReadonlySet<string> | undefined;
 }
 
-export interface ApplyUnitFilterStateRequest {
+interface ApplyUnitFilterStateRequest {
     units: Unit[];
     state: FilterState;
     dependencies: UnitFilterKernelDependencies;
