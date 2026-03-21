@@ -33,10 +33,10 @@
 
 import type { Unit } from '../models/units.model';
 import type { AdvFilterConfig } from '../services/unit-search-filters.model';
+import { usesIndexedDropdownUniverse } from './unit-search-filter-config.util';
 
 export interface UnitSearchDropdownValuesDependencies {
-    isIndexedUniverseKey: (filterKey: string) => boolean;
-    getIndexedUniverseNames: (filterKey: string) => readonly string[];
+    getDropdownOptionUniverse: (filterKey: string) => readonly string[];
     getExternalDropdownValues: (filterKey: string) => readonly string[];
     units: readonly Unit[];
     getProperty: (unit: Unit, key?: string) => unknown;
@@ -46,8 +46,8 @@ function getAvailableDropdownValues(
     conf: AdvFilterConfig,
     dependencies: UnitSearchDropdownValuesDependencies,
 ): Set<string> {
-    if (dependencies.isIndexedUniverseKey(conf.key)) {
-        return new Set(dependencies.getIndexedUniverseNames(conf.key));
+    if (usesIndexedDropdownUniverse(conf)) {
+        return new Set(dependencies.getDropdownOptionUniverse(conf.key));
     }
 
     const values = new Set<string>();

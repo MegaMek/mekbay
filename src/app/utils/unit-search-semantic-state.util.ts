@@ -39,7 +39,7 @@ import {
     type SemanticToken,
 } from './semantic-filter.util';
 import { isComplexQuery, parseSemanticQueryAST, type ParseResult } from './semantic-filter-ast.util';
-import { getAdvancedFilterConfigByKey, getAdvancedFilterConfigBySemanticField } from './unit-search-filter-config.util';
+import { getAdvancedFilterConfigByKey, getAdvancedFilterConfigBySemanticField, getDropdownOptionSource } from './unit-search-filter-config.util';
 import { type AdvFilterConfig, AdvFilterType, type FilterState } from '../services/unit-search-filters.model';
 import { hasUnclosedQuote, isCommittedSemanticToken } from './unit-search-shared.util';
 
@@ -73,7 +73,7 @@ function getCanonicalDropdownLookup(
         }
     };
 
-    const values = conf.external
+    const values = getDropdownOptionSource(conf) === 'external'
         ? dependencies.getExternalDropdownValues(conf.key)
         : dependencies.getDropdownOptionUniverse(conf.key);
 

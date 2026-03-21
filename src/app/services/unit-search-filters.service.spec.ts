@@ -17,6 +17,12 @@ import { UnitSearchFiltersService } from './unit-search-filters.service';
 import { UrlStateService } from './url-state.service';
 import { UserStateService } from './userState.service';
 import { WsService } from './ws.service';
+import {
+    getAdvancedFilterConfigByKey,
+    getDropdownCapabilityMetadataErrors,
+    usesIndexedDropdownAvailability,
+    usesIndexedDropdownUniverse,
+} from '../utils/unit-search-filter-config.util';
 import { SEARCH_WORKER_FACTORY } from '../utils/unit-search-worker-factory.util';
 import type { SearchWorkerLike } from '../utils/unit-search-worker-client.util';
 import type { UnitSearchWorkerResponseMessage } from '../utils/unit-search-worker-protocol.util';
@@ -284,6 +290,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             getPublicTagsForUnit: () => [],
             isTagSubscribed: () => false,
             getAllPublicTags: () => [],
+            getSubscribedTags: () => [],
         };
 
         const userStateServiceStub = {
@@ -489,6 +496,74 @@ describe('UnitSearchFiltersService search telemetry', () => {
         });
 
         expect(() => service.advOptions()).not.toThrow();
+    });
+
+    it('canonicalizes indexed source, faction, and era filters from URL params', () => {
+        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
+            pending('Real unit data could not be loaded for the URL canonicalization test.');
+            return;
+        }
+
+        const bundle = buildSmallBundle(benchmarkBundle);
+        bundle.eras.eras = [{
+            id: 1,
+            name: 'Succession Wars',
+            img: '',
+            years: {
+                from: 3000,
+                to: 3100,
+            },
+            units: [1, 2],
+            factions: [],
+        }];
+        bundle.factions.factions = [{
+            id: 1,
+            name: 'Test Faction',
+            group: 'Other',
+            img: '',
+            eras: {
+                1: new Set([1, 2]),
+            },
+        }];
+
+        const { service } = createService(bundle);
+        const params = new URLSearchParams();
+        params.set('filters', 'source:src-a|faction:test faction|era:succession wars');
+
+        service.applySearchParamsFromUrl(params, { expandView: false });
+
+        expect(service.filterState()['source']?.value).toEqual({
+            'SRC-A': {
+                name: 'SRC-A',
+                state: 'or',
+                count: 1,
+            },
+        });
+        expect(service.filterState()['faction']?.value).toEqual({
+            'Test Faction': {
+                name: 'Test Faction',
+                state: 'or',
+                count: 1,
+            },
+        });
+        expect(service.filterState()['era']?.value).toEqual(['Succession Wars']);
+    });
+
+    it('declares indexed dropdown capabilities for source, faction, and era', () => {
+        const sourceConfig = getAdvancedFilterConfigByKey('source');
+        const factionConfig = getAdvancedFilterConfigByKey('faction');
+        const eraConfig = getAdvancedFilterConfigByKey('era');
+
+        expect(usesIndexedDropdownUniverse(sourceConfig)).toBeTrue();
+        expect(usesIndexedDropdownAvailability(sourceConfig)).toBeTrue();
+        expect(usesIndexedDropdownUniverse(factionConfig)).toBeTrue();
+        expect(usesIndexedDropdownAvailability(factionConfig)).toBeTrue();
+        expect(usesIndexedDropdownUniverse(eraConfig)).toBeTrue();
+        expect(usesIndexedDropdownAvailability(eraConfig)).toBeTrue();
+    });
+
+    it('keeps dropdown capability metadata fully specified', () => {
+        expect(getDropdownCapabilityMetadataErrors()).toEqual([]);
     });
 
     it('keeps component options stable and marks out-of-context entries unavailable', () => {

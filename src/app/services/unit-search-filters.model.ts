@@ -50,6 +50,10 @@ export interface SortOption {
     gameSystem?: GameSystem;
 }
 
+export type DropdownOptionSource = 'indexed' | 'external' | 'context';
+export type DropdownAvailabilitySource = 'indexed' | 'context';
+export type DropdownPropertyShape = 'scalar' | 'array' | 'component';
+
 export enum AdvFilterType {
     DROPDOWN = 'dropdown',
     RANGE = 'range',
@@ -258,6 +262,9 @@ export interface DropdownFilterConfig {
     external?: boolean;
     multistate?: boolean;
     countable?: boolean;
+    optionSource?: DropdownOptionSource;
+    availabilitySource?: DropdownAvailabilitySource;
+    propertyShape?: DropdownPropertyShape;
     /** Optional function to normalize semantic filter values (e.g., motive code 'j' -> 'Jump') */
     valueNormalizer?: (value: string) => string;
     /** Optional function to map a raw option value to a human-readable display name (e.g., 'TR:3050' -> 'Technical Readout: 3050') */
@@ -284,25 +291,25 @@ export interface SemanticFilterConfig {
 
 /** Dropdown filters - separated for clean iteration */
 export const DROPDOWN_FILTERS: readonly DropdownFilterConfig[] = Object.freeze([
-    { key: 'era', semanticKey: 'era', label: 'Era', external: true },
-    { key: 'faction', semanticKey: 'faction', label: 'Faction', external: true, multistate: true },
-    { key: 'type', semanticKey: 'type', label: 'Type', game: GameSystem.CLASSIC },
-    { key: 'as.TP', semanticKey: 'type', label: 'Type', game: GameSystem.ALPHA_STRIKE, displayNameFn: (v: string) => AS_TYPE_DISPLAY_NAMES[v] ? `${v} - ${AS_TYPE_DISPLAY_NAMES[v]}` : v },
-    { key: 'subtype', semanticKey: 'subtype', label: 'Subtype', game: GameSystem.CLASSIC },
-    { key: 'techBase', semanticKey: 'tech', label: 'Tech', sortOptions: ['Inner Sphere', 'Clan', 'Mixed'] },
-    { key: 'role', semanticKey: 'role', label: 'Role' },
-    { key: 'weightClass', semanticKey: 'weight', label: 'Weight Class', game: GameSystem.CLASSIC, sortOptions: ['Ultra Light*', 'Light', 'Medium', 'Heavy', 'Assault', 'Colossal*', 'Small*', 'Medium*', 'Large*'] },
-    { key: 'level', semanticKey: 'rules', label: 'Rules', game: GameSystem.CLASSIC, sortOptions: ['Introductory', 'Standard', 'Advanced', 'Experimental', 'Unofficial'] },
-    { key: 'c3', semanticKey: 'network', label: 'Network', game: GameSystem.CLASSIC },
-    { key: 'moveType', semanticKey: 'motive', label: 'Motive', game: GameSystem.CLASSIC },
-    { key: 'as._motive', semanticKey: 'motive', label: 'Motive', game: GameSystem.ALPHA_STRIKE, sortOptions: Object.values(AS_MOVEMENT_MODE_DISPLAY_NAMES), valueNormalizer: normalizeMotiveValue },
-    { key: 'as.specials', semanticKey: 'specials', label: 'Specials', multistate: true, game: GameSystem.ALPHA_STRIKE },
-    { key: 'componentName', semanticKey: 'equipment', label: 'Equipment', multistate: true, countable: true, game: GameSystem.CLASSIC },
-    { key: 'features', semanticKey: 'features', label: 'Features', multistate: true, game: GameSystem.CLASSIC },
-    { key: 'quirks', semanticKey: 'quirks', label: 'Quirks', multistate: true, game: GameSystem.CLASSIC },
-    { key: 'source', semanticKey: 'source', label: 'Source', multistate: true },
-    { key: 'forcePack', semanticKey: 'pack', label: 'Force Packs', external: true },
-    { key: '_tags', semanticKey: 'tags', label: 'Tags', multistate: true },
+    { key: 'era', semanticKey: 'era', label: 'Era', external: true, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
+    { key: 'faction', semanticKey: 'faction', label: 'Faction', external: true, multistate: true, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
+    { key: 'type', semanticKey: 'type', label: 'Type', game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
+    { key: 'as.TP', semanticKey: 'type', label: 'Type', game: GameSystem.ALPHA_STRIKE, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar', displayNameFn: (v: string) => AS_TYPE_DISPLAY_NAMES[v] ? `${v} - ${AS_TYPE_DISPLAY_NAMES[v]}` : v },
+    { key: 'subtype', semanticKey: 'subtype', label: 'Subtype', game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
+    { key: 'techBase', semanticKey: 'tech', label: 'Tech', sortOptions: ['Inner Sphere', 'Clan', 'Mixed'], optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
+    { key: 'role', semanticKey: 'role', label: 'Role', optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
+    { key: 'weightClass', semanticKey: 'weight', label: 'Weight Class', game: GameSystem.CLASSIC, sortOptions: ['Ultra Light*', 'Light', 'Medium', 'Heavy', 'Assault', 'Colossal*', 'Small*', 'Medium*', 'Large*'], optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
+    { key: 'level', semanticKey: 'rules', label: 'Rules', game: GameSystem.CLASSIC, sortOptions: ['Introductory', 'Standard', 'Advanced', 'Experimental', 'Unofficial'], optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
+    { key: 'c3', semanticKey: 'network', label: 'Network', game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
+    { key: 'moveType', semanticKey: 'motive', label: 'Motive', game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
+    { key: 'as._motive', semanticKey: 'motive', label: 'Motive', game: GameSystem.ALPHA_STRIKE, sortOptions: Object.values(AS_MOVEMENT_MODE_DISPLAY_NAMES), optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array', valueNormalizer: normalizeMotiveValue },
+    { key: 'as.specials', semanticKey: 'specials', label: 'Specials', multistate: true, game: GameSystem.ALPHA_STRIKE, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
+    { key: 'componentName', semanticKey: 'equipment', label: 'Equipment', multistate: true, countable: true, game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'context', propertyShape: 'component' },
+    { key: 'features', semanticKey: 'features', label: 'Features', multistate: true, game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
+    { key: 'quirks', semanticKey: 'quirks', label: 'Quirks', multistate: true, game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
+    { key: 'source', semanticKey: 'source', label: 'Source', multistate: true, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
+    { key: 'forcePack', semanticKey: 'pack', label: 'Force Packs', external: true, optionSource: 'external', availabilitySource: 'context', propertyShape: 'scalar' },
+    { key: '_tags', semanticKey: 'tags', label: 'Tags', multistate: true, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
 ]);
 
 /** Range filters - separated for clean iteration */
