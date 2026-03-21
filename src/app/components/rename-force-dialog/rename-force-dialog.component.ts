@@ -79,118 +79,122 @@ export interface RenameForceDialogResult {
     },
     template: `
     <div class="wide-dialog">
-      <div class="wide-dialog-body">
-        <div class="form-fields">
-            <label class="field-label" for="name">{{ forceOrganizationalName() }} Name</label>
-            <div class="input-wrapper">
-                <div class="name-input-wrapper">
-                    <div
-                        class="field-input"
-                        id="name"
-                        contentEditable="true"
-                        #inputRef
-                        autocomplete="off"
-                        [attr.data-placeholder]="placeholderName()"
-                        [textContent]="data.force.name"
-                        (keydown.enter)="submit()"
-                        (input)="onInputCleanup($event)"
-                        required
-                    ></div>
-                    @if (nameHasText()) {
+        <div class="wide-dialog-body">
+            <div class="form-fields">
+                <label class="field-label" for="name">Force Name</label>
+                <div class="input-wrapper">
+                    <div class="name-input-wrapper">
+                        <div
+                            class="field-input"
+                            id="name"
+                            contentEditable="true"
+                            #inputRef
+                            autocomplete="off"
+                            [attr.data-placeholder]="placeholderName()"
+                            [textContent]="data.force.name"
+                            (keydown.enter)="submit()"
+                            (input)="onInputCleanup($event)"
+                            required
+                        ></div>
+                        @if (nameHasText()) {
+                        <button
+                            type="button"
+                            class="clear-btn"
+                            (click)="clearName()"
+                            title="Clear"
+                            aria-label="Clear"
+                            tabindex="-1"
+                        >&#10005;</button>
+                        }
+                    </div>
                     <button
                         type="button"
-                        class="clear-btn"
-                        (click)="clearName()"
-                        title="Clear"
-                        aria-label="Clear"
-                        tabindex="-1"
-                    >&#10005;</button>
-                    }
+                        class="random-button"
+                        (click)="fillRandomName()"
+                        aria-label="Generate random force name"
+                    ></button>
                 </div>
+            </div>
+
+
+            <div class="form-fields">
+                <label class="field-label" for="era">Era</label>
+                <div #eraTriggerWrapper class="input-wrapper">
+                <button id="era" class="era-selector bt-select" [class.danger]="hasEraWarningState()" (click)="toggleEraDropdown()">
+                    @if (selectedEraDisplay(); as display) {
+                    <div class="era-selector-content">
+                        @if (display.era.icon) {
+                        <img [src]="display.era.icon" class="era-selector-icon" [alt]="display.era.name" />
+                        }
+                        <div class="era-selector-details">
+                        <span class="era-selector-name">{{ display.era.name }}</span>
+                        <span class="era-selector-years">{{ display.era.years.from ?? '?' }}&ndash;{{ display.era.years.to ?? 'present' }}</span>
+                        </div>
+                    </div>
+                    } @else {
+                    <span class="placeholder">Any</span>
+                    }
+                </button>
+                </div>
+                @if (selectedEraWarning(); as warning) {
+                    <p class="hint warning" aria-live="polite">{{ warning }}</p>
+                }
+            </div>
+
+            <div class="form-fields">
+                <label class="field-label" for="faction">Faction</label>
+                <div #factionTriggerWrapper class="input-wrapper">
+                <button id="faction" #factionTrigger class="faction-selector bt-select" (click)="toggleFactionDropdown()">
+                    @if (selectedFactionDisplay(); as display) {
+                    <div class="faction-selector-content">
+                        @if (display.faction.img) {
+                        <img [src]="display.faction.img" class="faction-selector-icon" [alt]="display.faction.name" />
+                        }
+                        <div class="faction-selector-details">
+                        <div class="faction-selector-header">
+                            <span class="faction-selector-name">{{ display.faction.name }}</span>
+                            <span class="match-badge">{{ (display.matchPercentage * 100) | number:'1.0-0' }}% match</span>
+                        </div>
+                        <div class="faction-selector-eras">
+                            @for (eraItem of display.eraAvailability; track eraItem.era.id) {
+                            @if (eraItem.era.icon) {
+                                <span class="faction-selector-era-chip"
+                                        [class.past-era]="eraItem.isBeforeReferenceYear"
+                                            [title]="getEraTitle(eraItem)">
+                                    <img class="faction-selector-era-icon"
+                                                [src]="eraItem.era.icon"
+                                        [alt]="eraItem.era.name"
+                                    [class.unavailable]="!eraItem.isAvailable"
+                                    [style.filter]="getEraIconFilter(eraItem)" />
+                                </span>
+                            }
+                            }
+                        </div>
+                        </div>
+                    </div>
+                } @else {
+                    <span class="placeholder">None</span>
+                }
+                </button>
                 <button
                     type="button"
                     class="random-button"
-                    (click)="fillRandomName()"
-                    aria-label="Generate random force name"
+                    (click)="fillRandomFaction()"
+                    aria-label="Pick random faction"
                 ></button>
-            </div>
-        </div>
-
-        <div class="form-fields">
-            <label class="field-label" for="faction">Faction</label>
-            <div #factionTriggerWrapper class="input-wrapper">
-              <button id="faction" #factionTrigger class="faction-selector bt-select" (click)="toggleFactionDropdown()">
-                @if (selectedFactionDisplay(); as display) {
-                  <div class="faction-selector-content">
-                    @if (display.faction.img) {
-                      <img [src]="display.faction.img" class="faction-selector-icon" [alt]="display.faction.name" />
-                    }
-                    <div class="faction-selector-details">
-                      <div class="faction-selector-header">
-                        <span class="faction-selector-name">{{ display.faction.name }}</span>
-                        <span class="match-badge">{{ (display.matchPercentage * 100) | number:'1.0-0' }}% match</span>
-                      </div>
-                      <div class="faction-selector-eras">
-                        @for (eraItem of display.eraAvailability; track eraItem.era.id) {
-                          @if (eraItem.era.icon) {
-                            <span class="faction-selector-era-chip"
-                                    [class.past-era]="eraItem.isBeforeReferenceYear"
-                                        [title]="getEraTitle(eraItem)">
-                                <img class="faction-selector-era-icon"
-                                            [src]="eraItem.era.icon"
-                                    [alt]="eraItem.era.name"
-                                [class.unavailable]="!eraItem.isAvailable"
-                                [style.filter]="getEraIconFilter(eraItem)" />
-                            </span>
-                          }
-                        }
-                      </div>
-                    </div>
-                  </div>
-              } @else {
-                <span class="placeholder">None</span>
-              }
-              </button>
-              <button
-                type="button"
-                class="random-button"
-                (click)="fillRandomFaction()"
-                aria-label="Pick random faction"
-              ></button>
-            </div>
-        </div>
-
-        <div class="form-fields">
-            <label class="field-label" for="era">Era</label>
-            <div #eraTriggerWrapper class="input-wrapper">
-              <button id="era" class="era-selector bt-select" [class.era-mismatch]="selectedEraDisplay() && selectedEraDisplay()!.matchPercentage < 1" (click)="toggleEraDropdown()">
-                @if (selectedEraDisplay(); as display) {
-                  <div class="era-selector-content">
-                    @if (display.era.icon) {
-                      <img [src]="display.era.icon" class="era-selector-icon" [alt]="display.era.name" />
-                    }
-                    <div class="era-selector-details">
-                      <span class="era-selector-name">{{ display.era.name }}</span>
-                      <span class="era-selector-years">{{ display.era.years.from ?? '?' }}&ndash;{{ display.era.years.to ?? 'present' }}</span>
-                    </div>
-                  </div>
-                } @else {
-                  <span class="placeholder">None</span>
+                </div>
+                @if (!data.force.factionLock) {
+                    <p class="hint">The faction will change dynamically based on force composition. Confirm to lock it in.</p>
                 }
-              </button>
             </div>
         </div>
-      </div>
-      @if (!data.force.factionLock) {
-        <p class="faction-hint">The faction will change dynamically based on force composition. Confirm to lock it in.</p>
-      }
-      <div class="wide-dialog-actions">
-        <button (click)="submit()" class="bt-button">CONFIRM</button>
-        @if (!data.hideUnset) {
-          <button (click)="submitUnset()" class="bt-button">UNSET</button>
-        }
-        <button (click)="close()" class="bt-button">DISMISS</button>
-      </div>
+        <div class="wide-dialog-actions">
+            <button (click)="submit()" class="bt-button">CONFIRM</button>
+            @if (!data.hideUnset) {
+            <button (click)="submitUnset()" class="bt-button">UNSET</button>
+            }
+            <button (click)="close()" class="bt-button">DISMISS</button>
+        </div>
     </div>
     `,
     styles: [`
@@ -313,11 +317,15 @@ export interface RenameForceDialogResult {
             color: #888;
         }
 
-        .faction-hint {
+        .hint {
             font-size: 0.85em;
             color: var(--text-color-tertiary);
-            margin: 4px 0 0;
+            margin: 0;
             text-align: center;
+            
+            &.warning {
+                color: red;
+            }
         }
 
         .name-input-wrapper {
@@ -416,10 +424,6 @@ export interface RenameForceDialogResult {
             font-size: 0.85em;
             color: var(--text-color-secondary);
         }
-
-        .era-mismatch {
-            border-color: rgba(255, 60, 60, 0.4);
-        }
     `]
 })
 
@@ -446,7 +450,7 @@ export class RenameForceDialogComponent {
         const eras = this.dataService.getEras();
         const units = this.data.force.units();
         if (units.length === 0) {
-            return eras.map(era => ({ era, matchPercentage: 0 }));
+            return eras.map(era => ({ era, matchPercentage: 100 }));
         }
         const unitIds = units.map(u => u.getUnit().id);
         const totalUnits = units.length;
@@ -468,6 +472,15 @@ export class RenameForceDialogComponent {
         return this.eraDisplayList().find(e => e.era.id === era.id) ?? null;
     });
 
+    selectedEraWarning = computed<string | null>(() => {
+        return this.data.force.getEraWarningMessage(this.selectedEra(), this.selectedFaction());
+    });
+
+    hasEraWarningState = computed<boolean>(() => {
+        return !!this.selectedEraWarning()
+            || (this.selectedEraDisplay()?.matchPercentage ?? 1) < 1;
+    });
+
     selectedFactionDisplay = computed<FactionDisplayInfo | null>(() => {
         const faction = this.selectedFaction();
         if (!faction) return null;
@@ -481,28 +494,6 @@ export class RenameForceDialogComponent {
             this.dataService.getFactions(),
             this.dataService.getEras()
         );
-    });
-
-    forceSizeResult = computed<AggregatedGroupSizeResult>(() => {
-        const units = this.data.force.units();
-        if (units.length === 0) {
-            return {
-                name: EMPTY_RESULT.name,
-                tier: EMPTY_RESULT.tier,
-                groups: [],
-            };
-        }
-        const factionName = this.selectedFaction()?.name ?? 'Mercenary';
-        const factionAffinity = this.selectedFaction()?.group ?? 'Mercenary';
-        const groupResults: GroupSizeResult[] = this.data.force.groups()
-            .filter(g => g.units().length > 0)
-            .flatMap(g => g.sizeResult().groups ?? []);
-        const resolvedOrg = resolveFromGroups(factionName, factionAffinity, groupResults);
-        return getAggregatedGroupsResult(resolvedOrg, factionName, factionAffinity);
-    });
-
-    forceOrganizationalName = computed<string>(() => {
-        return this.forceSizeResult().name;
     });
 
     /** Placeholder name based force size. */

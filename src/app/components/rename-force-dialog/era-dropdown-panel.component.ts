@@ -44,16 +44,16 @@ export interface EraDisplayInfo {
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div class="dropdown-panel glass has-shadow framed-borders" data-scroll-container>
-            <!-- None option -->
+            <!-- Any option -->
             <div class="dropdown-option none-option"
                  [class.active]="!selectedEraId()"
                  (click)="onSelectNone()">
                 <div class="era-icon-spacer" aria-hidden="true"></div>
                 <div class="none-option-details">
                     <div class="era-header">
-                        <span class="era-name">None</span>
+                        <span class="era-name">Any</span>
                     </div>
-                    <div class="era-summary">No era selected</div>
+                    <div class="era-summary">Explicitly opt out of any era warning and constraint</div>
                 </div>
             </div>
             <hr class="divider"/>
@@ -62,7 +62,7 @@ export interface EraDisplayInfo {
                 <div class="dropdown-option"
                      [class.active]="selectedEraId() === item.era.id"
                      [class.unavailable]="item.matchPercentage < 1"
-                     (click)="item.matchPercentage >= 1 ? onSelect(item.era) : null">
+                     (click)="onSelect(item.era)">
                     @if (item.era.icon) {
                         <img [src]="item.era.icon" class="era-icon" [alt]="item.era.name" />
                     } @else {
@@ -117,8 +117,6 @@ export interface EraDisplayInfo {
         }
 
         .dropdown-option.unavailable {
-            cursor: not-allowed;
-            opacity: 0.4;
             border-left-color: rgba(255, 60, 60, 0.4);
         }
 
