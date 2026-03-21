@@ -338,6 +338,12 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
                             ? request.collectIndexedAvailabilityNames(conf.key, sortedNames, contextUnitIds, isComponentFilter)
                             : getSnapshotAvailabilityNames(contextSnapshot, conf.key, contextUnits, isComponentFilter))
                         : getSnapshotAvailabilityNames(contextSnapshot, conf.key, contextUnits, isComponentFilter));
+                const indexedOptionMetadata = indexedUniverse
+                    ? new Map(
+                        request.buildIndexedDropdownOptions(conf, contextUnits, displayNameFn, contextUnitIds)
+                            .map(option => [option.name, option] as const)
+                    )
+                    : null;
 
                 let totalCountsMap: Map<string, number> | null = null;
                 if (hasQuantityFilters) {
@@ -346,8 +352,11 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
 
                 const optionsWithAvailability = sortedNames.map(name => {
                     const normalizedName = isComponentFilter ? name.toLowerCase() : name;
-                    const option: { name: string; available: boolean; count?: number } = {
+                    const metadata = indexedOptionMetadata?.get(name);
+                    const option: { name: string; img?: string; displayName?: string; available: boolean; count?: number } = {
                         name,
+                        ...(metadata?.img ? { img: metadata.img } : {}),
+                        ...(metadata?.displayName ? { displayName: metadata.displayName } : {}),
                         available: availableNameSet.has(normalizedName),
                     };
 
