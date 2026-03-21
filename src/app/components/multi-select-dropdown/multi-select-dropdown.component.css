@@ -32,8 +32,8 @@
     gap: 4px;
     flex: 1;
     margin-top: 6px;
-    max-height: 100px;
-    overflow-y: auto;
+    min-width: 0;
+    overflow: visible;
 }
 
 .placeholder {
@@ -114,13 +114,20 @@
     background-color: var(--background-color-menu);
 }
 
+.options-viewport {
+    display: block;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
 .option-item {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     padding: 8px 12px;
+    min-height: 44px;
+    box-sizing: border-box;
     cursor: pointer;
     gap: 8px;
-    overflow-y: auto;
     -webkit-overflow-scrolling: touch;
 }
 

@@ -31,25 +31,48 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, signal, computed, effect, inject, untracked } from '@angular/core';
+import { Injectable, signal, computed, effect, inject, untracked, DestroyRef } from '@angular/core';
 import type { Unit } from '../models/units.model';
 import type { Era } from '../models/eras.model';
+import type { Faction } from '../models/factions.model';
 import { DataService } from './data.service';
-import type { MultiState, MultiStateSelection, MultiStateOption } from '../components/multi-select-dropdown/multi-select-dropdown.component';
+import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { getForcePacks } from '../models/forcepacks.model';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
-import { computeRelevanceScore, naturalCompare, compareUnitsByName } from '../utils/sort.util';
 import { parseSearchQuery, type SearchTokensGroup } from '../utils/search.util';
 import { OptionsService } from './options.service';
 import { LoggerService } from './logger.service';
-import { matchesSearch } from '../utils/search.util';
 import { GameSystem } from '../models/common.model';
 import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 import { filterStateToSemanticText, tokensToFilterState, type WildcardPattern } from '../utils/semantic-filter.util';
-import { parseSemanticQueryAST, type ParseResult, type ParseError, filterUnitsWithAST, type EvaluatorContext, isComplexQuery, getMatchingTextForUnit } from '../utils/semantic-filter-ast.util';
-import { wildcardToRegex } from '../utils/string.util';
+import { parseSemanticQueryAST, type ParseResult, type ParseError, isComplexQuery } from '../utils/semantic-filter-ast.util';
+import { getSnapshotForcePackNames, type AdvOptionsContextSnapshot } from '../utils/unit-search-adv-options.util';
+import { buildUnitSearchAdvOptions } from '../utils/unit-search-adv-options-builder.util';
+import type { UnitSearchDropdownValuesDependencies } from '../utils/unit-search-dropdown-values.util';
+import { type UnitFilterKernelDependencies } from '../utils/unit-filter-kernel.util';
+import { getAdvancedFilterConfigByKey } from '../utils/unit-search-filter-config.util';
+import { buildUnitSearchQueryParameters, parseAndValidateCompactFiltersFromUrl, parseUnitSearchScalarUrlState } from '../utils/unit-search-url-filters.util';
+import { generatePublicTagsParam, mergePublicTagReferences, parsePublicTagsParam } from '../utils/unit-search-public-tags-url.util';
+import {
+    buildPromotedSearchText,
+    canonicalizeSemanticFilterState,
+    getCommittedSemanticTokens,
+    getSemanticFilterKeysFromParsed,
+    type UnitSearchSemanticStateDependencies,
+} from '../utils/unit-search-semantic-state.util';
+import { getProperty, getUnitComponentData, measureStage } from '../utils/unit-search-shared.util';
+import { executeUnitSearch } from '../utils/unit-search-executor.util';
+import { UnitSearchWorkerClient } from '../utils/unit-search-worker-client.util';
+import { SEARCH_WORKER_FACTORY } from '../utils/unit-search-worker-factory.util';
+import {
+    buildWorkerExecutionQuery,
+    buildWorkerSearchRequest as buildUnitSearchWorkerRequest,
+    getWorkerCorpusSnapshot as getCachedWorkerCorpusSnapshot,
+    getWorkerCorpusVersion as getUnitSearchWorkerCorpusVersion,
+} from '../utils/unit-search-worker-request.util';
+import { buildWorkerSearchTelemetrySnapshot, hydrateWorkerResultUnits } from '../utils/unit-search-worker-result.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import { UserStateService } from './userState.service';
@@ -57,54 +80,14 @@ import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
 import { FACTION_EXTINCT } from '../models/factions.model';
 import { resolveFactionNamesFromFilter } from '../utils/faction-filter.util';
-import { ADVANCED_FILTERS, AS_MOVEMENT_MODE_DISPLAY_NAMES, type AdvFilterConfig, type AdvFilterOptions, AdvFilterType, type FilterState, DROPDOWN_FILTERS, RANGE_FILTERS, type DropdownFilterConfig, type RangeFilterConfig, type SemanticDisplayItem, type SerializedSearchFilter, SORT_OPTIONS } from './unit-search-filters.model';
-export * from './unit-search-filters.model';
+import { sortAvailableDropdownOptions, sortDropdownOptionObjects } from '../utils/unit-search-dropdown-sort.util';
+import type { UnitSearchWorkerCorpusSnapshot, UnitSearchWorkerQueryRequest, UnitSearchWorkerResultMessage } from '../utils/unit-search-worker-protocol.util';
+import { ADVANCED_FILTERS, type AdvFilterConfig, type AdvOptionsTelemetrySnapshot, AdvFilterType, type FilterState, DROPDOWN_FILTERS, RANGE_FILTERS, type DropdownFilterConfig, type RangeFilterConfig, type SearchTelemetrySnapshot, type SearchTelemetryStage, type SerializedSearchFilter } from './unit-search-filters.model';
 
-function sortAvailableDropdownOptions(options: string[], predefinedOrder?: string[]): string[] {
-    if (predefinedOrder && predefinedOrder.length > 0) {
-        const optionsSet = new Set(options);
-        const sortedOptions: string[] = [];
-        for (const predefinedOpt of predefinedOrder) {
-            if (predefinedOpt.endsWith('*')) {
-                const prefix = predefinedOpt.slice(0, -1);
-                // Smart sort for matching options
-                const matchingOptions = Array.from(optionsSet)
-                    .filter(o => typeof o === 'string' && o.startsWith(prefix))
-                    .sort((a, b) => naturalCompare(a, b));
-                for (const match of matchingOptions) {
-                    sortedOptions.push(match);
-                    optionsSet.delete(match);
-                }
-            } else if (optionsSet.has(predefinedOpt)) {
-                sortedOptions.push(predefinedOpt);
-                optionsSet.delete(predefinedOpt);
-            }
-        }
-        const remainingSorted = Array.from(optionsSet).sort(naturalCompare);
-        return [...sortedOptions, ...remainingSorted];
-    }
-    return options.sort(naturalCompare);
-}
-
-/**
- * Get merged tags (name + chassis + public) for a unit.
- * Returns a deduplicated array combining all tag types.
- * Public tags are also included so they can be used for filtering.
- */
-function getMergedTags(unit: Unit): string[] {
-    const nameTags = unit._nameTags ?? [];
-    const chassisTags = unit._chassisTags ?? [];
-    const publicTags = unit._publicTags ?? [];
-    // Merge and deduplicate
-    const merged = new Set<string>();
-    for (const tag of chassisTags) merged.add(tag);
-    for (const tag of nameTags) merged.add(tag);
-    for (const pt of publicTags) merged.add(pt.tag);
-    return Array.from(merged);
-}
+const FORCE_PACK_OPTION_UNIVERSE = getForcePacks().map(pack => ({ name: pack.name }));
 
 /** Check if any element in sourceSet exists in targetSet. */
-function setHasAny<T>(sourceSet: Set<T>, targetSet: Set<T>): boolean {
+function setHasAny<T>(sourceSet: ReadonlySet<T>, targetSet: ReadonlySet<T>): boolean {
     const [smaller, larger] = sourceSet.size <= targetSet.size
         ? [sourceSet, targetSet]
         : [targetSet, sourceSet];
@@ -114,309 +97,13 @@ function setHasAny<T>(sourceSet: Set<T>, targetSet: Set<T>): boolean {
     return false;
 }
 
-function getProperty(obj: any, key?: string) {
-    if (!obj || !key) return undefined;
-    // Special handling for _tags: merge _nameTags and _chassisTags
-    if (key === '_tags') {
-        return getMergedTags(obj as Unit);
-    }
-    // Special handling for AS motive (movement mode display names)
-    if (key === 'as._motive') {
-        const mvm = (obj as Unit).as?.MVm;
-        if (!mvm) return [];
-
-        // Return display names in the order defined by AS_MOVEMENT_MODE_DISPLAY_NAMES
-        const result: string[] = [];
-        for (const mode of Object.keys(AS_MOVEMENT_MODE_DISPLAY_NAMES)) {
-            if (mode in mvm) {
-                result.push(AS_MOVEMENT_MODE_DISPLAY_NAMES[mode]);
-            }
-        }
-        // Include any modes not in the map (fallback)
-        for (const mode of Object.keys(mvm)) {
-            if (!(mode in AS_MOVEMENT_MODE_DISPLAY_NAMES)) {
-                result.push(mode);
-            }
-        }
-        return result;
-    }
-    // Special handling for AS movement value (max from MVm)
-    if (key === 'as._mv') {
-        const mvm = (obj as Unit).as?.MVm;
-        if (!mvm) return 0;
-        const values = Object.values(mvm);
-        return values.length > 0 ? Math.max(...values) : 0;
-    }
-    // If key does not contain dot, fast path
-    if (key.indexOf('.') === -1) return (obj as any)[key];
-    const parts = key.split('.');
-    let cur: any = obj;
-    for (const p of parts) {
-        if (cur == null) return undefined;
-        cur = cur[p];
-    }
-    return cur;
-}
-
-/**
- * Check if a unit's count satisfies a quantity constraint.
- * Supports include/exclude ranges for merged constraints.
- */
-function checkQuantityConstraint(
-    unitCount: number,
-    item: MultiStateOption
-): boolean {
-    const { count, countOperator, countMax, countIncludeRanges, countExcludeRanges } = item;
-
-    // If we have merged ranges, use those
-    if (countIncludeRanges || countExcludeRanges) {
-        // Check exclude ranges first
-        if (countExcludeRanges) {
-            for (const [min, max] of countExcludeRanges) {
-                if (unitCount >= min && unitCount <= max) {
-                    return false;  // Excluded
-                }
-            }
-        }
-
-        // Check include ranges
-        if (countIncludeRanges && countIncludeRanges.length > 0) {
-            for (const [min, max] of countIncludeRanges) {
-                if (unitCount >= min && unitCount <= max) {
-                    return true;  // Included
-                }
-            }
-            return false;  // Not in any include range
-        }
-
-        // Only excludes, no includes - implicit include is 1+
-        return unitCount >= 1;
-    }
-
-    // Single constraint handling
-    const op = countOperator;
-
-    // No operator means "at least N" (what UI does)
-    if (!op) {
-        return unitCount >= count;
-    }
-
-    // Range constraint (count to countMax)
-    if (countMax !== undefined) {
-        const inRange = unitCount >= count && unitCount <= countMax;
-        return op === '!=' ? !inRange : inRange;
-    }
-
-    // Single value constraint with explicit operator
-    switch (op) {
-        case '=':
-            return unitCount === count;  // Exact match
-        case '!=':
-            return unitCount !== count;
-        case '>':
-            return unitCount > count;
-        case '>=':
-            return unitCount >= count;
-        case '<':
-            return unitCount < count;
-        case '<=':
-            return unitCount <= count;
-        default:
-            return unitCount >= count;
-    }
-}
-
-function filterUnitsByMultiState(units: Unit[], key: string, selection: MultiStateSelection, wildcardPatterns?: WildcardPattern[]): Unit[] {
-    const orList: MultiStateOption[] = [];
-    const andList: MultiStateOption[] = [];
-    const notList: MultiStateOption[] = [];
-
-    for (const [name, selectionValue] of Object.entries(selection)) {
-        if (selectionValue.state === 'or') orList.push(selectionValue);
-        else if (selectionValue.state === 'and') andList.push(selectionValue);
-        else if (selectionValue.state === 'not') notList.push(selectionValue);
-    }
-
-    // Early return if no filters
-    const hasWildcards = wildcardPatterns && wildcardPatterns.length > 0;
-    if (orList.length === 0 && andList.length === 0 && notList.length === 0 && !hasWildcards) {
-        return units;
-    }
-
-    // Check if we need quantity counting (any non-default constraint)
-    const hasQuantityConstraint = (item: MultiStateOption) =>
-        item.count > 1 || item.countOperator || item.countMax !== undefined ||
-        item.countIncludeRanges || item.countExcludeRanges;
-    const needsQuantityCounting = orList.some(hasQuantityConstraint) ||
-        andList.some(hasQuantityConstraint) || notList.some(hasQuantityConstraint);
-    const isComponentFilter = key === 'componentName';
-
-    return units.filter(unit => {
-        let unitData: { names: Set<string>; counts?: Map<string, number> };
-
-        if (isComponentFilter) {
-            // Use cached component data for performance (already lowercase)
-            const cached = getUnitComponentData(unit);
-            unitData = {
-                names: cached.componentNames,
-                counts: needsQuantityCounting ? cached.componentCounts : undefined
-            };
-        } else {
-            const propValue = getProperty(unit, key);
-            const unitValues = Array.isArray(propValue) ? propValue : [propValue];
-            // Store lowercase for case-insensitive matching
-            const names = new Set(unitValues.filter(v => v != null).map(v => String(v).toLowerCase()));
-
-            unitData = { names };
-            if (needsQuantityCounting) {
-                const counts = new Map<string, number>();
-                for (const value of unitValues) {
-                    if (value != null) {
-                        const lowerValue = String(value).toLowerCase();
-                        counts.set(lowerValue, (counts.get(lowerValue) || 0) + 1);
-                    }
-                }
-                unitData.counts = counts;
-            }
-        }
-
-        // Check wildcard patterns
-        if (hasWildcards) {
-            const orPatterns = wildcardPatterns!.filter(p => p.state === 'or');
-            const andPatterns = wildcardPatterns!.filter(p => p.state === 'and');
-            const notPatterns = wildcardPatterns!.filter(p => p.state === 'not');
-
-            // Check NOT patterns - exclude if any value matches a NOT pattern
-            for (const p of notPatterns) {
-                const regex = wildcardToRegex(p.pattern);
-                for (const name of unitData.names) {
-                    if (regex.test(name)) return false;
-                }
-            }
-
-            // Check AND patterns - must have at least one match for EACH AND pattern
-            for (const p of andPatterns) {
-                const regex = wildcardToRegex(p.pattern);
-                let hasMatch = false;
-                for (const name of unitData.names) {
-                    if (regex.test(name)) {
-                        hasMatch = true;
-                        break;
-                    }
-                }
-                if (!hasMatch) return false;
-            }
-
-            // Check OR patterns - if we have OR wildcard patterns and no regular OR, need at least one match
-            if (orPatterns.length > 0 && orList.length === 0) {
-                let hasMatch = false;
-                for (const p of orPatterns) {
-                    const regex = wildcardToRegex(p.pattern);
-                    for (const name of unitData.names) {
-                        if (regex.test(name)) {
-                            hasMatch = true;
-                            break;
-                        }
-                    }
-                    if (hasMatch) break;
-                }
-                if (!hasMatch) return false;
-            }
-        }
-
-        // NOT: Exclude if any NOT constraint is satisfied
-        if (notList.length > 0) {
-            for (const item of notList) {
-                const lowerName = item.name.toLowerCase();
-                if (!unitData.names.has(lowerName)) continue;  // Item not present, OK
-
-                // Item is present - check quantity constraint
-                if (needsQuantityCounting && unitData.counts) {
-                    const unitCount = unitData.counts.get(lowerName) || 0;
-                    // For NOT, we exclude if the quantity constraint IS satisfied
-                    // e.g., equipment!=AC/2:2 means exclude units with exactly 2 AC/2s
-                    if (checkQuantityConstraint(unitCount, item)) {
-                        return false;
-                    }
-                } else {
-                    // No quantity constraint or not counting - just presence check
-                    return false;
-                }
-            }
-        }
-
-        // AND: Must have all items with satisfied quantity constraints
-        if (andList.length > 0) {
-            for (const item of andList) {
-                const lowerName = item.name.toLowerCase();
-                if (!unitData.names.has(lowerName)) return false;  // Must have item
-
-                if (needsQuantityCounting && unitData.counts) {
-                    const unitCount = unitData.counts.get(lowerName) || 0;
-                    if (!checkQuantityConstraint(unitCount, item)) {
-                        return false;
-                    }
-                }
-            }
-        }
-
-        // OR: Must have at least one with satisfied quantity constraint
-        if (orList.length > 0) {
-            let hasMatch = false;
-            for (const item of orList) {
-                const lowerName = item.name.toLowerCase();
-                if (!unitData.names.has(lowerName)) continue;
-
-                if (needsQuantityCounting && unitData.counts) {
-                    const unitCount = unitData.counts.get(lowerName) || 0;
-                    if (checkQuantityConstraint(unitCount, item)) {
-                        hasMatch = true;
-                        break;
-                    }
-                } else {
-                    hasMatch = true;
-                    break;
-                }
-            }
-            if (!hasMatch) return false;
-        }
-
-        return true;
-    });
-}
-
-const unitComponentCache = new WeakMap<Unit, {
-    componentNames: Set<string>;
-    componentCounts: Map<string, number>;
-}>();
-
-function getUnitComponentData(unit: Unit) {
-    let cached = unitComponentCache.get(unit);
-    if (!cached) {
-        const componentNames = new Set<string>();
-        const componentCounts = new Map<string, number>();
-
-        for (const component of unit.comp) {
-            // Store lowercase for case-insensitive matching
-            const name = component.n.toLowerCase();
-            componentNames.add(name);
-            componentCounts.set(name, (componentCounts.get(name) || 0) + component.q);
-        }
-
-        cached = { componentNames, componentCounts };
-        unitComponentCache.set(unit, cached);
-    }
-    return cached;
-}
-
-
-
 @Injectable({ providedIn: 'root' })
 export class UnitSearchFiltersService {
     dataService = inject(DataService);
     optionsService = inject(OptionsService);
     gameService = inject(GameService);
     logger = inject(LoggerService);
+    private readonly searchWorkerFactory = inject(SEARCH_WORKER_FACTORY);
     private urlStateService = inject(UrlStateService);
     private userStateService = inject(UserStateService);
     private publicTagsService = inject(PublicTagsService);
@@ -428,6 +115,33 @@ export class UnitSearchFiltersService {
     private readonly displayNameFns: Partial<Record<string, (v: string) => string>> = {
         'source': (v) => this.dataService.getSourcebookTitle(v),
     };
+
+    private buildIndexedDropdownOptions(
+        conf: AdvFilterConfig,
+        contextUnits: Unit[],
+        displayNameFn?: (value: string) => string | undefined,
+        contextUnitIds?: ReadonlySet<string>,
+    ): { name: string; img?: string; displayName?: string; available?: boolean }[] {
+        const universe = this.dataService.getDropdownOptionUniverse(conf.key);
+        if (universe.length === 0) {
+            return [];
+        }
+
+        const contextUnitIdSet = contextUnitIds ?? new Set(contextUnits.map(unit => unit.name));
+        const availableOptions = universe.map(option => {
+            const indexedIds = this.dataService.getIndexedUnitIds(conf.key, option.name);
+            const available = indexedIds ? setHasAny(indexedIds, contextUnitIdSet) : false;
+
+            return {
+                name: option.name,
+                ...(option.img ? { img: option.img } : {}),
+                ...(displayNameFn ? { displayName: displayNameFn(option.name) } : {}),
+                available,
+            };
+        });
+
+        return sortDropdownOptionObjects(availableOptions, conf.sortOptions);
+    }
 
     /** Dropdown filter configs for current game system */
     readonly dropdownConfigs = computed((): readonly DropdownFilterConfig[] => {
@@ -454,13 +168,50 @@ export class UnitSearchFiltersService {
     expandedView = signal(false);
     advOpen = signal(false);
     private totalRangesCache: Record<string, [number, number]> = {};
-    private availableNamesCache = new Map<string, string[]>();
-    private availableNamesCacheOrder: string[] = [];
-    private readonly availableNamesCacheMaxEntries = 50; // Limit cache size for multistate filter options
+    private indexedUniverseNamesCache = new Map<string, string[]>();
     private urlStateInitialized = signal(false);
+    private readonly searchTelemetryState = signal<SearchTelemetrySnapshot | null>(null);
+    readonly searchTelemetry = this.searchTelemetryState.asReadonly();
+    private readonly advOptionsTelemetryState = signal<AdvOptionsTelemetrySnapshot | null>(null);
+    readonly advOptionsTelemetry = this.advOptionsTelemetryState.asReadonly();
+    private readonly workerSearchEnabled = signal(this.canUseSearchWorker());
+    private readonly workerFilteredUnitsState = signal<Unit[]>([]);
+    private advOptionsTelemetryPublishVersion = 0;
+    private lastSearchTelemetryLogKey = '';
+    private readonly slowSearchTelemetryThresholdMs = 75;
+    private factionUnitIdsCache = new WeakMap<Faction, Set<number>>();
+    private eraUnitIdsCache = new WeakMap<Era, Set<number>>();
+    private searchWorkerClient: UnitSearchWorkerClient | null = null;
+    private cachedWorkerCorpusVersion: string | null = null;
+    private cachedWorkerCorpusSnapshot: UnitSearchWorkerCorpusSnapshot | null = null;
+    private searchRequestRevision = 0;
+    private readonly workerRequestRevision = signal(0);
+    private readonly workerResultRevision = signal(0);
+
+    /**
+     * True when filtered results match the latest search request.
+     * False while a worker search is in-flight and results are stale.
+     * Mode-agnostic: when the worker is disabled (sync fallback), revisions
+     * are synced in disableWorkerSearch() so this stays true.
+     */
+    readonly isSearchSettled = computed(() => {
+        return this.workerResultRevision() === this.workerRequestRevision();
+    });
 
     /** Signal that changes when unit tags are updated. Used to trigger reactivity in tag-dependent components. */
     readonly tagsVersion = signal(0);
+
+    private invalidateCorpusCaches(): void {
+        this.indexedUniverseNamesCache.clear();
+        this.factionUnitIdsCache = new WeakMap<Faction, Set<number>>();
+        this.eraUnitIdsCache = new WeakMap<Era, Set<number>>();
+        this.cachedWorkerCorpusVersion = null;
+        this.cachedWorkerCorpusSnapshot = null;
+        this.searchTelemetryState.set(null);
+        this.advOptionsTelemetryState.set(null);
+        this.advOptionsTelemetryPublishVersion = 0;
+        this.lastSearchTelemetryLogKey = '';
+    }
 
     /** Pending foreign tags to import from URL. Format: Array of { publicId, tagName } */
     readonly pendingForeignTags = signal<Array<{ publicId: string; tagName: string }>>([]);
@@ -473,10 +224,16 @@ export class UnitSearchFiltersService {
         this.tagsVersion();
         this.pendingForeignTags();
 
-        return this.generatePublicTagsParam(
-            this.searchText(),
-            this.filterState()
-        );
+        return generatePublicTagsParam({
+            searchText: this.searchText(),
+            filterState: this.filterState(),
+            gameSystem: this.gameService.currentGameSystem(),
+            myPublicId: this.userStateService.publicId(),
+            nameTags: this.tagsService.getNameTags(),
+            chassisTags: this.tagsService.getChassisTags(),
+            publicTags: this.publicTagsService.getAllPublicTags(),
+            pendingForeignTags: this.pendingForeignTags(),
+        });
     });
 
     /** Callback to show foreign tag import dialog - set by component layer */
@@ -540,24 +297,74 @@ export class UnitSearchFiltersService {
      * Used to determine which filters are "linked" (UI changes should update text).
      */
     readonly semanticFilterKeys = computed((): Set<string> => {
-        const parsed = this.semanticParsedAST();
-        if (parsed.tokens.length === 0) return new Set();
-
-        const keys = new Set<string>();
-        const gameSystem = this.gameService.currentGameSystem();
-
-        for (const token of parsed.tokens) {
-            // Find the config for this semantic key
-            const conf = ADVANCED_FILTERS.find(f =>
-                (f.semanticKey || f.key) === token.field &&
-                (!f.game || f.game === gameSystem)
-            );
-            if (conf) {
-                keys.add(conf.key);
-            }
-        }
-        return keys;
+        return getSemanticFilterKeysFromParsed(this.semanticParsedAST());
     });
+
+    private getSemanticStateDependencies(): UnitSearchSemanticStateDependencies {
+        return {
+            getDropdownOptionUniverse: (filterKey: string) => this.dataService.getDropdownOptionUniverse(filterKey).map(option => option.name),
+            getExternalDropdownValues: (filterKey: string) => {
+                if (filterKey === 'era') {
+                    return this.dataService.getEras().map(era => era.name);
+                }
+                if (filterKey === 'faction') {
+                    return this.dataService.getFactions().map(faction => faction.name);
+                }
+                if (filterKey === 'forcePack') {
+                    return getForcePacks().map(pack => pack.name);
+                }
+                return [];
+            },
+            getDisplayName: (filterKey: string, value: string) => {
+                const conf = getAdvancedFilterConfigByKey(filterKey);
+                const fn = conf?.displayNameFn ?? this.displayNameFns[filterKey];
+                return fn?.(value);
+            },
+        };
+    }
+
+    private getDropdownValuesDependencies(): UnitSearchDropdownValuesDependencies {
+        return {
+            getDropdownOptionUniverse: (filterKey: string) => this.getIndexedUniverseNames(filterKey),
+            getExternalDropdownValues: (filterKey: string) => {
+                if (filterKey === 'era') {
+                    return this.dataService.getEras().map(era => era.name);
+                }
+                if (filterKey === 'faction') {
+                    return this.dataService.getFactions().map(faction => faction.name);
+                }
+                if (filterKey === 'forcePack') {
+                    return getForcePacks().map(pack => pack.name);
+                }
+                return [];
+            },
+            units: this.units,
+            getProperty,
+        };
+    }
+
+    public setSearchText(rawText: string): string {
+        const next = buildPromotedSearchText({
+            rawText,
+            gameSystem: this.gameService.currentGameSystem(),
+            manualState: this.filterState(),
+            totalRanges: this.totalRangesCache,
+            ...this.getSemanticStateDependencies(),
+        });
+
+        this.searchText.set(next.text);
+        if (next.promotedKeys.length > 0) {
+            this.filterState.update(current => {
+                const updated = { ...current };
+                for (const key of next.promotedKeys) {
+                    delete updated[key];
+                }
+                return updated;
+            });
+        }
+
+        return next.text;
+    }
 
     /**
      * Semantic filter state derived from parsed tokens in the search text.
@@ -568,10 +375,13 @@ export class UnitSearchFiltersService {
         const parsed = this.semanticParsedAST();
         if (parsed.tokens.length === 0) return {};
 
-        return tokensToFilterState(
-            parsed.tokens,
-            this.gameService.currentGameSystem(),
-            this.totalRangesCache
+        return canonicalizeSemanticFilterState(
+            tokensToFilterState(
+                getCommittedSemanticTokens(parsed.tokens),
+                this.gameService.currentGameSystem(),
+                this.totalRangesCache
+            ),
+            this.getSemanticStateDependencies(),
         );
     });
 
@@ -604,12 +414,146 @@ export class UnitSearchFiltersService {
         return result;
     });
 
+    private canUseSearchWorker(): boolean {
+        return typeof this.searchWorkerFactory === 'function';
+    }
+
+    private disableWorkerSearch(message: string): void {
+        if (!this.workerSearchEnabled()) {
+            return;
+        }
+
+        this.workerSearchEnabled.set(false);
+        this.searchWorkerClient?.dispose();
+        this.searchWorkerClient = null;
+        this.workerResultRevision.set(this.workerRequestRevision());
+        this.logger.warn(`Unit search worker disabled, falling back to main-thread execution: ${message}`);
+    }
+
+    private getWorkerCorpusVersion(): string {
+        return getUnitSearchWorkerCorpusVersion(this.dataService.searchCorpusVersion(), this.tagsVersion());
+    }
+
+    private getWorkerCorpusSnapshot(corpusVersion: string): UnitSearchWorkerCorpusSnapshot {
+        const result = getCachedWorkerCorpusSnapshot(
+            {
+                version: this.cachedWorkerCorpusVersion,
+                snapshot: this.cachedWorkerCorpusSnapshot,
+            },
+            corpusVersion,
+            this.units,
+            this.dataService.getSearchWorkerIndexSnapshot(),
+        );
+
+        this.cachedWorkerCorpusVersion = result.cache.version;
+        this.cachedWorkerCorpusSnapshot = result.cache.snapshot;
+        return result.snapshot;
+    }
+
+    private getUiOnlyFilterState(manualState: FilterState, semanticKeys: Set<string>): FilterState {
+        const result: FilterState = {};
+
+        for (const [key, state] of Object.entries(manualState)) {
+            if (!semanticKeys.has(key) && state.interactedWith) {
+                result[key] = state;
+            }
+        }
+
+        return result;
+    }
+
+    private buildWorkerSearchRequest(corpusVersion: string): UnitSearchWorkerQueryRequest {
+        const gameSystem = this.gameService.currentGameSystem();
+        const executionQuery = buildWorkerExecutionQuery({
+            effectiveFilterState: this.effectiveFilterState(),
+            effectiveTextSearch: this.effectiveTextSearch(),
+            gameSystem,
+            totalRangesCache: this.totalRangesCache,
+        });
+
+        this.searchRequestRevision += 1;
+
+        return buildUnitSearchWorkerRequest({
+            revision: this.searchRequestRevision,
+            corpusVersion,
+            executionQuery,
+            telemetryQuery: this.searchText().trim(),
+            gameSystem,
+            sortKey: this.selectedSort(),
+            sortDirection: this.selectedSortDirection(),
+            bvPvLimit: this.bvPvLimit(),
+            forceTotalBvPv: this.forceTotalBvPv(),
+            pilotGunnerySkill: this.pilotGunnerySkill(),
+            pilotPilotingSkill: this.pilotPilotingSkill(),
+        });
+    }
+
+    private applyWorkerSearchResult(result: UnitSearchWorkerResultMessage): void {
+        if (!this.workerSearchEnabled()) {
+            return;
+        }
+
+        const hydratedResults = hydrateWorkerResultUnits(result, unitName => this.dataService.getUnitByName(unitName));
+
+        this.workerFilteredUnitsState.set(hydratedResults);
+        this.workerResultRevision.set(result.revision);
+        this.updateSearchTelemetry(buildWorkerSearchTelemetrySnapshot(result, {
+            timestamp: Date.now(),
+            gameSystem: this.gameService.currentGameSystem(),
+            sortKey: this.selectedSort(),
+            sortDirection: this.selectedSortDirection(),
+            resultCount: hydratedResults.length,
+        }));
+    }
+
+    private setupWorkerSearchExecution(): void {
+        effect(() => {
+            if (!this.workerSearchEnabled()) {
+                return;
+            }
+
+            if (!this.isDataReady()) {
+                this.workerFilteredUnitsState.set([]);
+                return;
+            }
+
+            this.dataService.searchCorpusVersion();
+            this.tagsVersion();
+
+            const corpusVersion = this.getWorkerCorpusVersion();
+            const request = this.buildWorkerSearchRequest(corpusVersion);
+            const snapshot = this.getWorkerCorpusSnapshot(corpusVersion);
+
+            untracked(() => {
+                try {
+                    this.workerRequestRevision.set(request.revision);
+                    this.searchWorkerClient?.submit(snapshot, request);
+                } catch (error) {
+                    this.disableWorkerSearch(error instanceof Error ? error.message : 'Search worker submission failed');
+                }
+            });
+        });
+    }
+
     constructor() {
         // Register as a URL state consumer - must call markConsumerReady when done reading URL
         this.urlStateService.registerConsumer('unit-search-filters');
 
+        if (this.workerSearchEnabled()) {
+            this.searchWorkerClient = new UnitSearchWorkerClient({
+                createWorker: () => this.searchWorkerFactory!(),
+                onResult: result => this.applyWorkerSearchResult(result),
+                onError: message => this.disableWorkerSearch(message),
+            });
+        }
+        inject(DestroyRef).onDestroy(() => {
+            this.searchWorkerClient?.dispose();
+        });
+
         effect(() => {
+            this.dataService.searchCorpusVersion();
             if (this.isDataReady()) {
+                this.invalidateCorpusCaches();
                 this.calculateTotalRanges();
             }
         });
@@ -645,6 +589,7 @@ export class UnitSearchFiltersService {
         // When query becomes complex, convert UI-only filters to semantic text
         // This ensures filters aren't silently applied without being visible
         this.setupComplexQueryFilterConversion();
+        this.setupWorkerSearchExecution();
         this.loadFiltersFromUrlOnStartup();
         this.updateUrlOnFiltersChange();
     }
@@ -857,6 +802,265 @@ export class UnitSearchFiltersService {
         this.selectedSortDirection.set(direction);
     }
 
+    private updateSearchTelemetry(snapshot: SearchTelemetrySnapshot): void {
+        const logKey = `${snapshot.query}|${snapshot.unitCount}|${snapshot.resultCount}|${snapshot.sortKey}|${snapshot.sortDirection}`;
+        const shouldLog = snapshot.totalMs >= this.slowSearchTelemetryThresholdMs && logKey !== this.lastSearchTelemetryLogKey;
+
+        if (shouldLog) {
+            this.lastSearchTelemetryLogKey = logKey;
+        }
+
+        queueMicrotask(() => {
+            this.searchTelemetryState.set(snapshot);
+
+            if (shouldLog && this.lastSearchTelemetryLogKey === logKey) {
+                const stageSummary = snapshot.stages
+                    .map(stage => `${stage.name}=${stage.durationMs.toFixed(1)}ms`)
+                    .join(', ');
+                const message = `Unit search telemetry: units=${snapshot.unitCount}, results=${snapshot.resultCount}, total=${snapshot.totalMs.toFixed(1)}ms, query="${snapshot.query}" [${stageSummary}]`;
+                this.logger.info(message);
+            }
+        });
+    }
+
+    private getVisibleEraUnitIds(era: Era): Set<number> {
+        const cached = this.eraUnitIdsCache.get(era);
+        if (cached) {
+            return cached;
+        }
+
+        const extinctFaction = this.dataService.getFactionById(FACTION_EXTINCT);
+        const extinctUnitIdsForEra = extinctFaction?.eras[era.id] as Set<number> | undefined;
+        const visibleUnitIds = new Set<number>();
+
+        for (const unitId of era.units as Set<number>) {
+            if (!extinctUnitIdsForEra?.has(unitId)) {
+                visibleUnitIds.add(unitId);
+            }
+        }
+
+        this.eraUnitIdsCache.set(era, visibleUnitIds);
+        return visibleUnitIds;
+    }
+
+    private getFactionUnitIds(faction: Faction): Set<number> {
+        const cached = this.factionUnitIdsCache.get(faction);
+        if (cached) {
+            return cached;
+        }
+
+        const unitIds = new Set<number>();
+        for (const eraUnitIds of Object.values(faction.eras) as Set<number>[]) {
+            for (const unitId of eraUnitIds) {
+                unitIds.add(unitId);
+            }
+        }
+
+        this.factionUnitIdsCache.set(faction, unitIds);
+        return unitIds;
+    }
+
+    private getIndexedUniverseNames(filterKey: string): string[] {
+        return this.dataService.getDropdownOptionUniverse(filterKey).map(option => option.name);
+    }
+
+    private getSortedIndexedUniverseNames(conf: AdvFilterConfig): string[] {
+        const cacheKey = `${conf.key}|${conf.sortOptions?.join('\u0001') ?? ''}`;
+        let cached = this.indexedUniverseNamesCache.get(cacheKey);
+        if (!cached) {
+            cached = sortAvailableDropdownOptions(this.getIndexedUniverseNames(conf.key), conf.sortOptions);
+            this.indexedUniverseNamesCache.set(cacheKey, cached);
+        }
+        return cached;
+    }
+
+    private collectIndexedAvailabilityNames(
+        filterKey: string,
+        optionNames: readonly string[],
+        contextUnitIds: ReadonlySet<string>,
+        isComponentFilter: boolean,
+    ): Set<string> {
+        const availableNames = new Set<string>();
+
+        for (const optionName of optionNames) {
+            const indexedIds = this.dataService.getIndexedUnitIds(filterKey, optionName);
+            if (indexedIds && setHasAny(indexedIds, contextUnitIds)) {
+                availableNames.add(isComponentFilter ? optionName.toLowerCase() : optionName);
+            }
+        }
+
+        return availableNames;
+    }
+
+    private collectConstrainedMultistateAvailabilityNames(
+        filterKey: string,
+        units: Unit[],
+        selection: MultiStateSelection,
+        isComponentFilter: boolean,
+    ): Set<string> | null {
+        const andEntries = Object.entries(selection).filter(([, sel]) => sel.state === 'and');
+        if (andEntries.length === 0) {
+            return null;
+        }
+
+        const andMap = new Map(andEntries.map(([name, sel]) => [
+            name.toLowerCase(),
+            sel.count,
+        ]));
+        const notSet = new Set(
+            Object.entries(selection)
+                .filter(([, sel]) => sel.state === 'not')
+                .map(([name]) => name.toLowerCase()),
+        );
+        const availableNames = new Set<string>();
+
+        for (const unit of units) {
+            if (isComponentFilter) {
+                const cached = getUnitComponentData(unit);
+
+                let excluded = false;
+                for (const notName of notSet) {
+                    if (cached.names.has(notName)) {
+                        excluded = true;
+                        break;
+                    }
+                }
+                if (excluded) {
+                    continue;
+                }
+
+                let matchesAllAnd = true;
+                for (const [name, requiredCount] of andMap) {
+                    if ((cached.counts.get(name) || 0) < requiredCount) {
+                        matchesAllAnd = false;
+                        break;
+                    }
+                }
+                if (!matchesAllAnd) {
+                    continue;
+                }
+
+                for (const componentName of cached.names) {
+                    availableNames.add(componentName);
+                }
+                continue;
+            }
+
+            const propValue = getProperty(unit, filterKey);
+            const values = Array.isArray(propValue) ? propValue : [propValue];
+            const normalizedToOriginal = new Map<string, string>();
+
+            for (const value of values) {
+                if (value == null || value === '') {
+                    continue;
+                }
+
+                const stringValue = String(value);
+                const normalizedValue = stringValue.toLowerCase();
+                if (!normalizedToOriginal.has(normalizedValue)) {
+                    normalizedToOriginal.set(normalizedValue, stringValue);
+                }
+            }
+
+            let excluded = false;
+            for (const notName of notSet) {
+                if (normalizedToOriginal.has(notName)) {
+                    excluded = true;
+                    break;
+                }
+            }
+            if (excluded) {
+                continue;
+            }
+
+            let matchesAllAnd = true;
+            for (const [name] of andMap) {
+                if (!normalizedToOriginal.has(name)) {
+                    matchesAllAnd = false;
+                    break;
+                }
+            }
+            if (!matchesAllAnd) {
+                continue;
+            }
+
+            for (const originalValue of normalizedToOriginal.values()) {
+                availableNames.add(originalValue);
+            }
+        }
+
+        return availableNames;
+    }
+
+    private buildForcePackDropdownOptions(snapshot: AdvOptionsContextSnapshot, contextUnits: Unit[]): { name: string; available: boolean }[] {
+        const availablePackNames = getSnapshotForcePackNames(
+            snapshot,
+            contextUnits,
+            unit => this.dataService.getForcePacksForUnit(unit),
+        );
+
+        return FORCE_PACK_OPTION_UNIVERSE.map(option => ({
+            name: option.name,
+            available: availablePackNames.has(option.name),
+        }));
+    }
+
+    private getAvailableRangeForUnits(
+        units: Unit[],
+        conf: AdvFilterConfig,
+        fallbackRange: [number, number],
+    ): [number, number] {
+        let min = Infinity;
+        let max = -Infinity;
+
+        const includeValue = (value: number) => {
+            if (value < min) min = value;
+            if (value > max) max = value;
+        };
+
+        if (conf.key === 'bv') {
+            for (const unit of units) {
+                const adjustedBV = this.getAdjustedBV(unit);
+                if (adjustedBV > 0) {
+                    includeValue(adjustedBV);
+                }
+            }
+        } else if (conf.key === 'as.PV') {
+            for (const unit of units) {
+                const adjustedPV = this.getAdjustedPV(unit);
+                if (adjustedPV > 0) {
+                    includeValue(adjustedPV);
+                }
+            }
+        } else if (conf.key === 'as._mv') {
+            for (const unit of units) {
+                const movementValues = unit.as?.MVm;
+                if (!movementValues) {
+                    continue;
+                }
+
+                for (const value of Object.values(movementValues) as number[]) {
+                    includeValue(value);
+                }
+            }
+        } else {
+            const ignoreSet = conf.ignoreValues ? new Set(conf.ignoreValues) : null;
+            for (const unit of units) {
+                const value = getProperty(unit, conf.key);
+                if (typeof value !== 'number') {
+                    continue;
+                }
+                if (ignoreSet?.has(value)) {
+                    continue;
+                }
+
+                includeValue(value);
+            }
+        }
+
+        return min <= max ? [min, max] : fallbackRange;
+    }
+
     /**
      * Check if a unit belongs to a specific era by name.
      * Used for external filter evaluation in AST.
@@ -865,11 +1069,7 @@ export class UnitSearchFiltersService {
         const era = this.dataService.getEraByName(eraName);
         if (!era) return false;
 
-        const extinctFaction = this.dataService.getFactionById(FACTION_EXTINCT);
-        const extinctUnitIdsForEra = extinctFaction?.eras[era.id] as Set<number> || new Set<number>();
-
-        // Unit must be in the era's unit set and not extinct
-        return (era.units as Set<number>).has(unit.id) && !extinctUnitIdsForEra.has(unit.id);
+        return this.getVisibleEraUnitIds(era).has(unit.id);
     }
 
     /**
@@ -880,13 +1080,7 @@ export class UnitSearchFiltersService {
         const faction = this.dataService.getFactionByName(factionName);
         if (!faction) return false;
 
-        // Check if unit exists in any era for this faction
-        for (const eraIdStr in faction.eras) {
-            if ((faction.eras[eraIdStr] as Set<number>).has(unit.id)) {
-                return true;
-            }
-        }
-        return false;
+        return this.getFactionUnitIds(faction).has(unit.id);
     }
 
     /**
@@ -946,7 +1140,7 @@ export class UnitSearchFiltersService {
         return this.getUnitIdsForSelectedEras(contextEraNames) || new Set<number>();
     }
 
-    private getUnitIdsForSelectedFactions(selectedFactionEntries: MultiStateSelection, contextEraIds?: Set<number>, wildcardPatterns?: WildcardPattern[]): Set<number> | null {
+    private getUnitIdsForSelectedFactions(selectedFactionEntries: MultiStateSelection, contextEraNames?: string[], wildcardPatterns?: WildcardPattern[]): Set<number> | null {
         const allFactionNames = this.dataService.getFactions().map(f => f.name);
         const { or: orFactions, and: andFactions, not: notFactions } = resolveFactionNamesFromFilter(
             selectedFactionEntries, allFactionNames, wildcardPatterns
@@ -954,6 +1148,14 @@ export class UnitSearchFiltersService {
         if (orFactions.length === 0 && andFactions.length === 0 && notFactions.length === 0) {
             return null;
         }
+
+        const contextEraIds = contextEraNames && contextEraNames.length > 0
+            ? new Set(
+                contextEraNames
+                    .map(name => this.dataService.getEraByName(name)?.id)
+                    .filter((id): id is number => id !== undefined)
+            )
+            : undefined;
 
         let resultSet: Set<number> | null = null;
 
@@ -995,1082 +1197,128 @@ export class UnitSearchFiltersService {
         return resultSet;
     }
 
-    private applyFilters(units: Unit[], state: FilterState): Unit[] {
-        let results = units;
-        const activeFilters: Record<string, any> = {};
-        for (const [key, s] of Object.entries(state)) {
-            if (s.interactedWith) activeFilters[key] = s.value;
-        }
-
-        const currentGame = this.gameService.currentGameSystem();
-
-        // Handle external (ID-based) filters first
-        const selectedEraNames = activeFilters['era'] as string[] || [];
-        const selectedFactionEntries = activeFilters['faction'] as MultiStateSelection || {};
-
-        let eraUnitIds: Set<number> | null = null;
-        let factionUnitIds: Set<number> | null = null;
-        const factionFilterState = state['faction'];
-        const factionWildcardPatterns = factionFilterState?.wildcardPatterns;
-        if (Object.values(selectedFactionEntries).some(s => s.state) || (factionWildcardPatterns && factionWildcardPatterns.length > 0)) {
-            const selectedEraIds = new Set(this.dataService.getEras().filter(e => selectedEraNames.includes(e.name)).map(e => e.id));
-            factionUnitIds = this.getUnitIdsForSelectedFactions(selectedFactionEntries, selectedEraIds.size > 0 ? selectedEraIds : undefined, factionWildcardPatterns);
-        } else
-            if (selectedEraNames.length > 0) {
-                eraUnitIds = this.getUnitIdsForSelectedEras(selectedEraNames);
-            }
-
-        if (eraUnitIds || factionUnitIds) {
-            let finalIds: Set<number>;
-            if (eraUnitIds && factionUnitIds) {
-                // Intersect
-                const [smaller, larger] = eraUnitIds.size <= factionUnitIds.size
-                    ? [eraUnitIds, factionUnitIds]
-                    : [factionUnitIds, eraUnitIds];
-                finalIds = new Set<number>();
-                for (const id of smaller) {
-                    if (larger.has(id)) finalIds.add(id);
-                }
-            } else {
-                finalIds = (eraUnitIds || factionUnitIds)!;
-            }
-            results = results.filter(u => finalIds.has(u.id));
-        }
-
-        // Handle forcePack filter (chassis-based)
-        const selectedForcePackNames = activeFilters['forcePack'] as string[] || [];
-        if (selectedForcePackNames.length > 0) {
-            const chassisTypeSet = new Set<string>();
-            for (const packName of selectedForcePackNames) {
-                const packSet = this.dataService.getForcePackChassisTypeSet(packName);
-                if (packSet) {
-                    for (const key of packSet) chassisTypeSet.add(key);
-                }
-            }
-            results = results.filter(u => {
-                const key = `${u.chassis}|${u.type}`;
-                return chassisTypeSet.has(key);
-            });
-        }
-
-        // Handle standard (property-based) filters
-        for (const conf of ADVANCED_FILTERS) {
-            if (conf.game && conf.game !== currentGame) continue;
-            if (conf.external) continue;
-
-            const filterState = state[conf.key];
-            // Only apply filter if it has been interacted with
-            if (!filterState || !filterState.interactedWith) continue;
-
-            const val = filterState.value;
-            const wildcardPatterns = filterState.wildcardPatterns;
-
-            if (conf.type === AdvFilterType.DROPDOWN && conf.multistate && val && typeof val === 'object') {
-                if (!conf.external) {
-                    results = filterUnitsByMultiState(results, conf.key, val, wildcardPatterns);
-                    continue;
-                }
-            }
-
-            // Handle semantic-only filters (exact match, with optional wildcards, AND, and NOT support)
-            if (conf.type === AdvFilterType.SEMANTIC) {
-                const searchTerms: string[] = Array.isArray(val) ? val : (typeof val === 'object' ? Object.keys(val) : [String(val)]);
-                const hasSearchTerms = searchTerms.length > 0;
-                const hasWildcards = wildcardPatterns && wildcardPatterns.length > 0;
-
-                // Separate include, exclude, and AND patterns
-                const includePatterns = wildcardPatterns?.filter(p => p.state === 'or') || [];
-                const excludePatterns = wildcardPatterns?.filter(p => p.state === 'not') || [];
-                const andPatterns = wildcardPatterns?.filter(p => p.state === 'and') || [];
-
-                if (hasSearchTerms || hasWildcards) {
-                    // Pre-normalize search terms
-                    const searchTermsLower = searchTerms.map(t => t.toLowerCase());
-                    results = results.filter(u => {
-                        const unitValue = getProperty(u, conf.key);
-                        if (unitValue == null) return false;
-                        const unitStr = String(unitValue).toLowerCase();
-
-                        // Check NOT patterns first - if any match, exclude this unit
-                        for (const p of excludePatterns) {
-                            const regex = wildcardToRegex(p.pattern);
-                            if (regex.test(unitStr)) return false;
-                        }
-
-                        // Check AND patterns - ALL must match
-                        for (const p of andPatterns) {
-                            const regex = wildcardToRegex(p.pattern);
-                            if (!regex.test(unitStr)) return false;
-                        }
-
-                        // If we only have exclude/and patterns (no includes), include all remaining
-                        if (!hasSearchTerms && includePatterns.length === 0) {
-                            return true;
-                        }
-
-                        // Check exact matches (OR logic)
-                        for (const term of searchTermsLower) {
-                            if (unitStr === term) return true;
-                        }
-
-                        // Check include wildcard patterns (OR logic)
-                        for (const p of includePatterns) {
-                            const regex = wildcardToRegex(p.pattern);
-                            if (regex.test(unitStr)) return true;
-                        }
-
-                        return false;
-                    });
-                }
-                continue;
-            }
-
-            if (conf.type === AdvFilterType.DROPDOWN && (Array.isArray(val) || wildcardPatterns?.length)) {
-                // Handle regular dropdown with possible wildcards
-                const hasRegularValues = Array.isArray(val) && val.length > 0;
-                const hasWildcards = wildcardPatterns && wildcardPatterns.length > 0;
-
-                if (hasRegularValues || hasWildcards) {
-                    // Pre-compute lowercase set for case-insensitive matching
-                    const valLowerSet = hasRegularValues
-                        ? new Set((val as string[]).map(v => String(v).toLowerCase()))
-                        : null;
-
-                    // Separate wildcard patterns by state
-                    const orPatterns = wildcardPatterns?.filter(p => p.state === 'or') || [];
-                    const andPatterns = wildcardPatterns?.filter(p => p.state === 'and') || [];
-                    const notPatterns = wildcardPatterns?.filter(p => p.state === 'not') || [];
-
-                    results = results.filter(u => {
-                        const v = getProperty(u, conf.key);
-                        const unitValues = Array.isArray(v) ? v : [v];
-                        const unitStrings = unitValues.filter(uv => uv != null).map(uv => String(uv).toLowerCase());
-
-                        // Check NOT patterns first - exclude if any match
-                        for (const p of notPatterns) {
-                            const regex = wildcardToRegex(p.pattern);
-                            for (const uv of unitStrings) {
-                                if (regex.test(uv)) return false;
-                            }
-                        }
-
-                        // Check AND patterns - must have at least one match for each
-                        for (const p of andPatterns) {
-                            const regex = wildcardToRegex(p.pattern);
-                            let hasMatch = false;
-                            for (const uv of unitStrings) {
-                                if (regex.test(uv)) {
-                                    hasMatch = true;
-                                    break;
-                                }
-                            }
-                            if (!hasMatch) return false;
-                        }
-
-                        // If only NOT/AND patterns, include all remaining
-                        if (!valLowerSet && orPatterns.length === 0) {
-                            return true;
-                        }
-
-                        // Check regular values (OR logic, case-insensitive)
-                        if (valLowerSet) {
-                            for (const uv of unitStrings) {
-                                if (valLowerSet.has(uv)) return true;
-                            }
-                        }
-
-                        // Check OR wildcard patterns
-                        for (const p of orPatterns) {
-                            const regex = wildcardToRegex(p.pattern);
-                            for (const uv of unitStrings) {
-                                if (regex.test(uv)) return true;
-                            }
-                        }
-
-                        return false;
-                    });
-                }
-                continue;
-            }
-
-            if (conf.type === AdvFilterType.RANGE && Array.isArray(val)) {
-                const excludeRanges = filterState.excludeRanges;
-                const includeRanges = filterState.includeRanges;
-
-                // Helper function to check if value is in any exclude range
-                const isExcluded = (v: number): boolean => {
-                    if (!excludeRanges) return false;
-                    return excludeRanges.some(([exMin, exMax]) => v >= exMin && v <= exMax);
-                };
-
-                // Helper function to check if value is in any include range (when specified)
-                const isIncluded = (v: number): boolean => {
-                    if (!includeRanges) {
-                        // No specific include ranges, use the min/max from value
-                        return v >= val[0] && v <= val[1];
-                    }
-                    // Check if value is in any of the include ranges
-                    return includeRanges.some(([incMin, incMax]) => v >= incMin && v <= incMax);
-                };
-
-                // Special handling for BV range to use adjusted values
-                if (conf.key === 'bv') {
-                    results = results.filter(u => {
-                        const adjustedBV = this.getAdjustedBV(u);
-                        if (isExcluded(adjustedBV)) return false;
-                        return isIncluded(adjustedBV);
-                    });
-                } else if (conf.key === 'as.PV') {
-                    results = results.filter(u => {
-                        const adjustedPV = this.getAdjustedPV(u);
-                        if (isExcluded(adjustedPV)) return false;
-                        return isIncluded(adjustedPV);
-                    });
-                } else if (conf.key === 'as._mv') {
-                    // Special handling for AS movement - linked to motive filter
-                    // Get selected motive codes from the state
-                    const motiveFilterState = state['as._motive'];
-                    let selectedMotiveCodes: Set<string> | null = null;
-                    if (motiveFilterState?.interactedWith) {
-                        const selectedDisplayNames = new Set(motiveFilterState.value as string[]);
-                        selectedMotiveCodes = new Set(
-                            Object.entries(AS_MOVEMENT_MODE_DISPLAY_NAMES)
-                                .filter(([_, displayName]) => selectedDisplayNames.has(displayName))
-                                .map(([code, _]) => code)
-                        );
-                    }
-
-                    results = results.filter(u => {
-                        const mvm = u.as?.MVm;
-                        if (!mvm) return false;
-
-                        // Get values to check based on motive filter
-                        const valuesToCheck: number[] = selectedMotiveCodes === null
-                            ? Object.values(mvm)
-                            : Object.entries(mvm)
-                                .filter(([code, _]) => selectedMotiveCodes!.has(code))
-                                .map(([_, v]) => v);
-
-                        if (valuesToCheck.length === 0) return false;
-
-                        // At least one value must be in range and not excluded
-                        return valuesToCheck.some(v => !isExcluded(v) && isIncluded(v));
-                    });
-                } else {
-                    results = results.filter(u => {
-                        const unitValue = getProperty(u, conf.key);
-                        if (conf.ignoreValues && conf.ignoreValues.includes(unitValue)) {
-                            if (val[0] === 0) return true; // If the range starts at 0, we allow -1 values
-                            return false; // Ignore this unit if it has an ignored value
-                        }
-                        if (isExcluded(unitValue)) return false;
-                        return unitValue != null && isIncluded(unitValue);
-                    });
-                }
-                continue;
-            }
-        }
-        return results;
-    }
-
-    // All filters applied using AST-based filtering
-    filteredUnits = computed(() => {
-        if (!this.isDataReady()) return [];
-
-        // Depend on tagsVersion so we recompute when tags change (user tags or public tags)
-        // This is needed because unit._tags/_publicTags are mutated in place, not via signals
-        const _tagsVersion = this.tagsVersion();
-
-        // AST handles all filtering: text search, semantic filters, and boolean logic
-        const ast = this.semanticParsedAST();
-
-        // Get selected motive modes for linked movement filtering
-        const effectiveState = this.effectiveFilterState();
-        const motiveState = effectiveState['as._motive'];
-        const selectedMotiveDisplayNames: Set<string> | null = motiveState?.interactedWith
-            ? new Set(motiveState.value as string[])
-            : null;
-        // Convert display names to mode codes for MVm lookup
-        const selectedMotiveCodes: Set<string> | null = selectedMotiveDisplayNames
-            ? new Set(
-                Object.entries(AS_MOVEMENT_MODE_DISPLAY_NAMES)
-                    .filter(([_, displayName]) => selectedMotiveDisplayNames.has(displayName))
-                    .map(([code, _]) => code)
-              )
-            : null;
-
-        const context: EvaluatorContext = {
+    private getUnitFilterKernelDependencies(): UnitFilterKernelDependencies {
+        return {
             getProperty,
             getAdjustedBV: (unit: Unit) => this.getAdjustedBV(unit),
             getAdjustedPV: (unit: Unit) => this.getAdjustedPV(unit),
-            totalRanges: this.totalRangesCache,
+            getUnitIdsForSelectedEras: selectedEraNames => this.getUnitIdsForSelectedEras(selectedEraNames),
+            getUnitIdsForSelectedFactions: (selectedFactionEntries, contextEraNames, wildcardPatterns) =>
+                this.getUnitIdsForSelectedFactions(selectedFactionEntries, contextEraNames, wildcardPatterns),
+            getForcePackChassisTypeSet: packName => this.dataService.getForcePackChassisTypeSet(packName),
+        };
+    }
+
+    syncFilteredUnits = computed(() => {
+        this.dataService.searchCorpusVersion();
+
+        // Depend on tagsVersion so we recompute when tags change (user tags or public tags)
+        // This is needed because unit._tags/_publicTags are mutated in place, not via signals
+        this.tagsVersion();
+
+        const parseTelemetry: SearchTelemetryStage[] = [];
+        const parsedQuery = measureStage(
+            parseTelemetry,
+            'parse-query',
+            this.units.length,
+            () => this.semanticParsedAST(),
+        );
+
+        const execution = executeUnitSearch({
+            units: this.units,
+            parsedQuery,
+            searchTokens: this.searchTokens(),
+            uiOnlyFilterState: this.getUiOnlyFilterState(this.filterState(), this.semanticFilterKeys()),
+            uiOnlyFilterDependencies: this.getUnitFilterKernelDependencies(),
             gameSystem: this.gameService.currentGameSystem(),
-            matchesText: (unit: Unit, text: string) => {
-                const searchableText = unit._searchKey || `${unit.chassis ?? ''} ${unit.model ?? ''}`.toLowerCase();
-                const tokens = parseSearchQuery(text);
-                return matchesSearch(searchableText, tokens, true);
-            },
-            getCountableValues: (unit: Unit, filterKey: string) => {
-                // Map filter keys to their countable data sources
-                // Add new countable filters here as they are created
-                switch (filterKey) {
-                    case 'componentName':
-                        return getUnitComponentData(unit).componentCounts;
-                    default:
-                        return null;
-                }
-            },
-            // External filter handlers for era, faction, and force pack
+            sortKey: this.selectedSort(),
+            sortDirection: this.selectedSortDirection(),
+            bvPvLimit: this.bvPvLimit(),
+            forceTotalBvPv: this.forceTotalBvPv(),
+            getAdjustedBV: (unit: Unit) => this.getAdjustedBV(unit),
+            getAdjustedPV: (unit: Unit) => this.getAdjustedPV(unit),
             unitBelongsToEra: (unit: Unit, eraName: string) => this.unitBelongsToEra(unit, eraName),
             unitBelongsToFaction: (unit: Unit, factionName: string) => this.unitBelongsToFaction(unit, factionName),
             unitBelongsToForcePack: (unit: Unit, packName: string) => this.unitBelongsToForcePack(unit, packName),
-            // Get all names for wildcard expansion
-            getAllEraNames: () => this.dataService.getEras().map(e => e.name),
-            getAllFactionNames: () => this.dataService.getFactions().map(f => f.name),
-            getAllForcePackNames: () => getForcePacks().map(p => p.name),
-            // AS movement values linked to motive filter
-            getASMovementValues: (unit: Unit) => {
-                const mvm = unit.as?.MVm;
-                if (!mvm) return [];
-
-                if (selectedMotiveCodes === null) {
-                    // No motive filter active - return all movement values
-                    return Object.values(mvm);
-                }
-
-                // Filter by selected motive codes
-                const values: number[] = [];
-                for (const [code, value] of Object.entries(mvm)) {
-                    if (selectedMotiveCodes.has(code)) {
-                        values.push(value);
-                    }
-                }
-                return values;
-            },
-            // Display name lookup (allows matching by both key and display name)
+            getAllEraNames: () => this.dataService.getEras().map(era => era.name),
+            getAllFactionNames: () => this.dataService.getFactions().map(faction => faction.name),
             getDisplayName: (filterKey: string, value: string) => {
-                const conf = ADVANCED_FILTERS.find(f => f.key === filterKey);
+                const conf = getAdvancedFilterConfigByKey(filterKey);
                 const fn = conf?.displayNameFn ?? this.displayNameFns[filterKey];
                 return fn?.(value);
-            }
-        };
-        let results = filterUnitsWithAST(this.units, ast.ast, context);
-
-        // Apply UI-only filters (those not in semantic text)
-        // This handles the case when automaticallyConvertFiltersToSemantic is false
-        const semanticKeys = this.semanticFilterKeys();
-        const manualFilters = this.filterState();
-        const uiOnlyFilterState: FilterState = {};
-        for (const [key, state] of Object.entries(manualFilters)) {
-            if (!semanticKeys.has(key) && state.interactedWith) {
-                uiOnlyFilterState[key] = state;
-            }
-        }
-        if (Object.keys(uiOnlyFilterState).length > 0) {
-            results = this.applyFilters(results, uiOnlyFilterState);
-        }
-
-        // Apply BV/PV budget limit filter
-        const limit = this.bvPvLimit();
-        if (limit > 0) {
-            const forceTotal = this.forceTotalBvPv();
-            const remaining = limit - forceTotal;
-            const isAS = this.gameService.currentGameSystem() === GameSystem.ALPHA_STRIKE;
-            results = results.filter(unit => {
-                const unitValue = isAS ? this.getAdjustedPV(unit) : this.getAdjustedBV(unit);
-                return unitValue <= remaining;
-            });
-        }
-
-        const sortKey = this.selectedSort();
-        const sortDirection = this.selectedSortDirection();
-
-        const sorted = [...results];
-
-        // Precompute relevance scores once per sort (avoids recomputing inside comparator).
-        let relevanceScores: WeakMap<Unit, number> | null = null;
-        if (sortKey === '') {
-            const tokens = this.searchTokens();
-            const isComplex = isComplexQuery(ast.ast);
-            relevanceScores = new WeakMap<Unit, number>();
-
-            for (const u of sorted) {
-                const chassis = (u.chassis ?? '').toLowerCase();
-                const model = (u.model ?? '').toLowerCase();
-
-                if (isComplex) {
-                    // For complex queries (OR, nested brackets), get the matching text for this unit
-                    const matchingTexts = getMatchingTextForUnit(ast.ast, u, context);
-                    if (matchingTexts.length > 0) {
-                        // Parse each matching text and score, take the best
-                        let bestScore = 0;
-                        for (const text of matchingTexts) {
-                            const textTokens = parseSearchQuery(text);
-                            const score = computeRelevanceScore(chassis, model, textTokens);
-                            if (score > bestScore) bestScore = score;
-                        }
-                        // Also try scoring with all matching texts combined
-                        const combinedTokens = parseSearchQuery(matchingTexts.join(' '));
-                        const combinedScore = computeRelevanceScore(chassis, model, combinedTokens);
-                        relevanceScores.set(u, Math.max(bestScore, combinedScore));
-                    } else {
-                        // No text nodes matched, just use filter match (base score)
-                        relevanceScores.set(u, 0);
-                    }
-                } else {
-                    // Simple query - use normal token scoring
-                    relevanceScores.set(u, computeRelevanceScore(chassis, model, tokens));
-                }
-            }
-        }
-
-        sorted.sort((a: Unit, b: Unit) => {
-            let comparison = 0;
-
-            if (sortKey === '') {
-                const aScore = relevanceScores?.get(a) ?? 0;
-                const bScore = relevanceScores?.get(b) ?? 0;
-
-                // Higher score = more relevant. Default sort direction is 'asc',
-                // but for relevance we want best-first by default.
-                comparison = bScore - aScore;
-
-                if (comparison === 0) {
-                    comparison = compareUnitsByName(a, b);
-                }
-            } else if (sortKey === 'name') {
-                comparison = compareUnitsByName(a, b);
-            } else if (sortKey === 'bv') {
-                // Use adjusted BV for sorting
-                const aBv = this.getAdjustedBV(a);
-                const bBv = this.getAdjustedBV(b);
-                comparison = aBv - bBv;
-            } else if (sortKey === 'as.PV') {
-                // Use adjusted PV for sorting
-                const aPv = this.getAdjustedPV(a);
-                const bPv = this.getAdjustedPV(b);
-                comparison = aPv - bPv;
-            } else {
-                const aValue = getProperty(a, sortKey);
-                const bValue = getProperty(b, sortKey);
-                if (typeof aValue === 'string' && typeof bValue === 'string') {
-                    comparison = naturalCompare(aValue, bValue);
-                } else if (typeof aValue === 'number' && typeof bValue === 'number') {
-                    comparison = aValue - bValue;
-                }
-            }
-
-            if (sortDirection === 'desc') {
-                return -comparison;
-            }
-            return comparison;
+            },
+            getIndexedUnitIds: (filterKey: string, value: string) => this.dataService.getIndexedUnitIds(filterKey, value),
+            getIndexedFilterValues: (filterKey: string) => this.dataService.getIndexedFilterValues(filterKey),
         });
 
-        return sorted;
+        this.updateSearchTelemetry({
+            timestamp: Date.now(),
+            query: this.searchText().trim(),
+            gameSystem: this.gameService.currentGameSystem(),
+            unitCount: execution.unitCount,
+            resultCount: execution.results.length,
+            sortKey: this.selectedSort(),
+            sortDirection: this.selectedSortDirection(),
+            isComplex: execution.isComplex,
+            stages: [...parseTelemetry, ...execution.telemetryStages],
+            totalMs: execution.totalMs,
+        });
+
+        return execution.results;
+    });
+
+    filteredUnits = computed(() => {
+        if (!this.workerSearchEnabled()) {
+            return this.syncFilteredUnits();
+        }
+
+        return this.workerFilteredUnitsState();
     });
 
     // Advanced filter options
     advOptions = computed(() => {
         if (!this.isDataReady()) return {};
-
-        const result: Record<string, AdvFilterOptions> = {};
         const state = this.effectiveFilterState();
-        const _tagsVersion = this.tagsVersion();
+        this.tagsVersion();
 
-        let baseUnits = this.units;
+        const advOptionsResult = buildUnitSearchAdvOptions({
+            advancedFilters: ADVANCED_FILTERS,
+            state,
+            units: this.units,
+            queryText: this.searchText(),
+            textSearch: this.effectiveTextSearch(),
+            isComplexQuery: this.isComplexQuery(),
+            totalRanges: this.totalRangesCache,
+            dynamicInternalLabel: this.dynamicInternalLabel(),
+            gameSystem: this.gameService.currentGameSystem(),
+            getUnitFilterKernelDependencies: () => this.getUnitFilterKernelDependencies(),
+            buildIndexedDropdownOptions: (conf, contextUnits, displayNameFn, contextUnitIds) =>
+                this.buildIndexedDropdownOptions(conf, contextUnits, displayNameFn, contextUnitIds),
+            buildForcePackDropdownOptions: (snapshot, contextUnits) => this.buildForcePackDropdownOptions(snapshot, contextUnits),
+            getIndexedUniverseNames: filterKey => this.getIndexedUniverseNames(filterKey),
+            getSortedIndexedUniverseNames: conf => this.getSortedIndexedUniverseNames(conf),
+            collectIndexedAvailabilityNames: (filterKey, optionNames, contextUnitIds, isComponentFilter) =>
+                this.collectIndexedAvailabilityNames(filterKey, optionNames, contextUnitIds, isComponentFilter),
+            collectConstrainedMultistateAvailabilityNames: (filterKey, units, selection, isComponentFilter) =>
+                this.collectConstrainedMultistateAvailabilityNames(filterKey, units, selection, isComponentFilter),
+            getAvailableRangeForUnits: (units, conf, fallbackRange) => this.getAvailableRangeForUnits(units, conf, fallbackRange),
+            getDisplayName: (filterKey, value) => {
+                const conf = getAdvancedFilterConfigByKey(filterKey);
+                const fn = conf?.displayNameFn ?? this.displayNameFns[filterKey];
+                return fn?.(value);
+            },
+        });
 
-        // Pre-filter by text search so dropdown/range options cascade from it.
-        // Only for non-complex queries (complex queries hide the UI dropdowns anyway).
-        const textSearch = this.effectiveTextSearch();
-        if (textSearch) {
-            const textTokens = parseSearchQuery(textSearch);
-            baseUnits = baseUnits.filter(u => {
-                const searchableText = u._searchKey || `${u.chassis ?? ''} ${u.model ?? ''}`.toLowerCase();
-                return matchesSearch(searchableText, textTokens, true);
-            });
-        }
-
-        const activeFilters: Record<string, any> = {};
-        for (const [key, s] of Object.entries(state)) {
-            if (s.interactedWith) activeFilters[key] = s.value;
-        }
-
-        const selectedEraNames = activeFilters['era'] as string[] || [];
-        const selectedFactionEntries = activeFilters['faction'] as MultiStateSelection || {};
-        const selectedFactionNames: string[] = Object.entries(selectedFactionEntries)
-            .filter(([_, sel]) => sel.state !== 'not')
-            .map(([name, _]) => name);
-
-        for (const conf of ADVANCED_FILTERS) {
-            // Skip semantic-only filters (they're only available via semantic mode)
-            if (conf.type === AdvFilterType.SEMANTIC) continue;
-            // Skip filters for other game modes (no UI to display them, saves computation)
-            if (conf.game && conf.game !== this.gameService.currentGameSystem()) continue;
-
-            let label = conf.label;
-            if (conf.key === 'internal') {
-                label = this.dynamicInternalLabel();
+        const advOptionsSnapshot = advOptionsResult.telemetry;
+        const publishVersion = ++this.advOptionsTelemetryPublishVersion;
+        queueMicrotask(() => {
+            if (this.advOptionsTelemetryPublishVersion !== publishVersion) {
+                return;
             }
-            const contextState = { ...state };
-            delete contextState[conf.key];
-            let contextUnits = this.applyFilters(baseUnits, contextState);
-            let availableOptions: { name: string, img?: string, displayName?: string, available?: boolean }[] = [];
-            if (conf.type === AdvFilterType.DROPDOWN) {
-                const displayNameFn = conf.displayNameFn ?? this.displayNameFns[conf.key];
-                if (conf.external) {
-                    const contextUnitIds = new Set(contextUnits.filter(u => u.id !== -1).map(u => u.id));
-                    if (conf.key === 'era') {
-                        const selectedFactionsAvailableEraIds = new Set<number>();
-                        for (const name of selectedFactionNames) {
-                            const faction = this.dataService.getFactionByName(name);
-                            if (faction) {
-                                for (const [eraId, unitIds] of Object.entries(faction.eras)) {
-                                    if ((unitIds as Set<number>).size > 0) {
-                                        selectedFactionsAvailableEraIds.add(Number(eraId));
-                                    }
-                                }
-                            }
-                        }
-                        // When factions are selected, only check their specific eras
-                        const erasToCheck = selectedFactionsAvailableEraIds.size > 0
-                            ? Array.from(selectedFactionsAvailableEraIds, id => this.dataService.getEraById(id)).filter((e): e is Era => !!e)
-                            : this.dataService.getEras();
-                        availableOptions = erasToCheck
-                            .filter(era => setHasAny(era.units as Set<number>, contextUnitIds))
-                            .map(era => ({ name: era.name, img: era.img }));
-                    } else
-                    if (conf.key === 'faction') {
-                        const selectedEraIds = new Set<number>();
-                        for (const eraName of selectedEraNames) {
-                            const era = this.dataService.getEraByName(eraName);
-                            if (era) selectedEraIds.add(era.id);
-                        }
-                        availableOptions = this.dataService.getFactions()
-                            .filter(faction => {
-                                if (selectedEraIds.size > 0) {
-                                    // Only check the selected eras
-                                    for (const eraId of selectedEraIds) {
-                                        const unitIds = faction.eras[eraId] as Set<number> | undefined;
-                                        if (unitIds && setHasAny(unitIds, contextUnitIds)) return true;
-                                    }
-                                    return false;
-                                }
-                                for (const eraIdStr in faction.eras) {
-                                    if (setHasAny(faction.eras[eraIdStr] as Set<number>, contextUnitIds)) return true;
-                                }
-                                return false;
-                            })
-                            .map(faction => ({ name: faction.name, img: faction.img }));
-                    } else if (conf.key === 'forcePack') {
-                        // Build a set of unit names from context units for quick lookup
-                        const contextUnitNames = new Set(contextUnits.map(u => u.name));
-                        availableOptions = getForcePacks()
-                            .filter(pack => pack.units.some(pu => {
-                                const unit = this.dataService.getUnitByName(pu.name);
-                                return unit && contextUnitNames.has(unit.name);
-                            }))
-                            .map(pack => ({ name: pack.name }));
-                    }
-                }
-                else if (conf.multistate) {
-                    const isComponentFilter = conf.key === 'componentName';
-                    const isTagsFilter = conf.key === '_tags';
-                    const currentFilter = state[conf.key];
-                    const hasQuantityFilters = conf.countable && isComponentFilter
-                        && currentFilter?.interactedWith && currentFilter.value &&
-                        Object.values(currentFilter.value as MultiStateSelection).some(selection => selection.count > 1);
+            this.advOptionsTelemetryState.set(advOptionsSnapshot);
+        });
 
-                    const filterHash = currentFilter?.interactedWith
-                        ? JSON.stringify(currentFilter.value)
-                        : '';
-                    const namesCacheKey = isTagsFilter
-                        ? `${conf.key}-${contextUnits.length}-${filterHash}-${_tagsVersion}`
-                        : `${conf.key}-${contextUnits.length}-${filterHash}`;
-
-                    let availableNames = this.availableNamesCache.get(namesCacheKey);
-                    if (!availableNames) {
-                        // Collect unique values efficiently
-                        const nameSet = new Set<string>();
-
-                        if (isComponentFilter) {
-                            for (const unit of contextUnits) {
-                                for (const component of unit.comp) {
-                                    nameSet.add(component.n);
-                                }
-                            }
-                        } else {
-                            for (const unit of contextUnits) {
-                                const propValue = getProperty(unit, conf.key);
-                                const values = Array.isArray(propValue) ? propValue : [propValue];
-                                for (const value of values) {
-                                    if (value) nameSet.add(value);
-                                }
-                            }
-                        }
-
-                        availableNames = Array.from(nameSet);
-                        this.setAvailableNamesCache(namesCacheKey, availableNames);
-                    }
-
-                    let filteredAvailableNames = availableNames;
-
-                    if (currentFilter?.interactedWith && currentFilter.value) {
-                        const selection = currentFilter.value as MultiStateSelection;
-                        const andEntries = Object.entries(selection).filter(([_, sel]) => sel.state === 'and');
-
-                        if (andEntries.length > 0) {
-                            // Use lowercase for all multistate filter comparisons for case-insensitivity
-                            const andMap = new Map(andEntries.map(([name, sel]) => [
-                                name.toLowerCase(),
-                                sel.count
-                            ]));
-                            const notSet = new Set(
-                                Object.entries(selection)
-                                    .filter(([_, sel]) => sel.state === 'not')
-                                    .map(([name]) => name.toLowerCase())
-                            );
-
-                            // Pre-filter units that satisfy AND conditions
-                            const validUnits = contextUnits.filter(unit => {
-                                if (isComponentFilter) {
-                                    const cached = getUnitComponentData(unit);
-
-                                    // Check NOT conditions
-                                    for (const notName of notSet) {
-                                        if (cached.componentNames.has(notName)) return false;
-                                    }
-
-                                    // Check AND conditions
-                                    for (const [name, requiredCount] of andMap) {
-                                        if ((cached.componentCounts.get(name) || 0) < requiredCount) return false;
-                                    }
-                                } else {
-                                    // Handle other properties with case-insensitive matching
-                                    const propValue = getProperty(unit, conf.key);
-                                    const values = Array.isArray(propValue) ? propValue : [propValue];
-                                    const valueSet = new Set(values.map(v => String(v).toLowerCase()));
-
-                                    for (const notName of notSet) {
-                                        if (valueSet.has(notName)) return false;
-                                    }
-
-                                    for (const [name] of andMap) {
-                                        if (!valueSet.has(name)) return false;
-                                    }
-                                }
-                                return true;
-                            });
-
-                            // Collect available names from valid units
-                            const filteredNameSet = new Set<string>();
-                            for (const unit of validUnits) {
-                                if (isComponentFilter) {
-                                    for (const component of unit.comp) {
-                                        filteredNameSet.add(component.n);
-                                    }
-                                } else {
-                                    const propValue = getProperty(unit, conf.key);
-                                    const values = Array.isArray(propValue) ? propValue : [propValue];
-                                    for (const value of values) {
-                                        if (value) filteredNameSet.add(value);
-                                    }
-                                }
-                            }
-                            filteredAvailableNames = Array.from(filteredNameSet);
-                        }
-                    }
-
-                    const sortedNames = sortAvailableDropdownOptions(availableNames, conf.sortOptions);
-                    const filteredSet = new Set(filteredAvailableNames);
-
-                    // Precompute total counts per component name
-                    let totalCountsMap: Map<string, number> | null = null;
-                    if (hasQuantityFilters) {
-                        totalCountsMap = new Map();
-                        for (const unit of contextUnits) {
-                            const cached = getUnitComponentData(unit);
-                            for (const [name, count] of cached.componentCounts) {
-                                // Cache stores lowercase, so we accumulate by lowercase key
-                                totalCountsMap.set(name, (totalCountsMap.get(name) || 0) + count);
-                            }
-                        }
-                    }
-
-                    // Create options with availability flag and count
-                    const optionsWithAvailability = sortedNames.map(name => {
-                        const option: { name: string; available: boolean; count?: number } = {
-                            name,
-                            available: filteredSet.has(name)
-                        };
-
-                        // Add count only if needed and for component filters
-                        // Use lowercase lookup since cache stores lowercase keys
-                        if (totalCountsMap) {
-                            option.count = totalCountsMap.get(name.toLowerCase()) || 0;
-                        }
-
-                        return option;
-                    });
-
-                    // Check for semantic-only mode (advanced quantity constraints or wildcard patterns)
-                    const filterStateEntry = state[conf.key];
-                    const currentFilterValue = filterStateEntry?.interactedWith ? filterStateEntry.value : {};
-                    const currentSelection = currentFilterValue as MultiStateSelection;
-                    const wildcardPatternsMultistate = filterStateEntry?.wildcardPatterns;
-                    let semanticOnlyMultistate = false;
-                    let displayItemsMultistate: SemanticDisplayItem[] | undefined;
-
-                    // Check for wildcard patterns first
-                    if (wildcardPatternsMultistate && wildcardPatternsMultistate.length > 0) {
-                        semanticOnlyMultistate = true;
-                        displayItemsMultistate = [];
-
-                        // Add wildcard patterns
-                        for (const wp of wildcardPatternsMultistate) {
-                            displayItemsMultistate.push({
-                                text: wp.pattern,
-                                state: wp.state
-                            });
-                        }
-
-                        // Also include any regular selections
-                        if (currentSelection && typeof currentSelection === 'object') {
-                            for (const [name, sel] of Object.entries(currentSelection)) {
-                                if (sel.state !== false) {
-                                    displayItemsMultistate.push({
-                                        text: name,
-                                        state: sel.state as 'or' | 'and' | 'not'
-                                    });
-                                }
-                            }
-                        }
-                    } else if (currentSelection && typeof currentSelection === 'object') {
-                        const activeSelections = Object.entries(currentSelection)
-                            .filter(([_, sel]) => sel.state !== false);
-
-                        // Check for quantity constraints that can't be shown in UI
-                        // UI can only represent: no operator (implicit >=1) or >= operator
-                        // Semantic-only: =, !=, >, <, <=, ranges, merged ranges
-                        const hasAdvancedQuantity = activeSelections.some(([_, sel]) => {
-                            // Has merged ranges → semantic-only
-                            if (sel.countIncludeRanges || sel.countExcludeRanges) return true;
-                            // Has countMax (range) → semantic-only
-                            if (sel.countMax !== undefined) return true;
-                            // Has operator that isn't >= → semantic-only
-                            if (sel.countOperator && sel.countOperator !== '>=') return true;
-                            return false;
-                        });
-
-                        if (hasAdvancedQuantity) {
-                            semanticOnlyMultistate = true;
-                            displayItemsMultistate = activeSelections.map(([name, sel]) => {
-                                let suffix = '';
-
-                                // For single constraint, prefer showing original operator/count
-                                // Only use ranges for display when there are multiple merged constraints
-                                if (sel.countOperator && sel.countOperator !== '=') {
-                                    // Single constraint with operator - show as written
-                                    if (sel.countMax !== undefined) {
-                                        // Range constraint like :3-5
-                                        const rangePrefix = sel.countOperator === '!=' ? '!' : '';
-                                        suffix = `:${rangePrefix}${sel.count}-${sel.countMax}`;
-                                    } else {
-                                        // Operator constraint like :>3 or :>=4
-                                        suffix = `:${sel.countOperator}${sel.count}`;
-                                    }
-                                } else if (sel.countIncludeRanges || sel.countExcludeRanges) {
-                                    // Multiple merged constraints - use ranges for display
-                                    const parts: string[] = [];
-                                    if (sel.countIncludeRanges) {
-                                        for (const [min, max] of sel.countIncludeRanges) {
-                                            if (min === max) {
-                                                parts.push(`${min}`);
-                                            } else if (max === Infinity) {
-                                                parts.push(`>=${min}`);
-                                            } else {
-                                                parts.push(`${min}-${max}`);
-                                            }
-                                        }
-                                    }
-                                    if (sel.countExcludeRanges) {
-                                        for (const [min, max] of sel.countExcludeRanges) {
-                                            if (min === max) {
-                                                parts.push(`!${min}`);
-                                            } else {
-                                                parts.push(`!${min}-${max}`);
-                                            }
-                                        }
-                                    }
-                                    if (parts.length > 0) {
-                                        suffix = `:${parts.join(',')}`;
-                                    }
-                                } else if (sel.count > 1) {
-                                    suffix = `:${sel.count}`;
-                                }
-
-                                return {
-                                    text: name + suffix,
-                                    state: sel.state as 'or' | 'and' | 'not'
-                                };
-                            });
-                        }
-                    }
-
-                    result[conf.key] = {
-                        type: 'dropdown',
-                        label,
-                        options: optionsWithAvailability,
-                        value: currentFilterValue,
-                        interacted: filterStateEntry?.interactedWith ?? false,
-                        semanticOnly: semanticOnlyMultistate,
-                        displayItems: displayItemsMultistate
-                    };
-                    continue;
-                } else {
-                    const optionSet = new Set<string>();
-                    if (conf.key === 'source') {
-                        // For source filter, flatten the array of sources per unit
-                        for (const u of contextUnits) {
-                            const val = getProperty(u, conf.key);
-                            if (Array.isArray(val)) {
-                                for (const v of val) {
-                                    if (v != null && v !== '') optionSet.add(v);
-                                }
-                            } else if (val != null && val !== '') {
-                                optionSet.add(val);
-                            }
-                        }
-                    } else if (conf.key === 'as._motive') {
-                        // For AS motive filter, getProperty returns array of display names
-                        for (const u of contextUnits) {
-                            const val = getProperty(u, conf.key);
-                            if (Array.isArray(val)) {
-                                for (const v of val) {
-                                    if (v != null && v !== '') optionSet.add(v);
-                                }
-                            }
-                        }
-                    } else {
-                        for (const u of contextUnits) {
-                            const v = getProperty(u, conf.key);
-                            if (v != null && v !== '') optionSet.add(v);
-                        }
-                    }
-                    const allOptions = Array.from(optionSet);
-                    const sortedOptions = sortAvailableDropdownOptions(allOptions, conf.sortOptions);
-                    
-                    availableOptions = sortedOptions.map(name => ({
-                        name,
-                        ...(displayNameFn ? { displayName: displayNameFn(name) } : {})
-                    }));
-                }
-
-                // Get the filter state value
-                const filterStateEntry = state[conf.key];
-                const isInteracted = filterStateEntry?.interactedWith ?? false;
-                const filterValue = isInteracted ? filterStateEntry.value : [];
-
-                // Check for semantic-only: values in the filter that aren't in available options,
-                // OR if there are wildcard patterns (which are always semantic-only)
-                let semanticOnly = filterStateEntry?.semanticOnly ?? false;
-                let displayText: string | undefined;
-                const availableOptionNames = new Set(availableOptions.map(o => o.name));
-                const wildcardPatterns = filterStateEntry?.wildcardPatterns;
-
-                // If there are wildcard patterns, this is semantic-only
-                if (wildcardPatterns && wildcardPatterns.length > 0) {
-                    semanticOnly = true;
-                    displayText = wildcardPatterns.map(wp => {
-                        const prefix = wp.state === 'not' ? '!' : '';
-                        return prefix + wp.pattern;
-                    }).join(', ');
-                } else if (conf.multistate) {
-                    // For multistate dropdowns, check MultiStateSelection
-                    const selection = filterValue as MultiStateSelection;
-                    if (selection && typeof selection === 'object') {
-                        const activeSelections = Object.entries(selection)
-                            .filter(([_, sel]) => sel.state !== false);
-                        
-                        const unavailableSelections = activeSelections.filter(([name, _]) => !availableOptionNames.has(name));
-                        
-                        // Check for quantity constraints that can't be shown in UI
-                        // UI can only represent: no operator (implicit >=1) or >= operator
-                        const hasAdvancedQuantity = activeSelections.some(([_, sel]) => {
-                            if (sel.countIncludeRanges || sel.countExcludeRanges) return true;
-                            if (sel.countMax !== undefined) return true;
-                            if (sel.countOperator && sel.countOperator !== '>=') return true;
-                            return false;
-                        });
-                        
-                        // Add unavailable selected values back to the options list so the
-                        // user can still deselect them (prevents the dropdown from locking).
-                        if (unavailableSelections.length > 0) {
-                            for (const [name] of unavailableSelections) {
-                                availableOptions.push({
-                                    name,
-                                    available: false,
-                                    ...(displayNameFn ? { displayName: displayNameFn(name) } : {})
-                                });
-                            }
-                        }
-
-                        if (hasAdvancedQuantity) {
-                            // Semantic only mode for advanced quantity constraints
-                            semanticOnly = true;
-                            displayText = activeSelections.map(([name, sel]) => {
-                                const prefix = sel.state === 'not' ? '!' : '';
-                                let suffix = '';
-                                if (conf.countable) {
-                                    // For single constraint, prefer showing original operator/count
-                                    // Only use ranges for display when there are multiple merged constraints
-                                    if (sel.countOperator && sel.countOperator !== '=') {
-                                        // Single constraint with operator - show as written
-                                        if (sel.countMax !== undefined) {
-                                            // Range constraint like :3-5
-                                            const rangePrefix = sel.countOperator === '!=' ? '!' : '';
-                                            suffix = `:${rangePrefix}${sel.count}-${sel.countMax}`;
-                                        } else {
-                                            // Operator constraint like :>3 or :>=4
-                                            suffix = `:${sel.countOperator}${sel.count}`;
-                                        }
-                                    } else if (sel.countIncludeRanges || sel.countExcludeRanges) {
-                                        // Multiple merged constraints - use ranges for display
-                                        const parts: string[] = [];
-                                        if (sel.countIncludeRanges) {
-                                            for (const [min, max] of sel.countIncludeRanges) {
-                                                if (min === max) {
-                                                    parts.push(`${min}`);
-                                                } else if (max === Infinity) {
-                                                    parts.push(`>=${min}`);
-                                                } else {
-                                                    parts.push(`${min}-${max}`);
-                                                }
-                                            }
-                                        }
-                                        if (sel.countExcludeRanges) {
-                                            for (const [min, max] of sel.countExcludeRanges) {
-                                                if (min === max) {
-                                                    parts.push(`!${min}`);
-                                                } else {
-                                                    parts.push(`!${min}-${max}`);
-                                                }
-                                            }
-                                        }
-                                        if (parts.length > 0) {
-                                            suffix = `:${parts.join(',')}`;
-                                        }
-                                    } else if (sel.count > 1) {
-                                        suffix = `:${sel.count}`;
-                                    }
-                                }
-                                return prefix + name + suffix;
-                            }).join(', ');
-                        }
-                    }
-                } else {
-                    // For regular dropdowns, check string array
-                    const selectedValues = filterValue as string[];
-                    if (selectedValues && Array.isArray(selectedValues) && selectedValues.length > 0) {
-                        // Add unavailable selected values back to the options list so the
-                        // user can still deselect them (prevents the dropdown from locking).
-                        for (const v of selectedValues) {
-                            if (!availableOptionNames.has(v)) {
-                                availableOptions.push({
-                                    name: v,
-                                    available: false,
-                                    ...(displayNameFn ? { displayName: displayNameFn(v) } : {})
-                                });
-                            }
-                        }
-                    }
-                }
-
-                result[conf.key] = {
-                    type: 'dropdown',
-                    label,
-                    options: availableOptions,
-                    value: filterValue,
-                    interacted: isInteracted,
-                    semanticOnly,
-                    displayText
-                };
-            }
-            else if (conf.type === AdvFilterType.RANGE) {
-                const totalRange = this.totalRangesCache[conf.key] || [0, 0];
-
-                // Special handling for BV to use adjusted values
-                let vals: number[];
-                if (conf.key === 'bv') {
-                    vals = contextUnits
-                        .map(u => this.getAdjustedBV(u))
-                        .filter(bv => bv > 0);
-                } else if (conf.key === 'as.PV') {
-                    vals = contextUnits
-                        .map(u => this.getAdjustedPV(u))
-                        .filter(pv => pv > 0);
-                } else if (conf.key === 'as._mv') {
-                    // Special handling for AS movement - collect ALL values from MVm
-                    vals = [];
-                    for (const u of contextUnits) {
-                        const mvm = u.as?.MVm;
-                        if (mvm) {
-                            vals.push(...Object.values(mvm) as number[]);
-                        }
-                    }
-                } else {
-                    vals = this.getValidFilterValues(contextUnits, conf);
-                }
-
-                let availableRange: [number, number];
-                if (vals.length > 0) {
-                    let min = vals[0], max = vals[0];
-                    for (let i = 1; i < vals.length; i++) {
-                        if (vals[i] < min) min = vals[i];
-                        if (vals[i] > max) max = vals[i];
-                    }
-                    availableRange = [min, max];
-                } else {
-                    availableRange = totalRange as [number, number];
-                }
-
-                // Get the original filter value (before clamping) for visualization
-                const filterStateEntry = state[conf.key];
-                const isInteracted = filterStateEntry?.interactedWith ?? false;
-                const originalValue: [number, number] = isInteracted ? filterStateEntry.value : availableRange;
-
-                // Clamp both min and max to the available range for thumb positions
-                let clampedMin = Math.max(availableRange[0], Math.min(originalValue[0], availableRange[1]));
-                let clampedMax = Math.min(availableRange[1], Math.max(originalValue[1], availableRange[0]));
-                if (clampedMin > clampedMax) [clampedMin, clampedMax] = [clampedMax, clampedMin];
-                const clampedValue: [number, number] = [clampedMin, clampedMax];
-
-                // Get semantic-only properties from filter state
-                const semanticOnly = filterStateEntry?.semanticOnly ?? false;
-
-                // For visualization: show the ORIGINAL set range (before clamping) as includeRanges
-                // If semantic has multiple disjoint ranges, use those; otherwise use original value
-                const semanticIncludeRanges = filterStateEntry?.includeRanges;
-                const includeRanges: [number, number][] | undefined =
-                    semanticIncludeRanges ?? (isInteracted ? [originalValue] : undefined);
-
-                const excludeRanges = filterStateEntry?.excludeRanges;
-                const displayText = filterStateEntry?.displayText;
-
-                result[conf.key] = {
-                    type: 'range',
-                    label,
-                    totalRange: totalRange,
-                    options: availableRange as [number, number],
-                    value: clampedValue,
-                    interacted: isInteracted,
-                    semanticOnly,
-                    includeRanges,
-                    excludeRanges,
-                    displayText
-                };
-            }
-        }
-        return result;
+        return advOptionsResult.options;
     });
 
 
@@ -2116,78 +1364,28 @@ export class UnitSearchFiltersService {
      * Shared between startup initialization and in-app URL handling.
      */
     private applyParamsCore(params: URLSearchParams, opts: { expandView?: boolean } = {}): void {
-        let hasFilters = false;
+        const scalarState = parseUnitSearchScalarUrlState(params, opts);
+        const searchParam = scalarState.searchText;
 
-        // Search query (may contain semantic filters)
-        const searchParam = params.get('q');
-        if (searchParam) {
-            this.searchText.set(searchParam);
-            hasFilters = true;
+        if (scalarState.searchText) {
+            this.searchText.set(scalarState.searchText);
         }
 
-        // Sort settings
-        const sortParam = params.get('sort');
-        if (sortParam && SORT_OPTIONS.some(opt => opt.key === sortParam)) {
-            this.selectedSort.set(sortParam);
+        if (scalarState.sortKey) {
+            this.selectedSort.set(scalarState.sortKey);
         }
 
-        const sortDirParam = params.get('sortDir');
-        if (sortDirParam === 'desc' || sortDirParam === 'asc') {
-            this.selectedSortDirection.set(sortDirParam);
+        if (scalarState.sortDirection) {
+            this.selectedSortDirection.set(scalarState.sortDirection);
         }
 
         // UI filters (separate from semantic filters in q)
         const filtersParam = params.get('filters');
         let parsedFilterState: FilterState = {};
         if (filtersParam) {
-            hasFilters = true;
             try {
-                const parsedFilters = this.parseCompactFiltersFromUrl(filtersParam);
-                const validFilters: FilterState = {};
-
-                for (const [key, state] of Object.entries(parsedFilters)) {
-                    const conf = ADVANCED_FILTERS.find(f => f.key === key);
-                    if (!conf) continue;
-
-                    if (conf.type === AdvFilterType.DROPDOWN) {
-                        // Skip validation for _tags: tags are user-specific and may not
-                        // be loaded into units yet when parsing URL. Trust the URL values.
-                        if (key === '_tags') {
-                            validFilters[key] = state;
-                            continue;
-                        }
-
-                        const availableValuesMap = this.getAvailableDropdownValuesMap(conf);
-
-                        if (conf.multistate) {
-                            const selection = state.value as MultiStateSelection;
-                            const validSelection: MultiStateSelection = {};
-                            for (const [name, selectionValue] of Object.entries(selection)) {
-                                const lowerName = name.toLowerCase();
-                                const properCase = availableValuesMap.get(lowerName);
-                                if (properCase) {
-                                    validSelection[properCase] = { ...selectionValue, name: properCase };
-                                }
-                            }
-                            if (Object.keys(validSelection).length > 0) {
-                                validFilters[key] = { value: validSelection, interactedWith: true };
-                            }
-                        } else {
-                            const values = state.value as string[];
-                            const validValues = values
-                                .map(v => availableValuesMap.get(v.toLowerCase()))
-                                .filter((v): v is string => v !== undefined);
-                            if (validValues.length > 0) {
-                                validFilters[key] = { value: validValues, interactedWith: true };
-                            }
-                        }
-                    } else {
-                        // Range filters: kept as-is, clamped automatically by advOptions
-                        validFilters[key] = state;
-                    }
-                }
-                parsedFilterState = validFilters;
-                this.filterState.set(validFilters);
+                parsedFilterState = parseAndValidateCompactFiltersFromUrl(filtersParam, this.getDropdownValuesDependencies());
+                this.filterState.set(parsedFilterState);
             } catch (error) {
                 this.logger.warn('Failed to parse filters from URL: ' + error);
             }
@@ -2195,143 +1393,48 @@ export class UnitSearchFiltersService {
 
         // Public tags mapping (format: publicId1:tag1,publicId2:tag2)
         const ptParam = params.get('pt');
-        const foreignTags = this.parsePublicTagsParam(ptParam, searchParam, parsedFilterState);
+        const foreignTags = parsePublicTagsParam({
+            ptParam,
+            searchText: searchParam,
+            filterState: parsedFilterState,
+            gameSystem: this.gameService.currentGameSystem(),
+            myPublicId: this.userStateService.publicId(),
+            subscribedTags: this.publicTagsService.getSubscribedTags(),
+        });
         if (foreignTags.length > 0) {
-            const existing = this.pendingForeignTags();
-            const merged = [...existing];
-            for (const ft of foreignTags) {
-                const key = `${ft.publicId}:${ft.tagName}`.toLowerCase();
-                if (!existing.some(e => `${e.publicId}:${e.tagName}`.toLowerCase() === key)) {
-                    merged.push(ft);
-                }
-            }
-            this.pendingForeignTags.set(merged);
+            this.pendingForeignTags.set(mergePublicTagReferences(this.pendingForeignTags(), foreignTags));
         }
 
-        // Expanded view
-        const expandedParam = params.get('expanded');
-        const shouldExpand = opts.expandView ?? (!params.has('instance') && !params.has('units') && hasFilters);
-        if (expandedParam === 'true' || shouldExpand) {
+        if (scalarState.expanded) {
             this.expandedView.set(true);
         }
 
-        // Gunnery / piloting
-        const gunneryParam = params.get('gunnery');
-        if (gunneryParam) {
-            const gunnery = parseInt(gunneryParam);
-            if (!isNaN(gunnery) && gunnery >= 0 && gunnery <= 8) {
-                this.pilotGunnerySkill.set(gunnery);
-            }
+        if (scalarState.gunnery !== null) {
+            this.pilotGunnerySkill.set(scalarState.gunnery);
         }
 
-        const pilotingParam = params.get('piloting');
-        if (pilotingParam) {
-            const piloting = parseInt(pilotingParam);
-            if (!isNaN(piloting) && piloting >= 0 && piloting <= 8) {
-                this.pilotPilotingSkill.set(piloting);
-            }
+        if (scalarState.piloting !== null) {
+            this.pilotPilotingSkill.set(scalarState.piloting);
         }
 
-        // BV/PV limit
-        const bvLimitParam = params.get('bvLimit');
-        if (bvLimitParam) {
-            const bvLimit = parseInt(bvLimitParam);
-            if (!isNaN(bvLimit) && bvLimit > 0) {
-                this.bvPvLimit.set(bvLimit);
-            }
+        if (scalarState.bvLimit !== null) {
+            this.bvPvLimit.set(scalarState.bvLimit);
         }
-    }
-
-    private getAvailableDropdownValues(conf: AdvFilterConfig): Set<string> {
-        const values = new Set<string>();
-
-        if (conf.external) {
-            if (conf.key === 'era') {
-                this.dataService.getEras().forEach(era => values.add(era.name));
-            } else if (conf.key === 'faction') {
-                this.dataService.getFactions().forEach(faction => values.add(faction.name));
-            } else if (conf.key === 'forcePack') {
-                getForcePacks().forEach(pack => values.add(pack.name));
-            }
-        } else {
-            if (conf.key === 'componentName') {
-                for (const unit of this.units) {
-                    for (const component of unit.comp) {
-                        values.add(component.n);
-                    }
-                }
-            } else {
-                for (const unit of this.units) {
-                    const propValue = getProperty(unit, conf.key);
-                    if (Array.isArray(propValue)) {
-                        propValue.forEach(v => { if (v != null && v !== '') values.add(v); });
-                    } else if (propValue != null && propValue !== '') {
-                        values.add(propValue);
-                    }
-                }
-            }
-        }
-
-        return values;
-    }
-
-    /**
-     * Get a case-insensitive lookup map for dropdown values.
-     * Maps lowercase value -> proper case value.
-     */
-    private getAvailableDropdownValuesMap(conf: AdvFilterConfig): Map<string, string> {
-        const values = this.getAvailableDropdownValues(conf);
-        const map = new Map<string, string>();
-        for (const v of values) {
-            map.set(v.toLowerCase(), v);
-        }
-        return map;
     }
 
     queryParameters = computed(() => {
-        const search = this.searchText();
-        const filterState = this.filterState();
-        const semanticKeys = this.semanticFilterKeys();
-        const selectedSort = this.selectedSort();
-        const selectedSortDirection = this.selectedSortDirection();
-        const expanded = this.expandedView();
-        const gunnery = this.pilotGunnerySkill();
-        const piloting = this.pilotPilotingSkill();
-
-        const queryParams: any = {};
-
-        // Add search query if present (contains semantic filters)
-        queryParams.q = search.trim() || null;
-
-        // UI-only filters (not in semantic text) are saved in filters param
-        // Exclude any filters that are represented in semantic text
-        const uiOnlyFilters: FilterState = {};
-        for (const [key, state] of Object.entries(filterState)) {
-            if (!semanticKeys.has(key)) {
-                uiOnlyFilters[key] = state;
-            }
-        }
-        const filtersParam = this.generateCompactFiltersParam(uiOnlyFilters);
-        queryParams.filters = filtersParam ? filtersParam : null;
-
-        // Public tags param is stored in a signal, updated when tags change
-        queryParams.pt = this.publicTagsParam();
-
-        // Add sort if not default
-        queryParams.sort = (selectedSort !== '') ? selectedSort : null;
-        queryParams.sortDir = (selectedSortDirection !== 'asc') ? selectedSortDirection : null;
-
-
-        // Add pilot skills if not default
-        queryParams.gunnery = (gunnery !== 4) ? gunnery : null;
-        queryParams.piloting = (piloting !== 5) ? piloting : null;
-
-        // BV/PV limit
-        const bvLimit = this.bvPvLimit();
-        queryParams.bvLimit = (bvLimit > 0) ? bvLimit : null;
-
-        queryParams.expanded = (expanded ? 'true' : null);
-        return queryParams;
+        return buildUnitSearchQueryParameters({
+            searchText: this.searchText(),
+            filterState: this.filterState(),
+            semanticKeys: this.semanticFilterKeys(),
+            selectedSort: this.selectedSort(),
+            selectedSortDirection: this.selectedSortDirection(),
+            expanded: this.expandedView(),
+            gunnery: this.pilotGunnerySkill(),
+            piloting: this.pilotPilotingSkill(),
+            bvLimit: this.bvPvLimit(),
+            publicTagsParam: this.publicTagsParam(),
+        });
     });
 
 
@@ -2346,317 +1449,8 @@ export class UnitSearchFiltersService {
         });
     }
 
-    private generateCompactFiltersParam(state: FilterState): string | null {
-        const parts: string[] = [];
-
-        for (const [key, filterState] of Object.entries(state)) {
-            if (!filterState.interactedWith) continue;
-
-            const conf = ADVANCED_FILTERS.find(f => f.key === key);
-            if (!conf) continue;
-
-            if (conf.type === AdvFilterType.RANGE) {
-                const [min, max] = filterState.value;
-                parts.push(`${key}:${min}-${max}`);
-            } else if (conf.type === AdvFilterType.DROPDOWN) {
-                if (conf.multistate) {
-                    const selection = filterState.value as MultiStateSelection;
-                    const subParts: string[] = [];
-
-                    for (const [name, selectionValue] of Object.entries(selection)) {
-                        if (selectionValue.state !== false) {
-                            // For all multistate filters (including _tags), just output the name
-                            // Public tag mappings are handled separately in the 'pt' parameter
-                            let part = name;
-                            if (selectionValue.state === 'and') part += '.';
-                            else if (selectionValue.state === 'not') part += '!';
-                            if (selectionValue.count > 1) part += `~${selectionValue.count}`;
-                            subParts.push(part);
-                        }
-                    }
-
-                    if (subParts.length > 0) {
-                        parts.push(`${key}:${subParts.join(',')}`);
-                    }
-                } else {
-                    const values = filterState.value as string[];
-                    if (values.length > 0) {
-                        parts.push(`${key}:${values.join(',')}`);
-                    }
-                }
-            }
-        }
-
-        return parts.length > 0 ? parts.join('|') : null;
-    }
-
-    /**
-     * Generate the public tags (pt) query parameter for all tags (semantic + dropdown).
-     * Maps tag names to their publicId:tagName format for public/foreign tags.
-     * Format: publicId1:tag1,publicId2:tag2
-     *
-     * This separates tag names from their source information, allowing:
-     * - Clean filter URLs: `filters=_tags:MyTag,OtherTag`
-     * - Source mapping: `pt=abc123:MyTag,def456:OtherTag`
-     */
-    private generatePublicTagsParam(searchText: string, filterState: FilterState): string | null {
-        // Collect all tag names from both sources
-        const tagNames = new Set<string>();
-
-        // 1. Tags from semantic query
-        if (searchText.trim()) {
-            const parsed = parseSemanticQueryAST(searchText, this.gameService.currentGameSystem());
-            const tagTokens = parsed.tokens.filter(t => t.field === 'tags');
-            for (const token of tagTokens) {
-                for (const value of token.values) {
-                    tagNames.add(value.toLowerCase());
-                }
-            }
-        }
-
-        // 2. Tags from filterState (dropdown UI)
-        const tagsFilter = filterState['_tags'];
-        if (tagsFilter?.interactedWith && tagsFilter.value) {
-            const selection = tagsFilter.value as MultiStateSelection;
-            for (const [name, selectionValue] of Object.entries(selection)) {
-                if (selectionValue.state !== false) {
-                    tagNames.add(name.toLowerCase());
-                }
-            }
-        }
-
-        if (tagNames.size === 0) return null;
-
-        const myPublicId = this.userStateService.publicId();
-        const parts: string[] = [];
-        const includedKeys = new Set<string>();
-
-        for (const tagNameLower of tagNames) {
-            // Check if user has this as a local tag
-            const nameTags = this.tagsService.getNameTags();
-            const chassisTags = this.tagsService.getChassisTags();
-
-            // Find the original case version of the tag
-            let localTagName: string | null = null;
-            for (const t of Object.keys(nameTags)) {
-                if (t.toLowerCase() === tagNameLower) {
-                    localTagName = t;
-                    break;
-                }
-            }
-            if (!localTagName) {
-                for (const t of Object.keys(chassisTags)) {
-                    if (t.toLowerCase() === tagNameLower) {
-                        localTagName = t;
-                        break;
-                    }
-                }
-            }
-
-            // Add local tag mapping
-            if (localTagName && myPublicId) {
-                const key = `${myPublicId}:${localTagName}`.toLowerCase();
-                if (!includedKeys.has(key)) {
-                    includedKeys.add(key);
-                    parts.push(`${myPublicId}:${localTagName}`);
-                }
-            }
-
-            // Add all public tags (subscribed + temporary) with this name
-            const matchingPublicTags = this.publicTagsService.getAllPublicTags()
-                .filter(pt => pt.tagName.toLowerCase() === tagNameLower);
-
-            for (const pt of matchingPublicTags) {
-                const key = `${pt.publicId}:${pt.tagName}`.toLowerCase();
-                if (!includedKeys.has(key)) {
-                    includedKeys.add(key);
-                    parts.push(`${pt.publicId}:${pt.tagName}`);
-                }
-            }
-
-            // Add pending foreign tags (not yet subscribed but in URL)
-            const matchingPendingTags = this.pendingForeignTags()
-                .filter(pt => pt.tagName.toLowerCase() === tagNameLower);
-
-            for (const pt of matchingPendingTags) {
-                const key = `${pt.publicId}:${pt.tagName}`.toLowerCase();
-                if (!includedKeys.has(key)) {
-                    includedKeys.add(key);
-                    parts.push(`${pt.publicId}:${pt.tagName}`);
-                }
-            }
-        }
-
-        return parts.length > 0 ? parts.join(',') : null;
-    }
-
-    private parseCompactFiltersFromUrl(filtersParam: string): FilterState {
-        const filterState: FilterState = {};
-
-        try {
-            const parts = filtersParam.split('|');
-
-            for (const part of parts) {
-                const colonIndex = part.indexOf(':');
-                if (colonIndex === -1) continue;
-
-                const key = part.substring(0, colonIndex);
-                const valueStr = part.substring(colonIndex + 1);
-
-                const conf = ADVANCED_FILTERS.find(f => f.key === key);
-                if (!conf) continue;
-
-                if (conf.type === AdvFilterType.RANGE) {
-                    const match = valueStr.match(/^(-?\d+(?:\.\d+)?)-(-?\d+(?:\.\d+)?)$/);
-                    if (match) {
-                        const min = parseFloat(match[1]);
-                        const max = parseFloat(match[2]);
-                        if (!isNaN(min) && !isNaN(max)) {
-                            filterState[key] = {
-                                value: [min, max],
-                                interactedWith: true
-                            };
-                        }
-                    }
-                } else if (conf.type === AdvFilterType.DROPDOWN) {
-                    if (conf.multistate) {
-                        const selection: MultiStateSelection = {};
-                        const items = valueStr.split(',');
-
-                        for (const item of items) {
-                            let name = item;
-                            let state: MultiState = 'or';
-                            let count = 1;
-
-                            // Parse count first
-                            const starIndex = name.indexOf('~');
-                            if (starIndex !== -1) {
-                                count = parseInt(name.substring(starIndex + 1)) || 1;
-                                name = name.substring(0, starIndex);
-                            }
-
-                            // Parse state suffix
-                            if (name.endsWith('.')) {
-                                state = 'and';
-                                name = name.slice(0, -1);
-                            } else if (name.endsWith('!')) {
-                                state = 'not';
-                                name = name.slice(0, -1);
-                            } else {
-                                state = 'or'; // default state
-                            }
-
-                            // Tags are just plain names - foreign tag detection uses pt parameter
-                            selection[name] = { name, state, count };
-                        }
-
-                        if (Object.keys(selection).length > 0) {
-                            filterState[key] = {
-                                value: selection,
-                                interactedWith: true
-                            };
-                        }
-                    } else {
-                        const values = valueStr.split(',').filter(Boolean);
-                        if (values.length > 0) {
-                            filterState[key] = {
-                                value: values,
-                                interactedWith: true
-                            };
-                        }
-                    }
-                }
-            }
-        } catch (error) {
-            this.logger.warn('Failed to parse compact filters from URL: ' + error);
-        }
-
-        return filterState;
-    }
-
-    /**
-     * Parse the public tags (pt) query parameter to identify foreign tags.
-     * Format: publicId1:tag1,publicId2:tag2
-     *
-     * Checks which tags are actually in use (semantic query OR dropdown filters)
-     * and returns only the foreign ones that need to be fetched/subscribed.
-     * Local tags (matching user's publicId) are filtered out.
-     */
-    private parsePublicTagsParam(
-        ptParam: string | null | undefined,
-        searchParam: string | null | undefined,
-        filterState: FilterState
-    ): Array<{ publicId: string; tagName: string }> {
-        if (!ptParam) return [];
-
-        const myPublicId = this.userStateService.publicId();
-        const foreignTags: Array<{ publicId: string; tagName: string }> = [];
-
-        try {
-            const referencedTagNames = new Set<string>();
-
-            // 1. Tags from semantic query
-            if (searchParam) {
-                const parsed = parseSemanticQueryAST(searchParam, this.gameService.currentGameSystem());
-                const tagTokens = parsed.tokens.filter(t => t.field === 'tags');
-
-                for (const token of tagTokens) {
-                    for (const value of token.values) {
-                        referencedTagNames.add(value.toLowerCase());
-                    }
-                }
-            }
-
-            // 2. Tags from dropdown filters
-            const tagsFilter = filterState['_tags'];
-            if (tagsFilter?.value && typeof tagsFilter.value === 'object' && !Array.isArray(tagsFilter.value)) {
-                const tagSelection = tagsFilter.value as MultiStateSelection;
-                for (const tagName of Object.keys(tagSelection)) {
-                    referencedTagNames.add(tagName.toLowerCase());
-                }
-            }
-
-            if (referencedTagNames.size === 0) return [];
-
-            const mappings = ptParam.split(',');
-            for (const mapping of mappings) {
-                const atIndex = mapping.indexOf(':');
-                if (atIndex === -1) {
-                    continue;
-                };
-
-                const publicId = mapping.substring(0, atIndex);
-                const tagName = mapping.substring(atIndex + 1);
-
-                // Skip if this is the user's own tag
-                if (myPublicId && publicId === myPublicId) {
-                    continue;
-                };
-
-                // Only include if this tag is actually referenced
-                if (!referencedTagNames.has(tagName.toLowerCase())) {
-                    continue;
-                }
-
-                // Check if already subscribed to this tag
-                const isSubscribed = this.publicTagsService.getSubscribedTags()
-                    .some(pt => pt.publicId === publicId &&
-                               pt.tagName.toLowerCase() === tagName.toLowerCase());
-
-                this.logger.info(`Public tag from URL: ${publicId}:${tagName}, subscribed: ${isSubscribed}`);
-                if (!isSubscribed) {
-                    foreignTags.push({ publicId, tagName });
-                }
-            }
-        } catch (error) {
-            this.logger.warn('Failed to parse public tags param from URL: ' + error);
-        }
-
-        return foreignTags;
-    }
-
     setFilter(key: string, value: any) {
-        const conf = ADVANCED_FILTERS.find(f => f.key === key);
+        const conf = getAdvancedFilterConfigByKey(key);
         if (!conf) return;
 
         let interacted = true;
@@ -2711,7 +1505,7 @@ export class UnitSearchFiltersService {
      * of boundary matching. Used when the user explicitly clears a range filter.
      */
     unsetFilter(key: string) {
-        const conf = ADVANCED_FILTERS.find(f => f.key === key);
+        const conf = getAdvancedFilterConfigByKey(key);
         if (!conf) return;
 
         const shouldSyncToText = this.autoConvertToSemantic() || this.semanticFilterKeys().has(key);
@@ -2743,54 +1537,37 @@ export class UnitSearchFiltersService {
 
         this.isSyncingToText = true;
         try {
-            const semanticKey = conf.semanticKey || conf.key;
             const currentText = this.searchText();
             const gameSystem = this.gameService.currentGameSystem();
 
             // Parse current query using AST parser to get text search and existing tokens
             const parsed = parseSemanticQueryAST(currentText, gameSystem);
 
-            // Filter out any existing tokens for this filter key
-            const otherTokens = parsed.tokens.filter(t => {
-                const tokenConf = ADVANCED_FILTERS.find(f =>
-                    (f.semanticKey || f.key) === t.field &&
-                    (!f.game || f.game === gameSystem)
-                );
-                return tokenConf?.key !== key;
-            });
+            const nextSemanticState = {
+                ...tokensToFilterState(
+                    parsed.tokens,
+                    gameSystem,
+                    this.totalRangesCache,
+                ),
+            } as FilterState;
 
-            // Build new semantic text with updated filter
-            // For range filters, always generate token text to handle partial boundaries
-            // (generateSemanticTokenText will return empty if both boundaries match)
-            // For other filter types, only generate if interacted
-            let newTokenText = '';
-
-            if (conf.type === AdvFilterType.RANGE || interacted) {
-                // Generate the new token text for this filter
-                const availableRange = conf.type === AdvFilterType.RANGE
-                    ? this.advOptions()[key]?.options as [number, number] | undefined
-                    : undefined;
-                newTokenText = this.generateSemanticTokenText(key, value, conf, availableRange);
+            if (interacted) {
+                nextSemanticState[key] = {
+                    value,
+                    interactedWith: true,
+                };
+            } else {
+                delete nextSemanticState[key];
             }
 
-            // Rebuild the search text: text search + other tokens + new token (if any)
-            const parts: string[] = [];
-
-            if (parsed.textSearch) {
-                parts.push(parsed.textSearch);
-            }
-
-            // Add back other filter tokens
-            for (const token of otherTokens) {
-                parts.push(token.rawText);
-            }
-
-            // Add the new/updated token
-            if (newTokenText) {
-                parts.push(newTokenText);
-            }
-
-            this.searchText.set(parts.join(' ').trim());
+            this.searchText.set(
+                filterStateToSemanticText(
+                    nextSemanticState,
+                    parsed.textSearch,
+                    gameSystem,
+                    this.totalRangesCache,
+                ).trim()
+            );
 
             // Also clear the filterState for this key since semantic is now the source of truth
             this.filterState.update(current => {
@@ -2801,114 +1578,6 @@ export class UnitSearchFiltersService {
         } finally {
             this.isSyncingToText = false;
         }
-    }
-
-    /**
-     * Generate semantic token text for a filter value.
-     * E.g., for PV range [50, 100] with available [0, 200], generates "pv>=50 pv<=100" or "pv=50-100"
-     * @param availableRange For range filters, the context-filtered available range for boundary detection
-     */
-    private generateSemanticTokenText(key: string, value: any, conf: AdvFilterConfig, availableRange?: [number, number]): string {
-        const semanticKey = conf.semanticKey || conf.key;
-        const parts: string[] = [];
-
-        if (conf.type === AdvFilterType.RANGE) {
-            const [min, max] = value as [number, number];
-            // Use available range (context-filtered) for boundary detection
-            // This ensures dragging to the visible boundary removes the constraint
-            const boundaryRange = availableRange || this.totalRangesCache[key] || [0, 100];
-
-            if (min === max) {
-                parts.push(`${semanticKey}=${min}`);
-            } else if (min !== boundaryRange[0] && max !== boundaryRange[1]) {
-                parts.push(`${semanticKey}=${min}-${max}`);
-            } else if (min !== boundaryRange[0]) {
-                parts.push(`${semanticKey}>=${min}`);
-            } else if (max !== boundaryRange[1]) {
-                parts.push(`${semanticKey}<=${max}`);
-            }
-            // If both match available range, nothing to add (filter removed)
-
-        } else if (conf.type === AdvFilterType.DROPDOWN) {
-            if (conf.multistate) {
-                const selection = value as MultiStateSelection;
-                const orValues: string[] = [];
-                const andValues: string[] = [];
-                const notValues: string[] = [];
-
-                for (const [name, sel] of Object.entries(selection)) {
-                    // Format: quote the name if needed, then append quantity suffix outside quotes
-                    const quotedName = this.formatSemanticValue(name);
-                    let quantitySuffix = '';
-
-                    if (conf.countable && sel.count > 1) {
-                        // Format with quantity suffix
-                        // UI spinner represents "at least N", so use >= unless there's a specific operator
-                        if (sel.countOperator && sel.countOperator !== '=') {
-                            quantitySuffix = `:${sel.countOperator}${sel.count}`;
-                        } else if (sel.countMax !== undefined) {
-                            quantitySuffix = `:${sel.count}-${sel.countMax}`;
-                        } else if (sel.countOperator === '=') {
-                            // Explicit exact match
-                            quantitySuffix = `:${sel.count}`;
-                        } else {
-                            // No operator = UI spinner = "at least N"
-                            quantitySuffix = `:>=${sel.count}`;
-                        }
-                    } else if (conf.countable && sel.countOperator && sel.countOperator !== '=') {
-                        // Non-equality operator with count 1
-                        quantitySuffix = `:${sel.countOperator}${sel.count}`;
-                    } else if (conf.countable && sel.countMax !== undefined) {
-                        // Range constraint
-                        quantitySuffix = `:${sel.count}-${sel.countMax}`;
-                    }
-
-                    const formattedName = quotedName + quantitySuffix;
-
-                    if (sel.state === 'not') {
-                        notValues.push(formattedName);
-                    } else if (sel.state === 'and') {
-                        andValues.push(formattedName);
-                    } else if (sel.state === 'or') {
-                        orValues.push(formattedName);
-                    }
-                }
-
-                if (orValues.length > 0) {
-                    // OR uses = operator
-                    parts.push(`${semanticKey}=${orValues.join(',')}`);
-                }
-                if (andValues.length > 0) {
-                    // AND uses &= operator
-                    parts.push(`${semanticKey}&=${andValues.join(',')}`);
-                }
-                if (notValues.length > 0) {
-                    // NOT uses != operator
-                    parts.push(`${semanticKey}!=${notValues.join(',')}`);
-                }
-            } else {
-                const values = value as string[];
-                if (values.length > 0) {
-                    const formatted = values.map(v => this.formatSemanticValue(v)).join(',');
-                    parts.push(`${semanticKey}=${formatted}`);
-                }
-            }
-        }
-
-        return parts.join(' ');
-    }
-
-    /**
-     * Format a value for semantic text output, adding quotes if needed.
-     */
-    private formatSemanticValue(value: string): string {
-        // Add quotes if value contains spaces, commas, special chars, or quotes
-        if (/[\s,=!<>"']/.test(value)) {
-            // Escape backslashes and double quotes
-            const escaped = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-            return `"${escaped}"`;
-        }
-        return value;
     }
 
     public resetFilters() {
@@ -2932,69 +1601,9 @@ export class UnitSearchFiltersService {
         return this.totalRangesCache;
     }
 
-    // Collect all unique tags from all units (merged name + chassis)
-    getAllTags(): string[] {
-        const allUnits = this.dataService.getUnits();
-        const existingTags = new Set<string>();
-
-        for (const u of allUnits) {
-            if (u._nameTags) {
-                u._nameTags.forEach(tag => existingTags.add(tag));
-            }
-            if (u._chassisTags) {
-                u._chassisTags.forEach(tag => existingTags.add(tag));
-            }
-        }
-        // Convert to sorted array
-        return Array.from(existingTags).sort((a, b) =>
-            a.toLowerCase().localeCompare(b.toLowerCase())
-        );
-    }
-
-    // Collect all unique name-specific tags
-    getAllNameTags(): string[] {
-        const allUnits = this.dataService.getUnits();
-        const existingTags = new Set<string>();
-
-        for (const u of allUnits) {
-            if (u._nameTags) {
-                u._nameTags.forEach(tag => existingTags.add(tag));
-            }
-        }
-        return Array.from(existingTags).sort((a, b) =>
-            a.toLowerCase().localeCompare(b.toLowerCase())
-        );
-    }
-
-    // Collect all unique chassis-wide tags
-    getAllChassisTags(): string[] {
-        const allUnits = this.dataService.getUnits();
-        const existingTags = new Set<string>();
-
-        for (const u of allUnits) {
-            if (u._chassisTags) {
-                u._chassisTags.forEach(tag => existingTags.add(tag));
-            }
-        }
-        return Array.from(existingTags).sort((a, b) =>
-            a.toLowerCase().localeCompare(b.toLowerCase())
-        );
-    }
-
     public invalidateTagsCache(): void {
         // Increment version to trigger recomputation of tag-dependent computed signals
         this.tagsVersion.update(v => v + 1);
-
-        // Clear any cached tag-related data
-        const remainingOrder: string[] = [];
-        for (const [key] of this.availableNamesCache) {
-            if (key.includes('_tags')) {
-                this.availableNamesCache.delete(key);
-                continue;
-            }
-            remainingOrder.push(key);
-        }
-        this.availableNamesCacheOrder = remainingOrder;
     }
 
     /**
@@ -3120,27 +1729,6 @@ export class UnitSearchFiltersService {
         this.invalidateTagsCache();
     }
 
-    /**
-     * Simple LRU cache to store available names for multistate filters. Size limited.
-     */
-    private setAvailableNamesCache(key: string, value: string[]): void {
-        if (this.availableNamesCache.has(key)) {
-            const existingIndex = this.availableNamesCacheOrder.indexOf(key);
-            if (existingIndex !== -1) {
-                this.availableNamesCacheOrder.splice(existingIndex, 1);
-            }
-        }
-        this.availableNamesCacheOrder.push(key);
-        this.availableNamesCache.set(key, value);
-
-        while (this.availableNamesCacheOrder.length > this.availableNamesCacheMaxEntries) {
-            const oldest = this.availableNamesCacheOrder.shift();
-            if (oldest) {
-                this.availableNamesCache.delete(oldest);
-            }
-        }
-    }
-
     setPilotSkills(gunnery: number, piloting: number) {
         this.pilotGunnerySkill.set(gunnery);
         this.pilotPilotingSkill.set(piloting);
@@ -3220,13 +1808,13 @@ export class UnitSearchFiltersService {
     private isSearchGameSpecific(savedFilters: Record<string, any>, sortKey?: string): boolean {
         // Check if sort key is game-specific
         if (sortKey) {
-            const sortConfig = ADVANCED_FILTERS.find(f => f.key === sortKey);
+            const sortConfig = getAdvancedFilterConfigByKey(sortKey);
             if (sortConfig?.game) return true;
         }
 
         // Check if any saved filter is game-specific
         for (const filterKey of Object.keys(savedFilters)) {
-            const filterConfig = ADVANCED_FILTERS.find(f => f.key === filterKey);
+            const filterConfig = getAdvancedFilterConfigByKey(filterKey);
             if (filterConfig?.game) return true;
         }
 

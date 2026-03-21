@@ -39,6 +39,7 @@ import { DataService } from './data.service';
 import { LayoutService } from './layout.service';
 import { ForceNamerUtil } from '../utils/force-namer.util';
 import type { Faction } from '../models/factions.model';
+import type { Era } from '../models/eras.model';
 import type { FormationNamerUtil } from '../utils/formation-namer.util';
 import { ConfirmDialogComponent, type ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
 import { firstValueFrom, Subject } from 'rxjs';
@@ -70,7 +71,7 @@ import { UrlStateService } from './url-state.service';
 import { canAntiMech } from '../utils/infantry.util';
 import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import type { ResolvedPack } from '../utils/force-pack.util';
-import { buildMultiForceQueryParams, parseForceFromUrl, type ForceQueryParams } from '../utils/force-url.util';
+import { buildMultiForceQueryParams, parseForceFromUrl, type ForceQueryParams, type ForceUrlUnitLookupMode } from '../utils/force-url.util';
 import { CBTPrintUtil } from '../utils/cbtprint.util';
 import { ASPrintUtil } from '../utils/asprint.util';
 import type { ForceSlot, ForceAlignment } from '../models/force-slot.model';
@@ -664,14 +665,15 @@ export class ForceBuilderService {
             instance: null,
             operation: null,
             factionId: null,
+            eraId: null,
             sel: null
         });
     }
 
-    async createNewForce(name: string = ''): Promise<Force | null> {
+    async createNewForce(name: string = '', gameSystemOverride?: GameSystem): Promise<Force | null> {
         // Lazy inject GameService to avoid circular dependency
         const gameService = this.injector.get(GameService);
-        const gameSystem = gameService.currentGameSystem();
+        const gameSystem = gameSystemOverride ?? gameService.currentGameSystem();
         let newForce: Force | null = null;
         if (gameSystem === GameSystem.ALPHA_STRIKE) {
             newForce = new ASForce(name, this.dataService, this.unitInitializer, this.injector);
@@ -692,10 +694,10 @@ export class ForceBuilderService {
      * @param gunnerySkill Optional gunnery skill to set for the crew
      * @param pilotingSkill Optional piloting skill to set for the crew
      */
-    async addUnit(unit: Unit, gunnerySkill?: number, pilotingSkill?: number, group?: UnitGroup): Promise<ForceUnit | null> {
+    async addUnit(unit: Unit, gunnerySkill?: number, pilotingSkill?: number, group?: UnitGroup, gameSystemOverride?: GameSystem): Promise<ForceUnit | null> {
         let targetForce = this.smartCurrentForce();
         if (!targetForce) {
-            targetForce = await this.createNewForce();
+            targetForce = await this.createNewForce('', gameSystemOverride);
             if (!targetForce) {
                 return null;
             }
@@ -1154,7 +1156,19 @@ export class ForceBuilderService {
     }
 
     generateFactionAndForceNameIfNeeded(force: Force, respectFilter: boolean = false): void {
-        if (!force || force.factionLock) {
+        if (!force) {
+            return;
+        }
+
+        // Pick era from filter if not locked
+        if (!force.eraLock && respectFilter) {
+            const era = this.pickEraFromFilter();
+            if (era && era.id !== force.era()?.id) {
+                force.era.set(era);
+            }
+        }
+
+        if (force.factionLock) {
             return;
         }
 
@@ -1177,6 +1191,28 @@ export class ForceBuilderService {
             ForceNamerUtil.generateForceNameForFaction(faction),
             false
         );
+    }
+
+    /**
+     * Checks the active unit search era filter and picks the first era from it.
+     * Returns null if no era filter is active or no matching eras are found.
+     */
+    private pickEraFromFilter(): Era | null {
+        try {
+            const filtersService = this.injector.get(UnitSearchFiltersService);
+            const filterState = filtersService.effectiveFilterState();
+            const eraFilter = filterState['era'];
+            if (!eraFilter?.interactedWith || !eraFilter.value) {
+                return null;
+            }
+            const selectedEraNames = eraFilter.value as string[];
+            if (!Array.isArray(selectedEraNames) || selectedEraNames.length === 0) {
+                return null;
+            }
+            return this.dataService.getEraByName(selectedEraNames[0]) ?? null;
+        } catch {
+            return null;
+        }
     }
 
     /**
@@ -1330,7 +1366,7 @@ export class ForceBuilderService {
             CBTPrintUtil.multipagePrint(sheetService, optionsService, currentForce.units());
         } else if (currentForce instanceof ASForce) {
             const optionsService = this.injector.get(OptionsService);
-            ASPrintUtil.multipagePrint(appRef, this.injector, optionsService, currentForce.groups());
+            ASPrintUtil.multipagePrint(appRef, this.injector, optionsService, currentForce.groups(), false, true, currentForce);
         }
     }
 
@@ -1462,6 +1498,7 @@ export class ForceBuilderService {
                 instance: params.instance,
                 operation: params.operation,
                 factionId: params.factionId,
+                eraId: params.eraId,
                 sel
             });
         });
@@ -1472,7 +1509,7 @@ export class ForceBuilderService {
         const op = this.currentOperation();
         if (op) {
             // Operation loaded: only emit the operation ID, no force-level params
-            return { gs: null, units: null, name: null, instance: null, operation: op.operationId, factionId: null };
+            return { gs: null, units: null, name: null, instance: null, operation: op.operationId, factionId: null, eraId: null };
         }
         const params = buildMultiForceQueryParams(this.loadedForces());
         return { ...params, operation: null };
@@ -1562,9 +1599,10 @@ export class ForceBuilderService {
      * Core logic for loading forces from URLSearchParams.
      * Shared between startup initialization and in-app captured URL handling.
      *
-     * Handles:
-     * - instance= (comma-separated cloud force IDs, with optional 'enemy:' prefix)
-     * - units= (inline unsaved force with name/gs params)
+    * Handles:
+    * - instance= (comma-separated cloud force IDs, with optional 'enemy:' prefix)
+    * - units= (inline unsaved force using unit names)
+    * - mul_ids= (inline unsaved force using MUL IDs)
      *
      * @param params The URLSearchParams to read from
      * @param defaultAlignment Alignment for forces without an explicit prefix
@@ -1602,9 +1640,12 @@ export class ForceBuilderService {
             }
         }
 
-        // Handle units= param (unsaved inline force)
+        // Handle units=/mul_ids= params (unsaved inline force)
         const unitsParam = params.get('units');
-        if (unitsParam) {
+        const mulIdsParam = params.get('mul_ids');
+        const inlineUnitsParam = unitsParam || mulIdsParam;
+        const unitLookupMode: ForceUrlUnitLookupMode = unitsParam ? 'name' : 'mulId';
+        if (inlineUnitsParam) {
             const forceNameParam = params.get('name');
             const gameSystemParam = params.get('gs') ?? GameSystem.CLASSIC;
             let newForce: Force;
@@ -1631,7 +1672,19 @@ export class ForceBuilderService {
                         }
                     }
                 }
-                const forceUnits = this.parseUnitsFromUrl(newForce, unitsParam);
+                // Restore era from URL param
+                const eraIdParam = params.get('eraId');
+                if (eraIdParam) {
+                    const eraId = parseInt(eraIdParam, 10);
+                    if (!isNaN(eraId)) {
+                        const era = this.dataService.getEraById(eraId) ?? null;
+                        newForce.era.set(era);
+                        if (era) {
+                            newForce.eraLock = true;
+                        }
+                    }
+                }
+                const forceUnits = this.parseUnitsFromUrl(newForce, inlineUnitsParam, unitLookupMode);
                 if (forceUnits.length > 0) {
                     this.logger.info(`ForceBuilderService: Loaded ${forceUnits.length} units from URL.`);
                     newForce.removeEmptyGroups();
@@ -1658,12 +1711,12 @@ export class ForceBuilderService {
     }
 
     /**
-     * Parses units from URL parameter with group support.
+     * Parses inline force units from URL parameters with group support.
      * New format: groupName~unit1,unit2|groupName2~unit3,unit4
      * Legacy format (backward compatible): unit1,unit2,unit3
      */
-    private parseUnitsFromUrl(force: Force, unitsParam: string): ForceUnit[] {
-        return parseForceFromUrl(force, unitsParam, this.dataService.getUnits(), this.logger);
+    private parseUnitsFromUrl(force: Force, unitsParam: string, lookupMode: ForceUrlUnitLookupMode = 'name'): ForceUnit[] {
+        return parseForceFromUrl(force, unitsParam, this.dataService.getUnits(), this.logger, lookupMode);
     }
 
 
@@ -2448,11 +2501,15 @@ export class ForceBuilderService {
         if (result.action === 'unset') {
             force.factionLock = false;
             force.faction.set(null);
+            force.eraLock = false;
+            force.era.set(null);
             force.setName('');
             this.generateFactionAndForceNameIfNeeded(force);
         } else {
             force.factionLock = true;
             force.faction.set(result.faction);
+            force.eraLock = result.era != null;
+            force.era.set(result.era);
             force.setName(result.name);
         }
     }

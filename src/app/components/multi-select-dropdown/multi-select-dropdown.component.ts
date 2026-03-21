@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -33,6 +33,7 @@
 
 import { Component, ElementRef, computed, input, signal, output, inject, ChangeDetectionStrategy, viewChild, afterNextRender, Injector, effect, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import { LayoutService } from '../../services/layout.service';
 import { highlightMatches, matchesSearch, parseSearchQuery } from '../../utils/search.util';
 
@@ -70,11 +71,15 @@ export interface MultiStateSelection {
   [key: string]: MultiStateOption;
 }
 
+type ScrollRestoreState =
+        | { kind: 'virtual'; optionName: string; scrollOffset: number; optionVisibleTop?: number }
+        | { kind: 'dom'; optionName: string; visibleTop: number };
+
 @Component({
     selector: 'multi-select-dropdown',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [CommonModule, ScrollingModule],
     templateUrl: './multi-select-dropdown.component.html',
     styleUrls: ['./multi-select-dropdown.component.css']
 })
@@ -88,6 +93,7 @@ export class MultiSelectDropdownComponent {
     filterInput = viewChild<ElementRef<HTMLInputElement>>('filterInput');
     optionsEl = viewChild<ElementRef<HTMLDivElement>>('optionsEl');
     optionsDropdownEl = viewChild<ElementRef<HTMLDivElement>>('optionsDropdown');
+    optionsViewport = viewChild<CdkVirtualScrollViewport>('optionsViewport');
     
     label = input<string>('');
     multiselect = input<boolean>(true);
@@ -105,8 +111,11 @@ export class MultiSelectDropdownComponent {
     showUnavailableToggle = computed(() => this.multistate() && this.options().some(o => o.available === false));
     isOpen = signal(false);
     filterText = signal('');
-    /** Bumped after dropdown renders to force height recalculation */
-    private layoutVersion = signal(0);
+    private static readonly DEFAULT_MAX_HEIGHT = 248;
+    private static readonly MIN_MAX_HEIGHT = 200;
+    private openMaxHeight = signal(MultiSelectDropdownComponent.DEFAULT_MAX_HEIGHT);
+    readonly virtualScrollThreshold = 80;
+    readonly optionItemSize = 44;
 
     private displayNameMap = computed(() => {
         const map = new Map<string, string>();
@@ -148,31 +157,10 @@ export class MultiSelectDropdownComponent {
     });
 
     maxHeightOptions = computed(() => {
-        const windowHeight = this.layoutService.windowHeight();
-        const isOpen = this.isOpen();
-        this.layoutVersion(); // Force recalc after render
-        
-        // Default when closed or elements not ready
-        if (!isOpen) return 248;
-        
-        const dropdown = this.optionsDropdownEl()?.nativeElement;
-        if (!dropdown) return 248;
-        
-        const rect = dropdown.getBoundingClientRect();
-        
-        // If dropdown isn't visible yet (hidden attribute still applied), use default
-        if (rect.height === 0) return 248;
-        
-        // Check if filter row is visible
-        const hasFilterRow = this.options().length > 20 || this.showUnavailableToggle();
-        const filterRowHeight = hasFilterRow ? 50 : 0;
-        const bottomPadding = 16;
-        
-        // Calculate available height from dropdown top to viewport bottom
-        const availableForList = windowHeight - rect.top - filterRowHeight - bottomPadding;
-        
-        // Minimum height of 120px to ensure usability
-        return Math.max(120, availableForList);
+        if (!this.isOpen()) {
+            return MultiSelectDropdownComponent.DEFAULT_MAX_HEIGHT;
+        }
+        return this.openMaxHeight();
     });
 
     filteredOptions = computed(() => {
@@ -191,6 +179,8 @@ export class MultiSelectDropdownComponent {
         }
         return nameFiltered;
     });
+
+    useVirtualScroll = computed(() => this.filteredOptions().length >= this.virtualScrollThreshold);
 
     highlight(text: string): string {
         const searchTokens = parseSearchQuery(this.filterText());
@@ -244,6 +234,44 @@ export class MultiSelectDropdownComponent {
                 document.removeEventListener('click', this.onOutsideDocumentClick, true);
             });
         });
+
+        effect(() => {
+            if (!this.isOpen() || !this.useVirtualScroll()) {
+                return;
+            }
+
+            this.openMaxHeight();
+            afterNextRender(() => {
+                if (this.destroyed || !this.isOpen()) {
+                    return;
+                }
+
+                this.optionsViewport()?.checkViewportSize();
+            }, { injector: this.injector });
+        });
+    }
+
+    private measureDropdownMaxHeight(): number {
+        const dropdown = this.optionsDropdownEl()?.nativeElement;
+        if (!dropdown) {
+            return MultiSelectDropdownComponent.DEFAULT_MAX_HEIGHT;
+        }
+
+        const rect = dropdown.getBoundingClientRect();
+        if (rect.height === 0) {
+            return MultiSelectDropdownComponent.DEFAULT_MAX_HEIGHT;
+        }
+
+        const hasFilterRow = this.options().length > 20 || this.showUnavailableToggle();
+        const filterRowHeight = hasFilterRow ? 50 : 0;
+        const bottomPadding = 16;
+        const availableForList = this.layoutService.windowHeight() - rect.top - filterRowHeight - bottomPadding;
+
+        return Math.max(MultiSelectDropdownComponent.MIN_MAX_HEIGHT, availableForList);
+    }
+
+    private captureOpenHeight() {
+        this.openMaxHeight.set(this.measureDropdownMaxHeight());
     }
 
     onPointerDown(event: PointerEvent) {
@@ -254,17 +282,19 @@ export class MultiSelectDropdownComponent {
         if (this.semanticOnly()) return;
         const wasMouse = this.lastPointerType === 'mouse';
         this.lastPointerType = '';
-        this.isOpen.set(!this.isOpen());
-        if (this.isOpen()) {
+        const nextIsOpen = !this.isOpen();
+        this.isOpen.set(nextIsOpen);
+        if (nextIsOpen) {
             // notify other instances
             document.dispatchEvent(new CustomEvent('multi-select-dropdown-open', { detail: this }));
+        } else {
+            this.openMaxHeight.set(MultiSelectDropdownComponent.DEFAULT_MAX_HEIGHT);
         }
         this.filterText.set('');
         afterNextRender(() => {
             if (this.destroyed) return;
             if (this.isOpen()) {
-                // Bump layout version to recalculate max height now that dropdown is visible
-                this.layoutVersion.update(v => v + 1);
+                this.captureOpenHeight();
                 if (wasMouse) {
                     const inputEl = this.filterInput()?.nativeElement;
                     if (inputEl) {
@@ -282,23 +312,29 @@ export class MultiSelectDropdownComponent {
         this.filterText.set('');
         afterNextRender(() => {
             if (this.destroyed) return;
-            // Bump layout version to recalculate max height now that dropdown is visible
-            this.layoutVersion.update(v => v + 1);
+            this.captureOpenHeight();
             
-            const container = this.optionsEl()?.nativeElement;
-            if (!container) return;
-
-            const items = Array.from(container.querySelectorAll<HTMLElement>('.option-item'));
-            for (const item of items) {
-                if (item.getAttribute('data-option-name') === optionName) {
-                    // scrollIntoView on the found item; prefer nearest block to avoid excessive scrolling
-                    try {
-                        item.scrollIntoView({ block: 'center', behavior: 'smooth' });
-                    } catch {
-                        // fallback for environments that don't support options
-                        item.scrollIntoView();
+            const options = this.filteredOptions();
+            const optionIndex = options.findIndex(option => option.name === optionName);
+            if (this.useVirtualScroll()) {
+                const viewport = this.optionsViewport();
+                if (viewport && optionIndex >= 0) {
+                    viewport.scrollToIndex(optionIndex, 'smooth');
+                }
+            } else {
+                const container = this.optionsEl()?.nativeElement;
+                if (container) {
+                    const items = Array.from(container.querySelectorAll<HTMLElement>('.option-item'));
+                    for (const item of items) {
+                        if (item.getAttribute('data-option-name') === optionName) {
+                            try {
+                                item.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                            } catch {
+                                item.scrollIntoView();
+                            }
+                            break;
+                        }
                     }
-                    break;
                 }
             }
 
@@ -315,18 +351,7 @@ export class MultiSelectDropdownComponent {
     }
 
     onOptionToggle(optionName: string, event?: MouseEvent) {
-        const container = this.optionsEl()?.nativeElement;
-
-        // Preserve the item's visible top within the container viewport (pixels from container top)
-        let preservedVisibleTop: number | null = null;
-        if (container) {
-            const item = container.querySelector<HTMLElement>('.option-item[data-option-name="' + CSS.escape(optionName) + '"]');
-            if (item) {
-                const containerRect = container.getBoundingClientRect();
-                const itemRect = item.getBoundingClientRect();
-                preservedVisibleTop = itemRect.top - containerRect.top;
-            }
-        }
+        const restoreState = this.captureScrollRestoreState(optionName);
 
         if (this.multistate()) {
             const sel = this.selected();
@@ -360,19 +385,78 @@ export class MultiSelectDropdownComponent {
             this.selectionChange.emit(newSelection);
         }
         
-        this.restoreScrollPosition(optionName, preservedVisibleTop);
+        this.restoreScrollPosition(restoreState);
     }
 
-    restoreScrollPosition(optionName: string, preservedVisibleTop: number | null) {
+    private captureScrollRestoreState(optionName: string): ScrollRestoreState | null {
+        if (this.useVirtualScroll()) {
+            const viewport = this.optionsViewport();
+            const scrollOffset = viewport?.measureScrollOffset('top');
+            if (!viewport || scrollOffset === undefined) {
+                return null;
+            }
+
+            const optionIndex = this.filteredOptions().findIndex(option => option.name === optionName);
+            return {
+                kind: 'virtual',
+                optionName,
+                scrollOffset,
+                ...(optionIndex >= 0 ? { optionVisibleTop: optionIndex * this.optionItemSize - scrollOffset } : {}),
+            };
+        }
+
+        const container = this.optionsEl()?.nativeElement;
+        if (!container) {
+            return null;
+        }
+
+        const item = container.querySelector<HTMLElement>('.option-item[data-option-name="' + CSS.escape(optionName) + '"]');
+        if (!item) {
+            return null;
+        }
+
+        const containerRect = container.getBoundingClientRect();
+        const itemRect = item.getBoundingClientRect();
+        return {
+            kind: 'dom',
+            optionName,
+            visibleTop: itemRect.top - containerRect.top,
+        };
+    }
+
+    restoreScrollPosition(restoreState: ScrollRestoreState | null) {
         // restore the preserved scroll after the DOM updates
         afterNextRender(() => {
+            if (!restoreState) {
+                return;
+            }
+
+            if (restoreState.kind === 'virtual') {
+                const viewport = this.optionsViewport();
+                if (!viewport) {
+                    return;
+                }
+
+                let nextOffset = restoreState.scrollOffset;
+                if (restoreState.optionVisibleTop !== undefined) {
+                    const optionIndex = this.filteredOptions().findIndex(option => option.name === restoreState.optionName);
+                    if (optionIndex >= 0) {
+                        nextOffset = optionIndex * this.optionItemSize - restoreState.optionVisibleTop;
+                    }
+                }
+
+                const maxOffset = Math.max(0, viewport.getDataLength() * this.optionItemSize - viewport.getViewportSize());
+                viewport.scrollToOffset(Math.max(0, Math.min(maxOffset, nextOffset)));
+                return;
+            }
+
             const container = this.optionsEl()?.nativeElement;
-            if (!container || preservedVisibleTop === null) {
+            if (!container) {
                 return;
             }
 
             // find the same item after update
-            const itemAfter = container.querySelector<HTMLElement>('.option-item[data-option-name="' + CSS.escape(optionName) + '"]');
+            const itemAfter = container.querySelector<HTMLElement>('.option-item[data-option-name="' + CSS.escape(restoreState.optionName) + '"]');
             if (!itemAfter) {
                 return;
             }
@@ -384,7 +468,7 @@ export class MultiSelectDropdownComponent {
             const itemAfterOffsetTop = (itemRect.top - containerRect.top) + container.scrollTop;
 
             // desired visible top within container is the preservedVisibleTop
-            let newScrollTop = itemAfterOffsetTop - preservedVisibleTop;
+            let newScrollTop = itemAfterOffsetTop - restoreState.visibleTop;
             newScrollTop = Math.max(0, Math.min(container.scrollHeight - container.clientHeight, newScrollTop));
 
             // apply only if it meaningfully changes the scroll to avoid jitter
@@ -412,17 +496,7 @@ export class MultiSelectDropdownComponent {
 
     setCount(optionName: string, count: number) {
         if (!this.countable() || !this.multistate()) return;
-        const container = this.optionsEl()?.nativeElement;
-        // Preserve the item's visible top within the container viewport (pixels from container top)
-        let preservedVisibleTop: number | null = null;
-        if (container) {
-            const item = container.querySelector<HTMLElement>('.option-item[data-option-name="' + CSS.escape(optionName) + '"]');
-            if (item) {
-                const containerRect = container.getBoundingClientRect();
-                const itemRect = item.getBoundingClientRect();
-                preservedVisibleTop = itemRect.top - containerRect.top;
-            }
-        }
+        const restoreState = this.captureScrollRestoreState(optionName);
 
         
         const sel = this.selected() as MultiStateSelection;
@@ -437,8 +511,10 @@ export class MultiSelectDropdownComponent {
             };
             this.selectionChange.emit(currentSelection);
         }
-        this.restoreScrollPosition(optionName, preservedVisibleTop);
+        this.restoreScrollPosition(restoreState);
     }
+
+    trackOptionName = (_index: number, option: DropdownOption) => option.name;
  
     onQuantityInput(optionName: string, event: Event) {
         const inputElement = event.target as HTMLInputElement;
@@ -483,6 +559,27 @@ export class MultiSelectDropdownComponent {
         } else {
             this.onOptionToggle(option);
         }
+    }
+
+    removeCompressedState(state: MultiState, event: MouseEvent) {
+        event.stopPropagation();
+
+        if (this.multistate()) {
+            const sel = this.selected();
+            const currentSelection: MultiStateSelection = (sel && !Array.isArray(sel)) ? { ...sel } : {};
+            for (const [optionName, selection] of Object.entries(currentSelection)) {
+                if (selection.state === state) {
+                    delete currentSelection[optionName];
+                }
+            }
+            this.selectionChange.emit(currentSelection);
+            return;
+        }
+
+        const remainingSelection = this.selectedOptions()
+            .filter(option => option.state !== state)
+            .map(option => option.name);
+        this.selectionChange.emit(remainingSelection);
     }
 
     isSelected(optionName: string): MultiState | boolean {

@@ -37,6 +37,8 @@ import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { firstValueFrom, takeUntil } from 'rxjs';
 import type { Unit, PublicTagInfo } from '../models/units.model';
+import { collectAllChassisTags, collectAllNameTags } from '../utils/tag-list.util';
+import { DataService } from './data.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 import { OverlayManagerService } from './overlay-manager.service';
 import { DialogsService } from './dialogs.service';
@@ -94,6 +96,7 @@ export function validateTagName(tag: string): string | null {
 })
 export class TaggingService {
     private filtersService = inject(UnitSearchFiltersService);
+    private dataService = inject(DataService);
     private tagsService = inject(TagsService);
     private publicTagsService = inject(PublicTagsService);
     private overlayManager = inject(OverlayManagerService);
@@ -119,8 +122,9 @@ export class TaggingService {
         if (units.length === 0) return;
 
         // Get all unique tags from all units (for both sections)
-        const allNameTags = this.filtersService.getAllNameTags();
-        const allChassisTags = this.filtersService.getAllChassisTags();
+        const allUnits = this.dataService.getUnits();
+        const allNameTags = collectAllNameTags(allUnits);
+        const allChassisTags = collectAllChassisTags(allUnits);
 
         // Add preconfigured tags to both sections if not present
         // for (const preconfiguredTag of PRECONFIGURED_TAGS) {

@@ -32,8 +32,9 @@
  */
 
 import type { GameSystem } from '../models/common.model';
-import { ADVANCED_FILTERS, type AdvFilterConfig, AdvFilterType } from '../services/unit-search-filters.service';
+import { AdvFilterType, ADVANCED_FILTERS, type AdvFilterConfig } from '../services/unit-search-filters.model';
 import type { CountOperator, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
+import { getAdvancedFilterConfigByKey } from './unit-search-filter-config.util';
 
 // Cache for semantic key maps
 const semanticKeyMapCache = new Map<GameSystem, Map<string, AdvFilterConfig>>();
@@ -47,6 +48,7 @@ const semanticKeyMapCache = new Map<GameSystem, Map<string, AdvFilterConfig>>();
  * 
  * Operators:
  *   =   Include/equal (supports range syntax for numeric: field=min-max)
+ *   ==  Exclusive include (dropdown/semantic only; matched values must be the only values present)
  *   !=  Exclude/not equal (supports range syntax for numeric: field!=min-max)
  *   >   Greater than (single value only)
  *   <   Less than (single value only)
@@ -65,12 +67,13 @@ const semanticKeyMapCache = new Map<GameSystem, Map<string, AdvFilterConfig>>();
  *   tmm=2-5                        -> TMM range 2 to 5 (include)
  *   tmm!=2-3                       -> TMM excludes range 2 to 3
  *   tmm>=2 tmm<=5                  -> TMM >= 2 AND <= 5
+ *   faction==ComStar               -> unit must match ComStar and no other factions
  *   faction=ComStar,"Draconis Combine"  -> faction includes both
  *   faction!=ComStar               -> faction excludes ComStar
  *   bv>=1000 bv<=2000              -> BV range 1000-2000
  */
 
-export type SemanticOperator = '=' | '!=' | '&=' | '>' | '<' | '>=' | '<=';
+export type SemanticOperator = '=' | '==' | '!=' | '&=' | '>' | '<' | '>=' | '<=';
 
 export interface SemanticToken {
     field: string;           // The semantic key (e.g., 'tmm', 'faction')
@@ -92,6 +95,7 @@ export interface SemanticFilterState {
         displayText?: string;                // For range filters: formatted effective ranges (e.g., "0-10, 20-30")
         semanticOnly?: boolean;              // True if this filter can't be shown in UI
         wildcardPatterns?: WildcardPattern[];  // For dropdown filters: wildcard patterns (e.g., "AC*")
+        exclusive?: boolean;                // True when semantic text used == for exclusive matching
     };
 }
 
@@ -625,6 +629,7 @@ export function tokensToFilterState(
                 const selection: MultiStateSelection = {};
                 const wildcardPatterns: WildcardPattern[] = [];
                 let semanticOnly = false;
+                let exclusive = false;
                 
                 // For countable filters, collect all constraints per name first, then merge
                 const countableConstraints = new Map<string, {
@@ -634,6 +639,11 @@ export function tokensToFilterState(
 
                 for (const token of fieldTokens) {
                     const state: 'or' | 'and' | 'not' = token.operator === '!=' ? 'not' : (token.operator === '&=' ? 'and' : 'or');
+
+                    if (token.operator === '==') {
+                        exclusive = true;
+                        semanticOnly = true;
+                    }
 
                     for (const val of token.values) {
                         // Check if this is a wildcard pattern
@@ -773,7 +783,8 @@ export function tokensToFilterState(
                         value: selection,
                         interactedWith: true,
                         wildcardPatterns: wildcardPatterns.length > 0 ? wildcardPatterns : undefined,
-                        semanticOnly: semanticOnly || undefined
+                        semanticOnly: semanticOnly || undefined,
+                        exclusive: exclusive || undefined
                     };
                 }
 
@@ -782,13 +793,17 @@ export function tokensToFilterState(
                 const values: string[] = [];
                 const wildcardPatterns: WildcardPattern[] = [];
                 let semanticOnly = false;
+                let exclusive = false;
 
                 for (const token of fieldTokens) {
                     const state: 'or' | 'and' | 'not' = token.operator === '!=' ? 'not' : (token.operator === '&=' ? 'and' : 'or');
                     
                     // Mark as semantic-only if using exclude or AND operators (not representable in simple UI)
-                    if (token.operator === '!=' || token.operator === '&=') {
+                    if (token.operator === '!=' || token.operator === '&=' || token.operator === '==') {
                         semanticOnly = true;
+                    }
+                    if (token.operator === '==') {
+                        exclusive = true;
                     }
                     
                     for (const val of token.values) {
@@ -811,7 +826,8 @@ export function tokensToFilterState(
                         value: Array.from(new Set(values)), // Deduplicate
                         interactedWith: true,
                         wildcardPatterns: wildcardPatterns.length > 0 ? wildcardPatterns : undefined,
-                        semanticOnly: semanticOnly || undefined
+                        semanticOnly: semanticOnly || undefined,
+                        exclusive: exclusive || undefined
                     };
                 }
             }
@@ -821,9 +837,13 @@ export function tokensToFilterState(
             const orValues: string[] = [];
             const andValues: string[] = [];
             const wildcardPatterns: WildcardPattern[] = [];
+            let exclusive = false;
 
             for (const token of fieldTokens) {
                 const state: 'or' | 'and' | 'not' = token.operator === '!=' ? 'not' : (token.operator === '&=' ? 'and' : 'or');
+                if (token.operator === '==') {
+                    exclusive = true;
+                }
                 
                 for (const val of token.values) {
                     if (val.includes('*')) {
@@ -854,7 +874,8 @@ export function tokensToFilterState(
                     value: Array.from(new Set(orValues)), // Deduplicate OR values
                     interactedWith: true,
                     wildcardPatterns: allPatterns.length > 0 ? allPatterns : undefined,
-                    semanticOnly: true // SEMANTIC filters are always semantic-only
+                    semanticOnly: true, // SEMANTIC filters are always semantic-only
+                    exclusive: exclusive || undefined
                 };
             }
         }
@@ -883,7 +904,7 @@ export function filterStateToSemanticText(
     for (const [key, state] of Object.entries(filterState)) {
         if (!state.interactedWith) continue;
 
-        const conf = ADVANCED_FILTERS.find(f => f.key === key);
+        const conf = getAdvancedFilterConfigByKey(key);
         if (!conf) continue;
         // Allow all filters to be serialized - semantic mode works across game modes
 
@@ -920,9 +941,12 @@ export function filterStateToSemanticText(
             }
 
         } else if (conf.type === AdvFilterType.DROPDOWN) {
+            const extState = state as SemanticFilterState[string];
+            const includeOperator = extState.exclusive ? '==' : '=';
             if (conf.multistate) {
                 const selection = state.value as MultiStateSelection;
                 const includeValues: string[] = [];
+                const andValues: string[] = [];
                 const excludeValues: string[] = [];
 
                 for (const [name, sel] of Object.entries(selection)) {
@@ -934,26 +958,95 @@ export function filterStateToSemanticText(
                     
                     if (sel.state === 'not') {
                         excludeValues.push(formattedValue);
-                    } else if (sel.state === 'or' || sel.state === 'and') {
+                    } else if (sel.state === 'and') {
+                        andValues.push(formattedValue);
+                    } else if (sel.state === 'or') {
                         includeValues.push(formattedValue);
                     }
                 }
 
+                for (const pattern of extState.wildcardPatterns ?? []) {
+                    if (pattern.state === 'not') {
+                        excludeValues.push(pattern.pattern);
+                    } else if (pattern.state === 'and') {
+                        andValues.push(pattern.pattern);
+                    } else {
+                        includeValues.push(pattern.pattern);
+                    }
+                }
+
                 if (includeValues.length > 0) {
-                    const formatted = includeValues.map(v => formatValue(v)).join(',');
-                    parts.push(`${semanticKey}=${formatted}`);
+                    const formatted = Array.from(new Set(includeValues)).map(v => formatValue(v)).join(',');
+                    parts.push(`${semanticKey}${includeOperator}${formatted}`);
+                }
+                if (andValues.length > 0) {
+                    const formatted = Array.from(new Set(andValues)).map(v => formatValue(v)).join(',');
+                    parts.push(`${semanticKey}&=${formatted}`);
                 }
                 if (excludeValues.length > 0) {
-                    const formatted = excludeValues.map(v => formatValue(v)).join(',');
+                    const formatted = Array.from(new Set(excludeValues)).map(v => formatValue(v)).join(',');
                     parts.push(`${semanticKey}!=${formatted}`);
                 }
 
             } else {
                 const values = state.value as string[];
-                if (values.length > 0) {
-                    const formatted = values.map(v => formatValue(v)).join(',');
-                    parts.push(`${semanticKey}=${formatted}`);
+                const includeValues = [...values];
+                const excludeValues: string[] = [];
+                const andValues: string[] = [];
+
+                for (const pattern of extState.wildcardPatterns ?? []) {
+                    if (pattern.state === 'not') {
+                        excludeValues.push(pattern.pattern);
+                    } else if (pattern.state === 'and') {
+                        andValues.push(pattern.pattern);
+                    } else {
+                        includeValues.push(pattern.pattern);
+                    }
                 }
+
+                if (includeValues.length > 0) {
+                    const formatted = Array.from(new Set(includeValues)).map(v => formatValue(v)).join(',');
+                    parts.push(`${semanticKey}${includeOperator}${formatted}`);
+                }
+                if (andValues.length > 0) {
+                    const formatted = Array.from(new Set(andValues)).map(v => formatValue(v)).join(',');
+                    parts.push(`${semanticKey}&=${formatted}`);
+                }
+                if (excludeValues.length > 0) {
+                    const formatted = Array.from(new Set(excludeValues)).map(v => formatValue(v)).join(',');
+                    parts.push(`${semanticKey}!=${formatted}`);
+                }
+            }
+        } else if (conf.type === AdvFilterType.SEMANTIC) {
+            const extState = state as SemanticFilterState[string];
+            const includeOperator = extState.exclusive ? '==' : '=';
+            const orValues = Array.isArray(state.value)
+                ? (state.value as string[])
+                : [];
+            const andValues: string[] = [];
+            const excludeValues: string[] = [];
+
+            for (const pattern of extState.wildcardPatterns ?? []) {
+                if (pattern.state === 'and') {
+                    andValues.push(pattern.pattern);
+                } else if (pattern.state === 'not') {
+                    excludeValues.push(pattern.pattern);
+                } else {
+                    orValues.push(pattern.pattern);
+                }
+            }
+
+            if (orValues.length > 0) {
+                const formatted = Array.from(new Set(orValues)).map(v => formatValue(v)).join(',');
+                parts.push(`${semanticKey}${includeOperator}${formatted}`);
+            }
+            if (andValues.length > 0) {
+                const formatted = Array.from(new Set(andValues)).map(v => formatValue(v)).join(',');
+                parts.push(`${semanticKey}&=${formatted}`);
+            }
+            if (excludeValues.length > 0) {
+                const formatted = Array.from(new Set(excludeValues)).map(v => formatValue(v)).join(',');
+                parts.push(`${semanticKey}!=${formatted}`);
             }
         }
     }
@@ -984,24 +1077,26 @@ function formatValueWithQuantity(
     count: number,
     countMax?: number
 ): string {
-    const formattedName = formatValue(name);
-    
+    let value = name;
+
     // Range constraint
     if (countMax !== undefined) {
         const rangeStr = `${count}-${countMax}`;
         if (operator === '!=') {
-            return `${formattedName}:!${rangeStr}`;
+            value = `${name}:!${rangeStr}`;
+        } else {
+            value = `${name}:${rangeStr}`;
         }
-        return `${formattedName}:${rangeStr}`;
+        return value;
     }
-    
+
     // Single value constraint
-    const op = operator ?? '=';
+    const op = operator ?? (count > 1 ? '>=' : '=');
     if (op === '=' && count === 1) {
         // Default case, no suffix needed
-        return formattedName;
+        return name;
     }
-    
+
     // Format operator
     let opStr: string;
     switch (op) {
@@ -1014,6 +1109,7 @@ function formatValueWithQuantity(
         default:
             opStr = op;
     }
-    
-    return `${formattedName}:${opStr}${count}`;
+
+    value = `${name}:${opStr}${count}`;
+    return value;
 }
