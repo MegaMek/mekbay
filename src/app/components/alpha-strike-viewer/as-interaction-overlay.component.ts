@@ -72,7 +72,7 @@ import { DialogsService } from '../../services/dialogs.service';
             right: 0;
             bottom: 0;
             pointer-events: none;
-            z-index: 2;
+            z-index: 10;
             box-sizing: border-box;
             overflow: hidden;
         }
