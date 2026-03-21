@@ -34,8 +34,9 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { GameService } from '../../services/game.service';
-import { ADVANCED_FILTERS, AdvFilterType, UnitSearchFiltersService } from '../../services/unit-search-filters.service';
+import { ADVANCED_FILTERS, AdvFilterType } from '../../services/unit-search-filters.model';
 import { GameSystem } from '../../models/common.model';
+import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 
 /*
  * Author: Drake

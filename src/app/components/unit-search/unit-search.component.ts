@@ -37,7 +37,7 @@ import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-inter
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
-import { UnitSearchFiltersService, SORT_OPTIONS, type SortOption, type SerializedSearchFilter } from '../../services/unit-search-filters.service';
+import { SORT_OPTIONS, type SortOption, type SerializedSearchFilter } from '../../services/unit-search-filters.model';
 import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
 import type { Unit } from '../../models/units.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -78,6 +78,7 @@ import { formatMovement } from '../../utils/as-common.util';
 import type { UnitType } from '../../models/units.model';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 import { DataTableComponent, type DataTableCellContext, type DataTableColumn, type DataTableRowClickEvent, type DataTableRowLongPressEvent, type DataTableRowPointerEnterEvent, type DataTableSortEvent } from '../data-table/data-table.component';
+import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 
 /** Grouped chassis entry for compact view */
 export interface ChassisGroup {

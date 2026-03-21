@@ -33,7 +33,7 @@
 
 import { Component, ChangeDetectionStrategy, input, output, signal, afterNextRender, computed, DestroyRef, inject, viewChildren } from '@angular/core';
 import { CdkMenuModule, CdkMenuTrigger, MenuTracker } from '@angular/cdk/menu';
-import type { SerializedSearchFilter } from '../../services/unit-search-filters.service';
+import type { SerializedSearchFilter } from '../../services/unit-search-filters.model';
 
 @Component({
     selector: 'search-favorites-menu',
