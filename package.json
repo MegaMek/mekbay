@@ -40,7 +40,6 @@
     "karma": "^6.4.4",
     "karma-chrome-launcher": "^3.2.0",
     "karma-coverage": "^2.2.1",
-    "karma-edge-launcher": "^0.4.2",
     "karma-jasmine": "^5.1.0",
     "karma-jasmine-html-reporter": "^2.2.0",
     "sharp": "^0.34.5",
