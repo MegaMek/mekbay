@@ -531,7 +531,7 @@ export class OverlayManagerService {
             content.style.maxHeight = `${maxPanelH}px`;
             content.style.height = `${effectiveH}px`;
             content.style.boxSizing = 'border-box';
-            content.style.overflow = 'hidden';
+            // content.style.overflow = 'hidden';
         }
         scrollContainer.style.maxHeight = `${maxScrollH}px`;
         scrollContainer.style.overflowY = 'auto';

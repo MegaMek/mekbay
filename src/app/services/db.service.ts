@@ -45,7 +45,7 @@ import type { DataService } from './data.service';
 import type { UnitInitializerService } from './unit-initializer.service';
 import type { Injector } from '@angular/core';
 import { DialogsService } from './dialogs.service';
-import type { SerializedSearchFilter } from './unit-search-filters.service';
+import type { SerializedSearchFilter } from './unit-search-filters.model';
 import { LoadForceEntry, type LoadForceGroup, type LoadForceUnit } from '../models/load-force-entry.model';
 import { LoggerService } from './logger.service';
 import type { SerializedOperation } from '../models/operation.model';

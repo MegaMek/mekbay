@@ -38,7 +38,7 @@ import { DataService } from '../../../services/data.service';
 import { compareUnitsByName } from '../../../utils/sort.util';
 import { UnitCardExpandedComponent } from '../../unit-card-expanded/unit-card-expanded.component';
 import type { TagClickEvent } from '../../unit-tags/unit-tags.component';
-import { SORT_OPTIONS } from '../../../services/unit-search-filters.service';
+import { SORT_OPTIONS } from '../../../services/unit-search-filters.model';
 import { GameService } from '../../../services/game.service';
 
 /**

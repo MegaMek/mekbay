@@ -31,13 +31,12 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, computed, type DestroyRef, type ElementRef, inject, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, type DestroyRef, type ElementRef, inject, signal, TemplateRef, untracked, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DragDropModule, type CdkDragDrop, type CdkDragMove } from '@angular/cdk/drag-drop';
 import type { Force, UnitGroup } from '../../models/force.model';
 import type { ForceUnit } from '../../models/force-unit.model';
-import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import type { Unit } from '../../models/units.model';
 import { GameService } from '../../services/game.service';
@@ -50,15 +49,14 @@ import { AsAbilityLookupService } from '../../services/as-ability-lookup.service
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
-import type { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
+import type { TagClickEvent } from '../unit-tags/unit-tags.component';
 import { AbilityInfoDialogComponent, type AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
-import { SORT_OPTIONS } from '../../services/unit-search-filters.service';
+import { SORT_OPTIONS } from '../../services/unit-search-filters.model';
 import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
 import { TaggingService } from '../../services/tagging.service';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
-import { AdjustedPV } from '../../pipes/adjusted-pv.pipe';
-import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { formatMovement } from '../../utils/as-common.util';
+import { DataTableComponent, type DataTableCellContext, type DataTableColumn, type DataTableRowClickEvent, type DataTableSortEvent } from '../data-table/data-table.component';
 
 export interface ForceOverviewDialogData {
     force: Force;
@@ -70,11 +68,15 @@ interface ForceUnitViewModel {
     unit: Unit;
 }
 
+type ForceTableRow =
+    | { kind: 'group'; group: UnitGroup }
+    | { kind: 'unit'; vm: ForceUnitViewModel; group: UnitGroup };
+
 /**
  * State for the overview that can be persisted.
  */
 export interface OverviewState {
-    viewMode: 'expanded' | 'compact';
+    viewMode: 'expanded' | 'compact' | 'table';
     sortKey: string;
     sortDirection: 'asc' | 'desc';
 }
@@ -93,7 +95,7 @@ export const DEFAULT_OVERVIEW_STATE: OverviewState = {
 @Component({
     selector: 'force-overview-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, DragDropModule, UnitCardExpandedComponent, UnitBlockComponent, UnitIconComponent, AdjustedPV, FormatNumberPipe],
+    imports: [CommonModule, DragDropModule, UnitCardExpandedComponent, UnitBlockComponent, UnitIconComponent, DataTableComponent],
     host: {
         class: 'fullscreen-dialog-host fullheight tv-fade'
     },
@@ -118,6 +120,14 @@ export class ForceOverviewDialogComponent {
     /** Reference to scrollable units list */
     private scrollContainer = viewChild<ElementRef<HTMLElement>>('scrollContainer');
 
+    private readonly tableIconCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableIconCell');
+    private readonly tableNameCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableNameCell');
+    private readonly tableYearCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableYearCell');
+    private readonly tableSkillCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableSkillCell');
+    private readonly tableMovementCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableMovementCell');
+    private readonly tableSpecialsCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableSpecialsCell');
+    private readonly tableGroupRow = viewChild<TemplateRef<{ $implicit: ForceTableRow; row: ForceTableRow; index: number }>>('tableGroupRow');
+
     /** Flag for unit drag/sorting */
     readonly isUnitDragging = signal<boolean>(false);
 
@@ -138,7 +148,7 @@ export class ForceOverviewDialogComponent {
     );
 
     /** Current view mode */
-    viewMode = signal<'expanded' | 'compact'>(DEFAULT_OVERVIEW_STATE.viewMode);
+    viewMode = signal<'expanded' | 'compact' | 'table'>(this.optionsService.options().forceOverviewViewMode);
 
     /** Current sort key */
     selectedSort = signal<string>(DEFAULT_OVERVIEW_STATE.sortKey);
@@ -165,18 +175,48 @@ export class ForceOverviewDialogComponent {
     /** Whether this is an Alpha Strike force */
     isAlphaStrike = computed(() => this.gameService.isAlphaStrike());
 
-    /** Whether table mode is active (AS + expanded view + wide enough viewport) */
-    readonly isTableMode = computed(() => 
-        this.viewMode() === 'expanded' && 
-        this.isAlphaStrike() && 
-        this.layoutService.windowWidth() >= 1100
-    );
+    /** Whether table mode is active */
+    readonly isTableMode = computed(() => this.viewMode() === 'table' && this.isAlphaStrike());
+
+    readonly nextViewMode = computed<'compact' | 'expanded' | 'table'>(() => {
+        const current = this.viewMode();
+        if (!this.isAlphaStrike()) {
+            return current === 'compact' ? 'expanded' : 'compact';
+        }
+
+        if (current === 'compact') return 'expanded';
+        if (current === 'expanded') return 'table';
+        return 'compact';
+    });
+
+    readonly nextViewModeTitle = computed(() => {
+        const current = this.viewMode();
+        const next = this.nextViewMode();
+        const currentLabel = current === 'compact' ? 'Compact View' : current === 'expanded' ? 'Expanded View' : 'Table View';
+        const nextLabel = next === 'compact' ? 'Compact View' : next === 'expanded' ? 'Expanded View' : 'Table View';
+        return `${currentLabel}. Click to switch to ${nextLabel}.`;
+    });
+
+    constructor() {
+        effect(() => {
+            const savedViewMode = this.optionsService.options().forceOverviewViewMode;
+            const normalizedViewMode = this.normalizeViewMode(savedViewMode);
+            untracked(() => {
+                if (this.viewMode() !== normalizedViewMode) {
+                    this.viewMode.set(normalizedViewMode);
+                }
+                if (savedViewMode !== normalizedViewMode) {
+                    void this.optionsService.setOption('forceOverviewViewMode', normalizedViewMode);
+                }
+            });
+        });
+    }
 
     /** Whether to use hex movement */
     readonly useHex = computed(() => this.optionsService.options().ASUseHex);
 
     /** Keys always visible in the AS table row */
-    private readonly AS_TABLE_VISIBLE_KEYS = ['name', 'as.PV', 'as.TP', 'role', 'as.SZ', 'as._mv', 'as.TMM', 'as.damage', 'as.Arm', 'as.Str', 'as.OV'];
+    private readonly AS_TABLE_VISIBLE_KEYS = ['name', 'year', 'as.PV', 'as.TP', 'role', 'as.SZ', 'as._mv', 'as.TMM', 'as.damage', 'as.Arm', 'as.Str', 'as.OV'];
 
     /** Keys that are grouped together in the UI display */
     private readonly SORT_KEY_GROUPS: Record<string, string[]> = {
@@ -214,6 +254,187 @@ export class ForceOverviewDialogComponent {
         
         const opt = this.SORT_OPTIONS.find(o => o.key === sortKey);
         return opt?.slotLabel ?? opt?.label ?? null;
+    });
+
+    readonly forceTableMinWidth = computed(() => this.asTableSortSlotHeader() ? '1454px' : '1366px');
+
+    readonly forceTableRows = computed<readonly ForceTableRow[]>(() => {
+        const rows: ForceTableRow[] = [];
+        for (const group of this.groups()) {
+            rows.push({ kind: 'group', group });
+            for (const vm of this.getSortedUnitsForGroup(group)) {
+                rows.push({ kind: 'unit', vm, group });
+            }
+        }
+        return rows;
+    });
+
+    readonly forceTableColumns = computed<readonly DataTableColumn<ForceTableRow>[]>(() => {
+        const iconCell = this.tableIconCell();
+        const nameCell = this.tableNameCell();
+        const yearCell = this.tableYearCell();
+        const skillCell = this.tableSkillCell();
+        const movementCell = this.tableMovementCell();
+        const specialsCell = this.tableSpecialsCell();
+
+        if (!iconCell || !nameCell || !yearCell || !skillCell || !movementCell || !specialsCell) {
+            return [];
+        }
+
+        const columns: DataTableColumn<ForceTableRow>[] = [
+            {
+                id: 'icon',
+                header: '',
+                track: '40px',
+                cellTemplate: iconCell,
+                align: 'center',
+            },
+            {
+                id: 'name',
+                header: 'Name',
+                track: 'minmax(320px, 1.35fr)',
+                cellTemplate: nameCell,
+                sortKey: 'name',
+                sortActive: this.isSortActive('name'),
+            },
+            {
+                id: 'year',
+                header: 'Year',
+                track: '72px',
+                cellTemplate: yearCell,
+                sortKey: 'year',
+                sortActive: this.isSortActive('year'),
+                cellClass: this.tableCellClass('as-td-year', this.isSortActive('year')),
+                align: 'center',
+            },
+            {
+                id: 'type',
+                header: 'Type',
+                track: '50px',
+                value: row => row.kind === 'unit' ? row.vm.unit.as.TP : '',
+                sortKey: 'as.TP',
+                sortActive: this.isSortActive('as.TP'),
+                cellClass: this.tableCellClass('as-td-type', this.isSortActive('as.TP')),
+                align: 'center',
+            },
+            {
+                id: 'role',
+                header: 'Role',
+                track: '130px',
+                value: row => row.kind === 'unit' && row.vm.unit.role !== 'None' ? row.vm.unit.role : '',
+                sortKey: 'role',
+                sortActive: this.isSortActive('role'),
+                cellClass: this.tableCellClass('as-td-role', this.isSortActive('role')),
+            },
+            {
+                id: 'pv',
+                header: 'PV',
+                track: '45px',
+                value: row => row.kind === 'unit' ? row.vm.unit.as.PV : '',
+                sortKey: 'as.PV',
+                sortActive: this.isSortActive('as.PV'),
+                cellClass: this.tableCellClass('as-td-pv is-bold', this.isSortActive('as.PV')),
+                align: 'right',
+            },
+            {
+                id: 'skill',
+                header: 'Skill',
+                track: '40px',
+                cellTemplate: skillCell,
+                align: 'center',
+            },
+            {
+                id: 'sz',
+                header: 'SZ',
+                track: '30px',
+                value: row => row.kind === 'unit' ? row.vm.unit.as.SZ : '',
+                sortKey: 'as.SZ',
+                sortActive: this.isSortActive('as.SZ'),
+                cellClass: this.tableCellClass('as-td-sz', this.isSortActive('as.SZ')),
+                align: 'center',
+            },
+            {
+                id: 'mv',
+                header: 'MV',
+                track: '65px',
+                cellTemplate: movementCell,
+                sortKey: 'as._mv',
+                sortActive: this.isSortActive('as._mv'),
+                cellClass: this.tableCellClass('as-td-mv', this.isSortActive('as._mv')),
+                align: 'center',
+            },
+            {
+                id: 'tmm',
+                header: 'TMM',
+                track: '40px',
+                value: row => row.kind === 'unit' ? row.vm.unit.as.TMM : '',
+                sortKey: 'as.TMM',
+                sortActive: this.isSortActive('as.TMM'),
+                cellClass: this.tableCellClass('as-td-tmm', this.isSortActive('as.TMM')),
+                align: 'center',
+            },
+            {
+                id: 'damage',
+                header: 'S/M/L',
+                track: '60px',
+                value: row => row.kind === 'unit' && !row.vm.unit.as.usesArcs ? `${row.vm.unit.as.dmg.dmgS}/${row.vm.unit.as.dmg.dmgM}/${row.vm.unit.as.dmg.dmgL}` : '',
+                sortKey: 'as.dmg._dmgS',
+                sortGroupKey: 'as.damage',
+                sortActive: this.isSortActive('as.damage'),
+                cellClass: this.tableCellClass('as-td-dmg', this.isSortActive('as.damage')),
+                align: 'center',
+            },
+            {
+                id: 'arm',
+                header: 'A',
+                track: '40px',
+                value: row => row.kind === 'unit' ? row.vm.unit.as.Arm : '',
+                sortKey: 'as.Arm',
+                sortActive: this.isSortActive('as.Arm'),
+                cellClass: this.tableCellClass('as-td-arm', this.isSortActive('as.Arm')),
+                align: 'center',
+            },
+            {
+                id: 'str',
+                header: 'S',
+                track: '40px',
+                value: row => row.kind === 'unit' ? row.vm.unit.as.Str : '',
+                sortKey: 'as.Str',
+                sortActive: this.isSortActive('as.Str'),
+                cellClass: this.tableCellClass('as-td-str', this.isSortActive('as.Str')),
+                align: 'center',
+            },
+            {
+                id: 'ov',
+                header: 'OV',
+                track: '30px',
+                value: row => row.kind === 'unit' && row.vm.unit.as.usesOV ? row.vm.unit.as.OV : '',
+                sortKey: 'as.OV',
+                sortActive: this.isSortActive('as.OV'),
+                cellClass: this.tableCellClass('as-td-ov', this.isSortActive('as.OV')),
+                align: 'center',
+            },
+        ];
+
+        if (this.asTableSortSlotHeader()) {
+            columns.push({
+                id: 'sort-slot',
+                header: this.asTableSortSlotHeader() ?? '',
+                track: '80px',
+                value: row => row.kind === 'unit' ? this.getAsTableSortSlot(row.vm) ?? '' : '',
+                cellClass: 'as-td-sort-slot sort-slot',
+                align: 'center',
+            });
+        }
+
+        columns.push({
+            id: 'specials',
+            header: 'Special',
+            track: 'minmax(220px, 1fr)',
+            cellTemplate: specialsCell,
+        });
+
+        return columns;
     });
 
     /** Whether drag-drop is allowed (compact mode + default sort + not read-only) */
@@ -264,7 +485,7 @@ export class ForceOverviewDialogComponent {
 
     /** Toggle between expanded and compact view modes */
     toggleViewMode(): void {
-        this.viewMode.update(v => v === 'expanded' ? 'compact' : 'expanded');
+        this.setViewMode(this.nextViewMode());
     }
 
     /** Set the sort key */
@@ -276,6 +497,22 @@ export class ForceOverviewDialogComponent {
     setSortDirection(direction: 'asc' | 'desc'): void {
         this.selectedSortDirection.set(direction);
     }
+
+    onForceTableSort(event: DataTableSortEvent): void {
+        this.onHeaderSort(event.sortKey, event.groupKey);
+    }
+
+    onForceTableRowClick(event: DataTableRowClickEvent<ForceTableRow>): void {
+        if (event.row.kind !== 'unit') {
+            return;
+        }
+
+        this.onUnitClick(event.row.vm);
+    }
+
+    trackByForceUnitId = (_index: number, row: ForceTableRow) => row.kind === 'group' ? `group-${row.group.id}` : row.vm.forceUnit.id;
+
+    isForceTableGroupRow = (row: ForceTableRow) => row.kind === 'group';
 
     /** Handle unit card click - open unit details dialog */
     onUnitClick(vm: ForceUnitViewModel): void {
@@ -685,6 +922,10 @@ export class ForceOverviewDialogComponent {
             .join('/');
     }
 
+    private tableCellClass(base: string, active: boolean): string {
+        return active ? `${base} sort-slot` : base;
+    }
+
     /** Show ability info dialog for an Alpha Strike special ability */
     showAbilityInfoDialog(abilityText: string): void {
         const parsedAbility = this.abilityLookup.parseAbility(abilityText);
@@ -700,5 +941,18 @@ export class ForceOverviewDialogComponent {
             return fu.pilotSkill();
         }
         return 4; // Default
+    }
+
+    private normalizeViewMode(viewMode: 'expanded' | 'compact' | 'table'): 'expanded' | 'compact' | 'table' {
+        if (!this.isAlphaStrike() && viewMode === 'table') {
+            return 'compact';
+        }
+        return viewMode;
+    }
+
+    private setViewMode(viewMode: 'expanded' | 'compact' | 'table') {
+        const normalizedViewMode = this.normalizeViewMode(viewMode);
+        this.viewMode.set(normalizedViewMode);
+        void this.optionsService.setOption('forceOverviewViewMode', normalizedViewMode);
     }
 }

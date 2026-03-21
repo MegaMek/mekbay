@@ -43,7 +43,8 @@ import { GameSystem } from './common.model';
 import { C3NetworkUtil } from '../utils/c3-network.util';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { LoggerService } from '../services/logger.service';
-import type { Faction } from './factions.model';
+import { FACTION_EXTINCT, type Faction } from './factions.model';
+import type { Era } from './eras.model';
 import { type FormationTypeDefinition, type FormationMatch, isNoFormation } from '../utils/formation-type.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
@@ -56,6 +57,81 @@ import { getUnitsAverageTechBase, TechBase } from './tech.model';
  */
 export const MAX_GROUPS = 50;
 export const MAX_UNITS = 100;
+
+function getEraEndYear(era: Era): number {
+    return era.years.to ?? Number.POSITIVE_INFINITY;
+}
+
+function hasFactionEraAvailability(faction: Faction, eraId: number): boolean {
+    const eraUnits = faction.eras[eraId] as Set<number> | number[] | undefined;
+    if (!eraUnits) return false;
+    return eraUnits instanceof Set ? eraUnits.size > 0 : Array.isArray(eraUnits) && eraUnits.length > 0;
+}
+
+function hasFactionUnitMembership(faction: Faction | null | undefined, eraId: number, unitId: number): boolean {
+    if (!faction) return false;
+    const eraUnits = faction.eras[eraId] as Set<number> | number[] | undefined;
+    if (!eraUnits) return false;
+    return eraUnits instanceof Set ? eraUnits.has(unitId) : eraUnits.includes(unitId);
+}
+
+function hasEraUnitMembership(era: Era, unitId: number): boolean {
+    const eraUnits = era.units as Set<number> | number[];
+    return eraUnits instanceof Set ? eraUnits.has(unitId) : eraUnits.includes(unitId);
+}
+
+export interface EraUnitValidationSummary {
+    totalUnits: number;
+    validUnits: number;
+    invalidTrackedUnits: number;
+    extinctTrackedUnits: number;
+    invalidYearFallbackUnits: number;
+}
+
+export function getEraUnitValidationSummary(
+    units: readonly ForceUnit[],
+    era: Era,
+    eras: readonly Era[],
+    extinctFaction: Faction | null,
+): EraUnitValidationSummary {
+    const eraEndYear = getEraEndYear(era);
+    let invalidTrackedUnits = 0;
+    let extinctTrackedUnits = 0;
+    let invalidYearFallbackUnits = 0;
+
+    for (const forceUnit of units) {
+        const unit = forceUnit.getUnit();
+        const isTrackedInAnyEra = eras.some(candidateEra => hasEraUnitMembership(candidateEra, unit.id));
+
+        if (isTrackedInAnyEra) {
+            const existsInSelectedEra = hasEraUnitMembership(era, unit.id);
+            const isExtinctInSelectedEra = existsInSelectedEra
+                && hasFactionUnitMembership(extinctFaction, era.id, unit.id);
+
+            if (isExtinctInSelectedEra) {
+                extinctTrackedUnits++;
+            } else if (!existsInSelectedEra) {
+                invalidTrackedUnits++;
+            }
+            continue;
+        }
+
+        if (unit.year > eraEndYear) {
+            invalidYearFallbackUnits++;
+        }
+    }
+
+    const totalUnits = units.length;
+    const validUnits = totalUnits - invalidTrackedUnits - extinctTrackedUnits - invalidYearFallbackUnits;
+
+    return {
+        totalUnits,
+        validUnits,
+        invalidTrackedUnits,
+        extinctTrackedUnits,
+        invalidYearFallbackUnits,
+    };
+}
 
 export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     private _forceRef = signal<Force>(null!);
@@ -216,6 +292,8 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     owned = signal<boolean>(true); // Indicates if the user owns this force (false if it's a shared force)
     faction = signal<Faction | null>(null);
     factionLock: boolean = false; // If true, the force faction cannot be changed by the random generator
+    era = signal<Era | null>(null);
+    eraLock: boolean = false; // If true, the force era cannot be changed by the random generator
     c3Networks = this._c3Networks.asReadonly();
     /** Emits after each debounced mutation: subscribe to react to force changes. */
     public readonly changed = new Subject<void>();
@@ -284,6 +362,10 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         return getUnitsAverageTechBase(this.units().map(u => u.getUnit()).filter((u): u is Unit => u !== undefined));
     });
 
+    eraWarning = computed<string | null>(() => {
+        return this.getEraWarningMessage(this.era(), this.faction());
+    });
+
     /**
      * Factory method to create the appropriate ForceUnit subclass.
      * Must be implemented by subclasses to create CBTForceUnit, ASForceUnit, etc.
@@ -303,6 +385,42 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
      * Must be implemented by subclasses to deserialize CBTForceUnit, ASForceUnit, etc.
      */
     protected abstract deserializeForceUnit(data: SerializedUnit): TUnit;
+
+    getEraWarningMessage(era: Era | null, faction: Faction | null): string | null {
+        if (!era) {
+            return null;
+        }
+
+        const warnings: string[] = [];
+        const eras = this.dataService.getEras();
+        const extinctFaction = this.dataService.getFactionById(FACTION_EXTINCT) ?? null;
+        const {
+            invalidTrackedUnits,
+            extinctTrackedUnits,
+            invalidYearFallbackUnits,
+        } = getEraUnitValidationSummary(this.units(), era, eras, extinctFaction);
+
+        if (faction && !hasFactionEraAvailability(faction, era.id)) {
+            warnings.push(`${faction.name} does not exist in this era.`);
+        }
+
+        if (invalidTrackedUnits > 0) {
+            const unitLabel = invalidTrackedUnits === 1 ? 'unit is' : 'units are';
+            warnings.push(`${invalidTrackedUnits} ${unitLabel} not listed in the ${era.name} era.`);
+        }
+
+        if (extinctTrackedUnits > 0) {
+            const unitLabel = extinctTrackedUnits === 1 ? 'unit is' : 'units are';
+            warnings.push(`${extinctTrackedUnits} ${unitLabel} extinct in the ${era.name} era.`);
+        }
+
+        if (invalidYearFallbackUnits > 0) {
+            const unitLabel = invalidYearFallbackUnits === 1 ? 'unit is' : 'units are';
+            warnings.push(`${invalidYearFallbackUnits} ${unitLabel} newer than this era ends in ${era.years.to}.`);
+        }
+
+        return warnings.length > 0 ? warnings.join(' ') : null;
+    }
 
     public addUnit(unit: Unit, targetGroup?: UnitGroup<TUnit>): TUnit {
         if (this.units().length >= MAX_UNITS) {
@@ -591,6 +709,8 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             name: this.name,
             factionId: this.faction()?.id,
             factionLock: this.factionLock || undefined,
+            eraId: this.era()?.id,
+            eraLock: this.eraLock || undefined,
             groups: serializedGroups,
             c3Networks: this.c3Networks().length > 0 ? this.c3Networks() : undefined,
         };
@@ -676,6 +796,13 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                 this.faction.set(faction);
             }
 
+            // Resolve era from eraId
+            this.eraLock = sanitizedData.eraLock || false;
+            if (sanitizedData.eraId != null) {
+                const era = this.dataService.getEraById(sanitizedData.eraId) ?? null;
+                this.era.set(era);
+            }
+
             const logger = this.injector.get(LoggerService);
             const parsedGroups: UnitGroup<TUnit>[] = [];
             for (const g of sanitizedData.groups) {
@@ -740,6 +867,15 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                 this.faction.set(faction);
             } else {
                 this.faction.set(null);
+            }
+
+            // Resolve era from eraId
+            this.eraLock = sanitizedData.eraLock || false;
+            if (sanitizedData.eraId != null) {
+                const era = this.dataService.getEraById(sanitizedData.eraId) ?? null;
+                this.era.set(era);
+            } else {
+                this.era.set(null);
             }
 
             const incomingGroupsData = sanitizedData.groups || [];
