@@ -1474,6 +1474,11 @@ function buildIndexedCandidateSetForConfig(
         return null;
     }
 
+    const indexedValues = context.getIndexedFilterValues(conf.key);
+    if (!indexedValues || indexedValues.length === 0) {
+        return null;
+    }
+
     const addStoredValueUnits = (storedValue: string, target: Set<string | number>): void => {
         const unitIds = context.getIndexedUnitIds?.(conf.key, storedValue);
         if (!unitIds) {

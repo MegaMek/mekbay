@@ -447,6 +447,27 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(telemetry?.unitCount).toBe(10001);
     });
 
+    it('invalidates force pack lookup caches when the search corpus is refreshed', () => {
+        if (!benchmarkBundle || benchmarkBundle.units.units.length === 0) {
+            pending('Real unit data could not be loaded for the cache invalidation test.');
+            return;
+        }
+
+        const { dataService } = createService(buildSmallBundle(benchmarkBundle));
+
+        (dataService as any).forcePackToChassisType = new Map([
+            ['stale-pack', new Set(['Stale Unit|Mek'])],
+        ]);
+        (dataService as any).chassisTypeToForcePacks = new Map([
+            ['Stale Unit|Mek', ['stale-pack']],
+        ]);
+
+        dataService.refreshSearchCorpus();
+
+        expect((dataService as any).forcePackToChassisType).toBeNull();
+        expect((dataService as any).chassisTypeToForcePacks).toBeNull();
+    });
+
     it('keeps bounded dropdown options stable and marks out-of-context entries unavailable', () => {
         if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
             pending('Real unit data could not be loaded for the dropdown test.');

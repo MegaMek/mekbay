@@ -94,6 +94,31 @@ describe('semantic filter exclusivity', () => {
         expect(membershipChecks).toBe(2);
     });
 
+    it('does not prune force pack filters to zero when no indexed force pack values exist', () => {
+        const units = [
+            { id: 1, packMemberships: ['Essentials Box Set'] },
+            { id: 2, packMemberships: [] },
+        ];
+        const result = parseSemanticQueryAST('pack="Essentials Box Set"', GameSystem.CLASSIC);
+        let membershipChecks = 0;
+
+        const filtered = filterUnitsWithAST(units, result.ast, {
+            gameSystem: GameSystem.CLASSIC,
+            getUnitId,
+            getProperty: () => undefined,
+            getIndexedFilterValues: () => [],
+            getIndexedUnitIds: () => undefined,
+            unitBelongsToForcePack: (unit: { packMemberships?: string[] }, packName: string) => {
+                membershipChecks++;
+                return (unit.packMemberships ?? []).includes(packName);
+            },
+            getAllForcePackNames: () => ['Essentials Box Set'],
+        });
+
+        expect(filtered).toEqual([units[0]]);
+        expect(membershipChecks).toBe(2);
+    });
+
     it('matches external factions with punctuation-insensitive semantic values', () => {
         const units = [
             { id: 1, faction: ["Wolf's Dragoons"] },
