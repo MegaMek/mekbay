@@ -27,6 +27,7 @@ export const ORG_SPEC_REGISTRY: readonly OrgDefinitionRegistryEntry[] = [
         factionName.includes('Escorpion') || factionName.includes('Scorpion Empire') || factionName.includes('Alyina Mercantile League'),
         org: CLAN_CORE_ORG,
     },
+	{ match: (_factionName, factionAffinity) => factionAffinity == 'Inner Sphere', org: IS_CORE_ORG },
 ];
 
 export const DEFAULT_ORG_SPEC: OrgDefinitionSpec = IS_CORE_ORG;
