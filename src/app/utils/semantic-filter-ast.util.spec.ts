@@ -94,7 +94,7 @@ describe('semantic filter exclusivity', () => {
         expect(membershipChecks).toBe(2);
     });
 
-    it('does not prune force pack filters to zero when no indexed force pack values exist', () => {
+    it('does not try indexed pruning for external force pack filters', () => {
         const units = [
             { id: 1, packMemberships: ['Essentials Box Set'] },
             { id: 2, packMemberships: [] },

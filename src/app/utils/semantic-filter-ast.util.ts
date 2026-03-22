@@ -61,6 +61,7 @@ import type { GameSystem } from '../models/common.model';
 import { ADVANCED_FILTERS, type AdvFilterConfig, AdvFilterType } from '../services/unit-search-filters.model';
 import { type SemanticOperator, type SemanticToken, buildSemanticKeyMap, VIRTUAL_SEMANTIC_KEYS, parseValues, parseValueWithQuantity, type QuantityConstraint } from './semantic-filter.util';
 import { normalizeLooseText, wildcardToRegex } from './string.util';
+import { usesIndexedDropdownUniverse } from './unit-search-filter-config.util';
 import { checkQuantityConstraint as checkQuantityConstraintCore } from './unit-search-shared.util';
 
 // ============================================================================
@@ -1471,6 +1472,10 @@ function buildIndexedCandidateSetForConfig(
         return null;
     }
     if (conf.type !== AdvFilterType.DROPDOWN || conf.countable || operator === '!=') {
+        return null;
+    }
+
+    if (!usesIndexedDropdownUniverse(conf)) {
         return null;
     }
 
