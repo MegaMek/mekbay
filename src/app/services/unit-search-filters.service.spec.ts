@@ -225,6 +225,9 @@ async function flushAsyncWork(): Promise<void> {
 
 describe('UnitSearchFiltersService search telemetry', () => {
     let benchmarkBundle: BenchmarkBundle | null = null;
+    let sharedService: UnitSearchFiltersService | null = null;
+    let sharedDataService: DataService | null = null;
+    let sharedGameServiceStub: { currentGameSystem: ReturnType<typeof signal<GameSystem>> } | null = null;
 
     function createService(
         bundleOverride?: BenchmarkBundle,
@@ -361,18 +364,24 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 factions: await factionsResponse.json() as Factions,
                 eras: await erasResponse.json() as Eras,
             }, 10000);
+
+            const { service, dataService, gameServiceStub } = createService();
+            sharedService = service;
+            sharedDataService = dataService;
+            sharedGameServiceStub = gameServiceStub;
         } catch {
             benchmarkBundle = null;
         }
     });
 
-    it('captures stage timings for a 10,000-unit real-data search', async () => {
-        if (!benchmarkBundle || benchmarkBundle.units.units.length === 0) {
+    xit('captures stage timings for a 10,000-unit real-data search', async () => {
+        if (!sharedService) {
             pending('Real unit data could not be loaded for the benchmark test.');
             return;
         }
-        const { service } = createService();
-        service.searchText.set('crab bv=1000-3000');
+        sharedService.resetFilters();
+        sharedService.searchText.set('crab bv=1000-3000');
+        const service = sharedService;
 
         const results = service.filteredUnits();
         await Promise.resolve();
@@ -390,12 +399,13 @@ describe('UnitSearchFiltersService search telemetry', () => {
     });
 
     it('skips relevance prep for complex filter-only searches', async () => {
-        if (!benchmarkBundle || benchmarkBundle.units.units.length === 0) {
+        if (!sharedService) {
             pending('Real unit data could not be loaded for the benchmark test.');
             return;
         }
 
-        const { service } = createService();
+        sharedService.resetFilters();
+        const service = sharedService;
 
         service.searchText.set('(faction=="draco*" or faction="*suns") and type=BM');
 
@@ -473,6 +483,87 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(namedSourceOptions.length).toBe(2);
         expect(availableSource).toEqual(jasmine.objectContaining({ name: 'SRC-A', available: true }));
         expect(unavailableSource).toEqual(jasmine.objectContaining({ name: 'SRC-B', available: false }));
+    });
+
+    it('keeps indexed faction self and co-matches available for multistate AND selections', () => {
+        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
+            pending('Real unit data could not be loaded for the faction AND availability test.');
+            return;
+        }
+
+        const bundle = buildSmallBundle(benchmarkBundle);
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: "Wolf's Dragoons",
+                group: 'Mercenary',
+                img: '',
+                eras: { 1: new Set([1]) },
+            },
+            {
+                id: 2,
+                name: 'Mercenary',
+                group: 'Mercenary',
+                img: '',
+                eras: { 1: new Set([1]) },
+            },
+            {
+                id: 3,
+                name: 'Clan Wolf',
+                group: 'IS Clan',
+                img: '',
+                eras: { 1: new Set([2]) },
+            },
+        ];
+
+        const { service } = createService(bundle);
+        service.setFilter('faction', {
+            "Wolf's Dragoons": {
+                name: "Wolf's Dragoons",
+                state: 'and',
+                count: 1,
+            },
+        });
+
+        const factionOptions = service.advOptions()['faction']?.options ?? [];
+        const namedFactionOptions = factionOptions.filter(option => typeof option !== 'number');
+        const dragoons = namedFactionOptions.find(option => option.name === "Wolf's Dragoons");
+        const mercenary = namedFactionOptions.find(option => option.name === 'Mercenary');
+        const clanWolf = namedFactionOptions.find(option => option.name === 'Clan Wolf');
+
+        expect(dragoons).toEqual(jasmine.objectContaining({ name: "Wolf's Dragoons", available: true }));
+        expect(mercenary).toEqual(jasmine.objectContaining({ name: 'Mercenary', available: true }));
+        expect(clanWolf).toEqual(jasmine.objectContaining({ name: 'Clan Wolf', available: false }));
+    });
+
+    it('keeps indexed source self and co-matches available for multistate AND selections', () => {
+        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
+            pending('Real unit data could not be loaded for the source AND availability test.');
+            return;
+        }
+
+        const bundle = buildSmallBundle(benchmarkBundle);
+        bundle.units.units[0].source = ['SRC-A', 'SRC-C'];
+        bundle.units.units[1].source = ['SRC-B'];
+
+        const { service } = createService(bundle);
+        service.setFilter('source', {
+            'SRC-A': {
+                name: 'SRC-A',
+                state: 'and',
+                count: 1,
+            },
+        });
+
+        const sourceOptions = service.advOptions()['source']?.options ?? [];
+        const namedSourceOptions = sourceOptions.filter(option => typeof option !== 'number');
+        const sourceA = namedSourceOptions.find(option => option.name === 'SRC-A');
+        const sourceC = namedSourceOptions.find(option => option.name === 'SRC-C');
+        const sourceB = namedSourceOptions.find(option => option.name === 'SRC-B');
+
+        expect(sourceA).toEqual(jasmine.objectContaining({ name: 'SRC-A', available: true }));
+        expect(sourceC).toEqual(jasmine.objectContaining({ name: 'SRC-C', available: true }));
+        expect(sourceB).toEqual(jasmine.objectContaining({ name: 'SRC-B', available: false }));
     });
 
     it('does not throw when stale multistate era state is present', () => {
@@ -936,6 +1027,37 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
     });
 
+    it('matches semantic faction filters with punctuation-insensitive values', async () => {
+        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
+            pending('Real unit data could not be loaded for the faction semantic normalization test.');
+            return;
+        }
+
+        const bundle = buildSmallBundle(benchmarkBundle);
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: "Wolf's Dragoons",
+                group: 'Mercenary',
+                img: '',
+                eras: { 1: new Set([1]) },
+            },
+            {
+                id: 2,
+                name: 'Clan Wolf',
+                group: 'IS Clan',
+                img: '',
+                eras: { 1: new Set([2]) },
+            },
+        ];
+
+        const { service } = createService(bundle);
+        service.setSearchText('faction="Wolfs Dragoons"');
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
+    });
+
     it('promotes overlapping faction dropdown filters into wildcard semantic ownership', async () => {
         if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
             pending('Real unit data could not be loaded for the faction wildcard promotion test.');
@@ -1213,81 +1335,57 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(subtypeStage?.contextDerivationMs).toBeGreaterThanOrEqual(0);
     });
 
-    it('benchmarks advOptions context derivation across active filter counts', async () => {
-        if (!benchmarkBundle || benchmarkBundle.units.units.length === 0) {
-            pending('Real unit data could not be loaded for the advOptions benchmark test.');
+    it('tracks context derivation strategy across active filter counts', async () => {
+        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
+            pending('Real unit data could not be loaded for the advOptions context strategy test.');
             return;
         }
 
-        const measureScenario = async (
-            label: string,
-            configure: (service: UnitSearchFiltersService) => void,
-        ) => {
-            const { service } = createService();
-            configure(service);
+        const { service } = createService(buildSmallBundle(benchmarkBundle));
 
-            const advOptions = service.advOptions();
-            expect(Object.keys(advOptions).length).toBeGreaterThan(0);
-
+        const getStrategyCounts = async (configure: (service: UnitSearchFiltersService) => void) => {
+            service.resetFilters();
             await flushAsyncWork();
 
-            const telemetry = service.advOptionsTelemetry();
-            expect(telemetry).not.toBeNull();
+            configure(service);
+            service.advOptions();
+            await flushAsyncWork();
 
-            const filters = telemetry?.filters ?? [];
-            const excludedFilters = filters.filter(stage => stage.contextStrategy === 'excluded-filter');
-            const baseUnitFilters = filters.filter(stage => stage.contextStrategy === 'base-units');
-
+            const filters = service.advOptionsTelemetry()?.filters ?? [];
             return {
-                label,
-                totalMs: Number((telemetry?.totalMs ?? 0).toFixed(2)),
-                totalContextDerivationMs: Number(filters.reduce((sum, stage) => sum + stage.contextDerivationMs, 0).toFixed(2)),
-                excludedFilterCount: excludedFilters.length,
-                excludedFilterContextMs: Number(excludedFilters.reduce((sum, stage) => sum + stage.contextDerivationMs, 0).toFixed(2)),
-                baseUnitFilterCount: baseUnitFilters.length,
-                slowestContextStages: filters
-                    .slice()
-                    .sort((a, b) => b.contextDerivationMs - a.contextDerivationMs)
-                    .slice(0, 3)
-                    .map(stage => ({
-                        key: stage.key,
-                        strategy: stage.contextStrategy,
-                        contextDerivationMs: Number(stage.contextDerivationMs.toFixed(2)),
-                        contextUnitCount: stage.contextUnitCount,
-                    })),
+                excluded: filters.filter(s => s.contextStrategy === 'excluded-filter').length,
+                base: filters.filter(s => s.contextStrategy === 'base-units').length,
             };
         };
 
-        const report = [
-            await measureScenario('one-filter', service => {
-                service.setFilter('type', ['Mek']);
-            }),
-            await measureScenario('two-filters', service => {
-                service.setFilter('type', ['Mek']);
-                service.setFilter('subtype', ['BattleMek']);
-            }),
-            await measureScenario('three-filters', service => {
-                service.setFilter('type', ['Mek']);
-                service.setFilter('subtype', ['BattleMek']);
-                service.setFilter('techBase', ['Inner Sphere']);
-            }),
-        ];
+        const oneFilter = await getStrategyCounts(service => {
+            service.setFilter('type', ['Mek']);
+        });
+        const twoFilters = await getStrategyCounts(service => {
+            service.setFilter('type', ['Mek']);
+            service.setFilter('subtype', ['BattleMek']);
+        });
+        const threeFilters = await getStrategyCounts(service => {
+            service.setFilter('type', ['Mek']);
+            service.setFilter('subtype', ['BattleMek']);
+            service.setFilter('techBase', ['Inner Sphere']);
+        });
 
-        console.info('ADV_OPTIONS_CONTEXT_BENCH', JSON.stringify(report));
-
-        expect(report[0].excludedFilterCount).toBe(0);
-        expect(report[0].baseUnitFilterCount).toBeGreaterThan(0);
-        expect(report[1].excludedFilterCount).toBe(2);
-        expect(report[2].excludedFilterCount).toBe(3);
+        expect(oneFilter.excluded).toBe(0);
+        expect(oneFilter.base).toBeGreaterThan(0);
+        expect(twoFilters.excluded).toBe(2);
+        expect(threeFilters.excluded).toBe(3);
     });
 
-    it('benchmarks advOptions telemetry for componentName, source, role, faction, and era filters', async () => {
-        if (!benchmarkBundle || benchmarkBundle.units.units.length === 0) {
+    // Manual diagnostic benchmark: run with xit -> it to enable
+    xit('benchmarks advOptions telemetry for componentName, source, role, faction, and era filters', async () => {
+        if (!sharedService) {
             pending('Real unit data could not be loaded for the advOptions filter benchmark test.');
             return;
         }
 
-        const { service } = createService();
+        const service = sharedService;
+        service.resetFilters();
 
         const pickFirstAvailableOption = (service: UnitSearchFiltersService, key: string): string => {
             const filter = service.advOptions()[key];

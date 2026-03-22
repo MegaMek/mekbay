@@ -914,6 +914,70 @@ export class UnitSearchFiltersService {
         );
         const availableNames = new Set<string>();
 
+        if (!isComponentFilter) {
+            const universeNames = this.getIndexedUniverseNames(filterKey);
+            if (universeNames.length > 0) {
+                const contextUnitIds = new Set(units.map(unit => unit.name));
+                let constrainedUnitIds: Set<string> | null = null;
+
+                for (const [selectedName] of andEntries) {
+                    const indexedIds = this.dataService.getIndexedUnitIds(filterKey, selectedName);
+                    const matchingContextIds = new Set<string>();
+
+                    if (indexedIds) {
+                        for (const unitId of indexedIds) {
+                            if (contextUnitIds.has(unitId)) {
+                                matchingContextIds.add(unitId);
+                            }
+                        }
+                    }
+
+                    if (constrainedUnitIds === null) {
+                        constrainedUnitIds = matchingContextIds;
+                    } else {
+                        for (const unitId of Array.from(constrainedUnitIds)) {
+                            if (!matchingContextIds.has(unitId)) {
+                                constrainedUnitIds.delete(unitId);
+                            }
+                        }
+                    }
+                }
+
+                if (!constrainedUnitIds || constrainedUnitIds.size === 0) {
+                    return availableNames;
+                }
+
+                for (const excludedName of notSet) {
+                    const universeMatch = universeNames.find(name => name.toLowerCase() === excludedName);
+                    if (!universeMatch) {
+                        continue;
+                    }
+                    const excludedIds = this.dataService.getIndexedUnitIds(filterKey, universeMatch);
+                    if (!excludedIds) {
+                        continue;
+                    }
+                    for (const unitId of Array.from(constrainedUnitIds)) {
+                        if (excludedIds.has(unitId)) {
+                            constrainedUnitIds.delete(unitId);
+                        }
+                    }
+                }
+
+                if (constrainedUnitIds.size === 0) {
+                    return availableNames;
+                }
+
+                for (const optionName of universeNames) {
+                    const indexedIds = this.dataService.getIndexedUnitIds(filterKey, optionName);
+                    if (indexedIds && setHasAny(indexedIds, constrainedUnitIds)) {
+                        availableNames.add(optionName);
+                    }
+                }
+
+                return availableNames;
+            }
+        }
+
         for (const unit of units) {
             if (isComponentFilter) {
                 const cached = getUnitComponentData(unit);

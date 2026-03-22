@@ -105,6 +105,54 @@ describe('MultiSelectDropdownComponent', () => {
         ]);
     });
 
+    it('keeps matching unavailable options visible while filtering', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+
+        fixture.componentRef.setInput('options', [
+            { name: 'Wolf’s Dragoons', available: false },
+            { name: 'Clan Wolf', available: true },
+        ]);
+        fixture.componentInstance.isOpen.set(true);
+        fixture.componentInstance.filterText.set("Wolf's Dragoons");
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.filteredOptions().map(option => option.name)).toEqual([
+            'Wolf’s Dragoons',
+        ]);
+    });
+
+    it('filters symbol-heavy option names with apostrophes', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+
+        fixture.componentRef.setInput('options', [
+            { name: 'Wolf’s Dragoons', available: true },
+            { name: 'Clan Wolf', available: true },
+        ]);
+        fixture.componentInstance.isOpen.set(true);
+        fixture.componentInstance.filterText.set("Wolf's Dragoons");
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.filteredOptions().map(option => option.name)).toEqual([
+            'Wolf’s Dragoons',
+        ]);
+    });
+
+    it('filters symbol-heavy option names with parentheses', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+
+        fixture.componentRef.setInput('options', [
+            { name: 'Clan Wolf (Beta Galaxy)', available: true },
+            { name: 'Clan Wolf Alpha Galaxy', available: true },
+        ]);
+        fixture.componentInstance.isOpen.set(true);
+        fixture.componentInstance.filterText.set('Wolf (Beta');
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.filteredOptions().map(option => option.name)).toEqual([
+            'Clan Wolf (Beta Galaxy)',
+        ]);
+    });
+
     it('preserves scroll position when toggling an item in the virtualized list', async () => {
         const fixture = TestBed.createComponent(TestHostComponent);
         fixture.componentInstance.options.set(createOptions(140));

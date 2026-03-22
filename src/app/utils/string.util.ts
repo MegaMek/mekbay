@@ -85,7 +85,20 @@ export function removeAccents(str: string): string {
     s = s.replace(/ß/g, 'ss');
     s = s.replace(/æ/g, 'ae').replace(/Æ/g, 'AE');
     s = s.replace(/œ/g, 'oe').replace(/Œ/g, 'OE');
+    s = s.replace(/[\u2018\u2019\u201B\u2032]/g, "'");
+    s = s.replace(/[\u201C\u201D]/g, '"');
+    s = s.replace(/[\u2010-\u2015\u2212]/g, '-');
     return s;
+}
+
+/**
+ * Normalize a value for loose text matching.
+ * Removes accents, lowercases, and strips non-alphanumeric characters.
+ */
+export function normalizeLooseText(str: string): string {
+    return removeAccents(str)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '');
 }
 
 /**

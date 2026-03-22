@@ -168,6 +168,7 @@ export class MultiSelectDropdownComponent {
         if (!this.isOpen()) return [];
         
         const searchTokens = parseSearchQuery(this.filterText());
+        const hasActiveFilter = this.filterText().trim().length > 0;
         const nameFiltered = this.options().filter(option => 
             matchesSearch(option.name, searchTokens, true) || 
             (option.displayName && matchesSearch(option.displayName, searchTokens, true))
@@ -175,6 +176,9 @@ export class MultiSelectDropdownComponent {
 
         // if the toggle is off, hide unavailable items
         if (!this.showUnavailable()) {
+            if (hasActiveFilter) {
+                return nameFiltered;
+            }
             return nameFiltered.filter(option => option.available !== false || this.isSelected(option.name));
         }
         return nameFiltered;
