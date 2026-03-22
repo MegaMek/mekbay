@@ -22,6 +22,11 @@ export const ORG_SPEC_REGISTRY: readonly OrgDefinitionRegistryEntry[] = [
 	{ match: (factionName) => factionName.includes('Dragoons'), org: WD_CORE_ORG },
 	{ match: (factionName) => factionName.includes('Capellan Confederation'), org: CC_CORE_ORG },
 	{ match: (_factionName, factionAffinity) => factionAffinity.includes('Clan'), org: CLAN_CORE_ORG },
+    { match: (factionName, _factionAffinity) =>
+        factionName.includes('Rasalhague Dominion') || factionName.includes('Raven Alliance') || factionName.includes('Wolf Empire') ||
+        factionName.includes('Escorpion') || factionName.includes('Scorpion Empire') || factionName.includes('Alyina Mercantile League'),
+        org: CLAN_CORE_ORG,
+    },
 ];
 
 export const DEFAULT_ORG_SPEC: OrgDefinitionSpec = IS_CORE_ORG;
