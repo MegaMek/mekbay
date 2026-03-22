@@ -1706,6 +1706,151 @@ describe('org-solver.util', () => {
         expect(pointResult.emitted).toEqual([]);
     });
 
+    it('resolves single Wolf\'s Dragoons 4 BM group to Lance', () => {
+        const result = resolveFromUnits([
+                createBM('WD-BM-1'),
+                createBM('WD-BM-2'),
+                createBM('WD-BM-3'),
+                createBM('WD-BM-4'),
+                ], 'Wolf\'s Dragoons', 'Mercenary');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Lance');
+        expect(result[0].type).toBe('Lance');
+        expect(result[0].modifierKey).toBe('');
+    });
+
+    it('resolves single Wolf\'s Dragoons 5 BM group to Star', () => {
+        const result = resolveFromUnits([
+                createBM('WD-BM-1'),
+                createBM('WD-BM-2'),
+                createBM('WD-BM-3'),
+                createBM('WD-BM-4'),
+                createBM('WD-BM-5'),
+                ], 'Wolf\'s Dragoons', 'Mercenary');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Star');
+        expect(result[0].type).toBe('Star');
+        expect(result[0].modifierKey).toBe('');
+    });
+
+    it('resolves separate Wolf\'s Dragoons 4 BM and 1 BA groups as Lance plus Point', () => {
+        const result = resolveFromGroups('Wolf\'s Dragoons', 'Mercenary', [
+            {
+                name: 'WD BattleMechs',
+                type: null,
+                modifierKey: '',
+                countsAsType: null,
+                tier: 1,
+                units: [
+                createBM('WD-BM-1'),
+                createBM('WD-BM-2'),
+                createBM('WD-BM-3'),
+                createBM('WD-BM-4'),
+                ],
+            },
+            {
+                name: 'WD Battle Armor',
+                type: null,
+                modifierKey: '',
+                countsAsType: null,
+                tier: 1,
+                units: [
+                    createUnit('WD-BA-1', 'Infantry', 'Battle Armor', false, [], 5),
+                ],
+            },
+        ]);
+
+        expect(result.length).toBe(2);
+        expect(result[0].name).toBe('Lance');
+        expect(result[0].type).toBe('Lance');
+        expect(result[0].modifierKey).toBe('');
+        expect(result[1].name).toBe('Point');
+        expect(result[1].type).toBe('Point');
+        expect(result[1].modifierKey).toBe('');
+    });
+
+    it('resolves separate Wolf\'s Dragoons 4 BM and 4 BA groups as Lance plus Platoon', () => {
+        const result = resolveFromGroups('Wolf\'s Dragoons', 'Mercenary', [
+            {
+                name: 'WD BattleMechs',
+                type: null,
+                modifierKey: '',
+                countsAsType: null,
+                tier: 1,
+                units: [
+                createBM('WD-BM-1'),
+                createBM('WD-BM-2'),
+                createBM('WD-BM-3'),
+                createBM('WD-BM-4'),
+                ],
+            },
+            {
+                name: 'WD Battle Armor',
+                type: null,
+                modifierKey: '',
+                countsAsType: null,
+                tier: 1,
+                units: [
+                    createUnit('WD-BA-1', 'Infantry', 'Battle Armor', false, [], 4),
+                    createUnit('WD-BA-2', 'Infantry', 'Battle Armor', false, [], 4),
+                    createUnit('WD-BA-3', 'Infantry', 'Battle Armor', false, [], 4),
+                    createUnit('WD-BA-4', 'Infantry', 'Battle Armor', false, [], 4),
+                ],
+            },
+        ]);
+
+        expect(result.length).toBe(2);
+        expect(result[0].name).toBe('Lance');
+        expect(result[0].type).toBe('Lance');
+        expect(result[0].modifierKey).toBe('');
+        expect(result[1].name).toBe('Platoon');
+        expect(result[1].type).toBe('Platoon');
+        expect(result[1].modifierKey).toBe('');
+    });
+    
+
+    it('resolves separate Wolf\'s Dragoons 5 BM and 4 BA groups as Star plus Lance', () => {
+        const result = resolveFromGroups('Wolf\'s Dragoons', 'Mercenary', [
+            {
+                name: 'WD BattleMechs',
+                type: null,
+                modifierKey: '',
+                countsAsType: null,
+                tier: 1,
+                units: [
+                createBM('WD-BM-1'),
+                createBM('WD-BM-2'),
+                createBM('WD-BM-3'),
+                createBM('WD-BM-4'),
+                createBM('WD-BM-5'),
+                ],
+            },
+            {
+                name: 'WD Battle Armor',
+                type: null,
+                modifierKey: '',
+                countsAsType: null,
+                tier: 1,
+                units: [
+                    createBM('WD-BM-1'),
+                    createBM('WD-BM-2'),
+                    createBM('WD-BM-3'),
+                    createBM('WD-BM-4'),
+                ],
+            },
+        ]);
+
+        expect(result.length).toBe(2);
+        expect(result[0].name).toBe('Star');
+        expect(result[0].type).toBe('Star');
+        expect(result[0].modifierKey).toBe('');
+        expect(result[1].name).toBe('Lance');
+        expect(result[1].type).toBe('Lance');
+        expect(result[1].modifierKey).toBe('');
+    });
+
     it('resolves new-path org definitions by faction registry', () => {
         expect(resolveOrgDefinitionSpec('Word of Blake', 'Inner Sphere')).toBe(COMSTAR_CORE_ORG);
         expect(resolveOrgDefinitionSpec('Capellan Confederation', 'Inner Sphere')).toBe(CC_CORE_ORG);
