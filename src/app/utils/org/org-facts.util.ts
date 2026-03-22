@@ -30,6 +30,7 @@ import type {
     GroupUnitAllocation,
     OrgGroupProvenance,
     InfantryTrooperBucketValue,
+    MoveTypeBucketValue,
     OrgChildTypeCountKey,
     OrgBucketValue,
     OrgRuleRegistry,
@@ -49,6 +50,7 @@ const ORG_UNIT_BUCKET_NAMES: readonly OrgUnitBucketName[] = [
     'ciMoveClassTroopers',
     'flightType',
     'infantryTroopers',
+    'moveType',
     'transport',
 ];
 
@@ -221,6 +223,10 @@ function getFlightTypeBucketValue(facts: UnitFacts): FlightTypeBucketValue {
     }
 
     return `flight:${facts.unit.as.TP}`;
+}
+
+function getMoveTypeBucketValue(facts: UnitFacts): MoveTypeBucketValue {
+    return facts.unit.moveType ? `move:${facts.unit.moveType}` : 'not-move';
 }
 
 function getTransportBucketValue(facts: UnitFacts): TransportBucketValue {
@@ -474,6 +480,7 @@ export function createOrgRuleRegistry(
             ciMoveClassTroopers: (facts) => getCIMoveClassTrooperBucketValue(facts),
             flightType: (facts) => getFlightTypeBucketValue(facts),
             infantryTroopers: (facts) => getInfantryTrooperBucketValue(facts),
+            moveType: (facts) => getMoveTypeBucketValue(facts),
             transport: (facts) => getTransportBucketValue(facts),
             ...registry?.unitBuckets,
         },

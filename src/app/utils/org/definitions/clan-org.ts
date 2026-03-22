@@ -26,7 +26,18 @@ export const CLAN_POINT: OrgLeafCountRule = {
     modifiers: { '': 1 },
     commandRank: 'Point Commander',
     tier: 0,
-    unitSelector: 'nonConventionalInfantry',
+    unitSelector: ['BM', 'IM', 'PM', 'BA', 'SC', 'WS', 'SS', 'JS', 'DA', 'DS', 'BD'],
+    pointModel: 'fixed',
+};
+
+export const CLAN_CV_POINT: OrgLeafCountRule = {
+    kind: 'leaf-count',
+    type: 'Point',
+    modifiers: { '': 2 },
+    commandRank: 'Point Commander',
+    tier: 0,
+    unitSelector: ['CV', 'SV', 'AF', 'CF'],
+    bucketBy: 'moveType',
     pointModel: 'fixed',
 };
 
@@ -96,7 +107,7 @@ export const CLAN_NOVA: OrgComposedPatternRule = {
             constraints: [{ left: 'sum:mecBa', op: '<=', right: 'sum:carrierOmni' }],
         },
         {
-            copySize: 10,
+            copySize: 15,
             bucketGroups: {
                 carrier: TRANSPORT_CV_CARRIER_BUCKETS,
                 carrierOmni: TRANSPORT_CV_OMNI_CARRIER_BUCKETS,
@@ -104,12 +115,12 @@ export const CLAN_NOVA: OrgComposedPatternRule = {
                 mecBa: TRANSPORT_BA_MEC_BUCKETS,
                 invalid: TRANSPORT_NON_CV_NOVA_BUCKETS,
             },
-            minSums: { carrier: 5, qualifiedBa: 5 },
-            maxSums: { carrier: 5, qualifiedBa: 5, invalid: 0 },
+            minSums: { carrier: 10, qualifiedBa: 5 },
+            maxSums: { carrier: 10, qualifiedBa: 5, invalid: 0 },
             constraints: [{ left: 'sum:mecBa', op: '<=', right: 'sum:carrierOmni' }],
         },
         {
-            copySize: 10,
+            copySize: 15,
             bucketGroups: {
                 carrier: TRANSPORT_AF_CARRIER_BUCKETS,
                 carrierOmni: TRANSPORT_AF_OMNI_CARRIER_BUCKETS,
@@ -117,8 +128,8 @@ export const CLAN_NOVA: OrgComposedPatternRule = {
                 mecBa: TRANSPORT_BA_MEC_BUCKETS,
                 invalid: TRANSPORT_NON_AF_NOVA_BUCKETS,
             },
-            minSums: { carrier: 5, qualifiedBa: 5 },
-            maxSums: { carrier: 5, qualifiedBa: 5, invalid: 0 },
+            minSums: { carrier: 10, qualifiedBa: 5 },
+            maxSums: { carrier: 10, qualifiedBa: 5, invalid: 0 },
             constraints: [{ left: 'sum:mecBa', op: '<=', right: 'sum:carrierOmni' }],
         },
     ],
@@ -212,6 +223,7 @@ export const CLAN_CORE_ORG: OrgDefinitionSpec = {
         CLAN_SUPERNOVA_BINARY,
         CLAN_SUPERNOVA_TRINARY,
         CLAN_CI_POINT,
+        CLAN_CV_POINT,
         CLAN_POINT,
         CLAN_STAR,
         CLAN_BINARY,

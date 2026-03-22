@@ -425,7 +425,15 @@ interface FinalStateScore {
     readonly totalPriority: number;
     readonly topLevelGroupCount: number;
     readonly highestTierGroupCount: number;
+    readonly totalRegularityDistance: number;
+    readonly subRegularGroupCount: number;
     readonly leftoverCount: number;
+}
+
+interface DescendantRegularityScore {
+    readonly totalRegularityDistance: number;
+    readonly subRegularGroupCount: number;
+    readonly groupCount: number;
 }
 
 interface CanonicalPromotionFuture {
@@ -2174,6 +2182,114 @@ function materializeLeafCountRuleRecords(
     };
 }
 
+function compareExactLeafCountStepPartitions(
+    left: readonly ModifierStep[],
+    right: readonly ModifierStep[],
+): number {
+    const leftPreferenceBuckets = getModifierPreferenceBuckets(left);
+    const rightPreferenceBuckets = getModifierPreferenceBuckets(right);
+    const sharedLength = Math.min(leftPreferenceBuckets.length, rightPreferenceBuckets.length);
+
+    for (let index = 0; index < sharedLength; index += 1) {
+        const bucketComparison = compareModifierPreferenceBucketKeys(leftPreferenceBuckets[index].key, rightPreferenceBuckets[index].key);
+        if (bucketComparison !== 0) {
+            return bucketComparison;
+        }
+
+        const comparison = leftPreferenceBuckets[index].count - rightPreferenceBuckets[index].count;
+        if (comparison !== 0) {
+            return comparison;
+        }
+    }
+
+    if (leftPreferenceBuckets.length !== rightPreferenceBuckets.length) {
+        return leftPreferenceBuckets.length - rightPreferenceBuckets.length;
+    }
+
+    if (left.length !== right.length) {
+        return right.length - left.length;
+    }
+
+    return 0;
+}
+
+function enumerateExactLeafCountStepPartitions(
+    totalCount: number,
+    stepsDescending: readonly ModifierStep[],
+    maxPartitions: number = 256,
+): readonly (readonly ModifierStep[])[] {
+    const partitions: ModifierStep[][] = [];
+    const partitionKeys = new Set<string>();
+
+    function visit(stepIndex: number, remaining: number, selected: ModifierStep[]): void {
+        if (partitions.length >= maxPartitions) {
+            return;
+        }
+        if (remaining === 0) {
+            const partition = [...selected];
+            const partitionKey = partition.map((step) => `${step.modifierKey}:${step.count}`).join('|');
+            if (!partitionKeys.has(partitionKey)) {
+                partitionKeys.add(partitionKey);
+                partitions.push(partition);
+            }
+            return;
+        }
+        if (stepIndex >= stepsDescending.length) {
+            return;
+        }
+
+        const step = stepsDescending[stepIndex];
+        const maxCopies = Math.floor(remaining / step.count);
+        for (let copies = maxCopies; copies >= 0; copies -= 1) {
+            for (let copyIndex = 0; copyIndex < copies; copyIndex += 1) {
+                selected.push(step);
+            }
+            visit(stepIndex + 1, remaining - (copies * step.count), selected);
+            selected.length -= copies;
+        }
+    }
+
+    visit(0, totalCount, []);
+    return partitions.sort((left, right) => compareExactLeafCountStepPartitions(right, left));
+}
+
+function enumerateExactLeafCountRuleRecordSets(
+    rule: OrgLeafCountRule,
+    unitFacts: readonly UnitFacts[],
+    registry: OrgRuleRegistry = DEFAULT_ORG_RULE_REGISTRY,
+): readonly (readonly PlannedGroupRecord[])[] {
+    const eligibleUnits = unitFacts.filter((facts) => matchesUnitSelectors(facts, rule.unitSelector, registry));
+    const ineligibleUnits = unitFacts.filter((facts) => !matchesUnitSelectors(facts, rule.unitSelector, registry));
+    if (ineligibleUnits.length > 0) {
+        return [];
+    }
+
+    const descriptor = getRuleModifierDescriptor(rule);
+    const combinedRecordSet: PlannedGroupRecord[] = [];
+
+    for (const bucketUnits of groupUnitsByBucket(eligibleUnits, rule.bucketBy, registry).values()) {
+        const orderedUnits = [...groupUnitsByPreferredType(bucketUnits).values()].flat();
+        if (orderedUnits.length === 0) {
+            continue;
+        }
+
+        const stepPartitions = enumerateExactLeafCountStepPartitions(orderedUnits.length, descriptor.stepsDescending);
+        if (stepPartitions.length === 0) {
+            return [];
+        }
+
+        const bestPartition = stepPartitions[0];
+        let unitOffset = 0;
+        for (const step of bestPartition) {
+            const selected = orderedUnits.slice(unitOffset, unitOffset + step.count);
+            unitOffset += step.count;
+            combinedRecordSet.push(createAbstractLeafGroupRecord(rule, step, selected));
+        }
+    }
+
+    return combinedRecordSet.length > 0 ? [combinedRecordSet] : [];
+}
+
 function groupMatchesRole(group: GroupFacts, role: OrgChildRoleSpec): boolean {
     const groupType = group.type;
     const countsAsType = group.countsAsType;
@@ -3447,6 +3563,33 @@ function compareGroupFactsScore(
     return (right.priority ?? 0) - (left.priority ?? 0);
 }
 
+function getGroupRegularityScore(
+    group: Pick<GroupFacts, 'type' | 'modifierKey'>,
+    context: ResolveContext,
+): { readonly distanceFromRegular: number; readonly isSubRegular: boolean } {
+    const rule = getAnyRuleByType(context, group.type);
+    if (!rule) {
+        return {
+            distanceFromRegular: group.modifierKey === '' ? 0 : 1,
+            isSubRegular: group.modifierKey !== '',
+        };
+    }
+
+    const metadata = getRuleStageMetadata(context, rule);
+    const step = metadata.descriptor.stepsAscending.find((candidate) => candidate.modifierKey === group.modifierKey);
+    if (!step) {
+        return {
+            distanceFromRegular: group.modifierKey === '' ? 0 : 1,
+            isSubRegular: group.modifierKey !== '',
+        };
+    }
+
+    return {
+        distanceFromRegular: step.distanceFromRegular,
+        isSubRegular: step.relativeBand === 'sub-regular',
+    };
+}
+
 function getOrderedComposedRules(
     context: ResolveContext,
 ): readonly (OrgComposedCountRule | OrgComposedPatternRule)[] {
@@ -3601,6 +3744,67 @@ function resolveWholeLeafCandidateRecord(
     }
 
     return best;
+}
+
+function resolveExactLeafPartitionCandidateStates(
+    unitFacts: readonly UnitFacts[],
+    context: ResolveContext,
+): ResolvedState[] {
+    const registry = context.definition.registry;
+    const candidates: ResolvedState[] = [];
+    const seenPartitionStateKeys = new Set<string>();
+    const allLeafRules: Array<OrgLeafCountRule | OrgLeafPatternRule> = [
+        ...context.leafPatternRules,
+        ...context.leafCountRules,
+    ];
+
+    function pushExactPartitionCandidates(partitionState: CanonicalGroupPoolState): void {
+        if (seenPartitionStateKeys.has(partitionState.signature.key)) {
+            return;
+        }
+        seenPartitionStateKeys.add(partitionState.signature.key);
+        candidates.push({ canonicalState: partitionState, leftoverUnits: [], leftoverUnitAllocations: [] });
+
+        const repairedPartitionState = repairSubRegularGroupsForPromotionState(partitionState, context);
+        const assimilatedPartitionState = preAssimilateUnderRegularGroupState(repairedPartitionState, context, createSolverGuard());
+        const promotedPartitionState = searchBestRegularPromotionPoolStateFromState(assimilatedPartitionState, context, createSolverGuard());
+        const improvedPartitionState = runLeftoverImprovementLoopState(promotedPartitionState, context, createSolverGuard());
+
+        candidates.push({ canonicalState: promotedPartitionState, leftoverUnits: [], leftoverUnitAllocations: [] });
+        if (improvedPartitionState.signature.key !== promotedPartitionState.signature.key) {
+            candidates.push({ canonicalState: improvedPartitionState, leftoverUnits: [], leftoverUnitAllocations: [] });
+        }
+
+        const wholeComposedState = resolveWholeComposedCandidateState(improvedPartitionState, context, createSolverGuard());
+        if (wholeComposedState) {
+            candidates.push({ canonicalState: wholeComposedState, leftoverUnits: [], leftoverUnitAllocations: [] });
+        }
+    }
+
+    for (const rule of allLeafRules) {
+        if (rule.kind === 'leaf-pattern') {
+            const materialized = materializeLeafPatternWithCandidateRecords(rule, unitFacts, registry);
+            if (materialized.records.length === 0 || materialized.leftoverUnitFacts.length > 0) {
+                continue;
+            }
+
+            const partitionState = createCanonicalGroupPoolStateFromRecords(materialized.records);
+            pushExactPartitionCandidates(partitionState);
+            continue;
+        }
+
+        const exactRecordSets = enumerateExactLeafCountRuleRecordSets(rule, unitFacts, registry);
+        for (const recordSet of exactRecordSets) {
+            if (recordSet.length === 0) {
+                continue;
+            }
+
+            const partitionState = createCanonicalGroupPoolStateFromRecords(recordSet);
+            pushExactPartitionCandidates(partitionState);
+        }
+    }
+
+    return candidates;
 }
 
 function materializeLeafRulesByStageRecords(
@@ -3830,6 +4034,16 @@ function scoreCanonicalGroupPoolState(state: CanonicalGroupPoolState, context: R
     const highestTier = topLevelGroupCount > 0 ? Math.max(...state.groupFacts.map((group) => group.tier)) : 0;
     const highestTierGroupCount = state.groupFacts.filter((group) => group.tier === highestTier).length;
     const totalPriority = state.groupFacts.reduce((sum, group) => sum + (group.priority ?? 0), 0);
+    const regularity = state.groupFacts.reduce((summary, group) => {
+        const groupScore = getGroupRegularityScore(group, context);
+        return {
+            totalRegularityDistance: summary.totalRegularityDistance + groupScore.distanceFromRegular,
+            subRegularGroupCount: summary.subRegularGroupCount + (groupScore.isSubRegular ? 1 : 0),
+        };
+    }, {
+        totalRegularityDistance: 0,
+        subRegularGroupCount: 0,
+    });
     const isWhole = topLevelGroupCount === 1
         && getModifierBandForGroupFacts(state.groupFacts[0], context) !== 'sub-regular';
 
@@ -3839,6 +4053,8 @@ function scoreCanonicalGroupPoolState(state: CanonicalGroupPoolState, context: R
         totalPriority,
         topLevelGroupCount,
         highestTierGroupCount,
+        totalRegularityDistance: regularity.totalRegularityDistance,
+        subRegularGroupCount: regularity.subRegularGroupCount,
         leftoverCount: 0,
     };
 }
@@ -3847,7 +4063,56 @@ function compareResolvedState(left: ResolvedState, right: ResolvedState, context
     const leftScore = scoreResolvedState(left, context);
     const rightScore = scoreResolvedState(right, context);
 
-    return compareFinalStateScores(leftScore, rightScore);
+    const scoreComparison = compareFinalStateScores(leftScore, rightScore);
+    if (scoreComparison !== 0) {
+        return scoreComparison;
+    }
+
+    const leftDescendantScore = scoreResolvedStateDescendantRegularity(left, context);
+    const rightDescendantScore = scoreResolvedStateDescendantRegularity(right, context);
+    if (leftDescendantScore.subRegularGroupCount !== rightDescendantScore.subRegularGroupCount) {
+        return leftDescendantScore.subRegularGroupCount - rightDescendantScore.subRegularGroupCount;
+    }
+    if (leftDescendantScore.totalRegularityDistance !== rightDescendantScore.totalRegularityDistance) {
+        return leftDescendantScore.totalRegularityDistance - rightDescendantScore.totalRegularityDistance;
+    }
+    if (leftDescendantScore.groupCount !== rightDescendantScore.groupCount) {
+        return rightDescendantScore.groupCount - leftDescendantScore.groupCount;
+    }
+
+    return 0;
+}
+
+function scoreResolvedStateDescendantRegularity(
+    state: ResolvedState,
+    context: ResolveContext,
+): DescendantRegularityScore {
+    const summary = {
+        totalRegularityDistance: 0,
+        subRegularGroupCount: 0,
+        groupCount: 0,
+    };
+
+    const visit = (group: GroupSizeResult | undefined): void => {
+        if (!group) {
+            return;
+        }
+
+        for (const child of group.children ?? []) {
+            const childFacts = getCompiledGroupFacts(child);
+            const childScore = getGroupRegularityScore(childFacts, context);
+            summary.totalRegularityDistance += childScore.distanceFromRegular;
+            summary.subRegularGroupCount += childScore.isSubRegular ? 1 : 0;
+            summary.groupCount += 1;
+            visit(child);
+        }
+    };
+
+    for (const group of materializeCanonicalGroupPoolState(state.canonicalState)) {
+        visit(group);
+    }
+
+    return summary;
 }
 
 function compareFinalStateScores(leftScore: FinalStateScore, rightScore: FinalStateScore): number {
@@ -3857,6 +4122,12 @@ function compareFinalStateScores(leftScore: FinalStateScore, rightScore: FinalSt
     }
     if (leftScore.highestTier !== rightScore.highestTier) {
         return rightScore.highestTier - leftScore.highestTier;
+    }
+    if (leftScore.subRegularGroupCount !== rightScore.subRegularGroupCount) {
+        return leftScore.subRegularGroupCount - rightScore.subRegularGroupCount;
+    }
+    if (leftScore.totalRegularityDistance !== rightScore.totalRegularityDistance) {
+        return leftScore.totalRegularityDistance - rightScore.totalRegularityDistance;
     }
     if (leftScore.leftoverCount !== rightScore.leftoverCount) {
         return leftScore.leftoverCount - rightScore.leftoverCount;
@@ -5202,6 +5473,7 @@ function resolveWithDefinition(
     addMetricDuration(metrics, 'factCompilationMs', phaseStartedAtMs);
 
     const wholeLeafRecord = groups.length === 0 ? resolveWholeLeafCandidateRecord(compiledUnits, context) : null;
+    const exactLeafPartitionStates = groups.length === 0 ? resolveExactLeafPartitionCandidateStates(compiledUnits, context) : [];
 
     phaseStartedAtMs = getSolveTimestampMs();
     const normalizedInputGroups = normalizeCIFormationGroups(groups, context);
@@ -5279,6 +5551,8 @@ function resolveWithDefinition(
     if (wholeLeafRecord) {
         candidateStates.push({ canonicalState: createCanonicalGroupPoolStateFromRecords([wholeLeafRecord]), leftoverUnits: [], leftoverUnitAllocations: [] });
     }
+
+    candidateStates.push(...exactLeafPartitionStates);
 
     return finalizeResolvedCandidates(candidateStates, regularPoolState, context, metrics, solveStartedAtMs, guard);
 }

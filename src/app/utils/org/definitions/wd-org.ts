@@ -10,31 +10,34 @@ import {
     CLAN_CLUSTER,
     CLAN_NOVA,
     CLAN_POINT,
+    CLAN_CV_POINT,
     CLAN_SUPERNOVA_BINARY,
     CLAN_SUPERNOVA_TRINARY,
 } from './clan-org';
 import {
     IS_FLIGHT,
     IS_PLATOON,
+    IS_BA_SQUAD,
+    IS_BA_PLATOON,
     IS_REGIMENT,
     IS_SINGLE,
     IS_SQUADRON,
     IS_WING,
 } from './is-org';
 
-export const WD_POINT_UNIT_TYPES = ['BM', 'IM', 'CV', 'SV', 'PM', 'BA', 'SC', 'WS', 'SS', 'JS', 'DA', 'DS', 'BD'] as const satisfies readonly ASUnitTypeCode[];
-export const WD_SINGLE_UNIT_TYPES = ['BM', 'IM', 'CV', 'SV', 'PM', 'SC', 'WS', 'SS', 'JS', 'DA', 'DS', 'BD'] as const satisfies readonly ASUnitTypeCode[];
-
 export const WD_SINGLE: OrgLeafCountRule = {
     ... IS_SINGLE,
     commandRank: 'Sergeant',
-    unitSelector: WD_SINGLE_UNIT_TYPES,
 };
 
 export const WD_POINT: OrgLeafCountRule = {
     ... CLAN_POINT,
     commandRank: 'Sergeant',
-    unitSelector: WD_POINT_UNIT_TYPES,
+};
+
+export const WD_CV_POINT: OrgLeafCountRule = {
+    ...CLAN_CV_POINT,
+    commandRank: 'Sergeant',
 };
 
 export const WD_NOVA: OrgComposedPatternRule = {
@@ -131,8 +134,8 @@ export const WD_BATTALION: OrgComposedCountRule = {
     tier: 3,
     dynamicTier: 1,
     childRoles: [
-        { matches: ['Company'], min: 1, onlyUnitTypes: WD_POINT_UNIT_TYPES },
-        { matches: ['Company', 'Binary', 'Trinary'], onlyUnitTypes: WD_POINT_UNIT_TYPES },
+        { matches: ['Company'], min: 1 },
+        { matches: ['Company', 'Binary', 'Trinary'] },
     ],
     childBucketBy: 'promotionBasic',
 };
@@ -143,9 +146,12 @@ export const WD_CORE_ORG: OrgDefinitionSpec = {
         IS_SQUADRON,
         IS_WING,
         IS_PLATOON,
+        IS_BA_SQUAD,
+        IS_BA_PLATOON,
         WD_NOVA,
         WD_SUPERNOVA_BINARY,
         WD_SUPERNOVA_TRINARY,
+        WD_CV_POINT,
         WD_POINT,
         WD_SINGLE,
         WD_LANCE,

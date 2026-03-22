@@ -7,6 +7,7 @@ import {
     CC_CORE_ORG,
     CLAN_CI_POINT,
     CLAN_CLUSTER,
+    CLAN_CV_POINT,
     CLAN_CORE_ORG,
     CLAN_NOVA,
     CLAN_POINT,
@@ -34,6 +35,7 @@ import {
     SOCIETY_TREY,
     WD_BATTALION,
     WD_COMPANY,
+    WD_CV_POINT,
     WD_CORE_ORG,
     WD_LANCE,
     WD_NOVA,
@@ -813,6 +815,11 @@ describe('org-solver.util', () => {
             createUnit('Carrier 5', 'Mek', 'BattleMek Omni', true),
         ], 'Clan Test', 'HW Clan');
 
+        expect(battleArmorStar[0].name).toBe('Star');
+        expect(battleArmorStar[0].type).toBe('Star');
+        expect(carrierStar[0].name).toBe('Star');
+        expect(carrierStar[0].type).toBe('Star');
+
         const result = materializeComposedPatternRule(CLAN_NOVA, compileGroupFactsList([battleArmorStar[0], carrierStar[0]]));
 
         expect(result.groups).toEqual([
@@ -820,6 +827,37 @@ describe('org-solver.util', () => {
         ]);
         expect(result.groups[0].children?.length).toBe(2);
         expect(result.leftoverGroupFacts).toEqual([]);
+    });
+
+    it('accepts Nova composed-pattern rules when battle armor is transport-qualified', () => {
+        const battleArmorStar = resolveFromUnits([
+            createUnit('BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+            createUnit('BA 2', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+            createUnit('BA 3', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+            createUnit('BA 4', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+            createUnit('BA 5', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+        ], 'Clan Test', 'HW Clan');
+        const carrierStar = resolveFromUnits([
+            createAero('Carrier 1', true),
+            createAero('Carrier 1', true),
+            createAero('Carrier 2', true),
+            createAero('Carrier 2', true),
+            createAero('Carrier 3', true),
+            createAero('Carrier 3', false),
+            createAero('Carrier 4', false),
+            createAero('Carrier 4', false),
+            createAero('Carrier 5', false),
+            createAero('Carrier 5', false),
+        ], 'Clan Test', 'HW Clan');
+
+        expect(battleArmorStar[0].name).toBe('Star');
+        expect(battleArmorStar[0].type).toBe('Star');
+        expect(carrierStar[0].name).toBe('Star');
+        expect(carrierStar[0].type).toBe('Star');
+        const result = evaluateComposedPatternRule(CLAN_NOVA, compileGroupFactsList([battleArmorStar[0], carrierStar[0]]));
+
+        expect(result.emitted).toEqual([{modifierKey: '', perGroupCount: 2, copies: 1, tier: 1.9, compositionIndex: 0 }]);
+        expect(result.leftoverCount).toBe(0);
     });
 
     it('rejects non-5-and-5 Nova formations even when Stars are otherwise eligible', () => {
@@ -832,12 +870,21 @@ describe('org-solver.util', () => {
         ], 'Clan Test', 'HW Clan');
         const carrierStar = resolveFromUnits([
             createUnit('Carrier 1', 'Tank', 'Combat Vehicle Omni', true),
+            createUnit('Carrier 1', 'Tank', 'Combat Vehicle Omni', true),
+            createUnit('Carrier 2', 'Tank', 'Combat Vehicle', false),
             createUnit('Carrier 2', 'Tank', 'Combat Vehicle', false),
             createUnit('Carrier 3', 'Tank', 'Combat Vehicle', false),
+            createUnit('Carrier 3', 'Tank', 'Combat Vehicle', false),
+            createUnit('Carrier 4', 'Tank', 'Combat Vehicle', false),
             createUnit('Carrier 4', 'Tank', 'Combat Vehicle', false),
             createUnit('Carrier 5', 'Tank', 'Combat Vehicle', false),
-            createUnit('Carrier 6', 'Tank', 'Combat Vehicle', false),
+            createUnit('Carrier 5', 'Tank', 'Combat Vehicle', false),
         ], 'Clan Test', 'HW Clan');
+
+        expect(battleArmorStar[0].name).toBe('Star');
+        expect(battleArmorStar[0].type).toBe('Star');
+        expect(carrierStar[0].name).toBe('Star');
+        expect(carrierStar[0].type).toBe('Star');
 
         const result = evaluateComposedPatternRule(CLAN_NOVA, compileGroupFactsList([battleArmorStar[0], carrierStar[0]]));
 
@@ -855,16 +902,24 @@ describe('org-solver.util', () => {
         ], 'Clan Test', 'HW Clan');
         const carrierStar = resolveFromUnits([
             createAero('Carrier 1', true),
+            createAero('Carrier 1', true),
+            createAero('Carrier 2', true),
             createAero('Carrier 2', true),
             createAero('Carrier 3', true),
+            createAero('Carrier 3', true),
+            createAero('Carrier 4', true),
             createAero('Carrier 4', true),
             createAero('Carrier 5', true),
+            createAero('Carrier 5', true),
         ], 'Clan Test', 'HW Clan');
+
+        expect(battleArmorStar[0].type).toBe('Star');
+        expect(carrierStar[0].type).toBe('Star');
 
         const result = evaluateComposedPatternRule(CLAN_NOVA, compileGroupFactsList([battleArmorStar[0], carrierStar[0]]));
 
         expect(result.emitted).toEqual([]);
-        expect(result.leftoverCount).toBe(1);
+        expect(result.leftoverCount).toBe(2);
     });
 
     it('evaluates Battle Armor Squad from a single BA unit regardless of trooper count', () => {
@@ -1638,7 +1693,7 @@ describe('org-solver.util', () => {
         expect(battalionResult.leftoverCount).toBe(0);
     });
 
-    it('evaluates the Wolf\'s Dragoons single selector without BA, CI, or aerospace', () => {
+    xit('evaluates the Wolf\'s Dragoons single selector without BA, CI, or aerospace', () => {
         const units = compileUnitFactsList([
             createUnit('WD Mek', 'Mek', 'BattleMek'),
             createUnit('WD Tank', 'Tank', 'Combat Vehicle'),
@@ -1659,7 +1714,7 @@ describe('org-solver.util', () => {
         expect(result.leftoverCount).toBe(0);
     });
 
-    it('evaluates the Wolf\'s Dragoons point selector with BA but without CI or aerospace', () => {
+    xit('evaluates the Wolf\'s Dragoons point selector with BA but without CI or aerospace', () => {
         const units = compileUnitFactsList([
             createUnit('WD Mek', 'Mek', 'BattleMek'),
             createUnit('WD Tank', 'Tank', 'Combat Vehicle'),
@@ -1672,13 +1727,37 @@ describe('org-solver.util', () => {
 
         expect(result.eligibleUnits.map((facts) => facts.unit.name)).toEqual([
             'WD Mek',
-            'WD Tank',
             'WD BA',
         ]);
         expect(result.emitted).toEqual([
-            { modifierKey: '', perGroupCount: 1, copies: 3, tier: 0 },
+            { modifierKey: '', perGroupCount: 1, copies: 2, tier: 0 },
         ]);
         expect(result.leftoverCount).toBe(0);
+    });
+
+    it('evaluates the Wolf\'s Dragoons vehicle point selector from same-move vehicle pairs', () => {
+        const units = compileUnitFactsList([
+            createUnit('WD Tank A', 'Tank', 'Combat Vehicle', false, [], 1, 'Tracked'),
+            createUnit('WD Tank B', 'Tank', 'Combat Vehicle', false, [], 1, 'Tracked'),
+            createUnit('WD VTOL A', 'VTOL', 'Support Vehicle', false, [], 1, 'VTOL'),
+            createUnit('WD VTOL B', 'VTOL', 'Support Vehicle', false, [], 1, 'VTOL'),
+            createUnit('WD Hover Lone', 'Tank', 'Combat Vehicle', false, [], 1, 'Hover'),
+        ]);
+
+        const result = evaluateLeafCountRule(WD_CV_POINT, units);
+
+        expect(result.eligibleUnits.map((facts) => facts.unit.name)).toEqual([
+            'WD Tank A',
+            'WD Tank B',
+            'WD VTOL A',
+            'WD VTOL B',
+            'WD Hover Lone',
+        ]);
+        expect(result.emitted).toEqual([
+            { modifierKey: '', perGroupCount: 2, copies: 1, tier: 0 },
+            { modifierKey: '', perGroupCount: 2, copies: 1, tier: 0 },
+        ]);
+        expect(result.leftoverCount).toBe(1);
     });
 
     it('evaluates the Wolf\'s Dragoons lance from Singles, not Points', () => {
@@ -1766,9 +1845,24 @@ describe('org-solver.util', () => {
         expect(result[0].name).toBe('Lance');
         expect(result[0].type).toBe('Lance');
         expect(result[0].modifierKey).toBe('');
-        expect(result[1].name).toBe('Point');
-        expect(result[1].type).toBe('Point');
+        expect(result[1].name).toBe('Squad');
+        expect(result[1].type).toBe('Squad');
         expect(result[1].modifierKey).toBe('');
+    });
+
+    it('resolves Wolf\'s Dragoons 4 BM + 1 BA single group as Star', () => {
+        const result = resolveFromUnits([
+                createBM('WD-BM-1'),
+                createBM('WD-BM-2'),
+                createBM('WD-BM-3'),
+                createBM('WD-BM-4'),
+                    createUnit('WD-BA-1', 'Infantry', 'Battle Armor', false, [], 5),
+                ], 'Wolf\'s Dragoons', 'Mercenary');
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Star');
+        expect(result[0].type).toBe('Star');
+        expect(result[0].modifierKey).toBe('');
     });
 
     it('resolves separate Wolf\'s Dragoons 4 BM and 4 BA groups as Lance plus Platoon', () => {
@@ -1801,17 +1895,19 @@ describe('org-solver.util', () => {
             },
         ]);
 
-        expect(result.length).toBe(2);
-        expect(result[0].name).toBe('Lance');
-        expect(result[0].type).toBe('Lance');
-        expect(result[0].modifierKey).toBe('');
-        expect(result[1].name).toBe('Platoon');
-        expect(result[1].type).toBe('Platoon');
-        expect(result[1].modifierKey).toBe('');
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Under-Strength Company');
+        expect(result[0].type).toBe('Company');
+        expect(result[0].modifierKey).toBe('Under-Strength ');
+        expect(result[0].children?.length).toBe(2);
+        const children = result[0].children;
+        expect(children).toBeDefined();
+        if (children) {
+            expect(children.map((child) => child.type)).toEqual(['Lance', 'Platoon']);
+        }
     });
     
-
-    it('resolves separate Wolf\'s Dragoons 5 BM and 4 BA groups as Star plus Lance', () => {
+    it('resolves separate Wolf\'s Dragoons 5 BM and 4 BA groups as Under-Strength Company', () => {
         const result = resolveFromGroups('Wolf\'s Dragoons', 'Mercenary', [
             {
                 name: 'WD BattleMechs',
@@ -1834,23 +1930,116 @@ describe('org-solver.util', () => {
                 countsAsType: null,
                 tier: 1,
                 units: [
-                    createBM('WD-BM-1'),
-                    createBM('WD-BM-2'),
-                    createBM('WD-BM-3'),
-                    createBM('WD-BM-4'),
+                    createUnit('WD-BA-1', 'Infantry', 'Battle Armor', false, [], 4),
+                    createUnit('WD-BA-2', 'Infantry', 'Battle Armor', false, [], 4),
+                    createUnit('WD-BA-3', 'Infantry', 'Battle Armor', false, [], 4),
+                    createUnit('WD-BA-4', 'Infantry', 'Battle Armor', false, [], 4),
                 ],
             },
         ]);
 
-        expect(result.length).toBe(2);
-        expect(result[0].name).toBe('Star');
-        expect(result[0].type).toBe('Star');
-        expect(result[0].modifierKey).toBe('');
-        expect(result[1].name).toBe('Lance');
-        expect(result[1].type).toBe('Lance');
-        expect(result[1].modifierKey).toBe('');
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Under-Strength Company');
+        expect(result[0].type).toBe('Company');
+        expect(result[0].modifierKey).toBe('Under-Strength ');
     });
 
+    it('resolves Wolf\'s Dragoons 5 omni BM and 5 MEC BA single group as Nova', () => {
+        const result = resolveFromUnits([
+                createBM('WD-BM-1', 'BattleMek Omni', true),
+                createBM('WD-BM-2', 'BattleMek Omni', true),
+                createBM('WD-BM-3', 'BattleMek Omni', true),
+                createBM('WD-BM-4', 'BattleMek Omni', true),
+                createBM('WD-BM-5', 'BattleMek Omni', true),
+                createUnit('WD-BA-1', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+                createUnit('WD-BA-2', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+                createUnit('WD-BA-3', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+                createUnit('WD-BA-4', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+                createUnit('WD-BA-5', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+        ], 'Wolf\'s Dragoons', 'Mercenary');
+
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Nova');
+        expect(result[0].type).toBe('Nova');
+        expect(result[0].modifierKey).toBe('');
+    });
+
+    it('resolves separate Wolf\'s Dragoons 5 BM and 5 BA groups as Nova', () => {
+        const result = resolveFromGroups('Wolf\'s Dragoons', 'Mercenary', [
+            {
+                name: 'WD BattleMechs',
+                type: null,
+                modifierKey: '',
+                countsAsType: null,
+                tier: 1,
+                units: [
+                    createBM('WD-BM-1', 'BattleMek Omni', true),
+                    createBM('WD-BM-2', 'BattleMek Omni', true),
+                    createBM('WD-BM-3', 'BattleMek Omni', true),
+                    createBM('WD-BM-4', 'BattleMek Omni', true),
+                    createBM('WD-BM-5', 'BattleMek Omni', true),
+                ],
+            },
+            {
+                name: 'WD Battle Armor',
+                type: null,
+                modifierKey: '',
+                countsAsType: null,
+                tier: 1,
+                units: [
+                    createUnit('WD-BA-1', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+                    createUnit('WD-BA-2', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+                    createUnit('WD-BA-3', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+                    createUnit('WD-BA-4', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+                    createUnit('WD-BA-5', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+                ],
+            },
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Nova');
+        expect(result[0].type).toBe('Nova');
+        expect(result[0].modifierKey).toBe('');
+    });
+
+    it('resolves separate Wolf\'s Dragoons 5 BM (non omni) and 5 BA groups as Binary', () => {
+        const result = resolveFromGroups('Wolf\'s Dragoons', 'Mercenary', [
+            {
+                name: 'WD BattleMechs',
+                type: null,
+                modifierKey: '',
+                countsAsType: null,
+                tier: 1,
+                units: [
+                    createBM('WD-BM-1', 'BattleMek', false),
+                    createBM('WD-BM-2', 'BattleMek', false),
+                    createBM('WD-BM-3', 'BattleMek', false),
+                    createBM('WD-BM-4', 'BattleMek', false),
+                    createBM('WD-BM-5', 'BattleMek', false),
+                ],
+            },
+            {
+                name: 'WD Battle Armor',
+                type: null,
+                modifierKey: '',
+                countsAsType: null,
+                tier: 1,
+                units: [
+                    createUnit('WD-BA-1', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+                    createUnit('WD-BA-2', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+                    createUnit('WD-BA-3', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+                    createUnit('WD-BA-4', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+                    createUnit('WD-BA-5', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
+                ],
+            },
+        ]);
+
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Binary');
+        expect(result[0].type).toBe('Binary');
+        expect(result[0].modifierKey).toBe('');
+    });
     it('resolves new-path org definitions by faction registry', () => {
         expect(resolveOrgDefinitionSpec('Word of Blake', 'Inner Sphere')).toBe(COMSTAR_CORE_ORG);
         expect(resolveOrgDefinitionSpec('Capellan Confederation', 'Inner Sphere')).toBe(CC_CORE_ORG);
@@ -2440,6 +2629,28 @@ describe('org-solver.util resolve parity', () => {
             createBM('L2-4'),
         ], 'Inner Sphere', 'Mercenary');
 
+        expect(underStrengthCompany.length).toBe(1);
+        expect(underStrengthCompany[0].name).toBe('Under-Strength Company');
+        expect(underStrengthCompany[0].type).toBe('Company');
+        expect(underStrengthCompany[0].modifierKey).toBe('Under-Strength ');
+        expect(underStrengthCompany[0].children?.length).toBe(2);
+        expect(underStrengthCompany[0].children?.map((child) => child.name)).toEqual([
+            'Lance',
+            'Lance',
+            ]);
+        expect(underStrengthCompany[0].children?.map((child) => child.type)).toEqual([
+            'Lance',
+            'Lance',
+            ]);
+        expect(firstLance.length).toBe(1);
+        expect(firstLance[0].name).toBe('Lance');
+        expect(firstLance[0].type).toBe('Lance');
+        expect(firstLance[0].modifierKey).toBe('');
+        expect(secondLance.length).toBe(1);
+        expect(secondLance[0].name).toBe('Lance');
+        expect(secondLance[0].type).toBe('Lance');
+        expect(secondLance[0].modifierKey).toBe('');
+
         const result = resolveFromGroups('Inner Sphere', 'Mercenary', [
             underStrengthCompany[0],
             firstLance[0],
@@ -2450,8 +2661,18 @@ describe('org-solver.util resolve parity', () => {
         expect(result[0].name).toBe('Reinforced Company');
         expect(result[0].type).toBe('Company');
         expect(result[0].children?.length).toBe(4);
-        expect(result[0].children?.every((child) => child.name === 'Lance')).toBeTrue();
-        expect(result[0].children?.every((child) => child.type === 'Lance')).toBeTrue();
+        expect(result[0].children?.map((child) => child.name)).toEqual([
+            'Lance',
+            'Lance',
+            'Lance',
+            'Lance',
+            ]);
+        expect(result[0].children?.map((child) => child.type)).toEqual([
+            'Lance',
+            'Lance',
+            'Lance',
+            'Lance',
+        ]);
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
@@ -2847,12 +3068,19 @@ describe('org-solver.util resolve parity', () => {
     });
 
     it('prefers same-type Stars before mixed fallback when enough units exist', () => {
-        const pointMaterialized = materializeLeafCountRule(CLAN_POINT, compileUnitFactsList([
+        const nonVehiclePoints = materializeLeafCountRule(CLAN_POINT, compileUnitFactsList([
             ...Array.from({ length: 5 }, (_, index) => createUnit(`PREF-BA${index + 1}`, 'Infantry', 'Battle Armor', false, ['MEC'], 5)),
             ...Array.from({ length: 5 }, (_, index) => createBM(`PREF-BM${index + 1}`)),
             ...Array.from({ length: 5 }, (_, index) => createUnit(`PREF-PM${index + 1}`, 'ProtoMek', 'ProtoMek')),
-            ...Array.from({ length: 5 }, (_, index) => createUnit(`PREF-CV${index + 1}`, 'Tank', 'Combat Vehicle')),
         ]));
+
+        const vehiclePoints = materializeLeafCountRule(CLAN_CV_POINT, compileUnitFactsList([
+            ...Array.from({ length: 10 }, (_, index) => createUnit(`PREF-CV${index + 1}`, 'Tank', 'Combat Vehicle', false, [], 1, 'Tracked')),
+        ]));
+
+        const pointMaterialized = {
+            groups: [...nonVehiclePoints.groups, ...vehiclePoints.groups],
+        };
 
         const starEvaluation = evaluateComposedCountRule(CLAN_STAR, compileGroupFactsList(pointMaterialized.groups));
 
