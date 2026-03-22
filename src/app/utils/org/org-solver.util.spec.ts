@@ -3167,5 +3167,18 @@ describe('org-solver.util performance guards', () => {
         expect(result.length).toBeGreaterThan(0);
         expect(result.every(group => group.name.length > 0)).toBeTrue();
         expect(elapsedMs).toBeLessThan(BLUNDER_BRIGADE_MAX_SOLVE_MS);
+    }); 
+
+    it('resolves 5x the Blunder Brigade 7415 Wolf\'s Dragoons force within the performance guardrail', () => {
+        for (let i = 0; i < 5; i++) {
+            const startedAt = Date.now();
+            const { groupResults, result } = resolveBlunderBrigadeForce();
+            const elapsedMs = Date.now() - startedAt;
+
+            expect(groupResults.length).toBeGreaterThan(0);
+            expect(result.length).toBeGreaterThan(0);
+            expect(result.every(group => group.name.length > 0)).toBeTrue();
+            expect(elapsedMs).toBeLessThan(BLUNDER_BRIGADE_MAX_SOLVE_MS);
+        }
     });
 });
