@@ -18,7 +18,6 @@ export interface OrgNamingOptions {
 
 // Public API
 
-export function getOrgFromGroup(group: UnitGroup, factionName: string, factionAffinity: FactionAffinity, options?: OrgNamingOptions): OrgSizeResult;
 export function getOrgFromGroup(group: UnitGroup, options?: OrgNamingOptions): OrgSizeResult;
 export function getOrgFromGroup(group: LoadForceGroup, factionName: string, factionAffinity: FactionAffinity, options?: OrgNamingOptions): OrgSizeResult;
 export function getOrgFromGroup(group: UnitGroup | LoadForceGroup, factionOrOptions?: string | OrgNamingOptions, factionAffinity?: FactionAffinity, options: OrgNamingOptions = {}): OrgSizeResult {
@@ -43,7 +42,6 @@ export function getOrgFromGroup(group: UnitGroup | LoadForceGroup, factionOrOpti
 	return getResolvedOrgResult(rawGroups, resolvedFactionName, resolvedFactionAffinity, resolvedOptions);
 }
 
-export function getOrgFromForce(force: Force, factionName: string, factionAffinity: FactionAffinity, options?: OrgNamingOptions): OrgSizeResult;
 export function getOrgFromForce(force: Force, options?: OrgNamingOptions): OrgSizeResult;
 export function getOrgFromForce(entry: LoadForceEntry, factionName: string, factionAffinity: FactionAffinity, options?: OrgNamingOptions): OrgSizeResult;
 export function getOrgFromForce(forceOrEntry: Force | LoadForceEntry, factionOrOptions?: string | OrgNamingOptions, factionAffinity?: FactionAffinity, options: OrgNamingOptions = {}): OrgSizeResult {
