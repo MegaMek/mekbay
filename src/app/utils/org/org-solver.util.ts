@@ -76,6 +76,7 @@ interface MutableOrgSolveMetrics {
     regularPromotionSuccessorCacheHits: number;
     regularPromotionSuccessorCacheMisses: number;
     regularPromotionSuccessorStates: number;
+    composedPlanMetrics: Map<string, MutableComposedPlanMetric>;
     timedOut: boolean;
 }
 
@@ -100,6 +101,28 @@ interface ModifierStep {
     readonly distanceFromRegular: number;
 }
 
+type ComposedPlannerKind = 'single-role-fast-path' | 'exact-counted' | 'pattern-counted';
+
+interface MutableComposedPlanMetric {
+    ruleType: string;
+    ruleKind: 'composed-count' | 'composed-pattern';
+    compositionIndex: number;
+    planner: ComposedPlannerKind;
+    calls: number;
+    totalMs: number;
+    totalCandidates: number;
+}
+
+export interface ComposedPlanMetric {
+    readonly ruleType: string;
+    readonly ruleKind: 'composed-count' | 'composed-pattern';
+    readonly compositionIndex: number;
+    readonly planner: ComposedPlannerKind;
+    readonly calls: number;
+    readonly totalMs: number;
+    readonly totalCandidates: number;
+}
+
 function createMutableOrgSolveMetrics(): MutableOrgSolveMetrics {
     return {
         factCompilationMs: 0,
@@ -121,6 +144,7 @@ function createMutableOrgSolveMetrics(): MutableOrgSolveMetrics {
         regularPromotionSuccessorCacheHits: 0,
         regularPromotionSuccessorCacheMisses: 0,
         regularPromotionSuccessorStates: 0,
+        composedPlanMetrics: new Map<string, MutableComposedPlanMetric>(),
         timedOut: false,
     };
 }
@@ -150,6 +174,17 @@ function snapshotOrgSolveMetrics(metrics: MutableOrgSolveMetrics | null): OrgSol
         regularPromotionSuccessorCacheHits: metrics.regularPromotionSuccessorCacheHits,
         regularPromotionSuccessorCacheMisses: metrics.regularPromotionSuccessorCacheMisses,
         regularPromotionSuccessorStates: metrics.regularPromotionSuccessorStates,
+        composedPlanMetrics: [...metrics.composedPlanMetrics.values()]
+            .map((metric) => ({
+                ruleType: metric.ruleType,
+                ruleKind: metric.ruleKind,
+                compositionIndex: metric.compositionIndex,
+                planner: metric.planner,
+                calls: metric.calls,
+                totalMs: metric.totalMs,
+                totalCandidates: metric.totalCandidates,
+            }))
+            .sort((left, right) => right.totalMs - left.totalMs || right.calls - left.calls || left.ruleType.localeCompare(right.ruleType)),
         timedOut: metrics.timedOut,
     };
 }
@@ -246,6 +281,7 @@ export interface OrgSolveMetrics {
     readonly regularPromotionSuccessorCacheHits: number;
     readonly regularPromotionSuccessorCacheMisses: number;
     readonly regularPromotionSuccessorStates: number;
+    readonly composedPlanMetrics: readonly ComposedPlanMetric[];
     readonly timedOut: boolean;
 }
 
@@ -272,12 +308,17 @@ interface PatternSelection {
 
 interface CompositionConfig {
     readonly index: number;
+    readonly ruleType: string;
+    readonly ruleKind: 'composed-count';
     readonly childRoles: readonly OrgChildRoleSpec[];
     readonly modifierDescriptor: RuleModifierDescriptor;
     readonly childMatchBucketBy?: OrgGroupBucketName;
 }
 
 interface PatternCompositionConfig {
+    readonly index: number;
+    readonly ruleType: string;
+    readonly ruleKind: 'composed-pattern';
     readonly childRoles: readonly OrgChildRoleSpec[];
     readonly modifierDescriptor: RuleModifierDescriptor;
     readonly childMatchBucketBy?: OrgGroupBucketName;
@@ -373,9 +414,10 @@ interface ResolveContext {
     readonly minimumChildTierByRule: ReadonlyMap<OrgComposedCountRule | OrgComposedPatternRule, number>;
     readonly ruleStageMetadata: ReadonlyMap<OrgRuleDefinition, CompiledRuleStageMetadata>;
     readonly exactRegularPromotionResultBySignature: Map<string, CanonicalGroupPoolState>;
+    readonly negativeComposedPlanKeys: Set<string>;
 }
 
-type ResolveContextTemplate = Omit<ResolveContext, 'exactRegularPromotionResultBySignature'>;
+type ResolveContextTemplate = Omit<ResolveContext, 'exactRegularPromotionResultBySignature' | 'negativeComposedPlanKeys'>;
 
 interface FinalStateScore {
     readonly isWhole: boolean;
@@ -462,6 +504,39 @@ function addMetricDuration(metrics: MutableOrgSolveMetrics | null, key: keyof Pi
     }
 
     metrics[key] += Math.max(0, getSolveTimestampMs() - startedAtMs);
+}
+
+function recordComposedPlanMetric(
+    config: Pick<CompositionConfig | PatternCompositionConfig, 'ruleType' | 'ruleKind' | 'index'>,
+    planner: ComposedPlannerKind,
+    startedAtMs: number,
+    candidateCount: number,
+): void {
+    const metrics = activeOrgSolveMetrics;
+    if (!metrics) {
+        return;
+    }
+
+    const key = `${config.ruleKind}::${config.ruleType}::${config.index}::${planner}`;
+    const existing = metrics.composedPlanMetrics.get(key);
+    const elapsedMs = Math.max(0, getSolveTimestampMs() - startedAtMs);
+
+    if (existing) {
+        existing.calls += 1;
+        existing.totalMs += elapsedMs;
+        existing.totalCandidates += candidateCount;
+        return;
+    }
+
+    metrics.composedPlanMetrics.set(key, {
+        ruleType: config.ruleType,
+        ruleKind: config.ruleKind,
+        compositionIndex: config.index,
+        planner,
+        calls: 1,
+        totalMs: elapsedMs,
+        totalCandidates: candidateCount,
+    });
 }
 
 function allocateSyntheticGroupFactId(): number {
@@ -976,6 +1051,9 @@ function getComposedPatternBucketCounts(
 
 function buildPatternCompositionConfig(rule: OrgComposedPatternRule): PatternCompositionConfig {
     return {
+        index: 0,
+        ruleType: rule.type,
+        ruleKind: 'composed-pattern',
         childRoles: rule.childRoles,
         modifierDescriptor: getRuleModifierDescriptor(rule),
         childMatchBucketBy: rule.childMatchBucketBy,
@@ -1385,6 +1463,7 @@ function materializeCIFormationRuleRecords(
     rule: OrgCIFormationRule,
     unitFacts: readonly UnitFacts[],
     registry: OrgRuleRegistry = DEFAULT_ORG_RULE_REGISTRY,
+    context?: ResolveContext,
 ): { records: PlannedGroupRecord[]; leftoverUnitFacts: UnitFacts[]; leftoverUnitAllocations: GroupUnitAllocation[] } {
     const eligibleUnits = unitFacts.filter((facts) => matchesUnitSelectors(facts, rule.unitSelector, registry));
     const ineligibleUnits = unitFacts.filter((facts) => !matchesUnitSelectors(facts, rule.unitSelector, registry));
@@ -2145,6 +2224,8 @@ function buildCompositionConfigs(rule: OrgComposedCountRule): CompositionConfig[
     const configs: CompositionConfig[] = [
         {
             index: 0,
+            ruleType: rule.type,
+            ruleKind: 'composed-count',
             childRoles: rule.childRoles,
             modifierDescriptor: getRuleModifierDescriptor(rule),
             childMatchBucketBy: rule.childMatchBucketBy,
@@ -2154,6 +2235,8 @@ function buildCompositionConfigs(rule: OrgComposedCountRule): CompositionConfig[
     rule.alternativeCompositions?.forEach((alternative, alternativeIndex) => {
         configs.push({
             index: alternativeIndex + 1,
+            ruleType: rule.type,
+            ruleKind: 'composed-count',
             childRoles: alternative.childRoles,
             modifierDescriptor: getRuleModifierDescriptor({
                 modifiers: alternative.modifiers,
@@ -2652,14 +2735,91 @@ function enumerateAbstractSelectionsViaRoleInventory(
     return selections;
 }
 
+function isSimpleSingleRoleConfig(config: CompositionConfig): boolean {
+    return config.childRoles.length === 1;
+}
+
+function canSatisfySingleRoleCount(role: OrgChildRoleSpec, targetCount: number): boolean {
+    const min = role.min ?? 0;
+    const max = role.max ?? Number.POSITIVE_INFINITY;
+    return targetCount >= min && targetCount <= max;
+}
+
+function takeGreedySignatureCounts(
+    availableCounts: readonly number[],
+    targetCount: number,
+): number[] | null {
+    if (sumSignatureCounts(availableCounts) < targetCount) {
+        return null;
+    }
+
+    const selection = new Array(availableCounts.length).fill(0);
+    let remaining = targetCount;
+
+    for (let entryIndex = 0; entryIndex < availableCounts.length && remaining > 0; entryIndex += 1) {
+        const take = Math.min(availableCounts[entryIndex] ?? 0, remaining);
+        selection[entryIndex] = take;
+        remaining -= take;
+    }
+
+    return remaining === 0 ? selection : null;
+}
+
+function planSimpleSingleRoleCompositionsFromEntries(
+    entries: readonly CountedCompositionEntry[],
+    config: CompositionConfig,
+    allowedModifierKeys?: ReadonlySet<string>,
+): readonly AbstractCompositionCandidate[] {
+    const startedAtMs = getSolveTimestampMs();
+    const [role] = config.childRoles;
+    if (!role) {
+        recordComposedPlanMetric(config, 'single-role-fast-path', startedAtMs, 0);
+        return [];
+    }
+
+    const steps = config.modifierDescriptor.stepsDescending.filter((step) => !allowedModifierKeys || allowedModifierKeys.has(step.modifierKey));
+    let availableCounts = entries.map((entry) => entry.availableCount);
+    const candidates: AbstractCompositionCandidate[] = [];
+
+    for (const step of steps) {
+        if (!canSatisfySingleRoleCount(role, step.count)) {
+            continue;
+        }
+
+        while (sumSignatureCounts(availableCounts) >= step.count && candidates.length < MAX_COMPOSED_GROUPS_PER_CONFIG) {
+            const selection = takeGreedySignatureCounts(availableCounts, step.count);
+            if (!selection) {
+                break;
+            }
+
+            candidates.push({
+                entries,
+                signatureCounts: selection,
+                compositionIndex: config.index,
+                modifierStep: step,
+            });
+            availableCounts = availableCounts.map((count, index) => count - (selection[index] ?? 0));
+        }
+    }
+
+    recordComposedPlanMetric(config, 'single-role-fast-path', startedAtMs, candidates.length);
+    return candidates;
+}
+
 function planCountedCompositionsFromEntries(
     entries: readonly CountedCompositionEntry[],
     config: CompositionConfig,
     guard: SolverGuard,
     allowedModifierKeys?: ReadonlySet<string>,
 ): readonly AbstractCompositionCandidate[] {
+    const startedAtMs = getSolveTimestampMs();
     if (entries.length === 0) {
+        recordComposedPlanMetric(config, 'exact-counted', startedAtMs, 0);
         return [];
+    }
+
+    if (isSimpleSingleRoleConfig(config)) {
+        return planSimpleSingleRoleCompositionsFromEntries(entries, config, allowedModifierKeys);
     }
 
     const initialCounts = entries.map((entry) => entry.availableCount);
@@ -2732,7 +2892,9 @@ function planCountedCompositionsFromEntries(
         return [];
     }
 
-    return visit(initialCounts);
+    const result = visit(initialCounts);
+    recordComposedPlanMetric(config, 'exact-counted', startedAtMs, result.length);
+    return result;
 }
 
 function planCountedCompositions(
@@ -2951,6 +3113,7 @@ function planPatternComposedConfig(
     guard: SolverGuard,
     allowedModifierKeys?: ReadonlySet<string>,
 ): { readonly entries: readonly CountedCompositionEntry[]; readonly candidates: readonly AbstractCompositionCandidate[]; readonly groupsByEntryId: ReadonlyMap<string, readonly GroupFacts[]> } {
+    const startedAtMs = getSolveTimestampMs();
     const remainingByBucket = new Map<string, GroupFacts[]>();
 
     for (const group of groups) {
@@ -3013,6 +3176,7 @@ function planPatternComposedConfig(
         planBucketGroupSet(bucketGroups);
     }
 
+    recordComposedPlanMetric(config, 'pattern-counted', startedAtMs, candidates.length);
     return { entries, candidates, groupsByEntryId };
 }
 
@@ -3044,9 +3208,22 @@ function planComposedPatternRuleInternal(
     registry: OrgRuleRegistry,
     guard: SolverGuard,
     allowedModifierKeys?: ReadonlySet<string>,
+    context?: ResolveContext,
 ): AbstractCompositionPlanResult {
+    const cacheKey = context ? getNegativeComposedPlanCacheKey(rule, groupFacts, allowedModifierKeys) : null;
+    if (context && cacheKey && context.negativeComposedPlanKeys.has(cacheKey)) {
+        return {
+            candidates: [],
+            groupsByEntryId: new Map<string, readonly GroupFacts[]>(),
+        };
+    }
+
     const config = buildPatternCompositionConfig(rule);
     const planned = planPatternComposedConfig(rule, groupFacts, config, registry, guard, allowedModifierKeys);
+    if (context && cacheKey && planned.candidates.length === 0 && !guard.timedOut) {
+        context.negativeComposedPlanKeys.add(cacheKey);
+    }
+
     return {
         candidates: planned.candidates,
         groupsByEntryId: planned.groupsByEntryId,
@@ -3092,7 +3269,16 @@ function planComposedCountRuleInternal(
     registry: OrgRuleRegistry,
     guard: SolverGuard,
     allowedModifierKeys?: ReadonlySet<string>,
+    context?: ResolveContext,
 ): AbstractCompositionPlanResult {
+    const cacheKey = context ? getNegativeComposedPlanCacheKey(rule, groupFacts, allowedModifierKeys) : null;
+    if (context && cacheKey && context.negativeComposedPlanKeys.has(cacheKey)) {
+        return {
+            candidates: [],
+            groupsByEntryId: new Map<string, readonly GroupFacts[]>(),
+        };
+    }
+
     const configs = buildCompositionConfigs(rule);
     const evaluations = configs.map((config) => ({
         config,
@@ -3101,6 +3287,10 @@ function planComposedCountRuleInternal(
     const best = evaluations.sort((left, right) => {
         return compareAbstractCompositionPlans(right.candidates, left.candidates);
     })[0];
+
+    if (context && cacheKey && (best?.candidates.length ?? 0) === 0 && !guard.timedOut) {
+        context.negativeComposedPlanKeys.add(cacheKey);
+    }
 
     return {
         candidates: best?.candidates ?? [],
@@ -3363,6 +3553,7 @@ function getResolveContext(definition: OrgDefinitionSpec): ResolveContext {
     return {
         ...template,
         exactRegularPromotionResultBySignature: new Map<string, CanonicalGroupPoolState>(),
+        negativeComposedPlanKeys: new Set<string>(),
     };
 }
 
@@ -3513,6 +3704,7 @@ function materializeComposedRulesByStageState(
             context.definition.registry,
             guard,
             allowedModifierKeys,
+            context,
         );
 
         if (abstractCandidates.candidates.length === 0) {
@@ -3721,16 +3913,52 @@ function getMinimumChildTierForRule(rule: OrgComposedCountRule | OrgComposedPatt
     return context.minimumChildTierByRule.get(rule) ?? getMinimumChildTierForComposedRule(rule, context.definition);
 }
 
+function serializeAllowedModifierKeys(allowedModifierKeys?: ReadonlySet<string>): string {
+    if (!allowedModifierKeys || allowedModifierKeys.size === 0) {
+        return '*';
+    }
+
+    return [...allowedModifierKeys].sort((left, right) => left.localeCompare(right)).join('|');
+}
+
+function createGroupFactsInventorySignature(groupFacts: readonly GroupFacts[]): string {
+    const counts = new Map<string, number>();
+
+    for (const facts of groupFacts) {
+        const signatureKey = getGroupFactsSignatureKey(facts);
+        counts.set(signatureKey, (counts.get(signatureKey) ?? 0) + 1);
+    }
+
+    return [...counts.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, count]) => `${key}::${count}`)
+        .join('##');
+}
+
+function getNegativeComposedPlanCacheKey(
+    rule: OrgComposedCountRule | OrgComposedPatternRule,
+    groupFacts: readonly GroupFacts[],
+    allowedModifierKeys?: ReadonlySet<string>,
+): string {
+    return [
+        rule.kind,
+        rule.type,
+        serializeAllowedModifierKeys(allowedModifierKeys),
+        createGroupFactsInventorySignature(groupFacts),
+    ].join('@@');
+}
+
 function planComposedRuleInternal(
     rule: OrgComposedCountRule | OrgComposedPatternRule,
     groupFacts: readonly GroupFacts[],
     registry: OrgRuleRegistry,
     guard: SolverGuard,
     allowedModifierKeys?: ReadonlySet<string>,
+    context?: ResolveContext,
 ): AbstractCompositionPlanResult {
     return rule.kind === 'composed-count'
-        ? planComposedCountRuleInternal(rule, groupFacts, registry, guard, allowedModifierKeys)
-        : planComposedPatternRuleInternal(rule, groupFacts, registry, guard, allowedModifierKeys);
+        ? planComposedCountRuleInternal(rule, groupFacts, registry, guard, allowedModifierKeys, context)
+        : planComposedPatternRuleInternal(rule, groupFacts, registry, guard, allowedModifierKeys, context);
 }
 
 function buildPlannedPromotionResult(
@@ -4007,6 +4235,8 @@ function repairSubRegularGroupsForPromotionState(
             childState.groupFacts,
             context.definition.registry,
             createSolverGuard(),
+            undefined,
+            context,
         );
         if (abstractCandidates.candidates.length === 0) {
             continue;
@@ -4140,6 +4370,49 @@ function compareGroupPoolStates(
     return compareFinalStateScores(leftScore, rightScore);
 }
 
+function getApplicableComposedRulesForFacts(
+    groupFacts: readonly GroupFacts[],
+    context: ResolveContext,
+): readonly (OrgComposedCountRule | OrgComposedPatternRule)[] {
+    if (groupFacts.length === 0) {
+        return [];
+    }
+
+    const factsByTier = new Map<number, GroupFacts[]>();
+    for (const facts of groupFacts) {
+        const existing = factsByTier.get(facts.tier);
+        if (existing) {
+            existing.push(facts);
+        } else {
+            factsByTier.set(facts.tier, [facts]);
+        }
+    }
+
+    return getOrderedComposedRules(context).filter((rule) => {
+        const tierFacts = factsByTier.get(getMinimumChildTierForRule(rule, context));
+        if (!tierFacts || tierFacts.length === 0) {
+            return false;
+        }
+
+        if (!tierFacts.some((facts) => rule.childRoles.some((role) => groupMatchesRole(facts, role)))) {
+            return false;
+        }
+
+        const requiredCount = getRuleStageMetadata(context, rule).descriptor.regularStep.count;
+        let matchingCount = 0;
+        for (const facts of groupFacts) {
+            if (rule.childRoles.some((role) => groupMatchesRole(facts, role))) {
+                matchingCount += 1;
+                if (matchingCount >= requiredCount) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    });
+}
+
 function retainDominantCanonicalGroupPoolStates(
     states: readonly CanonicalGroupPoolState[],
     context: ResolveContext,
@@ -4177,9 +4450,10 @@ function getRegularPromotionSuccessors(
     guard: SolverGuard,
 ): CanonicalGroupPoolState[] {
     const promotableFacts = state.groupFacts.filter((facts) => !isBlockedSubRegularPromotionChildFacts(facts, context));
+    const applicableRules = getApplicableComposedRulesForFacts(promotableFacts, context);
     const successors: CanonicalGroupPoolState[] = [];
 
-    for (const rule of getOrderedComposedRules(context)) {
+    for (const rule of applicableRules) {
         if (shouldAbortSearch(guard)) {
             break;
         }
@@ -4187,7 +4461,7 @@ function getRegularPromotionSuccessors(
         const allowedModifierKeys = getAllowedModifierKeysForStage(getRuleStageMetadata(context, rule), 'regular');
         const plannedResult = buildPlannedPromotionResult(
             rule,
-            planComposedRuleInternal(rule, promotableFacts, context.definition.registry, guard, allowedModifierKeys),
+            planComposedRuleInternal(rule, promotableFacts, context.definition.registry, guard, allowedModifierKeys, context),
             state.recordByGroupFactId,
         );
         if (!plannedResult) {
@@ -4207,19 +4481,15 @@ function runSingleTierRegularPromotionStepState(
 ): CanonicalGroupPoolState {
     let poolState = initialState;
     let remainingFacts = poolState.groupFacts.filter((facts) => !isBlockedSubRegularPromotionChildFacts(facts, context));
-    const candidateChildTiers = getOrderedComposedRules(context)
-        .filter((rule) => {
-            const childTier = getMinimumChildTierForRule(rule, context);
-            return remainingFacts.some((facts) => facts.tier === childTier && rule.childRoles.some((role) => groupMatchesRole(facts, role)));
-        })
-        .map((rule) => getMinimumChildTierForRule(rule, context));
+    const applicableRules = getApplicableComposedRulesForFacts(remainingFacts, context);
+    const candidateChildTiers = applicableRules.map((rule) => getMinimumChildTierForRule(rule, context));
     const targetChildTier = candidateChildTiers.length > 0 ? Math.min(...candidateChildTiers) : null;
 
     if (targetChildTier === null) {
         return initialState;
     }
 
-    for (const rule of getOrderedComposedRules(context)) {
+    for (const rule of applicableRules) {
         if (getMinimumChildTierForRule(rule, context) !== targetChildTier) {
             continue;
         }
@@ -4227,7 +4497,7 @@ function runSingleTierRegularPromotionStepState(
         const allowedModifierKeys = getAllowedModifierKeysForStage(getRuleStageMetadata(context, rule), 'regular');
         const plannedResult = buildPlannedPromotionResult(
             rule,
-            planComposedRuleInternal(rule, remainingFacts, context.definition.registry, guard, allowedModifierKeys),
+            planComposedRuleInternal(rule, remainingFacts, context.definition.registry, guard, allowedModifierKeys, context),
             poolState.recordByGroupFactId,
         );
         if (!plannedResult) {
@@ -4260,15 +4530,16 @@ function searchBestRegularPromotionPoolStateFromState(
         metrics.regularPromotionSearches += 1;
     }
 
-    const memo = new Map<string, CanonicalPromotionFuture>();
-    const successorsBySignature = new Map<string, readonly CanonicalGroupPoolState[]>();
-
     function finalize(result: CanonicalGroupPoolState): CanonicalGroupPoolState {
         if (!guard.timedOut) {
             context.exactRegularPromotionResultBySignature.set(initialState.signature.key, result);
         }
         return result;
     }
+
+    const memo = new Map<string, CanonicalPromotionFuture>();
+    const successorsBySignature = new Map<string, readonly CanonicalGroupPoolState[]>();
+    const stateBySignature = new Map<string, CanonicalGroupPoolState>([[initialState.signature.key, initialState]]);
 
     function getCachedSuccessors(state: CanonicalGroupPoolState): readonly CanonicalGroupPoolState[] {
         const cached = successorsBySignature.get(state.signature.key);
@@ -4286,6 +4557,7 @@ function searchBestRegularPromotionPoolStateFromState(
         if (metrics) {
             metrics.regularPromotionSuccessorStates += successors.length;
         }
+        successors.forEach((successor) => stateBySignature.set(successor.signature.key, successor));
         successorsBySignature.set(state.signature.key, successors);
         return successors;
     }
@@ -4325,7 +4597,39 @@ function searchBestRegularPromotionPoolStateFromState(
         return bestFuture;
     }
 
+    const resolvedResultBySignature = new Map<string, CanonicalGroupPoolState>();
+
+    function resolveExactResultForState(state: CanonicalGroupPoolState): CanonicalGroupPoolState {
+        const cached = resolvedResultBySignature.get(state.signature.key);
+        if (cached) {
+            return cached;
+        }
+
+        const future = memo.get(state.signature.key);
+        if (!future?.nextSignatureKey) {
+            resolvedResultBySignature.set(state.signature.key, state);
+            return state;
+        }
+
+        const nextState = stateBySignature.get(future.nextSignatureKey)
+            ?? getCachedSuccessors(state).find((candidate) => candidate.signature.key === future.nextSignatureKey);
+        if (!nextState) {
+            resolvedResultBySignature.set(state.signature.key, state);
+            return state;
+        }
+
+        const result = resolveExactResultForState(nextState);
+        resolvedResultBySignature.set(state.signature.key, result);
+        return result;
+    }
+
     visit(initialState);
+
+    if (!guard.timedOut) {
+        for (const state of stateBySignature.values()) {
+            context.exactRegularPromotionResultBySignature.set(state.signature.key, resolveExactResultForState(state));
+        }
+    }
 
     let currentState = initialState;
     let safety = 0;
@@ -4367,9 +4671,22 @@ function runLeftoverImprovementLoopState(
 
         const stepped = runSingleTierRegularPromotionStepState(state, context, guard);
         const assimilated = assimilateLeftoversIntoParentState(stepped, context, guard);
-        state = searchBestRegularPromotionPoolStateFromState(assimilated, context, guard);
-        state = materializeComposedRulesByStageState(state, context, 'sub-regular', guard);
-        state = searchBestRegularPromotionPoolStateFromState(state, context, guard);
+        const cachedExactResult = context.exactRegularPromotionResultBySignature.get(assimilated.signature.key);
+        const isAlreadyPromotionOptimal = cachedExactResult?.signature.key === assimilated.signature.key;
+        const promoted = isAlreadyPromotionOptimal
+            ? assimilated
+            : searchBestRegularPromotionPoolStateFromState(assimilated, context, guard);
+        const subRegularized = materializeComposedRulesByStageState(promoted, context, 'sub-regular', guard);
+
+        if (subRegularized.signature.key === promoted.signature.key) {
+            state = promoted;
+            if (state.signature.key === signature) {
+                break;
+            }
+            continue;
+        }
+
+        state = searchBestRegularPromotionPoolStateFromState(subRegularized, context, guard);
     }
 
     return state;
