@@ -33,7 +33,7 @@
 
 import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import type { WildcardPattern } from './semantic-filter.util';
-import { wildcardToRegex } from './string.util';
+import { normalizeLooseText, wildcardToRegex } from './string.util';
 
 /**
  * Author: Drake
@@ -43,6 +43,21 @@ export interface ResolvedFactionNames {
     or: string[];
     and: string[];
     not: string[];
+}
+
+function resolveExplicitFactionNames(name: string, allFactionNames: string[]): string[] {
+    const exactMatches = allFactionNames.filter(candidate => candidate.toLowerCase() === name.toLowerCase());
+    if (exactMatches.length > 0) {
+        return exactMatches;
+    }
+
+    const normalizedName = normalizeLooseText(name);
+    if (!normalizedName) {
+        return [name];
+    }
+
+    const looseMatches = allFactionNames.filter(candidate => normalizeLooseText(candidate) === normalizedName);
+    return looseMatches.length > 0 ? looseMatches : [name];
 }
 
 /**
@@ -68,9 +83,10 @@ export function resolveFactionNamesFromFilter(
     if (selection) {
         for (const [, opt] of Object.entries(selection)) {
             if (!opt.state) continue;
-            if (opt.state === 'or') or.push(opt.name);
-            else if (opt.state === 'and') and.push(opt.name);
-            else if (opt.state === 'not') not.push(opt.name);
+            const resolvedNames = resolveExplicitFactionNames(opt.name, allFactionNames);
+            if (opt.state === 'or') or.push(...resolvedNames);
+            else if (opt.state === 'and') and.push(...resolvedNames);
+            else if (opt.state === 'not') not.push(...resolvedNames);
         }
     }
 

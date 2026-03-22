@@ -60,7 +60,7 @@
 import type { GameSystem } from '../models/common.model';
 import { ADVANCED_FILTERS, type AdvFilterConfig, AdvFilterType } from '../services/unit-search-filters.model';
 import { type SemanticOperator, type SemanticToken, buildSemanticKeyMap, VIRTUAL_SEMANTIC_KEYS, parseValues, parseValueWithQuantity, type QuantityConstraint } from './semantic-filter.util';
-import { wildcardToRegex } from './string.util';
+import { normalizeLooseText, wildcardToRegex } from './string.util';
 import { checkQuantityConstraint as checkQuantityConstraintCore } from './unit-search-shared.util';
 
 // ============================================================================
@@ -1197,7 +1197,20 @@ function expandExternalFilterValue(
 
     const expanded = value.includes('*')
         ? allNames.filter(name => wildcardToRegex(value).test(name))
-        : [value];
+        : (() => {
+            const exactMatches = allNames.filter(name => name.toLowerCase() === value.toLowerCase());
+            if (exactMatches.length > 0) {
+                return exactMatches;
+            }
+
+            const normalizedValue = normalizeLooseText(value);
+            if (!normalizedValue) {
+                return [value];
+            }
+
+            const looseMatches = allNames.filter(name => normalizeLooseText(name) === normalizedValue);
+            return looseMatches.length > 0 ? looseMatches : [value];
+        })();
 
     valueCache.set(value, expanded);
     return expanded;
@@ -1327,6 +1340,7 @@ function matchIndexedStoredValues(
     }
 
     const normalizedSearch = rawValue.toLowerCase();
+    const normalizedLooseSearch = normalizeLooseText(rawValue);
     const isWildcard = rawValue.includes('*');
     const matcher = isWildcard ? wildcardToRegex(rawValue) : null;
     const matchedValues: string[] = [];
@@ -1339,7 +1353,15 @@ function matchIndexedStoredValues(
 
         const matches = isWildcard
             ? candidates.some(candidate => matcher!.test(candidate))
-            : candidates.some(candidate => candidate.toLowerCase() === normalizedSearch);
+            : candidates.some(candidate => {
+                if (candidate.toLowerCase() === normalizedSearch) {
+                    return true;
+                }
+                if (!normalizedLooseSearch) {
+                    return false;
+                }
+                return normalizeLooseText(candidate) === normalizedLooseSearch;
+            });
 
         if (matches) {
             matchedValues.push(storedValue);

@@ -485,6 +485,87 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(unavailableSource).toEqual(jasmine.objectContaining({ name: 'SRC-B', available: false }));
     });
 
+    it('keeps indexed faction self and co-matches available for multistate AND selections', () => {
+        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
+            pending('Real unit data could not be loaded for the faction AND availability test.');
+            return;
+        }
+
+        const bundle = buildSmallBundle(benchmarkBundle);
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: "Wolf's Dragoons",
+                group: 'Mercenary',
+                img: '',
+                eras: { 1: new Set([1]) },
+            },
+            {
+                id: 2,
+                name: 'Mercenary',
+                group: 'Mercenary',
+                img: '',
+                eras: { 1: new Set([1]) },
+            },
+            {
+                id: 3,
+                name: 'Clan Wolf',
+                group: 'IS Clan',
+                img: '',
+                eras: { 1: new Set([2]) },
+            },
+        ];
+
+        const { service } = createService(bundle);
+        service.setFilter('faction', {
+            "Wolf's Dragoons": {
+                name: "Wolf's Dragoons",
+                state: 'and',
+                count: 1,
+            },
+        });
+
+        const factionOptions = service.advOptions()['faction']?.options ?? [];
+        const namedFactionOptions = factionOptions.filter(option => typeof option !== 'number');
+        const dragoons = namedFactionOptions.find(option => option.name === "Wolf's Dragoons");
+        const mercenary = namedFactionOptions.find(option => option.name === 'Mercenary');
+        const clanWolf = namedFactionOptions.find(option => option.name === 'Clan Wolf');
+
+        expect(dragoons).toEqual(jasmine.objectContaining({ name: "Wolf's Dragoons", available: true }));
+        expect(mercenary).toEqual(jasmine.objectContaining({ name: 'Mercenary', available: true }));
+        expect(clanWolf).toEqual(jasmine.objectContaining({ name: 'Clan Wolf', available: false }));
+    });
+
+    it('keeps indexed source self and co-matches available for multistate AND selections', () => {
+        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
+            pending('Real unit data could not be loaded for the source AND availability test.');
+            return;
+        }
+
+        const bundle = buildSmallBundle(benchmarkBundle);
+        bundle.units.units[0].source = ['SRC-A', 'SRC-C'];
+        bundle.units.units[1].source = ['SRC-B'];
+
+        const { service } = createService(bundle);
+        service.setFilter('source', {
+            'SRC-A': {
+                name: 'SRC-A',
+                state: 'and',
+                count: 1,
+            },
+        });
+
+        const sourceOptions = service.advOptions()['source']?.options ?? [];
+        const namedSourceOptions = sourceOptions.filter(option => typeof option !== 'number');
+        const sourceA = namedSourceOptions.find(option => option.name === 'SRC-A');
+        const sourceC = namedSourceOptions.find(option => option.name === 'SRC-C');
+        const sourceB = namedSourceOptions.find(option => option.name === 'SRC-B');
+
+        expect(sourceA).toEqual(jasmine.objectContaining({ name: 'SRC-A', available: true }));
+        expect(sourceC).toEqual(jasmine.objectContaining({ name: 'SRC-C', available: true }));
+        expect(sourceB).toEqual(jasmine.objectContaining({ name: 'SRC-B', available: false }));
+    });
+
     it('does not throw when stale multistate era state is present', () => {
         if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
             pending('Real unit data could not be loaded for the era state regression test.');
@@ -944,6 +1025,37 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const effectiveFaction = service.effectiveFilterState()['faction']?.value as Record<string, { state: string }>;
         expect(Object.keys(effectiveFaction ?? {}).sort()).toEqual(['Alyina Mercantile League', 'Draconis Combine']);
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
+    });
+
+    it('matches semantic faction filters with punctuation-insensitive values', async () => {
+        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
+            pending('Real unit data could not be loaded for the faction semantic normalization test.');
+            return;
+        }
+
+        const bundle = buildSmallBundle(benchmarkBundle);
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: "Wolf's Dragoons",
+                group: 'Mercenary',
+                img: '',
+                eras: { 1: new Set([1]) },
+            },
+            {
+                id: 2,
+                name: 'Clan Wolf',
+                group: 'IS Clan',
+                img: '',
+                eras: { 1: new Set([2]) },
+            },
+        ];
+
+        const { service } = createService(bundle);
+        service.setSearchText('faction="Wolfs Dragoons"');
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
     });
 
     it('promotes overlapping faction dropdown filters into wildcard semantic ownership', async () => {

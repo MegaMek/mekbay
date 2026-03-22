@@ -93,4 +93,33 @@ describe('semantic filter exclusivity', () => {
         expect(filtered).toEqual([units[0], units[1]]);
         expect(membershipChecks).toBe(2);
     });
+
+    it('matches external factions with punctuation-insensitive semantic values', () => {
+        const units = [
+            { id: 1, faction: ["Wolf's Dragoons"] },
+            { id: 2, faction: ['Clan Wolf'] }
+        ];
+        const result = parseSemanticQueryAST('faction="Wolfs Dragoons"', GameSystem.CLASSIC);
+
+        const filtered = filterUnitsWithAST(units, result.ast, {
+            gameSystem: GameSystem.CLASSIC,
+            getUnitId,
+            getProperty: (unit: { faction?: string[] }, key: string) => unit[key as keyof typeof unit],
+            getIndexedFilterValues: (filterKey: string) => filterKey === 'faction' ? ["Wolf's Dragoons", 'Clan Wolf'] : [],
+            getIndexedUnitIds: (filterKey: string, value: string) => {
+                if (filterKey === 'faction' && value === "Wolf's Dragoons") {
+                    return new Set(['1']);
+                }
+                if (filterKey === 'faction' && value === 'Clan Wolf') {
+                    return new Set(['2']);
+                }
+                return undefined;
+            },
+            unitBelongsToFaction: (unit: { faction?: string[] }, factionName: string) =>
+                (unit.faction ?? []).includes(factionName),
+            getAllFactionNames: () => ["Wolf's Dragoons", 'Clan Wolf']
+        });
+
+        expect(filtered).toEqual([units[0]]);
+    });
 });

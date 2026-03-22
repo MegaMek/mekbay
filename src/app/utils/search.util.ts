@@ -33,6 +33,14 @@
 
 import { removeAccents, escapeHtml, escapeRegExp } from './string.util';
 
+function normalizeSearchValue(value: string): string {
+    return removeAccents(value.toLowerCase());
+}
+
+function toAlphanumericSearchValue(value: string): string {
+    return normalizeSearchValue(value).replace(/[^a-z0-9]/gi, '');
+}
+
 /**
  * Represents a single token from a search query.
  */
@@ -90,10 +98,10 @@ export function parseSearchQuery(query: string): SearchTokensGroup[] {
         while ((m = re.exec(group)) !== null) {
             if (m[1] !== undefined) {
                 // Quoted exact token
-                const cleaned = removeAccents(m[1].trim());
+                const cleaned = normalizeSearchValue(m[1].trim());
                 if (cleaned) tokens.push({ token: cleaned, mode: 'exact' });
             } else if (m[2] !== undefined) {
-                const cleaned = removeAccents(m[2].trim());
+                const cleaned = normalizeSearchValue(m[2].trim());
                 if (cleaned) tokens.push({ token: cleaned, mode: 'partial' });
             }
         }
@@ -153,23 +161,38 @@ export function matchesSearch(
 ): boolean {
     if (!searchTokens || searchTokens.length === 0) return true;
 
-    const normalizedText = removeAccents(textToSearch.toLowerCase());
+    const normalizedText = normalizeSearchValue(textToSearch);
     const alphaNumText = alphanumericNormalization 
-        ? normalizedText.replace(/[^a-z0-9]/gi, '') 
+        ? toAlphanumericSearchValue(textToSearch)
         : '';
 
     // The text matches if it matches ANY of the OR groups
     return searchTokens.some(group => {
         const exactTokens = group.tokens.filter(t => t.mode === 'exact').map(t => t.token);
         const partialTokens = group.tokens.filter(t => t.mode === 'partial').map(t => t.token);
+        const alphaNumExactTokens = alphanumericNormalization
+            ? exactTokens.map(token => toAlphanumericSearchValue(token)).filter(Boolean)
+            : [];
+        const alphaNumPartialTokens = alphanumericNormalization
+            ? partialTokens.map(token => toAlphanumericSearchValue(token)).filter(Boolean)
+            : [];
 
         // All exact tokens must match as whole words
         if (exactTokens.length > 0) {
             const textWords = new Set(normalizedText.split(/\s+/));
-            const alphaNumToken = alphanumericNormalization ? new Set(alphaNumText.split(/\s+/)) : new Set();
-            for (const et of exactTokens) {
+            const alphaNumWords = alphanumericNormalization
+                ? new Set(
+                    normalizedText
+                        .split(/\s+/)
+                        .map(word => toAlphanumericSearchValue(word))
+                        .filter(Boolean)
+                )
+                : new Set<string>();
+            for (let index = 0; index < exactTokens.length; index++) {
+                const et = exactTokens[index];
                 if (!textWords.has(et) && normalizedText !== et) {
-                    if (!alphanumericNormalization || (!alphaNumToken.has(et) && alphaNumText !== et)) {
+                    const alphaNumExactToken = alphaNumExactTokens[index];
+                    if (!alphanumericNormalization || !alphaNumExactToken || (!alphaNumWords.has(alphaNumExactToken) && alphaNumText !== alphaNumExactToken)) {
                         return false;
                     }
                 }
@@ -179,7 +202,7 @@ export function matchesSearch(
         // All partial tokens must match non-overlappingly
         if (partialTokens.length > 0) {
             if (!tokensMatchNonOverlapping(normalizedText, partialTokens)) {
-                if (!alphanumericNormalization || !tokensMatchNonOverlapping(alphaNumText, partialTokens)) {
+                if (!alphanumericNormalization || alphaNumPartialTokens.length === 0 || !tokensMatchNonOverlapping(alphaNumText, alphaNumPartialTokens)) {
                     return false;
                 }
             }
@@ -223,14 +246,19 @@ export function highlightMatches(
     let pattern = tokens.map(escapeRegExp).join('|');
 
     if (alphanumericNormalization) {
-        const alphaNumTokens = tokens.map(token => {
-            const chars = token.split('');
+        const alphaNumTokens = tokens
+            .map(token => toAlphanumericSearchValue(token))
+            .filter(Boolean)
+            .map(token => {
+                const chars = token.split('');
             return chars.map((char, index) => {
                 const isLastChar = index === chars.length - 1;
                 return `${escapeRegExp(char)}${isLastChar ? '' : '[^a-zA-Z0-9]*'}`;
             }).join('');
-        });
-        pattern += '|' + alphaNumTokens.join('|');
+            });
+        if (alphaNumTokens.length > 0) {
+            pattern += '|' + alphaNumTokens.join('|');
+        }
     }
     
     if (!pattern) return escapeHtml(text);
