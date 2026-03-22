@@ -95,6 +95,14 @@ function asIsOnlyCombatVehicles(units: ForceUnit[]): boolean {
     });
 }
 
+function isClanUnit(units: Unit): boolean {
+    const faction = (units as any).force.faction();
+    const isClan = faction.group.includes('Clan') ||
+        faction.name?.includes('Escorpi') || 
+        faction.name?.includes('Scorpion Empire');
+    return isClan;
+};
+
 // ── Common helper functions ─────────────────────────────────────────────────────
 
 function countMatchedPairs(units: ForceUnit[]): number {
@@ -1494,7 +1502,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.BOT, page: 27 }],
         requirements: () => 'Clan only. Minimum 2 combat vehicles or BattleMeks. Remainder must be Elementals, combat vehicles, or BattleMeks. Must be at least two different unit types.',
         validator: (units, gameSystem) => {
-            if (!(units[0] as any).force.faction().group.includes('Clan')) return false;
+            if (!isClanUnit) return false;
             if (gameSystem === GameSystem.ALPHA_STRIKE) {
                 const BM = units.filter(u => u.getUnit().as?.TP === 'BM').length;
                 const BA = units.filter(u => u.getUnit().as?.TP === 'BA').length;
@@ -1532,7 +1540,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.BOT, page: 27 }],
         requirements: () => 'Clan only. At least two units in the Formation must be the same model (including the same OmniMek configuration)',
         validator: (units) => {
-            if (!(units[0] as any).force.faction().group.includes('Clan')) return false;
+            if (!isClanUnit) return false;
             const hasPair = new Set(units.map(u => u.getUnit().name)).size < units.length;
             return hasPair; 
         },
@@ -1571,7 +1579,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
                 return 'Minimum 3 units. All must have Gunnery Skill 3 or lower. Must have 1 Aerospace Point. Others must be Mek or Battle Armor. If Mek, at least 2 units heavy or assault, and no lights.';
         },
         validator: (units, gameSystem) => {
-            if (!(units[0] as any).force.faction().group.includes('Clan')) return false;
+            if (!isClanUnit) return false;
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const skillCheck = units.every(u =>
             (isAS ? (u as any).pilotSkill() : (u as any).gunnerySkill()) <= 3);
