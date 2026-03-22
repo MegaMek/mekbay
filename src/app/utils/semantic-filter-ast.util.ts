@@ -1033,7 +1033,7 @@ export interface EvaluatorContext {
     /** Check if a unit belongs to a specific era (external filter) */
     unitBelongsToEra?: (unit: any, eraName: string) => boolean;
     /** Check if a unit belongs to a specific faction (external filter) */
-    unitBelongsToFaction?: (unit: any, factionName: string) => boolean;
+    unitBelongsToFaction?: (unit: any, factionName: string, eraNames?: readonly string[]) => boolean;
     /** Get all era names (for wildcard expansion) */
     getAllEraNames?: () => string[];
     /** Get all faction names (for wildcard expansion) */
@@ -1222,6 +1222,7 @@ function getUnitMatchedExternalNames(
     filterKey: string,
     allNames: string[],
     checkMembership: (name: string) => boolean,
+    activeEraNames?: readonly string[],
 ): Set<string> {
     const runtimeCache = getExternalFilterRuntimeCache(context);
     let unitCache = runtimeCache.unitMatchedNamesByKey.get(unit);
@@ -1230,7 +1231,10 @@ function getUnitMatchedExternalNames(
         runtimeCache.unitMatchedNamesByKey.set(unit, unitCache);
     }
 
-    const cached = unitCache.get(filterKey);
+    const cacheKey = filterKey === 'faction' && activeEraNames
+        ? `${filterKey}\u0001${[...activeEraNames].map(name => name.toLowerCase()).sort().join('\u0001')}`
+        : filterKey;
+    const cached = unitCache.get(cacheKey);
     if (cached) {
         return cached;
     }
@@ -1242,8 +1246,92 @@ function getUnitMatchedExternalNames(
         }
     }
 
-    unitCache.set(filterKey, matchedNames);
+    unitCache.set(cacheKey, matchedNames);
     return matchedNames;
+}
+
+function getPositiveEraNamesFromFilter(
+    filter: SemanticToken,
+    context: EvaluatorContext,
+): string[] | null {
+    const isEraFilter = getSortedFilterConfigs(context, filter.field).some(conf => conf.key === 'era');
+    if (!isEraFilter || filter.operator === '!=' || !context.getAllEraNames) {
+        return null;
+    }
+
+    const allEraNames = getCachedExternalNames(context, 'era', context.getAllEraNames);
+    const expandedEraNames = new Set<string>();
+    for (const value of filter.values) {
+        for (const eraName of expandExternalFilterValue(context, 'era', value, allEraNames)) {
+            expandedEraNames.add(eraName);
+        }
+    }
+
+    return expandedEraNames.size > 0 ? Array.from(expandedEraNames) : null;
+}
+
+function collectScopedEraNames(
+    node: ASTNode,
+    context: EvaluatorContext,
+): string[] | null {
+    if (node.type === 'filter') {
+        return getPositiveEraNamesFromFilter(node.token, context);
+    }
+
+    if (node.type !== 'group' || node.children.length === 0) {
+        return null;
+    }
+
+    if (node.operator === 'OR') {
+        const eraNames = new Set<string>();
+        for (const child of node.children) {
+            const childEraNames = collectScopedEraNames(child, context);
+            if (!childEraNames) {
+                return null;
+            }
+            for (const eraName of childEraNames) {
+                eraNames.add(eraName);
+            }
+        }
+        return eraNames.size > 0 ? Array.from(eraNames) : null;
+    }
+
+    const eraNames = new Set<string>();
+    for (const child of node.children) {
+        const childEraNames = collectScopedEraNames(child, context);
+        if (!childEraNames) {
+            continue;
+        }
+        for (const eraName of childEraNames) {
+            eraNames.add(eraName);
+        }
+    }
+
+    return eraNames.size > 0 ? Array.from(eraNames) : null;
+}
+
+function mergeActiveEraNames(
+    inheritedEraNames: readonly string[] | undefined,
+    scopedEraNames: readonly string[] | null,
+): readonly string[] | undefined {
+    if (!inheritedEraNames || inheritedEraNames.length === 0) {
+        return scopedEraNames ? [...scopedEraNames] : inheritedEraNames;
+    }
+
+    if (!scopedEraNames || scopedEraNames.length === 0) {
+        return [...inheritedEraNames];
+    }
+
+    const scopedByLowerName = new Map(scopedEraNames.map(name => [name.toLowerCase(), name]));
+    const intersection: string[] = [];
+    for (const eraName of inheritedEraNames) {
+        const match = scopedByLowerName.get(eraName.toLowerCase());
+        if (match) {
+            intersection.push(match);
+        }
+    }
+
+    return intersection;
 }
 
 /**
@@ -1257,10 +1345,11 @@ function evaluateSingleFilterConfig(
     unit: any,
     context: EvaluatorContext,
     parsedRangeValues: ParsedRangeValue[],
+    activeEraNames?: readonly string[],
 ): boolean {
     // Handle external filters (era, faction) - these use ID-based lookups
     if (conf.external) {
-        return evaluateExternalFilter(unit, operator, values, conf, context);
+        return evaluateExternalFilter(unit, operator, values, conf, context, activeEraNames);
     }
     
     // Get unit value for this filter
@@ -1306,7 +1395,8 @@ function evaluateSingleFilterConfig(
 function evaluateFilter(
     filter: SemanticToken,
     unit: any,
-    context: EvaluatorContext
+    context: EvaluatorContext,
+    activeEraNames?: readonly string[],
 ): boolean {
     const sortedFilters = getSortedFilterConfigs(context, filter.field);
     if (sortedFilters.length === 0) return true; // Unknown filter - pass through
@@ -1319,12 +1409,12 @@ function evaluateFilter(
     if (operator === '!=') {
         // Exclusion: unit must NOT match ANY of the configs
         return sortedFilters.every(conf => 
-            evaluateSingleFilterConfig(conf, operator, values, unit, context, parsedRangeValues)
+            evaluateSingleFilterConfig(conf, operator, values, unit, context, parsedRangeValues, activeEraNames)
         );
     } else {
         // Inclusion: unit must match AT LEAST ONE config
         return sortedFilters.some(conf => 
-            evaluateSingleFilterConfig(conf, operator, values, unit, context, parsedRangeValues)
+            evaluateSingleFilterConfig(conf, operator, values, unit, context, parsedRangeValues, activeEraNames)
         );
     }
 }
@@ -1534,7 +1624,8 @@ function evaluateExternalFilter(
     operator: SemanticOperator,
     values: string[],
     conf: AdvFilterConfig,
-    context: EvaluatorContext
+    context: EvaluatorContext,
+    activeEraNames?: readonly string[],
 ): boolean {
     // Determine the membership check function and all names getter based on filter key
     let checkMembership: (name: string) => boolean;
@@ -1544,7 +1635,7 @@ function evaluateExternalFilter(
         checkMembership = (name: string) => context.unitBelongsToEra!(unit, name);
         getAllNames = context.getAllEraNames;
     } else if (conf.key === 'faction' && context.unitBelongsToFaction) {
-        checkMembership = (name: string) => context.unitBelongsToFaction!(unit, name);
+        checkMembership = (name: string) => context.unitBelongsToFaction!(unit, name, activeEraNames);
         getAllNames = context.getAllFactionNames;
     } else if (conf.key === 'forcePack' && context.unitBelongsToForcePack) {
         checkMembership = (name: string) => context.unitBelongsToForcePack!(unit, name);
@@ -1570,7 +1661,7 @@ function evaluateExternalFilter(
     } else if (operator === '==') {
         const allowedNames = new Set(expandedValues.map(val => val.toLowerCase()));
         const unitMatchedNames = allNames.length > 0
-            ? getUnitMatchedExternalNames(context, unit, filterKey, allNames, checkMembership)
+            ? getUnitMatchedExternalNames(context, unit, filterKey, allNames, checkMembership, activeEraNames)
             : null;
 
         if (!unitMatchedNames) {
@@ -1589,7 +1680,7 @@ function evaluateExternalFilter(
         return true;
     } else if (operator === '&=') {
         const unitMatchedNames = allNames.length > 0
-            ? getUnitMatchedExternalNames(context, unit, filterKey, allNames, checkMembership)
+            ? getUnitMatchedExternalNames(context, unit, filterKey, allNames, checkMembership, activeEraNames)
             : null;
 
         if (unitMatchedNames) {
@@ -1950,7 +2041,8 @@ function evaluateSemanticFilter(
 export function evaluateASTNode(
     node: ASTNode,
     unit: any,
-    context: EvaluatorContext
+    context: EvaluatorContext,
+    activeEraNames?: readonly string[],
 ): boolean {
     switch (node.type) {
         case 'text':
@@ -1963,10 +2055,10 @@ export function evaluateASTNode(
             return true;
             
         case 'filter':
-            return evaluateFilter(node.token, unit, context);
+            return evaluateFilter(node.token, unit, context, activeEraNames);
             
         case 'group':
-            return evaluateGroup(node, unit, context);
+            return evaluateGroup(node, unit, context, activeEraNames);
             
         default:
             return true;
@@ -1979,16 +2071,19 @@ export function evaluateASTNode(
 function evaluateGroup(
     group: GroupASTNode,
     unit: any,
-    context: EvaluatorContext
+    context: EvaluatorContext,
+    activeEraNames?: readonly string[],
 ): boolean {
     if (group.children.length === 0) return true;
     
     if (group.operator === 'AND') {
+        const scopedEraNames = collectScopedEraNames(group, context);
+        const nextActiveEraNames = mergeActiveEraNames(activeEraNames, scopedEraNames);
         // All children must match
-        return group.children.every(child => evaluateASTNode(child, unit, context));
+        return group.children.every(child => evaluateASTNode(child, unit, context, nextActiveEraNames));
     } else {
         // OR: At least one child must match
-        return group.children.some(child => evaluateASTNode(child, unit, context));
+        return group.children.some(child => evaluateASTNode(child, unit, context, activeEraNames));
     }
 }
 

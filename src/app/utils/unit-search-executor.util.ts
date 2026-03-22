@@ -56,7 +56,7 @@ interface UnitSearchExecutionRequest {
     getAdjustedBV: (unit: Unit) => number;
     getAdjustedPV: (unit: Unit) => number;
     unitBelongsToEra: (unit: Unit, eraName: string) => boolean;
-    unitBelongsToFaction: (unit: Unit, factionName: string) => boolean;
+    unitBelongsToFaction: (unit: Unit, factionName: string, eraNames?: readonly string[]) => boolean;
     unitBelongsToForcePack: (unit: Unit, packName: string) => boolean;
     getAllEraNames: () => string[];
     getAllFactionNames: () => string[];

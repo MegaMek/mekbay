@@ -155,8 +155,18 @@ function getEligibleEras(eras: Era[], referenceYear: number | null): Era[] {
     return eras.filter(era => getEraEndYear(era) >= referenceYear);
 }
 
+function getCandidateEras(eras: Era[], units: ForceUnit[], selectedEra: Era | null = null): Era[] {
+    if (selectedEra) return [selectedEra];
+    return getEligibleEras(eras, getReferenceYear(units));
+}
+
 function getFactionEraUnitIds(faction: Faction, eraId: number): Set<number> | null {
     return faction.eras[eraId] ?? null;
+}
+
+function hasFactionEraAvailability(faction: Faction, eraId: number): boolean {
+    const eraUnitIds = getFactionEraUnitIds(faction, eraId);
+    return !!eraUnitIds && eraUnitIds.size > 0;
 }
 
 function getEraMatchPercentage(faction: Faction, eraId: number, unitIds: number[], totalUnits: number): number {
@@ -268,9 +278,15 @@ export class ForceNamerUtil {
      * @param minPercentage Minimum match threshold (default: MIN_UNITS_PERCENTAGE = 0.7).
      *                      Pass 0 to include all factions with any match.
      */
-    public static getAvailableFactions(units: ForceUnit[], factions: Faction[], eras: Era[], minPercentage = MIN_UNITS_PERCENTAGE): Map<Faction, number> | null {
+    public static getAvailableFactions(
+        units: ForceUnit[],
+        factions: Faction[],
+        eras: Era[],
+        minPercentage = MIN_UNITS_PERCENTAGE,
+        selectedEra: Era | null = null
+    ): Map<Faction, number> | null {
         if (!units?.length) return null;
-        const eligibleEras = getEligibleEras(eras, getReferenceYear(units));
+        const eligibleEras = getCandidateEras(eras, units, selectedEra);
         if (eligibleEras.length === 0) return null;
 
         const unitIds = units.map(u => u.getUnit().id);
@@ -299,10 +315,19 @@ export class ForceNamerUtil {
      * Falls back to FACTION_MERCENARY when no composition matches exist.
      * Returns null only if the factions array itself is empty.
      */
-    public static pickRandomFaction(units: ForceUnit[], factions: Faction[], eras: Era[]): Faction | null {
+    public static pickRandomFaction(units: ForceUnit[], factions: Faction[], eras: Era[], selectedEra: Era | null = null): Faction | null {
         const mercenary = factions.find(f => f.id === FACTION_MERCENARY) ?? null;
-        const availableFactions = this.getAvailableFactions(units, factions, eras, MIN_UNITS_PERCENTAGE);
-        if (!availableFactions || availableFactions.size === 0) return mercenary;
+        const availableFactions = this.getAvailableFactions(units, factions, eras, MIN_UNITS_PERCENTAGE, selectedEra);
+        if (!availableFactions || availableFactions.size === 0) {
+            if (selectedEra) {
+                const eraFactions = factions.filter(faction =>
+                    faction.id !== FACTION_EXTINCT && hasFactionEraAvailability(faction, selectedEra.id)
+                );
+                if (eraFactions.length > 0) return pick(eraFactions);
+                return mercenary && hasFactionEraAvailability(mercenary, selectedEra.id) ? mercenary : null;
+            }
+            return mercenary;
+        }
 
         const entries = Array.from(availableFactions.entries());
         if (entries.length === 1) return entries[0][0];

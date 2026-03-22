@@ -443,6 +443,7 @@ export class UnitSearchFiltersService {
             corpusVersion,
             this.units,
             this.dataService.getSearchWorkerIndexSnapshot(),
+            this.dataService.getSearchWorkerFactionEraSnapshot(),
         );
 
         this.cachedWorkerCorpusVersion = result.cache.version;
@@ -1140,9 +1141,24 @@ export class UnitSearchFiltersService {
      * Check if a unit belongs to a specific faction by name.
      * Used for external filter evaluation in AST.
      */
-    public unitBelongsToFaction(unit: Unit, factionName: string): boolean {
+    public unitBelongsToFaction(unit: Unit, factionName: string, eraNames?: readonly string[]): boolean {
         const faction = this.dataService.getFactionByName(factionName);
         if (!faction) return false;
+
+        if (eraNames !== undefined) {
+            if (eraNames.length === 0) {
+                return false;
+            }
+
+            for (const eraName of eraNames) {
+                const eraId = this.dataService.getEraByName(eraName)?.id;
+                if (eraId !== undefined && (faction.eras[eraId] as Set<number> | undefined)?.has(unit.id)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         return this.getFactionUnitIds(faction).has(unit.id);
     }
@@ -1302,7 +1318,7 @@ export class UnitSearchFiltersService {
             getAdjustedBV: (unit: Unit) => this.getAdjustedBV(unit),
             getAdjustedPV: (unit: Unit) => this.getAdjustedPV(unit),
             unitBelongsToEra: (unit: Unit, eraName: string) => this.unitBelongsToEra(unit, eraName),
-            unitBelongsToFaction: (unit: Unit, factionName: string) => this.unitBelongsToFaction(unit, factionName),
+            unitBelongsToFaction: (unit: Unit, factionName: string, eraNames?: readonly string[]) => this.unitBelongsToFaction(unit, factionName, eraNames),
             unitBelongsToForcePack: (unit: Unit, packName: string) => this.unitBelongsToForcePack(unit, packName),
             getAllEraNames: () => this.dataService.getEras().map(era => era.name),
             getAllFactionNames: () => this.dataService.getFactions().map(faction => faction.name),

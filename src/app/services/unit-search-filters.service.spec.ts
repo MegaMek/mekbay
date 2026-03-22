@@ -1058,6 +1058,62 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
     });
 
+    it('limits faction results to the selected era when both filters are active', async () => {
+        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
+            pending('Real unit data could not be loaded for the era-faction intersection test.');
+            return;
+        }
+
+        const bundle = buildSmallBundle(benchmarkBundle);
+        bundle.eras.eras = [
+            {
+                id: 1,
+                name: 'Clan Invasion',
+                img: '',
+                years: { from: 3049, to: 3061 },
+                units: [1, 2],
+                factions: [],
+            },
+            {
+                id: 2,
+                name: 'Jihad',
+                img: '',
+                years: { from: 3067, to: 3081 },
+                units: [2],
+                factions: [],
+            },
+        ];
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: 'Clan Coyote',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    1: new Set([1]),
+                    2: new Set([2]),
+                },
+            },
+        ];
+
+        const { service } = createService(bundle);
+        service.setFilter('era', ['Clan Invasion']);
+        service.setFilter('faction', {
+            'Clan Coyote': {
+                name: 'Clan Coyote',
+                state: 'or',
+                count: 1,
+            },
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
+
+        const workerSnapshot = (service as any).getWorkerCorpusSnapshot((service as any).getWorkerCorpusVersion());
+        expect(workerSnapshot.factionEraIndex['Clan Invasion']?.['Clan Coyote']).toEqual(['Test Mek']);
+        expect(workerSnapshot.factionEraIndex['Jihad']?.['Clan Coyote']).toEqual(['Test Tank']);
+    });
+
     it('promotes overlapping faction dropdown filters into wildcard semantic ownership', async () => {
         if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
             pending('Real unit data could not be loaded for the faction wildcard promotion test.');
