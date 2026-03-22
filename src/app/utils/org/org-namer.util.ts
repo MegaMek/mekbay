@@ -62,7 +62,7 @@ export function getOrgFromForce(forceOrEntry: Force | LoadForceEntry, options: O
 		const resolvedEra = forceOrEntry.era ?? null;
 		const groupResults = forceOrEntry.groups
 			.filter((group) => group.units.some((unit) => unit.unit !== undefined))
-			.flatMap((group) => getGroupResultsFromLoadForceGroup(group));
+			.flatMap((group) => getGroupResultsFromLoadForceGroup(group, resolvedFaction, resolvedEra));
 		const rawGroups = resolveFromGroups(groupResults, resolvedFaction, resolvedEra);
 		return getResolvedOrgResult(rawGroups, resolvedFaction, resolvedEra, resolvedOptions);
 	}
@@ -80,10 +80,10 @@ export function getOrgFromForce(forceOrEntry: Force | LoadForceEntry, options: O
 
 function getGroupResultsFromLoadForceGroup(
 	group: LoadForceGroup,
+	faction: Faction,
+	era: Era | null | undefined,
 ): GroupSizeResult[] {
 	const force = group.force ?? null;
-	const faction = force?.faction ?? DEFAULT_FACTION;
-	const era = force?.era ?? null;
 	const units = group.units
 		.filter((entry): entry is typeof entry & { unit: Unit } => entry.unit !== undefined)
 		.map((entry) => entry.unit);
