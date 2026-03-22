@@ -65,7 +65,7 @@ export interface ForceEntryPreviewDialogData {
     selector: 'force-entry-preview-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, FactionImgPipe, CleanModelStringPipe, UnitIconComponent],
+    imports: [CommonModule, CleanModelStringPipe, UnitIconComponent],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
