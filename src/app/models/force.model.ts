@@ -84,8 +84,15 @@ export interface EraUnitValidationSummary {
     totalUnits: number;
     validUnits: number;
     invalidTrackedUnits: number;
+    invalidTrackedUnitNames: string[];
     extinctTrackedUnits: number;
+    extinctTrackedUnitNames: string[];
     invalidYearFallbackUnits: number;
+    invalidYearFallbackUnitNames: string[];
+}
+
+function formatEraWarningUnits(unitNames: readonly string[]): string {
+    return unitNames.map(unitName => `"${unitName}"`).join(', ');
 }
 
 export function getEraUnitValidationSummary(
@@ -96,11 +103,15 @@ export function getEraUnitValidationSummary(
 ): EraUnitValidationSummary {
     const eraEndYear = getEraEndYear(era);
     let invalidTrackedUnits = 0;
+    const invalidTrackedUnitNames: string[] = [];
     let extinctTrackedUnits = 0;
+    const extinctTrackedUnitNames: string[] = [];
     let invalidYearFallbackUnits = 0;
+    const invalidYearFallbackUnitNames: string[] = [];
 
     for (const forceUnit of units) {
         const unit = forceUnit.getUnit();
+        const displayName = forceUnit.getDisplayName();
         const isTrackedInAnyEra = eras.some(candidateEra => hasEraUnitMembership(candidateEra, unit.id));
 
         if (isTrackedInAnyEra) {
@@ -110,14 +121,17 @@ export function getEraUnitValidationSummary(
 
             if (isExtinctInSelectedEra) {
                 extinctTrackedUnits++;
+                extinctTrackedUnitNames.push(displayName);
             } else if (!existsInSelectedEra) {
                 invalidTrackedUnits++;
+                invalidTrackedUnitNames.push(displayName);
             }
             continue;
         }
 
         if (unit.year > eraEndYear) {
             invalidYearFallbackUnits++;
+            invalidYearFallbackUnitNames.push(displayName);
         }
     }
 
@@ -128,8 +142,11 @@ export function getEraUnitValidationSummary(
         totalUnits,
         validUnits,
         invalidTrackedUnits,
+        invalidTrackedUnitNames,
         extinctTrackedUnits,
+        extinctTrackedUnitNames,
         invalidYearFallbackUnits,
+        invalidYearFallbackUnitNames,
     };
 }
 
@@ -393,8 +410,11 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         const extinctFaction = this.dataService.getFactionById(FACTION_EXTINCT) ?? null;
         const {
             invalidTrackedUnits,
+            invalidTrackedUnitNames,
             extinctTrackedUnits,
+            extinctTrackedUnitNames,
             invalidYearFallbackUnits,
+            invalidYearFallbackUnitNames,
         } = getEraUnitValidationSummary(this.units(), era, eras, extinctFaction);
 
         if (faction && !hasFactionEraAvailability(faction, era.id)) {
@@ -403,17 +423,17 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
 
         if (invalidTrackedUnits > 0) {
             const unitLabel = invalidTrackedUnits === 1 ? 'unit is' : 'units are';
-            warnings.push(`${invalidTrackedUnits} ${unitLabel} not listed in the ${era.name} era.`);
+            warnings.push(`${invalidTrackedUnits} ${unitLabel} not listed in the ${era.name} era: ${formatEraWarningUnits(invalidTrackedUnitNames)}.`);
         }
 
         if (extinctTrackedUnits > 0) {
             const unitLabel = extinctTrackedUnits === 1 ? 'unit is' : 'units are';
-            warnings.push(`${extinctTrackedUnits} ${unitLabel} extinct in the ${era.name} era.`);
+            warnings.push(`${extinctTrackedUnits} ${unitLabel} extinct in the ${era.name} era: ${formatEraWarningUnits(extinctTrackedUnitNames)}.`);
         }
 
         if (invalidYearFallbackUnits > 0) {
             const unitLabel = invalidYearFallbackUnits === 1 ? 'unit is' : 'units are';
-            warnings.push(`${invalidYearFallbackUnits} ${unitLabel} newer than this era ends in ${era.years.to}.`);
+            warnings.push(`${invalidYearFallbackUnits} ${unitLabel} newer than this era ends in ${era.years.to}: ${formatEraWarningUnits(invalidYearFallbackUnitNames)}.`);
         }
 
         return warnings.length > 0 ? warnings.join(' ') : null;
