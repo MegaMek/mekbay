@@ -172,6 +172,7 @@ export class DataService {
             getFromLocalStorage: async () => (await this.dbService.getUnits()) ?? null,
             putInLocalStorage: async (data: Units) => this.dbService.saveUnits(data),
             preprocess: (data: Units): Units => {
+                this.invalidateForcePackCaches();
                 this.unitNameMap.clear();
                 for (const unit of data.units) {
                     this.unitNameMap.set(unit.name, unit);
@@ -596,7 +597,13 @@ export class DataService {
         this.searchCorpusVersion.update(version => version + 1);
     }
 
+    private invalidateForcePackCaches(): void {
+        this.forcePackToChassisType = null;
+        this.chassisTypeToForcePacks = null;
+    }
+
     private rebuildUnitCatalogIndexes(units: Unit[]): void {
+        this.invalidateForcePackCaches();
         this.unitNameMap.clear();
         for (const unit of units) {
             this.unitNameMap.set(unit.name, unit);

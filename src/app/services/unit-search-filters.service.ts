@@ -201,8 +201,12 @@ export class UnitSearchFiltersService {
     /** Signal that changes when unit tags are updated. Used to trigger reactivity in tag-dependent components. */
     readonly tagsVersion = signal(0);
 
-    private invalidateCorpusCaches(): void {
+    private invalidateIndexedDropdownUniverseCache(): void {
         this.indexedUniverseNamesCache.clear();
+    }
+
+    private invalidateCorpusCaches(): void {
+        this.invalidateIndexedDropdownUniverseCache();
         this.factionUnitIdsCache = new WeakMap<Faction, Set<number>>();
         this.eraUnitIdsCache = new WeakMap<Era, Set<number>>();
         this.cachedWorkerCorpusVersion = null;
@@ -560,6 +564,7 @@ export class UnitSearchFiltersService {
         });
         effect(() => {
             this.dataService.tagsVersion(); // depend on tags version
+            this.invalidateIndexedDropdownUniverseCache();
             this.invalidateTagsCache();
         });
         effect(() => {
@@ -866,7 +871,10 @@ export class UnitSearchFiltersService {
     }
 
     private getSortedIndexedUniverseNames(conf: AdvFilterConfig): string[] {
-        const cacheKey = `${conf.key}|${conf.sortOptions?.join('\u0001') ?? ''}`;
+        const cacheVersion = conf.key === '_tags'
+            ? this.dataService.tagsVersion()
+            : this.dataService.searchCorpusVersion();
+        const cacheKey = `${conf.key}|${conf.sortOptions?.join('\u0001') ?? ''}|${cacheVersion}`;
         let cached = this.indexedUniverseNamesCache.get(cacheKey);
         if (!cached) {
             cached = sortAvailableDropdownOptions(this.getIndexedUniverseNames(conf.key), conf.sortOptions);
