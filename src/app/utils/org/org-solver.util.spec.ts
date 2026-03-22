@@ -391,11 +391,11 @@ function createFixtureUnit(name: keyof typeof BLUNDER_BRIGADE_UNIT_FIXTURES): Un
         fixture.internal ?? 1,
     );
 }
-function buildBlunderBrigadeGroupResults(multiplier: number = 1): GroupSizeResult[] {
+function buildBlunderBrigadeGroupResults(groupOneMultiplier: number = 1, copies: number = 1): GroupSizeResult[] {
     const groupResults: GroupSizeResult[] = [];
 
-    for (let copy = 0; copy < multiplier; copy += 1) {
-        const groupOne: Unit[] = Array.from({ length: 10 }, () =>
+    for (let copy = 0; copy < copies; copy += 1) {
+        const groupOne: Unit[] = Array.from({ length: groupOneMultiplier }, () =>
             BLUNDER_BRIGADE_GROUP_ONE_NAMES.map(name => createFixtureUnit(name)),
         ).flat();
         const groupTwo: Unit[] = [
@@ -418,15 +418,6 @@ function buildBlunderBrigadeGroupResults(multiplier: number = 1): GroupSizeResul
     }
 
     return groupResults;
-}
-
-function resolveBlunderBrigadeForce(multiplier: number = 1): { groupResults: GroupSizeResult[]; result: GroupSizeResult[] } {
-    const groupResults = buildBlunderBrigadeGroupResults(multiplier);
-
-    return {
-        groupResults,
-        result: resolveFromGroups('Wolf\'s Dragoons', 'Mercenary', groupResults),
-    };
 }
 
 describe('org-solver.util', () => {
@@ -3158,9 +3149,22 @@ describe('org-solver.util performance guards', () => {
             .toBeLessThan(20);
     });
 
+    it('resolves the Blunder Brigade as Mercenary force within the performance guardrail', () => {
+        const startedAt = Date.now();
+        const groupResults = buildBlunderBrigadeGroupResults(10);
+        const result = resolveFromGroups('Random Mercs', 'Mercenary', groupResults);
+        const elapsedMs = Date.now() - startedAt;
+
+        expect(groupResults.length).toBeGreaterThan(0);
+        expect(result.length).toBeGreaterThan(0);
+        expect(result.every(group => group.name.length > 0)).toBeTrue();
+        expect(elapsedMs).toBeLessThan(BLUNDER_BRIGADE_MAX_SOLVE_MS);
+    }); 
+
     it('resolves the Blunder Brigade 7415 Wolf\'s Dragoons force within the performance guardrail', () => {
         const startedAt = Date.now();
-        const { groupResults, result } = resolveBlunderBrigadeForce();
+        const groupResults = buildBlunderBrigadeGroupResults(1);
+        const result = resolveFromGroups('Wolf\'s Dragoons', 'Mercenary', groupResults);
         const elapsedMs = Date.now() - startedAt;
 
         expect(groupResults.length).toBeGreaterThan(0);
@@ -3170,15 +3174,14 @@ describe('org-solver.util performance guards', () => {
     }); 
 
     it('resolves 5x the Blunder Brigade 7415 Wolf\'s Dragoons force within the performance guardrail', () => {
-        for (let i = 0; i < 5; i++) {
-            const startedAt = Date.now();
-            const { groupResults, result } = resolveBlunderBrigadeForce();
-            const elapsedMs = Date.now() - startedAt;
+        const startedAt = Date.now();
+        const groupResults = buildBlunderBrigadeGroupResults(5);
+        const result = resolveFromGroups('Wolf\'s Dragoons', 'Mercenary', groupResults);
+        const elapsedMs = Date.now() - startedAt;
 
-            expect(groupResults.length).toBeGreaterThan(0);
-            expect(result.length).toBeGreaterThan(0);
-            expect(result.every(group => group.name.length > 0)).toBeTrue();
-            expect(elapsedMs).toBeLessThan(BLUNDER_BRIGADE_MAX_SOLVE_MS);
-        }
+        expect(groupResults.length).toBeGreaterThan(0);
+        expect(result.length).toBeGreaterThan(0);
+        expect(result.every(group => group.name.length > 0)).toBeTrue();
+        expect(elapsedMs).toBeLessThan(BLUNDER_BRIGADE_MAX_SOLVE_MS);
     });
 });
