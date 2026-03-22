@@ -13,6 +13,7 @@ import { type GroupSizeResult, type OrgSizeResult } from './org-types';
  * based on the structure of forces and groups.
  */
 export interface OrgNamingOptions {
+	readonly displayOnlyTopLevel?: boolean;
 	readonly aggregateEquivalentGroups?: boolean;
 	readonly displayThresholdTier?: number;
 }
@@ -95,6 +96,9 @@ function getResolvedOrgResult(
 	era: Era | null | undefined,
 	options: OrgNamingOptions = {},
 ): OrgSizeResult {
+	if (groups.length === 0) {
+		return toOrgSizeResult('Force', 0, []);
+	}
 	//const display = getAggregatedGroupsResult(groups, factionName, factionAffinity, options);
 	// return toOrgSizeResult(display.name, display.tier, groups);
 	return toOrgSizeResult('DUMMY', 0, groups);
