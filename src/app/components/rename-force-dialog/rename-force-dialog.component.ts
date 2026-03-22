@@ -584,7 +584,8 @@ export class RenameForceDialogComponent {
         const randomFaction = ForceNamerUtil.pickRandomFaction(
             units,
             this.dataService.getFactions(),
-            this.dataService.getEras()
+            this.dataService.getEras(),
+            this.selectedEra()
         );
         if (randomFaction === this.selectedFaction()) return; // no change
         this.selectedFaction.set(randomFaction);
