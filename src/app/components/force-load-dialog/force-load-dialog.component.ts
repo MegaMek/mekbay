@@ -302,7 +302,8 @@ export class ForceLoadDialogComponent {
                         const entry = forceMap.get(fi.instanceId)!;
                         fi.name = entry.name;
                         fi.type = entry.type;
-                        fi.factionId = entry.factionId;
+                        fi.factionId = entry.faction?.id;
+                        fi.eraId = entry.era?.id;
                         fi.bv = entry.bv;
                         fi.pv = entry.pv;
                         fi.forceTimestamp = entry.timestamp;
@@ -334,6 +335,7 @@ export class ForceLoadDialogComponent {
                                 fi.name = info.name;
                                 fi.type = info.type;
                                 fi.factionId = info.factionId;
+                                fi.eraId = info.eraId;
                                 fi.bv = info.bv;
                                 fi.pv = info.pv;
                                 fi.forceTimestamp = info.forceTimestamp;

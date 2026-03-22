@@ -1,5 +1,6 @@
 import { type Force, UnitGroup } from '../../models/force.model';
-import { FactionAffinity } from '../../models/factions.model';
+import type { Era } from '../../models/eras.model';
+import { FACTION_MERCENARY, type Faction } from '../../models/factions.model';
 import { LoadForceEntry, type LoadForceGroup } from '../../models/load-force-entry.model';
 import type { Unit } from '../../models/units.model';
 import { resolveFromGroups, resolveFromUnits } from './org-solver.util';
@@ -16,74 +17,82 @@ export interface OrgNamingOptions {
 	readonly displayThresholdTier?: number;
 }
 
+const DEFAULT_FACTION: Faction = {
+	id: FACTION_MERCENARY,
+	name: 'Mercenary',
+	group: 'Mercenary',
+	img: '',
+	eras: {},
+};
+
 // Public API
 
 export function getOrgFromGroup(group: UnitGroup, options?: OrgNamingOptions): OrgSizeResult;
-export function getOrgFromGroup(group: LoadForceGroup, factionName: string, factionAffinity: FactionAffinity, options?: OrgNamingOptions): OrgSizeResult;
-export function getOrgFromGroup(group: UnitGroup | LoadForceGroup, factionOrOptions?: string | OrgNamingOptions, factionAffinity?: FactionAffinity, options: OrgNamingOptions = {}): OrgSizeResult {
-	const resolvedOptions = typeof factionOrOptions === 'object' ? factionOrOptions : options;
-	const explicitFactionName = typeof factionOrOptions === 'string' ? factionOrOptions : undefined;
+export function getOrgFromGroup(group: LoadForceGroup, options?: OrgNamingOptions): OrgSizeResult;
+export function getOrgFromGroup(group: UnitGroup | LoadForceGroup, options: OrgNamingOptions = {}): OrgSizeResult {
+	const resolvedOptions = options;
 
 	if (group instanceof UnitGroup) {
 		const force = group.force;
-		const resolvedFactionName = explicitFactionName ?? force.faction()?.name ?? 'Mercenary';
-		const resolvedFactionAffinity = factionAffinity ?? force.faction()?.group ?? 'Mercenary';
+		const resolvedFaction = force.faction() ?? DEFAULT_FACTION;
+		const resolvedEra = force.era();
 		const allUnits = group.units().map((unit) => unit.getUnit()).filter((unit): unit is Unit => unit !== undefined);
-		const rawGroups = resolveFromUnits(allUnits, resolvedFactionName, resolvedFactionAffinity);
-		return getResolvedOrgResult(rawGroups, resolvedFactionName, resolvedFactionAffinity, resolvedOptions);
+		const rawGroups = resolveFromUnits(allUnits, resolvedFaction, resolvedEra);
+		return getResolvedOrgResult(rawGroups, resolvedFaction, resolvedEra, resolvedOptions);
 	}
 
-	const resolvedFactionName = explicitFactionName ?? 'Mercenary';
-	const resolvedFactionAffinity = factionAffinity ?? 'Mercenary';
+	const force = group.force ?? null;
+	const resolvedFaction = force?.faction ?? DEFAULT_FACTION;
+	const resolvedEra = force?.era ?? null;
 	const units = group.units
 		.filter((unit): unit is typeof unit & { unit: Unit } => unit.unit !== undefined)
 		.map((unit) => unit.unit);
-	const rawGroups = resolveFromUnits(units, resolvedFactionName, resolvedFactionAffinity);
-	return getResolvedOrgResult(rawGroups, resolvedFactionName, resolvedFactionAffinity, resolvedOptions);
+	const rawGroups = resolveFromUnits(units, resolvedFaction, resolvedEra);
+	return getResolvedOrgResult(rawGroups, resolvedFaction, resolvedEra, resolvedOptions);
 }
 
 export function getOrgFromForce(force: Force, options?: OrgNamingOptions): OrgSizeResult;
-export function getOrgFromForce(entry: LoadForceEntry, factionName: string, factionAffinity: FactionAffinity, options?: OrgNamingOptions): OrgSizeResult;
-export function getOrgFromForce(forceOrEntry: Force | LoadForceEntry, factionOrOptions?: string | OrgNamingOptions, factionAffinity?: FactionAffinity, options: OrgNamingOptions = {}): OrgSizeResult {
-	const resolvedOptions = typeof factionOrOptions === 'object' ? factionOrOptions : options;
-	const explicitFactionName = typeof factionOrOptions === 'string' ? factionOrOptions : undefined;
+export function getOrgFromForce(entry: LoadForceEntry, options?: OrgNamingOptions): OrgSizeResult;
+export function getOrgFromForce(forceOrEntry: Force | LoadForceEntry, options: OrgNamingOptions = {}): OrgSizeResult {
+	const resolvedOptions = options;
 
 	if (forceOrEntry instanceof LoadForceEntry) {
-		const resolvedFactionName = explicitFactionName ?? 'Mercenary';
-		const resolvedFactionAffinity = factionAffinity ?? 'Mercenary';
+		const resolvedFaction = forceOrEntry.faction ?? DEFAULT_FACTION;
+		const resolvedEra = forceOrEntry.era ?? null;
 		const groupResults = forceOrEntry.groups
 			.filter((group) => group.units.some((unit) => unit.unit !== undefined))
-			.flatMap((group) => getGroupResultsFromLoadForceGroup(group, resolvedFactionName, resolvedFactionAffinity));
-		const rawGroups = resolveFromGroups(resolvedFactionName, resolvedFactionAffinity, groupResults);
-		return getResolvedOrgResult(rawGroups, resolvedFactionName, resolvedFactionAffinity, resolvedOptions);
+			.flatMap((group) => getGroupResultsFromLoadForceGroup(group));
+		const rawGroups = resolveFromGroups(groupResults, resolvedFaction, resolvedEra);
+		return getResolvedOrgResult(rawGroups, resolvedFaction, resolvedEra, resolvedOptions);
 	}
 
-	const resolvedFactionName = explicitFactionName ?? forceOrEntry.faction()?.name ?? 'Mercenary';
-	const resolvedFactionAffinity = factionAffinity ?? forceOrEntry.faction()?.group ?? 'Mercenary';
+	const resolvedFaction = forceOrEntry.faction() ?? DEFAULT_FACTION;
+	const resolvedEra = forceOrEntry.era();
 	const groupResults = forceOrEntry.groups()
 		.filter((group) => group.units().length > 0)
 		.flatMap((group) => group.sizeResult().groups);
-	const rawGroups = resolveFromGroups(resolvedFactionName, resolvedFactionAffinity, groupResults);
-	return getResolvedOrgResult(rawGroups, resolvedFactionName, resolvedFactionAffinity, resolvedOptions);
+	const rawGroups = resolveFromGroups(groupResults, resolvedFaction, resolvedEra);
+	return getResolvedOrgResult(rawGroups, resolvedFaction, resolvedEra, resolvedOptions);
 }
 
 // Internal utilities
 
 function getGroupResultsFromLoadForceGroup(
 	group: LoadForceGroup,
-	factionName: string,
-	factionAffinity: FactionAffinity,
 ): GroupSizeResult[] {
+	const force = group.force ?? null;
+	const faction = force?.faction ?? DEFAULT_FACTION;
+	const era = force?.era ?? null;
 	const units = group.units
 		.filter((entry): entry is typeof entry & { unit: Unit } => entry.unit !== undefined)
 		.map((entry) => entry.unit);
-	return resolveFromUnits(units, factionName, factionAffinity);
+	return resolveFromUnits(units, faction, era);
 }
 
 function getResolvedOrgResult(
 	groups: readonly GroupSizeResult[],
-	factionName: string,
-	factionAffinity: FactionAffinity,
+	faction: Faction,
+	era: Era | null | undefined,
 	options: OrgNamingOptions = {},
 ): OrgSizeResult {
 	//const display = getAggregatedGroupsResult(groups, factionName, factionAffinity, options);

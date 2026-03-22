@@ -1,4 +1,5 @@
-import type { FactionAffinity } from '../../models/factions.model';
+import type { Era } from '../../models/eras.model';
+import type { Faction } from '../../models/factions.model';
 import {
 	CC_CORE_ORG,
 	CLAN_CORE_ORG,
@@ -11,30 +12,31 @@ import {
 import type { OrgDefinitionSpec } from './org-types';
 
 export interface OrgDefinitionRegistryEntry {
-	readonly match: (factionName: string, factionAffinity: FactionAffinity) => boolean;
+	readonly match: (faction: Faction, era?: Era | null) => boolean;
 	readonly org: OrgDefinitionSpec;
 }
 
 export const ORG_SPEC_REGISTRY: readonly OrgDefinitionRegistryEntry[] = [
-	{ match: (factionName) => factionName.includes('ComStar') || factionName.includes('Word of Blake'), org: COMSTAR_CORE_ORG },
-	{ match: (factionName) => factionName.includes('Society'), org: SOCIETY_CORE_ORG },
-	{ match: (factionName) => factionName.includes('Marian Hegemony'), org: MH_CORE_ORG },
-	{ match: (factionName) => factionName.includes('Dragoons'), org: WD_CORE_ORG },
-	{ match: (factionName) => factionName.includes('Capellan Confederation'), org: CC_CORE_ORG },
-	{ match: (_factionName, factionAffinity) => factionAffinity.includes('Clan'), org: CLAN_CORE_ORG },
-    { match: (factionName, _factionAffinity) =>
-        factionName.includes('Rasalhague Dominion') || factionName.includes('Raven Alliance') || factionName.includes('Wolf Empire') ||
-        factionName.includes('Escorpi') || factionName.includes('Scorpion Empire') || factionName.includes('Alyina Mercantile League'),
+	{ match: (faction) => faction.name.includes('ComStar') || faction.name.includes('Word of Blake'), org: COMSTAR_CORE_ORG },
+	{ match: (faction) => faction.name.includes('Society'), org: SOCIETY_CORE_ORG },
+	{ match: (faction) => faction.name.includes('Marian Hegemony'), org: MH_CORE_ORG },
+	{ match: (faction, era) => faction.name.includes('Dragoons') && (era?.years.to ?? Number.POSITIVE_INFINITY) <= 3050, org: IS_CORE_ORG },
+	{ match: (faction) => faction.name.includes('Dragoons'), org: WD_CORE_ORG },
+	{ match: (faction) => faction.name.includes('Capellan Confederation'), org: CC_CORE_ORG },
+	{ match: (faction) => faction.group.includes('Clan'), org: CLAN_CORE_ORG },
+    { match: (faction) =>
+        faction.name.includes('Rasalhague Dominion') || faction.name.includes('Raven Alliance') || faction.name.includes('Wolf Empire') ||
+        faction.name.includes('Escorpi') || faction.name.includes('Scorpion Empire') || faction.name.includes('Alyina Mercantile League'),
         org: CLAN_CORE_ORG,
     },
-	{ match: (_factionName, factionAffinity) => factionAffinity == 'Inner Sphere', org: IS_CORE_ORG },
+	{ match: (faction) => faction.group == 'Inner Sphere', org: IS_CORE_ORG },
 ];
 
 export const DEFAULT_ORG_SPEC: OrgDefinitionSpec = IS_CORE_ORG;
 
 export function resolveOrgDefinitionSpec(
-	factionName: string,
-	factionAffinity: FactionAffinity,
+	faction: Faction,
+	era?: Era | null,
 ): OrgDefinitionSpec {
-	return ORG_SPEC_REGISTRY.find((entry) => entry.match(factionName, factionAffinity))?.org ?? DEFAULT_ORG_SPEC;
+	return ORG_SPEC_REGISTRY.find((entry) => entry.match(faction, era))?.org ?? DEFAULT_ORG_SPEC;
 }

@@ -32,6 +32,8 @@
  */
 
 import { GameSystem } from "./common.model";
+import type { Era } from './eras.model';
+import type { Faction } from './factions.model';
 import type { Unit } from "./units.model";
 
 /*
@@ -47,6 +49,7 @@ export interface LoadForceUnit {
 export interface LoadForceGroup {
     name?: string;
     formationId?: string;
+    force?: LoadForceEntry;
     units: LoadForceUnit[];
 }
 
@@ -57,7 +60,8 @@ export class LoadForceEntry {
     cloud: boolean;
     local: boolean;
     name: string;
-    factionId?: number;
+    faction: Faction | null;
+    era: Era | null;
     bv?: number;
     pv?: number;
     groups: LoadForceGroup[];
@@ -70,9 +74,13 @@ export class LoadForceEntry {
         this.cloud = data.cloud ?? false;
         this.local = data.local ?? false;
         this.name = data.name ?? '';
-        this.factionId = data.factionId ?? undefined;
+        this.faction = data.faction ?? null;
+        this.era = data.era ?? null;
         this.bv = data.bv ?? undefined;
         this.pv = data.pv ?? undefined;
         this.groups = data.groups ?? [];
+        for (const group of this.groups) {
+            group.force = this;
+        }
     }
 }

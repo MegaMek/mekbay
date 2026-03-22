@@ -1,4 +1,5 @@
-import type { FactionAffinity } from '../../models/factions.model';
+import type { Era } from '../../models/eras.model';
+import type { Faction } from '../../models/factions.model';
 import type { ASUnitTypeCode, Unit } from '../../models/units.model';
 import {
     compileGroupFacts,
@@ -3538,12 +3539,12 @@ export function evaluateOrgDefinition(
 }
 
 export function evaluateFactionOrgDefinition(
-    factionName: string,
-    factionAffinity: FactionAffinity,
+    faction: Faction,
     units: readonly Unit[],
     groups: readonly GroupSizeResult[] = [],
+    era?: Era | null,
 ): OrgDefinitionEvaluationResult {
-    return evaluateOrgDefinition(resolveOrgDefinitionSpec(factionName, factionAffinity), units, groups);
+    return evaluateOrgDefinition(resolveOrgDefinitionSpec(faction, era), units, groups);
 }
 
 function compareGroupScore(left: GroupSizeResult, right: GroupSizeResult): number {
@@ -5559,21 +5560,21 @@ function resolveWithDefinition(
 
 export function resolveFromUnits(
     units: readonly Unit[],
-    factionName: string,
-    factionAffinity: FactionAffinity,
+    faction: Faction,
+    era: Era | null = null,
     _hierarchicalAggregation: boolean = false,
 ): GroupSizeResult[] {
-    const definition = resolveOrgDefinitionSpec(factionName, factionAffinity);
+    const definition = resolveOrgDefinitionSpec(faction, era);
     return resolveWithDefinition(definition, units, []);
 }
 
 export function resolveFromGroups(
-    factionName: string,
-    factionAffinity: FactionAffinity,
     groupResults: readonly GroupSizeResult[],
+    faction: Faction,
+    era: Era | null = null,
     _hierarchicalAggregation: boolean = false,
 ): GroupSizeResult[] {
-    const definition = resolveOrgDefinitionSpec(factionName, factionAffinity);
+    const definition = resolveOrgDefinitionSpec(faction, era);
     const context = getResolveContext(definition);
     if (groupResults.length === 1 && isStableSingleGroupResolveResult(groupResults[0], context)) {
         return [groupResults[0]];

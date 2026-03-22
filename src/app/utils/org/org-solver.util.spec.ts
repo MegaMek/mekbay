@@ -1,3 +1,5 @@
+import type { Era } from '../../models/eras.model';
+import type { Faction, FactionAffinity } from '../../models/factions.model';
 import type { ASUnitTypeCode, MoveType, Unit, UnitSubtype, UnitType } from '../../models/units.model';
 import {
     CC_AUGMENTED_BATTALION,
@@ -50,13 +52,13 @@ import {
 } from './org-facts.util';
 import {
     DEFAULT_ORG_SPEC,
-    resolveOrgDefinitionSpec,
+    resolveOrgDefinitionSpec as resolveOrgDefinitionSpecForFixture,
 } from './org-registry.util';
 import {
     evaluateComposedCountRule,
     evaluateComposedPatternRule,
     evaluateCIFormationRule,
-    evaluateFactionOrgDefinition,
+    evaluateFactionOrgDefinition as evaluateFactionOrgDefinitionForFixture,
     evaluateLeafCountRule,
     evaluateLeafPatternRule,
     evaluateOrgDefinition,
@@ -66,8 +68,8 @@ import {
     materializeCIFormationRule,
     materializeLeafCountRule,
     materializeLeafPatternRule,
-    resolveFromGroups,
-    resolveFromUnits,
+    resolveFromGroups as resolveFromGroupsForFixture,
+    resolveFromUnits as resolveFromUnitsForFixture,
 } from './org-solver.util';
 import type {
     GroupSizeResult,
@@ -85,6 +87,62 @@ type UnitFixture = {
     specials?: string[];
     internal?: number;
 };
+
+function createFaction(name: string, group: FactionAffinity): Faction {
+    return {
+        id: -1,
+        name,
+        group,
+        img: '',
+        eras: {},
+    };
+}
+
+function createEra(from: number, to: number): Era | undefined {
+    if (from === undefined || to === undefined) {
+        return undefined;
+    }
+
+    return {
+        id: -1,
+        name: `Era ${from}~${to}`,
+        years: { from, to },
+        factions: [],
+        units: [],
+    };
+}
+
+function resolveOrgDefinitionSpec(factionName: string, factionAffinity: FactionAffinity, era?: Era): OrgDefinitionSpec {
+    return resolveOrgDefinitionSpecForFixture(createFaction(factionName, factionAffinity), era);
+}
+
+function evaluateFactionOrgDefinition(
+    factionName: string,
+    factionAffinity: FactionAffinity,
+    units: readonly Unit[],
+    groups: readonly GroupSizeResult[] = [],
+    era?: Era,
+) {
+    return evaluateFactionOrgDefinitionForFixture(createFaction(factionName, factionAffinity), units, groups, era);
+}
+
+function resolveFromUnits(
+    units: readonly Unit[],
+    factionName: string,
+    factionAffinity: FactionAffinity,
+    era?: Era,
+): GroupSizeResult[] {
+    return resolveFromUnitsForFixture(units, createFaction(factionName, factionAffinity), era);
+}
+
+function resolveFromGroups(
+    factionName: string,
+    factionAffinity: FactionAffinity,
+    groupResults: readonly GroupSizeResult[],
+    era?: Era,
+): GroupSizeResult[] {
+    return resolveFromGroupsForFixture(groupResults, createFaction(factionName, factionAffinity), era);
+}
 
 function createUnit(
     name: string,
@@ -2045,6 +2103,11 @@ describe('org-solver.util', () => {
         expect(resolveOrgDefinitionSpec('Capellan Confederation', 'Inner Sphere')).toBe(CC_CORE_ORG);
         expect(resolveOrgDefinitionSpec('Wolf\'s Dragoons', 'Mercenary')).toBe(WD_CORE_ORG);
         expect(resolveOrgDefinitionSpec('Unknown Clan', 'HW Clan')).toBe(CLAN_CORE_ORG);
+    });
+
+    it('resolves Wolf\'s Dragoons to Inner Sphere orgs before 3051', () => {
+        expect(resolveOrgDefinitionSpec('Wolf\'s Dragoons', 'Mercenary', createEra(3000, 3050))).toBe(IS_CORE_ORG);
+        expect(resolveOrgDefinitionSpec('Wolf\'s Dragoons', 'Mercenary', createEra(3051, 3100))).toBe(WD_CORE_ORG);
     });
 
     it('falls back to the new-path default org definition', () => {

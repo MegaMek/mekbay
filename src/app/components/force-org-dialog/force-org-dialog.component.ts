@@ -56,7 +56,7 @@ import { getUnitsAverageTechBase, type TechBase } from '../../models/tech.model'
 import type { SerializedOrganization, OrgPlacedForce, OrgGroupData } from '../../models/organization.model';
 import { ForceEntryPreviewDialogComponent } from '../force-entry-preview-dialog/force-entry-preview-dialog.component';
 import { getOrgFromForce } from '../../utils/org-namer.util';
-import { Faction, FACTION_MERCENARY, FactionAffinity } from '../../models/factions.model';
+import { Faction, FACTION_MERCENARY } from '../../models/factions.model';
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2.0;
@@ -97,6 +97,10 @@ function getForceValue(force: LoadForceEntry): number {
     return total;
 }
 
+function getLoadForceFactionId(force: LoadForceEntry): number | undefined {
+    return force.faction?.id;
+}
+
 /** Format BV/PV totals for a set of entries as a display string. */
 function formatTotals(entries: LoadForceEntry[]): string {
     let totalBv = 0, totalPv = 0;
@@ -113,12 +117,12 @@ function formatTotals(entries: LoadForceEntry[]): string {
 
 /** Determine the dominant faction ID from a set of entries, using computed unit totals. */
 function getDominantFactionId(entries: LoadForceEntry[]): number | undefined {
-    const withFaction = entries.filter(e => e.factionId !== undefined);
+    const withFaction = entries.filter(e => getLoadForceFactionId(e) !== undefined);
     if (withFaction.length === 0) return undefined;
     const valueSums = new Map<number, number>();
     const counts = new Map<number, number>();
     for (const e of withFaction) {
-        const fid = e.factionId!;
+        const fid = getLoadForceFactionId(e)!;
         valueSums.set(fid, (valueSums.get(fid) ?? 0) + getForceValue(e));
         counts.set(fid, (counts.get(fid) ?? 0) + 1);
     }
@@ -131,7 +135,7 @@ function getDominantFactionId(entries: LoadForceEntry[]): number | undefined {
     for (const [fid, count] of counts) {
         if (count > maxCount) { maxCount = count; mostFreqId = fid; }
     }
-    return mostFreqId ?? withFaction[0].factionId;
+    return mostFreqId ?? getLoadForceFactionId(withFaction[0]);
 }
 
 interface Rect { x: number; y: number; width: number; height: number }
@@ -300,7 +304,7 @@ export class ForceOrgDialogComponent {
         // Ungrouped forces
         for (const pf of placed) {
             if (pf.groupId !== null) continue;
-            const fid = pf.force.factionId;
+            const fid = getLoadForceFactionId(pf.force);
             if (fid === undefined) continue;
             valueSums.set(fid, (valueSums.get(fid) ?? 0) + getForceValue(pf.force));
             counts.set(fid, (counts.get(fid) ?? 0) + 1);
@@ -473,10 +477,8 @@ export class ForceOrgDialogComponent {
                 bvString = `PV: ${force.pv.toLocaleString()}`;
                 if (totalPv > 0 && totalPv !== force.pv) bvString += ` (${totalPv.toLocaleString()})`;
             }
-            const faction = this.getFaction(force.factionId);
-            const factionName = faction?.name ?? 'Mercenary';
-            const factionAffinity = faction?.group ?? 'Mercenary';
-            const org = getOrgFromForce(force, factionName, factionAffinity);
+            const faction = force.faction ?? this.getFaction(undefined);
+            const org = getOrgFromForce(force);
             result.set(force.instanceId, {
                 faction,
                 org,
@@ -628,8 +630,6 @@ export class ForceOrgDialogComponent {
         const childGroups = groups.filter(g => g.parentGroupId === group.id);
         const factionId = factionIdsOverride?.get(group.id) ?? group.factionId();
         const faction = this.getFaction(factionId) ?? group.faction();
-        const factionName = faction?.name ?? 'Mercenary';
-        const factionAffinity = faction?.group ?? 'Mercenary';
 
         const childGroupResults: GroupSizeResult[] = [];
         const childEntryIds = new Set<string>();
@@ -666,7 +666,7 @@ export class ForceOrgDialogComponent {
             childGroupResults.push(...this.getForceOrgResults(entry));
         }
 
-        return this.computeOrgCollectionResult(allEntries, factionName, factionAffinity, childGroupResults);
+        return this.computeOrgCollectionResult(allEntries, faction, childGroupResults);
     }
 
     private nextZIndex = 0;
@@ -738,10 +738,10 @@ export class ForceOrgDialogComponent {
                 }
                 case 'faction': {
                     const aFaction = forceMetadata.get(a.instanceId)?.faction?.name
-                        ?? this.getFaction(a.factionId)?.name
+                        ?? a.faction?.name
                         ?? '';
                     const bFaction = forceMetadata.get(b.instanceId)?.faction?.name
-                        ?? this.getFaction(b.factionId)?.name
+                        ?? b.faction?.name
                         ?? '';
                     return dir * aFaction.localeCompare(bFaction);
                 }
@@ -759,12 +759,11 @@ export class ForceOrgDialogComponent {
 
     private computeSearchText(force: LoadForceEntry): string {
         let s = '';
-        const faction = this.getFaction(force.factionId);
-        const factionName = faction?.name ?? 'Mercenary';
-        const factionAffinity = faction?.group ?? 'Mercenary';
-        const orgName = getOrgFromForce(force, factionName, factionAffinity).name;
+        const orgName = getOrgFromForce(force).name;
 
         if (force.name) s += force.name + ' ';
+        if (force.faction?.name) s += force.faction.name + ' ';
+        if (force.era?.name) s += force.era.name + ' ';
         if (orgName) s += orgName + ' ';
         for (const g of (force.groups || [])) {
             if (g.name) s += g.name + ' ';
@@ -802,16 +801,14 @@ export class ForceOrgDialogComponent {
 
     private getForceOrgResults(force: LoadForceEntry): GroupSizeResult[] {
         const metadata = this.forcesData().get(force.instanceId);
-        const faction = metadata?.faction ?? this.getFaction(force.factionId);
         return metadata?.org.groups
             ? [...metadata.org.groups]
-            : [...getOrgFromForce(force, faction?.name ?? 'Mercenary', faction?.group ?? 'Mercenary').groups];
+            : [...getOrgFromForce(force).groups];
     }
 
     private computeOrgCollectionResult(
         entries: LoadForceEntry[],
-        factionName: string,
-        factionAffinity: FactionAffinity,
+        faction: Faction | undefined,
         childGroupResults?: GroupSizeResult[],
     ): OrgSizeResult {
         return {
@@ -862,7 +859,7 @@ export class ForceOrgDialogComponent {
 
             // Direct forces in this group
             for (const pf of directForcesMap.get(groupId) ?? []) {
-                const fid = pf.force.factionId;
+                const fid = getLoadForceFactionId(pf.force);
                 if (fid === undefined) continue;
                 valueSums.set(fid, (valueSums.get(fid) ?? 0) + getForceValue(pf.force));
                 counts.set(fid, (counts.get(fid) ?? 0) + 1);
@@ -871,9 +868,10 @@ export class ForceOrgDialogComponent {
             // Extra forces (preview: only at the target group)
             if (extraForces && groupId === extraForces.targetGroupId) {
                 for (const e of extraForces.entries) {
-                    if (e.factionId === undefined) continue;
-                    valueSums.set(e.factionId, (valueSums.get(e.factionId) ?? 0) + getForceValue(e));
-                    counts.set(e.factionId, (counts.get(e.factionId) ?? 0) + 1);
+                    const factionId = getLoadForceFactionId(e);
+                    if (factionId === undefined) continue;
+                    valueSums.set(factionId, (valueSums.get(factionId) ?? 0) + getForceValue(e));
+                    counts.set(factionId, (counts.get(factionId) ?? 0) + 1);
                 }
             }
 
@@ -1193,8 +1191,7 @@ export class ForceOrgDialogComponent {
         const faction = this.getFaction(factionId);
         const aggregateResult = this.computeOrgCollectionResult(
             entries,
-            faction?.name ?? 'Mercenary',
-            faction?.group ?? 'Mercenary',
+            faction,
             childGroupResults,
         );
         const orgName = aggregateResult.name;
