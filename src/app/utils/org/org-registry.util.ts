@@ -24,7 +24,7 @@ export const ORG_SPEC_REGISTRY: readonly OrgDefinitionRegistryEntry[] = [
 	{ match: (_factionName, factionAffinity) => factionAffinity.includes('Clan'), org: CLAN_CORE_ORG },
     { match: (factionName, _factionAffinity) =>
         factionName.includes('Rasalhague Dominion') || factionName.includes('Raven Alliance') || factionName.includes('Wolf Empire') ||
-        factionName.includes('Escorpion') || factionName.includes('Scorpion Empire') || factionName.includes('Alyina Mercantile League'),
+        factionName.includes('Escorpi') || factionName.includes('Scorpion Empire') || factionName.includes('Alyina Mercantile League'),
         org: CLAN_CORE_ORG,
     },
 	{ match: (_factionName, factionAffinity) => factionAffinity == 'Inner Sphere', org: IS_CORE_ORG },
