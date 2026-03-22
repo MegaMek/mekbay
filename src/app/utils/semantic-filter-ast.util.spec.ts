@@ -122,4 +122,55 @@ describe('semantic filter exclusivity', () => {
 
         expect(filtered).toEqual([units[0]]);
     });
+
+    it('scopes faction matches to the selected era when both filters are present', () => {
+        const units = [
+            {
+                id: 1,
+                era: ['Clan Invasion'],
+                factionEras: {
+                    'Clan Coyote': ['Clan Invasion'],
+                },
+            },
+            {
+                id: 2,
+                era: ['Clan Invasion'],
+                factionEras: {
+                    'Clan Coyote': ['Jihad'],
+                },
+            },
+            {
+                id: 3,
+                era: ['Jihad'],
+                factionEras: {
+                    'Clan Coyote': ['Jihad'],
+                },
+            },
+        ];
+        const result = parseSemanticQueryAST('era="Clan Invasion" faction="Clan Coyote"', GameSystem.CLASSIC);
+
+        const filtered = filterUnitsWithAST(units, result.ast, {
+            gameSystem: GameSystem.CLASSIC,
+            getUnitId,
+            getProperty: (unit: { era?: string[] }, key: string) => unit[key as keyof typeof unit],
+            unitBelongsToEra: (unit: { era?: string[] }, eraName: string) =>
+                (unit.era ?? []).includes(eraName),
+            unitBelongsToFaction: (
+                unit: { factionEras?: Record<string, string[]> },
+                factionName: string,
+                eraNames?: readonly string[],
+            ) => {
+                const membershipEraNames = unit.factionEras?.[factionName] ?? [];
+                if (eraNames !== undefined) {
+                    return eraNames.some(eraName => membershipEraNames.includes(eraName));
+                }
+
+                return membershipEraNames.length > 0;
+            },
+            getAllEraNames: () => ['Clan Invasion', 'Jihad'],
+            getAllFactionNames: () => ['Clan Coyote'],
+        });
+
+        expect(filtered).toEqual([units[0]]);
+    });
 });

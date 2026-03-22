@@ -34,7 +34,12 @@
 import type { GameSystem } from '../models/common.model';
 import type { Unit } from '../models/units.model';
 import { filterStateToSemanticText } from './semantic-filter.util';
-import type { UnitSearchWorkerCorpusSnapshot, UnitSearchWorkerIndexSnapshot, UnitSearchWorkerQueryRequest } from './unit-search-worker-protocol.util';
+import type {
+    UnitSearchWorkerCorpusSnapshot,
+    UnitSearchWorkerFactionEraSnapshot,
+    UnitSearchWorkerIndexSnapshot,
+    UnitSearchWorkerQueryRequest,
+} from './unit-search-worker-protocol.util';
 import type { FilterState } from '../services/unit-search-filters.model';
 
 interface UnitSearchWorkerCorpusCache {
@@ -72,6 +77,7 @@ export function getWorkerCorpusSnapshot(
     corpusVersion: string,
     units: Unit[],
     indexes: UnitSearchWorkerIndexSnapshot,
+    factionEraIndex: UnitSearchWorkerFactionEraSnapshot,
 ): { snapshot: UnitSearchWorkerCorpusSnapshot; cache: UnitSearchWorkerCorpusCache } {
     if (cache.snapshot && cache.version === corpusVersion) {
         return { snapshot: cache.snapshot, cache };
@@ -81,6 +87,7 @@ export function getWorkerCorpusSnapshot(
         corpusVersion,
         units,
         indexes,
+        factionEraIndex,
     };
 
     return {

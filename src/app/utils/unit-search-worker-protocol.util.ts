@@ -42,10 +42,17 @@ export interface UnitSearchWorkerIndexSnapshot {
     };
 }
 
+export interface UnitSearchWorkerFactionEraSnapshot {
+    [eraName: string]: {
+        [factionName: string]: string[];
+    };
+}
+
 export interface UnitSearchWorkerCorpusSnapshot {
     corpusVersion: UnitSearchWorkerCorpusVersion;
     units: import('../models/units.model').Unit[];
     indexes: UnitSearchWorkerIndexSnapshot;
+    factionEraIndex: UnitSearchWorkerFactionEraSnapshot;
 }
 
 export interface UnitSearchWorkerQueryRequest {
