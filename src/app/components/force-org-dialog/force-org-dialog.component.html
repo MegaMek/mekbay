@@ -98,16 +98,16 @@
                     [attr.height]="GROUP_HEADER_HEIGHT" class="group-name-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="group-header-info">
                         @if (group.name(); as customName) {
-                        <div class="group-name" (click)="renameGroup(group); $event.stopPropagation()"
-                            (pointerdown)="$event.stopPropagation()" title="Click to rename">
+                        <div class="group-name"
+                            (pointerdown)="onGroupTitlePointerDown($event, group)" title="Drag to move or click to rename">
                             {{ customName }}
                         </div>
                         @if (previewInfo?.orgName || group.orgName(); as orgName) {
                         <div class="group-org-name">{{ orgName }}</div>
                         }
                         } @else if (previewInfo?.orgName || group.orgName(); as orgName) {
-                        <div class="group-name" (click)="renameGroup(group); $event.stopPropagation()"
-                            (pointerdown)="$event.stopPropagation()" title="Click to rename">
+                        <div class="group-name"
+                            (pointerdown)="onGroupTitlePointerDown($event, group)" title="Drag to move or click to rename">
                             {{ orgName }}
                         </div>
                         }

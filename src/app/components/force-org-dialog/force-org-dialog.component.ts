@@ -62,11 +62,25 @@ import { Faction } from '../../models/factions.model';
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2.0;
 
+const GRID_SNAP_SIZE = 20;
 const CARD_WIDTH = 220;
 const CARD_HEIGHT = 70;
-const CARD_GAP = 12;
-const GROUP_PADDING = 24;
+const GROUP_PADDING = 15;
 const GROUP_HEADER_HEIGHT = 64;
+const GROUP_EMBED_OVERLAP_THRESHOLD = 0.2;
+const COLLISION_RESOLVE_MAX_ITERATIONS = 50;
+
+function snapToGrid(value: number): number {
+    return Math.round(value / GRID_SNAP_SIZE) * GRID_SNAP_SIZE;
+}
+
+function snapDownToGrid(value: number): number {
+    return Math.floor(value / GRID_SNAP_SIZE) * GRID_SNAP_SIZE;
+}
+
+function snapUpToGrid(value: number): number {
+    return Math.ceil(value / GRID_SNAP_SIZE) * GRID_SNAP_SIZE;
+}
 
 /** Compute total BV and PV for a force by summing base unit values.
  *  Only sums BV for Classic forces and PV for Alpha Strike forces. */
@@ -142,14 +156,6 @@ function getDominantFactionId(entries: LoadForceEntry[]): number | undefined {
 interface Rect { x: number; y: number; width: number; height: number }
 interface GroupPreview extends Rect { orgName: string; totals: string; factionId: number | undefined }
 
-interface LayoutItem {
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-    apply: (x: number, y: number) => void;
-}
-
 interface PreviewOrgExtras {
     targetGroupId: string;
     entries: LoadForceEntry[];
@@ -185,8 +191,6 @@ class OrgGroup {
     readonly height: WritableSignal<number>;
     readonly zIndex: WritableSignal<number>;
     parentGroupId: string | null;
-    readonly anchorX: WritableSignal<number>;
-    readonly anchorY: WritableSignal<number>;
 
     /** Descendant forces — set externally, drives totals computation. */
     readonly descendants = signal<LoadForceEntry[]>([]);
@@ -211,8 +215,6 @@ class OrgGroup {
         height?: number;
         zIndex: number;
         parentGroupId?: string | null;
-        anchorX?: number;
-        anchorY?: number;
     }) {
         this.id = params.id ?? crypto.randomUUID();
         this.name = signal(params.name ?? '');
@@ -222,8 +224,6 @@ class OrgGroup {
         this.height = signal(params.height ?? 0);
         this.zIndex = signal(params.zIndex);
         this.parentGroupId = params.parentGroupId ?? null;
-        this.anchorX = signal(params.anchorX ?? 0);
-        this.anchorY = signal(params.anchorY ?? 0);
     }
 }
 
@@ -388,6 +388,7 @@ export class ForceOrgDialogComponent {
     private groupDragStartPos = { x: 0, y: 0 };
     private groupStartPos = { x: 0, y: 0 };
     private groupDragged = false;
+    private titleDragGroupId: string | null = null;
 
     // Hover state
     protected hoveredForceId = signal<string | null>(null);
@@ -1090,8 +1091,17 @@ export class ForceOrgDialogComponent {
     // ==================== Group Drag ====================
 
     protected onGroupPointerDown(event: PointerEvent, group: OrgGroup): void {
+        this.startGroupDrag(event, group, false);
+    }
+
+    protected onGroupTitlePointerDown(event: PointerEvent, group: OrgGroup): void {
+        this.startGroupDrag(event, group, true);
+    }
+
+    private startGroupDrag(event: PointerEvent, group: OrgGroup, fromTitle: boolean): void {
         event.preventDefault();
         event.stopPropagation();
+        this.titleDragGroupId = fromTitle ? group.id : null;
         this.draggedGroup.set(group);
         this.groupDragged = false;
         this.groupDragStartPos = { x: event.clientX, y: event.clientY };
@@ -1164,10 +1174,10 @@ export class ForceOrgDialogComponent {
         }
         this.groups.set(this.groups().filter(g => g.id !== group.id));
         this.placedForces.set([...this.placedForces()]);
-        // Relayout parent if exists
+        // Resize parent if exists
         if (group.parentGroupId) {
             const parent = this.groups().find(g => g.id === group.parentGroupId);
-            if (parent) this.layoutGroup(parent);
+            if (parent) this.recalcGroupBounds(parent);
         }
     }
 
@@ -1221,15 +1231,20 @@ export class ForceOrgDialogComponent {
             maxY = Math.max(maxY, cg.y() + cg.height());
         }
 
-        group.x.set(minX - GROUP_PADDING);
-        group.y.set(minY - GROUP_PADDING - GROUP_HEADER_HEIGHT);
-        group.width.set((maxX - minX) + GROUP_PADDING * 2);
-        group.height.set((maxY - minY) + GROUP_PADDING * 2 + GROUP_HEADER_HEIGHT);
+        const snappedX = snapDownToGrid(minX - GROUP_PADDING);
+        const snappedY = snapDownToGrid(minY - GROUP_PADDING - GROUP_HEADER_HEIGHT);
+        const snappedMaxX = snapUpToGrid(maxX + GROUP_PADDING);
+        const snappedMaxY = snapUpToGrid(maxY + GROUP_PADDING);
 
-        // Recurse up: re-layout parent so siblings are repositioned
+        group.x.set(snappedX);
+        group.y.set(snappedY);
+        group.width.set(snappedMaxX - snappedX);
+        group.height.set(snappedMaxY - snappedY);
+
+        // Recurse up so ancestor bounds continue to wrap their children.
         if (group.parentGroupId) {
             const parent = this.groups().find(g => g.id === group.parentGroupId);
-            if (parent) this.layoutGroup(parent);
+            if (parent) this.recalcGroupBounds(parent);
         }
     }
 
@@ -1243,6 +1258,114 @@ export class ForceOrgDialogComponent {
         const overlapHeight = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
         if (overlapWidth <= 0 || overlapHeight <= 0) return 0;
         return overlapWidth * overlapHeight;
+    }
+
+    private expandRect(rect: Rect, padding: number): Rect {
+        return {
+            x: rect.x - padding,
+            y: rect.y - padding,
+            width: rect.width + padding * 2,
+            height: rect.height + padding * 2,
+        };
+    }
+
+    private getSiblingCollisionTarget(
+        rect: Rect,
+        containerGroupId: string | null,
+        excludedForce?: PlacedForce,
+        excludedGroup?: OrgGroup,
+    ): { rect: Rect } | null {
+        let bestTarget: { rect: Rect } | null = null;
+        let bestOverlap = 0;
+
+        for (const force of this.placedForces()) {
+            if (force === excludedForce || force.groupId !== containerGroupId) continue;
+            const forceRect = this.forceRect(force);
+            const overlap = this.getOverlapArea(rect, this.expandRect(forceRect, GRID_SNAP_SIZE));
+            if (overlap > bestOverlap) {
+                bestOverlap = overlap;
+                bestTarget = { rect: forceRect };
+            }
+        }
+
+        for (const group of this.groups()) {
+            if (group === excludedGroup || group.parentGroupId !== containerGroupId) continue;
+            const groupRect = this.groupRect(group);
+            const overlap = this.getOverlapArea(rect, this.expandRect(groupRect, GRID_SNAP_SIZE));
+            if (overlap > bestOverlap) {
+                bestOverlap = overlap;
+                bestTarget = { rect: groupRect };
+            }
+        }
+
+        return bestTarget;
+    }
+
+    private getResolvedCollisionPosition(rect: Rect, obstacle: Rect): { x: number; y: number } {
+        const clearanceObstacle = this.expandRect(obstacle, GRID_SNAP_SIZE);
+        const overlapWidth = Math.min(rect.x + rect.width, clearanceObstacle.x + clearanceObstacle.width) - Math.max(rect.x, clearanceObstacle.x);
+        const overlapHeight = Math.min(rect.y + rect.height, clearanceObstacle.y + clearanceObstacle.height) - Math.max(rect.y, clearanceObstacle.y);
+        const rectCenterX = rect.x + rect.width / 2;
+        const rectCenterY = rect.y + rect.height / 2;
+        const obstacleCenterX = obstacle.x + obstacle.width / 2;
+        const obstacleCenterY = obstacle.y + obstacle.height / 2;
+
+        const horizontalCandidate = rectCenterX <= obstacleCenterX
+            ? { x: snapDownToGrid(obstacle.x - rect.width - GRID_SNAP_SIZE), y: rect.y }
+            : { x: snapUpToGrid(obstacle.x + obstacle.width + GRID_SNAP_SIZE), y: rect.y };
+        const verticalCandidate = rectCenterY <= obstacleCenterY
+            ? { x: rect.x, y: snapDownToGrid(obstacle.y - rect.height - GRID_SNAP_SIZE) }
+            : { x: rect.x, y: snapUpToGrid(obstacle.y + obstacle.height + GRID_SNAP_SIZE) };
+
+        const candidates = overlapWidth <= overlapHeight
+            ? [horizontalCandidate, verticalCandidate]
+            : [verticalCandidate, horizontalCandidate];
+
+        for (const candidate of candidates) {
+            const candidateRect = { ...rect, x: candidate.x, y: candidate.y };
+            if (!this.rectsOverlap(candidateRect, clearanceObstacle)) {
+                return candidate;
+            }
+        }
+
+        return candidates[0];
+    }
+
+    private resolveForceSiblingCollisions(force: PlacedForce): void {
+        for (let iteration = 0; iteration < COLLISION_RESOLVE_MAX_ITERATIONS; iteration++) {
+            const rect = this.forceRect(force);
+            const obstacle = this.getSiblingCollisionTarget(rect, force.groupId, force);
+            if (!obstacle) break;
+
+            const nextPosition = this.getResolvedCollisionPosition(rect, obstacle.rect);
+            if (nextPosition.x === rect.x && nextPosition.y === rect.y) break;
+
+            force.x.set(nextPosition.x);
+            force.y.set(nextPosition.y);
+        }
+
+        if (force.groupId) {
+            const parent = this.groups().find(group => group.id === force.groupId);
+            if (parent) this.recalcGroupBounds(parent);
+        }
+    }
+
+    private resolveGroupSiblingCollisions(group: OrgGroup): void {
+        for (let iteration = 0; iteration < COLLISION_RESOLVE_MAX_ITERATIONS; iteration++) {
+            const rect = this.groupRect(group);
+            const obstacle = this.getSiblingCollisionTarget(rect, group.parentGroupId, undefined, group);
+            if (!obstacle) break;
+
+            const nextPosition = this.getResolvedCollisionPosition(rect, obstacle.rect);
+            if (nextPosition.x === rect.x && nextPosition.y === rect.y) break;
+
+            this.moveGroupTo(group, nextPosition.x, nextPosition.y);
+        }
+
+        if (group.parentGroupId) {
+            const parent = this.groups().find(candidate => candidate.id === group.parentGroupId);
+            if (parent) this.recalcGroupBounds(parent);
+        }
     }
 
     private forceRect(pf: PlacedForce): Rect {
@@ -1397,7 +1520,6 @@ export class ForceOrgDialogComponent {
     private detectGroupDrop(grp: OrgGroup, focusPoint?: { x: number; y: number }): GroupDropAction | null {
         const grpRect = this.groupRect(grp);
         let bestOverlap = 0;
-        let bestAction: GroupDropAction | null = null;
 
         // A child group remains in its parent while it has the largest overlap.
         if (grp.parentGroupId) {
@@ -1407,44 +1529,25 @@ export class ForceOrgDialogComponent {
             }
         }
 
-        const joinParentCandidates = this.groups().filter((other) => {
+        const targetCandidates = this.groups().filter((other) => {
             if (other.id === grp.id) return false;
+            if (this.isDescendantOf(grp, other.id)) return false;
             if (this.isDescendantOf(other, grp.id)) return false;
             if (other.id === grp.parentGroupId) return false;
-            if (grp.parentGroupId === other.id) return false;
             return true;
         });
-        const joinParentTarget = this.getPreferredGroupTarget(grpRect, joinParentCandidates, grp.id, focusPoint);
-        if (joinParentTarget && joinParentTarget.overlap > bestOverlap) {
-            bestOverlap = joinParentTarget.overlap;
-            bestAction = { type: 'join-parent', groupId: joinParentTarget.group.id };
-        }
-        if (
-            joinParentTarget
-            && focusPoint
-            && this.rectContainsPoint(this.groupRect(joinParentTarget.group), focusPoint)
-            && joinParentTarget.group.parentGroupId !== grp.parentGroupId
-        ) {
-            return { type: 'join-parent', groupId: joinParentTarget.group.id };
+        const target = this.getPreferredGroupTarget(grpRect, targetCandidates, grp.id, focusPoint);
+        if (!target || target.overlap <= bestOverlap) {
+            return null;
         }
 
-        const siblingCandidates = this.groups().filter((other) => {
-            if (other.id === grp.id) return false;
-            if (other.parentGroupId !== grp.parentGroupId) return false;
-            if (this.isDescendantOf(other, grp.id)) return false;
-            if (this.isDescendantOf(grp, other.id)) return false;
-            return true;
-        });
-        const siblingTarget = this.getPreferredGroupTarget(grpRect, siblingCandidates, grp.id, focusPoint);
-        if (siblingTarget && siblingTarget.overlap > bestOverlap) {
-            if (grp.parentGroupId !== null) {
-                bestAction = { type: 'rearrange', parentId: grp.parentGroupId };
-            } else {
-                bestAction = { type: 'create-parent', other: siblingTarget.group };
-            }
+        const draggedArea = Math.max(1, grpRect.width * grpRect.height);
+        const overlapCoverage = target.overlap / draggedArea;
+        if (overlapCoverage >= GROUP_EMBED_OVERLAP_THRESHOLD) {
+            return { type: 'join-parent', groupId: target.group.id };
         }
 
-        return bestAction;
+        return { type: 'create-parent', other: target.group };
     }
 
     private clearDropPreview(): void {
@@ -1565,6 +1668,7 @@ export class ForceOrgDialogComponent {
                 const oldGroup = draggedPf.groupId ? this.groups().find(g => g.id === draggedPf.groupId) : null;
                 draggedPf.groupId = action.groupId;
                 const group = this.groups().find(g => g.id === action.groupId)!;
+                this.resolveForceSiblingCollisions(draggedPf);
                 this.recalcGroupBounds(group);
                 if (oldGroup) {
                     this.recalcGroupBounds(oldGroup);
@@ -1576,17 +1680,14 @@ export class ForceOrgDialogComponent {
             }
             case 'new-group': {
                 const oldGroup = draggedPf.groupId ? this.groups().find(g => g.id === draggedPf.groupId) : null;
-                const anchorX = Math.min(draggedPf.x(), action.other.x());
-                const anchorY = Math.min(draggedPf.y(), action.other.y());
                 const group = new OrgGroup({
                     zIndex: this.nextGroupZIndex++,
-                    anchorX,
-                    anchorY,
                 });
                 draggedPf.groupId = group.id;
                 action.other.groupId = group.id;
                 this.groups.set([...this.groups(), group]);
                 this.recalcGroupBounds(group);
+                this.resolveGroupSiblingCollisions(group);
                 if (oldGroup) {
                     this.recalcGroupBounds(oldGroup);
                     this.dissolveGroupIfUnderpopulated(oldGroup);
@@ -1598,6 +1699,7 @@ export class ForceOrgDialogComponent {
             case 'leave-group': {
                 const group = this.groups().find(g => g.id === draggedPf.groupId)!;
                 draggedPf.groupId = null;
+                this.resolveForceSiblingCollisions(draggedPf);
                 this.recalcGroupBounds(group);
                 this.dissolveGroupIfUnderpopulated(group);
                 this.cleanupEmptyGroups();
@@ -1605,6 +1707,7 @@ export class ForceOrgDialogComponent {
                 return;
             }
             default: {
+                this.resolveForceSiblingCollisions(draggedPf);
                 if (draggedPf.groupId) {
                     const group = this.groups().find(g => g.id === draggedPf.groupId);
                     if (group) this.recalcGroupBounds(group);
@@ -1613,82 +1716,10 @@ export class ForceOrgDialogComponent {
         }
     }
 
-    /** A generic layout item: either a force card or a child group. */
-    private getLayoutItems(group: OrgGroup): LayoutItem[] {
-        const items: LayoutItem[] = [];
-        // Direct force members
-        for (const pf of this.placedForces().filter(f => f.groupId === group.id)) {
-            items.push({ x: pf.x(), y: pf.y(), w: CARD_WIDTH, h: CARD_HEIGHT, apply: (nx, ny) => { pf.x.set(nx); pf.y.set(ny); } });
-        }
-        // Direct child groups
-        for (const cg of this.groups().filter(g => g.parentGroupId === group.id)) {
-            const capturedGroup = cg;
-            items.push({ x: cg.x(), y: cg.y(), w: cg.width(), h: cg.height(), apply: (nx, ny) => { this.moveGroupTo(capturedGroup, nx, ny); } });
-        }
-        return items;
-    }
-
-    private computeLayoutWidth(group: OrgGroup, items: readonly LayoutItem[]): number {
-        const widestItem = items.reduce((maxWidth, item) => Math.max(maxWidth, item.w), 0);
-        const currentInnerWidth = Math.max(0, group.width() - GROUP_PADDING * 2);
-        const currentSpreadWidth = items.length > 0
-            ? Math.max(...items.map(item => item.x + item.w)) - Math.min(...items.map(item => item.x))
-            : 0;
-        const totalArea = items.reduce((sum, item) => sum + item.w * item.h, 0);
-        const idealWidth = Math.ceil(Math.sqrt(totalArea * 1.35));
-
-        return Math.max(widestItem, currentInnerWidth, currentSpreadWidth, idealWidth);
-    }
-
-    private findPackedLayoutPosition(
-        item: LayoutItem,
-        placedItems: ReadonlyArray<Rect & { x: number; y: number }>,
-        anchorX: number,
-        anchorY: number,
-        layoutWidth: number,
-    ): { x: number; y: number } {
-        const maxX = anchorX + Math.max(0, layoutWidth - item.w);
-        const xCandidates = new Set<number>([anchorX]);
-
-        for (const placed of placedItems) {
-            if (placed.x <= maxX) xCandidates.add(placed.x);
-            const nextX = placed.x + placed.width + CARD_GAP;
-            if (nextX <= maxX) xCandidates.add(nextX);
-        }
-
-        const sortedCandidates = [...xCandidates].sort((a, b) => a - b);
-        let best: { x: number; y: number } | null = null;
-
-        for (const candidateX of sortedCandidates) {
-            let candidateY = anchorY;
-            let moved = true;
-
-            while (moved) {
-                moved = false;
-                for (const placed of placedItems) {
-                    const overlapsHorizontally = candidateX < placed.x + placed.width + CARD_GAP
-                        && candidateX + item.w + CARD_GAP > placed.x;
-                    const overlapsVertically = candidateY < placed.y + placed.height + CARD_GAP
-                        && candidateY + item.h + CARD_GAP > placed.y;
-                    if (overlapsHorizontally && overlapsVertically) {
-                        candidateY = placed.y + placed.height + CARD_GAP;
-                        moved = true;
-                    }
-                }
-            }
-
-            if (!best || candidateY < best.y || (candidateY === best.y && candidateX < best.x)) {
-                best = { x: candidateX, y: candidateY };
-            }
-        }
-
-        return best ?? { x: anchorX, y: anchorY };
-    }
-
     /** Move a group and all its descendants by the delta from old to new position. */
     private moveGroupTo(group: OrgGroup, newX: number, newY: number): void {
-        const dx = newX - group.x();
-        const dy = newY - group.y();
+        const dx = snapToGrid(newX) - group.x();
+        const dy = snapToGrid(newY) - group.y();
         if (dx === 0 && dy === 0) return;
         this.translateGroupRecursive(group, dx, dy);
     }
@@ -1697,8 +1728,6 @@ export class ForceOrgDialogComponent {
     private translateGroupRecursive(group: OrgGroup, dx: number, dy: number): void {
         group.x.update(v => v + dx);
         group.y.update(v => v + dy);
-        group.anchorX.update(v => v + dx);
-        group.anchorY.update(v => v + dy);
         for (const pf of this.placedForces()) {
             if (pf.groupId === group.id) {
                 pf.x.update(v => v + dx);
@@ -1710,28 +1739,6 @@ export class ForceOrgDialogComponent {
                 this.translateGroupRecursive(child, dx, dy);
             }
         }
-    }
-
-    /**
-     * Layout all direct children of a group into the available interior space.
-     * This uses a simple bottom-left packing pass so narrower items can fill
-     * gaps under shorter neighbors instead of always forming a new full-width row.
-     */
-    private layoutGroup(group: OrgGroup): void {
-        const items = this.getLayoutItems(group);
-        if (items.length === 0) return;
-        const anchorX = group.anchorX();
-        const anchorY = group.anchorY();
-        const layoutWidth = this.computeLayoutWidth(group, items);
-        const placedItems: Array<Rect & { x: number; y: number }> = [];
-
-        for (const item of [...items].sort((a, b) => a.y - b.y || a.x - b.x || b.h - a.h || b.w - a.w)) {
-            const position = this.findPackedLayoutPosition(item, placedItems, anchorX, anchorY, layoutWidth);
-            item.apply(position.x, position.y);
-            placedItems.push({ x: position.x, y: position.y, width: item.w, height: item.h });
-        }
-
-        this.recalcGroupBounds(group);
     }
 
     /** Check if a group is a descendant of another. */
@@ -1792,29 +1799,44 @@ export class ForceOrgDialogComponent {
                     this.cleanupEmptyGroups();
                 }
                 const target = this.groups().find(g => g.id === action.groupId)!;
-                this.layoutGroup(target);
+                this.recalcGroupBounds(target);
+                this.resolveGroupSiblingCollisions(draggedGrp);
                 return;
             }
             case 'rearrange': {
                 const parent = this.groups().find(g => g.id === action.parentId);
-                if (parent) this.layoutGroup(parent);
+                if (parent) this.recalcGroupBounds(parent);
+                this.resolveGroupSiblingCollisions(draggedGrp);
                 return;
             }
             case 'create-parent': {
-                const anchorX = Math.min(draggedGrp.x(), action.other.x()) + GROUP_PADDING;
-                const anchorY = Math.min(draggedGrp.y(), action.other.y()) + GROUP_PADDING + GROUP_HEADER_HEIGHT;
+                const oldParent = draggedGrp.parentGroupId
+                    ? this.groups().find(g => g.id === draggedGrp.parentGroupId)
+                    : null;
+                const targetParent = action.other.parentGroupId
+                    ? this.groups().find(g => g.id === action.other.parentGroupId)
+                    : null;
                 const parentGroup = new OrgGroup({
                     zIndex: this.nextGroupZIndex++,
-                    parentGroupId: draggedGrp.parentGroupId,
-                    anchorX,
-                    anchorY,
+                    parentGroupId: action.other.parentGroupId,
                 });
                 draggedGrp.parentGroupId = parentGroup.id;
                 action.other.parentGroupId = parentGroup.id;
                 this.groups.set([...this.groups(), parentGroup]);
-                this.layoutGroup(parentGroup);
+                if (oldParent) {
+                    this.recalcGroupBounds(oldParent);
+                    this.dissolveGroupIfUnderpopulated(oldParent);
+                    this.cleanupEmptyGroups();
+                }
+                if (targetParent && targetParent.id !== oldParent?.id) {
+                    this.recalcGroupBounds(targetParent);
+                }
+                this.recalcGroupBounds(parentGroup);
+                this.resolveGroupSiblingCollisions(parentGroup);
                 return;
             }
+            default:
+                this.resolveGroupSiblingCollisions(draggedGrp);
         }
     }
 
@@ -1892,6 +1914,8 @@ export class ForceOrgDialogComponent {
         this.sidebarDragForce.set(null);
         this.sidebarDragActive.set(false);
         this.isDragging.set(false);
+        this.groupDragged = false;
+        this.titleDragGroupId = null;
         this.clearDropPreview();
 
         if (this.hasGlobalPointerListeners) {
@@ -1956,8 +1980,8 @@ export class ForceOrgDialogComponent {
             } else {
                 const worldPos = this.screenToWorld(event.clientX, event.clientY);
                 const sidebarRect: Rect = {
-                    x: worldPos.x - CARD_WIDTH / 2,
-                    y: worldPos.y - CARD_HEIGHT / 2,
+                    x: snapToGrid(worldPos.x - CARD_WIDTH / 2),
+                    y: snapToGrid(worldPos.y - CARD_HEIGHT / 2),
                     width: CARD_WIDTH,
                     height: CARD_HEIGHT,
                 };
@@ -1972,8 +1996,8 @@ export class ForceOrgDialogComponent {
             const worldPos = this.screenToWorld(event.clientX, event.clientY);
             const { dx, dy } = this.getScaledDelta(event, this.dragStartPos);
             if (Math.abs(dx) > 3 || Math.abs(dy) > 3) this.forceDragged = true;
-            dragged.x.set(this.forceStartPos.x + dx);
-            dragged.y.set(this.forceStartPos.y + dy);
+            dragged.x.set(snapToGrid(this.forceStartPos.x + dx));
+            dragged.y.set(snapToGrid(this.forceStartPos.y + dy));
             // Update drop preview
             const forceAction = this.detectForceDrop(dragged, worldPos);
             if (!forceAction && dragged.groupId) {
@@ -2006,8 +2030,8 @@ export class ForceOrgDialogComponent {
             const worldPos = this.screenToWorld(event.clientX, event.clientY);
             const { dx, dy } = this.getScaledDelta(event, this.groupDragStartPos);
             if (Math.abs(dx) > 3 || Math.abs(dy) > 3) this.groupDragged = true;
-            const newX = this.groupStartPos.x + dx;
-            const newY = this.groupStartPos.y + dy;
+            const newX = snapToGrid(this.groupStartPos.x + dx);
+            const newY = snapToGrid(this.groupStartPos.y + dy);
             const moveDx = newX - draggedGrp.x();
             const moveDy = newY - draggedGrp.y();
 
@@ -2127,18 +2151,14 @@ export class ForceOrgDialogComponent {
                             event.clientY >= rect.top && event.clientY <= rect.bottom) {
                             const newPlaced: PlacedForce = {
                                 force,
-                                x: signal(worldPos.x - CARD_WIDTH / 2),
-                                y: signal(worldPos.y - CARD_HEIGHT / 2),
+                                x: signal(snapToGrid(worldPos.x - CARD_WIDTH / 2)),
+                                y: signal(snapToGrid(worldPos.y - CARD_HEIGHT / 2)),
                                 zIndex: signal(this.nextZIndex++),
                                 groupId: null
                             };
                             this.placedForces.set([...this.placedForces(), newPlaced]);
                             // Try grouping with nearby forces
                             this.tryFormGroup(newPlaced, worldPos);
-                            if (newPlaced.groupId) {
-                                const group = this.groups().find(g => g.id === newPlaced.groupId);
-                                if (group) this.layoutGroup(group);
-                            }
                             this.dirty.set(true);
                         }
                     }
@@ -2154,10 +2174,6 @@ export class ForceOrgDialogComponent {
         if (dragged) {
             if (this.forceDragged) {
                 this.tryFormGroup(dragged, this.screenToWorld(event.clientX, event.clientY));
-                if (dragged.groupId) {
-                    const group = this.groups().find(g => g.id === dragged.groupId);
-                    if (group) this.layoutGroup(group);
-                }
                 this.dirty.set(true);
             }
             this.draggedForce.set(null);
@@ -2188,9 +2204,11 @@ export class ForceOrgDialogComponent {
                 // Re-layout parent if it still has one
                 if (dragEndGroup.parentGroupId) {
                     const parent = this.groups().find(g => g.id === dragEndGroup.parentGroupId);
-                    if (parent) this.layoutGroup(parent);
+                    if (parent) this.recalcGroupBounds(parent);
                 }
                 this.dirty.set(true);
+            } else if (this.titleDragGroupId === dragEndGroup.id) {
+                void this.renameGroup(dragEndGroup);
             }
             this.draggedGroup.set(null);
         }
@@ -2240,8 +2258,6 @@ export class ForceOrgDialogComponent {
                     height: g.height(),
                     zIndex: g.zIndex(),
                     parentGroupId: g.parentGroupId,
-                    anchorX: g.anchorX(),
-                    anchorY: g.anchorY(),
                 } as OrgGroupData)),
             };
 
@@ -2282,8 +2298,8 @@ export class ForceOrgDialogComponent {
                 if (force) {
                     placed.push({
                         force,
-                        x: signal(pf.x),
-                        y: signal(pf.y),
+                        x: signal(snapToGrid(pf.x)),
+                        y: signal(snapToGrid(pf.y)),
                         zIndex: signal(pf.zIndex),
                         groupId: pf.groupId,
                     });
@@ -2295,14 +2311,12 @@ export class ForceOrgDialogComponent {
             const groups: OrgGroup[] = org.groups.map(g => new OrgGroup({
                 id: g.id,
                 name: g.name,
-                x: g.x,
-                y: g.y,
-                width: g.width,
-                height: g.height,
+                x: snapToGrid(g.x),
+                y: snapToGrid(g.y),
+                width: Math.max(GRID_SNAP_SIZE, snapUpToGrid(g.width)),
+                height: Math.max(GRID_SNAP_SIZE, snapUpToGrid(g.height)),
                 zIndex: g.zIndex,
                 parentGroupId: g.parentGroupId,
-                anchorX: g.anchorX,
-                anchorY: g.anchorY,
             }));
             this.groups.set(groups);
 

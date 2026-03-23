@@ -75,8 +75,6 @@ describe('ForceOrgDialogComponent', () => {
             width: signal(width),
             height: signal(height),
             zIndex: signal(0),
-            anchorX: signal(x + 24),
-            anchorY: signal(y + 72),
         } as any;
     }
 
@@ -255,7 +253,16 @@ describe('ForceOrgDialogComponent', () => {
 
         (component as any).groups.set([draggedGroup, weakerTarget, strongerTarget]);
 
-        expect((component as any).detectGroupDrop(draggedGroup)).toEqual({ type: 'create-parent', other: strongerTarget });
+        expect((component as any).detectGroupDrop(draggedGroup)).toEqual({ type: 'join-parent', groupId: strongerTarget.id });
+    });
+
+    it('creates a parent group for shallow group overlap', () => {
+        const draggedGroup = createGroup('dragged', 220, 120, 220, 160);
+        const targetGroup = createGroup('target', 380, 80, 320, 260);
+
+        (component as any).groups.set([draggedGroup, targetGroup]);
+
+        expect((component as any).detectGroupDrop(draggedGroup)).toEqual({ type: 'create-parent', other: targetGroup });
     });
 
     it('prefers nested internal groups over outer groups for group drops', () => {
