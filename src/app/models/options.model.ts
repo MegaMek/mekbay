@@ -65,5 +65,5 @@ export interface Options {
     ASUseAutomations: boolean;
     ASVehiclesCriticalHitTable: 'default' | 'scouringSands';
     ASUnifiedDamagePicker: boolean;
-    ASPrintRosterSummary: boolean;
+    printRosterSummary: boolean;
 }

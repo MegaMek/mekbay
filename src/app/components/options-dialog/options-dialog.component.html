@@ -49,6 +49,14 @@
                     <p>Choose the panel arrangement in expanded unit search view on wide screens.</p>
                 </div>
             </div>
+            <div class="option-row">
+                <label for="printRosterSummary">Include roster summary:</label>
+                <select id="printRosterSummary" class="bt-select" [value]="optionsService.options().printRosterSummary"
+                    (change)="onprintRosterSummaryChange($event)">
+                    <option value="false">No (default)</option>
+                    <option value="true">Yes</option>
+                </select>
+            </div>
             <hr />
             <div class="option-col">
                 <label for="userUuid">User identifier:</label>
@@ -309,14 +317,6 @@
                     (change)="onASPrintPageBreakOnGroupsChange($event)">
                     <option value="true">Yes (default)</option>
                     <option value="false">No</option>
-                </select>
-            </div>
-            <div class="option-row">
-                <label for="ASPrintRosterSummary">Include roster summary:</label>
-                <select id="ASPrintRosterSummary" class="bt-select" [value]="optionsService.options().ASPrintRosterSummary"
-                    (change)="onASPrintRosterSummaryChange($event)">
-                    <option value="false">No (default)</option>
-                    <option value="true">Yes</option>
                 </select>
             </div>
             <div class="option-section-title">Rules</div>
