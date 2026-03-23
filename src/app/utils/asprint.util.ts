@@ -38,7 +38,7 @@ import { AlphaStrikeCardComponent } from '../components/alpha-strike-card/alpha-
 import { getLayoutForUnitType } from '../components/alpha-strike-card/card-layout.config';
 import type { OptionsService } from '../services/options.service';
 import { isIOS } from './platform.util';
-import type { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
+import type { PrintAllOptions } from '../models/print-options.model';
 
 /**
  * Represents a single card to render (handles multi-card units)
@@ -71,7 +71,7 @@ export class ASPrintUtil {
      * @param injector - Angular Injector for dependency injection
      * @param optionsService - Options service for card style preferences
      * @param groups - Array of UnitGroup to print
-     * @param clean - If true, prints clean cards without damage state
+     * @param printOptions - One-off settings for this print job
      * @param triggerPrint - If true, triggers the browser print dialog
      */
     public static async multipagePrint(
@@ -79,7 +79,7 @@ export class ASPrintUtil {
         injector: Injector,
         optionsService: OptionsService,
         groups: UnitGroup<ASForceUnit>[],
-        clean: boolean = false,
+        printOptions: PrintAllOptions,
         triggerPrint: boolean = true,
         force?: Force
     ): Promise<void> {
@@ -88,6 +88,8 @@ export class ASPrintUtil {
             console.warn('No units to export.');
             return;
         }
+
+        const clean = printOptions.clean;
 
         // Store original heat values and set to 0 for printing
         const originalHeats = new Map<ASForceUnit, number>();
@@ -102,7 +104,7 @@ export class ASPrintUtil {
 
         // Expand units into individual cards (multi-card units become multiple entries)
         const cardRenderItems = this.expandToCardItems(groups);
-        const pageBreakOnGroups = optionsService.options().ASPrintPageBreakOnGroups;
+        const pageBreakOnGroups = printOptions.ASPrintPageBreakOnGroups;
         
         // Create print container - use different layouts for iOS vs other platforms
         const useFixedLayout = isIOS();
@@ -111,7 +113,7 @@ export class ASPrintUtil {
             : await this.createFlexPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups);
 
         // Append roster summary page if enabled
-        const printRosterSummary = optionsService.options().ASPrintRosterSummary;
+        const printRosterSummary = printOptions.printRosterSummary;
         if (printRosterSummary && force) {
             const rosterPage = this.createRosterSummaryPage(groups, force);
             overlay.appendChild(rosterPage);

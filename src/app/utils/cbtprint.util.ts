@@ -34,19 +34,26 @@
 import type { ForceUnit } from '../models/force-unit.model';
 import type { HeatProfile } from '../models/force-serialization';
 import type { SheetService } from '../services/sheet.service';
-import type { OptionsService } from '../services/options.service';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
+import type { PrintAllOptions } from '../models/print-options.model';
 
 /*
  * Author: Drake
  */
 export class CBTPrintUtil {
 
-    public static async multipagePrint(sheetService: SheetService, optionsService: OptionsService, forceUnits: CBTForceUnit[], clean: boolean = false, triggerPrint: boolean = true): Promise<void> {
+    public static async multipagePrint(
+        sheetService: SheetService,
+        forceUnits: CBTForceUnit[],
+        printOptions: PrintAllOptions,
+        triggerPrint: boolean = true
+    ): Promise<void> {
         if (forceUnits.length === 0) {
             console.warn('No units to export.');
             return;
         }
+
+        const clean = printOptions.clean;
 
         // Store original heat values and set to 0 for printing
         const originalHeats = new Map<CBTForceUnit, HeatProfile>();
@@ -80,7 +87,7 @@ export class CBTPrintUtil {
             // Turn on/off fluff image
             const injectedEl = svg.getElementById('fluff-image-fo') as HTMLElement | null;
             if (injectedEl) {
-                const centerContent = optionsService.options().recordSheetCenterPanelContent;
+                const centerContent = printOptions.recordSheetCenterPanelContent;
                 const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
                 if (centerContent === 'fluffImage') {
                     injectedEl.style.setProperty('display', 'block');
@@ -142,7 +149,7 @@ export class CBTPrintUtil {
                 svgStrings.push(svgString);
             }
         }
-        await this.generateMultipagePrintContainer(svgStrings, forceUnits, originalHeats, triggerPrint);
+        await this.generateMultipagePrintContainer(svgStrings, forceUnits, originalHeats, printOptions, triggerPrint);
     }
 
     /**
@@ -197,15 +204,18 @@ export class CBTPrintUtil {
      */
     private static async generateMultipagePrintContainer(svgStrings: string[],
         forceUnits: CBTForceUnit[],
-        originalHeats: Map<CBTForceUnit, HeatProfile>, triggerPrint: boolean = true): Promise<void> {
-        let bodyContent = '';
-        for (let i = 0; i < svgStrings.length; i++) {
-            if (i === svgStrings.length - 1) {
-                bodyContent += `<div class="svg-container last-svg">${svgStrings[i]}</div>`;
-            } else {
-                bodyContent += `<div class="svg-container">${svgStrings[i]}</div>`;
-            }
+        originalHeats: Map<CBTForceUnit, HeatProfile>,
+        printOptions: PrintAllOptions,
+        triggerPrint: boolean = true): Promise<void> {
+        const pages = svgStrings.map(svg => `<div class="svg-container">${svg}</div>`);
+        if (printOptions.printRosterSummary) {
+            pages.push(this.createRosterSummaryPage());
         }
+        if (pages.length > 0) {
+            pages[pages.length - 1] = pages[pages.length - 1].replace('svg-container', 'svg-container last-svg');
+        }
+
+        const bodyContent = pages.join('');
         const overlay = document.createElement('div');
         overlay.id = 'multipage-container';
         overlay.innerHTML = bodyContent;
@@ -278,8 +288,44 @@ export class CBTPrintUtil {
         }
     }
 
+    private static createRosterSummaryPage(): string {
+        return `
+            <div class="svg-container cbt-roster-summary">
+                <div class="cbt-roster-rotated-frame">
+                    <div class="cbt-roster-summary-content">CBT ROSTER</div>
+                </div>
+            </div>
+        `;
+    }
+
     private static getPrintStyles(): string {
         return `
+            #multipage-container .cbt-roster-summary {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: white !important;
+                overflow: hidden;
+            }
+
+            #multipage-container .cbt-roster-rotated-frame {
+                width: 10in;
+                height: 7.5in;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transform: rotate(90deg);
+                transform-origin: center center;
+            }
+
+            #multipage-container .cbt-roster-summary-content {
+                color: #111;
+                font-size: 36pt;
+                font-weight: 700;
+                letter-spacing: 0.08em;
+                text-align: center;
+            }
+
             @media print {
                 body, html {
                     margin: 0 !important;
