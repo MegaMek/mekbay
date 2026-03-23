@@ -727,11 +727,11 @@ export class CBTPrintUtil {
             }
 
             #multipage-container .cbt-roster-era-icon {
-                width: 9px;
-                height: 9px;
+                width: 12px;
+                height: 12px;
                 object-fit: contain;
                 vertical-align: -1px;
-                margin-left: 4px;
+                filter: brightness(0) contrast(1.1);
             }
 
             #multipage-container .cbt-roster-table .is-numeric {
