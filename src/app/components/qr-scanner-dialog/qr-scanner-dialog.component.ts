@@ -97,17 +97,18 @@ import { ZXingScannerModule } from '@zxing/ngx-scanner';
             width: 100%;
             max-width: 100%;
             min-width: 0;
+            aspect-ratio: 4 / 3;
             overflow: hidden;
             background:
                 radial-gradient(circle at top, rgba(255, 255, 255, 0.06), transparent 55%),
                 rgba(0, 0, 0, 0.55);
             border: 1px solid rgba(255, 255, 255, 0.12);
-            min-height: 280px;
         }
 
         .scanner-view {
             display: block;
             width: 100%;
+            height: 100%;
             max-width: 100%;
             min-width: 0;
         }
@@ -115,9 +116,10 @@ import { ZXingScannerModule } from '@zxing/ngx-scanner';
         .scanner-view ::ng-deep video {
             display: block;
             width: 100%;
+            height: 100%;
             max-width: 100%;
-            min-height: 280px;
-            max-height: 60dvh;
+            min-height: 0;
+            max-height: none;
             object-fit: cover;
         }
 
