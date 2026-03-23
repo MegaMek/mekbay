@@ -68,6 +68,7 @@ const CARD_HEIGHT = 70;
 const GROUP_PADDING = 15;
 const GROUP_HEADER_HEIGHT = 64;
 const GROUP_EMBED_OVERLAP_THRESHOLD = 0.2;
+const COLLISION_EDGE_PADDING = 4;
 const COLLISION_RESOLVE_MAX_ITERATIONS = 50;
 
 function snapToGrid(value: number): number {
@@ -1281,7 +1282,7 @@ export class ForceOrgDialogComponent {
         for (const force of this.placedForces()) {
             if (force === excludedForce || force.groupId !== containerGroupId) continue;
             const forceRect = this.forceRect(force);
-            const overlap = this.getOverlapArea(rect, this.expandRect(forceRect, GRID_SNAP_SIZE));
+            const overlap = this.getOverlapArea(rect, this.expandRect(forceRect, COLLISION_EDGE_PADDING));
             if (overlap > bestOverlap) {
                 bestOverlap = overlap;
                 bestTarget = { rect: forceRect };
@@ -1291,7 +1292,7 @@ export class ForceOrgDialogComponent {
         for (const group of this.groups()) {
             if (group === excludedGroup || group.parentGroupId !== containerGroupId) continue;
             const groupRect = this.groupRect(group);
-            const overlap = this.getOverlapArea(rect, this.expandRect(groupRect, GRID_SNAP_SIZE));
+            const overlap = this.getOverlapArea(rect, this.expandRect(groupRect, COLLISION_EDGE_PADDING));
             if (overlap > bestOverlap) {
                 bestOverlap = overlap;
                 bestTarget = { rect: groupRect };
@@ -1302,7 +1303,7 @@ export class ForceOrgDialogComponent {
     }
 
     private getResolvedCollisionPosition(rect: Rect, obstacle: Rect): { x: number; y: number } {
-        const clearanceObstacle = this.expandRect(obstacle, GRID_SNAP_SIZE);
+        const clearanceObstacle = this.expandRect(obstacle, COLLISION_EDGE_PADDING);
         const overlapWidth = Math.min(rect.x + rect.width, clearanceObstacle.x + clearanceObstacle.width) - Math.max(rect.x, clearanceObstacle.x);
         const overlapHeight = Math.min(rect.y + rect.height, clearanceObstacle.y + clearanceObstacle.height) - Math.max(rect.y, clearanceObstacle.y);
         const rectCenterX = rect.x + rect.width / 2;
@@ -1311,11 +1312,11 @@ export class ForceOrgDialogComponent {
         const obstacleCenterY = obstacle.y + obstacle.height / 2;
 
         const horizontalCandidate = rectCenterX <= obstacleCenterX
-            ? { x: snapDownToGrid(obstacle.x - rect.width - GRID_SNAP_SIZE), y: rect.y }
-            : { x: snapUpToGrid(obstacle.x + obstacle.width + GRID_SNAP_SIZE), y: rect.y };
+            ? { x: snapDownToGrid(obstacle.x - rect.width - COLLISION_EDGE_PADDING), y: rect.y }
+            : { x: snapUpToGrid(obstacle.x + obstacle.width + COLLISION_EDGE_PADDING), y: rect.y };
         const verticalCandidate = rectCenterY <= obstacleCenterY
-            ? { x: rect.x, y: snapDownToGrid(obstacle.y - rect.height - GRID_SNAP_SIZE) }
-            : { x: rect.x, y: snapUpToGrid(obstacle.y + obstacle.height + GRID_SNAP_SIZE) };
+            ? { x: rect.x, y: snapDownToGrid(obstacle.y - rect.height - COLLISION_EDGE_PADDING) }
+            : { x: rect.x, y: snapUpToGrid(obstacle.y + obstacle.height + COLLISION_EDGE_PADDING) };
 
         const candidates = overlapWidth <= overlapHeight
             ? [horizontalCandidate, verticalCandidate]
