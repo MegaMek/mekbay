@@ -118,14 +118,16 @@ function getResolvedOrgResult(
 		return toOrgSizeResult('Force', 0, []);
 	}
 
-	const displayGroups = getDisplayGroups(groups, options);
+	const sortedGroups = sortGroupsForDisplay(groups);
+	const displayGroups = getDisplayGroups(sortedGroups, options);
+	const displayWasTruncated = displayGroups.length < sortedGroups.length;
 	if (displayGroups.length === 1) {
 		const group = displayGroups[0];
-		return toOrgSizeResult(getGroupDisplayLabel(group), group.tier, groups);
+		return toOrgSizeResult(addTruncationSuffix(getGroupDisplayLabel(group), displayWasTruncated), group.tier, groups);
 	}
 
 	return toOrgSizeResult(
-		formatGroupList(displayGroups),
+		addTruncationSuffix(formatGroupList(displayGroups), displayWasTruncated),
 		getAggregatedTier(displayGroups.map((group) => group.tier)),
 		groups,
 	);
@@ -135,13 +137,12 @@ function getDisplayGroups(
 	groups: readonly GroupSizeResult[],
 	options: OrgNamingOptions,
 ): GroupSizeResult[] {
-	const sortedGroups = sortGroupsForDisplay(groups);
-	if (!options.displayOnlyTopLevel || sortedGroups.length <= 1) {
-		return sortedGroups;
+	if (!options.displayOnlyTopLevel || groups.length <= 1) {
+		return [...groups];
 	}
 
-	const highestTier = sortedGroups[0]?.tier ?? 0;
-	return sortedGroups.filter((group) => group.tier === highestTier);
+	const highestTier = groups[0]?.tier ?? 0;
+	return groups.filter((group) => group.tier === highestTier);
 }
 
 function sortGroupsForDisplay(groups: readonly GroupSizeResult[]): GroupSizeResult[] {
@@ -152,6 +153,10 @@ function sortGroupsForDisplay(groups: readonly GroupSizeResult[]): GroupSizeResu
 
 		return getGroupDisplayLabel(left).localeCompare(getGroupDisplayLabel(right));
 	});
+}
+
+function addTruncationSuffix(label: string, truncated: boolean): string {
+	return truncated ? `${label}+` : label;
 }
 
 function getGroupDisplayLabel(group: GroupSizeResult): string {
