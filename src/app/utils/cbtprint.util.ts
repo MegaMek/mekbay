@@ -731,7 +731,7 @@ export class CBTPrintUtil {
                 height: 12px;
                 object-fit: contain;
                 vertical-align: -1px;
-                filter: brightness(0) contrast(1.1);
+                filter: invert(1);
             }
 
             #multipage-container .cbt-roster-table .is-numeric {
