@@ -170,6 +170,13 @@
     font-size: 0.8rem;
     font-weight: 600;
     line-height: 1.2;
+    display: -webkit-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow-wrap: anywhere;
 }
 
 .force-org {
