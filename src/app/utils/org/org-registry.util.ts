@@ -24,11 +24,7 @@ export const ORG_SPEC_REGISTRY: readonly OrgDefinitionRegistryEntry[] = [
 	{ match: (faction) => faction.name.includes('Dragoons'), org: WD_CORE_ORG },
 	{ match: (faction) => faction.name.includes('Capellan Confederation'), org: CC_CORE_ORG },
 	{ match: (faction) => faction.group.includes('Clan'), org: CLAN_CORE_ORG },
-    { match: (faction) =>
-        faction.name.includes('Rasalhague Dominion') || faction.name.includes('Raven Alliance') || faction.name.includes('Wolf Empire') ||
-        faction.name.includes('Escorpi') || faction.name.includes('Scorpion Empire') || faction.name.includes('Alyina Mercantile League'),
-        org: CLAN_CORE_ORG,
-    },
+    { match: (faction) => faction.name.includes('Escorpi') || faction.name.includes('Scorpion Empire'), org: CLAN_CORE_ORG },
 	{ match: (faction) => faction.group == 'Inner Sphere', org: IS_CORE_ORG },
 ];
 
