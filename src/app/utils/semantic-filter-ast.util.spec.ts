@@ -94,6 +94,31 @@ describe('semantic filter exclusivity', () => {
         expect(membershipChecks).toBe(2);
     });
 
+    it('does not try indexed pruning for external force pack filters', () => {
+        const units = [
+            { id: 1, packMemberships: ['Essentials Box Set'] },
+            { id: 2, packMemberships: [] },
+        ];
+        const result = parseSemanticQueryAST('pack="Essentials Box Set"', GameSystem.CLASSIC);
+        let membershipChecks = 0;
+
+        const filtered = filterUnitsWithAST(units, result.ast, {
+            gameSystem: GameSystem.CLASSIC,
+            getUnitId,
+            getProperty: () => undefined,
+            getIndexedFilterValues: () => [],
+            getIndexedUnitIds: () => undefined,
+            unitBelongsToForcePack: (unit: { packMemberships?: string[] }, packName: string) => {
+                membershipChecks++;
+                return (unit.packMemberships ?? []).includes(packName);
+            },
+            getAllForcePackNames: () => ['Essentials Box Set'],
+        });
+
+        expect(filtered).toEqual([units[0]]);
+        expect(membershipChecks).toBe(2);
+    });
+
     it('matches external factions with punctuation-insensitive semantic values', () => {
         const units = [
             { id: 1, faction: ["Wolf's Dragoons"] },
@@ -118,6 +143,57 @@ describe('semantic filter exclusivity', () => {
             unitBelongsToFaction: (unit: { faction?: string[] }, factionName: string) =>
                 (unit.faction ?? []).includes(factionName),
             getAllFactionNames: () => ["Wolf's Dragoons", 'Clan Wolf']
+        });
+
+        expect(filtered).toEqual([units[0]]);
+    });
+
+    it('scopes faction matches to the selected era when both filters are present', () => {
+        const units = [
+            {
+                id: 1,
+                era: ['Clan Invasion'],
+                factionEras: {
+                    'Clan Coyote': ['Clan Invasion'],
+                },
+            },
+            {
+                id: 2,
+                era: ['Clan Invasion'],
+                factionEras: {
+                    'Clan Coyote': ['Jihad'],
+                },
+            },
+            {
+                id: 3,
+                era: ['Jihad'],
+                factionEras: {
+                    'Clan Coyote': ['Jihad'],
+                },
+            },
+        ];
+        const result = parseSemanticQueryAST('era="Clan Invasion" faction="Clan Coyote"', GameSystem.CLASSIC);
+
+        const filtered = filterUnitsWithAST(units, result.ast, {
+            gameSystem: GameSystem.CLASSIC,
+            getUnitId,
+            getProperty: (unit: { era?: string[] }, key: string) => unit[key as keyof typeof unit],
+            unitBelongsToEra: (unit: { era?: string[] }, eraName: string) =>
+                (unit.era ?? []).includes(eraName),
+            unitBelongsToFaction: (
+                unit: { factionEras?: Record<string, string[]> },
+                factionName: string,
+                eraNames?: readonly string[],
+            ) => {
+                const membershipEraNames = unit.factionEras?.[factionName] ?? [];
+                if (eraNames !== undefined) {
+                    return eraNames.some(eraName => membershipEraNames.includes(eraName));
+                }
+
+                return membershipEraNames.length > 0;
+            },
+            getAllEraNames: () => ['Clan Invasion', 'Jihad'],
+            getAllFactionNames: () => ['Clan Coyote'],
         });
 
         expect(filtered).toEqual([units[0]]);

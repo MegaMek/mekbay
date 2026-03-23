@@ -44,14 +44,12 @@ import { NO_FORMATION_ID } from '../../utils/formation-type.model';
 import { DialogsService } from '../../services/dialogs.service';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import type { Unit } from '../../models/units.model';
-import { DataService } from '../../services/data.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { ToastService } from '../../services/toast.service';
 import { type ForceAddModePickerData, ForceAddModePickerDialogComponent, type ForceAddModePickerResult } from '../force-add-mode-picker-dialog/force-add-mode-picker-dialog.component';
 import { firstValueFrom } from 'rxjs';
-import { getOrgFromForce, getOrgFromGroup, getAggregatedGroupsResult } from '../../utils/org-namer.util';
+import { getOrgFromForce, getOrgFromGroup } from '../../utils/org/org-namer.util';
 import { getUnitsAverageTechBase } from '../../models/tech.model';
-import { Faction, FACTION_MERCENARY, FactionAffinity } from '../../models/factions.model';
 
 export interface ForceEntryPreviewDialogData {
     force: LoadForceEntry;
@@ -67,7 +65,7 @@ export interface ForceEntryPreviewDialogData {
     selector: 'force-entry-preview-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, FactionImgPipe, CleanModelStringPipe, UnitIconComponent],
+    imports: [CommonModule, CleanModelStringPipe, UnitIconComponent],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
@@ -78,7 +76,6 @@ export class ForceEntryPreviewDialogComponent {
     private dialogRef = inject(DialogRef<void>);
     private data: ForceEntryPreviewDialogData = inject(DIALOG_DATA);
     private dialogsService = inject(DialogsService);
-    private dataService = inject(DataService);
     private forceBuilderService = inject(ForceBuilderService);
     private toastService = inject(ToastService);
     optionsService = inject(OptionsService);
@@ -96,12 +93,8 @@ export class ForceEntryPreviewDialogComponent {
             .map(u => u.unit)
             .filter((u): u is Unit => !!u);
 
-        
-        const faction = this.dataService.getFactionById(this.force.factionId !== undefined ? this.force.factionId : FACTION_MERCENARY);
-        const factionName = faction ? faction.name : 'Mercenary';
-        const factionAffinity: FactionAffinity = faction ? faction.group : 'Mercenary';
         this.groupDisplayData = this.force.groups.map(group => {
-            const sizeResult = getAggregatedGroupsResult(getOrgFromGroup(group, factionName, factionAffinity), factionName, factionAffinity);
+            const sizeResult = getOrgFromGroup(group);
             const orgName = (sizeResult.name && sizeResult.name !== 'Force') ? sizeResult.name : null;
 
             let name: string;
@@ -122,7 +115,7 @@ export class ForceEntryPreviewDialogComponent {
             return { group, name, orgName, formationName };
         });
 
-        const forceResult = getAggregatedGroupsResult(getOrgFromForce(this.force, factionName, factionAffinity), factionName, factionAffinity);
+        const forceResult = getOrgFromForce(this.force);
         if (forceResult.name !== 'Force') {
             this.forceOrgName = forceResult.name;
         }

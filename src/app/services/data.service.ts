@@ -64,7 +64,7 @@ import { getForcePacks } from '../models/forcepacks.model';
 import { naturalCompare } from '../utils/sort.util';
 import { getMergedTags } from '../utils/unit-search-shared.util';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES } from './unit-search-filters.model';
-import type { UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
+import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
 
 /*
  * Author: Drake
@@ -172,6 +172,7 @@ export class DataService {
             getFromLocalStorage: async () => (await this.dbService.getUnits()) ?? null,
             putInLocalStorage: async (data: Units) => this.dbService.saveUnits(data),
             preprocess: (data: Units): Units => {
+                this.invalidateForcePackCaches();
                 this.unitNameMap.clear();
                 for (const unit of data.units) {
                     this.unitNameMap.set(unit.name, unit);
@@ -596,7 +597,13 @@ export class DataService {
         this.searchCorpusVersion.update(version => version + 1);
     }
 
+    private invalidateForcePackCaches(): void {
+        this.forcePackToChassisType = null;
+        this.chassisTypeToForcePacks = null;
+    }
+
     private rebuildUnitCatalogIndexes(units: Unit[]): void {
+        this.invalidateForcePackCaches();
         this.unitNameMap.clear();
         for (const unit of units) {
             this.unitNameMap.set(unit.name, unit);
@@ -820,6 +827,42 @@ export class DataService {
             snapshot[filterKey] = {};
             for (const [value, unitNames] of valueMap.entries()) {
                 snapshot[filterKey][value] = Array.from(unitNames);
+            }
+        }
+
+        return snapshot;
+    }
+
+    public getSearchWorkerFactionEraSnapshot(): UnitSearchWorkerFactionEraSnapshot {
+        const unitNamesByMulId = new Map<number, string[]>();
+        for (const unit of this.getUnits()) {
+            const unitNames = unitNamesByMulId.get(unit.id);
+            if (unitNames) {
+                unitNames.push(unit.name);
+            } else {
+                unitNamesByMulId.set(unit.id, [unit.name]);
+            }
+        }
+
+        const snapshot: UnitSearchWorkerFactionEraSnapshot = {};
+        for (const era of this.getEras()) {
+            snapshot[era.name] = {};
+        }
+
+        for (const faction of this.getFactions()) {
+            for (const [eraIdKey, referenceIds] of Object.entries(faction.eras) as Array<[string, Set<number>]>) {
+                const era = this.getEraById(Number(eraIdKey));
+                if (!era) {
+                    continue;
+                }
+
+                const unitNames: string[] = [];
+                for (const referenceId of referenceIds) {
+                    unitNames.push(...(unitNamesByMulId.get(referenceId) ?? []));
+                }
+
+                snapshot[era.name] ??= {};
+                snapshot[era.name][faction.name] = unitNames;
             }
         }
 
@@ -1891,7 +1934,8 @@ export class DataService {
                         instanceId: raw.instanceId,
                         name: raw.name,
                         type: raw.type,
-                        factionId: raw.factionId,
+                        faction: raw.factionId != null ? this.getFactionById(raw.factionId) ?? null : null,
+                        era: raw.eraId != null ? this.getEraById(raw.eraId) ?? null : null,
                         bv: raw.bv ?? undefined,
                         pv: raw.pv ?? undefined,
                         timestamp: raw.timestamp,

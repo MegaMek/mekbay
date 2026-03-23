@@ -14,6 +14,7 @@ import { getNowMs } from './utils/unit-search-shared.util';
 import type {
     UnitSearchWorkerCorpusSnapshot,
     UnitSearchWorkerErrorMessage,
+    UnitSearchWorkerFactionEraSnapshot,
     UnitSearchWorkerIndexSnapshot,
     UnitSearchWorkerQueryRequest,
     UnitSearchWorkerRequestMessage,
@@ -26,6 +27,7 @@ interface WorkerCorpusRuntime {
     units: Unit[];
     indexedUnitIds: Map<string, Map<string, ReadonlySet<string>>>;
     indexedFilterValues: Map<string, string[]>;
+    factionEraUnitIds: Map<string, Map<string, ReadonlySet<string>>>;
     forcePackToChassisType: Map<string, Set<string>>;
 }
 
@@ -55,6 +57,20 @@ function buildIndexedFilterValues(indexes: UnitSearchWorkerIndexSnapshot): Map<s
 
     for (const [filterKey, valueMap] of Object.entries(indexes)) {
         result.set(filterKey, Object.keys(valueMap));
+    }
+
+    return result;
+}
+
+function buildFactionEraUnitIds(factionEraIndex: UnitSearchWorkerFactionEraSnapshot): Map<string, Map<string, ReadonlySet<string>>> {
+    const result = new Map<string, Map<string, ReadonlySet<string>>>();
+
+    for (const [eraName, factionMap] of Object.entries(factionEraIndex)) {
+        const eraIndex = new Map<string, ReadonlySet<string>>();
+        for (const [factionName, unitNames] of Object.entries(factionMap)) {
+            eraIndex.set(factionName, new Set(unitNames));
+        }
+        result.set(eraName, eraIndex);
     }
 
     return result;
@@ -91,6 +107,7 @@ function hydrateCorpus(snapshot: UnitSearchWorkerCorpusSnapshot): WorkerCorpusRu
         units: snapshot.units,
         indexedUnitIds: buildIndexedUnitIds(snapshot.indexes),
         indexedFilterValues: buildIndexedFilterValues(snapshot.indexes),
+        factionEraUnitIds: buildFactionEraUnitIds(snapshot.factionEraIndex),
         forcePackToChassisType: buildForcePackIndex(snapshot.units),
     };
 }
@@ -124,7 +141,17 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
             return PVCalculatorUtil.calculateAdjustedPV(unit.as.PV, request.pilotGunnerySkill);
         },
         unitBelongsToEra: (unit: Unit, eraName: string) => runtime.indexedUnitIds.get('era')?.get(eraName)?.has(unit.name) ?? false,
-        unitBelongsToFaction: (unit: Unit, factionName: string) => runtime.indexedUnitIds.get('faction')?.get(factionName)?.has(unit.name) ?? false,
+        unitBelongsToFaction: (unit: Unit, factionName: string, eraNames?: readonly string[]) => {
+            if (eraNames !== undefined) {
+                if (eraNames.length === 0) {
+                    return false;
+                }
+
+                return eraNames.some(eraName => runtime.factionEraUnitIds.get(eraName)?.get(factionName)?.has(unit.name) ?? false);
+            }
+
+            return runtime.indexedUnitIds.get('faction')?.get(factionName)?.has(unit.name) ?? false;
+        },
         unitBelongsToForcePack: (unit: Unit, packName: string) => runtime.forcePackToChassisType.get(packName)?.has(`${unit.chassis}|${unit.type}`) ?? false,
         getAllEraNames: () => runtime.indexedFilterValues.get('era') ?? [],
         getAllFactionNames: () => runtime.indexedFilterValues.get('faction') ?? [],

@@ -45,9 +45,6 @@ import type { Era } from '../../models/eras.model';
 import { ForceNamerUtil, type FactionDisplayInfo } from '../../utils/force-namer.util';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { FactionDropdownPanelComponent } from './faction-dropdown-panel.component';
-import { EMPTY_RESULT, resolveFromGroups } from '../../utils/org-solver.util';
-import type { AggregatedGroupSizeResult, GroupSizeResult } from '../../utils/org-types';
-import { getAggregatedGroupsResult } from '../../utils/org-namer.util';
 import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-visuals.util';
 import { EraDropdownPanelComponent, type EraDisplayInfo } from './era-dropdown-panel.component';
 
@@ -584,7 +581,8 @@ export class RenameForceDialogComponent {
         const randomFaction = ForceNamerUtil.pickRandomFaction(
             units,
             this.dataService.getFactions(),
-            this.dataService.getEras()
+            this.dataService.getEras(),
+            this.selectedEra()
         );
         if (randomFaction === this.selectedFaction()) return; // no change
         this.selectedFaction.set(randomFaction);
