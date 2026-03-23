@@ -231,16 +231,15 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     }
 
     /** Structural evaluation result for this group (name + matched ForceType). */
-    sizeResult = computed<OrgSizeResult>(() => {
+    organizationalResult = computed<OrgSizeResult>(() => {
         const result = getOrgFromGroup(this, {
             displayOnlyTopLevel: true,
         });
-        console.log(result);
         return result;
     });
 
     organizationalName = computed(() => {
-        return this.sizeResult().name;
+        return this.organizationalResult().name;
     });
 
     activeFormation = computed<FormationTypeDefinition | null>(() => {
@@ -360,16 +359,15 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         }
     }
 
-    sizeResult = computed<OrgSizeResult>(() => {
+    organizationalResult = computed<OrgSizeResult>(() => {
         const result = getOrgFromForce(this, {
             displayOnlyTopLevel: true,
         });
-        console.log(result);
         return result;
     });
 
     organizationalName = computed(() => {
-        return this.sizeResult().name;
+        return this.organizationalResult().name;
     });
 
     techBase = computed((): TechBase => {

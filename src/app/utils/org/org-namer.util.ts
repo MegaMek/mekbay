@@ -3,6 +3,7 @@ import type { Era } from '../../models/eras.model';
 import { FACTION_MERCENARY, type Faction } from '../../models/factions.model';
 import { LoadForceEntry, type LoadForceGroup } from '../../models/load-force-entry.model';
 import type { Unit } from '../../models/units.model';
+import { getAggregatedTier } from './org-tier.util';
 import { resolveFromGroups, resolveFromUnits } from './org-solver.util';
 import { type GroupSizeResult, type OrgSizeResult } from './org-types';
 
@@ -14,8 +15,6 @@ import { type GroupSizeResult, type OrgSizeResult } from './org-types';
  */
 export interface OrgNamingOptions {
 	readonly displayOnlyTopLevel?: boolean;
-	readonly aggregateEquivalentGroups?: boolean;
-	readonly displayThresholdTier?: number;
 }
 
 const DEFAULT_FACTION: Faction = {
@@ -71,9 +70,26 @@ export function getOrgFromForce(forceOrEntry: Force | LoadForceEntry, options: O
 	const resolvedEra = forceOrEntry.era();
 	const groupResults = forceOrEntry.groups()
 		.filter((group) => group.units().length > 0)
-		.flatMap((group) => group.sizeResult().groups);
+		.flatMap((group) => group.organizationalResult().groups);
 	const rawGroups = resolveFromGroups(groupResults, resolvedFaction, resolvedEra);
 	return getResolvedOrgResult(rawGroups, resolvedFaction, resolvedEra, resolvedOptions);
+}
+
+export function getOrgFromForceCollection(
+	entries: readonly LoadForceEntry[],
+	faction: Faction | null | undefined,
+	era: Era | null = null,
+	childGroupResults?: readonly GroupSizeResult[],
+	options: OrgNamingOptions = {},
+): OrgSizeResult {
+	const resolvedFaction = faction ?? DEFAULT_FACTION;
+	const inputGroups = childGroupResults
+		? [...childGroupResults]
+		: entries.flatMap((entry) => getOrgFromForce(entry).groups);
+	const finalGroups = inputGroups.length > 1
+		? resolveFromGroups(inputGroups, resolvedFaction, era)
+		: [...inputGroups];
+	return getResolvedOrgResult(finalGroups, resolvedFaction, era, options);
 }
 
 // Internal utilities
@@ -96,12 +112,78 @@ function getResolvedOrgResult(
 	era: Era | null | undefined,
 	options: OrgNamingOptions = {},
 ): OrgSizeResult {
+	void faction;
+	void era;
 	if (groups.length === 0) {
 		return toOrgSizeResult('Force', 0, []);
 	}
-	//const display = getAggregatedGroupsResult(groups, factionName, factionAffinity, options);
-	// return toOrgSizeResult(display.name, display.tier, groups);
-	return toOrgSizeResult('DUMMY', 0, groups);
+
+	const displayGroups = getDisplayGroups(groups, options);
+	if (displayGroups.length === 1) {
+		const group = displayGroups[0];
+		return toOrgSizeResult(getGroupDisplayLabel(group), group.tier, groups);
+	}
+
+	return toOrgSizeResult(
+		formatGroupList(displayGroups),
+		getAggregatedTier(displayGroups.map((group) => group.tier)),
+		groups,
+	);
+}
+
+function getDisplayGroups(
+	groups: readonly GroupSizeResult[],
+	options: OrgNamingOptions,
+): GroupSizeResult[] {
+	const sortedGroups = sortGroupsForDisplay(groups);
+	if (!options.displayOnlyTopLevel || sortedGroups.length <= 1) {
+		return sortedGroups;
+	}
+
+	const highestTier = sortedGroups[0]?.tier ?? 0;
+	return sortedGroups.filter((group) => group.tier === highestTier);
+}
+
+function sortGroupsForDisplay(groups: readonly GroupSizeResult[]): GroupSizeResult[] {
+	return [...groups].sort((left, right) => {
+		if (left.tier !== right.tier) {
+			return right.tier - left.tier;
+		}
+
+		return getGroupDisplayLabel(left).localeCompare(getGroupDisplayLabel(right));
+	});
+}
+
+function getGroupDisplayLabel(group: GroupSizeResult): string {
+	if (group.foreignDisplayName) {
+		return group.foreignDisplayName;
+	}
+
+	if (group.type) {
+		return `${group.modifierKey}${group.type}`;
+	}
+
+	return group.name;
+}
+
+function formatGroupList(groups: readonly GroupSizeResult[]): string {
+	const buckets = new Map<string, { label: string; count: number }>();
+
+	for (const group of groups) {
+		const label = getGroupDisplayLabel(group);
+		const key = `${label}::${group.tier}`;
+		const bucket = buckets.get(key);
+		if (bucket) {
+			bucket.count += 1;
+			continue;
+		}
+
+		buckets.set(key, { label, count: 1 });
+	}
+
+	return [...buckets.values()]
+		.map((bucket) => bucket.count > 1 ? `${bucket.count}x ${bucket.label}` : bucket.label)
+		.join(' + ');
 }
 
 function toOrgSizeResult(name: string, tier: number, groups: readonly GroupSizeResult[]): OrgSizeResult {

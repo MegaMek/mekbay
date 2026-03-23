@@ -55,7 +55,8 @@ import { GameSystem } from '../../models/common.model';
 import { getUnitsAverageTechBase, type TechBase } from '../../models/tech.model';
 import type { SerializedOrganization, OrgPlacedForce, OrgGroupData } from '../../models/organization.model';
 import { ForceEntryPreviewDialogComponent } from '../force-entry-preview-dialog/force-entry-preview-dialog.component';
-import { getOrgFromForce } from '../../utils/org-namer.util';
+import type { Era } from '../../models/eras.model';
+import { getOrgFromForce, getOrgFromForceCollection } from '../../utils/org-namer.util';
 import { Faction, FACTION_MERCENARY } from '../../models/factions.model';
 
 const MIN_ZOOM = 0.2;
@@ -665,8 +666,8 @@ export class ForceOrgDialogComponent {
         for (const entry of directEntries) {
             childGroupResults.push(...this.getForceOrgResults(entry));
         }
-
-        return this.computeOrgCollectionResult(allEntries, faction, childGroupResults);
+        const era = this.deriveCollectionEra(allEntries);
+        return this.computeOrgCollectionResult(allEntries, faction, era, childGroupResults);
     }
 
     private nextZIndex = 0;
@@ -809,13 +810,50 @@ export class ForceOrgDialogComponent {
     private computeOrgCollectionResult(
         entries: LoadForceEntry[],
         faction: Faction | undefined,
+        era: Era | null,
         childGroupResults?: GroupSizeResult[],
     ): OrgSizeResult {
-        return {
-            name: 'DUMMY COLLECTION',
-            tier: 0,
-            groups: []
-        };
+        return getOrgFromForceCollection(entries, faction, era, childGroupResults);
+    }
+
+    private deriveCollectionEra(entries: readonly LoadForceEntry[]): Era | null {
+        const eras = this.dataService.getEras();
+        if (eras.length === 0) {
+            return null;
+        }
+
+        let referenceYear: number | null = null;
+        for (const entry of entries) {
+            const entryReferenceYear = entry.era?.years.from ?? this.getLatestEntryUnitYear(entry);
+            if (entryReferenceYear === null) {
+                continue;
+            }
+            referenceYear = referenceYear === null ? entryReferenceYear : Math.max(referenceYear, entryReferenceYear);
+        }
+
+        if (referenceYear === null) {
+            return null;
+        }
+
+        return eras.find((era) => {
+            const from = era.years.from ?? Number.NEGATIVE_INFINITY;
+            const to = era.years.to ?? Number.POSITIVE_INFINITY;
+            return from <= referenceYear && referenceYear <= to;
+        }) ?? eras[eras.length - 1] ?? null;
+    }
+
+    private getLatestEntryUnitYear(entry: LoadForceEntry): number | null {
+        let latestYear = Number.NEGATIVE_INFINITY;
+        for (const group of entry.groups) {
+            for (const unitEntry of group.units) {
+                const year = unitEntry.unit?.year;
+                if (year !== undefined) {
+                    latestYear = Math.max(latestYear, year);
+                }
+            }
+        }
+
+        return Number.isFinite(latestYear) ? latestYear : null;
     }
 
 
@@ -1189,9 +1227,11 @@ export class ForceOrgDialogComponent {
     private computeGroupPreview(a: Rect, b: Rect, entries: LoadForceEntry[], childGroupResults?: GroupSizeResult[]): GroupPreview {
         const factionId = getDominantFactionId(entries);
         const faction = this.getFaction(factionId);
+        const era = this.deriveCollectionEra(entries);
         const aggregateResult = this.computeOrgCollectionResult(
             entries,
             faction,
+            era,
             childGroupResults,
         );
         const orgName = aggregateResult.name;
