@@ -17,6 +17,13 @@ export interface OrgNamingOptions {
 	readonly displayOnlyTopLevel?: boolean;
 }
 
+interface DisplayBucket {
+	readonly label: string;
+	readonly count: number;
+	readonly tier: number;
+	readonly groups: readonly GroupSizeResult[];
+}
+
 const DEFAULT_FACTION: Faction = {
 	id: FACTION_MERCENARY,
 	name: 'Mercenary',
@@ -92,6 +99,13 @@ export function getOrgFromForceCollection(
 	return getResolvedOrgResult(finalGroups, resolvedFaction, era, options);
 }
 
+export function getOrgFromResolvedGroups(
+	groups: readonly GroupSizeResult[],
+	options: OrgNamingOptions = {},
+): OrgSizeResult {
+	return getResolvedOrgResult(groups, DEFAULT_FACTION, null, options);
+}
+
 // Internal utilities
 
 function getGroupResultsFromLoadForceGroup(
@@ -118,41 +132,43 @@ function getResolvedOrgResult(
 		return toOrgSizeResult('Force', 0, []);
 	}
 
-	const sortedGroups = sortGroupsForDisplay(groups);
-	const displayGroups = getDisplayGroups(sortedGroups, options);
-	const displayWasTruncated = displayGroups.length < sortedGroups.length;
-	if (displayGroups.length === 1) {
-		const group = displayGroups[0];
-		return toOrgSizeResult(addTruncationSuffix(getGroupDisplayLabel(group), displayWasTruncated), group.tier, groups);
+	const displayBuckets = getDisplayBuckets(groups);
+	const filteredBuckets = getDisplayBucketsForOptions(displayBuckets, options);
+	const displayWasTruncated = filteredBuckets.length < displayBuckets.length;
+	if (filteredBuckets.length === 1) {
+		const bucket = filteredBuckets[0];
+		return toOrgSizeResult(addTruncationSuffix(formatDisplayBucket(bucket), displayWasTruncated), bucket.tier, groups);
 	}
 
 	return toOrgSizeResult(
-		addTruncationSuffix(formatGroupList(displayGroups), displayWasTruncated),
-		getAggregatedTier(displayGroups.map((group) => group.tier)),
+		addTruncationSuffix(formatDisplayBuckets(filteredBuckets), displayWasTruncated),
+		getAggregatedTier(filteredBuckets.flatMap((bucket) => getExpandedGroupTiers(bucket.groups))),
 		groups,
 	);
 }
 
-function getDisplayGroups(
-	groups: readonly GroupSizeResult[],
+function getDisplayBucketsForOptions(
+	buckets: readonly DisplayBucket[],
 	options: OrgNamingOptions,
-): GroupSizeResult[] {
-	if (!options.displayOnlyTopLevel || groups.length <= 1) {
-		return [...groups];
+): DisplayBucket[] {
+	if (!options.displayOnlyTopLevel || buckets.length <= 1) {
+		return [...buckets];
 	}
 
-	const highestTier = groups[0]?.tier ?? 0;
-	return groups.filter((group) => group.tier === highestTier);
+	const highestTier = buckets[0]?.tier ?? 0;
+	return buckets.filter((bucket) => Math.abs(bucket.tier - highestTier) < 0.0001);
 }
 
-function sortGroupsForDisplay(groups: readonly GroupSizeResult[]): GroupSizeResult[] {
-	return [...groups].sort((left, right) => {
-		if (left.tier !== right.tier) {
-			return right.tier - left.tier;
-		}
+function getGroupDisplayCount(group: GroupSizeResult): number {
+	return Math.max(1, group.count ?? 1);
+}
 
-		return getGroupDisplayLabel(left).localeCompare(getGroupDisplayLabel(right));
-	});
+function getExpandedGroupTiers(groups: readonly GroupSizeResult[]): number[] {
+	return groups.flatMap((group) => Array.from({ length: getGroupDisplayCount(group) }, () => group.tier));
+}
+
+function getAggregatedDisplayTier(groups: readonly GroupSizeResult[]): number {
+	return getAggregatedTier(getExpandedGroupTiers(groups));
 }
 
 function addTruncationSuffix(label: string, truncated: boolean): string {
@@ -170,25 +186,38 @@ function getGroupDisplayLabel(group: GroupSizeResult): string {
 
 	return group.name;
 }
-
-function formatGroupList(groups: readonly GroupSizeResult[]): string {
-	const buckets = new Map<string, { label: string; count: number }>();
+function getDisplayBuckets(groups: readonly GroupSizeResult[]): DisplayBucket[] {
+	const buckets = new Map<string, { label: string; count: number; groups: GroupSizeResult[] }>();
 
 	for (const group of groups) {
 		const label = getGroupDisplayLabel(group);
 		const key = `${label}::${group.tier}`;
 		const bucket = buckets.get(key);
 		if (bucket) {
-			bucket.count += 1;
+			bucket.count += getGroupDisplayCount(group);
+			bucket.groups.push(group);
 			continue;
 		}
 
-		buckets.set(key, { label, count: 1 });
+		buckets.set(key, { label, count: getGroupDisplayCount(group), groups: [group] });
 	}
 
 	return [...buckets.values()]
-		.map((bucket) => bucket.count > 1 ? `${bucket.count}x ${bucket.label}` : bucket.label)
-		.join(' + ');
+		.map((bucket) => ({
+			label: bucket.label,
+			count: bucket.count,
+			tier: getAggregatedDisplayTier(bucket.groups),
+			groups: bucket.groups,
+		}))
+		.sort((left, right) => right.tier - left.tier || left.label.localeCompare(right.label));
+}
+
+function formatDisplayBucket(bucket: DisplayBucket): string {
+	return bucket.count > 1 ? `${bucket.count}x ${bucket.label}` : bucket.label;
+}
+
+function formatDisplayBuckets(buckets: readonly DisplayBucket[]): string {
+	return buckets.map((bucket) => formatDisplayBucket(bucket)).join(' + ');
 }
 
 function toOrgSizeResult(name: string, tier: number, groups: readonly GroupSizeResult[]): OrgSizeResult {
