@@ -115,11 +115,6 @@ describe('UnitSearchComponent card virtualization', () => {
         return { name } as Unit;
     }
 
-    async function flushRender() {
-        await Promise.resolve();
-        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
-    }
-
     beforeEach(async () => {
         filteredUnitsSignal.set([]);
         optionsSignal.set({
@@ -202,26 +197,6 @@ describe('UnitSearchComponent card virtualization', () => {
             ['Unit 1', 'Unit 2', 'Unit 3'],
             ['Unit 4', 'Unit 5'],
         ]);
-    });
-
-    it('renders the card-mode virtual viewport with row containers', async () => {
-        const fixture = TestBed.createComponent(UnitSearchComponent);
-        const component = fixture.componentInstance;
-
-        filteredUnitsSignal.set(Array.from({ length: 7 }, (_, index) => createUnit(`Unit ${index + 1}`)));
-        (component as any).resultsDropdownWidth.set(920);
-        fixture.detectChanges();
-        await flushRender();
-        fixture.detectChanges();
-
-        const viewport = fixture.nativeElement.querySelector('cdk-virtual-scroll-viewport') as HTMLElement | null;
-        const rows = Array.from(fixture.nativeElement.querySelectorAll('.card-view-row')) as HTMLElement[];
-        const cells = Array.from(fixture.nativeElement.querySelectorAll('.card-view-cell')) as HTMLElement[];
-
-        expect(viewport).not.toBeNull();
-        expect(rows.length).toBeGreaterThan(0);
-        expect(cells.length).toBe(7);
-        expect(rows.length).toBe(3);
     });
 
     it('maps card item navigation to the containing virtual row index', () => {

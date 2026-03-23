@@ -150,7 +150,7 @@ export interface UnitComponent {
 }
 export interface Unit {
     name: string; // Internal unique name
-    id: number; // MUL id (unique)
+    id: number; // MUL id
     chassis: string;
     model: string;
     year: number;

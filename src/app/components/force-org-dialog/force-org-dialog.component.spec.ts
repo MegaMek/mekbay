@@ -258,6 +258,20 @@ describe('ForceOrgDialogComponent', () => {
         expect((component as any).detectGroupDrop(draggedGroup)).toEqual({ type: 'create-parent', other: strongerTarget });
     });
 
+    it('prefers nested internal groups over outer groups for group drops', () => {
+        const draggedGroup = createGroup('dragged', 220, 160, 220, 160);
+        const outerGroup = createGroup('outer', 120, 60, 520, 420);
+        const innerGroup = createGroup('inner', 200, 140, 280, 220);
+        const innerChild = createGroup('inner-child', 240, 180, 180, 120);
+
+        innerGroup.parentGroupId = outerGroup.id;
+        innerChild.parentGroupId = innerGroup.id;
+
+        (component as any).groups.set([draggedGroup, outerGroup, innerGroup, innerChild]);
+
+        expect((component as any).detectGroupDrop(draggedGroup)).toEqual({ type: 'join-parent', groupId: innerGroup.id });
+    });
+
     it('brings a dragged group to the highest group z-index', () => {
         const lowerGroup = createGroup('group-1', 0, 0, 280, 320);
         const draggedGroup = createGroup('dragged', 180, 80, 320, 260);

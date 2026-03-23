@@ -84,6 +84,7 @@ export interface OperationForceInfo {
     type?: GameSystem;
     /** Faction ID: from server join */
     factionId?: number;
+    eraId?: number;
     /** BV: from server join */
     bv?: number;
     /** PV: from server join */
