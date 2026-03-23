@@ -68,7 +68,7 @@ const CARD_HEIGHT = 70;
 const GROUP_PADDING = 20;
 const GROUP_HEADER_HEIGHT = 64;
 const GROUP_EMBED_OVERLAP_THRESHOLD = 0.2;
-const COLLISION_EDGE_PADDING = 4;
+const COLLISION_EDGE_PADDING = 8;
 const COLLISION_RESOLVE_MAX_ITERATIONS = 50;
 
 function snapToGrid(value: number): number {
@@ -81,6 +81,30 @@ function snapDownToGrid(value: number): number {
 
 function snapUpToGrid(value: number): number {
     return Math.ceil(value / GRID_SNAP_SIZE) * GRID_SNAP_SIZE;
+}
+
+function snapGroupXToGrid(value: number): number {
+    return snapToGrid(value + GROUP_PADDING) - GROUP_PADDING;
+}
+
+function snapGroupYToGrid(value: number): number {
+    return snapToGrid(value + GROUP_HEADER_HEIGHT + GROUP_PADDING) - GROUP_HEADER_HEIGHT - GROUP_PADDING;
+}
+
+function snapGroupXDownToGrid(value: number): number {
+    return snapDownToGrid(value + GROUP_PADDING) - GROUP_PADDING;
+}
+
+function snapGroupXUpToGrid(value: number): number {
+    return snapUpToGrid(value + GROUP_PADDING) - GROUP_PADDING;
+}
+
+function snapGroupYDownToGrid(value: number): number {
+    return snapDownToGrid(value + GROUP_HEADER_HEIGHT + GROUP_PADDING) - GROUP_HEADER_HEIGHT - GROUP_PADDING;
+}
+
+function snapGroupYUpToGrid(value: number): number {
+    return snapUpToGrid(value + GROUP_HEADER_HEIGHT + GROUP_PADDING) - GROUP_HEADER_HEIGHT - GROUP_PADDING;
 }
 
 /** Compute total BV and PV for a force by summing base unit values.
@@ -1322,10 +1346,17 @@ export class ForceOrgDialogComponent {
         const yCandidates = new Set<number>([rect.y]);
 
         for (const obstacle of obstacles) {
-            xCandidates.add(snapDownToGrid(obstacle.x - rect.width - COLLISION_EDGE_PADDING));
-            xCandidates.add(snapUpToGrid(obstacle.x + obstacle.width + COLLISION_EDGE_PADDING));
-            yCandidates.add(snapDownToGrid(obstacle.y - rect.height - COLLISION_EDGE_PADDING));
-            yCandidates.add(snapUpToGrid(obstacle.y + obstacle.height + COLLISION_EDGE_PADDING));
+            if (excludedGroup) {
+                xCandidates.add(snapGroupXDownToGrid(obstacle.x - rect.width - COLLISION_EDGE_PADDING));
+                xCandidates.add(snapGroupXUpToGrid(obstacle.x + obstacle.width + COLLISION_EDGE_PADDING));
+                yCandidates.add(snapGroupYDownToGrid(obstacle.y - rect.height - COLLISION_EDGE_PADDING));
+                yCandidates.add(snapGroupYUpToGrid(obstacle.y + obstacle.height + COLLISION_EDGE_PADDING));
+            } else {
+                xCandidates.add(snapDownToGrid(obstacle.x - rect.width - COLLISION_EDGE_PADDING));
+                xCandidates.add(snapUpToGrid(obstacle.x + obstacle.width + COLLISION_EDGE_PADDING));
+                yCandidates.add(snapDownToGrid(obstacle.y - rect.height - COLLISION_EDGE_PADDING));
+                yCandidates.add(snapUpToGrid(obstacle.y + obstacle.height + COLLISION_EDGE_PADDING));
+            }
         }
 
         const candidates: Array<{ x: number; y: number }> = [];
@@ -1411,6 +1442,41 @@ export class ForceOrgDialogComponent {
             visited.add(current.id);
             this.resolveGroupSiblingCollisions(current);
             current = this.getParentGroup(current) ?? undefined;
+        }
+    }
+
+    private normalizeLoadedLayout(): void {
+        const groupsByDescendingDepth = [...this.groups()].sort((a, b) => {
+            const depthDiff = this.getGroupDepth(b) - this.getGroupDepth(a);
+            return depthDiff !== 0 ? depthDiff : a.zIndex() - b.zIndex();
+        });
+
+        for (const group of groupsByDescendingDepth) {
+            this.recalcGroupBounds(group);
+        }
+
+        const forcesByDescendingDepth = [...this.placedForces()].sort((a, b) => {
+            const depthA = a.groupId ? (this.getGroupDepth(this.getGroupById(a.groupId)!) + 1) : 0;
+            const depthB = b.groupId ? (this.getGroupDepth(this.getGroupById(b.groupId)!) + 1) : 0;
+            return depthB !== depthA ? depthB - depthA : a.zIndex() - b.zIndex();
+        });
+
+        for (const force of forcesByDescendingDepth) {
+            this.resolveForceSiblingCollisions(force);
+            const parent = this.getGroupById(force.groupId);
+            if (parent) {
+                this.recalcGroupBounds(parent);
+                this.resolveAncestorGroupCollisionsFrom(parent);
+            }
+        }
+
+        for (const group of groupsByDescendingDepth) {
+            this.resolveGroupSiblingCollisions(group);
+            this.resolveAncestorGroupCollisionsFrom(group);
+        }
+
+        for (const group of groupsByDescendingDepth) {
+            this.recalcGroupBounds(group);
         }
     }
 
@@ -1771,8 +1837,8 @@ export class ForceOrgDialogComponent {
 
     /** Move a group and all its descendants by the delta from old to new position. */
     private moveGroupTo(group: OrgGroup, newX: number, newY: number): void {
-        const dx = snapToGrid(newX) - group.x();
-        const dy = snapToGrid(newY) - group.y();
+        const dx = snapGroupXToGrid(newX) - group.x();
+        const dy = snapGroupYToGrid(newY) - group.y();
         if (dx === 0 && dy === 0) return;
         this.translateGroupRecursive(group, dx, dy);
     }
@@ -2081,8 +2147,8 @@ export class ForceOrgDialogComponent {
             const worldPos = this.screenToWorld(event.clientX, event.clientY);
             const { dx, dy } = this.getScaledDelta(event, this.groupDragStartPos);
             if (Math.abs(dx) > 3 || Math.abs(dy) > 3) this.groupDragged = true;
-            const newX = snapToGrid(this.groupStartPos.x + dx);
-            const newY = snapToGrid(this.groupStartPos.y + dy);
+            const newX = snapGroupXToGrid(this.groupStartPos.x + dx);
+            const newY = snapGroupYToGrid(this.groupStartPos.y + dy);
             const moveDx = newX - draggedGrp.x();
             const moveDy = newY - draggedGrp.y();
 
@@ -2362,14 +2428,15 @@ export class ForceOrgDialogComponent {
             const groups: OrgGroup[] = org.groups.map(g => new OrgGroup({
                 id: g.id,
                 name: g.name,
-                x: snapToGrid(g.x),
-                y: snapToGrid(g.y),
+                x: snapGroupXToGrid(g.x),
+                y: snapGroupYToGrid(g.y),
                 width: Math.max(GRID_SNAP_SIZE, snapUpToGrid(g.width)),
                 height: Math.max(GRID_SNAP_SIZE, snapUpToGrid(g.height)),
                 zIndex: g.zIndex,
                 parentGroupId: g.parentGroupId,
             }));
             this.groups.set(groups);
+            this.normalizeLoadedLayout();
 
             // Restore state
             this.organizationId.set(org.organizationId);

@@ -297,6 +297,39 @@ describe('ForceOrgDialogComponent', () => {
         expect((component as any).rectsOverlap(createdRect, lowerRect)).toBeFalse();
     });
 
+    it('normalizes loaded group bounds and collisions', async () => {
+        const forceA = createLoadForce('force-a', [createBattleMek('Atlas')]);
+        const forceB = createLoadForce('force-b', [createBattleMek('Locust')]);
+
+        dataServiceStub.listForces.and.resolveTo([forceA, forceB]);
+        dataServiceStub.getOrganization.and.resolveTo({
+            organizationId: 'org-1',
+            name: 'Loaded Org',
+            timestamp: Date.now(),
+            factionId: undefined,
+            forces: [
+                { instanceId: 'force-a', x: 0, y: 0, zIndex: 0, groupId: 'group-a' },
+                { instanceId: 'force-b', x: 0, y: 0, zIndex: 1, groupId: 'group-b' },
+            ],
+            groups: [
+                { id: 'group-a', name: 'A', x: 0, y: 0, width: 20, height: 20, zIndex: 0, parentGroupId: null },
+                { id: 'group-b', name: 'B', x: 0, y: 0, width: 20, height: 20, zIndex: 1, parentGroupId: null },
+            ],
+        });
+
+        await (component as any).loadOrganization('org-1');
+
+        const [groupA, groupB] = (component as any).groups();
+        const rectA = { x: groupA.x(), y: groupA.y(), width: groupA.width(), height: groupA.height() };
+        const rectB = { x: groupB.x(), y: groupB.y(), width: groupB.width(), height: groupB.height() };
+
+        expect(groupA.width()).toBeGreaterThan(20);
+        expect(groupA.height()).toBeGreaterThan(20);
+        expect(groupB.width()).toBeGreaterThan(20);
+        expect(groupB.height()).toBeGreaterThan(20);
+        expect((component as any).rectsOverlap(rectA, rectB)).toBeFalse();
+    });
+
     it('brings a dragged group to the highest group z-index', () => {
         const lowerGroup = createGroup('group-1', 0, 0, 280, 320);
         const draggedGroup = createGroup('dragged', 180, 80, 320, 260);
