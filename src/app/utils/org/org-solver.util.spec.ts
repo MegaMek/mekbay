@@ -3379,7 +3379,7 @@ describe('org-solver.util aggregation and foreign parity', () => {
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
-    it('re-evaluates real Sept groups independently before composing them upward', () => {
+    it('preserves real Sept groups as transparent foreign inputs for Inner Sphere aggregation', () => {
         const firstSept = resolveFromUnits([
             createBM('FS-A1'),
             createBM('FS-A2'),
@@ -3411,17 +3411,13 @@ describe('org-solver.util aggregation and foreign parity', () => {
             secondSept[0],
         ]);
 
-        expect(result.length).toBe(1);
-        expect(result[0].name).toBe('Under-Strength Battalion');
-        expect(result[0].type).toBe('Battalion');
-        expect(result[0].modifierKey).toBe('Under-Strength ');
-        expect(result[0].children?.length).toBe(2);
-        expect(result[0].children?.every((child) => child.name === 'Under-Strength Company')).toBeTrue();
-        expect(result[0].children?.every((child) => child.type === 'Company')).toBeTrue();
-        expect(result[0].leftoverUnits).toBeUndefined();
+        expect(result.length).toBe(2);
+        expect(result.every((group) => group.name === 'Sept')).toBeTrue();
+        expect(result.every((group) => group.type === 'Sept')).toBeTrue();
+        expect(result.every((group) => group.leftoverUnits === undefined)).toBeTrue();
     });
 
-    it('re-evaluates real Sept groups independently before composing them upward for Clan', () => {
+    it('preserves real Sept groups as transparent foreign inputs for Clan aggregation', () => {
         const firstSept = resolveFromUnits([
             createBM('CL-A1'),
             createBM('CL-A2'),
@@ -3446,15 +3442,10 @@ describe('org-solver.util aggregation and foreign parity', () => {
             secondSept[0],
         ]);
 
-        expect(result.length).toBe(1);
-        expect(result[0].name).toBe('Under-Strength Cluster');
-        expect(result[0].type).toBe('Cluster');
-        expect(result[0].modifierKey).toBe('Under-Strength ');
-        expect(result[0].children?.length).toBe(2);
-        expect(result[0].children?.every((child) => child.name === 'Binary')).toBeTrue();
-        expect(result[0].children?.every((child) => child.type === 'Binary')).toBeTrue();
-        expect(result[0].children?.every((child) => child.modifierKey === '')).toBeTrue();
-        expect(result[0].leftoverUnits).toBeUndefined();
+        expect(result.length).toBe(2);
+        expect(result.every((group) => group.name === 'Sept')).toBeTrue();
+        expect(result.every((group) => group.type === 'Sept')).toBeTrue();
+        expect(result.every((group) => group.leftoverUnits === undefined)).toBeTrue();
     });
 
     it('preserves typed foreign groups instead of crossgrading their tier when crossgrading is disabled', () => {
@@ -3479,6 +3470,41 @@ describe('org-solver.util aggregation and foreign parity', () => {
         expect(result[0].type).toBe('Level IV');
         expect(result[0].tier).toBeCloseTo(3, 5);
         expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('keeps transparent foreign typed groups alongside native aggregation instead of sending them through composition', () => {
+        const result = resolveFromGroups('Federated Suns', 'Inner Sphere', [
+            {
+                name: 'Company',
+                type: 'Company',
+                modifierKey: '',
+                countsAsType: null,
+                tier: 2,
+            },
+            {
+                name: 'Company',
+                type: 'Company',
+                modifierKey: '',
+                countsAsType: null,
+                tier: 2,
+            },
+            {
+                name: 'Company',
+                type: 'Company',
+                modifierKey: '',
+                countsAsType: null,
+                tier: 2,
+            },
+            createForeignGroup('Sept', 'Sept', 1.6),
+        ]);
+
+        expect(result.length).toBe(2);
+        expect(result[0].name).toBe('Battalion');
+        expect(result[0].type).toBe('Battalion');
+        expect(result[1].name).toBe('Sept');
+        expect(result[1].type).toBe('Sept');
+        expect(result[1].tier).toBeCloseTo(1.6, 5);
+        expect(result[1].leftoverUnits).toBeUndefined();
     });
 
     it('re-evaluates incompatible foreign units instead of tier-normalizing them', () => {

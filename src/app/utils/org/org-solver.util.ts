@@ -5159,6 +5159,13 @@ function isStableNativeRegularGroupInput(group: GroupSizeResult, context: Resolv
         && group.modifierKey === '';
 }
 
+function isTransparentForeignTypedGroup(group: GroupSizeResult, context: ResolveContext): boolean {
+    return !CROSSGRADE_FOREIGN_GROUPS
+        && group.type !== null
+        && group.type !== 'Force'
+        && !isNativeGroupForContext(group, context);
+}
+
 function finalizeResolvedCandidates(
     candidateStates: readonly ResolvedState[],
     regularPoolState: CanonicalGroupPoolState,
@@ -5450,7 +5457,13 @@ function preprocessGroupsForDefinition(
         }
 
         const descendantUnits = collectAllGroupUnits(group);
-        normalized.push(...applyForeignDisplayName(resolveWithDefinition(definition, descendantUnits, []), foreignDisplayName));
+        const reevaluatedGroups = resolveWithDefinition(definition, descendantUnits, []);
+        if (reevaluatedGroups.length === 0) {
+            normalized.push(...applyForeignDisplayName([EMPTY_RESULT], foreignDisplayName));
+            continue;
+        }
+
+        normalized.push(...applyForeignDisplayName(reevaluatedGroups, foreignDisplayName));
     }
 
     return normalized;
@@ -5580,5 +5593,27 @@ export function resolveFromGroups(
         return [groupResults[0]];
     }
 
-    return resolveWithDefinition(definition, [], preprocessGroupsForDefinition(definition, markGroupsWithProvenance(groupResults, 'input-group')));
+    const markedGroups = markGroupsWithProvenance(groupResults, 'input-group');
+    if (!CROSSGRADE_FOREIGN_GROUPS) {
+        const passthroughGroups = markedGroups.filter((group) => isTransparentForeignTypedGroup(group, context));
+        const groupsNeedingResolution = markedGroups.filter((group) => !isTransparentForeignTypedGroup(group, context));
+
+        if (groupsNeedingResolution.length === 0) {
+            return passthroughGroups;
+        }
+
+        const resolvedGroups = resolveWithDefinition(
+            definition,
+            [],
+            preprocessGroupsForDefinition(definition, groupsNeedingResolution),
+        );
+
+        if (passthroughGroups.length === 0) {
+            return resolvedGroups;
+        }
+
+        return [...resolvedGroups, ...passthroughGroups].sort(compareGroupScore);
+    }
+
+    return resolveWithDefinition(definition, [], preprocessGroupsForDefinition(definition, markedGroups));
 }
