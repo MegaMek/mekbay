@@ -54,6 +54,7 @@ const MAX_COMPOSITION_SEARCH_VISITS = 50_000;
 const MAX_PATTERN_GREEDY_ITERATIONS = 2_000;
 const MAX_COMPOSED_GROUPS_PER_CONFIG = 2_000;
 const MAX_PROMOTION_LOOP_ITERATIONS = 64;
+const CROSSGRADE_FOREIGN_GROUPS = false;
 
 let nextSyntheticGroupFactId = -1;
 
@@ -5440,17 +5441,16 @@ function preprocessGroupsForDefinition(
         // Generic wrappers like Force, or type-less foreign buckets, still need
         // descendant-unit re-evaluation under the target definition.
         if (group.type && group.type !== 'Force') {
-            normalized.push(...applyForeignDisplayName(crossgradeTierOnlyForeignGroup(group, context), foreignDisplayName));
+            if (CROSSGRADE_FOREIGN_GROUPS) {
+                normalized.push(...applyForeignDisplayName(crossgradeTierOnlyForeignGroup(group, context), foreignDisplayName));
+            } else {
+                normalized.push(group);
+            }
             continue;
         }
 
         const descendantUnits = collectAllGroupUnits(group);
-        if (descendantUnits.length > 0) {
-            normalized.push(...applyForeignDisplayName(resolveWithDefinition(definition, descendantUnits, []), foreignDisplayName));
-            continue;
-        }
-
-        normalized.push(...applyForeignDisplayName(crossgradeTierOnlyForeignGroup(group, context), foreignDisplayName));
+        normalized.push(...applyForeignDisplayName(resolveWithDefinition(definition, descendantUnits, []), foreignDisplayName));
     }
 
     return normalized;

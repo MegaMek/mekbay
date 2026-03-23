@@ -3318,19 +3318,19 @@ describe('org-solver.util aggregation and foreign parity', () => {
         }
     });
 
-    it('crossgrades foreign groups to the nearest dynamic-tier modifier in the target org', () => {
+    it('preserves typed foreign groups as-is when crossgrading is disabled', () => {
         const result = resolveFromGroups('Federated Suns', 'Inner Sphere', [
             createForeignGroup('Sept', 'Sept', 1.6),
         ]);
 
         expect(result.length).toBe(1);
-        expect(result[0].name).toBe('Under-Strength Company');
-        expect(result[0].type).toBe('Company');
-        expect(result[0].tier).toBeCloseTo(1.5, 5);
+        expect(result[0].name).toBe('Sept');
+        expect(result[0].type).toBe('Sept');
+        expect(result[0].tier).toBeCloseTo(1.6, 5);
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
-    it('crossgrades a real resolved foreign group through the public APIs', () => {
+    it('preserves a real resolved foreign group through the public APIs when crossgrading is disabled', () => {
         const sourceUnits: Unit[] = [
             createBM('BM1'),
             createBM('BM2'),
@@ -3350,9 +3350,9 @@ describe('org-solver.util aggregation and foreign parity', () => {
         const result = resolveFromGroups('Federated Suns', 'Inner Sphere', foreignGroup);
 
         expect(result.length).toBe(1);
-        expect(result[0].name).toBe('Under-Strength Company');
-        expect(result[0].type).toBe('Company');
-        expect(result[0].tier).toBeCloseTo(1.5, 5);
+        expect(result[0].name).toBe('Sept');
+        expect(result[0].type).toBe('Sept');
+        expect(result[0].tier).toBeCloseTo(1.6, 5);
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
@@ -3457,26 +3457,26 @@ describe('org-solver.util aggregation and foreign parity', () => {
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
-    it('crossgrades to the nearest target tier when a foreign tier sits between lower and upper targets', () => {
+    it('preserves typed foreign groups instead of crossgrading their tier when crossgrading is disabled', () => {
         const result = resolveFromGroups('Federated Suns', 'Inner Sphere', [
             createForeignGroup('Supernova Binary', 'Supernova Trinary', 2.5),
         ]);
 
         expect(result.length).toBe(1);
-        expect(result[0].name).toBe('Under-Strength Battalion');
-        expect(result[0].type).toBe('Battalion');
-        expect(result[0].tier).toBeCloseTo(2.63, 2);
+        expect(result[0].name).toBe('Supernova Binary');
+        expect(result[0].type).toBe('Supernova Trinary');
+        expect(result[0].tier).toBeCloseTo(2.5, 5);
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
-    it('rounds crossgrade when a foreign tier matches target tier', () => {
+    it('preserves typed foreign groups even when their tier matches a native target', () => {
         const result = resolveFromGroups('Federated Suns', 'Inner Sphere', [
             createForeignGroup('Level IV', 'Level IV', 3),
         ]);
 
         expect(result.length).toBe(1);
-        expect(result[0].name).toBe('Battalion');
-        expect(result[0].type).toBe('Battalion');
+        expect(result[0].name).toBe('Level IV');
+        expect(result[0].type).toBe('Level IV');
         expect(result[0].tier).toBeCloseTo(3, 5);
         expect(result[0].leftoverUnits).toBeUndefined();
     });
@@ -3492,28 +3492,35 @@ describe('org-solver.util aggregation and foreign parity', () => {
         expect(result[0].tier).toBe(0);
     });
 
-    it('crossgrades one tier above the target org ceiling into three highest-tier synthetic groups', () => {
+    it('re-evaluates Force foreign groups from descendant units instead of crossgrading them', () => {
         const result = resolveFromGroups('Society', 'HW Clan', [
-            createForeignGroup('Foreign Apex Group', 'Force', 2.6),
+            createForeignGroup('Foreign Apex Group', 'Force', 2.6, null, [
+                createBM('SOC-REVAL-1'),
+                createBM('SOC-REVAL-2'),
+                createBM('SOC-REVAL-3'),
+                createBM('SOC-REVAL-4'),
+                createBM('SOC-REVAL-5'),
+                createBM('SOC-REVAL-6'),
+                createBM('SOC-REVAL-7'),
+            ]),
         ]);
 
-        expect(result.length).toBe(3);
-        expect(result.every((group) => group.name === 'Sept')).toBeTrue();
-        expect(result.every((group) => group.type === 'Sept')).toBeTrue();
-        expect(result.every((group) => group.tier === 1.6)).toBeTrue();
-        expect(result.every((group) => group.leftoverUnits === undefined)).toBeTrue();
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Sept');
+        expect(result[0].type).toBe('Sept');
+        expect(result[0].foreignDisplayName).toBe('Foreign Apex Group');
+        expect(result[0].leftoverUnits).toBeUndefined();
     });
 
-    it('crossgrades two tiers above the target org ceiling into nine highest-tier synthetic groups', () => {
+    it('re-evaluates typeless foreign groups with no descendants into Force', () => {
         const result = resolveFromGroups('Society', 'HW Clan', [
-            createForeignGroup('Foreign Apex Group', 'Force', 3.6),
+            createForeignGroup('Foreign Apex Group', null, 3.6),
         ]);
 
-        expect(result.length).toBe(9);
-        expect(result.every((group) => group.name === 'Sept')).toBeTrue();
-        expect(result.every((group) => group.type === 'Sept')).toBeTrue();
-        expect(result.every((group) => group.tier === 1.6)).toBeTrue();
-        expect(result.every((group) => group.leftoverUnits === undefined)).toBeTrue();
+        expect(result.length).toBe(1);
+        expect(result[0].name).toBe('Force');
+        expect(result[0].type).toBeNull();
+        expect(result[0].foreignDisplayName).toBe('Foreign Apex Group');
     });
 });
 
