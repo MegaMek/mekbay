@@ -32,6 +32,7 @@
  */
 
 import { GameSystem } from '../models/common.model';
+import { CBT_WEIGHT_CLASSES } from '../models/units.model';
 import type { SemanticFilterState } from '../utils/semantic-filter.util';
 
 /*
@@ -298,7 +299,7 @@ export const DROPDOWN_FILTERS: readonly DropdownFilterConfig[] = Object.freeze([
     { key: 'subtype', semanticKey: 'subtype', label: 'Subtype', game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
     { key: 'techBase', semanticKey: 'tech', label: 'Tech', sortOptions: ['Inner Sphere', 'Clan', 'Mixed'], optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
     { key: 'role', semanticKey: 'role', label: 'Role', optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
-    { key: 'weightClass', semanticKey: 'weight', label: 'Weight Class', game: GameSystem.CLASSIC, sortOptions: ['Ultra Light*', 'Light', 'Medium', 'Heavy', 'Assault', 'Colossal*', 'Small*', 'Medium*', 'Large*'], optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
+    { key: 'weightClass', semanticKey: 'weight', label: 'Weight Class', game: GameSystem.CLASSIC, sortOptions: [...CBT_WEIGHT_CLASSES], optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
     { key: 'level', semanticKey: 'rules', label: 'Rules', game: GameSystem.CLASSIC, sortOptions: ['Introductory', 'Standard', 'Advanced', 'Experimental', 'Unofficial'], optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
     { key: 'c3', semanticKey: 'network', label: 'Network', game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
     { key: 'moveType', semanticKey: 'motive', label: 'Motive', game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },

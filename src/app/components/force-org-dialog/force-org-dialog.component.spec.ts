@@ -75,8 +75,6 @@ describe('ForceOrgDialogComponent', () => {
             width: signal(width),
             height: signal(height),
             zIndex: signal(0),
-            anchorX: signal(x + 24),
-            anchorY: signal(y + 72),
         } as any;
     }
 
@@ -231,21 +229,16 @@ describe('ForceOrgDialogComponent', () => {
         expect((component as any).groups()).toEqual([]);
     });
 
-    it('reparents a dragged force into its parent group when it still overlaps the parent', () => {
-        const parentGroup = createGroup('parent', 0, 0, 500, 400);
-        const childGroup = createGroup('child', 50, 50, 300, 200);
-        childGroup.parentGroupId = parentGroup.id;
-        const draggedForce = createPlacedForce('force-1', 351, 100, childGroup.id);
-        const remainingForce = createPlacedForce('force-2', 100, 100, childGroup.id);
+    it('resolves sibling collisions when creating a new force group', () => {
+        const draggedForce = createPlacedForce('force-1', 0, 0, null);
+        const targetForce = createPlacedForce('force-2', 0, 0, null);
 
-        (component as any).groups.set([parentGroup, childGroup]);
-        (component as any).placedForces.set([draggedForce, remainingForce]);
-
+        (component as any).placedForces.set([draggedForce, targetForce]);
         (component as any).tryFormGroup(draggedForce);
 
-        expect(draggedForce.groupId).toBe(parentGroup.id);
-        expect(remainingForce.groupId).toBe(childGroup.id);
-        expect((component as any).groups().map((groupRef: { id: string }) => groupRef.id)).toEqual(['parent', 'child']);
+        expect(draggedForce.groupId).toBe(targetForce.groupId);
+        expect(draggedForce.groupId).not.toBeNull();
+        expect(draggedForce.x() !== targetForce.x() || draggedForce.y() !== targetForce.y()).toBeTrue();
     });
 
     it('chooses the group with the largest overlap for group drops', () => {
@@ -255,7 +248,86 @@ describe('ForceOrgDialogComponent', () => {
 
         (component as any).groups.set([draggedGroup, weakerTarget, strongerTarget]);
 
-        expect((component as any).detectGroupDrop(draggedGroup)).toEqual({ type: 'create-parent', other: strongerTarget });
+        expect((component as any).detectGroupDrop(draggedGroup)).toEqual({ type: 'join-parent', groupId: strongerTarget.id });
+    });
+
+
+    it('resolves sibling collisions when creating a parent group for overlapping groups', () => {
+        const draggedGroup = createGroup('dragged', 220, 120, 220, 160);
+        const targetGroup = createGroup('target', 420, 80, 320, 260);
+
+        (component as any).groups.set([draggedGroup, targetGroup]);
+        (component as any).tryMergeGroups(draggedGroup);
+
+        expect(draggedGroup.parentGroupId).toBe(targetGroup.parentGroupId);
+        expect(draggedGroup.parentGroupId).not.toBeNull();
+
+        const draggedRight = draggedGroup.x() + draggedGroup.width();
+        const targetRight = targetGroup.x() + targetGroup.width();
+        const draggedBottom = draggedGroup.y() + draggedGroup.height();
+        const targetBottom = targetGroup.y() + targetGroup.height();
+        const overlapWidth = Math.min(draggedRight, targetRight) - Math.max(draggedGroup.x(), targetGroup.x());
+        const overlapHeight = Math.min(draggedBottom, targetBottom) - Math.max(draggedGroup.y(), targetGroup.y());
+
+        expect(overlapWidth <= 0 || overlapHeight <= 0).toBeTrue();
+    });
+
+    it('resolves create-parent collisions against multiple surrounding sibling groups', () => {
+        const upperGroup = createGroup('upper', 440, 20, 400, 260);
+        const draggedGroup = createGroup('dragged', 200, 250, 220, 260);
+        const targetGroup = createGroup('target', 360, 430, 420, 160);
+        const lowerGroup = createGroup('lower', 40, 620, 900, 120);
+
+        (component as any).groups.set([upperGroup, draggedGroup, targetGroup, lowerGroup]);
+        (component as any).tryMergeGroups(draggedGroup);
+
+        const createdParent = (component as any).groups().find((groupRef: { id: string }) => !['upper', 'dragged', 'target', 'lower'].includes(groupRef.id));
+        expect(createdParent).toBeDefined();
+
+        const createdRect = {
+            x: createdParent.x(),
+            y: createdParent.y(),
+            width: createdParent.width(),
+            height: createdParent.height(),
+        };
+        const upperRect = { x: upperGroup.x(), y: upperGroup.y(), width: upperGroup.width(), height: upperGroup.height() };
+        const lowerRect = { x: lowerGroup.x(), y: lowerGroup.y(), width: lowerGroup.width(), height: lowerGroup.height() };
+
+        expect((component as any).rectsOverlap(createdRect, upperRect)).toBeFalse();
+        expect((component as any).rectsOverlap(createdRect, lowerRect)).toBeFalse();
+    });
+
+    it('normalizes loaded group bounds and collisions', async () => {
+        const forceA = createLoadForce('force-a', [createBattleMek('Atlas')]);
+        const forceB = createLoadForce('force-b', [createBattleMek('Locust')]);
+
+        dataServiceStub.listForces.and.resolveTo([forceA, forceB]);
+        dataServiceStub.getOrganization.and.resolveTo({
+            organizationId: 'org-1',
+            name: 'Loaded Org',
+            timestamp: Date.now(),
+            factionId: undefined,
+            forces: [
+                { instanceId: 'force-a', x: 0, y: 0, zIndex: 0, groupId: 'group-a' },
+                { instanceId: 'force-b', x: 0, y: 0, zIndex: 1, groupId: 'group-b' },
+            ],
+            groups: [
+                { id: 'group-a', name: 'A', x: 0, y: 0, width: 20, height: 20, zIndex: 0, parentGroupId: null },
+                { id: 'group-b', name: 'B', x: 0, y: 0, width: 20, height: 20, zIndex: 1, parentGroupId: null },
+            ],
+        });
+
+        await (component as any).loadOrganization('org-1');
+
+        const [groupA, groupB] = (component as any).groups();
+        const rectA = { x: groupA.x(), y: groupA.y(), width: groupA.width(), height: groupA.height() };
+        const rectB = { x: groupB.x(), y: groupB.y(), width: groupB.width(), height: groupB.height() };
+
+        expect(groupA.width()).toBeGreaterThan(20);
+        expect(groupA.height()).toBeGreaterThan(20);
+        expect(groupB.width()).toBeGreaterThan(20);
+        expect(groupB.height()).toBeGreaterThan(20);
+        expect((component as any).rectsOverlap(rectA, rectB)).toBeFalse();
     });
 
     it('brings a dragged group to the highest group z-index', () => {

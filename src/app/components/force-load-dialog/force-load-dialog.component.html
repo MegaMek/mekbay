@@ -39,8 +39,8 @@
                         tabindex="0">
                         <div class="force-header">
                             <div class="faction-name-wrapper">
-                                @if (force.factionId | factionImg; as factionImgUrl) {
-                                    <img [src]="factionImgUrl" class="faction-icon" />
+                                @if (force.faction) {
+                                    <img [src]="force.faction.img" class="faction-icon" />
                                 }
                                 <div class="force-name">{{ force.name }}</div>
                             </div>

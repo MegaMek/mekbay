@@ -620,11 +620,11 @@ export class CBTForceUnit extends ForceUnit {
 
     public pilotBV = computed<number>(() => {
         const finalBv = this.getBv();
-        return finalBv - this.getBaseBv() - this.tagBV() - this.c3Tax();
+        return finalBv - this.getBaseBv() - this.tagBV() - this.c3Tax() - this.externalStoresBv();
     });
 
     getBv = computed<number>(() => {
-        const preSkillRatingBv = this.getBaseBv() + this.tagBV() + this.c3Tax();
+        const preSkillRatingBv = this.getBaseBv() + this.tagBV() + this.c3Tax() + this.externalStoresBv();
         return BVCalculatorUtil.calculateAdjustedBV(
             this.getUnit(),
             preSkillRatingBv,

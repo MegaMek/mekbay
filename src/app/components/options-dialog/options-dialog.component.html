@@ -25,21 +25,25 @@
             <div class="option-col">
                 <div class="option-row">
                     <label for="autoConvertFilters">Auto-convert filters to semantic:</label>
-                    <select id="autoConvertFilters" class="bt-select" [value]="optionsService.options().automaticallyConvertFiltersToSemantic"
+                    <select id="autoConvertFilters" class="bt-select"
+                        [value]="optionsService.options().automaticallyConvertFiltersToSemantic"
                         (change)="onAutoConvertFiltersChange($event)">
                         <option value="true">Enabled</option>
                         <option value="false">Disabled (default)</option>
                     </select>
                 </div>
                 <div class="description">
-                    <p>When enabled, changes to UI filters (dropdowns, sliders) are automatically converted to semantic filter syntax in the search bar.</p>
-                    <p>When disabled, UI filters and semantic filters in the search bar work independently and are merged together.</p>
+                    <p>When enabled, changes to UI filters (dropdowns, sliders) are automatically converted to semantic
+                        filter syntax in the search bar.</p>
+                    <p>When disabled, UI filters and semantic filters in the search bar work independently and are
+                        merged together.</p>
                 </div>
             </div>
             <div class="option-col">
                 <div class="option-row">
                     <label for="unitSearchExpandedViewLayout">Expanded search layout:</label>
-                    <select id="unitSearchExpandedViewLayout" class="bt-select" [value]="optionsService.options().unitSearchExpandedViewLayout"
+                    <select id="unitSearchExpandedViewLayout" class="bt-select"
+                        [value]="optionsService.options().unitSearchExpandedViewLayout"
                         (change)="onunitSearchExpandedViewLayoutChange($event)">
                         <option value="panel-list-filters">Details | Results | Filters (default)</option>
                         <option value="filters-list-panel">Filters | Results | Details</option>
@@ -47,6 +51,21 @@
                 </div>
                 <div class="description">
                     <p>Choose the panel arrangement in expanded unit search view on wide screens.</p>
+                </div>
+            </div>
+            <div class="option-section-title">Printing</div>
+            <div class="option-col">
+                <div class="option-row">
+                    <label for="printRosterSummary">Include roster summary:</label>
+                    <select id="printRosterSummary" class="bt-select"
+                        [value]="optionsService.options().printRosterSummary"
+                        (change)="onprintRosterSummaryChange($event)">
+                        <option value="false">No (default)</option>
+                        <option value="true">Yes</option>
+                    </select>
+                </div>
+                <div class="description">
+                    <p>Include a summary of the roster in the print output.</p>
                 </div>
             </div>
             <hr />
@@ -57,25 +76,26 @@
                         <input #uuidInput id="userUuid" class="bt-input" [class.error]="!!userUuidError"
                             [type]="showUserUuid() ? 'text' : 'password'" [value]="userUuid()"
                             (focus)="selectAll($event)" (keydown)="onUserUuidKeydown($event)" />
-                        <button
-                            type="button"
-                            class="sensitive-toggle"
-                            (click)="toggleUserUuidVisibility()"
+                        <button type="button" class="sensitive-toggle" (click)="toggleUserUuidVisibility()"
                             [attr.aria-label]="showUserUuid() ? 'Hide user identifier' : 'Show user identifier'"
                             [title]="showUserUuid() ? 'Hide user identifier' : 'Show user identifier'">
                             @if (showUserUuid()) {
-                                <!-- show eye -->
-                                <svg fill="currentColor" width="20" height="20" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M0 0h48v48H0z" fill="none"/>
-                                    <circle cx="24" cy="24" r="4"/>
-                                    <path d="M24,38c12,0,20-14,20-14s-8-14-20-14S4,24,4,24S12,38,24,38z M24,16c4.418,0,8,3.582,8,8s-3.582,8-8,8s-8-3.582-8-8 S19.582,16,24,16z"/>
-                                </svg>
+                            <!-- show eye -->
+                            <svg fill="currentColor" width="20" height="20" viewBox="0 0 48 48"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path d="M0 0h48v48H0z" fill="none" />
+                                <circle cx="24" cy="24" r="4" />
+                                <path
+                                    d="M24,38c12,0,20-14,20-14s-8-14-20-14S4,24,4,24S12,38,24,38z M24,16c4.418,0,8,3.582,8,8s-3.582,8-8,8s-8-3.582-8-8 S19.582,16,24,16z" />
+                            </svg>
                             } @else {
-                                <!-- closed eye -->
-                                <svg fill="currentColor" width="20" height="20" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M0 0h48v48H0z" fill="none"/>
-                                    <path d="M11.957,33.214L7.171,38L10,40.828l5.305-5.305C17.867,36.992,20.788,38,24,38c12,0,20-14,20-14s-2.953-5.159-7.957-9.214 L40.829,10L38,7.172l-5.305,5.305C30.133,11.008,27.212,10,24,10C12,10,4,24,4,24S6.953,29.159,11.957,33.214z M16,24 c0-4.418,3.582-8,8-8c1.483,0,2.867,0.411,4.058,1.114l-3.035,3.035C24.694,20.062,24.356,20,24,20c-2.206,0-4,1.794-4,4 c0,0.356,0.062,0.694,0.149,1.023l-3.035,3.035C16.411,26.867,16,25.483,16,24z M32,24c0,4.418-3.582,8-8,8 c-1.483,0-2.867-0.411-4.058-1.114l3.035-3.035C23.306,27.938,23.644,28,24,28c2.206,0,4-1.794,4-4 c0-0.356-0.062-0.694-0.149-1.023l3.035-3.035C31.589,21.133,32,22.517,32,24z"/>
-                                </svg>
+                            <!-- closed eye -->
+                            <svg fill="currentColor" width="20" height="20" viewBox="0 0 48 48"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path d="M0 0h48v48H0z" fill="none" />
+                                <path
+                                    d="M11.957,33.214L7.171,38L10,40.828l5.305-5.305C17.867,36.992,20.788,38,24,38c12,0,20-14,20-14s-2.953-5.159-7.957-9.214 L40.829,10L38,7.172l-5.305,5.305C30.133,11.008,27.212,10,24,10C12,10,4,24,4,24S6.953,29.159,11.957,33.214z M16,24 c0-4.418,3.582-8,8-8c1.483,0,2.867,0.411,4.058,1.114l-3.035,3.035C24.694,20.062,24.356,20,24,20c-2.206,0-4,1.794-4,4 c0,0.356,0.062,0.694,0.149,1.023l-3.035,3.035C16.411,26.867,16,25.483,16,24z M32,24c0,4.418-3.582,8-8,8 c-1.483,0-2.867-0.411-4.058-1.114l3.035-3.035C23.306,27.938,23.644,28,24,28c2.206,0,4-1.794,4-4 c0-0.356-0.062-0.694-0.149-1.023l3.035-3.035C31.589,21.133,32,22.517,32,24z" />
+                            </svg>
                             }
                         </button>
                     </div>
@@ -89,12 +109,15 @@
                 </div>
             </div>
             <div class="option-col">
-                <label>Public ID:</label>
+                
                 <div class="option-row">
-                    <span class="readonly-value">{{ userPublicId() }}</span>
+                    <div>
+                        <span class="small-label">Public ID: </span><span class="readonly-value">{{ userPublicId() }}</span>
+                    </div>
                 </div>
                 <div class="description">
-                    <p>Your Public ID is assigned by the server and can be shared with others to let them subscribe to your public tags.</p>
+                    <p>Your Public ID is assigned by the server and can be shared with others to let them subscribe to
+                        your public tags.</p>
                 </div>
             </div>
         </div>
@@ -114,18 +137,31 @@
                     @if (getSubscriberCount(tag) > 0) {
                     <span class="subscriber-count" title="Number of subscribers">
                         {{ getSubscriberCount(tag) }}
-                        <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+                        <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                            <path
+                                d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
+                        </svg>
                     </span>
                     }
                     <div class="tag-actions">
                         <button class="bt-button icon" (click)="onCopyTagLink(tag)" title="Copy shareable link">
-                            <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M13.803 5.33333C13.803 3.49238 15.3022 2 17.1515 2C19.0008 2 20.5 3.49238 20.5 5.33333C20.5 7.17428 19.0008 8.66667 17.1515 8.66667C16.2177 8.66667 15.3738 8.28596 14.7671 7.67347L10.1317 10.8295C10.1745 11.0425 10.197 11.2625 10.197 11.4872C10.197 11.9322 10.109 12.3576 9.94959 12.7464L15.0323 16.0858C15.6092 15.6161 16.3473 15.3333 17.1515 15.3333C19.0008 15.3333 20.5 16.8257 20.5 18.6667C20.5 20.5076 19.0008 22 17.1515 22C15.3022 22 13.803 20.5076 13.803 18.6667C13.803 18.1845 13.9062 17.7255 14.0917 17.3111L9.05007 13.9987C8.46196 14.5098 7.6916 14.8205 6.84848 14.8205C4.99917 14.8205 3.5 13.3281 3.5 11.4872C3.5 9.64623 4.99917 8.15385 6.84848 8.15385C7.9119 8.15385 8.85853 8.64725 9.47145 9.41518L13.9639 6.35642C13.8594 6.03359 13.803 5.6896 13.803 5.33333Z"/></svg>
+                            <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                <path fill-rule="evenodd" clip-rule="evenodd"
+                                    d="M13.803 5.33333C13.803 3.49238 15.3022 2 17.1515 2C19.0008 2 20.5 3.49238 20.5 5.33333C20.5 7.17428 19.0008 8.66667 17.1515 8.66667C16.2177 8.66667 15.3738 8.28596 14.7671 7.67347L10.1317 10.8295C10.1745 11.0425 10.197 11.2625 10.197 11.4872C10.197 11.9322 10.109 12.3576 9.94959 12.7464L15.0323 16.0858C15.6092 15.6161 16.3473 15.3333 17.1515 15.3333C19.0008 15.3333 20.5 16.8257 20.5 18.6667C20.5 20.5076 19.0008 22 17.1515 22C15.3022 22 13.803 20.5076 13.803 18.6667C13.803 18.1845 13.9062 17.7255 14.0917 17.3111L9.05007 13.9987C8.46196 14.5098 7.6916 14.8205 6.84848 14.8205C4.99917 14.8205 3.5 13.3281 3.5 11.4872C3.5 9.64623 4.99917 8.15385 6.84848 8.15385C7.9119 8.15385 8.85853 8.64725 9.47145 9.41518L13.9639 6.35642C13.8594 6.03359 13.803 5.6896 13.803 5.33333Z" />
+                            </svg>
                         </button>
                         <button class="bt-button icon" (click)="onRenameTag(tag)" title="Rename this tag">
-                            <svg fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 0 0 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                            <svg fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 0 0 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+                            </svg>
                         </button>
                         <button class="bt-button icon danger" (click)="onDeleteTag(tag)" title="Delete this tag">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M6 7V18C6 19.1046 6.89543 20 8 20H16C17.1046 20 18 19.1046 18 18V7M6 7H5M6 7H8M18 7H19M18 7H16M10 11V16M14 11V16M8 7V5C8 3.89543 8.89543 3 10 3H14C15.1046 3 16 3.89543 16 5V7M8 7H16"/></svg>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M6 7V18C6 19.1046 6.89543 20 8 20H16C17.1046 20 18 19.1046 18 18V7M6 7H5M6 7H8M18 7H19M18 7H16M10 11V16M14 11V16M8 7V5C8 3.89543 8.89543 3 10 3H14C15.1046 3 16 3.89543 16 5V7M8 7H16" />
+                            </svg>
                         </button>
                     </div>
                 </div>
@@ -133,9 +169,12 @@
             </div>
             } @else {
             <div class="empty-state">
-                <p>You don't have any tags yet. Create tags by searching units and clicking on the tag button 
-                    <svg class="inline-icon" fill="none" stroke="currentColor" width="20px" height="20px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-                        <path d="M21.842 6.218a1.977 1.977 0 0 0-.424-.628A1.99 1.99 0 0 0 20 5H8c-.297 0-.578.132-.769.359l-5 6c-.309.371-.309.91 0 1.281l5 6c.191.228.472.36.769.36h12a1.977 1.977 0 0 0 1.41-.582A1.99 1.99 0 0 0 22 17V7c0-.266-.052-.525-.158-.782z" stroke-width="1.5" />
+                <p>You don't have any tags yet. Create tags by searching units and clicking on the tag button
+                    <svg class="inline-icon" fill="none" stroke="currentColor" width="20px" height="20px"
+                        viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                        <path
+                            d="M21.842 6.218a1.977 1.977 0 0 0-.424-.628A1.99 1.99 0 0 0 20 5H8c-.297 0-.578.132-.769.359l-5 6c-.309.371-.309.91 0 1.281l5 6c.191.228.472.36.769.36h12a1.977 1.977 0 0 0 1.41-.582A1.99 1.99 0 0 0 22 17V7c0-.266-.052-.525-.158-.782z"
+                            stroke-width="1.5" />
                         <path d="M14 8V16M10 12H18" stroke-width="2" stroke-linecap="round" />
                     </svg>
                 </p>
@@ -153,9 +192,8 @@
             } @else {
             <div class="option-col subscription-input-container">
                 <div class="option-row">
-                    <input #subscriptionInput class="bt-input" [class.error]="!!subscriptionError()" 
-                        type="text" placeholder="publicId:tagName" 
-                        (keydown)="onSubscriptionKeydown($event)" />
+                    <input #subscriptionInput class="bt-input" [class.error]="!!subscriptionError()" type="text"
+                        placeholder="publicId:tagName" (keydown)="onSubscriptionKeydown($event)" />
                     <button class="bt-button primary" (click)="onAddSubscription(subscriptionInput.value)">ADD</button>
                     <button class="bt-button" (click)="onCancelSubscription()">CANCEL</button>
                 </div>
@@ -172,7 +210,8 @@
                         <span class="tag-name">{{ tag.tagName }}</span>
                         <span class="tag-owner">from {{ tag.publicId }}</span>
                     </span>
-                    <button class="bt-button danger small" (click)="onUnsubscribePublicTag(tag.publicId, tag.tagName)">Unsubscribe</button>
+                    <button class="bt-button danger small"
+                        (click)="onUnsubscribePublicTag(tag.publicId, tag.tagName)">Unsubscribe</button>
                 </div>
                 }
             </div>
@@ -255,7 +294,8 @@
                 </div>
                 <div class="description">
                     <p>When enabled, multiple sheets can be displayed side-by-side on wide screens.</p>
-                    <p>When disabled, only one active sheet is shown at a time, with neighbor sheets displayed as faded previews.</p>
+                    <p>When disabled, only one active sheet is shown at a time, with neighbor sheets displayed as faded
+                        previews.</p>
                 </div>
             </div>
             <div class="option-row">
@@ -291,7 +331,8 @@
             <div class="option-col">
                 <div class="option-row">
                     <label for="ASUnifiedDamagePicker">Unified damage picker:</label>
-                    <select id="ASUnifiedDamagePicker" class="bt-select" [value]="optionsService.options().ASUnifiedDamagePicker"
+                    <select id="ASUnifiedDamagePicker" class="bt-select"
+                        [value]="optionsService.options().ASUnifiedDamagePicker"
                         (change)="onASUnifiedDamagePickerChange($event)">
                         <option value="true">Enabled (default)</option>
                         <option value="false">Disabled</option>
@@ -305,18 +346,11 @@
             <div class="option-section-title">Printing</div>
             <div class="option-row">
                 <label for="ASPrintPageBreakOnGroups">Split groups in pages:</label>
-                <select id="ASPrintPageBreakOnGroups" class="bt-select" [value]="optionsService.options().ASPrintPageBreakOnGroups"
+                <select id="ASPrintPageBreakOnGroups" class="bt-select"
+                    [value]="optionsService.options().ASPrintPageBreakOnGroups"
                     (change)="onASPrintPageBreakOnGroupsChange($event)">
                     <option value="true">Yes (default)</option>
                     <option value="false">No</option>
-                </select>
-            </div>
-            <div class="option-row">
-                <label for="ASPrintRosterSummary">Include roster summary:</label>
-                <select id="ASPrintRosterSummary" class="bt-select" [value]="optionsService.options().ASPrintRosterSummary"
-                    (change)="onASPrintRosterSummaryChange($event)">
-                    <option value="false">No (default)</option>
-                    <option value="true">Yes</option>
                 </select>
             </div>
             <div class="option-section-title">Rules</div>
@@ -336,7 +370,8 @@
             </div>
             <div class="option-row">
                 <label for="ASVehiclesCriticalHitTable">Vehicles critical hit table:</label>
-                <select id="ASVehiclesCriticalHitTable" class="bt-select" [value]="optionsService.options().ASVehiclesCriticalHitTable"
+                <select id="ASVehiclesCriticalHitTable" class="bt-select"
+                    [value]="optionsService.options().ASVehiclesCriticalHitTable"
                     (change)="onVehiclesCriticalHitTableChange($event)">
                     <option value="default">Alpha Strike: Commander's Edition (default)</option>
                     <option value="scouringSands">Aces: Scouring Sands</option>

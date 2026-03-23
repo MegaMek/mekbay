@@ -59,8 +59,6 @@ export interface OrgGroupData {
     height: number;
     zIndex: number;
     parentGroupId: string | null;
-    anchorX: number;
-    anchorY: number;
 }
 
 /** Serialized organization stored locally and on the server. */

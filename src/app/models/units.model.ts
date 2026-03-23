@@ -71,6 +71,33 @@ export type MoveType =
     | 'Wheeled'
     | 'WiGE';
 
+export const CBT_WEIGHT_CLASSES = [
+    'Ultra Light/PA(L)/Exoskeleton',
+    'Light',
+    'Medium',
+    'Heavy',
+    'Assault',
+    'Colossal/Super-Heavy',
+    'Small Craft',
+    'Small Dropship',
+    'Small Jumpship',
+    'Small Space Station',
+    'Small Support Vehicle',
+    'Small Warship',
+    'Medium Dropship',
+    'Medium Support Vehicle',
+    'Large Dropship',
+    'Large Space Station',
+    'Large Support Vehicle',
+    'Large Warship',
+] as const;
+
+export type WeightClass = typeof CBT_WEIGHT_CLASSES[number];
+
+export const CBT_WEIGHT_CLASS_ORDINALS = new Map<WeightClass, number>(
+    CBT_WEIGHT_CLASSES.map((weightClass, index) => [weightClass, index] as const)
+);
+
 export type UnitSubtype =
     | 'Aerodyne DropShip'
     | 'Aerodyne Small Craft'
@@ -150,11 +177,11 @@ export interface UnitComponent {
 }
 export interface Unit {
     name: string; // Internal unique name
-    id: number; // MUL id (unique)
+    id: number; // MUL id
     chassis: string;
     model: string;
     year: number;
-    weightClass: string;
+    weightClass: WeightClass;
     tons: number;
     offSpeedFactor: number;
     bv: number;

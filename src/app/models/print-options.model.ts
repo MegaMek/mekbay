@@ -31,39 +31,12 @@
  * affiliated with Microsoft.
  */
 
-import type { GameSystem } from "./common.model";
-
 /*
  * Author: Drake
  */
-export interface Options {
-    uuid?: string; // deprecated, use UserStateService instead
-    sheetsColor: 'normal' | 'night';
-    pickerStyle: 'default' | 'radial' | 'linear';
-    quickActions: 'enabled' | 'disabled';
-    canvasInput: 'all' | 'touch' | 'pen';
-    swipeToNextSheet: 'vertical' | 'horizontal' | 'disabled';
-    syncZoomBetweenSheets: boolean;
-    unitDisplayName: 'chassisModel' | 'alias' | 'both';
-    gameSystem: GameSystem;
-    recordSheetCenterPanelContent: 'fluffImage' | 'clusterTable';
-    lastCanvasState?: {
-        brushSize: number;
-        eraserSize: number;
-    },
-    sidebarLipPosition?: string;
-    useAutomations: boolean;
-    ASUseHex: boolean;
-    ASCardStyle: 'colored' | 'monochrome';
-    ASPrintPageBreakOnGroups: boolean;
-    c3NetworkConnectionsAboveNodes: boolean;
-    automaticallyConvertFiltersToSemantic: boolean;
-    allowMultipleActiveSheets: boolean;
-    unitSearchExpandedViewLayout: 'panel-list-filters' | 'filters-list-panel';
-    unitSearchViewMode: 'list' | 'card' | 'chassis' | 'table';
-    forceOverviewViewMode: 'expanded' | 'compact' | 'table';
-    ASUseAutomations: boolean;
-    ASVehiclesCriticalHitTable: 'default' | 'scouringSands';
-    ASUnifiedDamagePicker: boolean;
+export interface PrintAllOptions {
+    clean: boolean;
     printRosterSummary: boolean;
+    recordSheetCenterPanelContent: 'fluffImage' | 'clusterTable';
+    ASPrintPageBreakOnGroups: boolean;
 }

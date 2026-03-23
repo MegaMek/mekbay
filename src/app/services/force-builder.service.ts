@@ -83,6 +83,7 @@ import { type SerializedOperation, LoadOperationEntry, type OperationForceRef } 
 import { SaveOperationDialogComponent, type OperationDialogData, type OperationDialogResult } from '../components/save-operation-dialog/save-operation-dialog.component';
 import type { OpPreviewForce } from '../components/op-preview/op-preview.component';
 import { ForceLoadingOverlayComponent, type ForceLoadingOverlayData, type ForceLoadingProgress } from '../components/force-loading-overlay/force-loading-overlay.component';
+import type { PrintAllOptions } from '../models/print-options.model';
 
 /*
  * Author: Drake
@@ -1355,18 +1356,28 @@ export class ForceBuilderService {
         });
     }
 
-    public printAll(): void {
+    public async printAll(): Promise<void> {
         const currentForce = this.currentForce();
         if (!currentForce) return;
+
+        const optionsService = this.injector.get(OptionsService);
+        const { PrintOptionsDialogComponent } = await import('../components/print-options-dialog/print-options-dialog.component');
+        const ref = this.dialogsService.createDialog<PrintAllOptions | null>(PrintOptionsDialogComponent, {
+            disableClose: true,
+            data: {
+                gameSystem: currentForce instanceof CBTForce ? GameSystem.CLASSIC : GameSystem.ALPHA_STRIKE
+            }
+        });
+        const printOptions = await firstValueFrom(ref.closed);
+        if (!printOptions) return;
+
         // Lazy-inject UI services to avoid circular dependencies
-        const appRef = this.injector.get(ApplicationRef);
         if (currentForce instanceof CBTForce) {
             const sheetService = this.injector.get(SheetService);
-            const optionsService = this.injector.get(OptionsService);
-            CBTPrintUtil.multipagePrint(sheetService, optionsService, currentForce.units());
+            await CBTPrintUtil.multipagePrint(sheetService, currentForce.units(), printOptions);
         } else if (currentForce instanceof ASForce) {
-            const optionsService = this.injector.get(OptionsService);
-            ASPrintUtil.multipagePrint(appRef, this.injector, optionsService, currentForce.groups(), false, true, currentForce);
+            const appRef = this.injector.get(ApplicationRef);
+            await ASPrintUtil.multipagePrint(appRef, this.injector, optionsService, currentForce.groups(), printOptions, true, currentForce);
         }
     }
 
