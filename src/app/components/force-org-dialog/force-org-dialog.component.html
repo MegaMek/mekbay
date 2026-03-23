@@ -88,7 +88,7 @@
 
                 <!-- Group faction icon -->
                 @if (previewFactionId | factionImg; as factionImgUrl) {
-                <image [attr.href]="factionImgUrl" x="8" y="10" width="28" height="28"
+                <image [attr.href]="factionImgUrl" x="8" [attr.y]="(GROUP_HEADER_HEIGHT - 28) / 2" width="28" height="28"
                     preserveAspectRatio="xMidYMid meet" />
                 }
 
@@ -97,29 +97,31 @@
                     [attr.width]="group.width() - (previewFactionId !== undefined ? 88 : 56)"
                     [attr.height]="GROUP_HEADER_HEIGHT" class="group-name-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="group-header-info">
-                        <div class="group-name" (click)="renameGroup(group)" title="Click to rename">
-                            {{ group.name() || previewInfo?.orgName ||
-                            group.orgName() }}
+                        @if (group.name(); as customName) {
+                        <div class="group-name" (click)="renameGroup(group); $event.stopPropagation()"
+                            (pointerdown)="$event.stopPropagation()" title="Click to rename">
+                            {{ customName }}
                         </div>
-                        <div class="group-data">
-                            @if (group.name() && (previewInfo?.orgName ||
-                            group.orgName()); as orgName) {
-                            <span class="group-org-name">{{ orgName }}</span>
-                            }
-                            @if (previewInfo?.totals || group.totals(); as totals)
-                            {
-                            @if (group.name() && (previewInfo || group.totals())) {
-                            · }
-                            <span class="group-totals">{{ totals }}</span>
-                            }
+                        @if (previewInfo?.orgName || group.orgName(); as orgName) {
+                        <div class="group-org-name">{{ orgName }}</div>
+                        }
+                        } @else if (previewInfo?.orgName || group.orgName(); as orgName) {
+                        <div class="group-name" (click)="renameGroup(group); $event.stopPropagation()"
+                            (pointerdown)="$event.stopPropagation()" title="Click to rename">
+                            {{ orgName }}
                         </div>
+                        }
+                        @if (previewInfo?.totals || group.totals(); as totals) {
+                        <div class="group-totals">{{ totals }}</div>
+                        }
                     </div>
                 </foreignObject>
 
                 <!-- Group remove button -->
                 <foreignObject [attr.x]="group.width() - 40" y="4" width="32" height="28" class="group-actions-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="group-actions">
-                        <button class="group-remove-btn" (click)="removeGroup(group)" title="Disband group">
+                        <button class="group-remove-btn" (click)="removeGroup(group); $event.stopPropagation()"
+                            (pointerdown)="$event.stopPropagation()" title="Disband group">
                             <svg width="12" height="12" fill="currentColor" viewBox="0 0 1200 1200"
                                 xmlns="http://www.w3.org/2000/svg">
                                 <path
@@ -141,7 +143,7 @@
 
                 <!-- Preview faction icon -->
                 @if (pr.factionId | factionImg; as factionImgUrl) {
-                <image [attr.href]="factionImgUrl" [attr.x]="pr.x + 8" [attr.y]="pr.y + 10" width="28" height="28"
+                <image [attr.href]="factionImgUrl" [attr.x]="pr.x + 8" [attr.y]="pr.y + (GROUP_HEADER_HEIGHT - 28) / 2" width="28" height="28"
                     preserveAspectRatio="xMidYMid meet" opacity="0.7" />
                 }
 
@@ -150,10 +152,10 @@
                     class="group-name-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="group-header-info drop-preview-info">
                         @if (pr.orgName) {
-                        <span class="group-org-name">{{ pr.orgName }}</span>
+                        <div class="group-org-name">{{ pr.orgName }}</div>
                         }
                         @if (pr.totals) {
-                        <span class="group-totals">{{ pr.totals }}</span>
+                        <div class="group-totals">{{ pr.totals }}</div>
                         }
                     </div>
                 </foreignObject>
@@ -161,7 +163,7 @@
             }
 
             <!-- Forces layer -->
-            @for (pf of sortedPlacedForces(); track pf.force.instanceId) {
+            @for (pf of baseLayerForces(); track pf.force.instanceId) {
             @let metadata = forcesData().get(pf.force.instanceId);
             <g class="force-card"
                 [class.highlighted-selected]="selectedForceInstanceId() === pf.force.instanceId"
@@ -228,7 +230,67 @@
             </g>
             }
 
-            <!-- Dragged group overlay (rendered above forces) -->
+            <!-- Dragged force overlay (rendered above groups) -->
+            @for (pf of dragOverlayForces(); track pf.force.instanceId) {
+            @let metadata = forcesData().get(pf.force.instanceId);
+            <g class="force-card"
+                [class.highlighted-selected]="selectedForceInstanceId() === pf.force.instanceId"
+                [class.highlighted-friendly]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'friendly'"
+                [class.highlighted-enemy]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'enemy'"
+                [attr.data-force-id]="pf.force.instanceId"
+                [attr.transform]="'translate(' + pf.x() + ',' + pf.y() + ')'"
+                pointer-events="none">
+
+                <rect class="card-bg" x="0" y="0" [attr.width]="CARD_WIDTH" [attr.height]="CARD_HEIGHT"
+                    filter="url(#card-drag-shadow)" />
+
+                <rect class="card-border" x="0" y="0" [attr.width]="CARD_WIDTH" [attr.height]="CARD_HEIGHT" />
+
+                @if (pf.force.faction?.img; as factionImgUrl) {
+                <image [attr.href]="factionImgUrl" x="12" y="12" width="32" height="32"
+                    preserveAspectRatio="xMidYMid meet" />
+                }
+
+                <foreignObject x="50" y="6" [attr.width]="CARD_WIDTH - 90" height="36" class="force-name-fo">
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-name">
+                        {{ pf.force.name || metadata?.org?.name }}
+                    </div>
+                    @if (pf.force.name) {
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-org">
+                        {{ metadata?.org?.name }}
+                    </div>
+                    }
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-value">
+                        @if (metadata?.bvString; as val) {
+                        {{ val }}
+                        }
+                    </div>
+                </foreignObject>
+
+                <foreignObject [attr.x]="CARD_WIDTH - 30" y="0" width="30" [attr.height]="CARD_HEIGHT"
+                    class="force-actions-fo">
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-action-column">
+                        <button class="force-action-btn remove" tabindex="-1">
+                            <svg width="12" height="12" fill="currentColor" viewBox="0 0 1200 1200"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
+                            </svg>
+                        </button>
+                        <button class="force-action-btn preview" tabindex="-1">
+                            <svg stroke="currentColor" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M15.8053 15.8013L21 21M10.5 7.5V13.5M7.5 10.5H13.5M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z"
+                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                        </button>
+                    </div>
+                </foreignObject>
+            </g>
+            }
+
+            <!-- Dragged group overlay (rendered above everything) -->
             @for (group of dragOverlayGroups(); track group.id) {
             @let previewInfo = previewGroupInfo().get(group.id);
             @let previewFactionId = previewInfo?.factionId ?? group.factionId();
@@ -243,7 +305,7 @@
                     [attr.height]="GROUP_HEADER_HEIGHT" />
 
                 @if (previewFactionId | factionImg; as factionImgUrl) {
-                <image [attr.href]="factionImgUrl" x="8" y="10" width="28" height="28"
+                <image [attr.href]="factionImgUrl" x="8" [attr.y]="(GROUP_HEADER_HEIGHT - 28) / 2" width="28" height="28"
                     preserveAspectRatio="xMidYMid meet" />
                 }
 
@@ -251,22 +313,21 @@
                     [attr.width]="group.width() - (previewFactionId !== undefined ? 88 : 56)"
                     [attr.height]="GROUP_HEADER_HEIGHT" class="group-name-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="group-header-info">
+                        @if (group.name(); as customName) {
                         <div class="group-name">
-                            {{ group.name() || previewInfo?.orgName ||
-                            group.orgName() }}
+                            {{ customName }}
                         </div>
-                        <div class="group-data">
-                            @if (group.name() && (previewInfo?.orgName ||
-                            group.orgName()); as orgName) {
-                            <span class="group-org-name">{{ orgName }}</span>
-                            }
-                            @if (previewInfo?.totals || group.totals(); as totals)
-                            {
-                            @if (group.name() && (previewInfo || group.totals())) {
-                            · }
-                            <span class="group-totals">{{ totals }}</span>
-                            }
+                        @if (previewInfo?.orgName || group.orgName(); as orgName) {
+                        <div class="group-org-name">{{ orgName }}</div>
+                        }
+                        } @else if (previewInfo?.orgName || group.orgName(); as orgName) {
+                        <div class="group-name">
+                            {{ orgName }}
                         </div>
+                        }
+                        @if (previewInfo?.totals || group.totals(); as totals) {
+                        <div class="group-totals">{{ totals }}</div>
+                        }
                     </div>
                 </foreignObject>
 

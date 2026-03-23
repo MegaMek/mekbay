@@ -170,9 +170,6 @@
     font-size: 0.8rem;
     font-weight: 600;
     line-height: 1.2;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 .force-org {
@@ -345,8 +342,10 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-    height: 48px;
-    gap: 1px;
+    height: 64px;
+    gap: 2px;
+    padding: 6px 0;
+    box-sizing: border-box;
 }
 
 .group-name {
@@ -364,7 +363,8 @@
     }
 }
 
-.group-data {
+.group-org-name,
+.group-totals {
     font-size: 0.7rem;
     font-weight: 500;
     line-height: 1.2;
