@@ -32,7 +32,7 @@
  */
 
 import type { ForceUnit } from '../models/force-unit.model';
-import type { Unit, ASUnitTypeCode } from '../models/units.model';
+import { CBT_WEIGHT_CLASS_ORDINALS, type Unit, type ASUnitTypeCode } from '../models/units.model';
 import type { FormationTypeDefinition } from './formation-type.model';
 import { GameSystem, Rulebook } from '../models/common.model';
 
@@ -127,17 +127,7 @@ function findIdenticalPairs(units: ForceUnit[]): ForceUnit[][] {
 // ── CBT helper functions ─────────────────────────────────────────────────────
 
 function cbtGetWeightClass(unit: Unit): number {
-    const tons = unit.tons;
-    if (unit.type === 'Mek') {
-        if (tons < 40) return 0;
-        if (tons <= 55) return 1;
-        if (tons <= 75) return 3;
-        return 4;
-    }
-    if (tons < 40) return 0;
-    if (tons < 60) return 1;
-    if (tons < 80) return 3;
-    return 4;
+    return CBT_WEIGHT_CLASS_ORDINALS.get(unit.weightClass) ?? -1;
 }
 
 function cbtCanDealDamage(unit: Unit, minDamage: number, atRange: number): boolean {
