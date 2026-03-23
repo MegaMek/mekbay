@@ -1270,102 +1270,147 @@ export class ForceOrgDialogComponent {
         };
     }
 
-    private getSiblingCollisionTarget(
-        rect: Rect,
+    private getGroupById(groupId: string | null | undefined): OrgGroup | null {
+        if (!groupId) return null;
+        return this.groups().find(group => group.id === groupId) ?? null;
+    }
+
+    private getParentGroup(group: OrgGroup | null | undefined): OrgGroup | null {
+        return this.getGroupById(group?.parentGroupId);
+    }
+
+    private getSiblingCollisionRects(
         containerGroupId: string | null,
         excludedForce?: PlacedForce,
         excludedGroup?: OrgGroup,
-    ): { rect: Rect } | null {
-        let bestTarget: { rect: Rect } | null = null;
-        let bestOverlap = 0;
+    ): Rect[] {
+        const rects: Rect[] = [];
 
         for (const force of this.placedForces()) {
             if (force === excludedForce || force.groupId !== containerGroupId) continue;
-            const forceRect = this.forceRect(force);
-            const overlap = this.getOverlapArea(rect, this.expandRect(forceRect, COLLISION_EDGE_PADDING));
-            if (overlap > bestOverlap) {
-                bestOverlap = overlap;
-                bestTarget = { rect: forceRect };
-            }
+            rects.push(this.forceRect(force));
         }
 
         for (const group of this.groups()) {
             if (group === excludedGroup || group.parentGroupId !== containerGroupId) continue;
-            const groupRect = this.groupRect(group);
-            const overlap = this.getOverlapArea(rect, this.expandRect(groupRect, COLLISION_EDGE_PADDING));
-            if (overlap > bestOverlap) {
-                bestOverlap = overlap;
-                bestTarget = { rect: groupRect };
+            rects.push(this.groupRect(group));
+        }
+
+        return rects;
+    }
+
+    private hasSiblingCollision(
+        rect: Rect,
+        containerGroupId: string | null,
+        excludedForce?: PlacedForce,
+        excludedGroup?: OrgGroup,
+    ): boolean {
+        return this.getSiblingCollisionRects(containerGroupId, excludedForce, excludedGroup)
+            .some(obstacle => this.rectsOverlap(rect, this.expandRect(obstacle, COLLISION_EDGE_PADDING)));
+    }
+
+    private getResolvedCollisionPosition(
+        rect: Rect,
+        containerGroupId: string | null,
+        excludedForce?: PlacedForce,
+        excludedGroup?: OrgGroup,
+    ): { x: number; y: number } | null {
+        const obstacles = this.getSiblingCollisionRects(containerGroupId, excludedForce, excludedGroup);
+        if (obstacles.length === 0) return null;
+
+        const xCandidates = new Set<number>([rect.x]);
+        const yCandidates = new Set<number>([rect.y]);
+
+        for (const obstacle of obstacles) {
+            xCandidates.add(snapDownToGrid(obstacle.x - rect.width - COLLISION_EDGE_PADDING));
+            xCandidates.add(snapUpToGrid(obstacle.x + obstacle.width + COLLISION_EDGE_PADDING));
+            yCandidates.add(snapDownToGrid(obstacle.y - rect.height - COLLISION_EDGE_PADDING));
+            yCandidates.add(snapUpToGrid(obstacle.y + obstacle.height + COLLISION_EDGE_PADDING));
+        }
+
+        const candidates: Array<{ x: number; y: number }> = [];
+        for (const x of xCandidates) {
+            for (const y of yCandidates) {
+                candidates.push({ x, y });
             }
         }
 
-        return bestTarget;
-    }
-
-    private getResolvedCollisionPosition(rect: Rect, obstacle: Rect): { x: number; y: number } {
-        const clearanceObstacle = this.expandRect(obstacle, COLLISION_EDGE_PADDING);
-        const overlapWidth = Math.min(rect.x + rect.width, clearanceObstacle.x + clearanceObstacle.width) - Math.max(rect.x, clearanceObstacle.x);
-        const overlapHeight = Math.min(rect.y + rect.height, clearanceObstacle.y + clearanceObstacle.height) - Math.max(rect.y, clearanceObstacle.y);
-        const rectCenterX = rect.x + rect.width / 2;
-        const rectCenterY = rect.y + rect.height / 2;
-        const obstacleCenterX = obstacle.x + obstacle.width / 2;
-        const obstacleCenterY = obstacle.y + obstacle.height / 2;
-
-        const horizontalCandidate = rectCenterX <= obstacleCenterX
-            ? { x: snapDownToGrid(obstacle.x - rect.width - COLLISION_EDGE_PADDING), y: rect.y }
-            : { x: snapUpToGrid(obstacle.x + obstacle.width + COLLISION_EDGE_PADDING), y: rect.y };
-        const verticalCandidate = rectCenterY <= obstacleCenterY
-            ? { x: rect.x, y: snapDownToGrid(obstacle.y - rect.height - COLLISION_EDGE_PADDING) }
-            : { x: rect.x, y: snapUpToGrid(obstacle.y + obstacle.height + COLLISION_EDGE_PADDING) };
-
-        const candidates = overlapWidth <= overlapHeight
-            ? [horizontalCandidate, verticalCandidate]
-            : [verticalCandidate, horizontalCandidate];
+        candidates.sort((a, b) => {
+            const aDistance = Math.abs(a.x - rect.x) + Math.abs(a.y - rect.y);
+            const bDistance = Math.abs(b.x - rect.x) + Math.abs(b.y - rect.y);
+            return aDistance - bDistance;
+        });
 
         for (const candidate of candidates) {
             const candidateRect = { ...rect, x: candidate.x, y: candidate.y };
-            if (!this.rectsOverlap(candidateRect, clearanceObstacle)) {
+            const collides = obstacles.some(obstacle => this.rectsOverlap(candidateRect, this.expandRect(obstacle, COLLISION_EDGE_PADDING)));
+            if (!collides) {
                 return candidate;
             }
         }
 
-        return candidates[0];
+        return null;
+    }
+
+    private resolveSiblingCollisions(
+        getRect: () => Rect,
+        moveTo: (x: number, y: number) => void,
+        containerGroupId: string | null,
+        excludedForce?: PlacedForce,
+        excludedGroup?: OrgGroup,
+    ): void {
+        for (let iteration = 0; iteration < COLLISION_RESOLVE_MAX_ITERATIONS; iteration++) {
+            const rect = getRect();
+            if (!this.hasSiblingCollision(rect, containerGroupId, excludedForce, excludedGroup)) break;
+
+            const nextPosition = this.getResolvedCollisionPosition(rect, containerGroupId, excludedForce, excludedGroup);
+            if (!nextPosition) break;
+            if (nextPosition.x === rect.x && nextPosition.y === rect.y) break;
+
+            moveTo(nextPosition.x, nextPosition.y);
+        }
+    }
+
+    private resolveAncestorGroupCollisionsFrom(group: OrgGroup | null | undefined): void {
+        this.resolveAncestorGroupSiblingCollisions(this.getParentGroup(group));
     }
 
     private resolveForceSiblingCollisions(force: PlacedForce): void {
-        for (let iteration = 0; iteration < COLLISION_RESOLVE_MAX_ITERATIONS; iteration++) {
-            const rect = this.forceRect(force);
-            const obstacle = this.getSiblingCollisionTarget(rect, force.groupId, force);
-            if (!obstacle) break;
+        this.resolveSiblingCollisions(
+            () => this.forceRect(force),
+            (x, y) => {
+                force.x.set(x);
+                force.y.set(y);
+            },
+            force.groupId,
+            force,
+        );
 
-            const nextPosition = this.getResolvedCollisionPosition(rect, obstacle.rect);
-            if (nextPosition.x === rect.x && nextPosition.y === rect.y) break;
-
-            force.x.set(nextPosition.x);
-            force.y.set(nextPosition.y);
-        }
-
-        if (force.groupId) {
-            const parent = this.groups().find(group => group.id === force.groupId);
-            if (parent) this.recalcGroupBounds(parent);
-        }
+        const parent = this.getGroupById(force.groupId);
+        if (parent) this.recalcGroupBounds(parent);
     }
 
     private resolveGroupSiblingCollisions(group: OrgGroup): void {
-        for (let iteration = 0; iteration < COLLISION_RESOLVE_MAX_ITERATIONS; iteration++) {
-            const rect = this.groupRect(group);
-            const obstacle = this.getSiblingCollisionTarget(rect, group.parentGroupId, undefined, group);
-            if (!obstacle) break;
+        this.resolveSiblingCollisions(
+            () => this.groupRect(group),
+            (x, y) => this.moveGroupTo(group, x, y),
+            group.parentGroupId,
+            undefined,
+            group,
+        );
 
-            const nextPosition = this.getResolvedCollisionPosition(rect, obstacle.rect);
-            if (nextPosition.x === rect.x && nextPosition.y === rect.y) break;
+        const parent = this.getParentGroup(group);
+        if (parent) this.recalcGroupBounds(parent);
+    }
 
-            this.moveGroupTo(group, nextPosition.x, nextPosition.y);
-        }
+    private resolveAncestorGroupSiblingCollisions(group: OrgGroup | null | undefined): void {
+        const visited = new Set<string>();
+        let current = group;
 
-        if (group.parentGroupId) {
-            const parent = this.groups().find(candidate => candidate.id === group.parentGroupId);
-            if (parent) this.recalcGroupBounds(parent);
+        while (current && !visited.has(current.id)) {
+            visited.add(current.id);
+            this.resolveGroupSiblingCollisions(current);
+            current = this.getParentGroup(current) ?? undefined;
         }
     }
 
@@ -1666,10 +1711,11 @@ export class ForceOrgDialogComponent {
 
         switch (action?.type) {
             case 'join-group': {
-                const oldGroup = draggedPf.groupId ? this.groups().find(g => g.id === draggedPf.groupId) : null;
+                const oldGroup = this.getGroupById(draggedPf.groupId);
                 draggedPf.groupId = action.groupId;
-                const group = this.groups().find(g => g.id === action.groupId)!;
+                const group = this.getGroupById(action.groupId)!;
                 this.resolveForceSiblingCollisions(draggedPf);
+                this.resolveAncestorGroupCollisionsFrom(group);
                 this.recalcGroupBounds(group);
                 if (oldGroup) {
                     this.recalcGroupBounds(oldGroup);
@@ -1680,7 +1726,7 @@ export class ForceOrgDialogComponent {
                 return;
             }
             case 'new-group': {
-                const oldGroup = draggedPf.groupId ? this.groups().find(g => g.id === draggedPf.groupId) : null;
+                const oldGroup = this.getGroupById(draggedPf.groupId);
                 const group = new OrgGroup({
                     zIndex: this.nextGroupZIndex++,
                 });
@@ -1690,6 +1736,7 @@ export class ForceOrgDialogComponent {
                 this.resolveForceSiblingCollisions(draggedPf);
                 this.recalcGroupBounds(group);
                 this.resolveGroupSiblingCollisions(group);
+                this.resolveAncestorGroupCollisionsFrom(group);
                 if (oldGroup) {
                     this.recalcGroupBounds(oldGroup);
                     this.dissolveGroupIfUnderpopulated(oldGroup);
@@ -1699,10 +1746,11 @@ export class ForceOrgDialogComponent {
                 return;
             }
             case 'leave-group': {
-                const group = this.groups().find(g => g.id === draggedPf.groupId)!;
+                const group = this.getGroupById(draggedPf.groupId)!;
                 draggedPf.groupId = null;
                 this.resolveForceSiblingCollisions(draggedPf);
                 this.recalcGroupBounds(group);
+                this.resolveAncestorGroupCollisionsFrom(group);
                 this.dissolveGroupIfUnderpopulated(group);
                 this.cleanupEmptyGroups();
                 this.placedForces.set([...placed]);
@@ -1711,8 +1759,11 @@ export class ForceOrgDialogComponent {
             default: {
                 this.resolveForceSiblingCollisions(draggedPf);
                 if (draggedPf.groupId) {
-                    const group = this.groups().find(g => g.id === draggedPf.groupId);
-                    if (group) this.recalcGroupBounds(group);
+                    const group = this.getGroupById(draggedPf.groupId);
+                    if (group) {
+                        this.recalcGroupBounds(group);
+                        this.resolveAncestorGroupCollisionsFrom(group);
+                    }
                 }
             }
         }
@@ -1791,33 +1842,29 @@ export class ForceOrgDialogComponent {
 
         switch (action?.type) {
             case 'join-parent': {
-                const oldParent = draggedGrp.parentGroupId
-                    ? this.groups().find(g => g.id === draggedGrp.parentGroupId)
-                    : null;
+                const oldParent = this.getParentGroup(draggedGrp);
                 draggedGrp.parentGroupId = action.groupId;
                 this.groups.set([...this.groups()]);
                 if (oldParent) {
                     this.recalcGroupBounds(oldParent);
                     this.cleanupEmptyGroups();
                 }
-                const target = this.groups().find(g => g.id === action.groupId)!;
+                const target = this.getGroupById(action.groupId)!;
                 this.recalcGroupBounds(target);
                 this.resolveGroupSiblingCollisions(draggedGrp);
+                this.resolveAncestorGroupCollisionsFrom(target);
                 return;
             }
             case 'rearrange': {
-                const parent = this.groups().find(g => g.id === action.parentId);
+                const parent = this.getGroupById(action.parentId);
                 if (parent) this.recalcGroupBounds(parent);
                 this.resolveGroupSiblingCollisions(draggedGrp);
+                this.resolveAncestorGroupCollisionsFrom(parent);
                 return;
             }
             case 'create-parent': {
-                const oldParent = draggedGrp.parentGroupId
-                    ? this.groups().find(g => g.id === draggedGrp.parentGroupId)
-                    : null;
-                const targetParent = action.other.parentGroupId
-                    ? this.groups().find(g => g.id === action.other.parentGroupId)
-                    : null;
+                const oldParent = this.getParentGroup(draggedGrp);
+                const targetParent = this.getParentGroup(action.other);
                 const parentGroup = new OrgGroup({
                     zIndex: this.nextGroupZIndex++,
                     parentGroupId: action.other.parentGroupId,
@@ -1836,6 +1883,7 @@ export class ForceOrgDialogComponent {
                 this.resolveGroupSiblingCollisions(draggedGrp);
                 this.recalcGroupBounds(parentGroup);
                 this.resolveGroupSiblingCollisions(parentGroup);
+                this.resolveAncestorGroupCollisionsFrom(parentGroup);
                 return;
             }
             default:

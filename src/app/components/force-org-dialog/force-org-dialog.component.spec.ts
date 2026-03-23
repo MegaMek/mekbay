@@ -272,6 +272,31 @@ describe('ForceOrgDialogComponent', () => {
         expect(overlapWidth <= 0 || overlapHeight <= 0).toBeTrue();
     });
 
+    it('resolves create-parent collisions against multiple surrounding sibling groups', () => {
+        const upperGroup = createGroup('upper', 440, 20, 400, 260);
+        const draggedGroup = createGroup('dragged', 200, 250, 220, 260);
+        const targetGroup = createGroup('target', 360, 430, 420, 160);
+        const lowerGroup = createGroup('lower', 40, 620, 900, 120);
+
+        (component as any).groups.set([upperGroup, draggedGroup, targetGroup, lowerGroup]);
+        (component as any).tryMergeGroups(draggedGroup);
+
+        const createdParent = (component as any).groups().find((groupRef: { id: string }) => !['upper', 'dragged', 'target', 'lower'].includes(groupRef.id));
+        expect(createdParent).toBeDefined();
+
+        const createdRect = {
+            x: createdParent.x(),
+            y: createdParent.y(),
+            width: createdParent.width(),
+            height: createdParent.height(),
+        };
+        const upperRect = { x: upperGroup.x(), y: upperGroup.y(), width: upperGroup.width(), height: upperGroup.height() };
+        const lowerRect = { x: lowerGroup.x(), y: lowerGroup.y(), width: lowerGroup.width(), height: lowerGroup.height() };
+
+        expect((component as any).rectsOverlap(createdRect, upperRect)).toBeFalse();
+        expect((component as any).rectsOverlap(createdRect, lowerRect)).toBeFalse();
+    });
+
     it('brings a dragged group to the highest group z-index', () => {
         const lowerGroup = createGroup('group-1', 0, 0, 280, 320);
         const draggedGroup = createGroup('dragged', 180, 80, 320, 260);
