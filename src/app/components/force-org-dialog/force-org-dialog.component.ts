@@ -1687,6 +1687,7 @@ export class ForceOrgDialogComponent {
                 draggedPf.groupId = group.id;
                 action.other.groupId = group.id;
                 this.groups.set([...this.groups(), group]);
+                this.resolveForceSiblingCollisions(draggedPf);
                 this.recalcGroupBounds(group);
                 this.resolveGroupSiblingCollisions(group);
                 if (oldGroup) {
@@ -1832,6 +1833,7 @@ export class ForceOrgDialogComponent {
                 if (targetParent && targetParent.id !== oldParent?.id) {
                     this.recalcGroupBounds(targetParent);
                 }
+                this.resolveGroupSiblingCollisions(draggedGrp);
                 this.recalcGroupBounds(parentGroup);
                 this.resolveGroupSiblingCollisions(parentGroup);
                 return;

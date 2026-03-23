@@ -229,6 +229,18 @@ describe('ForceOrgDialogComponent', () => {
         expect((component as any).groups()).toEqual([]);
     });
 
+    it('resolves sibling collisions when creating a new force group', () => {
+        const draggedForce = createPlacedForce('force-1', 0, 0, null);
+        const targetForce = createPlacedForce('force-2', 0, 0, null);
+
+        (component as any).placedForces.set([draggedForce, targetForce]);
+        (component as any).tryFormGroup(draggedForce);
+
+        expect(draggedForce.groupId).toBe(targetForce.groupId);
+        expect(draggedForce.groupId).not.toBeNull();
+        expect(draggedForce.x()).not.toBe(targetForce.x());
+    });
+
     it('reparents a dragged force into its parent group when it still overlaps the parent', () => {
         const parentGroup = createGroup('parent', 0, 0, 500, 400);
         const childGroup = createGroup('child', 50, 50, 300, 200);
@@ -277,6 +289,26 @@ describe('ForceOrgDialogComponent', () => {
         (component as any).groups.set([draggedGroup, outerGroup, innerGroup, innerChild]);
 
         expect((component as any).detectGroupDrop(draggedGroup)).toEqual({ type: 'join-parent', groupId: innerGroup.id });
+    });
+
+    it('resolves sibling collisions when creating a parent group for overlapping groups', () => {
+        const draggedGroup = createGroup('dragged', 220, 120, 220, 160);
+        const targetGroup = createGroup('target', 380, 80, 320, 260);
+
+        (component as any).groups.set([draggedGroup, targetGroup]);
+        (component as any).tryMergeGroups(draggedGroup);
+
+        expect(draggedGroup.parentGroupId).toBe(targetGroup.parentGroupId);
+        expect(draggedGroup.parentGroupId).not.toBeNull();
+
+        const draggedRight = draggedGroup.x() + draggedGroup.width();
+        const targetRight = targetGroup.x() + targetGroup.width();
+        const draggedBottom = draggedGroup.y() + draggedGroup.height();
+        const targetBottom = targetGroup.y() + targetGroup.height();
+        const overlapWidth = Math.min(draggedRight, targetRight) - Math.max(draggedGroup.x(), targetGroup.x());
+        const overlapHeight = Math.min(draggedBottom, targetBottom) - Math.max(draggedGroup.y(), targetGroup.y());
+
+        expect(overlapWidth <= 0 || overlapHeight <= 0).toBeTrue();
     });
 
     it('brings a dragged group to the highest group z-index', () => {
