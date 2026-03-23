@@ -95,11 +95,12 @@ function asIsOnlyCombatVehicles(units: ForceUnit[]): boolean {
     });
 }
 
-function isClanUnit(units: Unit[]): boolean {
-    const faction = (units[0] as any).force.faction();
-    const isClan = faction.group?.includes('Clan');
-    const isScorpion = faction.name?.includes('Escorpi') || faction.name?.includes('Scorpion Empire');
-    return isClan || isScorpion;
+function isClanUnit(units: ForceUnit[]): boolean {
+    if (units.length === 0) return false;
+    const faction = units[0].force?.faction();
+    const isClan = faction?.group?.includes('Clan');
+    const isScorpion = faction?.name?.includes('Escorpi') || faction?.name?.includes('Scorpion Empire');
+    return !!(isClan || isScorpion);
 };
 
 // ── Common helper functions ─────────────────────────────────────────────────────
@@ -1539,7 +1540,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.BOT, page: 27 }],
         requirements: () => 'Clan only. At least two units in the Formation must be the same model (including the same OmniMek configuration)',
         validator: (units) => {
-            if (!isClanUnit(units as any)) return false;
+            if (!isClanUnit(units)) return false;
             const hasPair = new Set(units.map(u => u.getUnit().name)).size < units.length;
             return hasPair; 
         },
