@@ -54,6 +54,7 @@ const MAX_COMPOSITION_SEARCH_VISITS = 50_000;
 const MAX_PATTERN_GREEDY_ITERATIONS = 2_000;
 const MAX_COMPOSED_GROUPS_PER_CONFIG = 2_000;
 const MAX_PROMOTION_LOOP_ITERATIONS = 64;
+const MAX_EXACT_LEAF_PARTITION_UNITS = 32;
 const CROSSGRADE_FOREIGN_GROUPS = false;
 
 let nextSyntheticGroupFactId = -1;
@@ -62,6 +63,7 @@ interface MutableOrgSolveMetrics {
     factCompilationMs: number;
     inputNormalizationMs: number;
     regularLeafAllocationMs: number;
+    exactLeafPartitionMs: number;
     initialRepairMs: number;
     initialAssimilationMs: number;
     wholeComposedMs: number;
@@ -70,6 +72,8 @@ interface MutableOrgSolveMetrics {
     subRegularFallbackMs: number;
     finalMaterializationMs: number;
     totalSolveMs: number;
+    exactLeafPartitionCandidateStates: number;
+    exactLeafPartitionSkipped: boolean;
     regularPromotionSearches: number;
     regularPromotionResultCacheHits: number;
     regularPromotionResultCacheMisses: number;
@@ -130,6 +134,7 @@ function createMutableOrgSolveMetrics(): MutableOrgSolveMetrics {
         factCompilationMs: 0,
         inputNormalizationMs: 0,
         regularLeafAllocationMs: 0,
+        exactLeafPartitionMs: 0,
         initialRepairMs: 0,
         initialAssimilationMs: 0,
         wholeComposedMs: 0,
@@ -138,6 +143,8 @@ function createMutableOrgSolveMetrics(): MutableOrgSolveMetrics {
         subRegularFallbackMs: 0,
         finalMaterializationMs: 0,
         totalSolveMs: 0,
+        exactLeafPartitionCandidateStates: 0,
+        exactLeafPartitionSkipped: false,
         regularPromotionSearches: 0,
         regularPromotionResultCacheHits: 0,
         regularPromotionResultCacheMisses: 0,
@@ -160,6 +167,7 @@ function snapshotOrgSolveMetrics(metrics: MutableOrgSolveMetrics | null): OrgSol
         factCompilationMs: metrics.factCompilationMs,
         inputNormalizationMs: metrics.inputNormalizationMs,
         regularLeafAllocationMs: metrics.regularLeafAllocationMs,
+        exactLeafPartitionMs: metrics.exactLeafPartitionMs,
         initialRepairMs: metrics.initialRepairMs,
         initialAssimilationMs: metrics.initialAssimilationMs,
         wholeComposedMs: metrics.wholeComposedMs,
@@ -168,6 +176,8 @@ function snapshotOrgSolveMetrics(metrics: MutableOrgSolveMetrics | null): OrgSol
         subRegularFallbackMs: metrics.subRegularFallbackMs,
         finalMaterializationMs: metrics.finalMaterializationMs,
         totalSolveMs: metrics.totalSolveMs,
+        exactLeafPartitionCandidateStates: metrics.exactLeafPartitionCandidateStates,
+        exactLeafPartitionSkipped: metrics.exactLeafPartitionSkipped,
         regularPromotionSearches: metrics.regularPromotionSearches,
         regularPromotionResultCacheHits: metrics.regularPromotionResultCacheHits,
         regularPromotionResultCacheMisses: metrics.regularPromotionResultCacheMisses,
@@ -267,6 +277,7 @@ export interface OrgSolveMetrics {
     readonly factCompilationMs: number;
     readonly inputNormalizationMs: number;
     readonly regularLeafAllocationMs: number;
+    readonly exactLeafPartitionMs: number;
     readonly initialRepairMs: number;
     readonly initialAssimilationMs: number;
     readonly wholeComposedMs: number;
@@ -275,6 +286,8 @@ export interface OrgSolveMetrics {
     readonly subRegularFallbackMs: number;
     readonly finalMaterializationMs: number;
     readonly totalSolveMs: number;
+    readonly exactLeafPartitionCandidateStates: number;
+    readonly exactLeafPartitionSkipped: boolean;
     readonly regularPromotionSearches: number;
     readonly regularPromotionResultCacheHits: number;
     readonly regularPromotionResultCacheMisses: number;
@@ -500,6 +513,7 @@ function addMetricDuration(metrics: MutableOrgSolveMetrics | null, key: keyof Pi
     'factCompilationMs'
     | 'inputNormalizationMs'
     | 'regularLeafAllocationMs'
+    | 'exactLeafPartitionMs'
     | 'initialRepairMs'
     | 'initialAssimilationMs'
     | 'wholeComposedMs'
@@ -5487,7 +5501,19 @@ function resolveWithDefinition(
     addMetricDuration(metrics, 'factCompilationMs', phaseStartedAtMs);
 
     const wholeLeafRecord = groups.length === 0 ? resolveWholeLeafCandidateRecord(compiledUnits, context) : null;
-    const exactLeafPartitionStates = groups.length === 0 ? resolveExactLeafPartitionCandidateStates(compiledUnits, context) : [];
+    const shouldEvaluateExactLeafPartitions = groups.length === 0 && compiledUnits.length <= MAX_EXACT_LEAF_PARTITION_UNITS;
+    if (metrics && groups.length === 0 && !shouldEvaluateExactLeafPartitions) {
+        metrics.exactLeafPartitionSkipped = true;
+    }
+
+    phaseStartedAtMs = getSolveTimestampMs();
+    const exactLeafPartitionStates = shouldEvaluateExactLeafPartitions
+        ? resolveExactLeafPartitionCandidateStates(compiledUnits, context)
+        : [];
+    addMetricDuration(metrics, 'exactLeafPartitionMs', phaseStartedAtMs);
+    if (metrics) {
+        metrics.exactLeafPartitionCandidateStates += exactLeafPartitionStates.length;
+    }
 
     phaseStartedAtMs = getSolveTimestampMs();
     const normalizedInputGroups = normalizeCIFormationGroups(groups, context);
