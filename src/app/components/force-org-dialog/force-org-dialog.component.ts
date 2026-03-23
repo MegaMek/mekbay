@@ -56,7 +56,7 @@ import { getUnitsAverageTechBase, type TechBase } from '../../models/tech.model'
 import type { SerializedOrganization, OrgPlacedForce, OrgGroupData } from '../../models/organization.model';
 import { ForceEntryPreviewDialogComponent } from '../force-entry-preview-dialog/force-entry-preview-dialog.component';
 import type { Era } from '../../models/eras.model';
-import { getOrgFromForce, getOrgFromForceCollection } from '../../utils/org-namer.util';
+import { getOrgFromForce, getOrgFromForceCollection } from '../../utils/org/org-namer.util';
 import { Faction } from '../../models/factions.model';
 
 const MIN_ZOOM = 0.2;

@@ -48,7 +48,7 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { ToastService } from '../../services/toast.service';
 import { type ForceAddModePickerData, ForceAddModePickerDialogComponent, type ForceAddModePickerResult } from '../force-add-mode-picker-dialog/force-add-mode-picker-dialog.component';
 import { firstValueFrom } from 'rxjs';
-import { getOrgFromForce, getOrgFromGroup } from '../../utils/org-namer.util';
+import { getOrgFromForce, getOrgFromGroup } from '../../utils/org/org-namer.util';
 import { getUnitsAverageTechBase } from '../../models/tech.model';
 
 export interface ForceEntryPreviewDialogData {
