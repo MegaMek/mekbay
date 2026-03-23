@@ -57,7 +57,7 @@ import type { SerializedOrganization, OrgPlacedForce, OrgGroupData } from '../..
 import { ForceEntryPreviewDialogComponent } from '../force-entry-preview-dialog/force-entry-preview-dialog.component';
 import type { Era } from '../../models/eras.model';
 import { getOrgFromForce, getOrgFromForceCollection } from '../../utils/org-namer.util';
-import { Faction, FACTION_MERCENARY } from '../../models/factions.model';
+import { Faction } from '../../models/factions.model';
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2.0;
@@ -225,7 +225,6 @@ export interface ForceOrgDialogData {
 }
 
 interface ForceMetadata {
-    faction: Faction | undefined;
     org: OrgSizeResult;
     bvString: string;
     totalBv: number;
@@ -478,10 +477,8 @@ export class ForceOrgDialogComponent {
                 bvString = `PV: ${force.pv.toLocaleString()}`;
                 if (totalPv > 0 && totalPv !== force.pv) bvString += ` (${totalPv.toLocaleString()})`;
             }
-            const faction = force.faction ?? this.getFaction(undefined);
-            const org = getOrgFromForce(force);
+            const org = getOrgFromForce(force, { displayOnlyTopLevel: true });
             result.set(force.instanceId, {
-                faction,
                 org,
                 bvString,
                 totalBv,
@@ -552,7 +549,7 @@ export class ForceOrgDialogComponent {
             const group = groups.find(g => g.id === currentId);
             if (entries.length > 0 && group) {
                 const factionId = previewFactions.get(currentId) ?? group.factionId();
-                const faction = this.getFaction(factionId) ?? group.faction();
+                const faction = this.getFactionById(factionId) ?? group.faction();
                 const orgResult = this.computeHierarchicalOrgResult(
                     group,
                     entries,
@@ -585,7 +582,7 @@ export class ForceOrgDialogComponent {
             group.descendants.set(descendantsMap.get(group.id) ?? []);
             const fid = factionIds.get(group.id);
             group.factionId.set(fid);
-            group.faction.set(this.getFaction(fid));
+            group.faction.set(this.getFactionById(fid));
         }
 
         // Second pass: compute orgNames after faction objects have been synchronized.
@@ -630,7 +627,7 @@ export class ForceOrgDialogComponent {
     ): OrgSizeResult {
         const childGroups = groups.filter(g => g.parentGroupId === group.id);
         const factionId = factionIdsOverride?.get(group.id) ?? group.factionId();
-        const faction = this.getFaction(factionId) ?? group.faction();
+        const faction = this.getFactionById(factionId) ?? group.faction();
 
         const childGroupResults: GroupSizeResult[] = [];
         const childEntryIds = new Set<string>();
@@ -738,12 +735,8 @@ export class ForceOrgDialogComponent {
                     return dir * (aVal - bVal);
                 }
                 case 'faction': {
-                    const aFaction = forceMetadata.get(a.instanceId)?.faction?.name
-                        ?? a.faction?.name
-                        ?? '';
-                    const bFaction = forceMetadata.get(b.instanceId)?.faction?.name
-                        ?? b.faction?.name
-                        ?? '';
+                    const aFaction = a.faction?.name ?? '';
+                    const bFaction = b.faction?.name ?? '';
                     return dir * aFaction.localeCompare(bFaction);
                 }
                 case 'size': {
@@ -779,11 +772,8 @@ export class ForceOrgDialogComponent {
         return s.trim().toLowerCase();
     }
 
-    private getFaction(factionId: number | undefined): Faction | undefined {
-        if (factionId === undefined) {
-            return this.dataService.getFactionById(FACTION_MERCENARY);
-        }
-        return this.dataService.getFactionById(factionId);
+    private getFactionById(factionId: number | undefined): Faction | undefined {
+        return factionId !== undefined ? this.dataService.getFactionById(factionId) : undefined;
     }
 
     private computeEntriesTechBaseUncached(entries: LoadForceEntry[], factionName: string): TechBase {
@@ -1226,7 +1216,7 @@ export class ForceOrgDialogComponent {
     /** Compute full preview including org metadata (used on first overlap). */
     private computeGroupPreview(a: Rect, b: Rect, entries: LoadForceEntry[], childGroupResults?: GroupSizeResult[]): GroupPreview {
         const factionId = getDominantFactionId(entries);
-        const faction = this.getFaction(factionId);
+        const faction = this.getFactionById(factionId);
         const era = this.deriveCollectionEra(entries);
         const aggregateResult = this.computeOrgCollectionResult(
             entries,
