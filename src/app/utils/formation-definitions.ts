@@ -35,6 +35,7 @@ import type { ForceUnit } from '../models/force-unit.model';
 import { CBT_WEIGHT_CLASS_ORDINALS, type Unit, type ASUnitTypeCode } from '../models/units.model';
 import type { FormationTypeDefinition } from './formation-type.model';
 import { GameSystem, Rulebook } from '../models/common.model';
+import { isClan } from './org/org-registry.util';
 
 /*
  * Author: Drake
@@ -96,8 +97,9 @@ function asIsOnlyCombatVehicles(units: ForceUnit[]): boolean {
 }
 
 function isClanForce(units: ForceUnit[]): boolean {
-    const factionGroup = units[0]?.force?.faction()?.group;
-    return factionGroup?.includes('Clan') ?? false;
+    const faction = units[0]?.force?.faction();
+    if (!faction) return false;
+    return isClan(faction);
 }
 
 // ── Common helper functions ─────────────────────────────────────────────────────
