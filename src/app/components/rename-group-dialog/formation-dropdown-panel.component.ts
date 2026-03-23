@@ -274,14 +274,18 @@ export class FormationDropdownPanelComponent {
     expandedId = signal<string | null>(null);
     readonly noFormationId = NO_FORMATION_ID;
 
+    private sortByDisplayName(items: FormationDisplayItem[]): FormationDisplayItem[] {
+        return [...items].sort((left, right) => left.displayName.localeCompare(right.displayName));
+    }
+
     /** Formations that are valid for the current group. */
     validFormations = computed<FormationDisplayItem[]>(() => {
-        return this.formations().filter(f => f.isValid);
+        return this.sortByDisplayName(this.formations().filter(f => f.isValid));
     });
 
     /** Formations that are NOT valid for the current group. */
     otherFormations = computed<FormationDisplayItem[]>(() => {
-        return this.formations().filter(f => !f.isValid);
+        return this.sortByDisplayName(this.formations().filter(f => !f.isValid));
     });
 
     toggleExpand(event: MouseEvent, id: string): void {
