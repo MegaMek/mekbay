@@ -1363,7 +1363,7 @@ export class ForceBuilderService {
         const optionsService = this.injector.get(OptionsService);
         const { PrintOptionsDialogComponent } = await import('../components/print-options-dialog/print-options-dialog.component');
         const ref = this.dialogsService.createDialog<PrintAllOptions | null>(PrintOptionsDialogComponent, {
-            disableClose: true,
+            disableClose: false,
             data: {
                 gameSystem: currentForce instanceof CBTForce ? GameSystem.CLASSIC : GameSystem.ALPHA_STRIKE
             }
