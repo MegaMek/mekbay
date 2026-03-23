@@ -65,7 +65,7 @@ const MAX_ZOOM = 2.0;
 const GRID_SNAP_SIZE = 20;
 const CARD_WIDTH = 220;
 const CARD_HEIGHT = 70;
-const GROUP_PADDING = 15;
+const GROUP_PADDING = 20;
 const GROUP_HEADER_HEIGHT = 64;
 const GROUP_EMBED_OVERLAP_THRESHOLD = 0.2;
 const COLLISION_EDGE_PADDING = 4;
@@ -1232,15 +1232,15 @@ export class ForceOrgDialogComponent {
             maxY = Math.max(maxY, cg.y() + cg.height());
         }
 
-        const snappedX = snapDownToGrid(minX - GROUP_PADDING);
-        const snappedY = snapDownToGrid(minY - GROUP_PADDING - GROUP_HEADER_HEIGHT);
-        const snappedMaxX = snapUpToGrid(maxX + GROUP_PADDING);
-        const snappedMaxY = snapUpToGrid(maxY + GROUP_PADDING);
+        const groupX = minX - GROUP_PADDING;
+        const groupY = minY - GROUP_PADDING - GROUP_HEADER_HEIGHT;
+        const groupMaxX = maxX + GROUP_PADDING;
+        const groupMaxY = maxY + GROUP_PADDING;
 
-        group.x.set(snappedX);
-        group.y.set(snappedY);
-        group.width.set(snappedMaxX - snappedX);
-        group.height.set(snappedMaxY - snappedY);
+        group.x.set(groupX);
+        group.y.set(groupY);
+        group.width.set(groupMaxX - groupX);
+        group.height.set(groupMaxY - groupY);
 
         // Recurse up so ancestor bounds continue to wrap their children.
         if (group.parentGroupId) {
@@ -1529,8 +1529,8 @@ export class ForceOrgDialogComponent {
         return {
             x: minX - GROUP_PADDING,
             y: minY - GROUP_PADDING - GROUP_HEADER_HEIGHT,
-            width: (maxX - minX) + GROUP_PADDING * 2,
-            height: (maxY - minY) + GROUP_PADDING * 2 + GROUP_HEADER_HEIGHT,
+            width: (maxX - minX) + GROUP_PADDING + GROUP_PADDING,
+            height: (maxY - minY) + GROUP_PADDING + GROUP_PADDING + GROUP_HEADER_HEIGHT,
         };
     }
 
