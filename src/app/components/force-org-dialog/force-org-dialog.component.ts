@@ -1321,33 +1321,36 @@ export class ForceOrgDialogComponent {
                 bestOverlap = this.getOverlapArea(grpRect, this.groupRect(parent));
             }
         }
-        for (const other of this.groups()) {
-            if (other.id === grp.id) continue;
-            if (this.isDescendantOf(other, grp.id)) continue;
-            if (other.id === grp.parentGroupId) continue;
-            const overlap = this.getOverlapArea(grpRect, this.groupRect(other));
-            if (overlap <= bestOverlap) continue;
-            const otherHasChildren = this.groups().some(g => g.parentGroupId === other.id);
-            if (otherHasChildren && grp.parentGroupId !== other.id) {
-                bestOverlap = overlap;
-                bestAction = { type: 'join-parent', groupId: other.id };
-            }
+
+        const joinParentCandidates = this.groups().filter((other) => {
+            if (other.id === grp.id) return false;
+            if (this.isDescendantOf(other, grp.id)) return false;
+            if (other.id === grp.parentGroupId) return false;
+            if (grp.parentGroupId === other.id) return false;
+            return this.groups().some(candidate => candidate.parentGroupId === other.id);
+        });
+        const joinParentTarget = this.getPreferredGroupTarget(grpRect, joinParentCandidates, grp.id);
+        if (joinParentTarget && joinParentTarget.overlap > bestOverlap) {
+            bestOverlap = joinParentTarget.overlap;
+            bestAction = { type: 'join-parent', groupId: joinParentTarget.group.id };
         }
-        for (const other of this.groups()) {
-            if (other.id === grp.id) continue;
-            if (other.parentGroupId !== grp.parentGroupId) continue;
-            if (this.isDescendantOf(other, grp.id)) continue;
-            if (this.isDescendantOf(grp, other.id)) continue;
-            const overlap = this.getOverlapArea(grpRect, this.groupRect(other));
-            if (overlap <= bestOverlap) continue;
+
+        const siblingCandidates = this.groups().filter((other) => {
+            if (other.id === grp.id) return false;
+            if (other.parentGroupId !== grp.parentGroupId) return false;
+            if (this.isDescendantOf(other, grp.id)) return false;
+            if (this.isDescendantOf(grp, other.id)) return false;
+            return true;
+        });
+        const siblingTarget = this.getPreferredGroupTarget(grpRect, siblingCandidates, grp.id);
+        if (siblingTarget && siblingTarget.overlap > bestOverlap) {
             if (grp.parentGroupId !== null) {
-                bestOverlap = overlap;
                 bestAction = { type: 'rearrange', parentId: grp.parentGroupId };
-                continue;
+            } else {
+                bestAction = { type: 'create-parent', other: siblingTarget.group };
             }
-            bestOverlap = overlap;
-            bestAction = { type: 'create-parent', other };
         }
+
         return bestAction;
     }
 
