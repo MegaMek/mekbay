@@ -1212,6 +1212,42 @@ export class ForceOrgDialogComponent {
         return { x: group.x(), y: group.y(), width: group.width(), height: group.height() };
     }
 
+    private getPreferredGroupTarget(
+        rect: Rect,
+        groups: readonly OrgGroup[],
+        excludedGroupId?: string | null,
+    ): { group: OrgGroup; overlap: number } | null {
+        let best: { group: OrgGroup; overlap: number } | null = null;
+
+        for (const group of groups) {
+            if (group.id === excludedGroupId) continue;
+
+            const overlap = this.getOverlapArea(rect, this.groupRect(group));
+            if (overlap <= 0) continue;
+
+            if (!best) {
+                best = { group, overlap };
+                continue;
+            }
+
+            const candidateIsDescendant = this.isDescendantOf(group, best.group.id);
+            const bestIsDescendant = this.isDescendantOf(best.group, group.id);
+            if (candidateIsDescendant && !bestIsDescendant) {
+                best = { group, overlap };
+                continue;
+            }
+            if (bestIsDescendant && !candidateIsDescendant) {
+                continue;
+            }
+
+            if (overlap > best.overlap || (overlap === best.overlap && group.zIndex() > best.group.zIndex())) {
+                best = { group, overlap };
+            }
+        }
+
+        return best;
+    }
+
     /** Compute the preview rect + header info for a new group encompassing two rects. */
     /** Compute full preview including org metadata (used on first overlap). */
     private computeGroupPreview(a: Rect, b: Rect, entries: LoadForceEntry[], childGroupResults?: GroupSizeResult[]): GroupPreview {
@@ -1247,28 +1283,16 @@ export class ForceOrgDialogComponent {
     /** Detect what would happen if the dragged force were dropped now. */
     private detectForceDrop(pf: PlacedForce): ForceDropAction | null {
         const pfRect = this.forceRect(pf);
-        let bestOverlap = 0;
-        let bestAction: ForceDropAction | null = pf.groupId ? { type: 'leave-group' } : null;
+        const bestGroupTarget = this.getPreferredGroupTarget(pfRect, this.groups());
+        let bestOverlap = bestGroupTarget?.overlap ?? 0;
+        let bestAction: ForceDropAction | null;
 
-        // A grouped force remains in its current group while it has the largest overlap.
-        if (pf.groupId) {
-            const ownGroup = this.groups().find(g => g.id === pf.groupId);
-            if (ownGroup) {
-                bestOverlap = this.getOverlapArea(pfRect, this.groupRect(ownGroup));
-                if (bestOverlap > 0) {
-                    bestAction = null;
-                }
-            }
-        }
-
-        // Check overlap with existing groups, excluding the current one if any.
-        for (const group of this.groups()) {
-            if (group.id === pf.groupId) continue;
-            const overlap = this.getOverlapArea(pfRect, this.groupRect(group));
-            if (overlap > bestOverlap) {
-                bestOverlap = overlap;
-                bestAction = { type: 'join-group', groupId: group.id };
-            }
+        if (bestGroupTarget) {
+            bestAction = bestGroupTarget.group.id === pf.groupId
+                ? null
+                : { type: 'join-group', groupId: bestGroupTarget.group.id };
+        } else {
+            bestAction = pf.groupId ? { type: 'leave-group' } : null;
         }
 
         // Check overlap with other ungrouped forces
@@ -1348,15 +1372,9 @@ export class ForceOrgDialogComponent {
 
     /** Update preview state for a sidebar drag at the given world-space rect. */
     private updateSidebarDragPreview(rect: Rect, sidebarForce: LoadForceEntry): void {
-        let bestGroup: OrgGroup | null = null;
-        let bestGroupOverlap = 0;
-        for (const group of this.groups()) {
-            const overlap = this.getOverlapArea(rect, this.groupRect(group));
-            if (overlap > bestGroupOverlap) {
-                bestGroupOverlap = overlap;
-                bestGroup = group;
-            }
-        }
+        const bestGroupTarget = this.getPreferredGroupTarget(rect, this.groups());
+        const bestGroup = bestGroupTarget?.group ?? null;
+        const bestGroupOverlap = bestGroupTarget?.overlap ?? 0;
 
         let bestForce: PlacedForce | null = null;
         let bestForceOverlap = 0;

@@ -172,23 +172,25 @@
     line-height: 1.2;
     overflow: hidden;
     text-overflow: ellipsis;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
+    white-space: nowrap;
 }
 
 .force-org {
     color: var(--text-color-secondary);
     font-size: 0.7rem;
     font-weight: 600;
-
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .force-value {
     color: var(--bt-yellow);
     font-size: 0.7rem;
     font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .no-faction-icon {
@@ -552,6 +554,9 @@
     font-size: 0.68rem;
     font-weight: 600;
     margin-top: 1px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .sidebar-force-value {
@@ -559,6 +564,9 @@
     font-size: 0.68rem;
     font-weight: 600;
     margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .sidebar-info-btn {
@@ -687,16 +695,16 @@
     line-height: 1.2;
     overflow: hidden;
     text-overflow: ellipsis;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
+    white-space: nowrap;
 }
 
 .drag-ghost-org {
     color: var(--text-color-secondary, #888);
     font-size: 0.7rem;
     font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .drag-ghost-value {
