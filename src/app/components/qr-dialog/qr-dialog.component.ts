@@ -31,9 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { QRCodeComponent } from 'angularx-qrcode';
 
 /*
  * Author: Drake
@@ -47,7 +46,6 @@ export interface QrDialogData {
     selector: 'qr-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [QRCodeComponent],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
@@ -56,14 +54,13 @@ export interface QrDialogData {
         <div class="wide-dialog-body">
             <div class="qr-content">
                 <div class="qr-card">
-                    <qrcode
-                        [qrdata]="url"
-                        [width]="384"
-                        [errorCorrectionLevel]="'L'"
-                        [margin]="2"
-                        [ariaLabel]="''"
-                        [title]="''"
-                    ></qrcode>
+                    @if (qrImageUrl(); as imageUrl) {
+                        <img
+                            class="qr-image"
+                            [src]="imageUrl"
+                            alt="QR code for shared force URL"
+                            data-allow-native-context-menu="true" />
+                    }
                 </div>
             </div>
         </div>
@@ -86,22 +83,17 @@ export interface QrDialogData {
             max-width: 100%;
             display: flex;
             justify-content: center;
+            background: #fff;
+            padding: 8px;
+            box-sizing: border-box;
         }
 
-        .qr-card qrcode {
+        .qr-image {
             display: block;
-            line-height: 0;
             width: 100%;
             max-width: 384px;
-        }
-
-        .qr-card qrcode ::ng-deep canvas,
-        .qr-card qrcode ::ng-deep img,
-        .qr-card qrcode ::ng-deep svg {
-            display: block;
-            width: 100% !important;
-            max-width: 384px;
-            height: auto !important;
+            height: auto;
+            image-rendering: crisp-edges;
         }
     `]
 })
@@ -110,8 +102,24 @@ export class QrDialogComponent {
     private data: QrDialogData = inject(DIALOG_DATA);
 
     readonly url = this.data.url;
+    readonly qrImageUrl = signal<string | null>(null);
+
+    constructor() {
+        void this.loadQrImageUrl();
+    }
 
     close(): void {
         this.dialogRef.close();
+    }
+
+    private async loadQrImageUrl(): Promise<void> {
+        const { toString } = await import('qrcode');
+        const svgMarkup = await toString(this.url, {
+            errorCorrectionLevel: 'L',
+            margin: 2,
+            type: 'svg',
+            width: 384,
+        });
+        this.qrImageUrl.set(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgMarkup)}`);
     }
 }

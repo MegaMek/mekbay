@@ -37,6 +37,7 @@ import type { Force, UnitGroup } from '../models/force.model';
 import { AlphaStrikeCardComponent } from '../components/alpha-strike-card/alpha-strike-card.component';
 import { getLayoutForUnitType } from '../components/alpha-strike-card/card-layout.config';
 import type { OptionsService } from '../services/options.service';
+import { formatMovement } from './as-common.util';
 import { isIOS } from './platform.util';
 import type { PrintAllOptions } from '../models/print-options.model';
 import { createPrintRosterLogoMarkup, createPrintRosterQrMarkup, getPrintRosterBrandingStyles } from './print-roster-branding.util';
@@ -116,7 +117,7 @@ export class ASPrintUtil {
         // Insert roster summary page first if enabled
         const printRosterSummary = printOptions.printRosterSummary;
         if (printRosterSummary && force) {
-            const rosterPage = await this.createRosterSummaryPage(groups, force);
+            const rosterPage = await this.createRosterSummaryPage(groups, force, optionsService.options().ASUseHex);
             const firstContentNode = Array.from(overlay.children).find(child => !(child instanceof HTMLStyleElement));
             if (firstContentNode) {
                 overlay.insertBefore(rosterPage, firstContentNode);
@@ -777,7 +778,7 @@ export class ASPrintUtil {
     /**
      * Creates a roster summary page with a table of all units.
      */
-    private static async createRosterSummaryPage(groups: UnitGroup<ASForceUnit>[], force: Force): Promise<HTMLElement> {
+    private static async createRosterSummaryPage(groups: UnitGroup<ASForceUnit>[], force: Force, useHex: boolean): Promise<HTMLElement> {
         const container = document.createElement('div');
         container.className = 'as-roster-summary';
 
@@ -846,7 +847,7 @@ export class ASPrintUtil {
                     String(forceUnit.pilotSkill()),
                     String(adjustedPv),
                     unit.role || '',
-                    as.MV,
+                    this.formatRosterMovement(forceUnit, useHex),
                     as.dmg.dmgS,
                     as.dmg.dmgM,
                     as.dmg.dmgL,
@@ -857,7 +858,11 @@ export class ASPrintUtil {
 
                 for (let i = 0; i < cells.length; i++) {
                     const td = document.createElement('td');
-                    td.textContent = cells[i];
+                    if (i === 6) {
+                        td.innerHTML = cells[i];
+                    } else {
+                        td.textContent = cells[i];
+                    }
                     if (i === columns.length - 1) {
                         td.className = 'as-roster-specials';
                     }
@@ -896,6 +901,24 @@ export class ASPrintUtil {
         }
 
         return container;
+    }
+
+    private static formatRosterMovement(forceUnit: ASForceUnit, useHex: boolean): string {
+        const movementEntries = Object.entries(forceUnit.effectiveMovement())
+            .filter(([, value]) => typeof value === 'number') as Array<[string, number]>;
+
+        if (forceUnit.getUnit().as.TP === 'BM') {
+            return movementEntries
+                .filter(([mode]) => mode !== 'a' && mode !== 'g')
+                .sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : 0))
+                .map(([mode, inches]) => formatMovement(inches, mode, useHex))
+                .join('/');
+        }
+
+        return movementEntries
+            .sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : 0))
+            .map(([mode, inches]) => formatMovement(inches, mode, useHex))
+            .join('/');
     }
 
     /**
