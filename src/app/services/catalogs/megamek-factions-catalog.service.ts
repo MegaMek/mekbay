@@ -1,5 +1,4 @@
 import { Injectable, inject } from '@angular/core';
-
 import { DbService } from '../db.service';
 import {
     getMegaMekFactionAffiliation,

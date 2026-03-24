@@ -108,7 +108,7 @@ export class UnitRuntimeService {
 
     private linkEquipmentToComponents(components: UnitComponent[], equipment: EquipmentMap): void {
         for (const component of components) {
-            if (component.id && !component.eq) {
+            if (component.id) {
                 component.eq = equipment[component.id];
             }
             if (component.bay) {

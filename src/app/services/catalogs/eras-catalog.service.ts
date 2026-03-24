@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 
 import { REMOTE_HOST } from '../../models/common.model';
-import type { Era, Eras } from '../../models/eras.model';
+import type { Era, EraMembership, Eras } from '../../models/eras.model';
 import { DbService } from '../db.service';
 import { CatalogBaseService } from './catalog-base.service';
 
@@ -48,7 +48,13 @@ export class ErasCatalogService extends CatalogBaseService<Eras, Eras> {
     }
 
     protected override hydrate(data: Eras): void {
-        const eras = [...data.eras].sort((left, right) => this.compareEras(left, right));
+        const eras = [...data.eras]
+            .sort((left, right) => this.compareEras(left, right))
+            .map((era) => ({
+                ...era,
+                factions: this.hydrateMembership(era.factions),
+                units: this.hydrateMembership(era.units),
+            }));
 
         this.eras = eras;
         this.eraNameMap.clear();
@@ -57,8 +63,6 @@ export class ErasCatalogService extends CatalogBaseService<Eras, Eras> {
         for (const era of eras) {
             this.eraNameMap.set(era.name, era);
             this.eraIdMap.set(era.id, era);
-            era.factions = new Set(era.factions as Iterable<number>);
-            era.units = new Set(era.units as Iterable<number>);
         }
 
         this.etag = data.etag || '';
@@ -85,5 +89,9 @@ export class ErasCatalogService extends CatalogBaseService<Eras, Eras> {
         }
 
         return left.id - right.id;
+    }
+
+    private hydrateMembership(values: EraMembership): EraMembership {
+        return values instanceof Set ? new Set(values) : new Set(values);
     }
 }

@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 
 import { REMOTE_HOST } from '../../models/common.model';
-import type { Faction, Factions } from '../../models/factions.model';
+import type { Faction, FactionEraMembership, Factions } from '../../models/factions.model';
 import { normalizeLooseText } from '../../utils/string.util';
 import { naturalCompare } from '../../utils/sort.util';
 import { DbService } from '../db.service';
@@ -52,7 +52,17 @@ export class FactionsCatalogService extends CatalogBaseService<Factions, Faction
     }
 
     protected override hydrate(data: Factions): void {
-        const factions = [...data.factions].sort((left, right) => naturalCompare(left.name, right.name));
+        const factions = [...data.factions]
+            .sort((left, right) => naturalCompare(left.name, right.name))
+            .map((faction) => ({
+                ...faction,
+                eras: Object.fromEntries(
+                    Object.entries(faction.eras).map(([eraId, units]) => [
+                        Number(eraId),
+                        this.hydrateEraMembership(units),
+                    ])
+                ) as Record<number, FactionEraMembership>,
+            }));
 
         this.factions = factions;
         this.factionNameMap.clear();
@@ -68,9 +78,6 @@ export class FactionsCatalogService extends CatalogBaseService<Factions, Faction
             }
 
             this.factionIdMap.set(faction.id, faction);
-            for (const eraId of Object.keys(faction.eras)) {
-                faction.eras[Number(eraId)] = new Set(faction.eras[Number(eraId)] as Iterable<number>) as any;
-            }
         }
 
         this.etag = data.etag || '';
@@ -81,5 +88,9 @@ export class FactionsCatalogService extends CatalogBaseService<Factions, Faction
             ...data,
             etag,
         };
+    }
+
+    private hydrateEraMembership(units: FactionEraMembership): FactionEraMembership {
+        return units instanceof Set ? new Set(units) : new Set(units);
     }
 }

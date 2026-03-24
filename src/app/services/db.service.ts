@@ -40,7 +40,7 @@ import type { Quirks } from '../models/quirks.model';
 import type { Sourcebooks } from '../models/sourcebook.model';
 import type { MegaMekFactions, MegaMekFactionsData } from '../models/megamek/factions.model';
 import type { MULUnitSources } from '../models/mul-unit-sources.model';
-import type { EquipmentData } from '../models/equipment.model';
+import type { RawEquipmentData } from '../models/equipment.model';
 import type { SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-serialization';
 import type { DataService } from './data.service';
 import type { UnitInitializerService } from './unit-initializer.service';
@@ -496,12 +496,12 @@ export class DbService {
         return await this.getDataFromGeneralStore<Units>(UNITS_KEY);
     }
 
-    public async saveEquipment(equipmentData: EquipmentData): Promise<void> {
+    public async saveEquipment(equipmentData: RawEquipmentData): Promise<void> {
         return await this.saveDataFromGeneralStore(equipmentData, EQUIPMENT_KEY);
     }
 
-    public async getEquipments(): Promise<EquipmentData | null> {
-        return await this.getDataFromGeneralStore<EquipmentData>(EQUIPMENT_KEY);
+    public async getEquipments(): Promise<RawEquipmentData | null> {
+        return await this.getDataFromGeneralStore<RawEquipmentData>(EQUIPMENT_KEY);
     }
 
     public async saveUnits(unitsData: Units): Promise<void> {

@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 
 import { REMOTE_HOST } from '../../models/common.model';
-import { type Equipment, type EquipmentData, type EquipmentMap, type RawEquipmentData, createEquipment } from '../../models/equipment.model';
+import { type Equipment, type EquipmentMap, type RawEquipmentData, createEquipment } from '../../models/equipment.model';
 import { DbService } from '../db.service';
 import { LoggerService } from '../logger.service';
 import { CatalogBaseService } from './catalog-base.service';
@@ -9,7 +9,7 @@ import { CatalogBaseService } from './catalog-base.service';
 @Injectable({
     providedIn: 'root'
 })
-export class EquipmentCatalogService extends CatalogBaseService<EquipmentData, EquipmentData, RawEquipmentData> {
+export class EquipmentCatalogService extends CatalogBaseService<RawEquipmentData, RawEquipmentData, RawEquipmentData> {
     private readonly dbService = inject(DbService);
     private readonly catalogLogger = inject(LoggerService);
 
@@ -35,34 +35,33 @@ export class EquipmentCatalogService extends CatalogBaseService<EquipmentData, E
         return Object.keys(this.equipment).length > 0;
     }
 
-    protected override async loadFromCache(): Promise<EquipmentData | undefined> {
+    protected override async loadFromCache(): Promise<RawEquipmentData | undefined> {
         return await this.dbService.getEquipments() ?? undefined;
     }
 
-    protected override saveToCache(data: EquipmentData): Promise<void> {
+    protected override saveToCache(data: RawEquipmentData): Promise<void> {
         return this.dbService.saveEquipment(data);
     }
 
-    protected override hydrate(data: EquipmentData): void {
-        this.equipment = data.equipment;
-        this.etag = data.etag || '';
-    }
+    protected override hydrate(data: RawEquipmentData): void {
+        const normalizedEquipment: EquipmentMap = {};
 
-    protected override normalizeFetchedData(data: RawEquipmentData, etag: string): EquipmentData {
-        const normalized: EquipmentData = {
-            version: data.version,
-            etag,
-            equipment: {}
-        };
-
-        for (const [internalName, rawEquipment] of Object.entries(data.equipment)) {
+        for (const [internalName, cachedEquipment] of Object.entries(data.equipment ?? {})) {
             try {
-                normalized.equipment[internalName] = createEquipment(rawEquipment);
+                normalizedEquipment[internalName] = createEquipment(cachedEquipment);
             } catch (error) {
-                this.catalogLogger.error(`Failed to create equipment ${internalName}: ${error}`);
+                this.catalogLogger.error(`Failed to hydrate cached equipment ${internalName}: ${error}`);
             }
         }
 
-        return normalized;
+        this.equipment = normalizedEquipment;
+        this.etag = data.etag || '';
+    }
+
+    protected override normalizeFetchedData(data: RawEquipmentData, etag: string): RawEquipmentData {
+        return {
+            ...data,
+            etag,
+        };
     }
 }

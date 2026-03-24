@@ -71,8 +71,8 @@ export abstract class CatalogBaseService<THydrateInput, TStored extends THydrate
 
         const etag = response.headers.get('ETag') || generateUUID();
         const wrappedData = this.normalizeFetchedData(body, etag);
-        this.hydrate(wrappedData);
         await this.saveToCache(wrappedData);
+        this.hydrate(wrappedData);
         this.logger.info(`${this.catalogKey} updated. (ETag: ${etag})`);
     }
 }

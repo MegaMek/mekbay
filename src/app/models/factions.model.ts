@@ -39,13 +39,14 @@ export const FACTION_EXTINCT = 3;
 export const FACTION_MERCENARY = 34;
 
 export type FactionAffinity = 'Inner Sphere' | 'IS Clan' | 'HW Clan' | 'Periphery' | 'Mercenary' | 'Other'; 
+export type FactionEraMembership = number[] | Set<number>;
 
 export interface Faction {
     id: number; // MUL id (unique)
     name: string; // Faction name
     group: FactionAffinity; // Inner Sphere, Clan, etc.
     img: string; // Logo URL for the faction
-    eras: { [key: number]: Set<number> }; // Indexed by era ID, value is a list of unit IDs
+    eras: Record<number, FactionEraMembership>; // Indexed by era ID, value is a list of unit IDs
 }
 
 export interface Factions {

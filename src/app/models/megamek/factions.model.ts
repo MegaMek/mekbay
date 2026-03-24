@@ -29,7 +29,6 @@ interface MegaMekFactionRecordBase {
     capitalChanges?: MegaMekFactionNameChange[];
     color?: [number, number, number];
     logo?: string;
-    background?: string;
     camos?: string;
     nameGenerator?: string;
     eraMods?: number[];
