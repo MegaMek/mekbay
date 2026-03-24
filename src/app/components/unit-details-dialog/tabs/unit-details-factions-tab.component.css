@@ -90,6 +90,10 @@ hr.divider {
     display: inline;
 }
 
+.catch-all-faction > .faction-icon {
+    vertical-align: text-bottom;
+}
+
 .catch-all-faction > .parent-faction {
     text-decoration: underline dotted;
     color: var(--bt-yellow);
