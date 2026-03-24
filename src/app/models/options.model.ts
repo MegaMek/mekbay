@@ -66,4 +66,5 @@ export interface Options {
     ASVehiclesCriticalHitTable: 'default' | 'scouringSands';
     ASUnifiedDamagePicker: boolean;
     printRosterSummary: boolean;
+    printMargin: 'none' | 'browserDefined';
 }

@@ -221,7 +221,7 @@ export class CBTPrintUtil {
         overlay.innerHTML = bodyContent;
 
         const style = document.createElement('style');
-        style.textContent = this.getPrintStyles();
+        style.textContent = this.getPrintStyles(printOptions.printMargin);
         overlay.appendChild(style);
         document.body.appendChild(overlay);
         document.body.classList.add('multipage-container-active');
@@ -374,12 +374,10 @@ export class CBTPrintUtil {
                                 <th class="col-bv">BV</th>
                                 <th class="col-tons">Tons</th>
                                 <th class="col-year">Year</th>
-                                <th class="col-rules">Rules</th>
-                                <th class="col-tech">Tech</th>
+                                <th class="col-rules">Tech<br/>Rules</th>
                                 <th class="col-move">Move</th>
                                 <th class="col-as">A/S</th>
-                                <th class="col-firepower">Firepower</th>
-                                <th class="col-dpt">Dmg/Turn</th>
+                                <th class="col-firepower">Firepower<br/>(Dmg/Turn)</th>
                                 <th class="col-equipment">Equipment</th>
                             </tr>
                         </thead>
@@ -433,12 +431,10 @@ export class CBTPrintUtil {
                 <td class="col-bv is-numeric is-bold">${this.formatNumber(forceUnit.getBv())}</td>
                 <td class="col-tons is-numeric">${this.formatNumber(unit.tons)}</td>
                 <td class="col-year">${this.createYearValue(unit)}</td>
-                <td class="col-rules">${this.escapeHtml(this.formatNumber(unit.level))}</td>
-                <td class="col-tech">${this.escapeHtml(this.formatTechBase(unit.techBase))}</td>
+                <td class="col-rules">${this.escapeHtml(this.formatTechBase(unit.techBase))}<br/>${this.escapeHtml(this.formatNumber(unit.level))}</td>
                 <td class="col-move">${this.escapeHtml(this.formatMovement(unit))}</td>
                 <td class="col-as is-numeric">${this.escapeHtml(this.formatArmorStructure(unit))}</td>
-                <td class="col-firepower is-numeric">${this.escapeHtml(this.formatNumber(unit._mdSumNoPhysical) || '—')}</td>
-                <td class="col-dpt is-numeric">${this.escapeHtml(this.formatNumber(unit.dpt) || '—')}</td>
+                <td class="col-firepower is-numeric">${this.escapeHtml(this.formatNumber(unit._mdSumNoPhysical) || '—')}<br/>(${this.escapeHtml(this.formatNumber(unit.dpt) || '—')})</td>
                 <td class="col-equipment">${equipment}</td>
             </tr>
         `;
@@ -620,7 +616,7 @@ export class CBTPrintUtil {
             .replaceAll("'", '&#39;');
     }
 
-    private static getPrintStyles(): string {
+    private static getPrintStyles(printMargin: PrintAllOptions['printMargin']): string {
         return `
             #multipage-container .cbt-roster-summary {
                 position: relative;
@@ -870,8 +866,8 @@ export class CBTPrintUtil {
                 }
 
                 @page {
-                    size: auto;
-                    margin: 0.25in !important;
+                    size: auto;                    
+                    margin: ${printMargin === 'none' ? '0in' : '0.25in'} !important;
                 }
             }
         `;

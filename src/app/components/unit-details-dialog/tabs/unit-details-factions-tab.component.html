@@ -22,12 +22,24 @@
                 </div>
                 <div class="faction-list">
                     @for (faction of era.factions; let isLast = $last; track faction.name) {
-                        <span class="faction-item">
-                            @if (faction.img) {
-                                <img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" title="{{faction.name}}" />
-                            }
-                            {{ faction.name }}{{ !isLast ? ',&nbsp; ' : '' }}
-                        </span>
+                        @if (faction.isCatchAll) {
+                            <span class="faction-item catch-all-faction">
+                                @if (faction.img) {
+                                    <img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" title="{{faction.name}}" />
+                                }
+                                <span class="parent-faction" (click)="toggleCatchAll(i, faction.name)">{{ faction.name }}</span>
+                                @if (isCatchAllExpanded(i, faction.name) && faction.collapsedFactions?.length) {
+                                    <span class="collapsed-factions"> (@for (cf of faction.collapsedFactions; let cfLast = $last; track cf.name) {<span class="collapsed-faction-item">@if (cf.img) {<img [src]="cf.img" class="faction-icon" alt="{{cf.name}}" title="{{cf.name}}" />} {{ cf.name }}{{ !cfLast ? ',&nbsp; ' : '' }}</span>})</span>
+                                }{{ !isLast ? ',&nbsp; ' : '' }}
+                            </span>
+                        } @else {
+                            <span class="faction-item">
+                                @if (faction.img) {
+                                    <img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" title="{{faction.name}}" />
+                                }
+                                {{ faction.name }}{{ !isLast ? ',&nbsp; ' : '' }}
+                            </span>
+                        }
                     }
                 </div>
                 @if (!isLastEra) {

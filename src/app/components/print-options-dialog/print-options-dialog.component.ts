@@ -60,59 +60,71 @@ export interface PrintOptionsDialogData {
             <p class="message">These settings only apply to this print job.</p>
 
             <div class="option-grid">
-                <label class="option-card" for="printRosterSummary">
-                    <div class="option-copy">
-                        <span class="option-title">Roster summary</span>
-                        <span class="option-hint">Append a summary page after the unit sheets.</span>
+                <div class="option-col">
+                    <div class="option-row">
+                        <label for="printRosterSummary">Roster summary:</label>
+                        <select id="printRosterSummary" class="bt-select option-select"
+                            [value]="printOptions().printRosterSummary"
+                            (change)="onBooleanChange('printRosterSummary', $event)">
+                            <option value="false">No</option>
+                            <option value="true">Yes</option>
+                        </select>
                     </div>
-                    <select id="printRosterSummary" class="bt-select option-select" [value]="printOptions().printRosterSummary"
-                        (change)="onBooleanChange('printRosterSummary', $event)">
-                        <option value="false">No</option>
-                        <option value="true">Yes</option>
-                    </select>
-                </label>
+                </div>
 
-                <label class="option-card" for="cleanPrint">
-                    <div class="option-copy">
-                        <span class="option-title">Fresh units</span>
-                        <span class="option-hint">Print clean sheets without damage or live state.</span>
+                <div class="option-col">
+                    <div class="option-row">
+                        <label for="cleanPrint">Fresh units:</label>
+                        <select id="cleanPrint" class="bt-select option-select" [value]="printOptions().clean"
+                            (change)="onBooleanChange('clean', $event)">
+                            <option value="false">Keep current state</option>
+                            <option value="true">Print fresh</option>
+                        </select>
                     </div>
-                    <select id="cleanPrint" class="bt-select option-select" [value]="printOptions().clean"
-                        (change)="onBooleanChange('clean', $event)">
-                        <option value="false">Keep current state</option>
-                        <option value="true">Print fresh</option>
-                    </select>
-                </label>
+                </div>
 
                 @if (isClassic()) {
-                <label class="option-card" for="recordSheetCenterPanelContent">
-                    <div class="option-copy">
-                        <span class="option-title">Center panel</span>
-                        <span class="option-hint">Choose the reference tables or artwork shown on CBT sheets.</span>
+                <div class="option-col">
+                    <div class="option-row">
+                        <label for="recordSheetCenterPanelContent">Center panel:</label>
+                        <select id="recordSheetCenterPanelContent" class="bt-select option-select"
+                            [value]="printOptions().recordSheetCenterPanelContent"
+                            (change)="onCenterPanelChange($event)">
+                            <option value="clusterTable">Hit location and cluster table</option>
+                            <option value="fluffImage">Artwork</option>
+                        </select>
                     </div>
-                    <select id="recordSheetCenterPanelContent" class="bt-select option-select"
-                        [value]="printOptions().recordSheetCenterPanelContent"
-                        (change)="onCenterPanelChange($event)">
-                        <option value="clusterTable">Hit location and cluster table</option>
-                        <option value="fluffImage">Artwork</option>
-                    </select>
-                </label>
+                </div>
                 }
 
                 @if (isAlphaStrike()) {
-                <label class="option-card" for="ASPrintPageBreakOnGroups">
-                    <div class="option-copy">
-                        <span class="option-title">Group page breaks</span>
-                        <span class="option-hint">Start each Alpha Strike group on its own printed page.</span>
+                <div class="option-col">
+                    <div class="option-row">
+                        <label for="ASPrintPageBreakOnGroups">Group page breaks:</label>
+                        <select id="ASPrintPageBreakOnGroups" class="bt-select option-select"
+                            [value]="printOptions().ASPrintPageBreakOnGroups"
+                            (change)="onBooleanChange('ASPrintPageBreakOnGroups', $event)">
+                            <option value="true">Enabled</option>
+                            <option value="false">Disabled</option>
+                        </select>
                     </div>
-                    <select id="ASPrintPageBreakOnGroups" class="bt-select option-select"
-                        [value]="printOptions().ASPrintPageBreakOnGroups"
-                        (change)="onBooleanChange('ASPrintPageBreakOnGroups', $event)">
-                        <option value="true">Enabled</option>
-                        <option value="false">Disabled</option>
-                    </select>
-                </label>
+                    <div class="description">
+                        <p>Start each Alpha Strike group on its own printed page.</p>
+                    </div>
+                </div>
                 }
+
+                <div class="option-col">
+                    <div class="option-row">
+                        <label for="printMargin">Print margins:</label>
+                        <select id="printMargin" class="bt-select option-select"
+                            [value]="printOptions().printMargin"
+                            (change)="onPrintMarginChange($event)">
+                            <option value="none">None</option>
+                            <option value="browserDefined">Handled by browser</option>
+                        </select>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="wide-dialog-actions">
@@ -139,33 +151,34 @@ export interface PrintOptionsDialogData {
             gap: 0.75rem;
         }
 
-        .option-card {
-            display: flex;
-            align-items: start;
-            text-align: left;
-            justify-content: space-between;
-            gap: 1rem;
-            cursor: default;
-        }
-
-        .option-copy {
+        .option-col {
             display: flex;
             flex-direction: column;
-            gap: 0.2rem;
-            min-width: 0;
-            flex: 1;
+            padding-left: 0.5rem;
+            padding-right: 0.5rem;
         }
 
-        .option-title {
-            font-weight: 700;
+        .option-row {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.75rem;
         }
 
-        .option-hint {
-            font-size: 0.88em;
+        .description {
+            font-size: 0.8em;
             color: var(--text-color-secondary);
+            text-align: left;
+        }
+
+        .description p {
+            margin-top: 0;
+            margin-bottom: 0.3em;
         }
 
         .option-select {
+            width: 50%;
             min-width: 220px;
             max-width: 260px;
         }
@@ -175,7 +188,7 @@ export interface PrintOptionsDialogData {
                 width: calc(100vw - 16px);
             }
 
-            .option-card {
+            .option-row {
                 flex-direction: column;
                 align-items: stretch;
             }
@@ -198,12 +211,13 @@ export class PrintOptionsDialogComponent {
         printRosterSummary: this.optionsService.options().printRosterSummary,
         recordSheetCenterPanelContent: this.optionsService.options().recordSheetCenterPanelContent,
         ASPrintPageBreakOnGroups: this.optionsService.options().ASPrintPageBreakOnGroups,
+        printMargin: this.optionsService.options().printMargin,
     });
 
     protected readonly isClassic = computed(() => this.data.gameSystem === GameSystem.CLASSIC);
     protected readonly isAlphaStrike = computed(() => this.data.gameSystem === GameSystem.ALPHA_STRIKE);
 
-    protected onBooleanChange(key: 'clean' | 'printRosterSummary' | 'ASPrintPageBreakOnGroups', event: Event): void {
+    protected onBooleanChange(key: 'clean' | 'printRosterSummary' | 'ASPrintPageBreakOnGroups' | 'debugPreview', event: Event): void {
         const value = (event.target as HTMLSelectElement).value === 'true';
         this.printOptions.update(current => ({ ...current, [key]: value }));
     }
@@ -213,11 +227,17 @@ export class PrintOptionsDialogComponent {
         this.printOptions.update(current => ({ ...current, recordSheetCenterPanelContent: value }));
     }
 
+    protected onPrintMarginChange(event: Event): void {
+        const value = (event.target as HTMLSelectElement).value as PrintAllOptions['printMargin'];
+        this.printOptions.update(current => ({ ...current, printMargin: value }));
+    }
+
     protected onClose(): void {
         this.dialogRef.close(null);
     }
 
-    protected onPrint(): void {
+    protected async onPrint(): Promise<void> {
+        await this.optionsService.setOption('printMargin', this.printOptions().printMargin);
         this.dialogRef.close(this.printOptions());
     }
 }
