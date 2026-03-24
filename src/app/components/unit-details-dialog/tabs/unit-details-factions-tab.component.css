@@ -87,12 +87,17 @@ hr.divider {
 }
 
 .catch-all-faction {
-    cursor: pointer;
     display: inline;
 }
 
-.catch-all-faction > strong {
+.catch-all-faction > .parent-faction {
+    text-decoration: underline dotted;
     color: var(--bt-yellow);
+    cursor: pointer;
+}
+
+.catch-all-faction > .parent-faction:hover {
+    color: var(--bt-yellow-background-light);
 }
 
 .collapsed-faction-item {

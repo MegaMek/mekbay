@@ -43,6 +43,9 @@ const CATCH_ALL_FACTIONS: Record<string, string> = {
     'Periphery General': 'Periphery',
 };
 
+const PREFIX_CATCH_ALL = 'Star League General';
+const PREFIX_CATCH_ALL_PREFIX = 'Star League';
+
 export interface FactionAvailability {
     eraName: string;
     eraImg?: string;
@@ -88,18 +91,25 @@ export class UnitDetailsFactionTabComponent {
 
             if (matchingFactions.length > 0) {
                 const activeCatchAllGroups = new Set<string>();
+                let hasPrefixCatchAll = false;
                 for (const f of matchingFactions) {
                     if (CATCH_ALL_FACTIONS[f.name]) {
                         activeCatchAllGroups.add(CATCH_ALL_FACTIONS[f.name]);
+                    }
+                    if (f.name === PREFIX_CATCH_ALL) {
+                        hasPrefixCatchAll = true;
                     }
                 }
 
                 const factions: FactionAvailability['factions'] = [];
                 const collapsedByGroup = new Map<string, { name: string; img: string }[]>();
+                const prefixCollapsed: { name: string; img: string }[] = [];
 
                 for (const f of matchingFactions) {
-                    if (CATCH_ALL_FACTIONS[f.name]) {
+                    if (CATCH_ALL_FACTIONS[f.name] || f.name === PREFIX_CATCH_ALL) {
                         factions.push({ name: f.name, img: f.img, isCatchAll: true });
+                    } else if (hasPrefixCatchAll && f.name.startsWith(PREFIX_CATCH_ALL_PREFIX)) {
+                        prefixCollapsed.push({ name: f.name, img: f.img });
                     } else if (activeCatchAllGroups.has(f.group)) {
                         if (!collapsedByGroup.has(f.group)) {
                             collapsedByGroup.set(f.group, []);
@@ -112,11 +122,18 @@ export class UnitDetailsFactionTabComponent {
 
                 for (const f of factions) {
                     if (f.isCatchAll) {
-                        const group = CATCH_ALL_FACTIONS[f.name];
-                        const collapsed = collapsedByGroup.get(group);
-                        if (collapsed) {
-                            collapsed.sort((a, b) => a.name.localeCompare(b.name));
-                            f.collapsedFactions = collapsed;
+                        if (f.name === PREFIX_CATCH_ALL) {
+                            if (prefixCollapsed.length > 0) {
+                                prefixCollapsed.sort((a, b) => a.name.localeCompare(b.name));
+                                f.collapsedFactions = prefixCollapsed;
+                            }
+                        } else {
+                            const group = CATCH_ALL_FACTIONS[f.name];
+                            const collapsed = collapsedByGroup.get(group);
+                            if (collapsed) {
+                                collapsed.sort((a, b) => a.name.localeCompare(b.name));
+                                f.collapsedFactions = collapsed;
+                            }
                         }
                     }
                 }
