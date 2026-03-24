@@ -32,9 +32,12 @@
  */
 
 import type { ForceUnit } from '../models/force-unit.model';
-import type { Unit, ASUnitTypeCode } from '../models/units.model';
+import { CBT_WEIGHT_CLASS_ORDINALS, type Unit, type ASUnitTypeCode } from '../models/units.model';
 import type { FormationTypeDefinition } from './formation-type.model';
 import { GameSystem, Rulebook } from '../models/common.model';
+import { isClan } from './org/org-registry.util';
+import { CBTForceUnit } from '../models/cbt-force-unit.model';
+import { ASForceUnit } from '../models/as-force-unit.model';
 
 /*
  * Author: Drake
@@ -96,10 +99,9 @@ function asIsOnlyCombatVehicles(units: ForceUnit[]): boolean {
 }
 
 function isClanForce(units: ForceUnit[]): boolean {
-    const faction = units[0]?.force?.faction();
-    const isClan = faction?.group.includes('Clan');
-    const isScorpion = faction?.name.includes('Scorpion Empire') || faction?.name.includes('Escorpi');
-    return (isClan || isScorpion) ?? false;
+    const faction = units[0].force.faction();
+    if (!faction) return false;
+    return isClan(faction);
 }
 
 // ── Common helper functions ─────────────────────────────────────────────────────
@@ -129,11 +131,7 @@ function findIdenticalPairs(units: ForceUnit[]): ForceUnit[][] {
 // ── CBT helper functions ─────────────────────────────────────────────────────
 
 function cbtGetWeightClass(unit: Unit): number {
-    const tons = unit.tons;
-    if (tons < 40) return 1;
-    if (tons < 60) return 2;
-    if (tons < 80) return 3;
-    return 4;
+    return CBT_WEIGHT_CLASS_ORDINALS.get(unit.weightClass) ?? -1;
 }
 
 function cbtCanDealDamage(unit: Unit, minDamage: number, atRange: number): boolean {
@@ -1534,8 +1532,14 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         requirements: () => 'Clan only. At least two units in the Formation must be the same model (including the same OmniMek configuration)',
         validator: (units) => {
             if (!isClanForce(units)) return false;
-            const hasPair = new Set(units.map(u => u.getUnit().name)).size < units.length;
-            return hasPair; 
+            const seen = new Set<string>();
+            const hasPair = units.some(unit => {
+                const name = unit.getUnit().name;
+                if (seen.has(name)) return true;
+                seen.add(name);
+                return false;
+            });
+            return hasPair;
         },
     },
 
@@ -1575,7 +1579,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             if (!isClanForce(units)) return false;
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const skillCheck = units.every(u =>
-            (isAS ? (u as any).pilotSkill() : (u as any).gunnerySkill()) <= 3);
+            (isAS ? (u as ASForceUnit).pilotSkill() : (u as CBTForceUnit).gunnerySkill()) <= 3);
             if (!skillCheck) return false;
             const hasAF = units.filter(u =>
                 (isAS ? u.getUnit().as?.TP === 'AF' : u.getUnit().type === 'Aero')).length;

@@ -1,0 +1,223 @@
+/*
+ * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ *
+ * This file is part of MekBay.
+ *
+ * MekBay is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MekBay is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
+ */
+
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
+import { GameSystem } from '../../models/common.model';
+import type { PrintAllOptions } from '../../models/print-options.model';
+import { OptionsService } from '../../services/options.service';
+
+/*
+ * Author: Drake
+ */
+export interface PrintOptionsDialogData {
+    gameSystem: GameSystem;
+}
+
+@Component({
+    selector: 'print-options-dialog',
+    standalone: true,
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    imports: [CommonModule],
+    host: {
+        class: 'fullscreen-dialog-host glass'
+    },
+    template: `
+    <div class="wide-dialog print-dialog">
+        <h2 class="wide-dialog-title">Print Options</h2>
+        <div class="wide-dialog-body">
+            <p class="message">These settings only apply to this print job.</p>
+
+            <div class="option-grid">
+                <label class="option-card" for="printRosterSummary">
+                    <div class="option-copy">
+                        <span class="option-title">Roster summary</span>
+                        <span class="option-hint">Append a summary page after the unit sheets.</span>
+                    </div>
+                    <select id="printRosterSummary" class="bt-select option-select" [value]="printOptions().printRosterSummary"
+                        (change)="onBooleanChange('printRosterSummary', $event)">
+                        <option value="false">No</option>
+                        <option value="true">Yes</option>
+                    </select>
+                </label>
+
+                <label class="option-card" for="cleanPrint">
+                    <div class="option-copy">
+                        <span class="option-title">Fresh units</span>
+                        <span class="option-hint">Print clean sheets without damage or live state.</span>
+                    </div>
+                    <select id="cleanPrint" class="bt-select option-select" [value]="printOptions().clean"
+                        (change)="onBooleanChange('clean', $event)">
+                        <option value="false">Keep current state</option>
+                        <option value="true">Print fresh</option>
+                    </select>
+                </label>
+
+                @if (isClassic()) {
+                <label class="option-card" for="recordSheetCenterPanelContent">
+                    <div class="option-copy">
+                        <span class="option-title">Center panel</span>
+                        <span class="option-hint">Choose the reference tables or artwork shown on CBT sheets.</span>
+                    </div>
+                    <select id="recordSheetCenterPanelContent" class="bt-select option-select"
+                        [value]="printOptions().recordSheetCenterPanelContent"
+                        (change)="onCenterPanelChange($event)">
+                        <option value="clusterTable">Hit location and cluster table</option>
+                        <option value="fluffImage">Artwork</option>
+                    </select>
+                </label>
+                }
+
+                @if (isAlphaStrike()) {
+                <label class="option-card" for="ASPrintPageBreakOnGroups">
+                    <div class="option-copy">
+                        <span class="option-title">Group page breaks</span>
+                        <span class="option-hint">Start each Alpha Strike group on its own printed page.</span>
+                    </div>
+                    <select id="ASPrintPageBreakOnGroups" class="bt-select option-select"
+                        [value]="printOptions().ASPrintPageBreakOnGroups"
+                        (change)="onBooleanChange('ASPrintPageBreakOnGroups', $event)">
+                        <option value="true">Enabled</option>
+                        <option value="false">Disabled</option>
+                    </select>
+                </label>
+                }
+            </div>
+        </div>
+        <div class="wide-dialog-actions">
+            <button class="bt-button primary" (click)="onPrint()">PRINT</button>
+            <button class="bt-button" (click)="onClose()">CANCEL</button>
+        </div>
+    </div>
+    `,
+    styles: [`
+        .print-dialog {
+            width: min(680px, calc(100vw - 32px));
+        }
+
+        .message {
+            margin: 0;
+            font-size: 0.95em;
+            color: var(--text-color-secondary);
+            margin-bottom: 1rem;
+        }
+
+        .option-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .option-card {
+            display: flex;
+            align-items: start;
+            text-align: left;
+            justify-content: space-between;
+            gap: 1rem;
+            cursor: default;
+        }
+
+        .option-copy {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .option-title {
+            font-weight: 700;
+        }
+
+        .option-hint {
+            font-size: 0.88em;
+            color: var(--text-color-secondary);
+        }
+
+        .option-select {
+            min-width: 220px;
+            max-width: 260px;
+        }
+
+        @media (max-width: 600px) {
+            .print-dialog {
+                width: calc(100vw - 16px);
+            }
+
+            .option-card {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .option-select {
+                min-width: 0;
+                width: 100%;
+                max-width: none;
+            }
+        }
+    `]
+})
+export class PrintOptionsDialogComponent {
+    private dialogRef = inject(DialogRef<PrintAllOptions | null>);
+    private data = inject<PrintOptionsDialogData>(DIALOG_DATA);
+    private optionsService = inject(OptionsService);
+
+    protected readonly printOptions = signal<PrintAllOptions>({
+        clean: false,
+        printRosterSummary: this.optionsService.options().printRosterSummary,
+        recordSheetCenterPanelContent: this.optionsService.options().recordSheetCenterPanelContent,
+        ASPrintPageBreakOnGroups: this.optionsService.options().ASPrintPageBreakOnGroups,
+    });
+
+    protected readonly isClassic = computed(() => this.data.gameSystem === GameSystem.CLASSIC);
+    protected readonly isAlphaStrike = computed(() => this.data.gameSystem === GameSystem.ALPHA_STRIKE);
+
+    protected onBooleanChange(key: 'clean' | 'printRosterSummary' | 'ASPrintPageBreakOnGroups', event: Event): void {
+        const value = (event.target as HTMLSelectElement).value === 'true';
+        this.printOptions.update(current => ({ ...current, [key]: value }));
+    }
+
+    protected onCenterPanelChange(event: Event): void {
+        const value = (event.target as HTMLSelectElement).value as PrintAllOptions['recordSheetCenterPanelContent'];
+        this.printOptions.update(current => ({ ...current, recordSheetCenterPanelContent: value }));
+    }
+
+    protected onClose(): void {
+        this.dialogRef.close(null);
+    }
+
+    protected onPrint(): void {
+        this.dialogRef.close(this.printOptions());
+    }
+}

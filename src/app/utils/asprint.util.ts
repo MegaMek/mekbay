@@ -38,7 +38,8 @@ import { AlphaStrikeCardComponent } from '../components/alpha-strike-card/alpha-
 import { getLayoutForUnitType } from '../components/alpha-strike-card/card-layout.config';
 import type { OptionsService } from '../services/options.service';
 import { isIOS } from './platform.util';
-import type { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
+import type { PrintAllOptions } from '../models/print-options.model';
+import { createPrintRosterLogoMarkup, createPrintRosterQrMarkup, getPrintRosterBrandingStyles } from './print-roster-branding.util';
 
 /**
  * Represents a single card to render (handles multi-card units)
@@ -71,7 +72,7 @@ export class ASPrintUtil {
      * @param injector - Angular Injector for dependency injection
      * @param optionsService - Options service for card style preferences
      * @param groups - Array of UnitGroup to print
-     * @param clean - If true, prints clean cards without damage state
+     * @param printOptions - One-off settings for this print job
      * @param triggerPrint - If true, triggers the browser print dialog
      */
     public static async multipagePrint(
@@ -79,7 +80,7 @@ export class ASPrintUtil {
         injector: Injector,
         optionsService: OptionsService,
         groups: UnitGroup<ASForceUnit>[],
-        clean: boolean = false,
+        printOptions: PrintAllOptions,
         triggerPrint: boolean = true,
         force?: Force
     ): Promise<void> {
@@ -88,6 +89,8 @@ export class ASPrintUtil {
             console.warn('No units to export.');
             return;
         }
+
+        const clean = printOptions.clean;
 
         // Store original heat values and set to 0 for printing
         const originalHeats = new Map<ASForceUnit, number>();
@@ -102,7 +105,7 @@ export class ASPrintUtil {
 
         // Expand units into individual cards (multi-card units become multiple entries)
         const cardRenderItems = this.expandToCardItems(groups);
-        const pageBreakOnGroups = optionsService.options().ASPrintPageBreakOnGroups;
+        const pageBreakOnGroups = printOptions.ASPrintPageBreakOnGroups;
         
         // Create print container - use different layouts for iOS vs other platforms
         const useFixedLayout = isIOS();
@@ -111,9 +114,9 @@ export class ASPrintUtil {
             : await this.createFlexPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups);
 
         // Append roster summary page if enabled
-        const printRosterSummary = optionsService.options().ASPrintRosterSummary;
+        const printRosterSummary = printOptions.printRosterSummary;
         if (printRosterSummary && force) {
-            const rosterPage = this.createRosterSummaryPage(groups, force);
+            const rosterPage = await this.createRosterSummaryPage(groups, force);
             overlay.appendChild(rosterPage);
         }
 
@@ -548,6 +551,7 @@ export class ASPrintUtil {
             }
 
             ${this.getRosterSummaryStyles()}
+            ${getPrintRosterBrandingStyles()}
 
             @media print {
                 body, html {
@@ -645,6 +649,7 @@ export class ASPrintUtil {
             }
 
             ${this.getRosterSummaryStyles()}
+            ${getPrintRosterBrandingStyles()}
 
             @media print {
                 body, html {
@@ -681,8 +686,10 @@ export class ASPrintUtil {
     private static getRosterSummaryStyles(): string {
         return `
             .as-roster-summary {
+                position: relative;
                 background: white;
-                padding: 0.2in 0;
+                padding: 0.2in 0.04in 0;
+                box-sizing: border-box;
                 font-family: sans-serif;
                 color: #222;
             }
@@ -691,7 +698,7 @@ export class ASPrintUtil {
                 display: flex;
                 align-items: baseline;
                 gap: 0.1in;
-                padding: 0 0.04in 0.08in;
+                padding: 0 1.5in 0.08in 0.04in;
                 border-bottom: 2px solid #333;
                 margin-bottom: 0.1in;
             }
@@ -740,12 +747,22 @@ export class ASPrintUtil {
             }
 
             .as-roster-footer {
-                text-align: right;
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 0.12in;
                 font-weight: 700;
                 font-size: 11pt;
-                margin-top: 0.1in;
-                padding: 0.05in 0.04in;
+                margin-top: 0.14in;
+                padding: 0.08in 0.04in 0.05in;
                 border-top: 2px solid #333;
+                box-sizing: border-box;
+            }
+
+            .as-roster-footer-total {
+                margin-left: auto;
+                text-align: right;
+                padding-top: 0.04in;
             }
         `;
     }
@@ -753,7 +770,7 @@ export class ASPrintUtil {
     /**
      * Creates a roster summary page with a table of all units.
      */
-    private static createRosterSummaryPage(groups: UnitGroup<ASForceUnit>[], force: Force): HTMLElement {
+    private static async createRosterSummaryPage(groups: UnitGroup<ASForceUnit>[], force: Force): Promise<HTMLElement> {
         const container = document.createElement('div');
         container.className = 'as-roster-summary';
 
@@ -849,8 +866,27 @@ export class ASPrintUtil {
         // Footer with total PV
         const footer = document.createElement('div');
         footer.className = 'as-roster-footer';
-        footer.textContent = `Total PV: ${totalPv}`;
+
+        const qrHost = document.createElement('div');
+        qrHost.innerHTML = await createPrintRosterQrMarkup(force);
+        const qr = qrHost.firstElementChild;
+        if (qr) {
+            footer.appendChild(qr);
+        }
+
+        const total = document.createElement('div');
+        total.className = 'as-roster-footer-total';
+        total.textContent = `Total PV: ${totalPv}`;
+        footer.appendChild(total);
+
         container.appendChild(footer);
+
+        const brandingHost = document.createElement('div');
+        brandingHost.innerHTML = createPrintRosterLogoMarkup();
+        const branding = brandingHost.firstElementChild;
+        if (branding) {
+            container.appendChild(branding);
+        }
 
         return container;
     }

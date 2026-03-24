@@ -97,7 +97,7 @@ export class StatBarSpecsPipe implements PipeTransform {
             { key: 'alphaNoPhysical', label: 'Firepower', value: unit._mdSumNoPhysical, max: maxStats.alphaNoPhysicalNoOneshots[1], description: 'Total maximum damage from all weapons fired simultaneously' },
             { key: 'dpt', label: 'Damage/Turn', value: unit.dpt, max: maxStats.dpt[1], description: 'Average damage per turn over a 10-turn engagement, accounting for heat and ammo limits' },
             { key: 'maxRange', label: 'Range', value: unit._maxRange, max: maxStats.maxRange[1], description: 'Maximum weapon range in hexes' },
-            { key: 'heat', label: 'Heat', value: unit.heat, max: maxStats.heat[1], description: 'Maximum heat generated when firing all weapons' },
+            { key: 'heat', label: 'Heat', value: unit.heat, max: maxStats.heat[1], description: 'Maximum heat generated when firing all weapons and activating all equipment' },
             { key: 'dissipation', label: 'Dissipation', value: unit.dissipation, max: maxStats.dissipation[1], description: 'Heat dissipation capacity per turn from heat sinks' },
             { key: 'runMP', label: 'Top Speed', value: unit.run2, max: maxStats.run2MP[1], description: 'Maximum running/cruising speed in hexes per turn' },
             { key: 'jumpMP', label: jumpLabel, value: jumpValue, max: maxStats.jumpMP[1], description: jumpLabel === 'VTOL' ? 'VTOL movement capability in hexes' : 'Jump movement capability in hexes' },

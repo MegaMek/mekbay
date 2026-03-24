@@ -75,6 +75,12 @@ export interface ShareForceDialogData {
                     <label class="field-label">Live battle record</label>
                     <div class="row">
                         <input readonly class="bt-input url" (click)="selectAndCopy($event)" [value]="shareLiveUrlString"/>
+                        <button class="bt-button qr-btn" (click)="showLiveBattleRecordQr(shareLiveUrlString)" title="Show Live Battle Record QR" aria-label="Show Live Battle Record QR">
+                            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <path d="M3,11H5v2H3V11m8-6h2V9H11V5M9,11h4v4H11V13H9V11m6,0h2v2h2V11h2v2H19v2h2v4H19v2H17V19H13v2H11V17h4V15h2V13H15V11m4,8V15H17v4h2M15,3h6V9H15V3m2,2V7h2V5H17M3,3H9V9H3V3M5,5V7H7V5H5M3,15H9v6H3V15m2,2v2H7V17Z"/>
+                                <rect width="24" height="24" fill="none"/>
+                            </svg>
+                        </button>
                         <button class="bt-button" (click)="share(shareLiveUrlString)">SHARE</button>
                     </div>
                     <div class="field-note">Share the current deployment as a read-only field report — includes damage, pilots, and status conditions. <strong>Share this link for multiplayer games.</strong></div>
@@ -167,6 +173,12 @@ export interface ShareForceDialogData {
         .export-btn:disabled {
             opacity: 0.6;
             cursor: not-allowed;
+        }
+
+        .qr-btn svg {
+            width: 22px;
+            height: 22px;
+            fill: currentColor;
         }
 
         .url {
@@ -303,6 +315,14 @@ export class ShareForceDialogComponent {
             copyTextToClipboard(url);
             this.toastService.showToast('Links copied to clipboard.', 'success');
         }
+    }
+
+    async showLiveBattleRecordQr(url: string): Promise<void> {
+        const { QrDialogComponent } = await import('../qr-dialog/qr-dialog.component');
+        this.dialogsService.createDialog<void>(QrDialogComponent, {
+            data: { url },
+            disableClose: false,
+        });
     }
 
     shareText(text: string) {

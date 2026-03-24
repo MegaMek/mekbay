@@ -119,8 +119,11 @@ input {
   color: #d32f2f;
 }
 
+.small-label {
+  font-size: 0.8em;
+}
+
 .readonly-value {
-  color: var(--text-color-secondary);
   font-family: monospace;
   font-size: 0.9em;
   user-select: all;
@@ -286,4 +289,9 @@ input {
 
 .sensitive-toggle:hover {
   color: var(--text-color);
+}
+
+hr {
+  margin-top: 1em;
+  margin-bottom: 1em;
 }

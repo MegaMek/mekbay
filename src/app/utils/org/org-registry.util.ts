@@ -16,6 +16,17 @@ export interface OrgDefinitionRegistryEntry {
 	readonly org: OrgDefinitionSpec;
 }
 
+export function isClan(faction: Faction): boolean {
+	if (faction.group?.includes('Clan')) {
+		return true;
+	}
+	if (faction.name.includes('Escorpi') || faction.name.includes('Scorpion Empire')) {
+		return true;
+	}
+	return false;
+}
+
+
 export const ORG_SPEC_REGISTRY: readonly OrgDefinitionRegistryEntry[] = [
 	{ match: (faction) => faction.name.includes('ComStar') || faction.name.includes('Word of Blake'), org: COMSTAR_CORE_ORG },
 	{ match: (faction) => faction.name.includes('Society'), org: SOCIETY_CORE_ORG },
@@ -23,8 +34,7 @@ export const ORG_SPEC_REGISTRY: readonly OrgDefinitionRegistryEntry[] = [
 	{ match: (faction, era) => faction.name.includes('Dragoons') && (era?.years.to ?? Number.POSITIVE_INFINITY) <= 3050, org: IS_CORE_ORG },
 	{ match: (faction) => faction.name.includes('Dragoons'), org: WD_CORE_ORG },
 	{ match: (faction) => faction.name.includes('Capellan Confederation'), org: CC_CORE_ORG },
-	{ match: (faction) => faction.group.includes('Clan'), org: CLAN_CORE_ORG },
-    { match: (faction) => faction.name.includes('Escorpi') || faction.name.includes('Scorpion Empire'), org: CLAN_CORE_ORG },
+	{ match: (faction) => isClan(faction), org: CLAN_CORE_ORG },
 	{ match: (faction) => faction.group == 'Inner Sphere', org: IS_CORE_ORG },
 ];
 

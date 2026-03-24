@@ -17,7 +17,8 @@
             "index": "src/index.html",
             "tsConfig": "tsconfig.app.json",
             "allowedCommonJsDependencies": [
-              "jszip"
+              "jszip",
+              "qrcode"
             ],
             "assets": [
               {
@@ -147,9 +148,6 @@
                 "input": "public/icons/dev",
                 "output": "icons"
               }
-            ],
-            "styles": [
-              "src/styles.scss"
             ]
           }
         }

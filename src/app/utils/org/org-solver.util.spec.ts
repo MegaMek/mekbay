@@ -1711,6 +1711,49 @@ describe('org-solver.util', () => {
         expect(result.leftoverCount).toBe(0);
     });
 
+    it('prefers a reinforced Clan Cluster over an under-strength Galaxy when both leave the same leftover Star', () => {
+        const result = resolveFromGroupsForFixture([
+            createBattleMekGroup('Trinary A', 'Trinary', 2, 15),
+            createBattleMekGroup('Trinary B', 'Trinary', 2, 15),
+            createBattleMekGroup('Trinary C', 'Trinary', 2, 15),
+            createBattleMekGroup('Trinary D', 'Trinary', 2, 15),
+            createBattleMekGroup('Star A', 'Star', 1, 5),
+        ], createFaction('Clan Wolf', 'IS Clan'));
+
+        expect(result).toEqual([
+            jasmine.objectContaining({ type: 'Cluster', modifierKey: 'Reinforced ' }),
+            jasmine.objectContaining({ type: 'Star', modifierKey: '' }),
+        ]);
+    });
+
+    it('preserves a user-enforced under-strength Galaxy from two separately grouped under-strength Clusters', () => {
+        const faction = createFaction('Clan Wolf', 'IS Clan');
+        const clusterA = resolveFromGroupsForFixture([
+            createBattleMekGroup('Trinary A', 'Trinary', 2, 15),
+            createBattleMekGroup('Trinary B', 'Trinary', 2, 15),
+        ], faction);
+        const clusterB = resolveFromGroupsForFixture([
+            createBattleMekGroup('Trinary C', 'Trinary', 2, 15),
+            createBattleMekGroup('Trinary D', 'Trinary', 2, 15),
+        ], faction);
+
+        expect(clusterA).toEqual([
+            jasmine.objectContaining({ type: 'Cluster', modifierKey: 'Under-Strength ' }),
+        ]);
+        expect(clusterB).toEqual([
+            jasmine.objectContaining({ type: 'Cluster', modifierKey: 'Under-Strength ' }),
+        ]);
+
+        const result = resolveFromGroupsForFixture([
+            ...clusterA,
+            ...clusterB,
+        ], faction);
+
+        expect(result).toEqual([
+            jasmine.objectContaining({ type: 'Galaxy', modifierKey: 'Under-Strength ' }),
+        ]);
+    });
+
     it('materializes composed-count rules into parent groups with preserved children', () => {
         const groups = materializeComposedCountRule(IS_COMPANY, [
             compileGroupFacts(createLance('Lance A', ['A1', 'A2', 'A3', 'A4'])),

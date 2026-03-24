@@ -4136,8 +4136,11 @@ function compareFinalStateScores(leftScore: FinalStateScore, rightScore: FinalSt
     if (leftScore.isWhole !== rightScore.isWhole) {
         return leftScore.isWhole ? -1 : 1;
     }
-    if (leftScore.highestTier !== rightScore.highestTier) {
-        return rightScore.highestTier - leftScore.highestTier;
+    if (leftScore.leftoverCount !== rightScore.leftoverCount) {
+        return leftScore.leftoverCount - rightScore.leftoverCount;
+    }
+    if (leftScore.topLevelGroupCount !== rightScore.topLevelGroupCount) {
+        return leftScore.topLevelGroupCount - rightScore.topLevelGroupCount;
     }
     if (leftScore.subRegularGroupCount !== rightScore.subRegularGroupCount) {
         return leftScore.subRegularGroupCount - rightScore.subRegularGroupCount;
@@ -4145,11 +4148,8 @@ function compareFinalStateScores(leftScore: FinalStateScore, rightScore: FinalSt
     if (leftScore.totalRegularityDistance !== rightScore.totalRegularityDistance) {
         return leftScore.totalRegularityDistance - rightScore.totalRegularityDistance;
     }
-    if (leftScore.leftoverCount !== rightScore.leftoverCount) {
-        return leftScore.leftoverCount - rightScore.leftoverCount;
-    }
-    if (leftScore.topLevelGroupCount !== rightScore.topLevelGroupCount) {
-        return leftScore.topLevelGroupCount - rightScore.topLevelGroupCount;
+    if (leftScore.highestTier !== rightScore.highestTier) {
+        return rightScore.highestTier - leftScore.highestTier;
     }
     if (leftScore.highestTierGroupCount !== rightScore.highestTierGroupCount) {
         return rightScore.highestTierGroupCount - leftScore.highestTierGroupCount;
@@ -4198,6 +4198,17 @@ function getRuleTierByType(context: ResolveContext, type: GroupSizeResult['type'
 
 function getMinimumChildTierForRule(rule: OrgComposedCountRule | OrgComposedPatternRule, context: ResolveContext): number {
     return context.minimumChildTierByRule.get(rule) ?? getMinimumChildTierForComposedRule(rule, context.definition);
+}
+
+function getMinimumPresentChildTierForRule(
+    rule: OrgComposedCountRule | OrgComposedPatternRule,
+    groupFacts: readonly GroupFacts[],
+): number | null {
+    const matchingTiers = groupFacts
+        .filter((facts) => rule.childRoles.some((role) => groupMatchesRole(facts, role)))
+        .map((facts) => facts.tier);
+
+    return matchingTiers.length > 0 ? Math.min(...matchingTiers) : null;
 }
 
 function serializeAllowedModifierKeys(allowedModifierKeys?: ReadonlySet<string>): string {
@@ -4665,23 +4676,8 @@ function getApplicableComposedRulesForFacts(
         return [];
     }
 
-    const factsByTier = new Map<number, GroupFacts[]>();
-    for (const facts of groupFacts) {
-        const existing = factsByTier.get(facts.tier);
-        if (existing) {
-            existing.push(facts);
-        } else {
-            factsByTier.set(facts.tier, [facts]);
-        }
-    }
-
     return getOrderedComposedRules(context).filter((rule) => {
-        const tierFacts = factsByTier.get(getMinimumChildTierForRule(rule, context));
-        if (!tierFacts || tierFacts.length === 0) {
-            return false;
-        }
-
-        if (!tierFacts.some((facts) => rule.childRoles.some((role) => groupMatchesRole(facts, role)))) {
+        if (getMinimumPresentChildTierForRule(rule, groupFacts) === null) {
             return false;
         }
 
@@ -4769,7 +4765,9 @@ function runSingleTierRegularPromotionStepState(
     let poolState = initialState;
     let remainingFacts = poolState.groupFacts.filter((facts) => !isBlockedSubRegularPromotionChildFacts(facts, context));
     const applicableRules = getApplicableComposedRulesForFacts(remainingFacts, context);
-    const candidateChildTiers = applicableRules.map((rule) => getMinimumChildTierForRule(rule, context));
+    const candidateChildTiers = applicableRules
+        .map((rule) => getMinimumPresentChildTierForRule(rule, remainingFacts))
+        .filter((tier): tier is number => tier !== null);
     const targetChildTier = candidateChildTiers.length > 0 ? Math.min(...candidateChildTiers) : null;
 
     if (targetChildTier === null) {
@@ -4777,7 +4775,7 @@ function runSingleTierRegularPromotionStepState(
     }
 
     for (const rule of applicableRules) {
-        if (getMinimumChildTierForRule(rule, context) !== targetChildTier) {
+        if (getMinimumPresentChildTierForRule(rule, remainingFacts) !== targetChildTier) {
             continue;
         }
 

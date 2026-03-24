@@ -262,9 +262,9 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('ASPrintPageBreakOnGroups', value);
     }
 
-    onASPrintRosterSummaryChange(event: Event) {
+    onprintRosterSummaryChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value === 'true';
-        this.optionsService.setOption('ASPrintRosterSummary', value);
+        this.optionsService.setOption('printRosterSummary', value);
     }
 
     onASUnifiedDamagePickerChange(event: Event) {
