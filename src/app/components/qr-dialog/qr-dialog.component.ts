@@ -33,6 +33,7 @@
 
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
+import { createQrCodeSvgDataUrl } from '../../utils/print-roster-branding.util';
 
 /*
  * Author: Drake
@@ -113,13 +114,11 @@ export class QrDialogComponent {
     }
 
     private async loadQrImageUrl(): Promise<void> {
-        const { toString } = await import('qrcode');
-        const svgMarkup = await toString(this.url, {
-            errorCorrectionLevel: 'L',
-            margin: 2,
-            type: 'svg',
-            width: 384,
-        });
-        this.qrImageUrl.set(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgMarkup)}`);
+        try {
+            this.qrImageUrl.set(await createQrCodeSvgDataUrl(this.url, 384));
+        } catch (error) {
+            console.error('Failed to generate QR dialog image.', error);
+            this.qrImageUrl.set(null);
+        }
     }
 }
