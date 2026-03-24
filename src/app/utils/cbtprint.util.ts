@@ -221,7 +221,7 @@ export class CBTPrintUtil {
         overlay.innerHTML = bodyContent;
 
         const style = document.createElement('style');
-        style.textContent = this.getPrintStyles();
+        style.textContent = this.getPrintStyles(printOptions.printMargin);
         overlay.appendChild(style);
         document.body.appendChild(overlay);
         document.body.classList.add('multipage-container-active');
@@ -620,7 +620,7 @@ export class CBTPrintUtil {
             .replaceAll("'", '&#39;');
     }
 
-    private static getPrintStyles(): string {
+    private static getPrintStyles(printMargin: PrintAllOptions['printMargin']): string {
         return `
             #multipage-container .cbt-roster-summary {
                 position: relative;
@@ -870,8 +870,8 @@ export class CBTPrintUtil {
                 }
 
                 @page {
-                    size: auto;
-                    margin: 0.25in !important;
+                    size: auto;                    
+                    margin: ${printMargin === 'none' ? '0in' : '0.25in'} !important;
                 }
             }
         `;

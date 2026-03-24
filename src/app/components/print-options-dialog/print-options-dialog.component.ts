@@ -63,7 +63,7 @@ export interface PrintOptionsDialogData {
                 <label class="option-card" for="printRosterSummary">
                     <div class="option-copy">
                         <span class="option-title">Roster summary</span>
-                        <span class="option-hint">Append a summary page after the unit sheets.</span>
+                        <span class="option-hint">Print a summary page with all the units.</span>
                     </div>
                     <select id="printRosterSummary" class="bt-select option-select" [value]="printOptions().printRosterSummary"
                         (change)="onBooleanChange('printRosterSummary', $event)">
@@ -113,6 +113,19 @@ export interface PrintOptionsDialogData {
                     </select>
                 </label>
                 }
+
+                <label class="option-card" for="printMargin">
+                    <div class="option-copy">
+                        <span class="option-title">Print margins</span>
+                        <span class="option-hint">Choose whether page margins are removed or left to the browser.</span>
+                    </div>
+                    <select id="printMargin" class="bt-select option-select"
+                        [value]="printOptions().printMargin"
+                        (change)="onPrintMarginChange($event)">
+                        <option value="none">None</option>
+                        <option value="browserDefined">Handled by browser</option>
+                    </select>
+                </label>
             </div>
         </div>
         <div class="wide-dialog-actions">
@@ -198,6 +211,7 @@ export class PrintOptionsDialogComponent {
         printRosterSummary: this.optionsService.options().printRosterSummary,
         recordSheetCenterPanelContent: this.optionsService.options().recordSheetCenterPanelContent,
         ASPrintPageBreakOnGroups: this.optionsService.options().ASPrintPageBreakOnGroups,
+        printMargin: this.optionsService.options().printMargin,
     });
 
     protected readonly isClassic = computed(() => this.data.gameSystem === GameSystem.CLASSIC);
@@ -213,11 +227,17 @@ export class PrintOptionsDialogComponent {
         this.printOptions.update(current => ({ ...current, recordSheetCenterPanelContent: value }));
     }
 
+    protected onPrintMarginChange(event: Event): void {
+        const value = (event.target as HTMLSelectElement).value as PrintAllOptions['printMargin'];
+        this.printOptions.update(current => ({ ...current, printMargin: value }));
+    }
+
     protected onClose(): void {
         this.dialogRef.close(null);
     }
 
-    protected onPrint(): void {
+    protected async onPrint(): Promise<void> {
+        await this.optionsService.setOption('printMargin', this.printOptions().printMargin);
         this.dialogRef.close(this.printOptions());
     }
 }

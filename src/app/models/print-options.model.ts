@@ -39,4 +39,5 @@ export interface PrintAllOptions {
     printRosterSummary: boolean;
     recordSheetCenterPanelContent: 'fluffImage' | 'clusterTable';
     ASPrintPageBreakOnGroups: boolean;
+    printMargin: 'none' | 'browserDefined';
 }
