@@ -50,6 +50,7 @@ const DEFAULT_OPTIONS: Options = {
     unitSearchViewMode: 'list',
     forceOverviewViewMode: 'compact',
     printRosterSummary: false,
+    printMargin: 'browserDefined',
     
     // Classic
     sheetsColor: 'normal',
@@ -98,6 +99,7 @@ export class OptionsService {
         ASUseAutomations: DEFAULT_OPTIONS.ASUseAutomations,
         ASUnifiedDamagePicker: DEFAULT_OPTIONS.ASUnifiedDamagePicker,
         printRosterSummary: DEFAULT_OPTIONS.printRosterSummary,
+        printMargin: DEFAULT_OPTIONS.printMargin,
     });
 
     constructor() {
@@ -132,6 +134,7 @@ export class OptionsService {
             ASUseAutomations: saved?.ASUseAutomations ?? DEFAULT_OPTIONS.ASUseAutomations,
             ASUnifiedDamagePicker: saved?.ASUnifiedDamagePicker ?? DEFAULT_OPTIONS.ASUnifiedDamagePicker,
             printRosterSummary: saved?.printRosterSummary ?? DEFAULT_OPTIONS.printRosterSummary,
+            printMargin: saved?.printMargin ?? DEFAULT_OPTIONS.printMargin,
         });
     }
 

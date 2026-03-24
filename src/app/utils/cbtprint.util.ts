@@ -35,7 +35,7 @@ import type { HeatProfile } from '../models/force-serialization';
 import type { SheetService } from '../services/sheet.service';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { PrintAllOptions } from '../models/print-options.model';
-import type { Unit, UnitComponent } from '../models/units.model';
+import { createPrintRosterLogoMarkup, createPrintRosterQrMarkup, getPrintRosterBrandingStyles } from './print-roster-branding.util';
 
 /*
  * Author: Drake
@@ -209,7 +209,10 @@ export class CBTPrintUtil {
         triggerPrint: boolean = true): Promise<void> {
         const pages = svgStrings.map(svg => `<div class="svg-container">${svg}</div>`);
         if (printOptions.printRosterSummary) {
-            pages.push(this.createRosterSummaryPage(forceUnits));
+            const rosterPages = await this.createRosterSummaryPages(forceUnits);
+            if (rosterPages.length > 0) {
+                pages.unshift(...rosterPages);
+            }
         }
         if (pages.length > 0) {
             pages[pages.length - 1] = pages[pages.length - 1].replace('svg-container', 'svg-container last-svg');
@@ -221,7 +224,7 @@ export class CBTPrintUtil {
         overlay.innerHTML = bodyContent;
 
         const style = document.createElement('style');
-        style.textContent = this.getPrintStyles();
+        style.textContent = this.getPrintStyles(printOptions.printMargin);
         overlay.appendChild(style);
         document.body.appendChild(overlay);
         document.body.classList.add('multipage-container-active');
@@ -299,27 +302,10 @@ export class CBTPrintUtil {
         }
     }
 
-    private static createRosterSummaryPage(forceUnits: CBTForceUnit[]): string {
+    private static async createRosterSummaryPages(forceUnits: CBTForceUnit[]): Promise<string[]> {
         const force = forceUnits[0]?.force;
         if (!force) {
-            return `
-                <div class="svg-container cbt-roster-summary">
-                    <div class="cbt-roster-rotated-frame">
-                        <div class="cbt-roster-sheet">
-                            <div class="cbt-roster-summary-content">CBT ROSTER</div>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        const groups: CBTForceUnit[][] = [];
-        const seenGroupIds = new Set<string>();
-        for (const forceUnit of forceUnits) {
-            const group = forceUnit.getGroup();
-            if (!group || seenGroupIds.has(group.id)) continue;
-            seenGroupIds.add(group.id);
-            groups.push(group.units() as CBTForceUnit[]);
+            return [];
         }
 
         const headerParts: string[] = [];
@@ -336,279 +322,138 @@ export class CBTPrintUtil {
             headerParts.push(era.name);
         }
 
-        let totalBaseBv = 0;
-        let totalFinalBv = 0;
-        const groupSections: string[] = [];
+        const groups: CBTForceUnit[][] = [];
+        const seenGroupIds = new Set<string>();
+        let totalBv = 0;
 
-        for (const groupUnits of groups) {
-            const group = groupUnits[0]?.getGroup();
-            if (!group) continue;
-
-            const bodyRows: string[] = [];
-
-            for (const forceUnit of groupUnits) {
-                const unit = forceUnit.getUnit();
-                const baseBv = unit.bv ?? 0;
-                const finalBv = forceUnit.getBv();
-
-                totalBaseBv += baseBv;
-                totalFinalBv += finalBv;
-
-                bodyRows.push(this.createRosterTableRow(forceUnit));
-            }
-
-            groupSections.push(`
-                <section class="cbt-roster-group-section">
-                    <div class="cbt-roster-group-header">
-                        <span class="cbt-roster-group-name">${this.escapeHtml(group.groupDisplayName())}</span>
-                        <span class="cbt-roster-group-bv">BV: ${group.totalBV().toLocaleString()}</span>
-                    </div>
-                    <table class="cbt-roster-table">
-                        <thead>
-                            <tr>
-                                <th class="col-unit">Unit</th>
-                                <th class="col-type">Type</th>
-                                <th class="col-role">Role</th>
-                                <th class="col-base-bv">Base BV</th>
-                                <th class="col-gp">G/P</th>
-                                <th class="col-bv">BV</th>
-                                <th class="col-tons">Tons</th>
-                                <th class="col-year">Year</th>
-                                <th class="col-rules">Rules</th>
-                                <th class="col-tech">Tech</th>
-                                <th class="col-move">Move</th>
-                                <th class="col-as">A/S</th>
-                                <th class="col-firepower">Firepower</th>
-                                <th class="col-dpt">Dmg/Turn</th>
-                                <th class="col-equipment">Equipment</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${bodyRows.join('')}
-                        </tbody>
-                    </table>
-                </section>
-            `);
+        for (const forceUnit of forceUnits) {
+            totalBv += forceUnit.getBv();
+            const group = forceUnit.getGroup();
+            if (!group || seenGroupIds.has(group.id)) continue;
+            seenGroupIds.add(group.id);
+            groups.push(group.units() as CBTForceUnit[]);
         }
 
-        return `
-            <div class="svg-container cbt-roster-summary">
-                <div class="cbt-roster-rotated-frame">
-                    <div class="cbt-roster-sheet">
-                        <div class="cbt-roster-header">
-                            ${headerParts.length > 0 ? `<span class="cbt-roster-faction">${this.escapeHtml(headerParts.join(' · '))}</span>` : ''}
-                            <span class="cbt-roster-force-name">${this.escapeHtml(force.name || force.displayName())}</span>
-                        </div>
-                        <div class="cbt-roster-groups">
-                            ${groupSections.join('')}
-                        </div>
-                        <div class="cbt-roster-footer">Base BV: ${totalBaseBv.toLocaleString()} · Total BV: ${totalFinalBv.toLocaleString()}</div>
-                    </div>
-                </div>
+        const groupData = groups.map(groupUnits => {
+            const group = groupUnits[0]?.getGroup();
+            if (!group) {
+                return null;
+            }
+
+            return {
+                groupName: this.escapeHtml(group.groupDisplayName()),
+                groupBv: group.totalBV().toLocaleString(),
+                rows: groupUnits.map(forceUnit => this.createRosterUnitRowMarkup(forceUnit))
+            };
+        }).filter((group): group is { groupName: string; groupBv: string; rows: string[] } => group !== null);
+
+        const qrMarkup = await createPrintRosterQrMarkup(force);
+
+        const firstPageCapacity = 8.4;
+        const continuationPageCapacity = 9.2;
+        const groupHeaderCost = 0.42;
+        const rowCost = 0.95;
+
+        type PaginatedRosterSection = {
+            groupName: string;
+            groupBv: string;
+            rows: string[];
+        };
+
+        type PaginatedRosterPage = {
+            sections: PaginatedRosterSection[];
+            remainingCapacity: number;
+        };
+
+        const paginatedPages: PaginatedRosterPage[] = [];
+        const createPage = (isFirstPage: boolean): PaginatedRosterPage => {
+            const page = {
+                sections: [],
+                remainingCapacity: isFirstPage ? firstPageCapacity : continuationPageCapacity,
+            } satisfies PaginatedRosterPage;
+            paginatedPages.push(page);
+            return page;
+        };
+
+        let currentPage = createPage(true);
+
+        for (const group of groupData) {
+            for (const row of group.rows) {
+                let section = currentPage.sections.at(-1);
+                const needsGroupHeader = !section || section.groupName !== group.groupName;
+                const requiredCapacity = rowCost + (needsGroupHeader ? groupHeaderCost : 0);
+
+                if (currentPage.remainingCapacity < requiredCapacity) {
+                    currentPage = createPage(false);
+                    section = undefined;
+                }
+
+                if (!section || section.groupName !== group.groupName) {
+                    section = {
+                        groupName: group.groupName,
+                        groupBv: group.groupBv,
+                        rows: []
+                    };
+                    currentPage.sections.push(section);
+                    currentPage.remainingCapacity -= groupHeaderCost;
+                }
+
+                section.rows.push(row);
+                currentPage.remainingCapacity -= rowCost;
+            }
+        }
+
+        const headerMarkup = `
+            <div class="cbt-roster-header">
+                ${headerParts.length > 0 ? `<span class="cbt-roster-faction">${this.escapeHtml(headerParts.join(' · '))}</span>` : ''}
+                <span class="cbt-roster-force-name">${this.escapeHtml(force.name || force.displayName())}</span>
             </div>
         `;
+
+        const footerMarkup = `
+            <div class="cbt-roster-footer">
+                ${qrMarkup}
+                <div class="cbt-roster-footer-total">Total BV: ${totalBv.toLocaleString()}</div>
+            </div>
+        `;
+
+        return paginatedPages.map((page, index) => {
+            const groupsMarkup = page.sections.map(section => `
+                <section class="cbt-roster-group-section">
+                    <div class="cbt-roster-group-header">
+                        <span class="cbt-roster-group-name">${section.groupName}</span>
+                        <span class="cbt-roster-group-bv">BV: ${section.groupBv}</span>
+                    </div>
+                    <div class="cbt-roster-group-rows">
+                        ${section.rows.join('')}
+                    </div>
+                </section>
+            `).join('');
+
+            return `
+                <div class="cbt-roster-summary${index === paginatedPages.length - 1 ? ' last-roster-page' : ''}">
+                    <div class="cbt-roster-summary-page">
+                        ${index === 0 ? headerMarkup : ''}
+                        <div class="cbt-roster-groups">
+                            ${groupsMarkup}
+                        </div>
+                        ${index === paginatedPages.length - 1 ? footerMarkup : ''}
+                        ${index === 0 ? createPrintRosterLogoMarkup() : ''}
+                    </div>
+                </div>
+            `;
+        });
     }
 
-    private static createRosterTableRow(forceUnit: CBTForceUnit): string {
+    private static createRosterUnitRowMarkup(forceUnit: CBTForceUnit): string {
         const unit = forceUnit.getUnit();
-        const alias = forceUnit.alias();
-        const model = unit.model || '';
-        const chassisLine = alias ? `${unit.chassis} (${alias})` : unit.chassis;
-
-        const typeSubtype = [unit.type || '', unit.subtype && unit.subtype !== unit.type ? unit.subtype : '']
-            .filter(Boolean)
-            .join(' / ');
-        const equipment = this.formatEquipmentSummary(unit);
+        const unitName = [unit.chassis, unit.model].filter(Boolean).join(' ');
 
         return `
-            <tr>
-                <td class="col-unit">
-                    ${model ? `<div class="cbt-roster-unit-model">${this.escapeHtml(model)}</div>` : ''}
-                    <div class="cbt-roster-unit-chassis">${this.escapeHtml(chassisLine)}</div>
-                </td>
-                <td class="col-type">${this.escapeHtml(typeSubtype)}</td>
-                <td class="col-role">${this.escapeHtml(unit.role && unit.role !== 'None' ? unit.role : '')}</td>
-                <td class="col-base-bv is-numeric">${this.formatNumber(unit.bv)}</td>
-                <td class="col-gp is-numeric">${forceUnit.gunnerySkill()}/${forceUnit.pilotingSkill()}</td>
-                <td class="col-bv is-numeric is-bold">${this.formatNumber(forceUnit.getBv())}</td>
-                <td class="col-tons is-numeric">${this.formatNumber(unit.tons)}</td>
-                <td class="col-year">${this.createYearValue(unit)}</td>
-                <td class="col-rules">${this.escapeHtml(this.formatNumber(unit.level))}</td>
-                <td class="col-tech">${this.escapeHtml(this.formatTechBase(unit.techBase))}</td>
-                <td class="col-move">${this.escapeHtml(this.formatMovement(unit))}</td>
-                <td class="col-as is-numeric">${this.escapeHtml(this.formatArmorStructure(unit))}</td>
-                <td class="col-firepower is-numeric">${this.escapeHtml(this.formatNumber(unit._mdSumNoPhysical) || '—')}</td>
-                <td class="col-dpt is-numeric">${this.escapeHtml(this.formatNumber(unit.dpt) || '—')}</td>
-                <td class="col-equipment">${equipment}</td>
-            </tr>
+            <div class="cbt-roster-unit-row">
+                <div class="cbt-roster-unit-card-placeholder">${this.escapeHtml(unitName || unit.chassis || 'Unit')}</div>
+            </div>
         `;
-    }
-
-    private static createYearValue(unit: Unit): string {
-        const year = unit.year ? this.escapeHtml(String(unit.year)) : '—';
-        if (!unit._era?.img) {
-            return year;
-        }
-
-        const eraName = this.escapeHtml(unit._era.name || 'Era');
-        const eraSrc = this.escapeHtml(unit._era.img);
-        return `${year} <img src="${eraSrc}" class="cbt-roster-era-icon" alt="${eraName}" title="${eraName}" />`;
-    }
-
-    private static formatNumber(value: number | undefined | null): string {
-        if (value === undefined || value === null || Number.isNaN(value)) {
-            return '';
-        }
-        return value.toLocaleString();
-    }
-
-    private static formatMovement(unit: Unit): string {
-        const parts: string[] = [];
-        if (unit.walk) {
-            let ground = `${unit.walk}/${unit.run}`;
-            if (unit.run2 && unit.run2 !== unit.run) {
-                ground += `[${unit.run2}]`;
-            }
-            parts.push(ground);
-        }
-        if (unit.jump) {
-            parts.push(String(unit.jump));
-        }
-        if (unit.umu) {
-            parts.push(String(unit.umu));
-        }
-        return parts.join('/');
-    }
-
-    private static formatTechBase(techBase: Unit['techBase']): string {
-        switch (techBase) {
-            case 'Inner Sphere':
-                return 'IS';
-            case 'Mixed':
-                return 'Mix';
-            default:
-                return techBase || '';
-        }
-    }
-
-    private static formatArmorStructure(unit: Unit): string {
-        return `${this.formatNumber(unit.armor) || '0'}/${this.formatNumber(unit.internal) || '0'}`;
-    }
-
-    private static formatEquipmentSummary(unit: Unit): string {
-        const equipment = this.getExpandedComponents(unit.comp).map(comp => this.formatComponentText(comp));
-        const ammo = this.getAmmoComponents(unit.comp).map(comp => {
-            const text = this.formatComponentText(comp);
-            const caseLabel = this.getCaseLabel(unit, comp.l);
-            return caseLabel ? `[${text}]` : text;
-        });
-
-        const equipmentMarkup = equipment.length > 0
-            ? equipment
-                .map(entry => `<span class="cbt-roster-equipment-entry">${this.escapeHtml(entry)}</span>`)
-                .join('<span class="cbt-roster-equipment-sep">, </span>')
-            : '';
-
-        const ammoMarkup = ammo.length > 0
-            ? `
-                <div class="cbt-roster-equipment-ammo-line">
-                    <span class="cbt-roster-equipment-ammo-label">Ammo:</span>
-                    <span class="cbt-roster-equipment-ammo-values">${ammo
-                        .map(entry => `<span class="cbt-roster-equipment-entry">${this.escapeHtml(entry)}</span>`)
-                        .join('<span class="cbt-roster-equipment-sep">, </span>')}</span>
-                </div>
-            `
-            : '';
-
-        return `${equipmentMarkup}${ammoMarkup}`;
-    }
-
-    private static getExpandedComponents(components: UnitComponent[]): UnitComponent[] {
-        if (!components?.length) {
-            return [];
-        }
-
-        const aggregated = new Map<string, UnitComponent>();
-        for (const comp of components) {
-            if (comp.t === 'HIDDEN' || comp.t === 'S' || comp.t === 'X') continue;
-            if (comp.t === 'C') {
-                if (comp.eq?.hasAnyFlag(['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK'])) continue;
-                if (comp.eq?.hasAnyFlag(['F_CASE', 'F_CASE_II'])) continue;
-                if (comp.eq?.hasAnyFlag(['F_JUMP_JET'])) continue;
-            }
-
-            const key = comp.n || '';
-            if (!key) continue;
-
-            if (aggregated.has(key)) {
-                const existing = aggregated.get(key)!;
-                existing.q = (existing.q || 1) + (comp.q || 1);
-            } else {
-                aggregated.set(key, { ...comp });
-            }
-        }
-
-        return Array.from(aggregated.values()).sort((left, right) => (left.n ?? '').localeCompare(right.n ?? ''));
-    }
-
-    private static getAmmoComponents(components: UnitComponent[]): UnitComponent[] {
-        if (!components?.length) {
-            return [];
-        }
-
-        const aggregated = new Map<string, UnitComponent>();
-        for (const comp of components) {
-            if (comp.t !== 'X') continue;
-            const name = comp.n?.endsWith(' Ammo') ? comp.n.slice(0, -5).trimEnd() : comp.n;
-            const key = name || '';
-            if (!key) continue;
-
-            if (aggregated.has(key)) {
-                const existing = aggregated.get(key)!;
-                existing.q = (existing.q || 1) + (comp.q || 1);
-                existing.q2 = (existing.q2 || 0) + (comp.q2 || 0);
-            } else {
-                aggregated.set(key, { ...comp, n: name });
-            }
-        }
-
-        return Array.from(aggregated.values()).sort((left, right) => (left.n ?? '').localeCompare(right.n ?? ''));
-    }
-
-    private static formatComponentText(comp: UnitComponent): string {
-        const quantity = comp.q ?? 1;
-        const secondary = comp.q2 ? ` (${comp.q2})` : '';
-        return `${quantity}×${comp.n}${secondary}`;
-    }
-
-    private static getCaseLabel(unit: Unit, loc: string): string {
-        return this.getCaseByLocation(unit).get(this.normalizeLoc(loc)) ?? '';
-    }
-
-    private static getCaseByLocation(unit: Unit): Map<string, string> {
-        const result = new Map<string, string>();
-        for (const comp of unit.comp ?? []) {
-            if (!comp.eq || !comp.l) continue;
-
-            let label: string | undefined;
-            if (comp.eq.hasFlag('F_CASE_II')) label = '[CASE II]';
-            else if (comp.eq.hasFlag('F_CASE') || comp.eq.hasFlag('F_CASE_P')) label = '[CASE]';
-
-            if (label) {
-                result.set(this.normalizeLoc(comp.l), label);
-            }
-        }
-        return result;
-    }
-
-    private static normalizeLoc(loc: string): string {
-        if (!loc) return 'UNK';
-        let normalized = loc === '*' ? 'ALL' : loc.trim();
-        normalized = normalized.replace(/[^A-Za-z0-9_-]/g, '');
-        if (/^[0-9]/.test(normalized)) {
-            normalized = `L${normalized}`;
-        }
-        return normalized || 'UNK';
     }
 
     private static escapeHtml(value: string): string {
@@ -620,41 +465,35 @@ export class CBTPrintUtil {
             .replaceAll("'", '&#39;');
     }
 
-    private static getPrintStyles(): string {
+    private static getPrintStyles(printMargin: PrintAllOptions['printMargin']): string {
         return `
+            ${getPrintRosterBrandingStyles('#multipage-container')}
+
             #multipage-container .cbt-roster-summary {
-                position: relative;
+                display: flex;
+                align-items: flex-start;
+                justify-content: center;
                 background: white !important;
-                overflow: hidden;
+                overflow: visible;
+                padding: 0.16in;
             }
 
-            #multipage-container .cbt-roster-rotated-frame {
-                position: absolute;
-                top: 0;
-                left: 100%;
-                width: 100vh;
-                height: 100vw;
-                transform: rotate(90deg);
-                transform-origin: top left;
-            }
-
-            #multipage-container .cbt-roster-sheet {
+            #multipage-container .cbt-roster-summary-page {
+                position: relative;
                 width: 100%;
-                height: 100%;
                 background: white;
-                padding: 0.08in 0.12in 0.1in;
+                padding: 0.16in;
+                box-sizing: border-box;
                 font-family: sans-serif;
                 color: #222;
-                box-sizing: border-box;
-                display: flex;
-                flex-direction: column;
+                min-height: 100%;
             }
 
             #multipage-container .cbt-roster-header {
                 display: flex;
                 align-items: baseline;
                 gap: 0.1in;
-                padding: 0 0.04in 0.08in;
+                padding: 0.04in;
                 border-bottom: 2px solid #333;
                 margin-bottom: 0.1in;
             }
@@ -675,137 +514,83 @@ export class CBTPrintUtil {
             }
 
             #multipage-container .cbt-roster-groups {
-                flex: 1;
                 display: flex;
                 flex-direction: column;
-                gap: 0.06in;
-                overflow: hidden;
+                gap: 0.12in;
             }
 
             #multipage-container .cbt-roster-group-section {
-                break-inside: avoid;
-                page-break-inside: avoid;
+                    break-inside: auto;
+                    page-break-inside: auto;
             }
 
             #multipage-container .cbt-roster-group-header {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 0.03in 0.01in 0.02in;
-                border-top: 1px solid #cfcfcf;
-                border-bottom: 1px solid #cfcfcf;
+                padding: 0.04in 0.04in;
+                border-top: 1px solid #bbb;
+                border-bottom: 1px solid #bbb;
+                font-family: sans-serif;
+                color: #333;
+                    break-after: avoid-page;
+                    page-break-after: avoid;
             }
 
             #multipage-container .cbt-roster-group-name,
             #multipage-container .cbt-roster-group-bv {
+                font-size: 11pt;
                 font-weight: 700;
-                font-size: 10pt;
             }
 
-            #multipage-container .cbt-roster-table {
-                width: 100%;
-                border-collapse: collapse;
-                table-layout: auto;
-                font-size: 9pt;
+            #multipage-container .cbt-roster-group-rows {
+                display: flex;
+                flex-direction: column;
             }
 
-            #multipage-container .cbt-roster-table th,
-            #multipage-container .cbt-roster-table td {
-                padding: 3px 4px;
-                border-bottom: 1px solid #d7d7d7;
-                vertical-align: middle;
-                text-align: center;
-                box-sizing: border-box;
+            #multipage-container .cbt-roster-unit-row {
+                padding: 0.08in 0.04in;
+                border-bottom: 1px solid #ddd;
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+
+            #multipage-container .cbt-roster-unit-card-placeholder {
+                min-height: 0.8in;
+                border: 1px solid #bbb;
                 background: white;
-            }
-
-            #multipage-container .cbt-roster-table th {
-                border-bottom: 2px solid #666;
+                display: flex;
+                align-items: center;
+                padding: 0.12in;
+                box-sizing: border-box;
+                font-size: 12pt;
                 font-weight: 700;
-                white-space: nowrap;
-                line-height: 1.1;
-            }
-
-            #multipage-container .cbt-roster-era-icon {
-                width: 12px;
-                height: 12px;
-                object-fit: contain;
-                vertical-align: -1px;
-                filter: invert(1);
-            }
-
-            #multipage-container .cbt-roster-table .is-numeric {
-                text-align: center;
-                white-space: nowrap;
-            }
-
-            #multipage-container .cbt-roster-table .is-bold {
-                font-weight: 700;
-            }
-
-            #multipage-container .cbt-roster-table .col-unit,
-            #multipage-container .cbt-roster-table .col-role,
-            #multipage-container .cbt-roster-table .col-equipment {
-                white-space: normal;
-            }
-
-            #multipage-container .cbt-roster-table .col-unit,
-            #multipage-container .cbt-roster-table .col-equipment {
-                text-align: left;
-            }
-
-            #multipage-container .cbt-roster-table .col-equipment {
-                line-height: 1.22;
-            }
-
-            #multipage-container .cbt-roster-equipment-ammo-line {
-                margin-top: 2px;
-            }
-
-            #multipage-container .cbt-roster-equipment-ammo-label {
-                font-weight: 700;
-                margin-right: 3px;
-            }
-
-            #multipage-container .cbt-roster-equipment-entry {
-                white-space: nowrap;
-                display: inline;
-            }
-
-            #multipage-container .cbt-roster-equipment-sep {
-                white-space: normal;
-            }
-
-            #multipage-container .cbt-roster-unit-model {
-                font-size: 0.92em;
-                color: #555;
-                line-height: 1.15;
-            }
-
-            #multipage-container .cbt-roster-unit-chassis {
-                font-weight: 700;
-                line-height: 1.15;
-            }
-
-            #multipage-container .cbt-roster-table .col-year {
-                white-space: nowrap;
+                color: #111;
             }
 
             #multipage-container .cbt-roster-footer {
-                text-align: right;
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 0.12in;
                 font-weight: 700;
                 font-size: 11pt;
-                margin-top: 0.08in;
-                padding: 0.05in 0.04in 0;
+                margin-top: 0.14in;
+                padding: 0.08in 0.04in 0.05in;
                 border-top: 2px solid #333;
+                box-sizing: border-box;
             }
 
-            #multipage-container .cbt-roster-summary-content {
-                color: #111;
-                font-size: 36pt;
-                font-weight: 700;
-                letter-spacing: 0.08em;
-                text-align: center;
+            #multipage-container .cbt-roster-footer-total {
+                margin-left: auto;
+                text-align: right;
+                padding-top: 0.04in;
+            }
+
+            #multipage-container .cbt-roster-summary .print-roster-logo {
+                top: 0.12in;
+                right: 0.12in;
+                width: 1.35in;
             }
 
             @media print {
@@ -843,15 +628,10 @@ export class CBTPrintUtil {
                     break-after: page;
                     overflow: hidden;
                 }
+
                 #multipage-container .svg-container.last-svg { 
                     page-break-after: auto !important;
                     break-after: auto !important;
-                }
-
-                #multipage-container .cbt-roster-summary {
-                    width: 100% !important;
-                    height: 100% !important;
-                    min-height: 0 !important;
                 }
 
                 #multipage-container .svg-container > svg {
@@ -869,9 +649,33 @@ export class CBTPrintUtil {
                     break-inside: avoid;
                 }
 
+                #multipage-container .cbt-roster-summary,
+                #multipage-container .cbt-roster-header,
+                #multipage-container .cbt-roster-unit-row,
+                #multipage-container .cbt-roster-unit-card-placeholder {
+                    break-inside: avoid;
+                    page-break-inside: avoid;
+                }
+
+                #multipage-container .cbt-roster-summary {
+                    page-break-after: always;
+                    break-after: page;
+                }
+
+                #multipage-container .cbt-roster-group-section,
+                #multipage-container .cbt-roster-summary-page {
+                    break-inside: auto;
+                    page-break-inside: auto;
+                }
+
+                #multipage-container .cbt-roster-group-header {
+                    break-after: avoid-page;
+                    page-break-after: avoid;
+                }
+
                 @page {
                     size: auto;
-                    margin: 0.25in !important;
+                    margin: ${printMargin === 'none' ? '0in' : '0.25in'} !important;
                 }
             }
         `;

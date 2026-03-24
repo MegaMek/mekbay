@@ -110,14 +110,19 @@ export class ASPrintUtil {
         // Create print container - use different layouts for iOS vs other platforms
         const useFixedLayout = isIOS();
         const { overlay, cardComponentRefs } = useFixedLayout
-            ? await this.createFixedPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups)
-            : await this.createFlexPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups);
+            ? await this.createFixedPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups, printOptions.printMargin)
+            : await this.createFlexPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups, printOptions.printMargin);
 
-        // Append roster summary page if enabled
+        // Insert roster summary page first if enabled
         const printRosterSummary = printOptions.printRosterSummary;
         if (printRosterSummary && force) {
             const rosterPage = await this.createRosterSummaryPage(groups, force);
-            overlay.appendChild(rosterPage);
+            const firstContentNode = Array.from(overlay.children).find(child => !(child instanceof HTMLStyleElement));
+            if (firstContentNode) {
+                overlay.insertBefore(rosterPage, firstContentNode);
+            } else {
+                overlay.appendChild(rosterPage);
+            }
         }
 
         // Wait for fonts and images to load
@@ -198,7 +203,8 @@ export class ASPrintUtil {
         optionsService: OptionsService,
         cardItems: CardRenderItem[],
         pageBreakOnGroups: boolean,
-        groups: UnitGroup<ASForceUnit>[]
+        groups: UnitGroup<ASForceUnit>[],
+        printMargin: PrintAllOptions['printMargin']
     ): Promise<{ overlay: HTMLElement; cardComponentRefs: ComponentRef<AlphaStrikeCardComponent>[] }> {
         const componentRefs: ComponentRef<AlphaStrikeCardComponent>[] = [];
         const useHex = optionsService.options().ASUseHex;
@@ -210,7 +216,7 @@ export class ASPrintUtil {
         
         // Add print styles
         const style = document.createElement('style');
-        style.textContent = this.getFixedPrintStyles();
+        style.textContent = this.getFixedPrintStyles(printMargin);
         overlay.appendChild(style);
         
         // Group cards by groupIndex if pageBreakOnGroups is enabled
@@ -295,7 +301,8 @@ export class ASPrintUtil {
         optionsService: OptionsService,
         cardItems: CardRenderItem[],
         pageBreakOnGroups: boolean,
-        groups: UnitGroup<ASForceUnit>[]
+        groups: UnitGroup<ASForceUnit>[],
+        printMargin: PrintAllOptions['printMargin']
     ): Promise<{ overlay: HTMLElement; cardComponentRefs: ComponentRef<AlphaStrikeCardComponent>[] }> {
         const componentRefs: ComponentRef<AlphaStrikeCardComponent>[] = [];
         const useHex = optionsService.options().ASUseHex;
@@ -307,7 +314,7 @@ export class ASPrintUtil {
         
         // Add print styles
         const style = document.createElement('style');
-        style.textContent = this.getFlexPrintStyles();
+        style.textContent = this.getFlexPrintStyles(printMargin);
         overlay.appendChild(style);
         
         if (pageBreakOnGroups) {
@@ -464,7 +471,7 @@ export class ASPrintUtil {
      * Returns the CSS styles for fixed grid printing (iOS).
      * Card size: 88mm x 63mm (standard Alpha Strike card dimensions)
      */
-    private static getFixedPrintStyles(): string {
+    private static getFixedPrintStyles(printMargin: PrintAllOptions['printMargin']): string {
         const cardWidthIn = `${CARD_WIDTH_IN}in`;
         const cardHeightIn = `${CARD_HEIGHT_IN}in`;
         const pageWidthIn = `${PAGE_WIDTH_IN}in`;
@@ -576,13 +583,13 @@ export class ASPrintUtil {
                 }
 
                 .as-roster-summary {
-                    page-break-before: always;
-                    break-before: page;
+                    page-break-after: always;
+                    break-after: page;
                 }
 
                 @page {
                     size: auto;
-                    margin: 0.25in !important;
+                    margin: ${printMargin === 'none' ? '0in' : '0.25in'} !important;
                 }
             }
         `;
@@ -592,7 +599,7 @@ export class ASPrintUtil {
      * Returns the CSS styles for flexible printing (non-iOS platforms).
      * Uses flexbox with auto-wrapping for portrait/landscape support.
      */
-    private static getFlexPrintStyles(): string {
+    private static getFlexPrintStyles(printMargin: PrintAllOptions['printMargin']): string {
         const cardWidthIn = `${CARD_WIDTH_IN}in`;
         const cardHeightIn = `${CARD_HEIGHT_IN}in`;
         
@@ -667,13 +674,13 @@ export class ASPrintUtil {
                 }
 
                 .as-roster-summary {
-                    page-break-before: always;
-                    break-before: page;
+                    page-break-after: always;
+                    break-after: page;
                 }
 
                 @page {
                     size: auto;
-                    margin: 0.25in !important;
+                    margin: ${printMargin === 'none' ? '0' : '0.25in'} !important;
                 }
 
             }
