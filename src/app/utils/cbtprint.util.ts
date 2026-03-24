@@ -31,10 +31,12 @@
  * affiliated with Microsoft.
  */
 
-import type { HeatProfile } from '../models/force-serialization';
+import type { HeatProfile, SerializedC3NetworkGroup } from '../models/force-serialization';
 import type { SheetService } from '../services/sheet.service';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { PrintAllOptions } from '../models/print-options.model';
+import type { Unit, UnitComponent } from '../models/units.model';
+import { C3NetworkType } from '../models/c3-network.model';
 import { createPrintRosterLogoMarkup, createPrintRosterQrMarkup, getPrintRosterBrandingStyles } from './print-roster-branding.util';
 
 /*
@@ -446,14 +448,337 @@ export class CBTPrintUtil {
     }
 
     private static createRosterUnitRowMarkup(forceUnit: CBTForceUnit): string {
+        return this.createRosterCardMarkup(forceUnit);
+    }
+
+    private static createRosterCardMarkup(forceUnit: CBTForceUnit): string {
         const unit = forceUnit.getUnit();
-        const unitName = [unit.chassis, unit.model].filter(Boolean).join(' ');
+        const alias = forceUnit.alias();
+        const model = unit.model || '';
+        const chassisLine = alias ? `${unit.chassis} (${alias})` : unit.chassis;
+        const displayName = [chassisLine, model].filter(Boolean).join(' ');
+        const baseBv = unit.bv ?? null;
+        const adjustedBv = forceUnit.getBv();
+        const typeSubtype = [unit.type || '', unit.subtype && unit.subtype !== unit.type ? unit.subtype : '']
+            .filter(Boolean)
+            .join(' / ');
+        const equipmentDetails = this.formatEquipmentDetails(unit);
+        const adjustedBvMarkup = this.formatNumber(adjustedBv) || '—';
+        const adjustedBvWithBaseMarkup = baseBv !== null && baseBv !== adjustedBv
+            ? `${adjustedBvMarkup} (${this.formatNumber(baseBv) || '—'})`
+            : adjustedBvMarkup;
+        const networkMarkup = this.formatNetworkMarkup(forceUnit);
+        const role = unit.role && unit.role !== 'None' ? unit.role : '—';
+        const roleTypeLine = typeSubtype ? `${role} — ${typeSubtype}` : role;
+        const detailItems = [
+            this.createRosterCardDetailMarkup('Gunnery / Piloting', `${forceUnit.gunnerySkill()} / ${forceUnit.pilotingSkill()}`),
+            this.createRosterCardDetailMarkup('BV', adjustedBvWithBaseMarkup),
+            this.createRosterCardDetailMarkup('Tons', this.formatNumber(unit.tons) || '—'),
+            this.createRosterCardDetailMarkup('Year', this.createYearValue(unit)),
+            this.createRosterCardDetailMarkup('Tech / Rules', `${this.escapeHtml(this.formatTechBase(unit.techBase) || '—')} / ${this.escapeHtml(this.formatNumber(unit.level) || '—')}`),
+            this.createRosterCardDetailMarkup('Move', this.escapeHtml(this.formatMovement(unit) || '—')),
+            this.createRosterCardDetailMarkup('Armor / Structure', `${this.escapeHtml(this.formatNumber(unit.armor) || '0')} / ${this.escapeHtml(this.formatNumber(unit.internal) || '0')}`),
+            this.createRosterCardDetailMarkup('Firepower (Dmg/Turn)', `${this.escapeHtml(this.formatNumber(unit._mdSumNoPhysical) || '—')} (${this.escapeHtml(this.formatNumber(unit.dpt) || '—')})`),
+            networkMarkup
+                ? this.createRosterCardDetailMarkup('Network', networkMarkup, 'cbt-roster-card-detail cbt-roster-card-detail-wide cbt-roster-card-detail-network')
+                : '',
+            this.createRosterCardDetailMarkup('Equipment', equipmentDetails.equipment, 'cbt-roster-card-detail cbt-roster-card-detail-wide'),
+            equipmentDetails.ammo
+                ? this.createRosterCardDetailMarkup('Ammo', equipmentDetails.ammo, 'cbt-roster-card-detail cbt-roster-card-detail-wide')
+                : '',
+        ].filter(Boolean).join('');
 
         return `
-            <div class="cbt-roster-unit-row">
-                <div class="cbt-roster-unit-card-placeholder">${this.escapeHtml(unitName || unit.chassis || 'Unit')}</div>
+            <article class="cbt-roster-unit-row cbt-roster-unit-card">
+                <div class="cbt-roster-unit-card-header">
+                    <div class="cbt-roster-unit-card-title">
+                        <div class="cbt-roster-unit-name">${this.escapeHtml(displayName || unit.chassis || 'Unit')}</div>
+                    </div>
+                    <div class="cbt-roster-unit-card-meta">
+                        <div class="cbt-roster-unit-meta-line">${this.escapeHtml(roleTypeLine)}</div>
+                    </div>
+                </div>
+                <div class="cbt-roster-unit-card-details">
+                    ${detailItems}
+                </div>
+            </article>
+        `;
+    }
+
+    private static createRosterCardDetailMarkup(label: string, value: string, className: string = 'cbt-roster-card-detail'): string {
+        return `
+            <div class="${className}">
+                <span class="cbt-roster-card-label">${label}:</span>
+                <span class="cbt-roster-card-value">${value}</span>
             </div>
         `;
+    }
+
+    private static formatNetworkMarkup(forceUnit: CBTForceUnit): string {
+        const force = forceUnit.force;
+        const networks = force?.c3Networks() ?? [];
+        if (networks.length === 0) {
+            return '';
+        }
+
+        const networkInfo = this.getNetworkDisplayInfo(forceUnit, networks);
+        if (!networkInfo) {
+            return '';
+        }
+
+        const primary = this.escapeHtml(networkInfo.primary);
+        const secondary = networkInfo.secondary ? this.escapeHtml(networkInfo.secondary) : '';
+        return secondary ? `${primary} (${secondary})` : primary;
+    }
+
+    private static getNetworkDisplayInfo(
+        forceUnit: CBTForceUnit,
+        networks: SerializedC3NetworkGroup[]
+    ): { primary: string; secondary?: string } | null {
+        const unitId = forceUnit.id;
+        const peerNetwork = networks.find(network => network.peerIds?.includes(unitId));
+        if (peerNetwork) {
+            return this.getPeerNetworkDisplayInfo(peerNetwork, networks);
+        }
+
+        const masterNetwork = networks.find(network => network.masterId === unitId);
+        const parentNetwork = networks.find(network => network.members?.some(member => this.parseNetworkMemberUnitId(member) === unitId));
+
+        if (masterNetwork && parentNetwork) {
+            return {
+                primary: 'C3 Submaster',
+                secondary: this.getNetworkMasterUnitName(forceUnit, parentNetwork.masterId),
+            };
+        }
+
+        if (masterNetwork) {
+            return { primary: 'C3 Master' };
+        }
+
+        if (parentNetwork) {
+            return {
+                primary: 'C3 Slave',
+                secondary: this.getNetworkMasterUnitName(forceUnit, parentNetwork.masterId),
+            };
+        }
+
+        return null;
+    }
+
+    private static getPeerNetworkDisplayInfo(
+        network: SerializedC3NetworkGroup,
+        networks: SerializedC3NetworkGroup[]
+    ): { primary: string; secondary?: string } {
+        switch (network.type) {
+            case C3NetworkType.C3I:
+                return {
+                    primary: 'C3i',
+                    secondary: this.getPeerNetworkLetter(network, networks, C3NetworkType.C3I),
+                };
+            case C3NetworkType.NOVA:
+                return { primary: 'Nova' };
+            case C3NetworkType.NAVAL:
+                return { primary: 'Naval C3' };
+            default:
+                return { primary: '—' };
+        }
+    }
+
+    private static getPeerNetworkLetter(
+        network: SerializedC3NetworkGroup,
+        networks: SerializedC3NetworkGroup[],
+        networkType: C3NetworkType,
+    ): string {
+        const peerNetworks = networks.filter(entry => entry.type === networkType && (entry.peerIds?.length ?? 0) > 0);
+        const index = peerNetworks.findIndex(entry => entry.id === network.id);
+        return index >= 0 ? this.indexToLetterLabel(index) : '';
+    }
+
+    private static indexToLetterLabel(index: number): string {
+        let current = index;
+        let label = '';
+
+        do {
+            label = String.fromCharCode(65 + (current % 26)) + label;
+            current = Math.floor(current / 26) - 1;
+        } while (current >= 0);
+
+        return label;
+    }
+
+    private static parseNetworkMemberUnitId(member: string): string {
+        const [unitId] = member.split(':', 1);
+        return unitId;
+    }
+
+    private static getNetworkMasterUnitName(forceUnit: CBTForceUnit, masterId: string | undefined): string {
+        if (!masterId) {
+            return '';
+        }
+
+        const masterUnit = forceUnit.force.units().find(unit => unit.id === masterId);
+        return masterUnit?.getUnit().chassis || masterUnit?.getUnit().model || '';
+    }
+
+    private static createYearValue(unit: Unit): string {
+        const year = unit.year ? this.escapeHtml(String(unit.year)) : '—';
+        if (!unit._era?.img) {
+            return year;
+        }
+
+        const eraName = this.escapeHtml(unit._era.name || 'Era');
+        const eraSrc = this.escapeHtml(unit._era.img);
+        return `<span class="cbt-roster-year-value"><span class="cbt-roster-year-text">${year}</span><img src="${eraSrc}" class="cbt-roster-era-icon" alt="${eraName}" title="${eraName}" /></span>`;
+    }
+
+    private static formatNumber(value: number | undefined | null): string {
+        if (value === undefined || value === null || Number.isNaN(value)) {
+            return '';
+        }
+        return value.toLocaleString();
+    }
+
+    private static formatMovement(unit: Unit): string {
+        const parts: string[] = [];
+        if (unit.walk) {
+            let ground = `${unit.walk} / ${unit.run}`;
+            if (unit.run2 && unit.run2 !== unit.run) {
+                ground += ` [${unit.run2}]`;
+            }
+            parts.push(ground);
+        }
+        if (unit.jump) {
+            parts.push(String(unit.jump));
+        }
+        if (unit.umu) {
+            parts.push(String(unit.umu));
+        }
+        return parts.join(' / ');
+    }
+
+    private static formatTechBase(techBase: Unit['techBase']): string {
+        switch (techBase) {
+            case 'Inner Sphere':
+                return 'IS';
+            case 'Mixed':
+                return 'Mix';
+            default:
+                return techBase || '';
+        }
+    }
+
+    private static formatEquipmentDetails(unit: Unit): { equipment: string; ammo: string } {
+        const equipment = this.getExpandedComponents(unit.comp).map(comp => this.formatComponentText(comp));
+        const ammo = this.getAmmoComponents(unit.comp).map(comp => {
+            const text = this.formatComponentText(comp);
+            const caseLabel = this.getCaseLabel(unit, comp.l);
+            return caseLabel ? `[${text}]` : text;
+        });
+
+        const equipmentMarkup = equipment.length > 0
+            ? equipment
+                .map(entry => `<span class="cbt-roster-equipment-entry">${this.escapeHtml(entry)}</span>`)
+                .join('<span class="cbt-roster-equipment-sep">, </span>')
+            : '&mdash;';
+
+        const ammoMarkup = ammo.length > 0
+            ? ammo
+                .map(entry => `<span class="cbt-roster-equipment-entry">${this.escapeHtml(entry)}</span>`)
+                .join('<span class="cbt-roster-equipment-sep">, </span>')
+            : '';
+
+        return {
+            equipment: equipmentMarkup,
+            ammo: ammoMarkup,
+        };
+    }
+
+    private static getExpandedComponents(components: UnitComponent[]): UnitComponent[] {
+        if (!components?.length) {
+            return [];
+        }
+
+        const aggregated = new Map<string, UnitComponent>();
+        for (const comp of components) {
+            if (comp.t === 'HIDDEN' || comp.t === 'S' || comp.t === 'X') continue;
+            if (comp.t === 'C') {
+                if (comp.eq?.hasAnyFlag(['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK'])) continue;
+                if (comp.eq?.hasAnyFlag(['F_CASE', 'F_CASE_II'])) continue;
+                if (comp.eq?.hasAnyFlag(['F_JUMP_JET'])) continue;
+            }
+
+            const key = comp.n || '';
+            if (!key) continue;
+
+            if (aggregated.has(key)) {
+                const existing = aggregated.get(key)!;
+                existing.q = (existing.q || 1) + (comp.q || 1);
+            } else {
+                aggregated.set(key, { ...comp });
+            }
+        }
+
+        return Array.from(aggregated.values()).sort((left, right) => (left.n ?? '').localeCompare(right.n ?? ''));
+    }
+
+    private static getAmmoComponents(components: UnitComponent[]): UnitComponent[] {
+        if (!components?.length) {
+            return [];
+        }
+
+        const aggregated = new Map<string, UnitComponent>();
+        for (const comp of components) {
+            if (comp.t !== 'X') continue;
+            const name = comp.n?.endsWith(' Ammo') ? comp.n.slice(0, -5).trimEnd() : comp.n;
+            const key = name || '';
+            if (!key) continue;
+
+            if (aggregated.has(key)) {
+                const existing = aggregated.get(key)!;
+                existing.q = (existing.q || 1) + (comp.q || 1);
+                existing.q2 = (existing.q2 || 0) + (comp.q2 || 0);
+            } else {
+                aggregated.set(key, { ...comp, n: name });
+            }
+        }
+
+        return Array.from(aggregated.values()).sort((left, right) => (left.n ?? '').localeCompare(right.n ?? ''));
+    }
+
+    private static formatComponentText(comp: UnitComponent): string {
+        const quantity = comp.q ?? 1;
+        const secondary = comp.q2 ? ` (${comp.q2})` : '';
+        return `${quantity}×${comp.n}${secondary}`;
+    }
+
+    private static getCaseLabel(unit: Unit, loc: string): string {
+        return this.getCaseByLocation(unit).get(this.normalizeLoc(loc)) ?? '';
+    }
+
+    private static getCaseByLocation(unit: Unit): Map<string, string> {
+        const result = new Map<string, string>();
+        for (const comp of unit.comp ?? []) {
+            if (!comp.eq || !comp.l) continue;
+
+            let label: string | undefined;
+            if (comp.eq.hasFlag('F_CASE_II')) label = '[CASE II]';
+            else if (comp.eq.hasFlag('F_CASE') || comp.eq.hasFlag('F_CASE_P')) label = '[CASE]';
+
+            if (label) {
+                result.set(this.normalizeLoc(comp.l), label);
+            }
+        }
+        return result;
+    }
+
+    private static normalizeLoc(loc: string): string {
+        if (!loc) return 'UNK';
+        let normalized = loc === '*' ? 'ALL' : loc.trim();
+        normalized = normalized.replace(/[^A-Za-z0-9_-]/g, '');
+        if (/^[0-9]/.test(normalized)) {
+            normalized = `L${normalized}`;
+        }
+        return normalized || 'UNK';
     }
 
     private static escapeHtml(value: string): string {
@@ -549,23 +874,105 @@ export class CBTPrintUtil {
             }
 
             #multipage-container .cbt-roster-unit-row {
-                padding: 0.08in 0.04in;
+                padding: 0.04in;
                 border-bottom: 1px solid #ddd;
                 break-inside: avoid;
                 page-break-inside: avoid;
+                box-sizing: border-box;
+                background: white;
             }
 
-            #multipage-container .cbt-roster-unit-card-placeholder {
-                min-height: 0.8in;
-                border: 1px solid #bbb;
-                background: white;
+            #multipage-container .cbt-roster-unit-card {
+                display: block;
+            }
+
+            #multipage-container .cbt-roster-unit-card-header {
                 display: flex;
-                align-items: center;
-                padding: 0.12in;
-                box-sizing: border-box;
-                font-size: 12pt;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 0.18in;
+            }
+
+            #multipage-container .cbt-roster-unit-card-title {
+                flex: 1 1 auto;
+                min-width: 0;
+            }
+
+            #multipage-container .cbt-roster-unit-card-meta {
+                flex: 0 0 auto;
+                text-align: right;
+            }
+
+            #multipage-container .cbt-roster-unit-meta-line {
                 font-weight: 700;
-                color: #111;
+                line-height: 1.2;
+                font-size: 10pt;
+            }
+
+            #multipage-container .cbt-roster-unit-card-details {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                column-gap: 0.22in;
+                row-gap: 0.02in;
+            }
+
+            #multipage-container .cbt-roster-card-detail {
+                display: flex;
+                align-items: flex-start;
+                gap: 0.06in;
+                font-size: 10pt;
+                line-height: 1.1;
+            }
+
+            #multipage-container .cbt-roster-card-detail-wide {
+                grid-column: 1 / -1;
+                margin: 0;
+            }
+
+            #multipage-container .cbt-roster-card-detail-network {
+                padding-top: 0;
+            }
+
+            #multipage-container .cbt-roster-card-label {
+                flex: 0 0 auto;
+                font-weight: 400;
+            }
+
+            #multipage-container .cbt-roster-card-value {
+                min-width: 0;
+                font-weight: 700;
+            }
+
+            #multipage-container .cbt-roster-year-value {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.02in;
+                white-space: nowrap;
+            }
+
+            #multipage-container .cbt-roster-year-text {
+                line-height: 1;
+            }
+
+            #multipage-container .cbt-roster-era-icon {
+                width: 16px;
+                height: 16px;
+                object-fit: contain;
+                flex: 0 0 auto;
+                vertical-align: middle;
+                margin-top: -2px;
+                filter: invert(1);
+            }
+
+            #multipage-container .cbt-roster-equipment-entry,
+            #multipage-container .cbt-roster-equipment-sep {
+                white-space: normal;
+            }
+
+            #multipage-container .cbt-roster-unit-name {
+                font-weight: 700;
+                line-height: 1.2;
+                font-size: 13pt;
             }
 
             #multipage-container .cbt-roster-footer {
@@ -652,7 +1059,7 @@ export class CBTPrintUtil {
                 #multipage-container .cbt-roster-summary,
                 #multipage-container .cbt-roster-header,
                 #multipage-container .cbt-roster-unit-row,
-                #multipage-container .cbt-roster-unit-card-placeholder {
+                #multipage-container .cbt-roster-unit-card {
                     break-inside: avoid;
                     page-break-inside: avoid;
                 }
