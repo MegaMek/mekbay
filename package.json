@@ -27,6 +27,7 @@
     "@zxing/ngx-scanner": "^21.0.0",
     "angularx-qrcode": "^21.0.5",
     "jszip": "^3.10.1",
+    "pagedjs": "^0.4.3",
     "tslib": "^2.8.1",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
