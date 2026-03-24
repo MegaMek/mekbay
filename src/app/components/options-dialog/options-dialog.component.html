@@ -24,6 +24,20 @@
             </div>
             <div class="option-col">
                 <div class="option-row">
+                    <label for="availabilitySource">Availability source:</label>
+                    <select id="availabilitySource" class="bt-select"
+                        [value]="optionsService.options().availabilitySource"
+                        (change)="onAvailabilitySourceChange($event)">
+                        <option value="mul">Master Unit List (default)</option>
+                        <option value="megamek">MegaMek</option>
+                    </select>
+                </div>
+                <div class="description">
+                    <p>Choose which faction availability catalog MekBay uses for faction-related lookups.</p>
+                </div>
+            </div>
+            <div class="option-col">
+                <div class="option-row">
                     <label for="autoConvertFilters">Auto-convert filters to semantic:</label>
                     <select id="autoConvertFilters" class="bt-select"
                         [value]="optionsService.options().automaticallyConvertFiltersToSemantic"
