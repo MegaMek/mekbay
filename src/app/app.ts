@@ -411,6 +411,11 @@ export class App {
     };
 
     private contextMenuHandler = (event: Event) => {
+        const target = event.target;
+        if (target instanceof Element && target.closest('[data-allow-native-context-menu="true"]')) {
+            return;
+        }
+
         event.preventDefault();
     };
 
