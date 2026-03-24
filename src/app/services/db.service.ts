@@ -38,6 +38,7 @@ import type { Factions } from '../models/factions.model';
 import type { Options } from '../models/options.model';
 import type { Quirks } from '../models/quirks.model';
 import type { Sourcebooks } from '../models/sourcebook.model';
+import type { MegaMekFactions, MegaMekFactionsData } from '../models/megamek/factions.model';
 import type { MULUnitSources } from '../models/mul-unit-sources.model';
 import type { EquipmentData } from '../models/equipment.model';
 import type { SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-serialization';
@@ -61,6 +62,7 @@ const DB_STORE = 'store';
 const UNITS_KEY = 'units';
 const EQUIPMENT_KEY = 'equipment';
 const FACTIONS_KEY = 'factions';
+const MEGAMEK_FACTIONS_KEY = 'megamekFactions';
 const ERAS_KEY = 'eras';
 const SOURCEBOOKS_KEY = 'sourcebooks';
 const SHEETS_STORE = 'sheetsStore';
@@ -512,6 +514,14 @@ export class DbService {
 
     public async saveFactions(factionsData: Factions): Promise<void> {
         return await this.saveDataFromGeneralStore(factionsData, FACTIONS_KEY);
+    }
+
+    public async getMegaMekFactions(): Promise<MegaMekFactionsData | MegaMekFactions | null> {
+        return await this.getDataFromGeneralStore<MegaMekFactionsData | MegaMekFactions>(MEGAMEK_FACTIONS_KEY);
+    }
+
+    public async saveMegaMekFactions(factionsData: MegaMekFactionsData | MegaMekFactions): Promise<void> {
+        return await this.saveDataFromGeneralStore(factionsData, MEGAMEK_FACTIONS_KEY);
     }
 
     public async getEras(): Promise<Eras | null> {
