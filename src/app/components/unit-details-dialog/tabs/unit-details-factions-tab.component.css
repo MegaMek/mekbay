@@ -86,6 +86,20 @@ hr.divider {
     grid-column: 1 / -1;
 }
 
+.catch-all-faction {
+    cursor: pointer;
+    display: inline;
+}
+
+.catch-all-faction > strong {
+    color: var(--bt-yellow);
+}
+
+.collapsed-faction-item {
+    display: inline-flex;
+    align-items: baseline;
+}
+
 /* Responsive */
 @container (max-width: 768px) {
     .faction-availability-list {
