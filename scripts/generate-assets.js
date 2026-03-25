@@ -34,7 +34,8 @@
 const fs = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
-const { spawn } = require('child_process');
+const { spawnSync } = require('child_process');
+const esbuild = require('esbuild');
 
 const root = path.resolve(__dirname, '..');
 
@@ -71,8 +72,41 @@ if (fs.existsSync(envPath)) {
 const mmDataPath = process.env.MM_DATA_PATH || '../mm-data';
 const sourcebooksDir = path.resolve(root, mmDataPath, 'data/sourcebooks');
 const sourcebooksOutput = path.join(root, 'public', 'assets', 'sourcebooks.json');
+const megaMekAvailabilityScript = path.join(__dirname, 'generate-megamek-availability.ts');
 
 console.log(`[Assets] Using sourcebooks from: ${sourcebooksDir}`);
+
+function runTypeScriptScript(scriptPath) {
+  if (!fs.existsSync(scriptPath)) {
+    throw new Error(`TypeScript script not found: ${scriptPath}`);
+  }
+
+  const tempDir = path.join(root, 'tmp');
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+
+  const outFile = path.join(tempDir, `${path.basename(scriptPath, '.ts')}.cjs`);
+  esbuild.buildSync({
+    entryPoints: [scriptPath],
+    outfile: outFile,
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    target: 'node20',
+    logLevel: 'silent'
+  });
+
+  const result = spawnSync(process.execPath, [outFile], {
+    cwd: root,
+    stdio: 'inherit',
+    env: process.env
+  });
+
+  if (result.status !== 0) {
+    throw new Error(`${path.basename(scriptPath)} exited with code ${result.status}`);
+  }
+}
 
 function generateSourcebooks() {
   if (!fs.existsSync(sourcebooksDir)) {
@@ -148,6 +182,7 @@ function generateSourcebooks() {
 
 async function main() {
   try {
+    runTypeScriptScript(megaMekAvailabilityScript);
     generateSourcebooks();
     // await runCompressAssets();
     console.log('[Assets] All asset generation complete.');
