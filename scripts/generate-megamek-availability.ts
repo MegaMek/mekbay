@@ -8,6 +8,8 @@ import yaml from 'js-yaml';
 type JsonObject = Record<string, unknown>;
 type CompactAvailabilityByRating = [number, number, number, number, number];
 type CompactAvailabilityValue = number | `${number}+` | `${number}-` | CompactAvailabilityByRating;
+type CompactWeightedByRating = [number, number, number, number, number];
+type CompactWeightedValue = number | CompactWeightedByRating;
 
 interface DateRange {
     start?: number;
@@ -69,13 +71,15 @@ interface MegaMekEra {
 
 interface ParsedAvailability {
     factionKey: string;
-    startYear: number;
+    fileYear: number;
+    entryYear?: number;
     baseAvailability?: number;
     ratingAdjustment: -1 | 0 | 1;
     byRating?: Record<string, number>;
 }
 
 type CompactEraAvailability = Record<string, CompactAvailabilityValue>;
+type CompactWeightedEraAvailability = Record<string, CompactWeightedValue>;
 
 interface CompactAvailabilityRecordBase {
     t: string;
@@ -91,6 +95,13 @@ interface CompactModelRecord extends CompactAvailabilityRecordBase {
 }
 
 type CompactAvailabilityRecord = CompactChassisRecord | CompactModelRecord;
+
+interface CompactWeightedModelRecord {
+    t: string;
+    c: string;
+    m: string;
+    e: Record<string, CompactWeightedEraAvailability>;
+}
 
 interface EraFactionStats {
     pctOmni?: number[];
@@ -153,8 +164,13 @@ interface MegaMekAvailabilityExport extends MegaMekAvailabilitySharedMetadata {
     factionEraData: Record<string, Record<string, EraFactionStats>>;
     chassis: Record<string, CompactChassisRecord>;
     models: Record<string, CompactModelRecord>;
+    availability: Record<string, CompactModelRecord>;
 }
 
+const BEAUTIFY_OUTPUT = true;
+const JSON_INDENT = 2;
+const INLINE_JSON_ARRAY_MAX_ITEMS = 8;
+const INLINE_JSON_ARRAY_MAX_LENGTH = 40;
 const APP_ROOT = path.resolve(__dirname, '..');
 const MM_DATA_PATH = process.env.MM_DATA_PATH || '../mm-data';
 
@@ -166,6 +182,34 @@ const MM_FACTIONS_IMAGE_DIR = path.join(APP_ROOT, 'public', 'images', 'mmfaction
 const OUTPUT_DIR = path.join(APP_ROOT, 'public', 'assets');
 const EXPAND_RATING_ADJUSTMENTS = true;
 const GENERAL_FACTION_KEY = 'General';
+type UnitType =
+    | 'Aero'
+    | 'Handheld Weapon'
+    | 'Infantry'
+    | 'Mek'
+    | 'Naval'
+    | 'ProtoMek'
+    | 'Tank'
+    | 'VTOL';
+
+const COMPILED_UNIT_TYPE_BY_XML_UNIT_TYPE: Record<string, UnitType> = {
+    Mek: 'Mek',
+    Tank: 'Tank',
+    BattleArmor: 'Infantry',
+    Infantry: 'Infantry',
+    ProtoMek: 'ProtoMek',
+    VTOL: 'VTOL',
+    Naval: 'Naval',
+    'Conventional Fighter': 'Aero',
+    AeroSpaceFighter: 'Aero',
+    'Small Craft': 'Aero',
+    Dropship: 'Aero',
+    Jumpship: 'Aero',
+    Warship: 'Aero',
+    'Space Station': 'Aero',
+};
+
+const VALID_XML_UNIT_TYPES = new Set(Object.keys(COMPILED_UNIT_TYPE_BY_XML_UNIT_TYPE));
 const DEFAULT_CANONICAL_RATINGS = ['F', 'D', 'C', 'B', 'A'] as const;
 const CANONICAL_RATING_INDEX: Record<(typeof DEFAULT_CANONICAL_RATINGS)[number], number> = {
     F: 0,
@@ -913,7 +957,7 @@ function parseAvailability(rawCode: string, eraYear: number): ParsedAvailability
 
         return {
             factionKey,
-            startYear: eraYear,
+            fileYear: eraYear,
             ratingAdjustment: 0,
             baseAvailability: Object.values(byRating).reduce(
                 (highest, value) => Math.max(highest, value),
@@ -940,7 +984,8 @@ function parseAvailability(rawCode: string, eraYear: number): ParsedAvailability
 
     return {
         factionKey: parts[0],
-        startYear: parts[2] ? Number.parseInt(parts[2], 10) : eraYear,
+        fileYear: eraYear,
+        entryYear: parts[2] ? Number.parseInt(parts[2], 10) : undefined,
         baseAvailability: Number.parseInt(availabilityToken, 10),
         ratingAdjustment,
     };
@@ -957,13 +1002,38 @@ function parseAvailabilityList(raw: unknown, eraYear: number): ParsedAvailabilit
         .map((entry) => parseAvailability(entry, eraYear));
 }
 
+function warnOnInvalidXmlUnitType(unitType: string, sourceLabel: string): void {
+    if (!unitType || VALID_XML_UNIT_TYPES.has(unitType)) {
+        return;
+    }
+
+    console.warn(
+        `[MegaMek] unexpected unit type "${unitType}" in ${sourceLabel}`
+    );
+}
+
+function compileXmlUnitType(unitType: string, sourceLabel: string): UnitType {
+    const compiledUnitType = COMPILED_UNIT_TYPE_BY_XML_UNIT_TYPE[unitType];
+    if (compiledUnitType) {
+        return compiledUnitType;
+    }
+
+    console.warn(
+        `[MegaMek] could not compile unit type "${unitType}" in ${sourceLabel}; keeping original value`
+    );
+    return unitType as UnitType;
+}
+
 function parseWeightDistributionNode(node: Record<string, unknown>): { unitType: string; weights: number[] } | null {
     if (!node.unitType || !node['#text']) {
         return null;
     }
 
+    const unitType = String(node.unitType);
+    warnOnInvalidXmlUnitType(unitType, 'weightDistribution');
+
     return {
-        unitType: String(node.unitType),
+        unitType,
         weights: String(node['#text'])
             .split(',')
             .map((value) => Number.parseInt(value.trim(), 10))
@@ -1039,11 +1109,19 @@ function normalizeRatingName(value: string): string {
     return value.trim().toUpperCase();
 }
 
-function clampAvailabilityValue(value: number): number {
-    return Math.min(10, Math.max(0, value));
+function normalizeAvailabilityValue(value: number): number {
+    if (!Number.isFinite(value)) {
+        return 0;
+    }
+
+    return Math.trunc(value);
 }
 
 function createEmptyAvailabilityByRating(): CompactAvailabilityByRating {
+    return [0, 0, 0, 0, 0];
+}
+
+function createEmptyWeightedByRating(): CompactWeightedByRating {
     return [0, 0, 0, 0, 0];
 }
 
@@ -1232,14 +1310,14 @@ function addCompactAvailability(
             continue;
         }
 
-        if (!isFactionActiveInYear(factions, availability.factionKey, availability.startYear)) {
-            // console.log(`[MegaMek] skipping availability for inactive faction ${availability.factionKey} in year ${availability.startYear} (${sourceLabel})`);
+        const availabilityYear = resolveAvailabilityYearForFaction(factions, availability, sourceLabel);
+        if (availabilityYear === undefined) {
             continue;
         }
 
-        const mulId = findEraMulId(eras, availability.startYear);
+        const mulId = findEraMulId(eras, availabilityYear);
         if (mulId === undefined) {
-            console.log(`[MegaMek] skipping availability for ${availability.factionKey} in year ${availability.startYear} (${sourceLabel}) due to undefined era`);
+            console.log(`[MegaMek] skipping availability for ${availability.factionKey} in year ${availabilityYear} (${sourceLabel}) due to undefined era`);
             continue;
         }
 
@@ -1253,6 +1331,53 @@ function addCompactAvailability(
             : mergeCompactAvailabilityValue(previousValue, nextValue);
         target[eraKey] = eraAvailability;
     }
+}
+
+function resolveAvailabilityYearForFaction(
+    factions: Record<string, UniverseFactionRecord>,
+    availability: ParsedAvailability,
+    sourceLabel: string
+): number | undefined {
+    const fileYearIsActive = isFactionActiveInYear(factions, availability.factionKey, availability.fileYear);
+    const entryYearIsActive = availability.entryYear !== undefined
+        ? isFactionActiveInYear(factions, availability.factionKey, availability.entryYear)
+        : undefined;
+
+    if (availability.entryYear !== undefined) {
+        if (entryYearIsActive) {
+            if (!fileYearIsActive && availability.entryYear !== availability.fileYear) {
+                // console.warn(
+                //     `[MegaMek] using availability entry year ${availability.entryYear} for inactive file year ` +
+                //     `${availability.fileYear} on faction ${availability.factionKey} (${sourceLabel})`
+                // );
+            }
+
+            return availability.entryYear;
+        }
+
+        if (fileYearIsActive) {
+            // console.warn(
+            //     `[MegaMek] using file year ${availability.fileYear} because availability entry year ` +
+            //     `${availability.entryYear} is inactive for faction ${availability.factionKey} (${sourceLabel})`
+            // );
+            return availability.fileYear;
+        }
+
+        // console.warn(
+        //     `[MegaMek] keeping availability for inactive faction ${availability.factionKey}: ` +
+        //     `entry year ${availability.entryYear}, file year ${availability.fileYear} (${sourceLabel})`
+        // );
+        return availability.entryYear;
+    }
+
+    if (!fileYearIsActive) {
+        // console.warn(
+        //     `[MegaMek] keeping availability for inactive faction ${availability.factionKey}: ` +
+        //     `file year ${availability.fileYear} (${sourceLabel})`
+        // );
+    }
+
+    return availability.fileYear;
 }
 
 function encodeCompactAvailabilityValue(
@@ -1274,7 +1399,7 @@ function encodeCompactAvailabilityValue(
         return expandAdjustedAvailabilityByRating(availability, factions);
     }
 
-    const baseAvailability = clampAvailabilityValue(availability.baseAvailability ?? 0);
+    const baseAvailability = normalizeAvailabilityValue(availability.baseAvailability ?? 0);
     if (profile.canonicalLevels.length > 0) {
         return createAvailabilityByCanonicalLevels(profile.canonicalLevels, baseAvailability);
     }
@@ -1301,7 +1426,7 @@ function normalizeExplicitAvailabilityByRating(
         }
 
         const index = CANONICAL_RATING_INDEX[canonical];
-        normalized[index] = Math.max(normalized[index], clampAvailabilityValue(value));
+        normalized[index] = Math.max(normalized[index], normalizeAvailabilityValue(value));
     }
 
     return normalized;
@@ -1315,12 +1440,12 @@ function expandAdjustedAvailabilityByRating(
     const canonicalLevels = profile.canonicalLevels.length > 0
         ? profile.canonicalLevels
         : [...DEFAULT_CANONICAL_RATINGS];
-    const baseAvailability = clampAvailabilityValue(availability.baseAvailability ?? 0);
+    const baseAvailability = normalizeAvailabilityValue(availability.baseAvailability ?? 0);
     const expanded = createEmptyAvailabilityByRating();
 
     for (let index = 0; index < canonicalLevels.length; index += 1) {
         const canonical = canonicalLevels[index];
-        const value = clampAvailabilityValue(availability.ratingAdjustment > 0
+        const value = normalizeAvailabilityValue(availability.ratingAdjustment > 0
             ? baseAvailability - (canonicalLevels.length - 1 - index)
             : baseAvailability - index);
 
@@ -1362,6 +1487,173 @@ function expandAvailabilityValueToByRating(value: CompactAvailabilityValue): Com
 
     const numericValue = Number.parseInt(String(value), 10);
     return [numericValue, numericValue, numericValue, numericValue, numericValue];
+}
+
+function hasPositiveAvailabilityValue(value: CompactAvailabilityValue | undefined): boolean {
+    if (value === undefined) {
+        return false;
+    }
+
+    return expandAvailabilityValueToByRating(value).some((entry) => entry > 0);
+}
+
+function calcAvailabilityWeight(value: number): number {
+    return Math.pow(2, value / 2);
+}
+
+function calcAvailabilityFromWeight(weight: number): number {
+    if (weight <= 0) {
+        return 0;
+    }
+
+    return 2 * Math.log2(weight);
+}
+
+function averageAvailabilityNumbers(values: number[]): number {
+    if (values.length === 0) {
+        return 0;
+    }
+
+    const totalWeight = values.reduce((sum, value) => sum + calcAvailabilityWeight(value), 0);
+    return normalizeAvailabilityValue(calcAvailabilityFromWeight(totalWeight / values.length));
+}
+
+function averageCompactAvailabilityValues(values: CompactAvailabilityValue[]): CompactAvailabilityValue | undefined {
+    if (values.length === 0) {
+        return undefined;
+    }
+
+    const expandedValues = values.map((value) => expandAvailabilityValueToByRating(value));
+    const averaged = createEmptyAvailabilityByRating();
+
+    for (let index = 0; index < averaged.length; index += 1) {
+        averaged[index] = averageAvailabilityNumbers(expandedValues.map((value) => value[index]));
+    }
+
+    return averaged;
+}
+
+function resolveCompactAvailabilityForFaction(
+    eraAvailability: CompactEraAvailability,
+    factions: Record<string, UniverseFactionRecord>,
+    factionKey: string,
+    visited = new Set<string>()
+): CompactAvailabilityValue | undefined {
+    if (Object.prototype.hasOwnProperty.call(eraAvailability, factionKey)) {
+        return eraAvailability[factionKey];
+    }
+
+    if (visited.has(factionKey)) {
+        return undefined;
+    }
+
+    visited.add(factionKey);
+
+    if (factionKey === GENERAL_FACTION_KEY) {
+        return eraAvailability[GENERAL_FACTION_KEY];
+    }
+
+    const faction = factions[factionKey];
+    if (!faction) {
+        return eraAvailability[GENERAL_FACTION_KEY];
+    }
+
+    if (faction.fallBackFactions.length === 1) {
+        return resolveCompactAvailabilityForFaction(
+            eraAvailability,
+            factions,
+            faction.fallBackFactions[0],
+            new Set(visited)
+        );
+    }
+
+    if (faction.fallBackFactions.length > 1) {
+        const resolvedParents = faction.fallBackFactions
+            .map((fallbackFactionKey) => resolveCompactAvailabilityForFaction(
+                eraAvailability,
+                factions,
+                fallbackFactionKey,
+                new Set(visited)
+            ))
+            .filter((value): value is CompactAvailabilityValue => value !== undefined);
+
+        return averageCompactAvailabilityValues(resolvedParents);
+    }
+
+    return eraAvailability[GENERAL_FACTION_KEY];
+}
+
+function combineResolvedAvailabilityValues(
+    chassisValue: CompactAvailabilityValue | undefined,
+    modelValue: CompactAvailabilityValue | undefined
+): CompactAvailabilityValue | undefined {
+    if (chassisValue === undefined || modelValue === undefined) {
+        return undefined;
+    }
+
+    const chassisByRating = expandAvailabilityValueToByRating(chassisValue);
+    const modelByRating = expandAvailabilityValueToByRating(modelValue);
+    const combined = createEmptyAvailabilityByRating();
+
+    for (let index = 0; index < combined.length; index += 1) {
+        const chassisAvailability = chassisByRating[index];
+        const modelAvailability = modelByRating[index];
+        combined[index] = (chassisAvailability <= 0 || modelAvailability <= 0)
+            ? 0
+            : averageAvailabilityNumbers([chassisAvailability, modelAvailability]);
+    }
+
+    return combined;
+}
+
+function calcWeightedScore(relativeWeight: number): number {
+    if (!Number.isFinite(relativeWeight) || relativeWeight <= 0) {
+        return 0;
+    }
+
+    const score = 5.5 + calcAvailabilityFromWeight(relativeWeight);
+    return Math.min(10, Math.max(1, Math.round(score)));
+}
+
+function expandWeightedValueToByRating(value: CompactWeightedValue): CompactWeightedByRating {
+    if (Array.isArray(value)) {
+        return [...value] as CompactWeightedByRating;
+    }
+
+    return [value, value, value, value, value];
+}
+
+function hasPositiveWeightedValue(value: CompactWeightedValue | undefined): boolean {
+    if (value === undefined) {
+        return false;
+    }
+
+    return expandWeightedValueToByRating(value).some((entry) => entry > 0);
+}
+
+function mergeCompactWeightedByRating(
+    current: CompactWeightedByRating,
+    incoming: CompactWeightedByRating
+): CompactWeightedByRating {
+    const merged = [...current] as CompactWeightedByRating;
+    for (let index = 0; index < merged.length; index += 1) {
+        merged[index] = Math.max(current[index], incoming[index]);
+    }
+    return merged;
+}
+
+function mergeCompactWeightedValueForMul(
+    current: CompactWeightedValue,
+    incoming: CompactWeightedValue
+): CompactWeightedValue {
+    if (!Array.isArray(current) && !Array.isArray(incoming)) {
+        return Math.max(current, incoming);
+    }
+
+    return mergeCompactWeightedByRating(
+        expandWeightedValueToByRating(current),
+        expandWeightedValueToByRating(incoming)
+    );
 }
 
 function mergeCompactAvailabilityValueForMul(
@@ -1522,11 +1814,348 @@ function buildModelRecordKey(unitType: string, chassisName: string, modelName: s
     return `${unitType}|${chassisName}|${modelName}`;
 }
 
+function hasAnyPositiveDirectAvailability(eraAvailability: CompactEraAvailability): boolean {
+    return Object.values(eraAvailability).some((value) => hasPositiveAvailabilityValue(value));
+}
+
+function warnOnAvailabilityMismatches(
+    chassis: Record<string, CompactChassisRecord>,
+    models: Record<string, CompactModelRecord>,
+    factions: Record<string, UniverseFactionRecord>
+): void {
+    const modelsByChassis = new Map<string, CompactModelRecord[]>();
+
+    for (const modelRecord of Object.values(models)) {
+        const chassisKey = buildChassisRecordKey(modelRecord.t, modelRecord.c);
+        const groupedModels = modelsByChassis.get(chassisKey) || [];
+        groupedModels.push(modelRecord);
+        modelsByChassis.set(chassisKey, groupedModels);
+    }
+
+    for (const [chassisKey, chassisRecord] of Object.entries(chassis)) {
+        const chassisModels = modelsByChassis.get(chassisKey) || [];
+        const eraKeys = new Set<string>([
+            ...Object.keys(chassisRecord.e),
+            ...chassisModels.flatMap((modelRecord) => Object.keys(modelRecord.e)),
+        ]);
+
+        for (const eraKey of eraKeys) {
+            const chassisEraAvailability = chassisRecord.e[eraKey] || {};
+            const directFactionKeys = new Set<string>([
+                ...Object.keys(chassisEraAvailability),
+                ...chassisModels.flatMap((modelRecord) => Object.keys(modelRecord.e[eraKey] || {})),
+            ]);
+
+            for (const modelRecord of chassisModels) {
+                const modelEraAvailability = modelRecord.e[eraKey] || {};
+                for (const [factionKey, modelValue] of Object.entries(modelEraAvailability)) {
+                    if (!hasPositiveAvailabilityValue(modelValue)) {
+                        continue;
+                    }
+
+                    if (factionKey === GENERAL_FACTION_KEY
+                        && !hasPositiveAvailabilityValue(chassisEraAvailability[GENERAL_FACTION_KEY])
+                        && hasAnyPositiveDirectAvailability(chassisEraAvailability)) {
+                        continue;
+                    }
+
+                    if (hasPositiveAvailabilityValue(resolveCompactAvailabilityForFaction(
+                        chassisEraAvailability,
+                        factions,
+                        factionKey,
+                    ))) {
+                        continue;
+                    }
+
+                    console.warn(
+                        `[MegaMek] model availability without chassis availability: ${modelRecord.t}|${modelRecord.c}|${modelRecord.m} ` +
+                        `era ${eraKey} faction ${factionKey}`
+                    );
+                }
+            }
+
+            for (const [factionKey, chassisValue] of Object.entries(chassisEraAvailability)) {
+                if (!hasPositiveAvailabilityValue(chassisValue)) {
+                    continue;
+                }
+
+                const hasAnyModelAvailability = chassisModels.some((modelRecord) => {
+                    const modelEraAvailability = modelRecord.e[eraKey] || {};
+                    return hasPositiveAvailabilityValue(resolveCompactAvailabilityForFaction(
+                        modelEraAvailability,
+                        factions,
+                        factionKey,
+                    ));
+                });
+
+                if (hasAnyModelAvailability) {
+                    continue;
+                }
+
+                console.warn(
+                    `[MegaMek] chassis availability without model availability: ${chassisKey} ` +
+                    `era ${eraKey} faction ${factionKey}`
+                );
+            }
+
+            for (const factionKey of directFactionKeys) {
+                const resolvedChassisAvailability = resolveCompactAvailabilityForFaction(
+                    chassisEraAvailability,
+                    factions,
+                    factionKey,
+                );
+                if (!hasPositiveAvailabilityValue(resolvedChassisAvailability)) {
+                    continue;
+                }
+
+                const hasResolvedModelAvailability = chassisModels.some((modelRecord) => {
+                    const modelEraAvailability = modelRecord.e[eraKey] || {};
+                    return hasPositiveAvailabilityValue(resolveCompactAvailabilityForFaction(
+                        modelEraAvailability,
+                        factions,
+                        factionKey,
+                    ));
+                });
+
+                if (!hasResolvedModelAvailability) {
+                    console.warn(
+                        `[MegaMek] chassis availability without resolved model availability: ${chassisKey} ` +
+                        `era ${eraKey} faction ${factionKey}`
+                    );
+                }
+            }
+        }
+    }
+}
+
+function buildCombinedAvailabilityRecords(
+    chassis: Record<string, CompactChassisRecord>,
+    models: Record<string, CompactModelRecord>,
+    factions: Record<string, UniverseFactionRecord>
+): Record<string, CompactModelRecord> {
+    const combinedAvailability: Record<string, CompactModelRecord> = {};
+
+    for (const [modelKey, modelRecord] of Object.entries(models)) {
+        const chassisKey = buildChassisRecordKey(modelRecord.t, modelRecord.c);
+        const chassisRecord = chassis[chassisKey];
+
+        if (!chassisRecord) {
+            console.warn(`[MegaMek] missing chassis record for model ${modelKey}`);
+            continue;
+        }
+
+        const combinedRecord: CompactModelRecord = {
+            t: modelRecord.t,
+            c: modelRecord.c,
+            m: modelRecord.m,
+            e: {},
+        };
+
+        const eraKeys = new Set<string>([
+            ...Object.keys(chassisRecord.e),
+            ...Object.keys(modelRecord.e),
+        ]);
+
+        for (const eraKey of eraKeys) {
+            const chassisEraAvailability = chassisRecord.e[eraKey] || {};
+            const modelEraAvailability = modelRecord.e[eraKey] || {};
+            const factionKeys = new Set<string>([
+                ...Object.keys(chassisEraAvailability),
+                ...Object.keys(modelEraAvailability),
+            ]);
+
+            const combinedEraAvailability: CompactEraAvailability = {};
+
+            for (const factionKey of factionKeys) {
+                const combinedValue = combineResolvedAvailabilityValues(
+                    resolveCompactAvailabilityForFaction(chassisEraAvailability, factions, factionKey),
+                    resolveCompactAvailabilityForFaction(modelEraAvailability, factions, factionKey)
+                );
+
+                if (combinedValue !== undefined) {
+                    combinedEraAvailability[factionKey] = combinedValue;
+                }
+            }
+
+            if (Object.keys(combinedEraAvailability).length > 0) {
+                combinedRecord.e[eraKey] = combinedEraAvailability;
+            }
+        }
+
+        combinedAvailability[modelKey] = combinedRecord;
+    }
+
+    return combinedAvailability;
+}
+
+function buildWeightedAvailabilityRecords(
+    chassis: Record<string, CompactChassisRecord>,
+    models: Record<string, CompactModelRecord>,
+    factions: Record<string, UniverseFactionRecord>
+): Record<string, CompactWeightedModelRecord> {
+    const weightedAvailability: Record<string, CompactWeightedModelRecord> = {};
+    const modelsByChassis = new Map<string, Array<[string, CompactModelRecord]>>();
+    const chassisKeysByUnitType = new Map<string, string[]>();
+
+    for (const [modelKey, modelRecord] of Object.entries(models)) {
+        const chassisKey = buildChassisRecordKey(modelRecord.t, modelRecord.c);
+        const groupedModels = modelsByChassis.get(chassisKey) || [];
+        groupedModels.push([modelKey, modelRecord]);
+        modelsByChassis.set(chassisKey, groupedModels);
+
+        weightedAvailability[modelKey] = {
+            t: modelRecord.t,
+            c: modelRecord.c,
+            m: modelRecord.m,
+            e: {},
+        };
+    }
+
+    for (const [chassisKey, chassisRecord] of Object.entries(chassis)) {
+        const chassisKeys = chassisKeysByUnitType.get(chassisRecord.t) || [];
+        chassisKeys.push(chassisKey);
+        chassisKeysByUnitType.set(chassisRecord.t, chassisKeys);
+    }
+
+    for (const chassisKeys of chassisKeysByUnitType.values()) {
+        const eraKeys = new Set<string>();
+
+        for (const chassisKey of chassisKeys) {
+            const chassisRecord = chassis[chassisKey];
+            Object.keys(chassisRecord.e).forEach((eraKey) => eraKeys.add(eraKey));
+            for (const [, modelRecord] of modelsByChassis.get(chassisKey) || []) {
+                Object.keys(modelRecord.e).forEach((eraKey) => eraKeys.add(eraKey));
+            }
+        }
+
+        for (const eraKey of eraKeys) {
+            const factionKeys = new Set<string>();
+
+            for (const chassisKey of chassisKeys) {
+                const chassisRecord = chassis[chassisKey];
+                Object.keys(chassisRecord.e[eraKey] || {}).forEach((factionKey) => factionKeys.add(factionKey));
+                for (const [, modelRecord] of modelsByChassis.get(chassisKey) || []) {
+                    Object.keys(modelRecord.e[eraKey] || {}).forEach((factionKey) => factionKeys.add(factionKey));
+                }
+            }
+
+            for (const factionKey of factionKeys) {
+                const chassisWeightTotal = createEmptyWeightedByRating();
+                const modelWeightsByKey = new Map<string, CompactWeightedByRating>();
+
+                for (const chassisKey of chassisKeys) {
+                    const chassisRecord = chassis[chassisKey];
+                    const chassisValue = resolveCompactAvailabilityForFaction(
+                        chassisRecord.e[eraKey] || {},
+                        factions,
+                        factionKey,
+                    );
+
+                    if (chassisValue === undefined) {
+                        continue;
+                    }
+
+                    const chassisByRating = expandAvailabilityValueToByRating(chassisValue);
+                    const siblingModelWeights = new Map<string, CompactWeightedByRating>();
+                    const totalModelWeight = createEmptyWeightedByRating();
+
+                    for (const [modelKey, modelRecord] of modelsByChassis.get(chassisKey) || []) {
+                        const modelValue = resolveCompactAvailabilityForFaction(
+                            modelRecord.e[eraKey] || {},
+                            factions,
+                            factionKey,
+                        );
+
+                        if (modelValue === undefined) {
+                            continue;
+                        }
+
+                        const modelByRating = expandAvailabilityValueToByRating(modelValue);
+                        const weightedByRating = createEmptyWeightedByRating();
+                        let hasPositiveWeight = false;
+
+                        for (let index = 0; index < weightedByRating.length; index += 1) {
+                            if (chassisByRating[index] <= 0 || modelByRating[index] <= 0) {
+                                continue;
+                            }
+
+                            const modelWeight = calcAvailabilityWeight(modelByRating[index]);
+                            weightedByRating[index] = modelWeight;
+                            totalModelWeight[index] += modelWeight;
+                            hasPositiveWeight = true;
+                        }
+
+                        if (hasPositiveWeight) {
+                            siblingModelWeights.set(modelKey, weightedByRating);
+                        }
+                    }
+
+                    for (let index = 0; index < chassisWeightTotal.length; index += 1) {
+                        if (chassisByRating[index] <= 0 || totalModelWeight[index] <= 0) {
+                            continue;
+                        }
+
+                        const chassisWeight = calcAvailabilityWeight(chassisByRating[index]);
+                        chassisWeightTotal[index] += chassisWeight;
+
+                        for (const [modelKey, siblingWeights] of siblingModelWeights.entries()) {
+                            if (siblingWeights[index] <= 0) {
+                                continue;
+                            }
+
+                            const currentWeights = modelWeightsByKey.get(modelKey) || createEmptyWeightedByRating();
+                            currentWeights[index] += chassisWeight * siblingWeights[index] / totalModelWeight[index];
+                            modelWeightsByKey.set(modelKey, currentWeights);
+                        }
+                    }
+                }
+
+                const positiveModelCounts = createEmptyWeightedByRating();
+                for (const rawWeights of modelWeightsByKey.values()) {
+                    for (let index = 0; index < positiveModelCounts.length; index += 1) {
+                        if (rawWeights[index] > 0) {
+                            positiveModelCounts[index] += 1;
+                        }
+                    }
+                }
+
+                for (const [modelKey, rawWeights] of modelWeightsByKey.entries()) {
+                    const weightedByRating = createEmptyWeightedByRating();
+                    let hasPositiveEntry = false;
+
+                    for (let index = 0; index < weightedByRating.length; index += 1) {
+                        if (rawWeights[index] <= 0 || chassisWeightTotal[index] <= 0) {
+                            continue;
+                        }
+
+                        const relativeWeight = (rawWeights[index] * positiveModelCounts[index]) / chassisWeightTotal[index];
+                        weightedByRating[index] = calcWeightedScore(relativeWeight);
+                        hasPositiveEntry = hasPositiveEntry || weightedByRating[index] > 0;
+                    }
+
+                    if (!hasPositiveEntry) {
+                        continue;
+                    }
+
+                    const modelRecord = weightedAvailability[modelKey];
+                    const weightedEraAvailability = modelRecord.e[eraKey] || {};
+                    weightedEraAvailability[factionKey] = weightedByRating;
+                    modelRecord.e[eraKey] = weightedEraAvailability;
+                }
+            }
+        }
+    }
+
+    return Object.fromEntries(
+        Object.entries(weightedAvailability).filter(([, record]) => Object.keys(record.e).length > 0)
+    );
+}
+
 function loadForceGeneratorData(
     dirPath: string,
     eras: MegaMekEra[],
     factions: Record<string, UniverseFactionRecord>
-): Pick<MegaMekAvailabilityExport, 'factionEraData' | 'chassis' | 'models'> & { forceGeneratorYears: number[] } {
+): Pick<MegaMekAvailabilityExport, 'factionEraData' | 'chassis' | 'models' | 'availability'> & { forceGeneratorYears: number[] } {
     const factionEraData: Record<string, Record<string, EraFactionStats>> = {};
     const chassis: Record<string, CompactChassisRecord> = {};
     const models: Record<string, CompactModelRecord> = {};
@@ -1609,6 +2238,7 @@ function loadForceGeneratorData(
         for (const chassisNode of ensureArray(parsed.ratgen?.units?.chassis)) {
             const chassisName = String(chassisNode.name);
             const unitType = String(chassisNode.unitType);
+            warnOnInvalidXmlUnitType(unitType, `chassis ${chassisName} in ${sourceFileName}`);
             const omniType = chassisNode.omni === undefined ? undefined : String(chassisNode.omni);
             let omni: 'Clan' | 'IS' | undefined;
             const chassisKey = buildChassisRecordKey(unitType, chassisName);
@@ -1659,10 +2289,14 @@ function loadForceGeneratorData(
         }
     }
 
+    warnOnAvailabilityMismatches(chassis, models, factions);
+    const availability = buildCombinedAvailabilityRecords(chassis, models, factions);
+
     return {
         factionEraData,
         chassis,
         models,
+        availability,
         forceGeneratorYears,
     };
 }
@@ -1749,9 +2383,79 @@ function groupForceGeneratorYearsByEra(
     return groupedYears;
 }
 
+function isJsonInlinePrimitive(value: unknown): value is string | number | boolean | null {
+    return value === null
+        || typeof value === 'string'
+        || typeof value === 'number'
+        || typeof value === 'boolean';
+}
+
+function tryFormatInlineJsonArray(value: unknown[]): string | undefined {
+    if (value.length === 0) {
+        return '[]';
+    }
+
+    if (value.length > INLINE_JSON_ARRAY_MAX_ITEMS || !value.every((entry) => isJsonInlinePrimitive(entry))) {
+        return undefined;
+    }
+
+    const rendered = `[${value.map((entry) => JSON.stringify(entry)).join(',')}]`;
+    return rendered.length <= INLINE_JSON_ARRAY_MAX_LENGTH ? rendered : undefined;
+}
+
+function formatJsonValue(value: unknown, indentLevel = 0): string | undefined {
+    if (value && typeof value === 'object' && typeof (value as { toJSON?: () => unknown }).toJSON === 'function') {
+        return formatJsonValue((value as { toJSON: () => unknown }).toJSON(), indentLevel);
+    }
+
+    if (Array.isArray(value)) {
+        const inlineArray = tryFormatInlineJsonArray(value);
+        if (inlineArray !== undefined) {
+            return inlineArray;
+        }
+
+        if (value.length === 0) {
+            return '[]';
+        }
+
+        const currentIndent = ' '.repeat(indentLevel * JSON_INDENT);
+        const nextIndent = ' '.repeat((indentLevel + 1) * JSON_INDENT);
+        const renderedItems = value.map((entry) => `${nextIndent}${formatJsonValue(entry, indentLevel + 1) ?? 'null'}`);
+        return `[` + os.EOL
+            + renderedItems.join(`,${os.EOL}`)
+            + os.EOL
+            + `${currentIndent}]`;
+    }
+
+    if (value && typeof value === 'object') {
+        const entries = Object.entries(value as Record<string, unknown>)
+            .map(([key, entryValue]) => [key, formatJsonValue(entryValue, indentLevel + 1)] as const)
+            .filter(([, renderedValue]) => renderedValue !== undefined);
+
+        if (entries.length === 0) {
+            return '{}';
+        }
+
+        const currentIndent = ' '.repeat(indentLevel * JSON_INDENT);
+        const nextIndent = ' '.repeat((indentLevel + 1) * JSON_INDENT);
+        const renderedEntries = entries.map(
+            ([key, renderedValue]) => `${nextIndent}${JSON.stringify(key)}: ${renderedValue}`
+        );
+        return `{` + os.EOL
+            + renderedEntries.join(`,${os.EOL}`)
+            + os.EOL
+            + `${currentIndent}}`;
+    }
+
+    return JSON.stringify(value);
+}
+
 function writeJsonFile(filePath: string, data: unknown): void {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(data) + os.EOL, 'utf8');
+    const contents = BEAUTIFY_OUTPUT
+        ? formatJsonValue(data) ?? ''
+        : JSON.stringify(data);
+    fs.writeFileSync(filePath, contents + os.EOL, 'utf8');
 }
 
 function collapseUniformAvailabilityValueForWrite(value: CompactAvailabilityValue): CompactAvailabilityValue {
@@ -1787,10 +2491,136 @@ function collapseUniformAvailabilityRecordsForWrite<
     );
 }
 
+function mergeCompactEraAvailabilityForWrite(
+    current: Record<string, CompactEraAvailability>,
+    incoming: Record<string, CompactEraAvailability>
+): Record<string, CompactEraAvailability> {
+    const merged: Record<string, CompactEraAvailability> = {
+        ...current,
+    };
+
+    for (const [eraKey, incomingEraAvailability] of Object.entries(incoming)) {
+        const currentEraAvailability = merged[eraKey] || {};
+        const nextEraAvailability: CompactEraAvailability = {
+            ...currentEraAvailability,
+        };
+
+        for (const [factionKey, incomingValue] of Object.entries(incomingEraAvailability)) {
+            const currentValue = nextEraAvailability[factionKey];
+            nextEraAvailability[factionKey] = currentValue === undefined
+                ? incomingValue
+                : mergeCompactAvailabilityValueForMul(currentValue, incomingValue);
+        }
+
+        merged[eraKey] = nextEraAvailability;
+    }
+
+    return merged;
+}
+
+function mergeCompactAvailabilityRecordForWrite<TRecord extends CompactAvailabilityRecord>(
+    current: TRecord,
+    incoming: TRecord
+): TRecord {
+    return {
+        ...current,
+        e: mergeCompactEraAvailabilityForWrite(current.e, incoming.e),
+    };
+}
+
+function buildCompiledRecordKey(record: CompactAvailabilityRecord, unitType: UnitType): string {
+    if ('m' in record) {
+        return buildModelRecordKey(unitType, record.c, record.m);
+    }
+
+    return buildChassisRecordKey(unitType, record.c);
+}
+
+function compileCompactAvailabilityRecords<TRecord extends CompactAvailabilityRecord>(
+    records: Record<string, TRecord>,
+    sourceLabel: string
+): Record<string, TRecord> {
+    const compiledRecords: Record<string, TRecord> = {};
+    const originalTypesByCompiledKey = new Map<string, Set<string>>();
+
+    for (const record of Object.values(records)) {
+        const compiledUnitType = compileXmlUnitType(record.t, `${sourceLabel} ${record.c}`);
+        const compiledRecord = {
+            ...record,
+            t: compiledUnitType,
+        } as TRecord;
+        const compiledKey = buildCompiledRecordKey(record, compiledUnitType);
+        const originalTypes = originalTypesByCompiledKey.get(compiledKey) || new Set<string>();
+
+        if (compiledRecords[compiledKey]) {
+            if (!originalTypes.has(record.t) && originalTypes.size > 0) {
+                const collidedTypes = [...originalTypes, record.t].sort((left, right) => left.localeCompare(right));
+                console.warn(
+                    `[MegaMek] ${sourceLabel} collision after unit type compilation for ${compiledKey}: ${collidedTypes.join(', ')}`
+                );
+            }
+
+            compiledRecords[compiledKey] = mergeCompactAvailabilityRecordForWrite(
+                compiledRecords[compiledKey],
+                compiledRecord
+            );
+        } else {
+            compiledRecords[compiledKey] = compiledRecord;
+        }
+
+        originalTypes.add(record.t);
+        originalTypesByCompiledKey.set(compiledKey, originalTypes);
+    }
+
+    return compiledRecords;
+}
+
 function compactAvailabilityRecordsToArrayForWrite<TRecord extends CompactAvailabilityRecord>(
     records: Record<string, TRecord>
 ): TRecord[] {
     const collapsedRecords = collapseUniformAvailabilityRecordsForWrite(records);
+    return Object.entries(collapsedRecords)
+        .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey, undefined, { numeric: true }))
+        .map(([, record]) => record);
+}
+
+function collapseUniformWeightedValueForWrite(value: CompactWeightedValue): CompactWeightedValue {
+    if (!Array.isArray(value)) {
+        return value;
+    }
+
+    const [first, ...rest] = value;
+    return rest.every((entry) => entry === first) ? first : value;
+}
+
+function collapseUniformWeightedRecordsForWrite(
+    records: Record<string, CompactWeightedModelRecord>
+): Record<string, CompactWeightedModelRecord> {
+    return Object.fromEntries(
+        Object.entries(records).map(([recordKey, record]) => [
+            recordKey,
+            {
+                ...record,
+                e: Object.fromEntries(
+                    Object.entries(record.e).map(([eraKey, eraAvailability]) => [
+                        eraKey,
+                        Object.fromEntries(
+                            Object.entries(eraAvailability).map(([factionKey, value]) => [
+                                factionKey,
+                                collapseUniformWeightedValueForWrite(value),
+                            ])
+                        ),
+                    ])
+                ),
+            },
+        ])
+    );
+}
+
+function compactWeightedRecordsToArrayForWrite(
+    records: Record<string, CompactWeightedModelRecord>
+): CompactWeightedModelRecord[] {
+    const collapsedRecords = collapseUniformWeightedRecordsForWrite(records);
     return Object.entries(collapsedRecords)
         .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey, undefined, { numeric: true }))
         .map(([, record]) => record);
@@ -1860,6 +2690,37 @@ function remapEraAvailabilityToMulIds(
     return mulizedAvailability;
 }
 
+function remapWeightedEraAvailabilityToMulIds(
+    eraAvailability: CompactWeightedEraAvailability,
+    factions: Record<string, UniverseFactionRecord>
+): CompactWeightedEraAvailability {
+    const mulizedAvailability: CompactWeightedEraAvailability = {};
+
+    for (const [factionKey, value] of Object.entries(eraAvailability)) {
+        const faction = factions[factionKey];
+        if (factionKey !== GENERAL_FACTION_KEY && !faction) {
+            console.log(`[MegaMek] skipping MUL remap for unknown faction ${factionKey}`);
+            continue;
+        }
+
+        const resolvedMulIds = resolveFactionMulIds(factions, factionKey);
+        if (resolvedMulIds.length === 0) {
+            console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to missing mulId`);
+            continue;
+        }
+
+        for (const mulId of resolvedMulIds) {
+            const mulKey = String(mulId);
+            const previousValue = mulizedAvailability[mulKey];
+            mulizedAvailability[mulKey] = previousValue === undefined
+                ? value
+                : mergeCompactWeightedValueForMul(previousValue, value);
+        }
+    }
+
+    return mulizedAvailability;
+}
+
 function mulizeCompactAvailabilityRecords<TRecord extends CompactAvailabilityRecord>(
     records: Record<string, TRecord>,
     factions: Record<string, UniverseFactionRecord>
@@ -1882,6 +2743,28 @@ function mulizeCompactAvailabilityRecords<TRecord extends CompactAvailabilityRec
     );
 }
 
+function mulizeCompactWeightedRecords(
+    records: Record<string, CompactWeightedModelRecord>,
+    factions: Record<string, UniverseFactionRecord>
+): Record<string, CompactWeightedModelRecord> {
+    return Object.fromEntries(
+        Object.entries(records).map(([recordKey, record]) => [
+            recordKey,
+            {
+                ...record,
+                e: Object.fromEntries(
+                    Object.entries(record.e)
+                        .map(([eraKey, eraAvailability]) => [
+                            eraKey,
+                            remapWeightedEraAvailabilityToMulIds(eraAvailability, factions),
+                        ])
+                        .filter(([, eraAvailability]) => Object.keys(eraAvailability).length > 0)
+                ),
+            },
+        ])
+    );
+}
+
 function ensureOutputDir(dirPath: string): void {
     fs.mkdirSync(dirPath, { recursive: true });
 }
@@ -1894,9 +2777,13 @@ function isManagedOutputFile(fileName: string): boolean {
         || fileName === 'faction-era-data.json'
         || fileName === 'rulesets.json'
         || fileName === 'chassis.json'
-    || fileName === 'models.json'
-    || fileName === 'mulized_chassis.json'
-    || fileName === 'mulized_models.json';
+        || fileName === 'models.json'
+        || fileName === 'availability.json'
+    || fileName === 'availability_weighted.json'
+        || fileName === 'mulized_chassis.json'
+        || fileName === 'mulized_models.json'
+    || fileName === 'mulized_availability.json'
+    || fileName === 'mulized_availability_weighted.json';
 }
 
 function cleanupStaleOutputFiles(dirPath: string, expectedFiles: string[]): void {
@@ -1936,6 +2823,10 @@ function run(): void {
     };
     const eras = loadMegaMekEras(universeErasPath);
     const forceGeneratorData = loadForceGeneratorData(FORCEGEN_ROOT, eras, factions);
+    const compiledChassis = compileCompactAvailabilityRecords(forceGeneratorData.chassis, 'chassis');
+    const compiledModels = compileCompactAvailabilityRecords(forceGeneratorData.models, 'models');
+    const compiledAvailability = compileCompactAvailabilityRecords(forceGeneratorData.availability, 'availability');
+    const weightedAvailability = buildWeightedAvailabilityRecords(compiledChassis, compiledModels, factions);
     // const rulesets = loadRulesets(forceGeneratorRulesDir);
 
     const enrichedFactions = Object.fromEntries(
@@ -1965,8 +2856,8 @@ function run(): void {
             commandCount: Object.values(factions).filter((faction) => faction.isCommand).length,
             forceGeneratorEraCount: forceGeneratorData.forceGeneratorYears.length,
             megaMekEraCount: eras.length,
-            chassisCount: Object.keys(forceGeneratorData.chassis).length,
-            modelCount: Object.keys(forceGeneratorData.models).length,
+            chassisCount: Object.keys(compiledChassis).length,
+            modelCount: Object.keys(compiledModels).length,
         },
     };
 
@@ -1978,11 +2869,14 @@ function run(): void {
         },
         factions: enrichedFactions,
         factionEraData: forceGeneratorData.factionEraData,
-        chassis: forceGeneratorData.chassis,
-        models: forceGeneratorData.models,
+        chassis: compiledChassis,
+        models: compiledModels,
+        availability: compiledAvailability,
     };
     const mulizedChassis = mulizeCompactAvailabilityRecords(exportData.chassis, factions);
     const mulizedModels = mulizeCompactAvailabilityRecords(exportData.models, factions);
+    const mulizedAvailability = mulizeCompactAvailabilityRecords(exportData.availability, factions);
+    const mulizedWeightedAvailability = mulizeCompactWeightedRecords(weightedAvailability, factions);
 
     ensureOutputDir(OUTPUT_DIR);
 
@@ -1998,12 +2892,28 @@ function run(): void {
         compactAvailabilityRecordsToArrayForWrite(exportData.models)
     );
     writeJsonFile(
+        path.join(OUTPUT_DIR, 'availability.json'),
+        compactAvailabilityRecordsToArrayForWrite(exportData.availability)
+    );
+    writeJsonFile(
+        path.join(OUTPUT_DIR, 'availability_weighted.json'),
+        compactWeightedRecordsToArrayForWrite(weightedAvailability)
+    );
+    writeJsonFile(
         path.join(OUTPUT_DIR, 'mulized_chassis.json'),
         compactAvailabilityRecordsToArrayForWrite(mulizedChassis)
     );
     writeJsonFile(
         path.join(OUTPUT_DIR, 'mulized_models.json'),
         compactAvailabilityRecordsToArrayForWrite(mulizedModels)
+    );
+    writeJsonFile(
+        path.join(OUTPUT_DIR, 'mulized_availability.json'),
+        compactAvailabilityRecordsToArrayForWrite(mulizedAvailability)
+    );
+    writeJsonFile(
+        path.join(OUTPUT_DIR, 'mulized_availability_weighted.json'),
+        compactWeightedRecordsToArrayForWrite(mulizedWeightedAvailability)
     );
     // writeJsonFile(
     //     path.join(OUTPUT_DIR, 'rulesets.json'),
@@ -2020,8 +2930,12 @@ function run(): void {
             'faction-era-data.json',
             'chassis.json',
             'models.json',
+            'availability.json',
+            'availability_weighted.json',
             'mulized_chassis.json',
             'mulized_models.json',
+            'mulized_availability.json',
+            'mulized_availability_weighted.json',
         ]
     );
 
