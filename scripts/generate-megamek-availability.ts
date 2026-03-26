@@ -10,6 +10,9 @@ type CompactAvailabilityByRating = [number, number, number, number, number];
 type CompactAvailabilityValue = number | `${number}+` | `${number}-` | CompactAvailabilityByRating;
 type CompactWeightedByRating = [number, number, number, number, number];
 type CompactWeightedValue = number | CompactWeightedByRating;
+type AvailabilityWeightedQName = 'X' | 'R' | 'U' | 'C' | 'I';
+type CompactWeightedQByRating = [AvailabilityWeightedQName, AvailabilityWeightedQName, AvailabilityWeightedQName, AvailabilityWeightedQName, AvailabilityWeightedQName];
+type CompactWeightedQValue = AvailabilityWeightedQName | CompactWeightedQByRating;
 
 interface DateRange {
     start?: number;
@@ -103,6 +106,13 @@ interface CompactWeightedModelRecord {
     e: Record<string, CompactWeightedEraAvailability>;
 }
 
+interface CompactWeightedQModelRecord {
+    t: string;
+    c: string;
+    m: string;
+    e: Record<string, Record<string, CompactWeightedQValue>>;
+}
+
 interface EraFactionStats {
     pctOmni?: number[];
     pctOmniAero?: number[];
@@ -171,6 +181,9 @@ const BEAUTIFY_OUTPUT = true;
 const JSON_INDENT = 2;
 const INLINE_JSON_ARRAY_MAX_ITEMS = 8;
 const INLINE_JSON_ARRAY_MAX_LENGTH = 40;
+const OUTPUT_DECIMAL_PLACES = 1;
+const WEIGHTED_Q_BUCKETS = ['R', 'U', 'C', 'I'] as const;
+const USE_ERA_CODE_KEYS = true;
 const APP_ROOT = path.resolve(__dirname, '..');
 const MM_DATA_PATH = process.env.MM_DATA_PATH || '../mm-data';
 
@@ -1074,18 +1087,28 @@ function getNodeText(node: unknown): string | undefined {
     return undefined;
 }
 
-function findEraMulId(eras: MegaMekEra[], year: number): number | undefined {
-    const matchedEra = eras.find((era) => {
-        if (era.mulId === undefined) {
-            return false;
-        }
-
+function findEraForYear(eras: MegaMekEra[], year: number): MegaMekEra | undefined {
+    return eras.find((era) => {
         const startYear = era.startYear ?? Number.MIN_SAFE_INTEGER;
         const endYear = era.endYear ?? 9999;
         return year >= startYear && year <= endYear;
     });
+}
 
-    return matchedEra?.mulId;
+function resolveEraKey(era: MegaMekEra | undefined): string | undefined {
+    if (!era) {
+        return undefined;
+    }
+
+    if (USE_ERA_CODE_KEYS) {
+        return era.code;
+    }
+
+    return era.mulId === undefined ? undefined : String(era.mulId);
+}
+
+function findEraKey(eras: MegaMekEra[], year: number): string | undefined {
+    return resolveEraKey(findEraForYear(eras, year));
 }
 
 function isFactionActiveInYear(
@@ -1109,12 +1132,22 @@ function normalizeRatingName(value: string): string {
     return value.trim().toUpperCase();
 }
 
-function normalizeAvailabilityValue(value: number): number {
+function roundOutputValue(value: number): number {
     if (!Number.isFinite(value)) {
         return 0;
     }
 
-    return Math.trunc(value);
+    const decimalPlaces = Math.max(0, OUTPUT_DECIMAL_PLACES);
+    if (decimalPlaces === 0) {
+        return Math.round(value);
+    }
+
+    const factor = 10 ** decimalPlaces;
+    return Math.round(value * factor) / factor;
+}
+
+function normalizeAvailabilityValue(value: number): number {
+    return roundOutputValue(value);
 }
 
 function createEmptyAvailabilityByRating(): CompactAvailabilityByRating {
@@ -1315,13 +1348,12 @@ function addCompactAvailability(
             continue;
         }
 
-        const mulId = findEraMulId(eras, availabilityYear);
-        if (mulId === undefined) {
+        const eraKey = findEraKey(eras, availabilityYear);
+        if (eraKey === undefined) {
             console.log(`[MegaMek] skipping availability for ${availability.factionKey} in year ${availabilityYear} (${sourceLabel}) due to undefined era`);
             continue;
         }
 
-        const eraKey = String(mulId);
         const eraAvailability = target[eraKey] || {};
         const previousValue = eraAvailability[availability.factionKey];
         const nextValue = encodeCompactAvailabilityValue(availability, factions, sourceLabel);
@@ -1612,7 +1644,7 @@ function calcWeightedScore(relativeWeight: number): number {
     }
 
     const score = 5.5 + calcAvailabilityFromWeight(relativeWeight);
-    return Math.min(10, Math.max(1, Math.round(score)));
+    return roundOutputValue(Math.min(10, Math.max(1, score)));
 }
 
 function expandWeightedValueToByRating(value: CompactWeightedValue): CompactWeightedByRating {
@@ -1795,12 +1827,11 @@ function addCompactFactionEraStats(
     factionKey: string,
     stats: EraFactionStats
 ): void {
-    const mulId = findEraMulId(eras, year);
-    if (mulId === undefined) {
+    const eraKey = findEraKey(eras, year);
+    if (eraKey === undefined) {
         return;
     }
 
-    const eraKey = String(mulId);
     const eraStats = target[eraKey] || {};
     eraStats[factionKey] = mergeEraFactionStats(eraStats[factionKey], stats);
     target[eraKey] = eraStats;
@@ -2593,6 +2624,42 @@ function collapseUniformWeightedValueForWrite(value: CompactWeightedValue): Comp
     return rest.every((entry) => entry === first) ? first : value;
 }
 
+function encodeWeightedQValue(value: number): AvailabilityWeightedQName {
+    if (!Number.isFinite(value) || value <= 0) {
+        return 'X';
+    }
+
+    const clampedValue = Math.min(10, Math.max(1, value));
+    const normalizedValue = (clampedValue - 1) / 9;
+    const bucketIndex = Math.min(
+        WEIGHTED_Q_BUCKETS.length - 1,
+        Math.floor(normalizedValue * WEIGHTED_Q_BUCKETS.length)
+    );
+
+    return WEIGHTED_Q_BUCKETS[bucketIndex];
+}
+
+function encodeWeightedQByRating(value: CompactWeightedByRating): CompactWeightedQByRating {
+    return value.map((entry) => encodeWeightedQValue(entry)) as CompactWeightedQByRating;
+}
+
+function encodeWeightedQRecordValue(value: CompactWeightedValue): CompactWeightedQValue {
+    if (Array.isArray(value)) {
+        return encodeWeightedQByRating(value);
+    }
+
+    return encodeWeightedQValue(value);
+}
+
+function collapseUniformWeightedQValueForWrite(value: CompactWeightedQValue): CompactWeightedQValue {
+    if (!Array.isArray(value)) {
+        return value;
+    }
+
+    const [first, ...rest] = value;
+    return rest.every((entry) => entry === first) ? first : value;
+}
+
 function collapseUniformWeightedRecordsForWrite(
     records: Record<string, CompactWeightedModelRecord>
 ): Record<string, CompactWeightedModelRecord> {
@@ -2617,10 +2684,67 @@ function collapseUniformWeightedRecordsForWrite(
     );
 }
 
+function buildWeightedQRecords(
+    records: Record<string, CompactWeightedModelRecord>
+): Record<string, CompactWeightedQModelRecord> {
+    return Object.fromEntries(
+        Object.entries(records).map(([recordKey, record]) => [
+            recordKey,
+            {
+                ...record,
+                e: Object.fromEntries(
+                    Object.entries(record.e).map(([eraKey, eraAvailability]) => [
+                        eraKey,
+                        Object.fromEntries(
+                            Object.entries(eraAvailability).map(([factionKey, value]) => [
+                                factionKey,
+                                encodeWeightedQRecordValue(value),
+                            ])
+                        ),
+                    ])
+                ),
+            },
+        ])
+    );
+}
+
+function collapseUniformWeightedQRecordsForWrite(
+    records: Record<string, CompactWeightedQModelRecord>
+): Record<string, CompactWeightedQModelRecord> {
+    return Object.fromEntries(
+        Object.entries(records).map(([recordKey, record]) => [
+            recordKey,
+            {
+                ...record,
+                e: Object.fromEntries(
+                    Object.entries(record.e).map(([eraKey, eraAvailability]) => [
+                        eraKey,
+                        Object.fromEntries(
+                            Object.entries(eraAvailability).map(([factionKey, value]) => [
+                                factionKey,
+                                collapseUniformWeightedQValueForWrite(value),
+                            ])
+                        ),
+                    ])
+                ),
+            },
+        ])
+    );
+}
+
 function compactWeightedRecordsToArrayForWrite(
     records: Record<string, CompactWeightedModelRecord>
 ): CompactWeightedModelRecord[] {
     const collapsedRecords = collapseUniformWeightedRecordsForWrite(records);
+    return Object.entries(collapsedRecords)
+        .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey, undefined, { numeric: true }))
+        .map(([, record]) => record);
+}
+
+function compactWeightedQRecordsToArrayForWrite(
+    records: Record<string, CompactWeightedQModelRecord>
+): CompactWeightedQModelRecord[] {
+    const collapsedRecords = collapseUniformWeightedQRecordsForWrite(records);
     return Object.entries(collapsedRecords)
         .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey, undefined, { numeric: true }))
         .map(([, record]) => record);
@@ -2780,6 +2904,7 @@ function isManagedOutputFile(fileName: string): boolean {
         || fileName === 'models.json'
         || fileName === 'availability.json'
     || fileName === 'availability_weighted.json'
+        || fileName === 'availability_weighted_q.json'
         || fileName === 'mulized_chassis.json'
         || fileName === 'mulized_models.json'
     || fileName === 'mulized_availability.json'
@@ -2827,6 +2952,7 @@ function run(): void {
     const compiledModels = compileCompactAvailabilityRecords(forceGeneratorData.models, 'models');
     const compiledAvailability = compileCompactAvailabilityRecords(forceGeneratorData.availability, 'availability');
     const weightedAvailability = buildWeightedAvailabilityRecords(compiledChassis, compiledModels, factions);
+    const weightedAvailabilityQ = buildWeightedQRecords(weightedAvailability);
     // const rulesets = loadRulesets(forceGeneratorRulesDir);
 
     const enrichedFactions = Object.fromEntries(
@@ -2900,6 +3026,10 @@ function run(): void {
         compactWeightedRecordsToArrayForWrite(weightedAvailability)
     );
     writeJsonFile(
+        path.join(OUTPUT_DIR, 'availability_weighted_q.json'),
+        compactWeightedQRecordsToArrayForWrite(weightedAvailabilityQ)
+    );
+    writeJsonFile(
         path.join(OUTPUT_DIR, 'mulized_chassis.json'),
         compactAvailabilityRecordsToArrayForWrite(mulizedChassis)
     );
@@ -2932,6 +3062,7 @@ function run(): void {
             'models.json',
             'availability.json',
             'availability_weighted.json',
+            'availability_weighted_q.json',
             'mulized_chassis.json',
             'mulized_models.json',
             'mulized_availability.json',

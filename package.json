@@ -5,11 +5,13 @@
     "ng": "ng",
     "gen-meta": "node scripts/generate-build-meta.js",
     "gen-assets": "node scripts/generate-assets.js",
+    "gen-ratgenerator": "tsx scripts/ratgenerator_build_table.ts",
     "gen-sprites": "node scripts/generate-sprite-map.js",
     "prerun": "npm run gen-meta && npm run gen-assets && npm run gen-sprites",
     "start": "ng serve --host 0.0.0.0",
     "build": "npm run prerun && ng build --configuration=production",
     "build:next": "npm run prerun && ng build --configuration=next",
+    "test:ratgenerator": "tsx scripts/ratgenerator_build_table.test.ts",
     "watch": "ng build --watch --configuration=development",
     "test": "ng test"
   },
@@ -38,7 +40,6 @@
     "@types/js-yaml": "^4.0.9",
     "@types/jszip": "^3.4.1",
     "@types/node": "^25.5.0",
-    "esbuild": "^0.27.3",
     "fast-xml-parser": "^5.5.9",
     "jasmine-core": "^6.0.1",
     "js-yaml": "^4.1.1",
@@ -48,6 +49,7 @@
     "karma-jasmine": "^5.1.0",
     "karma-jasmine-html-reporter": "^2.2.0",
     "sharp": "^0.34.5",
+    "tsx": "^4.20.5",
     "typescript": "~5.9.3"
   }
 }

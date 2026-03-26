@@ -35,9 +35,9 @@ const fs = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const { spawnSync } = require('child_process');
-const esbuild = require('esbuild');
 
 const root = path.resolve(__dirname, '..');
+const tsxBinary = path.join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'tsx.cmd' : 'tsx');
 
 // Load .env file if it exists to support local configuration overrides
 const envPath = path.join(root, '.env');
@@ -73,6 +73,7 @@ const mmDataPath = process.env.MM_DATA_PATH || '../mm-data';
 const sourcebooksDir = path.resolve(root, mmDataPath, 'data/sourcebooks');
 const sourcebooksOutput = path.join(root, 'public', 'assets', 'sourcebooks.json');
 const megaMekAvailabilityScript = path.join(__dirname, 'generate-megamek-availability.ts');
+const ratGeneratorCsvScript = path.join(__dirname, 'ratgenerator_build_table.ts');
 
 console.log(`[Assets] Using sourcebooks from: ${sourcebooksDir}`);
 
@@ -81,23 +82,11 @@ function runTypeScriptScript(scriptPath) {
     throw new Error(`TypeScript script not found: ${scriptPath}`);
   }
 
-  const tempDir = path.join(root, 'tmp');
-  if (!fs.existsSync(tempDir)) {
-    fs.mkdirSync(tempDir, { recursive: true });
+  if (!fs.existsSync(tsxBinary)) {
+    throw new Error(`tsx binary not found: ${tsxBinary}`);
   }
 
-  const outFile = path.join(tempDir, `${path.basename(scriptPath, '.ts')}.cjs`);
-  esbuild.buildSync({
-    entryPoints: [scriptPath],
-    outfile: outFile,
-    bundle: true,
-    platform: 'node',
-    format: 'cjs',
-    target: 'node20',
-    logLevel: 'silent'
-  });
-
-  const result = spawnSync(process.execPath, [outFile], {
+  const result = spawnSync(tsxBinary, [scriptPath], {
     cwd: root,
     stdio: 'inherit',
     env: process.env
@@ -183,6 +172,7 @@ function generateSourcebooks() {
 async function main() {
   try {
     runTypeScriptScript(megaMekAvailabilityScript);
+    runTypeScriptScript(ratGeneratorCsvScript);
     generateSourcebooks();
     // await runCompressAssets();
     console.log('[Assets] All asset generation complete.');
