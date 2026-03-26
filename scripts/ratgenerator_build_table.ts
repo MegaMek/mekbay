@@ -41,6 +41,7 @@ interface AvailabilityRecord {
 
 interface UnitSummaryRecord {
     id: number;
+    unitType: string;
     chassis: string;
     model: string;
     year: number;
@@ -161,7 +162,8 @@ class JavaLikeHashSet<T> {
         const newCapacity = oldCapacity * 2;
         const newTable: Array<HashNode<T> | undefined> = new Array(newCapacity);
 
-        for (const bucket of oldTable) {
+        for (let bucketIndex = 0; bucketIndex < oldTable.length; bucketIndex += 1) {
+            const bucket = oldTable[bucketIndex];
             if (!bucket) {
                 continue;
             }
@@ -198,27 +200,17 @@ class JavaLikeHashSet<T> {
                 current = next;
             }
 
-            const lowIndex = JavaLikeHashSet.bucketIndex(lowHead, oldCapacity);
-            const highIndex = lowIndex + oldCapacity;
             if (lowHead) {
-                newTable[lowIndex] = lowHead;
+                newTable[bucketIndex] = lowHead;
             }
             if (highHead) {
-                newTable[highIndex] = highHead;
+                newTable[bucketIndex + oldCapacity] = highHead;
             }
         }
 
         this.table = newTable;
         this.threshold *= 2;
     }
-
-    private static bucketIndex<T>(node: HashNode<T> | undefined, maskBase: number): number {
-        if (!node) {
-            return 0;
-        }
-        return (maskBase - 1) & node.hash;
-    }
-
     private static spread(hash: number): number {
         return (hash ^ (hash >>> 16)) | 0;
     }
@@ -230,11 +222,10 @@ export class RatGeneratorTableBuilder {
     private readonly chassisKeys = RatGeneratorTableBuilder.createStringSet();
     private readonly models = new Map<string, ModelRecordData>();
     private readonly eras: number[] = [];
-    private readonly unitSummaryByKey = new Map<string, UnitSummaryRecord>();
-    private readonly unitSummaryByNormalizedKey = new Map<string, UnitSummaryRecord>();
-    private readonly unitSummaryByNormalizedModel = new Map<string, UnitSummaryRecord | null>();
-    private readonly unitSummaryByNormalizedChassis = new Map<string, UnitSummaryRecord | null>();
-    private readonly unitSummaryCandidatesByNormalizedModel = new Map<string, UnitSummaryRecord[]>();
+    private readonly unitSummaryByCompositeKey = new Map<string, UnitSummaryRecord>();
+    private readonly unitSummariesByChassisKey = new Map<string, UnitSummaryRecord[]>();
+    private readonly missingChassisLookups = new Map<string, Set<string>>();
+    private readonly missingModelLookups = new Map<string, Set<string>>();
 
     public constructor(
         private readonly mmDataRoot: string,
@@ -354,6 +345,8 @@ export class RatGeneratorTableBuilder {
     }
 
     private buildChassisCsvLine(record: ChassisRecordData, faction: string): string {
+        const factionId = this.getFactionId(faction);
+        const factionName = this.getFactionDisplayName(faction);
         const columns: string[] = [
             RatGeneratorTableBuilder.csvFormulaString(record.chassis),
             '',
@@ -361,14 +354,16 @@ export class RatGeneratorTableBuilder {
             '',
             record.unitType,
             '',
-            'TBD',
-            faction,
+            factionId,
+            factionName,
         ];
 
         return this.appendEraColumns(columns, record.availabilityByEra, faction);
     }
 
     private buildModelCsvLine(record: ModelRecordData, faction: string): string {
+        const factionId = this.getFactionId(faction);
+        const factionName = this.getFactionDisplayName(faction);
         const columns: string[] = [
             RatGeneratorTableBuilder.csvFormulaString(record.chassis),
             RatGeneratorTableBuilder.csvFormulaString(record.model),
@@ -376,11 +371,19 @@ export class RatGeneratorTableBuilder {
             String(record.mulId),
             record.unitType,
             String(record.introYear),
-            'TBD',
-            faction,
+            factionId,
+            factionName,
         ];
 
         return this.appendEraColumns(columns, record.availabilityByEra, faction);
+    }
+
+    private getFactionId(factionKey: string): string {
+        return factionKey;
+    }
+
+    private getFactionDisplayName(factionKey: string): string {
+        return this.factions.get(factionKey)?.name ?? factionKey;
     }
 
     private appendEraColumns(
@@ -458,6 +461,39 @@ export class RatGeneratorTableBuilder {
         const universeRoot = path.join(this.mmDataRoot, 'data', 'universe');
         this.loadFactionDirectory(path.join(universeRoot, 'factions'));
         this.loadFactionDirectory(path.join(universeRoot, 'commands'));
+
+        for (const [factionKey, faction] of Array.from(this.factions.entries())) {
+            if (this.getResolvedRatingLevels(factionKey).length === 0) {
+                this.factions.delete(factionKey);
+            } else {
+                faction.ratingLevels = this.getResolvedRatingLevels(factionKey);
+            }
+        }
+    }
+
+    private getResolvedRatingLevels(factionKey: string, visited = new Set<string>()): string[] {
+        const faction = this.factions.get(factionKey);
+        if (!faction || visited.has(factionKey)) {
+            return [];
+        }
+
+        visited.add(factionKey);
+
+        if (faction.ratingLevels.length >= 2) {
+            return faction.ratingLevels;
+        }
+
+        for (const parentKey of faction.fallBackFactions) {
+            const parentLevels = this.getResolvedRatingLevels(parentKey, new Set(visited));
+            if (
+                parentLevels.length > 1
+                && (faction.ratingLevels.length === 0 || parentLevels.includes(faction.ratingLevels[0]))
+            ) {
+                return parentLevels;
+            }
+        }
+
+        return faction.ratingLevels;
     }
 
     private loadFactionDirectory(dirPath: string): void {
@@ -500,30 +536,15 @@ export class RatGeneratorTableBuilder {
     }
 
     private async loadUnitSummaries(): Promise<void> {
+        void this.nameChangesFilePath;
+
         for (const rootPath of this.getUnitFileRoots()) {
             const unitFilePaths = RatGeneratorTableBuilder.listFilesRecursive(rootPath, ['.blk', '.mtf']);
             for (const filePath of unitFilePaths) {
-                const unitSummary = this.readUnitSummaryFromFile(filePath);
+                const unitSummary = this.readUnitSummaryFromFile(filePath, rootPath);
                 if (unitSummary) {
                     this.indexUnitSummary(unitSummary);
                 }
-            }
-        }
-
-        const aliases = this.loadNameChangeAliases();
-        for (const [previousName, replacementName] of aliases) {
-            const resolvedName = RatGeneratorTableBuilder.resolveAliasName(replacementName, aliases);
-            const unitSummary = this.unitSummaryByKey.get(resolvedName)
-                ?? this.unitSummaryByNormalizedKey.get(RatGeneratorTableBuilder.normalizeLookupKey(resolvedName));
-            if (!unitSummary || this.unitSummaryByKey.has(previousName)) {
-                continue;
-            }
-
-            this.unitSummaryByKey.set(previousName, unitSummary);
-
-            const normalizedPreviousName = RatGeneratorTableBuilder.normalizeLookupKey(previousName);
-            if (normalizedPreviousName && !this.unitSummaryByNormalizedKey.has(normalizedPreviousName)) {
-                this.unitSummaryByNormalizedKey.set(normalizedPreviousName, unitSummary);
             }
         }
     }
@@ -537,120 +558,74 @@ export class RatGeneratorTableBuilder {
         return roots;
     }
 
-    private readUnitSummaryFromFile(filePath: string): UnitSummaryRecord | undefined {
+    private readUnitSummaryFromFile(filePath: string, rootPath: string): UnitSummaryRecord | undefined {
         const raw = fs.readFileSync(filePath, 'utf8');
         const extension = path.extname(filePath).toLowerCase();
         if (extension === '.blk') {
-            return RatGeneratorTableBuilder.parseBlkUnitSummary(raw);
+            return RatGeneratorTableBuilder.parseBlkUnitSummary(raw, filePath);
         }
         if (extension === '.mtf') {
-            return RatGeneratorTableBuilder.parseMtfUnitSummary(raw);
+            return RatGeneratorTableBuilder.parseMtfUnitSummary(raw, filePath, rootPath);
         }
         return undefined;
     }
 
     private indexUnitSummary(unitSummary: UnitSummaryRecord): void {
-        const key = RatGeneratorTableBuilder.buildModelKey(unitSummary.chassis, unitSummary.model);
-        if (this.unitSummaryByKey.has(key)) {
+        const key = RatGeneratorTableBuilder.buildUnitSummaryCompositeKey(
+            unitSummary.unitType,
+            unitSummary.chassis,
+            unitSummary.model,
+        );
+        if (this.unitSummaryByCompositeKey.has(key)) {
             return;
         }
 
-        this.unitSummaryByKey.set(key, unitSummary);
+        this.unitSummaryByCompositeKey.set(key, unitSummary);
 
-        const normalizedKey = RatGeneratorTableBuilder.normalizeLookupKey(key);
-        if (!this.unitSummaryByNormalizedKey.has(normalizedKey)) {
-            this.unitSummaryByNormalizedKey.set(normalizedKey, unitSummary);
-        }
+        const chassisKey = RatGeneratorTableBuilder.buildUnitSummaryChassisKey(unitSummary.unitType, unitSummary.chassis);
+        const chassisSummaries = this.unitSummariesByChassisKey.get(chassisKey) ?? [];
+        chassisSummaries.push(unitSummary);
+        this.unitSummariesByChassisKey.set(chassisKey, chassisSummaries);
+    }
 
-        RatGeneratorTableBuilder.addUniqueLookup(
-            this.unitSummaryByNormalizedModel,
-            RatGeneratorTableBuilder.normalizeLookupKey(unitSummary.model),
-            unitSummary,
+    private hasUnitSummaryChassis(unitType: string, chassis: string): boolean {
+        return this.unitSummariesByChassisKey.has(RatGeneratorTableBuilder.buildUnitSummaryChassisKey(unitType, chassis));
+    }
+
+    private findUnitSummary(unitType: string, chassis: string, model: string): UnitSummaryRecord | undefined {
+        return this.unitSummaryByCompositeKey.get(
+            RatGeneratorTableBuilder.buildUnitSummaryCompositeKey(unitType, chassis, model),
         );
-        RatGeneratorTableBuilder.addUniqueLookup(
-            this.unitSummaryByNormalizedChassis,
-            RatGeneratorTableBuilder.normalizeLookupKey(unitSummary.chassis),
-            unitSummary,
-        );
-
-        const normalizedModel = RatGeneratorTableBuilder.normalizeLookupKey(unitSummary.model);
-        if (normalizedModel) {
-            const candidates = this.unitSummaryCandidatesByNormalizedModel.get(normalizedModel) ?? [];
-            candidates.push(unitSummary);
-            this.unitSummaryCandidatesByNormalizedModel.set(normalizedModel, candidates);
-        }
     }
 
-    private loadNameChangeAliases(): Map<string, string> {
-        const aliasMap = new Map<string, string>();
-        const raw = fs.readFileSync(this.nameChangesFilePath, 'utf8');
-
-        for (const line of raw.split(/\r?\n/u)) {
-            const trimmed = line.trim();
-            if (!trimmed || trimmed.startsWith('#')) {
-                continue;
-            }
-
-            const separatorIndex = trimmed.indexOf('|');
-            if (separatorIndex <= 0 || separatorIndex >= trimmed.length - 1) {
-                continue;
-            }
-
-            const previousName = trimmed.slice(0, separatorIndex).trim();
-            const replacementName = trimmed.slice(separatorIndex + 1).trim();
-            if (previousName && replacementName) {
-                aliasMap.set(previousName, replacementName);
-            }
-        }
-
-        return aliasMap;
+    private reportMissingChassisLookup(unitType: string, chassis: string, era: number): void {
+        const key = RatGeneratorTableBuilder.buildUnitSummaryChassisKey(unitType, chassis);
+        const eraFiles = this.missingChassisLookups.get(key) ?? new Set<string>();
+        eraFiles.add(RatGeneratorTableBuilder.getEraFileName(era));
+        this.missingChassisLookups.set(key, eraFiles);
     }
 
-    private findUnitSummary(chassis: string, model: string): UnitSummaryRecord | undefined {
-        const modelKey = RatGeneratorTableBuilder.buildModelKey(chassis, model);
-        return this.unitSummaryByKey.get(modelKey)
-            ?? this.unitSummaryByNormalizedKey.get(RatGeneratorTableBuilder.normalizeLookupKey(modelKey))
-            ?? this.findClosestUnitSummaryByModelAndChassis(chassis, model)
-            ?? (model ? this.unitSummaryByNormalizedModel.get(RatGeneratorTableBuilder.normalizeLookupKey(model)) ?? undefined : undefined)
-            ?? this.unitSummaryByNormalizedChassis.get(RatGeneratorTableBuilder.normalizeLookupKey(chassis)) ?? undefined;
+    private reportMissingModelLookup(unitType: string, chassis: string, model: string, era: number): void {
+        const key = RatGeneratorTableBuilder.buildUnitSummaryCompositeKey(unitType, chassis, model);
+        const eraFiles = this.missingModelLookups.get(key) ?? new Set<string>();
+        eraFiles.add(RatGeneratorTableBuilder.getEraFileName(era));
+        this.missingModelLookups.set(key, eraFiles);
     }
 
-    private findClosestUnitSummaryByModelAndChassis(chassis: string, model: string): UnitSummaryRecord | undefined {
-        const normalizedModel = RatGeneratorTableBuilder.normalizeLookupKey(model);
-        if (!normalizedModel) {
-            return undefined;
+    private flushMissingLookupReports(): void {
+        for (const [key, eraFiles] of this.missingChassisLookups.entries()) {
+            const [unitType, chassis] = key.split('\u0000');
+            console.warn(
+                `[ratgenerator] failed chassis lookup for ${unitType} :: ${chassis} :: eras ${RatGeneratorTableBuilder.formatEraFileList(eraFiles)}`,
+            );
         }
 
-        const candidates = this.unitSummaryCandidatesByNormalizedModel.get(normalizedModel);
-        if (!candidates || candidates.length === 0) {
-            return undefined;
+        for (const [key, eraFiles] of this.missingModelLookups.entries()) {
+            const [unitType, chassis, model] = key.split('\u0000');
+            console.warn(
+                `[ratgenerator] failed model lookup for ${unitType} :: ${chassis} :: ${model} :: eras ${RatGeneratorTableBuilder.formatEraFileList(eraFiles)}`,
+            );
         }
-        if (candidates.length === 1) {
-            return candidates[0];
-        }
-
-        const requestedTokens = RatGeneratorTableBuilder.tokenizeLookupKey(chassis);
-        let bestCandidate: UnitSummaryRecord | undefined;
-        let bestScore = Number.NEGATIVE_INFINITY;
-        let bestScoreCount = 0;
-
-        for (const candidate of candidates) {
-            const candidateTokens = RatGeneratorTableBuilder.tokenizeLookupKey(candidate.chassis);
-            const score = RatGeneratorTableBuilder.scoreLookupTokens(requestedTokens, candidateTokens);
-            if (score > bestScore) {
-                bestCandidate = candidate;
-                bestScore = score;
-                bestScoreCount = 1;
-            } else if (score === bestScore) {
-                bestScoreCount += 1;
-            }
-        }
-
-        if (bestCandidate && bestScore > 0 && bestScoreCount === 1) {
-            return bestCandidate;
-        }
-
-        return undefined;
     }
 
     private loadForceGeneratorData(): void {
@@ -677,11 +652,16 @@ export class RatGeneratorTableBuilder {
                 this.parseChassisNode(year, chassisNode);
             }
         }
+
+        this.flushMissingLookupReports();
     }
 
     private parseChassisNode(era: number, chassisNode: Record<string, unknown>): void {
         const chassisName = String(chassisNode.name || '');
-        const unitType = String(chassisNode.unitType || '');
+        const unitType = RatGeneratorTableBuilder.normalizeUnitTypeName(
+            String(chassisNode.unitType || ''),
+            `forcegenerator chassis ${chassisName || '<unknown>'} (${era})`,
+        );
         if (!chassisName || !unitType) {
             return;
         }
@@ -700,6 +680,10 @@ export class RatGeneratorTableBuilder {
         };
         this.chassisKeys.add(chassisKey);
         this.chassis.set(chassisKey, chassisRecord);
+
+        if (!this.hasUnitSummaryChassis(unitType, chassisName)) {
+            this.reportMissingChassisLookup(unitType, chassisName, era);
+        }
 
         this.addAvailabilityCodes(
             chassisRecord.availabilityByEra,
@@ -720,9 +704,14 @@ export class RatGeneratorTableBuilder {
     private parseModelNode(era: number, chassisRecord: ChassisRecordData, modelNode: Record<string, unknown>): void {
         const modelName = String(modelNode.name || '');
         const modelKey = RatGeneratorTableBuilder.buildModelKey(chassisRecord.chassis, modelName);
-        const unitSummary = this.findUnitSummary(chassisRecord.chassis, modelName);
+        if (!this.hasUnitSummaryChassis(chassisRecord.unitType, chassisRecord.chassis)) {
+            this.reportMissingChassisLookup(chassisRecord.unitType, chassisRecord.chassis, era);
+            return;
+        }
+
+        const unitSummary = this.findUnitSummary(chassisRecord.unitType, chassisRecord.chassis, modelName);
         if (!unitSummary) {
-            console.warn(`[ratgenerator] missing unit summary for ${modelKey}`);
+            this.reportMissingModelLookup(chassisRecord.unitType, chassisRecord.chassis, modelName, era);
             return;
         }
 
@@ -868,65 +857,140 @@ export class RatGeneratorTableBuilder {
         return `${chassis} ${model}`.trim();
     }
 
-    private static normalizeLookupKey(value: string): string {
-        return value
-            .normalize('NFKD')
-            .replace(/\p{Diacritic}/gu, '')
-            .replace(/['’`"\[\]\(\)\-]/g, ' ')
-            .replace(/\bclass\b/gi, ' ')
-            .trim()
-            .replace(/\s+/g, ' ')
-            .toLowerCase();
+    private static buildUnitSummaryCompositeKey(unitType: string, chassis: string, model: string): string {
+        return `${unitType}\u0000${chassis}\u0000${model}`;
     }
 
-    private static tokenizeLookupKey(value: string): string[] {
-        return RatGeneratorTableBuilder.normalizeLookupKey(value)
-            .split(' ')
-            .filter(Boolean);
+    private static buildUnitSummaryChassisKey(unitType: string, chassis: string): string {
+        return `${unitType}\u0000${chassis}`;
     }
 
-    private static scoreLookupTokens(requestedTokens: string[], candidateTokens: string[]): number {
-        if (requestedTokens.length === 0 || candidateTokens.length === 0) {
-            return 0;
-        }
-
-        const candidateTokenSet = new Set(candidateTokens);
-        let shared = 0;
-        for (const token of requestedTokens) {
-            if (candidateTokenSet.has(token)) {
-                shared += 1;
-            }
-        }
-
-        let prefixMatches = 0;
-        const prefixLimit = Math.min(requestedTokens.length, candidateTokens.length);
-        for (let index = 0; index < prefixLimit; index += 1) {
-            if (requestedTokens[index] !== candidateTokens[index]) {
-                break;
-            }
-            prefixMatches += 1;
-        }
-
-        return (prefixMatches * 100) + (shared * 10) - Math.abs(requestedTokens.length - candidateTokens.length);
+    private static getEraFileName(era: number): string {
+        return `${era}.xml`;
     }
 
-    private static addUniqueLookup(
-        index: Map<string, UnitSummaryRecord | null>,
-        key: string,
-        unitSummary: UnitSummaryRecord,
-    ): void {
-        if (!key) {
-            return;
-        }
+    private static formatEraFileList(eraFiles: Set<string>): string {
+        return Array.from(eraFiles)
+            .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }))
+            .join(', ');
+    }
 
-        if (!index.has(key)) {
-            index.set(key, unitSummary);
-            return;
-        }
+    private static normalizeUnitTypeName(rawUnitType: string, context: string, motionType?: string): string {
+        const normalized = rawUnitType.trim();
+        const normalizedMotionType = motionType?.trim().toLowerCase();
 
-        const existing = index.get(key);
-        if (existing && existing.id !== unitSummary.id) {
-            index.set(key, null);
+        switch (normalized) {
+            case 'Mek':
+            case 'BattleArmor':
+            case 'Infantry':
+            case 'ProtoMek':
+            case 'VTOL':
+            case 'Naval':
+            case 'Gun Emplacement':
+            case 'Conventional Fighter':
+            case 'AeroSpaceFighter':
+            case 'Aero':
+            case 'Small Craft':
+            case 'Dropship':
+            case 'Jumpship':
+            case 'Warship':
+            case 'Space Station':
+            case 'Handheld Weapon':
+            case 'Mobile Structure':
+            case 'Advanced Building':
+                return normalized;
+            case 'Battle Armor':
+                return 'BattleArmor';
+            case 'Protomek':
+            case 'ProtoMech':
+                return 'ProtoMek';
+            case 'GunEmplacement':
+                return 'Gun Emplacement';
+            case 'ConvFighter':
+                return 'Conventional Fighter';
+            case 'Aerospace Fighter':
+            case 'AerospaceFighter':
+                return 'AeroSpaceFighter';
+            case 'SmallCraft':
+                return 'Small Craft';
+            case 'DropShip':
+                return 'Dropship';
+            case 'JumpShip':
+                return 'Jumpship';
+            case 'SpaceStation':
+                return 'Space Station';
+            case 'HandheldWeapon':
+                return 'Handheld Weapon';
+            case 'MobileStructure':
+                return 'Mobile Structure';
+            case 'AdvancedBuilding':
+                return 'Advanced Building';
+            case 'Tank':
+            case 'SupportTank':
+            case 'LargeSupportTank':
+                if (normalizedMotionType === 'hydrofoil'
+                    || normalizedMotionType === 'submarine'
+                    || normalizedMotionType === 'naval') {
+                    return 'Naval';
+                }
+                return 'Tank';
+            case 'SupportVTOL':
+                return 'VTOL';
+            case 'FixedWingSupport':
+                return 'Conventional Fighter';
+            case 'BuildingEntity':
+                return 'Advanced Building';
+            default:
+                throw new Error(`[ratgenerator] unknown unit type "${rawUnitType}" in ${context}`);
+        }
+    }
+
+    private static normalizeUnitTypeFromDirectory(filePath: string, rootPath: string): string {
+        const relativePath = path.relative(rootPath, filePath);
+        const topLevelDir = relativePath.split(path.sep)[0]?.trim().toLowerCase();
+
+        switch (topLevelDir) {
+            case 'meks':
+                return 'Mek';
+            case 'vehicles':
+            case 'tanks':
+                return 'Tank';
+            case 'battlearmor':
+                return 'BattleArmor';
+            case 'infantry':
+                return 'Infantry';
+            case 'protomeks':
+                return 'ProtoMek';
+            case 'vtol':
+                return 'VTOL';
+            case 'naval':
+                return 'Naval';
+            case 'gunemplacement':
+            case 'gunemplacements':
+                return 'Gun Emplacement';
+            case 'convfighter':
+                return 'Conventional Fighter';
+            case 'fighters':
+                return 'AeroSpaceFighter';
+            case 'smallcraft':
+                return 'Small Craft';
+            case 'dropships':
+                return 'Dropship';
+            case 'jumpships':
+                return 'Jumpship';
+            case 'warship':
+                return 'Warship';
+            case 'spacestation':
+                return 'Space Station';
+            case 'handheld':
+                return 'Handheld Weapon';
+            case 'mobilestructure':
+                return 'Mobile Structure';
+            case 'advancedbuildings':
+            case 'advancedbuilding':
+                return 'Advanced Building';
+            default:
+                throw new Error(`[ratgenerator] cannot derive unit type from path ${filePath}`);
         }
     }
 
@@ -1029,7 +1093,12 @@ export class RatGeneratorTableBuilder {
         return undefined;
     }
 
-    private static parseBlkUnitSummary(raw: string): UnitSummaryRecord | undefined {
+    private static parseBlkUnitSummary(raw: string, filePath: string): UnitSummaryRecord | undefined {
+        const unitType = RatGeneratorTableBuilder.normalizeUnitTypeName(
+            RatGeneratorTableBuilder.getTaggedText(raw, 'UnitType') ?? '',
+            filePath,
+            RatGeneratorTableBuilder.getTaggedText(raw, 'motion_type'),
+        );
         const chassis = RatGeneratorTableBuilder.getTaggedText(raw, 'Name') ?? '';
         const model = RatGeneratorTableBuilder.getTaggedText(raw, 'Model') ?? '';
         const parsedId = Number.parseInt(RatGeneratorTableBuilder.getTaggedText(raw, 'mul id:') ?? '', 10);
@@ -1041,13 +1110,14 @@ export class RatGeneratorTableBuilder {
 
         return {
             id,
+            unitType,
             chassis,
             model,
             year,
         };
     }
 
-    private static parseMtfUnitSummary(raw: string): UnitSummaryRecord | undefined {
+    private static parseMtfUnitSummary(raw: string, filePath: string, rootPath: string): UnitSummaryRecord | undefined {
         const fields = new Map<string, string>();
         for (const line of raw.split(/\r?\n/u)) {
             const separatorIndex = line.indexOf(':');
@@ -1062,11 +1132,10 @@ export class RatGeneratorTableBuilder {
             }
         }
 
+        const unitType = RatGeneratorTableBuilder.normalizeUnitTypeFromDirectory(filePath, rootPath);
         const baseChassis = fields.get('chassis') ?? '';
         const clanName = fields.get('clanname') ?? '';
-        const chassis = baseChassis && clanName && !baseChassis.includes('(')
-            ? `${baseChassis} (${clanName})`
-            : baseChassis;
+        const chassis = RatGeneratorTableBuilder.buildChassisName(baseChassis, clanName);
         const model = fields.get('model') ?? '';
         const parsedId = Number.parseInt(fields.get('mul id') ?? '', 10);
         const id = Number.isFinite(parsedId) ? parsedId : -1;
@@ -1077,10 +1146,24 @@ export class RatGeneratorTableBuilder {
 
         return {
             id,
+            unitType,
             chassis,
             model,
             year,
         };
+    }
+
+    private static buildChassisName(chassis: string, clanName: string): string {
+        if (!chassis || !clanName) {
+            return chassis;
+        }
+
+        const expectedSuffix = `(${clanName})`;
+        if (chassis.includes(expectedSuffix)) {
+            return chassis;
+        }
+
+        return `${chassis} ${expectedSuffix}`;
     }
 
     private static getTaggedText(raw: string, tagName: string): string | undefined {
@@ -1089,21 +1172,6 @@ export class RatGeneratorTableBuilder {
         return match?.[1]?.trim();
     }
 
-    private static resolveAliasName(name: string, aliases: Map<string, string>): string {
-        let currentName = name;
-        const visited = new Set<string>();
-
-        while (!visited.has(currentName)) {
-            visited.add(currentName);
-            const nextName = aliases.get(currentName);
-            if (!nextName) {
-                break;
-            }
-            currentName = nextName;
-        }
-
-        return currentName;
-    }
 }
 
 function resolveExistingPath(label: string, candidates: string[]): string {
@@ -1123,6 +1191,8 @@ function resolveMmDataRoot(override?: string): string {
 
     return resolveExistingPath('MM data root', [
         process.env.MM_DATA_PATH || '',
+        '../megamek/megamek',
+        '../../megamek/megamek',
         '../mm-data',
         '../../mm-data',
     ].filter(Boolean));
