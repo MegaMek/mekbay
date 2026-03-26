@@ -31,6 +31,8 @@
  * affiliated with Microsoft.
  */
 
+import { FactionId } from "./factions.model";
+
 /*
  * Author: Drake
  *
@@ -70,7 +72,7 @@ export interface SerializedOrganization {
     /** Timestamp when the organization was last saved */
     timestamp: number;
     /** Dominant faction ID across all placed forces */
-    factionId?: number;
+    factionId?: FactionId;
     /** Placed forces with positions and group membership */
     forces: OrgPlacedForce[];
     /** Organizational groups */
@@ -84,7 +86,7 @@ export class LoadOrganizationEntry {
     organizationId: string;
     name: string;
     timestamp: number;
-    factionId?: number;
+    factionId?: FactionId;
     forceCount: number;
     groupCount: number;
     cloud: boolean;

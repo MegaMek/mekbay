@@ -40,6 +40,7 @@ import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-me
 import type { GameSystem } from '../models/common.model';
 import type { ForceSlot } from '../models/force-slot.model';
 import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
+import { FactionId } from '../models/factions.model';
 
 /**
  * Minimal logger interface for URL parsing warnings.
@@ -58,7 +59,7 @@ export interface ForceQueryParams {
     name: string | null;
     instance: string | null;
     operation: string | null;
-    factionId: number | null;
+    factionId: FactionId | null;
     eraId: number | null;
 }
 
@@ -146,7 +147,7 @@ export function buildMultiForceQueryParams(slots: ForceSlot[]): ForceQueryParams
     let gs: GameSystem | null = null;
     let units: string | null = null;
     let name: string | null = null;
-    let factionId: number | null = null;
+    let factionId: FactionId | null = null;
     let eraId: number | null = null;
 
     if (unsavedForce) {

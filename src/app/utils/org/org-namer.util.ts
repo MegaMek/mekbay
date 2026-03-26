@@ -1,11 +1,12 @@
 import { type Force, UnitGroup } from '../../models/force.model';
 import type { Era } from '../../models/eras.model';
-import { FACTION_MERCENARY, type Faction } from '../../models/factions.model';
+import { type Faction } from '../../models/factions.model';
 import { LoadForceEntry, type LoadForceGroup } from '../../models/load-force-entry.model';
 import type { Unit } from '../../models/units.model';
 import { getAggregatedTier } from './org-tier.util';
 import { resolveFromGroups, resolveFromUnits } from './org-solver.util';
 import { type GroupSizeResult, type OrgSizeResult } from './org-types';
+import { MULFACTION_MERCENARY } from '../../models/mulfactions.model';
 
 /**
  * Author: Drake
@@ -25,7 +26,7 @@ interface DisplayBucket {
 }
 
 const DEFAULT_FACTION: Faction = {
-	id: FACTION_MERCENARY,
+	id: MULFACTION_MERCENARY,
 	name: 'Mercenary',
 	group: 'Mercenary',
 	img: '',

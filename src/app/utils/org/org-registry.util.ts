@@ -1,5 +1,5 @@
 import type { Era } from '../../models/eras.model';
-import type { Faction } from '../../models/factions.model';
+import { getFactionAffinity, type Faction } from '../../models/factions.model';
 import {
 	CC_CORE_ORG,
 	CLAN_CORE_ORG,
@@ -17,7 +17,7 @@ export interface OrgDefinitionRegistryEntry {
 }
 
 export function isClan(faction: Faction): boolean {
-	if (faction.group?.includes('Clan')) {
+	if (getFactionAffinity(faction).includes('Clan')) {
 		return true;
 	}
 	if (faction.name.includes('Escorpi') || faction.name.includes('Scorpion Empire')) {
@@ -35,7 +35,6 @@ export const ORG_SPEC_REGISTRY: readonly OrgDefinitionRegistryEntry[] = [
 	{ match: (faction) => faction.name.includes('Dragoons'), org: WD_CORE_ORG },
 	{ match: (faction) => faction.name.includes('Capellan Confederation'), org: CC_CORE_ORG },
 	{ match: (faction) => isClan(faction), org: CLAN_CORE_ORG },
-	{ match: (faction) => faction.group == 'Inner Sphere', org: IS_CORE_ORG },
 ];
 
 export const DEFAULT_ORG_SPEC: OrgDefinitionSpec = IS_CORE_ORG;
