@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { XMLParser } from 'fast-xml-parser';
-import yaml from 'js-yaml';
+import { load as loadYaml } from 'js-yaml';
 
 type JsonObject = Record<string, unknown>;
 type CompactAvailabilityByRating = [number, number, number, number, number];
@@ -749,7 +749,7 @@ function readText(filePath: string): string {
 }
 
 function readYamlFile(filePath: string): JsonObject {
-    const parsed = yaml.load(readText(filePath));
+    const parsed = loadYaml(readText(filePath));
     if (!parsed || typeof parsed !== 'object') {
         throw new Error(`Invalid YAML data in ${filePath}`);
     }
