@@ -181,7 +181,8 @@
                 <rect class="card-border" x="0" y="0" [attr.width]="CARD_WIDTH" [attr.height]="CARD_HEIGHT" />
 
                 <!-- Faction icon -->
-                @if (pf.force.faction?.img; as factionImgUrl) {
+                
+                @if (pf.force.faction && getFactionImg(pf.force.faction); as factionImgUrl) {
                 <image [attr.href]="factionImgUrl" x="12" y="12" width="32" height="32"
                     preserveAspectRatio="xMidYMid meet" />
                 }
@@ -246,7 +247,7 @@
 
                 <rect class="card-border" x="0" y="0" [attr.width]="CARD_WIDTH" [attr.height]="CARD_HEIGHT" />
 
-                @if (pf.force.faction?.img; as factionImgUrl) {
+                @if (pf.force.faction && getFactionImg(pf.force.faction); as factionImgUrl) {
                 <image [attr.href]="factionImgUrl" x="12" y="12" width="32" height="32"
                     preserveAspectRatio="xMidYMid meet" />
                 }
@@ -387,7 +388,7 @@
             @let metadata = forcesData().get(force.instanceId);
             <div class="sidebar-force-item" (pointerdown)="onSidebarForcePointerDown($event, force)">
                 <div class="sidebar-force-icon">
-                    @if (force.faction?.img; as factionImgUrl) {
+                    @if (pf.force.faction && getFactionImg(force.faction); as factionImgUrl) {
                     <img [src]="factionImgUrl" class="sidebar-faction-img" alt="" />
                     }
                 </div>
@@ -450,7 +451,7 @@
         [style.top.px]="sidebarDragPos().y - CARD_HEIGHT / 2" [style.width.px]="CARD_WIDTH"
         [style.height.px]="CARD_HEIGHT">
         <div class="drag-ghost-icon">
-            @if (sidebarDragForce()!.faction?.img; as factionImgUrl) {
+            @if (pf.force.faction && getFactionImg(sidebarDragForce()!.faction); as factionImgUrl) {
             <img [src]="factionImgUrl" class="drag-ghost-faction-img" alt="" />
             }
         </div>
