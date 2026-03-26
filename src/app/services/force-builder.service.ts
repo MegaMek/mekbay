@@ -38,9 +38,8 @@ import type { ForceUnit } from '../models/force-unit.model';
 import { DataService } from './data.service';
 import { LayoutService } from './layout.service';
 import { ForceNamerUtil } from '../utils/force-namer.util';
-import type { Faction } from '../models/factions.model';
+import { getFactionImg, type Faction } from '../models/factions.model';
 import type { Era } from '../models/eras.model';
-import type { FormationNamerUtil } from '../utils/formation-namer.util';
 import { ConfirmDialogComponent, type ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
 import { firstValueFrom, Subject } from 'rxjs';
 import { RenameForceDialogComponent, type RenameForceDialogData, type RenameForceDialogResult } from '../components/rename-force-dialog/rename-force-dialog.component';
@@ -2758,11 +2757,12 @@ export class ForceBuilderService {
         for (const force of forces) {
             const units = force.units();
             if (units.some(u => !u.isLoaded())) {
+                const faction = force.faction();
                 entries.push({
                     force,
                     progress: {
                         forceName: force.displayName(),
-                        factionImg: force.faction()?.img || null,
+                        factionImg: faction ? getFactionImg(faction) || null : null,
                         loadedUnits: computed(() => units.filter(u => u.isLoaded()).length),
                         totalUnits: units.length
                     }

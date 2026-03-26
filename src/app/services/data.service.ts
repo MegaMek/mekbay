@@ -33,7 +33,7 @@
 
 import { Injectable, signal, Injector, inject, DestroyRef } from '@angular/core';
 import type { Unit } from '../models/units.model';
-import { FACTION_EXTINCT, type Faction } from '../models/factions.model';
+import type { Faction, FactionId } from '../models/factions.model';
 import type { Era } from '../models/eras.model';
 import { DbService, type TagData } from './db.service';
 import { TagsService } from './tags.service';
@@ -61,7 +61,7 @@ import { getForcePacks } from '../models/forcepacks.model';
 import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
 import { MegaMekFactionsCatalogService } from './catalogs/megamek-factions-catalog.service';
 import { ErasCatalogService } from './catalogs/eras-catalog.service';
-import { FactionsCatalogService } from './catalogs/factions-catalog.service';
+import { FactionsCatalogService } from './catalogs/mulfactions-catalog.service';
 import { MulUnitSourcesCatalogService } from './catalogs/mul-unit-sources-catalog.service';
 import { QuirksCatalogService } from './catalogs/quirks-catalog.service';
 import { SourcebooksCatalogService } from './catalogs/sourcebooks-catalog.service';
@@ -69,6 +69,7 @@ import { UnitSearchIndexService } from './unit-search-index.service';
 import { UnitRuntimeService } from './unit-runtime.service';
 import { UnitsCatalogService } from './catalogs/units-catalog.service';
 import { EquipmentCatalogService } from './catalogs/equipment-catalog.service';
+import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 
 /*
  * Author: Drake
@@ -305,7 +306,7 @@ export class DataService {
         return this.factionsCatalog.getFactionByName(name);
     }
 
-    public getFactionById(id: number): Faction | undefined {
+    public getFactionById(id: FactionId): Faction | undefined {
         return this.factionsCatalog.getFactionById(id);
     }
 
@@ -413,7 +414,8 @@ export class DataService {
     private postprocessData(): void {
         this.unitRuntimeService.postprocessUnits(this.getUnits(), this.getEras());
         this.unitRuntimeService.linkEquipmentToUnits(this.getUnits(), this.getEquipments());
-        this.unitSearchIndexService.rebuildIndexes(this.getUnits(), this.getEras(), this.getFactions(), this.getFactionById(FACTION_EXTINCT));
+        const extinctFaction = this.getFactionById(MULFACTION_EXTINCT);
+        this.unitSearchIndexService.rebuildIndexes(this.getUnits(), this.getEras(), this.getFactions(), extinctFaction);
     }
 
     private async checkForUpdate(): Promise<void> {

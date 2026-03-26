@@ -43,7 +43,7 @@ import { GameSystem } from './common.model';
 import { C3NetworkUtil } from '../utils/c3-network.util';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { LoggerService } from '../services/logger.service';
-import { FACTION_EXTINCT, type Faction } from './factions.model';
+import { type Faction } from './factions.model';
 import type { Era } from './eras.model';
 import { type FormationTypeDefinition, type FormationMatch, isNoFormation } from '../utils/formation-type.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
@@ -51,6 +51,7 @@ import { FormationNamerUtil } from '../utils/formation-namer.util';
 import type { OrgSizeResult } from '../utils/org/org-types';
 import { getOrgFromForce, getOrgFromGroup } from '../utils/org/org-namer.util';
 import { getUnitsAverageTechBase, TechBase } from './tech.model';
+import { MULFACTION_EXTINCT } from './mulfactions.model';
 
 /*
  * Author: Drake
@@ -405,7 +406,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
 
         const warnings: string[] = [];
         const eras = this.dataService.getEras();
-        const extinctFaction = this.dataService.getFactionById(FACTION_EXTINCT) ?? null;
+        const extinctFaction = this.dataService.getFactionById(MULFACTION_EXTINCT) ?? null;
         const {
             invalidTrackedUnits,
             invalidTrackedUnitNames,

@@ -1,13 +1,14 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 
 import type { Unit, UnitComponent } from '../models/units.model';
-import { FACTION_EXTINCT, type Faction } from '../models/factions.model';
+import { type Faction } from '../models/factions.model';
 import type { Era } from '../models/eras.model';
 import { removeAccents } from '../utils/string.util';
 import { naturalCompare } from '../utils/sort.util';
 import { getMergedTags } from '../utils/unit-search-shared.util';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES } from './unit-search-filters.model';
 import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
+import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 
 interface MinMaxStatsRange {
     armor: [number, number],
@@ -232,7 +233,7 @@ export class UnitSearchIndexService {
         }
 
         for (const era of eras) {
-            const extinctReferenceIdsForEra = extinctFaction?.id === FACTION_EXTINCT
+            const extinctReferenceIdsForEra = extinctFaction?.id === MULFACTION_EXTINCT
                 ? extinctFaction.eras[era.id] as Set<number> | undefined
                 : undefined;
             for (const referenceId of era.units as Set<number>) {

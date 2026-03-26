@@ -31,23 +31,13 @@
  * affiliated with Microsoft.
  */
 
-/*
- * Author: Drake
- */
+import { Injectable, inject } from '@angular/core';
+import { FactionsCatalogService } from './catalogs/mulfactions-catalog.service';
 
-import { MULFaction } from "./mulfactions.model";
+@Injectable({
+    providedIn: 'root'
+})
+export class FactionAvailabilitySourceService {
+    private readonly mulFactionsCatalog = inject(FactionsCatalogService);
 
-export type FactionId = number;
-export type Faction = MULFaction;
-
-export function getFactionAffinity(faction: Faction): string {
-    return faction.group;
-}
-
-export function getFactionImg(faction: Faction): string | undefined {
-    return faction.img ?? undefined;
-}
-
-export function getFactionName(faction: Faction): string {
-    return faction.name;
 }

@@ -317,7 +317,7 @@ export class ForceNamerUtil {
      * Returns null only if the factions array itself is empty.
      */
     public static pickRandomFaction(units: ForceUnit[], factions: Faction[], eras: Era[], selectedEra: Era | null = null): Faction | null {
-        const mercenary = factions.find(f => f.id === FACTION_MERCENARY) ?? null;
+        const mercenary = factions.find(f => f.id === MULFACTION_MERCENARY) ?? null;
         const availableFactions = this.getAvailableFactions(units, factions, eras, MIN_UNITS_PERCENTAGE, selectedEra);
         if (!availableFactions || availableFactions.size === 0) {
             if (selectedEra) {

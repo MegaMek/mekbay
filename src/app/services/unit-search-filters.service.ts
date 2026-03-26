@@ -78,7 +78,7 @@ import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import { UserStateService } from './userState.service';
 import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
-import { FACTION_EXTINCT } from '../models/factions.model';
+import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import { resolveFactionNamesFromFilter } from '../utils/faction-filter.util';
 import { sortAvailableDropdownOptions, sortDropdownOptionObjects } from '../utils/unit-search-dropdown-sort.util';
 import type { UnitSearchWorkerCorpusSnapshot, UnitSearchWorkerQueryRequest, UnitSearchWorkerResultMessage } from '../utils/unit-search-worker-protocol.util';
@@ -835,7 +835,7 @@ export class UnitSearchFiltersService {
             return cached;
         }
 
-        const extinctFaction = this.dataService.getFactionById(FACTION_EXTINCT);
+        const extinctFaction = this.dataService.getFactionById(MULFACTION_EXTINCT);
         const extinctUnitIdsForEra = extinctFaction?.eras[era.id] as Set<number> | undefined;
         const visibleUnitIds = new Set<number>();
 
@@ -1184,7 +1184,7 @@ export class UnitSearchFiltersService {
         if (!selectedEraNames || selectedEraNames.length === 0) return null;
         const unitIds = new Set<number>();
 
-        const extinctFaction = this.dataService.getFactionById(FACTION_EXTINCT);
+        const extinctFaction = this.dataService.getFactionById(MULFACTION_EXTINCT);
 
         for (const eraName of selectedEraNames) {
             const era = this.dataService.getEraByName(eraName);

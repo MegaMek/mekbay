@@ -34,11 +34,11 @@
 import { inject, Injectable } from '@angular/core';
 import type { Units } from '../models/units.model';
 import type { Eras } from '../models/eras.model';
-import type { Factions } from '../models/factions.model';
+import type { RawMULFactions } from '../models/mulfactions.model';
 import type { Options } from '../models/options.model';
 import type { Quirks } from '../models/quirks.model';
 import type { Sourcebooks } from '../models/sourcebook.model';
-import type { MegaMekFactions, MegaMekFactionsData } from '../models/megamek/factions.model';
+import type { MegaMekFactionsData } from '../models/megamek/factions.model';
 import type { MULUnitSources } from '../models/mul-unit-sources.model';
 import type { RawEquipmentData } from '../models/equipment.model';
 import type { SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-serialization';
@@ -508,19 +508,19 @@ export class DbService {
         return await this.saveDataFromGeneralStore(unitsData, UNITS_KEY);
     }
 
-    public async getFactions(): Promise<Factions | null> {
-        return await this.getDataFromGeneralStore<Factions>(FACTIONS_KEY);
+    public async getFactions(): Promise<RawMULFactions | null> {
+        return await this.getDataFromGeneralStore<RawMULFactions>(FACTIONS_KEY);
     }
 
-    public async saveFactions(factionsData: Factions): Promise<void> {
+    public async saveFactions(factionsData: RawMULFactions): Promise<void> {
         return await this.saveDataFromGeneralStore(factionsData, FACTIONS_KEY);
     }
 
-    public async getMegaMekFactions(): Promise<MegaMekFactionsData | MegaMekFactions | null> {
-        return await this.getDataFromGeneralStore<MegaMekFactionsData | MegaMekFactions>(MEGAMEK_FACTIONS_KEY);
+    public async getMegaMekFactions(): Promise<MegaMekFactionsData | null> {
+        return await this.getDataFromGeneralStore<MegaMekFactionsData>(MEGAMEK_FACTIONS_KEY);
     }
 
-    public async saveMegaMekFactions(factionsData: MegaMekFactionsData | MegaMekFactions): Promise<void> {
+    public async saveMegaMekFactions(factionsData: MegaMekFactionsData): Promise<void> {
         return await this.saveDataFromGeneralStore(factionsData, MEGAMEK_FACTIONS_KEY);
     }
 
