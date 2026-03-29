@@ -92,7 +92,7 @@ type CompactWeightedEraAvailability = Record<string, CompactWeightedValue>;
 interface CompactAvailabilityRecordBase {
     t: string;
     c: string;
-    // o?: 'Clan' | 'IS';
+    o?: 'Clan' | 'IS';
     e: Record<string, CompactEraAvailability>;
 }
 
@@ -2307,7 +2307,7 @@ function loadForceGeneratorData(
             const chassisRecord = chassis[chassisKey] || {
                 t: unitType,
                 c: chassisName,
-                // o: omni,
+                o: omni,
                 e: {},
             };
             chassis[chassisKey] = chassisRecord;
@@ -2329,7 +2329,7 @@ function loadForceGeneratorData(
                     t: unitType,
                     c: chassisName,
                     m: modelName,
-                    // o: omni,
+                    o: omni,
                     e: {},
                 };
                 models[modelKey] = modelRecord;
