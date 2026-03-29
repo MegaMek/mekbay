@@ -4,6 +4,12 @@ import path from 'node:path';
 import { XMLParser } from 'fast-xml-parser';
 import { load as loadYaml } from 'js-yaml';
 
+const {
+    loadOptionalEnvFile,
+    resolveExistingPath,
+    resolveMmDataRoot,
+} = require('./lib/script-paths.js') as typeof import('./lib/script-paths.js');
+
 interface DateRange {
     start?: number;
     end?: number;
@@ -93,6 +99,8 @@ const APP_ROOT = path.resolve(__dirname, '..');
 const OUTPUT_FILE_NAME = 'ratgenerator.csv';
 const DEFAULT_OUTPUT_FILE = path.join(APP_ROOT, 'public', 'assets', OUTPUT_FILE_NAME);
 const GENERAL_FACTION = 'General';
+
+loadOptionalEnvFile(APP_ROOT, { logPrefix: 'ratgenerator' });
 
 const xmlParser = new XMLParser({
     ignoreAttributes: false,
@@ -1376,36 +1384,12 @@ export class RatGeneratorTableBuilder {
 
 }
 
-function resolveExistingPath(label: string, candidates: string[]): string {
-    for (const candidate of candidates) {
-        const resolved = path.resolve(APP_ROOT, candidate);
-        if (fs.existsSync(resolved)) {
-            return resolved;
-        }
-    }
-    throw new Error(`Could not resolve ${label}. Tried: ${candidates.join(', ')}`);
-}
-
-function resolveMmDataRoot(override?: string): string {
-    if (override) {
-        return path.resolve(APP_ROOT, override);
-    }
-
-    return resolveExistingPath('MM data root', [
-        process.env.MM_DATA_PATH || '',
-        '../megamek/megamek',
-        '../../megamek/megamek',
-        '../mm-data',
-        '../../mm-data',
-    ].filter(Boolean));
-}
-
 function resolveUnitFilesRoot(override?: string): string {
     if (override) {
         return path.resolve(APP_ROOT, override);
     }
 
-    return resolveExistingPath('unit files root', [
+    return resolveExistingPath(APP_ROOT, 'unit files root', [
         process.env.SVGEXPORT_UNITFILES_PATH || '',
         '../mm-data/data/mekfiles',
         '../../mm-data/data/mekfiles',
@@ -1417,7 +1401,7 @@ function resolveNameChangesFilePath(override?: string): string {
         return path.resolve(APP_ROOT, override);
     }
 
-    return resolveExistingPath('name changes file', [
+    return resolveExistingPath(APP_ROOT, 'name changes file', [
         process.env.MEK_NAME_CHANGES_PATH || '',
         '../mm-data/data/mekfiles/name_changes.txt',
         '../../mm-data/data/mekfiles/name_changes.txt',
@@ -1425,7 +1409,11 @@ function resolveNameChangesFilePath(override?: string): string {
 }
 
 export async function buildRatGeneratorCsv(options: BuildOptions = {}): Promise<BuildResult> {
-    const mmDataRoot = resolveMmDataRoot(options.mmDataRoot);
+    const mmDataRoot = resolveMmDataRoot(APP_ROOT, {
+        override: options.mmDataRoot,
+        includeMegaMekData: true,
+        label: 'MM data root',
+    });
     const unitFilesRoot = resolveUnitFilesRoot(options.unitFilesRoot);
     const nameChangesFilePath = resolveNameChangesFilePath(options.nameChangesFilePath);
     const outputFilePath = options.outputFilePath

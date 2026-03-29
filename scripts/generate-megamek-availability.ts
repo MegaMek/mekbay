@@ -5,6 +5,11 @@ import path from 'node:path';
 import { XMLParser } from 'fast-xml-parser';
 import { load as loadYaml } from 'js-yaml';
 
+const {
+    loadOptionalEnvFile,
+    resolveMmDataRoot,
+} = require('./lib/script-paths.js') as typeof import('./lib/script-paths.js');
+
 type JsonObject = Record<string, unknown>;
 type CompactAvailabilityByRating = [number, number, number, number, number];
 type CompactAvailabilityValue = number | `${number}+` | `${number}-` | CompactAvailabilityByRating;
@@ -185,9 +190,10 @@ const OUTPUT_DECIMAL_PLACES = 1;
 const WEIGHTED_Q_BUCKETS = ['R', 'U', 'C', 'I'] as const;
 const USE_ERA_CODE_KEYS = true;
 const APP_ROOT = path.resolve(__dirname, '..');
-const MM_DATA_PATH = process.env.MM_DATA_PATH || '../mm-data';
 
-const MM_DATA_ROOT = path.resolve(APP_ROOT, MM_DATA_PATH);
+loadOptionalEnvFile(APP_ROOT, { logPrefix: 'MegaMek' });
+
+const MM_DATA_ROOT = resolveMmDataRoot(APP_ROOT);
 const UNIVERSE_ROOT = path.join(MM_DATA_ROOT, 'data', 'universe');
 const FORCEGEN_ROOT = path.join(MM_DATA_ROOT, 'data', 'forcegenerator');
 const FACTIONS_MM_TO_MUL_PATH = path.join(APP_ROOT, 'scripts', 'config', 'factions-mm-to-mul.csv');

@@ -35,46 +35,21 @@ const fs = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const { spawnSync } = require('child_process');
+const { loadOptionalEnvFile, resolveMmDataRoot } = require('./lib/script-paths.js');
 
 const root = path.resolve(__dirname, '..');
-const tsxBinary = path.join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'tsx.cmd' : 'tsx');
+const tsxCli = path.join(root, 'node_modules', 'tsx', 'dist', 'cli.mjs');
 
-// Load .env file if it exists to support local configuration overrides
-const envPath = path.join(root, '.env');
-if (fs.existsSync(envPath)) {
-  try {
-    const envContent = fs.readFileSync(envPath, 'utf8');
-    envContent.split(/\r?\n/).forEach(line => {
-      line = line.trim();
-      if (!line || line.startsWith('#')) return;
-      const parts = line.split('=');
-      if (parts.length >= 2) {
-        const key = parts[0].trim();
-        let value = parts.slice(1).join('=').trim();
-        // Remove quotes if present
-        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-          value = value.slice(1, -1);
-        }
-        if (!process.env[key]) {
-          process.env[key] = value;
-        }
-      }
-    });
-    console.log(`[Assets] Loaded configuration from ${envPath}`);
-  } catch (e) {
-    console.warn('[Assets] Failed to parse .env file:', e.message);
-  }
-}
+loadOptionalEnvFile(root, { logPrefix: 'Assets' });
 
-// Configuration:
-// MM_DATA_PATH can be set in .env or environment variables.
-// Default assumes mm-data is located at ../mm-data relative to this project root.
-const mmDataPath = process.env.MM_DATA_PATH || '../mm-data';
-const sourcebooksDir = path.resolve(root, mmDataPath, 'data/sourcebooks');
+const mmDataRoot = resolveMmDataRoot(root);
+process.env.MM_DATA_PATH = mmDataRoot;
+const sourcebooksDir = path.join(mmDataRoot, 'data', 'sourcebooks');
 const sourcebooksOutput = path.join(root, 'public', 'assets', 'sourcebooks.json');
 const megaMekAvailabilityScript = path.join(__dirname, 'generate-megamek-availability.ts');
 const ratGeneratorCsvScript = path.join(__dirname, 'ratgenerator_build_table.ts');
 
+console.log(`[Assets] Using MM data from: ${mmDataRoot}`);
 console.log(`[Assets] Using sourcebooks from: ${sourcebooksDir}`);
 
 function runTypeScriptScript(scriptPath) {
@@ -82,18 +57,24 @@ function runTypeScriptScript(scriptPath) {
     throw new Error(`TypeScript script not found: ${scriptPath}`);
   }
 
-  if (!fs.existsSync(tsxBinary)) {
-    throw new Error(`tsx binary not found: ${tsxBinary}`);
+  if (!fs.existsSync(tsxCli)) {
+    throw new Error(`tsx CLI not found: ${tsxCli}`);
   }
 
-  const result = spawnSync(tsxBinary, [scriptPath], {
+  const result = spawnSync(process.execPath, [tsxCli, scriptPath], {
     cwd: root,
     stdio: 'inherit',
     env: process.env
   });
 
+  if (result.error) {
+    throw result.error;
+  }
+
   if (result.status !== 0) {
-    throw new Error(`${path.basename(scriptPath)} exited with code ${result.status}`);
+    const exitDetails = result.status === null ? 'no exit code' : `code ${result.status}`;
+    const signalDetails = result.signal ? ` (signal ${result.signal})` : '';
+    throw new Error(`${path.basename(scriptPath)} exited with ${exitDetails}${signalDetails}`);
   }
 }
 
