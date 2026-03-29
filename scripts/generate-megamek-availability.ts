@@ -145,6 +145,11 @@ interface RulesetRecord {
     forceCount: number;
 }
 
+interface FactionMulIdConfig {
+    mappedIds: Map<string, number[]>;
+    skippedFactions: Set<string>;
+}
+
 interface MegaMekAvailabilitySharedMetadata {
     version: 2;
     generatedAt: string;
@@ -866,11 +871,15 @@ function parseEraMods(raw: unknown): number[] | undefined {
     return arr.map((v) => Number(v));
 }
 
-function loadFactionMulIdMap(filePath: string): Map<string, number[]> {
-    const factionMulIds = new Map<string, number[]>();
+function loadFactionMulIdMap(filePath: string): FactionMulIdConfig {
+    const mappedIds = new Map<string, number[]>();
+    const skippedFactions = new Set<string>();
 
     if (!fs.existsSync(filePath)) {
-        return factionMulIds;
+        return {
+            mappedIds,
+            skippedFactions,
+        };
     }
 
     const lines = readText(filePath)
@@ -885,17 +894,27 @@ function loadFactionMulIdMap(filePath: string): Map<string, number[]> {
             continue;
         }
 
-        const mulIds = rawMulIds
+        const rawValues = rawMulIds
             .split(';')
             .map((value) => Number.parseInt(value.trim(), 10))
-            .filter((value) => Number.isFinite(value) && value > 0);
+            .filter((value) => Number.isFinite(value));
+
+        if (rawValues.includes(-1)) {
+            skippedFactions.add(factionId);
+            continue;
+        }
+
+        const mulIds = rawValues.filter((value) => value > 0);
 
         if (mulIds.length > 0) {
-            factionMulIds.set(factionId, mulIds);
+            mappedIds.set(factionId, mulIds);
         }
     }
 
-    return factionMulIds;
+    return {
+        mappedIds,
+        skippedFactions,
+    };
 }
 
 function loadUniverseFactions(
@@ -2759,22 +2778,46 @@ function compactWeightedQRecordsToArrayForWrite(
 function resolveFactionMulIds(
     factions: Record<string, UniverseFactionRecord>,
     factionKey: string,
+    skippedFactions: ReadonlySet<string>,
+    visited = new Set<string>()
 ): number[] {
     if (factionKey === GENERAL_FACTION_KEY) {
         return [0];
     }
+
+    if (visited.has(factionKey)) {
+        return [];
+    }
+
+    visited.add(factionKey);
 
     const faction = factions[factionKey];
     if (!faction) {
         return [];
     }
 
-    return [...faction.mulId];
+    if (skippedFactions.has(factionKey)) {
+        return [];
+    }
+
+    if (faction.mulId.length > 0) {
+        return [...faction.mulId];
+    }
+
+    for (const fallbackFactionKey of faction.fallBackFactions) {
+        const fallbackMulIds = resolveFactionMulIds(factions, fallbackFactionKey, skippedFactions, new Set(visited));
+        if (fallbackMulIds.length > 0) {
+            return fallbackMulIds;
+        }
+    }
+
+    return [];
 }
 
 function remapEraAvailabilityToMulIds(
     eraAvailability: CompactEraAvailability,
-    factions: Record<string, UniverseFactionRecord>
+    factions: Record<string, UniverseFactionRecord>,
+    skippedFactions: ReadonlySet<string>
 ): CompactEraAvailability {
     const mulizedAvailability: CompactEraAvailability = {};
 
@@ -2785,7 +2828,12 @@ function remapEraAvailabilityToMulIds(
             continue;
         }
 
-        const resolvedMulIds = resolveFactionMulIds(factions, factionKey);
+        if (factionKey !== GENERAL_FACTION_KEY && skippedFactions.has(factionKey)) {
+            console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to explicit -1 CSV mapping`);
+            continue;
+        }
+
+        const resolvedMulIds = resolveFactionMulIds(factions, factionKey, skippedFactions);
         if (resolvedMulIds.length === 0) {
             console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to missing CSV mapping`);
             continue;
@@ -2805,7 +2853,8 @@ function remapEraAvailabilityToMulIds(
 
 function remapWeightedEraAvailabilityToMulIds(
     eraAvailability: CompactWeightedEraAvailability,
-    factions: Record<string, UniverseFactionRecord>
+    factions: Record<string, UniverseFactionRecord>,
+    skippedFactions: ReadonlySet<string>
 ): CompactWeightedEraAvailability {
     const mulizedAvailability: CompactWeightedEraAvailability = {};
 
@@ -2816,7 +2865,12 @@ function remapWeightedEraAvailabilityToMulIds(
             continue;
         }
 
-        const resolvedMulIds = resolveFactionMulIds(factions, factionKey);
+        if (factionKey !== GENERAL_FACTION_KEY && skippedFactions.has(factionKey)) {
+            console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to explicit -1 CSV mapping`);
+            continue;
+        }
+
+        const resolvedMulIds = resolveFactionMulIds(factions, factionKey, skippedFactions);
         if (resolvedMulIds.length === 0) {
             console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to missing CSV mapping`);
             continue;
@@ -2836,7 +2890,8 @@ function remapWeightedEraAvailabilityToMulIds(
 
 function mulizeCompactAvailabilityRecords<TRecord extends CompactAvailabilityRecord>(
     records: Record<string, TRecord>,
-    factions: Record<string, UniverseFactionRecord>
+    factions: Record<string, UniverseFactionRecord>,
+    skippedFactions: ReadonlySet<string>
 ): Record<string, TRecord> {
     return Object.fromEntries(
         Object.entries(records).map(([recordKey, record]) => [
@@ -2847,7 +2902,7 @@ function mulizeCompactAvailabilityRecords<TRecord extends CompactAvailabilityRec
                     Object.entries(record.e)
                         .map(([eraKey, eraAvailability]) => [
                             eraKey,
-                            remapEraAvailabilityToMulIds(eraAvailability, factions),
+                            remapEraAvailabilityToMulIds(eraAvailability, factions, skippedFactions),
                         ])
                         .filter(([, eraAvailability]) => Object.keys(eraAvailability).length > 0)
                 ),
@@ -2858,7 +2913,8 @@ function mulizeCompactAvailabilityRecords<TRecord extends CompactAvailabilityRec
 
 function mulizeCompactWeightedRecords(
     records: Record<string, CompactWeightedModelRecord>,
-    factions: Record<string, UniverseFactionRecord>
+    factions: Record<string, UniverseFactionRecord>,
+    skippedFactions: ReadonlySet<string>
 ): Record<string, CompactWeightedModelRecord> {
     return Object.fromEntries(
         Object.entries(records).map(([recordKey, record]) => [
@@ -2869,7 +2925,7 @@ function mulizeCompactWeightedRecords(
                     Object.entries(record.e)
                         .map(([eraKey, eraAvailability]) => [
                             eraKey,
-                            remapWeightedEraAvailabilityToMulIds(eraAvailability, factions),
+                            remapWeightedEraAvailabilityToMulIds(eraAvailability, factions, skippedFactions),
                         ])
                         .filter(([, eraAvailability]) => Object.keys(eraAvailability).length > 0)
                 ),
@@ -2930,10 +2986,10 @@ function run(): void {
         throw new Error(`MM_DATA_PATH does not exist: ${MM_DATA_ROOT}`);
     }
 
-    const factionMulIds = loadFactionMulIdMap(FACTIONS_MM_TO_MUL_PATH);
+    const factionMulIdConfig = loadFactionMulIdMap(FACTIONS_MM_TO_MUL_PATH);
     const factions = {
-        ...loadUniverseFactions(universeFactionsDir, false, factionMulIds),
-        ...loadUniverseFactions(universeCommandsDir, true, factionMulIds),
+        ...loadUniverseFactions(universeFactionsDir, false, factionMulIdConfig.mappedIds),
+        ...loadUniverseFactions(universeCommandsDir, true, factionMulIdConfig.mappedIds),
     };
     const eras = loadMegaMekEras(universeErasPath);
     const forceGeneratorData = loadForceGeneratorData(FORCEGEN_ROOT, eras, factions);
@@ -2988,10 +3044,26 @@ function run(): void {
         models: compiledModels,
         availability: compiledAvailability,
     };
-    const mulizedChassis = mulizeCompactAvailabilityRecords(exportData.chassis, factions);
-    const mulizedModels = mulizeCompactAvailabilityRecords(exportData.models, factions);
-    const mulizedAvailability = mulizeCompactAvailabilityRecords(exportData.availability, factions);
-    const mulizedWeightedAvailability = mulizeCompactWeightedRecords(weightedAvailability, factions);
+    const mulizedChassis = mulizeCompactAvailabilityRecords(
+        exportData.chassis,
+        factions,
+        factionMulIdConfig.skippedFactions
+    );
+    const mulizedModels = mulizeCompactAvailabilityRecords(
+        exportData.models,
+        factions,
+        factionMulIdConfig.skippedFactions
+    );
+    const mulizedAvailability = mulizeCompactAvailabilityRecords(
+        exportData.availability,
+        factions,
+        factionMulIdConfig.skippedFactions
+    );
+    const mulizedWeightedAvailability = mulizeCompactWeightedRecords(
+        weightedAvailability,
+        factions,
+        factionMulIdConfig.skippedFactions
+    );
 
     ensureOutputDir(OUTPUT_DIR);
 
