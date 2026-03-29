@@ -2753,34 +2753,17 @@ function compactWeightedQRecordsToArrayForWrite(
 function resolveFactionMulIds(
     factions: Record<string, UniverseFactionRecord>,
     factionKey: string,
-    visited = new Set<string>()
 ): number[] {
     if (factionKey === GENERAL_FACTION_KEY) {
         return [0];
     }
 
-    if (visited.has(factionKey)) {
-        return [];
-    }
-
-    visited.add(factionKey);
     const faction = factions[factionKey];
     if (!faction) {
         return [];
     }
 
-    if (faction.mulId.length > 0) {
-        return [...faction.mulId];
-    }
-
-    for (const fallbackFactionKey of faction.fallBackFactions) {
-        const fallbackMulIds = resolveFactionMulIds(factions, fallbackFactionKey, new Set(visited));
-        if (fallbackMulIds.length > 0) {
-            return fallbackMulIds;
-        }
-    }
-
-    return [];
+    return [...faction.mulId];
 }
 
 function remapEraAvailabilityToMulIds(
@@ -2798,7 +2781,7 @@ function remapEraAvailabilityToMulIds(
 
         const resolvedMulIds = resolveFactionMulIds(factions, factionKey);
         if (resolvedMulIds.length === 0) {
-            console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to missing mulId`);
+            console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to missing CSV mapping`);
             continue;
         }
 
@@ -2829,7 +2812,7 @@ function remapWeightedEraAvailabilityToMulIds(
 
         const resolvedMulIds = resolveFactionMulIds(factions, factionKey);
         if (resolvedMulIds.length === 0) {
-            console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to missing mulId`);
+            console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to missing CSV mapping`);
             continue;
         }
 
