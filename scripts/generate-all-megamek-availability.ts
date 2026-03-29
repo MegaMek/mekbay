@@ -228,7 +228,7 @@ interface MegaMekAvailabilityExport extends MegaMekAvailabilitySharedMetadata {
 }
 
 const USE_ERA_CODE_KEYS = true;
-const USE_MULIZED_FACTION_NAMES = true;
+const USE_MULIZED_FACTION_NAMES = false;
 const BEAUTIFY_OUTPUT = true;
 const JSON_INDENT = 2;
 const INLINE_JSON_ARRAY_MAX_ITEMS = 8;
