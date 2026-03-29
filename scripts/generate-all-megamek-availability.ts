@@ -227,13 +227,14 @@ interface MegaMekAvailabilityExport extends MegaMekAvailabilitySharedMetadata {
     availability: Record<string, CompactModelRecord>;
 }
 
+const USE_ERA_CODE_KEYS = true;
+const USE_MULIZED_FACTION_NAMES = true;
 const BEAUTIFY_OUTPUT = true;
 const JSON_INDENT = 2;
 const INLINE_JSON_ARRAY_MAX_ITEMS = 8;
 const INLINE_JSON_ARRAY_MAX_LENGTH = 40;
 const OUTPUT_DECIMAL_PLACES = 1;
 const WEIGHTED_Q_BUCKETS = ['R', 'U', 'C', 'I'] as const;
-const USE_ERA_CODE_KEYS = true;
 const APP_ROOT = path.resolve(__dirname, '..');
 const MIN_OMNI_DIFFERENCE = 2.5;
 const MIN_SL_DIFFERENCE = 2.5;
@@ -251,6 +252,7 @@ const FORCEGEN_ROOT = path.join(MM_DATA_ROOT, 'data', 'forcegenerator');
 const UNIT_FILES_ROOT = path.join(MM_DATA_ROOT, 'data', 'mekfiles');
 const NAME_CHANGES_FILE_PATH = path.join(UNIT_FILES_ROOT, 'name_changes.txt');
 const FACTIONS_MM_TO_MUL_PATH = path.join(APP_ROOT, 'scripts', 'config', 'factions-mm-to-mul.csv');
+const MUL_FACTIONS_PATH = path.join(APP_ROOT, 'scripts', 'config', 'mulfactions.csv');
 const MM_FACTIONS_IMAGE_DIR = path.join(APP_ROOT, 'public', 'images', 'mmfactions');
 const OUTPUT_DIR = path.join(APP_ROOT, 'public', 'assets');
 const EXPAND_RATING_ADJUSTMENTS = true;
@@ -1501,6 +1503,31 @@ function loadFactionMulIdMap(filePath: string): FactionMulIdConfig {
         mappedIds,
         skippedFactions,
     };
+}
+
+function loadMulFactionNames(filePath: string): Map<number, string> {
+    const mulFactionNames = new Map<number, string>();
+
+    if (!fs.existsSync(filePath)) {
+        return mulFactionNames;
+    }
+
+    const lines = readText(filePath)
+        .split(/\r?\n/u)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+    for (const line of lines.slice(1)) {
+        const [rawId = '', rawName = ''] = line.split(',', 3);
+        const mulId = Number.parseInt(rawId.trim(), 10);
+        const mulName = rawName.trim();
+
+        if (Number.isFinite(mulId) && mulName) {
+            mulFactionNames.set(mulId, mulName);
+        }
+    }
+
+    return mulFactionNames;
 }
 
 function loadUniverseFactions(
@@ -4037,6 +4064,92 @@ function compactWeightedQRecordsToArrayForWrite(
         .map(([, record]) => record);
 }
 
+function resolveMulOutputKeyForWrite(
+    mulKey: string,
+    mulFactionNames: ReadonlyMap<number, string>
+): string {
+    if (!USE_MULIZED_FACTION_NAMES || mulKey === GENERAL_FACTION_KEY) {
+        return mulKey;
+    }
+
+    const mulId = Number.parseInt(mulKey, 10);
+    if (!Number.isFinite(mulId)) {
+        return mulKey;
+    }
+
+    if (mulId === 0) {
+        return GENERAL_FACTION_KEY;
+    }
+
+    return mulFactionNames.get(mulId) ?? mulKey;
+}
+
+function applyMulFactionNamesToEraAvailabilityForWrite<TValue>(
+    eraAvailability: Record<string, TValue>,
+    mulFactionNames: ReadonlyMap<number, string>,
+    mergeValue: (current: TValue, incoming: TValue) => TValue,
+): Record<string, TValue> {
+    const renamedAvailability: Record<string, TValue> = {};
+
+    for (const [mulKey, value] of Object.entries(eraAvailability)) {
+        const outputKey = resolveMulOutputKeyForWrite(mulKey, mulFactionNames);
+        const previousValue = renamedAvailability[outputKey];
+        renamedAvailability[outputKey] = previousValue === undefined
+            ? value
+            : mergeValue(previousValue, value);
+    }
+
+    return renamedAvailability;
+}
+
+function applyMulFactionNamesToAvailabilityRecordsForWrite<TRecord extends CompactAvailabilityRecord>(
+    records: Record<string, TRecord>,
+    mulFactionNames: ReadonlyMap<number, string>
+): Record<string, TRecord> {
+    return Object.fromEntries(
+        Object.entries(records).map(([recordKey, record]) => [
+            recordKey,
+            {
+                ...record,
+                e: Object.fromEntries(
+                    Object.entries(record.e).map(([eraKey, eraAvailability]) => [
+                        eraKey,
+                        applyMulFactionNamesToEraAvailabilityForWrite(
+                            eraAvailability,
+                            mulFactionNames,
+                            mergeCompactAvailabilityValueForMul,
+                        ),
+                    ])
+                ),
+            },
+        ])
+    );
+}
+
+function applyMulFactionNamesToWeightedRecordsForWrite(
+    records: Record<string, CompactWeightedModelRecord>,
+    mulFactionNames: ReadonlyMap<number, string>
+): Record<string, CompactWeightedModelRecord> {
+    return Object.fromEntries(
+        Object.entries(records).map(([recordKey, record]) => [
+            recordKey,
+            {
+                ...record,
+                e: Object.fromEntries(
+                    Object.entries(record.e).map(([eraKey, eraAvailability]) => [
+                        eraKey,
+                        applyMulFactionNamesToEraAvailabilityForWrite(
+                            eraAvailability,
+                            mulFactionNames,
+                            mergeCompactWeightedValueForMul,
+                        ),
+                    ])
+                ),
+            },
+        ])
+    );
+}
+
 function resolveFactionMulIds(
     factions: Record<string, UniverseFactionRecord>,
     factionKey: string,
@@ -4336,6 +4449,8 @@ function run(): void {
 
     ensureOutputDir(OUTPUT_DIR);
 
+    const mulFactionNames = loadMulFactionNames(MUL_FACTIONS_PATH);
+
     writeJsonFile(path.join(OUTPUT_DIR, 'eras.json'), exportData.eras);
     writeJsonFile(path.join(OUTPUT_DIR, 'factions.json'), exportData.factions);
     writeJsonFile(path.join(OUTPUT_DIR, 'faction-era-data.json'), exportData.factionEraData);
@@ -4361,19 +4476,27 @@ function run(): void {
     );
     writeJsonFile(
         path.join(OUTPUT_DIR, 'mulized_chassis.json'),
-        compactAvailabilityRecordsToArrayForWrite(mulizedChassis)
+        compactAvailabilityRecordsToArrayForWrite(
+            applyMulFactionNamesToAvailabilityRecordsForWrite(mulizedChassis, mulFactionNames)
+        )
     );
     writeJsonFile(
         path.join(OUTPUT_DIR, 'mulized_models.json'),
-        compactAvailabilityRecordsToArrayForWrite(mulizedModels)
+        compactAvailabilityRecordsToArrayForWrite(
+            applyMulFactionNamesToAvailabilityRecordsForWrite(mulizedModels, mulFactionNames)
+        )
     );
     writeJsonFile(
         path.join(OUTPUT_DIR, 'mulized_availability.json'),
-        compactAvailabilityRecordsToArrayForWrite(mulizedAvailability)
+        compactAvailabilityRecordsToArrayForWrite(
+            applyMulFactionNamesToAvailabilityRecordsForWrite(mulizedAvailability, mulFactionNames)
+        )
     );
     writeJsonFile(
         path.join(OUTPUT_DIR, 'mulized_availability_weighted.json'),
-        compactWeightedRecordsToArrayForWrite(mulizedWeightedAvailability)
+        compactWeightedRecordsToArrayForWrite(
+            applyMulFactionNamesToWeightedRecordsForWrite(mulizedWeightedAvailability, mulFactionNames)
+        )
     );
     // writeJsonFile(
     //     path.join(OUTPUT_DIR, 'rulesets.json'),
