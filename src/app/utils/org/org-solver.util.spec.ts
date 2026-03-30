@@ -3241,6 +3241,60 @@ describe('org-solver.util resolve parity', () => {
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
+    it('resolves 2 BM plus 2 BA as an Under-Strength Star instead of promoting through Half Stars into a Binary', () => {
+        const result = resolveFromUnits([
+            createBM('STAR-BM1'),
+            createBM('STAR-BM2'),
+            createUnit('STAR-BA1', 'Infantry', 'Battle Armor', false, [], 5),
+            createUnit('STAR-BA2', 'Infantry', 'Battle Armor', false, [], 5),
+        ], 'Clan Test', 'HW Clan');
+
+        expect(result).toHaveSize(1);
+        expect(result[0].name).toBe('Under-Strength Star');
+        expect(result[0].type).toBe('Star');
+        expect(result[0].modifierKey).toBe('Under-Strength ');
+        expect(result[0].leftoverUnits).toBeUndefined();
+        expect(result[0].children?.length).toBe(4);
+        expect(result[0].children?.every((child) => child.type === 'Point')).toBeTrue();
+    });
+
+    it('resolves 3 BM plus 2 BA as an Star instead of promoting through Half Star + Short Star into a Binary', () => {
+        const result = resolveFromUnits([
+            createBM('STAR-BM1'),
+            createBM('STAR-BM2'),
+            createBM('STAR-BM3'),
+            createUnit('STAR-BA1', 'Infantry', 'Battle Armor', false, [], 5),
+            createUnit('STAR-BA2', 'Infantry', 'Battle Armor', false, [], 5),
+        ], 'Clan Test', 'HW Clan');
+
+        expect(result).toHaveSize(1);
+        expect(result[0].name).toBe('Star');
+        expect(result[0].type).toBe('Star');
+        expect(result[0].modifierKey).toBe('');
+        expect(result[0].leftoverUnits).toBeUndefined();
+        expect(result[0].children?.length).toBe(5);
+        expect(result[0].children?.every((child) => child.type === 'Point')).toBeTrue();
+    });
+
+    it('resolves 3 BM plus 3 BA as an Reinforced Star instead of promoting through Short Stars into a Binary', () => {
+        const result = resolveFromUnits([
+            createBM('STAR-BM1'),
+            createBM('STAR-BM2'),
+            createBM('STAR-BM3'),
+            createUnit('STAR-BA1', 'Infantry', 'Battle Armor', false, [], 5),
+            createUnit('STAR-BA2', 'Infantry', 'Battle Armor', false, [], 5),
+            createUnit('STAR-BA3', 'Infantry', 'Battle Armor', false, [], 5),
+        ], 'Clan Test', 'HW Clan');
+
+        expect(result).toHaveSize(1);
+        expect(result[0].name).toBe('Reinforced Star');
+        expect(result[0].type).toBe('Star');
+        expect(result[0].modifierKey).toBe('Reinforced ');
+        expect(result[0].leftoverUnits).toBeUndefined();
+        expect(result[0].children?.length).toBe(6);
+        expect(result[0].children?.every((child) => child.type === 'Point')).toBeTrue();
+    });
+
     it('resolves 5 BA with MEC and 6 OMNI BM into a Binary instead of a Nova plus leftover', () => {
         const result = resolveFromUnits([
             ...Array.from({ length: 5 }, (_, index) =>
