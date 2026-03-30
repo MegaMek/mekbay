@@ -240,7 +240,7 @@
             </div>
         </div>
         <div class="expanded-right">
-            @if ((u.comp | expandedComponents); as componentsList) {
+            @let componentsList = expandedComponents();
             @if (componentsList.length > 0) {
             <div class="components-header">Equipment</div>
             <div class="expanded-components">
@@ -250,7 +250,6 @@
                     }
                 </div>
             </div>
-            }
             }
             @if ((u.comp | filterAmmo); as ammoList) {
             @if (ammoList.length > 0) {
