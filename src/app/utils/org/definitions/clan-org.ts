@@ -87,6 +87,10 @@ export const CLAN_NOVA: OrgComposedPatternRule = {
     modifiers: { '': 2 },
     commandRank: 'Nova Commander',
     tier: 1.9,
+    formationMatching: {
+        ignoredChildRoles: [{ matches: ['Star'], onlyUnitTypes: ['BA'] }],
+        notice: 'Battle Armor child groups are ignored for formation requirements.',
+    },
     childRoles: [
         { matches: ['Star'], min: 1, max: 1, onlyUnitTypes: ['BA'] },
         { matches: ['Star'], min: 1, max: 1, onlyUnitTypes: ['BM', 'CV', 'AF', 'CF'] },

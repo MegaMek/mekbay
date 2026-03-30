@@ -43,8 +43,10 @@ export interface FormationDisplayItem {
     definition: FormationTypeDefinition;
     displayName: string;
     isValid: boolean;
-    /** Whether this formation was matched via the Nova rule (Infantry filtered out). */
-    novaFiltered: boolean;
+    /** Whether this formation required organization-level requirement filtering. */
+    requirementsFiltered: boolean;
+    /** Optional notice describing which structural units were ignored. */
+    requirementsFilterNotice?: string;
 }
 
 @Component({
@@ -86,7 +88,7 @@ export interface FormationDisplayItem {
                         </div>
                         @if (expandedId() === item.definition.id) {
                             <div class="formation-option-details">
-                                <formation-info [formation]="item.definition" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="true" [novaFiltered]="item.novaFiltered"></formation-info>
+                                <formation-info [formation]="item.definition" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="true" [requirementsFiltered]="item.requirementsFiltered" [requirementsFilterNotice]="item.requirementsFilterNotice"></formation-info>
                             </div>
                         }
                     </div>
@@ -115,7 +117,7 @@ export interface FormationDisplayItem {
                         </div>
                         @if (expandedId() === item.definition.id) {
                             <div class="formation-option-details">
-                                <formation-info [formation]="item.definition" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="false" [novaFiltered]="item.novaFiltered"></formation-info>
+                                <formation-info [formation]="item.definition" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="false" [requirementsFiltered]="item.requirementsFiltered" [requirementsFilterNotice]="item.requirementsFilterNotice"></formation-info>
                             </div>
                         }
                     </div>

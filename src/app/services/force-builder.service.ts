@@ -1275,7 +1275,8 @@ export class ForceBuilderService {
                 formationDisplayName: group.formationDisplayName(),
                 unitCount: group.units().length,
                 isValid: group.hasValidFormation(),
-                novaFiltered: group.isNovaFiltered(),
+                requirementsFiltered: group.isFormationRequirementsFiltered(),
+                requirementsFilterNotice: group.formationRequirementsFilterNotice(),
             } as FormationInfoDialogData
         });
     }

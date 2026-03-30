@@ -54,29 +54,26 @@ export class FormationNamerUtil {
 
     /**
      * Returns the list of valid formation definitions for a group of units.
-     * Each result includes whether it was matched via the Nova rule.
+     * Each result includes whether organization-level filtering was needed.
      */
     public static getAvailableFormationDefinitions(group: UnitGroup): FormationMatch[] {
-         const targetForce = group.force;
-         if (!targetForce) return [];
-        const factionName = targetForce.faction()?.name ?? 'Mercenary';
-        const isNova = group.organizationalName()?.toLowerCase().includes('nova') ?? false;
-        return LanceTypeIdentifierUtil.identifyFormations(group.units(), targetForce.techBase(), factionName, targetForce.gameSystem, isNova);
+        return LanceTypeIdentifierUtil.identifyFormationsForGroup(group);
     }
 
     // ===== Utility methods =====
 
     /**
      * Composes the display name for a formation definition given the group context.
-     * When `novaFiltered` is true, appends a `*` to indicate the Nova rule was applied.
+     * When `requirementsFiltered` is true, appends a `*` to indicate that
+     * organization-level units were ignored while checking requirements.
      */
     public static composeFormationDisplayName(
         definition: FormationTypeDefinition,
         group: UnitGroup,
-        novaFiltered: boolean = false,
+        requirementsFiltered: boolean = false,
     ): string {
         const organizationalName = group.organizationalName();
-        const suffix = novaFiltered ? ' *' : '';
+        const suffix = requirementsFiltered ? ' *' : '';
         if (organizationalName && definition.name.includes(organizationalName)) {
             return definition.name + suffix;
         }

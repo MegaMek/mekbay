@@ -9,6 +9,7 @@ import {
     getCIMoveClass,
     getNormalizedOrgUnitType,
 } from './org-facts.util';
+import { groupMatchesChildRole } from './org-role-match.util';
 import { resolveOrgDefinitionSpec } from './org-registry.util';
 import {
     getDynamicTierForModifier,
@@ -2306,52 +2307,6 @@ function enumerateExactLeafCountRuleRecordSets(
     return combinedRecordSet.length > 0 ? [combinedRecordSet] : [];
 }
 
-function groupMatchesRole(group: GroupFacts, role: OrgChildRoleSpec): boolean {
-    const groupType = group.type;
-    const countsAsType = group.countsAsType;
-    const matchesType = (groupType !== null && role.matches.includes(groupType))
-        || (countsAsType !== null && role.matches.includes(countsAsType));
-    if (!matchesType) {
-        return false;
-    }
-
-    if (role.onlyUnitTypes && role.onlyUnitTypes.length > 0) {
-        for (const [unitType, count] of group.unitTypeCounts.entries()) {
-            if (count > 0 && !role.onlyUnitTypes.includes(unitType)) {
-                return false;
-            }
-        }
-    }
-
-    if (role.requiredUnitTagsAny && role.requiredUnitTagsAny.length > 0) {
-        const hasAny = role.requiredUnitTagsAny.some((tag) => (group.unitTagCounts.get(tag) ?? 0) > 0);
-        if (!hasAny) {
-            return false;
-        }
-    }
-
-    if (role.requiredUnitTagsAll && role.requiredUnitTagsAll.length > 0) {
-        const hasAll = role.requiredUnitTagsAll.every((tag) => (group.unitTagCounts.get(tag) ?? 0) > 0);
-        if (!hasAll) {
-            return false;
-        }
-    }
-
-    if (role.requiredTagsAny && role.requiredTagsAny.length > 0) {
-        if (!group.tag || !role.requiredTagsAny.includes(group.tag)) {
-            return false;
-        }
-    }
-
-    if (role.requiredTagsAll && role.requiredTagsAll.length > 0) {
-        if (!group.tag || !role.requiredTagsAll.every((tag) => tag === group.tag)) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 function buildCompositionConfigs(rule: OrgComposedCountRule): CompositionConfig[] {
     const configs: CompositionConfig[] = [
         {
@@ -2401,7 +2356,7 @@ function canAssignGroupsToRoles(
         const group = selectedGroups[groupIndex];
         const matchingRoleIndexes = childRoles
             .map((role, roleIndex) => ({ role, roleIndex }))
-            .filter(({ role }) => groupMatchesRole(group, role))
+            .filter(({ role }) => groupMatchesChildRole(group, role))
             .map(({ roleIndex }) => roleIndex);
 
         if (matchingRoleIndexes.length === 0) {
@@ -2492,7 +2447,7 @@ function buildCountedCompositionInventory(
                 availableCount: bucketGroups.length,
                 matchingRoleIndexes: childRoles
                     .map((role, roleIndex) => ({ role, roleIndex }))
-                    .filter(({ role }) => groupMatchesRole(representativeGroup, role))
+                    .filter(({ role }) => groupMatchesChildRole(representativeGroup, role))
                     .map(({ roleIndex }) => roleIndex),
             };
         })
@@ -3438,7 +3393,7 @@ export function evaluateComposedCountRule(
     const configs = buildCompositionConfigs(rule);
     const guard = createSolverGuard();
     const acceptedGroups = groupFacts.filter((group) =>
-        configs.some((config) => config.childRoles.some((role) => groupMatchesRole(group, role))),
+        configs.some((config) => config.childRoles.some((role) => groupMatchesChildRole(group, role))),
     );
 
     const evaluations = configs.map((config) => ({
@@ -3485,7 +3440,7 @@ export function evaluateComposedPatternRule(
     registry: OrgRuleRegistry = DEFAULT_ORG_RULE_REGISTRY,
 ): ComposedCountEvaluationResult {
     const acceptedGroups = groupFacts.filter((group) =>
-        rule.childRoles.some((role) => groupMatchesRole(group, role)),
+        rule.childRoles.some((role) => groupMatchesChildRole(group, role)),
     );
     const config = buildPatternCompositionConfig(rule);
     const guard = createSolverGuard();
@@ -4205,7 +4160,7 @@ function getMinimumPresentChildTierForRule(
     groupFacts: readonly GroupFacts[],
 ): number | null {
     const matchingTiers = groupFacts
-        .filter((facts) => rule.childRoles.some((role) => groupMatchesRole(facts, role)))
+        .filter((facts) => rule.childRoles.some((role) => groupMatchesChildRole(facts, role)))
         .map((facts) => facts.tier);
 
     return matchingTiers.length > 0 ? Math.min(...matchingTiers) : null;
@@ -4307,7 +4262,7 @@ function getEligibleChildFacts(
     return candidateFacts.filter((facts) =>
         !isBlockedSubRegularPromotionChildFacts(facts, context)
         && facts.tier < parent.tier
-        && rule.childRoles.some((role) => groupMatchesRole(facts, role)),
+        && rule.childRoles.some((role) => groupMatchesChildRole(facts, role)),
     );
 }
 
@@ -4684,7 +4639,7 @@ function getApplicableComposedRulesForFacts(
         const requiredCount = getRuleStageMetadata(context, rule).descriptor.regularStep.count;
         let matchingCount = 0;
         for (const facts of groupFacts) {
-            if (rule.childRoles.some((role) => groupMatchesRole(facts, role))) {
+            if (rule.childRoles.some((role) => groupMatchesChildRole(facts, role))) {
                 matchingCount += 1;
                 if (matchingCount >= requiredCount) {
                     return true;

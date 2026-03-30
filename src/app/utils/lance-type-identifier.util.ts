@@ -33,11 +33,21 @@
 
 import type { ForceUnit } from '../models/force-unit.model';
 import { GameSystem } from '../models/common.model';
+import { FACTION_MERCENARY, type Faction } from '../models/factions.model';
+import type { Unit } from '../models/units.model';
 import { type FormationTypeDefinition, type FormationMatch, NO_FORMATION, NO_FORMATION_ID } from './formation-type.model';
 import { FORMATION_DEFINITIONS } from './formation-definitions';
 import type { UnitGroup } from '../models/force.model';
-
-
+import { collectGroupUnits, compileGroupFacts } from './org/org-facts.util';
+import { groupMatchesChildRole } from './org/org-role-match.util';
+import { resolveOrgDefinitionSpec } from './org/org-registry.util';
+import type {
+    GroupSizeResult,
+    OrgComposedCountRule,
+    OrgComposedPatternRule,
+    OrgFormationMatchingSpec,
+    OrgRuleDefinition,
+} from './org/org-types';
 
 /*
  * Author: Drake
@@ -46,33 +56,27 @@ import type { UnitGroup } from '../models/force.model';
  * Uses a single definition list with per-system validators.
  */
 
+interface FormationIdentificationOptions {
+    readonly filteredUnits?: ForceUnit[];
+    readonly requirementsFilterNotice?: string;
+}
+
 export class LanceTypeIdentifierUtil {
-
-    // ── Helpers ──────────────────────────────────────────────────────────
-
-    /**
-     * Returns `true` when the unit is an infantry-class unit
-     * (CI, BA, or PM in Alpha Strike; Infantry type in Classic).
-     */
-    public static isInfantryUnit(unit: ForceUnit, gameSystem: GameSystem): boolean {
-        const u = unit.getUnit();
-        if (gameSystem === GameSystem.ALPHA_STRIKE) {
-            const tp = u.as?.TP;
-            return tp === 'CI' || tp === 'BA' || tp === 'PM';
-        }
-        return u.type === 'Infantry';
-    }
-
-    // ── Validation ───────────────────────────────────────────────────────
+    private static readonly DEFAULT_FACTION: Faction = {
+        id: FACTION_MERCENARY,
+        name: 'Mercenary',
+        group: 'Mercenary',
+        img: '',
+        eras: {},
+    };
 
     private static validateDefinition(
         definition: FormationTypeDefinition,
         units: ForceUnit[],
-        gameSystem: GameSystem
+        gameSystem: GameSystem,
     ): boolean {
-        // Validate parent chain first
         if (definition.parent) {
-            const parentDefinition = FORMATION_DEFINITIONS.find(d => d.id === definition.parent);
+            const parentDefinition = FORMATION_DEFINITIONS.find((candidate) => candidate.id === definition.parent);
             if (!parentDefinition) {
                 console.error(`Parent definition '${definition.parent}' not found for '${definition.id}'`);
                 return false;
@@ -89,12 +93,15 @@ export class LanceTypeIdentifierUtil {
             if (definition.maxUnits && units.length > definition.maxUnits) {
                 return false;
             }
-            // If all units match the ideal role, skip the full validator
             if (definition.idealRole) {
-                const allMatchIdeal = units.every(u => u.getUnit().role === definition.idealRole);
-                if (allMatchIdeal) return true;
+                const allMatchIdeal = units.every((unit) => unit.getUnit().role === definition.idealRole);
+                if (allMatchIdeal) {
+                    return true;
+                }
             }
-            if (!definition.validator) return false;
+            if (!definition.validator) {
+                return false;
+            }
             return definition.validator(units, gameSystem);
         } catch (error) {
             console.error(`Error validating lance type ${definition.id}:`, error);
@@ -102,65 +109,127 @@ export class LanceTypeIdentifierUtil {
         }
     }
 
-    // ── Public API ───────────────────────────────────────────────────────
+    private static isFormationMatchingRule(
+        rule: OrgRuleDefinition | undefined,
+    ): rule is (OrgComposedCountRule | OrgComposedPatternRule) & { formationMatching: OrgFormationMatchingSpec } {
+        if (!rule?.formationMatching) {
+            return false;
+        }
 
-    /**
-     * Checks whether a formation definition is valid for the given units and game system.
-     */
+        return rule.kind === 'composed-count' || rule.kind === 'composed-pattern';
+    }
+
+    private static collectIgnoredUnits(
+        group: GroupSizeResult,
+        formationMatching: OrgFormationMatchingSpec,
+    ): Set<Unit> {
+        const ignoredUnits = new Set<Unit>();
+
+        for (const child of group.children ?? []) {
+            const childFacts = compileGroupFacts(child);
+            if (!formationMatching.ignoredChildRoles.some((role) => groupMatchesChildRole(childFacts, role))) {
+                continue;
+            }
+
+            for (const unit of collectGroupUnits(child)) {
+                ignoredUnits.add(unit);
+            }
+        }
+
+        return ignoredUnits;
+    }
+
+    private static getRequirementsFilterContext(group: UnitGroup<ForceUnit>): FormationIdentificationOptions {
+        const targetForce = group.force;
+        if (!targetForce) {
+            return {};
+        }
+
+        const resolvedGroups = group.organizationalResult().groups;
+        if (resolvedGroups.length !== 1) {
+            return {};
+        }
+
+        const [resolvedGroup] = resolvedGroups;
+        if (!resolvedGroup.type || !resolvedGroup.children || resolvedGroup.children.length === 0) {
+            return {};
+        }
+
+        if ((resolvedGroup.leftoverUnits?.length ?? 0) > 0 || (resolvedGroup.leftoverUnitAllocations?.length ?? 0) > 0) {
+            return {};
+        }
+
+        const resolvedFaction = targetForce.faction() ?? this.DEFAULT_FACTION;
+        const orgDefinition = resolveOrgDefinitionSpec(resolvedFaction, targetForce.era());
+        const matchedRule = orgDefinition.rules.find((candidate) => candidate.type === resolvedGroup.type);
+        if (!this.isFormationMatchingRule(matchedRule)) {
+            return {};
+        }
+
+        const ignoredUnits = this.collectIgnoredUnits(resolvedGroup, matchedRule.formationMatching);
+        if (ignoredUnits.size === 0) {
+            return {};
+        }
+
+        const filteredUnits = group.units().filter((unit) => !ignoredUnits.has(unit.getUnit()));
+        if (filteredUnits.length === 0 || filteredUnits.length >= group.units().length) {
+            return {};
+        }
+
+        return {
+            filteredUnits,
+            requirementsFilterNotice: matchedRule.formationMatching.notice,
+        };
+    }
+
     public static isValid(
         definition: FormationTypeDefinition,
         units: ForceUnit[],
-        gameSystem: GameSystem
+        gameSystem: GameSystem,
     ): boolean {
         return this.validateDefinition(definition, units, gameSystem);
     }
 
-    /**
-     * Looks up a formation definition by its ID.
-     */
     public static getDefinitionById(id: string, gameSystem?: GameSystem): FormationTypeDefinition | null {
-        // Handle the "No Formation" sentinel
-        if (id === NO_FORMATION_ID) return NO_FORMATION;
-        const def = FORMATION_DEFINITIONS.find(d => d.id === id) ?? null;
-        if (!def) return null;
-        // If a game system is specified, only return if the definition has a validator for it
-        if (gameSystem !== undefined) {
-            if (!def.validator) return null;
+        if (id === NO_FORMATION_ID) {
+            return NO_FORMATION;
         }
-        return def;
+
+        const definition = FORMATION_DEFINITIONS.find((candidate) => candidate.id === id) ?? null;
+        if (!definition) {
+            return null;
+        }
+        if (gameSystem !== undefined && !definition.validator) {
+            return null;
+        }
+        return definition;
     }
 
-    /**
-     * Returns the formation name for a given formation id, or null
-     * if the id is undefined, empty, or not found.
-     */
     public static getFormationName(formationId: string | undefined): string | null {
-        if (!formationId || formationId === NO_FORMATION_ID) return null;
-        return FORMATION_DEFINITIONS.find(d => d.id === formationId)?.name ?? null;
+        if (!formationId || formationId === NO_FORMATION_ID) {
+            return null;
+        }
+        return FORMATION_DEFINITIONS.find((definition) => definition.id === formationId)?.name ?? null;
     }
 
-    /**
-     * Identifies all matching formation types for the given force units.
-     */
     public static identifyLanceTypes(
         units: ForceUnit[],
         techBase: string,
         factionName: string,
-        gameSystem: GameSystem
+        gameSystem: GameSystem,
     ): FormationTypeDefinition[] {
         const matches: FormationTypeDefinition[] = [];
 
         for (const definition of FORMATION_DEFINITIONS) {
             try {
-                // Skip if no validator for this game system
-                if (!definition.validator) continue;
+                if (!definition.validator) {
+                    continue;
+                }
 
-                // Skip faction-exclusive definitions if faction doesn't match
                 if (definition.exclusiveFaction && !factionName.includes(definition.exclusiveFaction)) {
                     continue;
                 }
 
-                // Skip if tech base doesn't match
                 if (techBase && definition.techBase
                     && definition.techBase !== 'Special'
                     && techBase !== 'Mixed'
@@ -179,97 +248,109 @@ export class LanceTypeIdentifierUtil {
         return matches;
     }
 
-    // ── Nova-aware identification ────────────────────────────────────────
-
-    /**
-     * Identifies matching formation types, applying the Nova rule when applicable.
-     *
-     * When `isNova` is `true` (the group's size name contains "Nova"), formations
-     * are additionally evaluated with Infantry units filtered out.  Matches that
-     * only succeed after filtering are tagged `novaFiltered: true` so callers can
-     * warn that formation effects apply only to the Meks portion.
-     */
     public static identifyFormations(
         units: ForceUnit[],
         techBase: string,
         factionName: string,
         gameSystem: GameSystem,
-        isNova: boolean
+        options: FormationIdentificationOptions = {},
     ): FormationMatch[] {
         const standardMatches = this.identifyLanceTypes(units, techBase, factionName, gameSystem);
-        const results: FormationMatch[] = standardMatches.map(def => ({ definition: def, novaFiltered: false }));
+        const results: FormationMatch[] = standardMatches.map((definition) => ({
+            definition,
+            requirementsFiltered: false,
+        }));
+        const resultById = new Map(results.map((match) => [match.definition.id, match]));
 
-        if (isNova) {
-            const nonInfantryUnits = units.filter(u => !this.isInfantryUnit(u, gameSystem));
-            // Only evaluate if we actually filtered some units out and have units left
-            if (nonInfantryUnits.length > 0 && nonInfantryUnits.length < units.length) {
-                const novaMatches = this.identifyLanceTypes(nonInfantryUnits, techBase, factionName, gameSystem);
-                const existingIds = new Set(standardMatches.map(d => d.id));
-                for (const def of novaMatches) {
-                    if (!existingIds.has(def.id)) {
-                        results.push({ definition: def, novaFiltered: true });
-                    }
+        const filteredUnits = options.filteredUnits;
+        if (filteredUnits && filteredUnits.length > 0 && filteredUnits.length < units.length) {
+            const filteredMatches = this.identifyLanceTypes(filteredUnits, techBase, factionName, gameSystem);
+            for (const definition of filteredMatches) {
+                const existingMatch = resultById.get(definition.id);
+                if (existingMatch) {
+                    existingMatch.requirementsFiltered = true;
+                    existingMatch.requirementsFilterNotice = options.requirementsFilterNotice;
+                    continue;
                 }
+
+                const filteredMatch: FormationMatch = {
+                    definition,
+                    requirementsFiltered: true,
+                    requirementsFilterNotice: options.requirementsFilterNotice,
+                };
+                results.push(filteredMatch);
+                resultById.set(definition.id, filteredMatch);
             }
         }
 
         return results;
     }
 
-    /**
-     * Checks whether a specific formation definition is valid for the given group.
-     * Returns the match result including whether the Nova rule was applied.
-     */
+    public static identifyFormationsForGroup(group: UnitGroup<ForceUnit>): FormationMatch[] {
+        const targetForce = group.force;
+        if (!targetForce) {
+            return [];
+        }
+
+        const factionName = targetForce.faction()?.name ?? 'Mercenary';
+        return this.identifyFormations(
+            group.units(),
+            targetForce.techBase(),
+            factionName,
+            targetForce.gameSystem,
+            this.getRequirementsFilterContext(group),
+        );
+    }
+
     public static isFormationValidForGroup(
         definition: FormationTypeDefinition,
-        group: UnitGroup<ForceUnit>
+        group: UnitGroup<ForceUnit>,
     ): FormationMatch | null {
         const targetForce = group.force;
-        if (!targetForce) return null;
+        if (!targetForce) {
+            return null;
+        }
+
         const units = group.units();
         const gameSystem = targetForce.gameSystem;
 
-        // Direct match
-        if (this.isValid(definition, units, gameSystem)) {
-            return { definition, novaFiltered: false };
+        const filterContext = this.getRequirementsFilterContext(group);
+        if (filterContext.filteredUnits && this.isValid(definition, filterContext.filteredUnits, gameSystem)) {
+            return {
+                definition,
+                requirementsFiltered: true,
+                requirementsFilterNotice: filterContext.requirementsFilterNotice,
+            };
         }
 
-        // Nova fallback: try without Infantry
-        const isNova = group.organizationalName()?.toLowerCase().includes('nova') ?? false;
-        if (isNova) {
-            const nonInfantryUnits = units.filter(u => !this.isInfantryUnit(u, gameSystem));
-            if (nonInfantryUnits.length > 0 && nonInfantryUnits.length < units.length) {
-                if (this.isValid(definition, nonInfantryUnits, gameSystem)) {
-                    return { definition, novaFiltered: true };
-                }
-            }
+        if (this.isValid(definition, units, gameSystem)) {
+            return {
+                definition,
+                requirementsFiltered: false,
+            };
         }
 
         return null;
     }
 
-    /**
-     * Gets the best matching formation type (most specific, highest weight).
-     * Returns null when no formation matches.
-     */
     public static getBestMatch(
         units: ForceUnit[],
         techBase: string,
         factionName: string,
         gameSystem: GameSystem,
         preferredIds?: Set<string>,
-        isNova: boolean = false
+        options: FormationIdentificationOptions = {},
     ): FormationMatch | null {
-        const matches = this.identifyFormations(units, techBase, factionName, gameSystem, isNova);
-        if (matches.length === 0) return null;
+        const matches = this.identifyFormations(units, techBase, factionName, gameSystem, options);
+        if (matches.length === 0) {
+            return null;
+        }
 
         let bestMatches: FormationMatch[] = [];
         let bestWeight = -1;
 
         for (const match of matches) {
             let weight = 1;
-            // Prefer non-nova-filtered matches
-            // if (!match.novaFiltered) weight *= 1.5;
             if (match.definition.exclusiveFaction && factionName.includes(match.definition.exclusiveFaction)) {
                 weight *= 5;
             } else if (match.definition.parent) {
@@ -277,7 +358,7 @@ export class LanceTypeIdentifierUtil {
             } else if (match.definition.id !== 'support-lance' && match.definition.id !== 'command-lance' && match.definition.id !== 'battle-lance') {
                 weight *= 2;
             }
-            
+
             if (weight > bestWeight) {
                 bestWeight = weight;
                 bestMatches = [match];
@@ -286,29 +367,34 @@ export class LanceTypeIdentifierUtil {
             }
         }
 
-        if (bestMatches.length === 0) return null;
+        if (bestMatches.length === 0) {
+            return null;
+        }
 
-        // If we have preferred IDs from history, try to pick one of those first
         if (preferredIds && preferredIds.size > 0) {
-            const preferredMatch = bestMatches.find(m => preferredIds.has(m.definition.id));
+            const preferredMatch = bestMatches.find((match) => preferredIds.has(match.definition.id));
             if (preferredMatch) {
                 return preferredMatch;
             }
         }
 
-        // Otherwise, pick a random one from the best matches
         return bestMatches[Math.floor(Math.random() * bestMatches.length)];
     }
 
     public static getBestMatchForGroup(group: UnitGroup<ForceUnit>): FormationMatch | null {
         const targetForce = group.force;
-        if (!targetForce) return null;
+        if (!targetForce) {
+            return null;
+        }
+
         const factionName = targetForce.faction()?.name ?? 'Mercenary';
-        const techBase = targetForce.techBase();
-        const isNova = group.organizationalName()?.toLowerCase().includes('nova') ?? false;
-        const best = LanceTypeIdentifierUtil.getBestMatch(
-            group.units(), techBase, factionName, targetForce.gameSystem, group.formationHistory, isNova
+        return this.getBestMatch(
+            group.units(),
+            targetForce.techBase(),
+            factionName,
+            targetForce.gameSystem,
+            group.formationHistory,
+            this.getRequirementsFilterContext(group),
         );
-        return best;
     }
 }
