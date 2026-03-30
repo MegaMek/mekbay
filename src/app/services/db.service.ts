@@ -1028,6 +1028,7 @@ export class DbService {
                                 });
                             }
                             const entry: LoadForceEntry = new LoadForceEntry({
+                                owned: true,
                                 cloud: false,
                                 instanceId: raw.instanceId,
                                 name: raw.name,

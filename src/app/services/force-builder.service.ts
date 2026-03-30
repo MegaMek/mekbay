@@ -633,7 +633,7 @@ export class ForceBuilderService {
                 this.toastService.showToast('No editable force to insert into.', 'error');
                 return false;
             }
-            const sourceForce = await this.dataService.getForce(entry.instanceId, true);
+            const sourceForce = await this.dataService.getForce(entry.instanceId, false);
             if (!sourceForce) {
                 this.toastService.showToast('Failed to load force.', 'error');
                 return false;
@@ -643,7 +643,7 @@ export class ForceBuilderService {
             return inserted;
         }
 
-        const requestedForce = await this.dataService.getForce(entry.instanceId, true);
+        const requestedForce = await this.dataService.getForce(entry.instanceId, false);
         if (!requestedForce) {
             this.toastService.showToast('Failed to load force.', 'error');
             return false;
@@ -1758,7 +1758,7 @@ export class ForceBuilderService {
                 return;
             }
             if (result instanceof LoadForceEntry) {
-                const sourceForce = await this.dataService.getForce(result.instanceId, true);
+                const sourceForce = await this.dataService.getForce(result.instanceId, false);
                 if (!sourceForce) {
                     this.toastService.showToast('Failed to load force.', 'error');
                     return;
@@ -1777,7 +1777,7 @@ export class ForceBuilderService {
         const addAlignment: ForceAlignment = alignment ?? 'friendly';
 
         if (result instanceof LoadForceEntry) {
-            const requestedForce = await this.dataService.getForce(result.instanceId, true);
+            const requestedForce = await this.dataService.getForce(result.instanceId, false);
             if (!requestedForce) {
                 this.toastService.showToast('Failed to load force.', 'error');
                 return;
@@ -2171,6 +2171,8 @@ export class ForceBuilderService {
             }
         }
 
+        await this.cacheLoadedOperationForcesLocally(slots);
+
         const forces: OperationForceRef[] = slots.map(slot => ({
             instanceId: slot.force.instanceId()!,
             alignment: slot.alignment,
@@ -2284,6 +2286,10 @@ export class ForceBuilderService {
             }
         }
 
+        if (currentOp.owned) {
+            await this.cacheLoadedOperationForcesLocally(slots);
+        }
+
         const forces: OperationForceRef[] = slots.map(slot => ({
             instanceId: slot.force.instanceId()!,
             alignment: slot.alignment,
@@ -2378,6 +2384,14 @@ export class ForceBuilderService {
         const entry = await this.dataService.getOperation(operationId);
         if (!entry) return false;
 
+        if (entry.owned) {
+            try {
+                await this.dataService.cacheForcesLocally(entry.forces.map((forceInfo) => forceInfo.instanceId));
+            } catch (error) {
+                this.logger.warn(`Failed to cache operation forces locally: ${error}`);
+            }
+        }
+
         this.urlStateInitialized.set(false);
         try {
             // Clear everything
@@ -2444,6 +2458,12 @@ export class ForceBuilderService {
             return true;
         } finally {
             this.urlStateInitialized.set(true);
+        }
+    }
+
+    private async cacheLoadedOperationForcesLocally(slots: readonly ForceSlot[]): Promise<void> {
+        for (const slot of slots) {
+            await this.dataService.saveSerializedForceToLocalStorage(slot.force.serialize());
         }
     }
 

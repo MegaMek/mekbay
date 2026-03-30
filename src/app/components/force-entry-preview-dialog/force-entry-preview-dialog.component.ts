@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import type { LoadForceEntry, LoadForceGroup } from '../../models/load-force-entry.model';
@@ -85,6 +85,7 @@ export class ForceEntryPreviewDialogComponent {
     private allUnits: Unit[];
 
     isForceLoaded = signal(false);
+    canLoadForce = computed(() => !this.isForceLoaded() && this.force.owned);
 
     constructor() {
         this.force = this.data.force;

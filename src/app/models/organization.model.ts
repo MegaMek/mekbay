@@ -80,6 +80,14 @@ export interface SerializedOrganization {
 }
 
 /**
+ * Organization returned when loading an org for display.
+ * `owned` is transient client metadata and must not be sent back on save.
+ */
+export interface LoadedOrganization extends SerializedOrganization {
+    owned?: boolean;
+}
+
+/**
  * Enriched organization entry used for display in the load dialog.
  */
 export class LoadOrganizationEntry {

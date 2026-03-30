@@ -44,16 +44,17 @@ import {
     type WritableSignal,
 } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import type { LoadForceEntry } from '../../models/load-force-entry.model';
+import { LoadForceEntry } from '../../models/load-force-entry.model';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
+import { UrlStateService } from '../../services/url-state.service';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import type { GroupSizeResult, OrgSizeResult } from '../../utils/org/org-types';
 import { GameSystem } from '../../models/common.model';
 import { getUnitsAverageTechBase, type TechBase } from '../../models/tech.model';
-import type { SerializedOrganization, OrgPlacedForce, OrgGroupData } from '../../models/organization.model';
+import type { LoadedOrganization, SerializedOrganization, OrgPlacedForce, OrgGroupData } from '../../models/organization.model';
 import { ForceEntryPreviewDialogComponent } from '../force-entry-preview-dialog/force-entry-preview-dialog.component';
 import type { Era } from '../../models/eras.model';
 import { getOrgFromForce, getOrgFromForceCollection } from '../../utils/org/org-namer.util';
@@ -70,6 +71,7 @@ const GROUP_HEADER_HEIGHT = 64;
 const GROUP_EMBED_OVERLAP_THRESHOLD = 0.2;
 const COLLISION_EDGE_PADDING = 8;
 const COLLISION_RESOLVE_MAX_ITERATIONS = 50;
+const READONLY_PREVIEW_MOVE_THRESHOLD = 6;
 
 function snapToGrid(value: number): number {
     return Math.round(value / GRID_SNAP_SIZE) * GRID_SNAP_SIZE;
@@ -264,6 +266,15 @@ interface ForceMetadata {
     totalPv: number;
 }
 
+function createMissingForceEntry(instanceId: string): LoadForceEntry {
+    return new LoadForceEntry({
+        instanceId,
+        name: 'Missing Force',
+        missing: true,
+        groups: [],
+    });
+}
+
 @Component({
     selector: 'force-org-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -280,6 +291,7 @@ export class ForceOrgDialogComponent {
     private dialogsService = inject(DialogsService);
     private forceBuilderService = inject(ForceBuilderService);
     private destroyRef = inject(DestroyRef);
+    private urlStateService = inject(UrlStateService);
     protected layoutService = inject(LayoutService);
     private svgCanvas = viewChild<ElementRef<SVGSVGElement>>('svgCanvas');
     private dialogData: ForceOrgDialogData | null = inject(DIALOG_DATA, { optional: true });
@@ -289,10 +301,13 @@ export class ForceOrgDialogComponent {
     protected readonly GROUP_PADDING = GROUP_PADDING;
     protected readonly GROUP_HEADER_HEIGHT = GROUP_HEADER_HEIGHT;
     protected readonly GameSystem = GameSystem;
+    protected readonly MISSING_FORCE_SUBTITLE = 'Unavailable offline or not downloaded';
 
     // Organization state
-    protected organizationId = signal<string | null>(null);
+    protected organizationId = signal<string | null>(this.dialogData?.organizationId ?? null);
     protected organizationName = signal('Unnamed Organization');
+    protected organizationOwned = signal(true);
+    protected readOnly = computed(() => !this.organizationOwned());
     protected saving = signal(false);
     protected dirty = signal(false);
 
@@ -395,6 +410,7 @@ export class ForceOrgDialogComponent {
     private pinchStartDistance = 0;
     private pinchStartZoom = 1;
     private activeTouches = new Map<number, PointerEvent>();
+    private pendingReadonlyPreview: { pointerId: number; startX: number; startY: number; force: LoadForceEntry } | null = null;
 
     // Drag state for forces
     protected draggedForce = signal<PlacedForce | null>(null);
@@ -729,7 +745,13 @@ export class ForceOrgDialogComponent {
     private nextGroupZIndex = 0;
 
     constructor() {
-        this.destroyRef.onDestroy(() => this.cleanupGlobalPointerState());
+        this.destroyRef.onDestroy(() => {
+            this.cleanupGlobalPointerState();
+            this.urlStateService.setExclusiveParams(null);
+        });
+        effect(() => {
+            this.urlStateService.setExclusiveParams({ toe: this.organizationId() });
+        });
         if (this.dialogData?.organizationId) {
             this.loadOrganization(this.dialogData.organizationId);
         } else {
@@ -1010,6 +1032,7 @@ export class ForceOrgDialogComponent {
     private preventTouchScroll = false;
 
     protected onSidebarForcePointerDown(event: PointerEvent, force: LoadForceEntry): void {
+        if (this.readOnly()) return;
         if (event.pointerType === 'touch') {
             // Touch: hold-to-drag (like force-builder-viewer cdkDragStartDelay)
             this.cancelSidebarHoldTimer();
@@ -1092,6 +1115,15 @@ export class ForceOrgDialogComponent {
     // ==================== Canvas Force Drag ====================
 
     protected onForcePointerDown(event: PointerEvent, pf: PlacedForce): void {
+        if (this.readOnly()) {
+            this.pendingReadonlyPreview = pf.force.missing ? null : {
+                pointerId: event.pointerId,
+                startX: event.clientX,
+                startY: event.clientY,
+                force: pf.force,
+            };
+            return;
+        }
         event.preventDefault();
         event.stopPropagation();
         this.draggedForce.set(pf);
@@ -1118,14 +1150,17 @@ export class ForceOrgDialogComponent {
     // ==================== Group Drag ====================
 
     protected onGroupPointerDown(event: PointerEvent, group: OrgGroup): void {
+        if (this.readOnly()) return;
         this.startGroupDrag(event, group, false);
     }
 
     protected onGroupTitlePointerDown(event: PointerEvent, group: OrgGroup): void {
+        if (this.readOnly()) return;
         this.startGroupDrag(event, group, true);
     }
 
     private startGroupDrag(event: PointerEvent, group: OrgGroup, fromTitle: boolean): void {
+        if (this.readOnly()) return;
         event.preventDefault();
         event.stopPropagation();
         this.titleDragGroupId = fromTitle ? group.id : null;
@@ -1152,6 +1187,7 @@ export class ForceOrgDialogComponent {
     // ==================== Remove Force ====================
 
     protected removeForce(pf: PlacedForce): void {
+        if (this.readOnly()) return;
         // Remove group membership
         if (pf.groupId) {
             const group = this.groups().find(g => g.id === pf.groupId);
@@ -1167,6 +1203,7 @@ export class ForceOrgDialogComponent {
     // ==================== Group Management ====================
 
     protected async renameGroup(group: OrgGroup): Promise<void> {
+        if (this.readOnly()) return;
         if (this.groupDragged) return;
         const newName = await this.dialogsService.prompt(
             'Enter a name for this group:',
@@ -1181,6 +1218,7 @@ export class ForceOrgDialogComponent {
     }
 
     protected removeGroup(group: OrgGroup): void {
+        if (this.readOnly()) return;
         if (this.groupDragged) return;
         this.dissolveGroup(group);
         this.dirty.set(true);
@@ -2026,6 +2064,7 @@ export class ForceOrgDialogComponent {
         }
         this.cancelSidebarHoldTimer();
         this.pendingMoveEvent = null;
+        this.pendingReadonlyPreview = null;
         this.activeTouches.clear();
         this.lastPanPoint = null;
         this.draggedForce.set(null);
@@ -2052,6 +2091,9 @@ export class ForceOrgDialogComponent {
     }
 
     private onGlobalPointerCancel = (event: PointerEvent): void => {
+        if (this.pendingReadonlyPreview?.pointerId === event.pointerId) {
+            this.pendingReadonlyPreview = null;
+        }
         this.activeTouches.delete(event.pointerId);
         // Treat cancel same as pointer up to clean state
         this.onGlobalPointerUp(event);
@@ -2086,6 +2128,17 @@ export class ForceOrgDialogComponent {
     };
 
     private processPointerMove(event: PointerEvent): void {
+        const pendingReadonlyPreview = this.pendingReadonlyPreview;
+        if (pendingReadonlyPreview && event.pointerId === pendingReadonlyPreview.pointerId) {
+            const moveDistance = Math.hypot(
+                event.clientX - pendingReadonlyPreview.startX,
+                event.clientY - pendingReadonlyPreview.startY,
+            );
+            if (this.activeTouches.size > 1 || moveDistance > READONLY_PREVIEW_MOVE_THRESHOLD) {
+                this.pendingReadonlyPreview = null;
+            }
+        }
+
         // Sidebar drag
         if (this.sidebarDragActive()) {
             const sidebarForce = this.sidebarDragForce();
@@ -2246,6 +2299,13 @@ export class ForceOrgDialogComponent {
     }
 
     private onGlobalPointerUp = (event: PointerEvent): void => {
+        const readonlyPreview = this.pendingReadonlyPreview?.pointerId === event.pointerId
+            ? this.pendingReadonlyPreview
+            : null;
+        if (readonlyPreview) {
+            this.pendingReadonlyPreview = null;
+        }
+
         this.activeTouches.delete(event.pointerId);
         this.pendingMoveEvent = null;
 
@@ -2333,11 +2393,16 @@ export class ForceOrgDialogComponent {
         }
 
         if (this.activeTouches.size === 0) this.cleanupGlobalPointerState();
+
+        if (readonlyPreview) {
+            void this.previewForce(readonlyPreview.force);
+        }
     };
 
     // ==================== Dialog Actions ====================
 
     protected async renameOrganization(): Promise<void> {
+        if (this.readOnly()) return;
         const newName = await this.dialogsService.prompt(
             'Enter a name for this organization:',
             'Rename Organization',
@@ -2350,7 +2415,7 @@ export class ForceOrgDialogComponent {
     }
 
     protected async saveOrganization(): Promise<void> {
-        if (this.saving()) return;
+        if (this.readOnly() || this.saving()) return;
         this.saving.set(true);
         try {
             const orgId = this.organizationId() ?? crypto.randomUUID();
@@ -2392,37 +2457,52 @@ export class ForceOrgDialogComponent {
         try {
             const org = await this.dataService.getOrganization(organizationId);
             if (!org) {
+                this.organizationId.set(null);
+                this.organizationOwned.set(true);
                 await this.dialogsService.showError('Organization not found.', 'Load Error');
                 await this.loadForces();
                 return;
             }
 
-            // Load all forces first
-            const result = await this.dataService.listForces();
-            for (const f of result || []) {
-                f._searchText = this.computeSearchText(f);
+            this.applyLoadedOrganizationMetadata(org);
+
+            const orgForceIds = Array.from(new Set(org.forces.map((pf) => pf.instanceId).filter(Boolean)));
+
+            let availableForces: LoadForceEntry[];
+            if (org.owned === false) {
+                availableForces = await this.dataService.getForceEntriesByIds(orgForceIds);
+            } else {
+                const result = await this.dataService.listForces();
+                const existingIds = new Set((result || []).map((force) => force.instanceId));
+                const missingIds = orgForceIds.filter((instanceId) => !existingIds.has(instanceId));
+                const missingForces = missingIds.length > 0
+                    ? await this.dataService.getForceEntriesByIds(missingIds)
+                    : [];
+                availableForces = [...(result || []), ...missingForces];
             }
-            this.allForces.set(result || []);
+
+            for (const force of availableForces) {
+                force._searchText = this.computeSearchText(force);
+            }
+            this.allForces.set(availableForces);
 
             // Build a lookup map
             const forceMap = new Map<string, LoadForceEntry>();
-            for (const f of (result || [])) {
+            for (const f of availableForces) {
                 forceMap.set(f.instanceId, f);
             }
 
-            // Restore placed forces (skip any whose force no longer exists)
+            // Restore placed forces. Missing references stay as placeholders so saves preserve them.
             const placed: PlacedForce[] = [];
             for (const pf of org.forces) {
-                const force = forceMap.get(pf.instanceId);
-                if (force) {
-                    placed.push({
-                        force,
-                        x: signal(snapToGrid(pf.x)),
-                        y: signal(snapToGrid(pf.y)),
-                        zIndex: signal(pf.zIndex),
-                        groupId: pf.groupId,
-                    });
-                }
+                const force = forceMap.get(pf.instanceId) ?? createMissingForceEntry(pf.instanceId);
+                placed.push({
+                    force,
+                    x: signal(snapToGrid(pf.x)),
+                    y: signal(snapToGrid(pf.y)),
+                    zIndex: signal(pf.zIndex),
+                    groupId: pf.groupId,
+                });
             }
             this.placedForces.set(placed);
 
@@ -2443,6 +2523,7 @@ export class ForceOrgDialogComponent {
             // Restore state
             this.organizationId.set(org.organizationId);
             this.organizationName.set(org.name);
+            this.dirty.set(false);
 
             // Update zIndex counters
             this.nextZIndex = placed.reduce((max, pf) => Math.max(max, pf.zIndex() + 1), 0);
@@ -2451,11 +2532,17 @@ export class ForceOrgDialogComponent {
             // Auto-fit viewport to show all content centered
             requestAnimationFrame(() => this.autoFitView());
         } catch {
+            this.organizationId.set(null);
+            this.organizationOwned.set(true);
             await this.dialogsService.showError('Failed to load organization.', 'Load Error');
             await this.loadForces();
         } finally {
             this.loading.set(false);
         }
+    }
+
+    private applyLoadedOrganizationMetadata(org: LoadedOrganization): void {
+        this.organizationOwned.set(org.owned ?? true);
     }
 
     protected close(): void {
