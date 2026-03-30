@@ -142,8 +142,9 @@ export function isNoFormation(def: FormationTypeDefinition | null | undefined): 
 export interface FormationMatch {
     definition: FormationTypeDefinition;
     /**
-     * `true` when this formation matched only after filtering out Infantry
-     * units (Nova rule). Formation effects apply to Meks only, not Infantry.
+     * `true` when this formation matched only after ignoring configured child
+     * groups from the resolved organization while checking requirements.
      */
-    novaFiltered: boolean;
+    requirementsFiltered: boolean;
+    requirementsFilterNotice?: string;
 }

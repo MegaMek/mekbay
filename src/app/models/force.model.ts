@@ -269,7 +269,7 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
         return FormationNamerUtil.composeFormationDisplayName(
             formation,
             this,
-            this.isNovaFiltered()
+            this.isFormationRequirementsFiltered()
         );
     });
 
@@ -289,9 +289,13 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
         return this._formationMatch() !== null;
     });
 
-    /** Whether the current formation was matched via the Nova rule (Infantry filtered out). */
-    isNovaFiltered = computed<boolean>(() => {
-        return this._formationMatch()?.novaFiltered ?? false;
+    /** Whether the current formation required organization-level unit filtering. */
+    isFormationRequirementsFiltered = computed<boolean>(() => {
+        return this._formationMatch()?.requirementsFiltered ?? false;
+    });
+
+    formationRequirementsFilterNotice = computed<string | null>(() => {
+        return this._formationMatch()?.requirementsFilterNotice ?? null;
     });
 }
 
