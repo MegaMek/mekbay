@@ -260,10 +260,13 @@ export class App {
                 initialShareHandled = true;
                 // Use UrlStateService to get initial URL params (captured before any routing effects)
                 const hasProtocolLink = this.urlStateService.hasInitialParam('protocolLink');
+                const organizationId = this.urlStateService.getInitialParam('toe');
                 const sharedUnitName = this.urlStateService.getInitialParam('shareUnit');
                 const tab = this.urlStateService.getInitialParam('tab') ?? undefined;
                 if (hasProtocolLink) {
                     void this.handleCapturedUrl(window.location.href, 'protocol');
+                } else if (organizationId) {
+                    void this.forceBuilderService.showForceOrgDialog(organizationId);
                 } else if (sharedUnitName) {
                     const unit = this.dataService.getUnitByName(sharedUnitName);
                     if (unit) {

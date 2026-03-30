@@ -8,13 +8,16 @@ import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
+import { UrlStateService } from '../../services/url-state.service';
 import { ForceOrgDialogComponent } from './force-org-dialog.component';
 
 describe('ForceOrgDialogComponent', () => {
     let component: ForceOrgDialogComponent;
+    let fixture: import('@angular/core/testing').ComponentFixture<ForceOrgDialogComponent>;
 
     const dataServiceStub = {
         listForces: jasmine.createSpy('listForces').and.resolveTo([]),
+        getForceEntriesByIds: jasmine.createSpy('getForceEntriesByIds').and.resolveTo([]),
         getFactionById: jasmine.createSpy('getFactionById').and.returnValue(undefined),
         saveOrganization: jasmine.createSpy('saveOrganization').and.resolveTo(undefined),
         getOrganization: jasmine.createSpy('getOrganization').and.resolveTo(null),
@@ -35,6 +38,10 @@ describe('ForceOrgDialogComponent', () => {
         isMobile: signal(false),
     };
 
+    const urlStateServiceStub = {
+        setExclusiveParams: jasmine.createSpy('setExclusiveParams'),
+    };
+
     beforeEach(async () => {
         await TestBed.configureTestingModule({
             imports: [ForceOrgDialogComponent],
@@ -45,10 +52,14 @@ describe('ForceOrgDialogComponent', () => {
                 { provide: DialogsService, useValue: dialogsServiceStub },
                 { provide: ForceBuilderService, useValue: forceBuilderServiceStub },
                 { provide: LayoutService, useValue: layoutServiceStub },
+                { provide: UrlStateService, useValue: urlStateServiceStub },
             ],
         }).compileComponents();
 
-        component = TestBed.createComponent(ForceOrgDialogComponent).componentInstance;
+        fixture = TestBed.createComponent(ForceOrgDialogComponent);
+        component = fixture.componentInstance;
+        fixture.detectChanges();
+        urlStateServiceStub.setExclusiveParams.calls.reset();
     });
 
     function createPlacedForce(instanceId: string, x: number, y: number, groupId: string | null) {
@@ -328,6 +339,187 @@ describe('ForceOrgDialogComponent', () => {
         expect(groupB.width()).toBeGreaterThan(20);
         expect(groupB.height()).toBeGreaterThan(20);
         expect((component as any).rectsOverlap(rectA, rectB)).toBeFalse();
+    });
+
+    it('syncs the toe URL param while the dialog is visible and clears it on destroy', () => {
+        (component as any).organizationId.set('org-42');
+        fixture.detectChanges();
+
+        expect(urlStateServiceStub.setExclusiveParams).toHaveBeenCalledWith({ toe: 'org-42' });
+
+        urlStateServiceStub.setExclusiveParams.calls.reset();
+        fixture.destroy();
+
+        expect(urlStateServiceStub.setExclusiveParams).toHaveBeenCalledWith(null);
+    });
+
+    it('treats non-owned organizations as read-only and blocks saving', async () => {
+        const forceA = createLoadForce('force-a', [createBattleMek('Atlas')]);
+
+        dataServiceStub.getForceEntriesByIds.and.resolveTo([forceA]);
+        dataServiceStub.getOrganization.and.resolveTo({
+            organizationId: 'org-shared',
+            name: 'Shared Org',
+            timestamp: Date.now(),
+            owned: false,
+            factionId: undefined,
+            forces: [
+                { instanceId: 'force-a', x: 0, y: 0, zIndex: 0, groupId: null },
+            ],
+            groups: [],
+        });
+
+        await (component as any).loadOrganization('org-shared');
+        (component as any).dirty.set(true);
+        fixture.detectChanges();
+        dataServiceStub.saveOrganization.calls.reset();
+
+        await (component as any).saveOrganization();
+
+        expect((component as any).readOnly()).toBeTrue();
+        expect(dataServiceStub.saveOrganization).not.toHaveBeenCalled();
+        expect(urlStateServiceStub.setExclusiveParams).toHaveBeenCalledWith({ toe: 'org-shared' });
+    });
+
+    it('opens force details when clicking a force card in read-only mode', async () => {
+        const forceA = createLoadForce('force-a', [createBattleMek('Atlas')]);
+
+        dataServiceStub.getForceEntriesByIds.and.resolveTo([forceA]);
+        dataServiceStub.getOrganization.and.resolveTo({
+            organizationId: 'org-shared',
+            name: 'Shared Org',
+            timestamp: Date.now(),
+            owned: false,
+            factionId: undefined,
+            forces: [
+                { instanceId: 'force-a', x: 0, y: 0, zIndex: 0, groupId: null },
+            ],
+            groups: [],
+        });
+
+        await (component as any).loadOrganization('org-shared');
+        dialogsServiceStub.createDialog.calls.reset();
+
+        const placedForce = (component as any).placedForces()[0];
+        (component as any).onForcePointerDown({
+            pointerId: 7,
+            clientX: 100,
+            clientY: 100,
+        } as PointerEvent, placedForce);
+        (component as any).onCanvasPointerDown({
+            pointerId: 7,
+            clientX: 100,
+            clientY: 100,
+            currentTarget: { setPointerCapture() {} },
+        } as unknown as PointerEvent);
+        (component as any).onGlobalPointerUp({
+            pointerId: 7,
+            clientX: 100,
+            clientY: 100,
+        } as PointerEvent);
+
+        expect(dialogsServiceStub.createDialog).toHaveBeenCalled();
+        expect(dialogsServiceStub.createDialog.calls.mostRecent().args[1]).toEqual(jasmine.objectContaining({
+            data: jasmine.objectContaining({ force: forceA }),
+        }));
+    });
+
+    it('does not open force details when the readonly card gesture turns into a drag', async () => {
+        const forceA = createLoadForce('force-a', [createBattleMek('Atlas')]);
+
+        dataServiceStub.getForceEntriesByIds.and.resolveTo([forceA]);
+        dataServiceStub.getOrganization.and.resolveTo({
+            organizationId: 'org-shared',
+            name: 'Shared Org',
+            timestamp: Date.now(),
+            owned: false,
+            factionId: undefined,
+            forces: [
+                { instanceId: 'force-a', x: 0, y: 0, zIndex: 0, groupId: null },
+            ],
+            groups: [],
+        });
+
+        await (component as any).loadOrganization('org-shared');
+        dialogsServiceStub.createDialog.calls.reset();
+
+        const placedForce = (component as any).placedForces()[0];
+        (component as any).onForcePointerDown({
+            pointerId: 9,
+            clientX: 100,
+            clientY: 100,
+        } as PointerEvent, placedForce);
+        (component as any).onCanvasPointerDown({
+            pointerId: 9,
+            clientX: 100,
+            clientY: 100,
+            currentTarget: { setPointerCapture() {} },
+        } as unknown as PointerEvent);
+        (component as any).processPointerMove({
+            pointerId: 9,
+            clientX: 132,
+            clientY: 128,
+        } as PointerEvent);
+        (component as any).onGlobalPointerUp({
+            pointerId: 9,
+            clientX: 132,
+            clientY: 128,
+        } as PointerEvent);
+
+        expect(dialogsServiceStub.createDialog).not.toHaveBeenCalled();
+        expect((component as any).draggedForce()).toBeNull();
+    });
+
+    it('loads foreign organization forces by instance id instead of listing the viewer\'s own forces', async () => {
+        const foreignForce = createLoadForce('force-foreign', [createBattleMek('Atlas')]);
+
+        dataServiceStub.listForces.calls.reset();
+        dataServiceStub.getForceEntriesByIds.and.resolveTo([foreignForce]);
+        dataServiceStub.getOrganization.and.resolveTo({
+            organizationId: 'org-foreign',
+            name: 'Foreign Org',
+            timestamp: Date.now(),
+            owned: false,
+            factionId: undefined,
+            forces: [
+                { instanceId: 'force-foreign', x: 0, y: 0, zIndex: 0, groupId: null },
+            ],
+            groups: [],
+        });
+
+        await (component as any).loadOrganization('org-foreign');
+
+        expect(dataServiceStub.listForces).not.toHaveBeenCalled();
+        expect(dataServiceStub.getForceEntriesByIds).toHaveBeenCalledWith(['force-foreign']);
+        expect((component as any).placedForces().map((pf: any) => pf.force.instanceId)).toEqual(['force-foreign']);
+    });
+
+    it('keeps missing force references as placeholders so saving the TO&E preserves them', async () => {
+        dataServiceStub.listForces.and.resolveTo([]);
+        dataServiceStub.getForceEntriesByIds.and.resolveTo([]);
+        dataServiceStub.getOrganization.and.resolveTo({
+            organizationId: 'org-missing',
+            name: 'Missing Org',
+            timestamp: Date.now(),
+            owned: true,
+            factionId: undefined,
+            forces: [
+                { instanceId: 'force-missing', x: 40, y: 60, zIndex: 0, groupId: null },
+            ],
+            groups: [],
+        });
+
+        await (component as any).loadOrganization('org-missing');
+        dataServiceStub.saveOrganization.calls.reset();
+
+        await (component as any).saveOrganization();
+
+        expect((component as any).placedForces().length).toBe(1);
+        expect((component as any).placedForces()[0].force.missing).toBeTrue();
+        expect(dataServiceStub.saveOrganization).toHaveBeenCalledWith(jasmine.objectContaining({
+            organizationId: 'org-missing',
+            forces: [jasmine.objectContaining({ instanceId: 'force-missing' })],
+        }));
     });
 
     it('brings a dragged group to the highest group z-index', () => {

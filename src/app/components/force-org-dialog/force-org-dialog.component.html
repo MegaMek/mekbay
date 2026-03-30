@@ -18,10 +18,10 @@
         @if (organizationFactionId() | factionImg; as factionImgUrl) {
         <img [src]="factionImgUrl" class="org-faction-icon" alt="" />
         }
-        <h2 class="org-name" (click)="renameOrganization()" title="Click to rename">{{ organizationName() }}</h2>
+        <h2 class="org-name" (click)="renameOrganization()" [title]="readOnly() ? 'Shared organization (view only)' : 'Click to rename'">{{ organizationName() }}</h2>
     </div>
     <div class="org-dialog-header-actions">
-        @if (layoutService.isMobile()) {
+        @if (layoutService.isMobile() && !readOnly()) {
         <button class="bt-button square" type="button" (click)="toggleSidebar()" [class.active]="sidebarOpen()"
             aria-label="Toggle forces sidebar">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
@@ -99,7 +99,7 @@
                     <div xmlns="http://www.w3.org/1999/xhtml" class="group-header-info">
                         @if (group.name(); as customName) {
                         <div class="group-name"
-                            (pointerdown)="onGroupTitlePointerDown($event, group)" title="Drag to move or click to rename">
+                            (pointerdown)="onGroupTitlePointerDown($event, group)" [title]="readOnly() ? 'Shared organization (view only)' : 'Drag to move or click to rename'">
                             {{ customName }}
                         </div>
                         @if (previewInfo?.orgName || group.orgName(); as orgName) {
@@ -107,7 +107,7 @@
                         }
                         } @else if (previewInfo?.orgName || group.orgName(); as orgName) {
                         <div class="group-name"
-                            (pointerdown)="onGroupTitlePointerDown($event, group)" title="Drag to move or click to rename">
+                            (pointerdown)="onGroupTitlePointerDown($event, group)" [title]="readOnly() ? 'Shared organization (view only)' : 'Drag to move or click to rename'">
                             {{ orgName }}
                         </div>
                         }
@@ -118,6 +118,7 @@
                 </foreignObject>
 
                 <!-- Group remove button -->
+                @if (!readOnly()) {
                 <foreignObject [attr.x]="group.width() - 40" y="4" width="32" height="28" class="group-actions-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="group-actions">
                         <button class="group-remove-btn" (click)="removeGroup(group); $event.stopPropagation()"
@@ -130,6 +131,7 @@
                         </button>
                     </div>
                 </foreignObject>
+                }
             </g>
             }
 
@@ -166,11 +168,13 @@
             @for (pf of baseLayerForces(); track pf.force.instanceId) {
             @let metadata = forcesData().get(pf.force.instanceId);
             <g class="force-card"
+                [class.readonly-clickable]="readOnly() && !pf.force.missing"
                 [class.highlighted-selected]="selectedForceInstanceId() === pf.force.instanceId"
                 [class.highlighted-friendly]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'friendly'"
                 [class.highlighted-enemy]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'enemy'"
                 [attr.data-force-id]="pf.force.instanceId"
                 [attr.transform]="'translate(' + pf.x() + ',' + pf.y() + ')'" (pointerdown)="onForcePointerDown($event, pf)"
+                [attr.title]="readOnly() && !pf.force.missing ? 'Click to view details' : null"
                 (pointerenter)="hoveredForceId.set(pf.force.instanceId)" (pointerleave)="hoveredForceId.set(null)">
 
                 <!-- Card background -->
@@ -191,19 +195,29 @@
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-name">
                         {{ pf.force.name || metadata?.org?.name }}
                     </div>
-                    @if (pf.force.name) {
+                    @if (pf.force.missing) {
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-org">
+                        {{ MISSING_FORCE_SUBTITLE }}
+                    </div>
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-value">
+                        {{ pf.force.instanceId }}
+                    </div>
+                    } @else if (pf.force.name) {
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-org">
                         {{ metadata?.org?.name }}
                     </div>
                     }
+                    @if (!pf.force.missing) {
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-value">
                         @if (metadata?.bvString; as val) {
                         {{ val }}
                         }
                     </div>
+                    }
                 </foreignObject>
 
                 <!-- Action buttons (always visible, right side, vertically stacked) -->
+                @if (!readOnly()) {
                 <foreignObject [attr.x]="CARD_WIDTH - 30" y="0" width="30" [attr.height]="CARD_HEIGHT"
                     class="force-actions-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-action-column">
@@ -215,6 +229,7 @@
                                     d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
                             </svg>
                         </button>
+                        @if (!pf.force.missing) {
                         <button class="force-action-btn preview"
                             (click)="previewForce(pf.force); $event.stopPropagation()"
                             (pointerdown)="$event.stopPropagation()" title="View details">
@@ -225,8 +240,10 @@
                                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                             </svg>
                         </button>
+                        }
                     </div>
                 </foreignObject>
+                }
             </g>
             }
 
@@ -255,16 +272,25 @@
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-name">
                         {{ pf.force.name || metadata?.org?.name }}
                     </div>
-                    @if (pf.force.name) {
+                    @if (pf.force.missing) {
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-org">
+                        {{ MISSING_FORCE_SUBTITLE }}
+                    </div>
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-value">
+                        {{ pf.force.instanceId }}
+                    </div>
+                    } @else if (pf.force.name) {
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-org">
                         {{ metadata?.org?.name }}
                     </div>
                     }
+                    @if (!pf.force.missing) {
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-value">
                         @if (metadata?.bvString; as val) {
                         {{ val }}
                         }
                     </div>
+                    }
                 </foreignObject>
 
                 <foreignObject [attr.x]="CARD_WIDTH - 30" y="0" width="30" [attr.height]="CARD_HEIGHT"
@@ -359,6 +385,7 @@
     }
 
     <!-- Sidebar: Hangar forces -->
+    @if (!readOnly()) {
     <div class="forces-sidebar framed-borders" [class.overlay]="layoutService.isMobile()"
         [class.hidden]="layoutService.isMobile() && !sidebarOpen()" [class.animate]="sidebarAnimated()">
 
@@ -442,6 +469,7 @@
             </div>
         </div>
     </div>
+    }
 
     <!-- Floating drag ghost for sidebar drag -->
     @if (sidebarDragActive() && sidebarDragForce()) {
@@ -467,8 +495,10 @@
 </div>
 
 <div class="org-dialog-footer">
+    @if (!readOnly()) {
     <button class="modal-btn bt-button" [class.primary]="dirty()" (click)="saveOrganization()" [disabled]="saving() || !dirty()" title="Save Organization">
         {{ saving() ? 'SAVING...' : 'COMMIT' }}
     </button>
+    }
     <button class="modal-btn bt-button" (click)="close()">DISMISS</button>
 </div>

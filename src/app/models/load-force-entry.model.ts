@@ -57,8 +57,10 @@ export class LoadForceEntry {
     instanceId: string;
     timestamp: string;
     type: GameSystem;
+    owned: boolean;
     cloud: boolean;
     local: boolean;
+    missing: boolean;
     name: string;
     faction: Faction | null;
     era: Era | null;
@@ -71,8 +73,10 @@ export class LoadForceEntry {
         this.instanceId = data.instanceId ?? '';
         this.timestamp = data.timestamp ?? '';
         this.type = data.type ?? GameSystem.CLASSIC;
+        this.owned = data.owned ?? true;
         this.cloud = data.cloud ?? false;
         this.local = data.local ?? false;
+        this.missing = data.missing ?? false;
         this.name = data.name ?? '';
         this.faction = data.faction ?? null;
         this.era = data.era ?? null;

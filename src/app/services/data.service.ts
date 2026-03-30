@@ -51,7 +51,7 @@ import { UserStateService } from './userState.service';
 import { LoadForceEntry, type LoadForceGroup, type LoadForceUnit } from '../models/load-force-entry.model';
 import { LoggerService } from './logger.service';
 import { type SerializedOperation, LoadOperationEntry, type OperationForceInfo } from '../models/operation.model';
-import { type SerializedOrganization, LoadOrganizationEntry } from '../models/organization.model';
+import { type LoadedOrganization, type SerializedOrganization, LoadOrganizationEntry } from '../models/organization.model';
 import { firstValueFrom, Subject } from 'rxjs';
 import { GameSystem, REMOTE_HOST } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
@@ -1408,6 +1408,72 @@ export class DataService {
         return mergedForces;
     }
 
+    private static readonly FORCE_BULK_CHUNK_SIZE = 100;
+
+    public async cacheForcesLocally(instanceIds: readonly string[]): Promise<number> {
+        const uniqueIds = Array.from(new Set(instanceIds.filter((instanceId): instanceId is string => !!instanceId)));
+        if (uniqueIds.length === 0) return 0;
+
+        const localRawForces = await Promise.all(uniqueIds.map((instanceId) => this.dbService.getForce(instanceId)));
+        const missingIds = uniqueIds.filter((instanceId, index) => !localRawForces[index]);
+        if (missingIds.length === 0) return 0;
+
+        const cloudForces = await this.getForcesBulkRaw(missingIds);
+        for (const force of cloudForces) {
+            await this.dbService.saveForce(force);
+        }
+
+        return cloudForces.length;
+    }
+
+    public async getForceEntriesByIds(instanceIds: readonly string[]): Promise<LoadForceEntry[]> {
+        const orderedIds = Array.from(new Set(instanceIds.filter((instanceId): instanceId is string => !!instanceId)));
+        if (orderedIds.length === 0) return [];
+
+        const entryMap = new Map<string, LoadForceEntry>();
+        const localRawForces = await Promise.all(orderedIds.map(instanceId => this.dbService.getForce(instanceId)));
+
+        for (const localRaw of localRawForces) {
+            if (!localRaw?.instanceId) continue;
+            entryMap.set(localRaw.instanceId, this.createLoadForceEntry(localRaw, { local: true }));
+        }
+
+        const cloudForces = await this.getForcesBulkRaw(orderedIds);
+        for (const raw of cloudForces) {
+            if (!raw?.instanceId) continue;
+            const cloudEntry = this.createLoadForceEntry(raw, { cloud: true });
+            const existing = entryMap.get(raw.instanceId);
+            if (!existing || this.getComparableTimestamp(raw.timestamp) >= this.getComparableTimestamp(existing.timestamp)) {
+                if (existing?.local) cloudEntry.local = true;
+                entryMap.set(raw.instanceId, cloudEntry);
+            }
+        }
+
+        return orderedIds
+            .map(instanceId => entryMap.get(instanceId))
+            .filter((entry): entry is LoadForceEntry => entry !== undefined);
+    }
+
+    private async getForcesBulkRaw(instanceIds: readonly string[]): Promise<SerializedForce[]> {
+        const ws = await this.canUseCloud();
+        if (!ws) return [];
+
+        const orderedIds = Array.from(new Set(instanceIds.filter((instanceId): instanceId is string => !!instanceId)));
+        const result: SerializedForce[] = [];
+
+        for (let i = 0; i < orderedIds.length; i += DataService.FORCE_BULK_CHUNK_SIZE) {
+            const chunk = orderedIds.slice(i, i + DataService.FORCE_BULK_CHUNK_SIZE);
+            const response = await this.wsService.sendAndWaitForResponse({
+                action: 'getForcesBulk',
+                instanceIds: chunk,
+            });
+            if (!response?.data || !Array.isArray(response.data)) continue;
+            result.push(...response.data as SerializedForce[]);
+        }
+
+        return result;
+    }
+
     private _cloudReadyChecked = false;
     private async canUseCloud(timeoutMs = 3000): Promise<WebSocket | null> {
         if (!navigator.onLine) return null;
@@ -1896,6 +1962,49 @@ export class DataService {
         return result;
     }
 
+    private createLoadForceEntry(raw: SerializedForce, options: { cloud?: boolean; local?: boolean } = {}): LoadForceEntry {
+        const groups: LoadForceGroup[] = [];
+        if (raw.groups && Array.isArray(raw.groups)) {
+            for (const group of raw.groups as SerializedGroup[]) {
+                const loadGroup: LoadForceGroup = {
+                    name: group.name,
+                    formationId: group.formationId,
+                    units: [],
+                };
+                for (const unit of group.units as SerializedUnit[]) {
+                    const loadUnit: LoadForceUnit = {
+                        unit: this.getUnitByName(unit.unit),
+                        alias: unit.alias,
+                        destroyed: unit.state.destroyed ?? false,
+                    };
+                    loadGroup.units.push(loadUnit);
+                }
+                groups.push(loadGroup);
+            }
+        }
+
+        return new LoadForceEntry({
+            cloud: options.cloud ?? false,
+            local: options.local ?? false,
+            owned: raw.owned ?? true,
+            instanceId: raw.instanceId,
+            name: raw.name,
+            type: raw.type ?? GameSystem.CLASSIC,
+            faction: raw.factionId != null ? this.getFactionById(raw.factionId) ?? null : null,
+            era: raw.eraId != null ? this.getEraById(raw.eraId) ?? null : null,
+            bv: raw.bv ?? undefined,
+            pv: raw.pv ?? undefined,
+            timestamp: raw.timestamp,
+            groups,
+        });
+    }
+
+    private getComparableTimestamp(timestamp: string | number | null | undefined): number {
+        if (typeof timestamp === 'number') return timestamp;
+        if (timestamp) return new Date(timestamp).getTime();
+        return 0;
+    }
+
 
     private async listForcesCloud(): Promise<LoadForceEntry[]> {
         const ws = await this.canUseCloud();
@@ -1910,38 +2019,7 @@ export class DataService {
         if (response && Array.isArray(response.data)) {
             for (const raw of response.data as SerializedForce[]) {
                 try {
-                    const groups: LoadForceGroup[] = [];
-                    if (raw.groups && Array.isArray(raw.groups)) {
-                        for (const group of raw.groups as SerializedGroup[]) {
-                            const loadGroup: LoadForceGroup = {
-                                name: group.name,
-                                formationId: group.formationId,
-                                units: []
-                            };
-                            for (const unit of group.units as SerializedUnit[]) {
-                                const loadUnit: LoadForceUnit = {
-                                    unit: this.getUnitByName(unit.unit),
-                                    alias: unit.alias,
-                                    destroyed: unit.state.destroyed ?? false
-                                };
-                                loadGroup.units.push(loadUnit);
-                            }
-                            groups.push(loadGroup);
-                        }
-                    }
-                    const entry: LoadForceEntry = new LoadForceEntry({
-                        cloud: true,
-                        instanceId: raw.instanceId,
-                        name: raw.name,
-                        type: raw.type,
-                        faction: raw.factionId != null ? this.getFactionById(raw.factionId) ?? null : null,
-                        era: raw.eraId != null ? this.getEraById(raw.eraId) ?? null : null,
-                        bv: raw.bv ?? undefined,
-                        pv: raw.pv ?? undefined,
-                        timestamp: raw.timestamp,
-                        groups: groups
-                    });
-                    forces.push(entry);
+                    forces.push(this.createLoadForceEntry(raw, { cloud: true }));
                 } catch (error) {
                     this.logger.error('Failed to deserialize force: ' + error + ' ' + raw);
                 }
@@ -2240,9 +2318,9 @@ export class DataService {
         return Array.from(orgMap.values()).sort((a, b) => b.timestamp - a.timestamp);
     }
 
-    public async getOrganization(organizationId: string): Promise<SerializedOrganization | null> {
+    public async getOrganization(organizationId: string): Promise<LoadedOrganization | null> {
         const localPromise = this.dbService.getOrganization(organizationId);
-        let cloudOrg: SerializedOrganization | null = null;
+        let cloudOrg: LoadedOrganization | null = null;
 
         try {
             const ws = await this.canUseCloud();
@@ -2335,7 +2413,8 @@ export class DataService {
                 organizationId,
             });
             if (response?.data) {
-                await this.dbService.saveOrganization(response.data);
+                const { owned: _owned, ...serialized } = response.data as LoadedOrganization;
+                await this.dbService.saveOrganization(serialized);
             }
         } catch {
             // Silently fail — will retry on next list
