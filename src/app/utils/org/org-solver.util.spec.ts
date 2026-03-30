@@ -3295,6 +3295,74 @@ describe('org-solver.util resolve parity', () => {
         expect(result[0].children?.every((child) => child.type === 'Point')).toBeTrue();
     });
 
+    it('resolves 5 BM plus 4 CV as a Fortified Star instead of promoting through Star plus Half Star into a Binary', () => {
+        const result = resolveFromUnits([
+            createBM('FORTSTAR-BM1'),
+            createBM('FORTSTAR-BM2'),
+            createCV('FORTSTAR-CV1'),
+            createBM('FORTSTAR-BM3'),
+            createCV('FORTSTAR-CV2'),
+            createBM('FORTSTAR-BM4'),
+            createCV('FORTSTAR-CV3'),
+            createCV('FORTSTAR-CV4'),
+            createBM('FORTSTAR-BM5'),
+        ], 'Clan Test', 'HW Clan');
+
+        expect(result[0].name).toBe('Fortified Star');
+        expect(result[0].type).toBe('Star');
+        expect(result[0].modifierKey).toBe('Fortified ');
+        expect(result[0].children?.length).toBe(7);
+        expect(result[0].leftoverUnits).toBeUndefined();
+        expect(result[0].children?.every((child) => child.type === 'Point')).toBeTrue();
+        expect(result.some((group) => group.type === 'Binary')).toBeFalse();
+    });
+
+    it('resolves 5 BM plus 4 AF as a Fortified Star instead of promoting through Star plus Half Star into a Binary', () => {
+        const result = resolveFromUnits([
+            createBM('FORTSTAR-BM1'),
+            createAero('FORTSTAR-AF1'),
+            createAero('FORTSTAR-AF2'),
+            createBM('FORTSTAR-BM2'),
+            createAero('FORTSTAR-AF3'),
+            createBM('FORTSTAR-BM3'),
+            createAero('FORTSTAR-AF4'),
+            createBM('FORTSTAR-BM4'),
+            createBM('FORTSTAR-BM5'),
+        ], 'Clan Test', 'HW Clan');
+
+        expect(result[0].name).toBe('Fortified Star');
+        expect(result[0].type).toBe('Star');
+        expect(result[0].modifierKey).toBe('Fortified ');
+        expect(result[0].children?.length).toBe(7);
+        expect(result[0].leftoverUnits).toBeUndefined();
+        expect(result[0].children?.every((child) => child.type === 'Point')).toBeTrue();
+        expect(result.some((group) => group.type === 'Binary')).toBeFalse();
+    });
+
+    it('resolves 5 BM plus 6 CV as a Binary', () => {
+        const result = resolveFromUnits([
+            createBM('FORTSTAR-BM1'),
+            createBM('FORTSTAR-BM2'),
+            createCV('FORTSTAR-CV1'),
+            createBM('FORTSTAR-BM3'),
+            createCV('FORTSTAR-CV2'),
+            createBM('FORTSTAR-BM4'),
+            createCV('FORTSTAR-CV3'),
+            createCV('FORTSTAR-CV4'),
+            createCV('FORTSTAR-CV5'),
+            createCV('FORTSTAR-CV6'),
+            createBM('FORTSTAR-BM5'),
+        ], 'Clan Test', 'HW Clan');
+
+        expect(result[0].name).toBe('Binary');
+        expect(result[0].type).toBe('Binary');
+        expect(result[0].modifierKey).toBe('');
+        expect(result[0].children?.length).toBe(2);
+        expect(result[0].leftoverUnits).toBeUndefined();
+        expect(result[0].children?.every((child) => child.type === 'Star')).toBeTrue();
+    });
+
+
     it('resolves 5 BA with MEC and 6 OMNI BM into a Binary instead of a Nova plus leftover', () => {
         const result = resolveFromUnits([
             ...Array.from({ length: 5 }, (_, index) =>
