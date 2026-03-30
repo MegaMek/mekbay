@@ -1055,6 +1055,21 @@ function shouldPreferHomogeneousChildren(childRoles: readonly OrgChildRoleSpec[]
     return childRoles.length === 1;
 }
 
+function areOnlySubRegularModifierKeysAllowed(
+    config: Pick<CompositionConfig, 'modifierDescriptor'>,
+    allowedModifierKeys?: ReadonlySet<string>,
+): boolean {
+    if (!allowedModifierKeys || allowedModifierKeys.size === 0) {
+        return false;
+    }
+
+    const subRegularModifierKeys = new Set(
+        config.modifierDescriptor.subRegularStepsDescending.map((step) => step.modifierKey),
+    );
+
+    return [...allowedModifierKeys].every((modifierKey) => subRegularModifierKeys.has(modifierKey));
+}
+
 function getComposedPatternBucketCounts(
     groups: readonly GroupFacts[],
     bucketBy: OrgUnitBucketName,
@@ -3163,7 +3178,8 @@ function planComposedConfig(
     const entries: CountedCompositionEntry[] = [];
     const candidates: AbstractCompositionCandidate[] = [];
     const groupsByEntryId = new Map<string, readonly GroupFacts[]>();
-    const shouldPreferHomogeneousLeafChildren = shouldPreferHomogeneousChildren(config.childRoles)
+    const shouldPreferHomogeneousLeafChildren = !areOnlySubRegularModifierKeysAllowed(config, allowedModifierKeys)
+        && shouldPreferHomogeneousChildren(config.childRoles)
         && groups.every((group) => !group.group.children || group.group.children.length === 0);
 
     const materializeBucketGroupSet = (bucketGroups: readonly GroupFacts[]): GroupFacts[] => {
