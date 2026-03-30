@@ -93,6 +93,10 @@ export const IS_AIR_LANCE: OrgComposedCountRule = {
     modifiers: { '': 2 },
     commandRank: 'Lieutenant',
     tier: 1.5,
+    formationMatching: {
+        ignoredChildRoles: [{ matches: ['Flight'] }],
+        notice: 'Flight child groups are ignored for formation requirements.',
+    },
     childRoles: [
         { matches: ['Flight'], min: 1 },
         { matches: ['Lance'], min: 1, onlyUnitTypes: ['BM'] },

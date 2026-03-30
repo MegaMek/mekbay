@@ -350,6 +350,12 @@ export interface OrgConstraintSpec {
 
 export interface OrgRuleMetadata extends Omit<OrgTypeRuleBase, 'filter' | 'strict'> {
     readonly description?: string;
+    readonly formationMatching?: OrgFormationMatchingSpec;
+}
+
+export interface OrgFormationMatchingSpec {
+    readonly ignoredChildRoles: readonly OrgChildRoleSpec[];
+    readonly notice?: string;
 }
 
 export interface OrgChildRoleSpec {

@@ -149,7 +149,7 @@ export interface RenameGroupDialogResult {
                 <svg class="expand-icon" width="16" height="16" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1l5 4-5 4z"/></svg>
               </summary>
               <div class="selected-formation-details">
-                <formation-info [formation]="formation" [gameSystem]="data.group.force.gameSystem" [unitCount]="data.group.units().length" [isValid]="isSelectedFormationValid()" [novaFiltered]="isSelectedFormationNovaFiltered()"></formation-info>
+                <formation-info [formation]="formation" [gameSystem]="data.group.force.gameSystem" [unitCount]="data.group.units().length" [isValid]="isSelectedFormationValid()" [requirementsFiltered]="isSelectedFormationRequirementsFiltered()" [requirementsFilterNotice]="selectedFormationRequirementsFilterNotice()"></formation-info>
               </div>
             </details>
             }
@@ -355,9 +355,10 @@ export class RenameGroupDialogComponent {
                 const match = validMap.get(def.id);
                 return {
                     definition: def,
-                    displayName: FormationNamerUtil.composeFormationDisplayName(def, this.data.group, match?.novaFiltered ?? false),
+                  displayName: FormationNamerUtil.composeFormationDisplayName(def, this.data.group, match?.requirementsFiltered ?? false),
                     isValid: !!match,
-                    novaFiltered: match?.novaFiltered ?? false,
+                  requirementsFiltered: match?.requirementsFiltered ?? false,
+                  requirementsFilterNotice: match?.requirementsFilterNotice,
                 };
             });
     })();
@@ -369,18 +370,28 @@ export class RenameGroupDialogComponent {
         return this.formationDisplayList.some(f => f.definition.id === sel.id && f.isValid);
     });
 
-    /** Whether the currently selected formation was matched via the Nova rule. */
-    isSelectedFormationNovaFiltered = computed<boolean>(() => {
+    /** Whether the currently selected formation required organization-level filtering. */
+    isSelectedFormationRequirementsFiltered = computed<boolean>(() => {
         const sel = this.selectedFormation();
         if (!sel || isNoFormation(sel)) return false;
-        return this.formationDisplayList.some(f => f.definition.id === sel.id && f.isValid && f.novaFiltered);
+      return this.formationDisplayList.some(f => f.definition.id === sel.id && f.isValid && f.requirementsFiltered);
+    });
+
+    selectedFormationRequirementsFilterNotice = computed<string | undefined>(() => {
+      const sel = this.selectedFormation();
+      if (!sel || isNoFormation(sel)) return undefined;
+      return this.formationDisplayList.find(f => f.definition.id === sel.id && f.isValid)?.requirementsFilterNotice;
     });
 
     /** Placeholder name based on the currently selected formation. */
     placeholderName = computed<string>(() => {
         const sel = this.selectedFormation();
         if (sel && !isNoFormation(sel)) {
-            return FormationNamerUtil.composeFormationDisplayName(sel, this.data.group);
+        return FormationNamerUtil.composeFormationDisplayName(
+          sel,
+          this.data.group,
+          this.isSelectedFormationRequirementsFiltered(),
+        );
         }
         return this.data.group.organizationalName() ?? 'Group';
     });
@@ -432,7 +443,7 @@ export class RenameGroupDialogComponent {
 
     /** Compose a display name for a formation definition */
     getDisplayName(definition: FormationTypeDefinition): string {
-        return FormationNamerUtil.composeFormationDisplayName(definition, this.data.group, this.isSelectedFormationNovaFiltered());
+        return FormationNamerUtil.composeFormationDisplayName(definition, this.data.group, this.isSelectedFormationRequirementsFiltered());
     }
 
     submit(): void {
