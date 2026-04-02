@@ -43,7 +43,7 @@ import {
     WD_LANCE,
     WD_NOVA,
     WD_POINT,
-    WD_SINGLE,
+    WD_UNIT,
 } from './definitions';
 import {
     compileGroupFacts,
@@ -1807,7 +1807,7 @@ describe('org-solver.util', () => {
             createAero('WD Aero'),
         ]);
 
-        const result = evaluateLeafCountRule(WD_SINGLE, units);
+        const result = evaluateLeafCountRule(WD_UNIT, units);
 
         expect(result.eligibleUnits.map((facts) => facts.unit.name)).toEqual([
             'WD Mek',
@@ -1865,12 +1865,12 @@ describe('org-solver.util', () => {
         expect(result.leftoverCount).toBe(1);
     });
 
-    it('evaluates the Wolf\'s Dragoons lance from Singles, not Points', () => {
-        const singleGroups = [
-            createBattleMekGroup('Single A', 'Single', 0, 1),
-            createBattleMekGroup('Single B', 'Single', 0, 1),
-            createBattleMekGroup('Single C', 'Single', 0, 1),
-            createBattleMekGroup('Single D', 'Single', 0, 1),
+    it('evaluates the Wolf\'s Dragoons lance from Units, not Points', () => {
+        const unitGroups = [
+            createBattleMekGroup('Unit A', 'Unit', 0, 1),
+            createBattleMekGroup('Unit B', 'Unit', 0, 1),
+            createBattleMekGroup('Unit C', 'Unit', 0, 1),
+            createBattleMekGroup('Unit D', 'Unit', 0, 1),
         ].map((group) => compileGroupFacts(group));
         const pointGroups = [
             createBattleMekGroup('Point A', 'Point', 0, 1),
@@ -1879,13 +1879,13 @@ describe('org-solver.util', () => {
             createBattleMekGroup('Point D', 'Point', 0, 1),
         ].map((group) => compileGroupFacts(group));
 
-        const singleResult = evaluateComposedCountRule(WD_LANCE, singleGroups);
+        const unitResult = evaluateComposedCountRule(WD_LANCE, unitGroups);
         const pointResult = evaluateComposedCountRule(WD_LANCE, pointGroups);
 
-        expect(singleResult.emitted).toEqual([
+        expect(unitResult.emitted).toEqual([
             jasmine.objectContaining({ modifierKey: '', perGroupCount: 4, copies: 1, tier: 1 }),
         ]);
-        expect(singleResult.leftoverCount).toBe(0);
+        expect(unitResult.leftoverCount).toBe(0);
         expect(pointResult.acceptedGroups.length).toBe(0);
         expect(pointResult.emitted).toEqual([]);
     });
@@ -3057,9 +3057,8 @@ describe('org-solver.util resolve parity', () => {
             createUnit('AF1', 'Aero', 'Aerospace Fighter'),
         ], 'Society', 'HW Clan');
 
-        expect(result.length).toBe(1);
-        expect(result[0].type).toBeNull();
-        expect(result[0].leftoverUnits?.length).toBe(3);
+        expect(result.length).toBe(2);
+        expect(result.every((group) => group.type === 'Unit')).toBeTrue();
     });
 
     it('resolves 2 BM plus 1 AF as Air Lance', () => {
@@ -3200,8 +3199,8 @@ describe('org-solver.util resolve parity', () => {
         );
 
         expect(result).toHaveSize(1);
-        expect(result[0].name).toBe('4 Elements');
-        expect(result[0].type).toBe('Element');
+        expect(result[0].name).toBe('4 Units');
+        expect(result[0].type).toBe('Unit');
         expect(result[0].count).toBe(4);
         expect(result[0].isFragment).toBeTrue();
         expect(result[0].units).toHaveSize(4);
@@ -3716,8 +3715,8 @@ describe('org-solver.util aggregation and foreign parity', () => {
         ]);
 
         expect(result.length).toBe(1);
-        expect(result[0].name).toBe('Single');
-        expect(result[0].type).toBe('Single');
+        expect(result[0].name).toBe('Unit');
+        expect(result[0].type).toBe('Unit');
         expect(result[0].tier).toBe(0);
     });
 

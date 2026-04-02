@@ -54,28 +54,77 @@ describe('org-namer.util', () => {
 		expect(result.tier).toBeCloseTo(getAggregatedTier(Array.from({ length: 14 }, () => 1.6)), 2);
 	});
 
-	it('pluralizes Element fragments without x-prefix notation', () => {
+	it('pluralizes Unit fragments without x-prefix notation', () => {
 		const result = getOrgFromResolvedGroups([
-			createGroup({ name: '4 Elements', type: 'Element', tier: -1, count: 4, isFragment: true }),
+			createGroup({ name: '4 Units', type: 'Unit', tier: -1, count: 4, isFragment: true }),
 		]);
 
-		expect(result.name).toBe('4 Elements');
+		expect(result.name).toBe('4 Units');
 	});
 
-	it('keeps Point ahead of inferior Element fragments in mixed display', () => {
+	it('keeps Point ahead of inferior Unit fragments in mixed display', () => {
 		const result = getOrgFromResolvedGroups([
 			createGroup({ name: 'Point', type: 'Point', tier: 0 }),
-			createGroup({ name: '3 Elements', type: 'Element', tier: -1, count: 3, isFragment: true }),
+			createGroup({ name: '3 Units', type: 'Unit', tier: -1, count: 3, isFragment: true }),
 		]);
 
-		expect(result.name).toBe('Point + 3 Elements');
+		expect(result.name).toBe('Point + 3 Units');
 	});
 
-	it('keeps Point as the top-level name over inferior Element fragments', () => {
+	it('filters negative-tier fragments from mixed display when a minimum display tier is provided', () => {
 		const result = getOrgFromResolvedGroups(
 			[
 				createGroup({ name: 'Point', type: 'Point', tier: 0 }),
-				createGroup({ name: '3 Elements', type: 'Element', tier: -1, count: 3, isFragment: true }),
+				createGroup({ name: '3 Units', type: 'Unit', tier: -1, count: 3, isFragment: true }),
+			],
+			{ displayTierCutoff: 0 },
+		);
+
+		expect(result.name).toBe('Point+');
+		expect(result.tier).toBe(0);
+	});
+
+	it('does not cut when all display buckets are already at or above the cutoff', () => {
+		const result = getOrgFromResolvedGroups(
+			[
+				createGroup({ name: 'Point', type: 'Point', tier: 0 }),
+				createGroup({ name: 'Star', type: 'Star', tier: 1 }),
+			],
+			{ displayTierCutoff: 0 },
+		);
+
+		expect(result.name).toBe('Star + Point');
+	});
+
+	it('does not cut when all display buckets are below the cutoff', () => {
+		const result = getOrgFromResolvedGroups(
+			[
+				createGroup({ name: '3 Units', type: 'Unit', tier: -1, count: 3, isFragment: true }),
+				createGroup({ name: '2 Units', type: 'Unit', tier: -0.5, count: 2, isFragment: true }),
+			],
+			{ displayTierCutoff: 0 },
+		);
+
+		expect(result.name).toBe('2 Units + 3 Units');
+	});
+
+	it('keeps a single negative-tier fragment when it is the only display bucket', () => {
+		const result = getOrgFromResolvedGroups(
+			[
+				createGroup({ name: '4 Units', type: 'Unit', tier: -1, count: 4, isFragment: true }),
+			],
+			{ displayTierCutoff: 0 },
+		);
+
+		expect(result.name).toBe('4 Units');
+		expect(result.tier).toBe(-1);
+	});
+
+	it('keeps Point as the top-level name over inferior Unit fragments', () => {
+		const result = getOrgFromResolvedGroups(
+			[
+				createGroup({ name: 'Point', type: 'Point', tier: 0 }),
+				createGroup({ name: '3 Units', type: 'Unit', tier: -1, count: 3, isFragment: true }),
 			],
 			{ displayOnlyTopLevel: true },
 		);

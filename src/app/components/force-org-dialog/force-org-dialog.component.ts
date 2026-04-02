@@ -73,6 +73,7 @@ const GROUP_EMBED_OVERLAP_THRESHOLD = 0.2;
 const COLLISION_EDGE_PADDING = 8;
 const COLLISION_RESOLVE_MAX_ITERATIONS = 50;
 const READONLY_PREVIEW_MOVE_THRESHOLD = 6;
+const GROUP_ORG_NAME_TIER_CUTOFF = 0;
 
 function snapToGrid(value: number): number {
     return Math.round(value / GRID_SNAP_SIZE) * GRID_SNAP_SIZE;
@@ -883,7 +884,9 @@ export class ForceOrgDialogComponent {
         era: Era | null,
         childGroupResults?: GroupSizeResult[],
     ): OrgSizeResult {
-        return getOrgFromForceCollection(entries, faction, era, childGroupResults);
+        return getOrgFromForceCollection(entries, faction, era, childGroupResults, {
+            displayTierCutoff: GROUP_ORG_NAME_TIER_CUTOFF,
+        });
     }
 
     private deriveCollectionEra(entries: readonly LoadForceEntry[]): Era | null {
