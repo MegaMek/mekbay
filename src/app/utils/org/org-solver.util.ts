@@ -793,6 +793,31 @@ function createLeafGroup(
     };
 }
 
+function createLeafFragmentGroup(
+    rule: OrgLeafCountRule,
+    count: number,
+    units: readonly UnitFacts[],
+): GroupSizeResult {
+    const fragmentType = rule.fragmentType;
+    if (!fragmentType) {
+        throw new Error('Leaf fragment group requested without fragmentType');
+    }
+
+    return {
+        name: makeFragmentGroupName(fragmentType, count),
+        type: fragmentType,
+        modifierKey: '',
+        countsAsType: null,
+        tier: rule.fragmentTier ?? rule.tier,
+        count,
+        isFragment: true,
+        provenance: 'produced-group',
+        units: units.map((facts) => facts.unit),
+        tag: rule.tag,
+        priority: rule.priority,
+    };
+}
+
 function createComposedGroup(
     rule: OrgComposedCountRule | OrgComposedPatternRule,
     modifierStep: ModifierStep,
@@ -839,12 +864,13 @@ function createAtomicFragmentTemplate(
     priority: GroupSizeResult['priority'],
 ): GroupSizeResult {
     return {
-        name: makeCountedGroupName(type, count),
+        name: makeFragmentGroupName(type, count),
         type: type as GroupSizeResult['type'],
         modifierKey: '',
         countsAsType: null,
         tier,
         count,
+        isFragment: true,
         provenance: 'produced-group',
         tag,
         priority,
@@ -896,6 +922,7 @@ function buildAbstractGroupFactsFromUnits(
         countsAsType: groupTemplate.countsAsType,
         modifierKey: groupTemplate.modifierKey,
         tier: groupTemplate.tier,
+        isFragment: groupTemplate.isFragment === true,
         provenance: 'produced-group',
         tag: groupTemplate.tag,
         priority: groupTemplate.priority,
@@ -950,6 +977,32 @@ function createAbstractLeafGroupRecord(
     return createAbstractAtomicGroupRecord(
         facts,
         () => createLeafGroup(rule, modifierStep, units),
+        'leaf',
+    );
+}
+
+function createAbstractLeafFragmentRecord(
+    rule: OrgLeafCountRule,
+    count: number,
+    units: readonly UnitFacts[],
+): PlannedGroupRecord {
+    const fragmentType = rule.fragmentType;
+    if (!fragmentType) {
+        throw new Error('Leaf fragment record requested without fragmentType');
+    }
+
+    const template = createAtomicFragmentTemplate(
+        fragmentType,
+        count,
+        rule.fragmentTier ?? rule.tier,
+        rule.tag,
+        rule.priority,
+    );
+    const facts = buildAbstractGroupFactsFromUnits(template, units);
+
+    return createAbstractAtomicGroupRecord(
+        facts,
+        () => createLeafFragmentGroup(rule, count, units),
         'leaf',
     );
 }
@@ -1119,6 +1172,18 @@ function makeCountedGroupName(type: string, count: number): string {
     return count <= 1 ? type : `${count}x ${type}`;
 }
 
+function makeFragmentGroupName(type: string, count: number): string {
+    if (count <= 1) {
+        return type;
+    }
+
+    if (type === 'Element') {
+        return `${count} Elements`;
+    }
+
+    return makeCountedGroupName(type, count);
+}
+
 function aggregateTokenAllocations(tokens: readonly CIFragmentToken[]): GroupUnitAllocation[] {
     const allocationByUnit = new Map<Unit, number>();
 
@@ -1173,13 +1238,14 @@ function createCIFragmentGroup(
 ): GroupSizeResult {
     const unitAllocations = aggregateTokenAllocations(tokens);
     return {
-        name: makeCountedGroupName(rule.fragmentType, count),
+        name: makeFragmentGroupName(rule.fragmentType, count),
         type: rule.fragmentType,
         modifierKey: '',
         countsAsType: null,
         tier: rule.fragmentTier,
         provenance: 'produced-group',
         count,
+        isFragment: true,
         units: getUnitsFromAllocations(unitAllocations),
         unitAllocations,
         tag: rule.tag,
@@ -1302,7 +1368,7 @@ function getCIFragmentTokensFromGroup(
         return null;
     }
 
-    if (group.type === rule.fragmentType) {
+    if (group.isFragment || group.type === rule.fragmentType) {
         const tokens = sliceAllocationsToTokens(allocations, moveClass, entry.troopers);
         if (!tokens) {
             return null;
@@ -1547,6 +1613,22 @@ function materializeCIFormationRuleRecords(
     };
 }
 
+function isCIFragmentCandidateForRule(
+    facts: GroupFacts,
+    rule: OrgCIFormationRule,
+): boolean {
+    if (facts.isFragment) {
+        return facts.type === rule.fragmentType;
+    }
+
+    if (facts.type !== rule.fragmentType && facts.type !== rule.type) {
+        return false;
+    }
+
+    const ciCount = facts.unitTypeCounts.get('CI') ?? 0;
+    return ciCount > 0 && facts.unitTypeCounts.size === 1;
+}
+
 function normalizeCIFormationGroups(
     pool: readonly GroupSizeResult[],
     context: ResolveContext,
@@ -1556,13 +1638,7 @@ function normalizeCIFormationGroups(
     for (const rule of context.ciFormationRules) {
         const entryByMoveClass = new Map(rule.entries.map((entry) => [entry.moveClass, entry]));
         const groupFacts = getCompiledGroupFactsList(nextPool);
-        const candidates = groupFacts.filter((facts) => {
-            if (facts.type !== rule.fragmentType && facts.type !== rule.type) {
-                return false;
-            }
-            const ciCount = facts.unitTypeCounts.get('CI') ?? 0;
-            return ciCount > 0 && facts.unitTypeCounts.size === 1;
-        });
+        const candidates = groupFacts.filter((facts) => isCIFragmentCandidateForRule(facts, rule));
         if (candidates.length === 0) {
             continue;
         }
@@ -2156,6 +2232,11 @@ export function materializeLeafCountRule(
                 groups.push(createLeafGroup(rule, step, selected));
             }
         }
+
+        if (rule.fragmentType && mixedRemaining.length > 0) {
+            mixedRemaining.forEach((facts) => usedFactIds.add(facts.factId));
+            groups.push(createLeafFragmentGroup(rule, mixedRemaining.length, mixedRemaining));
+        }
     }
 
     return {
@@ -2202,6 +2283,11 @@ function materializeLeafCountRuleRecords(
                 selected.forEach((facts) => usedFactIds.add(facts.factId));
                 records.push(createAbstractLeafGroupRecord(rule, step, selected));
             }
+        }
+
+        if (rule.fragmentType && mixedRemaining.length > 0) {
+            mixedRemaining.forEach((facts) => usedFactIds.add(facts.factId));
+            records.push(createAbstractLeafFragmentRecord(rule, mixedRemaining.length, mixedRemaining));
         }
     }
 
@@ -2419,6 +2505,7 @@ function getGroupFactsSignatureKey(group: GroupFacts): string {
         group.countsAsType ?? 'null',
         group.modifierKey,
         String(group.tier),
+        group.isFragment ? 'fragment' : 'non-fragment',
         group.provenance,
         group.tag ?? '',
         String(group.priority ?? 0),
@@ -3832,7 +3919,7 @@ function materializeLeafRulesByStageRecords(
         }
 
         const targetSteps = getModifierStepForRuleStage(metadata, stage);
-        if (targetSteps.length === 0) {
+        if (targetSteps.length === 0 && !rule.fragmentType) {
             continue;
         }
 
@@ -3864,6 +3951,11 @@ function materializeLeafRulesByStageRecords(
                     selected.forEach((facts) => usedIds.add(facts.factId));
                     records.push(createAbstractLeafGroupRecord(rule, step, selected));
                 }
+            }
+
+            if (rule.fragmentType && mixedWorking.length > 0) {
+                mixedWorking.forEach((facts) => usedIds.add(facts.factId));
+                records.push(createAbstractLeafFragmentRecord(rule, mixedWorking.length, mixedWorking));
             }
         }
 
@@ -5298,6 +5390,7 @@ function createAbstractComposedGroupRecord(
         countsAsType: rule.countsAs ?? null,
         modifierKey: modifierStep.modifierKey,
         tier: modifierStep.tier,
+        isFragment: materializedGroupTemplate.isFragment === true,
         provenance: 'produced-group',
         tag: rule.tag,
         directChildCount: childRecords.length,

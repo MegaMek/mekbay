@@ -12,6 +12,7 @@ import {
     CLAN_CV_POINT,
     CLAN_CORE_ORG,
     CLAN_NOVA,
+    CLAN_PM_POINT,
     CLAN_POINT,
     CLAN_STAR,
     CLAN_SUPERNOVA_TRINARY,
@@ -1004,7 +1005,7 @@ describe('org-solver.util', () => {
         const result = materializeCIFormationRule(IS_PLATOON, units);
 
         expect(result.groups).toHaveSize(1);
-        expect(result.groups[0]).toEqual(jasmine.objectContaining({ name: 'Squad', type: 'Squad', count: 1 }));
+        expect(result.groups[0]).toEqual(jasmine.objectContaining({ name: 'Squad', type: 'Squad', count: 1, isFragment: true }));
         expect(result.leftoverUnitAllocations).toEqual([
             jasmine.objectContaining({ troopers: 1 }),
         ]);
@@ -1408,11 +1409,13 @@ describe('org-solver.util', () => {
             name: '2x Contubernium',
             type: 'Contubernium',
             count: 2,
+            isFragment: true,
         }));
         expect(materialized.groups).toContain(jasmine.objectContaining({
             name: '8x Contubernium',
             type: 'Contubernium',
             count: 8,
+            isFragment: true,
         }));
         expect(materialized.groups.some((group) => group.type === 'Century')).toBeFalse();
         expect(materialized.leftoverUnitFacts).toEqual([]);
@@ -1432,6 +1435,7 @@ describe('org-solver.util', () => {
         expect(materialized.groups.every((group) => group.name === '2x Contubernium')).toBeTrue();
         expect(materialized.groups.every((group) => group.type === 'Contubernium')).toBeTrue();
         expect(materialized.groups.every((group) => group.count === 2)).toBeTrue();
+        expect(materialized.groups.every((group) => group.isFragment === true)).toBeTrue();
         expect(materialized.groups.some((group) => group.type === 'Century')).toBeFalse();
         expect(materialized.leftoverUnitFacts).toEqual([]);
         expect(materialized.leftoverUnitAllocations).toEqual([]);
@@ -3173,11 +3177,45 @@ describe('org-solver.util resolve parity', () => {
         expect(result[0].children?.every((child) => child.type === 'Star')).toBeTrue();
     });
 
+    it('resolves 5 Protomeks into a single Clan Point', () => {
+        const result = resolveFromUnits(
+            Array.from({ length: 5 }, (_, index) => createUnit(`PM${index + 1}`, 'ProtoMek', 'ProtoMek')),
+            'Clan Test',
+            'HW Clan',
+        );
+
+        expect(result).toHaveSize(1);
+        expect(result[0].name).toBe('Point');
+        expect(result[0].type).toBe('Point');
+        expect(result[0].children).toBeUndefined();
+        expect(result[0].units).toHaveSize(5);
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves fewer than 5 Protomeks into Element fragments', () => {
+        const result = resolveFromUnits(
+            Array.from({ length: 4 }, (_, index) => createUnit(`PM-FRAG${index + 1}`, 'ProtoMek', 'ProtoMek')),
+            'Clan Test',
+            'HW Clan',
+        );
+
+        expect(result).toHaveSize(1);
+        expect(result[0].name).toBe('4 Elements');
+        expect(result[0].type).toBe('Element');
+        expect(result[0].count).toBe(4);
+        expect(result[0].isFragment).toBeTrue();
+        expect(result[0].units).toHaveSize(4);
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
     it('prefers same-type Stars before mixed fallback when enough units exist', () => {
         const nonVehiclePoints = materializeLeafCountRule(CLAN_POINT, compileUnitFactsList([
             ...Array.from({ length: 5 }, (_, index) => createUnit(`PREF-BA${index + 1}`, 'Infantry', 'Battle Armor', false, ['MEC'], 5)),
             ...Array.from({ length: 5 }, (_, index) => createBM(`PREF-BM${index + 1}`)),
-            ...Array.from({ length: 5 }, (_, index) => createUnit(`PREF-PM${index + 1}`, 'ProtoMek', 'ProtoMek')),
+        ]));
+
+        const protoPoints = materializeLeafCountRule(CLAN_PM_POINT, compileUnitFactsList([
+            ...Array.from({ length: 25 }, (_, index) => createUnit(`PREF-PM${index + 1}`, 'ProtoMek', 'ProtoMek')),
         ]));
 
         const vehiclePoints = materializeLeafCountRule(CLAN_CV_POINT, compileUnitFactsList([
@@ -3185,7 +3223,7 @@ describe('org-solver.util resolve parity', () => {
         ]));
 
         const pointMaterialized = {
-            groups: [...nonVehiclePoints.groups, ...vehiclePoints.groups],
+            groups: [...nonVehiclePoints.groups, ...protoPoints.groups, ...vehiclePoints.groups],
         };
 
         const starEvaluation = evaluateComposedCountRule(CLAN_STAR, compileGroupFactsList(pointMaterialized.groups));

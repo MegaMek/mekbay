@@ -52,6 +52,7 @@ export type OrgType =
     // Generic
     | 'Force'
     | 'Mercenary'
+    | 'Element'
 
     // IS-specific types
     | 'Squad'
@@ -118,6 +119,7 @@ export interface GroupSizeResult {
     countsAsType: OrgType | null;
     tier: number;
     count?: number;
+    isFragment?: boolean;
     provenance?: OrgGroupProvenance;
     foreignDisplayName?: string;
     children?: GroupSizeResult[];
@@ -330,6 +332,7 @@ export interface GroupFacts {
     readonly countsAsType: OrgType | null;
     readonly modifierKey: string;
     readonly tier: number;
+    readonly isFragment: boolean;
     readonly provenance: OrgGroupProvenance;
     readonly tag?: OrgGroupTag;
     readonly priority?: number;
@@ -447,6 +450,8 @@ export interface OrgLeafCountRule extends OrgRuleMetadata {
     readonly unitSelector: OrgSelectorName | readonly OrgSelectorName[];
     readonly pointModel: 'fixed' | 'range';
     readonly bucketBy?: OrgUnitBucketName;
+    readonly fragmentType?: OrgType;
+    readonly fragmentTier?: number;
 }
 
 /**

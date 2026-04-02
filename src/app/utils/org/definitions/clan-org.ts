@@ -26,7 +26,19 @@ export const CLAN_POINT: OrgLeafCountRule = {
     modifiers: { '': 1 },
     commandRank: 'Point Commander',
     tier: 0,
-    unitSelector: ['BM', 'IM', 'PM', 'BA', 'SC', 'WS', 'SS', 'JS', 'DA', 'DS', 'BD'],
+    unitSelector: ['BM', 'IM', 'BA', 'SC', 'WS', 'SS', 'JS', 'DA', 'DS', 'BD'],
+    pointModel: 'fixed',
+};
+
+export const CLAN_PM_POINT: OrgLeafCountRule = {
+    kind: 'leaf-count',
+    type: 'Point',
+    modifiers: { '': 5 },
+    commandRank: 'Point Commander',
+    tier: 0,
+    unitSelector: 'PM',
+    fragmentType: 'Element',
+    fragmentTier: -1,
     pointModel: 'fixed',
 };
 
@@ -228,6 +240,7 @@ export const CLAN_CORE_ORG: OrgDefinitionSpec = {
         CLAN_SUPERNOVA_TRINARY,
         CLAN_CI_POINT,
         CLAN_CV_POINT,
+        CLAN_PM_POINT,
         CLAN_POINT,
         CLAN_STAR,
         CLAN_BINARY,

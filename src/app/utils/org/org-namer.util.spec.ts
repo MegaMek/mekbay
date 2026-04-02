@@ -54,6 +54,35 @@ describe('org-namer.util', () => {
 		expect(result.tier).toBeCloseTo(getAggregatedTier(Array.from({ length: 14 }, () => 1.6)), 2);
 	});
 
+	it('pluralizes Element fragments without x-prefix notation', () => {
+		const result = getOrgFromResolvedGroups([
+			createGroup({ name: '4 Elements', type: 'Element', tier: -1, count: 4, isFragment: true }),
+		]);
+
+		expect(result.name).toBe('4 Elements');
+	});
+
+	it('keeps Point ahead of inferior Element fragments in mixed display', () => {
+		const result = getOrgFromResolvedGroups([
+			createGroup({ name: 'Point', type: 'Point', tier: 0 }),
+			createGroup({ name: '3 Elements', type: 'Element', tier: -1, count: 3, isFragment: true }),
+		]);
+
+		expect(result.name).toBe('Point + 3 Elements');
+	});
+
+	it('keeps Point as the top-level name over inferior Element fragments', () => {
+		const result = getOrgFromResolvedGroups(
+			[
+				createGroup({ name: 'Point', type: 'Point', tier: 0 }),
+				createGroup({ name: '3 Elements', type: 'Element', tier: -1, count: 3, isFragment: true }),
+			],
+			{ displayOnlyTopLevel: true },
+		);
+
+		expect(result.name).toBe('Point+');
+	});
+
 	it('uses solver output for collection aggregation instead of naming-time bucket promotion', () => {
 		const underStrengthBattalionTier = getDynamicTierForModifier(3, 3, 2, 1);
 		const battalions = Array.from({ length: 5 }, () => createGroup({
