@@ -62,7 +62,7 @@ export interface FactionEraDisplayInfo {
 
 export interface FactionDisplayInfo {
     faction: Faction;
-    /** Best match percentage (0–1) across eras eligible for the latest unit intro year. */
+    /** Display match percentage (0–1), using the selected era when one is provided. */
     matchPercentage: number;
     /** True if the faction is among the composition-matching factions for eligible eras. */
     isMatching: boolean;
@@ -370,21 +370,24 @@ export class ForceNamerUtil {
     public static buildFactionDisplayList(
         units: ForceUnit[],
         allFactions: Faction[],
-        eras: Era[]
+        eras: Era[],
+        selectedEra: Era | null = null
     ): FactionDisplayInfo[] {
         const result: FactionDisplayInfo[] = [];
         const referenceYear = getReferenceYear(units);
-        const eligibleEraIds = new Set(getEligibleEras(eras, referenceYear).map(era => era.id));
+        const displayEras = getCandidateEras(eras, units, selectedEra);
         const unitIds = units.map(unit => unit.getUnit().id);
         const totalUnits = units.length;
 
         for (const faction of allFactions) {
             if (faction.id === FACTION_EXTINCT) continue;
-            let rawPct = 0;
-            for (const era of eras) {
-                if (!eligibleEraIds.has(era.id)) continue;
-                rawPct = Math.max(rawPct, getEraMatchPercentage(faction, era.id, unitIds, totalUnits));
-            }
+            const rawPct = displayEras.reduce(
+                (bestMatchPercentage, era) => Math.max(
+                    bestMatchPercentage,
+                    getEraMatchPercentage(faction, era.id, unitIds, totalUnits)
+                ),
+                0
+            );
 
             result.push({
                 faction,

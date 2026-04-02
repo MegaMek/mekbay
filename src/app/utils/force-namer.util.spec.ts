@@ -142,3 +142,45 @@ describe('ForceNamerUtil.pickRandomFaction', () => {
         expect(result).toBe(selectedEraFaction);
     });
 });
+
+describe('ForceNamerUtil.buildFactionDisplayList', () => {
+    it('uses the selected era for match percentages when one is provided', () => {
+        const selectedEra = createEra(3025, 3025, 3049);
+        const laterEra = createEra(3050, 3050, 3061);
+        const unit = createUnit(101, 3055);
+        const forceUnits = [createForceUnit(unit)];
+        const selectedEraFaction = createFaction(10, 'Selected Era Faction', { 3025: [101] });
+        const laterEraFaction = createFaction(11, 'Later Era Faction', { 3050: [101] });
+
+        const result = ForceNamerUtil.buildFactionDisplayList(
+            forceUnits,
+            [selectedEraFaction, laterEraFaction],
+            [selectedEra, laterEra],
+            selectedEra
+        );
+
+        expect(result.find(item => item.faction.id === selectedEraFaction.id)?.matchPercentage).toBe(1);
+        expect(result.find(item => item.faction.id === selectedEraFaction.id)?.isMatching).toBeTrue();
+        expect(result.find(item => item.faction.id === laterEraFaction.id)?.matchPercentage).toBe(0);
+        expect(result.find(item => item.faction.id === laterEraFaction.id)?.isMatching).toBeFalse();
+    });
+
+    it('keeps using the best eligible era when no era is selected', () => {
+        const earlierEra = createEra(3025, 3025, 3049);
+        const eligibleEra = createEra(3050, 3050, 3061);
+        const unit = createUnit(101, 3055);
+        const forceUnits = [createForceUnit(unit)];
+        const earlierFaction = createFaction(10, 'Earlier Era Faction', { 3025: [101] });
+        const eligibleFaction = createFaction(11, 'Eligible Era Faction', { 3050: [101] });
+
+        const result = ForceNamerUtil.buildFactionDisplayList(
+            forceUnits,
+            [earlierFaction, eligibleFaction],
+            [earlierEra, eligibleEra]
+        );
+
+        expect(result.find(item => item.faction.id === earlierFaction.id)?.matchPercentage).toBe(0);
+        expect(result.find(item => item.faction.id === eligibleFaction.id)?.matchPercentage).toBe(1);
+        expect(result[0].faction.id).toBe(eligibleFaction.id);
+    });
+});
