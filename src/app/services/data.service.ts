@@ -172,12 +172,7 @@ export class DataService {
             getFromLocalStorage: async () => (await this.dbService.getUnits()) ?? null,
             putInLocalStorage: async (data: Units) => this.dbService.saveUnits(data),
             preprocess: (data: Units): Units => {
-                this.invalidateForcePackCaches();
-                this.unitNameMap.clear();
-                for (const unit of data.units) {
-                    this.unitNameMap.set(unit.name, unit);
-                }
-                this.buildFilterIndexes(data.units); // Build all indexes
+                this.rebuildUnitCatalogIndexes(data.units);
                 return data;
             },
             postprocess: (data: Units): Units => {
@@ -527,12 +522,16 @@ export class DataService {
         return removeAccents(str);
     }
 
+    private static getUnitNameKey(name: string): string {
+        return name.toLowerCase();
+    }
+
     public getUnits(): Unit[] {
         return (this.data['units'] as Units)?.units ?? [];
     }
 
     public getUnitByName(name: string): Unit | undefined {
-        return this.unitNameMap.get(name);
+        return this.unitNameMap.get(DataService.getUnitNameKey(name));
     }
 
     public getEquipments(): EquipmentMap {
@@ -602,12 +601,16 @@ export class DataService {
         this.chassisTypeToForcePacks = null;
     }
 
-    private rebuildUnitCatalogIndexes(units: Unit[]): void {
-        this.invalidateForcePackCaches();
+    private rebuildUnitNameMap(units: Unit[]): void {
         this.unitNameMap.clear();
         for (const unit of units) {
-            this.unitNameMap.set(unit.name, unit);
+            this.unitNameMap.set(DataService.getUnitNameKey(unit.name), unit);
         }
+    }
+
+    private rebuildUnitCatalogIndexes(units: Unit[]): void {
+        this.invalidateForcePackCaches();
+        this.rebuildUnitNameMap(units);
         this.buildFilterIndexes(units);
     }
 
@@ -2203,7 +2206,7 @@ export class DataService {
 
             const processUnits = (unitList: Array<{ name: string }>) => {
                 for (const pu of unitList) {
-                    const unit = this.unitNameMap.get(pu.name);
+                    const unit = this.getUnitByName(pu.name);
                     if (unit) {
                         const key = `${unit.chassis}|${unit.type}`;
                         chassisTypeSet.add(key);
