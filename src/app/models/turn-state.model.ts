@@ -151,75 +151,92 @@ export class TurnState {
                     
                 }
             }
-            if (this.applyMovePSR()) {
-                const moveMode = this.moveMode();
-                if (moveMode === 'run' || moveMode === 'jump') {
-                    const critSlots = unit.getCritSlots();
-                    const hasDamagedGyro = critSlots.some(slot => {
-                        if (!slot.name || !slot.destroyed) return false;
-                        if (!slot.name.includes('Gyro')) return false;
-                        return true;
-                    });
-                    let hasDamagedLeg = false;
-                    unit.locations?.internal?.forEach((_value, loc) => {
-                        if (hasDamagedLeg) return;
-                        if (!LEG_LOCATIONS.has(loc)) return; // Only consider leg locations
-                        if (unit.isInternalLocCommittedDestroyed(loc)) {
-                            hasDamagedLeg = true;
-                        }
-                    });
-                    const hasDamagedLegActuators = critSlots.some(slot => {
-                            if (!slot.name || !slot.loc || !slot.destroyed) return false;
-                            if (!LEG_LOCATIONS.has(slot.loc)) return false;
-                            return (slot.name.includes('Leg') || slot.name.includes('Foot') || slot.name.includes('Hip'));
-                        });
-                    if (moveMode === 'jump') {
-                        if (hasDamagedGyro) {
-                            checks.push({
-                                fallCheck: 0,
-                                pilotCheck: 0,
-                                reason: 'Jumping with damaged gyro'
-                            });
-                        } else if (hasDamagedLeg) {
-                            checks.push({
-                                fallCheck: 0,
-                                pilotCheck: 0,
-                                reason: 'Jumping with damaged leg'
-                            });
-                        } else if (hasDamagedLegActuators) {
-                            checks.push({
-                                fallCheck: 0,
-                                pilotCheck: 0,
-                                reason: 'Jumping with damaged leg actuator'
-                            });
-                        }
-                    } else if (moveMode === 'run') {
-                        if (hasDamagedGyro) {
-                            checks.push({
-                                fallCheck: 0,
-                                pilotCheck: 0,
-                                reason: 'Running with damaged gyro'
-                            });
-                        } else if (hasDamagedLegActuators) {             
-                            const hasDamagedHip = critSlots.some(slot => {
-                                if (!slot.name || !slot.loc || !slot.destroyed) return false;
-                                if (!LEG_LOCATIONS.has(slot.loc)) return false;
-                                return slot.name.includes('Hip');
-                            });
-                            if (hasDamagedHip) {
-                                checks.push({
-                                    fallCheck: 0,
-                                    pilotCheck: 0,
-                                    reason: 'Running with damaged hip'
-                                });
-                            }
-                        } 
-                    }
-                }
+            const movementCheck = this.applyMovePSR()
+                ? this.getCommittedDamageMovementModePSRCheck(this.moveMode())
+                : null;
+            if (movementCheck) {
+                checks.push(movementCheck);
             }
         }
         return checks;
     });
+
+    getCommittedDamageMovementModePSRCheck(moveMode: MotiveModes | null): PSRCheck | null {
+        if (moveMode !== 'run' && moveMode !== 'jump') return null;
+
+        const unit = this.unitState.unit;
+        const critSlots = unit.getCritSlots();
+        const hasDamagedGyro = critSlots.some(slot => {
+            if (!slot.name || !slot.destroyed) return false;
+            return slot.name.includes('Gyro');
+        });
+
+        let hasDamagedLeg = false;
+        unit.locations?.internal?.forEach((_value, loc) => {
+            if (hasDamagedLeg) return;
+            if (!LEG_LOCATIONS.has(loc)) return;
+            if (unit.isInternalLocCommittedDestroyed(loc)) {
+                hasDamagedLeg = true;
+            }
+        });
+
+        const hasDamagedLegActuators = critSlots.some(slot => {
+            if (!slot.name || !slot.loc || !slot.destroyed) return false;
+            if (!LEG_LOCATIONS.has(slot.loc)) return false;
+            return slot.name.includes('Leg') || slot.name.includes('Foot') || slot.name.includes('Hip');
+        });
+
+        if (moveMode === 'jump') {
+            if (hasDamagedGyro) {
+                return {
+                    fallCheck: 0,
+                    pilotCheck: 0,
+                    reason: 'Jumping with damaged gyro'
+                };
+            }
+            if (hasDamagedLeg) {
+                return {
+                    fallCheck: 0,
+                    pilotCheck: 0,
+                    reason: 'Jumping with damaged leg'
+                };
+            }
+            if (hasDamagedLegActuators) {
+                return {
+                    fallCheck: 0,
+                    pilotCheck: 0,
+                    reason: 'Jumping with damaged leg actuator'
+                };
+            }
+            return null;
+        }
+
+        if (hasDamagedGyro) {
+            return {
+                fallCheck: 0,
+                pilotCheck: 0,
+                reason: 'Running with damaged gyro'
+            };
+        }
+        if (!hasDamagedLegActuators) return null;
+
+        const hasDamagedHip = critSlots.some(slot => {
+            if (!slot.name || !slot.loc || !slot.destroyed) return false;
+            if (!LEG_LOCATIONS.has(slot.loc)) return false;
+            return slot.name.includes('Hip');
+        });
+        if (!hasDamagedHip) return null;
+
+        return {
+            fallCheck: 0,
+            pilotCheck: 0,
+            reason: 'Running with damaged hip'
+        };
+    }
+
+    movementModeRequiresPSR(moveMode: MotiveModes | null): boolean {
+        return this.getCommittedDamageMovementModePSRCheck(moveMode) !== null;
+    }
 
     canRun = computed<boolean>(() => {
         const unit = this.unitState.unit;
