@@ -29,6 +29,8 @@ export const SOCIETY_BA_UN: OrgLeafCountRule = {
     modifiers: { '': 3 },
     tier: 0,
     unitSelector: 'BA',
+    fragmentType: 'Element',
+    fragmentTier: -1,
     pointModel: 'fixed',
 };
 
@@ -53,6 +55,8 @@ export const SOCIETY_PM_UN: OrgLeafCountRule = {
     modifiers: { '': 3 },
     tier: 0,
     unitSelector: 'PM',
+    fragmentType: 'Element',
+    fragmentTier: -1,
     pointModel: 'fixed',
 };
 
@@ -62,6 +66,8 @@ export const SOCIETY_CV_UN: OrgLeafCountRule = {
     modifiers: { '': 7 },
     tier: 0,
     unitSelector: 'CV',
+    fragmentType: 'Element',
+    fragmentTier: -1,
     pointModel: 'fixed',
 };
 
@@ -71,6 +77,8 @@ export const SOCIETY_AF_UN: OrgLeafCountRule = {
     modifiers: { '': 3 },
     tier: 0,
     unitSelector: 'AF',
+    fragmentType: 'Element',
+    fragmentTier: -1,
     pointModel: 'fixed',
 };
 
