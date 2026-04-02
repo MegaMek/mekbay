@@ -39,7 +39,7 @@ describe('ForceOrgDialogComponent', () => {
     };
 
     const urlStateServiceStub = {
-        setExclusiveParams: jasmine.createSpy('setExclusiveParams'),
+        setParams: jasmine.createSpy('setParams'),
     };
 
     beforeEach(async () => {
@@ -59,7 +59,7 @@ describe('ForceOrgDialogComponent', () => {
         fixture = TestBed.createComponent(ForceOrgDialogComponent);
         component = fixture.componentInstance;
         fixture.detectChanges();
-        urlStateServiceStub.setExclusiveParams.calls.reset();
+        urlStateServiceStub.setParams.calls.reset();
     });
 
     function createPlacedForce(instanceId: string, x: number, y: number, groupId: string | null) {
@@ -345,12 +345,12 @@ describe('ForceOrgDialogComponent', () => {
         (component as any).organizationId.set('org-42');
         fixture.detectChanges();
 
-        expect(urlStateServiceStub.setExclusiveParams).toHaveBeenCalledWith({ toe: 'org-42' });
+        expect(urlStateServiceStub.setParams).toHaveBeenCalledWith({ toe: 'org-42' });
 
-        urlStateServiceStub.setExclusiveParams.calls.reset();
+        urlStateServiceStub.setParams.calls.reset();
         fixture.destroy();
 
-        expect(urlStateServiceStub.setExclusiveParams).toHaveBeenCalledWith(null);
+        expect(urlStateServiceStub.setParams).toHaveBeenCalledWith({ toe: null });
     });
 
     it('treats non-owned organizations as read-only and blocks saving', async () => {
@@ -378,7 +378,7 @@ describe('ForceOrgDialogComponent', () => {
 
         expect((component as any).readOnly()).toBeTrue();
         expect(dataServiceStub.saveOrganization).not.toHaveBeenCalled();
-        expect(urlStateServiceStub.setExclusiveParams).toHaveBeenCalledWith({ toe: 'org-shared' });
+        expect(urlStateServiceStub.setParams).toHaveBeenCalledWith({ toe: 'org-shared' });
     });
 
     it('opens force details when clicking a force card in read-only mode', async () => {

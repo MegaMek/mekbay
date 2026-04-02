@@ -56,6 +56,7 @@ import { GameSystem } from '../../models/common.model';
 import { getUnitsAverageTechBase, type TechBase } from '../../models/tech.model';
 import type { LoadedOrganization, SerializedOrganization, OrgPlacedForce, OrgGroupData } from '../../models/organization.model';
 import { ForceEntryPreviewDialogComponent } from '../force-entry-preview-dialog/force-entry-preview-dialog.component';
+import { ShareForceOrgDialogComponent } from '../share-force-org-dialog/share-force-org-dialog.component';
 import type { Era } from '../../models/eras.model';
 import { getOrgFromForce, getOrgFromForceCollection } from '../../utils/org/org-namer.util';
 import { Faction } from '../../models/factions.model';
@@ -745,10 +746,10 @@ export class ForceOrgDialogComponent {
     constructor() {
         this.destroyRef.onDestroy(() => {
             this.cleanupGlobalPointerState();
-            this.urlStateService.setExclusiveParams(null);
+            this.urlStateService.setParams({ toe: null });
         });
         effect(() => {
-            this.urlStateService.setExclusiveParams({ toe: this.organizationId() });
+            this.urlStateService.setParams({ toe: this.organizationId() });
         });
         if (this.dialogData?.organizationId) {
             this.loadOrganization(this.dialogData.organizationId);
@@ -2412,6 +2413,33 @@ export class ForceOrgDialogComponent {
         }
     }
 
+    protected async shareOrganization(event?: MouseEvent): Promise<void> {
+        event?.stopPropagation();
+        if (this.saving()) return;
+
+        if (!this.readOnly() && (this.dirty() || !this.organizationId())) {
+            try {
+                await this.saveOrganization();
+            } catch {
+                await this.dialogsService.showError('Failed to save organization before sharing.', 'Share TO&E');
+                return;
+            }
+        }
+
+        const organizationId = this.organizationId();
+        if (!organizationId) {
+            await this.dialogsService.showError('Save the organization before sharing it.', 'Share TO&E');
+            return;
+        }
+
+        this.dialogsService.createDialog(ShareForceOrgDialogComponent, {
+            data: {
+                organizationName: this.organizationName(),
+                shareUrl: this.buildShareUrl(organizationId),
+            },
+        });
+    }
+
     protected async saveOrganization(): Promise<void> {
         if (this.readOnly() || this.saving()) return;
         this.saving.set(true);
@@ -2545,6 +2573,13 @@ export class ForceOrgDialogComponent {
 
     protected close(): void {
         this.dialogRef.close();
+    }
+
+    private buildShareUrl(organizationId: string): string {
+        const shareUrl = new URL(window.location.href);
+        shareUrl.search = '';
+        shareUrl.searchParams.set('toe', organizationId);
+        return shareUrl.toString();
     }
 
     /**
