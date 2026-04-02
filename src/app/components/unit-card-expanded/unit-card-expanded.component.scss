@@ -242,6 +242,16 @@
     color: var(--text-color-secondary);
 }
 
+.components-inline {
+    display: flex;
+    flex-direction: column;
+    gap: 4px 0px;
+}
+
+.expanded-components {
+    min-width: 0;
+}
+
 .components-pills,
 .specials-pills {
     display: flex;
@@ -267,7 +277,6 @@
 }
 
 .ammo-list {
-    margin-top: 4px;
     font-size: 0.85em;
     line-height: 1.5;
 }
@@ -481,6 +490,16 @@
     .expanded-right:last-child {
         grid-column: span 2;
     }
+
+    .components-inline {
+        flex-direction: row;
+        align-items: baseline;
+        gap: 8px;
+    }
+
+    .components-inline .expanded-components {
+        flex: 1 1 auto;
+    }
 }
 
 @container (min-width: 1200px) {
@@ -490,5 +509,14 @@
 
     .expanded-right:last-child {
         grid-column: span 1;
+    }
+
+    .components-inline {
+        flex-direction: column;
+        gap: 4px 0px;
+    }
+
+    .components-inline .expanded-components {
+        flex: initial;
     }
 }

@@ -435,6 +435,7 @@ export function compileGroupFacts(
         countsAsType: group.countsAsType,
         modifierKey: group.modifierKey,
         tier: group.tier,
+        isFragment: group.isFragment === true,
         provenance: getGroupProvenance(group),
         tag: group.tag,
         priority: group.priority,
