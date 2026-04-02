@@ -191,7 +191,7 @@
                 }
 
                 <!-- Force name -->
-                <foreignObject x="50" y="6" [attr.width]="CARD_WIDTH - 90" height="36" class="force-name-fo">
+                <foreignObject x="50" y="6" [attr.width]="CARD_WIDTH - (readOnly() ? 55 : 90)" height="36" class="force-name-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-name">
                         {{ pf.force.name || metadata?.org?.name }}
                     </div>
