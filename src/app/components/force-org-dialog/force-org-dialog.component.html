@@ -18,7 +18,8 @@
         @if (organizationFactionId() | factionImg; as factionImgUrl) {
         <img [src]="factionImgUrl" class="org-faction-icon" alt="" />
         }
-        <h2 class="org-name" (click)="renameOrganization()" [title]="readOnly() ? 'Shared organization (view only)' : 'Click to rename'">{{ organizationName() }}</h2>
+        <h2 class="org-name" [class.editable]="!readOnly()" (click)="!readOnly() && renameOrganization()"
+            [title]="readOnly() ? '' : 'Click to rename'">{{ organizationName() }}</h2>
     </div>
     <div class="org-dialog-header-actions">
         <button class="bt-button square" type="button" (click)="shareOrganization($event)" [disabled]="saving()"
@@ -79,7 +80,7 @@
             @for (group of baseLayerGroups(); track group.id) {
             @let previewInfo = previewGroupInfo().get(group.id);
             @let previewFactionId = previewInfo?.factionId ?? group.factionId();
-            <g class="group-container" [class.parent-group]="isParentGroup(group)"
+            <g class="group-container" [class.parent-group]="isParentGroup(group)" [class.readonly]="readOnly()"
                 [class.drop-target]="dropTargetGroupId() === group.id"
                 [attr.transform]="'translate(' + group.x() + ',' + group.y() + ')'"
                 (pointerdown)="onGroupPointerDown($event, group)">
@@ -106,16 +107,16 @@
                     [attr.height]="GROUP_HEADER_HEIGHT" class="group-name-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="group-header-info">
                         @if (group.name(); as customName) {
-                        <div class="group-name"
-                            (pointerdown)="onGroupTitlePointerDown($event, group)" [title]="readOnly() ? 'Shared organization (view only)' : 'Drag to move or click to rename'">
+                        <div class="group-name" [class.editable]="!readOnly()"
+                            (pointerdown)="!readOnly() && onGroupTitlePointerDown($event, group)" [title]="readOnly() ? '' : 'Drag to move or click to rename'">
                             {{ customName }}
                         </div>
                         @if (previewInfo?.orgName || group.orgName(); as orgName) {
                         <div class="group-org-name">{{ orgName }}</div>
                         }
                         } @else if (previewInfo?.orgName || group.orgName(); as orgName) {
-                        <div class="group-name"
-                            (pointerdown)="onGroupTitlePointerDown($event, group)" [title]="readOnly() ? 'Shared organization (view only)' : 'Drag to move or click to rename'">
+                        <div class="group-name" [class.editable]="!readOnly()"
+                            (pointerdown)="!readOnly() && onGroupTitlePointerDown($event, group)" [title]="readOnly() ? '' : 'Drag to move or click to rename'">
                             {{ orgName }}
                         </div>
                         }
@@ -182,6 +183,7 @@
                 [class.highlighted-enemy]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'enemy'"
                 [attr.data-force-id]="pf.force.instanceId"
                 [attr.transform]="'translate(' + pf.x() + ',' + pf.y() + ')'" (pointerdown)="onForcePointerDown($event, pf)"
+                (click)="onReadonlyForceClick($event, pf)"
                 [attr.title]="readOnly() && !pf.force.missing ? 'Click to view details' : null"
                 (pointerenter)="hoveredForceId.set(pf.force.instanceId)" (pointerleave)="hoveredForceId.set(null)">
 
@@ -328,7 +330,7 @@
             @for (group of dragOverlayGroups(); track group.id) {
             @let previewInfo = previewGroupInfo().get(group.id);
             @let previewFactionId = previewInfo?.factionId ?? group.factionId();
-            <g class="group-container" [class.parent-group]="isParentGroup(group)"
+            <g class="group-container" [class.parent-group]="isParentGroup(group)" [class.readonly]="readOnly()"
                 [class.drop-target]="dropTargetGroupId() === group.id"
                 [attr.transform]="'translate(' + group.x() + ',' + group.y() + ')'"
                 pointer-events="none">
@@ -348,14 +350,14 @@
                     [attr.height]="GROUP_HEADER_HEIGHT" class="group-name-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="group-header-info">
                         @if (group.name(); as customName) {
-                        <div class="group-name">
+                        <div class="group-name" [class.editable]="!readOnly()">
                             {{ customName }}
                         </div>
                         @if (previewInfo?.orgName || group.orgName(); as orgName) {
                         <div class="group-org-name">{{ orgName }}</div>
                         }
                         } @else if (previewInfo?.orgName || group.orgName(); as orgName) {
-                        <div class="group-name">
+                        <div class="group-name" [class.editable]="!readOnly()">
                             {{ orgName }}
                         </div>
                         }

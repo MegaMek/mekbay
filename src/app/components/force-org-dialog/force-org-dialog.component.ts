@@ -410,6 +410,7 @@ export class ForceOrgDialogComponent {
     private pinchStartZoom = 1;
     private activeTouches = new Map<number, PointerEvent>();
     private pendingReadonlyPreview: { pointerId: number; startX: number; startY: number; force: LoadForceEntry } | null = null;
+    private pendingReadonlyClickForceId: string | null = null;
 
     // Drag state for forces
     protected draggedForce = signal<PlacedForce | null>(null);
@@ -1024,6 +1025,16 @@ export class ForceOrgDialogComponent {
         });
     }
 
+    protected onReadonlyForceClick(event: MouseEvent, pf: PlacedForce): void {
+        if (!this.readOnly() || pf.force.missing) return;
+        if (this.pendingReadonlyClickForceId !== pf.force.instanceId) return;
+
+        this.pendingReadonlyClickForceId = null;
+        event.preventDefault();
+        event.stopPropagation();
+        void this.previewForce(pf.force);
+    }
+
     // ==================== Sidebar Drag ====================
 
     private pendingSidebarForce: LoadForceEntry | null = null;
@@ -1114,6 +1125,7 @@ export class ForceOrgDialogComponent {
     // ==================== Canvas Force Drag ====================
 
     protected onForcePointerDown(event: PointerEvent, pf: PlacedForce): void {
+        this.pendingReadonlyClickForceId = null;
         if (this.readOnly()) {
             this.pendingReadonlyPreview = pf.force.missing ? null : {
                 pointerId: event.pointerId,
@@ -1999,7 +2011,11 @@ export class ForceOrgDialogComponent {
     // ==================== Pan / Zoom ====================
 
     protected onCanvasPointerDown(event: PointerEvent): void {
-        this.setPointerCaptureIfAvailable(event);
+        const isReadonlyMouseTapCandidate = event.pointerType === 'mouse'
+            && this.pendingReadonlyPreview?.pointerId === event.pointerId;
+        if (!isReadonlyMouseTapCandidate) {
+            this.setPointerCaptureIfAvailable(event);
+        }
         this.activeTouches.set(event.pointerId, event);
         this.lastPanPoint = this.getEffectivePanPoint();
         if (this.activeTouches.size === 2) this.startPinchGesture();
@@ -2092,6 +2108,7 @@ export class ForceOrgDialogComponent {
     private onGlobalPointerCancel = (event: PointerEvent): void => {
         if (this.pendingReadonlyPreview?.pointerId === event.pointerId) {
             this.pendingReadonlyPreview = null;
+            this.pendingReadonlyClickForceId = null;
         }
         this.activeTouches.delete(event.pointerId);
         // Treat cancel same as pointer up to clean state
@@ -2303,6 +2320,8 @@ export class ForceOrgDialogComponent {
             : null;
         if (readonlyPreview) {
             this.pendingReadonlyPreview = null;
+        } else {
+            this.pendingReadonlyClickForceId = null;
         }
 
         this.activeTouches.delete(event.pointerId);
@@ -2394,7 +2413,7 @@ export class ForceOrgDialogComponent {
         if (this.activeTouches.size === 0) this.cleanupGlobalPointerState();
 
         if (readonlyPreview) {
-            void this.previewForce(readonlyPreview.force);
+            this.pendingReadonlyClickForceId = readonlyPreview.force.instanceId;
         }
     };
 
