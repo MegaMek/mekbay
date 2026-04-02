@@ -2,7 +2,7 @@ import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import type { Eras } from '../models/eras.model';
-import type { Factions } from '../models/factions.model';
+import type { MULFactions } from '../models/mulfactions.model';
 import type { Unit, Units } from '../models/units.model';
 import { GameSystem } from '../models/common.model';
 import { DataService } from './data.service';
@@ -29,7 +29,7 @@ import type { UnitSearchWorkerResponseMessage } from '../utils/unit-search-worke
 
 interface BenchmarkBundle {
     units: Units;
-    factions: Factions;
+    factions: MULFactions;
     eras: Eras;
 }
 
@@ -361,7 +361,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
             benchmarkBundle = buildBenchmarkBundle({
                 units: await unitsResponse.json() as Units,
-                factions: await factionsResponse.json() as Factions,
+                factions: await factionsResponse.json() as MULFactions,
                 eras: await erasResponse.json() as Eras,
             }, 10000);
 

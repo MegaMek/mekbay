@@ -56,6 +56,7 @@ import { GameSystem } from '../../models/common.model';
 import { getUnitsAverageTechBase, type TechBase } from '../../models/tech.model';
 import type { LoadedOrganization, SerializedOrganization, OrgPlacedForce, OrgGroupData } from '../../models/organization.model';
 import { ForceEntryPreviewDialogComponent } from '../force-entry-preview-dialog/force-entry-preview-dialog.component';
+import { ShareForceOrgDialogComponent } from '../share-force-org-dialog/share-force-org-dialog.component';
 import type { Era } from '../../models/eras.model';
 import { getOrgFromForce, getOrgFromForceCollection } from '../../utils/org/org-namer.util';
 import { Faction, FactionId, getFactionImg } from '../../models/factions.model';
@@ -67,11 +68,12 @@ const GRID_SNAP_SIZE = 20;
 const CARD_WIDTH = 220;
 const CARD_HEIGHT = 70;
 const GROUP_PADDING = 20;
-const GROUP_HEADER_HEIGHT = 64;
+const GROUP_HEADER_HEIGHT = 60;
 const GROUP_EMBED_OVERLAP_THRESHOLD = 0.2;
 const COLLISION_EDGE_PADDING = 8;
 const COLLISION_RESOLVE_MAX_ITERATIONS = 50;
 const READONLY_PREVIEW_MOVE_THRESHOLD = 6;
+const GROUP_ORG_NAME_TIER_CUTOFF = 0;
 
 function snapToGrid(value: number): number {
     return Math.round(value / GRID_SNAP_SIZE) * GRID_SNAP_SIZE;
@@ -411,6 +413,7 @@ export class ForceOrgDialogComponent {
     private pinchStartZoom = 1;
     private activeTouches = new Map<number, PointerEvent>();
     private pendingReadonlyPreview: { pointerId: number; startX: number; startY: number; force: LoadForceEntry } | null = null;
+    private pendingReadonlyClickForceId: string | null = null;
 
     // Drag state for forces
     protected draggedForce = signal<PlacedForce | null>(null);
@@ -747,10 +750,10 @@ export class ForceOrgDialogComponent {
     constructor() {
         this.destroyRef.onDestroy(() => {
             this.cleanupGlobalPointerState();
-            this.urlStateService.setExclusiveParams(null);
+            this.urlStateService.setParams({ toe: null });
         });
         effect(() => {
-            this.urlStateService.setExclusiveParams({ toe: this.organizationId() });
+            this.urlStateService.setParams({ toe: this.organizationId() });
         });
         if (this.dialogData?.organizationId) {
             this.loadOrganization(this.dialogData.organizationId);
@@ -883,7 +886,9 @@ export class ForceOrgDialogComponent {
         era: Era | null,
         childGroupResults?: GroupSizeResult[],
     ): OrgSizeResult {
-        return getOrgFromForceCollection(entries, faction, era, childGroupResults);
+        return getOrgFromForceCollection(entries, faction, era, childGroupResults, {
+            displayTierCutoff: GROUP_ORG_NAME_TIER_CUTOFF,
+        });
     }
 
     private deriveCollectionEra(entries: readonly LoadForceEntry[]): Era | null {
@@ -1025,6 +1030,16 @@ export class ForceOrgDialogComponent {
         });
     }
 
+    protected onReadonlyForceClick(event: MouseEvent, pf: PlacedForce): void {
+        if (!this.readOnly() || pf.force.missing) return;
+        if (this.pendingReadonlyClickForceId !== pf.force.instanceId) return;
+
+        this.pendingReadonlyClickForceId = null;
+        event.preventDefault();
+        event.stopPropagation();
+        void this.previewForce(pf.force);
+    }
+
     // ==================== Sidebar Drag ====================
 
     private pendingSidebarForce: LoadForceEntry | null = null;
@@ -1115,6 +1130,7 @@ export class ForceOrgDialogComponent {
     // ==================== Canvas Force Drag ====================
 
     protected onForcePointerDown(event: PointerEvent, pf: PlacedForce): void {
+        this.pendingReadonlyClickForceId = null;
         if (this.readOnly()) {
             this.pendingReadonlyPreview = pf.force.missing ? null : {
                 pointerId: event.pointerId,
@@ -2000,7 +2016,11 @@ export class ForceOrgDialogComponent {
     // ==================== Pan / Zoom ====================
 
     protected onCanvasPointerDown(event: PointerEvent): void {
-        this.setPointerCaptureIfAvailable(event);
+        const isReadonlyMouseTapCandidate = event.pointerType === 'mouse'
+            && this.pendingReadonlyPreview?.pointerId === event.pointerId;
+        if (!isReadonlyMouseTapCandidate) {
+            this.setPointerCaptureIfAvailable(event);
+        }
         this.activeTouches.set(event.pointerId, event);
         this.lastPanPoint = this.getEffectivePanPoint();
         if (this.activeTouches.size === 2) this.startPinchGesture();
@@ -2093,6 +2113,7 @@ export class ForceOrgDialogComponent {
     private onGlobalPointerCancel = (event: PointerEvent): void => {
         if (this.pendingReadonlyPreview?.pointerId === event.pointerId) {
             this.pendingReadonlyPreview = null;
+            this.pendingReadonlyClickForceId = null;
         }
         this.activeTouches.delete(event.pointerId);
         // Treat cancel same as pointer up to clean state
@@ -2304,6 +2325,8 @@ export class ForceOrgDialogComponent {
             : null;
         if (readonlyPreview) {
             this.pendingReadonlyPreview = null;
+        } else {
+            this.pendingReadonlyClickForceId = null;
         }
 
         this.activeTouches.delete(event.pointerId);
@@ -2395,7 +2418,7 @@ export class ForceOrgDialogComponent {
         if (this.activeTouches.size === 0) this.cleanupGlobalPointerState();
 
         if (readonlyPreview) {
-            void this.previewForce(readonlyPreview.force);
+            this.pendingReadonlyClickForceId = readonlyPreview.force.instanceId;
         }
     };
 
@@ -2412,6 +2435,33 @@ export class ForceOrgDialogComponent {
             this.organizationName.set(newName.trim() || 'Unnamed Organization');
             this.dirty.set(true);
         }
+    }
+
+    protected async shareOrganization(event?: MouseEvent): Promise<void> {
+        event?.stopPropagation();
+        if (this.saving()) return;
+
+        if (!this.readOnly() && (this.dirty() || !this.organizationId())) {
+            try {
+                await this.saveOrganization();
+            } catch {
+                await this.dialogsService.showError('Failed to save organization before sharing.', 'Share TO&E');
+                return;
+            }
+        }
+
+        const organizationId = this.organizationId();
+        if (!organizationId) {
+            await this.dialogsService.showError('Save the organization before sharing it.', 'Share TO&E');
+            return;
+        }
+
+        this.dialogsService.createDialog(ShareForceOrgDialogComponent, {
+            data: {
+                organizationName: this.organizationName(),
+                shareUrl: this.buildShareUrl(organizationId),
+            },
+        });
     }
 
     protected async saveOrganization(): Promise<void> {
@@ -2547,6 +2597,13 @@ export class ForceOrgDialogComponent {
 
     protected close(): void {
         this.dialogRef.close();
+    }
+
+    private buildShareUrl(organizationId: string): string {
+        const shareUrl = new URL(window.location.href);
+        shareUrl.search = '';
+        shareUrl.searchParams.set('toe', organizationId);
+        return shareUrl.toString();
     }
 
     /**

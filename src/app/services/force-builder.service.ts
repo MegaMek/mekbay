@@ -1047,9 +1047,6 @@ export class ForceBuilderService {
         newForce.loading = true;
 
         try {
-            const allUnits = this.dataService.getUnits();
-            const unitMap = new Map(allUnits.map(u => [u.name, u]));
-
             // First, clear any default groups
             newForce.groups.set([]);
 
@@ -1065,7 +1062,7 @@ export class ForceBuilderService {
 
                 for (const sourceUnit of sourceGroup.units()) {
                     const unitName = sourceUnit.getUnit().name;
-                    const unit = unitMap.get(unitName);
+                    const unit = this.dataService.getUnitByName(unitName);
                     if (!unit) {
                         this.logger.warn(`Unit "${unitName}" not found during conversion`);
                         continue;
@@ -1142,8 +1139,7 @@ export class ForceBuilderService {
     convertUnitForForce(sourceUnit: ForceUnit, sourceForce: Force, targetForce: Force): ForceUnit | null {
         const unitName = sourceUnit.getUnit()?.name;
         if (!unitName) return null;
-        const allUnits = this.dataService.getUnits();
-        const unitData = allUnits.find(u => u.name === unitName);
+        const unitData = this.dataService.getUnitByName(unitName);
         if (!unitData) return null;
         const newUnit = targetForce.createCompatibleUnit(unitData);
         newUnit.disabledSaving = true;
@@ -1902,8 +1898,7 @@ export class ForceBuilderService {
                     // Same game system: look up fresh unit data and copy pilot info
                     const unitName = sourceUnit.getUnit()?.name;
                     if (!unitName) continue;
-                    const allUnits = this.dataService.getUnits();
-                    const unitData = allUnits.find(u => u.name === unitName);
+                    const unitData = this.dataService.getUnitByName(unitName);
                     if (!unitData) continue;
 
                     const newForceUnit = targetForce.addUnit(unitData, newGroup);

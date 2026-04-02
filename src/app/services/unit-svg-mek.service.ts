@@ -247,6 +247,60 @@ export class UnitSvgMekService extends UnitSvgService {
         });
     }
 
+    protected override updateTurnState() {
+        super.updateTurnState();
+
+        const svg = this.unit.svg();
+        if (!svg) return;
+
+        const movement = this.mekRules.movementState();
+        if (!movement) return;
+
+        const turnState = this.unit.turnState();
+        const runWarning = movement.maxRun > 0 ? turnState.getCommittedDamageMovementModePSRCheck('run') : null;
+        const jumpWarning = movement.jump > 0 ? turnState.getCommittedDamageMovementModePSRCheck('jump') : null;
+        const jumpMoveElementId = svg.getElementById('mpJump') ? 'mpJump' : (svg.getElementById('mp_2') ? 'mp_2' : null);
+
+        this.syncMovementModePsrWarning(svg, 'mpRun', runWarning?.reason ?? null);
+        if (jumpMoveElementId) {
+            this.syncMovementModePsrWarning(svg, jumpMoveElementId, jumpWarning?.reason ?? null);
+        }
+    }
+
+    private syncMovementModePsrWarning(svg: SVGSVGElement, moveElementId: 'mpRun' | 'mpJump' | 'mp_2', reason: string | null) {
+        const warningEl = svg.getElementById(`${moveElementId}-psr-warning`) as SVGTextElement | null;
+        if (!warningEl) return;
+
+        const currentMoveMode = this.unit.turnState().moveMode();
+        let selectedMoveElementId: string | null = null;
+        if (currentMoveMode === 'walk' || currentMoveMode === 'stationary') {
+            selectedMoveElementId = 'mpWalk';
+        } else if (currentMoveMode === 'run') {
+            selectedMoveElementId = 'mpRun';
+        } else if (currentMoveMode === 'jump' || currentMoveMode === 'UMU') {
+            selectedMoveElementId = svg.getElementById('mpJump') ? 'mpJump' : 'mp_2';
+        }
+
+        if (!reason) {
+            warningEl.setAttribute('display', 'none');
+            warningEl.style.display = 'none';
+            warningEl.classList.remove('currentMoveMode', 'unusedMoveMode');
+            return;
+        }
+
+        warningEl.removeAttribute('display');
+        warningEl.style.display = 'block';
+
+        if (!selectedMoveElementId) {
+            warningEl.classList.remove('currentMoveMode', 'unusedMoveMode');
+            return;
+        }
+
+        const isUnused = selectedMoveElementId !== moveElementId || currentMoveMode === 'stationary';
+        warningEl.classList.toggle('unusedMoveMode', isUnused);
+        warningEl.classList.toggle('currentMoveMode', !isUnused);
+    }
+
     /** Render melee damage text: read base from DOM, compute via rules, write back. */
     private renderMeleeDamage(entry: MountedEquipment, attackType: 'punch' | 'kick' | 'club' | 'physWeapon', loc?: string, ignoreMyomer?: boolean) {
         const damageEl = entry.el!.querySelector(`:scope > .damage > text`);

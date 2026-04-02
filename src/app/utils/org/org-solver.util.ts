@@ -1177,8 +1177,8 @@ function makeFragmentGroupName(type: string, count: number): string {
         return type;
     }
 
-    if (type === 'Element') {
-        return `${count} Elements`;
+    if (type === 'Unit') {
+        return `${count} Units`;
     }
 
     return makeCountedGroupName(type, count);

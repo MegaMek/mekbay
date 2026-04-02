@@ -38,6 +38,10 @@ const workerDisplayNameFns = new Map(
         .map(filter => [filter.key, filter.displayNameFn!])
 );
 
+function getUnitNameKey(name: string): string {
+    return name.toLowerCase();
+}
+
 function buildIndexedUnitIds(indexes: UnitSearchWorkerIndexSnapshot): Map<string, Map<string, ReadonlySet<string>>> {
     const result = new Map<string, Map<string, ReadonlySet<string>>>();
 
@@ -77,14 +81,14 @@ function buildFactionEraUnitIds(factionEraIndex: UnitSearchWorkerFactionEraSnaps
 }
 
 function buildForcePackIndex(units: Unit[]): Map<string, Set<string>> {
-    const unitsByName = new Map(units.map(unit => [unit.name, unit]));
+    const unitsByName = new Map(units.map(unit => [getUnitNameKey(unit.name), unit]));
     const result = new Map<string, Set<string>>();
 
     for (const pack of getForcePacks()) {
         const chassisTypes = new Set<string>();
         const addPackUnits = (packUnits: Array<{ name: string }>) => {
             for (const packUnit of packUnits) {
-                const unit = unitsByName.get(packUnit.name);
+                const unit = unitsByName.get(getUnitNameKey(packUnit.name));
                 if (unit) {
                     chassisTypes.add(`${unit.chassis}|${unit.type}`);
                 }

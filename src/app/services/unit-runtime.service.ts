@@ -20,10 +20,14 @@ export class UnitRuntimeService {
 
     private unitNameMap = new Map<string, Unit>();
 
+    private static getUnitNameKey(name: string): string {
+        return name.toLowerCase();
+    }
+
     public preprocessUnits(units: Unit[]): void {
         this.unitNameMap.clear();
         for (const unit of units) {
-            this.unitNameMap.set(unit.name, unit);
+            this.unitNameMap.set(UnitRuntimeService.getUnitNameKey(unit.name), unit);
         }
         this.unitSearchIndexService.prepareUnits(units);
     }
@@ -77,7 +81,7 @@ export class UnitRuntimeService {
     }
 
     public getUnitByName(name: string): Unit | undefined {
-        return this.unitNameMap.get(name);
+        return this.unitNameMap.get(UnitRuntimeService.getUnitNameKey(name));
     }
 
     private findEraForYear(year: number, eras: Era[]): Era | undefined {

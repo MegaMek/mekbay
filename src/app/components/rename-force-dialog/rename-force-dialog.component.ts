@@ -491,7 +491,8 @@ export class RenameForceDialogComponent {
         return ForceNamerUtil.buildFactionDisplayList(
             units,
             this.dataService.getFactions(),
-            this.dataService.getEras()
+            this.dataService.getEras(),
+            this.selectedEra()
         );
     });
 

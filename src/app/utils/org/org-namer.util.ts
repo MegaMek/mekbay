@@ -16,6 +16,7 @@ import { MULFACTION_MERCENARY } from '../../models/mulfactions.model';
  */
 export interface OrgNamingOptions {
 	readonly displayOnlyTopLevel?: boolean;
+	readonly displayTierCutoff?: number;
 }
 
 interface DisplayBucket {
@@ -152,12 +153,22 @@ function getDisplayBucketsForOptions(
 	buckets: readonly DisplayBucket[],
 	options: OrgNamingOptions,
 ): DisplayBucket[] {
-	if (!options.displayOnlyTopLevel || buckets.length <= 1) {
-		return [...buckets];
+	let filteredBuckets = [...buckets];
+	const displayTierCutoff = options.displayTierCutoff;
+	if (displayTierCutoff !== undefined && filteredBuckets.length > 1) {
+		const bucketsAtOrAboveCutoff = filteredBuckets.filter((bucket) => bucket.tier >= displayTierCutoff);
+		const hasBucketsBelowCutoff = filteredBuckets.some((bucket) => bucket.tier < displayTierCutoff);
+		if (bucketsAtOrAboveCutoff.length > 0 && hasBucketsBelowCutoff) {
+			filteredBuckets = bucketsAtOrAboveCutoff;
+		}
 	}
 
-	const highestTier = buckets[0]?.tier ?? 0;
-	return buckets.filter((bucket) => Math.abs(bucket.tier - highestTier) < 0.0001);
+	if (!options.displayOnlyTopLevel || filteredBuckets.length <= 1) {
+		return filteredBuckets;
+	}
+
+	const highestTier = filteredBuckets[0]?.tier ?? 0;
+	return filteredBuckets.filter((bucket) => Math.abs(bucket.tier - highestTier) < 0.0001);
 }
 
 function getGroupDisplayCount(group: GroupSizeResult): number {
@@ -226,8 +237,8 @@ function formatRepeatedDisplayLabel(label: string, count: number): string {
 		return label;
 	}
 
-	if (label === 'Element') {
-		return `${count} Elements`;
+	if (label === 'Unit') {
+		return `${count} Units`;
 	}
 
 	return `${count}x ${label}`;
@@ -371,8 +382,8 @@ function formatRepeatedDisplayLabel(label: string, count: number): string {
 		return label;
 	}
 
-	if (label === 'Element') {
-		return `${count} Elements`;
+	if (label === 'Unit') {
+		return `${count} Units`;
 	}
 
 	return `${count}x ${label}`;

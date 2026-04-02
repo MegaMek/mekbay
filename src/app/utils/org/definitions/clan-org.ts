@@ -37,7 +37,7 @@ export const CLAN_PM_POINT: OrgLeafCountRule = {
     commandRank: 'Point Commander',
     tier: 0,
     unitSelector: 'PM',
-    fragmentType: 'Element',
+    fragmentType: 'Unit',
     fragmentTier: -1,
     pointModel: 'fixed',
 };
@@ -49,7 +49,7 @@ export const CLAN_CV_POINT: OrgLeafCountRule = {
     commandRank: 'Point Commander',
     tier: 0,
     unitSelector: ['CV', 'SV', 'AF', 'CF'],
-    fragmentType: 'Element',
+    fragmentType: 'Unit',
     fragmentTier: -1,
     bucketBy: 'moveType',
     pointModel: 'fixed',

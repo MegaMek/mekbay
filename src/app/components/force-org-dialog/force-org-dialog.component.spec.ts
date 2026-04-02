@@ -39,7 +39,7 @@ describe('ForceOrgDialogComponent', () => {
     };
 
     const urlStateServiceStub = {
-        setExclusiveParams: jasmine.createSpy('setExclusiveParams'),
+        setParams: jasmine.createSpy('setParams'),
     };
 
     beforeEach(async () => {
@@ -59,7 +59,7 @@ describe('ForceOrgDialogComponent', () => {
         fixture = TestBed.createComponent(ForceOrgDialogComponent);
         component = fixture.componentInstance;
         fixture.detectChanges();
-        urlStateServiceStub.setExclusiveParams.calls.reset();
+        urlStateServiceStub.setParams.calls.reset();
     });
 
     function createPlacedForce(instanceId: string, x: number, y: number, groupId: string | null) {
@@ -345,12 +345,12 @@ describe('ForceOrgDialogComponent', () => {
         (component as any).organizationId.set('org-42');
         fixture.detectChanges();
 
-        expect(urlStateServiceStub.setExclusiveParams).toHaveBeenCalledWith({ toe: 'org-42' });
+        expect(urlStateServiceStub.setParams).toHaveBeenCalledWith({ toe: 'org-42' });
 
-        urlStateServiceStub.setExclusiveParams.calls.reset();
+        urlStateServiceStub.setParams.calls.reset();
         fixture.destroy();
 
-        expect(urlStateServiceStub.setExclusiveParams).toHaveBeenCalledWith(null);
+        expect(urlStateServiceStub.setParams).toHaveBeenCalledWith({ toe: null });
     });
 
     it('treats non-owned organizations as read-only and blocks saving', async () => {
@@ -378,7 +378,7 @@ describe('ForceOrgDialogComponent', () => {
 
         expect((component as any).readOnly()).toBeTrue();
         expect(dataServiceStub.saveOrganization).not.toHaveBeenCalled();
-        expect(urlStateServiceStub.setExclusiveParams).toHaveBeenCalledWith({ toe: 'org-shared' });
+        expect(urlStateServiceStub.setParams).toHaveBeenCalledWith({ toe: 'org-shared' });
     });
 
     it('opens force details when clicking a force card in read-only mode', async () => {
@@ -401,16 +401,19 @@ describe('ForceOrgDialogComponent', () => {
         dialogsServiceStub.createDialog.calls.reset();
 
         const placedForce = (component as any).placedForces()[0];
+        const setPointerCapture = jasmine.createSpy('setPointerCapture');
         (component as any).onForcePointerDown({
             pointerId: 7,
+            pointerType: 'mouse',
             clientX: 100,
             clientY: 100,
         } as PointerEvent, placedForce);
         (component as any).onCanvasPointerDown({
             pointerId: 7,
+            pointerType: 'mouse',
             clientX: 100,
             clientY: 100,
-            currentTarget: { setPointerCapture() {} },
+            currentTarget: { setPointerCapture },
         } as unknown as PointerEvent);
         (component as any).onGlobalPointerUp({
             pointerId: 7,
@@ -418,10 +421,21 @@ describe('ForceOrgDialogComponent', () => {
             clientY: 100,
         } as PointerEvent);
 
+        expect(setPointerCapture).not.toHaveBeenCalled();
+        expect(dialogsServiceStub.createDialog).not.toHaveBeenCalled();
+
+        const clickEvent = {
+            preventDefault: jasmine.createSpy('preventDefault'),
+            stopPropagation: jasmine.createSpy('stopPropagation'),
+        } as unknown as MouseEvent;
+        (component as any).onReadonlyForceClick(clickEvent, placedForce);
+
         expect(dialogsServiceStub.createDialog).toHaveBeenCalled();
         expect(dialogsServiceStub.createDialog.calls.mostRecent().args[1]).toEqual(jasmine.objectContaining({
             data: jasmine.objectContaining({ force: forceA }),
         }));
+        expect(clickEvent.preventDefault).toHaveBeenCalled();
+        expect(clickEvent.stopPropagation).toHaveBeenCalled();
     });
 
     it('does not open force details when the readonly card gesture turns into a drag', async () => {
@@ -444,30 +458,46 @@ describe('ForceOrgDialogComponent', () => {
         dialogsServiceStub.createDialog.calls.reset();
 
         const placedForce = (component as any).placedForces()[0];
+        const setPointerCapture = jasmine.createSpy('setPointerCapture');
         (component as any).onForcePointerDown({
             pointerId: 9,
+            pointerType: 'mouse',
             clientX: 100,
             clientY: 100,
         } as PointerEvent, placedForce);
         (component as any).onCanvasPointerDown({
             pointerId: 9,
+            pointerType: 'mouse',
             clientX: 100,
             clientY: 100,
-            currentTarget: { setPointerCapture() {} },
+            currentTarget: { setPointerCapture },
         } as unknown as PointerEvent);
-        (component as any).processPointerMove({
+        const moveEvent = {
             pointerId: 9,
+            pointerType: 'mouse',
             clientX: 132,
             clientY: 128,
-        } as PointerEvent);
+        } as PointerEvent;
+        (component as any).activeTouches.set(9, moveEvent);
+        (component as any).processPointerMove(moveEvent);
         (component as any).onGlobalPointerUp({
             pointerId: 9,
             clientX: 132,
             clientY: 128,
         } as PointerEvent);
 
+        const clickEvent = {
+            preventDefault: jasmine.createSpy('preventDefault'),
+            stopPropagation: jasmine.createSpy('stopPropagation'),
+        } as unknown as MouseEvent;
+        (component as any).onReadonlyForceClick(clickEvent, placedForce);
+
         expect(dialogsServiceStub.createDialog).not.toHaveBeenCalled();
         expect((component as any).draggedForce()).toBeNull();
+        expect((component as any).viewOffset()).toEqual({ x: 32, y: 28 });
+        expect(clickEvent.preventDefault).not.toHaveBeenCalled();
+        expect(clickEvent.stopPropagation).not.toHaveBeenCalled();
+        expect(setPointerCapture).not.toHaveBeenCalled();
     });
 
     it('loads foreign organization forces by instance id instead of listing the viewer\'s own forces', async () => {

@@ -53,6 +53,7 @@ export type OrgType =
     | 'Force'
     | 'Mercenary'
     | 'Element'
+    | 'Unit'
 
     // IS-specific types
     | 'Squad'
@@ -60,7 +61,6 @@ export type OrgType =
     | 'Flight'
     | 'Squadron'
     | 'Wing'
-    | 'Single'
     | 'Lance'
     | 'Air Lance'
     | 'Company'

@@ -104,9 +104,9 @@ export const IS_AIR_LANCE: OrgComposedCountRule = {
     childBucketBy: 'promotionWithUnitKinds',
 };
 
-export const IS_SINGLE: OrgLeafCountRule = {
+export const IS_UNIT: OrgLeafCountRule = {
     kind: 'leaf-count',
-    type: 'Single',
+    type: 'Unit',
     priority: -1,
     modifiers: { '': 1 },
     tier: 0,
@@ -176,7 +176,7 @@ export const IS_CORE_ORG: OrgDefinitionSpec = {
         IS_BA_SQUAD,
         IS_BA_PLATOON,
         IS_PLATOON,
-        IS_SINGLE,
+        IS_UNIT,
         IS_LANCE,
         IS_AIR_LANCE,
         IS_COMPANY,
