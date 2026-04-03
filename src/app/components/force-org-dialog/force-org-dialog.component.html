@@ -383,6 +383,16 @@
         </g>
     </svg>
 
+    <!-- Initial canvas loading overlay -->
+    @if (loading() && placedForces().length === 0 && groups().length === 0) {
+    <div class="canvas-loading-overlay">
+        <div class="canvas-loading-card">
+            <div class="canvas-loading-title">Loading TO&amp;E...</div>
+            <p>Restoring organization layout and force data.</p>
+        </div>
+    </div>
+    }
+
     <!-- Empty canvas overlay -->
     @if (!loading() && placedForces().length === 0) {
     <div class="canvas-empty-overlay">
@@ -413,7 +423,7 @@
         </div>
 
         <div class="forces-list">
-            @if (loading()) {
+            @if (sidebarLoading()) {
             <div class="sidebar-empty">Loading forces...</div>
             } @else if (sidebarForces().length === 0 && placedForces().length === 0) {
             <div class="sidebar-empty">No saved forces found.</div>

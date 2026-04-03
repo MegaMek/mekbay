@@ -97,6 +97,40 @@
     }
 }
 
+.canvas-loading-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    padding: 24px;
+}
+
+.canvas-loading-card {
+    min-width: min(320px, 100%);
+    max-width: 420px;
+    padding: 18px 22px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(8px);
+    text-align: center;
+    color: var(--text-color, #fff);
+
+    p {
+        margin: 8px 0 0;
+        color: var(--text-color-secondary, rgba(255, 255, 255, 0.72));
+        font-size: 0.95rem;
+    }
+}
+
+.canvas-loading-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
 // ==================== Empty Canvas Overlay ====================
 
 .canvas-empty-overlay {
