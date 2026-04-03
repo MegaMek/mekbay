@@ -46,6 +46,7 @@ const DB_NAME = 'mekbay-sprites';
 const DB_VERSION = 1;
 const SPRITES_STORE = 'sprites';
 const METADATA_STORE = 'metadata';
+const MANIFEST_KEY = 'sprites_manifest';
 
 /** Sprite position info for a single icon */
 export interface SpriteIconInfo {
@@ -69,11 +70,16 @@ export interface SpriteManifest {
     icons: { [iconPath: string]: SpriteIconInfo };
 }
 
+interface SpriteDownloadResult {
+    blobs: Map<string, Blob>;
+    failedTypes: string[];
+}
+
 @Injectable({
     providedIn: 'root'
 })
 export class SpriteStorageService {
-    private dbPromise!: Promise<IDBDatabase>;
+    private dbPromise!: Promise<IDBDatabase | null>;
     private http = inject(HttpClient);
     private logger = inject(LoggerService);
 
@@ -97,8 +103,14 @@ export class SpriteStorageService {
         this.initializeSprites();
     }
 
-    private initIndexedDb(): Promise<IDBDatabase> {
-        return new Promise((resolve, reject) => {
+    private initIndexedDb(): Promise<IDBDatabase | null> {
+        return new Promise((resolve) => {
+            if (typeof indexedDB === 'undefined') {
+                this.logger.warn('IndexedDB unavailable; sprite cache will run in memory only.');
+                resolve(null);
+                return;
+            }
+
             const request = indexedDB.open(DB_NAME, DB_VERSION);
 
             request.onupgradeneeded = (event) => {
@@ -116,7 +128,7 @@ export class SpriteStorageService {
             request.onsuccess = (event) => resolve((event.target as IDBOpenDBRequest).result);
             request.onerror = (event) => {
                 this.logger.error('SpriteStorage DB Error: ' + (event.target as IDBOpenDBRequest).error);
-                reject((event.target as IDBOpenDBRequest).error);
+                resolve(null);
             };
         });
     }
@@ -127,6 +139,8 @@ export class SpriteStorageService {
 
     private async dbGet<T>(store: string, key: string): Promise<T | null> {
         const db = await this.dbPromise;
+        if (!db) return null;
+
         return new Promise((resolve) => {
             const tx = db.transaction(store, 'readonly');
             const request = tx.objectStore(store).get(key);
@@ -137,6 +151,8 @@ export class SpriteStorageService {
 
     private async dbPut(store: string, key: string, value: unknown): Promise<void> {
         const db = await this.dbPromise;
+        if (!db) return;
+
         return new Promise((resolve, reject) => {
             const tx = db.transaction(store, 'readwrite');
             tx.objectStore(store).put(value, key);
@@ -147,6 +163,8 @@ export class SpriteStorageService {
 
     private async dbClear(store: string): Promise<void> {
         const db = await this.dbPromise;
+        if (!db) return;
+
         return new Promise((resolve, reject) => {
             const tx = db.transaction(store, 'readwrite');
             const request = tx.objectStore(store).clear();
@@ -160,30 +178,76 @@ export class SpriteStorageService {
      */
     private async initializeSprites(): Promise<void> {
         try {
-            // 1. Fetch remote hash and local hash in parallel
-            const [remoteHash, localHash] = await Promise.all([
+            const [remoteHash, localHash, storedManifest] = await Promise.all([
                 this.fetchRemoteHash(),
-                this.getStoredHash()
+                this.getStoredHash(),
+                this.getStoredManifest()
             ]);
 
-            const manifest = await this.getManifest();
-            if (!manifest) return;
-
-            // 2. If hashes match, just load from IndexedDB
-            if (remoteHash && remoteHash === localHash) {
+            if (remoteHash && remoteHash === localHash && storedManifest) {
+                this.manifest = storedManifest;
                 this.logger.info('Sprites cache is up to date.');
-                await this.loadAllSpritesToCache(manifest);
+                await this.loadAllSpritesToCache(storedManifest);
                 return;
             }
 
-            // 3. Hash mismatch or no cache - download everything
-            this.logger.info('Sprites cache outdated or empty. Downloading...');
-            await this.downloadAllSprites(manifest);
-
-            // 4. Store the new hash
-            if (remoteHash) {
-                await this.storeHash(remoteHash);
+            if (!remoteHash && storedManifest) {
+                this.manifest = storedManifest;
+                this.logger.warn('Sprite hash unavailable. Using cached sprite data.');
+                await this.loadAllSpritesToCache(storedManifest);
+                return;
             }
+
+            const remoteManifest = await this.fetchRemoteManifest();
+            if (!remoteManifest) {
+                if (storedManifest) {
+                    this.manifest = storedManifest;
+                    this.logger.warn('Sprite manifest unavailable. Using cached sprite data.');
+                    await this.loadAllSpritesToCache(storedManifest);
+                }
+                return;
+            }
+
+            this.manifest = remoteManifest;
+
+            if (remoteHash && remoteHash === localHash) {
+                this.logger.info('Sprites cache is up to date.');
+                if (!storedManifest) {
+                    await this.storeManifest(remoteManifest);
+                }
+                await this.loadAllSpritesToCache(remoteManifest);
+                return;
+            }
+
+            this.logger.info(storedManifest ? 'Sprites cache outdated. Downloading...' : 'Sprites cache empty or unavailable. Downloading...');
+            const result = await this.downloadAllSprites(remoteManifest);
+
+            if (result.failedTypes.length === 0) {
+                await this.commitDownloadedSprites(result.blobs);
+                await this.storeManifest(remoteManifest);
+
+                if (remoteHash) {
+                    await this.storeHash(remoteHash);
+                }
+                return;
+            }
+
+            const failedPreview = result.failedTypes.slice(0, 5).join(', ');
+            const failedSuffix = result.failedTypes.length > 5 ? '...' : '';
+
+            if (storedManifest) {
+                this.logger.warn(
+                    `Sprite refresh incomplete (${result.failedTypes.length} failed: ${failedPreview}${failedSuffix}). Using cached sprite data.`
+                );
+                this.manifest = storedManifest;
+                await this.loadAllSpritesToCache(storedManifest);
+                return;
+            }
+
+            this.logger.warn(
+                `Sprite download incomplete (${result.failedTypes.length} failed: ${failedPreview}${failedSuffix}). Using partial in-memory sprite data.`
+            );
+            await this.commitDownloadedSprites(result.blobs, false);
         } catch (err) {
             this.logger.error('Failed to initialize sprites: ' + err);
         } finally {
@@ -213,6 +277,13 @@ export class SpriteStorageService {
     }
 
     /**
+     * Get stored manifest from IndexedDB.
+     */
+    private getStoredManifest(): Promise<SpriteManifest | null> {
+        return this.dbGet<SpriteManifest>(METADATA_STORE, MANIFEST_KEY);
+    }
+
+    /**
      * Store hash in IndexedDB.
      */
     private storeHash(hash: string): Promise<void> {
@@ -220,18 +291,41 @@ export class SpriteStorageService {
     }
 
     /**
+     * Store manifest in IndexedDB.
+     */
+    private storeManifest(manifest: SpriteManifest): Promise<void> {
+        return this.dbPut(METADATA_STORE, MANIFEST_KEY, manifest);
+    }
+
+    /**
      * Get the sprite manifest. Fetches and caches it on first call.
      */
     public async getManifest(): Promise<SpriteManifest | null> {
         if (this.manifest) return this.manifest;
-        if (this.manifestPromise) return this.manifestPromise;
 
-        this.manifestPromise = this.fetchManifest();
+        if (!this.manifestPromise) {
+            this.manifestPromise = this.fetchManifestWithFallback();
+        }
+
         this.manifest = await this.manifestPromise;
+
+        if (!this.manifest) {
+            this.manifestPromise = null;
+        }
+
         return this.manifest;
     }
 
-    private async fetchManifest(): Promise<SpriteManifest | null> {
+    private async fetchManifestWithFallback(): Promise<SpriteManifest | null> {
+        const remoteManifest = await this.fetchRemoteManifest();
+        if (remoteManifest) {
+            return remoteManifest;
+        }
+
+        return this.getStoredManifest();
+    }
+
+    private async fetchRemoteManifest(): Promise<SpriteManifest | null> {
         try {
             const manifest = await firstValueFrom(
                 this.http.get<SpriteManifest>('sprites/unit-icons.json')
@@ -255,44 +349,66 @@ export class SpriteStorageService {
      * Download all sprite sheets and store in IndexedDB.
      * Uses controlled concurrency to balance speed vs server load.
      */
-    private async downloadAllSprites(manifest: SpriteManifest): Promise<void> {
+    private async downloadAllSprites(manifest: SpriteManifest): Promise<SpriteDownloadResult> {
         const entries = Object.entries(manifest.types);
+        const blobs = new Map<string, Blob>();
+        const failedTypes: string[] = [];
         
         // Process in batches for controlled concurrency
         for (let i = 0; i < entries.length; i += DOWNLOAD_CONCURRENCY) {
             const batch = entries.slice(i, i + DOWNLOAD_CONCURRENCY);
-            await Promise.all(
-                batch.map(([unitType, typeInfo]) => this.downloadSprite(unitType, typeInfo.url))
+            const results = await Promise.all(
+                batch.map(async ([unitType, typeInfo]) => ({
+                    unitType,
+                    blob: await this.fetchSpriteBlob(unitType, typeInfo.url)
+                }))
             );
+
+            for (const result of results) {
+                if (result.blob) {
+                    blobs.set(result.unitType, result.blob);
+                } else {
+                    failedTypes.push(result.unitType);
+                }
+            }
         }
+
+        return { blobs, failedTypes };
     }
 
     /**
-     * Download a single sprite sheet and store it.
+     * Fetch a single sprite sheet.
      */
-    private async downloadSprite(unitType: string, url: string): Promise<void> {
+    private async fetchSpriteBlob(unitType: string, url: string): Promise<Blob | null> {
         try {
             const blob = await firstValueFrom(
                 this.http.get(url, { responseType: 'blob' })
             );
 
-            if (!blob) return;
+            return blob ?? null;
+        } catch (err) {
+            this.logger.error(`Failed to download sprite ${unitType}: ${err}`);
+            return null;
+        }
+    }
 
-            await this.dbPut(SPRITES_STORE, unitType, blob);
+    /**
+     * Commit fetched sprite sheets to memory cache and, when available, IndexedDB.
+     */
+    private async commitDownloadedSprites(blobs: Map<string, Blob>, persistToDb = true): Promise<void> {
+        for (const [unitType, blob] of blobs) {
+            if (persistToDb) {
+                await this.dbPut(SPRITES_STORE, unitType, blob);
+            }
 
-            // Revoke old URL if exists
             const oldUrl = this.spriteUrlCache.get(unitType);
             if (oldUrl) {
                 URL.revokeObjectURL(oldUrl);
             }
 
-            // Add to memory cache
             const objectUrl = URL.createObjectURL(blob);
             this.spriteUrlCache.set(unitType, objectUrl);
-
             this.logger.info(`Downloaded sprite: ${unitType} (${(blob.size / 1024).toFixed(1)} KB)`);
-        } catch (err) {
-            this.logger.error(`Failed to download sprite ${unitType}: ${err}`);
         }
     }
 
@@ -319,15 +435,33 @@ export class SpriteStorageService {
         const iconInfo = manifest.icons[iconPath];
         if (!iconInfo) return null;
 
-        // Ensure sprite is loaded
-        if (!this.spriteUrlCache.has(iconInfo.type)) {
-            await this.loadSpriteToCache(iconInfo.type);
-        }
-
-        const url = this.spriteUrlCache.get(iconInfo.type);
+        const url = await this.ensureSpriteAvailable(iconInfo.type, manifest.types[iconInfo.type]);
         if (!url) return null;
 
         return { url, info: iconInfo };
+    }
+
+    /**
+     * Ensure a sprite sheet is available either from IndexedDB or a direct download.
+     */
+    private async ensureSpriteAvailable(unitType: string, typeInfo: SpriteTypeInfo | undefined): Promise<string | null> {
+        if (!this.spriteUrlCache.has(unitType)) {
+            await this.loadSpriteToCache(unitType);
+        }
+
+        let url = this.spriteUrlCache.get(unitType) ?? null;
+        if (url || !typeInfo) {
+            return url;
+        }
+
+        const blob = await this.fetchSpriteBlob(unitType, typeInfo.url);
+        if (!blob) {
+            return null;
+        }
+
+        await this.commitDownloadedSprites(new Map([[unitType, blob]]));
+        url = this.spriteUrlCache.get(unitType) ?? null;
+        return url;
     }
 
     /**
@@ -424,6 +558,8 @@ export class SpriteStorageService {
         this.spriteUrlCache.clear();
         this.spriteImageCache.clear();
         this.extractedIconCache.clear();
+        this.manifest = null;
+        this.manifestPromise = null;
         
         await this.initializeSprites();
     }
