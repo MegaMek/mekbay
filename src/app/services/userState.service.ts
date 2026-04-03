@@ -31,9 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { computed, inject, Injectable, signal, type viewChild } from '@angular/core';
+import { computed, inject, Injectable, signal } from '@angular/core';
 import { generateUUID } from './ws.service';
-import type { Options } from '../models/options.model';
 import { DbService, type UserData } from './db.service';
 import { LoggerService } from './logger.service';
 
