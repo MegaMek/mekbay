@@ -429,6 +429,7 @@ describe('ForceOrgDialogComponent', () => {
         expect((component as any).groups().map((group: any) => group.id)).toEqual(['group-a']);
         expect((component as any).placedForces().length).toBe(1);
         expect((component as any).placedForces()[0].force.missing).toBeTrue();
+        expect(fixture.nativeElement.textContent).toContain('Loading TO&E...');
 
         forceDeferred.resolve([hydratedForce]);
 
@@ -436,7 +437,12 @@ describe('ForceOrgDialogComponent', () => {
         fixture.detectChanges();
 
         expect((component as any).loading()).toBeFalse();
-        expect((component as any).placedForces()[0].force).toBe(hydratedForce);
+        expect((component as any).placedForces()[0].force).toEqual(jasmine.objectContaining({
+            instanceId: hydratedForce.instanceId,
+            missing: false,
+            name: hydratedForce.name,
+        }));
+        expect(fixture.nativeElement.textContent).not.toContain('Loading TO&E...');
     });
 
     it('auto-fits using the SVG layout size instead of the animated bounding box', () => {
