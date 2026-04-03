@@ -62,7 +62,7 @@ export const PROTOCOL_VERSION = 2;
 export class WsService {
     private logger = inject(LoggerService);
     private ws: WebSocket | null = null;
-    private readonly wsUrl = 'wss://mekbay.com/ws';
+    private readonly wsUrl = this.resolveWebSocketUrl();
     private wsReady?: Promise<void>;
     private wsReadyResolver: (() => void) | null = null;
     private readonly wsSessionId = generateUUID();
@@ -85,6 +85,22 @@ export class WsService {
 
     private getCurrentUuid(): string {
         return this.userStateService.uuid().trim();
+    }
+
+    private isLocalDevHost(hostname: string): boolean {
+        return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0';
+    }
+
+    private resolveWebSocketUrl(): string {
+        const { hostname, host, protocol } = window.location;
+
+        if (this.isLocalDevHost(hostname)) {
+            return 'ws://localhost:19999';
+        }
+
+        const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsPath = hostname === 'next.mekbay.com' ? '/ws2' : '/ws';
+        return `${wsProtocol}//${host}${wsPath}`;
     }
 
     constructor() {
@@ -111,9 +127,13 @@ export class WsService {
      */
     private setupUserStateHandler(): void {
         this.registerMessageHandler('userState', (msg) => {
-            if (msg.publicId) {
-                this.userStateService.setPublicId(msg.publicId);
-            }
+            void this.userStateService.applyServerState({
+                publicId: msg.publicId ?? null,
+                hasOAuth: msg.hasOAuth,
+                oauthProviderCount: msg.oauthProviderCount,
+                oauthProviders: Array.isArray(msg.oauthProviders) ? msg.oauthProviders : undefined,
+                availableAuthProviders: Array.isArray(msg.availableAuthProviders) ? msg.availableAuthProviders : undefined,
+            });
         });
     }
 
@@ -432,6 +452,12 @@ export class WsService {
      */
     public getSessionId(): string {
         return this.wsSessionId;
+    }
+
+    public getHttpBaseUrl(): string {
+        const parsedUrl = new URL(this.wsUrl);
+        parsedUrl.protocol = parsedUrl.protocol === 'wss:' ? 'https:' : 'http:';
+        return parsedUrl.origin;
     }
 
     /**

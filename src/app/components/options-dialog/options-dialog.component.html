@@ -122,6 +122,91 @@
             </div>
         </div>
         }
+        @if (activeTab() === 'Account') {
+        <div class="tab-content">
+            <div class="option-col">
+                <div class="option-row">
+                    <span>Account mode:</span>
+                    <strong>{{ userHasOAuth() ? 'OAuth connected' : 'Anonymous UUID only' }}</strong>
+                </div>
+                <div class="option-row">
+                    <div>
+                        <span class="small-label">Public ID: </span><span class="readonly-value">{{ userPublicId() }}</span>
+                    </div>
+                </div>
+                <div class="description">
+                    <p>Your UUID remains the canonical MekBay account identifier.</p>
+                    <p>Linking an OAuth provider lets you sign back into that same UUID and marks the account for future community features like voting, commenting, and publishing public content.</p>
+                </div>
+            </div>
+
+            <div class="option-section-title">Linked Providers</div>
+            @if (linkedOAuthProviders().length > 0) {
+            <div class="linked-provider-list">
+                @for (provider of linkedOAuthProviders(); track provider.provider) {
+                <div class="linked-provider-row">
+                    <div class="linked-provider-info">
+                        <div class="linked-provider-title">{{ getProviderLabel(provider.provider) }}</div>
+                        <div class="linked-provider-primary">{{ getProviderIdentity(provider) }}</div>
+                        @if (provider.email && provider.displayName && provider.email !== provider.displayName) {
+                        <div class="linked-provider-meta">{{ provider.email }}</div>
+                        }
+                        <div class="linked-provider-meta">
+                            Linked {{ provider.linkedAt | date:'medium' }}
+                            @if (provider.lastLoginAt) {
+                            <span> · Last sign-in {{ provider.lastLoginAt | date:'short' }}</span>
+                            }
+                        </div>
+                    </div>
+                    <div class="linked-provider-actions">
+                        <button class="bt-button danger small"
+                            [disabled]="oauthActionInFlight() || linkedOAuthProviders().length <= 1"
+                            (click)="onUnlinkProvider(provider.provider)">UNLINK</button>
+                    </div>
+                </div>
+                }
+            </div>
+            } @else {
+            <div class="empty-state">
+                <p>No OAuth providers are linked to this UUID yet.</p>
+            </div>
+            }
+
+            <div class="description oauth-description-block">
+                <p>You can keep using MekBay anonymously with your UUID only. OAuth is optional.</p>
+                <p>If you connect providers, at least one linked provider must remain attached while the account stays in an OAuth-connected state.</p>
+            </div>
+
+            <div class="option-section-title">Link Current Account</div>
+            <div class="provider-actions">
+                @for (provider of availableAuthProviders(); track provider.provider) {
+                <button class="bt-button" [disabled]="oauthActionInFlight() || !provider.enabled"
+                    (click)="onLinkProvider(provider.provider)">{{ getProviderLinkActionLabel(provider.provider) }} {{ provider.label.toUpperCase() }}</button>
+                }
+            </div>
+            <div class="description oauth-description-block">
+                <p>Link a provider to the UUID currently stored on this device.</p>
+                <p>Use replace when you want to migrate, for example from an old Google account to a new one.</p>
+            </div>
+
+            <div class="option-section-title">Provider Sign-In</div>
+            <div class="provider-actions">
+                @for (provider of availableAuthProviders(); track provider.provider) {
+                <button class="bt-button primary" [disabled]="oauthActionInFlight() || !provider.enabled"
+                    (click)="onLoginWithProvider(provider.provider)">SIGN IN WITH {{ provider.label.toUpperCase() }}</button>
+                }
+            </div>
+            <div class="description oauth-description-block">
+                <p>Use provider sign-in on a new device to recover the UUID already linked to that provider.</p>
+            </div>
+
+            @if (!hasEnabledAuthProviders()) {
+            <div class="empty-state">
+                <p>No OAuth providers are configured on the server yet.</p>
+            </div>
+            }
+        </div>
+        }
         @if (activeTab() === 'Tags') {
         <div class="tab-content">
             <div class="option-col tags-description">

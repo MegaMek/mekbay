@@ -130,6 +130,28 @@
     max-width: 500px;
 }
 
+.home-auth-actions {
+    width: 90%;
+    max-width: 500px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.home-login-button {
+    width: 100%;
+    max-width: 320px;
+    justify-content: center;
+}
+
+.home-auth-caption {
+    color: var(--text-color-secondary);
+    font-size: 0.85em;
+    text-align: center;
+    max-width: 420px;
+}
+
 .install-container {
     flex-grow: 1;
     display: flex;

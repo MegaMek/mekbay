@@ -62,9 +62,12 @@ import { APP_VERSION_STRING, BUILD_BRANCH } from './build-meta';
 import { LoggerService } from './services/logger.service';
 import { isIOS, isRunningStandalone } from './utils/platform.util';
 import { GameService } from './services/game.service';
+import { AccountAuthService } from './services/account-auth.service';
+import { UserStateService } from './services/userState.service';
 
 import { GameSystem } from './models/common.model';
 import { UrlStateService } from './services/url-state.service';
+import type { AvailableAuthProvider, OAuthProvider } from './models/account-auth.model';
 
 /*
  * Author: Drake
@@ -103,6 +106,8 @@ export class App {
     public unitSearchFiltersService = inject(UnitSearchFiltersService);
     public injector = inject(Injector);
     public gameService = inject(GameService);
+    private accountAuthService = inject(AccountAuthService);
+    private userStateService = inject(UserStateService);
     private urlStateService = inject(UrlStateService);
     private savedSearchesService = inject(SavedSearchesService);
     private destroyRef = inject(DestroyRef);
@@ -303,6 +308,10 @@ export class App {
     hasForces = this.forceBuilderService.hasForces;
 
     isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
+    protected homeAuthProviders = computed<AvailableAuthProvider[]>(() => {
+        return this.userStateService.availableAuthProviders().filter(provider => provider.enabled);
+    });
+    protected showHomeLoginButton = computed(() => this.homeAuthProviders().length > 0);
 
     onOnline() {
         void this.checkForUpdate();
@@ -668,6 +677,38 @@ export class App {
 
     showLoadForceDialog(): void {
         this.forceBuilderService.showLoadForceDialog();
+    }
+
+    async showHomeLoginDialog(): Promise<void> {
+        const providers = this.homeAuthProviders();
+        if (providers.length === 0) {
+            await this.dialogService.showNotice(
+                'Provider sign-in is not available yet because no OAuth providers are configured on this server.',
+                'Provider Sign-In Unavailable'
+            );
+            return;
+        }
+
+        if (providers.length === 1) {
+            await this.accountAuthService.loginWithProvider(providers[0].provider);
+            return;
+        }
+
+        const choice = await this.dialogService.choose<OAuthProvider | 'dismiss'>(
+            'Sign In',
+            'Choose a provider to recover the MekBay UUID already linked to that account.',
+            providers.map(provider => ({
+                label: `SIGN IN WITH ${provider.label.toUpperCase()}`,
+                value: provider.provider,
+            })),
+            'dismiss'
+        );
+
+        if (choice === 'dismiss') {
+            return;
+        }
+
+        await this.accountAuthService.loginWithProvider(choice);
     }
 
     showSingleUnitDetails(unit: Unit, tab?: string) {

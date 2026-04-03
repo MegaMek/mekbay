@@ -49,6 +49,8 @@ import { PublicTagsService } from '../../services/public-tags.service';
 import { TagsService } from '../../services/tags.service';
 import { TaggingService } from '../../services/tagging.service';
 import { ToastService } from '../../services/toast.service';
+import { AccountAuthService } from '../../services/account-auth.service';
+import type { AvailableAuthProvider, LinkedOAuthProvider, OAuthProvider } from '../../models/account-auth.model';
 
 /*
  * Author: Drake
@@ -75,11 +77,12 @@ export class OptionsDialogComponent {
     tagsService = inject(TagsService);
     taggingService = inject(TaggingService);
     toastService = inject(ToastService);
+    accountAuthService = inject(AccountAuthService);
     destroyRef = inject(DestroyRef);
     isIOS = isIOS();
     
     tabs = computed(() => {
-        return ['General', 'Tags', 'Sheets', 'Alpha Strike', 'Advanced', 'Logs'];
+        return ['General', 'Account', 'Tags', 'Sheets', 'Alpha Strike', 'Advanced', 'Logs'];
     });
     activeTab = signal(this.tabs()[0]);
 
@@ -113,6 +116,22 @@ export class OptionsDialogComponent {
     tagSubscriberCounts = signal<Record<string, number>>({});
     /** Whether subscriber counts are loading */
     subscriberCountsLoading = signal(false);
+    availableAuthProviders = computed<AvailableAuthProvider[]>(() => {
+        const providers = this.userStateService.availableAuthProviders();
+        if (providers.length > 0) {
+            return providers;
+        }
+
+        return [
+            { provider: 'google', label: 'Google', enabled: false },
+            { provider: 'apple', label: 'Apple', enabled: false },
+            { provider: 'discord', label: 'Discord', enabled: false },
+        ];
+    });
+    linkedOAuthProviders = this.userStateService.oauthProviders;
+    userHasOAuth = this.userStateService.hasOAuth;
+    oauthActionInFlight = this.accountAuthService.authInFlight;
+    hasEnabledAuthProviders = computed(() => this.availableAuthProviders().some(provider => provider.enabled));
 
     constructor() {
         this.updateSheetCacheSize();
@@ -525,5 +544,42 @@ export class OptionsDialogComponent {
 
     async onRenameTag(tagName: string) {
         await this.taggingService.renameTag(tagName);
+    }
+
+    isProviderLinked(provider: OAuthProvider): boolean {
+        return this.linkedOAuthProviders().some(linkedProvider => linkedProvider.provider === provider);
+    }
+
+    getLinkedProvider(provider: OAuthProvider): LinkedOAuthProvider | undefined {
+        return this.linkedOAuthProviders().find(linkedProvider => linkedProvider.provider === provider);
+    }
+
+    getProviderLabel(provider: OAuthProvider): string {
+        return this.accountAuthService.getProviderLabel(provider);
+    }
+
+    getProviderLinkActionLabel(provider: OAuthProvider): string {
+        return this.isProviderLinked(provider) ? 'REPLACE' : 'LINK';
+    }
+
+    getProviderIdentity(provider: LinkedOAuthProvider): string {
+        return provider.displayName || provider.email || `${this.getProviderLabel(provider.provider)} account`;
+    }
+
+    onLoginWithProvider(provider: OAuthProvider) {
+        void this.accountAuthService.loginWithProvider(provider);
+    }
+
+    onLinkProvider(provider: OAuthProvider) {
+        void this.accountAuthService.linkProvider(provider, this.isProviderLinked(provider));
+    }
+
+    onUnlinkProvider(provider: OAuthProvider) {
+        if (this.linkedOAuthProviders().length <= 1) {
+            this.toastService.showToast('At least one OAuth provider must remain linked once your account is connected.', 'error');
+            return;
+        }
+
+        void this.accountAuthService.unlinkProvider(provider);
     }
 }

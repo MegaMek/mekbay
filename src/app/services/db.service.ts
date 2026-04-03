@@ -50,6 +50,7 @@ import { LoadForceEntry, type LoadForceGroup, type LoadForceUnit } from '../mode
 import { LoggerService } from './logger.service';
 import type { SerializedOperation } from '../models/operation.model';
 import type { SerializedOrganization } from '../models/organization.model';
+import type { LinkedOAuthProvider } from '../models/account-auth.model';
 
 
 /*
@@ -232,6 +233,9 @@ export interface SavedSearchSyncState {
 export interface UserData {
     uuid: string;
     publicId?: string;
+    hasOAuth?: boolean;
+    oauthProviderCount?: number;
+    oauthProviders?: LinkedOAuthProvider[];
     tabSubs?: string[];
     /** Tag subscriptions: "publicId:tagName" pairs */
     tagSubscriptions?: string[];
