@@ -35,7 +35,7 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, type ElementR
 import { CommonModule } from '@angular/common';
 import { OptionsService } from '../../services/options.service';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
-import { DialogRef, type DIALOG_DATA } from '@angular/cdk/dialog';
+import { DialogRef } from '@angular/cdk/dialog';
 import { DbService } from '../../services/db.service';
 import { UserStateService } from '../../services/userState.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -51,6 +51,62 @@ import { TaggingService } from '../../services/tagging.service';
 import { ToastService } from '../../services/toast.service';
 import { AccountAuthService } from '../../services/account-auth.service';
 import type { AvailableAuthProvider, LinkedOAuthProvider, OAuthProvider } from '../../models/account-auth.model';
+
+type OptionsSectionId = 'General' | 'Account' | 'Tags' | 'Sheets' | 'Alpha Strike' | 'Advanced' | 'Logs';
+type OptionsViewId = OptionsSectionId;
+
+interface OptionsViewDefinition {
+    id: OptionsViewId;
+    title: string;
+    description?: string;
+    parentId?: OptionsViewId;
+}
+
+const WIDE_LAYOUT_QUERY = '(min-width: 760px) and (min-height: 560px)';
+
+const OPTIONS_VIEW_DEFINITIONS: readonly OptionsViewDefinition[] = [
+    {
+        id: 'General',
+        title: 'General',
+        description: 'Game system, search defaults, user identity, and general printing preferences.'
+    },
+    {
+        id: 'Account',
+        title: 'Account',
+        description: 'OAuth providers, sign-in recovery, and account identity details.'
+    },
+    {
+        id: 'Tags',
+        title: 'Tags',
+        description: 'Share your tags, copy public links, and manage subscriptions.'
+    },
+    {
+        id: 'Sheets',
+        title: 'Record Sheets',
+        description: 'Record sheet appearance, quick actions, automation, and navigation.'
+    },
+    {
+        id: 'Alpha Strike',
+        title: 'Alpha Strike',
+        description: 'Card appearance, Alpha Strike rules automation, and printing behavior.'
+    },
+    {
+        id: 'Advanced',
+        title: 'Advanced',
+        description: 'Input behavior, cached data, local storage, and maintenance actions.'
+    },
+    {
+        id: 'Logs',
+        title: 'Logs',
+        description: 'Recent in-app log messages for diagnostics and troubleshooting.'
+    },
+];
+
+const OPTIONS_VIEW_DEFINITIONS_BY_ID = new Map<OptionsViewId, OptionsViewDefinition>(
+    OPTIONS_VIEW_DEFINITIONS.map(view => [view.id, view])
+);
+
+const TOP_LEVEL_OPTIONS_VIEWS = OPTIONS_VIEW_DEFINITIONS.filter(view => !view.parentId);
 
 /*
  * Author: Drake
@@ -80,11 +136,17 @@ export class OptionsDialogComponent {
     accountAuthService = inject(AccountAuthService);
     destroyRef = inject(DestroyRef);
     isIOS = isIOS();
-    
-    tabs = computed(() => {
-        return ['General', 'Account', 'Tags', 'Sheets', 'Alpha Strike', 'Advanced', 'Logs'];
-    });
-    activeTab = signal(this.tabs()[0]);
+    modalClass = 'wide options-dialog-modal';
+    topLevelViews = TOP_LEVEL_OPTIONS_VIEWS;
+    activeTab = signal<OptionsSectionId>('General');
+    navigationStack = signal<OptionsViewId[]>([]);
+    isWideLayout = signal(typeof window !== 'undefined' ? window.matchMedia(WIDE_LAYOUT_QUERY).matches : true);
+    canGoBack = computed(() => this.navigationStack().length > 0);
+    isAtRoot = computed(() => !this.canGoBack());
+    currentViewId = computed<OptionsViewId>(() => this.navigationStack().at(-1) ?? this.activeTab());
+    currentViewDefinition = computed(() => this.getViewDefinition(this.currentViewId()));
+    currentViewDescription = computed(() => this.currentViewDefinition().description);
+    mobileHeaderTitle = computed(() => this.canGoBack() ? this.currentViewDefinition().title : 'Options');
 
     uuidInput = viewChild<ElementRef<HTMLInputElement>>('uuidInput');
     subscriptionInput = viewChild<ElementRef<HTMLInputElement>>('subscriptionInput');
@@ -134,10 +196,89 @@ export class OptionsDialogComponent {
     hasEnabledAuthProviders = computed(() => this.availableAuthProviders().some(provider => provider.enabled));
 
     constructor() {
+        this.setupLayoutModeTracking();
         this.updateSheetCacheSize();
         this.updateCanvasMemorySize();
         this.updateUnitIconsCount();
         this.loadTagSubscriberCounts();
+    }
+
+    private setupLayoutModeTracking(): void {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        const mediaQuery = window.matchMedia(WIDE_LAYOUT_QUERY);
+        const updateLayout = (matches: boolean) => this.isWideLayout.set(matches);
+        updateLayout(mediaQuery.matches);
+
+        const onChange = (event: MediaQueryListEvent) => updateLayout(event.matches);
+        mediaQuery.addEventListener('change', onChange);
+        this.destroyRef.onDestroy(() => mediaQuery.removeEventListener('change', onChange));
+    }
+
+    private getViewDefinition(viewId: OptionsViewId): OptionsViewDefinition {
+        return OPTIONS_VIEW_DEFINITIONS_BY_ID.get(viewId) ?? OPTIONS_VIEW_DEFINITIONS_BY_ID.get('General')!;
+    }
+
+    private buildViewPath(viewId: OptionsViewId): OptionsViewId[] {
+        const path: OptionsViewId[] = [];
+        let currentViewId: OptionsViewId | undefined = viewId;
+
+        while (currentViewId) {
+            path.unshift(currentViewId);
+            currentViewId = this.getViewDefinition(currentViewId).parentId;
+        }
+
+        return path;
+    }
+
+    private getTopLevelSectionId(viewId: OptionsViewId): OptionsSectionId {
+        let currentView = this.getViewDefinition(viewId);
+
+        while (currentView.parentId) {
+            currentView = this.getViewDefinition(currentView.parentId);
+        }
+
+        return currentView.id;
+    }
+
+    isSectionActive(sectionId: OptionsSectionId): boolean {
+        return this.getTopLevelSectionId(this.currentViewId()) === sectionId;
+    }
+
+    selectDesktopSection(sectionId: OptionsSectionId): void {
+        this.activeTab.set(sectionId);
+        this.navigationStack.set([]);
+    }
+
+    openMobileSection(sectionId: OptionsSectionId): void {
+        this.openView(sectionId);
+    }
+
+    openView(viewId: OptionsViewId): void {
+        this.activeTab.set(this.getTopLevelSectionId(viewId));
+        this.navigationStack.set(this.buildViewPath(viewId));
+    }
+
+    pushView(viewId: OptionsViewId): void {
+        this.openView(viewId);
+    }
+
+    onMobileBack(): void {
+        const stack = this.navigationStack();
+        if (stack.length === 0) {
+            this.onClose();
+            return;
+        }
+
+        const nextStack = stack.slice(0, -1);
+        this.navigationStack.set(nextStack);
+
+        const nextViewId = nextStack.at(-1);
+        if (nextViewId) {
+            this.activeTab.set(this.getTopLevelSectionId(nextViewId));
+        }
     }
 
     /**
