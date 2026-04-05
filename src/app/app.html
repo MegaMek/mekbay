@@ -93,12 +93,6 @@
                     <div class="search-container">
                         <div [cdkPortalOutlet]="unitSearchPortalMain()"></div>
                     </div>
-                    @if (showHomeLoginButton()) {
-                    <div class="home-auth-actions">
-                        <button class="bt-button primary home-login-button" (click)="showHomeLoginDialog()">SIGN IN</button>
-                        <div class="home-auth-caption">Use Google, Apple, or Discord to recover the MekBay UUID already linked to your account on this device.</div>
-                    </div>
-                    }
                     @if (this.dataService.isDownloading() || this.dataService.isCloudForceLoading()) {
                     <div class="spinner-container">
                         <div class="spinner">

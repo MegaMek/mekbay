@@ -342,6 +342,11 @@
   padding-right: 40px;
 }
 
+.sensitive-input-wrapper .bt-input.user-uuid-input-readonly {
+  color: var(--text-color-secondary);
+  cursor: text;
+}
+
 .option-col {
   display: flex;
   flex-direction: column;
@@ -358,6 +363,16 @@ input {
   font-size: 0.82rem;
   color: var(--text-color-secondary);
   transition: color 0.2s;
+}
+
+.account-logout-block {
+  gap: 8px;
+}
+
+.account-logout-actions {
+  display: flex;
+  justify-content: flex-start;
+  padding: 0 4px;
 }
 
 .description p {
@@ -539,6 +554,49 @@ input {
   font-weight: 700;
 }
 
+.provider-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.provider-icon-frame {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.provider-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.provider-brand[data-provider="google"] .provider-icon-frame,
+.provider-action-button[data-provider="google"] .provider-icon-frame {
+  background: #ffffff;
+  border-color: #dadce0;
+}
+
+.provider-brand[data-provider="apple"] .provider-icon-frame,
+.provider-action-button[data-provider="apple"] .provider-icon-frame {
+  background: #111111;
+  border-color: #2c2c2c;
+}
+
+.provider-brand[data-provider="discord"] .provider-icon-frame,
+.provider-action-button[data-provider="discord"] .provider-icon-frame {
+  background: #5865f2;
+  border-color: #6e79ff;
+}
+
 .linked-provider-primary {
   margin-top: 0.15em;
 }
@@ -556,15 +614,154 @@ input {
 }
 
 .provider-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  align-items: stretch;
+  gap: 0.75rem;
   padding: 0 0.25rem;
+}
+
+.provider-login-launcher {
+  grid-template-columns: minmax(220px, 360px);
+  justify-content: center;
+}
+
+.provider-action-button {
+  width: 100%;
+  min-height: 40px;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background-image: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.32);
+  color: var(--text-color);
+  overflow: hidden;
+}
+
+.provider-action-button:hover:not(:disabled),
+.provider-action-button:focus-visible:not(:disabled) {
+  background-image: none;
+}
+
+.provider-action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: none;
+}
+
+.provider-link-button {
+  box-shadow: none;
+}
+
+.provider-login-button {
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+}
+
+.provider-login-launch-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.provider-login-launch-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.provider-action-content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0 14px;
+}
+
+.provider-action-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 520px) {
+  .provider-actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 .oauth-description-block {
   padding: 0 0.25rem;
   margin-top: 0;
+}
+
+.provider-action-button .provider-icon-frame {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.provider-action-button .provider-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.provider-action-button[data-provider="google"] {
+  border-color: #dadce0;
+  background: #ffffff;
+  color: #1f1f1f;
+}
+
+.provider-action-button[data-provider="google"]:hover:not(:disabled),
+.provider-action-button[data-provider="google"]:focus-visible:not(:disabled) {
+  border-color: #c7cdd3;
+  background: #f8fafd;
+  color: #1f1f1f;
+}
+
+.provider-action-button[data-provider="google"]:focus-visible {
+  outline: 2px solid #4285f4;
+  outline-offset: 2px;
+}
+
+.provider-action-button[data-provider="apple"] {
+  border-color: #2c2c2c;
+  background: #000000;
+  color: #ffffff;
+}
+
+.provider-action-button[data-provider="apple"]:hover:not(:disabled),
+.provider-action-button[data-provider="apple"]:focus-visible:not(:disabled) {
+  border-color: #3a3a3a;
+  background: #161616;
+  color: #ffffff;
+}
+
+.provider-action-button[data-provider="apple"]:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.7);
+  outline-offset: 2px;
+}
+
+.provider-action-button[data-provider="discord"] {
+  border-color: #6f79f7;
+  background: #5865f2;
+  color: #ffffff;
+}
+
+.provider-action-button[data-provider="discord"]:hover:not(:disabled),
+.provider-action-button[data-provider="discord"]:focus-visible:not(:disabled) {
+  border-color: #7b84fb;
+  background: #4752c4;
+  color: #ffffff;
+}
+
+.provider-action-button[data-provider="discord"]:focus-visible {
+  outline: 2px solid rgba(111, 121, 247, 0.75);
+  outline-offset: 2px;
 }
 
 .empty-state {

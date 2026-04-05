@@ -37,7 +37,7 @@ import { LoggerService } from './logger.service';
 import { ToastService } from './toast.service';
 import { UserStateService } from './userState.service';
 import { WsService } from './ws.service';
-import type { OAuthPopupResult, OAuthProvider } from '../models/account-auth.model';
+import type { OAuthFlowResult, OAuthProvider } from '../models/account-auth.model';
 
 /*
  * Author: Drake
@@ -48,6 +48,14 @@ const PROVIDER_LABELS: Record<OAuthProvider, string> = {
     apple: 'Apple',
     discord: 'Discord',
 };
+
+const OAUTH_RESULT_PARAM = 'oauthResult';
+
+interface OAuthStartResponse {
+    ok: boolean;
+    authorizeUrl?: string;
+    error?: string;
+}
 
 @Injectable({
     providedIn: 'root'
@@ -65,11 +73,14 @@ export class AccountAuthService {
         return PROVIDER_LABELS[provider];
     }
 
-    private buildAuthStartUrl(provider: OAuthProvider, mode: 'link' | 'login', replaceExisting = false): string {
+    private buildAuthStartUrl(provider: OAuthProvider, mode: 'link' | 'login', replaceExisting = false, responseMode: 'redirect' | 'json' = 'json'): string {
         const baseUrl = this.wsService.getHttpBaseUrl();
         const url = new URL(`/auth/${provider}/start`, `${baseUrl}/`);
         url.searchParams.set('mode', mode);
         url.searchParams.set('origin', window.location.origin);
+        url.searchParams.set('transport', 'redirect');
+        url.searchParams.set('returnTo', window.location.href);
+        url.searchParams.set('response', responseMode);
 
         if (mode === 'link') {
             url.searchParams.set('uuid', this.userStateService.uuid());
@@ -82,76 +93,140 @@ export class AccountAuthService {
         return url.toString();
     }
 
-    private openPopupWindow(): Window {
-        const width = 540;
-        const height = 720;
-        const left = Math.max(0, Math.round((window.screen.width - width) / 2));
-        const top = Math.max(0, Math.round((window.screen.height - height) / 2));
-        const popup = window.open(
-            '',
-            'mekbay-oauth',
-            `popup=yes,width=${width},height=${height},left=${left},top=${top}`
-        );
+    private decodeBase64UrlJson<T>(value: string): T {
+        const padded = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
+        const binary = window.atob(padded);
+        const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+        return JSON.parse(new TextDecoder().decode(bytes)) as T;
+    }
 
-        if (!popup) {
-            throw new Error('The sign-in popup was blocked by your browser.');
+    private getOAuthResultFromUrl(): OAuthFlowResult | null {
+        const url = new URL(window.location.href);
+        const encodedResult = url.searchParams.get(OAUTH_RESULT_PARAM);
+        if (!encodedResult) {
+            return null;
         }
 
-        popup.document.write('<title>MekBay OAuth</title><body style="font-family:Arial,sans-serif;padding:16px;">Connecting to provider...</body>');
-        return popup;
+        try {
+            const result = this.decodeBase64UrlJson<OAuthFlowResult>(encodedResult);
+            if (result?.source === 'mekbay-oauth') {
+                return result;
+            }
+
+            this.clearOAuthResultFromUrl();
+            return null;
+        } catch (err) {
+            this.logger.error(`Failed to decode OAuth redirect result: ${err}`);
+            this.clearOAuthResultFromUrl();
+            return null;
+        }
     }
 
-    private waitForPopupResult(popup: Window): Promise<OAuthPopupResult> {
-        const allowedOrigin = this.wsService.getHttpBaseUrl();
+    private clearOAuthResultFromUrl(): void {
+        const url = new URL(window.location.href);
+        if (!url.searchParams.has(OAUTH_RESULT_PARAM)) {
+            return;
+        }
 
-        return new Promise<OAuthPopupResult>((resolve, reject) => {
-            const closePollId = window.setInterval(() => {
-                if (popup.closed) {
-                    cleanup();
-                    reject(new Error('The sign-in popup was closed before the flow completed.'));
-                }
-            }, 250);
-
-            const onMessage = (event: MessageEvent) => {
-                if (event.origin !== allowedOrigin) {
-                    return;
-                }
-
-                const data = event.data as OAuthPopupResult | undefined;
-                if (!data || data.source !== 'mekbay-oauth') {
-                    return;
-                }
-
-                cleanup();
-                resolve(data);
-            };
-
-            const cleanup = () => {
-                window.clearInterval(closePollId);
-                window.removeEventListener('message', onMessage);
-            };
-
-            window.addEventListener('message', onMessage);
-        });
+        url.searchParams.delete(OAUTH_RESULT_PARAM);
+        const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+        window.history.replaceState(null, '', nextUrl);
     }
 
-    private async runOAuthPopup(provider: OAuthProvider, mode: 'link' | 'login', replaceExisting = false): Promise<OAuthPopupResult> {
-        const popup = this.openPopupWindow();
+    private async requestAuthorizationUrl(provider: OAuthProvider, mode: 'link' | 'login', replaceExisting = false): Promise<string> {
+        const response = await fetch(this.buildAuthStartUrl(provider, mode, replaceExisting, 'json'));
+        let payload: OAuthStartResponse | null = null;
 
         try {
-            if (mode === 'link') {
-                await this.wsService.waitForWebSocket();
+            payload = await response.json() as OAuthStartResponse;
+        } catch {
+            payload = null;
+        }
+
+        if (!response.ok || !payload?.ok || !payload.authorizeUrl) {
+            throw new Error(payload?.error || `Unable to start ${this.getProviderLabel(provider)} sign-in.`);
+        }
+
+        return payload.authorizeUrl;
+    }
+
+    private async startRedirectFlow(provider: OAuthProvider, mode: 'link' | 'login', replaceExisting = false): Promise<void> {
+        if (mode === 'link') {
+            await this.wsService.waitForWebSocket();
+        }
+
+        const authorizeUrl = await this.requestAuthorizationUrl(provider, mode, replaceExisting);
+        window.location.assign(authorizeUrl);
+    }
+
+    public async handleOAuthRedirectReturn(): Promise<boolean> {
+        const result = this.getOAuthResultFromUrl();
+        if (!result) {
+            return false;
+        }
+
+        this.clearOAuthResultFromUrl();
+        this.authInFlight.set(false);
+        await this.userStateService.whenReady();
+
+        if (!result.ok) {
+            const message = result.error || 'Provider authentication failed.';
+            this.logger.error(`OAuth redirect failed: ${message}`);
+            this.toastService.showToast(message, 'error');
+            return true;
+        }
+
+        const provider = result.provider;
+        if (!provider || !result.mode) {
+            this.logger.error('OAuth redirect result was missing required metadata.');
+            this.toastService.showToast('Provider authentication completed, but the result was incomplete.', 'error');
+            return true;
+        }
+
+        const providerLabel = this.getProviderLabel(provider);
+        try {
+            if (result.userState) {
+                await this.userStateService.applyServerState(result.userState);
             }
 
-            popup.location.href = this.buildAuthStartUrl(provider, mode, replaceExisting);
-            return await this.waitForPopupResult(popup);
-        } catch (err) {
-            try {
-                popup.close();
-            } catch {
-                // Ignore popup close errors
+            if (result.mode === 'login') {
+                const targetUuid = result.uuid?.trim();
+                if (!targetUuid) {
+                    throw new Error(`${providerLabel} sign-in did not return a MekBay account.`);
+                }
+
+                if (targetUuid !== this.userStateService.uuid()) {
+                    const confirmed = await this.dialogsService.requestConfirmation(
+                        'Signing in with a provider will switch this device to the linked MekBay account UUID. Local data on this device remains local, but cloud sync will follow the linked account. Continue?',
+                        'Confirm Provider Sign-In',
+                        'info'
+                    );
+
+                    if (!confirmed) {
+                        return true;
+                    }
+
+                    await this.userStateService.setUuid(targetUuid);
+                    window.location.reload();
+                    return true;
+                }
+
+                this.toastService.showToast(`Signed in with ${providerLabel}`, 'success');
+                return true;
             }
-            throw err;
+
+            this.toastService.showToast(
+                result.replaceExisting
+                    ? `${providerLabel} was replaced successfully`
+                    : `${providerLabel} linked successfully`,
+                'success'
+            );
+            return true;
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Provider authentication failed.';
+            this.logger.error(`Failed to apply OAuth redirect result: ${message}`);
+            this.toastService.showToast(message, 'error');
+            return true;
         }
     }
 
@@ -159,38 +234,11 @@ export class AccountAuthService {
         this.authInFlight.set(true);
 
         try {
-            const result = await this.runOAuthPopup(provider, 'login');
-            if (!result.ok) {
-                throw new Error(result.error || `${this.getProviderLabel(provider)} sign-in failed.`);
-            }
-
-            const targetUuid = result.uuid?.trim();
-            if (targetUuid && targetUuid !== this.userStateService.uuid()) {
-                const confirmed = await this.dialogsService.requestConfirmation(
-                    'Signing in with a provider will switch this device to the linked MekBay account UUID. Local data on this device remains local, but cloud sync will follow the linked account. Continue?',
-                    'Confirm Provider Sign-In',
-                    'info'
-                );
-
-                if (!confirmed) {
-                    return;
-                }
-
-                await this.userStateService.setUuid(targetUuid);
-                window.location.reload();
-                return;
-            }
-
-            if (result.userState) {
-                await this.userStateService.applyServerState(result.userState);
-            }
-
-            this.toastService.showToast(`Signed in with ${this.getProviderLabel(provider)}`, 'success');
+            await this.startRedirectFlow(provider, 'login');
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Provider sign-in failed.';
             this.logger.error(`Provider login failed: ${message}`);
             this.toastService.showToast(message, 'error');
-        } finally {
             this.authInFlight.set(false);
         }
     }
@@ -199,26 +247,11 @@ export class AccountAuthService {
         this.authInFlight.set(true);
 
         try {
-            const result = await this.runOAuthPopup(provider, 'link', replaceExisting);
-            if (!result.ok) {
-                throw new Error(result.error || `${this.getProviderLabel(provider)} linking failed.`);
-            }
-
-            if (result.userState) {
-                await this.userStateService.applyServerState(result.userState);
-            }
-
-            this.toastService.showToast(
-                replaceExisting
-                    ? `${this.getProviderLabel(provider)} was replaced successfully`
-                    : `${this.getProviderLabel(provider)} linked successfully`,
-                'success'
-            );
+            await this.startRedirectFlow(provider, 'link', replaceExisting);
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Provider linking failed.';
             this.logger.error(`Provider link failed: ${message}`);
             this.toastService.showToast(message, 'error');
-        } finally {
             this.authInFlight.set(false);
         }
     }

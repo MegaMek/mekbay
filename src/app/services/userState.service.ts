@@ -47,6 +47,7 @@ export class UserStateService {
     private logger = inject(LoggerService);
     private userData = signal<UserData>({ uuid: '' });
     private availableAuthProvidersState = signal<AvailableAuthProvider[]>([]);
+    private readonly initPromise: Promise<void>;
     public uuid = computed<string>(() => this.userData().uuid);
     public publicId = computed<string | undefined>(() => this.userData().publicId);
     public hasOAuth = computed<boolean>(() => this.userData().hasOAuth ?? ((this.userData().oauthProviders?.length ?? 0) > 0));
@@ -55,7 +56,7 @@ export class UserStateService {
     public availableAuthProviders = computed<AvailableAuthProvider[]>(() => this.availableAuthProvidersState());
 
     constructor() {
-        this.initUserData();
+        this.initPromise = this.initUserData();
     }
 
     private createResetUserData(uuid: string): UserData {
@@ -93,9 +94,20 @@ export class UserStateService {
         await this.createNewUUID();
     }
 
+    public whenReady(): Promise<void> {
+        return this.initPromise;
+    }
+
     public async createNewUUID(): Promise<UserData> {
         const uuid = generateUUID();
         await this.setUuid(uuid);
+        return this.userData();
+    }
+
+    public async createFreshSession(): Promise<UserData> {
+        const nextUserData: UserData = { uuid: generateUUID() };
+        this.availableAuthProvidersState.set([]);
+        await this.persistUserData(nextUserData);
         return this.userData();
     }
 

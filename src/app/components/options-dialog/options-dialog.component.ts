@@ -33,6 +33,7 @@
 
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, type ElementRef, inject, signal, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { firstValueFrom } from 'rxjs';
 import { OptionsService } from '../../services/options.service';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DialogRef } from '@angular/cdk/dialog';
@@ -50,6 +51,7 @@ import { TagsService } from '../../services/tags.service';
 import { TaggingService } from '../../services/tagging.service';
 import { ToastService } from '../../services/toast.service';
 import { AccountAuthService } from '../../services/account-auth.service';
+import { OAuthProviderPickerDialogComponent, type OAuthProviderPickerDialogResult } from '../oauth-provider-picker-dialog/oauth-provider-picker-dialog.component';
 import type { AvailableAuthProvider, LinkedOAuthProvider, OAuthProvider } from '../../models/account-auth.model';
 
 type OptionsSectionId = 'General' | 'Account' | 'Tags' | 'Sheets' | 'Alpha Strike' | 'Advanced' | 'Logs';
@@ -193,7 +195,9 @@ export class OptionsDialogComponent {
     linkedOAuthProviders = this.userStateService.oauthProviders;
     userHasOAuth = this.userStateService.hasOAuth;
     oauthActionInFlight = this.accountAuthService.authInFlight;
-    hasEnabledAuthProviders = computed(() => this.availableAuthProviders().some(provider => provider.enabled));
+    logoutInFlight = signal(false);
+    enabledAuthProviders = computed<AvailableAuthProvider[]>(() => this.availableAuthProviders().filter(provider => provider.enabled));
+    hasEnabledAuthProviders = computed(() => this.enabledAuthProviders().length > 0);
 
     constructor() {
         this.setupLayoutModeTracking();
@@ -515,6 +519,12 @@ export class OptionsDialogComponent {
     }
 
     async onSetUuid(value: string) {
+        if (this.userHasOAuth()) {
+            this.userUuidError = 'User Identifier changes are disabled for OAuth-connected accounts.';
+            this.resetUserUuidInput();
+            return;
+        }
+
         this.userUuidError = '';
         const trimmed = value.trim();
         if (trimmed === this.userUuid()) {
@@ -547,6 +557,35 @@ export class OptionsDialogComponent {
         } catch (e: any) {
             this.userUuidError = e?.message || 'An unknown error occurred.';
             return;
+        }
+    }
+
+    async onLogout() {
+        if (!this.userHasOAuth() || this.logoutInFlight() || this.oauthActionInFlight()) {
+            return;
+        }
+
+        const confirmed = await this.dialogsService.requestConfirmation(
+            'Are you sure you want to log out on this device? MekBay will remove the local account data stored in this browser, including forces, operations, organizations, tags, subscribed public tags, saved searches and drawings. Your linked OAuth providers will remain attached to your MekBay account. A fresh anonymous User Identifier will then be generated and the app will reload.',
+            'Confirm Logout',
+            'danger'
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        this.logoutInFlight.set(true);
+
+        try {
+            await this.dbService.clearLocalUserStores();
+            await this.userStateService.createFreshSession();
+            window.location.reload();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to log out.';
+            this.logger.error(`Logout failed: ${message}`);
+            this.toastService.showToast(message, 'error');
+            this.logoutInFlight.set(false);
         }
     }
 
@@ -699,16 +738,40 @@ export class OptionsDialogComponent {
         return this.accountAuthService.getProviderLabel(provider);
     }
 
-    getProviderLinkActionLabel(provider: OAuthProvider): string {
-        return this.isProviderLinked(provider) ? 'REPLACE' : 'LINK';
+    getProviderLinkButtonLabel(provider: OAuthProvider): string {
+        const action = this.isProviderLinked(provider) ? 'Replace' : 'Link';
+        return `${action} ${this.getProviderLabel(provider)}`;
     }
 
     getProviderIdentity(provider: LinkedOAuthProvider): string {
         return provider.displayName || provider.email || `${this.getProviderLabel(provider.provider)} account`;
     }
 
-    onLoginWithProvider(provider: OAuthProvider) {
-        void this.accountAuthService.loginWithProvider(provider);
+    async showProviderSignInDialog(): Promise<void> {
+        const providers = this.enabledAuthProviders();
+        if (providers.length === 0) {
+            await this.dialogsService.showNotice(
+                'Provider sign-in is not available yet because no OAuth providers are configured on this server.',
+                'Provider Sign-In Unavailable'
+            );
+            return;
+        }
+
+        const ref = this.dialogsService.createDialog<OAuthProviderPickerDialogResult>(OAuthProviderPickerDialogComponent, {
+            disableClose: true,
+            data: {
+                title: 'Sign In',
+                message: 'Choose a provider to recover the MekBay UUID already linked to that account.',
+                providers,
+            }
+        });
+        const choice = (await firstValueFrom(ref.closed)) ?? 'dismiss';
+
+        if (choice === 'dismiss') {
+            return;
+        }
+
+        await this.accountAuthService.loginWithProvider(choice);
     }
 
     onLinkProvider(provider: OAuthProvider) {

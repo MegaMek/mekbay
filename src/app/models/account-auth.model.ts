@@ -60,12 +60,15 @@ export interface UserStateSnapshot {
     availableAuthProviders?: AvailableAuthProvider[];
 }
 
-export interface OAuthPopupResult {
+export interface OAuthFlowResult {
     source: 'mekbay-oauth';
     ok: boolean;
     mode?: 'link' | 'login';
     provider?: OAuthProvider;
     uuid?: string;
     error?: string;
+    replaceExisting?: boolean;
     userState?: UserStateSnapshot;
 }
+
+export type OAuthPopupResult = OAuthFlowResult;
