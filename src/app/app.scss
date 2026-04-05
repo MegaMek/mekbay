@@ -241,7 +241,7 @@ svg-viewer {
 
     }
 
-    button {
+    .home-button {
         background: none;
         border: none;
         padding: 0px;
@@ -252,16 +252,15 @@ svg-viewer {
         transition: color 0.2s;
     }
 
-    button:hover {
+    .home-button:hover {
         color: var(--text-color);
     }
 
-    button.disabled {
+    .home-button.disabled {
         pointer-events: none;
         opacity: 0.3;
     }
 }
-
 .gameSystemSelector {
     display: flex;
     align-items: center;
