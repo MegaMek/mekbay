@@ -113,6 +113,31 @@
     cursor: pointer;
 }
 
+.footer-legal-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: #5c6773;
+    font-size: 0.82em;
+}
+
+.footer-link {
+    color: inherit;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.footer-link:hover,
+.footer-link:focus-visible {
+    color: #8fa6bb;
+}
+
+.footer-link-separator {
+    opacity: 0.65;
+}
+
 .empty-state-logo {
     max-width: 240px;
     width: 50%;
