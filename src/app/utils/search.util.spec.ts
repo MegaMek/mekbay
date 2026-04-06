@@ -18,4 +18,16 @@ describe('search.util', () => {
 
         expect(highlightMatches('Wolf’s Dragoons', query, true)).toContain('matchHighlight');
     });
+
+    it('keeps quoted specials intact as a single exact search token', () => {
+        const query = parseSearchQuery('"TUR(4/4/2,IF1,TAG)"');
+
+        expect(query).toEqual([
+            {
+                tokens: [{ token: 'tur(4/4/2,if1,tag)', mode: 'exact' }],
+            },
+        ]);
+        expect(matchesSearch('TUR(4/4/2,IF1,TAG)', query, true)).toBeTrue();
+        expect(matchesSearch('IF1', query, true)).toBeFalse();
+    });
 });

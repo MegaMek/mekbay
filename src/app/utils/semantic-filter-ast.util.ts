@@ -248,13 +248,33 @@ function tokenize(input: string, semanticKeyMap: Map<string, AdvFilterConfig>): 
         // we can safely collect all word characters until we hit a boundary
         const textStart = i;
         let textEnd = i;
+        let inTextQuote: '"' | "'" | null = null;
         
         while (textEnd < input.length) {
             const char = input[textEnd];
             
+            if (inTextQuote) {
+                if (char === '\\' && textEnd + 1 < input.length && (input[textEnd + 1] === inTextQuote || input[textEnd + 1] === '\\')) {
+                    textEnd += 2;
+                    continue;
+                }
+
+                if (char === inTextQuote) {
+                    inTextQuote = null;
+                }
+                textEnd++;
+                continue;
+            }
+
             // Handle escape sequences - skip the backslash and include the escaped char
             if (isEscapeSequence(input, textEnd)) {
                 textEnd += 2; // Skip both backslash and the escaped char
+                continue;
+            }
+
+            if (char === '"' || char === "'") {
+                inTextQuote = char;
+                textEnd++;
                 continue;
             }
             
@@ -390,12 +410,13 @@ function tryParseFilterToken(
     
     // Clean the value
     let cleanValue = rawValue;
-    if ((rawValue.startsWith('"') && rawValue.endsWith('"') && !rawValue.slice(1, -1).includes('"')) ||
-        (rawValue.startsWith("'") && rawValue.endsWith("'") && !rawValue.slice(1, -1).includes("'"))) {
+    const isFullyQuoted = (rawValue.startsWith('"') && rawValue.endsWith('"') && !rawValue.slice(1, -1).includes('"')) ||
+        (rawValue.startsWith("'") && rawValue.endsWith("'") && !rawValue.slice(1, -1).includes("'"));
+    if (isFullyQuoted) {
         cleanValue = rawValue.slice(1, -1);
     }
     
-    const values = parseValues(cleanValue).filter(v => v.trim() !== '');
+    const values = (isFullyQuoted ? [cleanValue] : parseValues(cleanValue)).filter(v => v.trim() !== '');
     
     // Skip tokens with no valid values
     if (values.length === 0) {

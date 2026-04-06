@@ -1,5 +1,6 @@
 import { GameSystem } from '../models/common.model';
 import { filterUnitsWithAST, parseSemanticQueryAST } from './semantic-filter-ast.util';
+import { matchesSearch, parseSearchQuery } from './search.util';
 
 function getUnitId(unit: { id?: string | number; name?: string }): string {
     if (unit.id !== undefined) {
@@ -196,6 +197,90 @@ describe('semantic filter exclusivity', () => {
             getAllFactionNames: () => ['Clan Coyote'],
         });
 
+        expect(filtered).toEqual([units[0]]);
+    });
+
+    it('preserves grouped boolean expressions with parentheses', () => {
+        const units = [
+            { id: 1, type: 'Mek', bv: 1200 },
+            { id: 2, type: 'Mek', bv: 900 },
+            { id: 3, type: 'Aero', bv: 800 },
+            { id: 4, type: 'Aero', bv: 1400 },
+        ];
+        const result = parseSemanticQueryAST('(type=Mek bv>1000) OR (type=Aero bv<1000)', GameSystem.CLASSIC);
+
+        const filtered = filterUnitsWithAST(units, result.ast, {
+            gameSystem: GameSystem.CLASSIC,
+            getUnitId,
+            getProperty: (unit: { type?: string; bv?: number }, key: string) => unit[key as keyof typeof unit],
+        });
+
+        expect(result.errors).toEqual([]);
+        expect(filtered).toEqual([units[0], units[2]]);
+    });
+
+    it('preserves grouped boolean expressions with parentheses', () => {
+        const units = [
+            { id: 1, type: 'Mek', bv: 1200 },
+            { id: 2, type: 'Mek', bv: 900 },
+            { id: 3, type: 'Aero', bv: 800 },
+            { id: 4, type: 'Aero', bv: 1400 },
+        ];
+        const result = parseSemanticQueryAST('(type=Mek bv>1000) OR (type=Aero bv<1000)', GameSystem.CLASSIC);
+
+        const filtered = filterUnitsWithAST(units, result.ast, {
+            gameSystem: GameSystem.CLASSIC,
+            getUnitId,
+            getProperty: (unit: { type?: string; bv?: number }, key: string) => unit[key as keyof typeof unit],
+        });
+
+        expect(result.errors).toEqual([]);
+        expect(filtered).toEqual([units[0], units[2]]);
+    });
+
+    it('keeps quoted Alpha Strike specials intact for plain text matching', () => {
+        const units = [
+            { id: 1, text: 'TUR(4/4/2,IF1,TAG)' },
+            { id: 2, text: 'IF1' },
+            { id: 3, text: 'TAG' },
+        ];
+        const result = parseSemanticQueryAST('"TUR(4/4/2,IF1,TAG)"', GameSystem.ALPHA_STRIKE);
+
+        const filtered = filterUnitsWithAST(units, result.ast, {
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            getUnitId,
+            getProperty: () => undefined,
+            matchesText: (unit: { text: string }, text: string) => matchesSearch(unit.text, parseSearchQuery(text), true),
+        });
+
+        expect(result.errors).toEqual([]);
+        expect(result.textSearch).toBe('"TUR(4/4/2,IF1,TAG)"');
+        expect(filtered).toEqual([units[0]]);
+    });
+
+    it('parses quoted Alpha Strike specials with embedded commas as a single semantic value', () => {
+        const units = [
+            { id: 1, specials: ['TUR(4/4/2,IF1,TAG)'] },
+            { id: 2, specials: ['IF1', 'TAG'] },
+            { id: 3, specials: ['TUR(4/4/2)'] },
+        ];
+        const result = parseSemanticQueryAST('specials="TUR(4/4/2,IF1,TAG)"', GameSystem.ALPHA_STRIKE);
+
+        const filtered = filterUnitsWithAST(units, result.ast, {
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            getUnitId,
+            getProperty: (unit: { specials?: string[] }, key: string) => key === 'as.specials' ? unit.specials : undefined,
+        });
+
+        expect(result.errors).toEqual([]);
+        expect(result.tokens).toEqual([
+            jasmine.objectContaining({
+                field: 'specials',
+                operator: '=',
+                values: ['TUR(4/4/2,IF1,TAG)'],
+                rawText: 'specials="TUR(4/4/2,IF1,TAG)"',
+            }),
+        ]);
         expect(filtered).toEqual([units[0]]);
     });
 });
