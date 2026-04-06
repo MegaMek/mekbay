@@ -333,8 +333,8 @@
 .account-summary-row {
   display: flex;
   align-items: baseline;
-  gap: 0.4rem 1rem;
-  padding: 0 4px;
+  gap: 0.4em;
+  padding: 4px 0;
   flex-direction: row;
   flex-wrap: wrap;
 }

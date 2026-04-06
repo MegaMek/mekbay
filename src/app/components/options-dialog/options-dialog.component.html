@@ -140,8 +140,8 @@
                     }
                 </div>
                 @if (userUuidError) {<div class="error-msg">{{ userUuidError }}</div>}
-                <div class="option-row account-summary-row">
-                    <span class="account-summary-label">Account mode</span>
+                <div class="account-summary-row">
+                    <span class="account-summary-label">Account mode:</span>
                     <strong class="account-summary-value">{{ userHasOAuth() ? 'OAuth connected' : 'Anonymous UUID only' }}</strong>
                 </div>
                 <div class="description">
@@ -152,8 +152,8 @@
                     <p>Manual UUID changes are disabled while this account is signed in with OAuth.</p>
                     }
                 </div>
-                <div class="option-row account-summary-row">
-                    <span class="account-summary-label">Public ID</span>
+                <div class="account-summary-row">
+                    <span class="account-summary-label">Public ID:</span>
                     <span class="account-summary-value readonly-value">{{ userPublicId() }}</span>
                 </div>
                 <div class="description">
