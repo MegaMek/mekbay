@@ -661,6 +661,36 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.filterState()['era']?.value).toEqual(['Succession Wars']);
     });
 
+    it('loads legacy comma-containing Alpha Strike specials from URL params end to end', () => {
+        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
+            pending('Real unit data could not be loaded for the URL canonicalization test.');
+            return;
+        }
+
+        const special = 'TUR(2/3/3,IF2,LRM1/2/2)';
+        const bundle = buildSmallBundle(benchmarkBundle);
+        bundle.units.units[0].as.specials = ['IF2'];
+        bundle.units.units[1].as.specials = [special];
+
+        const { service, gameServiceStub } = createService(bundle);
+        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+
+        const params = new URLSearchParams();
+        params.set('filters', `as.specials:${special}`);
+
+        service.applySearchParamsFromUrl(params, { expandView: false });
+
+        expect(service.filterState()['as.specials']?.value).toEqual({
+            [special]: {
+                name: special,
+                state: 'or',
+                count: 1,
+            },
+        });
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Tank']);
+        expect(service.queryParameters()['filters']).toBe(`as.specials:"${special}"`);
+    });
+
     it('declares indexed dropdown capabilities for source, faction, and era', () => {
         const sourceConfig = getAdvancedFilterConfigByKey('source');
         const factionConfig = getAdvancedFilterConfigByKey('faction');
