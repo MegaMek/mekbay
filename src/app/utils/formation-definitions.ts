@@ -583,6 +583,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'berserker-lance',
         name: 'Berserker/Close Combat',
+        nameAliases: ['Berserker', 'Close Combat'],
         description: 'Close combat specialists for physical attacks',
         effectDescription: 'Two units in this formation receive the Swordsman or Zweihander SPA. The same ability must be assigned to both units.',
         effectGroups: [{
@@ -1187,6 +1188,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'striker-lance',
         name: 'Striker/Cavalry',
+        nameAliases: ['Striker', 'Cavalry'],
         description: 'Fast mobile firepower',
         effectDescription: '75% of the units (round normally) receive the Speed Demon SPA.',
         effectGroups: [{
@@ -1254,6 +1256,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'light-striker-lance',
         name: 'Light Striker/Cavalry',
+        nameAliases: ['Light Striker', 'Light Cavalry'],
         description: 'Fast light mobile force',
         effectDescription: '75% of the units (round normally) receive the Speed Demon SPA.',
         effectGroups: [{
@@ -1291,6 +1294,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'heavy-striker-lance',
         name: 'Heavy Striker/Cavalry',
+        nameAliases: ['Heavy Striker', 'Heavy Cavalry'],
         description: 'Heavy fast-moving formation',
         effectDescription: '75% of the units (round normally) receive the Speed Demon SPA.',
         effectGroups: [{
