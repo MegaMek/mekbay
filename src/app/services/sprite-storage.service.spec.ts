@@ -25,6 +25,25 @@ const TEST_MANIFEST: SpriteManifest = {
     },
 };
 
+const CASED_MANIFEST: SpriteManifest = {
+    types: {
+        Mek: {
+            url: 'sprites/mek.png',
+            width: 84,
+            height: 72,
+        },
+    },
+    icons: {
+        'Units/Mek.png': {
+            type: 'Mek',
+            x: 0,
+            y: 0,
+            w: 84,
+            h: 72,
+        },
+    },
+};
+
 const TEST_BLOB = new Blob(['sprite-bytes'], { type: 'image/png' });
 
 async function settleAsyncWork(): Promise<void> {
@@ -85,10 +104,10 @@ describe('SpriteStorageService', () => {
     it('uses the cached manifest and sprite blobs when the hash request fails', async () => {
         const metadataStore = new Map<string, unknown>([
             ['sprites_hash', 'hash-1'],
-            ['sprites_manifest', TEST_MANIFEST],
+            ['sprites_manifest', CASED_MANIFEST],
         ]);
         const spriteStore = new Map<string, unknown>([
-            ['mek', TEST_BLOB],
+            ['Mek', TEST_BLOB],
         ]);
 
         spyOn<any>(SpriteStorageService.prototype, 'initIndexedDb').and.returnValue(Promise.resolve({} as IDBDatabase));
@@ -113,10 +132,10 @@ describe('SpriteStorageService', () => {
 
         httpMock.expectNone('sprites/unit-icons.json');
 
-        const spriteInfo = await service.getSpriteInfo('units/mek.png');
+        const spriteInfo = await service.getSpriteInfo('UNITS/MEK.PNG');
         expect(spriteInfo).toEqual({
             url: 'blob:mapped-sprite',
-            info: TEST_MANIFEST.icons['units/mek.png'],
+            info: CASED_MANIFEST.icons['Units/Mek.png'],
         });
         expect(logger.warn).toHaveBeenCalledWith('Sprite hash unavailable. Using cached sprite data.');
     });
@@ -178,6 +197,31 @@ describe('SpriteStorageService', () => {
         expect(spriteInfo).toEqual({
             url: 'blob:mapped-sprite',
             info: TEST_MANIFEST.icons['units/mek.png'],
+        });
+    });
+
+    it('treats icon and sprite type keys case-insensitively after download', async () => {
+        spyOn<any>(SpriteStorageService.prototype, 'initIndexedDb').and.returnValue(Promise.resolve(null));
+
+        const service = TestBed.inject(SpriteStorageService);
+
+        httpMock.expectOne('sprites/unit-icons.hash').flush('hash-3');
+        await settleAsyncWork();
+        httpMock.expectOne('sprites/unit-icons.json').flush(CASED_MANIFEST);
+        await settleAsyncWork();
+        httpMock.expectOne('sprites/mek.png').flush(TEST_BLOB);
+        await waitForLoadingToFinish(service);
+
+        const spriteInfo = await service.getSpriteInfo('units/mek.png');
+        expect(spriteInfo).toEqual({
+            url: 'blob:mapped-sprite',
+            info: CASED_MANIFEST.icons['Units/Mek.png'],
+        });
+
+        const cachedSpriteInfo = service.getCachedSpriteInfo('UNITS/MEK.PNG');
+        expect(cachedSpriteInfo).toEqual({
+            url: 'blob:mapped-sprite',
+            info: CASED_MANIFEST.icons['Units/Mek.png'],
         });
     });
 });

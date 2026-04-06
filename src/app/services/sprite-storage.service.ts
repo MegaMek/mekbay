@@ -89,6 +89,8 @@ export class SpriteStorageService {
 
     // In-memory cache for sprite sheet object URLs
     private spriteUrlCache = new Map<string, string>();
+    private typeLookup = new Map<string, SpriteTypeInfo>();
+    private iconLookup = new Map<string, SpriteIconInfo>();
 
     // Manifest data (loaded once)
     private manifest: SpriteManifest | null = null;
@@ -173,6 +175,74 @@ export class SpriteStorageService {
         });
     }
 
+    private normalizeLookupKey(key: string): string {
+        return key.toLowerCase();
+    }
+
+    private resetManifestLookups(): void {
+        this.typeLookup.clear();
+        this.iconLookup.clear();
+    }
+
+    private setManifest(manifest: SpriteManifest | null): void {
+        this.manifest = manifest;
+        this.resetManifestLookups();
+
+        if (!manifest) {
+            return;
+        }
+
+        for (const [unitType, typeInfo] of Object.entries(manifest.types)) {
+            this.typeLookup.set(this.normalizeLookupKey(unitType), typeInfo);
+        }
+
+        for (const [iconPath, iconInfo] of Object.entries(manifest.icons)) {
+            this.iconLookup.set(this.normalizeLookupKey(iconPath), iconInfo);
+        }
+    }
+
+    private getIconInfo(iconPath: string): SpriteIconInfo | null {
+        return this.iconLookup.get(this.normalizeLookupKey(iconPath)) ?? null;
+    }
+
+    private getTypeInfo(unitType: string): SpriteTypeInfo | null {
+        return this.typeLookup.get(this.normalizeLookupKey(unitType)) ?? null;
+    }
+
+    private getSpriteCacheKey(unitType: string): string {
+        return this.normalizeLookupKey(unitType);
+    }
+
+    private getIconCacheKey(iconPath: string): string {
+        return this.normalizeLookupKey(iconPath);
+    }
+
+    private getSpriteUrl(unitType: string): string | null {
+        return this.spriteUrlCache.get(this.getSpriteCacheKey(unitType)) ?? null;
+    }
+
+    private setSpriteUrl(unitType: string, objectUrl: string): void {
+        this.spriteUrlCache.set(this.getSpriteCacheKey(unitType), objectUrl);
+    }
+
+    private hasSpriteUrl(unitType: string): boolean {
+        return this.spriteUrlCache.has(this.getSpriteCacheKey(unitType));
+    }
+
+    private async getStoredSpriteBlob(unitType: string): Promise<Blob | null> {
+        const normalizedUnitType = this.getSpriteCacheKey(unitType);
+        const normalizedBlob = await this.dbGet<Blob>(SPRITES_STORE, normalizedUnitType);
+        if (normalizedBlob) {
+            return normalizedBlob;
+        }
+
+        if (normalizedUnitType !== unitType) {
+            return this.dbGet<Blob>(SPRITES_STORE, unitType);
+        }
+
+        return null;
+    }
+
     /**
      * Initialize sprites on service creation.
      */
@@ -185,14 +255,14 @@ export class SpriteStorageService {
             ]);
 
             if (remoteHash && remoteHash === localHash && storedManifest) {
-                this.manifest = storedManifest;
+                this.setManifest(storedManifest);
                 this.logger.info('Sprites cache is up to date.');
                 await this.loadAllSpritesToCache(storedManifest);
                 return;
             }
 
             if (!remoteHash && storedManifest) {
-                this.manifest = storedManifest;
+                this.setManifest(storedManifest);
                 this.logger.warn('Sprite hash unavailable. Using cached sprite data.');
                 await this.loadAllSpritesToCache(storedManifest);
                 return;
@@ -201,14 +271,14 @@ export class SpriteStorageService {
             const remoteManifest = await this.fetchRemoteManifest();
             if (!remoteManifest) {
                 if (storedManifest) {
-                    this.manifest = storedManifest;
+                    this.setManifest(storedManifest);
                     this.logger.warn('Sprite manifest unavailable. Using cached sprite data.');
                     await this.loadAllSpritesToCache(storedManifest);
                 }
                 return;
             }
 
-            this.manifest = remoteManifest;
+            this.setManifest(remoteManifest);
 
             if (remoteHash && remoteHash === localHash) {
                 this.logger.info('Sprites cache is up to date.');
@@ -307,9 +377,10 @@ export class SpriteStorageService {
             this.manifestPromise = this.fetchManifestWithFallback();
         }
 
-        this.manifest = await this.manifestPromise;
+        const manifest = await this.manifestPromise;
+        this.setManifest(manifest);
 
-        if (!this.manifest) {
+        if (!manifest) {
             this.manifestPromise = null;
         }
 
@@ -397,17 +468,19 @@ export class SpriteStorageService {
      */
     private async commitDownloadedSprites(blobs: Map<string, Blob>, persistToDb = true): Promise<void> {
         for (const [unitType, blob] of blobs) {
+            const spriteCacheKey = this.getSpriteCacheKey(unitType);
+
             if (persistToDb) {
-                await this.dbPut(SPRITES_STORE, unitType, blob);
+                await this.dbPut(SPRITES_STORE, spriteCacheKey, blob);
             }
 
-            const oldUrl = this.spriteUrlCache.get(unitType);
+            const oldUrl = this.spriteUrlCache.get(spriteCacheKey);
             if (oldUrl) {
                 URL.revokeObjectURL(oldUrl);
             }
 
             const objectUrl = URL.createObjectURL(blob);
-            this.spriteUrlCache.set(unitType, objectUrl);
+            this.spriteUrlCache.set(spriteCacheKey, objectUrl);
             this.logger.info(`Downloaded sprite: ${unitType} (${(blob.size / 1024).toFixed(1)} KB)`);
         }
     }
@@ -416,11 +489,11 @@ export class SpriteStorageService {
      * Load a sprite from IndexedDB into memory cache.
      */
     private async loadSpriteToCache(unitType: string): Promise<void> {
-        if (this.spriteUrlCache.has(unitType)) return;
+        if (this.hasSpriteUrl(unitType)) return;
 
-        const blob = await this.dbGet<Blob>(SPRITES_STORE, unitType);
+        const blob = await this.getStoredSpriteBlob(unitType);
         if (blob) {
-            this.spriteUrlCache.set(unitType, URL.createObjectURL(blob));
+            this.setSpriteUrl(unitType, URL.createObjectURL(blob));
         }
     }
 
@@ -432,10 +505,10 @@ export class SpriteStorageService {
         const manifest = await this.getManifest();
         if (!manifest) return null;
 
-        const iconInfo = manifest.icons[iconPath];
+        const iconInfo = this.getIconInfo(iconPath);
         if (!iconInfo) return null;
 
-        const url = await this.ensureSpriteAvailable(iconInfo.type, manifest.types[iconInfo.type]);
+        const url = await this.ensureSpriteAvailable(iconInfo.type, this.getTypeInfo(iconInfo.type) ?? undefined);
         if (!url) return null;
 
         return { url, info: iconInfo };
@@ -445,11 +518,11 @@ export class SpriteStorageService {
      * Ensure a sprite sheet is available either from IndexedDB or a direct download.
      */
     private async ensureSpriteAvailable(unitType: string, typeInfo: SpriteTypeInfo | undefined): Promise<string | null> {
-        if (!this.spriteUrlCache.has(unitType)) {
+        if (!this.hasSpriteUrl(unitType)) {
             await this.loadSpriteToCache(unitType);
         }
 
-        let url = this.spriteUrlCache.get(unitType) ?? null;
+        let url = this.getSpriteUrl(unitType);
         if (url || !typeInfo) {
             return url;
         }
@@ -460,7 +533,7 @@ export class SpriteStorageService {
         }
 
         await this.commitDownloadedSprites(new Map([[unitType, blob]]));
-        url = this.spriteUrlCache.get(unitType) ?? null;
+        url = this.getSpriteUrl(unitType);
         return url;
     }
 
@@ -471,10 +544,10 @@ export class SpriteStorageService {
     public getCachedSpriteInfo(iconPath: string): { url: string; info: SpriteIconInfo } | null {
         if (!this.manifest) return null;
 
-        const iconInfo = this.manifest.icons[iconPath];
+        const iconInfo = this.getIconInfo(iconPath);
         if (!iconInfo) return null;
 
-        const url = this.spriteUrlCache.get(iconInfo.type);
+        const url = this.getSpriteUrl(iconInfo.type);
         if (!url) return null;
 
         return { url, info: iconInfo };
@@ -491,22 +564,25 @@ export class SpriteStorageService {
      * Results are cached, so extraction only happens once per icon path.
      */
     public async getExtractedIconUrl(iconPath: string): Promise<string | null> {
+        const iconCacheKey = this.getIconCacheKey(iconPath);
+
         // Check cache first
-        if (this.extractedIconCache.has(iconPath)) {
-            return this.extractedIconCache.get(iconPath)!;
+        if (this.extractedIconCache.has(iconCacheKey)) {
+            return this.extractedIconCache.get(iconCacheKey)!;
         }
 
         const spriteInfo = await this.getSpriteInfo(iconPath);
         if (!spriteInfo) return null;
 
         const { url, info } = spriteInfo;
+        const spriteCacheKey = this.getSpriteCacheKey(info.type);
 
         try {
             // Get or load the sprite image (cached per sprite type)
-            let img = this.spriteImageCache.get(info.type);
+            let img = this.spriteImageCache.get(spriteCacheKey);
             if (!img) {
                 img = await this.loadImage(url);
-                this.spriteImageCache.set(info.type, img);
+                this.spriteImageCache.set(spriteCacheKey, img);
             }
 
             // Extract the icon portion using canvas
@@ -520,7 +596,7 @@ export class SpriteStorageService {
             const dataUrl = canvas.toDataURL('image/png');
 
             // Cache the result
-            this.extractedIconCache.set(iconPath, dataUrl);
+            this.extractedIconCache.set(iconCacheKey, dataUrl);
             return dataUrl;
         } catch (e) {
             this.logger.error(`Failed to extract icon: ${iconPath} - ${e}`);
@@ -558,7 +634,7 @@ export class SpriteStorageService {
         this.spriteUrlCache.clear();
         this.spriteImageCache.clear();
         this.extractedIconCache.clear();
-        this.manifest = null;
+        this.setManifest(null);
         this.manifestPromise = null;
         
         await this.initializeSprites();
@@ -576,7 +652,7 @@ export class SpriteStorageService {
         this.spriteImageCache.clear();
         this.extractedIconCache.clear();
 
-        this.manifest = null;
+        this.setManifest(null);
         this.manifestPromise = null;
 
         await Promise.all([
