@@ -30,4 +30,35 @@ describe('search.util', () => {
         expect(matchesSearch('TUR(4/4/2,IF1,TAG)', query, true)).toBeTrue();
         expect(matchesSearch('IF1', query, true)).toBeFalse();
     });
+
+    it('splits comma and semicolon separated groups as OR branches', () => {
+        const query = parseSearchQuery('atlas,locust;shadow hawk');
+
+        expect(query).toEqual([
+            { tokens: [{ token: 'atlas', mode: 'partial' }] },
+            { tokens: [{ token: 'locust', mode: 'partial' }] },
+            {
+                tokens: [
+                    { token: 'shadow', mode: 'partial' },
+                    { token: 'hawk', mode: 'partial' },
+                ],
+            },
+        ]);
+        expect(matchesSearch('Locust LCT-1V', query, true)).toBeTrue();
+        expect(matchesSearch('Shadow Hawk SHD-2H', query, true)).toBeTrue();
+        expect(matchesSearch('Warhammer WHM-6R', query, true)).toBeFalse();
+    });
+
+    it('keeps commas inside quoted groups from creating OR branches', () => {
+        const query = parseSearchQuery('"TUR(2/3/3,IF2,LRM1/2/2)",tag');
+
+        expect(query).toEqual([
+            {
+                tokens: [{ token: 'tur(2/3/3,if2,lrm1/2/2)', mode: 'exact' }],
+            },
+            {
+                tokens: [{ token: 'tag', mode: 'partial' }],
+            },
+        ]);
+    });
 });
