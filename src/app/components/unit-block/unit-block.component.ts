@@ -137,6 +137,18 @@ export class UnitBlockComponent {
         return false;
     });
 
+    hasTAG = computed(() => {
+        const forceUnit = this.forceUnit();
+        if (!forceUnit) return false;
+        if (forceUnit instanceof ASForceUnit) {
+            return forceUnit.getUnit().as.specials.includes('TAG');
+        } else
+        if (forceUnit instanceof CBTForceUnit) {
+            return forceUnit.getUnit().comp.some(eq => eq.eq?.flags.has('F_TAG'));
+        }
+        return false;
+    });
+
     getECMStatus = computed<boolean | undefined>(() => {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return undefined;
