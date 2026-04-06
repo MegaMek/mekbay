@@ -183,6 +183,15 @@ function getExpandedGroupTiers(groups: readonly GroupSizeResult[]): number[] {
 }
 
 function getAggregatedDisplayTier(groups: readonly GroupSizeResult[]): number {
+	if (groups.length === 0) {
+		return 0;
+	}
+
+	const highestTier = Math.max(...groups.map((group) => group.tier));
+	if (highestTier <= 0) {
+		return highestTier;
+	}
+
 	return getAggregatedTier(getExpandedGroupTiers(groups));
 }
 

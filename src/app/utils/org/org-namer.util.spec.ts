@@ -62,6 +62,28 @@ describe('org-namer.util', () => {
 		expect(result.name).toBe('4 Units');
 	});
 
+	it('keeps higher-tier groups ahead of repeated zero-tier buckets', () => {
+		const result = getOrgFromResolvedGroups([
+			createGroup({ name: 'Reinforced Lance', type: 'Lance', modifierKey: 'Reinforced ', tier: 1 }),
+			...Array.from({ length: 4 }, () => createGroup({ name: 'Unit', type: 'Unit', tier: 0 })),
+		]);
+
+		expect(result.name).toBe('Reinforced Lance + 4 Units');
+	});
+
+	it('does not let repeated zero-tier buckets cross a display cutoff', () => {
+		const result = getOrgFromResolvedGroups(
+			[
+				createGroup({ name: 'Reinforced Lance', type: 'Lance', modifierKey: 'Reinforced ', tier: 1 }),
+				...Array.from({ length: 4 }, () => createGroup({ name: 'Unit', type: 'Unit', tier: 0 })),
+			],
+			{ displayTierCutoff: 0.5 },
+		);
+
+		expect(result.name).toBe('Reinforced Lance+');
+		expect(result.tier).toBe(1);
+	});
+
 	it('keeps Point ahead of inferior Unit fragments in mixed display', () => {
 		const result = getOrgFromResolvedGroups([
 			createGroup({ name: 'Point', type: 'Point', tier: 0 }),
