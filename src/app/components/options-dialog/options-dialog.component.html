@@ -164,6 +164,11 @@
             </div>
             <div class="option-section-title">Linked Providers</div>
             @if (linkedOAuthProviders().length > 0) {
+            @if (userHasOAuth()) {
+            <div class="description oauth-description-block">
+                <p>If you unlink every provider, the account on this device falls back to UUID-only access until you link a provider again.</p>
+            </div>
+            }
             <div class="linked-provider-list">
                 @for (provider of linkedOAuthProviders(); track provider.provider) {
                 <div class="linked-provider-row">
@@ -200,13 +205,11 @@
                 <p>No OAuth providers are linked to this UUID yet.</p>
             </div>
             }
-            @if (userHasOAuth()) {
-            <div class="description oauth-description-block">
-                <p>If you unlink every provider, the account on this device falls back to UUID-only access until you link a provider again.</p>
-            </div>
-            }
 
             <div class="option-section-title">Link Current Account</div>
+            <div class="description oauth-description-block">
+                <p>You can keep using MekBay anonymously with your UUID only. OAuth is optional.</p>
+            </div>
             <div class="provider-actions">
                 @for (provider of availableAuthProviders(); track provider.provider) {
                 <button class="bt-button provider-action-button provider-link-button" [attr.data-provider]="provider.provider"
@@ -220,13 +223,11 @@
                 </button>
                 }
             </div>
-            <div class="description oauth-description-block">
-                <p>Link a provider to the UUID currently stored on this device.</p>
-                <p>MekBay opens the provider in a separate window so this tab stays connected to the hosted session.</p>
-                <p>Use replace when you want to migrate, for example from an old Google account to a new one.</p>
-            </div>
 
             <div class="option-section-title">Provider Sign-In</div>
+            <div class="description oauth-description-block">
+                <p>If you have already linked an OAuth provider to a MekBay account, choose that provider to recover the UUID associated with it.</p>
+            </div>
             <div class="provider-actions provider-login-launcher">
                 <button class="bt-button provider-action-button provider-login-button provider-login-launch-button"
                     [disabled]="oauthActionInFlight() || !hasEnabledAuthProviders()" (click)="showProviderSignInDialog()">
@@ -241,10 +242,6 @@
                         <span class="provider-action-label">Choose Sign-In Provider</span>
                     </span>
                 </button>
-            </div>
-            <div class="description oauth-description-block">
-                <p>Open the sign-in dialog on a new device to choose a provider and recover the UUID already linked to that account.</p>
-                <p>The provider flow opens in a separate window or tab so the current MekBay page does not get replaced.</p>
             </div>
 
             @if (!hasEnabledAuthProviders()) {
