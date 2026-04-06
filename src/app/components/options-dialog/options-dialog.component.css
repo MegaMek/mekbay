@@ -330,6 +330,20 @@
   width: min(360px, 48%);
 }
 
+.account-summary-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem 1rem;
+  padding: 0 4px;
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.account-summary-label {
+  color: var(--text-color-secondary);
+  font-size: 0.8rem;
+}
+
 .sensitive-input-wrapper {
   position: relative;
   flex: 1;
@@ -462,6 +476,11 @@ input {
   padding: 0.85rem;
 }
 
+.linked-provider-row {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
 .tag-info {
   display: flex;
   flex-direction: column;
@@ -547,7 +566,7 @@ input {
 
 .linked-provider-info {
   min-width: 0;
-  flex: 1;
+  flex: 1 1 10rem;
 }
 
 .linked-provider-title {
@@ -610,7 +629,11 @@ input {
 .linked-provider-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 0.5em;
+  margin-left: auto;
+  max-width: 100%;
 }
 
 .provider-actions {

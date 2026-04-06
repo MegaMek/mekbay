@@ -197,6 +197,7 @@ export class OptionsDialogComponent {
     oauthActionInFlight = this.accountAuthService.authInFlight;
     logoutInFlight = signal(false);
     enabledAuthProviders = computed<AvailableAuthProvider[]>(() => this.availableAuthProviders().filter(provider => provider.enabled));
+    linkableAuthProviders = computed<AvailableAuthProvider[]>(() => this.availableAuthProviders().filter(provider => !this.isProviderLinked(provider.provider)));
     hasEnabledAuthProviders = computed(() => this.enabledAuthProviders().length > 0);
 
     constructor() {
@@ -738,9 +739,8 @@ export class OptionsDialogComponent {
         return this.accountAuthService.getProviderLabel(provider);
     }
 
-    getProviderLinkButtonLabel(provider: OAuthProvider): string {
-        const action = this.isProviderLinked(provider) ? 'Replace' : 'Link';
-        return `${action} ${this.getProviderLabel(provider)}`;
+    isProviderEnabled(provider: OAuthProvider): boolean {
+        return this.availableAuthProviders().some(availableProvider => availableProvider.provider === provider && availableProvider.enabled);
     }
 
     getProviderIdentity(provider: LinkedOAuthProvider): string {
@@ -748,6 +748,10 @@ export class OptionsDialogComponent {
     }
 
     async showProviderSignInDialog(): Promise<void> {
+        if (this.userHasOAuth()) {
+            return;
+        }
+
         const providers = this.enabledAuthProviders();
         if (providers.length === 0) {
             await this.dialogsService.showNotice(
@@ -775,7 +779,11 @@ export class OptionsDialogComponent {
     }
 
     onLinkProvider(provider: OAuthProvider) {
-        void this.accountAuthService.linkProvider(provider, this.isProviderLinked(provider));
+        void this.accountAuthService.linkProvider(provider, false);
+    }
+
+    onReplaceProvider(provider: OAuthProvider) {
+        void this.accountAuthService.linkProvider(provider, true);
     }
 
     onUnlinkProvider(provider: OAuthProvider) {
