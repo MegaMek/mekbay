@@ -61,6 +61,7 @@ import type { MULUnitSources, MULUnitSourcesData } from '../models/mul-unit-sour
 import { removeAccents } from '../utils/string.util';
 import { normalizeLooseText } from '../utils/string.util';
 import { getForcePacks } from '../models/forcepacks.model';
+import { getForcePackLookupKey } from '../utils/force-pack.util';
 import { naturalCompare } from '../utils/sort.util';
 import { getMergedTags } from '../utils/unit-search-shared.util';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES } from './unit-search-filters.model';
@@ -157,10 +158,10 @@ export class DataService {
     private searchFilterValues = new Map<string, string[]>();
     private dropdownOptionUniverse = new Map<string, Array<{ name: string; img?: string }>>();
 
-    /** packName -> Set<chassis|type> for force pack membership checks */
-    private forcePackToChassisType: Map<string, Set<string>> | null = null;
-    /** chassis|type -> sorted pack names[] for reverse lookups */
-    private chassisTypeToForcePacks: Map<string, string[]> | null = null;
+    /** packName -> Set<chassis|type|subtype> for force pack membership checks */
+    private forcePackToLookupKey: Map<string, Set<string>> | null = null;
+    /** chassis|type|subtype -> sorted pack names[] for reverse lookups */
+    private lookupKeyToForcePacks: Map<string, string[]> | null = null;
 
     public tagsVersion = signal(0);
     public searchCorpusVersion = signal(0);
@@ -597,8 +598,8 @@ export class DataService {
     }
 
     private invalidateForcePackCaches(): void {
-        this.forcePackToChassisType = null;
-        this.chassisTypeToForcePacks = null;
+        this.forcePackToLookupKey = null;
+        this.lookupKeyToForcePacks = null;
     }
 
     private rebuildUnitNameMap(units: Unit[]): void {
@@ -2194,22 +2195,22 @@ export class DataService {
 
     /**
      * Build both force pack lookup maps on first use.
-     * - forcePackToChassisType: packName -> Set<chassis|type>
-     * - chassisTypeToForcePacks: chassis|type -> sorted packName[]
+     * - forcePackToLookupKey: packName -> Set<chassis|type|subtype>
+     * - lookupKeyToForcePacks: chassis|type|subtype -> sorted packName[]
      */
     private buildForcePackCaches(): void {
-        this.forcePackToChassisType = new Map();
+        this.forcePackToLookupKey = new Map();
         const reverseMap = new Map<string, Set<string>>();
 
         for (const pack of getForcePacks()) {
-            const chassisTypeSet = new Set<string>();
+            const lookupKeys = new Set<string>();
 
             const processUnits = (unitList: Array<{ name: string }>) => {
                 for (const pu of unitList) {
                     const unit = this.getUnitByName(pu.name);
                     if (unit) {
-                        const key = `${unit.chassis}|${unit.type}`;
-                        chassisTypeSet.add(key);
+                        const key = getForcePackLookupKey(unit);
+                        lookupKeys.add(key);
                         if (!reverseMap.has(key)) reverseMap.set(key, new Set());
                         reverseMap.get(key)!.add(pack.name);
                     }
@@ -2223,39 +2224,39 @@ export class DataService {
                 }
             }
 
-            this.forcePackToChassisType.set(pack.name, chassisTypeSet);
+            this.forcePackToLookupKey.set(pack.name, lookupKeys);
         }
 
-        this.chassisTypeToForcePacks = new Map();
+        this.lookupKeyToForcePacks = new Map();
         for (const [key, names] of reverseMap) {
-            this.chassisTypeToForcePacks.set(key, Array.from(names).sort());
+            this.lookupKeyToForcePacks.set(key, Array.from(names).sort());
         }
     }
 
     /**
-     * Check if a unit belongs to a force pack (by chassis|type).
+     * Check if a unit belongs to a force pack (by chassis|type|subtype).
      */
     public unitBelongsToForcePack(unit: Unit, packName: string): boolean {
-        if (!this.forcePackToChassisType) this.buildForcePackCaches();
-        const chassisSet = this.forcePackToChassisType!.get(packName);
-        if (!chassisSet) return false;
-        return chassisSet.has(`${unit.chassis}|${unit.type}`);
+        if (!this.forcePackToLookupKey) this.buildForcePackCaches();
+        const lookupSet = this.forcePackToLookupKey!.get(packName);
+        if (!lookupSet) return false;
+        return lookupSet.has(getForcePackLookupKey(unit));
     }
 
     /**
-     * Get the chassis|type set for a force pack (for bulk filtering).
+     * Get the chassis|type|subtype set for a force pack (for bulk filtering).
      */
-    public getForcePackChassisTypeSet(packName: string): Set<string> | undefined {
-        if (!this.forcePackToChassisType) this.buildForcePackCaches();
-        return this.forcePackToChassisType!.get(packName);
+    public getForcePackLookupSet(packName: string): Set<string> | undefined {
+        if (!this.forcePackToLookupKey) this.buildForcePackCaches();
+        return this.forcePackToLookupKey!.get(packName);
     }
 
     /**
-     * Get the sorted list of force pack names that contain a unit's chassis|type.
+     * Get the sorted list of force pack names that contain a unit's chassis|type|subtype.
      */
     public getForcePacksForUnit(unit: Unit): string[] {
-        if (!this.chassisTypeToForcePacks) this.buildForcePackCaches();
-        return this.chassisTypeToForcePacks!.get(`${unit.chassis}|${unit.type}`) ?? [];
+        if (!this.lookupKeyToForcePacks) this.buildForcePackCaches();
+        return this.lookupKeyToForcePacks!.get(getForcePackLookupKey(unit)) ?? [];
     }
 
     /* ----------------------------------------------------------
