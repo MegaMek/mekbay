@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MekBay OAuth</title>
+    <meta name="description" content="Standalone MekBay OAuth completion page.">
+    <meta name="robots" content="noindex">
+    <style>
+        html {
+            height: 100%;
+        }
+
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+            background: #000;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+
+        main {
+            max-width: 420px;
+        }
+
+        h1 {
+            margin: 0 0 12px;
+            font-size: 1.8rem;
+            font-weight: 600;
+        }
+
+        p {
+            margin: 0;
+            color: #c7c7c7;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1 id="oauth-title">Completing sign-in</h1>
+        <p id="oauth-message">You can close this page and return to MekBay.</p>
+    </main>
+
+    <script>
+        (function () {
+            const resultParam = 'oauthResult';
+            const titleEl = document.getElementById('oauth-title');
+            const messageEl = document.getElementById('oauth-message');
+
+            function decodeBase64UrlJson(value) {
+                const padded = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
+                return JSON.parse(window.atob(padded));
+            }
+
+            function setText(element, text) {
+                if (element) {
+                    element.textContent = text;
+                }
+            }
+
+            const encodedResult = new URL(window.location.href).searchParams.get(resultParam);
+            let result = null;
+
+            if (encodedResult) {
+                try {
+                    result = decodeBase64UrlJson(encodedResult);
+                } catch {
+                    result = null;
+                }
+            }
+
+            if (!result || result.source !== 'mekbay-oauth') {
+                setText(titleEl, 'MekBay OAuth');
+                setText(messageEl, 'You can close this page.');
+                return;
+            }
+
+            const successTitle = result.mode === 'link' ? 'Provider linked' : 'Sign-in complete';
+            const errorMessage = typeof result.error === 'string' ? result.error : 'Provider authentication failed.';
+
+            if (result.ok) {
+                setText(titleEl, successTitle);
+                setText(messageEl, 'You can close this page and return to MekBay.');
+            } else {
+                setText(titleEl, 'Sign-in failed');
+                setText(messageEl, errorMessage);
+            }
+
+            if (window.opener && !window.opener.closed) {
+                try {
+                    window.opener.postMessage(result, window.location.origin);
+                } catch {
+                    // Ignore postMessage failures and leave the manual close fallback visible.
+                }
+            }
+
+            window.setTimeout(function () {
+                window.close();
+            }, 250);
+        })();
+    </script>
+</body>
+</html>

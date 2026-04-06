@@ -779,11 +779,6 @@ export class OptionsDialogComponent {
     }
 
     onUnlinkProvider(provider: OAuthProvider) {
-        if (this.linkedOAuthProviders().length <= 1) {
-            this.toastService.showToast('At least one OAuth provider must remain linked once your account is connected.', 'error');
-            return;
-        }
-
         void this.accountAuthService.unlinkProvider(provider);
     }
 }

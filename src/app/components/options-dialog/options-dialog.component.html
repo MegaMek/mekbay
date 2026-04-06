@@ -152,18 +152,6 @@
                     <p>Manual UUID changes are disabled while this account is signed in with OAuth.</p>
                     }
                 </div>
-                @if (userHasOAuth()) {
-                <div class="option-section-title">Log Out</div>
-                <div class="option-col account-logout-block">
-                    <div class="description">
-                        <p>Log out on this device and reset it to a fresh anonymous UUID.</p>
-                        <p>This removes local account data and related caches from this browser, but it does not unlink your OAuth providers from the MekBay account.</p>
-                    </div>
-                    <div class="account-logout-actions">
-                        <button class="bt-button danger" [disabled]="logoutInFlight() || oauthActionInFlight()" (click)="onLogout()">LOG OUT</button>
-                    </div>
-                </div>
-                }
                 <div class="option-row">
                     <div>
                         <span class="small-label">Public ID: </span><span class="readonly-value">{{ userPublicId() }}</span>
@@ -201,7 +189,7 @@
                     </div>
                     <div class="linked-provider-actions">
                         <button class="bt-button danger small"
-                            [disabled]="oauthActionInFlight() || linkedOAuthProviders().length <= 1"
+                            [disabled]="oauthActionInFlight()"
                             (click)="onUnlinkProvider(provider.provider)">UNLINK</button>
                     </div>
                 </div>
@@ -212,11 +200,11 @@
                 <p>No OAuth providers are linked to this UUID yet.</p>
             </div>
             }
-
+            @if (userHasOAuth()) {
             <div class="description oauth-description-block">
-                <p>You can keep using MekBay anonymously with your UUID only. OAuth is optional.</p>
-                <p>If you connect providers, at least one linked provider must remain attached while the account stays in an OAuth-connected state.</p>
+                <p>If you unlink every provider, the account on this device falls back to UUID-only access until you link a provider again.</p>
             </div>
+            }
 
             <div class="option-section-title">Link Current Account</div>
             <div class="provider-actions">
@@ -234,6 +222,7 @@
             </div>
             <div class="description oauth-description-block">
                 <p>Link a provider to the UUID currently stored on this device.</p>
+                <p>MekBay opens the provider in a separate window so this tab stays connected to the hosted session.</p>
                 <p>Use replace when you want to migrate, for example from an old Google account to a new one.</p>
             </div>
 
@@ -255,11 +244,25 @@
             </div>
             <div class="description oauth-description-block">
                 <p>Open the sign-in dialog on a new device to choose a provider and recover the UUID already linked to that account.</p>
+                <p>The provider flow opens in a separate window or tab so the current MekBay page does not get replaced.</p>
             </div>
 
             @if (!hasEnabledAuthProviders()) {
             <div class="empty-state">
                 <p>No OAuth providers are configured on the server yet.</p>
+            </div>
+            }
+            
+            @if (userHasOAuth()) {
+            <div class="option-section-title">Log Out</div>
+            <div class="option-col account-logout-block">
+                <div class="description">
+                    <p>Log out on this device and reset it to a fresh anonymous UUID.</p>
+                    <p>This removes local account data and related caches from this browser, but it does not unlink your OAuth providers from the MekBay account.</p>
+                </div>
+                <div class="account-logout-actions">
+                    <button class="bt-button danger" [disabled]="logoutInFlight() || oauthActionInFlight()" (click)="onLogout()">LOG OUT</button>
+                </div>
             </div>
             }
         </div>
