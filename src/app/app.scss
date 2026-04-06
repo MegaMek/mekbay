@@ -119,7 +119,7 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    color: #5c6773;
+    color: var(--text-color-tertiary);
     font-size: 0.82em;
 }
 
@@ -131,7 +131,7 @@
 
 .footer-link:hover,
 .footer-link:focus-visible {
-    color: #8fa6bb;
+    color: var(--text-color-secondary);
 }
 
 .footer-link-separator {
