@@ -30,7 +30,7 @@ export const CC_ELEMENT: OrgLeafCountRule = {
     kind: 'leaf-count',
     type: 'Element',
     priority: 1,
-    modifiers: { 'Under-Strength ': 1, '': 2 },
+    modifiers: { '': 2 },
     commandRank: 'Lieutenant',
     tier: 1,
     unitSelector: 'flightEligible',

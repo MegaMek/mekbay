@@ -11,7 +11,7 @@ export const IS_FLIGHT: OrgLeafCountRule = {
     kind: 'leaf-count',
     type: 'Flight',
     priority: 1,
-    modifiers: { 'Under-Strength ': 1, '': 2, 'Reinforced ': 3 },
+    modifiers: { '': 2, 'Reinforced ': 3 },
     commandRank: 'Lieutenant',
     tier: 1,
     unitSelector: 'flightEligible',
@@ -115,14 +115,14 @@ export const IS_UNIT: OrgLeafCountRule = {
     pointModel: 'fixed',
 };
 
-export const IS_LANCE: OrgLeafCountRule = {
-    kind: 'leaf-count',
+export const IS_LANCE: OrgComposedCountRule = {
+    kind: 'composed-count',
     type: 'Lance',
     modifiers: { 'Short ': 2, 'Under-Strength ': 3, '': 4, 'Reinforced ': 5, 'Fortified ': 6 },
     commandRank: 'Lieutenant',
     tier: 1,
-    unitSelector: 'nonInfantry',
-    pointModel: 'fixed',
+    childRoles: [{ matches: ['Unit'], onlyUnitTypes: ['BM', 'CV'] }],
+    childBucketBy: 'promotionBasic',
 };
 
 export const IS_COMPANY: OrgComposedCountRule = {

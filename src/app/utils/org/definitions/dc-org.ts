@@ -21,7 +21,7 @@ export const DC_LANCE: OrgLeafCountRule = {
     kind: 'leaf-count',
     type: 'Lance',
     priority: 1,
-    modifiers: { 'Under-Strength ': 1, '': 2 },
+    modifiers: { '': 2, 'Reinforced ': 3 },
     commandRank: 'Lieutenant',
     tier: 1,
     unitSelector: 'flightEligible',
@@ -35,7 +35,7 @@ export const DC_FLIGHT: OrgComposedCountRule = {
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
     commandRank: 'Captain',
     tier: 2,
-    childRoles: [{ matches: ['Lance'] }],
+    childRoles: [{ matches: ['Lance'], onlyUnitTypes: ['AF'] }],
     childBucketBy: 'promotionBasic',
 };
 
