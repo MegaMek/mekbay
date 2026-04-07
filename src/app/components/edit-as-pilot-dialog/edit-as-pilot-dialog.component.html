@@ -142,18 +142,19 @@
                 </div>
                 }
 
-                @if (formationEffectPreviews().length > 0) {
-                    @for (effect of formationEffectPreviews(); track effect.descriptor.key) {
-                    <div class="formation-effect-card framed-borders" [class.ineligible]="!isFormationEffectEligible(effect)">
+                @if (formationEffectCards().length > 0) {
+                    @for (card of formationEffectCards(); track card.key) {
+                    <div class="formation-effect-card framed-borders" [class.ineligible]="isFormationEffectCardIneligible(card.effects)">
                         <div class="formation-effect-header">
                             <div class="group">
-                                <span class="formation-effect-title">{{ effect.descriptor.sourceFormationName }}</span>
+                                <span class="formation-effect-title">{{ card.title }}</span>
                             </div>
                             <div class="formation-effect-actions">
                                 <span class="formation-effect-count">
-                                    {{ effect.recipientUnitIds.length }}/{{ effect.recipientLimit ?? effect.candidateUnitIds.length }}
+                                    {{ card.countLabel }}
                                 </span>
                                 <button 
+                                    type="button"
                                     class="formation-effect-reset"
                                     [disabled]="!hasResettableFormationAssignments()"
                                     [attr.aria-label]="'Reset all formation assignments for this group'"
@@ -163,58 +164,62 @@
                             </div>
                         </div>
 
-                        <div class="formation-effect-summary">{{ getFormationEffectSummary(effect) }}</div>
+                        @for (effect of card.effects; let last = $last; track effect.descriptor.key) {
+                        <div class="formation-effect-section" [class.ineligible]="!isFormationEffectEligible(effect)">
+                            <div class="formation-effect-summary">{{ getFormationEffectSummary(effect) }}</div>
 
-                        @if (!isFormationEffectEligible(effect)) {
-                        <div class="unit-type-warning">{{ getFormationEffectUnavailableText(effect) }}</div>
-                        } @else {
-                        <div class="formation-picker-list">
-                            @for (slotAbilityId of getFormationEffectSlots(effect); let slot = $index; track slot) {
-                            <div class="ability-slot formation-ability-slot">
-                                @if (slotAbilityId) {
-                                @let abilityInfo = getFormationAbilityDisplayInfo(slotAbilityId);
-                                <div class="selected-ability-info corner-borders formation-selected-ability-info">
-                                    <div class="ability-detail-header">
-                                        <div class="group">
-                                            <span class="ability-detail-name">{{ abilityInfo?.name || slotAbilityId }}</span>
-                                        </div>
+                            @if (!isFormationEffectEligible(effect)) {
+                            <div class="unit-type-warning">{{ getFormationEffectUnavailableText(effect) }}</div>
+                            } @else {
+                            <div class="formation-picker-list">
+                                @for (slotAbilityId of getFormationEffectSlots(effect); let slot = $index; track slot) {
+                                <div class="ability-slot formation-ability-slot">
+                                    @if (slotAbilityId) {
+                                    @let abilityInfo = getFormationAbilityDisplayInfo(slotAbilityId);
+                                    <div class="selected-ability-info corner-borders formation-selected-ability-info">
+                                        <div class="ability-detail-header">
+                                            <div class="group">
+                                                <span class="ability-detail-name">{{ abilityInfo?.name || slotAbilityId }}</span>
+                                            </div>
 
-                                        @if (!isFormationEffectAutoAssigned(effect)) {
-                                        <button class="remove-btn" type="button" (click)="removeFormationAbility(effect, slot); $event.stopPropagation()" title="Remove ability">
-                                            <svg width="17px" height="17px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1"
-                                                xmlns="http://www.w3.org/2000/svg">
-                                                <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
-                                        L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
-                                            </svg>
-                                        </button>
-                                        }
-                                    </div>
-                                    @if (abilityInfo?.summary; as abilitySummary) {
-                                    <div class="ability-detail-summary">{{ abilitySummary }}</div>
-                                    }
-                                    @if (abilityInfo?.rulesRef; as abilityRules) {
-                                        @if (abilityRules.length > 0) {
-                                        <div class="ability-detail-rules">
-                                            @for (rule of abilityRules; let last = $last; track $index) {
-                                                {{ formatRuleReference(rule) }}
-                                                @if (!last) {
-                                                    <span class="separator"> · </span>
-                                                }
+                                            @if (!isFormationEffectAutoAssigned(effect)) {
+                                            <button class="remove-btn" type="button" (click)="removeFormationAbility(effect, slot); $event.stopPropagation()" title="Remove ability">
+                                                <svg width="17px" height="17px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1"
+                                                    xmlns="http://www.w3.org/2000/svg">
+                                                    <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
+                                            L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
+                                                </svg>
+                                            </button>
                                             }
                                         </div>
+                                        @if (abilityInfo?.summary; as abilitySummary) {
+                                        <div class="ability-detail-summary">{{ abilitySummary }}</div>
                                         }
+                                        @if (abilityInfo?.rulesRef; as abilityRules) {
+                                            @if (abilityRules.length > 0) {
+                                            <div class="ability-detail-rules">
+                                                @for (rule of abilityRules; let abilityRuleLast = $last; track $index) {
+                                                    {{ formatRuleReference(rule) }}
+                                                    @if (!abilityRuleLast) {
+                                                        <span class="separator"> · </span>
+                                                    }
+                                                }
+                                            </div>
+                                            }
+                                        }
+                                    </div>
+                                    } @else if (!isFormationEffectAutoAssigned(effect)) {
+                                    <div class="ability-dropdown">
+                                        <button
+                                            #formationDropdownTrigger
+                                            type="button"
+                                            class="dropdown-trigger bt-select"
+                                            (click)="toggleFormationDropdown(effect, slot, formationDropdownTrigger)"
+                                            [disabled]="!canOpenFormationAbilitySlot(effect, slot)">
+                                            <span class="placeholder">Select ability...</span>
+                                        </button>
+                                    </div>
                                     }
-                                </div>
-                                } @else if (!isFormationEffectAutoAssigned(effect)) {
-                                <div class="ability-dropdown">
-                                    <button
-                                        #formationDropdownTrigger
-                                        type="button"
-                                        class="dropdown-trigger bt-select"
-                                        (click)="toggleFormationDropdown(effect, slot, formationDropdownTrigger)"
-                                        [disabled]="!canOpenFormationAbilitySlot(effect, slot)">
-                                        <span class="placeholder">Select ability...</span>
-                                    </button>
                                 </div>
                                 }
                             </div>
@@ -225,7 +230,7 @@
                     }
                 } @else if (!hasAutoGrantedFormationEffects()) {
                 <div class="ability-limits-info disabled-message">
-                    No unit-assigned formation SPAs are available for this group.
+                    No unit-assigned formation SPAs are available for this unit.
                 </div>
                 }
 

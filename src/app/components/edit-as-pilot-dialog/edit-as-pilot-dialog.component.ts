@@ -85,6 +85,13 @@ export interface EditASPilotResult {
     commander: boolean;
 }
 
+interface FormationEffectCardView {
+    key: string;
+    title: string;
+    countLabel: string;
+    effects: FormationEffectPreview[];
+}
+
 @Component({
     selector: 'edit-as-pilot-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -169,6 +176,38 @@ export class EditASPilotDialogComponent {
 
     formationEffectPreviews = computed<FormationEffectPreview[]>(() => {
         return [...(this.formationPreview()?.effectPreviews ?? [])];
+    });
+
+    formationEffectCards = computed<FormationEffectCardView[]>(() => {
+        const cards = new Map<string, FormationEffectCardView>();
+
+        for (const effect of this.formationEffectPreviews()) {
+            if (!this.shouldDisplayFormationEffect(effect)) {
+                continue;
+            }
+
+            const existingCard = cards.get(effect.descriptor.sourceFormationId);
+            const countLabels = existingCard?.countLabel ? existingCard.countLabel.split(' · ') : [];
+            const nextCountLabel = this.getFormationEffectCountLabel(effect);
+            const mergedCountLabels = countLabels.includes(nextCountLabel)
+                ? countLabels
+                : [...countLabels, nextCountLabel];
+
+            if (existingCard) {
+                existingCard.effects.push(effect);
+                existingCard.countLabel = mergedCountLabels.join(' · ');
+                continue;
+            }
+
+            cards.set(effect.descriptor.sourceFormationId, {
+                key: effect.descriptor.sourceFormationId,
+                title: effect.descriptor.sourceFormationName,
+                countLabel: nextCountLabel,
+                effects: [effect],
+            });
+        }
+
+        return [...cards.values()];
     });
 
     unsupportedFormationEffects = computed<UnsupportedFormationEffectDescriptor[]>(() => {
@@ -747,6 +786,26 @@ export class EditASPilotDialogComponent {
 
     isFormationEffectEligible(effect: FormationEffectPreview): boolean {
         return effect.candidateUnitIds.includes(this.data.unitId);
+    }
+
+    shouldDisplayFormationEffect(effect: FormationEffectPreview): boolean {
+        if (effect.descriptor.group.distribution === 'commander') {
+            return this.selectedFormationCommander();
+        }
+
+        if (effect.descriptor.group.excludeCommander) {
+            return !this.selectedFormationCommander();
+        }
+
+        return true;
+    }
+
+    isFormationEffectCardIneligible(effects: readonly FormationEffectPreview[]): boolean {
+        return effects.every((effect) => !this.isFormationEffectEligible(effect));
+    }
+
+    getFormationEffectCountLabel(effect: FormationEffectPreview): string {
+        return `${effect.recipientUnitIds.length}/${effect.recipientLimit ?? effect.candidateUnitIds.length}`;
     }
 
     getFormationEffectAssignedAbilityIds(effect: FormationEffectPreview): string[] {

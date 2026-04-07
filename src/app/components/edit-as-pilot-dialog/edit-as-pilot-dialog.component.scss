@@ -138,6 +138,18 @@
     line-height: 1.35;
 }
 
+.formation-effect-section {
+    &.ineligible {
+        opacity: 0.75;
+    }
+}
+
+.formation-effect-section + .formation-effect-section {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 .formation-picker-list {
     display: flex;
     flex-direction: column;
