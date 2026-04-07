@@ -25,7 +25,7 @@ import {
     TRANSPORT_CV_OMNI_CARRIER_BUCKETS,
 } from './common';
 
-export const CC_ELEMENT2: OrgLeafCountRule = {
+export const CC_ELEMENT: OrgLeafCountRule = {
     kind: 'leaf-count',
     type: 'Element',
     priority: 1,
@@ -37,19 +37,19 @@ export const CC_ELEMENT2: OrgLeafCountRule = {
     pointModel: 'fixed',
 };
 
-export const CC_ELEMENT3: OrgLeafCountRule = {
+export const CC_TRIPLE: OrgLeafCountRule = {
     kind: 'leaf-count',
     type: 'Triple',
     priority: 1,
     modifiers: { '': 3 },
     commandRank: 'Lieutenant',
-    tier: CC_ELEMENT2.tier + 0.1,
+    tier: 1,
     unitSelector: 'flightEligible',
     bucketBy: 'flightType',
     pointModel: 'fixed',
 };
 
-export const CC_SQUADRON1: OrgComposedCountRule = {
+export const CC_SQUADRON_ELEMENT: OrgComposedCountRule = {
     kind: 'composed-count',
     type: 'Squadron',
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
@@ -59,12 +59,12 @@ export const CC_SQUADRON1: OrgComposedCountRule = {
     childBucketBy: 'promotionBasic',
 };
 
-export const CC_SQUADRON2: OrgComposedCountRule = {
+export const CC_SQUADRON_TRIPLE: OrgComposedCountRule = {
     kind: 'composed-count',
     type: 'Squadron',
     modifiers: { '': 2, 'Reinforced ': 3 },
     commandRank: 'Captain',
-    tier: CC_SQUADRON1.tier + 0.1,
+    tier: 2,
     childRoles: [{ matches: ['Triple'] }],
     childBucketBy: 'promotionBasic',
 };
@@ -74,15 +74,15 @@ export const CC_FLIGHT: OrgComposedCountRule = {
     type: 'Flight',
     modifiers: { '': 2, 'Reinforced ': 3 },
     commandRank: 'Major',
-    tier: 3,
-    childRoles: [{ matches: ['Squadron'] }],
+    tier: 3.1,
+    childRoles: [{ matches: ['Squadron'] }],    
     childBucketBy: 'promotionBasic',
 };
 
 export const CC_WING: OrgComposedCountRule = {
     kind: 'composed-count',
     type: 'Wing',
-    modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
+    modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 },
     commandRank: 'Lieutenant Colonel',
     tier: 3.5,
     childRoles: [
@@ -95,9 +95,9 @@ export const CC_WING: OrgComposedCountRule = {
 export const CC_FLEET_REGIMENT: OrgComposedCountRule = {
     kind: 'composed-count',
     type: 'Fleet Regiment',
-    modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
+    modifiers: { 'Under-Strength ': 4, '': 5, 'Reinforced ': 6 },
     commandRank: 'Colonel',
-    tier: IS_REGIMENT.tier + 0.1,
+    tier: 3.9,
     childRoles: [
         { matches: ['Wing'], min: 2 },
         { matches: ['Element', 'Triple'], min: 2, max: 2 },
@@ -225,10 +225,11 @@ export const CC_AUGMENTED_REGIMENT: OrgComposedCountRule = {
 
 export const CC_CORE_ORG: OrgDefinitionSpec = {
     rules: [
-        CC_ELEMENT2,
-        CC_ELEMENT3,
-        CC_SQUADRON1,
-        CC_SQUADRON2,
+        CC_ELEMENT,
+        CC_TRIPLE,
+        CC_SQUADRON_ELEMENT,
+        CC_SQUADRON_TRIPLE,
+        CC_FLIGHT,
         CC_WING,
         CC_FLEET_REGIMENT,
         IS_BA_SQUAD,

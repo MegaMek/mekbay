@@ -34,7 +34,8 @@ export const IS_WING: OrgComposedCountRule = {
     type: 'Wing',
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
     commandRank: 'Major',
-    tier: 4,
+    tier: 3,
+    priority: 1,
     childRoles: [{ matches: ['Squadron'] }],
     childBucketBy: 'promotionBasic',
 };
