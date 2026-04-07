@@ -4,15 +4,14 @@
         <div class="form-row commander-layout">
             <div class="commander-name-row">
                 @if (data.group) {
-                <button
-                    type="button"
-                    class="formation-commander-toggle bt-button square"
+                <button type="button" class="formation-commander-toggle bt-button square"
                     [class.active]="selectedFormationCommander()"
                     [attr.aria-label]="selectedFormationCommander() ? 'Unset group commander' : 'Set as group commander'"
                     [attr.aria-pressed]="selectedFormationCommander()"
                     [attr.title]="selectedFormationCommander() ? 'Unset group commander' : 'Set as group commander'"
                     (click)="setFormationCommanderSelected(!selectedFormationCommander())">
-                    <svg class="formation-commander-icon" width="21" height="26" viewBox="0 0 21 25.9" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                    <svg class="formation-commander-icon" width="21" height="26" viewBox="0 0 21 25.9"
+                        xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
                         <g transform="translate(-.02)">
                             <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
                                 <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
@@ -25,7 +24,8 @@
                 <div class="form-fields name-field">
                     <label class="field-label">Name</label>
                     <div class="input-wrapper">
-                        <input #nameInput type="text" class="field-input" autocomplete="off" maxlength="40" [value]="data.name || ''" (keydown.enter)="submit()" />
+                        <input #nameInput type="text" class="field-input" autocomplete="off" maxlength="40"
+                            [value]="data.name || ''" (keydown.enter)="submit()" />
                     </div>
                     @if (data.group && selectedFormationCommander()) {
                     <div class="field-note formation-commander-inline-note">This unit is the group commander.</div>
@@ -53,200 +53,209 @@
             <div class="ability-limits-info">
                 <span>Slots: {{ currentAbilityCount() }}/{{ abilityLimits().maxAbilities }}</span>
                 <span class="separator">•</span>
-                <span [class.over-limit]="remainingCost() < 0">Cost: {{ totalCost() }}/{{ abilityLimits().maxCost }}</span>
+                <span [class.over-limit]="remainingCost() < 0">Cost: {{ totalCost() }}/{{ abilityLimits().maxCost
+                    }}</span>
             </div>
 
             @for (slot of [0, 1, 2]; track slot) {
-                @if (slot < abilityLimits().maxAbilities) {
-                <div class="ability-slot">
-                    @if (selectedAbilities()[slot]; as selectedAbility) {
-                    @let displayInfo = getAbilityDisplayInfo(selectedAbility);
-                    @if (displayInfo) {
-                    <div class="selected-ability-info corner-borders" 
-                         [class.custom-ability]="displayInfo.isCustom"
-                         [class.clickable]="displayInfo.isCustom"
-                         [class.unit-type-restricted]="displayInfo.unitTypeInvalid"
-                         (click)="displayInfo.isCustom ? editCustomAbility(slot) : null">
-                        <div class="ability-detail-header">
-                            <div class="group">
-                                <span class="ability-detail-name">
-                                    @if (displayInfo.isCustom) {
-                                        <span class="custom-badge">Custom</span>
-                                    }
-                                    {{ displayInfo.name }}
-                                </span>
-                                <span class="ability-detail-cost">Cost: {{ displayInfo.cost }}</span>
-                            </div>
-
-                            <button class="remove-btn" (click)="removeAbility(slot); $event.stopPropagation()" title="Remove ability">
-                                <svg width="17px" height="17px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1"
-                                    xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
-                            L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
-                                </svg>
-                            </button>
-                        </div>
-                        @if (displayInfo.unitTypeInvalid) {
-                            <div class="unit-type-warning">
-                                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z"/></svg>
-                                Not valid for this unit type
-                            </div>
-                        }
-                        <div class="ability-detail-summary">{{ displayInfo.summary }}</div>
-                        @if (displayInfo.rulesRef) {
-                            <div class="ability-detail-rules">
-                                @for (rule of displayInfo.rulesRef; let last = $last; track $index) {
-                                    {{ formatRuleReference(rule) }}
-                                    @if (!last) {
-                                        <span class="separator"> · </span>
-                                    }
+            @if (slot < abilityLimits().maxAbilities) { <div class="ability-slot">
+                @if (selectedAbilities()[slot]; as selectedAbility) {
+                @let displayInfo = getAbilityDisplayInfo(selectedAbility);
+                @if (displayInfo) {
+                <div class="selected-ability-info corner-borders" [class.custom-ability]="displayInfo.isCustom"
+                    [class.clickable]="displayInfo.isCustom" [class.unit-type-restricted]="displayInfo.unitTypeInvalid"
+                    (click)="displayInfo.isCustom ? editCustomAbility(slot) : null">
+                    <div class="ability-detail-header">
+                        <div class="group">
+                            <span class="ability-detail-name">
+                                @if (displayInfo.isCustom) {
+                                <span class="custom-badge">Custom</span>
                                 }
-                            </div>
-                        }
+                                {{ displayInfo.name }}
+                            </span>
+                            <span class="ability-detail-cost">Cost: {{ displayInfo.cost }}</span>
+                        </div>
+
+                        <button class="remove-btn" (click)="removeAbility(slot); $event.stopPropagation()"
+                            title="Remove ability">
+                            <svg width="17px" height="17px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
+                            L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
+                            </svg>
+                        </button>
+                    </div>
+                    @if (displayInfo.unitTypeInvalid) {
+                    <div class="unit-type-warning">
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"
+                            xmlns="http://www.w3.org/2000/svg">
+                            <path
+                                d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z" />
+                        </svg>
+                        Not valid for this unit type
                     </div>
                     }
-                    } @else {
-                    <div class="ability-dropdown">
-                        @if (slot === 0) {
-                        <button #dropdownTrigger0 class="dropdown-trigger bt-select" (click)="toggleDropdown(slot)"
-                                [disabled]="!canAddMoreAbilities()">
-                            <span class="placeholder">Select ability...</span>
-                        </button>
-                        } @else if (slot === 1) {
-                        <button #dropdownTrigger1 class="dropdown-trigger bt-select" (click)="toggleDropdown(slot)"
-                                [disabled]="!canAddMoreAbilities()">
-                            <span class="placeholder">Select ability...</span>
-                        </button>
-                        } @else {
-                        <button #dropdownTrigger2 class="dropdown-trigger bt-select" (click)="toggleDropdown(slot)"
-                                [disabled]="!canAddMoreAbilities()">
-                            <span class="placeholder">Select ability...</span>
-                        </button>
+                    <div class="ability-detail-summary">{{ displayInfo.summary }}</div>
+                    @if (displayInfo.rulesRef) {
+                    <div class="ability-detail-rules">
+                        @for (rule of displayInfo.rulesRef; let last = $last; track $index) {
+                        {{ formatRuleReference(rule) }}
+                        @if (!last) {
+                        <span class="separator"> · </span>
+                        }
                         }
                     </div>
                     }
                 </div>
                 }
-            }
-            }
+                } @else {
+                <div class="ability-dropdown">
+                    @if (slot === 0) {
+                    <button #dropdownTrigger0 class="dropdown-trigger bt-select" (click)="toggleDropdown(slot)"
+                        [disabled]="!canAddMoreAbilities()">
+                        <span class="placeholder">Select ability...</span>
+                    </button>
+                    } @else if (slot === 1) {
+                    <button #dropdownTrigger1 class="dropdown-trigger bt-select" (click)="toggleDropdown(slot)"
+                        [disabled]="!canAddMoreAbilities()">
+                        <span class="placeholder">Select ability...</span>
+                    </button>
+                    } @else {
+                    <button #dropdownTrigger2 class="dropdown-trigger bt-select" (click)="toggleDropdown(slot)"
+                        [disabled]="!canAddMoreAbilities()">
+                        <span class="placeholder">Select ability...</span>
+                    </button>
+                    }
+                </div>
+                }
         </div>
+        }
+        }
+        }
 
         @if (data.group) {
-        <div class="abilities-section formation-section">
+        <div class="formation-section">
             <p>Formation Abilities</p>
 
             @if (formationPreview(); as preview) {
-                @if (preview.requirementsFiltered) {
-                <div class="ability-limits-info">
-                    {{ preview.requirementsFilterNotice || 'Some structurally attached units are ignored when checking formation bonus eligibility.' }}
+            @if (preview.requirementsFiltered) {
+            <div class="ability-limits-info">
+                {{ preview.requirementsFilterNotice || 'Some structurally attached units are ignored when checking
+                formation bonus eligibility.' }}
+            </div>
+            }
+
+            @if (formationEffectCards().length > 0) {
+            @for (card of formationEffectCards(); track card.key) {
+            <div class="formation-effect-card framed-borders"
+                [class.ineligible]="isFormationEffectCardIneligible(card.effects)">
+                <div class="formation-effect-header">
+                    <div class="group">
+                        <span class="formation-effect-title">{{ card.title }}</span>
+                    </div>
+                    <div class="formation-effect-actions">
+                        <span class="formation-effect-count">
+                            {{ card.countLabel }}
+                        </span>
+                        <button type="button" class="formation-effect-reset"
+                            [disabled]="!hasResettableFormationAssignments()"
+                            [attr.aria-label]="'Reset all formation assignments for this group'"
+                            [attr.title]="hasResettableFormationAssignments() ? 'Reset all formation assignments for this group' : 'No formation assignments to reset'"
+                            (click)="confirmResetFormationAssignments()"><svg width="17px" height="17px"
+                                fill="currentColor" viewBox="0 0 1200 1200" version="1.1"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path _ngcontent-ng-c903798945="" d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
+                                        L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z">
+                                </path>
+                            </svg></button>
+                    </div>
                 </div>
-                }
 
-                @if (formationEffectCards().length > 0) {
-                    @for (card of formationEffectCards(); track card.key) {
-                    <div class="formation-effect-card framed-borders" [class.ineligible]="isFormationEffectCardIneligible(card.effects)">
-                        <div class="formation-effect-header">
-                            <div class="group">
-                                <span class="formation-effect-title">{{ card.title }}</span>
-                            </div>
-                            <div class="formation-effect-actions">
-                                <span class="formation-effect-count">
-                                    {{ card.countLabel }}
-                                </span>
-                                <button 
-                                    type="button"
-                                    class="formation-effect-reset"
-                                    [disabled]="!hasResettableFormationAssignments()"
-                                    [attr.aria-label]="'Reset all formation assignments for this group'"
-                                    [attr.title]="hasResettableFormationAssignments() ? 'Reset all formation assignments for this group' : 'No formation assignments to reset'"
-                                    (click)="confirmResetFormationAssignments()"><svg width="17px" height="17px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg"><path _ngcontent-ng-c903798945="" d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
-                                        L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"></path></svg></button>
-                            </div>
-                        </div>
+                @for (effect of card.effects; let last = $last; track effect.descriptor.key) {
+                <div class="formation-effect-section" [class.ineligible]="!isFormationEffectEligible(effect)">
+                    <div class="formation-effect-summary">{{ getFormationEffectSummary(effect) }}</div>
 
-                        @for (effect of card.effects; let last = $last; track effect.descriptor.key) {
-                        <div class="formation-effect-section" [class.ineligible]="!isFormationEffectEligible(effect)">
-                            <div class="formation-effect-summary">{{ getFormationEffectSummary(effect) }}</div>
+                    @if (!isFormationEffectEligible(effect)) {
+                    <div class="unit-type-warning">{{ getFormationEffectUnavailableText(effect) }}</div>
+                    } @else {
+                    <div class="formation-picker-list">
+                        @for (slotAbilityId of getFormationEffectSlots(effect); let slot = $index; track slot) {
+                        <div class="ability-slot formation-ability-slot">
+                            @if (slotAbilityId) {
+                            @let abilityInfo = getFormationAbilityDisplayInfo(slotAbilityId);
+                            <div class="selected-ability-info corner-borders formation-selected-ability-info">
+                                <div class="ability-detail-header">
+                                    <div class="group">
+                                        <span class="ability-detail-name">{{ abilityInfo?.name || slotAbilityId
+                                            }}</span>
+                                    </div>
 
-                            @if (!isFormationEffectEligible(effect)) {
-                            <div class="unit-type-warning">{{ getFormationEffectUnavailableText(effect) }}</div>
-                            } @else {
-                            <div class="formation-picker-list">
-                                @for (slotAbilityId of getFormationEffectSlots(effect); let slot = $index; track slot) {
-                                <div class="ability-slot formation-ability-slot">
-                                    @if (slotAbilityId) {
-                                    @let abilityInfo = getFormationAbilityDisplayInfo(slotAbilityId);
-                                    <div class="selected-ability-info corner-borders formation-selected-ability-info">
-                                        <div class="ability-detail-header">
-                                            <div class="group">
-                                                <span class="ability-detail-name">{{ abilityInfo?.name || slotAbilityId }}</span>
-                                            </div>
-
-                                            @if (!isFormationEffectAutoAssigned(effect)) {
-                                            <button class="remove-btn" type="button" (click)="removeFormationAbility(effect, slot); $event.stopPropagation()" title="Remove ability">
-                                                <svg width="17px" height="17px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1"
-                                                    xmlns="http://www.w3.org/2000/svg">
-                                                    <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
+                                    @if (!isFormationEffectAutoAssigned(effect)) {
+                                    <button class="remove-btn" type="button"
+                                        (click)="removeFormationAbility(effect, slot); $event.stopPropagation()"
+                                        title="Remove ability">
+                                        <svg width="17px" height="17px" fill="currentColor" viewBox="0 0 1200 1200"
+                                            version="1.1" xmlns="http://www.w3.org/2000/svg">
+                                            <path
+                                                d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
                                             L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
-                                                </svg>
-                                            </button>
-                                            }
-                                        </div>
-                                        @if (abilityInfo?.summary; as abilitySummary) {
-                                        <div class="ability-detail-summary">{{ abilitySummary }}</div>
-                                        }
-                                        @if (abilityInfo?.rulesRef; as abilityRules) {
-                                            @if (abilityRules.length > 0) {
-                                            <div class="ability-detail-rules">
-                                                @for (rule of abilityRules; let abilityRuleLast = $last; track $index) {
-                                                    {{ formatRuleReference(rule) }}
-                                                    @if (!abilityRuleLast) {
-                                                        <span class="separator"> · </span>
-                                                    }
-                                                }
-                                            </div>
-                                            }
-                                        }
-                                    </div>
-                                    } @else if (!isFormationEffectAutoAssigned(effect)) {
-                                    <div class="ability-dropdown">
-                                        <button
-                                            #formationDropdownTrigger
-                                            type="button"
-                                            class="dropdown-trigger bt-select"
-                                            (click)="toggleFormationDropdown(effect, slot, formationDropdownTrigger)"
-                                            [disabled]="!canOpenFormationAbilitySlot(effect, slot)">
-                                            <span class="placeholder">Select ability...</span>
-                                        </button>
-                                    </div>
+                                        </svg>
+                                    </button>
+                                    }
+                                </div>
+                                @if (abilityInfo?.summary; as abilitySummary) {
+                                <div class="ability-detail-summary">{{ abilitySummary }}</div>
+                                }
+                                @if (abilityInfo?.rulesRef; as abilityRules) {
+                                @if (abilityRules.length > 0) {
+                                <div class="ability-detail-rules">
+                                    @for (rule of abilityRules; let abilityRuleLast = $last; track $index) {
+                                    {{ formatRuleReference(rule) }}
+                                    @if (!abilityRuleLast) {
+                                    <span class="separator"> · </span>
+                                    }
                                     }
                                 </div>
                                 }
+                                }
+                            </div>
+                            } @else if (!isFormationEffectAutoAssigned(effect)) {
+                            <div class="ability-dropdown">
+                                <button #formationDropdownTrigger type="button" class="dropdown-trigger bt-select"
+                                    (click)="toggleFormationDropdown(effect, slot, formationDropdownTrigger)"
+                                    [disabled]="!canOpenFormationAbilitySlot(effect, slot)">
+                                    <span class="placeholder">Select ability...</span>
+                                </button>
                             </div>
                             }
                         </div>
                         }
                     </div>
                     }
-                } @else if (!hasAutoGrantedFormationEffects()) {
-                <div class="ability-limits-info disabled-message">
-                    No unit-assigned formation SPAs are available for this unit.
                 </div>
                 }
+            </div>
+            }
+            } @else if (!hasAutoGrantedFormationEffects()) {
+            <div class="ability-limits-info disabled-message">
+                No unit-assigned formation SPAs are available for this unit.
+            </div>
+            }
 
-                @if (unsupportedFormationEffects().length > 0) {
-                <div class="formation-notes">
-                    @for (effect of unsupportedFormationEffects(); track effect.key) {
-                    <div class="unit-type-warning">{{ getUnsupportedFormationEffectNotice(effect) }}</div>
-                    }
-                </div>
+            @if (unsupportedFormationEffects().length > 0) {
+            <div class="formation-notes">
+                @for (effect of unsupportedFormationEffects(); track effect.key) {
+                <div class="unit-type-warning">{{ getUnsupportedFormationEffectNotice(effect) }}</div>
                 }
+            </div>
+            }
             }
         </div>
         }
     </div>
-    <div class="wide-dialog-actions">
-        <button (click)="submit()" class="bt-button">CONFIRM</button>
-        <button (click)="close()" class="bt-button">DISMISS</button>
-    </div>
+</div>
+<div class="wide-dialog-actions">
+    <button (click)="submit()" class="bt-button">CONFIRM</button>
+    <button (click)="close()" class="bt-button">DISMISS</button>
+</div>
 </div>
