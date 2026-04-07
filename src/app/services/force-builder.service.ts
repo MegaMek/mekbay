@@ -2778,7 +2778,7 @@ export class ForceBuilderService {
 
         if (group) {
             FormationAbilityAssignmentUtil.reconcileGroupFormationAssignments(group, {
-                abilityOverrides: new Map([[unit.id, result.formationAbilities]]),
+                abilityOverrides: result.formationAbilityOverrides ?? new Map([[unit.id, result.formationAbilities]]),
                 commanderUnitId: result.commander
                     ? unit.id
                     : group.units().find((candidate) => candidate.id !== unit.id && candidate.commander())?.id ?? null,
