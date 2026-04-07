@@ -143,7 +143,7 @@ describe('DataService', () => {
         });
         spyOn<any>(service, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
 
-        const entries = await service.getForceEntriesByIds(['force-1', 'force-2']);
+        const entries = await service.getLoadForceEntriesByIds(['force-1', 'force-2']);
 
         expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith({
             action: 'getForcesBulk',
