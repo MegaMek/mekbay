@@ -36,7 +36,8 @@ import type { FormationTypeDefinition, FormationEffectGroup } from '../../utils/
 import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
 import { type PilotAbility, PILOT_ABILITIES, getAbilityDetails } from '../../models/pilot-abilities.model';
 import { type CommandAbility, COMMAND_ABILITIES } from '../../models/command-abilities.model';
-import { GameSystem, type RulesReference } from '../../models/common.model';
+import { GameSystem, formatRulesReference, type RulesReference } from '../../models/common.model';
+import { getInheritedFormationEffectGroups } from '../../utils/formation-ability-assignment.util';
 
 /*
  * Author: Drake
@@ -122,7 +123,7 @@ export interface ResolvedEffectGroup {
                     @if (def.rulesRef) {
                         <div class="rules-references">
                             @for (ref of def.rulesRef; let last = $last; track $index) {
-                                {{ ref.book }}, p.{{ ref.page }}
+                                {{ formatRuleReference(ref) }}
                                 @if (!last) {
                                     <span class="separator"> · </span>
                                 }
@@ -170,7 +171,7 @@ export interface ResolvedEffectGroup {
                                         }
                                         <div class="ability-card-rules">
                                             @for (ref of ability.rulesRef; let last = $last; track $index) {
-                                                {{ ref.book }}, p.{{ ref.page }}
+                                                {{ formatRuleReference(ref) }}
                                                 @if (!last) {
                                                     <span class="separator"> · </span>
                                                 }
@@ -435,6 +436,7 @@ export class FormationInfoComponent {
     requirementsFilterNotice = input<string | undefined>(undefined);
     /** Whether to show the formation name header. Defaults to true. */
     showTitle = input<boolean>(true);
+    readonly formatRuleReference = formatRulesReference;
 
     /** Resolved requirements text for the current formation & game system. */
     requirementsText = computed<string | null>(() => {
@@ -504,9 +506,10 @@ export class FormationInfoComponent {
 
     resolvedEffectGroups = computed<ResolvedEffectGroup[]>(() => {
         const def = this.formation();
-        if (!def?.effectGroups) return [];
+        const effectGroups = getInheritedFormationEffectGroups(def);
+        if (effectGroups.length === 0) return [];
 
-        return def.effectGroups.map(group => {
+        return effectGroups.map(group => {
             const abilities: ResolvedAbility[] = [];
 
             // Resolve pilot abilities

@@ -34,6 +34,7 @@
 import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output, ElementRef, DestroyRef, afterNextRender, type ComponentRef, Injector } from '@angular/core';
 import type { ASUnitTypeCode, Unit } from '../../models/units.model';
 import type { ASForceUnit, AbilitySelection } from '../../models/as-force-unit.model';
+import { COMMAND_ABILITIES } from '../../models/command-abilities.model';
 import { PILOT_ABILITIES, type ASCustomPilotAbility } from '../../models/pilot-abilities.model';
 import { AsAbilityLookupService, type ParsedAbility } from '../../services/as-ability-lookup.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -370,17 +371,31 @@ export class AlphaStrikeCardComponent {
     }
 
     onPilotAbilityClick(selection: AbilitySelection): void {
-        const isCustom = typeof selection !== 'string';
+        let isCustom = typeof selection !== 'string';
+        let isCommand = false;
         let ability: PilotAbilityInfoDialogData['ability'];
         
         if (typeof selection === 'string') {
-            ability = PILOT_ABILITIES.find(a => a.id === selection) ?? { name: selection, cost: 0, summary: '' } as ASCustomPilotAbility;
+            const pilotAbility = PILOT_ABILITIES.find((entry) => entry.id === selection);
+            if (pilotAbility) {
+                ability = pilotAbility;
+            } else {
+                const commandAbility = COMMAND_ABILITIES.find((entry) => entry.id === selection);
+                if (commandAbility) {
+                    ability = commandAbility;
+                    isCommand = true;
+                    isCustom = false;
+                } else {
+                    ability = { name: selection, cost: 0, summary: '' } as ASCustomPilotAbility;
+                    isCustom = true;
+                }
+            }
         } else {
             ability = selection;
         }
         
         this.dialogs.createDialog<void>(PilotAbilityInfoDialogComponent, {
-            data: { gameSystem: GameSystem.ALPHA_STRIKE, ability, isCustom } as PilotAbilityInfoDialogData
+            data: { gameSystem: GameSystem.ALPHA_STRIKE, ability, isCustom, isCommand } as PilotAbilityInfoDialogData
         });
     }
 

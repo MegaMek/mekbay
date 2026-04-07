@@ -2,11 +2,33 @@
     <h2 class="wide-dialog-title">Warrior Data</h2>
     <div class="wide-dialog-body">
         <div class="form-row">
+            @if (data.group) {
+            <button
+                type="button"
+                class="formation-commander-toggle"
+                [class.active]="selectedFormationCommander()"
+                [attr.aria-label]="selectedFormationCommander() ? 'Unset group commander' : 'Set as group commander'"
+                [attr.aria-pressed]="selectedFormationCommander()"
+                [attr.title]="selectedFormationCommander() ? 'Unset group commander' : 'Set as group commander'"
+                (click)="setFormationCommanderSelected(!selectedFormationCommander())">
+                <svg class="formation-commander-icon" width="21" height="26" viewBox="0 0 21 25.9" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                    <g transform="translate(-.02)">
+                        <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
+                            <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
+                            <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
+                        </g>
+                    </g>
+                </svg>
+            </button>
+            }
             <div class="form-fields name-field">
                 <label class="field-label">Name</label>
                 <div class="input-wrapper">
                     <input #nameInput type="text" class="field-input" autocomplete="off" maxlength="40" [value]="data.name || ''" (keydown.enter)="submit()" />
                 </div>
+                @if (data.group && selectedFormationCommander()) {
+                <div class="field-note formation-commander-inline-note">This unit is the group commander.</div>
+                }
             </div>
             <div class="form-fields skill-field">
                 <label class="field-label">Skill</label>
@@ -72,7 +94,7 @@
                         @if (displayInfo.rulesRef) {
                             <div class="ability-detail-rules">
                                 @for (rule of displayInfo.rulesRef; let last = $last; track $index) {
-                                    {{ rule.book }}, p.{{ rule.page }}
+                                    {{ formatRuleReference(rule) }}
                                     @if (!last) {
                                         <span class="separator"> · </span>
                                     }
@@ -106,6 +128,105 @@
             }
             }
         </div>
+
+        @if (data.group) {
+        <div class="abilities-section formation-section">
+            <p>Formation Abilities</p>
+
+            @if (formationPreview(); as preview) {
+                @if (preview.requirementsFiltered) {
+                <div class="ability-limits-info">
+                    {{ preview.requirementsFilterNotice || 'Some structurally attached units are ignored when checking formation bonus eligibility.' }}
+                </div>
+                }
+
+                @if (formationEffectPreviews().length > 0) {
+                    @for (effect of formationEffectPreviews(); track effect.descriptor.key) {
+                    <div class="formation-effect-card framed-borders" [class.ineligible]="!isFormationEffectEligible(effect)">
+                        <div class="formation-effect-header">
+                            <div class="group">
+                                <span class="formation-effect-title">{{ effect.descriptor.sourceFormationName }}</span>
+                                <span class="formation-effect-meta">{{ getFormationDistributionLabel(effect) }}</span>
+                            </div>
+                            <span class="formation-effect-count">
+                                {{ effect.recipientUnitIds.length }}/{{ effect.recipientLimit ?? effect.candidateUnitIds.length }}
+                            </span>
+                        </div>
+
+                        <div class="formation-effect-summary">{{ getFormationEffectSummary(effect) }}</div>
+
+                        @if (!isFormationEffectEligible(effect)) {
+                        <div class="unit-type-warning">{{ getFormationEffectUnavailableText(effect) }}</div>
+                        } @else if (isFormationEffectAutoAssigned(effect)) {
+                        <div class="formation-effect-auto-state corner-borders">
+                            <div class="formation-effect-header formation-effect-auto-header">
+                                <span class="formation-option-name">{{ getFormationEffectAbilityNames(effect) }}</span>
+                                <span class="formation-effect-auto-label">Automatically Assigned</span>
+                            </div>
+                            @if (getFormationEffectAbilitySummary(effect); as autoSummary) {
+                            <span class="formation-option-summary">{{ autoSummary }}</span>
+                            }
+                            @if (getFormationEffectAbilityRules(effect); as autoRules) {
+                                @if (autoRules.length > 0) {
+                                <span class="formation-option-rules">
+                                    @for (rule of autoRules; let last = $last; track $index) {
+                                        {{ formatRuleReference(rule) }}
+                                        @if (!last) {
+                                            <span class="separator"> · </span>
+                                        }
+                                    }
+                                </span>
+                                }
+                            }
+                        </div>
+                        } @else {
+                        <div class="formation-option-list">
+                            @for (abilityId of effect.descriptor.abilityIds; track abilityId) {
+                            @let abilityInfo = getFormationAbilityDisplayInfo(abilityId);
+                            <button
+                                class="formation-option bt-button multiline"
+                                type="button"
+                                [class.active]="effect.descriptor.group.selection === 'all' ? getFormationEffectAssignedAbilityIds(effect).length > 0 : isFormationAbilityAssigned(effect, abilityId)"
+                                [disabled]="effect.descriptor.group.selection === 'all' ? !canToggleFormationEffect(effect) : !canToggleFormationAbility(effect, abilityId)"
+                                (click)="effect.descriptor.group.selection === 'all' ? toggleFormationEffect(effect) : toggleFormationEffect(effect, abilityId)">
+                                <span class="formation-option-name">{{ abilityInfo?.name || abilityId }}</span>
+                                @if (abilityInfo?.summary) {
+                                <span class="formation-option-summary">{{ abilityInfo?.summary }}</span>
+                                }
+                                @if (abilityInfo?.rulesRef) {
+                                    @if (abilityInfo!.rulesRef!.length > 0) {
+                                    <span class="formation-option-rules">
+                                        @for (rule of abilityInfo!.rulesRef!; let last = $last; track $index) {
+                                            {{ formatRuleReference(rule) }}
+                                            @if (!last) {
+                                                <span class="separator"> · </span>
+                                            }
+                                        }
+                                    </span>
+                                    }
+                                }
+                            </button>
+                            }
+                        </div>
+                        }
+                    </div>
+                    }
+                } @else if (!hasAutoGrantedFormationEffects()) {
+                <div class="ability-limits-info disabled-message">
+                    No unit-assigned formation SPAs are available for this group.
+                </div>
+                }
+
+                @if (unsupportedFormationEffects().length > 0) {
+                <div class="formation-notes">
+                    @for (effect of unsupportedFormationEffects(); track effect.key) {
+                    <div class="unit-type-warning">{{ getUnsupportedFormationEffectNotice(effect) }}</div>
+                    }
+                </div>
+                }
+            }
+        </div>
+        }
     </div>
     <div class="wide-dialog-actions">
         <button (click)="submit()" class="bt-button">CONFIRM</button>

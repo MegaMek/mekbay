@@ -76,6 +76,7 @@ import { CBTPrintUtil } from '../utils/cbtprint.util';
 import { ASPrintUtil } from '../utils/asprint.util';
 import type { ForceSlot, ForceAlignment } from '../models/force-slot.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
+import { FormationAbilityAssignmentUtil } from '../utils/formation-ability-assignment.util';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { getPositiveFactionNamesFromFilter } from '../utils/faction-filter.util';
@@ -1247,7 +1248,10 @@ export class ForceBuilderService {
             group.formationLock = false; // Unlock name so it can update with new formation name
             return;
         }
-        if (group.formationLock) return; // Don't change formation if it's already locked
+        if (group.formationLock) {
+            this.reconcileASFormationAssignments(group);
+            return;
+        }
         // Pick the best formation (deterministic, most specific wins),
         // upgrading when a better match becomes available.
         const best = LanceTypeIdentifierUtil.getBestMatchForGroup(group);
@@ -1257,6 +1261,15 @@ export class ForceBuilderService {
                 group.formationHistory.add(best.definition.id);
             }
         }
+        this.reconcileASFormationAssignments(group);
+    }
+
+    private reconcileASFormationAssignments(group: UnitGroup | null | undefined): void {
+        if (!group || group.force.gameSystem !== GameSystem.ALPHA_STRIKE) {
+            return;
+        }
+
+        FormationAbilityAssignmentUtil.reconcileGroupFormationAssignments(group as UnitGroup<ASForceUnit>);
     }
 
     public showFormationInfo(group: UnitGroup): void {
@@ -1980,10 +1993,12 @@ export class ForceBuilderService {
                 asTarget.setPilotName(pilotName);
             }
             asTarget.setPilotSkill(asSource.pilotSkill());
-            const abilities = asSource.pilotAbilities();
+            const abilities = asSource.manualPilotAbilities();
             if (abilities && abilities.length > 0) {
                 asTarget.setPilotAbilities([...abilities]);
             }
+            asTarget.setFormationAbilities([...asSource.formationAbilities()]);
+            asTarget.setFormationCommander(asSource.commander());
         } else {
             // Classic BattleTech
             const fromCrew = sourceUnit.getCrewMembers();
@@ -2571,6 +2586,7 @@ export class ForceBuilderService {
                 } else {
                     group.setName(result.name);
                 }
+                this.assignFormationIfNeeded(group);
             }
         }
     }
@@ -2684,13 +2700,18 @@ export class ForceBuilderService {
      * Opens the edit dialog for an Alpha Strike unit's pilot.
      */
     private async editASPilot(unit: ASForceUnit): Promise<void> {
+        const group = unit.getGroup() as UnitGroup<ASForceUnit> | null;
         const ref = this.dialogsService.createDialog<EditASPilotResult | null, EditASPilotDialogComponent, EditASPilotDialogData>(
             EditASPilotDialogComponent,
             {
                 data: {
+                    unitId: unit.id,
                     name: unit.alias() || '',
                     skill: unit.pilotSkill(),
-                    abilities: unit.pilotAbilities(),
+                    abilities: unit.manualPilotAbilities(),
+                    formationAbilities: unit.formationAbilities(),
+                    commander: unit.commander(),
+                    group,
                     unitTypeCode: unit.getUnit().as?.TP,
                     basePv: unit.getUnit().pv,
                 }
@@ -2710,7 +2731,7 @@ export class ForceBuilderService {
             unit.setPilotSkill(result.skill);
         }
         if (result.abilities !== undefined) {
-            const currentAbilities = unit.pilotAbilities();
+            const currentAbilities = unit.manualPilotAbilities();
             const abilitiesChanged = result.abilities.length !== currentAbilities.length ||
                 result.abilities.some((a, i) => {
                     const current = currentAbilities[i];
@@ -2728,6 +2749,18 @@ export class ForceBuilderService {
             if (abilitiesChanged) {
                 unit.setPilotAbilities(result.abilities);
             }
+        }
+
+        if (group) {
+            FormationAbilityAssignmentUtil.reconcileGroupFormationAssignments(group, {
+                abilityOverrides: new Map([[unit.id, result.formationAbilities]]),
+                commanderUnitId: result.commander
+                    ? unit.id
+                    : group.units().find((candidate) => candidate.id !== unit.id && candidate.commander())?.id ?? null,
+            });
+        } else {
+            unit.setFormationAbilities(result.formationAbilities);
+            unit.setFormationCommander(result.commander);
         }
     }
 

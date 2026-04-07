@@ -592,6 +592,11 @@ hr {
     background-size: 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
     background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
 
+    &.multiline {
+        white-space: normal;
+        font-weight: initial;
+    }
+
     &:hover {
         border-color: transparent;
         background-color: var(--background-highlight);

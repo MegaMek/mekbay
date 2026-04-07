@@ -6,7 +6,11 @@
             }
             {{ abilityName() }}
         </span>
+        @if (isCommand()) {
+        <span class="ability-detail-cost">Command Ability</span>
+        } @else if (abilityCost() !== null) {
         <span class="ability-detail-cost">Cost: {{ abilityCost() }}</span>
+        }
     </div>
 
     <div class="dialog-content">
@@ -20,7 +24,7 @@
             @if (rulesReference()) {
             <div class="ability-rules">
                 @for (ref of rulesReference(); let last = $last; track $index) {
-                    {{ ref.book }}, p.{{ ref.page }}
+                    {{ formatRuleReference(ref) }}
                     @if (!last) {
                         <span class="separator"> · </span>
                     }
