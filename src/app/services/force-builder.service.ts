@@ -1112,6 +1112,7 @@ export class ForceBuilderService {
         if (sourceSystem === GameSystem.ALPHA_STRIKE) {
             // AS → CBT
             const asSource = sourceUnit as ASForceUnit;
+            const cbtTarget = targetUnit as CBTForceUnit;
             const sourceName = asSource.alias();
             const sourceSkill = asSource.getPilotSkill();
             const newCrew = targetUnit.getCrewMembers();
@@ -1119,9 +1120,11 @@ export class ForceBuilderService {
                 if (sourceName) newCrew[0].setName(sourceName);
                 newCrew[0].setSkill('gunnery', sourceSkill);
             }
+            cbtTarget.setFormationCommander(asSource.commander());
         } else {
             // CBT → AS
             const asTarget = targetUnit as ASForceUnit;
+            const cbtSource = sourceUnit as CBTForceUnit;
             const sourceCrew = sourceUnit.getCrewMembers();
             if (sourceCrew.length > 0) {
                 const name = sourceCrew[0].getName();
@@ -1129,6 +1132,7 @@ export class ForceBuilderService {
                 if (name) asTarget.setPilotName(name);
                 asTarget.setPilotSkill(gunnery);
             }
+            asTarget.setFormationCommander(cbtSource.commander());
         }
     }
 
@@ -2000,6 +2004,8 @@ export class ForceBuilderService {
             asTarget.setFormationCommander(asSource.commander());
         } else {
             // Classic BattleTech
+            const cbtSource = sourceUnit as CBTForceUnit;
+            const cbtTarget = targetUnit as CBTForceUnit;
             const fromCrew = sourceUnit.getCrewMembers();
             const toCrew = targetUnit.getCrewMembers();
             const crewCount = Math.min(fromCrew.length, toCrew.length);
@@ -2015,6 +2021,7 @@ export class ForceBuilderService {
                     toMember.setSkill('piloting', fromMember.getSkill('piloting'));
                 }
             }
+            cbtTarget.setFormationCommander(cbtSource.commander());
         }
     }
 
@@ -2645,15 +2652,22 @@ export class ForceBuilderService {
             return;
         }
 
+        if (!(unit instanceof CBTForceUnit)) {
+            return;
+        }
+
+        const cbtUnit = unit;
+
         // Handle Classic BattleTech units
         if (!pilot) {
-            const crewMembers = unit.getCrewMembers();
+            const crewMembers = cbtUnit.getCrewMembers();
             if (crewMembers.length === 0) {
                 this.toastService.showToast('This unit has no crew to edit.', 'error');
                 return;
             }
             pilot = crewMembers[0];
         }
+        const group = cbtUnit.getGroup() as UnitGroup<CBTForceUnit> | null;
         const disablePiloting = baseUnit.type === 'ProtoMek' || ((baseUnit.type === 'Infantry') && (!canAntiMech(baseUnit)));
         let labelPiloting;
         if (baseUnit.type === 'Infantry') {
@@ -2667,15 +2681,16 @@ export class ForceBuilderService {
             EditPilotDialogComponent,
             {
                 data: {
+                    unitId: cbtUnit.id,
                     name: pilot.getName(),
                     gunnery: pilot.getSkill('gunnery'),
                     piloting: pilot.getSkill('piloting'),
                     labelGunnery: `Gunnery Skill`,
                     labelPiloting: `${labelPiloting} Skill`,
                     disablePiloting: disablePiloting,
-                    preSkillBv: unit instanceof CBTForceUnit
-                        ? unit.getBaseBv() + unit.tagBV() + unit.c3Tax()
-                        : undefined,
+                    commander: cbtUnit.commander(),
+                    group,
+                    preSkillBv: cbtUnit.getBaseBv() + cbtUnit.tagBV() + cbtUnit.c3Tax(),
                     unit: baseUnit,
                 }
             }
@@ -2692,6 +2707,17 @@ export class ForceBuilderService {
         }
         if (result.piloting !== undefined) {
             pilot.setSkill('piloting', result.piloting);
+        }
+
+        if (group) {
+            const commanderUnitId = result.commander
+                ? cbtUnit.id
+                : group.units().find((candidate) => candidate.id !== cbtUnit.id && candidate.commander())?.id ?? null;
+            for (const candidate of group.units()) {
+                candidate.setFormationCommander(candidate.id === commanderUnitId);
+            }
+        } else {
+            cbtUnit.setFormationCommander(result.commander);
         }
     };
 

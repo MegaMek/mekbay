@@ -746,6 +746,7 @@ export class CBTForceUnit extends ForceUnit {
             const pilot = this.getCrewMember(0);
             pilot?.setName(data.alias ?? '');
         }
+        this._formationCommander.set(data.commander ?? false);
         if (data.state) {
             this.state.update(data.state);
         }
@@ -767,6 +768,7 @@ export class CBTForceUnit extends ForceUnit {
             id: this.id,
             state: stateObj,
             alias: this.alias(),
+            commander: this._formationCommander() || undefined,
             updatedTs: this.updatedTs || undefined,
             unit: this.getUnit().name // Serialize only the name
         };
@@ -809,6 +811,7 @@ export class CBTForceUnit extends ForceUnit {
         if (data.updatedTs !== undefined) {
             fu.updatedTs = data.updatedTs;
         }
+        fu._formationCommander.set(data.commander ?? false);
         fu.deserializeState(data.state);
         return fu;
     }

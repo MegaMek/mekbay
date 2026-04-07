@@ -63,13 +63,11 @@ export class ASForceUnit extends ForceUnit {
     private readonly _pilotSkill = signal<number>(4);
     private readonly _pilotAbilities = signal<AbilitySelection[]>([]);
     private readonly _formationAbilities = signal<string[]>([]);
-    private readonly _formationCommander = signal<boolean>(false);
 
     readonly alias = this._pilotName.asReadonly();
     readonly pilotSkill = this._pilotSkill.asReadonly();
     readonly manualPilotAbilities = this._pilotAbilities.asReadonly();
     readonly formationAbilities = this._formationAbilities.asReadonly();
-    readonly commander = this._formationCommander.asReadonly();
     readonly pilotAbilities = computed<AbilitySelection[]>(() => {
         const manualAbilities = this._pilotAbilities();
         const mergedAbilities: AbilitySelection[] = [...manualAbilities];
@@ -361,17 +359,6 @@ export class ASForceUnit extends ForceUnit {
         }
 
         this._formationAbilities.set(normalizedAbilities);
-        if (markModified) {
-            this.setModified();
-        }
-    }
-
-    setFormationCommander(value: boolean, markModified: boolean = true): void {
-        if (this._formationCommander() === value) {
-            return;
-        }
-
-        this._formationCommander.set(value);
         if (markModified) {
             this.setModified();
         }

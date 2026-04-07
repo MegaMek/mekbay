@@ -2,6 +2,24 @@
     display: contents;
 }
 
+.group-commander-indicator {
+    position: absolute;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--bt-yellow);
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0.5;
+}
+
+.group-commander-icon {
+    width: 25px;
+    height: auto;
+    transform: rotate(180deg);
+    flex-shrink: 0;
+}
+
 .unit-square.compact-mode {
     position: relative;
     pointer-events: none;
@@ -101,6 +119,15 @@
         top: 3px;
         right: 3px;
     }
+
+    .group-commander-indicator {
+        top: 2px;
+        left: 2px;
+
+        .group-commander-icon {
+            width: 16px;
+        }
+    }
 }
 
 :host(.miniMode) .unit-square.compact-mode {
@@ -186,6 +213,11 @@
     .unit-alias.thin {
         font-size: 0.9em;
         font-weight: normal;
+    }
+
+    .group-commander-indicator {
+        top: 4px;
+        left: 4px;
     }
 
     .info-slot {

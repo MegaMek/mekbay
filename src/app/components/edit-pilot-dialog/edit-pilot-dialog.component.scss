@@ -1,3 +1,49 @@
+.commander-layout {
+    align-items: flex-start;
+}
+
+@container (max-width: 400px) {
+    .commander-layout {
+        align-items: stretch;
+    }
+}
+
+.commander-name-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    flex: 1 1 0;
+    min-width: 0;
+
+    > .form-fields {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+}
+
+.name-field {
+    flex: 1 1 0 !important;
+    min-width: 0;
+}
+
+.group-commander-toggle {
+    align-self: flex-start;
+    flex: 0 0 auto;
+    margin-top: 21px;
+    line-height: 0;
+}
+
+.group-commander-icon {
+    width: 21px;
+    height: 26px;
+    transform: rotate(180deg);
+    flex-shrink: 0;
+}
+
+.group-commander-inline-note {
+    color: var(--bt-yellow) !important;
+}
+
 .skill-selector {
     width: 100%;
     text-align: center;
