@@ -50,6 +50,7 @@ interface ResolvedDropdownAbility {
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div class="dropdown-panel glass has-shadow framed-borders" data-scroll-container>
+            @if (allowCustom()) {
             <div 
                 class="dropdown-option custom-ability-option"
                 (click)="onAddCustom()">
@@ -58,7 +59,10 @@ interface ResolvedDropdownAbility {
                 </div>
                 <div class="ability-summary">Create a custom ability with your own name, cost, and description</div>
             </div>
+            }
+            @if (allowCustom() && resolvedAbilities().length > 0) {
             <hr class="divider"/>
+            }
             @for (resolved of resolvedAbilities(); track resolved.ability.id) {
                 @let isDisabled = disabledIds().includes(resolved.ability.id) || resolved.ability.cost > remainingCost();
                 <div 
@@ -69,7 +73,9 @@ interface ResolvedDropdownAbility {
                     (click)="onSelect(resolved.ability.id)">
                     <div class="ability-header">
                         <span class="ability-name">{{ resolved.ability.name }}</span>
+                        @if (showCost()) {
                         <span class="ability-cost" [class.exceeds-budget]="resolved.ability.cost > remainingCost()">Cost: {{ resolved.ability.cost }}</span>
+                        }
                     </div>
                     @if (resolved.unitTypeLabel) {
                     <div class="unit-type-info" [class.unit-type-warning]="resolved.unitTypeRestricted">
@@ -204,6 +210,8 @@ export class AbilityDropdownPanelComponent {
     abilities = input.required<PilotAbility[]>();
     disabledIds = input<string[]>([]);
     remainingCost = input<number>(999);
+    allowCustom = input<boolean>(true);
+    showCost = input<boolean>(true);
     /** The unit's AS type code for filtering abilities by unitTypeFilter. */
     unitTypeCode = input<ASUnitTypeCode | undefined>(undefined);
     readonly formatRuleReference = formatRulesReference;
