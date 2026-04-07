@@ -134,6 +134,35 @@ function cbtGetWeightClass(unit: Unit): number {
     return CBT_WEIGHT_CLASS_ORDINALS.get(unit.weightClass) ?? -1;
 }
 
+const CBT_LIGHT_WEIGHT_CLASS = CBT_WEIGHT_CLASS_ORDINALS.get('Light') ?? 1;
+const CBT_MEDIUM_WEIGHT_CLASS = CBT_WEIGHT_CLASS_ORDINALS.get('Medium') ?? 2;
+const CBT_HEAVY_WEIGHT_CLASS = CBT_WEIGHT_CLASS_ORDINALS.get('Heavy') ?? 3;
+const CBT_ASSAULT_WEIGHT_CLASS = CBT_WEIGHT_CLASS_ORDINALS.get('Assault') ?? 4;
+
+function cbtIsLightWeight(unit: Unit): boolean {
+    return cbtGetWeightClass(unit) === CBT_LIGHT_WEIGHT_CLASS;
+}
+
+function cbtIsMediumWeight(unit: Unit): boolean {
+    return cbtGetWeightClass(unit) === CBT_MEDIUM_WEIGHT_CLASS;
+}
+
+function cbtIsMediumOrLarger(unit: Unit): boolean {
+    return cbtGetWeightClass(unit) >= CBT_MEDIUM_WEIGHT_CLASS;
+}
+
+function cbtIsLightOrMedium(unit: Unit): boolean {
+    return cbtGetWeightClass(unit) <= CBT_MEDIUM_WEIGHT_CLASS;
+}
+
+function cbtIsHeavyOrLarger(unit: Unit): boolean {
+    return cbtGetWeightClass(unit) >= CBT_HEAVY_WEIGHT_CLASS;
+}
+
+function cbtIsAssaultOrLarger(unit: Unit): boolean {
+    return cbtGetWeightClass(unit) >= CBT_ASSAULT_WEIGHT_CLASS;
+}
+
 function cbtCanDealDamage(unit: Unit, minDamage: number, atRange: number): boolean {
     if (!unit.comp || unit.comp.length === 0) return false;
     let totalDamageAtRange = 0;
@@ -249,9 +278,9 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const heavyUnits = units.filter(u =>
-                (isAS ? asGetSize(u.getUnit()) : cbtGetWeightClass(u.getUnit())) >= 3);
+                isAS ? asGetSize(u.getUnit()) >= 3 : cbtIsHeavyOrLarger(u.getUnit()));
             const hasLight = units.some(u =>
-                (isAS ? asGetSize(u.getUnit()) : cbtGetWeightClass(u.getUnit())) === (isAS ? 1 : 0));
+                isAS ? asGetSize(u.getUnit()) === 1 : cbtIsLightWeight(u.getUnit()));
             if (heavyUnits.length < 3 || hasLight) return false;
             if (isAS) {
                 const hasEnoughArmor = units.every(u => (u.getUnit().as?.Arm ?? 0) >= 5);
@@ -306,7 +335,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
                 asHasSpecial(u.getUnit(), 'SRM'));
             return allMediumOrLarger && hasEnoughArmor && hasWeapons.length >= Math.ceil(units.length * 0.5);
             } else {
-                const allMediumOrLarger = units.every(u => cbtGetWeightClass(u.getUnit()) >= 1);
+                const allMediumOrLarger = units.every(u => cbtIsMediumOrLarger(u.getUnit()));
                 const hasEnoughArmor = units.every(u => u.getUnit().armor >= 105);
                 const hasWeapons = units.filter(u => cbtHasAutocannon(u.getUnit()) ||
                     cbtHasLRM(u.getUnit()) || cbtHasSRM(u.getUnit()));
@@ -407,7 +436,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const heavyUnits = units.filter(u =>
-                (isAS ? asGetSize(u.getUnit()) : cbtGetWeightClass(u.getUnit())) >= 3);
+                isAS ? asGetSize(u.getUnit()) >= 3 : cbtIsHeavyOrLarger(u.getUnit()));
             if (isAS ? asIsOnlyCombatVehicles(units) : cbtIsOnlyCombatVehicles(units)) {
                 if (countMatchedPairs(heavyUnits) < 2) return false;
             }
@@ -442,10 +471,10 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const lightUnits = units.filter(u => isAS
                 ? asGetSize(u.getUnit()) === 1
-                : cbtGetWeightClass(u.getUnit()) === 0);
+                : cbtIsLightWeight(u.getUnit()));
             const hasAssault = units.some(u => isAS
                 ? asGetSize(u.getUnit()) >= 4
-                : cbtGetWeightClass(u.getUnit()) >= 4);
+                : cbtIsAssaultOrLarger(u.getUnit()));
             if (isAS ? asIsOnlyCombatVehicles(units) : cbtIsOnlyCombatVehicles(units)) {
                 if (countMatchedPairs(lightUnits) < 2) return false;
             }
@@ -479,10 +508,10 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const mediumUnits = units.filter(u => isAS
                 ? asGetSize(u.getUnit()) === 2
-                : cbtGetWeightClass(u.getUnit()) === 1);
+                : cbtIsMediumWeight(u.getUnit()));
             const hasAssault = units.some(u => isAS
                 ? asGetSize(u.getUnit()) >= 4
-                : cbtGetWeightClass(u.getUnit()) >= 4);
+                : cbtIsAssaultOrLarger(u.getUnit()));
             if (isAS ? asIsOnlyCombatVehicles(units) : cbtIsOnlyCombatVehicles(units)) {
                 if (countMatchedPairs(mediumUnits) < 2) return false;
             }
@@ -514,10 +543,10 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const heavyUnits = units.filter(u =>
-                (isAS ? asGetSize(u.getUnit()) : cbtGetWeightClass(u.getUnit())) >= 3);
+                isAS ? asGetSize(u.getUnit()) >= 3 : cbtIsHeavyOrLarger(u.getUnit()));
             const hasLight = units.some(u => isAS
                 ? asGetSize(u.getUnit()) === 1
-                : cbtGetWeightClass(u.getUnit()) === 0);
+                : cbtIsLightWeight(u.getUnit()));
             if (isAS ? asIsOnlyCombatVehicles(units) : cbtIsOnlyCombatVehicles(units)) {
                 if (countMatchedPairs(heavyUnits) < 2) return false;
             }
@@ -565,7 +594,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
                 if (units.length < 1) return false;
                 const mediumOrHeavy = units.filter(u => {
                     const weight = cbtGetWeightClass(u.getUnit());
-                    return weight === 1 || weight === 3;
+                    return weight === CBT_MEDIUM_WEIGHT_CLASS || weight === CBT_HEAVY_WEIGHT_CLASS;
                 });
                 const withAutocannon = units.filter(u => cbtHasAutocannon(u.getUnit()));
                 const fastEnough = units.every(u => u.getUnit().walk >= 4);
@@ -601,7 +630,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const heavyUnits = units.filter(u =>
-                (isAS ? asGetSize(u.getUnit()) : cbtGetWeightClass(u.getUnit())) >= 3);
+                isAS ? asGetSize(u.getUnit()) >= 3 : cbtIsHeavyOrLarger(u.getUnit()));
             if (isAS ? asIsOnlyCombatVehicles(units) : cbtIsOnlyCombatVehicles(units)) {
                 if (countMatchedPairs(heavyUnits) < 2) return false;
             }
@@ -849,7 +878,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const heavyUnits = units.filter(u =>
-                (isAS ? asGetSize(u.getUnit()) : cbtGetWeightClass(u.getUnit())) >= 3);
+                isAS ? asGetSize(u.getUnit()) >= 3 : cbtIsHeavyOrLarger(u.getUnit()));
             const allLongRange = isAS
                 ? units.every(u => (u.getUnit().as?.dmg?._dmgL ?? 0) >= 2)
                 : units.every(u => cbtCanDealDamage(u.getUnit(), 10, 18));
@@ -941,7 +970,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const allSmallOrMedium = units.every(u =>
-                (isAS ? asGetSize(u.getUnit()) : cbtGetWeightClass(u.getUnit())) <= (isAS ? 2 : 1));
+                isAS ? asGetSize(u.getUnit()) <= 2 : cbtIsLightOrMedium(u.getUnit()));
             const fastUnits = units.filter(u => isAS
                 ? asGetAnyGroundOrJumpMove(u.getUnit()) >= 12
                 : u.getUnit().walk >= 6);
@@ -1011,7 +1040,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const allSmallOrMedium = units.every(u =>
-                (isAS ? asGetSize(u.getUnit()) : cbtGetWeightClass(u.getUnit())) <= (isAS ? 2 : 1));
+                isAS ? asGetSize(u.getUnit()) <= 2 : cbtIsLightOrMedium(u.getUnit()));
             const allFast = units.every(u => isAS
                 ? asGetAnyGroundOrJumpMove(u.getUnit()) >= 10
                 : u.getUnit().walk >= 5);
@@ -1101,7 +1130,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
                 ? asGetAnyGroundOrJumpMove(u.getUnit()) >= 10
                 : u.getUnit().walk >= 5);
             const hasHeavy = units.some(u =>
-                (isAS ? asGetSize(u.getUnit()) : cbtGetWeightClass(u.getUnit())) >= 3);
+                isAS ? asGetSize(u.getUnit()) >= 3 : cbtIsHeavyOrLarger(u.getUnit()));
             const scoutUnits = units.filter(u => u.getUnit().role === 'Scout');
             return allFast && veryFast.length >= 2 && hasHeavy && scoutUnits.length >= 2;
         },
@@ -1138,7 +1167,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const allLight = units.every(u =>
-                (isAS ? asGetSize(u.getUnit()) : cbtGetWeightClass(u.getUnit())) === (isAS ? 1 : 0));
+                isAS ? asGetSize(u.getUnit()) === 1 : cbtIsLightWeight(u.getUnit()));
             const allVeryFast = units.every(u => isAS
                 ? asGetAnyGroundOrJumpMove(u.getUnit()) >= 12
                 : u.getUnit().walk >= 6);
@@ -1176,7 +1205,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
                 u.getUnit().role === 'Sniper' || u.getUnit().role === 'Missile Boat');
             const assaultCount = units.filter(u => isAS
                 ? asGetSize(u.getUnit()) >= 4
-                : cbtGetWeightClass(u.getUnit()) === 4).length;
+                : cbtIsAssaultOrLarger(u.getUnit())).length;
             return assaultCount <= 1 && hasScoutOrStriker && hasSniperOrMissileBoat;
         },
     },
@@ -1316,9 +1345,9 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
                 ? asGetAnyGroundOrJumpMove(u.getUnit()) >= 8
                 : u.getUnit().walk >= 4);
             const heavyUnits = units.filter(u =>
-                (isAS ? asGetSize(u.getUnit()) : cbtGetWeightClass(u.getUnit())) >= 3);
+                isAS ? asGetSize(u.getUnit()) >= 3 : cbtIsHeavyOrLarger(u.getUnit()));
             const noLight = units.every(u =>
-                (isAS ? asGetSize(u.getUnit()) : cbtGetWeightClass(u.getUnit())) >= (isAS ? 2 : 1));
+                isAS ? asGetSize(u.getUnit()) >= 2 : cbtIsMediumOrLarger(u.getUnit()));
             const hasLongRange = isAS
                 ? units.some(u => (u.getUnit().as?.dmg?._dmgL ?? 0) > 1)
                 : units.some(u => cbtCanDealDamage(u.getUnit(), 5, 18));
@@ -1350,7 +1379,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             if (units.length < 5 || units.length > 10) return false;
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
             const allLight = units.every(u =>
-                (isAS ? asGetSize(u.getUnit()) : cbtGetWeightClass(u.getUnit())) === (isAS ? 1 : 0));
+                isAS ? asGetSize(u.getUnit()) === 1 : cbtIsLightWeight(u.getUnit()));
             const lowDamage = isAS
                 ? units.every(u => (u.getUnit().as?.dmg?._dmgM ?? 0) < 2)
                 : units.every(u => !cbtCanDealDamage(u.getUnit(), 11, 9));
@@ -1549,8 +1578,8 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             const hasBM = units.filter(u =>
                 (isAS ? u.getUnit().as?.TP === 'BM' : u.getUnit().type === 'Mek')).length;
                 if (hasBM > 0) { 
-                    const heavyMeks = units.filter(u => isAS ? (u.getUnit().as?.TP === 'BM' && asGetSize(u.getUnit()) >= 3) : (u.getUnit().type === 'Mek' && cbtGetWeightClass(u.getUnit()) >= 3)).length;
-                    const lightMeks = units.some(u => isAS ? (u.getUnit().as?.TP === 'BM' && asGetSize(u.getUnit()) === 1) : (u.getUnit().type === 'Mek' && cbtGetWeightClass(u.getUnit()) === 0));
+                    const heavyMeks = units.filter(u => isAS ? (u.getUnit().as?.TP === 'BM' && asGetSize(u.getUnit()) >= 3) : (u.getUnit().type === 'Mek' && cbtIsHeavyOrLarger(u.getUnit()))).length;
+                    const lightMeks = units.some(u => isAS ? (u.getUnit().as?.TP === 'BM' && asGetSize(u.getUnit()) === 1) : (u.getUnit().type === 'Mek' && cbtIsLightWeight(u.getUnit())));
                     if (heavyMeks < 2 || lightMeks) return false;
                 }
             const hasBA = units.filter(u =>
