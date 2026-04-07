@@ -13,6 +13,7 @@ import {
     IS_LANCE,
     IS_PLATOON,
     IS_REGIMENT,
+    IS_BRIGADE,
     IS_UNIT,
 } from './is-org';
 import {
@@ -240,6 +241,7 @@ export const CC_CORE_ORG: OrgDefinitionSpec = {
         IS_COMPANY,
         IS_BATTALION,
         IS_REGIMENT,
+        IS_BRIGADE,
         CC_AUGMENTED_LANCE,
         CC_AUGMENTED_COMPANY,
         CC_AUGMENTED_BATTALION,
