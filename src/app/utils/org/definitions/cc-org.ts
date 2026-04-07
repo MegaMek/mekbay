@@ -106,6 +106,25 @@ export const CC_FLEET_REGIMENT: OrgComposedCountRule = {
     childBucketBy: 'promotionBasic',
 };
 
+export const CC_AIR_LANCE: OrgComposedCountRule = {
+    kind: 'composed-count',
+    type: 'Air Lance',
+    priority: 1,
+    countsAs: 'Lance',
+    modifiers: { '': 2 },
+    commandRank: 'Lieutenant',
+    tier: 1.5,
+    formationMatching: {
+        ignoredChildRoles: [{ matches: ['Element'] }],
+        notice: 'Element child groups are ignored for formation requirements.',
+    },
+    childRoles: [
+        { matches: ['Element'], min: 1 },
+        { matches: ['Lance'], min: 1, onlyUnitTypes: ['BM'] },
+    ],
+    childBucketBy: 'promotionWithUnitKinds',
+};
+
 export const CC_AUGMENTED_LANCE: OrgLeafPatternRule = {
     kind: 'leaf-pattern',
     type: 'Augmented Lance',
@@ -233,6 +252,7 @@ export const CC_CORE_ORG: OrgDefinitionSpec = {
         CC_FLIGHT,
         CC_WING,
         CC_FLEET_REGIMENT,
+        CC_AIR_LANCE,
         IS_BA_SQUAD,
         IS_BA_PLATOON,
         IS_PLATOON,

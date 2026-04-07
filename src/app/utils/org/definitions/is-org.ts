@@ -115,14 +115,14 @@ export const IS_UNIT: OrgLeafCountRule = {
     pointModel: 'fixed',
 };
 
-export const IS_LANCE: OrgComposedCountRule = {
-    kind: 'composed-count',
+export const IS_LANCE: OrgLeafCountRule = {
+    kind: 'leaf-count',
     type: 'Lance',
     modifiers: { 'Short ': 2, 'Under-Strength ': 3, '': 4, 'Reinforced ': 5, 'Fortified ': 6 },
     commandRank: 'Lieutenant',
     tier: 1,
-    childRoles: [{ matches: ['Unit'], onlyUnitTypes: ['BM', 'CV'] }],
-    childBucketBy: 'promotionBasic',
+    unitSelector: ['BM', 'CV'],
+    pointModel: 'fixed',
 };
 
 export const IS_COMPANY: OrgComposedCountRule = {
