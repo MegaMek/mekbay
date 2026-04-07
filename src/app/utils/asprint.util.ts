@@ -51,6 +51,12 @@ interface CardRenderItem {
     groupIndex: number;
 }
 
+interface RosterCell {
+    content: string;
+    className?: string;
+    renderAsHtml?: boolean;
+}
+
 // Card dimensions in inches (88mm x 63mm)
 const CARD_WIDTH_IN = 3.46;
 const CARD_HEIGHT_IN = 2.48;
@@ -840,33 +846,24 @@ export class ASPrintUtil {
                 const row = document.createElement('tr');
 
                 const unitName = [unit.chassis, unit.model].filter(Boolean).join(' ');
-                const cells = [
-                    unitName,
-                    as.TP,
-                    String(as.SZ),
-                    String(forceUnit.pilotSkill()),
-                    String(adjustedPv),
-                    unit.role || '',
-                    this.formatRosterMovement(forceUnit, useHex),
-                    as.dmg.dmgS,
-                    as.dmg.dmgM,
-                    as.dmg.dmgL,
-                    `${as.Arm}+${as.Str}`,
-                    String(as.OV),
-                    (as.specials || []).join(', ')
+                const cells: RosterCell[] = [
+                    { content: unitName },
+                    { content: as.TP },
+                    { content: String(as.SZ) },
+                    { content: String(forceUnit.pilotSkill()) },
+                    { content: String(adjustedPv) },
+                    { content: unit.role || '' },
+                    { content: this.formatRosterMovement(forceUnit, useHex), renderAsHtml: true },
+                    { content: as.dmg.dmgS },
+                    { content: as.dmg.dmgM },
+                    { content: as.dmg.dmgL },
+                    { content: `${as.Arm}+${as.Str}` },
+                    { content: String(as.OV) },
+                    { content: (as.specials || []).join(', '), className: 'as-roster-specials' }
                 ];
 
-                for (let i = 0; i < cells.length; i++) {
-                    const td = document.createElement('td');
-                    if (i === 6) {
-                        td.innerHTML = cells[i];
-                    } else {
-                        td.textContent = cells[i];
-                    }
-                    if (i === columns.length - 1) {
-                        td.className = 'as-roster-specials';
-                    }
-                    row.appendChild(td);
+                for (const cell of cells) {
+                    row.appendChild(this.createRosterCell(cell));
                 }
 
                 tbody.appendChild(row);
@@ -919,6 +916,22 @@ export class ASPrintUtil {
             .sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : 0))
             .map(([mode, inches]) => formatMovement(inches, mode, useHex))
             .join('/');
+    }
+
+    private static createRosterCell(cell: RosterCell): HTMLTableCellElement {
+        const td = document.createElement('td');
+
+        if (cell.renderAsHtml) {
+            td.innerHTML = cell.content;
+        } else {
+            td.textContent = cell.content;
+        }
+
+        if (cell.className) {
+            td.className = cell.className;
+        }
+
+        return td;
     }
 
     /**

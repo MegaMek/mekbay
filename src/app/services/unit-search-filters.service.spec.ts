@@ -455,17 +455,60 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         const { dataService } = createService(buildSmallBundle(benchmarkBundle));
 
-        (dataService as any).forcePackToChassisType = new Map([
-            ['stale-pack', new Set(['Stale Unit|Mek'])],
+        (dataService as any).forcePackToLookupKey = new Map([
+            ['stale-pack', new Set(['Stale Unit|Mek|BattleMek'])],
         ]);
-        (dataService as any).chassisTypeToForcePacks = new Map([
-            ['Stale Unit|Mek', ['stale-pack']],
+        (dataService as any).lookupKeyToForcePacks = new Map([
+            ['Stale Unit|Mek|BattleMek', ['stale-pack']],
         ]);
 
         dataService.refreshSearchCorpus();
 
-        expect((dataService as any).forcePackToChassisType).toBeNull();
-        expect((dataService as any).chassisTypeToForcePacks).toBeNull();
+        expect((dataService as any).forcePackToLookupKey).toBeNull();
+        expect((dataService as any).lookupKeyToForcePacks).toBeNull();
+    });
+
+    it('distinguishes force packs by subtype when chassis and type match', () => {
+        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
+            pending('Real unit data could not be loaded for the force pack subtype test.');
+            return;
+        }
+
+        const FORCE_PACK_NAME = 'Third Star League Battle Group';
+        const bundle = buildSmallBundle(benchmarkBundle);
+        const [battleMekPeacekeeper, industrialPeacekeeper] = bundle.units.units;
+
+        battleMekPeacekeeper.name = 'BMPeacekeeper_PKP1A';
+        battleMekPeacekeeper.chassis = 'Peacekeeper';
+        battleMekPeacekeeper.model = 'PKP-1A';
+        battleMekPeacekeeper.type = 'Mek';
+        battleMekPeacekeeper.subtype = 'BattleMek';
+        battleMekPeacekeeper.as = { ...battleMekPeacekeeper.as, TP: 'BM' };
+
+        industrialPeacekeeper.name = 'Peacekeeper_Industrial_Test';
+        industrialPeacekeeper.chassis = 'Peacekeeper';
+        industrialPeacekeeper.model = 'Industrial';
+        industrialPeacekeeper.type = 'Mek';
+        industrialPeacekeeper.subtype = 'Industrial Mek';
+        industrialPeacekeeper.as = { ...industrialPeacekeeper.as, TP: 'IM' };
+
+        const { dataService, service } = createService(bundle);
+
+        expect(dataService.getForcePacksForUnit(battleMekPeacekeeper)).toContain(FORCE_PACK_NAME);
+        expect(dataService.getForcePacksForUnit(industrialPeacekeeper)).not.toContain(FORCE_PACK_NAME);
+        expect(dataService.unitBelongsToForcePack(industrialPeacekeeper, FORCE_PACK_NAME)).toBeFalse();
+
+        service.setFilter('subtype', ['Industrial Mek']);
+
+        const forcePackOptions = service.advOptions()['forcePack']?.options ?? [];
+        const namedForcePackOptions = forcePackOptions.filter(option => typeof option !== 'number');
+        const thirdStarLeagueOption = namedForcePackOptions.find(option => option.name === FORCE_PACK_NAME);
+
+        expect(thirdStarLeagueOption).toEqual(jasmine.objectContaining({ name: FORCE_PACK_NAME, available: false }));
+
+        service.setFilter('forcePack', [FORCE_PACK_NAME]);
+
+        expect(service.filteredUnits()).toEqual([]);
     });
 
     it('keeps bounded dropdown options stable and marks out-of-context entries unavailable', () => {
@@ -659,6 +702,36 @@ describe('UnitSearchFiltersService search telemetry', () => {
             },
         });
         expect(service.filterState()['era']?.value).toEqual(['Succession Wars']);
+    });
+
+    it('loads legacy comma-containing Alpha Strike specials from URL params end to end', () => {
+        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
+            pending('Real unit data could not be loaded for the URL canonicalization test.');
+            return;
+        }
+
+        const special = 'TUR(2/3/3,IF2,LRM1/2/2)';
+        const bundle = buildSmallBundle(benchmarkBundle);
+        bundle.units.units[0].as.specials = ['IF2'];
+        bundle.units.units[1].as.specials = [special];
+
+        const { service, gameServiceStub } = createService(bundle);
+        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+
+        const params = new URLSearchParams();
+        params.set('filters', `as.specials:${special}`);
+
+        service.applySearchParamsFromUrl(params, { expandView: false });
+
+        expect(service.filterState()['as.specials']?.value).toEqual({
+            [special]: {
+                name: special,
+                state: 'or',
+                count: 1,
+            },
+        });
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Tank']);
+        expect(service.queryParameters()['filters']).toBe(`as.specials:"${special}"`);
     });
 
     it('declares indexed dropdown capabilities for source, faction, and era', () => {

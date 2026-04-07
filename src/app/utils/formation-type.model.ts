@@ -90,6 +90,8 @@ export interface FormationTypeDefinition {
     id: string;
     parent?: string;
     name: string;
+    /** Alternative formation names that should count as a whole-phrase match in custom group names. */
+    nameAliases?: string[];
     description: string;
     effectDescription?: string;
     /** Structured SPA distribution rules for this formation's bonus ability. */
@@ -131,6 +133,34 @@ export const NO_FORMATION: FormationTypeDefinition = {
     description: 'Explicitly opt out of any formation assignment.',
 };
 
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeFormationNameMatchText(value: string): string {
+    return value.trim().replace(/\s+/g, ' ');
+}
+
+export function getFormationNameMatchStrings(definition: FormationTypeDefinition): string[] {
+    return [...new Set([
+        definition.name,
+        ...(definition.nameAliases ?? []),
+    ].map(normalizeFormationNameMatchText).filter(Boolean))];
+}
+
+export function formationNameMatchesGroupName(definition: FormationTypeDefinition, groupName: string): boolean {
+    const normalizedGroupName = normalizeFormationNameMatchText(groupName);
+    if (!normalizedGroupName) return false;
+
+    return getFormationNameMatchStrings(definition).some((matchString) => {
+        const matcher = new RegExp(
+            `(^|[^A-Za-z0-9])${escapeRegExp(matchString)}(?=$|[^A-Za-z0-9])`,
+            'i',
+        );
+        return matcher.test(normalizedGroupName);
+    });
+}
+
 /** Returns `true` when the given definition is the "No Formation" sentinel. */
 export function isNoFormation(def: FormationTypeDefinition | null | undefined): boolean {
     return def?.id === NO_FORMATION_ID;
@@ -142,8 +172,9 @@ export function isNoFormation(def: FormationTypeDefinition | null | undefined): 
 export interface FormationMatch {
     definition: FormationTypeDefinition;
     /**
-     * `true` when this formation matched only after filtering out Infantry
-     * units (Nova rule). Formation effects apply to Meks only, not Infantry.
+     * `true` when this formation matched only after ignoring configured child
+     * groups from the resolved organization while checking requirements.
      */
-    novaFiltered: boolean;
+    requirementsFiltered: boolean;
+    requirementsFilterNotice?: string;
 }

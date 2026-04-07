@@ -47,6 +47,8 @@ export interface DialogRef<T = any, R = any> {
     close: (result?: R) => void;
 }
 
+type DialogAutoFocus = boolean | string;
+
 @Injectable({ providedIn: 'root' })
 export class DialogsService {
     private dialog = inject(Dialog);
@@ -64,6 +66,7 @@ export class DialogsService {
             height?: string;
             maxWidth?: string;
             maxHeight?: string;
+            autoFocus?: DialogAutoFocus;
         }
     ): DialogRef<T, R> {
         const cdkRef = this.dialog.open<R, D, T>(component, {
@@ -76,7 +79,7 @@ export class DialogsService {
             height: opts?.height,
             maxWidth: opts?.maxWidth ?? '100dvw',
             maxHeight: opts?.maxHeight ?? '100dvh',
-            autoFocus: 'first-tabbable',
+            autoFocus: opts?.autoFocus ?? false,
             restoreFocus: false
         });
 
@@ -144,6 +147,7 @@ export class DialogsService {
     async prompt(message: string, title: string, defaultValue = '', hint = ''): Promise<string | null> {
         const ref = this.createDialog<string | null>(InputDialogComponent, {
             disableClose: true,
+            autoFocus: 'first-tabbable',
             data: <InputDialogData>{
                 title,
                 message,

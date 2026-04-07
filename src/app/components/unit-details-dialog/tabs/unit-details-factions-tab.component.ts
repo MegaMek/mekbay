@@ -31,17 +31,32 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, inject, computed } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, inject, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { Unit } from '../../../models/units.model';
 import { DataService } from '../../../services/data.service';
+
+const CATCH_ALL_FACTIONS: Record<string, string> = {
+    'Inner Sphere General': 'Inner Sphere',
+    'IS Clan General': 'IS Clan',
+    'HW Clan General': 'HW Clan',
+    'Periphery General': 'Periphery',
+};
+
+const PREFIX_CATCH_ALL = 'Star League General';
+const PREFIX_CATCH_ALL_PREFIX = 'Star League';
 
 export interface FactionAvailability {
     eraName: string;
     eraImg?: string;
     eraYearFrom?: number;
     eraYearTo?: number;
-    factions: { name: string; img: string }[];
+    factions: {
+        name: string;
+        img: string;
+        isCatchAll?: boolean;
+        collapsedFactions?: { name: string; img: string }[];
+    }[];
 }
 
 @Component({
@@ -66,25 +81,92 @@ export class UnitDetailsFactionTabComponent {
         const availability: FactionAvailability[] = [];
 
         for (const era of allEras) {
-            const factionsInEra: { name: string, img: string }[] = [];
+            const matchingFactions: { name: string; img: string; group: string }[] = [];
             for (const faction of allFactions) {
                 const factionEras = faction.eras[era.id];
                 if (factionEras && (factionEras as Set<number>).has(unitId)) {
-                    factionsInEra.push({ name: faction.name, img: faction.img });
+                    matchingFactions.push({ name: faction.name, img: faction.img, group: faction.group });
                 }
             }
 
-            if (factionsInEra.length > 0) {
-                factionsInEra.sort((a, b) => a.name.localeCompare(b.name));
+            if (matchingFactions.length > 0) {
+                const activeCatchAllGroups = new Set<string>();
+                let hasPrefixCatchAll = false;
+                for (const f of matchingFactions) {
+                    if (CATCH_ALL_FACTIONS[f.name]) {
+                        activeCatchAllGroups.add(CATCH_ALL_FACTIONS[f.name]);
+                    }
+                    if (f.name === PREFIX_CATCH_ALL) {
+                        hasPrefixCatchAll = true;
+                    }
+                }
+
+                const factions: FactionAvailability['factions'] = [];
+                const collapsedByGroup = new Map<string, { name: string; img: string }[]>();
+                const prefixCollapsed: { name: string; img: string }[] = [];
+
+                for (const f of matchingFactions) {
+                    if (CATCH_ALL_FACTIONS[f.name] || f.name === PREFIX_CATCH_ALL) {
+                        factions.push({ name: f.name, img: f.img, isCatchAll: true });
+                    } else if (hasPrefixCatchAll && f.name.startsWith(PREFIX_CATCH_ALL_PREFIX)) {
+                        prefixCollapsed.push({ name: f.name, img: f.img });
+                    } else if (activeCatchAllGroups.has(f.group)) {
+                        if (!collapsedByGroup.has(f.group)) {
+                            collapsedByGroup.set(f.group, []);
+                        }
+                        collapsedByGroup.get(f.group)!.push({ name: f.name, img: f.img });
+                    } else {
+                        factions.push({ name: f.name, img: f.img });
+                    }
+                }
+
+                for (const f of factions) {
+                    if (f.isCatchAll) {
+                        if (f.name === PREFIX_CATCH_ALL) {
+                            if (prefixCollapsed.length > 0) {
+                                prefixCollapsed.sort((a, b) => a.name.localeCompare(b.name));
+                                f.collapsedFactions = prefixCollapsed;
+                            }
+                        } else {
+                            const group = CATCH_ALL_FACTIONS[f.name];
+                            const collapsed = collapsedByGroup.get(group);
+                            if (collapsed) {
+                                collapsed.sort((a, b) => a.name.localeCompare(b.name));
+                                f.collapsedFactions = collapsed;
+                            }
+                        }
+                    }
+                }
+
+                factions.sort((a, b) => a.name.localeCompare(b.name));
                 availability.push({
                     eraName: era.name,
                     eraImg: era.img,
                     eraYearFrom: era.years.from,
                     eraYearTo: !era.years.to || era.years.to >= 9999 ? undefined : era.years.to,
-                    factions: factionsInEra
+                    factions
                 });
             }
         }
         return availability;
     });
+
+    expandedCatchAlls = signal(new Set<string>());
+
+    toggleCatchAll(eraIndex: number, factionName: string): void {
+        const key = `${eraIndex}:${factionName}`;
+        this.expandedCatchAlls.update(set => {
+            const next = new Set(set);
+            if (next.has(key)) {
+                next.delete(key);
+            } else {
+                next.add(key);
+            }
+            return next;
+        });
+    }
+
+    isCatchAllExpanded(eraIndex: number, factionName: string): boolean {
+        return this.expandedCatchAlls().has(`${eraIndex}:${factionName}`);
+    }
 }

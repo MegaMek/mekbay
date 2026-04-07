@@ -583,6 +583,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'berserker-lance',
         name: 'Berserker/Close Combat',
+        nameAliases: ['Berserker', 'Close Combat'],
         description: 'Close combat specialists for physical attacks',
         effectDescription: 'Two units in this formation receive the Swordsman or Zweihander SPA. The same ability must be assigned to both units.',
         effectGroups: [{
@@ -914,48 +915,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         },
     },
 
-    // ─── Clan Nova ───────────────────────────────────────────────────────
-    //
-    // 5 OmniMechs + 5 mechanized BA.
-    // Bonus: Mounted infantry attacks with transport's movement modifier + 2 TN.
-    //
-
-    // NOTE: Removed, because is a non-formation rule-wise (use the bonus of another formation).
-    // We have Nova as naming done automatically for the group size when is matching these requirements.
-
-    // {
-    //     id: 'nova',
-    //     name: 'Nova',
-    //     description: 'Clan OmniMech Star with mechanized battle armor',
-    //     effectDescription: 'Mounted infantry may make weapon attacks using the transport\'s attacker movement modifier with an additional +2 TN modifier for being mounted.',
-    //     techBase: 'Clan',
-    //     rulesRef: [{ book: Rulebook.CO, page: 64 }, { book: Rulebook.ASCE, page: 121 }],
-    //     requirements: (gameSystem) => {
-    //         if (gameSystem === GameSystem.ALPHA_STRIKE) {
-    //             return 'Clan only. Exactly 10 units: 5 OmniMechs (BM/IM with OMNI) and 5 Battle Armor.';
-    //         }
-    //         return 'Clan only. Exactly 10 units: 5 OmniMechs and 5 Battle Armor.';
-    //     },
-    //     validator: (units, gameSystem) => {
-    //         if (units.length !== 10) return false;
-    //         const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-    //         if (isAS) {
-    //             const mechs = units.filter(u => {
-    //                 const tp = u.getUnit().as?.TP;
-    //                 return tp === 'BM' || tp === 'IM';
-    //             });
-    //             const battleArmor = units.filter(u => u.getUnit().as?.TP === 'BA');
-    //             if (mechs.length !== 5 || battleArmor.length !== 5) return false;
-    //             return mechs.every(u => asHasSpecial(u.getUnit(), 'OMNI'));
-    //         } else {
-    //             const mechs = units.filter(u => u.getUnit().type === 'Mek');
-    //             const battleArmor = units.filter(u => u.getUnit().subtype === 'Battle Armor');
-    //             if (mechs.length !== 5 || battleArmor.length !== 5) return false;
-    //             return mechs.every(u => u.getUnit().omni === 1);
-    //         }
-    //     },
-    // },
-
     // ─── Pursuit Lance ───────────────────────────────────────────────────
     //
     // Bonus: 75% receive Blood Stalker. May target enemy Formation instead of unit.
@@ -1229,6 +1188,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'striker-lance',
         name: 'Striker/Cavalry',
+        nameAliases: ['Striker', 'Cavalry'],
         description: 'Fast mobile firepower',
         effectDescription: '75% of the units (round normally) receive the Speed Demon SPA.',
         effectGroups: [{
@@ -1296,6 +1256,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'light-striker-lance',
         name: 'Light Striker/Cavalry',
+        nameAliases: ['Light Striker', 'Light Cavalry'],
         description: 'Fast light mobile force',
         effectDescription: '75% of the units (round normally) receive the Speed Demon SPA.',
         effectGroups: [{
@@ -1333,6 +1294,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'heavy-striker-lance',
         name: 'Heavy Striker/Cavalry',
+        nameAliases: ['Heavy Striker', 'Heavy Cavalry'],
         description: 'Heavy fast-moving formation',
         effectDescription: '75% of the units (round normally) receive the Speed Demon SPA.',
         effectGroups: [{

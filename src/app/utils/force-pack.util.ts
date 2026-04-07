@@ -50,6 +50,10 @@ export type ResolvedPack = {
     variantName?: string;
 };
 
+export function getForcePackLookupKey(unit: Pick<Unit, 'chassis' | 'type' | 'subtype'>): string {
+    return `${unit.chassis}|${unit.type}|${unit.subtype}`;
+}
+
 export function resolveForcePackUnits(
     unitList: Array<{ name: string }>,
     dataService: DataService

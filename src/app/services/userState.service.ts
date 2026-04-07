@@ -31,11 +31,11 @@
  * affiliated with Microsoft.
  */
 
-import { computed, inject, Injectable, signal, type viewChild } from '@angular/core';
+import { computed, inject, Injectable, signal } from '@angular/core';
 import { generateUUID } from './ws.service';
-import type { Options } from '../models/options.model';
 import { DbService, type UserData } from './db.service';
 import { LoggerService } from './logger.service';
+import type { AvailableAuthProvider, LinkedOAuthProvider, UserStateSnapshot } from '../models/account-auth.model';
 
 /*
  * Author: Drake
@@ -46,17 +46,39 @@ export class UserStateService {
     private dbService = inject(DbService);
     private logger = inject(LoggerService);
     private userData = signal<UserData>({ uuid: '' });
+    private availableAuthProvidersState = signal<AvailableAuthProvider[]>([]);
+    private readonly initPromise: Promise<void>;
     public uuid = computed<string>(() => this.userData().uuid);
     public publicId = computed<string | undefined>(() => this.userData().publicId);
+    public hasOAuth = computed<boolean>(() => this.userData().hasOAuth ?? ((this.userData().oauthProviders?.length ?? 0) > 0));
+    public oauthProviderCount = computed<number>(() => this.userData().oauthProviderCount ?? (this.userData().oauthProviders?.length ?? 0));
+    public oauthProviders = computed<LinkedOAuthProvider[]>(() => this.userData().oauthProviders || []);
+    public availableAuthProviders = computed<AvailableAuthProvider[]>(() => this.availableAuthProvidersState());
 
     constructor() {
-        this.initUserData();
+        this.initPromise = this.initUserData();
+    }
+
+    private createResetUserData(uuid: string): UserData {
+        const current = this.userData();
+        const nextData: UserData = { uuid };
+        if (current.tabSubs) {
+            nextData.tabSubs = [...current.tabSubs];
+        }
+        return nextData;
+    }
+
+    private async persistUserData(nextData: UserData): Promise<void> {
+        this.userData.set({ ...nextData });
+        this.isRegistered.set(Boolean(nextData.publicId));
+        await this.dbService.saveUserData(nextData);
     }
     
     async initUserData() {
         const userData = await this.dbService.getUserData();
         if (userData) {
             this.userData.set(userData);
+            this.isRegistered.set(Boolean(userData.publicId));
             this.logger.info(`User publicId: ${userData.publicId ?? 'not set'}`);
             return;
         }
@@ -72,9 +94,20 @@ export class UserStateService {
         await this.createNewUUID();
     }
 
+    public whenReady(): Promise<void> {
+        return this.initPromise;
+    }
+
     public async createNewUUID(): Promise<UserData> {
         const uuid = generateUUID();
-        this.setUuid(uuid);
+        await this.setUuid(uuid);
+        return this.userData();
+    }
+
+    public async createFreshSession(): Promise<UserData> {
+        const nextUserData: UserData = { uuid: generateUUID() };
+        this.availableAuthProvidersState.set([]);
+        await this.persistUserData(nextUserData);
         return this.userData();
     }
 
@@ -83,15 +116,11 @@ export class UserStateService {
         if (trimmed.length < 10 || trimmed.length > 40) {
             throw new Error('User Identifier must be between 10 and 40 characters long.');
         }
-        let userData = this.userData();
-        if (!userData) {
-            // Create new user data with the given UUID
-            userData = <UserData>{ uuid: trimmed };
-        } else {
-            userData.uuid = trimmed;
-        }
-        this.userData.set({ ...userData });
-        await this.dbService.saveUserData(userData);
+        const currentUuid = this.userData().uuid;
+        const nextUserData = currentUuid === trimmed
+            ? { ...this.userData(), uuid: trimmed }
+            : this.createResetUserData(trimmed);
+        await this.persistUserData(nextUserData);
     }
 
     /**
@@ -104,9 +133,38 @@ export class UserStateService {
             return;
         }
         userData.publicId = publicId;
-        this.userData.set({ ...userData });
-        await this.dbService.saveUserData(userData);
+        await this.persistUserData(userData);
         this.logger.info(`User publicId updated: ${publicId}`);
+    }
+
+    public async applyServerState(snapshot: UserStateSnapshot): Promise<void> {
+        const nextUserData = { ...this.userData() };
+
+        if ('publicId' in snapshot) {
+            if (snapshot.publicId) {
+                nextUserData.publicId = snapshot.publicId;
+            } else {
+                delete nextUserData.publicId;
+            }
+        }
+
+        if ('hasOAuth' in snapshot) {
+            nextUserData.hasOAuth = snapshot.hasOAuth;
+        }
+
+        if ('oauthProviderCount' in snapshot) {
+            nextUserData.oauthProviderCount = snapshot.oauthProviderCount;
+        }
+
+        if (snapshot.oauthProviders) {
+            nextUserData.oauthProviders = snapshot.oauthProviders;
+        }
+
+        if (snapshot.availableAuthProviders) {
+            this.availableAuthProvidersState.set(snapshot.availableAuthProviders);
+        }
+
+        await this.persistUserData(nextUserData);
     }
 
 }

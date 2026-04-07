@@ -33,9 +33,10 @@
 
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, type ElementRef, inject, signal, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { firstValueFrom } from 'rxjs';
 import { OptionsService } from '../../services/options.service';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
-import { DialogRef, type DIALOG_DATA } from '@angular/cdk/dialog';
+import { DialogRef } from '@angular/cdk/dialog';
 import { DbService } from '../../services/db.service';
 import { UserStateService } from '../../services/userState.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -49,6 +50,65 @@ import { PublicTagsService } from '../../services/public-tags.service';
 import { TagsService } from '../../services/tags.service';
 import { TaggingService } from '../../services/tagging.service';
 import { ToastService } from '../../services/toast.service';
+import { AccountAuthService } from '../../services/account-auth.service';
+import { OAuthProviderPickerDialogComponent, type OAuthProviderPickerDialogResult } from '../oauth-provider-picker-dialog/oauth-provider-picker-dialog.component';
+import type { AvailableAuthProvider, LinkedOAuthProvider, OAuthProvider } from '../../models/account-auth.model';
+
+type OptionsSectionId = 'General' | 'Account' | 'Tags' | 'Sheets' | 'Alpha Strike' | 'Advanced' | 'Logs';
+type OptionsViewId = OptionsSectionId;
+
+interface OptionsViewDefinition {
+    id: OptionsViewId;
+    title: string;
+    description?: string;
+    parentId?: OptionsViewId;
+}
+
+const WIDE_LAYOUT_QUERY = '(min-width: 760px) and (min-height: 560px)';
+
+const OPTIONS_VIEW_DEFINITIONS: readonly OptionsViewDefinition[] = [
+    {
+        id: 'General',
+        title: 'General',
+        description: 'Game system, search defaults, user identity, and general printing preferences.'
+    },
+    {
+        id: 'Account',
+        title: 'Account',
+        description: 'OAuth providers, sign-in recovery, and account identity details.'
+    },
+    {
+        id: 'Tags',
+        title: 'Tags',
+        description: 'Share your tags, copy public links, and manage subscriptions.'
+    },
+    {
+        id: 'Sheets',
+        title: 'Record Sheets',
+        description: 'Record sheet appearance, quick actions, automation, and navigation.'
+    },
+    {
+        id: 'Alpha Strike',
+        title: 'Alpha Strike',
+        description: 'Card appearance, Alpha Strike rules automation, and printing behavior.'
+    },
+    {
+        id: 'Advanced',
+        title: 'Advanced',
+        description: 'Input behavior, cached data, local storage, and maintenance actions.'
+    },
+    {
+        id: 'Logs',
+        title: 'Logs',
+        description: 'Recent in-app log messages for diagnostics and troubleshooting.'
+    },
+];
+
+const OPTIONS_VIEW_DEFINITIONS_BY_ID = new Map<OptionsViewId, OptionsViewDefinition>(
+    OPTIONS_VIEW_DEFINITIONS.map(view => [view.id, view])
+);
+
+const TOP_LEVEL_OPTIONS_VIEWS = OPTIONS_VIEW_DEFINITIONS.filter(view => !view.parentId);
 
 /*
  * Author: Drake
@@ -75,13 +135,20 @@ export class OptionsDialogComponent {
     tagsService = inject(TagsService);
     taggingService = inject(TaggingService);
     toastService = inject(ToastService);
+    accountAuthService = inject(AccountAuthService);
     destroyRef = inject(DestroyRef);
     isIOS = isIOS();
-    
-    tabs = computed(() => {
-        return ['General', 'Tags', 'Sheets', 'Alpha Strike', 'Advanced', 'Logs'];
-    });
-    activeTab = signal(this.tabs()[0]);
+    modalClass = 'wide options-dialog-modal';
+    topLevelViews = TOP_LEVEL_OPTIONS_VIEWS;
+    activeTab = signal<OptionsSectionId>('General');
+    navigationStack = signal<OptionsViewId[]>([]);
+    isWideLayout = signal(typeof window !== 'undefined' ? window.matchMedia(WIDE_LAYOUT_QUERY).matches : true);
+    canGoBack = computed(() => this.navigationStack().length > 0);
+    isAtRoot = computed(() => !this.canGoBack());
+    currentViewId = computed<OptionsViewId>(() => this.navigationStack().at(-1) ?? this.activeTab());
+    currentViewDefinition = computed(() => this.getViewDefinition(this.currentViewId()));
+    currentViewDescription = computed(() => this.currentViewDefinition().description);
+    mobileHeaderTitle = computed(() => this.canGoBack() ? this.currentViewDefinition().title : 'Options');
 
     uuidInput = viewChild<ElementRef<HTMLInputElement>>('uuidInput');
     subscriptionInput = viewChild<ElementRef<HTMLInputElement>>('subscriptionInput');
@@ -113,12 +180,110 @@ export class OptionsDialogComponent {
     tagSubscriberCounts = signal<Record<string, number>>({});
     /** Whether subscriber counts are loading */
     subscriberCountsLoading = signal(false);
+    availableAuthProviders = computed<AvailableAuthProvider[]>(() => {
+        const providers = this.userStateService.availableAuthProviders();
+        if (providers.length > 0) {
+            return providers;
+        }
+
+        return [
+            { provider: 'google', label: 'Google', enabled: false },
+            { provider: 'apple', label: 'Apple', enabled: false },
+            { provider: 'discord', label: 'Discord', enabled: false },
+        ];
+    });
+    linkedOAuthProviders = this.userStateService.oauthProviders;
+    userHasOAuth = this.userStateService.hasOAuth;
+    oauthActionInFlight = this.accountAuthService.authInFlight;
+    logoutInFlight = signal(false);
+    enabledAuthProviders = computed<AvailableAuthProvider[]>(() => this.availableAuthProviders().filter(provider => provider.enabled));
+    linkableAuthProviders = computed<AvailableAuthProvider[]>(() => this.availableAuthProviders().filter(provider => !this.isProviderLinked(provider.provider)));
+    hasEnabledAuthProviders = computed(() => this.enabledAuthProviders().length > 0);
 
     constructor() {
+        this.setupLayoutModeTracking();
         this.updateSheetCacheSize();
         this.updateCanvasMemorySize();
         this.updateUnitIconsCount();
         this.loadTagSubscriberCounts();
+    }
+
+    private setupLayoutModeTracking(): void {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        const mediaQuery = window.matchMedia(WIDE_LAYOUT_QUERY);
+        const updateLayout = (matches: boolean) => this.isWideLayout.set(matches);
+        updateLayout(mediaQuery.matches);
+
+        const onChange = (event: MediaQueryListEvent) => updateLayout(event.matches);
+        mediaQuery.addEventListener('change', onChange);
+        this.destroyRef.onDestroy(() => mediaQuery.removeEventListener('change', onChange));
+    }
+
+    private getViewDefinition(viewId: OptionsViewId): OptionsViewDefinition {
+        return OPTIONS_VIEW_DEFINITIONS_BY_ID.get(viewId) ?? OPTIONS_VIEW_DEFINITIONS_BY_ID.get('General')!;
+    }
+
+    private buildViewPath(viewId: OptionsViewId): OptionsViewId[] {
+        const path: OptionsViewId[] = [];
+        let currentViewId: OptionsViewId | undefined = viewId;
+
+        while (currentViewId) {
+            path.unshift(currentViewId);
+            currentViewId = this.getViewDefinition(currentViewId).parentId;
+        }
+
+        return path;
+    }
+
+    private getTopLevelSectionId(viewId: OptionsViewId): OptionsSectionId {
+        let currentView = this.getViewDefinition(viewId);
+
+        while (currentView.parentId) {
+            currentView = this.getViewDefinition(currentView.parentId);
+        }
+
+        return currentView.id;
+    }
+
+    isSectionActive(sectionId: OptionsSectionId): boolean {
+        return this.getTopLevelSectionId(this.currentViewId()) === sectionId;
+    }
+
+    selectDesktopSection(sectionId: OptionsSectionId): void {
+        this.activeTab.set(sectionId);
+        this.navigationStack.set([]);
+    }
+
+    openMobileSection(sectionId: OptionsSectionId): void {
+        this.openView(sectionId);
+    }
+
+    openView(viewId: OptionsViewId): void {
+        this.activeTab.set(this.getTopLevelSectionId(viewId));
+        this.navigationStack.set(this.buildViewPath(viewId));
+    }
+
+    pushView(viewId: OptionsViewId): void {
+        this.openView(viewId);
+    }
+
+    onMobileBack(): void {
+        const stack = this.navigationStack();
+        if (stack.length === 0) {
+            this.onClose();
+            return;
+        }
+
+        const nextStack = stack.slice(0, -1);
+        this.navigationStack.set(nextStack);
+
+        const nextViewId = nextStack.at(-1);
+        if (nextViewId) {
+            this.activeTab.set(this.getTopLevelSectionId(nextViewId));
+        }
     }
 
     /**
@@ -355,6 +520,12 @@ export class OptionsDialogComponent {
     }
 
     async onSetUuid(value: string) {
+        if (this.userHasOAuth()) {
+            this.userUuidError = 'User Identifier changes are disabled for OAuth-connected accounts.';
+            this.resetUserUuidInput();
+            return;
+        }
+
         this.userUuidError = '';
         const trimmed = value.trim();
         if (trimmed === this.userUuid()) {
@@ -387,6 +558,35 @@ export class OptionsDialogComponent {
         } catch (e: any) {
             this.userUuidError = e?.message || 'An unknown error occurred.';
             return;
+        }
+    }
+
+    async onLogout() {
+        if (!this.userHasOAuth() || this.logoutInFlight() || this.oauthActionInFlight()) {
+            return;
+        }
+
+        const confirmed = await this.dialogsService.requestConfirmation(
+            'Are you sure you want to log out on this device? MekBay will remove the local account data stored in this browser, including forces, operations, organizations, tags, subscribed public tags, saved searches and drawings. Your linked OAuth providers will remain attached to your MekBay account. A fresh anonymous User Identifier will then be generated and the app will reload.',
+            'Confirm Logout',
+            'danger'
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        this.logoutInFlight.set(true);
+
+        try {
+            await this.dbService.clearLocalUserStores();
+            await this.userStateService.createFreshSession();
+            window.location.reload();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to log out.';
+            this.logger.error(`Logout failed: ${message}`);
+            this.toastService.showToast(message, 'error');
+            this.logoutInFlight.set(false);
         }
     }
 
@@ -525,5 +725,68 @@ export class OptionsDialogComponent {
 
     async onRenameTag(tagName: string) {
         await this.taggingService.renameTag(tagName);
+    }
+
+    isProviderLinked(provider: OAuthProvider): boolean {
+        return this.linkedOAuthProviders().some(linkedProvider => linkedProvider.provider === provider);
+    }
+
+    getLinkedProvider(provider: OAuthProvider): LinkedOAuthProvider | undefined {
+        return this.linkedOAuthProviders().find(linkedProvider => linkedProvider.provider === provider);
+    }
+
+    getProviderLabel(provider: OAuthProvider): string {
+        return this.accountAuthService.getProviderLabel(provider);
+    }
+
+    isProviderEnabled(provider: OAuthProvider): boolean {
+        return this.availableAuthProviders().some(availableProvider => availableProvider.provider === provider && availableProvider.enabled);
+    }
+
+    getProviderIdentity(provider: LinkedOAuthProvider): string {
+        return provider.displayName || provider.email || `${this.getProviderLabel(provider.provider)} account`;
+    }
+
+    async showProviderSignInDialog(): Promise<void> {
+        if (this.userHasOAuth()) {
+            return;
+        }
+
+        const providers = this.enabledAuthProviders();
+        if (providers.length === 0) {
+            await this.dialogsService.showNotice(
+                'Provider sign-in is not available yet because no OAuth providers are configured on this server.',
+                'Provider Sign-In Unavailable'
+            );
+            return;
+        }
+
+        const ref = this.dialogsService.createDialog<OAuthProviderPickerDialogResult>(OAuthProviderPickerDialogComponent, {
+            disableClose: true,
+            data: {
+                title: 'Sign In',
+                message: 'Choose a provider to recover the MekBay UUID already linked to that account.',
+                providers,
+            }
+        });
+        const choice = (await firstValueFrom(ref.closed)) ?? 'dismiss';
+
+        if (choice === 'dismiss') {
+            return;
+        }
+
+        await this.accountAuthService.loginWithProvider(choice);
+    }
+
+    onLinkProvider(provider: OAuthProvider) {
+        void this.accountAuthService.linkProvider(provider, false);
+    }
+
+    onReplaceProvider(provider: OAuthProvider) {
+        void this.accountAuthService.linkProvider(provider, true);
+    }
+
+    onUnlinkProvider(provider: OAuthProvider) {
+        void this.accountAuthService.unlinkProvider(provider);
     }
 }

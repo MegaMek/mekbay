@@ -487,7 +487,7 @@ hr {
 }
 
 .bt-select {
-    touch-action: none;
+    touch-action: manipulation;
     cursor: pointer;
     padding: 8px 20px 8px 8px;
     border: 2px transparent;
@@ -570,7 +570,7 @@ hr {
 .bt-button {
     cursor: pointer;
     white-space: nowrap;
-    touch-action: none;
+    touch-action: manipulation;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -734,7 +734,7 @@ hr {
 .bt-split-button {
     cursor: pointer;
     white-space: nowrap;
-    touch-action: none;
+    touch-action: manipulation;
     display: inline-flex;
     align-items: stretch;
     background: var(--background-input);
@@ -1856,6 +1856,14 @@ hr.divider {
 
         .unusedMoveMode {
             opacity: 0.5;
+        }
+
+        .movePsrWarning {
+            fill: var(--danger);
+            font-family: Roboto, sans-serif;
+            font-size: 7px;
+            font-weight: 700;
+            pointer-events: none;
         }
     }
 }

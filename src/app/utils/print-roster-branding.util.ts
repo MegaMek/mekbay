@@ -79,18 +79,44 @@ export async function createPrintRosterQrMarkup(
         return '';
     }
 
-    const qrMarkup = await createQrCodeMarkup(forceUrl);
-    return `<div class="${className}">${qrMarkup}</div>`;
+    try {
+        const qrMarkup = await createQrCodeSvgMarkup(forceUrl, PRINT_QR_SIZE_PX);
+        return `<div class="${className}">${qrMarkup}</div>`;
+    } catch (error) {
+        console.error('Failed to generate print roster QR code.', error);
+        return '';
+    }
 }
 
-async function createQrCodeMarkup(url: string): Promise<string> {
-    const { toString } = await import('qrcode');
+export async function createQrCodeSvgMarkup(url: string, width: number): Promise<string> {
+    const toString = await getQrCodeToString();
     return toString(url, {
         errorCorrectionLevel: 'L',
         margin: 2,
         type: 'svg',
-        width: PRINT_QR_SIZE_PX,
+        width,
     });
+}
+
+export async function createQrCodeSvgDataUrl(url: string, width: number): Promise<string> {
+    const svgMarkup = await createQrCodeSvgMarkup(url, width);
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgMarkup)}`;
+}
+
+async function getQrCodeToString(): Promise<(text: string, options: object) => Promise<string>> {
+    const qrCodeModule = await import('qrcode');
+    const toString =
+        typeof qrCodeModule.toString === 'function'
+            ? qrCodeModule.toString.bind(qrCodeModule)
+            : typeof qrCodeModule.default?.toString === 'function'
+                ? qrCodeModule.default.toString.bind(qrCodeModule.default)
+                : null;
+
+    if (!toString) {
+        throw new Error('qrcode.toString() is unavailable.');
+    }
+
+    return toString;
 }
 
 export function getPrintRosterBrandingStyles(prefix: string = ''): string {

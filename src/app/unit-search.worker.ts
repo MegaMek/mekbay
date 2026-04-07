@@ -6,6 +6,7 @@ import { getForcePacks } from './models/forcepacks.model';
 import { ADVANCED_FILTERS, type SearchTelemetryStage } from './services/unit-search-filters.model';
 import { BVCalculatorUtil } from './utils/bv-calculator.util';
 import { getEffectivePilotingSkill } from './utils/cbt-common.util';
+import { getForcePackLookupKey } from './utils/force-pack.util';
 import { parseSemanticQueryAST } from './utils/semantic-filter-ast.util';
 import { PVCalculatorUtil } from './utils/pv-calculator.util';
 import { parseSearchQuery } from './utils/search.util';
@@ -28,7 +29,7 @@ interface WorkerCorpusRuntime {
     indexedUnitIds: Map<string, Map<string, ReadonlySet<string>>>;
     indexedFilterValues: Map<string, string[]>;
     factionEraUnitIds: Map<string, Map<string, ReadonlySet<string>>>;
-    forcePackToChassisType: Map<string, Set<string>>;
+    forcePackToLookupKey: Map<string, Set<string>>;
 }
 
 let corpus: WorkerCorpusRuntime | null = null;
@@ -37,6 +38,10 @@ const workerDisplayNameFns = new Map(
         .filter(filter => typeof filter.displayNameFn === 'function')
         .map(filter => [filter.key, filter.displayNameFn!])
 );
+
+function getUnitNameKey(name: string): string {
+    return name.toLowerCase();
+}
 
 function buildIndexedUnitIds(indexes: UnitSearchWorkerIndexSnapshot): Map<string, Map<string, ReadonlySet<string>>> {
     const result = new Map<string, Map<string, ReadonlySet<string>>>();
@@ -77,16 +82,16 @@ function buildFactionEraUnitIds(factionEraIndex: UnitSearchWorkerFactionEraSnaps
 }
 
 function buildForcePackIndex(units: Unit[]): Map<string, Set<string>> {
-    const unitsByName = new Map(units.map(unit => [unit.name, unit]));
+    const unitsByName = new Map(units.map(unit => [getUnitNameKey(unit.name), unit]));
     const result = new Map<string, Set<string>>();
 
     for (const pack of getForcePacks()) {
-        const chassisTypes = new Set<string>();
+        const lookupKeys = new Set<string>();
         const addPackUnits = (packUnits: Array<{ name: string }>) => {
             for (const packUnit of packUnits) {
-                const unit = unitsByName.get(packUnit.name);
+                const unit = unitsByName.get(getUnitNameKey(packUnit.name));
                 if (unit) {
-                    chassisTypes.add(`${unit.chassis}|${unit.type}`);
+                    lookupKeys.add(getForcePackLookupKey(unit));
                 }
             }
         };
@@ -95,7 +100,7 @@ function buildForcePackIndex(units: Unit[]): Map<string, Set<string>> {
         for (const variant of pack.variants ?? []) {
             addPackUnits(variant.units);
         }
-        result.set(pack.name, chassisTypes);
+        result.set(pack.name, lookupKeys);
     }
 
     return result;
@@ -108,7 +113,7 @@ function hydrateCorpus(snapshot: UnitSearchWorkerCorpusSnapshot): WorkerCorpusRu
         indexedUnitIds: buildIndexedUnitIds(snapshot.indexes),
         indexedFilterValues: buildIndexedFilterValues(snapshot.indexes),
         factionEraUnitIds: buildFactionEraUnitIds(snapshot.factionEraIndex),
-        forcePackToChassisType: buildForcePackIndex(snapshot.units),
+        forcePackToLookupKey: buildForcePackIndex(snapshot.units),
     };
 }
 
@@ -152,7 +157,7 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
 
             return runtime.indexedUnitIds.get('faction')?.get(factionName)?.has(unit.name) ?? false;
         },
-        unitBelongsToForcePack: (unit: Unit, packName: string) => runtime.forcePackToChassisType.get(packName)?.has(`${unit.chassis}|${unit.type}`) ?? false,
+        unitBelongsToForcePack: (unit: Unit, packName: string) => runtime.forcePackToLookupKey.get(packName)?.has(getForcePackLookupKey(unit)) ?? false,
         getAllEraNames: () => runtime.indexedFilterValues.get('era') ?? [],
         getAllFactionNames: () => runtime.indexedFilterValues.get('faction') ?? [],
         getDisplayName: (filterKey: string, value: string) => workerDisplayNameFns.get(filterKey)?.(value),

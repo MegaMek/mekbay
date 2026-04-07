@@ -48,6 +48,10 @@ export interface UrlParseLogger {
     warn(message: string): void;
 }
 
+function getUnitNameKey(name: string): string {
+    return name.toLowerCase();
+}
+
 /**
  * Parameters derived from a Force (or set of forces) for URL serialization.
  * For multi-force support, `instance` may contain comma-separated IDs.
@@ -268,7 +272,7 @@ export function parseForceFromUrl(
 ): ForceUnit[] {
     const unitMap = new Map<string, Unit>();
     for (const unit of allUnits) {
-        const key = lookupMode === 'mulId' ? `${unit.id}` : unit.name;
+        const key = lookupMode === 'mulId' ? `${unit.id}` : getUnitNameKey(unit.name);
         if (!unitMap.has(key)) {
             unitMap.set(key, unit);
         }
@@ -360,7 +364,7 @@ export function parseUnitUrlParams(
         if (!unitParam.trim()) continue;
 
         const parts = unitParam.split(':');
-        const lookupValue = parts[0];
+        const lookupValue = lookupMode === 'mulId' ? parts[0] : getUnitNameKey(parts[0]);
         const unit = unitMap.get(lookupValue);
 
         if (!unit) {

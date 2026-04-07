@@ -240,17 +240,18 @@
             </div>
         </div>
         <div class="expanded-right">
-            @if ((u.comp | expandedComponents); as componentsList) {
+            @let componentsList = expandedComponents();
             @if (componentsList.length > 0) {
-            <div class="components-header">Equipment</div>
-            <div class="expanded-components">
-                <div class="components-pills">
-                    @for (comp of componentsList; let i = $index; track i) {
-                    <unit-component-item [unit]="u" [comp]="comp" displayStyle="tiny"></unit-component-item>
-                    }
+            <div class="components-inline">
+                <div class="components-header">Equipment:</div>
+                <div class="expanded-components">
+                    <div class="components-pills">
+                        @for (comp of componentsList; let i = $index; track i) {
+                        <unit-component-item [unit]="u" [comp]="comp" displayStyle="tiny"></unit-component-item>
+                        }
+                    </div>
                 </div>
             </div>
-            }
             }
             @if ((u.comp | filterAmmo); as ammoList) {
             @if (ammoList.length > 0) {

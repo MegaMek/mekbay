@@ -70,8 +70,10 @@
     </div>
     <div class="hint">Select a unit for detailed readout</div>
     <div class="wide-dialog-actions">
-        @if (!isForceLoaded()) {
+        @if (canLoadForce()) {
             <button class="bt-button primary" (click)="onLoad()">LOAD</button>
+        }
+        @if (!isForceLoaded()) {
             <button class="bt-button" (click)="onAdd()">ADD</button>
         }
         <button class="bt-button" (click)="close()">DISMISS</button>

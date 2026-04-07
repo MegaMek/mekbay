@@ -108,9 +108,9 @@ export interface ResolvedEffectGroup {
                 </div>
             }
 
-            @if (novaFiltered()) {
-                <div class="nova-warning">
-                    <span><strong>Nova formation:</strong> this formation matches the &#039;Mech portion only. Formation bonus do not apply to Infantry units.</span>
+            @if (requirementsFiltered()) {
+                <div class="formation-filter-warning">
+                    <span><strong>Filtered requirements:</strong> {{ requirementsFilterNotice() || 'Some structurally attached units are ignored when checking this formation. Formation bonuses apply only to the matching portion of the group.' }}</span>
                 </div>
             }
 
@@ -268,7 +268,7 @@ export interface ResolvedEffectGroup {
             margin-bottom: 2px;
         }
 
-        .nova-warning {
+        .formation-filter-warning {
             display: flex;
             align-items: flex-start;
             gap: 8px;
@@ -429,8 +429,10 @@ export class FormationInfoComponent {
     unitCount = input<number | undefined>(undefined);
     /** Whether the formation is valid for the current group composition. undefined = unknown / not checked. */
     isValid = input<boolean | undefined>(undefined);
-    /** Whether the formation was matched via the Nova rule (Infantry filtered out). */
-    novaFiltered = input<boolean>(false);
+    /** Whether organization-level units were ignored while checking requirements. */
+    requirementsFiltered = input<boolean>(false);
+    /** Optional notice describing which structural units were ignored. */
+    requirementsFilterNotice = input<string | undefined>(undefined);
     /** Whether to show the formation name header. Defaults to true. */
     showTitle = input<boolean>(true);
 

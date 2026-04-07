@@ -170,8 +170,8 @@
         position: absolute;
         color: black;
         left: -17px;
-        top: 2px;
-        bottom: 2px;
+        top: -4px;
+        bottom: -5px;
         line-height: 1;
         text-align: center;
         white-space: nowrap;
@@ -220,6 +220,10 @@
             &.enabled {
                 background-color: color-mix(in srgb, var(--network-color) 100%, transparent 50%);
             }
+        }
+
+        &.tag {
+            background-color: rgba(191, 119, 18, 0.55);
         }
         
         &.ecm {

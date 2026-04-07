@@ -86,6 +86,7 @@
         <h3>Wildcards</h3>
         <p>Use <code>*</code> as wildcard in any dropdown filter value:</p>
         <div class="examples">
+            <div class="example"><code class="allow-select" (click)="appendToSearch('pack=*')">pack=*</code><span class="desc">→ All units that exist in any Force Pack</span></div>
             <div class="example"><code class="allow-select" (click)="appendToSearch('faction=&quot;Free Worlds*&quot;')">faction="Free Worlds*"</code><span class="desc">→ Free Worlds League and similar</span></div>
             <div class="example"><code class="allow-select" (click)="appendToSearch('faction==&quot;Free Worlds*&quot;')">faction=="Free Worlds*"</code><span class="desc">→ Matches only Free Worlds-aligned factions and excludes mixed-faction entries</span></div>
             <div class="example"><code class="allow-select" (click)="appendToSearch('faction!=&quot;Free Worlds*&quot;')">faction!="Free Worlds*"</code><span class="desc">→ Exclude Free Worlds League and similar</span></div>

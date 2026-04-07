@@ -15,6 +15,7 @@ import { type GroupSizeResult, type OrgSizeResult } from './org-types';
  */
 export interface OrgNamingOptions {
 	readonly displayOnlyTopLevel?: boolean;
+	readonly displayTierCutoff?: number;
 }
 
 interface DisplayBucket {
@@ -151,23 +152,46 @@ function getDisplayBucketsForOptions(
 	buckets: readonly DisplayBucket[],
 	options: OrgNamingOptions,
 ): DisplayBucket[] {
-	if (!options.displayOnlyTopLevel || buckets.length <= 1) {
-		return [...buckets];
+	let filteredBuckets = [...buckets];
+	const displayTierCutoff = options.displayTierCutoff;
+	if (displayTierCutoff !== undefined && filteredBuckets.length > 1) {
+		const bucketsAtOrAboveCutoff = filteredBuckets.filter((bucket) => bucket.tier >= displayTierCutoff);
+		const hasBucketsBelowCutoff = filteredBuckets.some((bucket) => bucket.tier < displayTierCutoff);
+		if (bucketsAtOrAboveCutoff.length > 0 && hasBucketsBelowCutoff) {
+			filteredBuckets = bucketsAtOrAboveCutoff;
+		}
 	}
 
-	const highestTier = buckets[0]?.tier ?? 0;
-	return buckets.filter((bucket) => Math.abs(bucket.tier - highestTier) < 0.0001);
+	if (!options.displayOnlyTopLevel || filteredBuckets.length <= 1) {
+		return filteredBuckets;
+	}
+
+	const highestTier = filteredBuckets[0]?.tier ?? 0;
+	return filteredBuckets.filter((bucket) => Math.abs(bucket.tier - highestTier) < 0.0001);
 }
 
 function getGroupDisplayCount(group: GroupSizeResult): number {
 	return Math.max(1, group.count ?? 1);
 }
 
+function getGroupTierWeight(group: GroupSizeResult): number {
+	return group.isFragment ? 1 : getGroupDisplayCount(group);
+}
+
 function getExpandedGroupTiers(groups: readonly GroupSizeResult[]): number[] {
-	return groups.flatMap((group) => Array.from({ length: getGroupDisplayCount(group) }, () => group.tier));
+	return groups.flatMap((group) => Array.from({ length: getGroupTierWeight(group) }, () => group.tier));
 }
 
 function getAggregatedDisplayTier(groups: readonly GroupSizeResult[]): number {
+	if (groups.length === 0) {
+		return 0;
+	}
+
+	const highestTier = Math.max(...groups.map((group) => group.tier));
+	if (highestTier <= 0) {
+		return highestTier;
+	}
+
 	return getAggregatedTier(getExpandedGroupTiers(groups));
 }
 
@@ -213,7 +237,19 @@ function getDisplayBuckets(groups: readonly GroupSizeResult[]): DisplayBucket[] 
 }
 
 function formatDisplayBucket(bucket: DisplayBucket): string {
-	return bucket.count > 1 ? `${bucket.count}x ${bucket.label}` : bucket.label;
+	return formatRepeatedDisplayLabel(bucket.label, bucket.count);
+}
+
+function formatRepeatedDisplayLabel(label: string, count: number): string {
+	if (count <= 1) {
+		return label;
+	}
+
+	if (label === 'Unit') {
+		return `${count} Units`;
+	}
+
+	return `${count}x ${label}`;
 }
 
 function formatDisplayBuckets(buckets: readonly DisplayBucket[]): string {
@@ -349,13 +385,23 @@ function getGroupTypeDisplayName(group: GroupSizeResult, preserveForeignNames = 
 	return `${group.modifierKey}${group.type}`;
 }
 
+function formatRepeatedDisplayLabel(label: string, count: number): string {
+	if (count <= 1) {
+		return label;
+	}
+
+	if (label === 'Unit') {
+		return `${count} Units`;
+	}
+
+	return `${count}x ${label}`;
+}
+
 function getGroupDisplayName(group: GroupSizeResult, options: GroupDisplayOptions = {}): string {
 	const includeAllocationSummary = options.includeAllocationSummary ?? true;
 	const preserveForeignNames = options.preserveForeignNames ?? false;
 	const displayCount = getGroupDisplayCount(group);
-	const baseName = displayCount > 1
-		? `${displayCount}x ${getGroupTypeDisplayName(group, preserveForeignNames)}`
-		: getGroupTypeDisplayName(group, preserveForeignNames);
+	const baseName = formatRepeatedDisplayLabel(getGroupTypeDisplayName(group, preserveForeignNames), displayCount);
 
 	if (!includeAllocationSummary) {
 		return baseName;
@@ -412,16 +458,14 @@ function getEquivalentName(groups: readonly GroupSizeResult[], options: GroupDis
 				}
 				return left.label.localeCompare(right.label);
 			})
-			.map((bucket) => {
-				return bucket.count > 1 ? `${bucket.count}x ${bucket.label}` : bucket.label;
-			})
+			.map((bucket) => formatRepeatedDisplayLabel(bucket.label, bucket.count))
 			.join(' + ');
 	}
 
 	const baseLabel = first
 		? getGroupTypeDisplayName({ ...first, modifierKey: '' }, options.preserveForeignNames ?? false)
 		: EMPTY_RESULT.name;
-	return `${getTotalGroupDisplayCount(groups)}x ${baseLabel}`;
+	return formatRepeatedDisplayLabel(baseLabel, getTotalGroupDisplayCount(groups));
 }
 
 function canReresolveAggregatedGroups(groups: readonly GroupSizeResult[]): boolean {
@@ -535,9 +579,7 @@ function getSameTypeAggregatedDisplay(
 				continue;
 			}
 
-			const name = repeatCount === 1
-				? `${step.modifierKey}${first.type}`
-				: `${repeatCount}x ${step.modifierKey}${first.type}`;
+			const name = formatRepeatedDisplayLabel(`${step.modifierKey}${first.type}`, repeatCount);
 			const candidate = {
 				name,
 				tier: candidateTier,
@@ -610,7 +652,7 @@ function getListedGroupsResult(groups: readonly GroupSizeResult[], options: OrgN
 	const name = buckets
 		.map((bucket) => {
 			const totalCount = getTotalGroupDisplayCount(bucket.groups);
-			return totalCount > 1 ? `${totalCount}x ${bucket.label}` : bucket.label;
+			return formatRepeatedDisplayLabel(bucket.label, totalCount);
 		})
 		.join(' + ');
 

@@ -33,7 +33,7 @@
 
 import { ChangeDetectionStrategy, Component, inject, input, output, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import type { Unit } from '../../models/units.model';
+import type { Unit, UnitComponent } from '../../models/units.model';
 import { ForceUnit } from '../../models/force-unit.model';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
@@ -79,7 +79,6 @@ import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card
         FormatTonsPipe,
         StatBarSpecsPipe,
         FilterAmmoPipe,
-        ExpandedComponentsPipe,
         TooltipDirective
     ],
     templateUrl: './unit-card-expanded.component.html',
@@ -89,6 +88,7 @@ export class UnitCardExpandedComponent {
     gameService = inject(GameService);
     private dialogsService = inject(DialogsService);
     private abilityLookup = inject(AsAbilityLookupService);
+    private expandedComponentsPipe = new ExpandedComponentsPipe();
     readonly unitTypeDisplayNames = AS_TYPE_DISPLAY_NAMES;
 
     /** 
@@ -177,6 +177,10 @@ export class UnitCardExpandedComponent {
             return u.getBv();
         }
         return null; // Let the pipe calculate it
+    });
+
+    readonly expandedComponents = computed<UnitComponent[]>(() => {
+        return this.expandedComponentsPipe.transform(this.resolvedUnit().comp ?? []);
     });
     
     /** Derives Alpha Strike status from the ForceUnit's force when available, falls back to global game mode. */

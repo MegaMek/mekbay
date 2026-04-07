@@ -1,6 +1,7 @@
 import { DialogRef } from '@angular/cdk/dialog';
 import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Subject } from 'rxjs';
 import { GameSystem } from '../../models/common.model';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { Unit } from '../../models/units.model';
@@ -8,20 +9,31 @@ import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
+import { UrlStateService } from '../../services/url-state.service';
 import { ForceOrgDialogComponent } from './force-org-dialog.component';
 
 describe('ForceOrgDialogComponent', () => {
     let component: ForceOrgDialogComponent;
+    let fixture: import('@angular/core/testing').ComponentFixture<ForceOrgDialogComponent>;
+    let dialogRefStub: {
+        close: jasmine.Spy;
+        backdropClick: Subject<MouseEvent>;
+        keydownEvents: Subject<KeyboardEvent>;
+        disableClose: boolean;
+    };
 
     const dataServiceStub = {
         listForces: jasmine.createSpy('listForces').and.resolveTo([]),
+        getForceEntriesByIds: jasmine.createSpy('getForceEntriesByIds').and.resolveTo([]),
         getFactionById: jasmine.createSpy('getFactionById').and.returnValue(undefined),
+        getEras: jasmine.createSpy('getEras').and.returnValue([]),
         saveOrganization: jasmine.createSpy('saveOrganization').and.resolveTo(undefined),
         getOrganization: jasmine.createSpy('getOrganization').and.resolveTo(null),
     };
 
     const dialogsServiceStub = {
         createDialog: jasmine.createSpy('createDialog'),
+        choose: jasmine.createSpy('choose').and.resolveTo('cancel'),
         prompt: jasmine.createSpy('prompt').and.resolveTo(null),
         showError: jasmine.createSpy('showError').and.resolveTo(undefined),
     };
@@ -35,20 +47,36 @@ describe('ForceOrgDialogComponent', () => {
         isMobile: signal(false),
     };
 
+    const urlStateServiceStub = {
+        setParams: jasmine.createSpy('setParams'),
+    };
+
     beforeEach(async () => {
+        dialogRefStub = {
+            close: jasmine.createSpy('close'),
+            backdropClick: new Subject<MouseEvent>(),
+            keydownEvents: new Subject<KeyboardEvent>(),
+            disableClose: false,
+        };
+
         await TestBed.configureTestingModule({
             imports: [ForceOrgDialogComponent],
             providers: [
                 provideZonelessChangeDetection(),
-                { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
+                { provide: DialogRef, useValue: dialogRefStub },
                 { provide: DataService, useValue: dataServiceStub },
                 { provide: DialogsService, useValue: dialogsServiceStub },
                 { provide: ForceBuilderService, useValue: forceBuilderServiceStub },
                 { provide: LayoutService, useValue: layoutServiceStub },
+                { provide: UrlStateService, useValue: urlStateServiceStub },
             ],
         }).compileComponents();
 
-        component = TestBed.createComponent(ForceOrgDialogComponent).componentInstance;
+        fixture = TestBed.createComponent(ForceOrgDialogComponent);
+        component = fixture.componentInstance;
+        fixture.detectChanges();
+        dialogsServiceStub.choose.calls.reset();
+        urlStateServiceStub.setParams.calls.reset();
     });
 
     function createPlacedForce(instanceId: string, x: number, y: number, groupId: string | null) {
@@ -170,6 +198,21 @@ describe('ForceOrgDialogComponent', () => {
                 units: units.map(unit => ({ unit, destroyed: false })),
             }],
         });
+    }
+
+    function createDeferred<T>() {
+        let resolve!: (value: T | PromiseLike<T>) => void;
+        let reject!: (reason?: unknown) => void;
+        const promise = new Promise<T>((res, rej) => {
+            resolve = res;
+            reject = rej;
+        });
+        return { promise, resolve, reject };
+    }
+
+    async function flushPromises(): Promise<void> {
+        await Promise.resolve();
+        await Promise.resolve();
     }
 
     it('keeps a grouped force in place while its card still overlaps the group bounds', () => {
@@ -328,6 +371,390 @@ describe('ForceOrgDialogComponent', () => {
         expect(groupB.width()).toBeGreaterThan(20);
         expect(groupB.height()).toBeGreaterThan(20);
         expect((component as any).rectsOverlap(rectA, rectB)).toBeFalse();
+    });
+
+    it('shows a centered loading message while the organization shell is pending', async () => {
+        const orgDeferred = createDeferred<any>();
+
+        dataServiceStub.getOrganization.and.returnValue(orgDeferred.promise);
+        dataServiceStub.getForceEntriesByIds.and.resolveTo([]);
+
+        const loadPromise = (component as any).loadOrganization('org-slow');
+        fixture.detectChanges();
+
+        expect((component as any).loading()).toBeTrue();
+        expect(fixture.nativeElement.textContent).toContain('Loading TO&E...');
+
+        orgDeferred.resolve({
+            organizationId: 'org-slow',
+            name: 'Slow Org',
+            timestamp: Date.now(),
+            owned: false,
+            factionId: undefined,
+            forces: [],
+            groups: [],
+        });
+
+        await loadPromise;
+        fixture.detectChanges();
+
+        expect(fixture.nativeElement.textContent).not.toContain('Loading TO&E...');
+    });
+
+    it('restores the saved organization shell before force hydration completes', async () => {
+        const forceDeferred = createDeferred<LoadForceEntry[]>();
+        const hydratedForce = createLoadForce('force-a', [createBattleMek('Atlas')]);
+
+        dataServiceStub.getOrganization.and.resolveTo({
+            organizationId: 'org-shared',
+            name: 'Shared Org',
+            timestamp: Date.now(),
+            owned: false,
+            factionId: undefined,
+            forces: [
+                { instanceId: 'force-a', x: 40, y: 60, zIndex: 0, groupId: 'group-a' },
+            ],
+            groups: [
+                { id: 'group-a', name: 'Alpha', x: 20, y: 20, width: 240, height: 180, zIndex: 0, parentGroupId: null },
+            ],
+        });
+        dataServiceStub.getForceEntriesByIds.and.returnValue(forceDeferred.promise);
+
+        const loadPromise = (component as any).loadOrganization('org-shared');
+        await flushPromises();
+        fixture.detectChanges();
+
+        expect((component as any).loading()).toBeTrue();
+        expect((component as any).organizationName()).toBe('Shared Org');
+        expect((component as any).groups().map((group: any) => group.id)).toEqual(['group-a']);
+        expect((component as any).placedForces().length).toBe(1);
+        expect((component as any).placedForces()[0].force.missing).toBeTrue();
+        expect(fixture.nativeElement.textContent).toContain('Loading TO&E...');
+
+        forceDeferred.resolve([hydratedForce]);
+
+        await loadPromise;
+        fixture.detectChanges();
+
+        expect((component as any).loading()).toBeFalse();
+        expect((component as any).placedForces()[0].force).toEqual(jasmine.objectContaining({
+            instanceId: hydratedForce.instanceId,
+            missing: false,
+            name: hydratedForce.name,
+        }));
+        expect(fixture.nativeElement.textContent).not.toContain('Loading TO&E...');
+    });
+
+    it('auto-fits using the SVG layout size instead of the animated bounding box', () => {
+        const oversizedGroup = createGroup('group-1', 0, 0, 1400, 1000);
+        const svgStub = {
+            clientWidth: 1000,
+            clientHeight: 800,
+            getBoundingClientRect: () => ({ width: 700, height: 500 }),
+        };
+
+        (component as any).groups.set([oversizedGroup]);
+        (component as any).placedForces.set([]);
+        (component as any).svgCanvas = () => ({ nativeElement: svgStub });
+
+        const fitted = (component as any).autoFitView();
+
+        expect(fitted).toBeTrue();
+        expect((component as any).zoom()).toBeCloseTo(0.657, 3);
+    });
+
+    it('keeps the dialog open when dismiss is cancelled with uncommitted changes', async () => {
+        (component as any).dirty.set(true);
+        dialogsServiceStub.choose.and.resolveTo('cancel');
+        dialogRefStub.close.calls.reset();
+
+        await (component as any).close();
+
+        expect(dialogsServiceStub.choose).toHaveBeenCalledWith(
+            'Unsaved TO&E Changes',
+            jasmine.stringContaining('uncommitted changes'),
+            [
+                jasmine.objectContaining({ label: 'DISCARD', class: 'danger', value: 'discard' }),
+                jasmine.objectContaining({ label: 'CANCEL', value: 'cancel' }),
+            ],
+            'cancel',
+            jasmine.objectContaining({ panelClass: 'danger' }),
+        );
+        expect(dialogRefStub.close).not.toHaveBeenCalled();
+    });
+
+    it('closes the dialog after confirming discard of uncommitted changes', async () => {
+        (component as any).dirty.set(true);
+        dialogsServiceStub.choose.and.resolveTo('discard');
+        dialogRefStub.close.calls.reset();
+
+        await (component as any).close();
+
+        expect(dialogRefStub.close).toHaveBeenCalled();
+    });
+
+    it('only enables guarded dialog closing while the TO&E has uncommitted changes', async () => {
+        expect(dialogRefStub.disableClose).toBeFalse();
+
+        (component as any).dirty.set(true);
+        fixture.detectChanges();
+        await flushPromises();
+
+        expect(dialogRefStub.disableClose).toBeTrue();
+
+        (component as any).dirty.set(false);
+        fixture.detectChanges();
+        await flushPromises();
+
+        expect(dialogRefStub.disableClose).toBeFalse();
+    });
+
+    it('routes backdrop dismiss attempts through the unsaved changes guard', async () => {
+        (component as any).dirty.set(true);
+        dialogsServiceStub.choose.and.resolveTo('cancel');
+        dialogRefStub.close.calls.reset();
+
+        dialogRefStub.backdropClick.next({} as MouseEvent);
+        await flushPromises();
+
+        expect(dialogsServiceStub.choose).toHaveBeenCalled();
+        expect(dialogRefStub.close).not.toHaveBeenCalled();
+    });
+
+    it('does not intercept backdrop dismiss when there are no uncommitted changes', async () => {
+        dialogsServiceStub.choose.calls.reset();
+
+        dialogRefStub.backdropClick.next({} as MouseEvent);
+        await flushPromises();
+
+        expect(dialogRefStub.disableClose).toBeFalse();
+        expect(dialogsServiceStub.choose).not.toHaveBeenCalled();
+    });
+
+    it('warns before unloading when the TO&E has uncommitted changes', () => {
+        const event = {
+            preventDefault: jasmine.createSpy('preventDefault'),
+            returnValue: undefined,
+        } as unknown as BeforeUnloadEvent;
+
+        (component as any).dirty.set(true);
+
+        const result = (component as any).onBeforeUnload(event);
+
+        expect(event.preventDefault).toHaveBeenCalled();
+        expect(event.returnValue).toBe('');
+        expect(result).toContain('uncommitted changes');
+    });
+
+    it('syncs the toe URL param while the dialog is visible and clears it on destroy', () => {
+        (component as any).organizationId.set('org-42');
+        fixture.detectChanges();
+
+        expect(urlStateServiceStub.setParams).toHaveBeenCalledWith({ toe: 'org-42' });
+
+        urlStateServiceStub.setParams.calls.reset();
+        fixture.destroy();
+
+        expect(urlStateServiceStub.setParams).toHaveBeenCalledWith({ toe: null });
+    });
+
+    it('treats non-owned organizations as read-only and blocks saving', async () => {
+        const forceA = createLoadForce('force-a', [createBattleMek('Atlas')]);
+
+        dataServiceStub.getForceEntriesByIds.and.resolveTo([forceA]);
+        dataServiceStub.getOrganization.and.resolveTo({
+            organizationId: 'org-shared',
+            name: 'Shared Org',
+            timestamp: Date.now(),
+            owned: false,
+            factionId: undefined,
+            forces: [
+                { instanceId: 'force-a', x: 0, y: 0, zIndex: 0, groupId: null },
+            ],
+            groups: [],
+        });
+
+        await (component as any).loadOrganization('org-shared');
+        (component as any).dirty.set(true);
+        fixture.detectChanges();
+        dataServiceStub.saveOrganization.calls.reset();
+
+        await (component as any).saveOrganization();
+
+        expect((component as any).readOnly()).toBeTrue();
+        expect(dataServiceStub.saveOrganization).not.toHaveBeenCalled();
+        expect(urlStateServiceStub.setParams).toHaveBeenCalledWith({ toe: 'org-shared' });
+    });
+
+    it('opens force details when clicking a force card in read-only mode', async () => {
+        const forceA = createLoadForce('force-a', [createBattleMek('Atlas')]);
+
+        dataServiceStub.getForceEntriesByIds.and.resolveTo([forceA]);
+        dataServiceStub.getOrganization.and.resolveTo({
+            organizationId: 'org-shared',
+            name: 'Shared Org',
+            timestamp: Date.now(),
+            owned: false,
+            factionId: undefined,
+            forces: [
+                { instanceId: 'force-a', x: 0, y: 0, zIndex: 0, groupId: null },
+            ],
+            groups: [],
+        });
+
+        await (component as any).loadOrganization('org-shared');
+        dialogsServiceStub.createDialog.calls.reset();
+
+        const placedForce = (component as any).placedForces()[0];
+        const setPointerCapture = jasmine.createSpy('setPointerCapture');
+        (component as any).onForcePointerDown({
+            pointerId: 7,
+            pointerType: 'mouse',
+            clientX: 100,
+            clientY: 100,
+        } as PointerEvent, placedForce);
+        (component as any).onCanvasPointerDown({
+            pointerId: 7,
+            pointerType: 'mouse',
+            clientX: 100,
+            clientY: 100,
+            currentTarget: { setPointerCapture },
+        } as unknown as PointerEvent);
+        (component as any).onGlobalPointerUp({
+            pointerId: 7,
+            clientX: 100,
+            clientY: 100,
+        } as PointerEvent);
+
+        expect(setPointerCapture).not.toHaveBeenCalled();
+        expect(dialogsServiceStub.createDialog).not.toHaveBeenCalled();
+
+        const clickEvent = {
+            preventDefault: jasmine.createSpy('preventDefault'),
+            stopPropagation: jasmine.createSpy('stopPropagation'),
+        } as unknown as MouseEvent;
+        (component as any).onReadonlyForceClick(clickEvent, placedForce);
+
+        expect(dialogsServiceStub.createDialog).toHaveBeenCalled();
+        expect(dialogsServiceStub.createDialog.calls.mostRecent().args[1]).toEqual(jasmine.objectContaining({
+            data: jasmine.objectContaining({ force: forceA }),
+        }));
+        expect(clickEvent.preventDefault).toHaveBeenCalled();
+        expect(clickEvent.stopPropagation).toHaveBeenCalled();
+    });
+
+    it('does not open force details when the readonly card gesture turns into a drag', async () => {
+        const forceA = createLoadForce('force-a', [createBattleMek('Atlas')]);
+
+        dataServiceStub.getForceEntriesByIds.and.resolveTo([forceA]);
+        dataServiceStub.getOrganization.and.resolveTo({
+            organizationId: 'org-shared',
+            name: 'Shared Org',
+            timestamp: Date.now(),
+            owned: false,
+            factionId: undefined,
+            forces: [
+                { instanceId: 'force-a', x: 0, y: 0, zIndex: 0, groupId: null },
+            ],
+            groups: [],
+        });
+
+        await (component as any).loadOrganization('org-shared');
+        dialogsServiceStub.createDialog.calls.reset();
+
+        const placedForce = (component as any).placedForces()[0];
+        const setPointerCapture = jasmine.createSpy('setPointerCapture');
+        (component as any).onForcePointerDown({
+            pointerId: 9,
+            pointerType: 'mouse',
+            clientX: 100,
+            clientY: 100,
+        } as PointerEvent, placedForce);
+        (component as any).onCanvasPointerDown({
+            pointerId: 9,
+            pointerType: 'mouse',
+            clientX: 100,
+            clientY: 100,
+            currentTarget: { setPointerCapture },
+        } as unknown as PointerEvent);
+        const moveEvent = {
+            pointerId: 9,
+            pointerType: 'mouse',
+            clientX: 132,
+            clientY: 128,
+        } as PointerEvent;
+        (component as any).activeTouches.set(9, moveEvent);
+        (component as any).processPointerMove(moveEvent);
+        (component as any).onGlobalPointerUp({
+            pointerId: 9,
+            clientX: 132,
+            clientY: 128,
+        } as PointerEvent);
+
+        const clickEvent = {
+            preventDefault: jasmine.createSpy('preventDefault'),
+            stopPropagation: jasmine.createSpy('stopPropagation'),
+        } as unknown as MouseEvent;
+        (component as any).onReadonlyForceClick(clickEvent, placedForce);
+
+        expect(dialogsServiceStub.createDialog).not.toHaveBeenCalled();
+        expect((component as any).draggedForce()).toBeNull();
+        expect((component as any).viewOffset()).toEqual({ x: 32, y: 28 });
+        expect(clickEvent.preventDefault).not.toHaveBeenCalled();
+        expect(clickEvent.stopPropagation).not.toHaveBeenCalled();
+        expect(setPointerCapture).not.toHaveBeenCalled();
+    });
+
+    it('loads foreign organization forces by instance id instead of listing the viewer\'s own forces', async () => {
+        const foreignForce = createLoadForce('force-foreign', [createBattleMek('Atlas')]);
+
+        dataServiceStub.listForces.calls.reset();
+        dataServiceStub.getForceEntriesByIds.and.resolveTo([foreignForce]);
+        dataServiceStub.getOrganization.and.resolveTo({
+            organizationId: 'org-foreign',
+            name: 'Foreign Org',
+            timestamp: Date.now(),
+            owned: false,
+            factionId: undefined,
+            forces: [
+                { instanceId: 'force-foreign', x: 0, y: 0, zIndex: 0, groupId: null },
+            ],
+            groups: [],
+        });
+
+        await (component as any).loadOrganization('org-foreign');
+
+        expect(dataServiceStub.listForces).not.toHaveBeenCalled();
+        expect(dataServiceStub.getForceEntriesByIds).toHaveBeenCalledWith(['force-foreign']);
+        expect((component as any).placedForces().map((pf: any) => pf.force.instanceId)).toEqual(['force-foreign']);
+    });
+
+    it('keeps missing force references as placeholders so saving the TO&E preserves them', async () => {
+        dataServiceStub.listForces.and.resolveTo([]);
+        dataServiceStub.getForceEntriesByIds.and.resolveTo([]);
+        dataServiceStub.getOrganization.and.resolveTo({
+            organizationId: 'org-missing',
+            name: 'Missing Org',
+            timestamp: Date.now(),
+            owned: true,
+            factionId: undefined,
+            forces: [
+                { instanceId: 'force-missing', x: 40, y: 60, zIndex: 0, groupId: null },
+            ],
+            groups: [],
+        });
+
+        await (component as any).loadOrganization('org-missing');
+        dataServiceStub.saveOrganization.calls.reset();
+
+        await (component as any).saveOrganization();
+
+        expect((component as any).placedForces().length).toBe(1);
+        expect((component as any).placedForces()[0].force.missing).toBeTrue();
+        expect(dataServiceStub.saveOrganization).toHaveBeenCalledWith(jasmine.objectContaining({
+            organizationId: 'org-missing',
+            forces: [jasmine.objectContaining({ instanceId: 'force-missing' })],
+        }));
     });
 
     it('brings a dragged group to the highest group z-index', () => {

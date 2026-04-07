@@ -12,6 +12,7 @@ import {
     CLAN_CV_POINT,
     CLAN_CORE_ORG,
     CLAN_NOVA,
+    CLAN_PM_POINT,
     CLAN_POINT,
     CLAN_STAR,
     CLAN_SUPERNOVA_TRINARY,
@@ -42,7 +43,7 @@ import {
     WD_LANCE,
     WD_NOVA,
     WD_POINT,
-    WD_SINGLE,
+    WD_UNIT,
 } from './definitions';
 import {
     compileGroupFacts,
@@ -1004,7 +1005,7 @@ describe('org-solver.util', () => {
         const result = materializeCIFormationRule(IS_PLATOON, units);
 
         expect(result.groups).toHaveSize(1);
-        expect(result.groups[0]).toEqual(jasmine.objectContaining({ name: 'Squad', type: 'Squad', count: 1 }));
+        expect(result.groups[0]).toEqual(jasmine.objectContaining({ name: 'Squad', type: 'Squad', count: 1, isFragment: true }));
         expect(result.leftoverUnitAllocations).toEqual([
             jasmine.objectContaining({ troopers: 1 }),
         ]);
@@ -1408,11 +1409,13 @@ describe('org-solver.util', () => {
             name: '2x Contubernium',
             type: 'Contubernium',
             count: 2,
+            isFragment: true,
         }));
         expect(materialized.groups).toContain(jasmine.objectContaining({
             name: '8x Contubernium',
             type: 'Contubernium',
             count: 8,
+            isFragment: true,
         }));
         expect(materialized.groups.some((group) => group.type === 'Century')).toBeFalse();
         expect(materialized.leftoverUnitFacts).toEqual([]);
@@ -1432,6 +1435,7 @@ describe('org-solver.util', () => {
         expect(materialized.groups.every((group) => group.name === '2x Contubernium')).toBeTrue();
         expect(materialized.groups.every((group) => group.type === 'Contubernium')).toBeTrue();
         expect(materialized.groups.every((group) => group.count === 2)).toBeTrue();
+        expect(materialized.groups.every((group) => group.isFragment === true)).toBeTrue();
         expect(materialized.groups.some((group) => group.type === 'Century')).toBeFalse();
         expect(materialized.leftoverUnitFacts).toEqual([]);
         expect(materialized.leftoverUnitAllocations).toEqual([]);
@@ -1803,7 +1807,7 @@ describe('org-solver.util', () => {
             createAero('WD Aero'),
         ]);
 
-        const result = evaluateLeafCountRule(WD_SINGLE, units);
+        const result = evaluateLeafCountRule(WD_UNIT, units);
 
         expect(result.eligibleUnits.map((facts) => facts.unit.name)).toEqual([
             'WD Mek',
@@ -1861,12 +1865,12 @@ describe('org-solver.util', () => {
         expect(result.leftoverCount).toBe(1);
     });
 
-    it('evaluates the Wolf\'s Dragoons lance from Singles, not Points', () => {
-        const singleGroups = [
-            createBattleMekGroup('Single A', 'Single', 0, 1),
-            createBattleMekGroup('Single B', 'Single', 0, 1),
-            createBattleMekGroup('Single C', 'Single', 0, 1),
-            createBattleMekGroup('Single D', 'Single', 0, 1),
+    it('evaluates the Wolf\'s Dragoons lance from Units, not Points', () => {
+        const unitGroups = [
+            createBattleMekGroup('Unit A', 'Unit', 0, 1),
+            createBattleMekGroup('Unit B', 'Unit', 0, 1),
+            createBattleMekGroup('Unit C', 'Unit', 0, 1),
+            createBattleMekGroup('Unit D', 'Unit', 0, 1),
         ].map((group) => compileGroupFacts(group));
         const pointGroups = [
             createBattleMekGroup('Point A', 'Point', 0, 1),
@@ -1875,13 +1879,13 @@ describe('org-solver.util', () => {
             createBattleMekGroup('Point D', 'Point', 0, 1),
         ].map((group) => compileGroupFacts(group));
 
-        const singleResult = evaluateComposedCountRule(WD_LANCE, singleGroups);
+        const unitResult = evaluateComposedCountRule(WD_LANCE, unitGroups);
         const pointResult = evaluateComposedCountRule(WD_LANCE, pointGroups);
 
-        expect(singleResult.emitted).toEqual([
+        expect(unitResult.emitted).toEqual([
             jasmine.objectContaining({ modifierKey: '', perGroupCount: 4, copies: 1, tier: 1 }),
         ]);
-        expect(singleResult.leftoverCount).toBe(0);
+        expect(unitResult.leftoverCount).toBe(0);
         expect(pointResult.acceptedGroups.length).toBe(0);
         expect(pointResult.emitted).toEqual([]);
     });
@@ -3053,9 +3057,8 @@ describe('org-solver.util resolve parity', () => {
             createUnit('AF1', 'Aero', 'Aerospace Fighter'),
         ], 'Society', 'HW Clan');
 
-        expect(result.length).toBe(1);
-        expect(result[0].type).toBeNull();
-        expect(result[0].leftoverUnits?.length).toBe(3);
+        expect(result.length).toBe(2);
+        expect(result.every((group) => group.type === 'Unit')).toBeTrue();
     });
 
     it('resolves 2 BM plus 1 AF as Air Lance', () => {
@@ -3173,11 +3176,45 @@ describe('org-solver.util resolve parity', () => {
         expect(result[0].children?.every((child) => child.type === 'Star')).toBeTrue();
     });
 
+    it('resolves 5 Protomeks into a single Clan Point', () => {
+        const result = resolveFromUnits(
+            Array.from({ length: 5 }, (_, index) => createUnit(`PM${index + 1}`, 'ProtoMek', 'ProtoMek')),
+            'Clan Test',
+            'HW Clan',
+        );
+
+        expect(result).toHaveSize(1);
+        expect(result[0].name).toBe('Point');
+        expect(result[0].type).toBe('Point');
+        expect(result[0].children).toBeUndefined();
+        expect(result[0].units).toHaveSize(5);
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
+    it('resolves fewer than 5 Protomeks into Element fragments', () => {
+        const result = resolveFromUnits(
+            Array.from({ length: 4 }, (_, index) => createUnit(`PM-FRAG${index + 1}`, 'ProtoMek', 'ProtoMek')),
+            'Clan Test',
+            'HW Clan',
+        );
+
+        expect(result).toHaveSize(1);
+        expect(result[0].name).toBe('4 Units');
+        expect(result[0].type).toBe('Unit');
+        expect(result[0].count).toBe(4);
+        expect(result[0].isFragment).toBeTrue();
+        expect(result[0].units).toHaveSize(4);
+        expect(result[0].leftoverUnits).toBeUndefined();
+    });
+
     it('prefers same-type Stars before mixed fallback when enough units exist', () => {
         const nonVehiclePoints = materializeLeafCountRule(CLAN_POINT, compileUnitFactsList([
             ...Array.from({ length: 5 }, (_, index) => createUnit(`PREF-BA${index + 1}`, 'Infantry', 'Battle Armor', false, ['MEC'], 5)),
             ...Array.from({ length: 5 }, (_, index) => createBM(`PREF-BM${index + 1}`)),
-            ...Array.from({ length: 5 }, (_, index) => createUnit(`PREF-PM${index + 1}`, 'ProtoMek', 'ProtoMek')),
+        ]));
+
+        const protoPoints = materializeLeafCountRule(CLAN_PM_POINT, compileUnitFactsList([
+            ...Array.from({ length: 25 }, (_, index) => createUnit(`PREF-PM${index + 1}`, 'ProtoMek', 'ProtoMek')),
         ]));
 
         const vehiclePoints = materializeLeafCountRule(CLAN_CV_POINT, compileUnitFactsList([
@@ -3185,7 +3222,7 @@ describe('org-solver.util resolve parity', () => {
         ]));
 
         const pointMaterialized = {
-            groups: [...nonVehiclePoints.groups, ...vehiclePoints.groups],
+            groups: [...nonVehiclePoints.groups, ...protoPoints.groups, ...vehiclePoints.groups],
         };
 
         const starEvaluation = evaluateComposedCountRule(CLAN_STAR, compileGroupFactsList(pointMaterialized.groups));
@@ -3240,6 +3277,128 @@ describe('org-solver.util resolve parity', () => {
         expect(result[0].type).toBe('Nova');
         expect(result[0].leftoverUnits).toBeUndefined();
     });
+
+    it('resolves 2 BM plus 2 BA as an Under-Strength Star instead of promoting through Half Stars into a Binary', () => {
+        const result = resolveFromUnits([
+            createBM('STAR-BM1'),
+            createBM('STAR-BM2'),
+            createUnit('STAR-BA1', 'Infantry', 'Battle Armor', false, [], 5),
+            createUnit('STAR-BA2', 'Infantry', 'Battle Armor', false, [], 5),
+        ], 'Clan Test', 'HW Clan');
+
+        expect(result).toHaveSize(1);
+        expect(result[0].name).toBe('Under-Strength Star');
+        expect(result[0].type).toBe('Star');
+        expect(result[0].modifierKey).toBe('Under-Strength ');
+        expect(result[0].leftoverUnits).toBeUndefined();
+        expect(result[0].children?.length).toBe(4);
+        expect(result[0].children?.every((child) => child.type === 'Point')).toBeTrue();
+    });
+
+    it('resolves 3 BM plus 2 BA as an Star instead of promoting through Half Star + Short Star into a Binary', () => {
+        const result = resolveFromUnits([
+            createBM('STAR-BM1'),
+            createBM('STAR-BM2'),
+            createBM('STAR-BM3'),
+            createUnit('STAR-BA1', 'Infantry', 'Battle Armor', false, [], 5),
+            createUnit('STAR-BA2', 'Infantry', 'Battle Armor', false, [], 5),
+        ], 'Clan Test', 'HW Clan');
+
+        expect(result).toHaveSize(1);
+        expect(result[0].name).toBe('Star');
+        expect(result[0].type).toBe('Star');
+        expect(result[0].modifierKey).toBe('');
+        expect(result[0].leftoverUnits).toBeUndefined();
+        expect(result[0].children?.length).toBe(5);
+        expect(result[0].children?.every((child) => child.type === 'Point')).toBeTrue();
+    });
+
+    it('resolves 3 BM plus 3 BA as an Reinforced Star instead of promoting through Short Stars into a Binary', () => {
+        const result = resolveFromUnits([
+            createBM('STAR-BM1'),
+            createBM('STAR-BM2'),
+            createBM('STAR-BM3'),
+            createUnit('STAR-BA1', 'Infantry', 'Battle Armor', false, [], 5),
+            createUnit('STAR-BA2', 'Infantry', 'Battle Armor', false, [], 5),
+            createUnit('STAR-BA3', 'Infantry', 'Battle Armor', false, [], 5),
+        ], 'Clan Test', 'HW Clan');
+
+        expect(result).toHaveSize(1);
+        expect(result[0].name).toBe('Reinforced Star');
+        expect(result[0].type).toBe('Star');
+        expect(result[0].modifierKey).toBe('Reinforced ');
+        expect(result[0].leftoverUnits).toBeUndefined();
+        expect(result[0].children?.length).toBe(6);
+        expect(result[0].children?.every((child) => child.type === 'Point')).toBeTrue();
+    });
+
+    it('resolves 5 BM plus 4 CV as a Fortified Star instead of promoting through Star plus Half Star into a Binary', () => {
+        const result = resolveFromUnits([
+            createBM('FORTSTAR-BM1'),
+            createBM('FORTSTAR-BM2'),
+            createCV('FORTSTAR-CV1'),
+            createBM('FORTSTAR-BM3'),
+            createCV('FORTSTAR-CV2'),
+            createBM('FORTSTAR-BM4'),
+            createCV('FORTSTAR-CV3'),
+            createCV('FORTSTAR-CV4'),
+            createBM('FORTSTAR-BM5'),
+        ], 'Clan Test', 'HW Clan');
+
+        expect(result[0].name).toBe('Fortified Star');
+        expect(result[0].type).toBe('Star');
+        expect(result[0].modifierKey).toBe('Fortified ');
+        expect(result[0].children?.length).toBe(7);
+        expect(result[0].leftoverUnits).toBeUndefined();
+        expect(result[0].children?.every((child) => child.type === 'Point')).toBeTrue();
+        expect(result.some((group) => group.type === 'Binary')).toBeFalse();
+    });
+
+    it('resolves 5 BM plus 4 AF as a Fortified Star instead of promoting through Star plus Half Star into a Binary', () => {
+        const result = resolveFromUnits([
+            createBM('FORTSTAR-BM1'),
+            createAero('FORTSTAR-AF1'),
+            createAero('FORTSTAR-AF2'),
+            createBM('FORTSTAR-BM2'),
+            createAero('FORTSTAR-AF3'),
+            createBM('FORTSTAR-BM3'),
+            createAero('FORTSTAR-AF4'),
+            createBM('FORTSTAR-BM4'),
+            createBM('FORTSTAR-BM5'),
+        ], 'Clan Test', 'HW Clan');
+
+        expect(result[0].name).toBe('Fortified Star');
+        expect(result[0].type).toBe('Star');
+        expect(result[0].modifierKey).toBe('Fortified ');
+        expect(result[0].children?.length).toBe(7);
+        expect(result[0].leftoverUnits).toBeUndefined();
+        expect(result[0].children?.every((child) => child.type === 'Point')).toBeTrue();
+        expect(result.some((group) => group.type === 'Binary')).toBeFalse();
+    });
+
+    it('resolves 5 BM plus 6 CV as a Binary', () => {
+        const result = resolveFromUnits([
+            createBM('FORTSTAR-BM1'),
+            createBM('FORTSTAR-BM2'),
+            createCV('FORTSTAR-CV1'),
+            createBM('FORTSTAR-BM3'),
+            createCV('FORTSTAR-CV2'),
+            createBM('FORTSTAR-BM4'),
+            createCV('FORTSTAR-CV3'),
+            createCV('FORTSTAR-CV4'),
+            createCV('FORTSTAR-CV5'),
+            createCV('FORTSTAR-CV6'),
+            createBM('FORTSTAR-BM5'),
+        ], 'Clan Test', 'HW Clan');
+
+        expect(result[0].name).toBe('Binary');
+        expect(result[0].type).toBe('Binary');
+        expect(result[0].modifierKey).toBe('');
+        expect(result[0].children?.length).toBe(2);
+        expect(result[0].leftoverUnits).toBeUndefined();
+        expect(result[0].children?.every((child) => child.type === 'Star')).toBeTrue();
+    });
+
 
     it('resolves 5 BA with MEC and 6 OMNI BM into a Binary instead of a Nova plus leftover', () => {
         const result = resolveFromUnits([
@@ -3556,8 +3715,8 @@ describe('org-solver.util aggregation and foreign parity', () => {
         ]);
 
         expect(result.length).toBe(1);
-        expect(result[0].name).toBe('Single');
-        expect(result[0].type).toBe('Single');
+        expect(result[0].name).toBe('Unit');
+        expect(result[0].type).toBe('Unit');
         expect(result[0].tier).toBe(0);
     });
 

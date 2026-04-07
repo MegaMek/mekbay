@@ -9,6 +9,7 @@ import {
     getCIMoveClass,
     getNormalizedOrgUnitType,
 } from './org-facts.util';
+import { groupMatchesChildRole } from './org-role-match.util';
 import { resolveOrgDefinitionSpec } from './org-registry.util';
 import {
     getDynamicTierForModifier,
@@ -792,6 +793,31 @@ function createLeafGroup(
     };
 }
 
+function createLeafFragmentGroup(
+    rule: OrgLeafCountRule,
+    count: number,
+    units: readonly UnitFacts[],
+): GroupSizeResult {
+    const fragmentType = rule.fragmentType;
+    if (!fragmentType) {
+        throw new Error('Leaf fragment group requested without fragmentType');
+    }
+
+    return {
+        name: makeFragmentGroupName(fragmentType, count),
+        type: fragmentType,
+        modifierKey: '',
+        countsAsType: null,
+        tier: rule.fragmentTier ?? rule.tier,
+        count,
+        isFragment: true,
+        provenance: 'produced-group',
+        units: units.map((facts) => facts.unit),
+        tag: rule.tag,
+        priority: rule.priority,
+    };
+}
+
 function createComposedGroup(
     rule: OrgComposedCountRule | OrgComposedPatternRule,
     modifierStep: ModifierStep,
@@ -838,12 +864,13 @@ function createAtomicFragmentTemplate(
     priority: GroupSizeResult['priority'],
 ): GroupSizeResult {
     return {
-        name: makeCountedGroupName(type, count),
+        name: makeFragmentGroupName(type, count),
         type: type as GroupSizeResult['type'],
         modifierKey: '',
         countsAsType: null,
         tier,
         count,
+        isFragment: true,
         provenance: 'produced-group',
         tag,
         priority,
@@ -895,6 +922,7 @@ function buildAbstractGroupFactsFromUnits(
         countsAsType: groupTemplate.countsAsType,
         modifierKey: groupTemplate.modifierKey,
         tier: groupTemplate.tier,
+        isFragment: groupTemplate.isFragment === true,
         provenance: 'produced-group',
         tag: groupTemplate.tag,
         priority: groupTemplate.priority,
@@ -949,6 +977,32 @@ function createAbstractLeafGroupRecord(
     return createAbstractAtomicGroupRecord(
         facts,
         () => createLeafGroup(rule, modifierStep, units),
+        'leaf',
+    );
+}
+
+function createAbstractLeafFragmentRecord(
+    rule: OrgLeafCountRule,
+    count: number,
+    units: readonly UnitFacts[],
+): PlannedGroupRecord {
+    const fragmentType = rule.fragmentType;
+    if (!fragmentType) {
+        throw new Error('Leaf fragment record requested without fragmentType');
+    }
+
+    const template = createAtomicFragmentTemplate(
+        fragmentType,
+        count,
+        rule.fragmentTier ?? rule.tier,
+        rule.tag,
+        rule.priority,
+    );
+    const facts = buildAbstractGroupFactsFromUnits(template, units);
+
+    return createAbstractAtomicGroupRecord(
+        facts,
+        () => createLeafFragmentGroup(rule, count, units),
         'leaf',
     );
 }
@@ -1054,6 +1108,21 @@ function shouldPreferHomogeneousChildren(childRoles: readonly OrgChildRoleSpec[]
     return childRoles.length === 1;
 }
 
+function areOnlySubRegularModifierKeysAllowed(
+    config: Pick<CompositionConfig, 'modifierDescriptor'>,
+    allowedModifierKeys?: ReadonlySet<string>,
+): boolean {
+    if (!allowedModifierKeys || allowedModifierKeys.size === 0) {
+        return false;
+    }
+
+    const subRegularModifierKeys = new Set(
+        config.modifierDescriptor.subRegularStepsDescending.map((step) => step.modifierKey),
+    );
+
+    return [...allowedModifierKeys].every((modifierKey) => subRegularModifierKeys.has(modifierKey));
+}
+
 function getComposedPatternBucketCounts(
     groups: readonly GroupFacts[],
     bucketBy: OrgUnitBucketName,
@@ -1101,6 +1170,18 @@ function matchesComposedPatternSelection(
 
 function makeCountedGroupName(type: string, count: number): string {
     return count <= 1 ? type : `${count}x ${type}`;
+}
+
+function makeFragmentGroupName(type: string, count: number): string {
+    if (count <= 1) {
+        return type;
+    }
+
+    if (type === 'Unit') {
+        return `${count} Units`;
+    }
+
+    return makeCountedGroupName(type, count);
 }
 
 function aggregateTokenAllocations(tokens: readonly CIFragmentToken[]): GroupUnitAllocation[] {
@@ -1157,13 +1238,14 @@ function createCIFragmentGroup(
 ): GroupSizeResult {
     const unitAllocations = aggregateTokenAllocations(tokens);
     return {
-        name: makeCountedGroupName(rule.fragmentType, count),
+        name: makeFragmentGroupName(rule.fragmentType, count),
         type: rule.fragmentType,
         modifierKey: '',
         countsAsType: null,
         tier: rule.fragmentTier,
         provenance: 'produced-group',
         count,
+        isFragment: true,
         units: getUnitsFromAllocations(unitAllocations),
         unitAllocations,
         tag: rule.tag,
@@ -1286,7 +1368,7 @@ function getCIFragmentTokensFromGroup(
         return null;
     }
 
-    if (group.type === rule.fragmentType) {
+    if (group.isFragment || group.type === rule.fragmentType) {
         const tokens = sliceAllocationsToTokens(allocations, moveClass, entry.troopers);
         if (!tokens) {
             return null;
@@ -1531,6 +1613,22 @@ function materializeCIFormationRuleRecords(
     };
 }
 
+function isCIFragmentCandidateForRule(
+    facts: GroupFacts,
+    rule: OrgCIFormationRule,
+): boolean {
+    if (facts.isFragment) {
+        return facts.type === rule.fragmentType;
+    }
+
+    if (facts.type !== rule.fragmentType && facts.type !== rule.type) {
+        return false;
+    }
+
+    const ciCount = facts.unitTypeCounts.get('CI') ?? 0;
+    return ciCount > 0 && facts.unitTypeCounts.size === 1;
+}
+
 function normalizeCIFormationGroups(
     pool: readonly GroupSizeResult[],
     context: ResolveContext,
@@ -1540,13 +1638,7 @@ function normalizeCIFormationGroups(
     for (const rule of context.ciFormationRules) {
         const entryByMoveClass = new Map(rule.entries.map((entry) => [entry.moveClass, entry]));
         const groupFacts = getCompiledGroupFactsList(nextPool);
-        const candidates = groupFacts.filter((facts) => {
-            if (facts.type !== rule.fragmentType && facts.type !== rule.type) {
-                return false;
-            }
-            const ciCount = facts.unitTypeCounts.get('CI') ?? 0;
-            return ciCount > 0 && facts.unitTypeCounts.size === 1;
-        });
+        const candidates = groupFacts.filter((facts) => isCIFragmentCandidateForRule(facts, rule));
         if (candidates.length === 0) {
             continue;
         }
@@ -2140,6 +2232,11 @@ export function materializeLeafCountRule(
                 groups.push(createLeafGroup(rule, step, selected));
             }
         }
+
+        if (rule.fragmentType && mixedRemaining.length > 0) {
+            mixedRemaining.forEach((facts) => usedFactIds.add(facts.factId));
+            groups.push(createLeafFragmentGroup(rule, mixedRemaining.length, mixedRemaining));
+        }
     }
 
     return {
@@ -2186,6 +2283,11 @@ function materializeLeafCountRuleRecords(
                 selected.forEach((facts) => usedFactIds.add(facts.factId));
                 records.push(createAbstractLeafGroupRecord(rule, step, selected));
             }
+        }
+
+        if (rule.fragmentType && mixedRemaining.length > 0) {
+            mixedRemaining.forEach((facts) => usedFactIds.add(facts.factId));
+            records.push(createAbstractLeafFragmentRecord(rule, mixedRemaining.length, mixedRemaining));
         }
     }
 
@@ -2306,52 +2408,6 @@ function enumerateExactLeafCountRuleRecordSets(
     return combinedRecordSet.length > 0 ? [combinedRecordSet] : [];
 }
 
-function groupMatchesRole(group: GroupFacts, role: OrgChildRoleSpec): boolean {
-    const groupType = group.type;
-    const countsAsType = group.countsAsType;
-    const matchesType = (groupType !== null && role.matches.includes(groupType))
-        || (countsAsType !== null && role.matches.includes(countsAsType));
-    if (!matchesType) {
-        return false;
-    }
-
-    if (role.onlyUnitTypes && role.onlyUnitTypes.length > 0) {
-        for (const [unitType, count] of group.unitTypeCounts.entries()) {
-            if (count > 0 && !role.onlyUnitTypes.includes(unitType)) {
-                return false;
-            }
-        }
-    }
-
-    if (role.requiredUnitTagsAny && role.requiredUnitTagsAny.length > 0) {
-        const hasAny = role.requiredUnitTagsAny.some((tag) => (group.unitTagCounts.get(tag) ?? 0) > 0);
-        if (!hasAny) {
-            return false;
-        }
-    }
-
-    if (role.requiredUnitTagsAll && role.requiredUnitTagsAll.length > 0) {
-        const hasAll = role.requiredUnitTagsAll.every((tag) => (group.unitTagCounts.get(tag) ?? 0) > 0);
-        if (!hasAll) {
-            return false;
-        }
-    }
-
-    if (role.requiredTagsAny && role.requiredTagsAny.length > 0) {
-        if (!group.tag || !role.requiredTagsAny.includes(group.tag)) {
-            return false;
-        }
-    }
-
-    if (role.requiredTagsAll && role.requiredTagsAll.length > 0) {
-        if (!group.tag || !role.requiredTagsAll.every((tag) => tag === group.tag)) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 function buildCompositionConfigs(rule: OrgComposedCountRule): CompositionConfig[] {
     const configs: CompositionConfig[] = [
         {
@@ -2401,7 +2457,7 @@ function canAssignGroupsToRoles(
         const group = selectedGroups[groupIndex];
         const matchingRoleIndexes = childRoles
             .map((role, roleIndex) => ({ role, roleIndex }))
-            .filter(({ role }) => groupMatchesRole(group, role))
+            .filter(({ role }) => groupMatchesChildRole(group, role))
             .map(({ roleIndex }) => roleIndex);
 
         if (matchingRoleIndexes.length === 0) {
@@ -2449,6 +2505,7 @@ function getGroupFactsSignatureKey(group: GroupFacts): string {
         group.countsAsType ?? 'null',
         group.modifierKey,
         String(group.tier),
+        group.isFragment ? 'fragment' : 'non-fragment',
         group.provenance,
         group.tag ?? '',
         String(group.priority ?? 0),
@@ -2492,7 +2549,7 @@ function buildCountedCompositionInventory(
                 availableCount: bucketGroups.length,
                 matchingRoleIndexes: childRoles
                     .map((role, roleIndex) => ({ role, roleIndex }))
-                    .filter(({ role }) => groupMatchesRole(representativeGroup, role))
+                    .filter(({ role }) => groupMatchesChildRole(representativeGroup, role))
                     .map(({ roleIndex }) => roleIndex),
             };
         })
@@ -3208,7 +3265,8 @@ function planComposedConfig(
     const entries: CountedCompositionEntry[] = [];
     const candidates: AbstractCompositionCandidate[] = [];
     const groupsByEntryId = new Map<string, readonly GroupFacts[]>();
-    const shouldPreferHomogeneousLeafChildren = shouldPreferHomogeneousChildren(config.childRoles)
+    const shouldPreferHomogeneousLeafChildren = !areOnlySubRegularModifierKeysAllowed(config, allowedModifierKeys)
+        && shouldPreferHomogeneousChildren(config.childRoles)
         && groups.every((group) => !group.group.children || group.group.children.length === 0);
 
     const materializeBucketGroupSet = (bucketGroups: readonly GroupFacts[]): GroupFacts[] => {
@@ -3438,7 +3496,7 @@ export function evaluateComposedCountRule(
     const configs = buildCompositionConfigs(rule);
     const guard = createSolverGuard();
     const acceptedGroups = groupFacts.filter((group) =>
-        configs.some((config) => config.childRoles.some((role) => groupMatchesRole(group, role))),
+        configs.some((config) => config.childRoles.some((role) => groupMatchesChildRole(group, role))),
     );
 
     const evaluations = configs.map((config) => ({
@@ -3485,7 +3543,7 @@ export function evaluateComposedPatternRule(
     registry: OrgRuleRegistry = DEFAULT_ORG_RULE_REGISTRY,
 ): ComposedCountEvaluationResult {
     const acceptedGroups = groupFacts.filter((group) =>
-        rule.childRoles.some((role) => groupMatchesRole(group, role)),
+        rule.childRoles.some((role) => groupMatchesChildRole(group, role)),
     );
     const config = buildPatternCompositionConfig(rule);
     const guard = createSolverGuard();
@@ -3861,7 +3919,7 @@ function materializeLeafRulesByStageRecords(
         }
 
         const targetSteps = getModifierStepForRuleStage(metadata, stage);
-        if (targetSteps.length === 0) {
+        if (targetSteps.length === 0 && !rule.fragmentType) {
             continue;
         }
 
@@ -3893,6 +3951,11 @@ function materializeLeafRulesByStageRecords(
                     selected.forEach((facts) => usedIds.add(facts.factId));
                     records.push(createAbstractLeafGroupRecord(rule, step, selected));
                 }
+            }
+
+            if (rule.fragmentType && mixedWorking.length > 0) {
+                mixedWorking.forEach((facts) => usedIds.add(facts.factId));
+                records.push(createAbstractLeafFragmentRecord(rule, mixedWorking.length, mixedWorking));
             }
         }
 
@@ -4205,7 +4268,7 @@ function getMinimumPresentChildTierForRule(
     groupFacts: readonly GroupFacts[],
 ): number | null {
     const matchingTiers = groupFacts
-        .filter((facts) => rule.childRoles.some((role) => groupMatchesRole(facts, role)))
+        .filter((facts) => rule.childRoles.some((role) => groupMatchesChildRole(facts, role)))
         .map((facts) => facts.tier);
 
     return matchingTiers.length > 0 ? Math.min(...matchingTiers) : null;
@@ -4307,7 +4370,7 @@ function getEligibleChildFacts(
     return candidateFacts.filter((facts) =>
         !isBlockedSubRegularPromotionChildFacts(facts, context)
         && facts.tier < parent.tier
-        && rule.childRoles.some((role) => groupMatchesRole(facts, role)),
+        && rule.childRoles.some((role) => groupMatchesChildRole(facts, role)),
     );
 }
 
@@ -4684,7 +4747,7 @@ function getApplicableComposedRulesForFacts(
         const requiredCount = getRuleStageMetadata(context, rule).descriptor.regularStep.count;
         let matchingCount = 0;
         for (const facts of groupFacts) {
-            if (rule.childRoles.some((role) => groupMatchesRole(facts, role))) {
+            if (rule.childRoles.some((role) => groupMatchesChildRole(facts, role))) {
                 matchingCount += 1;
                 if (matchingCount >= requiredCount) {
                     return true;
@@ -5327,6 +5390,7 @@ function createAbstractComposedGroupRecord(
         countsAsType: rule.countsAs ?? null,
         modifierKey: modifierStep.modifierKey,
         tier: modifierStep.tier,
+        isFragment: materializedGroupTemplate.isFragment === true,
         provenance: 'produced-group',
         tag: rule.tag,
         directChildCount: childRecords.length,

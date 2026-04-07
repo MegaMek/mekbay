@@ -62,6 +62,7 @@ import { APP_VERSION_STRING, BUILD_BRANCH } from './build-meta';
 import { LoggerService } from './services/logger.service';
 import { isIOS, isRunningStandalone } from './utils/platform.util';
 import { GameService } from './services/game.service';
+import { AccountAuthService } from './services/account-auth.service';
 
 import { GameSystem } from './models/common.model';
 import { UrlStateService } from './services/url-state.service';
@@ -103,6 +104,7 @@ export class App {
     public unitSearchFiltersService = inject(UnitSearchFiltersService);
     public injector = inject(Injector);
     public gameService = inject(GameService);
+    private accountAuthService = inject(AccountAuthService);
     private urlStateService = inject(UrlStateService);
     private savedSearchesService = inject(SavedSearchesService);
     private destroyRef = inject(DestroyRef);
@@ -140,6 +142,7 @@ export class App {
         this.dataService.initialize();
         this.savedSearchesService.initialize();
         this.savedSearchesService.registerWsHandlers();
+        void this.accountAuthService.handleOAuthRedirectReturn();
         
         // Set up foreign tag import dialog callback
         this.unitSearchFiltersService.setForeignTagDialogCallback(
@@ -260,10 +263,13 @@ export class App {
                 initialShareHandled = true;
                 // Use UrlStateService to get initial URL params (captured before any routing effects)
                 const hasProtocolLink = this.urlStateService.hasInitialParam('protocolLink');
+                const organizationId = this.urlStateService.getInitialParam('toe');
                 const sharedUnitName = this.urlStateService.getInitialParam('shareUnit');
                 const tab = this.urlStateService.getInitialParam('tab') ?? undefined;
                 if (hasProtocolLink) {
                     void this.handleCapturedUrl(window.location.href, 'protocol');
+                } else if (organizationId) {
+                    void this.forceBuilderService.showForceOrgDialog(organizationId);
                 } else if (sharedUnitName) {
                     const unit = this.dataService.getUnitByName(sharedUnitName);
                     if (unit) {

@@ -52,6 +52,8 @@ export type OrgType =
     // Generic
     | 'Force'
     | 'Mercenary'
+    | 'Element'
+    | 'Unit'
 
     // IS-specific types
     | 'Squad'
@@ -59,7 +61,6 @@ export type OrgType =
     | 'Flight'
     | 'Squadron'
     | 'Wing'
-    | 'Single'
     | 'Lance'
     | 'Air Lance'
     | 'Company'
@@ -118,6 +119,7 @@ export interface GroupSizeResult {
     countsAsType: OrgType | null;
     tier: number;
     count?: number;
+    isFragment?: boolean;
     provenance?: OrgGroupProvenance;
     foreignDisplayName?: string;
     children?: GroupSizeResult[];
@@ -330,6 +332,7 @@ export interface GroupFacts {
     readonly countsAsType: OrgType | null;
     readonly modifierKey: string;
     readonly tier: number;
+    readonly isFragment: boolean;
     readonly provenance: OrgGroupProvenance;
     readonly tag?: OrgGroupTag;
     readonly priority?: number;
@@ -350,6 +353,12 @@ export interface OrgConstraintSpec {
 
 export interface OrgRuleMetadata extends Omit<OrgTypeRuleBase, 'filter' | 'strict'> {
     readonly description?: string;
+    readonly formationMatching?: OrgFormationMatchingSpec;
+}
+
+export interface OrgFormationMatchingSpec {
+    readonly ignoredChildRoles: readonly OrgChildRoleSpec[];
+    readonly notice?: string;
 }
 
 export interface OrgChildRoleSpec {
@@ -441,6 +450,8 @@ export interface OrgLeafCountRule extends OrgRuleMetadata {
     readonly unitSelector: OrgSelectorName | readonly OrgSelectorName[];
     readonly pointModel: 'fixed' | 'range';
     readonly bucketBy?: OrgUnitBucketName;
+    readonly fragmentType?: OrgType;
+    readonly fragmentTier?: number;
 }
 
 /**

@@ -1174,7 +1174,7 @@ export class UnitSearchFiltersService {
     /**
      * Check if a unit belongs to a specific force pack by name.
      * Used for external filter evaluation in AST.
-     * Matches by chassis+type combination.
+     * Matches by chassis+type+subtype combination.
      */
     public unitBelongsToForcePack(unit: Unit, packName: string): boolean {
         return this.dataService.unitBelongsToForcePack(unit, packName);
@@ -1293,7 +1293,7 @@ export class UnitSearchFiltersService {
             getUnitIdsForSelectedEras: selectedEraNames => this.getUnitIdsForSelectedEras(selectedEraNames),
             getUnitIdsForSelectedFactions: (selectedFactionEntries, contextEraNames, wildcardPatterns) =>
                 this.getUnitIdsForSelectedFactions(selectedFactionEntries, contextEraNames, wildcardPatterns),
-            getForcePackChassisTypeSet: packName => this.dataService.getForcePackChassisTypeSet(packName),
+            getForcePackLookupSet: packName => this.dataService.getForcePackLookupSet(packName),
         };
     }
 

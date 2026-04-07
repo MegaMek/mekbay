@@ -973,6 +973,33 @@ export class RsPolyfillUtil {
             moveEl.parentElement?.appendChild(rect);
             moveEl.parentElement?.appendChild(text);
         }
+
+        this.addMovementPsrWarningText(unit, svg, mpRunEl);
+        this.addMovementPsrWarningText(unit, svg, mpJumpEl ?? (svg.querySelector('#mp_2') as SVGElement | null));
+    }
+
+    private static addMovementPsrWarningText(unit: Unit, svg: SVGSVGElement, moveEl: SVGElement | null): void {
+        if (!moveEl) return;
+
+        const warningId = `${moveEl.id}-psr-warning`;
+        if (svg.getElementById(warningId)) return;
+
+        const xAttr = moveEl.getAttribute('x');
+        const yAttr = moveEl.getAttribute('y');
+        if (!xAttr || !yAttr) return;
+
+        const tightSpaceForText = unit.subtype === 'Land-Air BattleMek';
+
+        const warningText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        warningText.setAttribute('id', warningId);
+        warningText.setAttribute('x', (parseFloat(xAttr) + (tightSpaceForText ? 4 : 8)).toString());
+        warningText.setAttribute('y', yAttr);
+        warningText.setAttribute('text-anchor', 'start');
+        warningText.setAttribute('class', 'movePsrWarning movementType screen-only');
+        warningText.setAttribute('display', 'none');
+        warningText.textContent = tightSpaceForText ? '!!!' : 'PSR!';
+
+        moveEl.parentElement?.appendChild(warningText);
     }
 
     private static addCritSlotClasses(svg: SVGSVGElement): void {

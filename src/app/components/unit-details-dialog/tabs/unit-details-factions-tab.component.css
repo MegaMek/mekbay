@@ -86,6 +86,29 @@ hr.divider {
     grid-column: 1 / -1;
 }
 
+.catch-all-faction {
+    display: inline;
+}
+
+.catch-all-faction > .faction-icon {
+    vertical-align: text-bottom;
+}
+
+.catch-all-faction > .parent-faction {
+    text-decoration: underline dotted;
+    color: var(--bt-yellow);
+    cursor: pointer;
+}
+
+.catch-all-faction > .parent-faction:hover {
+    color: var(--bt-yellow-background-light);
+}
+
+.collapsed-faction-item {
+    display: inline-flex;
+    align-items: baseline;
+}
+
 /* Responsive */
 @container (max-width: 768px) {
     .faction-availability-list {

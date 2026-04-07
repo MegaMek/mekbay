@@ -10,6 +10,7 @@ import {
     CLAN_CLUSTER,
     CLAN_NOVA,
     CLAN_POINT,
+    CLAN_PM_POINT,
     CLAN_CV_POINT,
     CLAN_SUPERNOVA_BINARY,
     CLAN_SUPERNOVA_TRINARY,
@@ -20,13 +21,13 @@ import {
     IS_BA_SQUAD,
     IS_BA_PLATOON,
     IS_REGIMENT,
-    IS_SINGLE,
+    IS_UNIT,
     IS_SQUADRON,
     IS_WING,
 } from './is-org';
 
-export const WD_SINGLE: OrgLeafCountRule = {
-    ... IS_SINGLE,
+export const WD_UNIT: OrgLeafCountRule = {
+    ... IS_UNIT,
     commandRank: 'Sergeant',
 };
 
@@ -37,6 +38,11 @@ export const WD_POINT: OrgLeafCountRule = {
 
 export const WD_CV_POINT: OrgLeafCountRule = {
     ...CLAN_CV_POINT,
+    commandRank: 'Sergeant',
+};
+
+export const WD_PM_POINT: OrgLeafCountRule = {
+    ...CLAN_PM_POINT,
     commandRank: 'Sergeant',
 };
 
@@ -61,7 +67,7 @@ export const WD_LANCE: OrgComposedCountRule = {
     modifiers: { 'Short ': 2, 'Under-Strength ': 3, '': 4, 'Reinforced ': 5, 'Fortified ': 6 },
     commandRank: 'Lieutenant',
     tier: 1,
-    childRoles: [{ matches: ['Single'] }],
+    childRoles: [{ matches: ['Unit'] }],
     childBucketBy: 'promotionWithUnitKinds',
 };
 
@@ -152,8 +158,9 @@ export const WD_CORE_ORG: OrgDefinitionSpec = {
         WD_SUPERNOVA_BINARY,
         WD_SUPERNOVA_TRINARY,
         WD_CV_POINT,
+        WD_PM_POINT,
         WD_POINT,
-        WD_SINGLE,
+        WD_UNIT,
         WD_LANCE,
         WD_STAR,
         WD_BINARY,
