@@ -51,6 +51,7 @@ import { LoadForceEntry, type LoadForceGroup, type LoadForceUnit } from '../mode
 import { LoggerService } from './logger.service';
 import type { SerializedOperation } from '../models/operation.model';
 import type { SerializedOrganization } from '../models/organization.model';
+import type { LinkedOAuthProvider } from '../models/account-auth.model';
 
 
 /*
@@ -234,6 +235,9 @@ export interface SavedSearchSyncState {
 export interface UserData {
     uuid: string;
     publicId?: string;
+    hasOAuth?: boolean;
+    oauthProviderCount?: number;
+    oauthProviders?: LinkedOAuthProvider[];
     tabSubs?: string[];
     /** Tag subscriptions: "publicId:tagName" pairs */
     tagSubscriptions?: string[];
@@ -1258,6 +1262,31 @@ export class DbService {
 
     public async clearCanvasStore(): Promise<void> {
         await this.clearStore(CANVAS_STORE);
+    }
+
+    /**
+     * Clear all local per-user object stores while preserving shared data kept in the general store.
+     * The persisted USER_KEY entry is removed as part of the reset.
+     */
+    public async clearLocalUserStores(): Promise<void> {
+        const db = await this.dbPromise;
+        if (!db) return; // Degraded mode
+
+        const storesToClear = Array.from(db.objectStoreNames).filter(storeName => storeName !== DB_STORE);
+        const transactionStores = [DB_STORE, ...storesToClear];
+
+        return new Promise<void>((resolve, reject) => {
+            const transaction = db.transaction(transactionStores, 'readwrite');
+
+            transaction.objectStore(DB_STORE).delete(USER_KEY);
+
+            for (const storeName of storesToClear) {
+                transaction.objectStore(storeName).clear();
+            }
+
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
     }
 
     private async getStoreSize(storeName: string): Promise<number> {

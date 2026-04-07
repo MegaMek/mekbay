@@ -111,9 +111,13 @@ export class WsService {
      */
     private setupUserStateHandler(): void {
         this.registerMessageHandler('userState', (msg) => {
-            if (msg.publicId) {
-                this.userStateService.setPublicId(msg.publicId);
-            }
+            void this.userStateService.applyServerState({
+                publicId: msg.publicId ?? null,
+                hasOAuth: msg.hasOAuth,
+                oauthProviderCount: msg.oauthProviderCount,
+                oauthProviders: Array.isArray(msg.oauthProviders) ? msg.oauthProviders : undefined,
+                availableAuthProviders: Array.isArray(msg.availableAuthProviders) ? msg.availableAuthProviders : undefined,
+            });
         });
     }
 
@@ -432,6 +436,12 @@ export class WsService {
      */
     public getSessionId(): string {
         return this.wsSessionId;
+    }
+
+    public getHttpBaseUrl(): string {
+        const parsedUrl = new URL(this.wsUrl);
+        parsedUrl.protocol = parsedUrl.protocol === 'wss:' ? 'https:' : 'http:';
+        return parsedUrl.origin;
     }
 
     /**

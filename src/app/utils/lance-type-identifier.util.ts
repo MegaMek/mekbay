@@ -62,6 +62,12 @@ interface FormationIdentificationOptions {
     readonly requirementsFilterNotice?: string;
 }
 
+export interface FormationRequirementsFilterContext {
+    readonly filteredUnits?: ForceUnit[];
+    readonly requirementsFiltered: boolean;
+    readonly requirementsFilterNotice?: string;
+}
+
 export class LanceTypeIdentifierUtil {
     private static readonly DEFAULT_FACTION: Faction = {
         id: MULFACTION_MERCENARY,
@@ -180,6 +186,15 @@ export class LanceTypeIdentifierUtil {
         return {
             filteredUnits,
             requirementsFilterNotice: matchedRule.formationMatching.notice,
+        };
+    }
+
+    public static getRequirementsFilterContextForGroup(group: UnitGroup<ForceUnit>): FormationRequirementsFilterContext {
+        const context = this.getRequirementsFilterContext(group);
+        return {
+            filteredUnits: context.filteredUnits,
+            requirementsFiltered: !!context.filteredUnits,
+            requirementsFilterNotice: context.requirementsFilterNotice,
         };
     }
 

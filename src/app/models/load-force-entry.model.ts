@@ -36,6 +36,12 @@ import type { Era } from './eras.model';
 import type { Faction } from './factions.model';
 import type { Unit } from "./units.model";
 
+export type {
+    RemoteLoadForceEntry,
+    RemoteLoadForceGroup,
+    RemoteLoadForceUnit,
+} from './remote-load-force-entry.model';
+
 /*
  * Author: Drake
  * Description: Lightweight interface used to show summary of saved forces in load dialog 

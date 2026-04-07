@@ -221,6 +221,10 @@
                 background-color: color-mix(in srgb, var(--network-color) 100%, transparent 50%);
             }
         }
+
+        &.tag {
+            background-color: rgba(191, 119, 18, 0.55);
+        }
         
         &.ecm {
             background-color: rgba(0, 130, 9, 0.5);

@@ -45,7 +45,7 @@ import { Sanitizer } from '../utils/sanitizer.util';
 import { LoggerService } from '../services/logger.service';
 import { type Faction } from './factions.model';
 import type { Era } from './eras.model';
-import { type FormationTypeDefinition, type FormationMatch, isNoFormation } from '../utils/formation-type.model';
+import { type FormationTypeDefinition, type FormationMatch, formationNameMatchesGroupName, isNoFormation } from '../utils/formation-type.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
 import type { OrgSizeResult } from '../utils/org/org-types';
@@ -254,15 +254,15 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
         return this.formationDisplayName() ?? this.organizationalName();
     });
 
-    isFormationAlreadyInGroupName = computed<boolean>(() => {   
+    isFormationAlreadyInGroupName = computed<boolean>(() => {
         const formation = this.activeFormation();
         if (!formation) return true;
         const customName = this.name();
         // No custom name means display name is derived from the formation, so it's inherently included
         if (!customName) return true;
-        return customName.includes(formation.name);
+        return formationNameMatchesGroupName(formation, customName);
     });
-    
+
     formationDisplayName = computed<string | null>(() => {
         const formation = this.activeFormation();
         if (!formation) return null;

@@ -9,7 +9,14 @@ import { FormationNamerUtil } from './formation-namer.util';
 import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
 import type { GroupSizeResult } from './org/org-types';
 
-function createUnit(id: number, name: string, unitType: Unit['type'], subtype: string, tp: Unit['as']['TP']): Unit {
+function createUnit(
+    id: number,
+    name: string,
+    unitType: Unit['type'],
+    subtype: string,
+    tp: Unit['as']['TP'],
+    overrides: Partial<Unit> = {},
+): Unit {
     return {
         id,
         name,
@@ -58,6 +65,7 @@ function createUnit(id: number, name: string, unitType: Unit['type'], subtype: s
         features: [],
         icon: '',
         sheets: [],
+        ...overrides,
         as: {
             TP: tp,
             PV: 0,
@@ -74,8 +82,26 @@ function createUnit(id: number, name: string, unitType: Unit['type'], subtype: s
             ARM: 0,
             STR: 0,
             specials: [],
+            ...(overrides.as ?? {}),
         },
     } as unknown as Unit;
+}
+
+function createForceUnit(unit: Unit, gameSystem = GameSystem.ALPHA_STRIKE): ForceUnit {
+    const force = {
+        faction: () => createFaction('Mercenary', 'Mercenary'),
+        era: () => null,
+        techBase: () => 'Inner Sphere',
+        gameSystem,
+    };
+
+    return {
+        force,
+        getUnit: () => unit,
+        getBv: () => 0,
+        pilotSkill: () => 4,
+        gunnerySkill: () => 4,
+    } as unknown as ForceUnit;
 }
 
 function createFaction(name: string, group: FactionAffinity): Faction {
@@ -278,5 +304,36 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
         const match = LanceTypeIdentifierUtil.isFormationValidForGroup(bmOnlyStarFormation, group);
 
         expect(match).toBeNull();
+    });
+});
+
+describe('LanceTypeIdentifierUtil CBT weight-class validation', () => {
+    it('matches medium battle lance for classic medium meks without requiring vehicles', () => {
+        const definition = LanceTypeIdentifierUtil.getDefinitionById('medium-battle-lance', GameSystem.CLASSIC);
+
+        expect(definition).not.toBeNull();
+
+        const units: ForceUnit[] = [
+            createForceUnit(createUnit(1, 'Medium-1', 'Mek', 'BattleMek', 'BM', { weightClass: 'Medium' }), GameSystem.CLASSIC),
+            createForceUnit(createUnit(2, 'Medium-2', 'Mek', 'BattleMek', 'BM', { weightClass: 'Medium' }), GameSystem.CLASSIC),
+            createForceUnit(createUnit(3, 'Medium-3', 'Mek', 'BattleMek', 'BM', { weightClass: 'Medium' }), GameSystem.CLASSIC),
+        ];
+
+        expect(LanceTypeIdentifierUtil.isValid(definition!, units, GameSystem.CLASSIC)).toBeTrue();
+    });
+
+    it('matches light battle lance for classic light meks using the real CBT light class', () => {
+        const definition = LanceTypeIdentifierUtil.getDefinitionById('light-battle-lance', GameSystem.CLASSIC);
+
+        expect(definition).not.toBeNull();
+
+        const units: ForceUnit[] = [
+            createForceUnit(createUnit(11, 'Light-Scout', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light', role: 'Scout' }), GameSystem.CLASSIC),
+            createForceUnit(createUnit(12, 'Light-2', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light' }), GameSystem.CLASSIC),
+            createForceUnit(createUnit(13, 'Light-3', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light' }), GameSystem.CLASSIC),
+            createForceUnit(createUnit(14, 'Light-4', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light' }), GameSystem.CLASSIC),
+        ];
+
+        expect(LanceTypeIdentifierUtil.isValid(definition!, units, GameSystem.CLASSIC)).toBeTrue();
     });
 });

@@ -487,7 +487,7 @@ hr {
 }
 
 .bt-select {
-    touch-action: none;
+    touch-action: manipulation;
     cursor: pointer;
     padding: 8px 20px 8px 8px;
     border: 2px transparent;
@@ -570,7 +570,7 @@ hr {
 .bt-button {
     cursor: pointer;
     white-space: nowrap;
-    touch-action: none;
+    touch-action: manipulation;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -591,6 +591,11 @@ hr {
         linear-gradient(#666, #666), linear-gradient(#666, #666);
     background-size: 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
     background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+
+    &.multiline {
+        white-space: normal;
+        font-weight: initial;
+    }
 
     &:hover {
         border-color: transparent;
@@ -734,7 +739,7 @@ hr {
 .bt-split-button {
     cursor: pointer;
     white-space: nowrap;
-    touch-action: none;
+    touch-action: manipulation;
     display: inline-flex;
     align-items: stretch;
     background: var(--background-input);

@@ -34,6 +34,7 @@
 import type { MultiStateOption, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import type { Unit } from '../models/units.model';
 import { ADVANCED_FILTERS, AS_MOVEMENT_MODE_DISPLAY_NAMES, type AdvFilterConfig, AdvFilterType, type FilterState } from '../services/unit-search-filters.model';
+import { getForcePackLookupKey } from './force-pack.util';
 import type { WildcardPattern } from './semantic-filter.util';
 import { wildcardToRegex } from './string.util';
 import { checkQuantityConstraint, getUnitComponentData } from './unit-search-shared.util';
@@ -48,7 +49,7 @@ export interface UnitFilterKernelDependencies {
         contextEraNames?: string[],
         wildcardPatterns?: WildcardPattern[],
     ) => Set<number> | null;
-    getForcePackChassisTypeSet: (packName: string) => ReadonlySet<string> | undefined;
+    getForcePackLookupSet: (packName: string) => ReadonlySet<string> | undefined;
 }
 
 interface ApplyUnitFilterStateRequest {
@@ -274,14 +275,14 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
 
     const selectedForcePackNames = activeFilters['forcePack'] as string[] || [];
     if (selectedForcePackNames.length > 0) {
-        const chassisTypeSet = new Set<string>();
+        const lookupKeySet = new Set<string>();
         for (const packName of selectedForcePackNames) {
-            const packSet = dependencies.getForcePackChassisTypeSet(packName);
+            const packSet = dependencies.getForcePackLookupSet(packName);
             if (packSet) {
-                for (const key of packSet) chassisTypeSet.add(key);
+                for (const key of packSet) lookupKeySet.add(key);
             }
         }
-        results = results.filter(unit => chassisTypeSet.has(`${unit.chassis}|${unit.type}`));
+        results = results.filter(unit => lookupKeySet.has(getForcePackLookupKey(unit)));
     }
 
     for (const { conf, filterState } of activeStandardFilters) {

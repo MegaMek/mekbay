@@ -145,7 +145,7 @@ export class UnitDetailsGeneralTabComponent {
         return result;
     });
 
-    /** Force packs that contain the current unit's chassis|type */
+    /** Force packs that contain the current unit's chassis|type|subtype */
     forcePacks = computed<string[]>(() => {
         const u = this.unit();
         if (!u) return [];

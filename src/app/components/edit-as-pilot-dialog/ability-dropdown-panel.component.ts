@@ -33,7 +33,7 @@
 
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { type PilotAbility, getAbilityDetails, type PilotAbilityRuleDetails } from '../../models/pilot-abilities.model';
-import { GameSystem, type RulesReference } from '../../models/common.model';
+import { GameSystem, formatRulesReference, type RulesReference } from '../../models/common.model';
 import type { ASUnitTypeCode } from '../../models/units.model';
 
 interface ResolvedDropdownAbility {
@@ -84,7 +84,7 @@ interface ResolvedDropdownAbility {
                     <div class="ability-meta">
                         <span class="ability-rules">
                         @for (rule of resolved.rulesRef; let last = $last; track $index) {
-                            {{ rule.book }}, p.{{ rule.page }}
+                            {{ formatRuleReference(rule) }}
                             @if (!last) {
                                 <span class="separator"> · </span>
                             }
@@ -206,6 +206,7 @@ export class AbilityDropdownPanelComponent {
     remainingCost = input<number>(999);
     /** The unit's AS type code for filtering abilities by unitTypeFilter. */
     unitTypeCode = input<ASUnitTypeCode | undefined>(undefined);
+    readonly formatRuleReference = formatRulesReference;
     
     selected = output<string>();
     addCustom = output<void>();

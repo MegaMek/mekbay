@@ -137,6 +137,35 @@ export class UnitBlockComponent {
         return false;
     });
 
+    getTAGLabel = computed<'TAG' | 'LTAG' | undefined>(() => {
+        const forceUnit = this.forceUnit();
+        if (!forceUnit) return undefined;
+        if (forceUnit instanceof ASForceUnit) {
+            if (forceUnit.getUnit().as.specials.includes('LTAG')) {
+                return 'LTAG';
+            }
+            if (forceUnit.getUnit().as.specials.includes('TAG')) {
+                return 'TAG';
+            }
+            return undefined;
+        } else
+        if (forceUnit instanceof CBTForceUnit) {
+            const tagComponents = forceUnit.getUnit().comp.filter(component => component.eq?.flags.has('F_TAG'));
+            if (tagComponents.length === 0) {
+                return undefined;
+            }
+
+            const hasLightTag = tagComponents.some(component => {
+                const names = [component.n, component.eq?.name, component.eq?.shortName, component.eq?.sortingName]
+                    .filter((name): name is string => !!name);
+                return names.some(name => /\blight\b/i.test(name));
+            });
+
+            return hasLightTag ? 'LTAG' : 'TAG';
+        }
+        return undefined;
+    });
+
     getECMStatus = computed<boolean | undefined>(() => {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return undefined;

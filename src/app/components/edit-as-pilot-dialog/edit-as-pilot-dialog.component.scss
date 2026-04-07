@@ -2,6 +2,49 @@
     flex: 3 1 0 !important;
 }
 
+.formation-commander-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    align-self: flex-start;
+    flex: 0 0 auto;
+    width: 21px;
+    height: 26px;
+    margin-top: 28px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.42);
+    cursor: pointer;
+    transition: color 0.15s ease, opacity 0.15s ease;
+    line-height: 0;
+
+    &:hover {
+        color: rgba(255, 255, 255, 0.72);
+    }
+
+    &:focus-visible {
+        outline: 1px solid rgba(255, 255, 255, 0.35);
+        outline-offset: 4px;
+        border-radius: 4px;
+    }
+
+    &.active {
+        color: var(--bt-yellow);
+    }
+}
+
+.formation-commander-icon {
+    width: 21px;
+    height: 26px;
+    transform: rotate(180deg);
+    flex-shrink: 0;
+}
+
+.formation-commander-inline-note {
+    color: var(--bt-yellow) !important;
+}
+
 .skill-field {
     flex: 1 1 0 !important;
     min-width: 160px;
@@ -25,6 +68,117 @@
 
 .ability-slot {
     margin-bottom: 12px;
+}
+
+.formation-effect-card {
+    padding: 12px;
+    margin-bottom: 12px;
+
+    &.ineligible {
+        opacity: 0.75;
+    }
+}
+
+.formation-effect-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 6px;
+}
+
+.formation-effect-title {
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.formation-effect-meta,
+.formation-effect-count {
+    font-size: 0.8em;
+    color: var(--text-color-tertiary);
+    margin-left: 4px;
+}
+
+.formation-effect-summary {
+    margin-bottom: 10px;
+    font-size: 0.85em;
+    color: var(--text-color-secondary);
+    line-height: 1.35;
+}
+
+.formation-effect-auto-state {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    align-items: flex-start;
+    padding: 10px 12px;
+}
+
+.formation-effect-auto-header {
+    width: 100%;
+    flex-wrap: wrap-reverse;
+    align-items: center;
+}
+
+.formation-effect-auto-label {
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.78em;
+    letter-spacing: 0.04em;
+    color: var(--bt-yellow);
+}
+
+.formation-option-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.formation-option {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 100%;
+    text-align: left;
+    padding: 10px 12px;
+    color: var(--text-color);
+    cursor: pointer;
+
+    &.active {
+        border-color: var(--bt-yellow);
+        background-color: rgba(240, 192, 64, 0.08);
+    }
+
+    &:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+}
+
+.formation-option-name {
+    font-weight: 600;
+}
+
+.formation-option-summary {
+    font-size: 0.84em;
+    color: var(--text-color-secondary);
+    line-height: 1.35;
+}
+
+.formation-option-rules {
+    align-self: center;
+    display: block;
+    font-size: 0.8em;
+    color: var(--text-color-tertiary);
+    line-height: 1.35;
+    text-align: center;
+    width: 100%;
+}
+
+.formation-notes {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 10px;
 }
 
 .dropdown-trigger {
@@ -201,10 +355,10 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    margin-bottom: 4px;
     font-size: 0.78em;
     color: orange;
     font-style: italic;
+    justify-content: center;
 }
 
 @container (max-width: 400px) {

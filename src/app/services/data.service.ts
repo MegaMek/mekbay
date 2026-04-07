@@ -44,10 +44,10 @@ import type { Quirk } from '../models/quirks.model';
 import { generateUUID, WsService } from './ws.service';
 import type { ForceUnit } from '../models/force-unit.model';
 import type { Force }    from '../models/force.model';
-import type { ASSerializedForce, CBTSerializedForce, SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-serialization';
+import type { ASSerializedForce, CBTSerializedForce, SerializedForce } from '../models/force-serialization';
 import { UnitInitializerService } from './unit-initializer.service';
 import { UserStateService } from './userState.service';
-import { LoadForceEntry, type LoadForceGroup, type LoadForceUnit } from '../models/load-force-entry.model';
+import { LoadForceEntry, type LoadForceGroup, type LoadForceUnit, type RemoteLoadForceEntry } from '../models/load-force-entry.model';
 import { LoggerService } from './logger.service';
 import { type SerializedOperation, LoadOperationEntry, type OperationForceInfo } from '../models/operation.model';
 import { type LoadedOrganization, type SerializedOrganization, LoadOrganizationEntry } from '../models/organization.model';
@@ -58,6 +58,7 @@ import { ASForce } from '../models/as-force.model';
 import type { Sourcebook } from '../models/sourcebook.model';
 import type { MegaMekFactionAffiliation, MegaMekFactionRecord, MegaMekFactions } from '../models/megamek/factions.model';
 import { getForcePacks } from '../models/forcepacks.model';
+import { getForcePackLookupKey } from '../utils/force-pack.util';
 import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
 import { MegaMekFactionsCatalogService } from './catalogs/megamek-factions-catalog.service';
 import { ErasCatalogService } from './catalogs/eras-catalog.service';
@@ -143,10 +144,10 @@ export class DataService {
     /** Emits when a cloud save is rejected (not_owner) and the force needs adoption. */
     public forceNeedsAdoption = new Subject<Force>();
 
-    /** packName -> Set<chassis|type> for force pack membership checks */
-    private forcePackToChassisType: Map<string, Set<string>> | null = null;
-    /** chassis|type -> sorted pack names[] for reverse lookups */
-    private chassisTypeToForcePacks: Map<string, string[]> | null = null;
+    /** packName -> Set<chassis|type|subtype> for force pack membership checks */
+    private forcePackToLookupKey: Map<string, Set<string>> | null = null;
+    /** chassis|type|subtype -> sorted pack names[] for reverse lookups */
+    private lookupKeyToForcePacks: Map<string, string[]> | null = null;
 
     public tagsVersion = signal(0);
     public searchCorpusVersion = signal(0);
@@ -364,8 +365,8 @@ export class DataService {
     }
 
     private invalidateForcePackCaches(): void {
-        this.forcePackToChassisType = null;
-        this.chassisTypeToForcePacks = null;
+        this.forcePackToLookupKey = null;
+        this.lookupKeyToForcePacks = null;
     }
 
     private rebuildUnitCatalogIndexes(units: Unit[]): void {
@@ -607,7 +608,7 @@ export class DataService {
         const missingIds = uniqueIds.filter((instanceId, index) => !localRawForces[index]);
         if (missingIds.length === 0) return 0;
 
-        const cloudForces = await this.getForcesBulkRaw(missingIds);
+        const cloudForces = await this.getForcesCloudRawByIds(missingIds);
         for (const force of cloudForces) {
             await this.dbService.saveForce(force);
         }
@@ -615,7 +616,7 @@ export class DataService {
         return cloudForces.length;
     }
 
-    public async getForceEntriesByIds(instanceIds: readonly string[]): Promise<LoadForceEntry[]> {
+    public async getLoadForceEntriesByIds(instanceIds: readonly string[]): Promise<LoadForceEntry[]> {
         const orderedIds = Array.from(new Set(instanceIds.filter((instanceId): instanceId is string => !!instanceId)));
         if (orderedIds.length === 0) return [];
 
@@ -624,13 +625,13 @@ export class DataService {
 
         for (const localRaw of localRawForces) {
             if (!localRaw?.instanceId) continue;
-            entryMap.set(localRaw.instanceId, this.createLoadForceEntry(localRaw, { local: true }));
+            entryMap.set(localRaw.instanceId, this.hydrateRemoteLoadForceEntry(localRaw, { local: true }));
         }
 
-        const cloudForces = await this.getForcesBulkRaw(orderedIds);
+        const cloudForces = await this.getForcesBulkSummaries(orderedIds);
         for (const raw of cloudForces) {
             if (!raw?.instanceId) continue;
-            const cloudEntry = this.createLoadForceEntry(raw, { cloud: true });
+            const cloudEntry = this.hydrateRemoteLoadForceEntry(raw, { cloud: true });
             const existing = entryMap.get(raw.instanceId);
             if (!existing || this.getComparableTimestamp(raw.timestamp) >= this.getComparableTimestamp(existing.timestamp)) {
                 if (existing?.local) cloudEntry.local = true;
@@ -643,12 +644,12 @@ export class DataService {
             .filter((entry): entry is LoadForceEntry => entry !== undefined);
     }
 
-    private async getForcesBulkRaw(instanceIds: readonly string[]): Promise<SerializedForce[]> {
+    private async getForcesBulkSummaries(instanceIds: readonly string[]): Promise<RemoteLoadForceEntry[]> {
         const ws = await this.canUseCloud();
         if (!ws) return [];
 
         const orderedIds = Array.from(new Set(instanceIds.filter((instanceId): instanceId is string => !!instanceId)));
-        const result: SerializedForce[] = [];
+        const result: RemoteLoadForceEntry[] = [];
 
         for (let i = 0; i < orderedIds.length; i += DataService.FORCE_BULK_CHUNK_SIZE) {
             const chunk = orderedIds.slice(i, i + DataService.FORCE_BULK_CHUNK_SIZE);
@@ -657,7 +658,31 @@ export class DataService {
                 instanceIds: chunk,
             });
             if (!response?.data || !Array.isArray(response.data)) continue;
-            result.push(...response.data as SerializedForce[]);
+            result.push(...response.data as RemoteLoadForceEntry[]);
+        }
+
+        return result;
+    }
+
+    private async getForcesCloudRawByIds(instanceIds: readonly string[]): Promise<SerializedForce[]> {
+        const ws = await this.canUseCloud();
+        if (!ws) return [];
+
+        const orderedIds = Array.from(new Set(instanceIds.filter((instanceId): instanceId is string => !!instanceId)));
+        const uuid = this.userStateService.uuid();
+        const result: SerializedForce[] = [];
+
+        for (const instanceId of orderedIds) {
+            const response = await this.wsService.sendAndWaitForResponse({
+                action: 'getForce',
+                uuid,
+                instanceId,
+                ownedOnly: false,
+            });
+            const raw = response?.data as SerializedForce | null | undefined;
+            if (raw?.instanceId) {
+                result.push(raw);
+            }
         }
 
         return result;
@@ -1151,20 +1176,20 @@ export class DataService {
         return result;
     }
 
-    private createLoadForceEntry(raw: SerializedForce, options: { cloud?: boolean; local?: boolean } = {}): LoadForceEntry {
+    private hydrateRemoteLoadForceEntry(raw: RemoteLoadForceEntry, options: { cloud?: boolean; local?: boolean } = {}): LoadForceEntry {
         const groups: LoadForceGroup[] = [];
         if (raw.groups && Array.isArray(raw.groups)) {
-            for (const group of raw.groups as SerializedGroup[]) {
+            for (const group of raw.groups) {
                 const loadGroup: LoadForceGroup = {
                     name: group.name,
                     formationId: group.formationId,
                     units: [],
                 };
-                for (const unit of group.units as SerializedUnit[]) {
+                for (const unit of group.units ?? []) {
                     const loadUnit: LoadForceUnit = {
                         unit: this.getUnitByName(unit.unit),
                         alias: unit.alias,
-                        destroyed: unit.state.destroyed ?? false,
+                        destroyed: unit.state?.destroyed ?? false,
                     };
                     loadGroup.units.push(loadUnit);
                 }
@@ -1206,9 +1231,9 @@ export class DataService {
         };
         const response = await this.wsService.sendAndWaitForResponse(payload);
         if (response && Array.isArray(response.data)) {
-            for (const raw of response.data as SerializedForce[]) {
+            for (const raw of response.data as RemoteLoadForceEntry[]) {
                 try {
-                    forces.push(this.createLoadForceEntry(raw, { cloud: true }));
+                    forces.push(this.hydrateRemoteLoadForceEntry(raw, { cloud: true }));
                 } catch (error) {
                     this.logger.error('Failed to deserialize force: ' + error + ' ' + raw);
                 }
@@ -1380,22 +1405,22 @@ export class DataService {
 
     /**
      * Build both force pack lookup maps on first use.
-     * - forcePackToChassisType: packName -> Set<chassis|type>
-     * - chassisTypeToForcePacks: chassis|type -> sorted packName[]
+     * - forcePackToLookupKey: packName -> Set<chassis|type|subtype>
+     * - lookupKeyToForcePacks: chassis|type|subtype -> sorted packName[]
      */
     private buildForcePackCaches(): void {
-        this.forcePackToChassisType = new Map();
+        this.forcePackToLookupKey = new Map();
         const reverseMap = new Map<string, Set<string>>();
 
         for (const pack of getForcePacks()) {
-            const chassisTypeSet = new Set<string>();
+            const lookupKeys = new Set<string>();
 
             const processUnits = (unitList: Array<{ name: string }>) => {
                 for (const pu of unitList) {
                     const unit = this.getUnitByName(pu.name);
                     if (unit) {
-                        const key = `${unit.chassis}|${unit.type}`;
-                        chassisTypeSet.add(key);
+                        const key = getForcePackLookupKey(unit);
+                        lookupKeys.add(key);
                         if (!reverseMap.has(key)) reverseMap.set(key, new Set());
                         reverseMap.get(key)!.add(pack.name);
                     }
@@ -1409,39 +1434,39 @@ export class DataService {
                 }
             }
 
-            this.forcePackToChassisType.set(pack.name, chassisTypeSet);
+            this.forcePackToLookupKey.set(pack.name, lookupKeys);
         }
 
-        this.chassisTypeToForcePacks = new Map();
+        this.lookupKeyToForcePacks = new Map();
         for (const [key, names] of reverseMap) {
-            this.chassisTypeToForcePacks.set(key, Array.from(names).sort());
+            this.lookupKeyToForcePacks.set(key, Array.from(names).sort());
         }
     }
 
     /**
-     * Check if a unit belongs to a force pack (by chassis|type).
+     * Check if a unit belongs to a force pack (by chassis|type|subtype).
      */
     public unitBelongsToForcePack(unit: Unit, packName: string): boolean {
-        if (!this.forcePackToChassisType) this.buildForcePackCaches();
-        const chassisSet = this.forcePackToChassisType!.get(packName);
-        if (!chassisSet) return false;
-        return chassisSet.has(`${unit.chassis}|${unit.type}`);
+        if (!this.forcePackToLookupKey) this.buildForcePackCaches();
+        const lookupSet = this.forcePackToLookupKey!.get(packName);
+        if (!lookupSet) return false;
+        return lookupSet.has(getForcePackLookupKey(unit));
     }
 
     /**
-     * Get the chassis|type set for a force pack (for bulk filtering).
+     * Get the chassis|type|subtype set for a force pack (for bulk filtering).
      */
-    public getForcePackChassisTypeSet(packName: string): Set<string> | undefined {
-        if (!this.forcePackToChassisType) this.buildForcePackCaches();
-        return this.forcePackToChassisType!.get(packName);
+    public getForcePackLookupSet(packName: string): Set<string> | undefined {
+        if (!this.forcePackToLookupKey) this.buildForcePackCaches();
+        return this.forcePackToLookupKey!.get(packName);
     }
 
     /**
-     * Get the sorted list of force pack names that contain a unit's chassis|type.
+     * Get the sorted list of force pack names that contain a unit's chassis|type|subtype.
      */
     public getForcePacksForUnit(unit: Unit): string[] {
-        if (!this.chassisTypeToForcePacks) this.buildForcePackCaches();
-        return this.chassisTypeToForcePacks!.get(`${unit.chassis}|${unit.type}`) ?? [];
+        if (!this.lookupKeyToForcePacks) this.buildForcePackCaches();
+        return this.lookupKeyToForcePacks!.get(getForcePackLookupKey(unit)) ?? [];
     }
 
     /* ----------------------------------------------------------

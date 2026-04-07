@@ -12,6 +12,13 @@ describe('org-namer.util', () => {
 		img: '',
 		eras: {},
 	};
+	const clanFaction: Faction = {
+		id: 2,
+		name: 'Clan Wolf',
+		group: 'IS Clan',
+		img: '',
+		eras: {},
+	};
 
 	function createGroup(overrides: Partial<GroupSizeResult>): GroupSizeResult {
 		return {
@@ -22,6 +29,19 @@ describe('org-namer.util', () => {
 			tier: 0,
 			...overrides,
 		};
+	}
+
+	function createGalaxyGroup(modifierKey: '' | 'Under-Strength ' | 'Reinforced ' | 'Strong ' = ''): GroupSizeResult {
+		return createGroup({
+			name: `${modifierKey}Galaxy`.trim(),
+			type: 'Galaxy',
+			modifierKey,
+			tier: 4,
+		});
+	}
+
+	function getGalaxyCollectionName(groups: readonly GroupSizeResult[]): string {
+		return getOrgFromForceCollection([], clanFaction, null, groups).name;
 	}
 
 	it('sorts repeated display buckets by their aggregated tier', () => {
@@ -60,6 +80,28 @@ describe('org-namer.util', () => {
 		]);
 
 		expect(result.name).toBe('4 Units');
+	});
+
+	it('keeps higher-tier groups ahead of repeated zero-tier buckets', () => {
+		const result = getOrgFromResolvedGroups([
+			createGroup({ name: 'Reinforced Lance', type: 'Lance', modifierKey: 'Reinforced ', tier: 1 }),
+			...Array.from({ length: 4 }, () => createGroup({ name: 'Unit', type: 'Unit', tier: 0 })),
+		]);
+
+		expect(result.name).toBe('Reinforced Lance + 4 Units');
+	});
+
+	it('does not let repeated zero-tier buckets cross a display cutoff', () => {
+		const result = getOrgFromResolvedGroups(
+			[
+				createGroup({ name: 'Reinforced Lance', type: 'Lance', modifierKey: 'Reinforced ', tier: 1 }),
+				...Array.from({ length: 4 }, () => createGroup({ name: 'Unit', type: 'Unit', tier: 0 })),
+			],
+			{ displayTierCutoff: 0.5 },
+		);
+
+		expect(result.name).toBe('Reinforced Lance+');
+		expect(result.tier).toBe(1);
 	});
 
 	it('keeps Point ahead of inferior Unit fragments in mixed display', () => {
@@ -130,6 +172,80 @@ describe('org-namer.util', () => {
 		);
 
 		expect(result.name).toBe('Point+');
+	});
+
+	it('documents exact-equivalent aggregation for repeated Under-Strength Galaxies', () => {
+		const cases: ReadonlyArray<{ count: number; expected: string }> = [
+			{ count: 1, expected: 'Under-Strength Galaxy' },
+			{ count: 2, expected: '2x Under-Strength Galaxy' },
+			{ count: 3, expected: '3x Under-Strength Galaxy' },
+			{ count: 4, expected: '4x Under-Strength Galaxy' },
+			{ count: 5, expected: '5x Under-Strength Galaxy' },
+			{ count: 6, expected: '6x Under-Strength Galaxy' },
+		];
+
+		for (const { count, expected } of cases) {
+			const result = getGalaxyCollectionName(Array.from({ length: count }, () => createGalaxyGroup('Under-Strength ')));
+
+			expect(result)
+				.withContext(`${count}x Under-Strength Galaxy`)
+				.toBe(expected);
+		}
+	});
+
+	it('documents exact-equivalent aggregation for repeated regular Galaxies', () => {
+		const cases: ReadonlyArray<{ count: number; expected: string }> = [
+			{ count: 1, expected: 'Galaxy' },
+			{ count: 2, expected: '2x Galaxy' },
+			{ count: 3, expected: '3x Galaxy' },
+			{ count: 4, expected: '4x Galaxy' },
+			{ count: 5, expected: '5x Galaxy' },
+			{ count: 6, expected: '6x Galaxy' },
+		];
+
+		for (const { count, expected } of cases) {
+			const result = getGalaxyCollectionName(Array.from({ length: count }, () => createGalaxyGroup()));
+
+			expect(result)
+				.withContext(`${count}x Galaxy`)
+				.toBe(expected);
+		}
+	});
+
+	it('documents exact-equivalent aggregation for repeated Reinforced Galaxies', () => {
+		const cases: ReadonlyArray<{ count: number; expected: string }> = [
+			{ count: 1, expected: 'Reinforced Galaxy' },
+			{ count: 2, expected: '2x Reinforced Galaxy' },
+			{ count: 3, expected: '3x Reinforced Galaxy' },
+			{ count: 4, expected: '4x Reinforced Galaxy' },
+			{ count: 5, expected: '5x Reinforced Galaxy' },
+			{ count: 6, expected: '6x Reinforced Galaxy' },
+		];
+
+		for (const { count, expected } of cases) {
+			const result = getGalaxyCollectionName(Array.from({ length: count }, () => createGalaxyGroup('Reinforced ')));
+
+			expect(result)
+				.withContext(`${count}x Reinforced Galaxy`)
+				.toBe(expected);
+		}
+	});
+
+	it('documents exact-equivalent aggregation for mixed Galaxy modifiers', () => {
+		const cases: ReadonlyArray<{ modifiers: Array<'' | 'Under-Strength ' | 'Reinforced '>; expected: string }> = [
+			{ modifiers: ['Under-Strength ', ''], expected: 'Galaxy + Under-Strength Galaxy' },
+			{ modifiers: ['Under-Strength ', 'Reinforced '], expected: 'Reinforced Galaxy + Under-Strength Galaxy' },
+			{ modifiers: ['Under-Strength ', '', ''], expected: '2x Galaxy + Under-Strength Galaxy' },
+			{ modifiers: ['Under-Strength ', '', 'Reinforced '], expected: 'Reinforced Galaxy + Galaxy + Under-Strength Galaxy' },
+		];
+
+		for (const { modifiers, expected } of cases) {
+			const result = getGalaxyCollectionName(modifiers.map((modifierKey) => createGalaxyGroup(modifierKey)));
+
+			expect(result)
+				.withContext(modifiers.map((modifierKey) => `${modifierKey}Galaxy`.trim()).join(' + '))
+				.toBe(expected);
+		}
 	});
 
 	it('uses solver output for collection aggregation instead of naming-time bucket promotion', () => {
