@@ -924,7 +924,7 @@ export class ForceOrgDialogComponent {
     private async loadOrganizationForceEntries(instanceIds: readonly string[]): Promise<LoadForceEntry[]> {
         if (instanceIds.length === 0) return [];
 
-        const forces = await this.dataService.getForceEntriesByIds(instanceIds);
+        const forces = await this.dataService.getLoadForceEntriesByIds(instanceIds);
         this.primeForceSearchText(forces);
         return forces;
     }

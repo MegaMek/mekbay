@@ -1430,7 +1430,7 @@ export class DataService {
         return cloudForces.length;
     }
 
-    public async getForceEntriesByIds(instanceIds: readonly string[]): Promise<LoadForceEntry[]> {
+    public async getLoadForceEntriesByIds(instanceIds: readonly string[]): Promise<LoadForceEntry[]> {
         const orderedIds = Array.from(new Set(instanceIds.filter((instanceId): instanceId is string => !!instanceId)));
         if (orderedIds.length === 0) return [];
 
