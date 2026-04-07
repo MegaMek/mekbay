@@ -102,6 +102,9 @@ export type OrgType =
     | 'Legion'
 
     // CC-specific types
+    | 'Element'
+    | 'Triple'
+    | 'Fleet Regiment'
     | 'Augmented Lance'
     | 'Augmented Company'
     | 'Augmented Battalion'
