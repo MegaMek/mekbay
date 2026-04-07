@@ -78,8 +78,6 @@ export class CBTForceUnit extends ForceUnit {
         const pilot = this.getCrewMember(0);
         return pilot?.getName() ?? undefined;
     });
-    private readonly _formationCommander = signal<boolean>(false);
-    readonly commander = this._formationCommander.asReadonly();
     
     constructor(unit: Unit,
         force: CBTForce,
@@ -478,17 +476,6 @@ export class CBTForceUnit extends ForceUnit {
             return newCrew;
         });
         this.setModified();
-    }
-
-    setFormationCommander(value: boolean, markModified: boolean = true): void {
-        if (this._formationCommander() === value) {
-            return;
-        }
-
-        this._formationCommander.set(value);
-        if (markModified) {
-            this.setModified();
-        }
     }
 
     public gunnerySkill = computed<number>(() => {

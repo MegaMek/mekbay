@@ -207,6 +207,12 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     /** Insert a pre-existing ForceUnit at the given index (appends if omitted). Updates the unit's force reference. */
     insertUnit(unit: ForceUnit, index?: number): void {
         unit.force = this.force;
+        if (unit.commander()) {
+            const existingCommander = this.units().find((candidate) => candidate.commander());
+            if (existingCommander) {
+                unit.setFormationCommander(false);
+            }
+        }
         const units = [...this.units()];
         const insertAt = index !== undefined ? Math.min(Math.max(0, index), units.length) : units.length;
         units.splice(insertAt, 0, unit as TUnit);

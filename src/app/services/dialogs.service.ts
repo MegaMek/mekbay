@@ -114,7 +114,7 @@ export class DialogsService {
         await firstValueFrom(ref.closed);
     }
 
-    async requestConfirmation(message: string, title: string, type: 'info' | 'danger'): Promise<boolean> {
+    async requestConfirmation(message: string, title: string, type: 'info' | 'warning' | 'danger'): Promise<boolean> {
         const ref = this.createDialog<string>(ConfirmDialogComponent, {
             disableClose: true,
             panelClass: type,

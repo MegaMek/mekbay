@@ -197,7 +197,7 @@ export class EditPilotDialogComponent {
         const pilotName = unit.alias()?.trim();
         const unitName = unit.getDisplayName();
         if (pilotName) {
-            return `${unitName} (pilot: ${pilotName})`;
+            return `${unitName} (${pilotName})`;
         }
         return unitName;
     }
@@ -210,7 +210,7 @@ export class EditPilotDialogComponent {
                 const confirmed = await this.dialogsService.requestConfirmation(
                     `${otherCommanderName} is currently marked as the group commander. Making this unit the commander will remove that flag from ${otherCommanderName}. Continue?`,
                     'Replace Group Commander',
-                    'info',
+                    'warning',
                 );
                 if (!confirmed) {
                     this.selectedGroupCommander.set(false);
