@@ -80,6 +80,15 @@ export class UnitBlockComponent {
     /** Derives Alpha Strike status from the unit's own force, not the global game system. */
     isAlphaStrike = computed<boolean>(() => this.forceUnit()?.force?.gameSystem === GameSystem.ALPHA_STRIKE);
 
+    isCommander = computed<boolean>(() => {
+        const forceUnit = this.forceUnit();
+        if (!forceUnit) return false;
+        if (forceUnit instanceof ASForceUnit || forceUnit instanceof CBTForceUnit) {
+            return forceUnit.commander();
+        }
+        return false;
+    });
+
     dirty = computed<boolean>(() => {
         if (!this.optionsService.options().useAutomations) {
             return false;

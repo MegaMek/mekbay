@@ -1,34 +1,36 @@
 <div class="wide-dialog">
     <h2 class="wide-dialog-title">Warrior Data</h2>
     <div class="wide-dialog-body">
-        <div class="form-row">
-            @if (data.group) {
-            <button
-                type="button"
-                class="formation-commander-toggle"
-                [class.active]="selectedFormationCommander()"
-                [attr.aria-label]="selectedFormationCommander() ? 'Unset group commander' : 'Set as group commander'"
-                [attr.aria-pressed]="selectedFormationCommander()"
-                [attr.title]="selectedFormationCommander() ? 'Unset group commander' : 'Set as group commander'"
-                (click)="setFormationCommanderSelected(!selectedFormationCommander())">
-                <svg class="formation-commander-icon" width="21" height="26" viewBox="0 0 21 25.9" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-                    <g transform="translate(-.02)">
-                        <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
-                            <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
-                            <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
+        <div class="form-row commander-layout">
+            <div class="commander-name-row">
+                @if (data.group) {
+                <button
+                    type="button"
+                    class="formation-commander-toggle bt-button square"
+                    [class.active]="selectedFormationCommander()"
+                    [attr.aria-label]="selectedFormationCommander() ? 'Unset group commander' : 'Set as group commander'"
+                    [attr.aria-pressed]="selectedFormationCommander()"
+                    [attr.title]="selectedFormationCommander() ? 'Unset group commander' : 'Set as group commander'"
+                    (click)="setFormationCommanderSelected(!selectedFormationCommander())">
+                    <svg class="formation-commander-icon" width="21" height="26" viewBox="0 0 21 25.9" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                        <g transform="translate(-.02)">
+                            <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
+                                <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
+                                <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
+                            </g>
                         </g>
-                    </g>
-                </svg>
-            </button>
-            }
-            <div class="form-fields name-field">
-                <label class="field-label">Name</label>
-                <div class="input-wrapper">
-                    <input #nameInput type="text" class="field-input" autocomplete="off" maxlength="40" [value]="data.name || ''" (keydown.enter)="submit()" />
-                </div>
-                @if (data.group && selectedFormationCommander()) {
-                <div class="field-note formation-commander-inline-note">This unit is the group commander.</div>
+                    </svg>
+                </button>
                 }
+                <div class="form-fields name-field">
+                    <label class="field-label">Name</label>
+                    <div class="input-wrapper">
+                        <input #nameInput type="text" class="field-input" autocomplete="off" maxlength="40" [value]="data.name || ''" (keydown.enter)="submit()" />
+                    </div>
+                    @if (data.group && selectedFormationCommander()) {
+                    <div class="field-note formation-commander-inline-note">This unit is the group commander.</div>
+                    }
+                </div>
             </div>
             <div class="form-fields skill-field">
                 <label class="field-label">Skill</label>

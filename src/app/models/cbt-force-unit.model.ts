@@ -78,6 +78,8 @@ export class CBTForceUnit extends ForceUnit {
         const pilot = this.getCrewMember(0);
         return pilot?.getName() ?? undefined;
     });
+    private readonly _formationCommander = signal<boolean>(false);
+    readonly commander = this._formationCommander.asReadonly();
     
     constructor(unit: Unit,
         force: CBTForce,
@@ -478,6 +480,17 @@ export class CBTForceUnit extends ForceUnit {
         this.setModified();
     }
 
+    setFormationCommander(value: boolean, markModified: boolean = true): void {
+        if (this._formationCommander() === value) {
+            return;
+        }
+
+        this._formationCommander.set(value);
+        if (markModified) {
+            this.setModified();
+        }
+    }
+
     public gunnerySkill = computed<number>(() => {
         this.state.crew(); // Track crew changes
         const pilot = this.getCrewMember(0);
@@ -746,6 +759,7 @@ export class CBTForceUnit extends ForceUnit {
             const pilot = this.getCrewMember(0);
             pilot?.setName(data.alias ?? '');
         }
+        this._formationCommander.set(data.commander ?? false);
         if (data.state) {
             this.state.update(data.state);
         }
@@ -767,6 +781,7 @@ export class CBTForceUnit extends ForceUnit {
             id: this.id,
             state: stateObj,
             alias: this.alias(),
+            commander: this._formationCommander() || undefined,
             updatedTs: this.updatedTs || undefined,
             unit: this.getUnit().name // Serialize only the name
         };
@@ -809,6 +824,7 @@ export class CBTForceUnit extends ForceUnit {
         if (data.updatedTs !== undefined) {
             fu.updatedTs = data.updatedTs;
         }
+        fu._formationCommander.set(data.commander ?? false);
         fu.deserializeState(data.state);
         return fu;
     }

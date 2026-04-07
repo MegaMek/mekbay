@@ -101,6 +101,7 @@ export interface SerializedUnit {
     model?: string;
     chassis?: string;
     alias?: string;
+    commander?: boolean;
     updatedTs?: number;
     state: SerializedState;
 }
@@ -373,6 +374,7 @@ export const CBT_SERIALIZED_UNIT_SCHEMA = Sanitizer.schema<CBTSerializedUnit>()
     .string('model')
     .string('chassis')
     .string('alias')
+    .boolean('commander')
     .number('updatedTs')
     .custom('state', (value: unknown) => {
         if (!value || typeof value !== 'object') {

@@ -1,37 +1,36 @@
+.commander-layout {
+    align-items: flex-start;
+}
+
+@container (max-width: 400px) {
+    .commander-layout {
+        align-items: stretch;
+    }
+}
+
+.commander-name-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    flex: 3 1 0;
+    min-width: 0;
+
+    > .form-fields {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+}
+
 .name-field {
-    flex: 3 1 0 !important;
+    flex: 1 1 0 !important;
+    min-width: 0;
 }
 
 .formation-commander-toggle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     align-self: flex-start;
     flex: 0 0 auto;
-    width: 21px;
-    height: 26px;
-    margin-top: 28px;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: rgba(255, 255, 255, 0.42);
-    cursor: pointer;
-    transition: color 0.15s ease, opacity 0.15s ease;
+    margin-top: 21px;
     line-height: 0;
-
-    &:hover {
-        color: rgba(255, 255, 255, 0.72);
-    }
-
-    &:focus-visible {
-        outline: 1px solid rgba(255, 255, 255, 0.35);
-        outline-offset: 4px;
-        border-radius: 4px;
-    }
-
-    &.active {
-        color: var(--bt-yellow);
-    }
 }
 
 .formation-commander-icon {
