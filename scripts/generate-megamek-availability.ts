@@ -26,20 +26,43 @@ interface YearKeyedChange {
     name: string;
 }
 
+interface FactionLeader {
+    title: string;
+    firstName: string;
+    surname: string;
+    gender?: string;
+    honorific?: string;
+    startYear?: number;
+    endYear?: number;
+}
+
 type RgbColor = [number, number, number];
 
 interface UniverseFactionRecord {
     id: string;
     name: string;
     mulId: number[];
+    filename: string;
     isCommand: boolean;
     yearsActive: DateRange[];
     ratingLevels: string[];
     fallBackFactions: string[];
     tags: string[];
     nameChanges: YearKeyedChange[];
+    capital?: string;
+    capitalChanges?: YearKeyedChange[];
     color?: RgbColor;
     logo?: string;
+    camos?: string;
+    nameGenerator?: string;
+    eraMods?: number[];
+    rankSystem?: string;
+    factionLeaders?: FactionLeader[];
+    successor?: string;
+    preInvasionHonorRating?: string;
+    postInvasionHonorRating?: string;
+    formationBaseSize?: number;
+    formationGrouping?: number;
 }
 
 interface LightFactionRecord {
@@ -52,6 +75,7 @@ interface LightFactionRecord {
     nameChanges: YearKeyedChange[];
     color?: RgbColor;
     logo?: string;
+    successor?: string;
 }
 
 interface MegaMekEra {
@@ -927,6 +951,35 @@ function parseColor(raw: unknown): RgbColor | undefined {
     return [red, green, blue];
 }
 
+function parseFactionLeaders(raw: unknown): FactionLeader[] | undefined {
+    const entries = ensureArray(raw).filter((e) => e && typeof e === 'object');
+    if (entries.length === 0) {
+        return undefined;
+    }
+
+    return entries.map((entry) => {
+        const e = entry as Record<string, unknown>;
+        return {
+            title: String(e.title || ''),
+            firstName: String(e.firstName || ''),
+            surname: String(e.surname || ''),
+            gender: e.gender ? String(e.gender) : undefined,
+            honorific: e.honorific ? String(e.honorific) : undefined,
+            startYear: parseYear(e.startYear),
+            endYear: parseYear(e.endYear),
+        };
+    });
+}
+
+function parseEraMods(raw: unknown): number[] | undefined {
+    const arr = ensureArray(raw);
+    if (arr.length === 0) {
+        return undefined;
+    }
+
+    return arr.map((v) => Number(v));
+}
+
 function loadFactionMulIdMap(filePath: string): FactionMulIdConfig {
     const mappedIds = new Map<string, number[]>();
     const skippedFactions = new Set<string>();
@@ -977,18 +1030,32 @@ function loadUniverseFactions(
         const filePath = path.join(dirPath, fileName);
         const raw = readYamlFile(filePath);
         const id = String(raw.key);
+        const logo = getFactionLogoFilename(id);
         result[id] = {
             id,
             name: String(raw.name || id),
             mulId: [...(factionMulIds.get(id) ?? [])],
+            filename: fileName,
             isCommand,
             yearsActive: parseYearsActive(raw.yearsActive),
             ratingLevels: normalizeTextList(raw.ratingLevels),
             fallBackFactions: normalizeTextList(raw.fallBackFactions),
             tags: normalizeTextList(raw.tags),
             nameChanges: parseYearKeyedChanges(raw.nameChanges),
+            capital: raw.capital ? String(raw.capital) : undefined,
+            capitalChanges: raw.capitalChanges ? parseYearKeyedChanges(raw.capitalChanges) : undefined,
             color: parseColor(raw.color),
-            logo: getFactionLogoFilename(id),
+            logo,
+            camos: raw.camos ? String(raw.camos) : undefined,
+            nameGenerator: raw.nameGenerator ? String(raw.nameGenerator) : undefined,
+            eraMods: parseEraMods(raw.eraMods),
+            rankSystem: raw.rankSystem ? String(raw.rankSystem) : undefined,
+            factionLeaders: parseFactionLeaders(raw.factionLeaders),
+            successor: raw.successor ? String(raw.successor) : undefined,
+            preInvasionHonorRating: raw.preInvasionHonorRating ? String(raw.preInvasionHonorRating) : undefined,
+            postInvasionHonorRating: raw.postInvasionHonorRating ? String(raw.postInvasionHonorRating) : undefined,
+            formationBaseSize: raw.formationBaseSize !== undefined ? Number(raw.formationBaseSize) : undefined,
+            formationGrouping: raw.formationGrouping !== undefined ? Number(raw.formationGrouping) : undefined,
         };
     }
 
@@ -1036,6 +1103,7 @@ function buildLightFactionRecords(
                 nameChanges: faction.nameChanges,
                 color: faction.color,
                 logo: faction.logo,
+                successor: faction.successor,
             },
         ]),
     );
