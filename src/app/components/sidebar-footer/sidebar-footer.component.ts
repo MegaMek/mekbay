@@ -220,6 +220,10 @@ export class SidebarFooterComponent {
         this.forceBuilderService.showForcePackDialog();
     }
 
+    showForceGeneratorDialog(): void {
+        void this.forceBuilderService.showForceGeneratorDialog();
+    }
+
     async addExternalForce(): Promise<void> {
         const inputDialogRef = this.dialogsService.createDialog<string | null>(AddExternalForceDialogComponent, {
             disableClose: true,
