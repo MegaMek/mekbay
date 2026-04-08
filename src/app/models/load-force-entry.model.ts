@@ -50,6 +50,24 @@ export interface LoadForceUnit {
     unit: Unit | undefined;
     alias?: string;
     destroyed: boolean;
+    skill?: number;
+    gunnery?: number;
+    piloting?: number;
+    commander?: boolean;
+}
+
+export function getLoadForceUnitPilotStats(loadForceUnit: LoadForceUnit, gameSystem: GameSystem): string {
+    if (gameSystem === GameSystem.ALPHA_STRIKE) {
+        return `${loadForceUnit.skill ?? loadForceUnit.gunnery ?? 4}`;
+    }
+
+    const gunnery = loadForceUnit.gunnery ?? loadForceUnit.skill ?? 4;
+    if (loadForceUnit.unit?.type === 'ProtoMek') {
+        return `${gunnery}`;
+    }
+
+    const piloting = loadForceUnit.piloting ?? 5;
+    return `${gunnery}/${piloting}`;
 }
 
 export interface LoadForceGroup {
