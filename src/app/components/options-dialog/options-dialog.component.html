@@ -662,11 +662,6 @@
             </div>
             } @else {
             <div class="options-mobile-detail">
-                @if (currentViewDescription()) {
-                <div class="mobile-view-description">
-                    <p>{{ currentViewDescription() }}</p>
-                </div>
-                }
                 <div class="mobile-view-content">
                     <ng-container *ngTemplateOutlet="viewContent"></ng-container>
                 </div>
