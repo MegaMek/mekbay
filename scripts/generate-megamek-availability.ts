@@ -21,20 +21,44 @@ interface DateRange {
     end?: number;
 }
 
+interface YearKeyedChange {
+    year: number;
+    name: string;
+}
+
+type RgbColor = [number, number, number];
+
 interface UniverseFactionRecord {
     id: string;
     name: string;
     mulId: number[];
+    isCommand: boolean;
     yearsActive: DateRange[];
     ratingLevels: string[];
     fallBackFactions: string[];
     tags: string[];
+    nameChanges: YearKeyedChange[];
+    color?: RgbColor;
+    logo?: string;
+}
+
+interface LightFactionRecord {
+    id: string;
+    name: string;
+    mulId: number[];
+    yearsActive: DateRange[];
+    fallBackFactions: string[];
+    ancestry: string[];
+    nameChanges: YearKeyedChange[];
+    color?: RgbColor;
+    logo?: string;
 }
 
 interface MegaMekEra {
     code: string;
     startYear?: number;
     endYear?: number;
+    mulId?: number;
 }
 
 interface ParsedAvailability {
@@ -151,7 +175,7 @@ interface ResolvedFactionRatingProfile {
     canonicalLevels: (typeof DEFAULT_CANONICAL_RATINGS)[number][];
 }
 
-const USE_ERA_CODE_KEYS = true;
+const USE_ERA_CODE_KEYS = false;
 const BEAUTIFY_OUTPUT = true;
 const JSON_INDENT = 2;
 const INLINE_JSON_ARRAY_MAX_ITEMS = 8;
@@ -213,6 +237,7 @@ const FORCEGEN_ROOT = path.join(MM_DATA_ROOT, 'data', 'forcegenerator');
 const UNIT_FILES_ROOT = path.join(MM_DATA_ROOT, 'data', 'mekfiles');
 const NAME_CHANGES_FILE_PATH = path.join(UNIT_FILES_ROOT, 'name_changes.txt');
 const FACTIONS_MM_TO_MUL_PATH = path.join(APP_ROOT, 'scripts', 'config', 'factions-mm-to-mul.csv');
+const MM_FACTIONS_IMAGE_DIR = path.join(APP_ROOT, 'public', 'images', 'mmfactions');
 const OUTPUT_DIR = path.join(APP_ROOT, 'public', 'assets');
 
 const xmlParser = new XMLParser({
@@ -231,6 +256,12 @@ const xmlParser = new XMLParser({
             || name === 'model';
     },
 });
+
+function getFactionLogoFilename(factionKey: string): string | undefined {
+    const fileName = `${factionKey}.png`;
+    const filePath = path.join(MM_FACTIONS_IMAGE_DIR, fileName);
+    return fs.existsSync(filePath) ? fileName : undefined;
+}
 
 function ensureArray<T>(value: T | T[] | undefined | null): T[] {
     if (value === undefined || value === null) {
@@ -825,11 +856,30 @@ function findUnitMetadata(
     }
 
     const legacyKey = buildUnitMetadataLegacyKey(chassis, model);
-    return index.byLegacyKey.get(legacyKey)
-        ?? index.byNormalizedKey.get(normalizeLookupKey(legacyKey))
-        ?? findClosestUnitMetadataByModelAndChassis(index, chassis, model)
-        ?? (model ? index.byNormalizedModel.get(normalizeLookupKey(model)) ?? undefined : undefined)
-        ?? index.byNormalizedChassis.get(normalizeLookupKey(chassis)) ?? undefined;
+    const legacyMatch = index.byLegacyKey.get(legacyKey);
+    if (legacyMatch) {
+        return legacyMatch;
+    }
+
+    const normalizedLegacyMatch = index.byNormalizedKey.get(normalizeLookupKey(legacyKey));
+    if (normalizedLegacyMatch) {
+        return normalizedLegacyMatch;
+    }
+
+    const closestMatch = findClosestUnitMetadataByModelAndChassis(index, chassis, model);
+    if (closestMatch) {
+        return closestMatch;
+    }
+
+    if (model) {
+        const normalizedModelMatch = index.byNormalizedModel.get(normalizeLookupKey(model));
+        if (normalizedModelMatch) {
+            return normalizedModelMatch;
+        }
+    }
+
+    const normalizedChassisMatch = index.byNormalizedChassis.get(normalizeLookupKey(chassis));
+    return normalizedChassisMatch ?? undefined;
 }
 
 function parseYearsActive(rawRanges: unknown): DateRange[] {
@@ -844,6 +894,37 @@ function parseYearsActive(rawRanges: unknown): DateRange[] {
             end: parseYear(range.end),
         };
     });
+}
+
+function parseYearKeyedChanges(raw: unknown): YearKeyedChange[] {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return [];
+    }
+
+    return Object.entries(raw as Record<string, unknown>)
+        .map(([yearStr, name]) => ({
+            year: Number.parseInt(String(yearStr), 10),
+            name: String(name),
+        }))
+        .filter((entry) => Number.isFinite(entry.year) && entry.name.length > 0)
+        .sort((left, right) => left.year - right.year);
+}
+
+function parseColor(raw: unknown): RgbColor | undefined {
+    if (!raw || typeof raw !== 'object') {
+        return undefined;
+    }
+
+    const color = raw as Record<string, unknown>;
+    const red = Number(color.red);
+    const green = Number(color.green);
+    const blue = Number(color.blue);
+
+    if (!Number.isFinite(red) || !Number.isFinite(green) || !Number.isFinite(blue)) {
+        return undefined;
+    }
+
+    return [red, green, blue];
 }
 
 function loadFactionMulIdMap(filePath: string): FactionMulIdConfig {
@@ -887,6 +968,7 @@ function loadFactionMulIdMap(filePath: string): FactionMulIdConfig {
 
 function loadUniverseFactions(
     dirPath: string,
+    isCommand: boolean,
     factionMulIds: ReadonlyMap<string, number[]>,
 ): Record<string, UniverseFactionRecord> {
     const result: Record<string, UniverseFactionRecord> = {};
@@ -899,14 +981,64 @@ function loadUniverseFactions(
             id,
             name: String(raw.name || id),
             mulId: [...(factionMulIds.get(id) ?? [])],
+            isCommand,
             yearsActive: parseYearsActive(raw.yearsActive),
             ratingLevels: normalizeTextList(raw.ratingLevels),
             fallBackFactions: normalizeTextList(raw.fallBackFactions),
             tags: normalizeTextList(raw.tags),
+            nameChanges: parseYearKeyedChanges(raw.nameChanges),
+            color: parseColor(raw.color),
+            logo: getFactionLogoFilename(id),
         };
     }
 
     return result;
+}
+
+function buildAncestry(factions: Record<string, UniverseFactionRecord>, factionKey: string): string[] {
+    const visited = new Set<string>();
+    const ancestry = new Set<string>();
+
+    function visit(currentKey: string): void {
+        if (visited.has(currentKey)) {
+            return;
+        }
+
+        visited.add(currentKey);
+        const faction = factions[currentKey];
+        if (!faction) {
+            return;
+        }
+
+        for (const fallback of faction.fallBackFactions) {
+            ancestry.add(fallback);
+            visit(fallback);
+        }
+    }
+
+    visit(factionKey);
+    return Array.from(ancestry);
+}
+
+function buildLightFactionRecords(
+    factions: Record<string, UniverseFactionRecord>,
+): Record<string, LightFactionRecord> {
+    return Object.fromEntries(
+        Object.entries(factions).map(([factionKey, faction]) => [
+            factionKey,
+            {
+                id: faction.id,
+                name: faction.name,
+                mulId: faction.mulId,
+                yearsActive: faction.yearsActive,
+                fallBackFactions: faction.fallBackFactions,
+                ancestry: buildAncestry(factions, factionKey),
+                nameChanges: faction.nameChanges,
+                color: faction.color,
+                logo: faction.logo,
+            },
+        ]),
+    );
 }
 
 function loadMegaMekEras(filePath: string): MegaMekEra[] {
@@ -914,6 +1046,7 @@ function loadMegaMekEras(filePath: string): MegaMekEra[] {
     const eras: MegaMekEra[] = ensureArray(parsed.eras?.era).map((era) => ({
         code: String(era.code),
         endYear: parseYear(era.end),
+        mulId: era.mulid ? Number.parseInt(String(era.mulid), 10) : undefined,
     }));
 
     let previousEnd: number | undefined;
@@ -1057,7 +1190,7 @@ function findEraForYear(eras: MegaMekEra[], year: number): MegaMekEra | undefine
     });
 }
 
-function resolveEraKey(era: MegaMekEra | undefined): string | undefined {
+function resolveEraKey(era: MegaMekEra | undefined): string | number | undefined {
     if (!era) {
         return undefined;
     }
@@ -1066,10 +1199,10 @@ function resolveEraKey(era: MegaMekEra | undefined): string | undefined {
         return era.code;
     }
 
-    return undefined;
+    return era.mulId;
 }
 
-function findEraKey(eras: MegaMekEra[], year: number): string | undefined {
+function findEraKey(eras: MegaMekEra[], year: number): string | number | undefined {
     return resolveEraKey(findEraForYear(eras, year));
 }
 
@@ -1402,7 +1535,7 @@ function addCompactAvailability(
 
         const eraKey = findEraKey(eras, availabilityYear);
         if (eraKey === undefined) {
-            console.log(`[MegaMek] skipping availability for ${availability.factionKey} in year ${availabilityYear} (${sourceLabel}) due to undefined era`);
+            // console.log(`[MegaMek] skipping availability for ${availability.factionKey} in year ${availabilityYear} (${sourceLabel}) due to undefined era`);
             continue;
         }
 
@@ -2969,7 +3102,7 @@ function remapWeightedEraAvailabilityToMulIds(
         }
 
         if (factionKey !== GENERAL_FACTION_KEY && skippedFactions.has(factionKey)) {
-            console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to explicit -1 CSV mapping`);
+            // console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to explicit -1 CSV mapping`);
             continue;
         }
 
@@ -3025,9 +3158,10 @@ function run(): void {
 
     const factionMulIdConfig = loadFactionMulIdMap(FACTIONS_MM_TO_MUL_PATH);
     const factions = {
-        ...loadUniverseFactions(universeFactionsDir, factionMulIdConfig.mappedIds),
-        ...loadUniverseFactions(universeCommandsDir, factionMulIdConfig.mappedIds),
+        ...loadUniverseFactions(universeFactionsDir, false, factionMulIdConfig.mappedIds),
+        ...loadUniverseFactions(universeCommandsDir, true, factionMulIdConfig.mappedIds),
     };
+    const lightFactions = buildLightFactionRecords(factions);
     const eras = loadMegaMekEras(universeErasPath);
     const forceGeneratorData = loadForceGeneratorData(FORCEGEN_ROOT, eras, factions);
     const unitMetadataIndex = loadUnitMetadataIndex(UNIT_FILES_ROOT, NAME_CHANGES_FILE_PATH);
@@ -3046,6 +3180,7 @@ function run(): void {
         factionMulIdConfig.skippedFactions,
     );
 
+    writeJsonFile(path.join(OUTPUT_DIR, 'factions-lite.json'), lightFactions);
     writeJsonFile(
         path.join(OUTPUT_DIR, 'availability_weighted.json'),
         compactWeightedRecordsToArrayForWrite(weightedAvailability),
@@ -3055,7 +3190,7 @@ function run(): void {
         compactWeightedRecordsToArrayForWrite(mulizedWeightedAvailability),
     );
 
-    console.log('[MegaMek] Wrote availability_weighted.json and mulized_availability_weighted.json');
+    console.log('[MegaMek] Wrote factions.json, availability_weighted.json, and mulized_availability_weighted.json');
 }
 
 run();

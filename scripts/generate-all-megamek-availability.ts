@@ -225,9 +225,10 @@ interface MegaMekAvailabilityExport extends MegaMekAvailabilitySharedMetadata {
     chassis: Record<string, CompactChassisRecord>;
     models: Record<string, CompactModelRecord>;
     availability: Record<string, CompactModelRecord>;
+    rulesets: RulesetRecord[];
 }
 
-const USE_ERA_CODE_KEYS = true;
+const USE_ERA_CODE_KEYS = false;
 const USE_MULIZED_FACTION_NAMES = false;
 const BEAUTIFY_OUTPUT = true;
 const JSON_INDENT = 2;
@@ -1378,11 +1379,30 @@ function findUnitMetadata(
     }
 
     const legacyKey = buildUnitMetadataLegacyKey(chassis, model);
-    return index.byLegacyKey.get(legacyKey)
-        ?? index.byNormalizedKey.get(normalizeLookupKey(legacyKey))
-        ?? findClosestUnitMetadataByModelAndChassis(index, chassis, model)
-        ?? (model ? index.byNormalizedModel.get(normalizeLookupKey(model)) ?? undefined : undefined)
-        ?? index.byNormalizedChassis.get(normalizeLookupKey(chassis)) ?? undefined;
+    const legacyMatch = index.byLegacyKey.get(legacyKey);
+    if (legacyMatch) {
+        return legacyMatch;
+    }
+
+    const normalizedLegacyMatch = index.byNormalizedKey.get(normalizeLookupKey(legacyKey));
+    if (normalizedLegacyMatch) {
+        return normalizedLegacyMatch;
+    }
+
+    const closestMatch = findClosestUnitMetadataByModelAndChassis(index, chassis, model);
+    if (closestMatch) {
+        return closestMatch;
+    }
+
+    if (model) {
+        const normalizedModelMatch = index.byNormalizedModel.get(normalizeLookupKey(model));
+        if (normalizedModelMatch) {
+            return normalizedModelMatch;
+        }
+    }
+
+    const normalizedChassisMatch = index.byNormalizedChassis.get(normalizeLookupKey(chassis));
+    return normalizedChassisMatch ?? undefined;
 }
 
 function parseYearsActive(rawRanges: unknown): DateRange[] {
@@ -1733,7 +1753,7 @@ function findEraForYear(eras: MegaMekEra[], year: number): MegaMekEra | undefine
     });
 }
 
-function resolveEraKey(era: MegaMekEra | undefined): string | undefined {
+function resolveEraKey(era: MegaMekEra | undefined): string | number | undefined {
     if (!era) {
         return undefined;
     }
@@ -1742,10 +1762,10 @@ function resolveEraKey(era: MegaMekEra | undefined): string | undefined {
         return era.code;
     }
 
-    return era.mulId === undefined ? undefined : String(era.mulId);
+    return era.mulId;
 }
 
-function findEraKey(eras: MegaMekEra[], year: number): string | undefined {
+function findEraKey(eras: MegaMekEra[], year: number): string | number | undefined {
     return resolveEraKey(findEraForYear(eras, year));
 }
 
@@ -1988,7 +2008,7 @@ function addCompactAvailability(
 
         const eraKey = findEraKey(eras, availabilityYear);
         if (eraKey === undefined) {
-            console.log(`[MegaMek] skipping availability for ${availability.factionKey} in year ${availabilityYear} (${sourceLabel}) due to undefined era`);
+            // console.log(`[MegaMek] skipping availability for ${availability.factionKey} in year ${availabilityYear} (${sourceLabel}) due to undefined era`);
             continue;
         }
 
@@ -3664,9 +3684,8 @@ function loadForceGeneratorData(
     };
 }
 
-/*
-function loadRulesets(dirPath: string): Record<string, RulesetRecord> {
-    const result: Record<string, RulesetRecord> = {};
+function loadRulesets(dirPath: string): RulesetRecord[] {
+    const result: RulesetRecord[] = [];
     for (const fileName of listFiles(dirPath, '.xml')) {
         if (fileName.toLowerCase() === 'formationrulesetschema.xsd') {
             continue;
@@ -3684,17 +3703,17 @@ function loadRulesets(dirPath: string): Record<string, RulesetRecord> {
         }
 
         const factionKey = String(rawRuleset['@_faction'] || fileName.replace(/\.xml$/i, ''));
-        result[factionKey] = {
+        result.push({
             factionKey,
             parentFaction: rawRuleset['@_parent'] === undefined ? undefined : String(rawRuleset['@_parent']),
             ratingSystem: rawRuleset['@_ratingSystem'] === undefined ? undefined : String(rawRuleset['@_ratingSystem']),
             document: document as JsonObject,
             forceCount: ensureArray(rawRuleset.force).length,
-        };
+        });
     }
-    return result;
+
+    return result.sort((left, right) => left.factionKey.localeCompare(right.factionKey, undefined, { numeric: true }));
 }
-*/
 
 function buildAncestry(factions: Record<string, UniverseFactionRecord>, factionKey: string): string[] {
     const visited = new Set<string>();
@@ -4204,7 +4223,7 @@ function remapEraAvailabilityToMulIds(
         }
 
         if (factionKey !== GENERAL_FACTION_KEY && skippedFactions.has(factionKey)) {
-            console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to explicit -1 CSV mapping`);
+            // console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to explicit -1 CSV mapping`);
             continue;
         }
 
@@ -4241,7 +4260,7 @@ function remapWeightedEraAvailabilityToMulIds(
         }
 
         if (factionKey !== GENERAL_FACTION_KEY && skippedFactions.has(factionKey)) {
-            console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to explicit -1 CSV mapping`);
+            // console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to explicit -1 CSV mapping`);
             continue;
         }
 
@@ -4380,7 +4399,7 @@ function run(): void {
         unitMetadataIndex,
     );
     const weightedAvailabilityQ = buildWeightedQRecords(weightedAvailability);
-    // const rulesets = loadRulesets(forceGeneratorRulesDir);
+    const rulesets = loadRulesets(forceGeneratorRulesDir);
 
     const enrichedFactions = Object.fromEntries(
         Object.entries(factions).map(([key, faction]) => [key, {
@@ -4392,7 +4411,7 @@ function run(): void {
     const sharedMetadata: MegaMekAvailabilitySharedMetadata = {
         version: 3,
         generatedAt: new Date().toISOString(),
-        generator: 'scripts/generate-megamek-availability.ts',
+        generator: 'scripts/generate-all-megamek-availability.ts',
         source: {
             type: 'MegaMek',
             mmDataPath: MM_DATA_ROOT,
@@ -4425,6 +4444,7 @@ function run(): void {
         chassis: compiledChassis,
         models: compiledModels,
         availability: compiledAvailability,
+        rulesets: rulesets,
     };
     const mulizedChassis = mulizeCompactAvailabilityRecords(
         exportData.chassis,
@@ -4498,12 +4518,10 @@ function run(): void {
             applyMulFactionNamesToWeightedRecordsForWrite(mulizedWeightedAvailability, mulFactionNames)
         )
     );
-    // writeJsonFile(
-    //     path.join(OUTPUT_DIR, 'rulesets.json'),
-    //     {
-    //         rulesets: exportData.rulesets,
-    //     }
-    // );
+    writeJsonFile(
+        path.join(OUTPUT_DIR, 'rulesets.json'),
+        exportData.rulesets
+    );
 
     cleanupStaleOutputFiles(
         OUTPUT_DIR,
@@ -4511,6 +4529,7 @@ function run(): void {
             'eras.json',
             'factions.json',
             'faction-era-data.json',
+            'rulesets.json',
             'chassis.json',
             'models.json',
             'availability.json',
