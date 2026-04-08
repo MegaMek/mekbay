@@ -74,6 +74,16 @@ export interface LoadForceUnit {
     commander?: boolean;
 }
 
+function assignLoadForceUnitField<K extends keyof LoadForceUnit>(
+    target: LoadForceUnit,
+    key: K,
+    value: LoadForceUnit[K] | undefined,
+): void {
+    if (value !== undefined) {
+        target[key] = value;
+    }
+}
+
 function isASSerializedUnit(unit: SerializedUnit): unit is ASSerializedUnit {
     return typeof (unit as Partial<ASSerializedUnit>).skill === 'number';
 }
@@ -103,13 +113,15 @@ export function createLoadForceUnit(
 ): LoadForceUnit {
     const loadForceUnit: LoadForceUnit = {
         unit: getUnitByName(raw.unit),
-        alias: raw.alias,
         destroyed: raw.state?.destroyed ?? false,
-        skill: raw.skill,
-        gunnery: raw.g,
-        piloting: raw.p,
-        commander: raw.commander,
     };
+
+    assignLoadForceUnitField(loadForceUnit, 'alias', raw.alias);
+    assignLoadForceUnitField(loadForceUnit, 'skill', raw.skill);
+    assignLoadForceUnitField(loadForceUnit, 'gunnery', raw.g);
+    assignLoadForceUnitField(loadForceUnit, 'piloting', raw.p);
+    assignLoadForceUnitField(loadForceUnit, 'commander', raw.commander);
+
     return loadForceUnit;
 }
 
@@ -119,13 +131,14 @@ export function createLoadForceUnitFromSerializedUnit(
 ): LoadForceUnit {
     const loadForceUnit: LoadForceUnit = {
         unit: getUnitByName(unit.unit),
-        alias: unit.alias,
         destroyed: unit.state?.destroyed ?? false,
-        commander: unit.commander,
     };
 
+    assignLoadForceUnitField(loadForceUnit, 'alias', unit.alias);
+    assignLoadForceUnitField(loadForceUnit, 'commander', unit.commander);
+
     if (isASSerializedUnit(unit)) {
-        loadForceUnit.skill = unit.skill;
+        assignLoadForceUnitField(loadForceUnit, 'skill', unit.skill);
         return loadForceUnit;
     }
 
@@ -137,8 +150,8 @@ export function createLoadForceUnitFromSerializedUnit(
     const gunnery = gunner?.gunnerySkill ?? pilot?.gunnerySkill;
     const piloting = pilot?.pilotingSkill;
 
-    loadForceUnit.gunnery = gunnery;
-    loadForceUnit.piloting = piloting;
+    assignLoadForceUnitField(loadForceUnit, 'gunnery', gunnery);
+    assignLoadForceUnitField(loadForceUnit, 'piloting', piloting);
     return loadForceUnit;
 }
 

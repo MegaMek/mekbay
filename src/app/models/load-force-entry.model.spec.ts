@@ -46,8 +46,8 @@ describe('createLoadForceUnitFromSerializedUnit', () => {
                 destroyed: false,
                 shutdown: false,
                 crew: [
-                    { gunnerySkill: 4, pilotingSkill: 5 },
-                    { gunnerySkill: 3 },
+                    { id: 0, name: 'Pilot 1', gunnerySkill: 4, pilotingSkill: 5, hits: 0, state: 0 },
+                    { id: 1, name: 'Pilot 2', gunnerySkill: 3, pilotingSkill: 4, hits: 0, state: 0 },
                 ],
                 crits: [],
                 locations: {},
