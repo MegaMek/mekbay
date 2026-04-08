@@ -7,7 +7,6 @@ function createFaction(overrides: Partial<MegaMekFactionRecordData> & Pick<MegaM
     return {
         id: overrides.id,
         name: overrides.name ?? overrides.id,
-        isCommand: overrides.isCommand ?? false,
         yearsActive: overrides.yearsActive ?? [],
         ratingLevels: overrides.ratingLevels ?? [],
         nameChanges: overrides.nameChanges ?? [],
@@ -20,7 +19,6 @@ function createFaction(overrides: Partial<MegaMekFactionRecordData> & Pick<MegaM
         logo: overrides.logo,
         camos: overrides.camos,
         nameGenerator: overrides.nameGenerator,
-        eraMods: overrides.eraMods,
         rankSystem: overrides.rankSystem,
         successor: overrides.successor,
         factionLeaders: overrides.factionLeaders,

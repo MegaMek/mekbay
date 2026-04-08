@@ -22,7 +22,7 @@ interface MegaMekFactionRecordBase {
     
     id: string; // Unique faction ID
     name: string; // Faction name
-    isCommand: boolean;
+    mulId?: number[]; // Associated MUL faction IDs, if any
     yearsActive: MegaMekFactionActiveYears[];
     ratingLevels: string[];
     nameChanges: MegaMekFactionNameChange[];
@@ -32,7 +32,6 @@ interface MegaMekFactionRecordBase {
     logo?: string;
     camos?: string;
     nameGenerator?: string;
-    eraMods?: number[];
     rankSystem?: string;
     successor?: string;
     factionLeaders?: MegaMekFactionLeader[];
@@ -58,13 +57,13 @@ type MegaMekFactionRecordSource = MegaMekFactionRecordData | MegaMekFactionRecor
 type MegaMekFactionRecordLookup = ReadonlyMap<string, MegaMekFactionRecordSource> | Record<string, MegaMekFactionRecordSource>;
 
 const INHERITED_FACTION_FIELDS = [
+    'mulId',
     'capital',
     'capitalChanges',
     'color',
     'logo',
     'camos',
     'nameGenerator',
-    'eraMods',
     'rankSystem',
     'successor',
     'factionLeaders',

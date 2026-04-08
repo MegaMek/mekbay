@@ -37,7 +37,7 @@ import { FactionsCatalogService } from './catalogs/mulfactions-catalog.service';
 @Injectable({
     providedIn: 'root'
 })
-export class FactionAvailabilitySourceService {
+export class UnitAvailabilitySourceService {
     private readonly mulFactionsCatalog = inject(FactionsCatalogService);
 
 }

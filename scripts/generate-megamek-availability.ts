@@ -3190,7 +3190,7 @@ function run(): void {
         compactWeightedRecordsToArrayForWrite(mulizedWeightedAvailability),
     );
 
-    console.log('[MegaMek] Wrote factions.json, availability_weighted.json, and mulized_availability_weighted.json');
+    console.log('[MegaMek] Wrote factions-lite.json, availability_weighted.json, and mulized_availability_weighted.json');
 }
 
 run();
