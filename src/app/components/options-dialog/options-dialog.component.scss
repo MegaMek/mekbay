@@ -41,7 +41,11 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 8px;
+  padding: 16px;
+
+  &.settings-header-mobile {
+    padding: 8px;
+  }
 }
 
 .settings-title-group {
