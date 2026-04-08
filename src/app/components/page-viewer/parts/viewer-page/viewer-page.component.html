@@ -1,0 +1,12 @@
+<div #wrapper
+    class="page-wrapper"
+     [class.selected]="descriptor().isSelected"
+     [class.active-page]="descriptor().isActive"
+     [class.dimmed]="descriptor().isDimmed"
+     [style.left.px]="descriptor().scaledLeft"
+    data-render-mode="declarative"
+     [attr.data-unit-id]="descriptor().unitId"
+     [attr.data-unit-index]="descriptor().unitIndex"
+     [attr.data-page-role]="descriptor().role">
+    <ng-content></ng-content>
+</div>

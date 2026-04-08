@@ -32,7 +32,6 @@
  */
 
 import { Component, ChangeDetectionStrategy, computed } from '@angular/core';
-import { UpperCasePipe } from '@angular/common';
 import { AsLayoutBaseComponent } from './layout-base.component';
 
 /*
@@ -84,24 +83,196 @@ interface EffectiveArcDamage extends ArcDamage {
     effMslE: string;
 }
 
+interface ArcDamageColumn {
+    key: string;
+    label: string;
+    centerX: number;
+}
+
+interface ArcTableLayout {
+    x: number;
+    y: number;
+    arc: EffectiveArcDamage;
+}
+
 @Component({
     selector: 'as-layout-large-vessel-2',
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './layout-large-vessel-2.component.html',
     styleUrls: ['./layout-large-vessel-2.component.scss'],
-    imports: [
-        UpperCasePipe,
-    ],
     host: {
         '[class.interactive]': 'interactive()',
         '[class.monochrome]': 'cardStyle() === "monochrome"',
     }
 })
 export class AsLayoutLargeVessel2Component extends AsLayoutBaseComponent {
+    protected readonly cardViewBoxWidth = 1120;
+    protected readonly cardViewBoxHeight = 800;
+    protected readonly cardContentHeight = 686;
+    protected readonly arcTableWidth = 524;
+    protected readonly arcTableHeight = 286;
+
     hasCap = computed<boolean>(() => {
         const stats = this.asStats();
         return stats.TP == 'WS' || stats.TP == 'SS' || stats.TP == 'JS';
     });
+
+    protected readonly headerTitle = computed<string>(() => {
+        const alias = this.forceUnit()?.alias()?.trim();
+        if (alias) {
+            return alias.toUpperCase();
+        }
+
+        return `${this.unit().chassis} ${this.unit().model}`.trim().toUpperCase();
+    });
+
+    protected readonly headerFontSize = computed<number>(() => {
+        const length = this.headerTitle().length;
+        if (length > 34) {
+            return 34;
+        }
+        if (length > 28) {
+            return 37;
+        }
+        return 42;
+    });
+
+    protected readonly headerBaselineY = computed<number>(() => {
+        const fontSize = this.headerFontSize();
+
+        if (fontSize >= 42) {
+            return 63;
+        }
+        if (fontSize >= 35) {
+            return 59;
+        }
+        return 56;
+    });
+
+    protected vesselPageFill(): string {
+        return '#f8f7f3';
+    }
+
+    protected vesselFrameFill(): string {
+        return 'rgba(255, 255, 255, 0.84)';
+    }
+
+    protected arcLabelFill(): string {
+        return '#8b190f';
+    }
+
+    protected arcTableColumns(): ArcDamageColumn[] {
+        if (this.hasCap()) {
+            return [
+                { key: 'STD', label: 'STD', centerX: 180 },
+                { key: 'CAP', label: 'CAP', centerX: 270 },
+                { key: 'SCAP', label: 'SCAP', centerX: 360 },
+                { key: 'MSL', label: 'MSL', centerX: 450 },
+            ];
+        }
+
+        return [
+            { key: 'STD', label: 'STD', centerX: 204 },
+            { key: 'SCAP', label: 'SCAP', centerX: 328 },
+            { key: 'MSL', label: 'MSL', centerX: 450 },
+        ];
+    }
+
+    protected arcColumnValue(arc: EffectiveArcDamage, columnKey: string, rangeKey: 'S' | 'M' | 'L' | 'E'): string {
+        switch (`${columnKey}-${rangeKey}`) {
+            case 'STD-S': return arc.effDmgS;
+            case 'STD-M': return arc.effDmgM;
+            case 'STD-L': return arc.effDmgL;
+            case 'STD-E': return arc.effDmgE;
+            case 'CAP-S': return arc.effCapS;
+            case 'CAP-M': return arc.effCapM;
+            case 'CAP-L': return arc.effCapL;
+            case 'CAP-E': return arc.effCapE;
+            case 'SCAP-S': return arc.effScapS;
+            case 'SCAP-M': return arc.effScapM;
+            case 'SCAP-L': return arc.effScapL;
+            case 'SCAP-E': return arc.effScapE;
+            case 'MSL-S': return arc.effMslS;
+            case 'MSL-M': return arc.effMslM;
+            case 'MSL-L': return arc.effMslL;
+            case 'MSL-E': return arc.effMslE;
+            default: return '—';
+        }
+    }
+
+    protected readonly arcRangeRows = [
+        { key: 'S' as const, label: () => `S (${this.toHitShort()}+)`, y: 74 },
+        { key: 'M' as const, label: () => `M(${this.toHitMedium()}+)`, y: 111 },
+        { key: 'L' as const, label: () => `L (${this.toHitLong()}+)`, y: 148 },
+        { key: 'E' as const, label: () => `E (${this.toHitExtreme()}+)`, y: 185 },
+    ];
+
+    protected readonly arcTableLayouts = computed<ArcTableLayout[]>(() => {
+        const positions = [
+            { x: 30, y: 80 },
+            { x: 565, y: 80 },
+            { x: 30, y: 380 },
+            { x: 565, y: 380 },
+        ];
+
+        return this.effectiveArcDamageData().map((arc, index) => ({
+            ...positions[index],
+            arc,
+        }));
+    });
+
+    protected weaponCriticalsText(): string {
+        return this.hasCap()
+            ? 'Damage Value Reduced by 25% per hit. — Randomly determine an appropriate STD/CAP/SCAP/MSL column.'
+            : 'Damage Value Reduced by 25% per hit. — Randomly determine an appropriate STD/SCAP/MSL column.';
+    }
+
+    protected arcHeaderDividerY(): number {
+        return 42;
+    }
+
+    protected arcLightDividerY(rowY: number): number {
+        return rowY + 12;
+    }
+
+    protected arcSpeDividerY(): number {
+        return 206;
+    }
+
+    protected arcHeavyCritDividerY(): number {
+        return 244;
+    }
+
+    protected arcCritRowY(): number {
+        return 264;
+    }
+
+    protected arcCritPipY(): number {
+        return 258;
+    }
+
+    protected arcCritLeftBoundary(): number {
+        return 154;
+    }
+
+    protected arcCritRightBoundary(): number {
+        return this.arcTableWidth - 18;
+    }
+
+    protected arcCritDividerX(columns: ArcDamageColumn[], index: number): number {
+        return (columns.length === 4 ? 16 : 0) + ((columns[index].centerX + columns[index + 1].centerX) / 2);
+    }
+
+    protected arcCritGroupCenterX(columns: ArcDamageColumn[], index: number): number {
+        const left = index === 0 ? this.arcCritLeftBoundary() : this.arcCritDividerX(columns, index - 1) + 4;
+        const right = index === columns.length - 1 ? this.arcCritRightBoundary() : this.arcCritDividerX(columns, index) - 4;
+        return (left + right) / 2;
+    }
+
+    protected arcCritPipX(columns: ArcDamageColumn[], columnIndex: number, pipIndex: number): number {
+        return this.arcCritGroupCenterX(columns, columnIndex) - 30 + (pipIndex * 20);
+    }
+
     /**
      * Get arc damage data from unit stats.
      * DropShips have arc-based damage (Nose, Aft, Left Side, Right Side).
@@ -218,16 +389,6 @@ export class AsLayoutLargeVessel2Component extends AsLayoutBaseComponent {
             return parseInt(val, 10);
         }
         return val;
-    }
-
-    /**
-     * Get column name from index based on whether CAP column is present.
-     */
-    getColumnName(index: number): string {
-        if (this.hasCap()) {
-            return ['STD', 'CAP', 'SCAP', 'MSL'][index] ?? '';
-        }
-        return ['STD', 'SCAP', 'MSL'][index] ?? '';
     }
 
     /**

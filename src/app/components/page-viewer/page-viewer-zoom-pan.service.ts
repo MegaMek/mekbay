@@ -77,6 +77,11 @@ export interface PageDimensions {
     height: number;
 }
 
+export interface PageTransformTarget {
+    wrapper: HTMLElement;
+    rootSvg: SVGSVGElement | null;
+}
+
 export interface SwipeCallbacks {
     onSwipeStart: () => void;
     onSwipeMove: (totalDx: number) => void;
@@ -136,8 +141,11 @@ export class PageViewerZoomPanService {
     private totalPages = 1;
     private nonInteractiveSelectors: string[] = [];
     private spaceEvenly = false;
-    private transformPageWrappers: HTMLElement[] = [];
+    private transformPageTargets: PageTransformTarget[] = [];
     private transformCanvasOverlays: HTMLElement[] = [];
+    private transformTargetsDirty = true;
+    private canvasTargetsDirty = true;
+    private lastAppliedScale: number | null = null;
 
     // Pointer tracking
     private pointers = new Map<number, { x: number; y: number }>();
@@ -228,9 +236,11 @@ export class PageViewerZoomPanService {
      * Update the elements affected by transform changes.
      * This avoids rescanning the DOM tree on every pan/zoom update.
      */
-    setTransformTargets(pageWrappers: HTMLElement[], canvasOverlays: HTMLElement[] = []): void {
-        this.transformPageWrappers = pageWrappers;
+    setTransformTargets(pageTargets: PageTransformTarget[], canvasOverlays: HTMLElement[] = []): void {
+        this.transformPageTargets = pageTargets;
         this.transformCanvasOverlays = canvasOverlays;
+        this.transformTargetsDirty = true;
+        this.canvasTargetsDirty = true;
     }
 
     /**
@@ -904,38 +914,47 @@ export class PageViewerZoomPanService {
         content.style.transform = `translate(${translate.x}px, ${translate.y}px)`;
         content.style.transformOrigin = 'top left';
 
+        const scaleChanged = this.lastAppliedScale !== scale;
+
         // Apply scale directly to each root SVG element (direct children of page-wrappers)
         // This fixes iOS blurry rendering without double-scaling nested SVGs
-        this.transformPageWrappers.forEach((wrapper: HTMLElement) => {
-            // Get the original left position (unscaled)
-            const originalLeft = parseFloat(wrapper.dataset['originalLeft'] || wrapper.style.left) || 0;
-            // Store original left if not already stored
-            if (!wrapper.dataset['originalLeft']) {
-                wrapper.dataset['originalLeft'] = String(originalLeft);
-            }
-            // Apply scaled position
-            wrapper.style.left = `${originalLeft * scale}px`;
-            wrapper.style.width = `${PAGE_WIDTH * scale}px`;
-            wrapper.style.height = `${PAGE_HEIGHT * scale}px`;
-            
-            // Scale only the direct SVG child (not nested SVGs)
-            const rootSvg = wrapper.querySelector(':scope > svg') as SVGSVGElement | null;
-            if (rootSvg) {
-                rootSvg.style.transform = `scale(${scale})`;
-                rootSvg.style.transformOrigin = 'top left';
-            }
-        });
+        if (scaleChanged || this.transformTargetsDirty) {
+            this.transformPageTargets.forEach(({ wrapper, rootSvg }) => {
+                // Get the original left position (unscaled)
+                const originalLeft = parseFloat(wrapper.dataset['originalLeft'] || wrapper.style.left) || 0;
+                // Store original left if not already stored
+                if (!wrapper.dataset['originalLeft']) {
+                    wrapper.dataset['originalLeft'] = String(originalLeft);
+                }
+                // Apply scaled position
+                wrapper.style.left = `${originalLeft * scale}px`;
+                wrapper.style.width = `${PAGE_WIDTH * scale}px`;
+                wrapper.style.height = `${PAGE_HEIGHT * scale}px`;
+                
+                // Scale only the direct SVG child (not nested SVGs)
+                if (rootSvg) {
+                    rootSvg.style.transform = `scale(${scale})`;
+                    rootSvg.style.transformOrigin = 'top left';
+                }
+            });
+            this.transformTargetsDirty = false;
+        }
 
         // Also scale canvas overlays if present
-        this.transformCanvasOverlays.forEach((overlay: HTMLElement) => {
-            const originalLeft = parseFloat(overlay.dataset['originalLeft'] || overlay.style.left) || 0;
-            if (!overlay.dataset['originalLeft']) {
-                overlay.dataset['originalLeft'] = String(originalLeft);
-            }
-            overlay.style.left = `${originalLeft * scale}px`;
-            overlay.style.width = `${PAGE_WIDTH * scale}px`;
-            overlay.style.height = `${PAGE_HEIGHT * scale}px`;
-        });
+        if (scaleChanged || this.canvasTargetsDirty) {
+            this.transformCanvasOverlays.forEach((overlay: HTMLElement) => {
+                const originalLeft = parseFloat(overlay.dataset['originalLeft'] || overlay.style.left) || 0;
+                if (!overlay.dataset['originalLeft']) {
+                    overlay.dataset['originalLeft'] = String(originalLeft);
+                }
+                overlay.style.left = `${originalLeft * scale}px`;
+                overlay.style.width = `${PAGE_WIDTH * scale}px`;
+                overlay.style.height = `${PAGE_HEIGHT * scale}px`;
+            });
+            this.canvasTargetsDirty = false;
+        }
+
+        this.lastAppliedScale = scale;
     }
 
     /**

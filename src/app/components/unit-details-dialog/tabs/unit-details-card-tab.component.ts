@@ -32,11 +32,12 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { ApplicationRef, ChangeDetectionStrategy, Component, Injector, computed, inject, input, signal } from '@angular/core';
 import type { Unit } from '../../../models/units.model';
 import { AlphaStrikeCardComponent } from '../../alpha-strike-card/alpha-strike-card.component';
 import { getCardCountForUnitType } from '../../alpha-strike-card/card-layout.config';
 import { OptionsService } from '../../../services/options.service';
+import { ToastService } from '../../../services/toast.service';
 
 @Component({
     selector: 'unit-details-card-tab',
@@ -46,8 +47,12 @@ import { OptionsService } from '../../../services/options.service';
     styleUrls: ['./unit-details-card-tab.component.css']
 })
 export class UnitDetailsCardTabComponent {
+    private readonly appRef = inject(ApplicationRef);
+    private readonly injector = inject(Injector);
     optionsService = inject(OptionsService);
+    private readonly toastService = inject(ToastService);
     unit = input.required<Unit>();
+    readonly exportInProgress = signal(false);
 
     readonly unitType = computed(() => this.unit().as?.TP ?? '');
     readonly cardIndices = computed<number[]>(() => {

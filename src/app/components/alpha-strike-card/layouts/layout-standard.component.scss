@@ -23,11 +23,18 @@
     &.reduced-height {
         height: 35%;
     }
+
+    :host-context(.export-mode) & {
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+    }
 }
 
 .fluff-image {
     width: 100%;
     height: 100%;
+    display: block;
     object-fit: contain;
     object-position: center top;
 
@@ -38,6 +45,15 @@
     :host:not(.monochrome) & {
         filter: saturate(0) invert(1) brightness(1.25);
         mix-blend-mode: lighten;
+    }
+
+    :host-context(.export-mode) & {
+        width: auto !important;
+        max-width: 100%;
+        height: 100% !important;
+        filter: none !important;
+        mix-blend-mode: normal !important;
+        opacity: 1 !important;
     }
 }
 
@@ -66,6 +82,11 @@
 
     &.unavailable {
         opacity: 0.3;
+    }
+
+    :host-context(.export-mode) & {
+        mix-blend-mode: normal !important;
+        filter: none !important;
     }
 }
 
@@ -170,12 +191,35 @@
 
 // Stats Box
 .stats-box {
-    display: flex;
+    position: relative;
+    display: block;
+    min-height: 5.1em;
+}
 
-    .frame-content {
-        display: flex;
-        flex-direction: column;
-        justify-content: space-around;
+.stats-box-svg-shell {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.stats-box-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.stats-box-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    gap: 0.15em;
+    padding: 0.45em 9px 0.4em;
+
+    .as-caption,
+    .sprint-text {
+        color: #000;
     }
 }
 
@@ -227,159 +271,132 @@
 
 // Damage Box
 .damage-box {
-    display: flex;
-
-    .frame-content {
-        display: flex;
-        align-items: center;
-        position: relative;
-    }
+    display: block;
 }
 
-.damage-label {
-    font-family: "Roboto Condensed", sans-serif;
-    writing-mode: vertical-rl;
-    transform: rotate(180deg);
-    font-size: 2.2em;
-
-    font-weight: 900;
-    text-align: center;
-    margin-right: 1.5em;
-}
-
-.damage-ranges {
-    display: flex;
-    flex: 1;
-    justify-content: space-around;
-}
-
-.damage-range {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    flex: 1;
-}
-
-.range-header {
-    font-size: 2em;
-    font-weight: 700;
-    flex: 1;
+.damage-box-svg-shell {
     width: 100%;
-    align-self: stretch;
-    box-sizing: border-box;
-    text-align: center;
-    margin-bottom: 0.3em;
 }
 
-:host:not(.monochrome) {
-    .range-header-background {
-        background: #5B504E;
-        color: #fff;
-        margin-bottom: 0.2em;
+.damage-box-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+}
 
-        &.left {
-            background: linear-gradient(to right, transparent 0%, #5B504E 1.5em, #5B504E 100%);
+.damage-label-text-svg {
+    fill: var(--as-red);
+    font-family: 'Roboto Condensed', sans-serif;
+    font-size: 16px;
+    font-weight: 900;
+    letter-spacing: 0.4px;
+}
 
-            &.thin {
-                background: linear-gradient(to right, transparent 0%, #5B504E 0.5em, #5B504E 100%);
-            }
-        }
+.damage-range-header-svg {
+    font-family: 'Roboto Condensed', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+}
 
-        &.right {
-            background: linear-gradient(to right, #5B504E 0%, #5B504E calc(100% - 1.5em), transparent 100%);
+.damage-range-value-svg {
+    fill: var(--as-red);
+    font-family: 'Roboto Condensed', sans-serif;
+    font-size: 31px;
+    font-weight: 900;
 
-            &.thin {
-                background: linear-gradient(to right, #5B504E 0%, #5B504E calc(100% - 0.5em), transparent 100%);
-            }
-        }
+    &.reduced {
+        font-size: 28px;
     }
 }
 
-.range-value {
-    font-size: 4em;
-    font-weight: 700;
-    line-height: 0.9em;
-}
-
-.range-distance {
-    font-size: 2em;
+.damage-range-distance-svg {
+    fill: #000;
+    font-family: 'Roboto Condensed', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
 }
 
 // Heat Box
 .heat-box {
-    display: flex;
-
-    .frame-content {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
+    display: block;
 }
 
-.ov-value {
-    display: flex;
-    flex-direction: row;
+.heat-box-svg-shell {
+    width: 100%;
 }
 
-.heat-label {
-    font-size: 2.86em;
+.heat-box-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.heat-ov-caption-svg {
+    fill: #000;
+    font-family: 'Roboto Condensed', sans-serif;
+    font-size: 22px;
     font-weight: 700;
-    text-align: center;
-    width: fit-content;
-    white-space: nowrap;
 }
 
+.heat-ov-value-svg {
+    fill: var(--as-red);
+    font-family: 'Roboto Condensed', sans-serif;
+    font-size: 33px;
+    font-weight: 900;
+}
+
+.heat-label-svg {
+    font-family: 'Roboto', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+}
 
 .heat-track {
-    display: flex;
-    border-radius: 1.2em;
-    border: 0.25em solid #000;
-    background-color: #888;
-    overflow: hidden;
+    pointer-events: auto;
+}
+
+.heat-track-background-svg {
+    fill: #888;
+    stroke: #000;
+    stroke-width: 2.25;
 }
 
 .heat-level {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.2em;
-    height: 100%;
-    color: #fff;
-    font-size: 3.5em;
-    transition: background-color 0.2s;
-    border-right: .06em solid #000;
-
-    &.hot-dog {
-        width: 0.98em;
-    }
-
-    &:last-child {
-        border-right: none;
-    }
+    pointer-events: auto;
 
     :host(.interactive) & {
         cursor: pointer;
-        
-        // These are outside the @media screen so they get printed
+
         &.heat-1.active {
-            background: rgb(255, 200, 0);
+            .heat-level-cell-svg {
+                fill: rgb(255, 200, 0);
+            }
         }
 
         &.heat-2.active {
-            background: rgb(255, 150, 0);
+            .heat-level-cell-svg {
+                fill: rgb(255, 150, 0);
+            }
         }
 
         &.heat-3.active {
-            background: rgb(255, 100, 0);
+            .heat-level-cell-svg {
+                fill: rgb(255, 100, 0);
+            }
         }
 
         &.heat-4.active {
-            background: rgb(255, 50, 0);
+            .heat-level-cell-svg {
+                fill: rgb(255, 50, 0);
+            }
         }
 
         &.heat-s.active {
-            background: rgb(255, 0, 0);
+            .heat-level-cell-svg {
+                fill: rgb(255, 0, 0);
+            }
         }
     }
 
@@ -387,72 +404,138 @@
         :host(.interactive) & {
 
             &.heat-0.active {
-                background: rgb(0, 200, 0);
+                .heat-level-cell-svg {
+                    fill: rgb(0, 200, 0);
+                }
             }
 
-            // Pending heat states - pulsing animation
             &.pending {
-                animation: pending-heat-pulse 0.6s cubic-bezier(0.8, 0, 1, 1) infinite alternate;
-                background: rgb(187, 0, 255);
+                .heat-level-cell-svg {
+                    animation: pending-heat-pulse 0.6s cubic-bezier(0.8, 0, 1, 1) infinite alternate;
+                    fill: rgb(187, 0, 255);
+                }
             }
         }
     }
 }
 
+.heat-level-cell-svg {
+    fill: transparent;
+    transition: fill 0.2s;
+}
+
+.heat-level-divider-svg {
+    stroke: #000;
+    stroke-width: 1.5;
+}
+
+.heat-level-text-svg {
+    fill: #fff;
+    font-family: 'Roboto Condensed', sans-serif;
+    font-size: 19px;
+    font-weight: 700;
+}
+
 @keyframes pending-heat-pulse {
     from {
-        background-color: rgba(187, 0, 255, 0.3);
+        fill: rgba(187, 0, 255, 0.3);
     }
 }
 
 // Armor/Structure Box
 .armor-box {
-    display: flex;
-
-    .frame-content {
-        display: flex;
-        flex-direction: row;
-        justify-content: space-between;
-        position: relative;
-        align-items: center;
-        gap: 1em;
-
-        .pips-wrapper {
-            display: flex;
-            flex-direction: column;
-            justify-content: space-around;
-            position: relative;
-            flex: 1 1 auto;
-        }
-    }
-
-}
-
-.armor-caption {
     display: block;
-    min-width: 1em;
 }
 
-.thrust-display {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
+.armor-box-svg-shell {
+    width: 100%;
+}
 
-    .as-value {
-        font-size: 3.5em;
-    }
+.armor-box-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+}
+
+.armor-box-caption-svg {
+    fill: #000;
+    font-family: 'Roboto Condensed', sans-serif;
+    font-size: 21px;
+    font-weight: 700;
+}
+
+.thrust-caption-svg {
+    text-anchor: start;
+}
+
+.armor-box-thrust-value-svg {
+    fill: var(--as-red);
+    font-family: 'Roboto Condensed', sans-serif;
+    font-size: 31px;
+    font-weight: 900;
+    text-anchor: middle;
+}
+
+.armor-pip-circle {
+    fill: #fff;
+    stroke: #000;
+    stroke-width: 2;
+}
+
+.armor-row-hit-area-svg {
+    fill: transparent;
+    pointer-events: all;
+}
+
+.armor-pip-circle.structure {
+    fill: #bbb;
+}
+
+.armor-pip-circle.damaged {
+    fill: var(--damage-color);
+}
+
+.armor-pip-circle.pending-damage {
+    fill: orange;
+}
+
+.armor-pip-circle.pending-heal {
+    fill: #03a9f4;
 }
 
 // Specials Box
 .specials-box {
-    display: flex;
+    position: relative;
+    display: block;
+    flex: 1 1 100%;
+    width: 100%;
+    min-height: 2.45em;
+}
 
-    .frame-content {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: baseline;
-        align-content: flex-start;
+.specials-box-svg-shell {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.specials-box-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.specials-box-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    align-content: flex-start;
+    padding: 0.35em 9px 0.3em;
+
+    .as-caption {
+        color: #000;
     }
 }
 
@@ -485,7 +568,16 @@
 }
 
 .pilot-abilities {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.2em 0.7em;
     margin-left: 0.5em;
+
+    .pilot-ability {
+        color: #000;
+        -webkit-text-stroke: #fff 0.3em;
+    }
 }
 
 .destroyed-text {

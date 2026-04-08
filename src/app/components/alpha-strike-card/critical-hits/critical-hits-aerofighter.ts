@@ -32,8 +32,23 @@
  */
 
 import { Component, ChangeDetectionStrategy } from '@angular/core';
-import { AsCriticalHitsBase } from './critical-hits-base';
-import { AsCritPipsComponent } from './crit-pips.component';
+import { AsCriticalHitsBase, CRITICAL_HITS_SHARED_STYLES } from './critical-hits-base';
+
+const AEROFIGHTER_CRITICAL_HITS_STYLES = `
+    :host {
+        display: block;
+        width: 100%;
+    }
+
+    .critical-hits-svg-shell {
+        --crit-viewbox-height: 105;
+        --crit-roll-width: 32;
+        --critical-name-font-size: 12px;
+        --critical-desc-font-size: 13.5px;
+    }
+
+    ${CRITICAL_HITS_SHARED_STYLES}
+`;
 
 /*
  * Author: Drake
@@ -44,45 +59,67 @@ import { AsCritPipsComponent } from './crit-pips.component';
 @Component({
     selector: 'as-critical-hits-aerofighter',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [AsCritPipsComponent],
     host: {
         '[class.monochrome]': 'cardStyle() === "monochrome"',
     },
     template: `
-        <div class="critical-hits-box frame">
-            <div class="frame-background"></div>
+        <div class="critical-hits-svg-shell">
             @if (interactive()) {
-                <button class="crit-roll-button" (click)="onRollCriticalClick($event)" aria-label="Roll critical hit"></button>
+                <button class="crit-roll-button" (click)="onRollCriticalClick($event)" aria-label="Roll critical hit">
+                    <svg class="crit-roll-icon-svg" [attr.viewBox]="critRollIconViewBox" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+                        <path class="crit-roll-icon-path" [attr.d]="critRollIconPath"></path>
+                    </svg>
+                </button>
             }
-            <div class="frame-content">
-                <div class="critical-title frame-title-background">CRITICAL HITS</div>
+            <svg class="critical-hits-svg" viewBox="0 0 262 105" preserveAspectRatio="xMidYMid meet">
+                <defs>
+                    <linearGradient [attr.id]="titleGradientId" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stop-color="#5B504E" stop-opacity="0"></stop>
+                        <stop offset="6.25%" stop-color="#5B504E" stop-opacity="1"></stop>
+                        <stop offset="93.75%" stop-color="#5B504E" stop-opacity="1"></stop>
+                        <stop offset="100%" stop-color="#5B504E" stop-opacity="0"></stop>
+                    </linearGradient>
+                </defs>
+                <rect x="1.5" y="1.5" width="259" height="102" rx="7" ry="7" [attr.fill]="criticalHitsFill()" stroke="#221F20" stroke-width="1.5"></rect>
+                @if (showCriticalTitleBar()) {
+                    <rect x="50" y="6" width="162" height="22" [attr.fill]="'url(#' + titleGradientId + ')'" aria-hidden="true"></rect>
+                }
+                <text x="131" y="24" text-anchor="middle" class="critical-title-svg" [attr.fill]="criticalTitleFill()">CRITICAL HITS</text>
 
-                <div class="critical-row" data-crit="engine">
-                    <span class="critical-name">ENGINE</span>
-                    <div class="critical-pips">
-                        <as-crit-pips [forceUnit]="forceUnit()" critKey="engine" [maxPips]="2" />
-                    </div>
-                    <span class="critical-desc">½ THR (Minimum 1)</span>
-                </div>
+                @for (row of rows; track row.key) {
+                    <g class="critical-row-svg" [attr.data-crit]="row.key" [attr.transform]="'translate(11,' + row.y + ')'">
+                        <text x="68" y="13" text-anchor="end" class="critical-name-svg" [attr.fill]="criticalNameFill()">{{ row.name }}</text>
 
-                <div class="critical-row" data-crit="fire-control">
-                    <span class="critical-name">FIRE CONTROL</span>
-                    <div class="critical-pips">
-                        <as-crit-pips [forceUnit]="forceUnit()" critKey="fire-control" [maxPips]="4" />
-                    </div>
-                    <span class="critical-desc">+2 To-Hit Each</span>
-                </div>
+                        @if (showNumeric(row.key, row.maxPips)) {
+                            <text x="81" y="14" class="critical-count-svg" [attr.fill]="pipCountFill(row.key)">{{ committedHits(row.key) }}@if (pendingChange(row.key) !== 0) {<tspan [attr.fill]="pendingDeltaFill(row.key)">{{ pendingDelta(row.key) }}</tspan>}</text>
+                            <circle cx="115" cy="8" r="6.35" class="critical-pip-circle pip damaged"></circle>
+                        } @else {
+                            @for (pipIndex of pipIndices(row.maxPips); track pipIndex) {
+                                <circle
+                                    [attr.cx]="85 + (pipIndex * 16)"
+                                    cy="8"
+                                    r="6.35"
+                                    class="critical-pip-circle pip"
+                                    [class.damaged]="isDamaged(row.key, pipIndex)"
+                                    [class.pending-damage]="isPendingDamage(row.key, pipIndex)"
+                                    [class.pending-heal]="isPendingHeal(row.key, pipIndex)">
+                                </circle>
+                            }
+                        }
 
-                <div class="critical-row" data-crit="weapons">
-                    <span class="critical-name">WEAPONS</span>
-                    <div class="critical-pips">
-                        <as-crit-pips [forceUnit]="forceUnit()" critKey="weapons" [maxPips]="4" />
-                    </div>
-                    <span class="critical-desc">-1 Damage Each</span>
-                </div>
-            </div>
+                        <text [attr.x]="descX(row.key, row.maxPips)" y="13" class="critical-desc-svg">{{ row.description }}</text>
+                    </g>
+                }
+            </svg>
         </div>
     `,
-    styleUrl: './../common.scss'
+    styles: [AEROFIGHTER_CRITICAL_HITS_STYLES]
 })
-export class AsCriticalHitsAerofighterComponent extends AsCriticalHitsBase {}
+export class AsCriticalHitsAerofighterComponent extends AsCriticalHitsBase {
+    protected readonly rows = [
+        { key: 'engine', name: 'ENGINE', description: '½ THR (Minimum 1)', maxPips: 2, y: 37 },
+        { key: 'fire-control', name: 'FIRE CONTROL', description: '+2 To-Hit Each', maxPips: 4, y: 58 },
+        { key: 'weapons', name: 'WEAPONS', description: '-1 Damage Each', maxPips: 4, y: 79 },
+    ] as const;
+
+}

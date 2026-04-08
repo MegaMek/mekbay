@@ -13,7 +13,7 @@
     flex-direction: column;
 
     .frame-content {
-        z-index: 1;
+        position: relative;
         padding: 0.7em 1.2em;
         flex: 1 1 auto;
     }
@@ -23,15 +23,14 @@
     position: absolute;
     width: 100%;
     height: 100%;
-    opacity: 0.7;
     border-image: none;
-    background-color: #E3ECED;
-    border-radius: 1.6em;
-    border: 0.3em solid #221F20;
+    background-color: rgb(227 236 237 / 70%);
+    border-radius: 7;
+    border: 1.5px solid #221F20;
     box-sizing: border-box;
 
     :host(.monochrome) & {
-        background-color: #fff;
+        background-color: rgb(255 255 255 / 70%);
     }
 }
 
@@ -78,12 +77,23 @@
     right: 1.43em;
     width: 22em;
     height: 7.5em;
-    background: #000;
-    clip-path: polygon(0 0, 100% 0, 100% 100%, 4em 100%, 0 0);
+    display: block;
+    pointer-events: none;
+    overflow: hidden;
 
     // :host(:not(.monochrome)) & {
     //     display: none;
     // }
+}
+
+.pv-box-background-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.pv-box-background-shape {
+    fill: #000;
 }
 
 .pv-text {
@@ -91,7 +101,6 @@
     font-weight: 900;
     text-align: center;
     letter-spacing: 0.1em;
-    z-index: 1;
 }
 
 .base-pv-text {
@@ -99,7 +108,6 @@
     font-weight: bold;
     text-align: center;
     margin-top: 0.5em;
-    z-index: 1;
     -webkit-text-stroke: 0.12em #fff;
     color: #000;
     paint-order: stroke fill;
@@ -145,7 +153,6 @@
     background-size: contain;
     cursor: pointer;
     transition: opacity 0.2s ease-in-out;
-    z-index: 2;
     font-size: inherit;
     display: flex;
     align-items: center;
@@ -247,11 +254,16 @@
     flex-wrap: wrap;
     align-items: flex-start;
     gap: 0.5em;
+
+    :host-context(.export-mode) & {
+        flex-wrap: nowrap;
+    }
 }
 
 .pip {
     width: 2.8em;
     height: 2.8em;
+    flex: 0 0 auto;
 
     circle {
         fill: #fff;
@@ -309,12 +321,26 @@
 .destroyed-overlay {
     position: absolute;
     inset: 0;
-    background-color: rgba(128, 0, 0, 0.3);
     z-index: 1;
     pointer-events: none;
 
     @media print {
         display: none;
     }
+}
+
+.destroyed-overlay-svg-shell {
+    position: absolute;
+    inset: 0;
+}
+
+.destroyed-overlay-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.destroyed-overlay-tint {
+    fill: rgba(128, 0, 0, 0.3);
 }
 
