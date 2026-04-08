@@ -119,7 +119,7 @@ const TOP_LEVEL_OPTIONS_VIEWS = OPTIONS_VIEW_DEFINITIONS.filter(view => !view.pa
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CommonModule, BaseDialogComponent],
     templateUrl: './options-dialog.component.html',
-    styleUrls: ['./options-dialog.component.css']
+    styleUrls: ['./options-dialog.component.scss']
 })
 export class OptionsDialogComponent {
     logger = inject(LoggerService)
