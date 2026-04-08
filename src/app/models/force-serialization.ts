@@ -38,7 +38,7 @@ import type { GameSystem } from './common.model';
 import type { CBTForceUnit } from './cbt-force-unit.model';
 import type { ASCustomPilotAbility } from './pilot-abilities.model';
 import type { C3NetworkType } from './c3-network.model';
-import { DEFAULT_GUNNERY_SKILL } from './crew-member.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './crew-member.model';
 
 export interface LocationData {
     armor?: number;
@@ -196,8 +196,19 @@ export interface ASCriticalHit {
     timestamp: number;
 }
 
+export interface SerializedCrewMember {
+    id: number;
+    name: string;
+    gunnerySkill: number;
+    pilotingSkill: number;
+    asfGunnerySkill?: number;
+    asfPilotingSkill?: number;
+    hits: number;
+    state: number;
+}
+
 export interface CBTSerializedState extends SerializedState {
-    crew: any[]; // Serialized CrewMember objects
+    crew: SerializedCrewMember[];
     crits: CriticalSlot[];
     locations: Record<string, LocationData>;
     heat: HeatProfile;
@@ -321,11 +332,11 @@ export const INVENTORY_SCHEMA = Sanitizer.schema<SerializedInventory>()
 /**
  * Schema for crew member serialized data
  */
-export const CREW_MEMBER_SCHEMA = Sanitizer.schema<any>()
+export const CREW_MEMBER_SCHEMA = Sanitizer.schema<SerializedCrewMember>()
     .number('id', { default: 0, min: 0 })
     .string('name', { default: '' })
     .number('gunnerySkill', { default: DEFAULT_GUNNERY_SKILL, min: 0, max: 8 })
-    .number('pilotingSkill', { default: 5, min: 0, max: 8 })
+    .number('pilotingSkill', { default: DEFAULT_PILOTING_SKILL, min: 0, max: 8 })
     .number('asfGunnerySkill')
     .number('asfPilotingSkill')
     .number('hits', { default: 0, min: 0 })

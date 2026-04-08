@@ -1,5 +1,73 @@
 import { GameSystem } from './common.model';
-import { getLoadForceUnitPilotStats, type LoadForceUnit } from './load-force-entry.model';
+import type { ASSerializedUnit, CBTSerializedUnit } from './force-serialization';
+import { createLoadForceUnitFromSerializedUnit, getLoadForceUnitPilotStats, type LoadForceUnit } from './load-force-entry.model';
+
+describe('createLoadForceUnitFromSerializedUnit', () => {
+    const getUnitByName = (name: string) => ({ name, type: 'Mek' } as any);
+
+    it('reads alpha strike pilot skill from serialized AS units', () => {
+        const serializedUnit: ASSerializedUnit = {
+            id: 'as-1',
+            unit: 'Atlas AS7-D',
+            alias: 'Ace',
+            commander: true,
+            skill: 3,
+            abilities: [],
+            state: {
+                modified: false,
+                destroyed: false,
+                shutdown: false,
+                heat: [0, 0],
+                armor: [0, 0],
+                internal: [0, 0],
+                crits: [],
+                pCrits: [],
+            },
+        };
+
+        const result = createLoadForceUnitFromSerializedUnit(serializedUnit, getUnitByName);
+
+        expect(result).toEqual(jasmine.objectContaining({
+            alias: 'Ace',
+            skill: 3,
+            commander: true,
+        }));
+        expect(result.gunnery).toBeUndefined();
+        expect(result.piloting).toBeUndefined();
+    });
+
+    it('reads classic crew skills from serialized CBT units', () => {
+        const serializedUnit: CBTSerializedUnit = {
+            id: 'cbt-1',
+            unit: 'Atlas AS7-D',
+            commander: false,
+            state: {
+                modified: false,
+                destroyed: false,
+                shutdown: false,
+                crew: [
+                    { gunnerySkill: 4, pilotingSkill: 5 },
+                    { gunnerySkill: 3 },
+                ],
+                crits: [],
+                locations: {},
+                heat: {
+                    current: 0,
+                    previous: 0,
+                },
+            },
+        };
+
+        const result = createLoadForceUnitFromSerializedUnit(serializedUnit, getUnitByName);
+
+        expect(result).toEqual(jasmine.objectContaining({
+            gunnery: 3,
+            piloting: 5,
+            commander: false,
+        }));
+        expect(result.skill).toBeUndefined();
+    });
+});
 
 describe('getLoadForceUnitPilotStats', () => {
     it('formats classic skills as gunnery slash piloting', () => {

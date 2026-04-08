@@ -47,7 +47,12 @@ import type { Force }    from '../models/force.model';
 import type { ASSerializedForce, CBTSerializedForce, SerializedForce } from '../models/force-serialization';
 import { UnitInitializerService } from './unit-initializer.service';
 import { UserStateService } from './userState.service';
-import { LoadForceEntry, type LoadForceGroup, type LoadForceUnit, type RemoteLoadForceEntry } from '../models/load-force-entry.model';
+import {
+    createLoadForceEntry,
+    createLoadForceEntryFromSerializedForce,
+    LoadForceEntry,
+    type RemoteLoadForceEntry,
+} from '../models/load-force-entry.model';
 import { LoggerService } from './logger.service';
 import { type SerializedOperation, LoadOperationEntry, type OperationForceInfo } from '../models/operation.model';
 import { type LoadedOrganization, type SerializedOrganization, LoadOrganizationEntry } from '../models/organization.model';
@@ -57,10 +62,14 @@ import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
 import type { Sourcebook } from '../models/sourcebook.model';
 import type { MegaMekFactionAffiliation, MegaMekFactionRecord, MegaMekFactions } from '../models/megamek/factions.model';
+import type { MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
+import type { MegaMekRulesetRecord } from '../models/megamek/rulesets.model';
 import { getForcePacks } from '../models/forcepacks.model';
 import { getForcePackLookupKey } from '../utils/force-pack.util';
 import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
+import { MegaMekAvailabilityCatalogService } from './catalogs/megamek-availability-catalog.service';
 import { MegaMekFactionsCatalogService } from './catalogs/megamek-factions-catalog.service';
+import { MegaMekRulesetsCatalogService } from './catalogs/megamek-rulesets-catalog.service';
 import { ErasCatalogService } from './catalogs/eras-catalog.service';
 import { FactionsCatalogService } from './catalogs/mulfactions-catalog.service';
 import { MulUnitSourcesCatalogService } from './catalogs/mul-unit-sources-catalog.service';
@@ -132,7 +141,9 @@ export class DataService {
     private equipmentCatalog = inject(EquipmentCatalogService);
     private erasCatalog = inject(ErasCatalogService);
     private factionsCatalog = inject(FactionsCatalogService);
+    private megaMekAvailabilityCatalog = inject(MegaMekAvailabilityCatalogService);
     private megaMekFactionsCatalog = inject(MegaMekFactionsCatalogService);
+    private megaMekRulesetsCatalog = inject(MegaMekRulesetsCatalogService);
     private mulUnitSourcesCatalog = inject(MulUnitSourcesCatalogService);
     private quirksCatalog = inject(QuirksCatalogService);
     private sourcebooksCatalog = inject(SourcebooksCatalogService);
@@ -347,8 +358,34 @@ export class DataService {
         return this.megaMekFactionsCatalog.getFactionByKey(key);
     }
 
+    public getMegaMekFactionsByMulId(mulId: number): MegaMekFactionRecord[] {
+        return this.megaMekFactionsCatalog.getFactionsByMulId(mulId);
+    }
+
     public getMegaMekFactionAffiliation(factionKey: string): MegaMekFactionAffiliation {
         return this.megaMekFactionsCatalog.getFactionAffiliation(factionKey);
+    }
+
+    public getMegaMekRulesets(): readonly MegaMekRulesetRecord[] {
+        return this.megaMekRulesetsCatalog.getRulesets();
+    }
+
+    public getMegaMekRulesetByFactionKey(factionKey: string): MegaMekRulesetRecord | undefined {
+        return this.megaMekRulesetsCatalog.getRulesetByFactionKey(factionKey);
+    }
+
+    public getMegaMekRulesetsByMulFactionId(mulFactionId: number): MegaMekRulesetRecord[] {
+        return this.getMegaMekFactionsByMulId(mulFactionId)
+            .map((faction) => this.megaMekRulesetsCatalog.getRulesetByFactionKey(faction.id))
+            .filter((ruleset): ruleset is MegaMekRulesetRecord => ruleset !== undefined);
+    }
+
+    public getMegaMekAvailabilityRecords(): readonly MegaMekWeightedAvailabilityRecord[] {
+        return this.megaMekAvailabilityCatalog.getRecords();
+    }
+
+    public getMegaMekAvailabilityRecordForUnit(unit: Pick<Unit, 'type' | 'chassis' | 'model'>): MegaMekWeightedAvailabilityRecord | undefined {
+        return this.megaMekAvailabilityCatalog.getRecordForUnit(unit);
     }
 
     /**
@@ -435,6 +472,42 @@ export class DataService {
         }
     }
 
+    private describeError(error: unknown): string {
+        if (error instanceof Error) {
+            return `${error.name}: ${error.message}`;
+        }
+
+        return String(error);
+    }
+
+    private async initializeSupplementalCatalogs(): Promise<void> {
+        const catalogs = [
+            { name: 'megamek_availability', initialize: () => this.megaMekAvailabilityCatalog.initialize() },
+            { name: 'megamek_factions', initialize: () => this.megaMekFactionsCatalog.initialize() },
+            { name: 'megamek_rulesets', initialize: () => this.megaMekRulesetsCatalog.initialize() },
+            { name: 'quirks', initialize: () => this.quirksCatalog.initialize() },
+            { name: 'sourcebooks', initialize: () => this.sourcebooksCatalog.initialize() },
+        ] as const;
+        const results = await Promise.allSettled(catalogs.map(({ initialize }) => initialize()));
+        const failures = results.flatMap((result, index) => (
+            result.status === 'rejected'
+                ? [{ name: catalogs[index].name, error: result.reason }]
+                : []
+        ));
+
+        if (failures.length === 0) {
+            return;
+        }
+
+        for (const failure of failures) {
+            this.logger.error(`Failed to initialize catalog service "${failure.name}": ${this.describeError(failure.error)}`);
+        }
+
+        this.logger.error(
+            `Failed to initialize ${failures.length} catalog service${failures.length === 1 ? '' : 's'}: ${failures.map(({ name }) => `"${name}"`).join(', ')}`,
+        );
+    }
+
     public async initialize(): Promise<void> {
         this.isDataReady.set(false);
         this.logger.info('Initializing data service...');
@@ -442,22 +515,14 @@ export class DataService {
         this.logger.info('Database is ready, checking for updates...');
         try {
             await this.checkForUpdate();
-            try {
-                await Promise.all([
-                    this.megaMekFactionsCatalog.initialize(),
-                    this.quirksCatalog.initialize(),
-                    this.sourcebooksCatalog.initialize(),
-                ]);
-            } catch (error) {
-                this.logger.error('Failed to initialize one or more catalog services: ' + error);
-            }
+            await this.initializeSupplementalCatalogs();
             this.logger.info('All data stores are ready.');
             // Apply public tags to units now that data is ready
             // (PublicTagsService.initialize() may have loaded cached tags before units were ready)
             this.applyPublicTagsToUnits();
             this.isDataReady.set(true);
         } catch (error) {
-            this.logger.error('Failed to initialize data: ' + error);
+            this.logger.error(`Failed to initialize data: ${this.describeError(error)}`);
             // Check if we have any data loaded despite the error
             const hasData = this.getUnits().length > 0 && Object.keys(this.getEquipments()).length > 0;
             if (hasData) {
@@ -566,7 +631,7 @@ export class DataService {
 
     public async listForces(): Promise<LoadForceEntry[]> {
         this.logger.info(`Retrieving local forces...`);
-        const localForces = await this.dbService.listForces(this, this.unitInitializer, this.injector);
+        const localForces = await this.dbService.listForces(this);
         this.logger.info(`Retrieving cloud forces...`);
         const cloudForces = await this.listForcesCloud();
         this.logger.info(`Found ${localForces.length} local forces and ${cloudForces.length} cloud forces.`);
@@ -625,13 +690,13 @@ export class DataService {
 
         for (const localRaw of localRawForces) {
             if (!localRaw?.instanceId) continue;
-            entryMap.set(localRaw.instanceId, this.hydrateRemoteLoadForceEntry(localRaw, { local: true }));
+            entryMap.set(localRaw.instanceId, createLoadForceEntryFromSerializedForce(localRaw, this, { local: true }));
         }
 
         const cloudForces = await this.getForcesBulkSummaries(orderedIds);
         for (const raw of cloudForces) {
             if (!raw?.instanceId) continue;
-            const cloudEntry = this.hydrateRemoteLoadForceEntry(raw, { cloud: true });
+            const cloudEntry = createLoadForceEntry(raw, this, { cloud: true });
             const existing = entryMap.get(raw.instanceId);
             if (!existing || this.getComparableTimestamp(raw.timestamp) >= this.getComparableTimestamp(existing.timestamp)) {
                 if (existing?.local) cloudEntry.local = true;
@@ -1176,43 +1241,6 @@ export class DataService {
         return result;
     }
 
-    private hydrateRemoteLoadForceEntry(raw: RemoteLoadForceEntry, options: { cloud?: boolean; local?: boolean } = {}): LoadForceEntry {
-        const groups: LoadForceGroup[] = [];
-        if (raw.groups && Array.isArray(raw.groups)) {
-            for (const group of raw.groups) {
-                const loadGroup: LoadForceGroup = {
-                    name: group.name,
-                    formationId: group.formationId,
-                    units: [],
-                };
-                for (const unit of group.units ?? []) {
-                    const loadUnit: LoadForceUnit = {
-                        unit: this.getUnitByName(unit.unit),
-                        alias: unit.alias,
-                        destroyed: unit.state?.destroyed ?? false,
-                    };
-                    loadGroup.units.push(loadUnit);
-                }
-                groups.push(loadGroup);
-            }
-        }
-
-        return new LoadForceEntry({
-            cloud: options.cloud ?? false,
-            local: options.local ?? false,
-            owned: raw.owned ?? true,
-            instanceId: raw.instanceId,
-            name: raw.name,
-            type: raw.type ?? GameSystem.CLASSIC,
-            faction: raw.factionId != null ? this.getFactionById(raw.factionId) ?? null : null,
-            era: raw.eraId != null ? this.getEraById(raw.eraId) ?? null : null,
-            bv: raw.bv ?? undefined,
-            pv: raw.pv ?? undefined,
-            timestamp: raw.timestamp,
-            groups,
-        });
-    }
-
     private getComparableTimestamp(timestamp: string | number | null | undefined): number {
         if (typeof timestamp === 'number') return timestamp;
         if (timestamp) return new Date(timestamp).getTime();
@@ -1233,7 +1261,7 @@ export class DataService {
         if (response && Array.isArray(response.data)) {
             for (const raw of response.data as RemoteLoadForceEntry[]) {
                 try {
-                    forces.push(this.hydrateRemoteLoadForceEntry(raw, { cloud: true }));
+                    forces.push(createLoadForceEntry(raw, this, { cloud: true }));
                 } catch (error) {
                     this.logger.error('Failed to deserialize force: ' + error + ' ' + raw);
                 }
