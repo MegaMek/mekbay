@@ -69,6 +69,7 @@
     display: inline-flex;
     align-items: center;
     margin-left: 4px;
+    padding: 2px 4px;
     color: var(--text-color-secondary);
 }
 

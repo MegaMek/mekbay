@@ -1943,7 +1943,7 @@ export class ForceBuilderService {
         const gameService = this.injector.get(GameService);
         const dialogRef = this.dialogsService.createDialog<ForceGeneratorDialogResult | null>(ForceGeneratorDialogComponent, {
             data: {
-                defaultGameSystem: currentForce?.gameSystem ?? gameService.currentGameSystem(),
+                defaultGameSystem: gameService.currentGameSystem(),
                 defaultEraId: currentForce?.era()?.id,
                 defaultFactionId: currentForce?.faction()?.id,
             },

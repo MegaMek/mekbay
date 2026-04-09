@@ -33,6 +33,8 @@
 
 import { Component, ChangeDetectionStrategy, input, inject, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { TooltipDirective } from '../../../directives/tooltip.directive';
+import type { TooltipLine } from '../../tooltip/tooltip.component';
 import type { Era } from '../../../models/eras.model';
 import type { Faction } from '../../../models/factions.model';
 import {
@@ -78,6 +80,7 @@ interface FactionAvailabilityItem {
     name: string;
     img: string;
     megaMekAvailability: FactionMegaMekAvailability[];
+    megaMekTooltip: TooltipLine[] | null;
     isCatchAll?: boolean;
     collapsedFactions?: FactionAvailabilityItem[];
 }
@@ -93,7 +96,7 @@ export interface FactionAvailability {
 @Component({
     selector: 'unit-details-factions-tab',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [CommonModule, TooltipDirective],
     templateUrl: './unit-details-factions-tab.component.html',
     styleUrls: ['./unit-details-factions-tab.component.css']
 })
@@ -124,6 +127,7 @@ export class UnitDetailsFactionTabComponent {
                         img: faction.img,
                         group: faction.group,
                         megaMekAvailability: this.getFactionMegaMekAvailability(u, faction, era),
+                        megaMekTooltip: null,
                     });
                 }
             }
@@ -145,11 +149,13 @@ export class UnitDetailsFactionTabComponent {
                 const prefixCollapsed: FactionAvailabilityItem[] = [];
 
                 for (const f of matchingFactions) {
+                    const megaMekTooltip = this.buildFactionMegaMekTooltip(f);
                     if (CATCH_ALL_FACTIONS[f.name] || f.name === PREFIX_CATCH_ALL) {
                         factions.push({
                             name: f.name,
                             img: f.img,
                             megaMekAvailability: f.megaMekAvailability,
+                            megaMekTooltip,
                             isCatchAll: true,
                         });
                     } else if (hasPrefixCatchAll && f.name.startsWith(PREFIX_CATCH_ALL_PREFIX)) {
@@ -157,6 +163,7 @@ export class UnitDetailsFactionTabComponent {
                             name: f.name,
                             img: f.img,
                             megaMekAvailability: f.megaMekAvailability,
+                            megaMekTooltip,
                         });
                     } else if (activeCatchAllGroups.has(f.group)) {
                         if (!collapsedByGroup.has(f.group)) {
@@ -166,12 +173,14 @@ export class UnitDetailsFactionTabComponent {
                             name: f.name,
                             img: f.img,
                             megaMekAvailability: f.megaMekAvailability,
+                            megaMekTooltip,
                         });
                     } else {
                         factions.push({
                             name: f.name,
                             img: f.img,
                             megaMekAvailability: f.megaMekAvailability,
+                            megaMekTooltip,
                         });
                     }
                 }
@@ -238,5 +247,25 @@ export class UnitDetailsFactionTabComponent {
             color: MEGAMEK_AVAILABILITY_RARITY_ICON_COLORS[detail.rarity],
             label: `${detail.source}: ${detail.rarity}`,
         };
+    }
+
+    private buildFactionMegaMekTooltip(
+        faction: Pick<FactionAvailabilityItem, 'name' | 'img' | 'megaMekAvailability'>,
+    ): TooltipLine[] | null {
+        if (faction.megaMekAvailability.length === 0) {
+            return null;
+        }
+
+        return [
+            {
+                value: faction.name,
+                ...(faction.img ? { iconSrc: faction.img, iconAlt: faction.name } : {}),
+                isHeader: true,
+            },
+            ...faction.megaMekAvailability.map((availability) => ({
+                label: availability.source,
+                value: availability.rarity,
+            })),
+        ];
     }
 }

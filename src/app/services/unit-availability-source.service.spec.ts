@@ -147,6 +147,69 @@ describe('UnitAvailabilitySourceService', () => {
         expect(dataServiceMock.getMegaMekAvailabilityRecordForUnit).toHaveBeenCalledWith(unit);
     });
 
+    it('supports MegaMek availability overrides without changing the global option', () => {
+        const era = {
+            id: 3150,
+            name: 'ilClan',
+            units: new Set<number>(),
+            years: { from: 3151 },
+        } as Era;
+        const faction = {
+            id: 99,
+            name: 'Test Faction',
+            group: 'Other',
+            img: '',
+            eras: {},
+        } as Faction;
+        const unit = { id: 1, name: 'Atlas', type: 'Mek', chassis: 'Atlas', model: 'AS7-D' } as Unit;
+
+        orderedEras.push(era);
+        units.push(unit);
+        megaMekAvailabilityByUnitName.set(unit.name, {
+            n: unit.name,
+            e: {
+                '3150': {
+                    '99': [7, 0],
+                },
+            },
+        });
+        megaMekAvailabilityRecords.push(megaMekAvailabilityByUnitName.get(unit.name)!);
+
+        expect(service.getFactionEraUnitIds(faction, era).size).toBe(0);
+        expect(service.getFactionEraUnitIds(faction, era, 'megamek').has(unit.name)).toBeTrue();
+        expect(service.getUnitAvailabilityKey(unit, 'megamek')).toBe(unit.name);
+        expect(service.getUnitAvailabilityWeight(unit, faction, era, 'megamek')).toBe(7);
+        expect(optionsServiceMock.options().availabilitySource).toBe('mul');
+    });
+
+    it('supports MUL availability overrides while MegaMek is globally enabled', () => {
+        const era = {
+            id: 100,
+            name: 'Succession Wars',
+            units: new Set([1, 2]),
+            years: { from: 2780, to: 3049 },
+        } as Era;
+        const faction = {
+            id: 42,
+            name: 'Federated Suns',
+            group: 'Inner Sphere',
+            img: '',
+            eras: {
+                100: new Set([1]),
+            },
+        } as Faction;
+        const unit = { id: 1, name: 'Atlas', type: 'Mek', chassis: 'Atlas', model: 'AS7-D' } as Unit;
+
+        orderedEras.push(era);
+        optionsServiceMock.options.set({ availabilitySource: 'megamek' });
+
+        expect(Array.from(service.getFactionEraUnitIds(faction, era, 'mul'))).toEqual(['1']);
+        expect(service.getUnitAvailabilityKey(unit, 'mul')).toBe('1');
+        expect(service.getUnitAvailabilityWeight(unit, faction, era, 'mul')).toBeNull();
+        expect(service.useMegaMekAvailability('mul')).toBeFalse();
+        expect(service.useMegaMekAvailability()).toBeTrue();
+    });
+
     it('returns MegaMek per-source details even when MUL availability is selected and omits zero scores', () => {
         const era = {
             id: 3150,

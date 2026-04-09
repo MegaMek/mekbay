@@ -46,6 +46,7 @@ import {
     type MegaMekAvailabilityRarity,
 } from '../models/megamek/availability.model';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
+import type { AvailabilitySource } from '../models/options.model';
 import type { Unit } from '../models/units.model';
 import type {
     UnitSearchWorkerMegaMekAvailabilityBucketSnapshot,
@@ -201,10 +202,10 @@ export class UnitAvailabilitySourceService {
     private megaMekAvailabilityBucketsByEraFaction = new Map<number, Map<number, MegaMekAvailabilityBucketIndexes>>();
     private megaMekScopedUnitIdsCache = new Map<string, ReadonlySet<AvailabilityUnitKey>>();
 
-    public getVisibleEraUnitIds(era: Era): Set<AvailabilityUnitKey> {
+    public getVisibleEraUnitIds(era: Era, availabilitySource?: AvailabilitySource): Set<AvailabilityUnitKey> {
         this.ensureMulCacheVersion();
 
-        if (!this.useMegaMekAvailability()) {
+        if (!this.useMegaMekAvailability(availabilitySource)) {
             return this.getMulVisibleEraUnitIds(era);
         }
 
@@ -214,14 +215,22 @@ export class UnitAvailabilitySourceService {
         return indexedUnitIds ? new Set(indexedUnitIds) : new Set<AvailabilityUnitKey>();
     }
 
-    public getFactionEraUnitIds(faction: Faction, era: Era): Set<AvailabilityUnitKey> {
-        return this.getFactionUnitIds(faction, new Set([era.id]));
+    public getFactionEraUnitIds(
+        faction: Faction,
+        era: Era,
+        availabilitySource?: AvailabilitySource,
+    ): Set<AvailabilityUnitKey> {
+        return this.getFactionUnitIds(faction, new Set([era.id]), availabilitySource);
     }
 
-    public getFactionUnitIds(faction: Faction, contextEraIds?: ReadonlySet<number>): Set<AvailabilityUnitKey> {
+    public getFactionUnitIds(
+        faction: Faction,
+        contextEraIds?: ReadonlySet<number>,
+        availabilitySource?: AvailabilitySource,
+    ): Set<AvailabilityUnitKey> {
         this.ensureMulCacheVersion();
 
-        if (!this.useMegaMekAvailability()) {
+        if (!this.useMegaMekAvailability(availabilitySource)) {
             return this.getMulFactionUnitIds(faction, contextEraIds);
         }
 
@@ -250,20 +259,30 @@ export class UnitAvailabilitySourceService {
         return unitIds;
     }
 
-    public unitBelongsToEra(unit: Unit, era: Era): boolean {
-        return this.getVisibleEraUnitIds(era).has(this.getUnitAvailabilityKey(unit));
+    public unitBelongsToEra(unit: Unit, era: Era, availabilitySource?: AvailabilitySource): boolean {
+        return this.getVisibleEraUnitIds(era, availabilitySource).has(this.getUnitAvailabilityKey(unit, availabilitySource));
     }
 
-    public unitBelongsToFaction(unit: Unit, faction: Faction, contextEraIds?: ReadonlySet<number>): boolean {
-        return this.getFactionUnitIds(faction, contextEraIds).has(this.getUnitAvailabilityKey(unit));
+    public unitBelongsToFaction(
+        unit: Unit,
+        faction: Faction,
+        contextEraIds?: ReadonlySet<number>,
+        availabilitySource?: AvailabilitySource,
+    ): boolean {
+        return this.getFactionUnitIds(faction, contextEraIds, availabilitySource).has(this.getUnitAvailabilityKey(unit, availabilitySource));
     }
 
-    public getUnitAvailabilityKey(unit: Pick<Unit, 'id' | 'name'>): AvailabilityUnitKey {
-        return this.useMegaMekAvailability() ? unit.name : String(unit.id);
+    public getUnitAvailabilityKey(unit: Pick<Unit, 'id' | 'name'>, availabilitySource?: AvailabilitySource): AvailabilityUnitKey {
+        return this.useMegaMekAvailability(availabilitySource) ? unit.name : String(unit.id);
     }
 
-    public getUnitAvailabilityWeight(unit: Unit, faction: Faction, era: Era): number | null {
-        if (!this.useMegaMekAvailability()) {
+    public getUnitAvailabilityWeight(
+        unit: Unit,
+        faction: Faction,
+        era: Era,
+        availabilitySource?: AvailabilitySource,
+    ): number | null {
+        if (!this.useMegaMekAvailability(availabilitySource)) {
             return null;
         }
 
@@ -453,8 +472,8 @@ export class UnitAvailabilitySourceService {
         return this.getMegaMekRarityUnitIds(rarity, context).has(unit.name);
     }
 
-    public useMegaMekAvailability(): boolean {
-        return this.optionsService.options().availabilitySource === 'megamek';
+    public useMegaMekAvailability(availabilitySource?: AvailabilitySource): boolean {
+        return (availabilitySource ?? this.optionsService.options().availabilitySource) === 'megamek';
     }
 
     private ensureMulCacheVersion(): void {

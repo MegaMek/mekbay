@@ -9,7 +9,6 @@
                             class="faction-megamek-availability-badge"
                             role="img"
                             [attr.aria-label]="badge.label"
-                            [attr.title]="badge.label"
                             [style.color]="badge.color"
                         >
                             @if (badge.source === 'Production') {
@@ -54,7 +53,7 @@
                 <div class="faction-list">
                     @for (faction of era.factions; let isLast = $last; track faction.name) {
                         @if (faction.isCatchAll) {
-                            <span class="faction-item catch-all-faction">
+                            <span class="faction-item catch-all-faction" [tooltip]="faction.megaMekTooltip">
                                 @if (faction.img) {
                                     <img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" title="{{faction.name}}" />
                                 }
@@ -64,11 +63,11 @@
                                     [ngTemplateOutletContext]="{ badges: faction.megaMekAvailability }"
                                 ></ng-container>
                                 @if (isCatchAllExpanded(i, faction.name) && faction.collapsedFactions?.length) {
-                                    <span class="collapsed-factions"> (@for (cf of faction.collapsedFactions; let cfLast = $last; track cf.name) {<span class="collapsed-faction-item">@if (cf.img) {<img [src]="cf.img" class="faction-icon" alt="{{cf.name}}" title="{{cf.name}}" />} {{ cf.name }}<ng-container [ngTemplateOutlet]="megaMekAvailability" [ngTemplateOutletContext]="{ badges: cf.megaMekAvailability }"></ng-container>{{ !cfLast ? ',&nbsp; ' : '' }}</span>})</span>
+                                    <span class="collapsed-factions"> (@for (cf of faction.collapsedFactions; let cfLast = $last; track cf.name) {<span class="collapsed-faction-item" [tooltip]="cf.megaMekTooltip">@if (cf.img) {<img [src]="cf.img" class="faction-icon" alt="{{cf.name}}" title="{{cf.name}}" />} {{ cf.name }}<ng-container [ngTemplateOutlet]="megaMekAvailability" [ngTemplateOutletContext]="{ badges: cf.megaMekAvailability }"></ng-container>{{ !cfLast ? ',&nbsp; ' : '' }}</span>})</span>
                                 }{{ !isLast ? ',' : '' }}
                             </span>
                         } @else {
-                            <span class="faction-item">
+                            <span class="faction-item" [tooltip]="faction.megaMekTooltip">
                                 @if (faction.img) {
                                     <img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" title="{{faction.name}}" />
                                 }

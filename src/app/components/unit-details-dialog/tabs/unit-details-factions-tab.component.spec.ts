@@ -1,3 +1,4 @@
+import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import type { Era } from '../../../models/eras.model';
@@ -25,7 +26,7 @@ describe('UnitDetailsFactionTabComponent', () => {
             id: 7,
             name: 'Draconis Combine',
             group: 'Inner Sphere',
-            img: '',
+            img: '/assets/draconis-combine.png',
             eras: {
                 3050: new Set([1]),
             },
@@ -106,6 +107,7 @@ describe('UnitDetailsFactionTabComponent', () => {
         TestBed.configureTestingModule({
             imports: [UnitDetailsFactionTabComponent],
             providers: [
+                provideZonelessChangeDetection(),
                 { provide: DataService, useValue: dataServiceMock },
                 { provide: UnitAvailabilitySourceService, useValue: unitAvailabilitySourceMock },
             ],
@@ -120,7 +122,7 @@ describe('UnitDetailsFactionTabComponent', () => {
         const element = fixture.nativeElement as HTMLElement;
         const factionItems = Array.from(element.querySelectorAll('.faction-item'));
         const availabilityBadges = Array.from(element.querySelectorAll('.faction-megamek-availability-badge'));
-        const badgeLabels = availabilityBadges.map((badge) => badge.getAttribute('title'));
+        const badgeLabels = availabilityBadges.map((badge) => badge.getAttribute('aria-label'));
         const draconisCombineItem = factionItems.find((item) => item.textContent?.includes('Draconis Combine'));
         const mercenariesItem = factionItems.find((item) => item.textContent?.includes('Mercenaries'));
         const extinctItem = factionItems.find((item) => item.textContent?.includes('Extinct'));
@@ -133,5 +135,24 @@ describe('UnitDetailsFactionTabComponent', () => {
         expect(extinctItem?.querySelectorAll('.faction-megamek-availability-badge').length).toBe(0);
         expect(badgeLabels).toEqual(['Production: Common', 'Salvage: Rare']);
         expect(unitAvailabilitySourceMock.getFactionEraUnitIds).toHaveBeenCalled();
+
+        const viewModel = fixture.componentInstance.factionAvailability();
+        expect(viewModel[0].factions.find((faction) => faction.name === 'Draconis Combine')?.megaMekTooltip).toEqual([
+            {
+                value: 'Draconis Combine',
+                iconSrc: '/assets/draconis-combine.png',
+                iconAlt: 'Draconis Combine',
+                isHeader: true,
+            },
+            {
+                label: 'Production',
+                value: 'Common',
+            },
+            {
+                label: 'Salvage',
+                value: 'Rare',
+            },
+        ]);
+        expect(viewModel[0].factions.find((faction) => faction.name === 'Extinct')?.megaMekTooltip).toBeNull();
     });
 });
