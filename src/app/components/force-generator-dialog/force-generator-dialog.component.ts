@@ -32,12 +32,13 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
+import { DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 
 import { GameSystem } from '../../models/common.model';
 import type { Era } from '../../models/eras.model';
 import type { Faction } from '../../models/factions.model';
+import { MULFACTION_EXTINCT } from '../../models/mulfactions.model';
 import { LoadForceEntry, type LoadForceGroup } from '../../models/load-force-entry.model';
 import type { AvailabilitySource } from '../../models/options.model';
 import type { Unit } from '../../models/units.model';
@@ -47,6 +48,7 @@ import { MultiSelectDropdownComponent, type DropdownOption, type MultiStateSelec
 import { DataService } from '../../services/data.service';
 import { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
+import { AS_TYPE_DISPLAY_NAMES } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { UnitAvailabilitySourceService } from '../../services/unit-availability-source.service';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
@@ -55,16 +57,11 @@ import { ForceNamerUtil } from '../../utils/force-namer.util';
 import { PVCalculatorUtil } from '../../utils/pv-calculator.util';
 import { getMergedTags } from '../../utils/unit-search-shared.util';
 
-export interface ForceGeneratorDialogData {
-    defaultGameSystem?: GameSystem;
-    defaultEraId?: number;
-    defaultFactionId?: number;
-}
-
 export interface ForceGeneratorDialogConfig {
     gameSystem: GameSystem;
     availabilitySource: AvailabilitySource;
     bvPvLimit: number;
+    unitTypes: string[];
     tags: string[];
     eraId: number;
     factionId: number;
@@ -83,6 +80,9 @@ interface ForceGeneratorPreview {
     totalCost: number;
     error: string | null;
 }
+
+const DEFAULT_FORCE_GENERATOR_UNIT_TYPE = 'BM';
+const DEFAULT_FORCE_GENERATOR_ERA_NAME = 'ilclan';
 
 function normalizeTagToken(value: string): string {
     return value.trim().toLowerCase();
@@ -144,6 +144,12 @@ function pickWeightedRandomUnit(units: readonly Unit[], getWeight: (unit: Unit) 
     }
 
     return units[units.length - 1];
+}
+
+function pickDefaultFaction(factions: readonly Faction[]): Faction | null {
+    const nonExtinctFactions = factions.filter((faction) => faction.id !== MULFACTION_EXTINCT);
+    const defaultPool = nonExtinctFactions.length > 0 ? nonExtinctFactions : factions;
+    return defaultPool[Math.floor(Math.random() * defaultPool.length)] ?? null;
 }
 
 function buildGeneratedPreview(options: {
@@ -303,13 +309,13 @@ export class ForceGeneratorDialogComponent {
     private readonly optionsService = inject(OptionsService);
     private readonly unitSearchFilters = inject(UnitSearchFiltersService);
     private readonly unitAvailabilitySource = inject(UnitAvailabilitySourceService);
-    private readonly dialogData = inject<ForceGeneratorDialogData | null>(DIALOG_DATA, { optional: true });
 
     readonly availabilitySource = signal<AvailabilitySource>(this.optionsService.options().availabilitySource);
     readonly gameSystem = this.gameService.currentGameSystem;
-    readonly eraId = signal(this.dialogData?.defaultEraId ?? this.dataService.getEras()[0]?.id ?? 0);
-    readonly factionId = signal<number | null>(this.dialogData?.defaultFactionId ?? null);
+    readonly eraId = signal<number | null>(null);
+    readonly factionId = signal<number | null>(null);
     readonly bvPvLimit = signal(0);
+    readonly selectedUnitTypes = signal<string[]>([DEFAULT_FORCE_GENERATOR_UNIT_TYPE]);
     readonly selectedTags = signal<string[]>([]);
     readonly minUnitCount = signal(4);
     readonly maxUnitCount = signal(8);
@@ -318,12 +324,33 @@ export class ForceGeneratorDialogComponent {
     readonly pilotPilotingSkill = computed(() => this.unitSearchFilters.pilotPilotingSkill());
 
     readonly eras = computed(() => this.dataService.getEras());
+    readonly unitTypeOptions = computed<DropdownOption[]>(() => {
+        return [...this.dataService.getDropdownOptionUniverse('as.TP')]
+            .sort((left, right) => left.name.localeCompare(right.name))
+            .map((option) => ({
+                name: option.name,
+                displayName: AS_TYPE_DISPLAY_NAMES[option.name] ? `${option.name} - ${AS_TYPE_DISPLAY_NAMES[option.name]}` : option.name,
+                img: option.img,
+            }));
+    });
     readonly tagOptions = computed<DropdownOption[]>(() => {
         return [...this.dataService.getDropdownOptionUniverse('_tags')]
             .sort((left, right) => left.name.localeCompare(right.name))
             .map((option) => ({ name: option.name, displayName: option.name, img: option.img }));
     });
-    readonly selectedEra = computed(() => this.dataService.getEraById(this.eraId()) ?? null);
+    readonly selectedEra = computed(() => {
+        const eras = this.eras();
+        if (eras.length === 0) {
+            return null;
+        }
+
+        const eraId = this.eraId();
+        return eras.find((era) => era.id === eraId)
+            ?? eras.find((era) => era.name.trim().toLowerCase() === DEFAULT_FORCE_GENERATOR_ERA_NAME)
+            ?? eras[eras.length - 1]
+            ?? null;
+    });
+    readonly selectedEraId = computed(() => this.selectedEra()?.id ?? null);
     readonly availableFactions = computed(() => {
         const era = this.selectedEra();
         if (!era) {
@@ -336,13 +363,16 @@ export class ForceGeneratorDialogComponent {
         );
     });
     readonly selectedFaction = computed(() => {
-        const factionId = this.factionId();
-        if (factionId === null) {
+        const availableFactions = this.availableFactions();
+        if (availableFactions.length === 0) {
             return null;
         }
 
-        return this.availableFactions().find((faction) => faction.id === factionId) ?? null;
+        const factionId = this.factionId();
+        return availableFactions.find((faction) => faction.id === factionId) ?? pickDefaultFaction(availableFactions);
     });
+    readonly selectedFactionId = computed(() => this.selectedFaction()?.id ?? null);
+    readonly parsedUnitTypeFilter = computed(() => Array.from(new Set(this.selectedUnitTypes().filter(Boolean))));
     readonly parsedTagFilter = computed(() => normalizeTagFilter(this.selectedTags()));
     readonly candidateUnits = computed(() => {
         const era = this.selectedEra();
@@ -353,6 +383,7 @@ export class ForceGeneratorDialogComponent {
 
         const availabilitySource = this.availabilitySource();
         const availableUnitIds = this.unitAvailabilitySource.getFactionEraUnitIds(faction, era, availabilitySource);
+        const unitTypes = this.parsedUnitTypeFilter();
         const tags = this.parsedTagFilter();
         const gunnery = this.pilotGunnerySkill();
         const piloting = this.pilotPilotingSkill();
@@ -363,6 +394,10 @@ export class ForceGeneratorDialogComponent {
             }
 
             if (getBudgetMetric(unit, this.gameSystem(), gunnery, piloting) <= 0) {
+                return false;
+            }
+
+            if (unitTypes.length > 0 && !unitTypes.includes(unit.as.TP)) {
                 return false;
             }
 
@@ -413,14 +448,9 @@ export class ForceGeneratorDialogComponent {
         });
     });
 
-    constructor() {
-        this.ensureSelectedFaction();
-    }
-
     onAvailabilitySourceChange(event: Event): void {
         const value = (event.target as HTMLSelectElement).value;
         this.availabilitySource.set(value === 'megamek' ? 'megamek' : 'mul');
-        this.ensureSelectedFaction();
     }
 
     onBudgetLimitChange(event: Event): void {
@@ -428,13 +458,16 @@ export class ForceGeneratorDialogComponent {
     }
 
     onEraChange(event: Event): void {
-        this.eraId.set(this.parseNumericValue(event, this.eraId()));
-        this.ensureSelectedFaction();
+        this.eraId.set(this.parseNumericValue(event, this.selectedEraId() ?? 0));
     }
 
     onFactionChange(event: Event): void {
         const value = (event.target as HTMLSelectElement).value;
         this.factionId.set(value ? Number(value) : null);
+    }
+
+    onUnitTypeSelectionChange(selection: MultiStateSelection | readonly string[]): void {
+        this.selectedUnitTypes.set(Array.isArray(selection) ? [...selection] : []);
     }
 
     onTagsSelectionChange(selection: MultiStateSelection | readonly string[]): void {
@@ -478,6 +511,7 @@ export class ForceGeneratorDialogComponent {
                 gameSystem: this.gameSystem(),
                 availabilitySource: this.availabilitySource(),
                 bvPvLimit: this.bvPvLimit(),
+                unitTypes: this.parsedUnitTypeFilter(),
                 tags: this.parsedTagFilter(),
                 eraId: previewEntry.era?.id ?? 0,
                 factionId: previewEntry.faction?.id ?? 0,
@@ -490,18 +524,6 @@ export class ForceGeneratorDialogComponent {
 
     dismiss(): void {
         this.dialogRef.close(null);
-    }
-
-    private ensureSelectedFaction(): void {
-        const availableFactions = this.availableFactions();
-        if (availableFactions.length === 0) {
-            this.factionId.set(null);
-            return;
-        }
-
-        if (this.factionId() === null || !availableFactions.some((faction) => faction.id === this.factionId())) {
-            this.factionId.set(availableFactions[0].id);
-        }
     }
 
     private parseNumericValue(event: Event, fallback: number): number {

@@ -50,7 +50,7 @@
 
                         <div class="form-fields">
                             <label class="field-label">Availability Source</label>
-                            <select class="bt-input field-input" [value]="availabilitySource()" (change)="onAvailabilitySourceChange($event)">
+                            <select class="bt-select" [value]="availabilitySource()" (change)="onAvailabilitySourceChange($event)">
                                 <option value="mul">Master Unit List</option>
                                 <option value="megamek">MegaMek Weighted</option>
                             </select>
@@ -70,26 +70,37 @@
 
                         <div class="form-fields span-2">
                             <label class="field-label">Era</label>
-                            <select class="bt-input field-input" [value]="eraId()" (change)="onEraChange($event)">
+                            <select class="bt-select" (change)="onEraChange($event)">
                                 @for (era of eras(); track era.id) {
-                                    <option [value]="era.id">{{ era.name }}</option>
+                                    <option [value]="era.id" [selected]="era.id === selectedEraId()">{{ era.name }}</option>
                                 }
                             </select>
                         </div>
 
                         <div class="form-fields span-2">
                             <label class="field-label">Faction</label>
-                            <select class="bt-input field-input" [value]="factionId() ?? ''" (change)="onFactionChange($event)">
+                            <select class="bt-select" (change)="onFactionChange($event)">
                                 @for (faction of availableFactions(); track faction.id) {
-                                    <option [value]="faction.id">{{ faction.name }}</option>
+                                    <option [value]="faction.id" [selected]="faction.id === selectedFactionId()">{{ faction.name }}</option>
                                 }
                             </select>
                         </div>
 
                         <div class="form-fields span-2">
+                            <label class="field-label">Unit Type</label>
+                            <multi-select-dropdown
+                                class="generator-dropdown"
+                                [label]="''"
+                                [options]="unitTypeOptions()"
+                                [selected]="selectedUnitTypes()"
+                                (selectionChange)="onUnitTypeSelectionChange($event)">
+                            </multi-select-dropdown>
+                        </div>
+
+                        <div class="form-fields span-2">
                             <label class="field-label">Tags</label>
                             <multi-select-dropdown
-                                class="tag-dropdown"
+                                class="generator-dropdown"
                                 [label]="''"
                                 [options]="tagOptions()"
                                 [selected]="selectedTags()"

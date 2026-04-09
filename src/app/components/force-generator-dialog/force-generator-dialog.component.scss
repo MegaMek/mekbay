@@ -79,6 +79,11 @@
     min-width: 0;
 }
 
+.bt-select {
+    font-size: 1.1em;
+    line-height: 1.5em;
+}
+
 .game-system-field {
     gap: 10px;
 }
@@ -224,15 +229,15 @@
     }
 }
 
-:host ::ng-deep .tag-dropdown .label {
+:host ::ng-deep .generator-dropdown .label {
     display: none;
 }
 
-:host ::ng-deep .tag-dropdown .pills-container {
+:host ::ng-deep .generator-dropdown .pills-container {
     margin-top: 0;
 }
 
-:host ::ng-deep .tag-dropdown .multi-select-container .display-area {
+:host ::ng-deep .generator-dropdown .multi-select-container .display-area {
     align-items: center;
 }
 
