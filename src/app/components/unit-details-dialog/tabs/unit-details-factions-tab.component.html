@@ -1,5 +1,36 @@
 <!-- Factions Tab Content -->
 <div class="tab-content">
+    <ng-template #megaMekAvailability let-badges="badges">
+        @if (badges.length > 0) {
+            <span class="faction-megamek-availability">
+                <span class="faction-megamek-availability-badges">
+                    @for (badge of badges; let isLastBadge = $last; track badge.source) {
+                        <span
+                            class="faction-megamek-availability-badge"
+                            role="img"
+                            [attr.aria-label]="badge.label"
+                            [attr.title]="badge.label"
+                            [style.color]="badge.color"
+                        >
+                            @if (badge.source === 'Production') {
+                                <svg class="faction-megamek-availability-icon" viewBox="0 0 36 36" aria-hidden="true">
+                                    <path [attr.d]="megaMekProductionIconPath" fill="currentColor" />
+                                </svg>
+                            } @else {
+                                <svg class="faction-megamek-availability-icon" viewBox="0 0 256 256" aria-hidden="true">
+                                    <path [attr.d]="megaMekSalvageIconPath" fill="currentColor" />
+                                </svg>
+                            }
+                        </span>
+                        @if (!isLastBadge) {
+                            <span class="faction-megamek-availability-separator"></span>
+                        }
+                    }
+                </span>
+            </span>
+        }
+    </ng-template>
+
     <div class="faction-availability-list allow-select">
         @if (factionAvailability().length === 0) {
             <div class="no-factions">No faction availability information for this unit.</div>
@@ -28,8 +59,12 @@
                                     <img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" title="{{faction.name}}" />
                                 }
                                 <span class="parent-faction" (click)="toggleCatchAll(i, faction.name)">{{ faction.name }}</span>
+                                <ng-container
+                                    [ngTemplateOutlet]="megaMekAvailability"
+                                    [ngTemplateOutletContext]="{ badges: faction.megaMekAvailability }"
+                                ></ng-container>
                                 @if (isCatchAllExpanded(i, faction.name) && faction.collapsedFactions?.length) {
-                                    <span class="collapsed-factions"> (@for (cf of faction.collapsedFactions; let cfLast = $last; track cf.name) {<span class="collapsed-faction-item">@if (cf.img) {<img [src]="cf.img" class="faction-icon" alt="{{cf.name}}" title="{{cf.name}}" />} {{ cf.name }}{{ !cfLast ? ',&nbsp; ' : '' }}</span>})</span>
+                                    <span class="collapsed-factions"> (@for (cf of faction.collapsedFactions; let cfLast = $last; track cf.name) {<span class="collapsed-faction-item">@if (cf.img) {<img [src]="cf.img" class="faction-icon" alt="{{cf.name}}" title="{{cf.name}}" />} {{ cf.name }}<ng-container [ngTemplateOutlet]="megaMekAvailability" [ngTemplateOutletContext]="{ badges: cf.megaMekAvailability }"></ng-container>{{ !cfLast ? ',&nbsp; ' : '' }}</span>})</span>
                                 }{{ !isLast ? ',' : '' }}
                             </span>
                         } @else {
@@ -37,7 +72,11 @@
                                 @if (faction.img) {
                                     <img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" title="{{faction.name}}" />
                                 }
-                                {{ faction.name }}{{ !isLast ? ',&nbsp;' : '' }}
+                                {{ faction.name }}
+                                <ng-container
+                                    [ngTemplateOutlet]="megaMekAvailability"
+                                    [ngTemplateOutletContext]="{ badges: faction.megaMekAvailability }"
+                                ></ng-container>{{ !isLast ? ',&nbsp;' : '' }}
                             </span>
                         }
                     }

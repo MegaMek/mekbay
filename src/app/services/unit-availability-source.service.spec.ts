@@ -147,6 +147,41 @@ describe('UnitAvailabilitySourceService', () => {
         expect(dataServiceMock.getMegaMekAvailabilityRecordForUnit).toHaveBeenCalledWith(unit);
     });
 
+    it('returns MegaMek per-source details even when MUL availability is selected and omits zero scores', () => {
+        const era = {
+            id: 3150,
+            name: 'ilClan',
+            units: new Set<number>(),
+            years: { from: 3151 },
+        } as Era;
+        const faction = {
+            id: 99,
+            name: 'Test Faction',
+            group: 'Other',
+            img: '',
+            eras: {},
+        } as Faction;
+        const unit = { id: 1, name: 'Atlas', type: 'Mek', chassis: 'Atlas', model: 'AS7-D' } as Unit;
+
+        megaMekAvailabilityByUnitName.set(unit.name, {
+            n: unit.name,
+            e: {
+                '3150': {
+                    '99': [7, 0],
+                },
+            },
+        });
+        megaMekAvailabilityRecords.push(megaMekAvailabilityByUnitName.get(unit.name)!);
+
+        expect(service.getMegaMekAvailabilityDetails(unit, faction, era)).toEqual([
+            {
+                source: 'Production',
+                score: 7,
+                rarity: 'Common',
+            },
+        ]);
+    });
+
     it('does not fall back to MUL era visibility when MegaMek availability has no matching entries', () => {
         const era = {
             id: 100,

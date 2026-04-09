@@ -75,6 +75,12 @@ interface MegaMekAvailabilityBucketIndexes {
     rarityUnitIdsBySource: Map<MegaMekAvailabilityFrom, Map<MegaMekAvailabilityRarity, Set<AvailabilityUnitKey>>>;
 }
 
+export interface MegaMekUnitAvailabilityDetail {
+    source: MegaMekAvailabilityFrom;
+    score: number;
+    rarity: typeof MEGAMEK_AVAILABILITY_RARITY_OPTIONS[number];
+}
+
 const MEGAMEK_AVAILABILITY_FROM_LOOKUP = new Map(
     MEGAMEK_AVAILABILITY_FROM_OPTIONS.map((availabilityFrom) => [availabilityFrom.toLowerCase(), availabilityFrom] as const),
 );
@@ -267,6 +273,34 @@ export class UnitAvailabilitySourceService {
         }
 
         return Math.max(value[0] ?? 0, value[1] ?? 0);
+    }
+
+    public getMegaMekAvailabilityDetails(
+        unit: Pick<Unit, 'name'>,
+        faction: Pick<Faction, 'id'>,
+        era: Pick<Era, 'id'>,
+    ): MegaMekUnitAvailabilityDetail[] {
+        const value = this.getMegaMekAvailabilityValue(unit, era.id, faction.id);
+        if (!value) {
+            return [];
+        }
+
+        const details: MegaMekUnitAvailabilityDetail[] = [];
+        for (const source of MEGAMEK_AVAILABILITY_FROM_OPTIONS) {
+            const score = getMegaMekAvailabilityValueForSource(value, source);
+            if (score <= 0) {
+                continue;
+            }
+
+            const rarity = getMegaMekAvailabilityRarityForScore(score);
+            if (rarity === 'Not Available') {
+                continue;
+            }
+
+            details.push({ source, score, rarity });
+        }
+
+        return details;
     }
 
     public unitHasMegaMekAvailability(unit: Unit): boolean {
