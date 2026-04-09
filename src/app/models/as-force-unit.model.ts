@@ -62,10 +62,30 @@ export class ASForceUnit extends ForceUnit {
     private readonly _pilotName = signal<string | undefined>(undefined);
     private readonly _pilotSkill = signal<number>(4);
     private readonly _pilotAbilities = signal<AbilitySelection[]>([]);
+    private readonly _formationAbilities = signal<string[]>([]);
 
     readonly alias = this._pilotName.asReadonly();
     readonly pilotSkill = this._pilotSkill.asReadonly();
-    readonly pilotAbilities = this._pilotAbilities.asReadonly();
+    readonly manualPilotAbilities = this._pilotAbilities.asReadonly();
+    readonly formationAbilities = this._formationAbilities.asReadonly();
+    readonly pilotAbilities = computed<AbilitySelection[]>(() => {
+        const manualAbilities = this._pilotAbilities();
+        const mergedAbilities: AbilitySelection[] = [...manualAbilities];
+        const seenAbilityIds = new Set(
+            manualAbilities
+                .filter((ability): ability is string => typeof ability === 'string')
+        );
+
+        for (const abilityId of this._formationAbilities()) {
+            if (seenAbilityIds.has(abilityId)) {
+                continue;
+            }
+            mergedAbilities.push(abilityId);
+            seenAbilityIds.add(abilityId);
+        }
+
+        return mergedAbilities;
+    });
 
     constructor(unit: Unit,
         force: ASForce,
@@ -330,6 +350,20 @@ export class ASForceUnit extends ForceUnit {
         this.setModified();
     }
 
+    setFormationAbilities(abilities: string[], markModified: boolean = true): void {
+        const normalizedAbilities = [...new Set(abilities.filter((abilityId) => typeof abilityId === 'string' && abilityId.length > 0))];
+        const currentAbilities = this._formationAbilities();
+        if (normalizedAbilities.length === currentAbilities.length
+            && normalizedAbilities.every((abilityId, index) => abilityId === currentAbilities[index])) {
+            return;
+        }
+
+        this._formationAbilities.set(normalizedAbilities);
+        if (markModified) {
+            this.setModified();
+        }
+    }
+
     public getPilotSkill = computed<number>(() => {
         return this._pilotSkill();
     });
@@ -354,6 +388,8 @@ export class ASForceUnit extends ForceUnit {
         if (data.abilities !== undefined) {
             this._pilotAbilities.set(data.abilities);
         }
+        this._formationAbilities.set(data.formationAbilities ?? []);
+        this._formationCommander.set(data.commander ?? false);
         // Update state (includes pending)
         if (data.state) {
             this.state.update(data.state);
@@ -402,7 +438,9 @@ export class ASForceUnit extends ForceUnit {
             alias: this.alias(),
             updatedTs: this.updatedTs || undefined,
             skill: this._pilotSkill(),
-            abilities: this._pilotAbilities()
+            abilities: this._pilotAbilities(),
+            formationAbilities: this._formationAbilities().length > 0 ? this._formationAbilities() : undefined,
+            commander: this._formationCommander() || undefined,
         };
         return data;
     }
@@ -477,6 +515,8 @@ export class ASForceUnit extends ForceUnit {
         if (sanitizedData.abilities !== undefined) {
             fu._pilotAbilities.set(sanitizedData.abilities);
         }
+        fu._formationAbilities.set(sanitizedData.formationAbilities ?? []);
+        fu._formationCommander.set(sanitizedData.commander ?? false);
         if (sanitizedData.updatedTs !== undefined) {
             fu.updatedTs = sanitizedData.updatedTs;
         }

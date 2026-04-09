@@ -36,6 +36,9 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, type ElementR
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import type { UnitGroup } from '../../models/force.model';
+import { DialogsService } from '../../services/dialogs.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { SkillDropdownPanelComponent, type SkillPreviewEntry } from '../skill-dropdown-panel/skill-dropdown-panel.component';
 import { SkillMatrixPanelComponent, type SkillMatrixCell } from '../skill-dropdown-panel/skill-matrix-panel.component';
@@ -48,12 +51,15 @@ import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew
  */
 
 export interface EditPilotDialogData {
+    unitId?: string;
     name: string;
     gunnery: number;
     piloting: number;
     labelGunnery?: string;
     labelPiloting?: string;
     disablePiloting?: boolean;
+    commander?: boolean;
+    group?: UnitGroup<CBTForceUnit> | null;
     /** Pre-skill BV (base + TAG + C3) for BV preview calculation. */
     preSkillBv?: number;
     /** Unit reference for effective piloting skill calculation. */
@@ -64,6 +70,7 @@ export interface EditPilotResult {
     name: string;
     gunnery: number;
     piloting: number;
+    commander: boolean;
 }
 
 @Component({
@@ -85,13 +92,24 @@ export class EditPilotDialogComponent {
     public dialogRef = inject(DialogRef<EditPilotResult | null, EditPilotDialogComponent>);
     readonly data: EditPilotDialogData = inject(DIALOG_DATA) as EditPilotDialogData;
     private overlayManager = inject(OverlayManagerService);
+    private dialogsService = inject(DialogsService);
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
 
     currentGunnery = signal<number>(this.data.gunnery);
     currentPiloting = signal<number>(this.data.piloting);
+    selectedGroupCommander = signal<boolean>(this.data.commander ?? false);
 
     readonly hasBvPreview = !!(this.data.preSkillBv != null && this.data.unit);
+    readonly persistedOtherCommander = computed<CBTForceUnit | null>(() => {
+        const group = this.data.group;
+        const unitId = this.data.unitId;
+        if (!group || !unitId) {
+            return null;
+        }
+
+        return group.units().find((unit) => unit.id !== unitId && unit.commander()) ?? null;
+    });
 
     /** 9x9 BV matrix: matrix[gunnery][piloting] = adjusted BV */
     bvMatrix = computed<number[][]>(() => {
@@ -175,6 +193,35 @@ export class EditPilotDialogComponent {
             });
     }
 
+    private formatCommanderDisplayName(unit: CBTForceUnit): string {
+        const pilotName = unit.alias()?.trim();
+        const unitName = unit.getDisplayName();
+        if (pilotName) {
+            return `${unitName} (${pilotName})`;
+        }
+        return unitName;
+    }
+
+    async setGroupCommanderSelected(value: boolean): Promise<void> {
+        if (value && !this.selectedGroupCommander()) {
+            const otherCommander = this.persistedOtherCommander();
+            if (otherCommander) {
+                const otherCommanderName = this.formatCommanderDisplayName(otherCommander);
+                const confirmed = await this.dialogsService.requestConfirmation(
+                    `${otherCommanderName} is currently marked as the group commander. Making this unit the commander will remove that flag from ${otherCommanderName}. Continue?`,
+                    'Replace Group Commander',
+                    'warning',
+                );
+                if (!confirmed) {
+                    this.selectedGroupCommander.set(false);
+                    return;
+                }
+            }
+        }
+
+        this.selectedGroupCommander.set(value);
+    }
+
     private openSkillDropdown(
         key: string,
         trigger: ElementRef<HTMLElement>,
@@ -237,7 +284,8 @@ export class EditPilotDialogComponent {
         this.dialogRef.close({
             name,
             gunnery: this.currentGunnery(),
-            piloting: this.data.disablePiloting ? this.data.piloting : this.currentPiloting()
+            piloting: this.data.disablePiloting ? this.data.piloting : this.currentPiloting(),
+            commander: this.data.group ? this.selectedGroupCommander() : false,
         });
     }
 

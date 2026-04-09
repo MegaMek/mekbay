@@ -101,6 +101,7 @@ export interface SerializedUnit {
     model?: string;
     chassis?: string;
     alias?: string;
+    commander?: boolean;
     updatedTs?: number;
     state: SerializedState;
 }
@@ -108,6 +109,8 @@ export interface ASSerializedUnit extends SerializedUnit {
     state: ASSerializedState;
     skill: number;
     abilities: (string | ASCustomPilotAbility)[]; // Array of ability IDs or custom abilities
+    formationAbilities?: string[];
+    commander?: boolean;
 }
 
 export interface CBTSerializedUnit extends SerializedUnit {
@@ -371,6 +374,7 @@ export const CBT_SERIALIZED_UNIT_SCHEMA = Sanitizer.schema<CBTSerializedUnit>()
     .string('model')
     .string('chassis')
     .string('alias')
+    .boolean('commander')
     .number('updatedTs')
     .custom('state', (value: unknown) => {
         if (!value || typeof value !== 'object') {
@@ -531,6 +535,12 @@ export const AS_SERIALIZED_UNIT_SCHEMA = Sanitizer.schema<ASSerializedUnit>()
             return null;
         }).filter((item): item is string | ASCustomPilotAbility => item !== null);
     })
+    .custom('formationAbilities', (value: unknown) => {
+        if (!Array.isArray(value)) return undefined;
+        const abilities = value.filter((item): item is string => typeof item === 'string');
+        return abilities.length > 0 ? [...new Set(abilities)] : undefined;
+    })
+    .boolean('commander')
     .custom('state', (value: unknown) => {
         if (!value || typeof value !== 'object') {
             return Sanitizer.sanitize({}, AS_SERIALIZED_STATE_SCHEMA);

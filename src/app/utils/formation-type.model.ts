@@ -83,6 +83,8 @@ export interface FormationEffectGroup {
     roleFilter?: string;
     /** Maximum abilities from this group a single unit can receive (default 1). */
     maxPerUnit?: number;
+    /** Whether the formation commander is excluded from this effect group's recipients. */
+    excludeCommander?: boolean;
 }
 
 

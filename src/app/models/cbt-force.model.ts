@@ -80,6 +80,8 @@ export class CBTForce extends Force<CBTForceUnit> {
                 toMember.setSkill('piloting', fromMember.getSkill('piloting'));
             }
         }
+
+        toUnit.setFormationCommander(fromUnit.commander());
     }
 
     protected override deserializeForceUnit(data: CBTSerializedUnit): CBTForceUnit {

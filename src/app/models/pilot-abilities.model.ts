@@ -1453,7 +1453,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
-            rulesRef: [{ book: Rulebook.ASCE, page: 101 }],
+            rulesRef: [{ book: Rulebook.ASCE, page: [101, 175] }],
             summary: ["If the unit makes a standard weapons attack and misses by 1, the attack deals half damage (round down, min 1 point)."],
             description: [
                 "The weapon specialist is a superlative expert with certain types of weapons, and can deliver much more accurate fire when he sticks to those guns alone.",

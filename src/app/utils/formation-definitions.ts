@@ -657,6 +657,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
                 selection: 'choose-each',
                 distribution: 'fixed',
                 count: 2,
+                excludeCommander: true,
             },
             {
                 abilityIds: ['tactical_genius'],
@@ -729,6 +730,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
                 abilityIds: ['antagonizer', 'blood_stalker', 'combat_intuition', 'eagles_eyes', 'marksman', 'multi_tasker'],
                 selection: 'choose-each',
                 distribution: 'half-round-up',
+                excludeCommander: true,
             },
             {
                 abilityIds: ['tactical_genius'],
@@ -1551,6 +1553,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
                 selection: 'choose-each',
                 distribution: 'fixed',
                 count: 2,
+                excludeCommander: true,
             },
             {
                 abilityIds: ['tactical_genius'],

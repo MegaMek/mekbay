@@ -103,7 +103,7 @@
 
                 <!-- Group header info -->
                 <foreignObject [attr.x]="previewFactionId !== undefined ? 40 : 8" y="0"
-                    [attr.width]="group.width() - (previewFactionId !== undefined ? 88 : 56)"
+                    [attr.width]="group.width() - (previewFactionId !== undefined ? (readOnly() ? 48 : 88) : (readOnly() ? 16 : 56))"
                     [attr.height]="GROUP_HEADER_HEIGHT" class="group-name-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="group-header-info">
                         @if (group.name(); as customName) {
@@ -346,7 +346,7 @@
                 }
 
                 <foreignObject [attr.x]="previewFactionId !== undefined ? 40 : 8" y="0"
-                    [attr.width]="group.width() - (previewFactionId !== undefined ? 88 : 56)"
+                    [attr.width]="group.width() - (previewFactionId !== undefined ? (readOnly() ? 48 : 88) : (readOnly() ? 16 : 56))"
                     [attr.height]="GROUP_HEADER_HEIGHT" class="group-name-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="group-header-info">
                         @if (group.name(); as customName) {

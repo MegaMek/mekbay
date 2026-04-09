@@ -47,11 +47,20 @@ export enum Rulebook {
 }
 
 /**
- * A reference to a specific rulebook and page number.
+ * A reference to a specific rulebook and page number or numbers.
  */
 export interface RulesReference {
     book: Rulebook;
-    page: number;
+    page: number | number[];
+}
+
+export function formatRulesPages(page: RulesReference['page']): string {
+    return Array.isArray(page) ? page.join(', ') : String(page);
+}
+
+export function formatRulesReference(reference: RulesReference): string {
+    const pageLabel = Array.isArray(reference.page) ? 'pp.' : 'p.';
+    return `${reference.book}, ${pageLabel}${formatRulesPages(reference.page)}`;
 }
 
 export enum ECMMode {
