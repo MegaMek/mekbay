@@ -30,6 +30,10 @@
                         </a>
                     </div>
                     <div class="right">
+                        <button class="home-button" (click)="showForceGeneratorDialog()" aria-label="Force Generator">
+                        <svg fill="currentColor" width="32px" height="32px" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+                            <path d="M30.8,2.29A.49.49,0,0,0,30.35,2H16.42a.5.5,0,0,0-.42.23l-10.71,17A.49.49,0,0,0,5.7,20h7.67L6.6,33.25a.52.52,0,0,0,.46.75h3a.5.5,0,0,0,.37-.16L28,14.85a.5.5,0,0,0-.37-.85H20.89L30.72,2.82A.49.49,0,0,0,30.8,2.29Z"></path>
+                        </svg></button>
                         <button class="home-button" (click)="showLoadForceDialog()" aria-label="Load Force">
                             <svg fill="currentColor" width="32px" height="32px" viewBox="0 0 1920 1920"
                                 xmlns="http://www.w3.org/2000/svg">
@@ -38,11 +42,6 @@
                                     fill-rule="evenodd" />
                             </svg>
                         </button>
-                        <button class="home-button" (click)="showForceGeneratorDialog()" aria-label="Force Generator">
-                        <svg width="32px" height="32px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                            <path fill-rule="evenodd" clip-rule="evenodd" d="M2.0025 0.0003H11.4144L17.9985 6.5844V9.3543H15.999V7.9983H10.0005V1.9998H4.002V19.3288H7.3576V21.3283H2.0025V0.0003ZM12 3.4136L14.5851 5.9988H12V3.4136Z"/>
-                            <path fill-rule="evenodd" clip-rule="evenodd" d="M15.9554 12.369L16.4597 12.4301L17.3329 10.9175L19.9971 12.4556L19.123 13.9693L19.4295 14.3759C19.6786 14.7063 19.8884 15.0676 20.0524 15.4527L20.2515 15.9206H21.9975V18.9967H20.2515L20.0524 19.4646C19.8884 19.8497 19.6786 20.2109 19.4295 20.5414L19.123 20.948L19.9971 22.4617L17.3329 23.9997L16.4597 22.4872L15.9554 22.5482C15.7515 22.5729 15.5436 22.5856 15.3325 22.5856C15.1214 22.5856 14.9135 22.5729 14.7096 22.5482L14.2053 22.4872L13.3321 23.9997L10.6679 22.4617L11.542 20.948L11.2355 20.5414C10.9864 20.2109 10.7766 19.8497 10.6126 19.4646L10.4135 18.9967H8.6675V15.9206H10.4135L10.6126 15.4527C10.7766 15.0676 10.9864 14.7063 11.2355 14.3759L11.542 13.9693L10.6679 12.4556L13.3321 10.9175L14.2053 12.4301L14.7096 12.369C14.9135 12.3444 15.1214 12.3317 15.3325 12.3317C15.5436 12.3317 15.7515 12.3444 15.9554 12.369ZM12.2563 17.4587C12.2563 15.7597 13.6336 14.3825 15.3325 14.3825C17.0314 14.3825 18.4087 15.7597 18.4087 17.4587C18.4087 19.1576 17.0314 20.5347 15.3325 20.5347C13.6336 20.5347 12.2563 19.1576 12.2563 17.4587Z"/>
-                        </svg></button>
                         <button class="home-button" (click)="showOptionsDialog()" aria-label="Options">
                             <svg fill="currentColor" width="32px" height="32px" viewBox="0 0 1920 1920"
                                 xmlns="http://www.w3.org/2000/svg">
