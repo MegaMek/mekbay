@@ -54,10 +54,7 @@ import { OptionsService } from './options.service';
 import { LoadForceEntry, type LoadForceUnit } from '../models/load-force-entry.model';
 import { ForceLoadDialogComponent, type ForceLoadDialogResult } from '../components/force-load-dialog/force-load-dialog.component';
 import { ForcePackDialogComponent, type ForcePackDialogResult } from '../components/force-pack-dialog/force-pack-dialog.component';
-import {
-    ForceGeneratorDialogComponent,
-    type ForceGeneratorDialogResult,
-} from '../components/force-generator-dialog/force-generator-dialog.component';
+import type { ForceGeneratorDialogResult } from '../components/force-generator-dialog/force-generator-dialog.component';
 import type { SerializedForce } from '../models/force-serialization';
 import { EditPilotDialogComponent, type EditPilotDialogData, type EditPilotResult } from '../components/edit-pilot-dialog/edit-pilot-dialog.component';
 import { EditASPilotDialogComponent, type EditASPilotDialogData, type EditASPilotResult } from '../components/edit-as-pilot-dialog/edit-as-pilot-dialog.component';
@@ -1939,15 +1936,8 @@ export class ForceBuilderService {
             return;
         }
 
-        const currentForce = this.smartCurrentForce();
-        const gameService = this.injector.get(GameService);
-        const dialogRef = this.dialogsService.createDialog<ForceGeneratorDialogResult | null>(ForceGeneratorDialogComponent, {
-            data: {
-                defaultGameSystem: gameService.currentGameSystem(),
-                defaultEraId: currentForce?.era()?.id,
-                defaultFactionId: currentForce?.faction()?.id,
-            },
-        });
+        const { ForceGeneratorDialogComponent } = await import('../components/force-generator-dialog/force-generator-dialog.component');
+        const dialogRef = this.dialogsService.createDialog<ForceGeneratorDialogResult | null>(ForceGeneratorDialogComponent);
         const result = await firstValueFrom(dialogRef.closed);
         const unitCount = result?.forceEntry.groups.reduce(
             (sum, group) => sum + group.units.filter((unitEntry) => unitEntry.unit).length,
