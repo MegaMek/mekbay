@@ -54,7 +54,7 @@
             </div>
             <div class="option-col">
                 <div class="option-row">
-                    <label for="availabilitySource">Availability source:</label>
+                    <label for="availabilitySource">Units Availability:</label>
                     <select id="availabilitySource" class="bt-select"
                         [value]="optionsService.options().availabilitySource"
                         (change)="onAvailabilitySourceChange($event)">
@@ -63,7 +63,7 @@
                     </select>
                 </div>
                 <div class="description">
-                    <p>Choose which faction availability catalog MekBay uses for faction-related lookups.</p>
+                    <p>Choose which unit availability catalog MekBay uses for era and faction filtering.</p>
                 </div>
             </div>
             <div class="option-col">
