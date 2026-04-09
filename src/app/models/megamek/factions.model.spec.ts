@@ -7,25 +7,13 @@ function createFaction(overrides: Partial<MegaMekFactionRecordData> & Pick<MegaM
     return {
         id: overrides.id,
         name: overrides.name ?? overrides.id,
+        mulId: overrides.mulId ?? [],
         yearsActive: overrides.yearsActive ?? [],
-        ratingLevels: overrides.ratingLevels ?? [],
-        nameChanges: overrides.nameChanges ?? [],
         fallBackFactions: overrides.fallBackFactions ?? [],
-        tags: overrides.tags ?? [],
         ancestry: overrides.ancestry ?? [],
-        capital: overrides.capital,
-        capitalChanges: overrides.capitalChanges,
+        nameChanges: overrides.nameChanges ?? [],
         color: overrides.color,
         logo: overrides.logo,
-        camos: overrides.camos,
-        nameGenerator: overrides.nameGenerator,
-        rankSystem: overrides.rankSystem,
-        successor: overrides.successor,
-        factionLeaders: overrides.factionLeaders,
-        preInvasionHonorRating: overrides.preInvasionHonorRating,
-        postInvasionHonorRating: overrides.postInvasionHonorRating,
-        formationBaseSize: overrides.formationBaseSize,
-        formationGrouping: overrides.formationGrouping,
     };
 }
 
@@ -33,13 +21,13 @@ describe('resolveMegaMekFactionRecord', () => {
     it('inherits missing optional fields from the first fallback chain', () => {
         const factions = {
             AA: createFaction({ id: 'AA', fallBackFactions: ['BB'] }),
-            BB: createFaction({ id: 'BB', logo: 'bb.png', rankSystem: 'BBRS' }),
+            BB: createFaction({ id: 'BB', logo: 'bb.png', color: [1, 2, 3] }),
         };
 
         const resolved = resolveMegaMekFactionRecord(factions.AA, factions);
 
         expect(resolved.logo).toBe('bb.png');
-        expect(resolved.rankSystem).toBe('BBRS');
+        expect(resolved.color).toEqual([1, 2, 3]);
     });
 
     it('resolves depth-first before moving to the next fallback', () => {
@@ -78,5 +66,27 @@ describe('resolveMegaMekFactionRecord', () => {
         const resolved = resolveMegaMekFactionRecord(factions.AA, factions);
 
         expect(resolved.logo).toBe('cc.png');
+    });
+
+    it('treats empty mulId arrays as unresolved and continues fallback lookup', () => {
+        const factions = {
+            AA: createFaction({ id: 'AA', mulId: [], fallBackFactions: ['BB'] }),
+            BB: createFaction({ id: 'BB', mulId: [42] }),
+        };
+
+        const resolved = resolveMegaMekFactionRecord(factions.AA, factions);
+
+        expect(resolved.mulId).toEqual([42]);
+    });
+
+    it('preserves an empty mulId array when no fallback resolves it', () => {
+        const factions = {
+            AA: createFaction({ id: 'AA', fallBackFactions: ['BB'] }),
+            BB: createFaction({ id: 'BB' }),
+        };
+
+        const resolved = resolveMegaMekFactionRecord(factions.AA, factions);
+
+        expect(resolved.mulId).toEqual([]);
     });
 });

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -33,135 +33,104 @@
 
 import { Injectable, inject } from '@angular/core';
 
-import type { Era } from '../../models/eras.model';
-import {
-    isMegaMekFactionActiveInYearRange,
-    type MegaMekFactionRecord,
-} from '../../models/megamek/factions.model';
 import type { Unit } from '../../models/units.model';
-import { naturalCompare } from '../../utils/sort.util';
-import { ErasCatalogService } from './eras-catalog.service';
-import { MegaMekFactionsCatalogService } from './megamek-factions-catalog.service';
-import { FactionId } from '../../models/factions.model';
+import {
+    type MegaMekAvailabilityData,
+    type MegaMekWeightedAvailabilityRecord,
+    type MegaMekWeightedAvailabilityValue,
+} from '../../models/megamek/availability.model';
+import { DbService } from '../db.service';
+import { CatalogBaseService } from './catalog-base.service';
+
+function isMegaMekAvailabilityData(
+    data: MegaMekAvailabilityData | MegaMekWeightedAvailabilityRecord[],
+): data is MegaMekAvailabilityData {
+    return 'etag' in data && 'records' in data;
+}
 
 @Injectable({
     providedIn: 'root'
 })
-export class MegaMekAvailabilityCatalogService {
-    private readonly erasCatalog = inject(ErasCatalogService);
-    private readonly megaMekFactionsCatalog = inject(MegaMekFactionsCatalogService);
+export class MegaMekAvailabilityCatalogService extends CatalogBaseService<MegaMekAvailabilityData | MegaMekWeightedAvailabilityRecord[], MegaMekAvailabilityData, MegaMekAvailabilityData | MegaMekWeightedAvailabilityRecord[]> {
+    private readonly dbService = inject(DbService);
 
-    private factions: MegaMekFactionRecord[] = [];
-    private factionNameMap = new Map<string, MegaMekFactionRecord>();
-    private factionIdMap = new Map<string, MegaMekFactionRecord>();
-    private factionEraIds = new Map<string, ReadonlySet<number>>();
-    private cacheKey = '';
+    private records: MegaMekWeightedAvailabilityRecord[] = [];
+    private recordsByUnitName = new Map<string, MegaMekWeightedAvailabilityRecord>();
 
-    public getFactions(): MegaMekFactionRecord[] {
-        this.ensureIndexes();
-        return this.factions;
+    protected override get catalogKey(): string {
+        return 'megamek_availability';
     }
 
-    public getFactionByName(name: string): MegaMekFactionRecord | undefined {
-        this.ensureIndexes();
-        return this.factionNameMap.get(name);
+    protected override get remoteUrl(): string {
+        return 'assets/mulized_availability_weighted.json';
     }
 
-    public getFactionById(id: FactionId): MegaMekFactionRecord | undefined {
-        if (typeof id !== 'string') {
-            return undefined;
-        }
-
-        this.ensureIndexes();
-        return this.factionIdMap.get(id);
+    public getRecords(): readonly MegaMekWeightedAvailabilityRecord[] {
+        return this.records;
     }
 
-    public isFactionAvailableInEra(faction: MegaMekFactionRecord, eraId: number): boolean {
-        this.ensureIndexes();
-        return this.factionEraIds.get(faction.id)?.has(eraId) ?? false;
+    public getRecordForUnit(unit: Pick<Unit, 'name'>): MegaMekWeightedAvailabilityRecord | undefined {
+        return this.recordsByUnitName.get(unit.name);
     }
 
-    public getEraUnitIds(era: Era, units: readonly Unit[]): Set<number> {
-        const startYear = era.years.from ?? Number.NEGATIVE_INFINITY;
-        const endYear = era.years.to ?? Number.POSITIVE_INFINITY;
-        return new Set(
-            units
-                .filter(unit => unit.year >= startYear && unit.year <= endYear)
-                .map(unit => unit.id)
-        );
+    public getAvailabilityForUnit(
+        unit: Pick<Unit, 'name'>,
+        eraId: number,
+        factionId: number,
+    ): MegaMekWeightedAvailabilityValue | undefined {
+        return this.getRecordForUnit(unit)?.e[String(eraId)]?.[String(factionId)];
     }
 
-    public getFactionEraMembership(
-        faction: MegaMekFactionRecord,
-        era: Era,
-        units: readonly Unit[],
-    ): ReadonlySet<number> | undefined {
-        if (!this.isFactionAvailableInEra(faction, era.id)) {
-            return undefined;
-        }
-
-        return this.getEraUnitIds(era, units);
+    protected override hasHydratedData(): boolean {
+        return this.records.length > 0;
     }
 
-    public getFactionEraMembershipEntries(
-        faction: MegaMekFactionRecord,
-        eras: readonly Era[],
-        units: readonly Unit[],
-    ): Array<[number, ReadonlySet<number>]> {
-        return eras
-            .filter(era => this.isFactionAvailableInEra(faction, era.id))
-            .map(era => [era.id, this.getEraUnitIds(era, units)]);
+    protected override async loadFromCache(): Promise<MegaMekAvailabilityData | MegaMekWeightedAvailabilityRecord[] | undefined> {
+        return await this.dbService.getMegaMekAvailability() ?? undefined;
     }
 
-    public getFactionUnitIds(
-        faction: MegaMekFactionRecord,
-        eras: readonly Era[],
-        units: readonly Unit[],
-        contextEraIds?: ReadonlySet<number>,
-    ): Set<number> {
-        const unitIds = new Set<number>();
+    protected override saveToCache(data: MegaMekAvailabilityData): Promise<void> {
+        return this.dbService.saveMegaMekAvailability(data);
+    }
 
-        for (const [eraId, eraUnits] of this.getFactionEraMembershipEntries(faction, eras, units)) {
-            if (contextEraIds && !contextEraIds.has(eraId)) {
-                continue;
-            }
+    protected override hydrate(data: MegaMekAvailabilityData | MegaMekWeightedAvailabilityRecord[]): void {
+        const wrappedData = isMegaMekAvailabilityData(data)
+            ? data
+            : this.wrapData(data, '');
 
-            for (const unitId of eraUnits) {
-                unitIds.add(unitId);
+        this.records = wrappedData.records;
+        this.recordsByUnitName.clear();
+
+        for (const record of wrappedData.records) {
+            if (record.n) {
+                this.recordsByUnitName.set(record.n, record);
             }
         }
 
-        return unitIds;
+        this.etag = wrappedData.etag;
     }
 
-    private ensureIndexes(): void {
-        const eras = this.erasCatalog.getEras();
-        const factions = Object.values(this.megaMekFactionsCatalog.getFactions());
-        const nextCacheKey = `${eras.map(era => `${era.id}:${era.years.from ?? ''}:${era.years.to ?? ''}`).join('|')}::${factions.length}`;
-        if (this.cacheKey === nextCacheKey) {
-            return;
+    protected override normalizeFetchedData(
+        data: MegaMekAvailabilityData | MegaMekWeightedAvailabilityRecord[],
+        etag: string,
+    ): MegaMekAvailabilityData {
+        return this.wrapData(data, etag);
+    }
+
+    private wrapData(
+        data: MegaMekAvailabilityData | MegaMekWeightedAvailabilityRecord[],
+        etag: string,
+    ): MegaMekAvailabilityData {
+        if (isMegaMekAvailabilityData(data)) {
+            return {
+                etag,
+                records: data.records,
+            };
         }
 
-        const sortedFactions = [...factions].sort((left, right) => naturalCompare(left.name, right.name));
-
-        this.factions = sortedFactions;
-        this.factionNameMap.clear();
-        this.factionIdMap.clear();
-        this.factionEraIds.clear();
-
-        for (const faction of sortedFactions) {
-            this.factionNameMap.set(faction.name, faction);
-            this.factionIdMap.set(faction.id, faction);
-            this.factionEraIds.set(
-                faction.id,
-                new Set(
-                    eras
-                        .filter(era => isMegaMekFactionActiveInYearRange(faction, era.years.from, era.years.to))
-                        .map(era => era.id)
-                )
-            );
-        }
-
-        this.cacheKey = nextCacheKey;
+        return {
+            etag,
+            records: data,
+        };
     }
 }

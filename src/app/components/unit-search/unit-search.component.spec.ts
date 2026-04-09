@@ -24,6 +24,7 @@ describe('UnitSearchComponent card virtualization', () => {
     const optionsSignal = signal({
         ASUseHex: false,
         ASCardStyle: 'monochrome',
+        availabilitySource: 'mul' as 'mul' | 'megamek',
         unitSearchExpandedViewLayout: 'panel-list-filters',
         unitSearchViewMode: 'card' as 'list' | 'card' | 'chassis' | 'table',
     });
@@ -120,6 +121,7 @@ describe('UnitSearchComponent card virtualization', () => {
         optionsSignal.set({
             ASUseHex: false,
             ASCardStyle: 'monochrome',
+            availabilitySource: 'mul',
             unitSearchExpandedViewLayout: 'panel-list-filters',
             unitSearchViewMode: 'card',
         });
@@ -259,5 +261,24 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(component.advPanelFilterGameSystem()).toBe(GameSystem.ALPHA_STRIKE);
         expect(component.dropdownFilters().some(filter => filter.key === 'as.TP')).toBeTrue();
         expect(component.dropdownFilters().some(filter => filter.key === 'type')).toBeFalse();
+    });
+
+    it('shows MegaMek availability filters only when MegaMek availability is selected', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+
+        fixture.detectChanges();
+
+        expect(component.dropdownFilters().some(filter => filter.key === 'availabilityRarity')).toBeFalse();
+        expect(component.dropdownFilters().some(filter => filter.key === 'availabilityFrom')).toBeFalse();
+
+        optionsSignal.set({
+            ...optionsSignal(),
+            availabilitySource: 'megamek',
+        });
+        fixture.detectChanges();
+
+        expect(component.dropdownFilters().some(filter => filter.key === 'availabilityRarity')).toBeTrue();
+        expect(component.dropdownFilters().some(filter => filter.key === 'availabilityFrom')).toBeTrue();
     });
 });

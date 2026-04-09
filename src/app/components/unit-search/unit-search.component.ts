@@ -39,6 +39,7 @@ import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
 import { SORT_OPTIONS, type SortOption, type SerializedSearchFilter } from '../../services/unit-search-filters.model';
 import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
+import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
 import type { Unit } from '../../models/units.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { Overlay, type OverlayRef } from '@angular/cdk/overlay';
@@ -137,11 +138,19 @@ export class UnitSearchComponent {
     readonly advPanelFilterGameSystem = signal<GameSystem>(this.gameService.currentGameSystem());
     readonly dropdownFilters = computed(() => {
         const gameSystem = this.advPanelFilterGameSystem();
-        return DROPDOWN_FILTERS.filter(f => !f.game || f.game === gameSystem);
+        const availabilitySource = this.optionsService.options().availabilitySource;
+        return DROPDOWN_FILTERS.filter(f => (
+            (!f.game || f.game === gameSystem)
+            && isFilterAvailableForAvailabilitySource(f, availabilitySource)
+        ));
     });
     readonly rangeFilters = computed(() => {
         const gameSystem = this.advPanelFilterGameSystem();
-        return RANGE_FILTERS.filter(f => !f.game || f.game === gameSystem);
+        const availabilitySource = this.optionsService.options().availabilitySource;
+        return RANGE_FILTERS.filter(f => (
+            (!f.game || f.game === gameSystem)
+            && isFilterAvailableForAvailabilitySource(f, availabilitySource)
+        ));
     });
     readonly otherAdvPanelFilterGameSystem = computed(() => this.getOtherGameSystem(this.advPanelFilterGameSystem()));
     readonly otherAdvPanelFilterGameSystemHasActiveFilters = computed(() => {

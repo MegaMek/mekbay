@@ -58,7 +58,7 @@
  */
 
 import type { GameSystem } from '../models/common.model';
-import { ADVANCED_FILTERS, type AdvFilterConfig, AdvFilterType } from '../services/unit-search-filters.model';
+import { ADVANCED_FILTERS, type AdvFilterConfig, AdvFilterType, type AvailabilityFilterScope } from '../services/unit-search-filters.model';
 import { type SemanticOperator, type SemanticToken, buildSemanticKeyMap, VIRTUAL_SEMANTIC_KEYS, parseValues, parseValueWithQuantity, type QuantityConstraint } from './semantic-filter.util';
 import { normalizeLooseText, wildcardToRegex } from './string.util';
 import { usesIndexedDropdownUniverse } from './unit-search-filter-config.util';
@@ -1053,13 +1053,21 @@ export interface EvaluatorContext {
     /** Get item counts for a countable filter (e.g., equipment). Returns name -> count mapping. */
     getCountableValues?: (unit: any, filterKey: string) => Map<string, number> | null;
     /** Check if a unit belongs to a specific era (external filter) */
-    unitBelongsToEra?: (unit: any, eraName: string) => boolean;
+    unitBelongsToEra?: (unit: any, eraName: string, scope?: AvailabilityFilterScope) => boolean;
     /** Check if a unit belongs to a specific faction (external filter) */
     unitBelongsToFaction?: (unit: any, factionName: string, eraNames?: readonly string[]) => boolean;
+    /** Check if a unit matches a MegaMek availability source (production or salvage). */
+    unitMatchesAvailabilityFrom?: (unit: any, availabilityFromName: string, scope?: AvailabilityFilterScope) => boolean;
+    /** Check if a unit matches a MegaMek availability rarity in the active scope. */
+    unitMatchesAvailabilityRarity?: (unit: any, rarityName: string, scope?: AvailabilityFilterScope) => boolean;
     /** Get all era names (for wildcard expansion) */
     getAllEraNames?: () => string[];
     /** Get all faction names (for wildcard expansion) */
     getAllFactionNames?: () => string[];
+    /** Get all availability source names (for wildcard expansion). */
+    getAllAvailabilityFromNames?: () => string[];
+    /** Get all availability rarity names (for wildcard expansion). */
+    getAllAvailabilityRarityNames?: () => string[];
     /** Check if a unit belongs to a specific force pack (external filter) */
     unitBelongsToForcePack?: (unit: any, packName: string) => boolean;
     /** Get all force pack names (for wildcard expansion) */
@@ -1081,7 +1089,7 @@ export interface EvaluatorContext {
      */
     getDisplayName?: (filterKey: string, value: string) => string | undefined;
     /** Get indexed unit ids for an exact stored filter value. */
-    getIndexedUnitIds?: (filterKey: string, value: string) => ReadonlySet<string | number> | undefined;
+    getIndexedUnitIds?: (filterKey: string, value: string, scope?: AvailabilityFilterScope) => ReadonlySet<string | number> | undefined;
     /** Get all stored values available in an index for a filter key. */
     getIndexedFilterValues?: (filterKey: string) => readonly string[];
 }
@@ -1244,7 +1252,7 @@ function getUnitMatchedExternalNames(
     filterKey: string,
     allNames: string[],
     checkMembership: (name: string) => boolean,
-    activeEraNames?: readonly string[],
+    activeScope?: AvailabilityFilterScope,
 ): Set<string> {
     const runtimeCache = getExternalFilterRuntimeCache(context);
     let unitCache = runtimeCache.unitMatchedNamesByKey.get(unit);
@@ -1253,8 +1261,19 @@ function getUnitMatchedExternalNames(
         runtimeCache.unitMatchedNamesByKey.set(unit, unitCache);
     }
 
-    const cacheKey = filterKey === 'faction' && activeEraNames
-        ? `${filterKey}\u0001${[...activeEraNames].map(name => name.toLowerCase()).sort().join('\u0001')}`
+    const scopeParts: string[] = [];
+    if (activeScope?.eraNames && activeScope.eraNames.length > 0) {
+        scopeParts.push(`era=${[...activeScope.eraNames].map(name => name.toLowerCase()).sort().join('\u0001')}`);
+    }
+    if (activeScope?.factionNames && activeScope.factionNames.length > 0) {
+        scopeParts.push(`faction=${[...activeScope.factionNames].map(name => name.toLowerCase()).sort().join('\u0001')}`);
+    }
+    if (activeScope?.availabilityFromNames && activeScope.availabilityFromNames.length > 0) {
+        scopeParts.push(`from=${[...activeScope.availabilityFromNames].map(name => name.toLowerCase()).sort().join('\u0001')}`);
+    }
+
+    const cacheKey = scopeParts.length > 0
+        ? `${filterKey}\u0001${scopeParts.join('\u0002')}`
         : filterKey;
     const cached = unitCache.get(cacheKey);
     if (cached) {
@@ -1272,32 +1291,49 @@ function getUnitMatchedExternalNames(
     return matchedNames;
 }
 
-function getPositiveEraNamesFromFilter(
+function getAllScopedNamesGetter(
+    context: EvaluatorContext,
+    filterKey: 'era' | 'faction' | 'availabilityFrom',
+): (() => string[]) | undefined {
+    switch (filterKey) {
+        case 'era':
+            return context.getAllEraNames;
+        case 'faction':
+            return context.getAllFactionNames;
+        case 'availabilityFrom':
+            return context.getAllAvailabilityFromNames;
+    }
+}
+
+function getPositiveScopedNamesFromFilter(
     filter: SemanticToken,
     context: EvaluatorContext,
+    filterKey: 'era' | 'faction' | 'availabilityFrom',
 ): string[] | null {
-    const isEraFilter = getSortedFilterConfigs(context, filter.field).some(conf => conf.key === 'era');
-    if (!isEraFilter || filter.operator === '!=' || !context.getAllEraNames) {
+    const isScopedFilter = getSortedFilterConfigs(context, filter.field).some(conf => conf.key === filterKey);
+    const getAllNames = getAllScopedNamesGetter(context, filterKey);
+    if (!isScopedFilter || filter.operator === '!=' || !getAllNames) {
         return null;
     }
 
-    const allEraNames = getCachedExternalNames(context, 'era', context.getAllEraNames);
-    const expandedEraNames = new Set<string>();
+    const allNames = getCachedExternalNames(context, filterKey, getAllNames);
+    const expandedNames = new Set<string>();
     for (const value of filter.values) {
-        for (const eraName of expandExternalFilterValue(context, 'era', value, allEraNames)) {
-            expandedEraNames.add(eraName);
+        for (const name of expandExternalFilterValue(context, filterKey, value, allNames)) {
+            expandedNames.add(name);
         }
     }
 
-    return expandedEraNames.size > 0 ? Array.from(expandedEraNames) : null;
+    return expandedNames.size > 0 ? Array.from(expandedNames) : null;
 }
 
-function collectScopedEraNames(
+function collectScopedNames(
     node: ASTNode,
     context: EvaluatorContext,
+    filterKey: 'era' | 'faction' | 'availabilityFrom',
 ): string[] | null {
     if (node.type === 'filter') {
-        return getPositiveEraNamesFromFilter(node.token, context);
+        return getPositiveScopedNamesFromFilter(node.token, context, filterKey);
     }
 
     if (node.type !== 'group' || node.children.length === 0) {
@@ -1305,49 +1341,49 @@ function collectScopedEraNames(
     }
 
     if (node.operator === 'OR') {
-        const eraNames = new Set<string>();
+        const names = new Set<string>();
         for (const child of node.children) {
-            const childEraNames = collectScopedEraNames(child, context);
-            if (!childEraNames) {
+            const childNames = collectScopedNames(child, context, filterKey);
+            if (!childNames) {
                 return null;
             }
-            for (const eraName of childEraNames) {
-                eraNames.add(eraName);
+            for (const name of childNames) {
+                names.add(name);
             }
         }
-        return eraNames.size > 0 ? Array.from(eraNames) : null;
+        return names.size > 0 ? Array.from(names) : null;
     }
 
-    const eraNames = new Set<string>();
+    const names = new Set<string>();
     for (const child of node.children) {
-        const childEraNames = collectScopedEraNames(child, context);
-        if (!childEraNames) {
+        const childNames = collectScopedNames(child, context, filterKey);
+        if (!childNames) {
             continue;
         }
-        for (const eraName of childEraNames) {
-            eraNames.add(eraName);
+        for (const name of childNames) {
+            names.add(name);
         }
     }
 
-    return eraNames.size > 0 ? Array.from(eraNames) : null;
+    return names.size > 0 ? Array.from(names) : null;
 }
 
-function mergeActiveEraNames(
-    inheritedEraNames: readonly string[] | undefined,
-    scopedEraNames: readonly string[] | null,
+function mergeActiveNames(
+    inheritedNames: readonly string[] | undefined,
+    scopedNames: readonly string[] | null,
 ): readonly string[] | undefined {
-    if (!inheritedEraNames || inheritedEraNames.length === 0) {
-        return scopedEraNames ? [...scopedEraNames] : inheritedEraNames;
+    if (!inheritedNames || inheritedNames.length === 0) {
+        return scopedNames ? [...scopedNames] : inheritedNames;
     }
 
-    if (!scopedEraNames || scopedEraNames.length === 0) {
-        return [...inheritedEraNames];
+    if (!scopedNames || scopedNames.length === 0) {
+        return [...inheritedNames];
     }
 
-    const scopedByLowerName = new Map(scopedEraNames.map(name => [name.toLowerCase(), name]));
+    const scopedByLowerName = new Map(scopedNames.map(name => [name.toLowerCase(), name]));
     const intersection: string[] = [];
-    for (const eraName of inheritedEraNames) {
-        const match = scopedByLowerName.get(eraName.toLowerCase());
+    for (const name of inheritedNames) {
+        const match = scopedByLowerName.get(name.toLowerCase());
         if (match) {
             intersection.push(match);
         }
@@ -1367,11 +1403,11 @@ function evaluateSingleFilterConfig(
     unit: any,
     context: EvaluatorContext,
     parsedRangeValues: ParsedRangeValue[],
-    activeEraNames?: readonly string[],
+    activeScope?: AvailabilityFilterScope,
 ): boolean {
     // Handle external filters (era, faction) - these use ID-based lookups
     if (conf.external) {
-        return evaluateExternalFilter(unit, operator, values, conf, context, activeEraNames);
+        return evaluateExternalFilter(unit, operator, values, conf, context, activeScope);
     }
     
     // Get unit value for this filter
@@ -1418,7 +1454,7 @@ function evaluateFilter(
     filter: SemanticToken,
     unit: any,
     context: EvaluatorContext,
-    activeEraNames?: readonly string[],
+    activeScope?: AvailabilityFilterScope,
 ): boolean {
     const sortedFilters = getSortedFilterConfigs(context, filter.field);
     if (sortedFilters.length === 0) return true; // Unknown filter - pass through
@@ -1431,12 +1467,12 @@ function evaluateFilter(
     if (operator === '!=') {
         // Exclusion: unit must NOT match ANY of the configs
         return sortedFilters.every(conf => 
-            evaluateSingleFilterConfig(conf, operator, values, unit, context, parsedRangeValues, activeEraNames)
+            evaluateSingleFilterConfig(conf, operator, values, unit, context, parsedRangeValues, activeScope)
         );
     } else {
         // Inclusion: unit must match AT LEAST ONE config
         return sortedFilters.some(conf => 
-            evaluateSingleFilterConfig(conf, operator, values, unit, context, parsedRangeValues, activeEraNames)
+            evaluateSingleFilterConfig(conf, operator, values, unit, context, parsedRangeValues, activeScope)
         );
     }
 }
@@ -1487,7 +1523,8 @@ function buildIndexedCandidateSetForConfig(
     conf: AdvFilterConfig,
     operator: SemanticOperator,
     values: string[],
-    context: EvaluatorContext
+    context: EvaluatorContext,
+    activeScope?: AvailabilityFilterScope,
 ): Set<string | number> | null {
     if (!context.getIndexedUnitIds || !context.getIndexedFilterValues) {
         return null;
@@ -1506,7 +1543,7 @@ function buildIndexedCandidateSetForConfig(
     }
 
     const addStoredValueUnits = (storedValue: string, target: Set<string | number>): void => {
-        const unitIds = context.getIndexedUnitIds?.(conf.key, storedValue);
+        const unitIds = context.getIndexedUnitIds?.(conf.key, storedValue, activeScope);
         if (!unitIds) {
             return;
         }
@@ -1552,7 +1589,8 @@ function buildIndexedCandidateSetForConfig(
 
 function getIndexedCandidateIdsForFilter(
     filter: SemanticToken,
-    context: EvaluatorContext
+    context: EvaluatorContext,
+    activeScope?: AvailabilityFilterScope,
 ): Set<string | number> | null {
     const matchingFilters = ADVANCED_FILTERS.filter(f =>
         (f.semanticKey || f.key) === filter.field
@@ -1574,7 +1612,7 @@ function getIndexedCandidateIdsForFilter(
 
     const candidateSets: Set<string | number>[] = [];
     for (const conf of sortedFilters) {
-        const candidateSet = buildIndexedCandidateSetForConfig(conf, filter.operator, filter.values, context);
+        const candidateSet = buildIndexedCandidateSetForConfig(conf, filter.operator, filter.values, context, activeScope);
         if (!candidateSet) {
             return null;
         }
@@ -1592,21 +1630,27 @@ function getIndexedCandidateIdsForFilter(
 
 function getIndexedCandidateIdsForNode(
     node: ASTNode,
-    context: EvaluatorContext
+    context: EvaluatorContext,
+    activeScope?: AvailabilityFilterScope,
 ): Set<string | number> | null {
     switch (node.type) {
         case 'text':
             return null;
         case 'filter':
-            return getIndexedCandidateIdsForFilter(node.token, context);
+            return getIndexedCandidateIdsForFilter(node.token, context, activeScope);
         case 'group':
             if (node.children.length === 0) {
                 return null;
             }
 
             if (node.operator === 'AND') {
+                const nextActiveScope: AvailabilityFilterScope = {
+                    eraNames: mergeActiveNames(activeScope?.eraNames, collectScopedNames(node, context, 'era')),
+                    factionNames: mergeActiveNames(activeScope?.factionNames, collectScopedNames(node, context, 'faction')),
+                    availabilityFromNames: mergeActiveNames(activeScope?.availabilityFromNames, collectScopedNames(node, context, 'availabilityFrom')),
+                };
                 const childCandidates = node.children
-                    .map(child => getIndexedCandidateIdsForNode(child, context))
+                    .map(child => getIndexedCandidateIdsForNode(child, context, nextActiveScope))
                     .filter((candidate): candidate is Set<string | number> => candidate !== null);
 
                 if (childCandidates.length === 0) {
@@ -1627,7 +1671,7 @@ function getIndexedCandidateIdsForNode(
 
             const branchCandidates: Set<string | number>[] = [];
             for (const child of node.children) {
-                const candidateSet = getIndexedCandidateIdsForNode(child, context);
+                const candidateSet = getIndexedCandidateIdsForNode(child, context, activeScope);
                 if (!candidateSet) {
                     return null;
                 }
@@ -1656,18 +1700,24 @@ function evaluateExternalFilter(
     values: string[],
     conf: AdvFilterConfig,
     context: EvaluatorContext,
-    activeEraNames?: readonly string[],
+    activeScope?: AvailabilityFilterScope,
 ): boolean {
     // Determine the membership check function and all names getter based on filter key
     let checkMembership: (name: string) => boolean;
     let getAllNames: (() => string[]) | undefined;
     
     if (conf.key === 'era' && context.unitBelongsToEra) {
-        checkMembership = (name: string) => context.unitBelongsToEra!(unit, name);
+        checkMembership = (name: string) => context.unitBelongsToEra!(unit, name, activeScope);
         getAllNames = context.getAllEraNames;
     } else if (conf.key === 'faction' && context.unitBelongsToFaction) {
-        checkMembership = (name: string) => context.unitBelongsToFaction!(unit, name, activeEraNames);
+        checkMembership = (name: string) => context.unitBelongsToFaction!(unit, name, activeScope?.eraNames);
         getAllNames = context.getAllFactionNames;
+    } else if (conf.key === 'availabilityFrom' && context.unitMatchesAvailabilityFrom) {
+        checkMembership = (name: string) => context.unitMatchesAvailabilityFrom!(unit, name, activeScope);
+        getAllNames = context.getAllAvailabilityFromNames;
+    } else if (conf.key === 'availabilityRarity' && context.unitMatchesAvailabilityRarity) {
+        checkMembership = (name: string) => context.unitMatchesAvailabilityRarity!(unit, name, activeScope);
+        getAllNames = context.getAllAvailabilityRarityNames;
     } else if (conf.key === 'forcePack' && context.unitBelongsToForcePack) {
         checkMembership = (name: string) => context.unitBelongsToForcePack!(unit, name);
         getAllNames = context.getAllForcePackNames;
@@ -1692,7 +1742,7 @@ function evaluateExternalFilter(
     } else if (operator === '==') {
         const allowedNames = new Set(expandedValues.map(val => val.toLowerCase()));
         const unitMatchedNames = allNames.length > 0
-            ? getUnitMatchedExternalNames(context, unit, filterKey, allNames, checkMembership, activeEraNames)
+            ? getUnitMatchedExternalNames(context, unit, filterKey, allNames, checkMembership, activeScope)
             : null;
 
         if (!unitMatchedNames) {
@@ -1711,7 +1761,7 @@ function evaluateExternalFilter(
         return true;
     } else if (operator === '&=') {
         const unitMatchedNames = allNames.length > 0
-            ? getUnitMatchedExternalNames(context, unit, filterKey, allNames, checkMembership, activeEraNames)
+            ? getUnitMatchedExternalNames(context, unit, filterKey, allNames, checkMembership, activeScope)
             : null;
 
         if (unitMatchedNames) {
@@ -2073,7 +2123,7 @@ export function evaluateASTNode(
     node: ASTNode,
     unit: any,
     context: EvaluatorContext,
-    activeEraNames?: readonly string[],
+    activeScope?: AvailabilityFilterScope,
 ): boolean {
     switch (node.type) {
         case 'text':
@@ -2086,10 +2136,10 @@ export function evaluateASTNode(
             return true;
             
         case 'filter':
-            return evaluateFilter(node.token, unit, context, activeEraNames);
+            return evaluateFilter(node.token, unit, context, activeScope);
             
         case 'group':
-            return evaluateGroup(node, unit, context, activeEraNames);
+            return evaluateGroup(node, unit, context, activeScope);
             
         default:
             return true;
@@ -2103,18 +2153,21 @@ function evaluateGroup(
     group: GroupASTNode,
     unit: any,
     context: EvaluatorContext,
-    activeEraNames?: readonly string[],
+    activeScope?: AvailabilityFilterScope,
 ): boolean {
     if (group.children.length === 0) return true;
     
     if (group.operator === 'AND') {
-        const scopedEraNames = collectScopedEraNames(group, context);
-        const nextActiveEraNames = mergeActiveEraNames(activeEraNames, scopedEraNames);
+        const nextActiveScope: AvailabilityFilterScope = {
+            eraNames: mergeActiveNames(activeScope?.eraNames, collectScopedNames(group, context, 'era')),
+            factionNames: mergeActiveNames(activeScope?.factionNames, collectScopedNames(group, context, 'faction')),
+            availabilityFromNames: mergeActiveNames(activeScope?.availabilityFromNames, collectScopedNames(group, context, 'availabilityFrom')),
+        };
         // All children must match
-        return group.children.every(child => evaluateASTNode(child, unit, context, nextActiveEraNames));
+        return group.children.every(child => evaluateASTNode(child, unit, context, nextActiveScope));
     } else {
         // OR: At least one child must match
-        return group.children.some(child => evaluateASTNode(child, unit, context, activeEraNames));
+        return group.children.some(child => evaluateASTNode(child, unit, context, activeScope));
     }
 }
 

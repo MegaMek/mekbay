@@ -32,6 +32,8 @@
  */
 
 import type { GameSystem } from '../models/common.model';
+import type { MegaMekAvailabilityFrom, MegaMekAvailabilityRarity } from '../models/megamek/availability.model';
+import type { AvailabilitySource } from '../models/options.model';
 import type { SearchTelemetryStage } from '../services/unit-search-filters.model';
 
 export type UnitSearchWorkerCorpusVersion = string;
@@ -48,11 +50,28 @@ export interface UnitSearchWorkerFactionEraSnapshot {
     };
 }
 
+export interface UnitSearchWorkerMegaMekAvailabilityBucketSnapshot {
+    unitNames: string[];
+    bySource: Partial<Record<MegaMekAvailabilityFrom, string[]>>;
+    byRarity: Partial<Record<MegaMekAvailabilityFrom, Partial<Record<MegaMekAvailabilityRarity, string[]>>>>;
+}
+
+export interface UnitSearchWorkerMegaMekAvailabilitySnapshot {
+    all: UnitSearchWorkerMegaMekAvailabilityBucketSnapshot;
+    eras: Record<string, UnitSearchWorkerMegaMekAvailabilityBucketSnapshot>;
+    factions: Record<string, UnitSearchWorkerMegaMekAvailabilityBucketSnapshot>;
+    eraFactions: Record<string, Record<string, UnitSearchWorkerMegaMekAvailabilityBucketSnapshot>>;
+    extinctFactionName?: string;
+    extinctUnitNames: string[];
+    extinctByEra: Record<string, string[]>;
+}
+
 export interface UnitSearchWorkerCorpusSnapshot {
     corpusVersion: UnitSearchWorkerCorpusVersion;
     units: import('../models/units.model').Unit[];
     indexes: UnitSearchWorkerIndexSnapshot;
     factionEraIndex: UnitSearchWorkerFactionEraSnapshot;
+    megaMekAvailability: UnitSearchWorkerMegaMekAvailabilitySnapshot;
 }
 
 export interface UnitSearchWorkerQueryRequest {
@@ -61,6 +80,7 @@ export interface UnitSearchWorkerQueryRequest {
     executionQuery: string;
     telemetryQuery: string;
     gameSystem: GameSystem;
+    availabilitySource: AvailabilitySource;
     sortKey: string;
     sortDirection: 'asc' | 'desc';
     bvPvLimit: number;

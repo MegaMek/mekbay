@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -34,7 +34,6 @@
 import { Injectable, inject } from '@angular/core';
 import { DbService } from '../db.service';
 import {
-    getMegaMekFactionAffiliation,
     hydrateMegaMekFactionRecord,
     type MegaMekFactionAffiliation,
     type MegaMekFactionRecord,
@@ -43,6 +42,7 @@ import {
     type MegaMekFactionsData,
     resolveMegaMekFactionRecord,
 } from '../../models/megamek/factions.model';
+import { FactionsCatalogService } from './mulfactions-catalog.service';
 import { CatalogBaseService } from './catalog-base.service';
 
 function isMegaMekFactionsData(data: MegaMekFactionsData | Record<string, MegaMekFactionRecordData>): data is MegaMekFactionsData {
@@ -53,8 +53,20 @@ function isMegaMekFactionsData(data: MegaMekFactionsData | Record<string, MegaMe
     return typeof data.etag === 'string' && typeof data.factions === 'object' && data.factions !== null && !Array.isArray(data.factions);
 }
 
-function internalFaction(faction: MegaMekFactionRecord): boolean {
-    return faction.tagSet.has('ABANDONED') || (faction.tagSet.has('SPECIAL'));
+function mapMulFactionAffiliation(group: string | undefined): MegaMekFactionAffiliation {
+    switch (group) {
+        case 'IS Clan':
+        case 'HW Clan':
+            return 'Clan';
+        case 'Inner Sphere':
+            return 'Inner Sphere';
+        case 'Periphery':
+            return 'Periphery';
+        case 'Mercenary':
+            return 'Mercenary';
+        default:
+            return 'Other';
+    }
 }
 
 @Injectable({
@@ -62,15 +74,17 @@ function internalFaction(faction: MegaMekFactionRecord): boolean {
 })
 export class MegaMekFactionsCatalogService extends CatalogBaseService<MegaMekFactionsData | MegaMekFactions, MegaMekFactionsData, MegaMekFactionsData | Record<string, MegaMekFactionRecordData>> {
     private readonly dbService = inject(DbService);
+    private readonly factionsCatalog = inject(FactionsCatalogService);
 
     private factions = new Map<string, MegaMekFactionRecord>();
+    private factionsByMulId = new Map<number, MegaMekFactionRecord[]>();
 
     protected override get catalogKey(): string {
         return 'megamek_factions';
     }
 
     protected override get remoteUrl(): string {
-        return 'assets/factions.json';
+        return 'assets/factions-lite.json';
     }
 
     public getFactions(): MegaMekFactions {
@@ -85,13 +99,36 @@ export class MegaMekFactionsCatalogService extends CatalogBaseService<MegaMekFac
         return this.factions.get(id);
     }
 
+    public getFactionsByMulId(mulId: number): MegaMekFactionRecord[] {
+        return this.factionsByMulId.get(mulId) ?? [];
+    }
+
     public getFactionAffiliation(factionKey: string): MegaMekFactionAffiliation {
         const faction = this.getFactionByKey(factionKey);
         if (!faction) {
             return 'Other';
         }
 
-        return getMegaMekFactionAffiliation(faction, this.factions);
+        const affiliations = faction.mulId
+            .map((mulId) => mapMulFactionAffiliation(this.factionsCatalog.getFactionById(mulId)?.group));
+
+        if (affiliations.includes('Mercenary')) {
+            return 'Mercenary';
+        }
+
+        if (affiliations.includes('Clan')) {
+            return 'Clan';
+        }
+
+        if (affiliations.includes('Inner Sphere')) {
+            return 'Inner Sphere';
+        }
+
+        if (affiliations.includes('Periphery')) {
+            return 'Periphery';
+        }
+
+        return 'Other';
     }
 
     protected override hasHydratedData(): boolean {
@@ -112,17 +149,25 @@ export class MegaMekFactionsCatalogService extends CatalogBaseService<MegaMekFac
         const hydratedFactions = new Map<string, MegaMekFactionRecord>();
 
         this.factions.clear();
+        this.factionsByMulId.clear();
         for (const faction of Object.values(rawFactions)) {
             const hydratedFaction = hydrateMegaMekFactionRecord(faction);
-            if (internalFaction(hydratedFaction)) {
-                continue;
-            }
             hydratedFactions.set(hydratedFaction.id, hydratedFaction);
         }
 
         for (const faction of hydratedFactions.values()) {
             const resolvedFaction = resolveMegaMekFactionRecord(faction, hydratedFactions);
+            if (resolvedFaction.mulId.length === 0) {
+                continue;
+            }
+
             this.factions.set(resolvedFaction.id, resolvedFaction);
+
+            for (const mulId of resolvedFaction.mulId) {
+                const factionsForMulId = this.factionsByMulId.get(mulId) ?? [];
+                factionsForMulId.push(resolvedFaction);
+                this.factionsByMulId.set(mulId, factionsForMulId);
+            }
         }
 
         this.etag = wrappedData?.etag || '';

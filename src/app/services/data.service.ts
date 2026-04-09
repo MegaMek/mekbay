@@ -384,7 +384,7 @@ export class DataService {
         return this.megaMekAvailabilityCatalog.getRecords();
     }
 
-    public getMegaMekAvailabilityRecordForUnit(unit: Pick<Unit, 'type' | 'chassis' | 'model'>): MegaMekWeightedAvailabilityRecord | undefined {
+    public getMegaMekAvailabilityRecordForUnit(unit: Pick<Unit, 'name'>): MegaMekWeightedAvailabilityRecord | undefined {
         return this.megaMekAvailabilityCatalog.getRecordForUnit(unit);
     }
 

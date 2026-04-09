@@ -1,3 +1,36 @@
+/*
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
+ *
+ * This file is part of MekBay.
+ *
+ * MekBay is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MekBay is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
+ */
+
 export interface MegaMekFactionActiveYears {
     start?: number;
     end?: number;
@@ -8,70 +41,29 @@ export interface MegaMekFactionNameChange {
     name: string;
 }
 
-export interface MegaMekFactionLeader {
-    title: string;
-    firstName: string;
-    surname: string;
-    gender: string;
-    startYear: number;
-    endYear?: number;
-    honorific?: string;
-}
-
 interface MegaMekFactionRecordBase {
-    
-    id: string; // Unique faction ID
-    name: string; // Faction name
-    mulId?: number[]; // Associated MUL faction IDs, if any
+    id: string;
+    name: string;
+    mulId: number[];
     yearsActive: MegaMekFactionActiveYears[];
-    ratingLevels: string[];
+    fallBackFactions: string[];
+    ancestry: string[];
     nameChanges: MegaMekFactionNameChange[];
-    capital?: string;
-    capitalChanges?: MegaMekFactionNameChange[];
     color?: [number, number, number];
     logo?: string;
-    camos?: string;
-    nameGenerator?: string;
-    rankSystem?: string;
     successor?: string;
-    factionLeaders?: MegaMekFactionLeader[];
-    preInvasionHonorRating?: string;
-    postInvasionHonorRating?: string;
     formationBaseSize?: number;
     formationGrouping?: number;
 }
 
-export interface MegaMekFactionRecordData extends MegaMekFactionRecordBase {
-    fallBackFactions: string[];
-    tags: string[];
-    ancestry: string[];
-}
+export interface MegaMekFactionRecordData extends MegaMekFactionRecordBase {}
 
-export interface MegaMekFactionRecord extends MegaMekFactionRecordData {
-    fallBackFactionSet: ReadonlySet<string>;
-    tagSet: ReadonlySet<string>;
-    ancestrySet: ReadonlySet<string>;
-}
+export interface MegaMekFactionRecord extends MegaMekFactionRecordBase {}
 
 type MegaMekFactionRecordSource = MegaMekFactionRecordData | MegaMekFactionRecord;
 type MegaMekFactionRecordLookup = ReadonlyMap<string, MegaMekFactionRecordSource> | Record<string, MegaMekFactionRecordSource>;
 
-const INHERITED_FACTION_FIELDS = [
-    'mulId',
-    'capital',
-    'capitalChanges',
-    'color',
-    'logo',
-    'camos',
-    'nameGenerator',
-    'rankSystem',
-    'successor',
-    'factionLeaders',
-    'preInvasionHonorRating',
-    'postInvasionHonorRating',
-    'formationBaseSize',
-    'formationGrouping',
-] as const;
+const INHERITED_FACTION_FIELDS = ['mulId', 'color', 'logo', 'successor', 'formationBaseSize', 'formationGrouping'] as const;
 
 type InheritedFactionField = typeof INHERITED_FACTION_FIELDS[number];
 
@@ -84,21 +76,41 @@ export interface MegaMekFactionsData {
 
 export type MegaMekFactionAffiliation = 'Clan' | 'Inner Sphere' | 'Periphery' | 'Mercenary' | 'Other';
 
-export function hydrateMegaMekFactionRecord(faction: MegaMekFactionRecordData | MegaMekFactionRecord): MegaMekFactionRecord {
+export function hydrateMegaMekFactionRecord(faction: MegaMekFactionRecordSource): MegaMekFactionRecord {
     return {
         ...faction,
-        fallBackFactionSet: new Set(faction.fallBackFactions),
-        tagSet: new Set(faction.tags),
-        ancestrySet: new Set(faction.ancestry),
+        mulId: [...(faction.mulId ?? [])],
+        yearsActive: (faction.yearsActive ?? []).map((years) => ({
+            start: years.start,
+            end: years.end,
+        })),
+        fallBackFactions: [...(faction.fallBackFactions ?? [])],
+        ancestry: [...(faction.ancestry ?? [])],
+        nameChanges: (faction.nameChanges ?? []).map((change) => ({
+            year: change.year,
+            name: change.name,
+        })),
+        color: faction.color ? [...faction.color] as [number, number, number] : undefined,
+        logo: faction.logo,
+        successor: faction.successor,
+        formationBaseSize: faction.formationBaseSize,
+        formationGrouping: faction.formationGrouping,
     };
 }
 
-function getFactionFieldValue(faction: MegaMekFactionRecord, field: InheritedFactionField): MegaMekFactionRecord[InheritedFactionField] {
+function getFactionFieldValue(
+    faction: MegaMekFactionRecord,
+    field: InheritedFactionField,
+): MegaMekFactionRecord[InheritedFactionField] {
     return faction[field];
 }
 
 function hasFactionFieldValue(faction: MegaMekFactionRecord, field: InheritedFactionField): boolean {
     const value = getFactionFieldValue(faction, field);
+    if (field === 'mulId') {
+        return Array.isArray(value) && value.length > 0;
+    }
+
     return value !== undefined;
 }
 
@@ -156,7 +168,10 @@ export function resolveMegaMekFactionRecord(
 ): MegaMekFactionRecord {
     const hydratedFaction = hydrateMegaMekFactionRecord(faction);
     const resolvedFields = Object.fromEntries(
-        INHERITED_FACTION_FIELDS.map((field) => [field, resolveFactionField(hydratedFaction, field, factionsById)])
+        INHERITED_FACTION_FIELDS.map((field) => {
+            const resolvedValue = resolveFactionField(hydratedFaction, field, factionsById);
+            return [field, resolvedValue === undefined ? hydratedFaction[field] : resolvedValue];
+        }),
     ) as Pick<MegaMekFactionRecord, InheritedFactionField>;
 
     return {
@@ -177,69 +192,9 @@ export function isMegaMekFactionActiveInYearRange(
     const rangeStart = startYear ?? Number.NEGATIVE_INFINITY;
     const rangeEnd = endYear ?? Number.POSITIVE_INFINITY;
 
-    return faction.yearsActive.some(activeYears => {
+    return faction.yearsActive.some((activeYears) => {
         const activeStart = activeYears.start ?? Number.NEGATIVE_INFINITY;
         const activeEnd = activeYears.end ?? Number.POSITIVE_INFINITY;
         return activeStart <= rangeEnd && activeEnd >= rangeStart;
     });
-}
-
-function getFactionAffiliationFromTags(faction: MegaMekFactionRecord): MegaMekFactionAffiliation {
-    
-    if (faction.tagSet.has('MERC')) {
-        return 'Mercenary';
-    }
-    
-    if (faction.tagSet.has('CLAN')) {
-        return 'Clan';
-    }
-
-    if (faction.tagSet.has('IS')) {
-        return 'Inner Sphere';
-    }
-
-    if (faction.tagSet.has('PERIPHERY') || faction.tagSet.has('DEEP_PERIPHERY')) {
-        return 'Periphery';
-    }
-
-    return 'Other';
-}
-
-function getFactionById(
-    factionId: string,
-    factionsById?: ReadonlyMap<string, MegaMekFactionRecord> | MegaMekFactions,
-): MegaMekFactionRecord | undefined {
-    return getFactionRecordById(factionId, factionsById);
-}
-
-export function getMegaMekFactionAffiliation(
-    faction: MegaMekFactionRecord,
-    factionsById?: ReadonlyMap<string, MegaMekFactionRecord> | MegaMekFactions,
-): MegaMekFactionAffiliation {
-    const visited = new Set<string>();
-
-    function visit(current: MegaMekFactionRecord | undefined): MegaMekFactionAffiliation {
-        if (!current || visited.has(current.id)) {
-            return 'Other';
-        }
-
-        visited.add(current.id);
-
-        const directAffiliation = getFactionAffiliationFromTags(current);
-        if (directAffiliation !== 'Other') {
-            return directAffiliation;
-        }
-
-        for (const ancestorId of current.ancestry) {
-            const ancestor = getFactionById(ancestorId, factionsById);
-            const ancestorAffiliation = visit(ancestor);
-            if (ancestorAffiliation !== 'Other') {
-                return ancestorAffiliation;
-            }
-        }
-
-        return 'Other';
-    }
-
-    return visit(faction);
 }

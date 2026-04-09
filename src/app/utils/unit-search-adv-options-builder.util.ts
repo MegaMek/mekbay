@@ -64,6 +64,11 @@ interface BuildUnitSearchAdvOptionsRequest {
         snapshot: AdvOptionsContextSnapshot,
         contextUnits: Unit[],
     ) => { name: string; available: boolean }[];
+    buildCustomDropdownOptions?: (
+        conf: AdvFilterConfig,
+        contextUnits: Unit[],
+        state: FilterState,
+    ) => { name: string; img?: string; displayName?: string; available?: boolean }[] | null;
     getIndexedUniverseNames: (filterKey: string) => string[];
     getSortedIndexedUniverseNames: (conf: AdvFilterConfig) => string[];
     collectIndexedAvailabilityNames: (
@@ -307,8 +312,11 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
             const displayNameFn = (value: string) => request.getDisplayName(conf.key, value);
             const contextSnapshot = getAdvOptionsContextSnapshot(contextSnapshotCache, contextUnits);
             const contextUnitIds = getSnapshotUnitIds(contextSnapshot, contextUnits);
+            const customOptions = request.buildCustomDropdownOptions?.(conf, contextUnits, request.state);
 
-            if (usesIndexedDropdownUniverse(conf) && !conf.multistate) {
+            if (customOptions) {
+                availableOptions = customOptions;
+            } else if (usesIndexedDropdownUniverse(conf) && !conf.multistate) {
                 availableOptions = request.buildIndexedDropdownOptions(conf, contextUnits, displayNameFn, contextUnitIds);
             } else if (conf.multistate) {
                 const isComponentFilter = isComponentBackedDropdown(conf);
