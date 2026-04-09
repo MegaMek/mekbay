@@ -123,6 +123,7 @@ interface CompactModelRecord extends CompactAvailabilityRecordBase {
 type CompactAvailabilityRecord = CompactChassisRecord | CompactModelRecord;
 
 interface CompactWeightedModelRecord {
+    n: string;
     t: UnitType;
     c: string;
     m: string;
@@ -152,6 +153,7 @@ interface UnitMetadataRecord {
     unitType: string;
     chassis: string;
     model: string;
+    unitName: string;
     introYear: number;
     weightClass?: number;
     isClanTech: boolean;
@@ -522,6 +524,66 @@ function normalizeMetadataUnitTypeName(rawUnitType: string, context: string, mot
     }
 }
 
+function normalizeMetadataNameUnitTypeName(rawUnitType: string, context: string): string {
+    const normalized = rawUnitType.trim();
+
+    switch (normalized) {
+        case 'Mek':
+        case 'BattleArmor':
+        case 'Infantry':
+        case 'ProtoMek':
+        case 'VTOL':
+        case 'Naval':
+        case 'Tank':
+        case 'SupportTank':
+        case 'LargeSupportTank':
+        case 'SupportVTOL':
+        case 'FixedWingSupport':
+        case 'Gun Emplacement':
+        case 'Conventional Fighter':
+        case 'AeroSpaceFighter':
+        case 'Aero':
+        case 'Small Craft':
+        case 'Dropship':
+        case 'Jumpship':
+        case 'Warship':
+        case 'Space Station':
+        case 'Handheld Weapon':
+        case 'Mobile Structure':
+        case 'Advanced Building':
+        case 'BuildingEntity':
+            return normalized;
+        case 'Battle Armor':
+            return 'BattleArmor';
+        case 'Protomek':
+        case 'ProtoMech':
+            return 'ProtoMek';
+        case 'GunEmplacement':
+            return 'Gun Emplacement';
+        case 'ConvFighter':
+            return 'Conventional Fighter';
+        case 'Aerospace Fighter':
+        case 'AerospaceFighter':
+            return 'AeroSpaceFighter';
+        case 'SmallCraft':
+            return 'Small Craft';
+        case 'DropShip':
+            return 'Dropship';
+        case 'JumpShip':
+            return 'Jumpship';
+        case 'SpaceStation':
+            return 'Space Station';
+        case 'HandheldWeapon':
+            return 'Handheld Weapon';
+        case 'MobileStructure':
+            return 'Mobile Structure';
+        case 'AdvancedBuilding':
+            return 'Advanced Building';
+        default:
+            throw new Error(`[MegaMek] unknown unit type "${rawUnitType}" in ${context}`);
+    }
+}
+
 function normalizeMetadataUnitTypeFromDirectory(filePath: string, rootPath: string): string {
     const relativePath = path.relative(rootPath, filePath);
     const topLevelDir = relativePath.split(path.sep)[0]?.trim().toLowerCase();
@@ -630,12 +692,76 @@ function parseMtfTechFlags(techBase: string, rulesLevel: number | undefined): { 
     return { isClanTech, isStarLeague };
 }
 
+function isIndustrialMekMetadata(model: string, structure?: string): boolean {
+    const normalizedModel = model.trim().toLowerCase();
+    const normalizedStructure = structure?.trim().toLowerCase() ?? '';
+    return normalizedModel.includes('industrialmech') || normalizedStructure.includes('industrial');
+}
+
+function getMegaMekUnitNamePrefix(unitType: string, motionType?: string, isIndustrialMek = false): string {
+    switch (unitType) {
+        case 'Mek':
+            return isIndustrialMek ? 'IM' : 'BM';
+        case 'ProtoMek':
+            return 'PM';
+        case 'Mobile Structure':
+            return 'MS';
+        case 'Tank':
+        case 'VTOL':
+        case 'Naval':
+        case 'Advanced Building':
+        case 'BuildingEntity':
+            return 'CV';
+        case 'SupportTank':
+        case 'LargeSupportTank':
+        case 'SupportVTOL':
+        case 'FixedWingSupport':
+        case 'Gun Emplacement':
+            return 'SV';
+        case 'BattleArmor':
+            return 'BA';
+        case 'Infantry':
+            return 'CI';
+        case 'Space Station':
+            return 'SS';
+        case 'Warship':
+            return 'WS';
+        case 'Jumpship':
+            return 'JS';
+        case 'Dropship':
+            return motionType?.trim().toLowerCase() === 'spheroid' ? 'DS' : 'DA';
+        case 'Small Craft':
+            return 'SC';
+        case 'Conventional Fighter':
+            return 'CF';
+        case 'AeroSpaceFighter':
+        case 'Aero':
+            return 'AF';
+        default:
+            return '';
+    }
+}
+
+function buildMegaMekUnitName(unitType: string, chassis: string, model: string, options?: {
+    motionType?: string;
+    isIndustrialMek?: boolean;
+}): string {
+    const prefix = getMegaMekUnitNamePrefix(unitType, options?.motionType, options?.isIndustrialMek ?? false);
+    return `${prefix}${chassis}_${model}`
+        .replace(/[^a-zA-Z0-9_]/gu, '')
+        .replace(/_+/gu, '_')
+        .replace(/^_+|_+$/gu, '');
+}
+
 function parseBlkUnitMetadata(raw: string, filePath: string): UnitMetadataRecord | undefined {
+    const rawUnitType = getTaggedText(raw, 'UnitType') ?? '';
+    const motionType = getTaggedText(raw, 'motion_type');
     const unitType = normalizeMetadataUnitTypeName(
-        getTaggedText(raw, 'UnitType') ?? '',
+        rawUnitType,
         filePath,
-        getTaggedText(raw, 'motion_type'),
+        motionType,
     );
+    const nameUnitType = normalizeMetadataNameUnitTypeName(rawUnitType, filePath);
     const chassis = getTaggedText(raw, 'Name') ?? '';
     const model = getTaggedText(raw, 'Model') ?? '';
     const introYear = parseYear(getTaggedText(raw, 'year'));
@@ -654,6 +780,7 @@ function parseBlkUnitMetadata(raw: string, filePath: string): UnitMetadataRecord
         unitType,
         chassis,
         model,
+        unitName: buildMegaMekUnitName(nameUnitType, chassis, model, { motionType }),
         introYear,
         weightClass,
         isClanTech: techFlags.isClanTech,
@@ -680,7 +807,9 @@ function parseMtfUnitMetadata(raw: string, filePath: string, rootPath: string): 
     const baseChassis = fields.get('chassis') ?? '';
     const clanName = fields.get('clanname') ?? '';
     const chassis = buildChassisName(baseChassis, clanName);
+    const unitNameChassis = clanName ? baseChassis : chassis;
     const model = fields.get('model') ?? '';
+    const isIndustrialMek = unitType === 'Mek' && isIndustrialMekMetadata(model, fields.get('structure'));
     const introYear = parseYear(fields.get('era'));
     if (!chassis || introYear === undefined) {
         return undefined;
@@ -694,6 +823,7 @@ function parseMtfUnitMetadata(raw: string, filePath: string, rootPath: string): 
         unitType,
         chassis,
         model,
+        unitName: buildMegaMekUnitName(unitType, unitNameChassis, model, { isIndustrialMek }),
         introYear,
         weightClass: deriveWeightClass(unitType, tonnage),
         isClanTech: techFlags.isClanTech,
@@ -2539,10 +2669,13 @@ function buildWeightedAvailabilityRecords(
         groupedModels.push([modelKey, modelRecord]);
         modelsByChassis.set(chassisKey, groupedModels);
 
+        const metadata = modelMetadataByKey.get(modelKey);
+
         weightedAvailability[modelKey] = {
+            n: metadata?.unitName ?? buildMegaMekUnitName(modelRecord.t, modelRecord.c, modelRecord.m),
             t: modelRecord.t,
-            c: modelRecord.c,
-            m: modelRecord.m,
+            c: metadata?.chassis ?? modelRecord.c,
+            m: metadata?.model ?? modelRecord.m,
             e: {},
         };
     }
