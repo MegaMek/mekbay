@@ -40,6 +40,7 @@ import { UnitCardExpandedComponent } from '../../unit-card-expanded/unit-card-ex
 import type { TagClickEvent } from '../../unit-tags/unit-tags.component';
 import { SORT_OPTIONS } from '../../../services/unit-search-filters.model';
 import { GameService } from '../../../services/game.service';
+import { OptionsService } from '../../../services/options.service';
 
 /**
  * State for the variants tab that can be persisted by parent components.
@@ -71,6 +72,7 @@ export const DEFAULT_VARIANTS_TAB_STATE: VariantsTabState = {
 export class UnitDetailsVariantsTabComponent {
     private dataService = inject(DataService);
     private gameService = inject(GameService);
+    private optionsService = inject(OptionsService);
 
     /** Sort options available for the current game system (excluding Relevance) */
     readonly SORT_OPTIONS = SORT_OPTIONS.filter(opt => opt.key !== '');
@@ -103,6 +105,7 @@ export class UnitDetailsVariantsTabComponent {
     viewMode = computed(() => this.state().viewMode);
     selectedSort = computed(() => this.state().sortKey);
     selectedSortDirection = computed(() => this.state().sortDirection);
+    readonly useHex = computed<boolean>(() => this.optionsService.options().ASUseHex);
 
     /** Get the label for the currently selected sort option */
     selectedSortLabel = computed(() => {
