@@ -227,6 +227,10 @@ function normalizeRulesetScalar(raw: string, pathSegments: string[]): unknown {
     const parentName = pathSegments[pathSegments.length - 2] || '';
     const trimmed = raw.trim();
 
+    if (nodeName === 'asParent') {
+        return true;
+    }
+
     if (trimmed === '') {
         if ([
             'option', 'subforce', 'name', 'co', 'xo', 'unitType', 'echelon',
@@ -236,10 +240,6 @@ function normalizeRulesetScalar(raw: string, pathSegments: string[]): unknown {
             return {};
         }
         return '';
-    }
-
-    if (nodeName === 'asParent') {
-        return true;
     }
 
     if (nodeName === 'asFaction') {
@@ -599,7 +599,7 @@ function finalizeRulesetExportValue(value: unknown): unknown {
         }
 
         normalized[mapRulesetExportKey(key)] = key === 'asParent'
-            ? Boolean(nextValue)
+            ? true
             : nextValue;
     }
 

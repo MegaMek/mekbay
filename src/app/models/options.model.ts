@@ -71,6 +71,8 @@ export interface Options {
     printMargin: 'none' | 'browserDefined';
 
     // Force Generator
-    forceGenLastBVLimit?: number;
-    forceGenLastPVLimit?: number;
+    forceGenLastBVMin: number;
+    forceGenLastBVMax: number;
+    forceGenLastPVMin: number;
+    forceGenLastPVMax: number;
 }

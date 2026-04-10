@@ -70,8 +70,10 @@ const DEFAULT_OPTIONS: Options = {
     ASUseAutomations: true,
     ASVehiclesCriticalHitTable: 'default',
     ASUnifiedDamagePicker: true,
-    forceGenLastBVLimit: undefined,
-    forceGenLastPVLimit: undefined,
+    forceGenLastBVMin: 7900,
+    forceGenLastBVMax: 8000,
+    forceGenLastPVMin: 290,
+    forceGenLastPVMax: 300,
 };
 
 @Injectable({ providedIn: 'root' })
@@ -104,8 +106,10 @@ export class OptionsService {
         ASUnifiedDamagePicker: DEFAULT_OPTIONS.ASUnifiedDamagePicker,
         printRosterSummary: DEFAULT_OPTIONS.printRosterSummary,
         printMargin: DEFAULT_OPTIONS.printMargin,
-        forceGenLastBVLimit: DEFAULT_OPTIONS.forceGenLastBVLimit,
-        forceGenLastPVLimit: DEFAULT_OPTIONS.forceGenLastPVLimit,
+        forceGenLastBVMin: DEFAULT_OPTIONS.forceGenLastBVMin,
+        forceGenLastBVMax: DEFAULT_OPTIONS.forceGenLastBVMax,
+        forceGenLastPVMin: DEFAULT_OPTIONS.forceGenLastPVMin,
+        forceGenLastPVMax: DEFAULT_OPTIONS.forceGenLastPVMax,
     });
 
     constructor() {
@@ -142,8 +146,10 @@ export class OptionsService {
             ASUnifiedDamagePicker: saved?.ASUnifiedDamagePicker ?? DEFAULT_OPTIONS.ASUnifiedDamagePicker,
             printRosterSummary: saved?.printRosterSummary ?? DEFAULT_OPTIONS.printRosterSummary,
             printMargin: saved?.printMargin ?? DEFAULT_OPTIONS.printMargin,
-            forceGenLastBVLimit: saved?.forceGenLastBVLimit ?? DEFAULT_OPTIONS.forceGenLastBVLimit,
-            forceGenLastPVLimit: saved?.forceGenLastPVLimit ?? DEFAULT_OPTIONS.forceGenLastPVLimit,
+            forceGenLastBVMin: saved?.forceGenLastBVMin ?? DEFAULT_OPTIONS.forceGenLastBVMin,
+            forceGenLastBVMax: saved?.forceGenLastBVMax ?? DEFAULT_OPTIONS.forceGenLastBVMax,
+            forceGenLastPVMin: saved?.forceGenLastPVMin ?? DEFAULT_OPTIONS.forceGenLastPVMin,
+            forceGenLastPVMax: saved?.forceGenLastPVMax ?? DEFAULT_OPTIONS.forceGenLastPVMax,
         });
     }
 
