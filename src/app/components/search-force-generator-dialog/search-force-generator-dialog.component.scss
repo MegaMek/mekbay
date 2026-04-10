@@ -1,0 +1,349 @@
+:host {
+    display: block;
+}
+
+:host ::ng-deep .modal.search-force-generator-dialog-modal {
+    max-width: 980px !important;
+}
+
+:host ::ng-deep .search-force-generator-dialog-modal .modal-body {
+    padding: 0 !important;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+:host ::ng-deep .search-force-generator-dialog-modal div[dialog-body] {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+:host ::ng-deep .preview-body load-force-preview-panel {
+    display: block;
+    min-height: 100%;
+}
+
+.dialog-body {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.dialog-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(320px, 1.1fr);
+    gap: 12px;
+    width: 100%;
+    min-height: 0;
+    padding: 12px;
+    box-sizing: border-box;
+}
+
+.panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.controls-panel {
+    padding: 12px;
+}
+
+.description-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+    background: color-mix(in srgb, var(--background-color-menu) 88%, white 12%);
+}
+
+.description-title {
+    color: var(--text-color-secondary);
+    font-size: 0.75em;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+.description-line {
+    color: var(--text-color);
+    line-height: 1.45;
+}
+
+.generator-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 12px;
+}
+
+.form-fields {
+    min-width: 0;
+}
+
+.span-all {
+    grid-column: 1 / -1;
+}
+
+.field-input {
+    width: 100%;
+    min-width: 0;
+}
+
+.bt-select {
+    font-size: 1.1em;
+    line-height: 1.5em;
+}
+
+.game-system-field {
+    gap: 10px;
+}
+
+.gameSystemSelector {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 0 16px;
+    width: 100%;
+    min-width: 0;
+    flex-wrap: nowrap;
+
+    @media (max-width: 460px) {
+        gap: 10px;
+        padding: 0;
+    }
+
+    &.loading {
+        pointer-events: none;
+
+        .battletech-logo,
+        .as-logo {
+            opacity: 0.3;
+            filter: grayscale(100%);
+        }
+
+        .switch-track {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .switch-thumb {
+            background-color: transparent;
+        }
+    }
+}
+
+.battletech-logo,
+.as-logo {
+    cursor: pointer;
+    transition: opacity 0.3s ease, filter 0.3s ease;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    flex: 1 1 0;
+    justify-content: end;
+
+    svg {
+        height: auto;
+        max-width: 100%;
+        max-height: 24px;
+    }
+
+    &.inactive {
+        opacity: 0.3;
+        filter: grayscale(100%);
+    }
+
+    &:hover:not(.inactive) {
+        opacity: 0.8;
+    }
+
+    @media (max-width: 460px) {
+        height: 18px;
+
+        svg {
+            max-height: 18px;
+        }
+    }
+
+    @media (max-width: 360px) {
+        height: 14px;
+
+        svg {
+            max-height: 14px;
+        }
+    }
+}
+
+.battletech-logo {
+    svg {
+        fill: #fff;
+
+        .logo-text {
+            fill: #fff;
+        }
+    }
+}
+
+.as-logo {
+    justify-content: start;
+}
+
+.game-system-switch {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+}
+
+.switch-track {
+    width: 40px;
+    height: 20px;
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    position: relative;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+
+    .gameSystemSelector:not(.loading) &.as-active {
+        .switch-thumb {
+            transform: translateX(20px);
+            background-color: #d22027;
+        }
+    }
+
+    @media (max-width: 460px) {
+        width: 36px;
+        height: 18px;
+
+        .gameSystemSelector:not(.loading) &.as-active {
+            .switch-thumb {
+                transform: translateX(18px);
+            }
+        }
+    }
+}
+
+.switch-thumb {
+    width: 16px;
+    height: 16px;
+    background-color: var(--bt-yellow);
+    border-radius: 50%;
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.3s ease, background-color 0.3s ease;
+
+    @media (max-width: 460px) {
+        width: 14px;
+        height: 14px;
+    }
+}
+
+:host ::ng-deep .generator-dropdown .label {
+    display: none;
+}
+
+:host ::ng-deep .generator-dropdown .pills-container {
+    margin-top: 0;
+}
+
+:host ::ng-deep .generator-dropdown .multi-select-container .display-area {
+    align-items: center;
+}
+
+.controls-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+}
+
+.eligible-count {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 8px 12px;
+    color: var(--text-color);
+}
+
+.eligible-label {
+    color: var(--text-color-secondary);
+    font-size: 0.75em;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+.eligible-value {
+    font-size: 1.05em;
+    font-weight: 700;
+}
+
+.preview-panel {
+    overflow: hidden;
+}
+
+.preview-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 8px;
+}
+
+.preview-empty {
+    padding: 32px 16px;
+    text-align: center;
+    color: var(--text-color-secondary);
+    line-height: 1.5;
+}
+
+.footer {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.modal-btn[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+@media (max-width: 960px) {
+    :host ::ng-deep .search-force-generator-dialog-modal .modal-body {
+        overflow: auto;
+    }
+
+    .dialog-layout {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto;
+    }
+
+    .preview-panel {
+        min-height: 320px;
+    }
+}
+
+@media (max-width: 720px) {
+    .generator-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .span-all {
+        grid-column: auto;
+    }
+
+    .controls-actions {
+        justify-content: stretch;
+    }
+
+    .eligible-count,
+    .controls-actions .bt-button {
+        width: 100%;
+        justify-content: center;
+    }
+}

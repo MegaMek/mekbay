@@ -39,22 +39,19 @@ import { GameSystem } from '../../models/common.model';
 import type { Era } from '../../models/eras.model';
 import type { Faction } from '../../models/factions.model';
 import { MULFACTION_EXTINCT } from '../../models/mulfactions.model';
-import { LoadForceEntry, type LoadForceGroup } from '../../models/load-force-entry.model';
+import type { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { AvailabilitySource } from '../../models/options.model';
 import type { Unit } from '../../models/units.model';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { LoadForcePreviewPanelComponent } from '../load-force-preview-panel/load-force-preview-panel.component';
 import { MultiSelectDropdownComponent, type DropdownOption, type MultiStateSelection } from '../multi-select-dropdown/multi-select-dropdown.component';
 import { DataService } from '../../services/data.service';
+import { ForceGeneratorService } from '../../services/force-generator.service';
 import { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
 import { AS_TYPE_DISPLAY_NAMES } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { UnitAvailabilitySourceService } from '../../services/unit-availability-source.service';
-import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
-import { getEffectivePilotingSkill } from '../../utils/cbt-common.util';
-import { ForceNamerUtil } from '../../utils/force-namer.util';
-import { PVCalculatorUtil } from '../../utils/pv-calculator.util';
 import { getMergedTags } from '../../utils/unit-search-shared.util';
 
 export interface ForceGeneratorDialogConfig {
@@ -92,14 +89,6 @@ function normalizeTagFilter(values: readonly string[]): string[] {
     return Array.from(new Set(values.map(normalizeTagToken).filter(Boolean)));
 }
 
-function getBudgetMetric(unit: Unit, gameSystem: GameSystem, gunnery: number, piloting: number): number {
-    if (gameSystem === GameSystem.ALPHA_STRIKE) {
-        return Math.max(0, PVCalculatorUtil.calculateAdjustedPV(unit.as.PV, gunnery));
-    }
-
-    return Math.max(0, BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, getEffectivePilotingSkill(unit, piloting)));
-}
-
 function matchesTagFilter(unit: Unit, tags: readonly string[]): boolean {
     if (tags.length === 0) {
         return true;
@@ -109,188 +98,10 @@ function matchesTagFilter(unit: Unit, tags: readonly string[]): boolean {
     return tags.every((tag) => unitTags.has(tag));
 }
 
-function getMinimumMetricTotal(
-    units: readonly Unit[],
-    count: number,
-    gameSystem: GameSystem,
-    gunnery: number,
-    piloting: number,
-): number {
-    if (count <= 0) {
-        return 0;
-    }
-
-    return [...units]
-        .map((unit) => getBudgetMetric(unit, gameSystem, gunnery, piloting))
-        .sort((left, right) => left - right)
-        .slice(0, count)
-        .reduce((sum, value) => sum + value, 0);
-}
-
-function pickWeightedRandomUnit(units: readonly Unit[], getWeight: (unit: Unit) => number): Unit {
-    const weights = units.map((unit) => Math.max(0, getWeight(unit)));
-    const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
-
-    if (totalWeight <= 0) {
-        return units[Math.floor(Math.random() * units.length)];
-    }
-
-    let cursor = Math.random() * totalWeight;
-    for (let index = 0; index < units.length; index++) {
-        cursor -= weights[index];
-        if (cursor <= 0) {
-            return units[index];
-        }
-    }
-
-    return units[units.length - 1];
-}
-
 function pickDefaultFaction(factions: readonly Faction[]): Faction | null {
     const nonExtinctFactions = factions.filter((faction) => faction.id !== MULFACTION_EXTINCT);
     const defaultPool = nonExtinctFactions.length > 0 ? nonExtinctFactions : factions;
     return defaultPool[Math.floor(Math.random() * defaultPool.length)] ?? null;
-}
-
-function buildGeneratedPreview(options: {
-    candidateUnits: readonly Unit[];
-    gameSystem: GameSystem;
-    budgetLimit: number;
-    minUnitCount: number;
-    maxUnitCount: number;
-    gunnery: number;
-    piloting: number;
-    getWeight: (unit: Unit) => number;
-}): ForceGeneratorPreview {
-    const minUnitCount = Math.max(1, Math.floor(options.minUnitCount));
-    const maxUnitCount = Math.max(minUnitCount, Math.floor(options.maxUnitCount));
-
-    if (options.candidateUnits.length < minUnitCount) {
-        return {
-            units: [],
-            totalCost: 0,
-            error: `Only ${options.candidateUnits.length} eligible units match the current filters.`,
-        };
-    }
-
-    const budgetLimit = options.budgetLimit > 0 ? options.budgetLimit : Number.POSITIVE_INFINITY;
-    if (Number.isFinite(budgetLimit)) {
-        const minimumMetricTotal = getMinimumMetricTotal(
-            options.candidateUnits,
-            minUnitCount,
-            options.gameSystem,
-            options.gunnery,
-            options.piloting,
-        );
-        if (minimumMetricTotal > budgetLimit) {
-            return {
-                units: [],
-                totalCost: 0,
-                error: 'The selected BV/PV limit is too low to satisfy the minimum unit count.',
-            };
-        }
-    }
-
-    const remainingUnits = [...options.candidateUnits];
-    const selectedUnits: Unit[] = [];
-    let budgetRemaining = budgetLimit;
-
-    while (selectedUnits.length < minUnitCount) {
-        const affordableUnits = Number.isFinite(budgetRemaining)
-            ? remainingUnits.filter((unit) => getBudgetMetric(unit, options.gameSystem, options.gunnery, options.piloting) <= budgetRemaining)
-            : remainingUnits;
-        if (affordableUnits.length === 0) {
-            break;
-        }
-
-        const requiredAfterSelection = minUnitCount - selectedUnits.length - 1;
-        const viableUnits = requiredAfterSelection > 0 && Number.isFinite(budgetRemaining)
-            ? affordableUnits.filter((candidateUnit) => {
-                const candidateMetric = getBudgetMetric(candidateUnit, options.gameSystem, options.gunnery, options.piloting);
-                const remainingAfterPick = remainingUnits.filter((unit) => unit !== candidateUnit);
-                return getMinimumMetricTotal(
-                    remainingAfterPick,
-                    requiredAfterSelection,
-                    options.gameSystem,
-                    options.gunnery,
-                    options.piloting,
-                )
-                    <= budgetRemaining - candidateMetric;
-            })
-            : affordableUnits;
-
-        const nextPool = viableUnits.length > 0 ? viableUnits : affordableUnits;
-        const nextUnit = pickWeightedRandomUnit(nextPool, options.getWeight);
-        selectedUnits.push(nextUnit);
-        budgetRemaining -= getBudgetMetric(nextUnit, options.gameSystem, options.gunnery, options.piloting);
-        remainingUnits.splice(remainingUnits.indexOf(nextUnit), 1);
-    }
-
-    if (selectedUnits.length < minUnitCount) {
-        return {
-            units: selectedUnits,
-            totalCost: selectedUnits.reduce((sum, unit) => sum + getBudgetMetric(unit, options.gameSystem, options.gunnery, options.piloting), 0),
-            error: 'Unable to build a force that satisfies the minimum unit count with the current budget.',
-        };
-    }
-
-    while (selectedUnits.length < maxUnitCount) {
-        const affordableUnits = Number.isFinite(budgetRemaining)
-            ? remainingUnits.filter((unit) => getBudgetMetric(unit, options.gameSystem, options.gunnery, options.piloting) <= budgetRemaining)
-            : remainingUnits;
-        if (affordableUnits.length === 0) {
-            break;
-        }
-
-        const nextUnit = pickWeightedRandomUnit(affordableUnits, options.getWeight);
-        selectedUnits.push(nextUnit);
-        budgetRemaining -= getBudgetMetric(nextUnit, options.gameSystem, options.gunnery, options.piloting);
-        remainingUnits.splice(remainingUnits.indexOf(nextUnit), 1);
-    }
-
-    return {
-        units: selectedUnits,
-        totalCost: selectedUnits.reduce((sum, unit) => sum + getBudgetMetric(unit, options.gameSystem, options.gunnery, options.piloting), 0),
-        error: null,
-    };
-}
-
-function createGeneratedForceEntry(options: {
-    name: string;
-    units: readonly Unit[];
-    gameSystem: GameSystem;
-    faction: Faction;
-    era: Era;
-    gunnery: number;
-    piloting: number;
-    totalCost: number;
-}): LoadForceEntry {
-    const previewGroup: LoadForceGroup = {
-        units: options.units.map((unit) => ({
-            unit,
-            alias: undefined,
-            destroyed: false,
-            gunnery: options.gameSystem === GameSystem.CLASSIC ? options.gunnery : undefined,
-            piloting: options.gameSystem === GameSystem.CLASSIC ? getEffectivePilotingSkill(unit, options.piloting) : undefined,
-            skill: options.gameSystem === GameSystem.ALPHA_STRIKE ? options.gunnery : undefined,
-        })),
-    };
-
-    return new LoadForceEntry({
-        instanceId: `generated-${Date.now()}-${Math.round(Math.random() * 1_000_000)}`,
-        timestamp: new Date().toISOString(),
-        type: options.gameSystem,
-        owned: true,
-        cloud: false,
-        local: false,
-        missing: false,
-        name: options.name,
-        faction: options.faction,
-        era: options.era,
-        bv: options.gameSystem === GameSystem.CLASSIC ? options.totalCost : undefined,
-        pv: options.gameSystem === GameSystem.ALPHA_STRIKE ? options.totalCost : undefined,
-        groups: [previewGroup],
-    });
 }
 
 @Component({
@@ -305,16 +116,28 @@ export class ForceGeneratorDialogComponent {
     readonly GameSystem = GameSystem;
     private readonly dialogRef = inject(DialogRef<ForceGeneratorDialogResult | null>);
     readonly dataService = inject(DataService);
+    private readonly forceGeneratorService = inject(ForceGeneratorService);
     readonly gameService = inject(GameService);
     private readonly optionsService = inject(OptionsService);
     private readonly unitSearchFilters = inject(UnitSearchFiltersService);
     private readonly unitAvailabilitySource = inject(UnitAvailabilitySourceService);
+    private readonly initialBudgetLimits = this.forceGeneratorService.resolveInitialBudgetLimits(
+        this.optionsService.options(),
+        this.unitSearchFilters.bvPvLimit(),
+        this.gameService.currentGameSystem(),
+    );
 
     readonly availabilitySource = signal<AvailabilitySource>(this.optionsService.options().availabilitySource);
     readonly gameSystem = this.gameService.currentGameSystem;
-    readonly eraId = signal<number | null>(null);
-    readonly factionId = signal<number | null>(null);
-    readonly bvPvLimit = signal(0);
+    readonly eraId = signal<number | null>(this.getDefaultEra(this.dataService.getEras())?.id ?? null);
+    readonly factionId = signal<number | null>(
+        this.pickDefaultFactionId(
+            this.getAvailableFactionsFor(this.getDefaultEra(this.dataService.getEras()), this.availabilitySource()),
+        ),
+    );
+    readonly classicBudgetLimit = signal(this.initialBudgetLimits.classicLimit);
+    readonly alphaStrikeBudgetLimit = signal(this.initialBudgetLimits.alphaStrikeLimit);
+    readonly bvPvLimit = computed(() => this.gameSystem() === GameSystem.ALPHA_STRIKE ? this.alphaStrikeBudgetLimit() : this.classicBudgetLimit());
     readonly selectedUnitTypes = signal<string[]>([DEFAULT_FORCE_GENERATOR_UNIT_TYPE]);
     readonly selectedTags = signal<string[]>([]);
     readonly minUnitCount = signal(4);
@@ -322,6 +145,17 @@ export class ForceGeneratorDialogComponent {
     readonly rerollRevision = signal(0);
     readonly pilotGunnerySkill = computed(() => this.unitSearchFilters.pilotGunnerySkill());
     readonly pilotPilotingSkill = computed(() => this.unitSearchFilters.pilotPilotingSkill());
+    readonly generationContext = computed(() => {
+        const gameSystem = this.gameSystem();
+        return {
+            gameSystem,
+            budgetLimit: gameSystem === GameSystem.ALPHA_STRIKE ? this.alphaStrikeBudgetLimit() : this.classicBudgetLimit(),
+            gunnery: this.pilotGunnerySkill(),
+            piloting: this.pilotPilotingSkill(),
+            minUnitCount: this.minUnitCount(),
+            maxUnitCount: this.maxUnitCount(),
+        };
+    });
 
     readonly eras = computed(() => this.dataService.getEras());
     readonly unitTypeOptions = computed<DropdownOption[]>(() => {
@@ -346,22 +180,12 @@ export class ForceGeneratorDialogComponent {
 
         const eraId = this.eraId();
         return eras.find((era) => era.id === eraId)
-            ?? eras.find((era) => era.name.trim().toLowerCase() === DEFAULT_FORCE_GENERATOR_ERA_NAME)
+            ?? this.getDefaultEra(eras)
             ?? eras[eras.length - 1]
             ?? null;
     });
     readonly selectedEraId = computed(() => this.selectedEra()?.id ?? null);
-    readonly availableFactions = computed(() => {
-        const era = this.selectedEra();
-        if (!era) {
-            return [];
-        }
-
-        const availabilitySource = this.availabilitySource();
-        return this.dataService.getFactions().filter(
-            (faction) => this.unitAvailabilitySource.getFactionEraUnitIds(faction, era, availabilitySource).size > 0,
-        );
-    });
+    readonly availableFactions = computed(() => this.getAvailableFactionsFor(this.selectedEra(), this.availabilitySource()));
     readonly selectedFaction = computed(() => {
         const availableFactions = this.availableFactions();
         if (availableFactions.length === 0) {
@@ -369,7 +193,7 @@ export class ForceGeneratorDialogComponent {
         }
 
         const factionId = this.factionId();
-        return availableFactions.find((faction) => faction.id === factionId) ?? pickDefaultFaction(availableFactions);
+        return availableFactions.find((faction) => faction.id === factionId) ?? null;
     });
     readonly selectedFactionId = computed(() => this.selectedFaction()?.id ?? null);
     readonly parsedUnitTypeFilter = computed(() => Array.from(new Set(this.selectedUnitTypes().filter(Boolean))));
@@ -381,19 +205,18 @@ export class ForceGeneratorDialogComponent {
             return [];
         }
 
+        const context = this.generationContext();
         const availabilitySource = this.availabilitySource();
         const availableUnitIds = this.unitAvailabilitySource.getFactionEraUnitIds(faction, era, availabilitySource);
         const unitTypes = this.parsedUnitTypeFilter();
         const tags = this.parsedTagFilter();
-        const gunnery = this.pilotGunnerySkill();
-        const piloting = this.pilotPilotingSkill();
 
         return this.dataService.getUnits().filter((unit) => {
             if (!availableUnitIds.has(this.unitAvailabilitySource.getUnitAvailabilityKey(unit, availabilitySource))) {
                 return false;
             }
 
-            if (getBudgetMetric(unit, this.gameSystem(), gunnery, piloting) <= 0) {
+            if (this.forceGeneratorService.getBudgetMetric(unit, context.gameSystem, context.gunnery, context.piloting) <= 0) {
                 return false;
             }
 
@@ -406,6 +229,7 @@ export class ForceGeneratorDialogComponent {
     });
     readonly preview = computed(() => {
         this.rerollRevision();
+        const context = this.generationContext();
 
         const era = this.selectedEra();
         const faction = this.selectedFaction();
@@ -417,18 +241,19 @@ export class ForceGeneratorDialogComponent {
             } satisfies ForceGeneratorPreview;
         }
 
-        return buildGeneratedPreview({
-            candidateUnits: this.candidateUnits(),
-            gameSystem: this.gameSystem(),
-            budgetLimit: this.bvPvLimit(),
-            minUnitCount: this.minUnitCount(),
-            maxUnitCount: this.maxUnitCount(),
-            gunnery: this.pilotGunnerySkill(),
-            piloting: this.pilotPilotingSkill(),
+        return this.forceGeneratorService.buildPreview({
+            eligibleUnits: this.candidateUnits(),
+            gameSystem: context.gameSystem,
+            budgetLimit: context.budgetLimit,
+            minUnitCount: context.minUnitCount,
+            maxUnitCount: context.maxUnitCount,
+            gunnery: context.gunnery,
+            piloting: context.piloting,
             getWeight: (unit) => this.unitAvailabilitySource.getUnitAvailabilityWeight(unit, faction, era, this.availabilitySource()) ?? 1,
         });
     });
     readonly previewEntry = computed(() => {
+        const context = this.generationContext();
         const era = this.selectedEra();
         const faction = this.selectedFaction();
         const preview = this.preview();
@@ -436,14 +261,13 @@ export class ForceGeneratorDialogComponent {
             return null;
         }
 
-        return createGeneratedForceEntry({
-            name: ForceNamerUtil.generateForceNameForFaction(faction),
+        return this.forceGeneratorService.createForceEntry({
             units: preview.units,
-            gameSystem: this.gameSystem(),
+            gameSystem: context.gameSystem,
             faction,
             era,
-            gunnery: this.pilotGunnerySkill(),
-            piloting: this.pilotPilotingSkill(),
+            gunnery: context.gunnery,
+            piloting: context.piloting,
             totalCost: preview.totalCost,
         });
     });
@@ -451,14 +275,16 @@ export class ForceGeneratorDialogComponent {
     onAvailabilitySourceChange(event: Event): void {
         const value = (event.target as HTMLSelectElement).value;
         this.availabilitySource.set(value === 'megamek' ? 'megamek' : 'mul');
+        this.resetFactionSelection();
     }
 
     onBudgetLimitChange(event: Event): void {
-        this.bvPvLimit.set(this.parseNumericValue(event, 0));
+        this.setBudgetLimitForSystem(this.gameSystem(), this.parseNumericValue(event, this.bvPvLimit()));
     }
 
     onEraChange(event: Event): void {
         this.eraId.set(this.parseNumericValue(event, this.selectedEraId() ?? 0));
+        this.resetFactionSelection();
     }
 
     onFactionChange(event: Event): void {
@@ -524,6 +350,52 @@ export class ForceGeneratorDialogComponent {
 
     dismiss(): void {
         this.dialogRef.close(null);
+    }
+
+    private getDefaultEra(eras: readonly Era[]): Era | null {
+        return eras.find((era) => era.name.trim().toLowerCase() === DEFAULT_FORCE_GENERATOR_ERA_NAME) ?? eras[eras.length - 1] ?? null;
+    }
+
+    private getAvailableFactionsFor(era: Era | null, availabilitySource: AvailabilitySource): Faction[] {
+        if (!era) {
+            return [];
+        }
+
+        return this.dataService.getFactions().filter(
+            (faction) => this.unitAvailabilitySource.getFactionEraUnitIds(faction, era, availabilitySource).size > 0,
+        );
+    }
+
+    private pickDefaultFactionId(factions: readonly Faction[]): number | null {
+        return pickDefaultFaction(factions)?.id ?? null;
+    }
+
+    private resetFactionSelection(): void {
+        const availableFactions = this.getAvailableFactionsFor(this.selectedEra(), this.availabilitySource());
+        if (availableFactions.some((faction) => faction.id === this.factionId())) {
+            return;
+        }
+
+        this.factionId.set(this.pickDefaultFactionId(availableFactions));
+    }
+
+    private setBudgetLimitForSystem(gameSystem: GameSystem, value: number): void {
+        const nextValue = Math.max(0, value);
+        if (gameSystem === GameSystem.ALPHA_STRIKE) {
+            if (this.alphaStrikeBudgetLimit() === nextValue) {
+                return;
+            }
+
+            this.alphaStrikeBudgetLimit.set(nextValue);
+        } else {
+            if (this.classicBudgetLimit() === nextValue) {
+                return;
+            }
+
+            this.classicBudgetLimit.set(nextValue);
+        }
+
+        void this.optionsService.setOption(this.forceGeneratorService.getStoredBudgetOptionKey(gameSystem), nextValue);
     }
 
     private parseNumericValue(event: Event, fallback: number): number {

@@ -54,7 +54,7 @@ import { OptionsService } from './options.service';
 import { LoadForceEntry, type LoadForceUnit } from '../models/load-force-entry.model';
 import { ForceLoadDialogComponent, type ForceLoadDialogResult } from '../components/force-load-dialog/force-load-dialog.component';
 import { ForcePackDialogComponent, type ForcePackDialogResult } from '../components/force-pack-dialog/force-pack-dialog.component';
-import type { ForceGeneratorDialogResult } from '../components/force-generator-dialog/force-generator-dialog.component';
+import type { SearchForceGeneratorDialogResult } from '../components/search-force-generator-dialog/search-force-generator-dialog.component';
 import type { SerializedForce } from '../models/force-serialization';
 import { EditPilotDialogComponent, type EditPilotDialogData, type EditPilotResult } from '../components/edit-pilot-dialog/edit-pilot-dialog.component';
 import { EditASPilotDialogComponent, type EditASPilotDialogData, type EditASPilotResult } from '../components/edit-as-pilot-dialog/edit-as-pilot-dialog.component';
@@ -75,6 +75,7 @@ import { buildMultiForceQueryParams, parseForceFromUrl, type ForceQueryParams, t
 import { CBTPrintUtil } from '../utils/cbtprint.util';
 import { ASPrintUtil } from '../utils/asprint.util';
 import type { ForceSlot, ForceAlignment } from '../models/force-slot.model';
+import { MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationAbilityAssignmentUtil } from '../utils/formation-ability-assignment.util';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
@@ -1302,11 +1303,14 @@ export class ForceBuilderService {
                 allFactionNames,
                 factionFilter.wildcardPatterns
             );
-            if (positiveFactions.length === 0) {
-                return null;
+            const candidateFactions = positiveFactions
+                .map((name) => this.dataService.getFactionByName(name))
+                .filter((faction): faction is Faction => !!faction && faction.id !== MULFACTION_EXTINCT);
+            if (candidateFactions.length === 0) {
+                return this.dataService.getFactionById(MULFACTION_MERCENARY) ?? null;
             }
-            const pickedName = positiveFactions[Math.floor(Math.random() * positiveFactions.length)];
-            return this.dataService.getFactionByName(pickedName) ?? null;
+
+            return candidateFactions[Math.floor(Math.random() * candidateFactions.length)] ?? null;
         } catch {
             // UnitSearchFiltersService not available, fall through
             return null;
@@ -1931,14 +1935,24 @@ export class ForceBuilderService {
     }
 
     async showForceGeneratorDialog(): Promise<void> {
+        await this.showSearchForceGeneratorDialog();
+    }
+
+    async showSearchForceGeneratorDialog(): Promise<void> {
         if (!this.dataService.isDataReady()) {
             this.toastService.showToast('Data is still loading.', 'info');
             return;
         }
 
-        const { ForceGeneratorDialogComponent } = await import('../components/force-generator-dialog/force-generator-dialog.component');
-        const dialogRef = this.dialogsService.createDialog<ForceGeneratorDialogResult | null>(ForceGeneratorDialogComponent);
-        const result = await firstValueFrom(dialogRef.closed);
+        const { SearchForceGeneratorDialogComponent } = await import('../components/search-force-generator-dialog/search-force-generator-dialog.component');
+        const dialogRef = this.dialogsService.createDialog<SearchForceGeneratorDialogResult | null>(SearchForceGeneratorDialogComponent);
+
+        await this.finalizeGeneratedForceDialog((await firstValueFrom(dialogRef.closed)) ?? null);
+    }
+
+    private async finalizeGeneratedForceDialog(
+        result: { forceEntry: LoadForceEntry; config: { gameSystem: GameSystem }; totalCost: number } | null,
+    ): Promise<void> {
         const unitCount = result?.forceEntry.groups.reduce(
             (sum, group) => sum + group.units.filter((unitEntry) => unitEntry.unit).length,
             0,
@@ -1948,7 +1962,6 @@ export class ForceBuilderService {
         }
 
         const force = await this.createGeneratedForce(result.forceEntry);
-
         if (!force) {
             this.toastService.showToast('Failed to generate a new force.', 'error');
             return;

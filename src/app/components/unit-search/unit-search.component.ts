@@ -2189,6 +2189,10 @@ export class UnitSearchComponent {
         this.closeAllPanels();
     }
 
+    showGenerateForceDialog(): void {
+        void this.forceBuilderService.showSearchForceGeneratorDialog();
+    }
+
     /**
      * Show ability info dialog for an Alpha Strike special ability.
      * @param abilityText The original ability text (e.g., "ECM", "LRM1/2/2")
