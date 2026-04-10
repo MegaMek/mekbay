@@ -12,7 +12,7 @@
                 </div>
 
                 <div class="generator-grid">
-                    <div class="form-fields span-all game-system-field">
+                    <div class="form-fields span-all">
                         <label class="field-label">Game System</label>
                         <div class="gameSystemSelector" [class.loading]="!this.dataService.isDataReady()">
                             <div class="battletech-logo" [class.inactive]="gameService.isAlphaStrike()"
@@ -47,26 +47,6 @@
                                 </svg>
                             </div>
                         </div>
-                    </div>
-
-                    <div class="form-fields">
-                        <label class="field-label">Availability Source</label>
-                        <select class="bt-select" [value]="availabilitySource()" (change)="onAvailabilitySourceChange($event)">
-                            <option value="mul">Master Unit List</option>
-                            <option value="megamek">MegaMek's RAT</option>
-                        </select>
-                    </div>
-
-                    <div class="form-fields">
-                        <label class="field-label">{{ budgetFieldLabel() }}</label>
-                        <input
-                            class="bt-input field-input"
-                            type="number"
-                            min="0"
-                            step="1"
-                            [value]="bvPvLimit()"
-                            (input)="onBudgetLimitChange($event)"
-                            placeholder="0 = no limit" />
                     </div>
 
                     <div class="form-fields span-all">
@@ -122,6 +102,30 @@
                         <label class="field-label">Max Units</label>
                         <input class="bt-input field-input" type="number" min="1" step="1" [value]="maxUnitCount()" (input)="onMaxUnitCountChange($event)" />
                     </div>
+
+                    <div class="form-fields">
+                        <label class="field-label">{{ budgetMinimumFieldLabel() }}</label>
+                        <input
+                            class="bt-input field-input"
+                            type="number"
+                            min="0"
+                            step="1"
+                            [value]="budgetRange().min"
+                            (input)="onBudgetMinChange($event)"
+                            placeholder="0 = no minimum" />
+                    </div>
+
+                    <div class="form-fields">
+                        <label class="field-label">{{ budgetMaximumFieldLabel() }}</label>
+                        <input
+                            class="bt-input field-input"
+                            type="number"
+                            min="0"
+                            step="1"
+                            [value]="budgetRange().max || ''"
+                            (input)="onBudgetMaxChange($event)"
+                            placeholder="0 = no maximum" />
+                    </div>
                 </div>
 
                 <div class="controls-actions">
@@ -141,6 +145,27 @@
                         <load-force-preview-panel [force]="previewForceEntry"></load-force-preview-panel>
                     }
                 </div>
+
+                @if (preview().explanationLines.length > 0) {
+                    <div class="preview-explanation-overlay">
+                        <div class="preview-explanation-shell framed-borders" [class.expanded]="collapsedHowPicksWhereChosen()">
+                            <button class="preview-explanation-toggle" type="button" (click)="toggleHowPicksWereChosen()">
+                                <span class="preview-explanation-title">How Picks Were Chosen</span>
+                                <svg class="chevron" width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!collapsedHowPicksWhereChosen()">
+                                    <path d="M0 2l5 6 5-6z"/>
+                                </svg>
+                            </button>
+
+                            @if (collapsedHowPicksWhereChosen()) {
+                                <div class="preview-explanation-panel allow-select">
+                                    @for (line of preview().explanationLines; track line) {
+                                        <div class="preview-explanation-line">{{ line }}</div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
             </section>
         </div>
     </div>

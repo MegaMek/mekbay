@@ -46,6 +46,74 @@
     min-height: 0;
 }
 
+.preview-panel {
+    position: relative;
+    overflow: hidden;
+}
+
+.preview-explanation-title {
+    color: var(--text-color-secondary);
+    font-size: 0.75em;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+.preview-explanation-overlay {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    z-index: 2;
+}
+
+.preview-explanation-shell {
+    background: color-mix(in srgb, var(--background-color-menu) 88%, black 12%);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(4px);
+}
+
+.preview-explanation-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+}
+
+.preview-explanation-toggle:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.preview-explanation-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: min(36vh, 260px);
+    padding: 0 12px 12px;
+    overflow: auto;
+}
+
+.preview-explanation-line {
+    color: var(--text-color);
+    line-height: 1.45;
+}
+
+.chevron {
+    color: var(--text-color-secondary);
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+}
+
+.chevron.collapsed {
+    transform: rotate(-90deg);
+}
+
 .controls-panel {
     padding: 12px;
 }
@@ -95,16 +163,13 @@
     line-height: 1.5em;
 }
 
-.game-system-field {
-    gap: 10px;
-}
-
 .gameSystemSelector {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
-    padding: 4px;
+    padding: 8px;
+    box-sizing: border-box;
     width: 100%;
     min-width: 0;
     flex-wrap: nowrap;
@@ -279,10 +344,6 @@
 .eligible-value {
     font-size: 1.05em;
     font-weight: 700;
-}
-
-.preview-panel {
-    overflow: hidden;
 }
 
 .preview-body {

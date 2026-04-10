@@ -36,12 +36,8 @@ import { DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 
 import { GameSystem } from '../../models/common.model';
-import type { Era } from '../../models/eras.model';
-import type { Faction } from '../../models/factions.model';
-import { MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../../models/mulfactions.model';
 import type { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { AvailabilitySource } from '../../models/options.model';
-import type { Unit } from '../../models/units.model';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { LoadForcePreviewPanelComponent } from '../load-force-preview-panel/load-force-preview-panel.component';
 import { MultiSelectDropdownComponent, type MultiStateSelection } from '../multi-select-dropdown/multi-select-dropdown.component';
@@ -51,13 +47,14 @@ import { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
 import type { AdvFilterOptions, DropdownFilterOptions } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
-import { UnitAvailabilitySourceService } from '../../services/unit-availability-source.service';
-import { getPositiveFactionNamesFromFilter } from '../../utils/faction-filter.util';
 
 export interface SearchForceGeneratorDialogConfig {
     gameSystem: GameSystem;
     availabilitySource: AvailabilitySource;
-    bvPvLimit: number;
+    budgetRange: {
+        min: number;
+        max: number;
+    };
     minUnitCount: number;
     maxUnitCount: number;
 }
@@ -92,8 +89,7 @@ export class SearchForceGeneratorDialogComponent {
     readonly gameService = inject(GameService);
     private readonly optionsService = inject(OptionsService);
     readonly filtersService = inject(UnitSearchFiltersService);
-    private readonly unitAvailabilitySource = inject(UnitAvailabilitySourceService);
-    private readonly initialBudgetLimits = this.forceGeneratorService.resolveInitialBudgetLimits(
+    private readonly initialBudgetDefaults = this.forceGeneratorService.resolveInitialBudgetDefaults(
         this.optionsService.options(),
         this.filtersService.bvPvLimit(),
         this.gameService.currentGameSystem(),
@@ -136,103 +132,68 @@ export class SearchForceGeneratorDialogComponent {
             : `Gunnery ${this.pilotGunnerySkill()} Piloting ${this.pilotPilotingSkill()}`;
         lines.push(`${skillLabel}`);
 
-        const contextParts = [this.selectedFactionForGeneration()?.name, this.selectedEraForGeneration()?.name].filter(Boolean);
+        const generationContext = this.resolvedGenerationContext();
+        const contextParts = [generationContext.forceFaction?.name, generationContext.forceEra?.name].filter(Boolean);
         if (contextParts.length > 0) {
             lines.push(`Generation Context: ${contextParts.join(' - ')}.`);
         }
 
         return lines;
     });
-    readonly classicBudgetLimit = signal(this.initialBudgetLimits.classicLimit);
-    readonly alphaStrikeBudgetLimit = signal(this.initialBudgetLimits.alphaStrikeLimit);
-    readonly bvPvLimit = computed(() => this.gameSystem() === GameSystem.ALPHA_STRIKE ? this.alphaStrikeBudgetLimit() : this.classicBudgetLimit());
+    readonly classicBudgetMin = signal(this.initialBudgetDefaults.classic.min);
+    readonly classicBudgetMax = signal(this.initialBudgetDefaults.classic.max);
+    readonly alphaStrikeBudgetMin = signal(this.initialBudgetDefaults.alphaStrike.min);
+    readonly alphaStrikeBudgetMax = signal(this.initialBudgetDefaults.alphaStrike.max);
+    readonly budgetRange = computed(() => this.gameSystem() === GameSystem.ALPHA_STRIKE
+        ? { min: this.alphaStrikeBudgetMin(), max: this.alphaStrikeBudgetMax() }
+        : { min: this.classicBudgetMin(), max: this.classicBudgetMax() });
     readonly minUnitCount = signal(getDefaultMinUnitCount(this.eligibleUnits().length));
     readonly maxUnitCount = signal(getDefaultMaxUnitCount(this.eligibleUnits().length, this.minUnitCount()));
     readonly rerollRevision = signal(0);
-    readonly generationContext = computed(() => {
+    readonly collapsedHowPicksWhereChosen = signal(false);
+    readonly generationSettings = computed(() => {
         const gameSystem = this.gameSystem();
         return {
             gameSystem,
-            budgetLimit: gameSystem === GameSystem.ALPHA_STRIKE ? this.alphaStrikeBudgetLimit() : this.classicBudgetLimit(),
+            budgetRange: gameSystem === GameSystem.ALPHA_STRIKE
+                ? { min: this.alphaStrikeBudgetMin(), max: this.alphaStrikeBudgetMax() }
+                : { min: this.classicBudgetMin(), max: this.classicBudgetMax() },
             gunnery: this.pilotGunnerySkill(),
             piloting: this.pilotPilotingSkill(),
             minUnitCount: this.minUnitCount(),
             maxUnitCount: this.maxUnitCount(),
         };
     });
-    readonly selectedEraForGeneration = computed(() => {
-        const filterState = this.filtersService.effectiveFilterState()['era'];
-        if (!filterState?.interactedWith || !Array.isArray(filterState.value) || filterState.value.length === 0) {
-            return null;
-        }
-
-        return this.dataService.getEraByName(filterState.value[0]) ?? null;
-    });
-    readonly selectedFactionForGeneration = computed(() => {
+    readonly resolvedGenerationContext = computed(() => {
         this.rerollRevision();
-
-        const fallbackFaction = this.dataService.getFactionById(MULFACTION_MERCENARY) ?? null;
-        const filterState = this.filtersService.effectiveFilterState()['faction'];
-        if (!filterState?.interactedWith || !filterState.value) {
-            return null;
-        }
-
-        const allFactionNames = this.dataService.getFactions().map((faction) => faction.name);
-        const selectedFactionNames = getPositiveFactionNamesFromFilter(
-            filterState.value as MultiStateSelection,
-            allFactionNames,
-            filterState.wildcardPatterns,
-        );
-        const candidateFactions = selectedFactionNames
-            .map((name) => this.dataService.getFactionByName(name))
-            .filter((faction): faction is Faction => !!faction && faction.id !== MULFACTION_EXTINCT);
-
-        if (candidateFactions.length === 0) {
-            return fallbackFaction;
-        }
-
-        return candidateFactions[Math.floor(Math.random() * candidateFactions.length)] ?? fallbackFaction;
+        return this.forceGeneratorService.resolveGenerationContext(this.eligibleUnits());
     });
     readonly preview = computed(() => {
-        this.rerollRevision();
-        const context = this.generationContext();
+        const generationContext = this.resolvedGenerationContext();
+        const settings = this.generationSettings();
 
         return this.forceGeneratorService.buildPreview({
             eligibleUnits: this.eligibleUnits(),
-            gameSystem: context.gameSystem,
-            budgetLimit: context.budgetLimit,
-            minUnitCount: context.minUnitCount,
-            maxUnitCount: context.maxUnitCount,
-            gunnery: context.gunnery,
-            piloting: context.piloting,
-            getWeight: (unit) => this.getUnitWeight(unit),
+            context: generationContext,
+            gameSystem: settings.gameSystem,
+            budgetRange: settings.budgetRange,
+            minUnitCount: settings.minUnitCount,
+            maxUnitCount: settings.maxUnitCount,
+            gunnery: settings.gunnery,
+            piloting: settings.piloting,
         });
     });
     readonly previewEntry = computed(() => {
-        const context = this.generationContext();
         const preview = this.preview();
-        if (preview.error || preview.units.length === 0) {
-            return null;
-        }
-
-        return this.forceGeneratorService.createForceEntry({
-            units: preview.units,
-            totalCost: preview.totalCost,
-            gameSystem: context.gameSystem,
-            faction: this.selectedFactionForGeneration(),
-            era: this.selectedEraForGeneration(),
-            gunnery: context.gunnery,
-            piloting: context.piloting,
-        });
+        return this.forceGeneratorService.createForceEntry(preview);
     });
 
-    budgetFieldLabel(): string {
-        return this.gameSystem() === GameSystem.ALPHA_STRIKE ? 'PV Limit' : 'BV Limit';
+    budgetMinimumFieldLabel(): string {
+        return this.gameSystem() === GameSystem.ALPHA_STRIKE ? 'Min PV' : 'Min BV';
     }
 
-    onAvailabilitySourceChange(event: Event): void {
-        const value = (event.target as HTMLSelectElement).value;
-        void this.optionsService.setOption('availabilitySource', value === 'megamek' ? 'megamek' : 'mul');
+    budgetMaximumFieldLabel(): string {
+        return this.gameSystem() === GameSystem.ALPHA_STRIKE ? 'Max PV' : 'Max BV';
     }
 
     onEraSelectionChange(selection: MultiStateSelection | readonly string[]): void {
@@ -247,8 +208,20 @@ export class SearchForceGeneratorDialogComponent {
         this.filtersService.setFilter('_tags', Array.isArray(selection) ? {} : selection);
     }
 
-    onBudgetLimitChange(event: Event): void {
-        this.setBudgetLimitForSystem(this.gameSystem(), this.parseNumericValue(event, this.bvPvLimit()));
+    onBudgetMinChange(event: Event): void {
+        this.setBudgetRangeForSystem(
+            this.gameSystem(),
+            this.parseNumericValue(event, this.budgetRange().min),
+            this.budgetRange().max,
+        );
+    }
+
+    onBudgetMaxChange(event: Event): void {
+        this.setBudgetRangeForSystem(
+            this.gameSystem(),
+            this.budgetRange().min,
+            this.parseNumericValue(event, this.budgetRange().max),
+        );
     }
 
     onMinUnitCountChange(event: Event): void {
@@ -271,6 +244,10 @@ export class SearchForceGeneratorDialogComponent {
         this.rerollRevision.update((value) => value + 1);
     }
 
+    toggleHowPicksWereChosen(): void {
+        this.collapsedHowPicksWhereChosen.update((value) => !value);
+    }
+
     submit(): void {
         const previewEntry = this.previewEntry();
         const preview = this.preview();
@@ -283,7 +260,7 @@ export class SearchForceGeneratorDialogComponent {
             config: {
                 gameSystem: this.gameSystem(),
                 availabilitySource: this.availabilitySource(),
-                bvPvLimit: this.bvPvLimit(),
+                budgetRange: this.budgetRange(),
                 minUnitCount: this.minUnitCount(),
                 maxUnitCount: this.maxUnitCount(),
             },
@@ -293,21 +270,6 @@ export class SearchForceGeneratorDialogComponent {
 
     dismiss(): void {
         this.dialogRef.close(null);
-    }
-
-    private getUnitWeight(unit: Unit): number {
-        const faction = this.selectedFactionForGeneration();
-        const era = this.selectedEraForGeneration();
-        if (this.availabilitySource() !== 'megamek' || !faction || !era) {
-            return 1;
-        }
-
-        return this.unitAvailabilitySource.getUnitAvailabilityWeight(
-            unit,
-            faction,
-            era,
-            this.availabilitySource(),
-        ) ?? 1;
     }
 
     private getDropdownFilter(key: string): DropdownFilterOptions | null {
@@ -364,23 +326,44 @@ export class SearchForceGeneratorDialogComponent {
         return `${option.label} ${visibleSelections.join(', ')}${hiddenCount > 0 ? ` +${hiddenCount}` : ''}`;
     }
 
-    private setBudgetLimitForSystem(gameSystem: GameSystem, value: number): void {
-        const nextValue = Math.max(0, value);
+    private setBudgetRangeForSystem(gameSystem: GameSystem, minValue: number, maxValue: number): void {
+        const nextMin = Math.max(0, minValue);
+        const nextMax = maxValue > 0 ? Math.max(nextMin, maxValue) : 0;
+        const optionKeys = this.forceGeneratorService.getStoredBudgetOptionKeys(gameSystem);
+
         if (gameSystem === GameSystem.ALPHA_STRIKE) {
-            if (this.alphaStrikeBudgetLimit() === nextValue) {
+            const didChangeMin = this.alphaStrikeBudgetMin() !== nextMin;
+            const didChangeMax = this.alphaStrikeBudgetMax() !== nextMax;
+            if (!didChangeMin && !didChangeMax) {
                 return;
             }
 
-            this.alphaStrikeBudgetLimit.set(nextValue);
+            this.alphaStrikeBudgetMin.set(nextMin);
+            this.alphaStrikeBudgetMax.set(nextMax);
+
+            if (didChangeMin) {
+                void this.optionsService.setOption(optionKeys.min, nextMin);
+            }
+            if (didChangeMax) {
+                void this.optionsService.setOption(optionKeys.max, nextMax);
+            }
         } else {
-            if (this.classicBudgetLimit() === nextValue) {
+            const didChangeMin = this.classicBudgetMin() !== nextMin;
+            const didChangeMax = this.classicBudgetMax() !== nextMax;
+            if (!didChangeMin && !didChangeMax) {
                 return;
             }
 
-            this.classicBudgetLimit.set(nextValue);
-        }
+            this.classicBudgetMin.set(nextMin);
+            this.classicBudgetMax.set(nextMax);
 
-        void this.optionsService.setOption(this.forceGeneratorService.getStoredBudgetOptionKey(gameSystem), nextValue);
+            if (didChangeMin) {
+                void this.optionsService.setOption(optionKeys.min, nextMin);
+            }
+            if (didChangeMax) {
+                void this.optionsService.setOption(optionKeys.max, nextMax);
+            }
+        }
     }
 
     private parseNumericValue(event: Event, fallback: number): number {
