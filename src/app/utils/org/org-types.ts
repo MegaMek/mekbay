@@ -52,7 +52,6 @@ export type OrgType =
     // Generic
     | 'Force'
     | 'Mercenary'
-    | 'Element'
     | 'Unit'
 
     // IS-specific types
