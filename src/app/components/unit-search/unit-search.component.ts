@@ -37,7 +37,8 @@ import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-inter
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
-import { SORT_OPTIONS, type SortOption, type SerializedSearchFilter } from '../../services/unit-search-filters.model';
+import { MEGAMEK_RARITY_SORT_KEY, SORT_OPTIONS, type SortOption, type SerializedSearchFilter } from '../../services/unit-search-filters.model';
+import { getMegaMekAvailabilityRarityForScore, MEGAMEK_AVAILABILITY_UNKNOWN_SCORE } from '../../models/megamek/availability.model';
 import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
 import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
 import type { Unit } from '../../models/units.model';
@@ -380,7 +381,7 @@ export class UnitSearchComponent {
         // Check if the sort key produces numerical values
         const units = this.filtersService.filteredUnits();
         if (units.length === 0) return null;
-        const sample = this.getNestedProperty(units[0], key);
+        const sample = this.getUnitSortRawValue(units[0], key);
         if (typeof sample !== 'number') return null;
 
         const opt: SortOption | undefined = this.SORT_OPTIONS.find(o => o.key === key);
@@ -1903,7 +1904,7 @@ export class UnitSearchComponent {
         let isNumeric = false;
 
         for (const unit of group.units) {
-            const raw = this.getNestedProperty(unit, key);
+            const raw = this.getUnitSortRawValue(unit, key);
             if (typeof raw === 'number') {
                 isNumeric = true;
                 if (raw < min) min = raw;
@@ -1912,6 +1913,12 @@ export class UnitSearchComponent {
         }
 
         if (!isNumeric) return null;
+
+        if (key === MEGAMEK_RARITY_SORT_KEY) {
+            const fmtMin = this.formatMegaMekRaritySortScore(min);
+            const fmtMax = this.formatMegaMekRaritySortScore(max);
+            return min === max ? fmtMin : `${fmtMin}–${fmtMax}`;
+        }
 
         const fmtMin = FormatNumberPipe.formatValue(min, true, false);
         const fmtMax = FormatNumberPipe.formatValue(max, true, false);
@@ -1971,10 +1978,41 @@ export class UnitSearchComponent {
             return this.formatClassicSubtype(unit) || '—';
         }
 
-        const raw = this.getNestedProperty(unit, key);
+        if (key === MEGAMEK_RARITY_SORT_KEY) {
+            return this.formatMegaMekRaritySortScore(this.filtersService.getMegaMekRaritySortScore(unit));
+        }
+
+        const raw = this.getUnitSortRawValue(unit, key);
         if (raw == null) return '—';
 
         return typeof raw === 'number' ? FormatNumberPipe.formatValue(raw, true, false) : String(raw);
+    }
+
+    getCardSortSlotOverride(unit: Unit): { value: string; numeric?: boolean } | null {
+        if (this.filtersService.selectedSort() !== MEGAMEK_RARITY_SORT_KEY) {
+            return null;
+        }
+
+        return {
+            value: this.formatMegaMekRaritySortScore(this.filtersService.getMegaMekRaritySortScore(unit)),
+            numeric: false,
+        };
+    }
+
+    private formatMegaMekRaritySortScore(score: number): string {
+        if (score === MEGAMEK_AVAILABILITY_UNKNOWN_SCORE) {
+            return '—';
+        }
+
+        return getMegaMekAvailabilityRarityForScore(score);
+    }
+
+    private getUnitSortRawValue(unit: Unit, key: string): unknown {
+        if (key === MEGAMEK_RARITY_SORT_KEY) {
+            return this.filtersService.getMegaMekRaritySortScore(unit);
+        }
+
+        return this.getNestedProperty(unit, key);
     }
 
     formatClassicStat(value: number | undefined): string {

@@ -25,6 +25,8 @@ import {
     usesIndexedDropdownAvailability,
     usesIndexedDropdownUniverse,
 } from '../utils/unit-search-filter-config.util';
+import type { MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
+import { MEGAMEK_RARITY_SORT_KEY } from './unit-search-filters.model';
 import { SEARCH_WORKER_FACTORY } from '../utils/unit-search-worker-factory.util';
 import type { SearchWorkerLike } from '../utils/unit-search-worker-client.util';
 import type { UnitSearchWorkerResponseMessage } from '../utils/unit-search-worker-protocol.util';
@@ -36,6 +38,13 @@ interface BenchmarkBundle {
     units: Units;
     factions: MULFactions;
     eras: Eras;
+}
+
+interface SyntheticMegaMekRarityBenchmarkScenario {
+    bundle: BenchmarkBundle;
+    availabilityRecords: MegaMekWeightedAvailabilityRecord[];
+    availabilityRecordsByName: ReadonlyMap<string, MegaMekWeightedAvailabilityRecord>;
+    expectedTopScore: number;
 }
 
 class FakeSearchWorker implements SearchWorkerLike {
@@ -367,6 +376,50 @@ function createStandaloneBundle(): BenchmarkBundle {
                 },
             }],
         },
+    };
+}
+
+function buildSyntheticMegaMekRarityBenchmarkScenario(targetCount: number): SyntheticMegaMekRarityBenchmarkScenario {
+    const bundle = buildBenchmarkBundle(createStandaloneBundle(), targetCount);
+    let expectedTopScore = -1;
+
+    const availabilityRecords = bundle.units.units.flatMap((unit, index) => {
+        if (index % 13 === 0) {
+            return [];
+        }
+
+        let productionScore = (index % 10) + 1;
+        let salvageScore = (((index + 3) % 8) + 1) * 1.2;
+
+        if (index % 10 === 0) {
+            productionScore = 0;
+        }
+        if (index % 15 === 0) {
+            salvageScore = 0;
+        }
+
+        const effectiveScore = Math.max(productionScore, salvageScore);
+        expectedTopScore = Math.max(expectedTopScore, effectiveScore);
+
+        return [{
+            n: unit.name,
+            e: {
+                '1': {
+                    '1': [productionScore, salvageScore] as [number, number],
+                },
+            },
+        }];
+    });
+
+    const availabilityRecordsByName = new Map(
+        availabilityRecords.map(record => [record.n, record] as const)
+    );
+
+    return {
+        bundle,
+        availabilityRecords,
+        availabilityRecordsByName,
+        expectedTopScore,
     };
 }
 
@@ -1199,6 +1252,56 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Available Unit', 'Missing Data Unit']);
     });
 
+    it('sorts by MegaMek rarity even when MUL availability is selected', () => {
+        const bundle = createStandaloneBundle();
+        const lowUnit = bundle.units.units[0];
+        const highUnit = bundle.units.units[1];
+        const unknownUnit = createTestUnit({
+            id: 3,
+            name: 'Unknown Unit',
+            chassis: 'Unknown Unit',
+            model: 'UNK-1',
+        });
+
+        lowUnit.name = 'Low Unit';
+        lowUnit.chassis = 'Low Unit';
+        lowUnit.model = 'LOW-1';
+        highUnit.name = 'High Unit';
+        highUnit.chassis = 'High Unit';
+        highUnit.model = 'HIGH-1';
+        bundle.units.units.push(unknownUnit);
+        bundle.eras.eras[0].units = [1, 2, 3];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2, 3]);
+
+        const { dataService, service } = createService(bundle);
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: lowUnit.name,
+                e: {
+                    '1': {
+                        '1': [3, 0],
+                    },
+                },
+            },
+            {
+                n: highUnit.name,
+                e: {
+                    '1': {
+                        '1': [5, 1],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        service.setSortOrder(MEGAMEK_RARITY_SORT_KEY);
+        service.setSortDirection('desc');
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['High Unit', 'Low Unit', 'Unknown Unit']);
+    });
+
     it('matches MegaMek Age of War results when the era is expressed as semantic text', () => {
         const bundle = createStandaloneBundle();
         bundle.units.units[0].name = 'Aquarius Escort';
@@ -1546,6 +1649,89 @@ describe('UnitSearchFiltersService search telemetry', () => {
         await flushAsyncWork();
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
+    });
+
+    it('re-sorts worker results by MegaMek rarity on the main thread', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        const lowUnit = bundle.units.units[0];
+        const highUnit = bundle.units.units[1];
+        const unknownUnit = createTestUnit({
+            id: 3,
+            name: 'Unknown Unit',
+            chassis: 'Unknown Unit',
+            model: 'UNK-1',
+        });
+
+        lowUnit.name = 'Low Unit';
+        lowUnit.chassis = 'Low Unit';
+        lowUnit.model = 'LOW-1';
+        highUnit.name = 'High Unit';
+        highUnit.chassis = 'High Unit';
+        highUnit.model = 'HIGH-1';
+        bundle.units.units.push(unknownUnit);
+        bundle.eras.eras[0].units = [1, 2, 3];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2, 3]);
+
+        const { dataService, service } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: lowUnit.name,
+                e: {
+                    '1': {
+                        '1': [3, 0],
+                    },
+                },
+            },
+            {
+                n: highUnit.name,
+                e: {
+                    '1': {
+                        '1': [5, 1],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        await flushAsyncWork();
+
+        service.setSortOrder(MEGAMEK_RARITY_SORT_KEY);
+        service.setSortDirection('desc');
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        (service as any).searchWorkerClient.submit(snapshot, request);
+
+        const initMessage = worker.messages.at(-1) as any;
+        expect(initMessage).toBeTruthy();
+
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+
+        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        expect(executeMessage?.request.sortKey).toBe(MEGAMEK_RARITY_SORT_KEY);
+
+        worker.emit({
+            type: 'result',
+            revision: executeMessage.request.revision,
+            corpusVersion: executeMessage.request.corpusVersion,
+            telemetryQuery: executeMessage.request.telemetryQuery,
+            unitNames: ['Low Unit', 'Unknown Unit', 'High Unit'],
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['High Unit', 'Low Unit', 'Unknown Unit']);
     });
 
     it('logs when the search worker is unavailable at startup', () => {
@@ -2686,6 +2872,73 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         expect(report.length).toBe(5);
         expect(report.every(entry => entry.totalMs >= 0)).toBeTrue();
+    });
+
+    // Manual diagnostic benchmark: run with xit -> it to enable
+    xit('benchmarks synthetic MegaMek rarity sorting across 50,000 units', async () => {
+        const setupStartedAt = performance.now();
+        const scenario = buildSyntheticMegaMekRarityBenchmarkScenario(50000);
+        const { dataService, service } = createService(scenario.bundle);
+
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue(scenario.availabilityRecords);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return scenario.availabilityRecordsByName.get(unit.name);
+        });
+
+        (service as any).slowSearchTelemetryThresholdMs = 0;
+        service.setSortOrder('name');
+        service.filteredUnits();
+        await flushAsyncWork();
+        const setupMs = performance.now() - setupStartedAt;
+
+        service.setSortOrder(MEGAMEK_RARITY_SORT_KEY);
+        service.setSortDirection('desc');
+        service.searchText.set('');
+
+        const coldStartedAt = performance.now();
+        const coldFilteredUnits = service.filteredUnits();
+        const coldElapsedMs = performance.now() - coldStartedAt;
+
+        await flushAsyncWork();
+
+        const coldTelemetry = service.searchTelemetry();
+        const coldSortStage = coldTelemetry?.stages.find(stage => stage.name === 'sort');
+
+        service.setSortOrder('name');
+        service.filteredUnits();
+        await flushAsyncWork();
+
+        service.setSortOrder(MEGAMEK_RARITY_SORT_KEY);
+
+        const warmStartedAt = performance.now();
+        const filteredUnits = service.filteredUnits();
+        const warmElapsedMs = performance.now() - warmStartedAt;
+
+        await flushAsyncWork();
+
+        const telemetry = service.searchTelemetry();
+        const sortStage = telemetry?.stages.find(stage => stage.name === 'sort');
+        const topRecord = scenario.availabilityRecordsByName.get(filteredUnits[0]?.name ?? '');
+        const topScore = Math.max(topRecord?.e['1']?.['1']?.[0] ?? -1, topRecord?.e['1']?.['1']?.[1] ?? -1);
+
+        console.info('MEGAMEK_RARITY_SORT_BENCH', JSON.stringify({
+            unitCount: scenario.bundle.units.units.length,
+            resultCount: filteredUnits.length,
+            setupMs: Number(setupMs.toFixed(2)),
+            coldTotalMs: Number(coldElapsedMs.toFixed(2)),
+            coldTelemetryTotalMs: Number((coldTelemetry?.totalMs ?? 0).toFixed(2)),
+            coldSortMs: Number((coldSortStage?.durationMs ?? 0).toFixed(2)),
+            warmTotalMs: Number(warmElapsedMs.toFixed(2)),
+            warmTelemetryTotalMs: Number((telemetry?.totalMs ?? 0).toFixed(2)),
+            warmSortMs: Number((sortStage?.durationMs ?? 0).toFixed(2)),
+            topScore,
+        }));
+
+        expect(coldFilteredUnits.length).toBe(50000);
+        expect(filteredUnits.length).toBe(50000);
+        expect(telemetry?.unitCount).toBe(50000);
+        expect(sortStage).toBeDefined();
+        expect(topScore).toBe(scenario.expectedTopScore);
     });
 
     xit('does not write to logger signals synchronously while filteredUnits is computing', async () => {

@@ -51,7 +51,7 @@ import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import type { TagClickEvent } from '../unit-tags/unit-tags.component';
 import { AbilityInfoDialogComponent, type AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
-import { SORT_OPTIONS } from '../../services/unit-search-filters.model';
+import { MEGAMEK_RARITY_SORT_KEY, SORT_OPTIONS } from '../../services/unit-search-filters.model';
 import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
 import { TaggingService } from '../../services/tagging.service';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
@@ -143,9 +143,9 @@ export class ForceOverviewDialogComponent {
     private readonly AUTOSCROLL_MIN = 40;    // px/sec min scroll speed
 
     /** Sort options available - Custom is the default order by the user */
-    readonly SORT_OPTIONS = SORT_OPTIONS.map(opt => 
-        opt.key === '' ? { ...opt, label: 'Custom' } : opt
-    );
+    readonly SORT_OPTIONS = SORT_OPTIONS
+        .filter(opt => opt.key !== MEGAMEK_RARITY_SORT_KEY)
+        .map(opt => opt.key === '' ? { ...opt, label: 'Custom' } : opt);
 
     /** Current view mode */
     viewMode = signal<'expanded' | 'compact' | 'table'>(this.optionsService.options().forceOverviewViewMode);

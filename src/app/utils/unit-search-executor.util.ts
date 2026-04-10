@@ -34,7 +34,7 @@
 import type { Unit } from '../models/units.model';
 import { GameSystem } from '../models/common.model';
 import { getForcePacks } from '../models/forcepacks.model';
-import { ADVANCED_FILTERS, AS_MOVEMENT_MODE_DISPLAY_NAMES, AdvFilterType, normalizeMotiveValue, type FilterState, type SearchTelemetryStage } from '../services/unit-search-filters.model';
+import { ADVANCED_FILTERS, AS_MOVEMENT_MODE_DISPLAY_NAMES, AdvFilterType, MEGAMEK_RARITY_SORT_KEY, normalizeMotiveValue, type FilterState, type SearchTelemetryStage } from '../services/unit-search-filters.model';
 import {
     filterUnitsWithAST,
     getMatchingTextForUnit,
@@ -74,6 +74,8 @@ interface UnitSearchExecutionRequest {
     getDisplayName?: (filterKey: string, value: string) => string | undefined;
     getIndexedUnitIds?: (filterKey: string, value: string, scope?: AvailabilityFilterScope) => ReadonlySet<string> | undefined;
     getIndexedFilterValues?: (filterKey: string) => readonly string[];
+    availabilitySortScope?: AvailabilityFilterScope;
+    getMegaMekRaritySortScore?: (unit: Unit, scope?: AvailabilityFilterScope) => number;
 }
 
 interface UnitSearchExecutionResult {
@@ -238,6 +240,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
 
     const sorted = [...results];
     let relevanceScores: WeakMap<Unit, number> | null = null;
+    let megaMekRarityScores: WeakMap<Unit, number> | null = null;
     if (request.sortKey === '' && hasTextSearch) {
         relevanceScores = measureStage(
             telemetryStages,
@@ -277,6 +280,13 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
         );
     }
 
+    if (request.sortKey === MEGAMEK_RARITY_SORT_KEY && request.getMegaMekRaritySortScore) {
+        megaMekRarityScores = new WeakMap<Unit, number>();
+        for (const unit of sorted) {
+            megaMekRarityScores.set(unit, request.getMegaMekRaritySortScore(unit, request.availabilitySortScope));
+        }
+    }
+
     measureStage(
         telemetryStages,
         'sort',
@@ -298,6 +308,11 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
                     comparison = request.getAdjustedBV(a) - request.getAdjustedBV(b);
                 } else if (request.sortKey === 'as.PV') {
                     comparison = request.getAdjustedPV(a) - request.getAdjustedPV(b);
+                } else if (request.sortKey === MEGAMEK_RARITY_SORT_KEY) {
+                    comparison = (megaMekRarityScores?.get(a) ?? 0) - (megaMekRarityScores?.get(b) ?? 0);
+                    if (comparison === 0) {
+                        comparison = compareUnitsByName(a, b);
+                    }
                 } else {
                     const aValue = getProperty(a, request.sortKey);
                     const bValue = getProperty(b, request.sortKey);

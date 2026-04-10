@@ -55,7 +55,7 @@
                         @if (faction.isCatchAll) {
                             <span class="faction-item catch-all-faction" [tooltip]="faction.megaMekTooltip">
                                 @if (faction.img) {
-                                    <img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" title="{{faction.name}}" />
+                                    <img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" />
                                 }
                                 <span class="parent-faction" (click)="toggleCatchAll(i, faction.name)">{{ faction.name }}</span>
                                 <ng-container
@@ -69,7 +69,7 @@
                         } @else {
                             <span class="faction-item" [tooltip]="faction.megaMekTooltip">
                                 @if (faction.img) {
-                                    <img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" title="{{faction.name}}" />
+                                    <img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" />
                                 }
                                 {{ faction.name }}
                                 <ng-container

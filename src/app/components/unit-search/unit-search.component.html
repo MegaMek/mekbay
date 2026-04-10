@@ -298,6 +298,7 @@
                             [sortKey]="currentSortKey()"
                             [isSelected]="isUnitSelected(unit)"
                             [sortSlotLabel]="currentSortSlotLabel()"
+                            [sortSlotOverride]="getCardSortSlotOverride(unit)"
                             [searchTokens]="this.filtersService.searchTokens()"
                             (tagClick)="onAddTag($event)">
                         </unit-card-expanded>
@@ -313,6 +314,7 @@
                             [isSelected]="isUnitSelected(unit)"
                             [sortKey]="currentSortKey()"
                             [sortSlotLabel]="currentSortSlotLabel()"
+                            [sortSlotOverride]="getCardSortSlotOverride(unit)"
                             [searchTokens]="this.filtersService.searchTokens()"
                             (tagClick)="onAddTag($event)">
                         </unit-card-expanded>
@@ -331,6 +333,7 @@
                             [isSelected]="isUnitSelected(unit)"
                             [sortKey]="currentSortKey()"
                             [sortSlotLabel]="currentSortSlotLabel()"
+                            [sortSlotOverride]="getCardSortSlotOverride(unit)"
                             [searchTokens]="this.filtersService.searchTokens()"
                             (tagClick)="onAddTag($event)"
                             (selectClick)="multiSelectUnit(unit)">

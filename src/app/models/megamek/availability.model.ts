@@ -35,6 +35,8 @@ import type { UnitType } from '../units.model';
 
 export type MegaMekWeightedAvailabilityValue = [number, number];
 
+export const MEGAMEK_AVAILABILITY_UNKNOWN_SCORE = -1;
+
 export const MEGAMEK_AVAILABILITY_FROM_OPTIONS = ['Production', 'Salvage'] as const;
 export type MegaMekAvailabilityFrom = typeof MEGAMEK_AVAILABILITY_FROM_OPTIONS[number];
 

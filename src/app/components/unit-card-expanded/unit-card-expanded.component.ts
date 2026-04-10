@@ -215,6 +215,9 @@ export class UnitCardExpandedComponent {
     /** Label for sort slot when showing non-displayed sort field */
     sortSlotLabel = input<string | null>(null);
 
+    /** Optional per-card sort slot override for custom sort keys. */
+    sortSlotOverride = input<{ value: string; numeric?: boolean } | null>(null);
+
     /** Search tokens for text highlighting (optional) */
     searchTokens = input<SearchTokensGroup[]>([]);
 
@@ -312,6 +315,14 @@ export class UnitCardExpandedComponent {
 
         // If this key is already displayed for this unit, don't show a separate slot
         if (this.isSortKeyDisplayedForUnit(key, unit)) return null;
+
+        const override = this.sortSlotOverride();
+        if (override) {
+            return {
+                value: override.value,
+                label: this.sortSlotLabel()
+            };
+        }
 
         // Use nested property access for dotted keys like 'as.PV'
         const raw = this.getNestedProperty(unit, key);
@@ -436,6 +447,17 @@ export class UnitCardExpandedComponent {
         const sortKey = this.sortKey();
         if (!sortKey) return null;
         if (this.isSortKeyDisplayedForUnit(sortKey, unit)) return null;
+
+        const override = this.sortSlotOverride();
+        if (override) {
+            return {
+                key: sortKey,
+                value: override.value,
+                label: this.sortSlotLabel() ?? undefined,
+                alt: this.sortSlotLabel() ?? sortKey,
+                numeric: override.numeric ?? false,
+            };
+        }
 
         const raw = this.getNestedProperty(unit, sortKey);
         let value: string;

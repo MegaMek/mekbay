@@ -398,6 +398,8 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     ...SEMANTIC_FILTERS.map(f => ({ ...f, type: AdvFilterType.SEMANTIC as const })),
 ];
 
+export const MEGAMEK_RARITY_SORT_KEY = 'mmRarity';
+
 export const SORT_OPTIONS: SortOption[] = [
     { key: '', label: 'Relevance' },
     { key: 'name', label: 'Name' },
@@ -409,5 +411,6 @@ export const SORT_OPTIONS: SortOption[] = [
             slotLabel: f.label,
             gameSystem: f.game,
             // slotIcon: f.slotIcon
-        } as SortOption))
+        } as SortOption)),
+    { key: MEGAMEK_RARITY_SORT_KEY, label: 'MegaMek Rarity', slotLabel: 'MM Rarity' },
 ];

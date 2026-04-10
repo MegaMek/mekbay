@@ -36,6 +36,7 @@ import { Injectable, inject } from '@angular/core';
 import type { Era } from '../models/eras.model';
 import type { Faction } from '../models/factions.model';
 import {
+    MEGAMEK_AVAILABILITY_UNKNOWN_SCORE,
     MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS,
     MEGAMEK_AVAILABILITY_RARITY_OPTIONS,
     getMegaMekAvailabilityRarityForScore,
@@ -62,7 +63,7 @@ interface MegaMekUnitAvailabilityEntry {
     salvage: number;
 }
 
-interface MegaMekAvailabilityFilterContext {
+export interface MegaMekAvailabilityFilterContext {
     eraIds?: ReadonlySet<number>;
     factionIds?: ReadonlySet<number>;
     availabilityFrom?: ReadonlySet<MegaMekAvailabilityFrom>;
@@ -201,6 +202,7 @@ export class UnitAvailabilitySourceService {
     private megaMekAvailabilityBucketsByFaction = new Map<number, MegaMekAvailabilityBucketIndexes>();
     private megaMekAvailabilityBucketsByEraFaction = new Map<number, Map<number, MegaMekAvailabilityBucketIndexes>>();
     private megaMekScopedUnitIdsCache = new Map<string, ReadonlySet<AvailabilityUnitKey>>();
+    private megaMekScopedUnitScoreCache = new Map<string, Map<AvailabilityUnitKey, number>>();
 
     public getVisibleEraUnitIds(era: Era, availabilitySource?: AvailabilitySource): Set<AvailabilityUnitKey> {
         this.ensureMulCacheVersion();
@@ -320,6 +322,36 @@ export class UnitAvailabilitySourceService {
         }
 
         return details;
+    }
+
+    public getMegaMekAvailabilityScore(
+        unit: Pick<Unit, 'name'>,
+        context?: MegaMekAvailabilityFilterContext,
+    ): number {
+        return this.getMegaMekAvailabilityScoreResolver(context)(unit);
+    }
+
+    public getMegaMekAvailabilityScoreResolver(
+        context?: MegaMekAvailabilityFilterContext,
+    ): (unit: Pick<Unit, 'name'>) => number {
+        this.ensureMulCacheVersion();
+        this.ensureMegaMekIndexes();
+
+        const scopeCache = this.getOrCreateMegaMekScopedUnitScoreCache(context);
+        const availabilityFrom = this.getRequestedAvailabilitySources(context);
+        const eraIds = context?.eraIds;
+        const factionIds = context?.factionIds;
+
+        return (unit: Pick<Unit, 'name'>): number => {
+            const cached = scopeCache.get(unit.name);
+            if (cached !== undefined) {
+                return cached;
+            }
+
+            const score = this.computeMegaMekAvailabilityScore(unit.name, eraIds, factionIds, availabilityFrom);
+            scopeCache.set(unit.name, score);
+            return score;
+        };
     }
 
     public unitHasMegaMekAvailability(unit: Unit): boolean {
@@ -498,6 +530,7 @@ export class UnitAvailabilitySourceService {
         this.megaMekAvailabilityBucketsByFaction.clear();
         this.megaMekAvailabilityBucketsByEraFaction.clear();
         this.megaMekScopedUnitIdsCache.clear();
+        this.megaMekScopedUnitScoreCache.clear();
     }
 
     private getMulVisibleEraUnitIds(era: Era): Set<AvailabilityUnitKey> {
@@ -571,6 +604,7 @@ export class UnitAvailabilitySourceService {
         this.megaMekAvailabilityBucketsByFaction.clear();
         this.megaMekAvailabilityBucketsByEraFaction.clear();
         this.megaMekScopedUnitIdsCache.clear();
+        this.megaMekScopedUnitScoreCache.clear();
 
         for (const unit of units) {
             this.megaMekAllUnitIds.add(unit.name);
@@ -709,7 +743,7 @@ export class UnitAvailabilitySourceService {
     }
 
     private buildMegaMekScopedCacheKey(
-        kind: 'available' | 'membership' | 'rarity',
+        kind: 'available' | 'membership' | 'rarity' | 'score',
         context?: MegaMekAvailabilityFilterContext,
         extras: string[] = [],
     ): string {
@@ -987,6 +1021,67 @@ export class UnitAvailabilitySourceService {
         }
 
         return this.dataService.getMegaMekAvailabilityRecordForUnit(unit)?.e[String(eraId)]?.[String(factionId)];
+    }
+
+    private getOrCreateMegaMekScopedUnitScoreCache(
+        context?: MegaMekAvailabilityFilterContext,
+    ): Map<AvailabilityUnitKey, number> {
+        const cacheKey = this.buildMegaMekScopedCacheKey('score', context);
+        let scopeCache = this.megaMekScopedUnitScoreCache.get(cacheKey);
+        if (!scopeCache) {
+            scopeCache = new Map<AvailabilityUnitKey, number>();
+            this.megaMekScopedUnitScoreCache.set(cacheKey, scopeCache);
+        }
+
+        return scopeCache;
+    }
+
+    private computeMegaMekAvailabilityScore(
+        unitName: AvailabilityUnitKey,
+        eraIds: ReadonlySet<number> | undefined,
+        factionIds: ReadonlySet<number> | undefined,
+        availabilityFrom: readonly MegaMekAvailabilityFrom[],
+    ): number {
+        const entries = this.megaMekAvailabilityEntriesByUnitKey.get(unitName);
+        if (!entries || entries.length === 0) {
+            return MEGAMEK_AVAILABILITY_UNKNOWN_SCORE;
+        }
+
+        let maxScore = 0;
+
+        for (const entry of entries) {
+            if (eraIds && !eraIds.has(entry.eraId)) {
+                continue;
+            }
+            if (factionIds && !factionIds.has(entry.factionId)) {
+                continue;
+            }
+
+            const score = this.getEntryMaxSelectedAvailabilityScore(entry, availabilityFrom);
+            if (score > maxScore) {
+                maxScore = score;
+            }
+        }
+
+        return maxScore;
+    }
+
+    private getEntryMaxSelectedAvailabilityScore(
+        entry: MegaMekUnitAvailabilityEntry,
+        availabilityFrom: readonly MegaMekAvailabilityFrom[],
+    ): number {
+        let maxScore = 0;
+
+        for (const source of availabilityFrom) {
+            const score = source === 'Production'
+                ? entry.production
+                : entry.salvage;
+            if (score > maxScore) {
+                maxScore = score;
+            }
+        }
+
+        return maxScore;
     }
 
     private resolveMegaMekAvailabilityFrom(availabilityFromName: string): MegaMekAvailabilityFrom | undefined {

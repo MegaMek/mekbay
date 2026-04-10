@@ -6,7 +6,7 @@ import type { Faction } from '../models/factions.model';
 import type { AvailabilitySource } from '../models/options.model';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import type { Unit } from '../models/units.model';
-import { MEGAMEK_AVAILABILITY_RARITY_OPTIONS } from '../models/megamek/availability.model';
+import { MEGAMEK_AVAILABILITY_RARITY_OPTIONS, MEGAMEK_AVAILABILITY_UNKNOWN_SCORE } from '../models/megamek/availability.model';
 import { DataService } from './data.service';
 import { OptionsService } from './options.service';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
@@ -243,6 +243,39 @@ describe('UnitAvailabilitySourceService', () => {
                 rarity: 'Common',
             },
         ]);
+    });
+
+    it('returns the highest scoped MegaMek score and marks missing data as unknown', () => {
+        const scopedUnit = { id: 1, name: 'Scoped Unit', type: 'Mek', chassis: 'Scoped Unit', model: 'SCP-1' } as Unit;
+        const missingUnit = { id: 2, name: 'Missing Unit', type: 'Mek', chassis: 'Missing Unit', model: 'MIS-1' } as Unit;
+
+        units.push(scopedUnit, missingUnit);
+        megaMekAvailabilityByUnitName.set(scopedUnit.name, {
+            n: scopedUnit.name,
+            e: {
+                '3050': {
+                    '7': [5, 1],
+                    '8': [0, 2],
+                },
+                '3067': {
+                    '7': [4, 6.6],
+                },
+            },
+        });
+        megaMekAvailabilityRecords.push(megaMekAvailabilityByUnitName.get(scopedUnit.name)!);
+
+        expect(service.getMegaMekAvailabilityScore(scopedUnit)).toBe(6.6);
+        expect(service.getMegaMekAvailabilityScore(scopedUnit, {
+            availabilityFrom: new Set(['Production']),
+        })).toBe(5);
+        expect(service.getMegaMekAvailabilityScore(scopedUnit, {
+            factionIds: new Set([8]),
+        })).toBe(2);
+        expect(service.getMegaMekAvailabilityScore(scopedUnit, {
+            eraIds: new Set([3067]),
+            factionIds: new Set([8]),
+        })).toBe(0);
+        expect(service.getMegaMekAvailabilityScore(missingUnit)).toBe(MEGAMEK_AVAILABILITY_UNKNOWN_SCORE);
     });
 
     it('does not fall back to MUL era visibility when MegaMek availability has no matching entries', () => {

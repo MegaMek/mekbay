@@ -84,9 +84,10 @@ import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import { UserStateService } from './userState.service';
 import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
-import { UnitAvailabilitySourceService } from './unit-availability-source.service';
+import { type MegaMekAvailabilityFilterContext, UnitAvailabilitySourceService } from './unit-availability-source.service';
 import { resolveFactionNamesFromFilter } from '../utils/faction-filter.util';
 import { sortAvailableDropdownOptions, sortDropdownOptionObjects } from '../utils/unit-search-dropdown-sort.util';
+import { compareUnitsByName } from '../utils/sort.util';
 import type { UnitSearchWorkerCorpusSnapshot, UnitSearchWorkerQueryRequest, UnitSearchWorkerResultMessage } from '../utils/unit-search-worker-protocol.util';
 import {
     ADVANCED_FILTERS,
@@ -96,6 +97,7 @@ import {
     AdvFilterType,
     type FilterState,
     DROPDOWN_FILTERS,
+    MEGAMEK_RARITY_SORT_KEY,
     RANGE_FILTERS,
     type DropdownFilterConfig,
     type RangeFilterConfig,
@@ -423,20 +425,12 @@ export class UnitSearchFiltersService {
         return Array.from(new Set([...resolved.or, ...resolved.and]));
     }
 
-    private buildAvailabilityFilterContext(scope?: AvailabilityFilterScope): {
-        eraIds?: ReadonlySet<number>;
-        factionIds?: ReadonlySet<number>;
-        availabilityFrom?: ReadonlySet<MegaMekAvailabilityFrom>;
-    } | null {
+    private buildAvailabilityFilterContext(scope?: AvailabilityFilterScope): MegaMekAvailabilityFilterContext | null {
         if (!scope) {
             return {};
         }
 
-        const context: {
-            eraIds?: ReadonlySet<number>;
-            factionIds?: ReadonlySet<number>;
-            availabilityFrom?: ReadonlySet<MegaMekAvailabilityFrom>;
-        } = {};
+        const context: MegaMekAvailabilityFilterContext = {};
 
         if (scope.eraNames !== undefined) {
             const eraIds = new Set(
@@ -476,6 +470,49 @@ export class UnitSearchFiltersService {
         }
 
         return context;
+    }
+
+    private buildMegaMekRaritySortScope(state: FilterState): AvailabilityFilterScope | undefined {
+        const eraNames = this.getSelectedRegularDropdownNames(state['era']);
+        const factionNames = this.getPositiveFactionNames(state['faction']);
+        const availabilityFromNames = this.getSelectedRegularDropdownNames(state['availabilityFrom']);
+        const scope: AvailabilityFilterScope = {};
+
+        if (eraNames.length > 0) {
+            scope.eraNames = eraNames;
+        }
+        if (factionNames.length > 0) {
+            scope.factionNames = factionNames;
+        }
+        if (availabilityFromNames.length > 0) {
+            scope.availabilityFromNames = availabilityFromNames;
+        }
+
+        return Object.keys(scope).length > 0 ? scope : undefined;
+    }
+
+    private readonly megaMekRaritySortScope = computed(() => {
+        return this.buildMegaMekRaritySortScope(this.getApplicableFilterState(this.effectiveFilterState()));
+    });
+
+    private readonly megaMekRaritySortContext = computed<MegaMekAvailabilityFilterContext | null>(() => {
+        return this.buildAvailabilityFilterContext(this.megaMekRaritySortScope());
+    });
+
+    private getMegaMekRaritySortScoreFromContext(unit: Unit, context: MegaMekAvailabilityFilterContext | null): number {
+        if (context === null) {
+            return 0;
+        }
+
+        return this.unitAvailabilitySource.getMegaMekAvailabilityScore(unit, context);
+    }
+
+    public getMegaMekRaritySortScore(unit: Unit, scope?: AvailabilityFilterScope): number {
+        if (scope === undefined) {
+            return this.getMegaMekRaritySortScoreFromContext(unit, this.megaMekRaritySortContext());
+        }
+
+        return this.getMegaMekRaritySortScoreFromContext(unit, this.buildAvailabilityFilterContext(scope));
     }
 
     private unitMatchesAvailabilityFrom(unit: Unit, availabilityFromName: string, scope?: AvailabilityFilterScope): boolean {
@@ -789,16 +826,46 @@ export class UnitSearchFiltersService {
         }
 
         const hydratedResults = hydrateWorkerResultUnits(result, unitName => this.dataService.getUnitByName(unitName));
+        const sortedResults = this.sortHydratedWorkerResults(hydratedResults);
 
-        this.workerFilteredUnitsState.set(hydratedResults);
+        this.workerFilteredUnitsState.set(sortedResults);
         this.workerResultRevision.set(result.revision);
         this.updateSearchTelemetry(buildWorkerSearchTelemetrySnapshot(result, {
             timestamp: Date.now(),
             gameSystem: this.gameService.currentGameSystem(),
             sortKey: this.selectedSort(),
             sortDirection: this.selectedSortDirection(),
-            resultCount: hydratedResults.length,
+            resultCount: sortedResults.length,
         }));
+    }
+
+    private sortHydratedWorkerResults(units: Unit[]): Unit[] {
+        if (this.selectedSort() !== MEGAMEK_RARITY_SORT_KEY) {
+            return units;
+        }
+
+        const context = this.megaMekRaritySortContext();
+        if (context === null) {
+            return units;
+        }
+
+        const scoreResolver = this.unitAvailabilitySource.getMegaMekAvailabilityScoreResolver(context);
+        const scores = new Map<string, number>();
+        for (const unit of units) {
+            scores.set(unit.name, scoreResolver(unit));
+        }
+
+        const sorted = [...units];
+        sorted.sort((left, right) => {
+            let comparison = (scores.get(left.name) ?? 0) - (scores.get(right.name) ?? 0);
+            if (comparison === 0) {
+                comparison = compareUnitsByName(left, right);
+            }
+
+            return this.selectedSortDirection() === 'desc' ? -comparison : comparison;
+        });
+
+        return sorted;
     }
 
     private setupWorkerSearchExecution(): void {
@@ -1658,6 +1725,11 @@ export class UnitSearchFiltersService {
             () => this.semanticParsedAST(),
         );
         const megaMekAvailabilityActive = this.unitAvailabilitySource.useMegaMekAvailability();
+        const megaMekRaritySortScope = this.megaMekRaritySortScope();
+        const megaMekRaritySortContext = this.megaMekRaritySortContext();
+        const megaMekRaritySortScoreResolver = megaMekRaritySortContext === null
+            ? null
+            : this.unitAvailabilitySource.getMegaMekAvailabilityScoreResolver(megaMekRaritySortContext);
 
         const execution = executeUnitSearch({
             units: this.units,
@@ -1692,6 +1764,10 @@ export class UnitSearchFiltersService {
             },
             getIndexedUnitIds: (filterKey: string, value: string, scope?: AvailabilityFilterScope) => this.getSemanticIndexedUnitIds(filterKey, value, scope),
             getIndexedFilterValues: (filterKey: string) => this.getSemanticIndexedFilterValues(filterKey),
+            availabilitySortScope: megaMekRaritySortScope,
+            getMegaMekRaritySortScore: megaMekRaritySortScoreResolver
+                ? (unit: Unit) => megaMekRaritySortScoreResolver(unit)
+                : undefined,
         });
 
         this.updateSearchTelemetry({
