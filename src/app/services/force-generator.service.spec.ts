@@ -156,6 +156,29 @@ describe('ForceGeneratorService', () => {
         expect(defaults.alphaStrike).toEqual({ min: 290, max: 300 });
     });
 
+    it('uses the stored force generator unit count defaults', () => {
+        const defaults = service.resolveInitialUnitCountDefaults({
+            forceGenLastMinUnitCount: 4,
+            forceGenLastMaxUnitCount: 8,
+        });
+
+        expect(defaults).toEqual({ min: 4, max: 8 });
+    });
+
+    it('normalizes stored unit count defaults to a valid linked range', () => {
+        const invalidDefaults = service.resolveInitialUnitCountDefaults({
+            forceGenLastMinUnitCount: 6,
+            forceGenLastMaxUnitCount: 2,
+        });
+        const emptyDefaults = service.resolveInitialUnitCountDefaults({
+            forceGenLastMinUnitCount: 0,
+            forceGenLastMaxUnitCount: 0,
+        });
+
+        expect(invalidDefaults).toEqual({ min: 6, max: 6 });
+        expect(emptyDefaults).toEqual({ min: 1, max: 1 });
+    });
+
     it('resolves explicit era and faction scope and picks a force faction from the selected factions', () => {
         const era = createEra(3150, 'ilClan');
         const federatedSuns = createFaction(10, 'Federated Suns');
@@ -238,11 +261,61 @@ describe('ForceGeneratorService', () => {
         expect(preview.totalCost).toBe(5);
     });
 
+    it('filters out units with no availability in the rolled faction and era even if they are positive elsewhere in the selected scope', () => {
+        const rolledEra = createEra(3150, 'Jihad');
+        const rolledFaction = createFaction(10, 'Capellan Confederation');
+        const extinctUnit = createUnit({ id: 1, name: 'Extinct Unit', as: { PV: 5 } as Unit['as'] });
+        const availableUnit = createUnit({ id: 2, name: 'Available Unit', as: { PV: 5 } as Unit['as'] });
+
+        megaMekAvailabilityByUnitName.set(extinctUnit.name, {
+            e: {
+                '3150': {
+                    '10': [0, 0],
+                    '20': [20, 0],
+                },
+                '3075': {
+                    '10': [20, 0],
+                },
+            },
+        });
+        megaMekAvailabilityByUnitName.set(availableUnit.name, {
+            e: {
+                '3150': {
+                    '10': [1, 0],
+                },
+            },
+        });
+
+        spyOn(Math, 'random').and.returnValue(0.4);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [extinctUnit, availableUnit],
+            context: {
+                forceFaction: rolledFaction,
+                forceEra: rolledEra,
+                averagingFactionIds: [10, 20],
+                averagingEraIds: [3150, 3075],
+                availablePairCount: 3,
+                ruleset: null,
+            },
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Available Unit']);
+        expect(preview.explanationLines[0]).toContain('Eligible pool: 1 units.');
+    });
+
     it('rolls production and salvage separately before picking the unit', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const productionUnit = createUnit({ id: 1, name: 'Production Unit', chassis: 'Production', model: 'PRD-1', as: { PV: 5 } as Unit['as'] });
-        const salvageUnit = createUnit({ id: 2, name: 'Salvage Unit', chassis: 'Salvage', model: 'SLV-1', as: { PV: 5 } as Unit['as'] });
+        const productionUnit = createUnit({ id: 1, name: 'Production Unit', chassis: 'Phoenix Hawk', model: 'PXH-1', as: { PV: 5 } as Unit['as'] });
+        const salvageUnit = createUnit({ id: 2, name: 'Salvage Unit', chassis: 'Shadow Hawk', model: 'SHD-2H', as: { PV: 5 } as Unit['as'] });
 
         megaMekAvailabilityByUnitName.set(productionUnit.name, {
             e: {
@@ -259,11 +332,9 @@ describe('ForceGeneratorService', () => {
             },
         });
 
-        spyOn<any>(service, 'getSuccessPoolTarget').and.returnValue(1);
-        spyOn<any>(service, 'getRandomAttemptCount').and.returnValue(1);
         const randomSpy = spyOn(Math, 'random');
 
-        randomSpy.and.returnValues(0.25, 0, 0);
+        randomSpy.and.returnValues(0.25, 0);
         let preview = service.buildPreview({
             eligibleUnits: [productionUnit, salvageUnit],
             context: createContext(faction, era),
@@ -279,7 +350,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.units[0].unit).toBe(productionUnit);
 
         randomSpy.calls.reset();
-        randomSpy.and.returnValues(0.75, 0, 0);
+        randomSpy.and.returnValues(0.75, 0);
         preview = service.buildPreview({
             eligibleUnits: [productionUnit, salvageUnit],
             context: createContext(faction, era),
@@ -293,14 +364,13 @@ describe('ForceGeneratorService', () => {
 
         expect(preview.error).toBeNull();
         expect(preview.units[0].unit).toBe(salvageUnit);
-        expect(preview.explanationLines.some((line) => line.includes('Salvage SLV-1: salvage pick'))).toBeTrue();
-        expect(preview.explanationLines.some((line) => line.includes('roll 50%') && line.includes('pick 100%'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('Shadow Hawk SHD-2H: salvage pick'))).toBeTrue();
     });
 
     it('includes a readable explanation for the generated picks', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const unit = createUnit({ id: 1, name: 'Explained Unit', chassis: 'Explained', model: 'EXP-1', as: { PV: 5 } as Unit['as'] });
+        const unit = createUnit({ id: 1, name: 'Explained Unit', chassis: 'Warhammer', model: 'WHM-6R', as: { PV: 5 } as Unit['as'] });
 
         megaMekAvailabilityByUnitName.set(unit.name, {
             e: {
@@ -326,59 +396,8 @@ describe('ForceGeneratorService', () => {
         expect(preview.error).toBeNull();
         expect(preview.explanationLines[0]).toContain('Eligible pool: 1 units.');
         expect(preview.explanationLines.some((line) => line.includes('Resolved generation context: Federated Suns - ilClan.'))).toBeTrue();
-        expect(preview.explanationLines.some((line) => line.includes('Explained EXP-1: production pick (roll 75%, pick 100%)'))).toBeTrue();
-    });
-
-    it('picks one of the collected in-range successes for non-exact budget ranges', () => {
-        const era = createEra(3150, 'ilClan');
-        const faction = createFaction(10, 'Federated Suns');
-        const unitA = createUnit({ id: 1, name: 'Unit A', chassis: 'Alpha', model: 'A-1', as: { PV: 5 } as Unit['as'] });
-        const unitB = createUnit({ id: 2, name: 'Unit B', chassis: 'Bravo', model: 'B-1', as: { PV: 5 } as Unit['as'] });
-        const unitC = createUnit({ id: 3, name: 'Unit C', chassis: 'Charlie', model: 'C-1', as: { PV: 5 } as Unit['as'] });
-        const unitD = createUnit({ id: 4, name: 'Unit D', chassis: 'Delta', model: 'D-1', as: { PV: 5 } as Unit['as'] });
-
-        const candidateA = { unit: unitA, productionWeight: 1, salvageWeight: 1, cost: 5, megaMekUnitType: 'Mek' };
-        const candidateB = { unit: unitB, productionWeight: 1, salvageWeight: 1, cost: 5, megaMekUnitType: 'Mek' };
-        const candidateC = { unit: unitC, productionWeight: 1, salvageWeight: 1, cost: 5, megaMekUnitType: 'Mek' };
-        const candidateD = { unit: unitD, productionWeight: 1, salvageWeight: 1, cost: 5, megaMekUnitType: 'Mek' };
-
-        const createAttempt = (selectedCandidates: Array<typeof candidateA>) => ({
-            selectedCandidates,
-            selectionSteps: selectedCandidates.map((candidate) => ({
-                unit: candidate.unit,
-                rolledSource: 'production' as const,
-                source: 'production' as const,
-                usedFallbackSource: false,
-                sourceRollProbability: 0.5,
-                candidatePickProbability: 0.5,
-                productionWeight: candidate.productionWeight,
-                salvageWeight: candidate.salvageWeight,
-                cost: candidate.cost,
-                rulesetReasons: [],
-            })),
-            rulesetProfile: null,
-        });
-
-        spyOn<any>(service, 'buildCandidateSelection').and.returnValues(
-            createAttempt([candidateA, candidateC]),
-            createAttempt([candidateB, candidateD]),
-        );
-        spyOn<any>(service, 'getRandomAttemptCount').and.returnValue(2);
-        spyOn(Math, 'random').and.returnValue(0.99);
-
-        const preview = service.buildPreview({
-            eligibleUnits: [unitA, unitB, unitC, unitD],
-            context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
-            budgetRange: { min: 10, max: 12 },
-            minUnitCount: 2,
-            maxUnitCount: 2,
-            gunnery: 4,
-            piloting: 5,
-        });
-
-        expect(preview.error).toBeNull();
-        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Unit B', 'Unit D']);
+        expect(preview.explanationLines.some((line) => line.includes('Warhammer WHM-6R: production pick'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('Explained Unit: production pick'))).toBeFalse();
     });
 
     it('stays inside an exact budget range without adjusting skill', () => {
@@ -387,7 +406,7 @@ describe('ForceGeneratorService', () => {
         const lightUnit = createUnit({ id: 1, name: 'Light Unit', as: { PV: 4 } as Unit['as'] });
         const mediumUnit = createUnit({ id: 2, name: 'Medium Unit', as: { PV: 5 } as Unit['as'] });
 
-        const randomSpy = spyOn(Math, 'random').and.returnValue(0);
+        spyOn(Math, 'random').and.returnValue(0);
 
         const preview = service.buildPreview({
             eligibleUnits: [lightUnit, mediumUnit],
@@ -402,10 +421,9 @@ describe('ForceGeneratorService', () => {
 
         expect(preview.error).toBeNull();
         expect(preview.totalCost).toBe(9);
-        expect(preview.units.map((unit) => unit.unit.name)).toEqual(jasmine.arrayWithExactContents(['Light Unit', 'Medium Unit']));
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Light Unit', 'Medium Unit']);
         expect(preview.units[0].skill).toBe(4);
         expect(preview.units[1].skill).toBe(4);
-        expect(randomSpy.calls.count()).toBeLessThan(6);
     });
 
     it('returns an error when the minimum budget cannot be reached within the unit count range', () => {
@@ -427,6 +445,37 @@ describe('ForceGeneratorService', () => {
         });
 
         expect(preview.error).toContain('minimum is too high');
+    });
+
+    it('keeps retrying until the 300ms no-match search window expires', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const lightUnit = createUnit({ id: 1, name: 'Light Unit', as: { PV: 4 } as Unit['as'] });
+        const mediumUnit = createUnit({ id: 2, name: 'Medium Unit', as: { PV: 5 } as Unit['as'] });
+
+        spyOn(Math, 'random').and.returnValue(0);
+        const buildSelectionSpy = spyOn<any>(service, 'buildCandidateSelection').and.callThrough();
+
+        let nowValue = 0;
+        spyOn(performance, 'now').and.callFake(() => {
+            nowValue += 8;
+            return nowValue;
+        });
+
+        const preview = service.buildPreview({
+            eligibleUnits: [lightUnit, mediumUnit],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 8, max: 8 },
+            minUnitCount: 1,
+            maxUnitCount: 2,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toContain('Unable to build a force');
+        expect(buildSelectionSpy.calls.count()).toBeGreaterThan(10);
+        expect(buildSelectionSpy.calls.count()).toBeLessThan(20);
     });
 
     it('uses ruleset preferences to bias additional unit selection', () => {
@@ -464,17 +513,15 @@ describe('ForceGeneratorService', () => {
             context: createContext(faction, era),
             gameSystem: GameSystem.ALPHA_STRIKE,
             budgetRange: { min: 0, max: 20 },
-            minUnitCount: 2,
+            minUnitCount: 1,
             maxUnitCount: 2,
             gunnery: 4,
             piloting: 5,
         } as const;
 
-        spyOn<any>(service, 'getSuccessPoolTarget').and.returnValue(1);
-        spyOn<any>(service, 'getRandomAttemptCount').and.returnValue(1);
         const randomSpy = spyOn(Math, 'random');
 
-        randomSpy.and.returnValues(0, 0, 0, 0.6, 0);
+        randomSpy.and.returnValues(0, 0, 0, 0.6);
         let preview = service.buildPreview(baseRequest);
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Seed', 'Scout']);
 
@@ -482,9 +529,80 @@ describe('ForceGeneratorService', () => {
         megaMekRulesetsByFactionKey.set(ruleset.factionKey, ruleset);
 
         randomSpy.calls.reset();
-        randomSpy.and.returnValues(0, 0, 0, 0.6, 0);
+        randomSpy.and.returnValues(0, 0, 0, 0.6);
         preview = service.buildPreview(baseRequest);
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Seed', 'Command']);
+        expect(preview.explanationLines.some((line) => line.includes('Selected echelon: LANCE.'))).toBeTrue();
+    });
+
+    it('applies ruleset bias before the first pick instead of deriving it from a random seed unit', () => {
+        const era = createEra(3025, 'Star League', 3025, 3025);
+        const faction = createFaction(10, 'Capellan Confederation');
+        const jumpShip = createUnit({
+            id: 1,
+            name: 'JumpShip Seed',
+            type: 'Aero',
+            subtype: 'JumpShip',
+            moveType: 'Aerodyne',
+            as: { PV: 5 } as Unit['as'],
+        });
+        const mek = createUnit({
+            id: 2,
+            name: 'BattleMek Pick',
+            type: 'Mek',
+            subtype: 'BattleMek',
+            as: { PV: 5 } as Unit['as'],
+        });
+        const ruleset: MegaMekRulesetRecord = {
+            factionKey: 'CC',
+            indexes: { forceIndexesByEchelon: {} },
+            forceCount: 1,
+            forces: [
+                {
+                    when: {
+                        unitTypes: ['Mek'],
+                        topLevel: true,
+                    },
+                    unitType: {
+                        options: [{ unitTypes: ['Mek'] }],
+                    },
+                },
+            ],
+        };
+
+        megaMekAvailabilityByUnitName.set(jumpShip.name, {
+            e: {
+                '3025': {
+                    '10': [1, 1],
+                },
+            },
+        });
+        megaMekAvailabilityByUnitName.set(mek.name, {
+            e: {
+                '3025': {
+                    '10': [1, 1],
+                },
+            },
+        });
+        megaMekRulesetsByMulFactionId.set(faction.id, [ruleset]);
+        megaMekRulesetsByFactionKey.set(ruleset.factionKey, ruleset);
+
+        spyOn(Math, 'random').and.returnValue(0.4);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [jumpShip, mek],
+            context: { ...createContext(faction, era), ruleset },
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 5 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['BattleMek Pick']);
+        expect(preview.explanationLines.some((line) => line.includes('no matching force node'))).toBeFalse();
     });
 
     it('switches child ruleset context with asFactionKey when building templates', () => {
@@ -550,17 +668,15 @@ describe('ForceGeneratorService', () => {
         megaMekRulesetsByFactionKey.set(parentRuleset.factionKey, parentRuleset);
         megaMekRulesetsByFactionKey.set(childRuleset.factionKey, childRuleset);
 
-        spyOn<any>(service, 'getSuccessPoolTarget').and.returnValue(1);
-        spyOn<any>(service, 'getRandomAttemptCount').and.returnValue(1);
         const randomSpy = spyOn(Math, 'random');
-        randomSpy.and.returnValues(0, 0, 0, 0.6, 0);
+        randomSpy.and.returnValues(0, 0, 0, 0.6);
 
         const preview = service.buildPreview({
             eligibleUnits: [seedUnit, switchedMatch, offMatch],
             context: createContext(faction, era),
             gameSystem: GameSystem.ALPHA_STRIKE,
             budgetRange: { min: 0, max: 20 },
-            minUnitCount: 2,
+            minUnitCount: 1,
             maxUnitCount: 2,
             gunnery: 4,
             piloting: 5,
@@ -643,17 +759,15 @@ describe('ForceGeneratorService', () => {
             nameChanges: [],
         });
 
-        spyOn<any>(service, 'getSuccessPoolTarget').and.returnValue(1);
-        spyOn<any>(service, 'getRandomAttemptCount').and.returnValue(1);
         const randomSpy = spyOn(Math, 'random');
-        randomSpy.and.returnValues(0, 0, 0, 0.6, 0);
+        randomSpy.and.returnValues(0, 0, 0, 0.6);
 
         const preview = service.buildPreview({
             eligibleUnits: [seedUnit, parentMatch, offMatch],
             context: createContext(faction, era),
             gameSystem: GameSystem.ALPHA_STRIKE,
             budgetRange: { min: 0, max: 20 },
-            minUnitCount: 2,
+            minUnitCount: 1,
             maxUnitCount: 2,
             gunnery: 4,
             piloting: 5,
@@ -661,5 +775,189 @@ describe('ForceGeneratorService', () => {
 
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Seed', 'Parent Command']);
         expect(preview.explanationLines.some((line) => line.includes('Nested subforce rules switched to CLAN.'))).toBeTrue();
+    });
+
+    it('uses the common unit count for Trinary instead of recursively expanding it through org child groups', () => {
+        const era = createEra(3028, 'Late Succession War - LosTech', 3028, 3028);
+        const faction = { ...createFaction(10, 'Clan Coyote'), group: 'Clan' } as unknown as Faction;
+        const ruleset: MegaMekRulesetRecord = {
+            factionKey: 'CCO',
+            indexes: { forceIndexesByEchelon: { TRINARY: [0] } },
+            forceCount: 1,
+            toc: {
+                echelon: {
+                    options: [{ echelon: { code: 'TRINARY' } }],
+                },
+            },
+            forces: [{ echelon: { code: 'TRINARY' } }],
+        };
+
+        megaMekRulesetsByMulFactionId.set(faction.id, [ruleset]);
+        megaMekRulesetsByFactionKey.set(ruleset.factionKey, ruleset);
+
+        const profile = (service as any).buildRulesetProfile(
+            { ...createContext(faction, era), ruleset },
+            10,
+            20,
+        );
+
+        expect(profile).not.toBeNull();
+        expect(profile.preferredOrgType).toBe('Trinary');
+        expect(profile.preferredUnitCount).toBe(15);
+        expect(profile.explanationNotes).toContain('Org target: Trinary (regular size 15).');
+    });
+
+    it('prefers a lance-shaped valid force over a company-shaped valid force when the ruleset selects LANCE', () => {
+        const era = createEra(2570, 'Age of War');
+        const faction = createFaction(10, 'Capellan Confederation');
+        const lanceUnits = [
+            createUnit({ id: 1, name: 'Lance 1', bv: 1450 }),
+            createUnit({ id: 2, name: 'Lance 2', bv: 1450 }),
+            createUnit({ id: 3, name: 'Lance 3', bv: 1450 }),
+            createUnit({ id: 4, name: 'Lance 4', bv: 1450 }),
+        ];
+        const companyUnits = [
+            createUnit({ id: 11, name: 'Company 1', bv: 840 }),
+            createUnit({ id: 12, name: 'Company 2', bv: 840 }),
+            createUnit({ id: 13, name: 'Company 3', bv: 840 }),
+            createUnit({ id: 14, name: 'Company 4', bv: 840 }),
+            createUnit({ id: 15, name: 'Company 5', bv: 840 }),
+            createUnit({ id: 16, name: 'Company 6', bv: 840 }),
+            createUnit({ id: 17, name: 'Company 7', bv: 840 }),
+        ];
+        const ruleset: MegaMekRulesetRecord = {
+            factionKey: 'CC',
+            indexes: { forceIndexesByEchelon: { LANCE: [0] } },
+            forceCount: 1,
+            forces: [{ echelon: { code: 'LANCE' } }],
+        };
+
+        megaMekRulesetsByMulFactionId.set(faction.id, [ruleset]);
+        megaMekRulesetsByFactionKey.set(ruleset.factionKey, ruleset);
+
+        let callCount = 0;
+        spyOn<any>(service, 'buildCandidateSelection').and.callFake(() => {
+            callCount += 1;
+            return (callCount === 1
+                ? {
+                    selectedCandidates: companyUnits.map((unit) => ({ unit, productionWeight: 1, salvageWeight: 1, cost: unit.bv, megaMekUnitType: 'Mek' })),
+                    selectionSteps: [],
+                    rulesetProfile: {
+                        selectedEchelon: 'LANCE',
+                        preferredOrgType: 'Lance',
+                        preferredUnitCount: 4,
+                        preferredUnitTypes: new Set<string>(),
+                        preferredWeightClasses: new Set<string>(),
+                        preferredRoles: new Set<string>(),
+                        preferredMotives: new Set<string>(),
+                        templates: [],
+                        explanationNotes: [],
+                    },
+                }
+                : {
+                    selectedCandidates: lanceUnits.map((unit) => ({ unit, productionWeight: 1, salvageWeight: 1, cost: unit.bv, megaMekUnitType: 'Mek' })),
+                    selectionSteps: [],
+                    rulesetProfile: {
+                        selectedEchelon: 'LANCE',
+                        preferredOrgType: 'Lance',
+                        preferredUnitCount: 4,
+                        preferredUnitTypes: new Set<string>(),
+                        preferredWeightClasses: new Set<string>(),
+                        preferredRoles: new Set<string>(),
+                        preferredMotives: new Set<string>(),
+                        templates: [],
+                        explanationNotes: [],
+                    },
+                }) as any;
+        });
+
+        const preview = service.buildPreview({
+            eligibleUnits: [...lanceUnits, ...companyUnits],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.CLASSIC,
+            budgetRange: { min: 5800, max: 5900 },
+            minUnitCount: 4,
+            maxUnitCount: 8,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Lance 1', 'Lance 2', 'Lance 3', 'Lance 4']);
+        expect(preview.explanationLines.some((line) => line.includes('Resolved org shape: Lance.'))).toBeTrue();
+    });
+
+    it('prefers a squadron-shaped valid force over a company-shaped valid force when the ruleset selects SQUADRON', () => {
+        const era = createEra(3055, 'Clan Invasion');
+        const faction = createFaction(10, 'Capellan Confederation');
+        const fighterStats = { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'];
+        const squadronUnits = [
+            createUnit({ id: 21, name: 'Fighter 1', type: 'Aero', subtype: 'Aerospace Fighter', moveType: 'Aerodyne', bv: 980, as: fighterStats }),
+            createUnit({ id: 22, name: 'Fighter 2', type: 'Aero', subtype: 'Aerospace Fighter', moveType: 'Aerodyne', bv: 980, as: fighterStats }),
+            createUnit({ id: 23, name: 'Fighter 3', type: 'Aero', subtype: 'Aerospace Fighter', moveType: 'Aerodyne', bv: 980, as: fighterStats }),
+            createUnit({ id: 24, name: 'Fighter 4', type: 'Aero', subtype: 'Aerospace Fighter', moveType: 'Aerodyne', bv: 980, as: fighterStats }),
+            createUnit({ id: 25, name: 'Fighter 5', type: 'Aero', subtype: 'Aerospace Fighter', moveType: 'Aerodyne', bv: 980, as: fighterStats }),
+            createUnit({ id: 26, name: 'Fighter 6', type: 'Aero', subtype: 'Aerospace Fighter', moveType: 'Aerodyne', bv: 980, as: fighterStats }),
+        ];
+        const companyUnits = [
+            createUnit({ id: 31, name: 'Mixed 1', bv: 840 }),
+            createUnit({ id: 32, name: 'Mixed 2', bv: 840 }),
+            createUnit({ id: 33, name: 'Mixed 3', bv: 840 }),
+            createUnit({ id: 34, name: 'Mixed 4', bv: 840 }),
+            createUnit({ id: 35, name: 'Mixed 5', bv: 840 }),
+            createUnit({ id: 36, name: 'Mixed 6', bv: 840 }),
+            createUnit({ id: 37, name: 'Mixed 7', bv: 840 }),
+        ];
+
+        let callCount = 0;
+        spyOn<any>(service, 'buildCandidateSelection').and.callFake(() => {
+            callCount += 1;
+            return (callCount === 1
+                ? {
+                    selectedCandidates: companyUnits.map((unit) => ({ unit, productionWeight: 1, salvageWeight: 1, cost: unit.bv, megaMekUnitType: 'Mek' })),
+                    selectionSteps: [],
+                    rulesetProfile: {
+                        selectedEchelon: 'SQUADRON',
+                        preferredOrgType: 'Squadron',
+                        preferredUnitCount: 6,
+                        preferredUnitTypes: new Set<string>(),
+                        preferredWeightClasses: new Set<string>(),
+                        preferredRoles: new Set<string>(),
+                        preferredMotives: new Set<string>(),
+                        templates: [],
+                        explanationNotes: [],
+                    },
+                }
+                : {
+                    selectedCandidates: squadronUnits.map((unit) => ({ unit, productionWeight: 1, salvageWeight: 1, cost: unit.bv, megaMekUnitType: 'AeroSpaceFighter' })),
+                    selectionSteps: [],
+                    rulesetProfile: {
+                        selectedEchelon: 'SQUADRON',
+                        preferredOrgType: 'Squadron',
+                        preferredUnitCount: 6,
+                        preferredUnitTypes: new Set<string>(),
+                        preferredWeightClasses: new Set<string>(),
+                        preferredRoles: new Set<string>(),
+                        preferredMotives: new Set<string>(),
+                        templates: [],
+                        explanationNotes: [],
+                    },
+                }) as any;
+        });
+
+        const preview = service.buildPreview({
+            eligibleUnits: [...squadronUnits, ...companyUnits],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.CLASSIC,
+            budgetRange: { min: 5800, max: 5900 },
+            minUnitCount: 4,
+            maxUnitCount: 8,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Fighter 1', 'Fighter 2', 'Fighter 3', 'Fighter 4', 'Fighter 5', 'Fighter 6']);
+        expect(preview.explanationLines.some((line) => line.includes('Resolved org shape: Squadron.'))).toBeTrue();
     });
 });

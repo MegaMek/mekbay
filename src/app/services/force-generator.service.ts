@@ -54,6 +54,9 @@ import { LoadForceEntry, type LoadForceGroup } from '../models/load-force-entry.
 import { MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.model';
 import type { Options } from '../models/options.model';
 import type { Unit } from '../models/units.model';
+import { resolveOrgDefinitionSpec } from '../utils/org/org-registry.util';
+import { resolveFromUnits } from '../utils/org/org-solver.util';
+import type { GroupSizeResult, OrgDefinitionSpec, OrgRuleDefinition, OrgType } from '../utils/org/org-types';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import { getPositiveFactionNamesFromFilter } from '../utils/faction-filter.util';
@@ -81,7 +84,6 @@ interface ForceGenerationCandidateUnit {
 }
 
 type ForceGenerationAvailabilitySource = 'production' | 'salvage';
-type ForceGenerationSelectionStrategy = 'greedy' | 'weighted';
 
 interface ForceGenerationAvailabilityPair {
     eraId: number;
@@ -110,6 +112,8 @@ interface ForceGenerationRulesetTemplate {
 
 interface ForceGenerationRulesetProfile {
     selectedEchelon?: string;
+    preferredOrgType?: OrgType;
+    preferredUnitCount?: number;
     preferredUnitTypes: Set<string>;
     preferredWeightClasses: Set<string>;
     preferredRoles: Set<string>;
@@ -128,8 +132,6 @@ interface ForceGenerationSelectionStep {
     rolledSource: ForceGenerationAvailabilitySource;
     source: ForceGenerationAvailabilitySource;
     usedFallbackSource: boolean;
-    sourceRollProbability: number;
-    candidatePickProbability: number;
     productionWeight: number;
     salvageWeight: number;
     cost: number;
@@ -140,6 +142,32 @@ interface ForceGenerationSelectionAttempt {
     selectedCandidates: ForceGenerationCandidateUnit[];
     selectionSteps: ForceGenerationSelectionStep[];
     rulesetProfile: ForceGenerationRulesetProfile | null;
+    structureEvaluation?: ForceGenerationStructureEvaluation;
+}
+
+interface ForceGenerationAttemptBudget {
+    minAttempts: number;
+    maxAttempts: number;
+    targetDurationMs: number;
+}
+
+interface ForceGenerationCostBoundsIndex {
+    candidateCount: number;
+    ascendingPositions: Map<ForceGenerationCandidateUnit, number>;
+    descendingPositions: Map<ForceGenerationCandidateUnit, number>;
+    ascendingPrefixSums: number[];
+    descendingPrefixSums: number[];
+}
+
+interface ForceGenerationStructureEvaluation {
+    score: number;
+    perfectMatch: boolean;
+    summary: string;
+}
+
+interface ForceGenerationForceNodeSelection {
+    forceNode?: MegaMekRulesetForceNode;
+    matchContext: RulesetMatchContext;
 }
 
 export interface ForceGenerationPreview {
@@ -190,16 +218,13 @@ export interface ForceGeneratorBudgetDefaults {
     alphaStrike: ForceGenerationBudgetRange;
 }
 
+export interface ForceGeneratorUnitCountDefaults {
+    min: number;
+    max: number;
+}
+
 const DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT = 1;
-const FORCE_GENERATION_MIN_RANDOM_ATTEMPTS = 8;
-const FORCE_GENERATION_MAX_RANDOM_ATTEMPTS = 64;
-const FORCE_GENERATION_MAX_EXACT_RANDOM_ATTEMPTS = 72;
-const FORCE_GENERATION_CHEAP_TARGET_WINDOW_MS = 10;
-const FORCE_GENERATION_MAX_SEARCH_WINDOW_MS = 50;
-const FORCE_GENERATION_MAX_EXACT_SEARCH_WINDOW_MS = 45;
-const FORCE_GENERATION_FAST_SUCCESS_POOL_SIZE = 6;
-const FORCE_GENERATION_MEDIUM_SUCCESS_POOL_SIZE = 4;
-const FORCE_GENERATION_MIN_SUCCESS_POOL_SIZE = 2;
+const FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS = 300;
 
 const COMMON_ECHELON_UNIT_COUNTS = new Map<string, number>([
     ['ELEMENT', 1],
@@ -217,6 +242,32 @@ const COMMON_ECHELON_UNIT_COUNTS = new Map<string, number>([
     ['TRINARY', 15],
 ]);
 
+const ECHELON_TO_ORG_TYPE = new Map<string, OrgType>([
+    ['ELEMENT', 'Element'],
+    ['POINT', 'Point'],
+    ['LEVEL_I', 'Level I'],
+    ['SQUAD', 'Squad'],
+    ['PLATOON', 'Platoon'],
+    ['FLIGHT', 'Flight'],
+    ['LANCE', 'Lance'],
+    ['STAR', 'Star'],
+    ['LEVEL_II', 'Level II'],
+    ['SQUADRON', 'Squadron'],
+    ['WING', 'Wing'],
+    ['BINARY', 'Binary'],
+    ['COMPANY', 'Company'],
+    ['TRINARY', 'Trinary'],
+    ['BATTALION', 'Battalion'],
+    ['CLUSTER', 'Cluster'],
+    ['REGIMENT', 'Regiment'],
+    ['BRIGADE', 'Brigade'],
+    ['GALAXY', 'Galaxy'],
+    ['LEVEL_III', 'Level III'],
+    ['LEVEL_IV', 'Level IV'],
+    ['LEVEL_V', 'Level V'],
+    ['LEVEL_VI', 'Level VI'],
+]);
+
 function normalizeInitialBudgetRange(min: number, max: number): ForceGenerationBudgetRange {
     const normalizedMin = Math.max(0, min);
     const normalizedMax = Math.max(0, max);
@@ -227,10 +278,14 @@ function normalizeInitialBudgetRange(min: number, max: number): ForceGenerationB
     };
 }
 
-function getForceGenerationSearchTime(): number {
-    return typeof globalThis.performance?.now === 'function'
-        ? globalThis.performance.now()
-        : Date.now();
+function normalizeInitialUnitCountRange(min: number, max: number): ForceGeneratorUnitCountDefaults {
+    const normalizedMin = Math.max(1, Math.floor(min));
+    const normalizedMax = Math.max(normalizedMin, Math.floor(max));
+
+    return {
+        min: normalizedMin,
+        max: normalizedMax,
+    };
 }
 
 function getBudgetMetric(unit: Unit, gameSystem: GameSystem, gunnery: number, piloting: number): number {
@@ -266,7 +321,196 @@ function getMaximumMetricTotal(values: readonly number[], count: number): number
         .reduce((sum, value) => sum + value, 0);
 }
 
+function buildCostBoundsIndex(candidates: readonly ForceGenerationCandidateUnit[]): ForceGenerationCostBoundsIndex {
+    const ascendingPositions = new Map<ForceGenerationCandidateUnit, number>();
+    const descendingPositions = new Map<ForceGenerationCandidateUnit, number>();
+    const ascendingPrefixSums = [0];
+    const descendingPrefixSums = [0];
+
+    const ascendingCandidates = [...candidates].sort((left, right) => left.cost - right.cost);
+    const descendingCandidates = [...candidates].sort((left, right) => right.cost - left.cost);
+
+    for (const [index, candidate] of ascendingCandidates.entries()) {
+        ascendingPositions.set(candidate, index);
+        ascendingPrefixSums.push(ascendingPrefixSums[index] + candidate.cost);
+    }
+
+    for (const [index, candidate] of descendingCandidates.entries()) {
+        descendingPositions.set(candidate, index);
+        descendingPrefixSums.push(descendingPrefixSums[index] + candidate.cost);
+    }
+
+    return {
+        candidateCount: candidates.length,
+        ascendingPositions,
+        descendingPositions,
+        ascendingPrefixSums,
+        descendingPrefixSums,
+    };
+}
+
+function getExcludedOrderedMetricTotal(
+    prefixSums: readonly number[],
+    candidateCount: number,
+    excludedPosition: number | undefined,
+    excludedCost: number,
+    count: number,
+): number {
+    if (count <= 0 || candidateCount <= 1) {
+        return 0;
+    }
+
+    const boundedCount = Math.min(count, candidateCount - 1);
+    if (boundedCount <= 0) {
+        return 0;
+    }
+
+    if (excludedPosition !== undefined && excludedPosition < boundedCount) {
+        return prefixSums[Math.min(candidateCount, boundedCount + 1)] - excludedCost;
+    }
+
+    return prefixSums[boundedCount];
+}
+
+function getExcludedMinimumMetricTotal(
+    costBoundsIndex: ForceGenerationCostBoundsIndex,
+    excludedCandidate: ForceGenerationCandidateUnit,
+    count: number,
+): number {
+    return getExcludedOrderedMetricTotal(
+        costBoundsIndex.ascendingPrefixSums,
+        costBoundsIndex.candidateCount,
+        costBoundsIndex.ascendingPositions.get(excludedCandidate),
+        excludedCandidate.cost,
+        count,
+    );
+}
+
+function getExcludedMaximumMetricTotal(
+    costBoundsIndex: ForceGenerationCostBoundsIndex,
+    excludedCandidate: ForceGenerationCandidateUnit,
+    count: number,
+): number {
+    return getExcludedOrderedMetricTotal(
+        costBoundsIndex.descendingPrefixSums,
+        costBoundsIndex.candidateCount,
+        costBoundsIndex.descendingPositions.get(excludedCandidate),
+        excludedCandidate.cost,
+        count,
+    );
+}
+
+function getPreferredOrgTypeForEchelon(echelon: string | undefined): OrgType | undefined {
+    return echelon ? ECHELON_TO_ORG_TYPE.get(echelon) : undefined;
+}
+
+function getPositiveRulesetValues(values: readonly string[] | undefined): string[] {
+    return (values ?? []).filter((value) => !value.startsWith('!'));
+}
+
+function getFirstPositiveRulesetValue(values: readonly string[] | undefined): string | undefined {
+    return getPositiveRulesetValues(values)[0];
+}
+
+function getCommonUnitCountForOrgType(type: OrgType): number | undefined {
+    for (const [echelon, orgType] of ECHELON_TO_ORG_TYPE.entries()) {
+        if (orgType === type) {
+            return COMMON_ECHELON_UNIT_COUNTS.get(echelon);
+        }
+    }
+
+    return undefined;
+}
+
+function getRuleRegularCount(rule: Pick<OrgRuleDefinition, 'modifiers'>): number | undefined {
+    const regularValue = rule.modifiers[''] ?? Object.values(rule.modifiers)[0];
+    if (regularValue === undefined) {
+        return undefined;
+    }
+
+    return typeof regularValue === 'number' ? regularValue : regularValue.count;
+}
+
+function findOrgRuleByType(definition: OrgDefinitionSpec, type: OrgType): OrgRuleDefinition | undefined {
+    return definition.rules.find((rule) => rule.type === type);
+}
+
+function resolveRegularUnitCountForOrgType(
+    definition: OrgDefinitionSpec,
+    type: OrgType,
+    visited: Set<OrgType> = new Set<OrgType>(),
+): number | undefined {
+    const commonUnitCount = getCommonUnitCountForOrgType(type);
+    if (commonUnitCount !== undefined) {
+        return commonUnitCount;
+    }
+
+    if (visited.has(type)) {
+        return undefined;
+    }
+
+    visited.add(type);
+    const rule = findOrgRuleByType(definition, type);
+    if (!rule) {
+        return undefined;
+    }
+
+    const regularCount = getRuleRegularCount(rule);
+    if (regularCount === undefined) {
+        return undefined;
+    }
+
+    if (rule.kind === 'leaf-count' || rule.kind === 'leaf-pattern' || rule.kind === 'ci-formation') {
+        return regularCount;
+    }
+
+    const childType = rule.childRoles[0]?.matches[0];
+    if (!childType) {
+        return regularCount;
+    }
+
+    const childUnitCount = resolveRegularUnitCountForOrgType(definition, childType, visited);
+    return childUnitCount === undefined ? regularCount : regularCount * childUnitCount;
+}
+
+function getPreferredUnitCountForEchelon(
+    echelon: string | undefined,
+    definition: OrgDefinitionSpec | null,
+): number | undefined {
+    if (!echelon) {
+        return undefined;
+    }
+
+    const commonUnitCount = COMMON_ECHELON_UNIT_COUNTS.get(echelon);
+    if (commonUnitCount !== undefined) {
+        return commonUnitCount;
+    }
+
+    const preferredOrgType = getPreferredOrgTypeForEchelon(echelon);
+    if (preferredOrgType && definition) {
+        return resolveRegularUnitCountForOrgType(definition, preferredOrgType);
+    }
+
+    return undefined;
+}
+
+function compareResolvedOrgGroups(left: GroupSizeResult, right: GroupSizeResult): number {
+    if (left.tier !== right.tier) {
+        return right.tier - left.tier;
+    }
+
+    return (right.priority ?? 0) - (left.priority ?? 0);
+}
+
+function getResolvedOrgGroupLabel(group: GroupSizeResult): string {
+    return group.type ? `${group.modifierKey}${group.type}` : group.name;
+}
+
 function pickWeightedRandomEntry<T>(entries: readonly T[], getWeight: (entry: T) => number): T {
+    if (entries.length === 1) {
+        return entries[0];
+    }
+
     const weights = entries.map((entry) => Math.max(0, getWeight(entry)));
     const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
 
@@ -331,10 +575,12 @@ function formatForceGeneratorWeight(value: number): string {
     return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
-function formatForceGenerationPercent(value: number): string {
-    const boundedPercent = Math.max(0, Math.min(100, value * 100));
-    const digits = boundedPercent >= 10 ? 0 : 1;
-    return `${boundedPercent.toFixed(digits)}%`;
+function getForceGeneratorNow(): number {
+    if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+        return performance.now();
+    }
+
+    return Date.now();
 }
 
 function formatForceGenerationUnitLabel(unit: Pick<Unit, 'chassis' | 'model'>): string {
@@ -467,6 +713,17 @@ export class ForceGeneratorService {
         };
     }
 
+    public resolveInitialUnitCountDefaults(
+        options: Pick<Options,
+            'forceGenLastMinUnitCount'
+            | 'forceGenLastMaxUnitCount'>,
+    ): ForceGeneratorUnitCountDefaults {
+        return normalizeInitialUnitCountRange(
+            options.forceGenLastMinUnitCount,
+            options.forceGenLastMaxUnitCount,
+        );
+    }
+
     public getStoredBudgetOptionKeys(gameSystem: GameSystem): {
         min: 'forceGenLastBVMin' | 'forceGenLastPVMin';
         max: 'forceGenLastBVMax' | 'forceGenLastPVMax';
@@ -474,6 +731,16 @@ export class ForceGeneratorService {
         return gameSystem === GameSystem.ALPHA_STRIKE
             ? { min: 'forceGenLastPVMin', max: 'forceGenLastPVMax' }
             : { min: 'forceGenLastBVMin', max: 'forceGenLastBVMax' };
+    }
+
+    public getStoredUnitCountOptionKeys(): {
+        min: 'forceGenLastMinUnitCount';
+        max: 'forceGenLastMaxUnitCount';
+    } {
+        return {
+            min: 'forceGenLastMinUnitCount',
+            max: 'forceGenLastMaxUnitCount',
+        };
     }
 
     public getBudgetMetric(unit: Unit, gameSystem: GameSystem, gunnery: number, piloting: number): number {
@@ -517,7 +784,6 @@ export class ForceGeneratorService {
         const minUnitCount = Math.max(1, Math.floor(options.minUnitCount));
         const maxUnitCount = Math.max(minUnitCount, Math.floor(options.maxUnitCount));
         const budgetRange = this.normalizeBudgetRange(options.budgetRange);
-        const candidates = eligibleUnits.map((unit) => this.createCandidateUnit(unit, options.context, options));
 
         if (eligibleUnits.length < minUnitCount) {
             return {
@@ -540,6 +806,32 @@ export class ForceGeneratorService {
             };
         }
 
+        const candidates = eligibleUnits
+            .map((unit) => this.createCandidateUnit(unit, options.context, options))
+            .filter((candidate) => this.hasPositiveAvailability(candidate));
+
+        if (candidates.length < minUnitCount) {
+            const message = `Only ${candidates.length} units have positive MegaMek availability in the rolled faction and era.`;
+            return {
+                gameSystem: options.gameSystem,
+                units: [],
+                totalCost: 0,
+                faction: options.context.forceFaction,
+                era: options.context.forceEra,
+                explanationLines: this.buildPreviewExplanation(
+                    options.gameSystem,
+                    candidates.length,
+                    options.context,
+                    budgetRange,
+                    minUnitCount,
+                    maxUnitCount,
+                    null,
+                    message,
+                ),
+                error: message,
+            };
+        }
+
         const candidateCosts = candidates.map((candidate) => candidate.cost);
         if (getMinimumMetricTotal(candidateCosts, minUnitCount) > budgetRange.max) {
             return {
@@ -550,7 +842,7 @@ export class ForceGeneratorService {
                 era: options.context.forceEra,
                 explanationLines: this.buildPreviewExplanation(
                     options.gameSystem,
-                    eligibleUnits.length,
+                    candidates.length,
                     options.context,
                     budgetRange,
                     minUnitCount,
@@ -571,7 +863,7 @@ export class ForceGeneratorService {
                 era: options.context.forceEra,
                 explanationLines: this.buildPreviewExplanation(
                     options.gameSystem,
-                    eligibleUnits.length,
+                    candidates.length,
                     options.context,
                     budgetRange,
                     minUnitCount,
@@ -583,26 +875,109 @@ export class ForceGeneratorService {
             };
         }
 
+        const attemptBudget = this.createAttemptBudget(candidates.length, minUnitCount, maxUnitCount);
+        const searchStartedAt = getForceGeneratorNow();
         let bestAttempt: ForceGenerationSelectionAttempt = {
             selectedCandidates: [],
             selectionSteps: [],
             rulesetProfile: null,
         };
-        let bestAttemptTotalCost = 0;
         let bestAttemptDistance = Number.POSITIVE_INFINITY;
-        const successfulAttempts: Array<{ selectionAttempt: ForceGenerationSelectionAttempt; totalCost: number }> = [];
-        const successfulAttemptKeys = new Set<string>();
-        let successPoolTarget: number | null = null;
-        const targetBudget = this.getBudgetTarget(budgetRange);
-        const searchStartedAt = getForceGenerationSearchTime();
-        const exactBudgetRequested = this.isExactBudgetRange(budgetRange);
-        const randomAttemptCount = this.getRandomAttemptCount(candidates.length, budgetRange, exactBudgetRequested);
-        const searchWindowMs = exactBudgetRequested
-            ? FORCE_GENERATION_MAX_EXACT_SEARCH_WINDOW_MS
-            : FORCE_GENERATION_MAX_SEARCH_WINDOW_MS;
+        let bestValidAttempt: ForceGenerationSelectionAttempt | null = null;
+        let bestValidMidpointDistance = Number.POSITIVE_INFINITY;
+        let bestValidStructureScore = Number.NEGATIVE_INFINITY;
+        let averageAttemptDurationMs = 0;
+        let attemptLimit = attemptBudget.minAttempts;
 
-        const buildSuccessfulPreview = (selectionAttempt: ForceGenerationSelectionAttempt, totalCost: number): ForceGenerationPreview => {
-            const generatedUnits = selectionAttempt.selectedCandidates.map((candidate) => this.createGeneratedUnit(
+        for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
+            const attemptStartedAt = getForceGeneratorNow();
+            const selectionAttempt = this.buildCandidateSelection(
+                candidates,
+                options.context,
+                budgetRange,
+                minUnitCount,
+                maxUnitCount,
+            );
+            const totalCost = selectionAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
+            const attemptDistance = this.getBudgetRangeDistance(totalCost, budgetRange)
+                + (selectionAttempt.selectedCandidates.length < minUnitCount
+                    ? (minUnitCount - selectionAttempt.selectedCandidates.length) * Math.max(1, this.getBudgetTarget(budgetRange))
+                    : 0);
+
+            if (attemptDistance < bestAttemptDistance) {
+                bestAttempt = selectionAttempt;
+                bestAttemptDistance = attemptDistance;
+            }
+
+            const isValid = selectionAttempt.selectedCandidates.length >= minUnitCount
+                && selectionAttempt.selectedCandidates.length <= maxUnitCount
+                && this.isBudgetWithinRange(totalCost, budgetRange);
+            if (isValid) {
+                const structureEvaluation = this.evaluateSelectionStructure(selectionAttempt, options.context);
+                if (structureEvaluation) {
+                    selectionAttempt.structureEvaluation = structureEvaluation;
+                }
+
+                const midpointDistance = Math.abs(totalCost - this.getBudgetTarget(budgetRange));
+                const structureScore = structureEvaluation?.score ?? 0;
+                if (
+                    !bestValidAttempt
+                    || structureScore > bestValidStructureScore
+                    || (structureScore === bestValidStructureScore && midpointDistance < bestValidMidpointDistance)
+                    || (
+                        structureScore === bestValidStructureScore
+                        && midpointDistance === bestValidMidpointDistance
+                        && selectionAttempt.selectedCandidates.length < bestValidAttempt.selectedCandidates.length
+                    )
+                ) {
+                    bestValidAttempt = selectionAttempt;
+                    bestValidStructureScore = structureScore;
+                    bestValidMidpointDistance = midpointDistance;
+                }
+
+                if (!structureEvaluation || structureEvaluation.perfectMatch) {
+                    const generatedUnits = selectionAttempt.selectedCandidates.map((candidate) => this.createGeneratedUnit(
+                        candidate.unit,
+                        options.gameSystem,
+                        options.gunnery,
+                        options.piloting,
+                    ));
+
+                    return {
+                        gameSystem: options.gameSystem,
+                        units: generatedUnits,
+                        totalCost,
+                        faction: options.context.forceFaction,
+                        era: options.context.forceEra,
+                        explanationLines: this.buildPreviewExplanation(
+                            options.gameSystem,
+                            candidates.length,
+                            options.context,
+                            budgetRange,
+                            minUnitCount,
+                            maxUnitCount,
+                            selectionAttempt,
+                            null,
+                        ),
+                        error: null,
+                    };
+                }
+            }
+
+            const attemptDurationMs = Math.max(0.05, getForceGeneratorNow() - attemptStartedAt);
+            averageAttemptDurationMs = this.updateAverageAttemptDuration(averageAttemptDurationMs, attemptDurationMs, attempt + 1);
+            attemptLimit = this.resolveAttemptLimit(
+                attemptBudget,
+                attempt + 1,
+                averageAttemptDurationMs,
+                getForceGeneratorNow() - searchStartedAt,
+                bestValidAttempt !== null,
+            );
+        }
+
+        if (bestValidAttempt) {
+            const totalCost = bestValidAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
+            const generatedUnits = bestValidAttempt.selectedCandidates.map((candidate) => this.createGeneratedUnit(
                 candidate.unit,
                 options.gameSystem,
                 options.gunnery,
@@ -617,129 +992,16 @@ export class ForceGeneratorService {
                 era: options.context.forceEra,
                 explanationLines: this.buildPreviewExplanation(
                     options.gameSystem,
-                    eligibleUnits.length,
+                    candidates.length,
                     options.context,
                     budgetRange,
                     minUnitCount,
                     maxUnitCount,
-                    selectionAttempt,
+                    bestValidAttempt,
                     null,
                 ),
                 error: null,
             };
-        };
-
-        const rememberSuccessfulAttempt = (selectionAttempt: ForceGenerationSelectionAttempt, totalCost: number): void => {
-            const attemptKey = this.getSelectionAttemptKey(selectionAttempt);
-            if (successfulAttemptKeys.has(attemptKey)) {
-                return;
-            }
-
-            successfulAttemptKeys.add(attemptKey);
-            successfulAttempts.push({ selectionAttempt, totalCost });
-        };
-
-        const considerAttempt = (
-            selectionAttempt: ForceGenerationSelectionAttempt,
-            collectSuccess: boolean,
-        ): { totalCost: number; isValid: boolean; reachedBudgetGoal: boolean } => {
-            const totalCost = selectionAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
-            const distance = this.getBudgetRangeDistance(totalCost, budgetRange);
-            const isValid = selectionAttempt.selectedCandidates.length >= minUnitCount
-                && selectionAttempt.selectedCandidates.length <= maxUnitCount
-                && this.isBudgetWithinRange(totalCost, budgetRange);
-
-            if (
-                distance < bestAttemptDistance
-                || (distance === bestAttemptDistance && selectionAttempt.selectedCandidates.length > bestAttempt.selectedCandidates.length)
-            ) {
-                bestAttempt = selectionAttempt;
-                bestAttemptDistance = distance;
-                bestAttemptTotalCost = totalCost;
-            }
-
-            if (isValid && !exactBudgetRequested && collectSuccess) {
-                rememberSuccessfulAttempt(selectionAttempt, totalCost);
-            }
-
-            return {
-                totalCost,
-                isValid,
-                reachedBudgetGoal: isValid && this.hasReachedBudgetTarget(totalCost, budgetRange, targetBudget),
-            };
-        };
-
-        if (exactBudgetRequested) {
-            const greedyAttempt = this.buildCandidateSelection(
-                candidates,
-                options.context,
-                budgetRange,
-                minUnitCount,
-                maxUnitCount,
-                'greedy',
-            );
-            const greedyResult = considerAttempt(greedyAttempt, false);
-            if (greedyResult.reachedBudgetGoal) {
-                return buildSuccessfulPreview(bestAttempt, bestAttemptTotalCost);
-            }
-        }
-
-        for (let attempt = 0; attempt < randomAttemptCount; attempt += 1) {
-            if (getForceGenerationSearchTime() - searchStartedAt >= searchWindowMs) {
-                break;
-            }
-
-            const selectionAttempt = this.buildCandidateSelection(
-                candidates,
-                options.context,
-                budgetRange,
-                minUnitCount,
-                maxUnitCount,
-                'weighted',
-            );
-            const result = considerAttempt(selectionAttempt, true);
-
-            if (result.reachedBudgetGoal && exactBudgetRequested) {
-                return buildSuccessfulPreview(bestAttempt, bestAttemptTotalCost);
-            }
-
-            if (!exactBudgetRequested && result.isValid) {
-                if (successPoolTarget === null) {
-                    const elapsed = getForceGenerationSearchTime() - searchStartedAt;
-                    successPoolTarget = this.getSuccessPoolTarget(elapsed, searchWindowMs);
-                }
-
-                if (successfulAttempts.length >= successPoolTarget) {
-                    break;
-                }
-            }
-        }
-
-        if (!exactBudgetRequested && successfulAttempts.length > 0) {
-            const successIndex = Math.floor(Math.random() * successfulAttempts.length);
-            const selectedSuccess = successfulAttempts[successIndex];
-            return buildSuccessfulPreview(selectedSuccess.selectionAttempt, selectedSuccess.totalCost);
-        }
-
-        if (
-            bestAttempt.selectedCandidates.length >= minUnitCount
-            && bestAttempt.selectedCandidates.length <= maxUnitCount
-            && this.isBudgetWithinRange(bestAttemptTotalCost, budgetRange)
-        ) {
-            return buildSuccessfulPreview(bestAttempt, bestAttemptTotalCost);
-        }
-
-        if (exactBudgetRequested) {
-            const repairedAttempt = this.tryRepairSelectionAttemptToExactBudget(
-                candidates,
-                bestAttempt,
-                budgetRange.min,
-                minUnitCount,
-                maxUnitCount,
-            );
-            if (repairedAttempt) {
-                return buildSuccessfulPreview(repairedAttempt, budgetRange.min);
-            }
         }
 
         const fallbackUnits = bestAttempt.selectedCandidates.map((candidate) => this.createGeneratedUnit(
@@ -757,7 +1019,7 @@ export class ForceGeneratorService {
             era: options.context.forceEra,
             explanationLines: this.buildPreviewExplanation(
                 options.gameSystem,
-                eligibleUnits.length,
+                candidates.length,
                 options.context,
                 budgetRange,
                 minUnitCount,
@@ -1026,6 +1288,16 @@ export class ForceGeneratorService {
             };
         }
 
+        const forceEraId = context.forceEra?.id;
+        const forceFactionId = context.forceFaction?.id;
+        if (forceEraId !== undefined && forceFactionId !== undefined) {
+            const exactValue = availabilityRecord.e[String(forceEraId)]?.[String(forceFactionId)];
+            return {
+                production: exactValue?.[0] ?? 0,
+                salvage: exactValue?.[1] ?? 0,
+            };
+        }
+
         const pairCount = context.averagingEraIds.length * context.averagingFactionIds.length;
         if (pairCount <= 0) {
             return {
@@ -1066,6 +1338,10 @@ export class ForceGeneratorService {
         };
     }
 
+    private hasPositiveAvailability(candidate: ForceGenerationCandidateUnit): boolean {
+        return candidate.productionWeight > 0 || candidate.salvageWeight > 0;
+    }
+
     private buildPreviewExplanation(
         gameSystem: GameSystem,
         eligibleUnitCount: number,
@@ -1095,6 +1371,9 @@ export class ForceGeneratorService {
             for (const note of selectionAttempt.rulesetProfile.explanationNotes) {
                 lines.push(note);
             }
+            if (selectionAttempt.structureEvaluation) {
+                lines.push(selectionAttempt.structureEvaluation.summary);
+            }
         } else if (context.ruleset) {
             lines.push(`Ruleset guidance: ${context.ruleset.factionKey}, but no matching force node added extra constraints.`);
         } else {
@@ -1102,14 +1381,14 @@ export class ForceGeneratorService {
         }
 
         for (const [index, step] of (selectionAttempt?.selectionSteps ?? []).entries()) {
-            const probabilityNote = step.usedFallbackSource && step.source !== step.rolledSource
-                ? `roll ${formatForceGenerationPercent(step.sourceRollProbability)} to ${step.rolledSource}, fallback ${step.source}, pick ${formatForceGenerationPercent(step.candidatePickProbability)}`
-                : `roll ${formatForceGenerationPercent(step.sourceRollProbability)}, pick ${formatForceGenerationPercent(step.candidatePickProbability)}`;
+            const fallbackNote = step.usedFallbackSource && step.source !== step.rolledSource
+                ? `; rolled ${step.rolledSource} but used ${step.source}`
+                : '';
             const reasons = step.rulesetReasons.length > 0
                 ? `; ruleset bias ${step.rulesetReasons.join(', ')}`
                 : '';
             lines.push(
-                `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: ${step.source} pick (${probabilityNote}), P ${formatForceGeneratorWeight(step.productionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
+                `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: ${step.source} pick${fallbackNote}, P ${formatForceGeneratorWeight(step.productionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
             );
         }
 
@@ -1133,10 +1412,6 @@ export class ForceGeneratorService {
         return totalCost >= budgetRange.min && totalCost <= budgetRange.max;
     }
 
-    private isExactBudgetRange(budgetRange: { min: number; max: number }): boolean {
-        return Number.isFinite(budgetRange.max) && budgetRange.min === budgetRange.max;
-    }
-
     private getBudgetRangeDistance(totalCost: number, budgetRange: { min: number; max: number }): number {
         if (totalCost < budgetRange.min) {
             return budgetRange.min - totalCost;
@@ -1148,27 +1423,65 @@ export class ForceGeneratorService {
         return 0;
     }
 
-    private getRandomAttemptCount(
+    private createAttemptBudget(
         candidateCount: number,
-        budgetRange: { min: number; max: number },
-        exactBudgetRequested: boolean,
-    ): number {
-        const exactRangeBonus = budgetRange.min > 0 && budgetRange.min === budgetRange.max ? 8 : 0;
-        const scaledAttemptCount = Math.ceil(Math.sqrt(candidateCount) * 1.5) + exactRangeBonus;
-        const maxAttemptCount = exactBudgetRequested ? FORCE_GENERATION_MAX_EXACT_RANDOM_ATTEMPTS : FORCE_GENERATION_MAX_RANDOM_ATTEMPTS;
-        return Math.max(FORCE_GENERATION_MIN_RANDOM_ATTEMPTS, Math.min(maxAttemptCount, scaledAttemptCount));
+        minUnitCount: number,
+        maxUnitCount: number,
+    ): ForceGenerationAttemptBudget {
+        const unitSpan = Math.max(1, maxUnitCount - minUnitCount + 1);
+        const minAttempts = Math.max(6, Math.min(14, 4 + (unitSpan * 2)));
+        const maxAttempts = Math.max(minAttempts, Math.min(160, candidateCount * unitSpan * 2));
+        const targetDurationMs = Math.max(12, Math.min(40, 8 + (unitSpan * 4) + (Math.sqrt(candidateCount) * 1.5)));
+
+        return {
+            minAttempts,
+            maxAttempts,
+            targetDurationMs,
+        };
     }
 
-    private getSuccessPoolTarget(elapsedMs: number, searchWindowMs: number): number {
-        if (elapsedMs <= FORCE_GENERATION_CHEAP_TARGET_WINDOW_MS) {
-            return FORCE_GENERATION_FAST_SUCCESS_POOL_SIZE;
+    private updateAverageAttemptDuration(
+        currentAverageMs: number,
+        attemptDurationMs: number,
+        completedAttempts: number,
+    ): number {
+        if (completedAttempts <= 1 || currentAverageMs <= 0) {
+            return attemptDurationMs;
         }
 
-        if (elapsedMs <= searchWindowMs / 2) {
-            return FORCE_GENERATION_MEDIUM_SUCCESS_POOL_SIZE;
+        return ((currentAverageMs * (completedAttempts - 1)) + attemptDurationMs) / completedAttempts;
+    }
+
+    private resolveAttemptLimit(
+        attemptBudget: ForceGenerationAttemptBudget,
+        completedAttempts: number,
+        averageAttemptDurationMs: number,
+        elapsedMs: number,
+        hasValidAttempt: boolean,
+    ): number {
+        if (completedAttempts < attemptBudget.minAttempts) {
+            return attemptBudget.minAttempts;
         }
 
-        return FORCE_GENERATION_MIN_SUCCESS_POOL_SIZE;
+        const targetDurationMs = hasValidAttempt
+            ? attemptBudget.targetDurationMs
+            : FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS;
+        const maxAttempts = hasValidAttempt ? attemptBudget.maxAttempts : Number.MAX_SAFE_INTEGER;
+
+        if (completedAttempts >= maxAttempts) {
+            return maxAttempts;
+        }
+
+        if (averageAttemptDurationMs <= 0 || elapsedMs >= targetDurationMs) {
+            return completedAttempts;
+        }
+
+        const remainingMs = Math.max(0, targetDurationMs - elapsedMs);
+        const additionalAttempts = Math.max(1, Math.floor(remainingMs / Math.max(0.05, averageAttemptDurationMs)));
+        return Math.min(
+            maxAttempts,
+            Math.max(attemptBudget.minAttempts, completedAttempts + additionalAttempts),
+        );
     }
 
     private getBudgetTarget(budgetRange: { min: number; max: number }): number {
@@ -1181,49 +1494,36 @@ export class ForceGeneratorService {
         return budgetRange.min;
     }
 
-    private hasReachedBudgetTarget(
-        totalCost: number,
-        budgetRange: { min: number; max: number },
-        targetBudget: number,
-    ): boolean {
-        if (this.isExactBudgetRange(budgetRange)) {
-            return totalCost === targetBudget;
-        }
-
-        return this.isBudgetWithinRange(totalCost, budgetRange);
-    }
-
     private getBudgetProgressScore(
         nextTotal: number,
         budgetRange: { min: number; max: number },
         targetBudget: number,
+        nextUnitCount: number,
+        preferredUnitCount?: number,
     ): number {
-        if (!this.isExactBudgetRange(budgetRange)) {
-            if (budgetRange.min > 0 && nextTotal < budgetRange.min) {
-                const denominator = Math.max(1, budgetRange.min);
-                return 1 + ((denominator - Math.min(denominator, budgetRange.min - nextTotal)) / denominator);
-            }
-
-            if (this.isBudgetWithinRange(nextTotal, budgetRange)) {
-                return 2;
-            }
-
-            return 0.25;
-        }
+        let score: number;
 
         if (budgetRange.min > 0 && nextTotal < budgetRange.min) {
             const denominator = Math.max(1, budgetRange.min);
-            return 1 + ((denominator - Math.min(denominator, budgetRange.min - nextTotal)) / denominator);
+            score = 1 + ((denominator - Math.min(denominator, budgetRange.min - nextTotal)) / denominator);
+        } else if (!Number.isFinite(targetBudget) || targetBudget <= 0) {
+            score = 1;
+        } else {
+            const span = Number.isFinite(budgetRange.max)
+                ? Math.max(1, budgetRange.max - budgetRange.min)
+                : Math.max(1, targetBudget);
+            score = 1 + ((span - Math.min(span, Math.abs(targetBudget - nextTotal))) / span);
         }
 
-        if (!Number.isFinite(targetBudget) || targetBudget <= 0) {
-            return 1;
+        if (preferredUnitCount !== undefined && preferredUnitCount > 0 && Number.isFinite(targetBudget) && targetBudget > 0) {
+            const boundedPreferredCount = Math.max(1, preferredUnitCount);
+            const boundedStepCount = Math.min(nextUnitCount, boundedPreferredCount);
+            const expectedTotal = targetBudget * (boundedStepCount / boundedPreferredCount);
+            const denominator = Math.max(1, expectedTotal);
+            score *= 1 + ((denominator - Math.min(denominator, Math.abs(expectedTotal - nextTotal))) / denominator);
         }
 
-        const span = Number.isFinite(budgetRange.max)
-            ? Math.max(1, budgetRange.max - budgetRange.min)
-            : Math.max(1, targetBudget);
-        return 1 + ((span - Math.min(span, Math.abs(targetBudget - nextTotal))) / span);
+        return score;
     }
 
     private getAvailabilityWeightForSource(
@@ -1231,53 +1531,6 @@ export class ForceGeneratorService {
         source: ForceGenerationAvailabilitySource,
     ): number {
         return source === 'production' ? candidate.productionWeight : candidate.salvageWeight;
-    }
-
-    private getAvailabilitySourceProbability(
-        candidates: readonly ForceGenerationCandidateUnit[],
-        source: ForceGenerationAvailabilitySource,
-    ): number {
-        const productionTotal = candidates.reduce((sum, candidate) => sum + Math.max(0, candidate.productionWeight), 0);
-        const salvageTotal = candidates.reduce((sum, candidate) => sum + Math.max(0, candidate.salvageWeight), 0);
-        const totalWeight = productionTotal + salvageTotal;
-        if (totalWeight <= 0) {
-            return 0.5;
-        }
-
-        return (source === 'production' ? productionTotal : salvageTotal) / totalWeight;
-    }
-
-    private getCandidatePickProbability<T>(
-        candidates: readonly T[],
-        selectedCandidate: T,
-        getWeight: (candidate: T) => number,
-    ): number {
-        if (candidates.length === 0) {
-            return 0;
-        }
-
-        const selectedIndex = candidates.indexOf(selectedCandidate);
-        if (selectedIndex < 0) {
-            return 0;
-        }
-
-        const weights = candidates.map((candidate) => Math.max(0, getWeight(candidate)));
-        const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
-        if (totalWeight <= 0) {
-            return 1 / candidates.length;
-        }
-
-        return weights[selectedIndex] / totalWeight;
-    }
-
-    private getBudgetGoalDistance(
-        totalCost: number,
-        budgetRange: { min: number; max: number },
-        targetBudget: number,
-    ): number {
-        return this.isExactBudgetRange(budgetRange)
-            ? Math.abs(targetBudget - totalCost)
-            : this.getBudgetRangeDistance(totalCost, budgetRange);
     }
 
     private pickAvailabilitySource(candidates: readonly ForceGenerationCandidateUnit[]): ForceGenerationAvailabilitySource {
@@ -1295,19 +1548,14 @@ export class ForceGeneratorService {
         rulesetProfile: ForceGenerationRulesetProfile | null,
         totalCost: number,
         budgetRange: { min: number; max: number },
-        strategy: ForceGenerationSelectionStrategy,
+        currentUnitCount: number,
+        preferredUnitCount?: number,
     ): {
         candidate: ForceGenerationCandidateUnit;
         rolledSource: ForceGenerationAvailabilitySource;
         source: ForceGenerationAvailabilitySource;
         usedFallbackSource: boolean;
-        sourceRollProbability: number;
-        candidatePickProbability: number;
     } {
-        if (strategy === 'greedy') {
-            return this.pickGreedyCandidate(candidates, rulesetProfile, totalCost, budgetRange);
-        }
-
         const source = this.pickAvailabilitySource(candidates);
         const alternateSource: ForceGenerationAvailabilitySource = source === 'production' ? 'salvage' : 'production';
         const sourceCandidates = candidates.filter((candidate) => this.getAvailabilityWeightForSource(candidate, source) > 0);
@@ -1319,147 +1567,24 @@ export class ForceGeneratorService {
                 : candidates;
         const weightedSource = sourceCandidates.length > 0 ? source : alternateCandidates.length > 0 ? alternateSource : source;
         const targetBudget = this.getBudgetTarget(budgetRange);
-        const candidate = pickWeightedRandomEntry(weightedCandidates, (weightedCandidate) => {
-            return this.getCandidateSelectionWeight(weightedCandidate, weightedSource, rulesetProfile, totalCost, budgetRange, targetBudget);
-        });
 
         return {
-            candidate,
+            candidate: pickWeightedRandomEntry(weightedCandidates, (candidate) => {
+                const availabilityWeight = Math.max(0.05, this.getAvailabilityWeightForSource(candidate, weightedSource));
+                const budgetScore = this.getBudgetProgressScore(
+                    totalCost + candidate.cost,
+                    budgetRange,
+                    targetBudget,
+                    currentUnitCount + 1,
+                    preferredUnitCount,
+                );
+                const rulesetScore = this.getRulesetMatchScore(candidate, rulesetProfile);
+                return availabilityWeight * budgetScore * rulesetScore;
+            }),
             rolledSource: source,
             source: weightedSource,
             usedFallbackSource: weightedSource !== source,
-            sourceRollProbability: this.getAvailabilitySourceProbability(candidates, source),
-            candidatePickProbability: this.getCandidatePickProbability(
-                weightedCandidates,
-                candidate,
-                (weightedCandidate) => this.getCandidateSelectionWeight(
-                    weightedCandidate,
-                    weightedSource,
-                    rulesetProfile,
-                    totalCost,
-                    budgetRange,
-                    targetBudget,
-                ),
-            ),
         };
-    }
-
-    private pickGreedyCandidate(
-        candidates: readonly ForceGenerationCandidateUnit[],
-        rulesetProfile: ForceGenerationRulesetProfile | null,
-        totalCost: number,
-        budgetRange: { min: number; max: number },
-    ): {
-        candidate: ForceGenerationCandidateUnit;
-        rolledSource: ForceGenerationAvailabilitySource;
-        source: ForceGenerationAvailabilitySource;
-        usedFallbackSource: boolean;
-        sourceRollProbability: number;
-        candidatePickProbability: number;
-    } {
-        const targetBudget = this.getBudgetTarget(budgetRange);
-        const rolledSource = this.pickAvailabilitySource(candidates);
-        const alternateSource: ForceGenerationAvailabilitySource = rolledSource === 'production' ? 'salvage' : 'production';
-        const sourceCandidates = candidates.filter((candidate) => this.getAvailabilityWeightForSource(candidate, rolledSource) > 0);
-        const alternateCandidates = candidates.filter((candidate) => this.getAvailabilityWeightForSource(candidate, alternateSource) > 0);
-        const weightedCandidates = sourceCandidates.length > 0
-            ? sourceCandidates
-            : alternateCandidates.length > 0
-                ? alternateCandidates
-                : candidates;
-        const source = sourceCandidates.length > 0 ? rolledSource : alternateCandidates.length > 0 ? alternateSource : rolledSource;
-        let bestChoice: {
-            reachedTarget: boolean;
-            targetDistance: number;
-            selectionWeight: number;
-        } | null = null;
-        const bestCandidates: ForceGenerationCandidateUnit[] = [];
-
-        for (const candidate of weightedCandidates) {
-            const nextTotal = totalCost + candidate.cost;
-            const reachedTarget = this.hasReachedBudgetTarget(nextTotal, budgetRange, targetBudget);
-            const targetDistance = this.getBudgetGoalDistance(nextTotal, budgetRange, targetBudget);
-            const selectionWeight = this.getCandidateSelectionWeight(candidate, source, rulesetProfile, totalCost, budgetRange, targetBudget);
-
-            if (!bestChoice) {
-                bestChoice = {
-                    reachedTarget,
-                    targetDistance,
-                    selectionWeight,
-                };
-                bestCandidates.length = 0;
-                bestCandidates.push(candidate);
-                continue;
-            }
-
-            const isBetter = reachedTarget !== bestChoice.reachedTarget
-                ? reachedTarget
-                : targetDistance !== bestChoice.targetDistance
-                    ? targetDistance < bestChoice.targetDistance
-                    : selectionWeight > bestChoice.selectionWeight;
-
-            const isEquivalent = reachedTarget === bestChoice.reachedTarget
-                && targetDistance === bestChoice.targetDistance
-                && Math.abs(selectionWeight - bestChoice.selectionWeight) < 0.0001;
-
-            if (isBetter) {
-                bestChoice = {
-                    reachedTarget,
-                    targetDistance,
-                    selectionWeight,
-                };
-                bestCandidates.length = 0;
-                bestCandidates.push(candidate);
-                continue;
-            }
-
-            if (isEquivalent) {
-                bestCandidates.push(candidate);
-            }
-        }
-
-        if (bestCandidates.length > 0) {
-            const candidate = bestCandidates.length === 1
-                ? bestCandidates[0]
-                : pickWeightedRandomEntry(bestCandidates, (bestCandidate) => {
-                    return this.getCandidateSelectionWeight(bestCandidate, source, rulesetProfile, totalCost, budgetRange, targetBudget);
-                });
-            return {
-                candidate,
-                rolledSource,
-                source,
-                usedFallbackSource: source !== rolledSource,
-                sourceRollProbability: this.getAvailabilitySourceProbability(candidates, rolledSource),
-                candidatePickProbability: this.getCandidatePickProbability(
-                    bestCandidates,
-                    candidate,
-                    (bestCandidate) => this.getCandidateSelectionWeight(
-                        bestCandidate,
-                        source,
-                        rulesetProfile,
-                        totalCost,
-                        budgetRange,
-                        targetBudget,
-                    ),
-                ),
-            };
-        }
-
-        return this.pickNextCandidate(candidates, rulesetProfile, totalCost, budgetRange, 'weighted');
-    }
-
-    private getCandidateSelectionWeight(
-        candidate: ForceGenerationCandidateUnit,
-        source: ForceGenerationAvailabilitySource,
-        rulesetProfile: ForceGenerationRulesetProfile | null,
-        totalCost: number,
-        budgetRange: { min: number; max: number },
-        targetBudget: number,
-    ): number {
-        const availabilityWeight = Math.max(0.05, this.getAvailabilityWeightForSource(candidate, source));
-        const budgetScore = this.getBudgetProgressScore(totalCost + candidate.cost, budgetRange, targetBudget);
-        const rulesetScore = this.getRulesetMatchScore(candidate, rulesetProfile);
-        return availabilityWeight * budgetScore * rulesetScore;
     }
 
     private buildCandidateSelection(
@@ -1468,25 +1593,37 @@ export class ForceGeneratorService {
         budgetRange: { min: number; max: number },
         minUnitCount: number,
         maxUnitCount: number,
-        strategy: ForceGenerationSelectionStrategy,
     ): ForceGenerationSelectionAttempt {
         const remainingCandidates = [...candidates];
         const selectedCandidates: ForceGenerationCandidateUnit[] = [];
         const selectionSteps: ForceGenerationSelectionStep[] = [];
         let totalCost = 0;
-        let rulesetProfile: ForceGenerationRulesetProfile | null = null;
+        const rulesetProfile = this.buildRulesetProfile(context, minUnitCount, maxUnitCount);
+        const preferredSelectionUnitCount = this.getPreferredSelectionUnitCount(
+            rulesetProfile?.preferredUnitCount,
+            minUnitCount,
+            maxUnitCount,
+        );
         const targetBudget = this.getBudgetTarget(budgetRange);
-        const exactBudgetRequested = this.isExactBudgetRange(budgetRange);
 
         while (selectedCandidates.length < maxUnitCount) {
             if (
                 selectedCandidates.length >= minUnitCount
-                && (exactBudgetRequested
-                    ? this.hasReachedBudgetTarget(totalCost, budgetRange, targetBudget)
-                    : this.isBudgetWithinRange(totalCost, budgetRange))
+                && this.isBudgetWithinRange(totalCost, budgetRange)
+                && ((preferredSelectionUnitCount !== undefined && selectedCandidates.length >= preferredSelectionUnitCount)
+                    || (preferredSelectionUnitCount === undefined && totalCost >= targetBudget))
             ) {
                 break;
             }
+
+            const remainingCandidateCountAfterPick = remainingCandidates.length - 1;
+            const requiredAfterPick = Math.max(0, minUnitCount - selectedCandidates.length - 1);
+            if (requiredAfterPick > remainingCandidateCountAfterPick) {
+                break;
+            }
+
+            const remainingSlotsAfterPick = maxUnitCount - selectedCandidates.length - 1;
+            const costBoundsIndex = buildCostBoundsIndex(remainingCandidates);
 
             const feasibleCandidates = remainingCandidates.filter((candidate) => {
                 const nextTotal = totalCost + candidate.cost;
@@ -1494,23 +1631,18 @@ export class ForceGeneratorService {
                     return false;
                 }
 
-                const remainingAfterPick = remainingCandidates.filter((remainingCandidate) => remainingCandidate !== candidate);
-                const requiredAfterPick = Math.max(0, minUnitCount - selectedCandidates.length - 1);
-                if (requiredAfterPick > remainingAfterPick.length) {
-                    return false;
-                }
-
-                const minimumRemainingTotal = getMinimumMetricTotal(
-                    remainingAfterPick.map((remainingCandidate) => remainingCandidate.cost),
+                const minimumRemainingTotal = getExcludedMinimumMetricTotal(
+                    costBoundsIndex,
+                    candidate,
                     requiredAfterPick,
                 );
                 if (nextTotal + minimumRemainingTotal > budgetRange.max) {
                     return false;
                 }
 
-                const remainingSlotsAfterPick = maxUnitCount - selectedCandidates.length - 1;
-                const maximumRemainingTotal = getMaximumMetricTotal(
-                    remainingAfterPick.map((remainingCandidate) => remainingCandidate.cost),
+                const maximumRemainingTotal = getExcludedMaximumMetricTotal(
+                    costBoundsIndex,
+                    candidate,
                     remainingSlotsAfterPick,
                 );
                 return nextTotal + maximumRemainingTotal >= budgetRange.min;
@@ -1520,23 +1652,24 @@ export class ForceGeneratorService {
                 break;
             }
 
-            const nextPick = this.pickNextCandidate(feasibleCandidates, rulesetProfile, totalCost, budgetRange, strategy);
+            const nextPick = this.pickNextCandidate(
+                feasibleCandidates,
+                rulesetProfile,
+                totalCost,
+                budgetRange,
+                selectedCandidates.length,
+                preferredSelectionUnitCount,
+            );
             const nextCandidate = nextPick.candidate;
             selectedCandidates.push(nextCandidate);
             totalCost += nextCandidate.cost;
             remainingCandidates.splice(remainingCandidates.indexOf(nextCandidate), 1);
-
-            if (!rulesetProfile) {
-                rulesetProfile = this.buildRulesetProfile(context, nextCandidate.unit, minUnitCount, maxUnitCount);
-            }
 
             selectionSteps.push({
                 unit: nextCandidate.unit,
                 rolledSource: nextPick.rolledSource,
                 source: nextPick.source,
                 usedFallbackSource: nextPick.usedFallbackSource,
-                sourceRollProbability: nextPick.sourceRollProbability,
-                candidatePickProbability: nextPick.candidatePickProbability,
                 productionWeight: nextCandidate.productionWeight,
                 salvageWeight: nextCandidate.salvageWeight,
                 cost: nextCandidate.cost,
@@ -1551,158 +1684,20 @@ export class ForceGeneratorService {
         };
     }
 
-    private getSelectionAttemptKey(selectionAttempt: ForceGenerationSelectionAttempt): string {
-        return selectionAttempt.selectedCandidates
-            .map((candidate) => candidate.unit.id)
-            .sort((left, right) => left - right)
-            .join(':');
-    }
-
-    private tryRepairSelectionAttemptToExactBudget(
-        allCandidates: readonly ForceGenerationCandidateUnit[],
-        selectionAttempt: ForceGenerationSelectionAttempt,
-        targetTotal: number,
+    private getPreferredSelectionUnitCount(
+        preferredUnitCount: number | undefined,
         minUnitCount: number,
         maxUnitCount: number,
-    ): ForceGenerationSelectionAttempt | null {
-        if (selectionAttempt.selectedCandidates.length === 0) {
-            return null;
+    ): number | undefined {
+        if (preferredUnitCount === undefined || preferredUnitCount <= 0) {
+            return undefined;
         }
 
-        const selectedCandidates = this.shuffleForceGenerationCandidates(selectionAttempt.selectedCandidates);
-        const selectedCandidateSet = new Set(selectionAttempt.selectedCandidates);
-        const remainingCandidates = this.shuffleForceGenerationCandidates(
-            allCandidates.filter((candidate) => !selectedCandidateSet.has(candidate)),
-        );
-        const currentTotal = selectionAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
-        if (currentTotal === targetTotal) {
-            return selectionAttempt;
-        }
-
-        const remainingCandidatesByCost = new Map<number, ForceGenerationCandidateUnit[]>();
-        for (const candidate of remainingCandidates) {
-            const bucket = remainingCandidatesByCost.get(candidate.cost) ?? [];
-            bucket.push(candidate);
-            remainingCandidatesByCost.set(candidate.cost, bucket);
-        }
-
-        const createAttempt = (nextCandidates: ForceGenerationCandidateUnit[]): ForceGenerationSelectionAttempt => {
-            const nextSelectionSteps: ForceGenerationSelectionStep[] = nextCandidates.map((candidate) => {
-                const source: ForceGenerationAvailabilitySource = candidate.productionWeight >= candidate.salvageWeight ? 'production' : 'salvage';
-                return {
-                    unit: candidate.unit,
-                    rolledSource: source,
-                    source,
-                    usedFallbackSource: false,
-                    sourceRollProbability: 1,
-                    candidatePickProbability: 1,
-                    productionWeight: candidate.productionWeight,
-                    salvageWeight: candidate.salvageWeight,
-                    cost: candidate.cost,
-                    rulesetReasons: this.getRulesetMatchReasons(candidate, selectionAttempt.rulesetProfile),
-                };
-            });
-
-            return {
-                selectedCandidates: nextCandidates,
-                selectionSteps: nextSelectionSteps,
-                rulesetProfile: selectionAttempt.rulesetProfile,
-            };
-        };
-
-        if (selectionAttempt.selectedCandidates.length + 1 <= maxUnitCount) {
-            for (const candidate of remainingCandidates) {
-                if (currentTotal + candidate.cost === targetTotal) {
-                    return createAttempt([...selectionAttempt.selectedCandidates, candidate]);
-                }
-            }
-        }
-
-        if (selectionAttempt.selectedCandidates.length - 1 >= minUnitCount) {
-            for (const candidate of selectedCandidates) {
-                if (currentTotal - candidate.cost === targetTotal) {
-                    return createAttempt(selectionAttempt.selectedCandidates.filter((selectedCandidate) => selectedCandidate !== candidate));
-                }
-            }
-        }
-
-        for (const selectedCandidate of selectedCandidates) {
-            const targetReplacementCost = targetTotal - (currentTotal - selectedCandidate.cost);
-            const replacementCandidates = remainingCandidatesByCost.get(targetReplacementCost) ?? [];
-            if (replacementCandidates.length > 0) {
-                const replacementCandidate = replacementCandidates[0];
-                return createAttempt(
-                    selectionAttempt.selectedCandidates.map((candidate) => candidate === selectedCandidate ? replacementCandidate : candidate),
-                );
-            }
-        }
-
-        if (selectionAttempt.selectedCandidates.length + 2 <= maxUnitCount) {
-            for (let leftIndex = 0; leftIndex < remainingCandidates.length; leftIndex += 1) {
-                for (let rightIndex = leftIndex + 1; rightIndex < remainingCandidates.length; rightIndex += 1) {
-                    const leftCandidate = remainingCandidates[leftIndex];
-                    const rightCandidate = remainingCandidates[rightIndex];
-                    if (currentTotal + leftCandidate.cost + rightCandidate.cost === targetTotal) {
-                        return createAttempt([...selectionAttempt.selectedCandidates, leftCandidate, rightCandidate]);
-                    }
-                }
-            }
-        }
-
-        if (selectionAttempt.selectedCandidates.length + 1 <= maxUnitCount) {
-            for (const selectedCandidate of selectedCandidates) {
-                for (let leftIndex = 0; leftIndex < remainingCandidates.length; leftIndex += 1) {
-                    for (let rightIndex = leftIndex + 1; rightIndex < remainingCandidates.length; rightIndex += 1) {
-                        const leftCandidate = remainingCandidates[leftIndex];
-                        const rightCandidate = remainingCandidates[rightIndex];
-                        if (currentTotal - selectedCandidate.cost + leftCandidate.cost + rightCandidate.cost === targetTotal) {
-                            return createAttempt([
-                                ...selectionAttempt.selectedCandidates.filter((candidate) => candidate !== selectedCandidate),
-                                leftCandidate,
-                                rightCandidate,
-                            ]);
-                        }
-                    }
-                }
-            }
-        }
-
-        if (selectionAttempt.selectedCandidates.length - 1 >= minUnitCount) {
-            for (let leftIndex = 0; leftIndex < selectedCandidates.length; leftIndex += 1) {
-                for (let rightIndex = leftIndex + 1; rightIndex < selectedCandidates.length; rightIndex += 1) {
-                    const leftCandidate = selectedCandidates[leftIndex];
-                    const rightCandidate = selectedCandidates[rightIndex];
-                    const targetReplacementCost = targetTotal - (currentTotal - leftCandidate.cost - rightCandidate.cost);
-                    const replacementCandidates = remainingCandidatesByCost.get(targetReplacementCost) ?? [];
-                    if (replacementCandidates.length > 0) {
-                        const replacementCandidate = replacementCandidates[0];
-                        return createAttempt([
-                            ...selectionAttempt.selectedCandidates.filter((candidate) => candidate !== leftCandidate && candidate !== rightCandidate),
-                            replacementCandidate,
-                        ]);
-                    }
-                }
-            }
-        }
-
-        return null;
-    }
-
-    private shuffleForceGenerationCandidates(
-        candidates: readonly ForceGenerationCandidateUnit[],
-    ): ForceGenerationCandidateUnit[] {
-        const shuffled = [...candidates];
-        for (let index = shuffled.length - 1; index > 0; index -= 1) {
-            const swapIndex = Math.floor(Math.random() * (index + 1));
-            [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
-        }
-
-        return shuffled;
+        return Math.max(minUnitCount, Math.min(maxUnitCount, preferredUnitCount));
     }
 
     private buildRulesetProfile(
         context: ForceGenerationContext,
-        seedUnit: Unit,
         minUnitCount: number,
         maxUnitCount: number,
     ): ForceGenerationRulesetProfile | null {
@@ -1711,64 +1706,57 @@ export class ForceGeneratorService {
             return null;
         }
 
-        const unitType = toMegaMekUnitType(seedUnit);
-        const weightClass = toMegaMekWeightClass(seedUnit);
-        const role = normalizeRole(seedUnit.role);
-        const motive = toMegaMekMotive(seedUnit);
-        const selectedEchelon = this.pickPreferredEchelon(rulesetContext.chain, {
-            year: getEraReferenceYear(context.forceEra) ?? seedUnit.year,
-            unitType,
-            weightClass,
-            role,
-            motive,
+        const baseMatchContext: RulesetMatchContext = {
+            year: getEraReferenceYear(context.forceEra),
             factionKey: rulesetContext.primary?.factionKey,
             topLevel: true,
-        }, minUnitCount, maxUnitCount);
-        const forceNode = this.findMatchingForceNode(rulesetContext.chain, {
-            year: getEraReferenceYear(context.forceEra) ?? seedUnit.year,
-            unitType,
-            weightClass,
-            role,
-            motive,
+        };
+        const selectedEchelon = this.pickPreferredEchelon(
+            rulesetContext.chain,
+            baseMatchContext,
+            minUnitCount,
+            maxUnitCount,
+        );
+        const forceNodeSelection = this.findPreferredForceNode(rulesetContext.chain, {
+            ...baseMatchContext,
             echelon: selectedEchelon,
-            factionKey: rulesetContext.primary?.factionKey,
-            topLevel: true,
         });
+        const forceNode = forceNodeSelection.forceNode;
+        const resolvedSelectedEchelon = selectedEchelon
+            ?? forceNodeSelection.matchContext.echelon
+            ?? getRulesetEchelonCode(forceNode?.echelon);
         const profile: ForceGenerationRulesetProfile = {
-            selectedEchelon,
-            preferredUnitTypes: new Set([unitType]),
-            preferredWeightClasses: new Set(weightClass ? [weightClass] : []),
-            preferredRoles: new Set(role ? [role] : []),
-            preferredMotives: new Set(motive ? [motive] : []),
+            selectedEchelon: resolvedSelectedEchelon,
+            preferredOrgType: undefined,
+            preferredUnitCount: undefined,
+            preferredUnitTypes: new Set<string>(),
+            preferredWeightClasses: new Set<string>(),
+            preferredRoles: new Set<string>(),
+            preferredMotives: new Set<string>(),
             templates: [],
             explanationNotes: [],
         };
 
-        if (selectedEchelon) {
-            this.appendRulesetNote(profile, `Ruleset selected echelon ${selectedEchelon}.`);
+        const orgDefinition = context.forceFaction ? resolveOrgDefinitionSpec(context.forceFaction, context.forceEra) : null;
+    profile.preferredOrgType = getPreferredOrgTypeForEchelon(resolvedSelectedEchelon);
+    profile.preferredUnitCount = getPreferredUnitCountForEchelon(resolvedSelectedEchelon, orgDefinition);
+        this.mergeRulesetNodeIntoProfile(profile, rulesetContext.primary?.assign);
+
+        if (profile.preferredOrgType) {
+            const regularSizeNote = profile.preferredUnitCount ? ` (regular size ${profile.preferredUnitCount})` : '';
+            this.appendRulesetNote(profile, `Org target: ${profile.preferredOrgType}${regularSizeNote}.`);
         }
 
         if (!forceNode) {
-            this.appendRulesetNote(profile, 'Ruleset chain resolved, but no matching force node was found for the seed unit.');
+            this.appendRulesetNote(profile, 'Ruleset chain resolved, but no matching force node was found for the chosen echelon.');
             return profile;
         }
 
-        const matchContext: RulesetMatchContext = {
-            year: getEraReferenceYear(context.forceEra) ?? seedUnit.year,
-            unitType,
-            weightClass,
-            role,
-            motive,
-            echelon: selectedEchelon,
-            factionKey: rulesetContext.primary?.factionKey,
-            topLevel: true,
-        };
-
-        this.applyForceNodeToProfile(profile, forceNode, matchContext);
+        this.applyForceNodeToProfile(profile, forceNode, forceNodeSelection.matchContext);
         this.collectRulesetTemplates(
             profile,
             forceNode,
-            matchContext,
+            forceNodeSelection.matchContext,
             rulesetContext,
             context.forceEra,
             Math.max(0, maxUnitCount - 1),
@@ -1778,11 +1766,153 @@ export class ForceGeneratorService {
         return profile;
     }
 
+    private findPreferredForceNode(
+        rulesetChain: readonly MegaMekRulesetRecord[],
+        matchContext: RulesetMatchContext,
+    ): ForceGenerationForceNodeSelection {
+        const exactMatch = this.pickMatchingForceNode(rulesetChain, matchContext, (when, nextContext) => {
+            return this.matchesRulesetWhen(when, nextContext);
+        });
+        if (exactMatch) {
+            return {
+                forceNode: exactMatch,
+                matchContext: this.deriveForceNodeMatchContext(matchContext, exactMatch),
+            };
+        }
+
+        const structuralMatch = this.pickMatchingForceNode(rulesetChain, matchContext, (when, nextContext) => {
+            return this.matchesRulesetWhenForForceSelection(when, nextContext);
+        });
+        if (structuralMatch) {
+            return {
+                forceNode: structuralMatch,
+                matchContext: this.deriveForceNodeMatchContext(matchContext, structuralMatch),
+            };
+        }
+
+        if (!matchContext.echelon) {
+            return { matchContext };
+        }
+
+        const fallbackContext = { ...matchContext, echelon: undefined };
+        const fallbackExactMatch = this.pickMatchingForceNode(rulesetChain, fallbackContext, (when, nextContext) => {
+            return this.matchesRulesetWhen(when, nextContext);
+        });
+        if (fallbackExactMatch) {
+            return {
+                forceNode: fallbackExactMatch,
+                matchContext: this.deriveForceNodeMatchContext(fallbackContext, fallbackExactMatch),
+            };
+        }
+
+        const fallbackStructuralMatch = this.pickMatchingForceNode(rulesetChain, fallbackContext, (when, nextContext) => {
+            return this.matchesRulesetWhenForForceSelection(when, nextContext);
+        });
+        if (fallbackStructuralMatch) {
+            return {
+                forceNode: fallbackStructuralMatch,
+                matchContext: this.deriveForceNodeMatchContext(fallbackContext, fallbackStructuralMatch),
+            };
+        }
+
+        return { matchContext };
+    }
+
+    private pickMatchingForceNode(
+        rulesetChain: readonly MegaMekRulesetRecord[],
+        matchContext: RulesetMatchContext,
+        matcher: (when: MegaMekRulesetWhen | undefined, matchContext: RulesetMatchContext) => boolean,
+    ): MegaMekRulesetForceNode | undefined {
+        for (const ruleset of rulesetChain) {
+            const indexedForceNodes = matchContext.echelon
+                ? (ruleset.indexes.forceIndexesByEchelon[matchContext.echelon] ?? [])
+                    .map((index) => ruleset.forces[index])
+                    .filter((forceNode): forceNode is MegaMekRulesetForceNode => forceNode !== undefined)
+                : ruleset.forces;
+
+            const forceNodes = indexedForceNodes.length > 0 ? indexedForceNodes : ruleset.forces;
+            const matchingForceNodes = forceNodes.filter((forceNode) => matcher(forceNode.when, matchContext));
+            if (matchingForceNodes.length > 0) {
+                return pickWeightedRandomEntry(matchingForceNodes, (forceNode) => getRulesetOptionWeight(forceNode));
+            }
+        }
+
+        return undefined;
+    }
+
+    private matchesRulesetWhenForForceSelection(
+        when: MegaMekRulesetWhen | undefined,
+        matchContext: RulesetMatchContext,
+    ): boolean {
+        if (!when) {
+            return true;
+        }
+
+        const fromYear = when.fromYear;
+        if (fromYear !== undefined && (matchContext.year === undefined || matchContext.year < fromYear)) {
+            return false;
+        }
+
+        const toYear = when.toYear;
+        if (toYear !== undefined && (matchContext.year === undefined || matchContext.year > toYear)) {
+            return false;
+        }
+
+        if (!this.matchesRulesetStringValues(when.factions ?? [], matchContext.factionKey)) {
+            return false;
+        }
+
+        const topLevel = when.topLevel;
+        if (topLevel !== undefined && topLevel !== (matchContext.topLevel ?? false)) {
+            return false;
+        }
+
+        const augmented = when.augmented;
+        if (augmented !== undefined && augmented !== (matchContext.augmented ?? false)) {
+            return false;
+        }
+
+        const echelons = when.echelons ?? [];
+        if (echelons.length > 0) {
+            const matchedEchelon = echelons.some((echelonNode) => {
+                const echelon = echelonNode.code;
+                if (!echelon || !matchContext.echelon) {
+                    return false;
+                }
+
+                const requiredAugmented = echelonNode.augmented;
+                return echelon === matchContext.echelon
+                    && (requiredAugmented === undefined || requiredAugmented === (matchContext.augmented ?? false));
+            });
+            if (!matchedEchelon) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private deriveForceNodeMatchContext(
+        matchContext: RulesetMatchContext,
+        forceNode: MegaMekRulesetForceNode,
+    ): RulesetMatchContext {
+        return {
+            ...matchContext,
+            unitType: getFirstPositiveRulesetValue(forceNode.when?.unitTypes) ?? matchContext.unitType,
+            weightClass: getFirstPositiveRulesetValue(forceNode.when?.weightClasses) ?? matchContext.weightClass,
+            role: getFirstPositiveRulesetValue(forceNode.when?.roles) ?? matchContext.role,
+            motive: getFirstPositiveRulesetValue(forceNode.when?.motives) ?? matchContext.motive,
+            echelon: getRulesetEchelonCode(forceNode.echelon) ?? matchContext.echelon,
+            augmented: forceNode.echelon?.augmented ?? forceNode.when?.augmented ?? matchContext.augmented,
+        };
+    }
+
     private applyForceNodeToProfile(
         profile: ForceGenerationRulesetProfile,
         forceNode: MegaMekRulesetForceNode,
         matchContext: RulesetMatchContext,
     ): void {
+        this.mergeRulesetWhenIntoProfile(profile, forceNode.when);
         this.mergeRulesetNodeIntoProfile(profile, forceNode.assign);
         this.mergeRulesetGroupIntoProfile(profile, forceNode.unitType, matchContext);
         this.mergeRulesetGroupIntoProfile(profile, forceNode.weightClass, matchContext);
@@ -1902,8 +2032,23 @@ export class ForceGeneratorService {
         }
 
         const selectedOption = pickWeightedRandomEntry(matchingOptions, (option) => getRulesetOptionWeight(option));
+        this.mergeRulesetWhenIntoProfile(profile, selectedOption.when);
         this.mergeRulesetNodeIntoProfile(profile, selectedOption);
         this.mergeRulesetNodeIntoProfile(profile, selectedOption.assign);
+    }
+
+    private mergeRulesetWhenIntoProfile(
+        profile: ForceGenerationRulesetProfile,
+        when: MegaMekRulesetWhen | undefined,
+    ): void {
+        if (!when) {
+            return;
+        }
+
+        this.addRulesetValues(profile.preferredUnitTypes, getPositiveRulesetValues(when.unitTypes));
+        this.addRulesetValues(profile.preferredWeightClasses, getPositiveRulesetValues(when.weightClasses));
+        this.addRulesetValues(profile.preferredRoles, getPositiveRulesetValues(when.roles));
+        this.addRulesetValues(profile.preferredMotives, getPositiveRulesetValues(when.motives));
     }
 
     private mergeRulesetNodeIntoProfile(
@@ -2169,6 +2314,78 @@ export class ForceGeneratorService {
         if (!profile.explanationNotes.includes(note)) {
             profile.explanationNotes.push(note);
         }
+    }
+
+    private evaluateSelectionStructure(
+        selectionAttempt: ForceGenerationSelectionAttempt,
+        context: ForceGenerationContext,
+    ): ForceGenerationStructureEvaluation | null {
+        const preferredOrgType = selectionAttempt.rulesetProfile?.preferredOrgType;
+        if (!preferredOrgType || !context.forceFaction || selectionAttempt.selectedCandidates.length === 0) {
+            return null;
+        }
+
+        const resolvedGroups = resolveFromUnits(
+            selectionAttempt.selectedCandidates.map((candidate) => candidate.unit),
+            context.forceFaction,
+            context.forceEra,
+        ).sort(compareResolvedOrgGroups);
+        if (resolvedGroups.length === 0) {
+            return {
+                score: 0,
+                perfectMatch: false,
+                summary: `Resolved org shape: none. Does not match requested ${preferredOrgType}.`,
+            };
+        }
+
+        const topGroup = resolvedGroups[0];
+        const matchedExactGroup = resolvedGroups.find((group) => group.type === preferredOrgType);
+        const matchedCountsAsGroup = matchedExactGroup
+            ? undefined
+            : resolvedGroups.find((group) => group.countsAsType === preferredOrgType);
+        const matchedGroup = matchedExactGroup ?? matchedCountsAsGroup;
+        const exactMatch = topGroup.type === preferredOrgType;
+        const countsAsMatch = topGroup.countsAsType === preferredOrgType;
+        const anyExactMatch = matchedExactGroup !== undefined;
+        const anyCountsAsMatch = matchedCountsAsGroup !== undefined;
+        const preferredUnitCount = selectionAttempt.rulesetProfile?.preferredUnitCount;
+        const unitCountDistance = preferredUnitCount === undefined
+            ? 0
+            : Math.abs(selectionAttempt.selectedCandidates.length - preferredUnitCount);
+
+        let score = 0;
+        if (exactMatch) {
+            score = 4;
+        } else if (countsAsMatch) {
+            score = 3.5;
+        } else if (anyExactMatch) {
+            score = 2.5;
+        } else if (anyCountsAsMatch) {
+            score = 2;
+        }
+
+        score -= unitCountDistance * 0.15;
+        score -= Math.max(0, resolvedGroups.length - 1) * 0.1;
+
+        const relation = exactMatch
+            ? `Matches requested ${preferredOrgType}.`
+            : countsAsMatch
+                ? `Counts as requested ${preferredOrgType}.`
+                : anyExactMatch
+                    ? `Matches requested ${preferredOrgType}.`
+                    : anyCountsAsMatch
+                        ? `Counts as requested ${preferredOrgType}.`
+                        : `Does not match requested ${preferredOrgType}.`;
+        const summaryGroup = matchedGroup ?? topGroup;
+        const topGroupNote = matchedGroup && matchedGroup !== topGroup
+            ? ` (top group ${getResolvedOrgGroupLabel(topGroup)})`
+            : '';
+
+        return {
+            score,
+            perfectMatch: resolvedGroups.length === 1 && (exactMatch || countsAsMatch),
+            summary: `Resolved org shape: ${getResolvedOrgGroupLabel(summaryGroup)}${topGroupNote}. ${relation}`,
+        };
     }
 
     private getRulesetMatchReasons(
