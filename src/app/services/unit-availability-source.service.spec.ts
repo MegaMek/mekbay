@@ -6,7 +6,11 @@ import type { Faction } from '../models/factions.model';
 import type { AvailabilitySource } from '../models/options.model';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import type { Unit } from '../models/units.model';
-import { MEGAMEK_AVAILABILITY_RARITY_OPTIONS, MEGAMEK_AVAILABILITY_UNKNOWN_SCORE } from '../models/megamek/availability.model';
+import {
+    MEGAMEK_AVAILABILITY_RARITY_OPTIONS,
+    MEGAMEK_AVAILABILITY_UNKNOWN,
+    MEGAMEK_AVAILABILITY_UNKNOWN_SCORE,
+} from '../models/megamek/availability.model';
 import { DataService } from './data.service';
 import { OptionsService } from './options.service';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
@@ -401,6 +405,50 @@ describe('UnitAvailabilitySourceService', () => {
         expect(Array.from(service.getFactionEraUnitIds(extinctFaction, lateEra)).sort((left, right) => left.localeCompare(right))).toEqual(['Ghost']);
         expect(service.getVisibleEraUnitIds(lateEra).has(returningUnit.name)).toBeTrue();
         expect(service.getVisibleEraUnitIds(lateEra).has(goneUnit.name)).toBeFalse();
+    });
+
+    it('distinguishes Unknown from Not Available and infers MegaMek availability in MUL mode', () => {
+        const knownUnit = {
+            id: 23,
+            name: 'Known Unit',
+            type: 'Mek',
+            chassis: 'Known Unit',
+            model: 'KNU-1',
+        } as Unit;
+        const unknownUnit = {
+            id: 24,
+            name: 'Unknown Unit',
+            type: 'Mek',
+            chassis: 'Unknown Unit',
+            model: 'UNK-1',
+        } as Unit;
+
+        units.push(knownUnit, unknownUnit);
+        megaMekAvailabilityByUnitName.set(knownUnit.name, {
+            n: knownUnit.name,
+            e: {
+                '3050': {
+                    '7': [4, 0],
+                },
+            },
+        });
+        megaMekAvailabilityRecords.push(megaMekAvailabilityByUnitName.get(knownUnit.name)!);
+
+        const salvageScope = {
+            eraIds: new Set([3050]),
+            factionIds: new Set([7]),
+            availabilityFrom: new Set(['Salvage' as const]),
+        };
+
+        expect(optionsServiceMock.options().availabilitySource).toBe('mul');
+        expect(service.unitMatchesAvailabilityFrom(unknownUnit, MEGAMEK_AVAILABILITY_UNKNOWN)).toBeTrue();
+        expect(service.unitMatchesAvailabilityFrom(unknownUnit, 'Production')).toBeFalse();
+        expect(service.unitMatchesAvailabilityRarity(unknownUnit, MEGAMEK_AVAILABILITY_UNKNOWN)).toBeTrue();
+        expect(service.unitMatchesAvailabilityRarity(unknownUnit, 'Not Available', salvageScope)).toBeFalse();
+        expect(service.unitMatchesAvailabilityRarity(knownUnit, 'Not Available', salvageScope)).toBeTrue();
+        expect(service.getMegaMekRarityUnitIds(MEGAMEK_AVAILABILITY_UNKNOWN).has(unknownUnit.name)).toBeTrue();
+        expect(service.getMegaMekRarityUnitIds('Not Available', salvageScope).has(knownUnit.name)).toBeTrue();
+        expect(service.getMegaMekRarityUnitIds('Not Available', salvageScope).has(unknownUnit.name)).toBeFalse();
     });
 
     it('distributes MegaMek rarity buckets evenly across scores 1 through 10', () => {

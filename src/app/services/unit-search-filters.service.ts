@@ -36,8 +36,9 @@ import type { Era } from '../models/eras.model';
 import type { Unit } from '../models/units.model';
 import {
     MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS,
+    MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS,
     MEGAMEK_AVAILABILITY_FROM_OPTIONS,
-    MEGAMEK_AVAILABILITY_RARITY_OPTIONS,
+    MEGAMEK_AVAILABILITY_UNKNOWN,
     type MegaMekAvailabilityFrom,
     type MegaMekAvailabilityRarity,
 } from '../models/megamek/availability.model';
@@ -345,10 +346,10 @@ export class UnitSearchFiltersService {
                     return this.dataService.getFactions().map(faction => faction.name);
                 }
                 if (filterKey === 'availabilityRarity') {
-                    return [...MEGAMEK_AVAILABILITY_RARITY_OPTIONS];
+                    return [...MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS];
                 }
                 if (filterKey === 'availabilityFrom') {
-                    return [...MEGAMEK_AVAILABILITY_FROM_OPTIONS];
+                    return [...MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS];
                 }
                 if (filterKey === 'forcePack') {
                     return getForcePacks().map(pack => pack.name);
@@ -374,10 +375,10 @@ export class UnitSearchFiltersService {
                     return this.dataService.getFactions().map(faction => faction.name);
                 }
                 if (filterKey === 'availabilityRarity') {
-                    return [...MEGAMEK_AVAILABILITY_RARITY_OPTIONS];
+                    return [...MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS];
                 }
                 if (filterKey === 'availabilityFrom') {
-                    return [...MEGAMEK_AVAILABILITY_FROM_OPTIONS];
+                    return [...MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS];
                 }
                 if (filterKey === 'forcePack') {
                     return getForcePacks().map(pack => pack.name);
@@ -463,10 +464,9 @@ export class UnitSearchFiltersService {
                         value === 'Production' || value === 'Salvage'
                     )),
             );
-            if (availabilityFrom.size === 0) {
-                return null;
+            if (availabilityFrom.size > 0) {
+                context.availabilityFrom = availabilityFrom;
             }
-            context.availabilityFrom = availabilityFrom;
         }
 
         return context;
@@ -538,6 +538,10 @@ export class UnitSearchFiltersService {
         contextUnits: Unit[],
         state: FilterState,
     ): { name: string; img?: string; displayName?: string; available: boolean }[] | null {
+        if (conf.key === 'availabilityRarity' || conf.key === 'availabilityFrom') {
+            return this.buildInferredAvailabilityDropdownOptions(conf, contextUnits, state);
+        }
+
         if (!this.unitAvailabilitySource.useMegaMekAvailability()) {
             return null;
         }
@@ -550,10 +554,14 @@ export class UnitSearchFiltersService {
             return this.buildMegaMekFactionDropdownOptions(conf, contextUnits, state);
         }
 
-        if (conf.key !== 'availabilityRarity' && conf.key !== 'availabilityFrom') {
-            return null;
-        }
+        return null;
+    }
 
+    private buildInferredAvailabilityDropdownOptions(
+        conf: AdvFilterConfig,
+        contextUnits: Unit[],
+        state: FilterState,
+    ): { name: string; img?: string; displayName?: string; available: boolean }[] {
         const scope: AvailabilityFilterScope = {
             ...(this.getSelectedRegularDropdownNames(state['era']).length > 0
                 ? { eraNames: this.getSelectedRegularDropdownNames(state['era']) }
@@ -569,28 +577,33 @@ export class UnitSearchFiltersService {
         const context = this.buildAvailabilityFilterContext(scope);
         if (context === null) {
             return conf.key === 'availabilityFrom'
-                ? MEGAMEK_AVAILABILITY_FROM_OPTIONS.map((availabilityFromName) => ({ name: availabilityFromName, available: false }))
-                : MEGAMEK_AVAILABILITY_RARITY_OPTIONS.map((rarityName) => ({ name: rarityName, available: false }));
+                ? MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS.map((availabilityFromName) => ({ name: availabilityFromName, available: false }))
+                : MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS.map((rarityName) => ({ name: rarityName, available: false }));
         }
 
         const contextUnitIds = new Set(contextUnits.map((unit) => unit.name));
+        const unknownUnitIds = this.unitAvailabilitySource.getMegaMekUnknownUnitIds();
 
         if (conf.key === 'availabilityFrom') {
-            return MEGAMEK_AVAILABILITY_FROM_OPTIONS.map((availabilityFromName) => ({
+            return MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS.map((availabilityFromName) => ({
                 name: availabilityFromName,
-                available: setHasAny(contextUnitIds, this.getMegaMekOptionScopeUnitIds({
-                    ...scope,
-                    availabilityFromNames: [availabilityFromName],
-                }, state)),
+                available: availabilityFromName === MEGAMEK_AVAILABILITY_UNKNOWN
+                    ? setHasAny(contextUnitIds, unknownUnitIds)
+                    : setHasAny(contextUnitIds, this.getMegaMekOptionScopeUnitIds({
+                        ...scope,
+                        availabilityFromNames: [availabilityFromName],
+                    }, state)),
             }));
         }
 
-        return MEGAMEK_AVAILABILITY_RARITY_OPTIONS.map((rarityName) => ({
+        return MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS.map((rarityName) => ({
             name: rarityName,
-            available: setHasAny(
-                contextUnitIds,
-                this.unitAvailabilitySource.getMegaMekRarityUnitIds(rarityName, context),
-            ),
+            available: rarityName === MEGAMEK_AVAILABILITY_UNKNOWN
+                ? setHasAny(contextUnitIds, unknownUnitIds)
+                : setHasAny(
+                    contextUnitIds,
+                    this.unitAvailabilitySource.getMegaMekRarityUnitIds(rarityName, context),
+                ),
         }));
     }
 
@@ -1724,7 +1737,6 @@ export class UnitSearchFiltersService {
             this.units.length,
             () => this.semanticParsedAST(),
         );
-        const megaMekAvailabilityActive = this.unitAvailabilitySource.useMegaMekAvailability();
         const megaMekRaritySortScope = this.megaMekRaritySortScope();
         const megaMekRaritySortContext = this.megaMekRaritySortContext();
         const megaMekRaritySortScoreResolver = megaMekRaritySortContext === null
@@ -1746,17 +1758,13 @@ export class UnitSearchFiltersService {
             getAdjustedPV: (unit: Unit) => this.getAdjustedPV(unit),
             unitBelongsToEra: (unit: Unit, eraName: string, scope?: AvailabilityFilterScope) => this.unitBelongsToEra(unit, eraName, scope),
             unitBelongsToFaction: (unit: Unit, factionName: string, eraNames?: readonly string[]) => this.unitBelongsToFaction(unit, factionName, eraNames),
-            unitMatchesAvailabilityFrom: megaMekAvailabilityActive
-                ? (unit: Unit, availabilityFromName: string, scope?: AvailabilityFilterScope) => this.unitMatchesAvailabilityFrom(unit, availabilityFromName, scope)
-                : undefined,
-            unitMatchesAvailabilityRarity: megaMekAvailabilityActive
-                ? (unit: Unit, rarityName: string, scope?: AvailabilityFilterScope) => this.unitMatchesAvailabilityRarity(unit, rarityName, scope)
-                : undefined,
+            unitMatchesAvailabilityFrom: (unit: Unit, availabilityFromName: string, scope?: AvailabilityFilterScope) => this.unitMatchesAvailabilityFrom(unit, availabilityFromName, scope),
+            unitMatchesAvailabilityRarity: (unit: Unit, rarityName: string, scope?: AvailabilityFilterScope) => this.unitMatchesAvailabilityRarity(unit, rarityName, scope),
             unitBelongsToForcePack: (unit: Unit, packName: string) => this.unitBelongsToForcePack(unit, packName),
             getAllEraNames: () => this.dataService.getEras().map(era => era.name),
             getAllFactionNames: () => this.dataService.getFactions().map(faction => faction.name),
-            getAllAvailabilityFromNames: megaMekAvailabilityActive ? () => [...MEGAMEK_AVAILABILITY_FROM_OPTIONS] : undefined,
-            getAllAvailabilityRarityNames: megaMekAvailabilityActive ? () => [...MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS] : undefined,
+            getAllAvailabilityFromNames: () => [...MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS],
+            getAllAvailabilityRarityNames: () => [...MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS],
             getDisplayName: (filterKey: string, value: string) => {
                 const conf = getAdvancedFilterConfigByKey(filterKey);
                 const fn = conf?.displayNameFn ?? this.displayNameFns[filterKey];

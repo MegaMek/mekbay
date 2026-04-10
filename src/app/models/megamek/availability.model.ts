@@ -36,9 +36,15 @@ import type { UnitType } from '../units.model';
 export type MegaMekWeightedAvailabilityValue = [number, number];
 
 export const MEGAMEK_AVAILABILITY_UNKNOWN_SCORE = -1;
+export const MEGAMEK_AVAILABILITY_UNKNOWN = 'Unknown' as const;
 
 export const MEGAMEK_AVAILABILITY_FROM_OPTIONS = ['Production', 'Salvage'] as const;
 export type MegaMekAvailabilityFrom = typeof MEGAMEK_AVAILABILITY_FROM_OPTIONS[number];
+export const MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS = [
+    ...MEGAMEK_AVAILABILITY_FROM_OPTIONS,
+    MEGAMEK_AVAILABILITY_UNKNOWN,
+] as const;
+export type MegaMekAvailabilityFromFilter = typeof MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS[number];
 
 export const MEGAMEK_AVAILABILITY_RARITY_OPTIONS = [
     'Very Rare',
@@ -49,6 +55,7 @@ export const MEGAMEK_AVAILABILITY_RARITY_OPTIONS = [
 ] as const;
 
 export const MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS = [
+    MEGAMEK_AVAILABILITY_UNKNOWN,
     'Not Available',
     ...MEGAMEK_AVAILABILITY_RARITY_OPTIONS,
 ] as const;
@@ -89,7 +96,9 @@ export function isMegaMekAvailabilityValueAvailable(value: MegaMekWeightedAvaila
     return (value[0] ?? 0) > 0 || (value[1] ?? 0) > 0;
 }
 
-export function getMegaMekAvailabilityRarityForScore(score: number): MegaMekAvailabilityRarity {
+export function getMegaMekAvailabilityRarityForScore(
+    score: number,
+): Exclude<MegaMekAvailabilityRarity, typeof MEGAMEK_AVAILABILITY_UNKNOWN> {
     if (score < MEGAMEK_AVAILABILITY_MIN_RARITY_SCORE) {
         return 'Not Available';
     }

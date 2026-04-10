@@ -765,33 +765,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(unavailableSource).toEqual(jasmine.objectContaining({ name: 'SRC-B', available: false }));
     });
 
-    it('shows MegaMek availability dropdown filters only when MegaMek availability is selected', () => {
-        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
-            pending('Real unit data could not be loaded for the MegaMek availability filter visibility test.');
-            return;
-        }
-
-        const { service, optionsServiceStub } = createService(buildSmallBundle(benchmarkBundle));
-
-        expect(service.dropdownConfigs().some(filter => filter.key === 'availabilityRarity')).toBeFalse();
-        expect(service.dropdownConfigs().some(filter => filter.key === 'availabilityFrom')).toBeFalse();
-        expect(service.advOptions()['availabilityRarity']).toBeUndefined();
-        expect(service.advOptions()['availabilityFrom']).toBeUndefined();
-
-        optionsServiceStub.options.set({
-            ...optionsServiceStub.options(),
-            availabilitySource: 'megamek',
-        });
-
-        expect(service.dropdownConfigs().some(filter => filter.key === 'availabilityRarity')).toBeTrue();
-        expect(service.dropdownConfigs().some(filter => filter.key === 'availabilityFrom')).toBeTrue();
-        expect(service.advOptions()['availabilityRarity']).toEqual(jasmine.objectContaining({ type: 'dropdown' }));
-        expect(service.advOptions()['availabilityFrom']).toEqual(jasmine.objectContaining({ type: 'dropdown' }));
-        expect(service.advOptions()['availabilityRarity']?.options.some(option => (
-            typeof option !== 'number' && option.name === 'Not Available'
-        ))).toBeFalse();
-    });
-
     it('filters MegaMek faction dropdown availability by the selected era instead of MUL indexes', () => {
         if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
             pending('Real unit data could not be loaded for the MegaMek faction availability test.');

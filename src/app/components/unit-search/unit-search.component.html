@@ -545,6 +545,9 @@
         </button>
         }
     </div>
+    @if (megaMekAvailabilitySourceSelected()) {
+    <div class="availability-source-disclaimer">Availability source: MegaMek.</div>
+    }
     <div class="adv-panel-content" [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
         @if (isComplexQuery()) {
         <!-- Complex query: show semantic guide as sidebar -->

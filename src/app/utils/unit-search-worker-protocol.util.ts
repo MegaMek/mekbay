@@ -58,6 +58,7 @@ export interface UnitSearchWorkerMegaMekAvailabilityBucketSnapshot {
 
 export interface UnitSearchWorkerMegaMekAvailabilitySnapshot {
     all: UnitSearchWorkerMegaMekAvailabilityBucketSnapshot;
+    knownUnitNames: string[];
     eras: Record<string, UnitSearchWorkerMegaMekAvailabilityBucketSnapshot>;
     factions: Record<string, UnitSearchWorkerMegaMekAvailabilityBucketSnapshot>;
     eraFactions: Record<string, Record<string, UnitSearchWorkerMegaMekAvailabilityBucketSnapshot>>;

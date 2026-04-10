@@ -263,14 +263,14 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(component.dropdownFilters().some(filter => filter.key === 'type')).toBeFalse();
     });
 
-    it('shows MegaMek availability filters only when MegaMek availability is selected', () => {
+    it('keeps MegaMek availability filters visible in both availability modes', () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
 
         fixture.detectChanges();
 
-        expect(component.dropdownFilters().some(filter => filter.key === 'availabilityRarity')).toBeFalse();
-        expect(component.dropdownFilters().some(filter => filter.key === 'availabilityFrom')).toBeFalse();
+        expect(component.dropdownFilters().some(filter => filter.key === 'availabilityRarity')).toBeTrue();
+        expect(component.dropdownFilters().some(filter => filter.key === 'availabilityFrom')).toBeTrue();
 
         optionsSignal.set({
             ...optionsSignal(),

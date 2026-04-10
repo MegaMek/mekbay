@@ -34,8 +34,8 @@
 import { GameSystem } from '../models/common.model';
 import type { AvailabilitySource } from '../models/options.model';
 import {
-    MEGAMEK_AVAILABILITY_FROM_OPTIONS,
-    MEGAMEK_AVAILABILITY_RARITY_OPTIONS,
+    MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS,
+    MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS,
 } from '../models/megamek/availability.model';
 import { CBT_WEIGHT_CLASSES } from '../models/units.model';
 import type { SemanticFilterState } from '../utils/semantic-filter.util';
@@ -313,8 +313,7 @@ export const DROPDOWN_FILTERS: readonly DropdownFilterConfig[] = Object.freeze([
         key: 'availabilityRarity',
         semanticKey: 'rarity',
         label: 'Rarity',
-        availabilitySources: ['megamek'],
-        sortOptions: [...MEGAMEK_AVAILABILITY_RARITY_OPTIONS],
+        sortOptions: [...MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS],
         external: true,
         optionSource: 'external',
         availabilitySource: 'context',
@@ -324,8 +323,7 @@ export const DROPDOWN_FILTERS: readonly DropdownFilterConfig[] = Object.freeze([
         key: 'availabilityFrom',
         semanticKey: 'from',
         label: 'Available From',
-        availabilitySources: ['megamek'],
-        sortOptions: [...MEGAMEK_AVAILABILITY_FROM_OPTIONS],
+        sortOptions: [...MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS],
         external: true,
         optionSource: 'external',
         availabilitySource: 'context',

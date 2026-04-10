@@ -37,6 +37,7 @@ import type { Era } from '../models/eras.model';
 import type { Faction } from '../models/factions.model';
 import {
     MEGAMEK_AVAILABILITY_UNKNOWN_SCORE,
+    MEGAMEK_AVAILABILITY_UNKNOWN,
     MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS,
     MEGAMEK_AVAILABILITY_RARITY_OPTIONS,
     getMegaMekAvailabilityRarityForScore,
@@ -196,6 +197,7 @@ export class UnitAvailabilitySourceService {
     private megaMekExtinctEraUnitIds = new Map<number, Set<AvailabilityUnitKey>>();
     private megaMekAvailabilityEntriesByUnitKey = new Map<AvailabilityUnitKey, readonly MegaMekUnitAvailabilityEntry[]>();
     private megaMekAllUnitIds = new Set<AvailabilityUnitKey>();
+    private megaMekKnownUnitIds = new Set<AvailabilityUnitKey>();
     private megaMekExtinctAllUnitIds = new Set<AvailabilityUnitKey>();
     private megaMekAvailabilityBucket = createMegaMekAvailabilityBucket();
     private megaMekAvailabilityBucketsByEra = new Map<number, MegaMekAvailabilityBucketIndexes>();
@@ -410,9 +412,26 @@ export class UnitAvailabilitySourceService {
         }
 
         const selectedSources = this.getRequestedAvailabilitySources(context);
-        const unitIds = rarity === 'Not Available'
-            ? this.collectMegaMekUnavailableUnitIds(selectedSources, context)
-            : this.collectMegaMekRarityUnitIds(rarity, selectedSources, context);
+        const unitIds = rarity === MEGAMEK_AVAILABILITY_UNKNOWN
+            ? this.collectMegaMekUnknownUnitIds()
+            : rarity === 'Not Available'
+                ? this.collectMegaMekUnavailableUnitIds(selectedSources, context)
+                : this.collectMegaMekRarityUnitIds(rarity, selectedSources, context);
+        this.megaMekScopedUnitIdsCache.set(cacheKey, unitIds);
+        return unitIds;
+    }
+
+    public getMegaMekUnknownUnitIds(): ReadonlySet<AvailabilityUnitKey> {
+        this.ensureMulCacheVersion();
+        this.ensureMegaMekIndexes();
+
+        const cacheKey = this.buildMegaMekScopedCacheKey('unknown');
+        const cached = this.megaMekScopedUnitIdsCache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        const unitIds = this.collectMegaMekUnknownUnitIds();
         this.megaMekScopedUnitIdsCache.set(cacheKey, unitIds);
         return unitIds;
     }
@@ -458,6 +477,7 @@ export class UnitAvailabilitySourceService {
 
         return {
             all: serializeMegaMekAvailabilityBucket(this.megaMekAvailabilityBucket),
+            knownUnitNames: Array.from(this.megaMekKnownUnitIds),
             eras: erasSnapshot,
             factions: factionsSnapshot,
             eraFactions: eraFactionsSnapshot,
@@ -472,8 +492,8 @@ export class UnitAvailabilitySourceService {
         availabilityFromName: string,
         context?: MegaMekAvailabilityFilterContext,
     ): boolean {
-        if (!this.useMegaMekAvailability()) {
-            return false;
+        if (availabilityFromName.trim().toLowerCase() === MEGAMEK_AVAILABILITY_UNKNOWN.toLowerCase()) {
+            return this.getMegaMekUnknownUnitIds().has(unit.name);
         }
 
         const availabilityFrom = this.resolveMegaMekAvailabilityFrom(availabilityFromName);
@@ -492,13 +512,13 @@ export class UnitAvailabilitySourceService {
         rarityName: string,
         context?: MegaMekAvailabilityFilterContext,
     ): boolean {
-        if (!this.useMegaMekAvailability()) {
-            return false;
-        }
-
         const rarity = this.resolveMegaMekAvailabilityRarity(rarityName);
         if (!rarity) {
             return false;
+        }
+
+        if (rarity === MEGAMEK_AVAILABILITY_UNKNOWN) {
+            return this.getMegaMekUnknownUnitIds().has(unit.name);
         }
 
         return this.getMegaMekRarityUnitIds(rarity, context).has(unit.name);
@@ -524,6 +544,7 @@ export class UnitAvailabilitySourceService {
         this.megaMekExtinctEraUnitIds.clear();
         this.megaMekAvailabilityEntriesByUnitKey.clear();
         this.megaMekAllUnitIds.clear();
+        this.megaMekKnownUnitIds.clear();
         this.megaMekExtinctAllUnitIds.clear();
         this.megaMekAvailabilityBucket = createMegaMekAvailabilityBucket();
         this.megaMekAvailabilityBucketsByEra.clear();
@@ -598,6 +619,7 @@ export class UnitAvailabilitySourceService {
         this.megaMekExtinctEraUnitIds.clear();
         this.megaMekAvailabilityEntriesByUnitKey.clear();
         this.megaMekAllUnitIds.clear();
+        this.megaMekKnownUnitIds.clear();
         this.megaMekExtinctAllUnitIds.clear();
         this.megaMekAvailabilityBucket = createMegaMekAvailabilityBucket();
         this.megaMekAvailabilityBucketsByEra.clear();
@@ -613,6 +635,8 @@ export class UnitAvailabilitySourceService {
             if (!availabilityRecord) {
                 continue;
             }
+
+            this.megaMekKnownUnitIds.add(unit.name);
 
             const unitKey = unit.name;
 
@@ -743,7 +767,7 @@ export class UnitAvailabilitySourceService {
     }
 
     private buildMegaMekScopedCacheKey(
-        kind: 'available' | 'membership' | 'rarity' | 'score',
+        kind: 'available' | 'membership' | 'rarity' | 'score' | 'unknown',
         context?: MegaMekAvailabilityFilterContext,
         extras: string[] = [],
     ): string {
@@ -973,13 +997,25 @@ export class UnitAvailabilitySourceService {
         return unitIds;
     }
 
+    private collectMegaMekUnknownUnitIds(): ReadonlySet<AvailabilityUnitKey> {
+        const unitIds = new Set<AvailabilityUnitKey>();
+
+        for (const unitKey of this.megaMekAllUnitIds) {
+            if (!this.megaMekKnownUnitIds.has(unitKey)) {
+                unitIds.add(unitKey);
+            }
+        }
+
+        return unitIds;
+    }
+
     private addMegaMekUnavailableUnitsFromBucket(
         target: Set<AvailabilityUnitKey>,
         bucket: MegaMekAvailabilityBucketIndexes | undefined,
         availabilityFrom: readonly MegaMekAvailabilityFrom[],
     ): void {
         if (!bucket) {
-            addUnitKeys(target, this.megaMekAllUnitIds);
+            addUnitKeys(target, this.megaMekKnownUnitIds);
             return;
         }
 
@@ -988,7 +1024,7 @@ export class UnitAvailabilitySourceService {
             addUnitKeys(availableUnitIds, bucket.sourceUnitIds.get(source));
         }
 
-        for (const unitKey of this.megaMekAllUnitIds) {
+        for (const unitKey of this.megaMekKnownUnitIds) {
             if (!availableUnitIds.has(unitKey)) {
                 target.add(unitKey);
             }

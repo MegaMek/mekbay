@@ -9,7 +9,9 @@ import {
     type SearchTelemetryStage,
 } from './services/unit-search-filters.model';
 import {
+    MEGAMEK_AVAILABILITY_UNKNOWN,
     MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS,
+    MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS,
     MEGAMEK_AVAILABILITY_FROM_OPTIONS,
     type MegaMekAvailabilityFrom,
     type MegaMekAvailabilityRarity,
@@ -54,6 +56,7 @@ interface WorkerMegaMekAvailabilityBucketRuntime {
 
 interface WorkerMegaMekAvailabilityRuntime {
     all: WorkerMegaMekAvailabilityBucketRuntime;
+    knownUnitNames: ReadonlySet<string>;
     eras: Map<string, WorkerMegaMekAvailabilityBucketRuntime>;
     factions: Map<string, WorkerMegaMekAvailabilityBucketRuntime>;
     eraFactions: Map<string, Map<string, WorkerMegaMekAvailabilityBucketRuntime>>;
@@ -159,6 +162,7 @@ function buildMegaMekAvailabilityRuntime(
 
     return {
         all: buildMegaMekAvailabilityBucketRuntime(snapshot.all),
+        knownUnitNames: new Set(snapshot.knownUnitNames),
         eras,
         factions,
         eraFactions,
@@ -171,7 +175,7 @@ function buildMegaMekAvailabilityRuntime(
 }
 
 function buildMegaMekScopedCacheKey(
-    kind: 'available' | 'membership' | 'rarity',
+    kind: 'available' | 'membership' | 'rarity' | 'unknown',
     scope?: AvailabilityFilterScope,
     extras: string[] = [],
 ): string {
@@ -198,19 +202,35 @@ function getRequestedMegaMekAvailabilitySources(scope?: AvailabilityFilterScope)
         return MEGAMEK_AVAILABILITY_FROM_OPTIONS;
     }
 
-    return scope.availabilityFromNames.filter((value): value is MegaMekAvailabilityFrom => (
+    const availabilityFrom = scope.availabilityFromNames.filter((value): value is MegaMekAvailabilityFrom => (
         value === 'Production' || value === 'Salvage'
     ));
+
+    return availabilityFrom.length > 0
+        ? availabilityFrom
+        : MEGAMEK_AVAILABILITY_FROM_OPTIONS;
+}
+
+function addUnknownUnitNames(
+    target: Set<string>,
+    allUnitNames: ReadonlySet<string>,
+    knownUnitNames: ReadonlySet<string>,
+): void {
+    for (const unitName of allUnitNames) {
+        if (!knownUnitNames.has(unitName)) {
+            target.add(unitName);
+        }
+    }
 }
 
 function addUnavailableUnitNamesFromBucket(
     target: Set<string>,
     bucket: WorkerMegaMekAvailabilityBucketRuntime | undefined,
     availabilityFrom: readonly MegaMekAvailabilityFrom[],
-    allUnitNames: ReadonlySet<string>,
+    knownUnitNames: ReadonlySet<string>,
 ): void {
     if (!bucket) {
-        addUnitNames(target, allUnitNames);
+        addUnitNames(target, knownUnitNames);
         return;
     }
 
@@ -219,7 +239,7 @@ function addUnavailableUnitNamesFromBucket(
         addUnitNames(availableUnitNames, bucket.bySource.get(source));
     }
 
-    for (const unitName of allUnitNames) {
+    for (const unitName of knownUnitNames) {
         if (!availableUnitNames.has(unitName)) {
             target.add(unitName);
         }
@@ -328,6 +348,19 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
         return unitNames;
     };
 
+    const getMegaMekUnknownUnitNames = (): ReadonlySet<string> => {
+        const cacheKey = buildMegaMekScopedCacheKey('unknown');
+        const cached = megaMekScopedUnitIdsCache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        const unitNames = new Set<string>();
+        addUnknownUnitNames(unitNames, runtime.allUnitNames, runtime.megaMekAvailability.knownUnitNames);
+        megaMekScopedUnitIdsCache.set(cacheKey, unitNames);
+        return unitNames;
+    };
+
     const getMegaMekAvailabilityUnitNames = (scope?: AvailabilityFilterScope): ReadonlySet<string> => {
         const cacheKey = buildMegaMekScopedCacheKey('available', scope);
         const cached = megaMekScopedUnitIdsCache.get(cacheKey);
@@ -395,7 +428,9 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
         const unitNames = new Set<string>();
         const megaMek = runtime.megaMekAvailability;
 
-        if (rarity === 'Not Available') {
+        if (rarity === MEGAMEK_AVAILABILITY_UNKNOWN) {
+            addUnitNames(unitNames, getMegaMekUnknownUnitNames());
+        } else if (rarity === 'Not Available') {
             if (scope?.eraNames && scope.factionNames) {
                 for (const eraName of scope.eraNames) {
                     const eraFactionBuckets = megaMek.eraFactions.get(eraName);
@@ -404,12 +439,12 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
                             continue;
                         }
 
-                        addUnavailableUnitNamesFromBucket(unitNames, eraFactionBuckets?.get(factionName), availabilityFrom, runtime.allUnitNames);
+                        addUnavailableUnitNamesFromBucket(unitNames, eraFactionBuckets?.get(factionName), availabilityFrom, megaMek.knownUnitNames);
                     }
                 }
             } else if (scope?.eraNames) {
                 for (const eraName of scope.eraNames) {
-                    addUnavailableUnitNamesFromBucket(unitNames, megaMek.eras.get(eraName), availabilityFrom, runtime.allUnitNames);
+                    addUnavailableUnitNamesFromBucket(unitNames, megaMek.eras.get(eraName), availabilityFrom, megaMek.knownUnitNames);
                 }
             } else if (scope?.factionNames) {
                 for (const factionName of scope.factionNames) {
@@ -417,10 +452,10 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
                         continue;
                     }
 
-                    addUnavailableUnitNamesFromBucket(unitNames, megaMek.factions.get(factionName), availabilityFrom, runtime.allUnitNames);
+                    addUnavailableUnitNamesFromBucket(unitNames, megaMek.factions.get(factionName), availabilityFrom, megaMek.knownUnitNames);
                 }
             } else {
-                addUnavailableUnitNamesFromBucket(unitNames, megaMek.all, availabilityFrom, runtime.allUnitNames);
+                addUnavailableUnitNamesFromBucket(unitNames, megaMek.all, availabilityFrom, megaMek.knownUnitNames);
             }
         } else if (scope?.eraNames && scope.factionNames) {
             for (const eraName of scope.eraNames) {
@@ -589,20 +624,28 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
 
             return runtime.indexedUnitIds.get('faction')?.get(factionName)?.has(unit.name) ?? false;
         },
-        unitMatchesAvailabilityFrom: useMegaMekAvailability
-            ? (unit: Unit, availabilityFromName: string, scope?: AvailabilityFilterScope) => getMegaMekAvailabilityUnitNames({
+        unitMatchesAvailabilityFrom: (unit: Unit, availabilityFromName: string, scope?: AvailabilityFilterScope) => {
+            if (availabilityFromName.trim().toLowerCase() === MEGAMEK_AVAILABILITY_UNKNOWN.toLowerCase()) {
+                return getMegaMekUnknownUnitNames().has(unit.name);
+            }
+
+            return getMegaMekAvailabilityUnitNames({
                 ...scope,
                 availabilityFromNames: [availabilityFromName],
-            }).has(unit.name)
-            : undefined,
-        unitMatchesAvailabilityRarity: useMegaMekAvailability
-            ? (unit: Unit, rarityName: string, scope?: AvailabilityFilterScope) => getMegaMekRarityUnitNames(rarityName as MegaMekAvailabilityRarity, scope).has(unit.name)
-            : undefined,
+            }).has(unit.name);
+        },
+        unitMatchesAvailabilityRarity: (unit: Unit, rarityName: string, scope?: AvailabilityFilterScope) => {
+            if (rarityName.trim().toLowerCase() === MEGAMEK_AVAILABILITY_UNKNOWN.toLowerCase()) {
+                return getMegaMekUnknownUnitNames().has(unit.name);
+            }
+
+            return getMegaMekRarityUnitNames(rarityName as MegaMekAvailabilityRarity, scope).has(unit.name);
+        },
         unitBelongsToForcePack: (unit: Unit, packName: string) => runtime.forcePackToLookupKey.get(packName)?.has(getForcePackLookupKey(unit)) ?? false,
         getAllEraNames: () => useMegaMekAvailability ? megaMekEraNames : runtime.indexedFilterValues.get('era') ?? [],
         getAllFactionNames: () => useMegaMekAvailability ? megaMekFactionNames : runtime.indexedFilterValues.get('faction') ?? [],
-        getAllAvailabilityFromNames: useMegaMekAvailability ? () => [...MEGAMEK_AVAILABILITY_FROM_OPTIONS] : undefined,
-        getAllAvailabilityRarityNames: useMegaMekAvailability ? () => [...MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS] : undefined,
+        getAllAvailabilityFromNames: () => [...MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS],
+        getAllAvailabilityRarityNames: () => [...MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS],
         getDisplayName: (filterKey: string, value: string) => workerDisplayNameFns.get(filterKey)?.(value),
         getIndexedUnitIds,
         getIndexedFilterValues,

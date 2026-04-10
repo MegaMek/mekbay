@@ -40,6 +40,7 @@ function createSnapshot(version: string): UnitSearchWorkerCorpusSnapshot {
                 bySource: {},
                 byRarity: {},
             },
+            knownUnitNames: [],
             eras: {},
             factions: {},
             eraFactions: {},
