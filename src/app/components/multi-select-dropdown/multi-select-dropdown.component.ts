@@ -92,6 +92,14 @@ interface OpenDropdownOptions {
     styleUrls: ['./multi-select-dropdown.component.css']
 })
 export class MultiSelectDropdownComponent {
+    private static readonly BELOW_OVERLAY_POSITIONS: ConnectedPosition[] = [
+        { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top' },
+        { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top' },
+    ];
+    private static readonly ABOVE_OVERLAY_POSITIONS: ConnectedPosition[] = [
+        { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom' },
+        { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom' },
+    ];
     private elementRef = inject(ElementRef);
     private injector = inject(Injector);
     private layoutService = inject(LayoutService);
@@ -104,6 +112,7 @@ export class MultiSelectDropdownComponent {
     private overlayRefreshFrameId: number | null = null;
     private overlayRefreshNeedsMetrics = false;
     private lastOverlayPositionKey: string | null = null;
+    private preferredOverlayPlacement = signal<'above' | 'below'>('below');
     displayAreaEl = viewChild<ElementRef<HTMLDivElement>>('displayArea');
     filterInput = viewChild<ElementRef<HTMLInputElement>>('filterInput');
     optionsEl = viewChild<ElementRef<HTMLDivElement>>('optionsEl');
@@ -129,6 +138,7 @@ export class MultiSelectDropdownComponent {
     filterText = signal('');
     private static readonly OVERLAY_GAP = 4;
     private static readonly DEFAULT_PANEL_HEIGHT_FALLBACK = 248;
+    private static readonly FILTER_CONTAINER_HEIGHT_FALLBACK = 41;
     private static readonly VIEWPORT_MARGIN = 12;
     private openMaxHeight = signal(MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK);
     private overlayMinWidth = signal(0);
@@ -137,12 +147,9 @@ export class MultiSelectDropdownComponent {
     readonly overlayWidth = computed(() => this.overlayMinWidth() || this.measureOverlayWidth());
     readonly repositionScrollStrategy = this.overlay.scrollStrategies.reposition();
     readonly overlayPlacement = signal<'above' | 'below'>('below');
-    readonly overlayPositions: ConnectedPosition[] = [
-        { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top' },
-        { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top' },
-        { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom' },
-        { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom' },
-    ];
+    readonly overlayPositions = computed(() => this.preferredOverlayPlacement() === 'above'
+        ? MultiSelectDropdownComponent.ABOVE_OVERLAY_POSITIONS
+        : MultiSelectDropdownComponent.BELOW_OVERLAY_POSITIONS);
 
     private displayNameMap = computed(() => {
         const map = new Map<string, string>();
@@ -323,28 +330,92 @@ export class MultiSelectDropdownComponent {
         });
     }
 
-    private measureDropdownMaxHeight(): number {
+    private measureDropdownMaxHeight(placement = this.overlayPlacement()): number {
+        const availableForList = this.measureAvailableListHeight(placement);
+        if (!Number.isFinite(availableForList) || availableForList <= 0) {
+            return MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK;
+        }
+
+        return availableForList;
+    }
+
+    private shouldShowFilterControls(): boolean {
+        return this.options().length > 20 || this.showUnavailableToggle();
+    }
+
+    private measureAvailableVerticalSpace(placement: 'above' | 'below'): number {
         const displayArea = this.displayAreaEl()?.nativeElement;
         if (!displayArea) {
-            return MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK;
+            return 0;
         }
 
         const triggerRect = displayArea.getBoundingClientRect();
         if (triggerRect.height === 0) {
-            return MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK;
+            return 0;
         }
 
-        const filterRowHeight = this.measureFilterContainerHeight();
-        const availableVerticalSpace = this.overlayPlacement() === 'below'
+        const availableVerticalSpace = placement === 'below'
+            ? this.layoutService.windowHeight() - triggerRect.bottom - MultiSelectDropdownComponent.VIEWPORT_MARGIN
+            : triggerRect.top - MultiSelectDropdownComponent.VIEWPORT_MARGIN;
+
+        if (!Number.isFinite(availableVerticalSpace) || availableVerticalSpace <= 0) {
+            return 0;
+        }
+
+        return Math.floor(availableVerticalSpace);
+    }
+
+    private getFilterContainerHeightForMeasurements(): number {
+        const measuredHeight = this.measureFilterContainerHeight();
+        if (measuredHeight > 0) {
+            return measuredHeight;
+        }
+
+        return this.shouldShowFilterControls()
+            ? MultiSelectDropdownComponent.FILTER_CONTAINER_HEIGHT_FALLBACK
+            : 0;
+    }
+
+    private measureAvailableListHeight(placement: 'above' | 'below'): number {
+        const displayArea = this.displayAreaEl()?.nativeElement;
+        if (!displayArea) {
+            return 0;
+        }
+
+        const triggerRect = displayArea.getBoundingClientRect();
+        if (triggerRect.height === 0) {
+            return 0;
+        }
+
+        const filterRowHeight = this.getFilterContainerHeightForMeasurements();
+        const availableVerticalSpace = placement === 'below'
             ? this.layoutService.windowHeight() - triggerRect.bottom - MultiSelectDropdownComponent.VIEWPORT_MARGIN
             : triggerRect.top - MultiSelectDropdownComponent.VIEWPORT_MARGIN;
         const availableForList = availableVerticalSpace - filterRowHeight - 8 - MultiSelectDropdownComponent.OVERLAY_GAP;
 
         if (!Number.isFinite(availableForList) || availableForList <= 0) {
-            return MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK;
+            return 0;
         }
 
         return Math.floor(availableForList);
+    }
+
+    private determinePreferredOverlayPlacement(): 'above' | 'below' {
+        const belowAvailableHeight = this.measureAvailableVerticalSpace('below');
+        const aboveAvailableHeight = this.measureAvailableVerticalSpace('above');
+
+        if (belowAvailableHeight < MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK
+            && aboveAvailableHeight > belowAvailableHeight) {
+            return 'above';
+        }
+
+        return 'below';
+    }
+
+    private updatePreferredOverlayPlacement(): 'above' | 'below' {
+        const preferredPlacement = this.determinePreferredOverlayPlacement();
+        this.preferredOverlayPlacement.set(preferredPlacement);
+        return preferredPlacement;
     }
 
     private measureFilterContainerHeight(): number {
@@ -370,9 +441,9 @@ export class MultiSelectDropdownComponent {
         return displayArea.getBoundingClientRect().width;
     }
 
-    private captureOpenMetrics() {
+    private captureOpenMetrics(placement = this.overlayPlacement()) {
         this.overlayMinWidth.set(this.measureOverlayWidth());
-        this.openMaxHeight.set(this.measureDropdownMaxHeight());
+        this.openMaxHeight.set(this.measureDropdownMaxHeight(placement));
     }
 
     private measureTriggerRect(): TriggerRect | null {
@@ -420,14 +491,16 @@ export class MultiSelectDropdownComponent {
             }
 
             if (this.hasTriggerRectChanged(nextRect, this.lastTriggerRect)) {
+                const preferredPlacement = this.updatePreferredOverlayPlacement();
                 const widthOrHeightChanged = !this.lastTriggerRect
                     || Math.abs(nextRect.width - this.lastTriggerRect.width) > 0.5
                     || Math.abs(nextRect.height - this.lastTriggerRect.height) > 0.5;
+                const placementPreferenceChanged = preferredPlacement !== this.overlayPlacement();
 
                 this.lastTriggerRect = nextRect;
 
-                if (widthOrHeightChanged) {
-                    this.captureOpenMetrics();
+                if (widthOrHeightChanged || placementPreferenceChanged) {
+                    this.captureOpenMetrics(preferredPlacement);
                 }
 
                 this.connectedOverlay()?.overlayRef?.updatePosition();
@@ -452,6 +525,7 @@ export class MultiSelectDropdownComponent {
         this.stopAnchorFollowLoop();
         this.cancelScheduledOverlayRefresh();
         this.lastOverlayPositionKey = null;
+        this.preferredOverlayPlacement.set('below');
         this.overlayPlacement.set('below');
         this.openMaxHeight.set(MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK);
     }
@@ -500,6 +574,9 @@ export class MultiSelectDropdownComponent {
     }
 
     private openDropdown({ focusInput, scrollToOptionName }: OpenDropdownOptions) {
+        const preferredPlacement = this.updatePreferredOverlayPlacement();
+        this.overlayPlacement.set(preferredPlacement);
+        this.captureOpenMetrics(preferredPlacement);
         document.dispatchEvent(new CustomEvent('multi-select-dropdown-open', { detail: this }));
         this.isOpen.set(true);
         this.filterText.set('');
@@ -509,7 +586,6 @@ export class MultiSelectDropdownComponent {
                 return;
             }
 
-            this.captureOpenMetrics();
             if (scrollToOptionName) {
                 this.scrollToOption(scrollToOptionName);
             }
@@ -543,11 +619,14 @@ export class MultiSelectDropdownComponent {
                 return;
             }
 
+            const preferredPlacement = this.updatePreferredOverlayPlacement();
             if (shouldRecalculateMetrics) {
-                this.captureOpenMetrics();
+                this.captureOpenMetrics(preferredPlacement);
             }
 
-            this.connectedOverlay()?.overlayRef?.updatePosition();
+            if (shouldRecalculateMetrics || preferredPlacement !== this.overlayPlacement()) {
+                this.connectedOverlay()?.overlayRef?.updatePosition();
+            }
         });
     }
 
