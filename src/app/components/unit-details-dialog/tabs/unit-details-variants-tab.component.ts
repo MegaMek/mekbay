@@ -72,6 +72,7 @@ export const DEFAULT_VARIANTS_TAB_STATE: VariantsTabState = {
 export class UnitDetailsVariantsTabComponent {
     private dataService = inject(DataService);
     private gameService = inject(GameService);
+    private optionsService = inject(OptionsService);
 
     /** Sort options available for the current game system (excluding Relevance) */
     readonly SORT_OPTIONS = SORT_OPTIONS.filter(opt => opt.key !== '');
@@ -104,6 +105,7 @@ export class UnitDetailsVariantsTabComponent {
     viewMode = computed(() => this.state().viewMode);
     selectedSort = computed(() => this.state().sortKey);
     selectedSortDirection = computed(() => this.state().sortDirection);
+    readonly useHex = computed<boolean>(() => this.optionsService.options().ASUseHex);
 
     /** Get the label for the currently selected sort option */
     selectedSortLabel = computed(() => {
@@ -190,6 +192,4 @@ export class UnitDetailsVariantsTabComponent {
         this.tagClick.emit(event);
     }
 
-    optionsService = inject(OptionsService);
-    readonly useHex = computed<boolean>(() => this.optionsService.options().ASUseHex);
 }
