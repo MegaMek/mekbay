@@ -76,6 +76,13 @@ type ScrollRestoreState =
         | { kind: 'virtual'; optionName: string; scrollOffset: number; optionVisibleTop?: number }
         | { kind: 'dom'; optionName: string; visibleTop: number };
 
+type TriggerRect = { left: number; top: number; width: number; height: number };
+
+interface OpenDropdownOptions {
+    focusInput: boolean;
+    scrollToOptionName?: string;
+}
+
 @Component({
     selector: 'multi-select-dropdown',
     standalone: true,
@@ -93,7 +100,7 @@ export class MultiSelectDropdownComponent {
     private destroyed = false;
     private lastPointerType = '';
     private anchorFollowFrameId: number | null = null;
-    private lastTriggerRect: { left: number; top: number; width: number; height: number } | null = null;
+    private lastTriggerRect: TriggerRect | null = null;
     private overlayRefreshFrameId: number | null = null;
     private overlayRefreshNeedsMetrics = false;
     private lastOverlayPositionKey: string | null = null;
@@ -227,8 +234,7 @@ export class MultiSelectDropdownComponent {
         const ce = ev as CustomEvent;
         // if another instance opened, close this one
         if (ce.detail !== this && this.isOpen()) {
-            this.isOpen.set(false);
-            this.filterText.set('');
+            this.closeDropdown();
         }
     };
 
@@ -243,8 +249,7 @@ export class MultiSelectDropdownComponent {
         }
 
         if (!this.elementRef.nativeElement.contains(target)) {
-            this.isOpen.set(false);
-            this.filterText.set('');
+            this.closeDropdown();
         }
     };
 
@@ -370,7 +375,7 @@ export class MultiSelectDropdownComponent {
         this.openMaxHeight.set(this.measureDropdownMaxHeight());
     }
 
-    private measureTriggerRect(): { left: number; top: number; width: number; height: number } | null {
+    private measureTriggerRect(): TriggerRect | null {
         const triggerElement = this.displayAreaEl()?.nativeElement;
         if (!triggerElement?.isConnected) {
             return null;
@@ -385,7 +390,7 @@ export class MultiSelectDropdownComponent {
         };
     }
 
-    private hasTriggerRectChanged(nextRect: { left: number; top: number; width: number; height: number }, previousRect: { left: number; top: number; width: number; height: number } | null): boolean {
+    private hasTriggerRectChanged(nextRect: TriggerRect, previousRect: TriggerRect | null): boolean {
         if (!previousRect) {
             return true;
         }
@@ -410,9 +415,7 @@ export class MultiSelectDropdownComponent {
 
             const nextRect = this.measureTriggerRect();
             if (!nextRect) {
-                this.isOpen.set(false);
-                this.filterText.set('');
-                this.lastTriggerRect = null;
+                this.closeDropdown();
                 return;
             }
 
@@ -445,6 +448,77 @@ export class MultiSelectDropdownComponent {
         this.lastTriggerRect = null;
     }
 
+    private resetOverlayState() {
+        this.stopAnchorFollowLoop();
+        this.cancelScheduledOverlayRefresh();
+        this.lastOverlayPositionKey = null;
+        this.overlayPlacement.set('below');
+        this.openMaxHeight.set(MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK);
+    }
+
+    private closeDropdown() {
+        this.isOpen.set(false);
+        this.filterText.set('');
+        this.resetOverlayState();
+    }
+
+    private focusFilterInput() {
+        const inputEl = this.filterInput()?.nativeElement;
+        if (inputEl) {
+            inputEl.focus();
+        }
+    }
+
+    private scrollToOption(optionName: string) {
+        const options = this.filteredOptions();
+        const optionIndex = options.findIndex(option => option.name === optionName);
+
+        if (this.useVirtualScroll()) {
+            const viewport = this.optionsViewport();
+            if (viewport && optionIndex >= 0) {
+                viewport.scrollToIndex(optionIndex, 'smooth');
+            }
+            return;
+        }
+
+        const container = this.optionsEl()?.nativeElement;
+        if (!container) {
+            return;
+        }
+
+        const items = Array.from(container.querySelectorAll<HTMLElement>('.option-item'));
+        for (const item of items) {
+            if (item.getAttribute('data-option-name') === optionName) {
+                try {
+                    item.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                } catch {
+                    item.scrollIntoView();
+                }
+                break;
+            }
+        }
+    }
+
+    private openDropdown({ focusInput, scrollToOptionName }: OpenDropdownOptions) {
+        document.dispatchEvent(new CustomEvent('multi-select-dropdown-open', { detail: this }));
+        this.isOpen.set(true);
+        this.filterText.set('');
+
+        afterNextRender(() => {
+            if (this.destroyed || !this.isOpen()) {
+                return;
+            }
+
+            this.captureOpenMetrics();
+            if (scrollToOptionName) {
+                this.scrollToOption(scrollToOptionName);
+            }
+            if (focusInput) {
+                this.focusFilterInput();
+            }
+        }, { injector: this.injector });
+    }
+
     private scheduleOverlayRefresh(recalculateMetrics = false) {
         if (recalculateMetrics) {
             this.overlayRefreshNeedsMetrics = true;
@@ -465,8 +539,7 @@ export class MultiSelectDropdownComponent {
 
             const triggerElement = this.displayAreaEl()?.nativeElement;
             if (!triggerElement?.isConnected) {
-                this.isOpen.set(false);
-                this.filterText.set('');
+                this.closeDropdown();
                 return;
             }
 
@@ -492,75 +565,21 @@ export class MultiSelectDropdownComponent {
         this.lastPointerType = event.pointerType;
     }
 
-    toggleDropdown(event?: MouseEvent) {
+    toggleDropdown() {
         if (this.semanticOnly()) return;
-        const wasMouse = this.lastPointerType === 'mouse';
+        const shouldFocusFilter = this.lastPointerType === 'mouse';
         this.lastPointerType = '';
-        const nextIsOpen = !this.isOpen();
-        this.isOpen.set(nextIsOpen);
-        if (nextIsOpen) {
-            // notify other instances
-            document.dispatchEvent(new CustomEvent('multi-select-dropdown-open', { detail: this }));
-        } else {
-            this.stopAnchorFollowLoop();
-            this.cancelScheduledOverlayRefresh();
-            this.lastOverlayPositionKey = null;
-            this.overlayPlacement.set('below');
-            this.openMaxHeight.set(MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK);
+        if (this.isOpen()) {
+            this.closeDropdown();
+            return;
         }
-        this.filterText.set('');
-        afterNextRender(() => {
-            if (this.destroyed) return;
-            if (this.isOpen()) {
-                this.captureOpenMetrics();
-                if (wasMouse) {
-                    const inputEl = this.filterInput()?.nativeElement;
-                    if (inputEl) {
-                        inputEl.focus();
-                    }
-                }
-            }
-        }, { injector: this.injector });
+
+        this.openDropdown({ focusInput: shouldFocusFilter });
     }
 
     openAndScrollTo(optionName: string, event: MouseEvent) {
-        document.dispatchEvent(new CustomEvent('multi-select-dropdown-open', { detail: this }));
         event.stopPropagation();
-        this.isOpen.set(true);
-        this.filterText.set('');
-        afterNextRender(() => {
-            if (this.destroyed) return;
-            this.captureOpenMetrics();
-            
-            const options = this.filteredOptions();
-            const optionIndex = options.findIndex(option => option.name === optionName);
-            if (this.useVirtualScroll()) {
-                const viewport = this.optionsViewport();
-                if (viewport && optionIndex >= 0) {
-                    viewport.scrollToIndex(optionIndex, 'smooth');
-                }
-            } else {
-                const container = this.optionsEl()?.nativeElement;
-                if (container) {
-                    const items = Array.from(container.querySelectorAll<HTMLElement>('.option-item'));
-                    for (const item of items) {
-                        if (item.getAttribute('data-option-name') === optionName) {
-                            try {
-                                item.scrollIntoView({ block: 'center', behavior: 'smooth' });
-                            } catch {
-                                item.scrollIntoView();
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-
-            const inputEl = this.filterInput()?.nativeElement;
-            if (inputEl) {
-                inputEl.focus();
-            }
-        }, { injector: this.injector });
+        this.openDropdown({ focusInput: true, scrollToOptionName: optionName });
     }
 
     onOverlayAttached() {
@@ -568,11 +587,7 @@ export class MultiSelectDropdownComponent {
     }
 
     onOverlayDetached() {
-        this.stopAnchorFollowLoop();
-        this.cancelScheduledOverlayRefresh();
-        this.lastOverlayPositionKey = null;
-        this.overlayPlacement.set('below');
-        this.openMaxHeight.set(MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK);
+        this.resetOverlayState();
     }
 
     onOverlayPositionChange(event: ConnectedOverlayPositionChange) {
@@ -667,7 +682,7 @@ export class MultiSelectDropdownComponent {
         };
     }
 
-    restoreScrollPosition(restoreState: ScrollRestoreState | null) {
+    private restoreScrollPosition(restoreState: ScrollRestoreState | null) {
         // restore the preserved scroll after the DOM updates
         afterNextRender(() => {
             if (!restoreState) {
@@ -787,8 +802,7 @@ export class MultiSelectDropdownComponent {
     onSingleSelect(optionName: string) {
         if (!this.multiselect()) {
             this.selectionChange.emit([optionName]);
-            this.isOpen.set(false);
-            this.filterText.set('');
+            this.closeDropdown();
         }
     }
 

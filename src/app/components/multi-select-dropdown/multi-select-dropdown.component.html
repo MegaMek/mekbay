@@ -1,5 +1,5 @@
 <div class="multi-select-container corner-borders" [class.open]="isOpen()" [class.disabled]="semanticOnly()" [class.semantic-only]="semanticOnly()">
-    <div #displayArea class="display-area" cdkOverlayOrigin #overlayOrigin="cdkOverlayOrigin" (pointerdown)="onPointerDown($event)" (click)="toggleDropdown($event)">
+    <div #displayArea class="display-area" cdkOverlayOrigin #overlayOrigin="cdkOverlayOrigin" (pointerdown)="onPointerDown($event)" (click)="toggleDropdown()">
         <span class="label" [class.semantic-only]="semanticOnly()">{{ label() }}</span>
         <div class="pills-container">
             @if (semanticOnly() && displayItems()?.length) {
