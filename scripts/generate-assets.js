@@ -47,6 +47,7 @@ process.env.MM_DATA_PATH = mmDataRoot;
 const sourcebooksDir = path.join(mmDataRoot, 'data', 'sourcebooks');
 const sourcebooksOutput = path.join(root, 'public', 'assets', 'sourcebooks.json');
 const megaMekAvailabilityScript = path.join(__dirname, 'generate-megamek-availability.ts');
+const megaMekRulesetsScript = path.join(__dirname, 'generate-megamek-rulesets.ts');
 const ratGeneratorCsvScript = path.join(__dirname, 'ratgenerator_build_table.ts');
 
 console.log(`[Assets] Using MM data from: ${mmDataRoot}`);
@@ -153,6 +154,7 @@ function generateSourcebooks() {
 async function main() {
   try {
     runTypeScriptScript(megaMekAvailabilityScript);
+    runTypeScriptScript(megaMekRulesetsScript);
     // runTypeScriptScript(ratGeneratorCsvScript);
     generateSourcebooks();
     // await runCompressAssets();

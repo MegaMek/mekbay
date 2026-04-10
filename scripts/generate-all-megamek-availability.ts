@@ -179,9 +179,16 @@ interface WeightedRecordChannels {
 
 interface RulesetRecord {
     factionKey: string;
-    parentFaction?: string;
+    parentFactionKey?: string;
     ratingSystem?: string;
-    document: JsonObject;
+    assign?: JsonObject;
+    customRanks?: JsonObject;
+    defaults?: JsonObject;
+    toc?: JsonObject;
+    forces: JsonObject[];
+    indexes: {
+        forceIndexesByEchelon: Record<string, number[]>;
+    };
     forceCount: number;
 }
 
@@ -818,6 +825,99 @@ function normalizeRulesetNode(value: unknown, path: string[] = []): unknown {
     }
 
     return normalized;
+}
+
+function isLegacyRulesetEchelonToken(value: unknown): value is JsonObject & { echelon: string } {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return false;
+    }
+
+    const keys = Object.keys(value as JsonObject);
+    return 'echelon' in (value as JsonObject)
+        && keys.every((key) => ['echelon', 'modifier', 'augmented'].includes(key));
+}
+
+function mapRulesetExportKey(key: string): string {
+    switch (key) {
+        case 'faction':
+            return 'factionKey';
+        case 'num':
+            return 'count';
+        case 'asFaction':
+            return 'asFactionKey';
+        case 'asParent':
+            return 'useParentFaction';
+        default:
+            return key;
+    }
+}
+
+function finalizeRulesetExportValue(value: unknown): unknown {
+    if (value === undefined || value === null) {
+        return undefined;
+    }
+
+    if (Array.isArray(value)) {
+        return value
+            .map((entry) => finalizeRulesetExportValue(entry))
+            .filter((entry) => entry !== undefined);
+    }
+
+    if (isLegacyRulesetEchelonToken(value)) {
+        return {
+            code: String(value.echelon),
+            ...(value.modifier === undefined ? {} : { modifier: value.modifier }),
+            ...(value.augmented === undefined ? {} : { augmented: value.augmented }),
+        };
+    }
+
+    if (typeof value !== 'object') {
+        return value;
+    }
+
+    const source = value as JsonObject;
+    const normalized: JsonObject = {};
+
+    for (const [key, entry] of Object.entries(source)) {
+        if (key === 'parent' || key === 'ratingSystem') {
+            continue;
+        }
+
+        const nextValue = finalizeRulesetExportValue(entry);
+        if (nextValue === undefined) {
+            continue;
+        }
+
+        normalized[mapRulesetExportKey(key)] = key === 'asParent'
+            ? Boolean(nextValue)
+            : nextValue;
+    }
+
+    return normalized;
+}
+
+function buildRulesetIndexes(forces: JsonObject[]): { forceIndexesByEchelon: Record<string, number[]> } {
+    const forceIndexesByEchelon: Record<string, number[]> = {};
+
+    forces.forEach((force, index) => {
+        const echelon = force.echelon;
+        if (!echelon || typeof echelon !== 'object' || Array.isArray(echelon)) {
+            return;
+        }
+
+        const code = typeof (echelon as JsonObject).code === 'string'
+            ? String((echelon as JsonObject).code)
+            : '';
+        if (!code) {
+            return;
+        }
+
+        const bucket = forceIndexesByEchelon[code] ?? [];
+        bucket.push(index);
+        forceIndexesByEchelon[code] = bucket;
+    });
+
+    return { forceIndexesByEchelon };
 }
 
 function readText(filePath: string): string {
@@ -3697,18 +3797,36 @@ function loadRulesets(dirPath: string): RulesetRecord[] {
             continue;
         }
 
-        const document = normalizeRulesetNode(rawRuleset, ['ruleset']);
-        if (!document || typeof document !== 'object' || Array.isArray(document)) {
+        const normalizedDocument = normalizeRulesetNode(rawRuleset, ['ruleset']);
+        if (!normalizedDocument || typeof normalizedDocument !== 'object' || Array.isArray(normalizedDocument)) {
             throw new Error(`Failed to normalize ruleset ${fileName}`);
         }
+
+        const document = finalizeRulesetExportValue(normalizedDocument) as JsonObject;
+        const forces = Array.isArray(document.forces)
+            ? document.forces.filter((entry): entry is JsonObject => !!entry && typeof entry === 'object' && !Array.isArray(entry))
+            : [];
 
         const factionKey = String(rawRuleset['@_faction'] || fileName.replace(/\.xml$/i, ''));
         result.push({
             factionKey,
-            parentFaction: rawRuleset['@_parent'] === undefined ? undefined : String(rawRuleset['@_parent']),
+            parentFactionKey: rawRuleset['@_parent'] === undefined ? undefined : String(rawRuleset['@_parent']),
             ratingSystem: rawRuleset['@_ratingSystem'] === undefined ? undefined : String(rawRuleset['@_ratingSystem']),
-            document: document as JsonObject,
-            forceCount: ensureArray(rawRuleset.force).length,
+            assign: document.assign && typeof document.assign === 'object' && !Array.isArray(document.assign)
+                ? document.assign as JsonObject
+                : undefined,
+            customRanks: document.customRanks && typeof document.customRanks === 'object' && !Array.isArray(document.customRanks)
+                ? document.customRanks as JsonObject
+                : undefined,
+            defaults: document.defaults && typeof document.defaults === 'object' && !Array.isArray(document.defaults)
+                ? document.defaults as JsonObject
+                : undefined,
+            toc: document.toc && typeof document.toc === 'object' && !Array.isArray(document.toc)
+                ? document.toc as JsonObject
+                : undefined,
+            forces,
+            indexes: buildRulesetIndexes(forces),
+            forceCount: forces.length,
         });
     }
 
