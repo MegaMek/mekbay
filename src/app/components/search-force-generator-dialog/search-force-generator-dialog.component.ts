@@ -65,14 +65,6 @@ export interface SearchForceGeneratorDialogResult {
     totalCost: number;
 }
 
-function getDefaultMinUnitCount(eligibleUnitCount: number): number {
-    return Math.max(1, Math.min(4, eligibleUnitCount || 1));
-}
-
-function getDefaultMaxUnitCount(eligibleUnitCount: number, minUnitCount: number): number {
-    return Math.max(minUnitCount, Math.min(8, Math.max(eligibleUnitCount, minUnitCount)));
-}
-
 @Component({
     selector: 'search-force-generator-dialog',
     standalone: true,
@@ -93,6 +85,9 @@ export class SearchForceGeneratorDialogComponent {
         this.optionsService.options(),
         this.filtersService.bvPvLimit(),
         this.gameService.currentGameSystem(),
+    );
+    private readonly initialUnitCountDefaults = this.forceGeneratorService.resolveInitialUnitCountDefaults(
+        this.optionsService.options(),
     );
 
     readonly gameSystem = this.gameService.currentGameSystem;
@@ -147,8 +142,8 @@ export class SearchForceGeneratorDialogComponent {
     readonly budgetRange = computed(() => this.gameSystem() === GameSystem.ALPHA_STRIKE
         ? { min: this.alphaStrikeBudgetMin(), max: this.alphaStrikeBudgetMax() }
         : { min: this.classicBudgetMin(), max: this.classicBudgetMax() });
-    readonly minUnitCount = signal(getDefaultMinUnitCount(this.eligibleUnits().length));
-    readonly maxUnitCount = signal(getDefaultMaxUnitCount(this.eligibleUnits().length, this.minUnitCount()));
+    readonly minUnitCount = signal(this.initialUnitCountDefaults.min);
+    readonly maxUnitCount = signal(this.initialUnitCountDefaults.max);
     readonly rerollRevision = signal(0);
     readonly collapsedHowPicksWhereChosen = signal(false);
     readonly generationSettings = computed(() => {
@@ -226,18 +221,12 @@ export class SearchForceGeneratorDialogComponent {
 
     onMinUnitCountChange(event: Event): void {
         const nextValue = Math.max(1, this.parseNumericValue(event, this.minUnitCount()));
-        this.minUnitCount.set(nextValue);
-        if (this.maxUnitCount() < nextValue) {
-            this.maxUnitCount.set(nextValue);
-        }
+        this.setUnitCountRange(nextValue, Math.max(this.maxUnitCount(), nextValue));
     }
 
     onMaxUnitCountChange(event: Event): void {
         const nextValue = Math.max(1, this.parseNumericValue(event, this.maxUnitCount()));
-        this.maxUnitCount.set(nextValue);
-        if (this.minUnitCount() > nextValue) {
-            this.minUnitCount.set(nextValue);
-        }
+        this.setUnitCountRange(Math.min(this.minUnitCount(), nextValue), nextValue);
     }
 
     reroll(): void {
@@ -363,6 +352,28 @@ export class SearchForceGeneratorDialogComponent {
             if (didChangeMax) {
                 void this.optionsService.setOption(optionKeys.max, nextMax);
             }
+        }
+    }
+
+    private setUnitCountRange(minValue: number, maxValue: number): void {
+        const nextMin = Math.max(1, minValue);
+        const nextMax = Math.max(nextMin, maxValue);
+        const optionKeys = this.forceGeneratorService.getStoredUnitCountOptionKeys();
+        const didChangeMin = this.minUnitCount() !== nextMin;
+        const didChangeMax = this.maxUnitCount() !== nextMax;
+
+        if (!didChangeMin && !didChangeMax) {
+            return;
+        }
+
+        this.minUnitCount.set(nextMin);
+        this.maxUnitCount.set(nextMax);
+
+        if (didChangeMin) {
+            void this.optionsService.setOption(optionKeys.min, nextMin);
+        }
+        if (didChangeMax) {
+            void this.optionsService.setOption(optionKeys.max, nextMax);
         }
     }
 

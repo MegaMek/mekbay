@@ -74,6 +74,8 @@ const DEFAULT_OPTIONS: Options = {
     forceGenLastBVMax: 8000,
     forceGenLastPVMin: 290,
     forceGenLastPVMax: 300,
+    forceGenLastMinUnitCount: 4,
+    forceGenLastMaxUnitCount: 8,
 };
 
 @Injectable({ providedIn: 'root' })
@@ -110,6 +112,8 @@ export class OptionsService {
         forceGenLastBVMax: DEFAULT_OPTIONS.forceGenLastBVMax,
         forceGenLastPVMin: DEFAULT_OPTIONS.forceGenLastPVMin,
         forceGenLastPVMax: DEFAULT_OPTIONS.forceGenLastPVMax,
+        forceGenLastMinUnitCount: DEFAULT_OPTIONS.forceGenLastMinUnitCount,
+        forceGenLastMaxUnitCount: DEFAULT_OPTIONS.forceGenLastMaxUnitCount,
     });
 
     constructor() {
@@ -150,6 +154,8 @@ export class OptionsService {
             forceGenLastBVMax: saved?.forceGenLastBVMax ?? DEFAULT_OPTIONS.forceGenLastBVMax,
             forceGenLastPVMin: saved?.forceGenLastPVMin ?? DEFAULT_OPTIONS.forceGenLastPVMin,
             forceGenLastPVMax: saved?.forceGenLastPVMax ?? DEFAULT_OPTIONS.forceGenLastPVMax,
+            forceGenLastMinUnitCount: saved?.forceGenLastMinUnitCount ?? DEFAULT_OPTIONS.forceGenLastMinUnitCount,
+            forceGenLastMaxUnitCount: saved?.forceGenLastMaxUnitCount ?? DEFAULT_OPTIONS.forceGenLastMaxUnitCount,
         });
     }
 

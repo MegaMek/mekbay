@@ -75,4 +75,6 @@ export interface Options {
     forceGenLastBVMax: number;
     forceGenLastPVMin: number;
     forceGenLastPVMax: number;
+    forceGenLastMinUnitCount: number;
+    forceGenLastMaxUnitCount: number;
 }
