@@ -120,6 +120,13 @@ function setHasAny<T>(sourceSet: ReadonlySet<T>, targetSet: ReadonlySet<T>): boo
     return false;
 }
 
+interface AvailabilitySelectionScopeParts {
+    eraNames: string[];
+    factionNames: string[];
+    availabilityFromNames: string[];
+    availabilityRarityNames: MegaMekAvailabilityRarity[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class UnitSearchFiltersService {
     dataService = inject(DataService);
@@ -215,6 +222,7 @@ export class UnitSearchFiltersService {
     private cachedWorkerCorpusVersion: string | null = null;
     private cachedWorkerCorpusSnapshot: UnitSearchWorkerCorpusSnapshot | null = null;
     private searchRequestRevision = 0;
+    private readonly availabilitySelectionScopePartsCache = new WeakMap<FilterState, AvailabilitySelectionScopeParts>();
     private readonly workerRequestRevision = signal(0);
     private readonly workerResultRevision = signal(0);
     private readonly workerSearchActive = computed(() => {
@@ -426,6 +434,22 @@ export class UnitSearchFiltersService {
         return Array.from(new Set([...resolved.or, ...resolved.and]));
     }
 
+    private getAvailabilitySelectionScopeParts(state: FilterState): AvailabilitySelectionScopeParts {
+        const cached = this.availabilitySelectionScopePartsCache.get(state);
+        if (cached) {
+            return cached;
+        }
+
+        const parts: AvailabilitySelectionScopeParts = {
+            eraNames: this.getSelectedRegularDropdownNames(state['era']),
+            factionNames: this.getPositiveFactionNames(state['faction']),
+            availabilityFromNames: this.getSelectedRegularDropdownNames(state['availabilityFrom']),
+            availabilityRarityNames: this.getSelectedRegularDropdownNames(state['availabilityRarity']) as MegaMekAvailabilityRarity[],
+        };
+        this.availabilitySelectionScopePartsCache.set(state, parts);
+        return parts;
+    }
+
     private buildAvailabilityFilterContext(scope?: AvailabilityFilterScope): MegaMekAvailabilityFilterContext | null {
         if (!scope) {
             return {};
@@ -473,9 +497,7 @@ export class UnitSearchFiltersService {
     }
 
     private buildMegaMekRaritySortScope(state: FilterState): AvailabilityFilterScope | undefined {
-        const eraNames = this.getSelectedRegularDropdownNames(state['era']);
-        const factionNames = this.getPositiveFactionNames(state['faction']);
-        const availabilityFromNames = this.getSelectedRegularDropdownNames(state['availabilityFrom']);
+        const { eraNames, factionNames, availabilityFromNames } = this.getAvailabilitySelectionScopeParts(state);
         const scope: AvailabilityFilterScope = {};
 
         if (eraNames.length > 0) {
@@ -562,15 +584,12 @@ export class UnitSearchFiltersService {
         contextUnits: Unit[],
         state: FilterState,
     ): { name: string; img?: string; displayName?: string; available: boolean }[] {
+        const { eraNames, factionNames, availabilityFromNames } = this.getAvailabilitySelectionScopeParts(state);
         const scope: AvailabilityFilterScope = {
-            ...(this.getSelectedRegularDropdownNames(state['era']).length > 0
-                ? { eraNames: this.getSelectedRegularDropdownNames(state['era']) }
-                : {}),
-            ...(this.getPositiveFactionNames(state['faction']).length > 0
-                ? { factionNames: this.getPositiveFactionNames(state['faction']) }
-                : {}),
-            ...(conf.key !== 'availabilityFrom' && this.getSelectedRegularDropdownNames(state['availabilityFrom']).length > 0
-                ? { availabilityFromNames: this.getSelectedRegularDropdownNames(state['availabilityFrom']) }
+            ...(eraNames.length > 0 ? { eraNames } : {}),
+            ...(factionNames.length > 0 ? { factionNames } : {}),
+            ...(conf.key !== 'availabilityFrom' && availabilityFromNames.length > 0
+                ? { availabilityFromNames }
                 : {}),
         };
 
@@ -612,15 +631,14 @@ export class UnitSearchFiltersService {
         contextUnits: Unit[],
         state: FilterState,
     ): { name: string; img?: string; displayName?: string; available: boolean }[] {
-        const selectedFactionNames = this.getPositiveFactionNames(state['faction']);
-        const selectedAvailabilityFromNames = this.getSelectedRegularDropdownNames(state['availabilityFrom']);
+        const { factionNames, availabilityFromNames } = this.getAvailabilitySelectionScopeParts(state);
         const contextUnitIds = new Set(contextUnits.map((unit) => unit.name));
 
         const options = this.dataService.getDropdownOptionUniverse(conf.key).map((option) => {
             const candidateScope: AvailabilityFilterScope = {
                 eraNames: [option.name],
-                ...(selectedFactionNames.length > 0 ? { factionNames: selectedFactionNames } : {}),
-                ...(selectedAvailabilityFromNames.length > 0 ? { availabilityFromNames: selectedAvailabilityFromNames } : {}),
+                ...(factionNames.length > 0 ? { factionNames } : {}),
+                ...(availabilityFromNames.length > 0 ? { availabilityFromNames } : {}),
             };
 
             return {
@@ -638,15 +656,14 @@ export class UnitSearchFiltersService {
         contextUnits: Unit[],
         state: FilterState,
     ): { name: string; img?: string; displayName?: string; available: boolean }[] {
-        const selectedEraNames = this.getSelectedRegularDropdownNames(state['era']);
-        const selectedAvailabilityFromNames = this.getSelectedRegularDropdownNames(state['availabilityFrom']);
+        const { eraNames, availabilityFromNames } = this.getAvailabilitySelectionScopeParts(state);
         const contextUnitIds = new Set(contextUnits.map((unit) => unit.name));
 
         const options = this.dataService.getDropdownOptionUniverse(conf.key).map((option) => {
             const candidateScope: AvailabilityFilterScope = {
-                ...(selectedEraNames.length > 0 ? { eraNames: selectedEraNames } : {}),
+                ...(eraNames.length > 0 ? { eraNames } : {}),
                 factionNames: [option.name],
-                ...(selectedAvailabilityFromNames.length > 0 ? { availabilityFromNames: selectedAvailabilityFromNames } : {}),
+                ...(availabilityFromNames.length > 0 ? { availabilityFromNames } : {}),
             };
 
             return {
@@ -668,15 +685,15 @@ export class UnitSearchFiltersService {
             return new Set<string>();
         }
 
-        const selectedAvailabilityRarityNames = this.getSelectedRegularDropdownNames(state['availabilityRarity']) as MegaMekAvailabilityRarity[];
-        if (selectedAvailabilityRarityNames.length === 0) {
+        const { availabilityRarityNames } = this.getAvailabilitySelectionScopeParts(state);
+        if (availabilityRarityNames.length === 0) {
             return context.availabilityFrom
                 ? this.unitAvailabilitySource.getMegaMekAvailabilityUnitIds(context)
                 : this.unitAvailabilitySource.getMegaMekMembershipUnitIds(context);
         }
 
         const unitIds = new Set<string>();
-        for (const rarityName of selectedAvailabilityRarityNames) {
+        for (const rarityName of availabilityRarityNames) {
             for (const unitId of this.unitAvailabilitySource.getMegaMekRarityUnitIds(rarityName, context)) {
                 unitIds.add(unitId);
             }

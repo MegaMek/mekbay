@@ -98,6 +98,12 @@
                     <span class="info-label muted">Tons:</span>
                     <span class="info-value" [class.sort-slot]="isSortActive('tons')">{{ u.tons | formatTons }}</span>
                 </div>
+                @if (megaMekRarity(); as rarity) {
+                <div class="info-item">
+                    <span class="info-label muted">RAT Rarity:</span>
+                    <span class="info-value" [class.sort-slot]="isSortActive(megaMekRaritySortKey)">{{ rarity }}</span>
+                </div>
+                }
                 @if (sortSlot(); as slot) {
                 <div class="info-item">
                     <span class="info-label muted">{{ slot.label }}</span>
@@ -214,6 +220,12 @@
                 <div class="info-item">
                     <span class="info-label muted">Movement:</span>
                     <span class="info-value" [class.sort-slot]="isSortActive('movement')">{{ u.walk }} / {{ u.run }} @if(u.run2 != u.run){ [{{ u.run2 }}]} @if(u.jump){ / {{ u.jump }} } @if (u.umu) { / {{ u.umu }}}</span>
+                </div>
+                }
+                @if (megaMekRarity(); as rarity) {
+                <div class="info-item">
+                    <span class="info-label muted">RAT Rarity:</span>
+                    <span class="info-value" [class.sort-slot]="isSortActive(megaMekRaritySortKey)">{{ rarity }}</span>
                 </div>
                 }
                 @if (sortSlot(); as slot) {

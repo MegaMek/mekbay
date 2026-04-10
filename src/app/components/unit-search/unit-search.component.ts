@@ -1989,13 +1989,17 @@ export class UnitSearchComponent {
         return typeof raw === 'number' ? FormatNumberPipe.formatValue(raw, true, false) : String(raw);
     }
 
+    getSearchResultMegaMekRarity(unit: Unit): string {
+        return this.formatMegaMekRaritySortScore(this.filtersService.getMegaMekRaritySortScore(unit));
+    }
+
     getCardSortSlotOverride(unit: Unit): { value: string; numeric?: boolean } | null {
         if (this.filtersService.selectedSort() !== MEGAMEK_RARITY_SORT_KEY) {
             return null;
         }
 
         return {
-            value: this.formatMegaMekRaritySortScore(this.filtersService.getMegaMekRaritySortScore(unit)),
+            value: this.getSearchResultMegaMekRarity(unit),
             numeric: false,
         };
     }

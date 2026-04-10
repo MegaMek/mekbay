@@ -54,7 +54,7 @@ import { FilterAmmoPipe } from '../../pipes/filter-ammo.pipe';
 import { ExpandedComponentsPipe } from '../../pipes/expanded-components.pipe';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { type SearchTokensGroup, highlightMatches } from '../../utils/search.util';
-import { AS_TYPE_DISPLAY_NAMES } from '../../services/unit-search-filters.model';
+import { AS_TYPE_DISPLAY_NAMES, MEGAMEK_RARITY_SORT_KEY } from '../../services/unit-search-filters.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
 import { formatMovement, isAerospace } from '../../utils/as-common.util';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
@@ -90,6 +90,7 @@ export class UnitCardExpandedComponent {
     private abilityLookup = inject(AsAbilityLookupService);
     private expandedComponentsPipe = new ExpandedComponentsPipe();
     readonly unitTypeDisplayNames = AS_TYPE_DISPLAY_NAMES;
+    readonly megaMekRaritySortKey = MEGAMEK_RARITY_SORT_KEY;
 
     /** 
      * The unit to display. Can be either a Unit or a ForceUnit.
@@ -217,6 +218,9 @@ export class UnitCardExpandedComponent {
 
     /** Optional per-card sort slot override for custom sort keys. */
     sortSlotOverride = input<{ value: string; numeric?: boolean } | null>(null);
+
+    /** Optional fixed MegaMek rarity display, used by unit-search results only. */
+    megaMekRarity = input<string | null>(null);
 
     /** Search tokens for text highlighting (optional) */
     searchTokens = input<SearchTokensGroup[]>([]);
@@ -485,6 +489,10 @@ export class UnitCardExpandedComponent {
      * Check if a sort key is actually displayed for a specific unit.
      */
     private isSortKeyDisplayedForUnit(sortKey: string, unit: Unit): boolean {
+        if (sortKey === MEGAMEK_RARITY_SORT_KEY && this.megaMekRarity() !== null) {
+            return true;
+        }
+
         const viewKeys = UnitCardExpandedComponent.VIEW_DISPLAYED_KEYS[this.getViewMode()] || [];
 
         for (const keyOrGroup of viewKeys) {

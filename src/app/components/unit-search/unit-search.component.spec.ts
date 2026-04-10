@@ -4,6 +4,7 @@ import { Overlay } from '@angular/cdk/overlay';
 import { computed, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { GameSystem } from '../../models/common.model';
+import { MEGAMEK_AVAILABILITY_UNKNOWN_SCORE } from '../../models/megamek/availability.model';
 import type { Unit } from '../../models/units.model';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { DataService } from '../../services/data.service';
@@ -15,6 +16,7 @@ import { OptionsService } from '../../services/options.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { SavedSearchesService } from '../../services/saved-searches.service';
 import { TaggingService } from '../../services/tagging.service';
+import { MEGAMEK_RARITY_SORT_KEY } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { UnitSearchComponent } from './unit-search.component';
 
@@ -53,6 +55,7 @@ describe('UnitSearchComponent card virtualization', () => {
         setFilter: jasmine.createSpy('setFilter'),
         unsetFilter: jasmine.createSpy('unsetFilter'),
         setPilotSkills: jasmine.createSpy('setPilotSkills'),
+        getMegaMekRaritySortScore: jasmine.createSpy('getMegaMekRaritySortScore').and.returnValue(0),
     };
 
     const layoutServiceStub = {
@@ -131,6 +134,7 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.bvPvLimit.set(0);
         filtersServiceStub.selectedSort.set('name');
         filtersServiceStub.selectedSortDirection.set('asc');
+        filtersServiceStub.getMegaMekRaritySortScore.and.returnValue(0);
         savedSearchesServiceStub.version.set(0);
         currentGameSystemSignal.set(GameSystem.ALPHA_STRIKE);
 
@@ -280,5 +284,23 @@ describe('UnitSearchComponent card virtualization', () => {
 
         expect(component.dropdownFilters().some(filter => filter.key === 'availabilityRarity')).toBeTrue();
         expect(component.dropdownFilters().some(filter => filter.key === 'availabilityFrom')).toBeTrue();
+    });
+
+    it('formats MegaMek rarity for search result cards', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const unit = createUnit('Atlas');
+
+        filtersServiceStub.getMegaMekRaritySortScore.and.returnValue(4);
+        expect(component.getSearchResultMegaMekRarity(unit)).toBe('Rare');
+
+        filtersServiceStub.selectedSort.set(MEGAMEK_RARITY_SORT_KEY);
+        expect(component.getCardSortSlotOverride(unit)).toEqual({
+            value: 'Rare',
+            numeric: false,
+        });
+
+        filtersServiceStub.getMegaMekRaritySortScore.and.returnValue(MEGAMEK_AVAILABILITY_UNKNOWN_SCORE);
+        expect(component.getSearchResultMegaMekRarity(unit)).toBe('—');
     });
 });
