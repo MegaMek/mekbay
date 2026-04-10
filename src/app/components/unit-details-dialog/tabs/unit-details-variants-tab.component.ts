@@ -40,6 +40,7 @@ import { UnitCardExpandedComponent } from '../../unit-card-expanded/unit-card-ex
 import type { TagClickEvent } from '../../unit-tags/unit-tags.component';
 import { SORT_OPTIONS } from '../../../services/unit-search-filters.model';
 import { GameService } from '../../../services/game.service';
+import { OptionsService } from '../../../services/options.service';
 
 /**
  * State for the variants tab that can be persisted by parent components.
@@ -188,4 +189,7 @@ export class UnitDetailsVariantsTabComponent {
     onTagClick(event: TagClickEvent): void {
         this.tagClick.emit(event);
     }
+
+    optionsService = inject(OptionsService);
+    readonly useHex = computed<boolean>(() => this.optionsService.options().ASUseHex);
 }

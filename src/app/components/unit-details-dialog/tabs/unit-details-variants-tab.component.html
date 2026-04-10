@@ -3,6 +3,7 @@
         @for (variant of variants(); let last = $last; track variant.name) {
             <unit-card-expanded
                 [unit]="variant"
+                [useHex]="useHex()"
                 [isSelected]="isCurrentUnit(variant)"
                 [gunnery]="gunnerySkill() ?? 4"
                 [piloting]="pilotingSkill() ?? 5"
