@@ -33,6 +33,7 @@
 
 import { Component, ElementRef, computed, input, signal, output, inject, ChangeDetectionStrategy, viewChild, afterNextRender, Injector, effect, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { CdkConnectedOverlay, Overlay, OverlayModule, type ConnectedOverlayPositionChange, type ConnectedPosition } from '@angular/cdk/overlay';
 import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import { LayoutService } from '../../services/layout.service';
 import { highlightMatches, matchesSearch, parseSearchQuery } from '../../utils/search.util';
@@ -79,7 +80,7 @@ type ScrollRestoreState =
     selector: 'multi-select-dropdown',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule],
+    imports: [CommonModule, ScrollingModule, OverlayModule],
     templateUrl: './multi-select-dropdown.component.html',
     styleUrls: ['./multi-select-dropdown.component.css']
 })
@@ -88,12 +89,20 @@ export class MultiSelectDropdownComponent {
     private injector = inject(Injector);
     private layoutService = inject(LayoutService);
     private destroyRef = inject(DestroyRef);
+    private overlay = inject(Overlay);
     private destroyed = false;
     private lastPointerType = '';
+    private anchorFollowFrameId: number | null = null;
+    private lastTriggerRect: { left: number; top: number; width: number; height: number } | null = null;
+    private overlayRefreshFrameId: number | null = null;
+    private overlayRefreshNeedsMetrics = false;
+    private lastOverlayPositionKey: string | null = null;
+    displayAreaEl = viewChild<ElementRef<HTMLDivElement>>('displayArea');
     filterInput = viewChild<ElementRef<HTMLInputElement>>('filterInput');
     optionsEl = viewChild<ElementRef<HTMLDivElement>>('optionsEl');
     optionsDropdownEl = viewChild<ElementRef<HTMLDivElement>>('optionsDropdown');
     optionsViewport = viewChild<CdkVirtualScrollViewport>('optionsViewport');
+    connectedOverlay = viewChild(CdkConnectedOverlay);
     
     label = input<string>('');
     multiselect = input<boolean>(true);
@@ -111,11 +120,22 @@ export class MultiSelectDropdownComponent {
     showUnavailableToggle = computed(() => this.multistate() && this.options().some(o => o.available === false));
     isOpen = signal(false);
     filterText = signal('');
-    private static readonly DEFAULT_MAX_HEIGHT = 248;
-    private static readonly MIN_MAX_HEIGHT = 200;
-    private openMaxHeight = signal(MultiSelectDropdownComponent.DEFAULT_MAX_HEIGHT);
+    private static readonly OVERLAY_GAP = 4;
+    private static readonly DEFAULT_PANEL_HEIGHT_FALLBACK = 248;
+    private static readonly VIEWPORT_MARGIN = 12;
+    private openMaxHeight = signal(MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK);
+    private overlayMinWidth = signal(0);
     readonly virtualScrollThreshold = 80;
     readonly optionItemSize = 44;
+    readonly overlayWidth = computed(() => this.overlayMinWidth() || this.measureOverlayWidth());
+    readonly repositionScrollStrategy = this.overlay.scrollStrategies.reposition();
+    readonly overlayPlacement = signal<'above' | 'below'>('below');
+    readonly overlayPositions: ConnectedPosition[] = [
+        { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top' },
+        { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top' },
+        { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom' },
+        { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom' },
+    ];
 
     private displayNameMap = computed(() => {
         const map = new Map<string, string>();
@@ -158,9 +178,15 @@ export class MultiSelectDropdownComponent {
 
     maxHeightOptions = computed(() => {
         if (!this.isOpen()) {
-            return MultiSelectDropdownComponent.DEFAULT_MAX_HEIGHT;
+            return MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK;
         }
         return this.openMaxHeight();
+    });
+
+    viewportHeight = computed(() => {
+        const maxHeight = this.maxHeightOptions();
+        const contentHeight = this.filteredOptions().length * this.optionItemSize;
+        return Math.min(maxHeight, contentHeight || this.optionItemSize);
     });
 
     filteredOptions = computed(() => {
@@ -211,6 +237,11 @@ export class MultiSelectDropdownComponent {
         const target = event.target;
         if (!(target instanceof Node)) return;
 
+        const overlayElement = this.connectedOverlay()?.overlayRef?.overlayElement;
+        if (overlayElement?.contains(target)) {
+            return;
+        }
+
         if (!this.elementRef.nativeElement.contains(target)) {
             this.isOpen.set(false);
             this.filterText.set('');
@@ -220,6 +251,8 @@ export class MultiSelectDropdownComponent {
     constructor() {
         this.destroyRef.onDestroy(() => {
             this.destroyed = true;
+            this.stopAnchorFollowLoop();
+            this.cancelScheduledOverlayRefresh();
             this.isOpen.set(false);
         });
         effect((cleanup) => {
@@ -239,6 +272,36 @@ export class MultiSelectDropdownComponent {
             });
         });
 
+        effect((cleanup) => {
+            if (!this.isOpen()) {
+                return;
+            }
+
+            this.startAnchorFollowLoop();
+
+            cleanup(() => {
+                this.stopAnchorFollowLoop();
+                this.cancelScheduledOverlayRefresh();
+            });
+        });
+
+        effect(() => {
+            if (!this.isOpen()) {
+                return;
+            }
+
+            this.layoutService.windowWidth();
+            this.layoutService.windowHeight();
+
+            afterNextRender(() => {
+                if (this.destroyed || !this.isOpen()) {
+                    return;
+                }
+
+                this.scheduleOverlayRefresh(true);
+            }, { injector: this.injector });
+        });
+
         effect(() => {
             if (!this.isOpen() || !this.useVirtualScroll()) {
                 return;
@@ -256,26 +319,173 @@ export class MultiSelectDropdownComponent {
     }
 
     private measureDropdownMaxHeight(): number {
-        const dropdown = this.optionsDropdownEl()?.nativeElement;
-        if (!dropdown) {
-            return MultiSelectDropdownComponent.DEFAULT_MAX_HEIGHT;
+        const displayArea = this.displayAreaEl()?.nativeElement;
+        if (!displayArea) {
+            return MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK;
         }
 
-        const rect = dropdown.getBoundingClientRect();
-        if (rect.height === 0) {
-            return MultiSelectDropdownComponent.DEFAULT_MAX_HEIGHT;
+        const triggerRect = displayArea.getBoundingClientRect();
+        if (triggerRect.height === 0) {
+            return MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK;
         }
 
-        const hasFilterRow = this.options().length > 20 || this.showUnavailableToggle();
-        const filterRowHeight = hasFilterRow ? 50 : 0;
-        const bottomPadding = 16;
-        const availableForList = this.layoutService.windowHeight() - rect.top - filterRowHeight - bottomPadding;
+        const filterRowHeight = this.measureFilterContainerHeight();
+        const availableVerticalSpace = this.overlayPlacement() === 'below'
+            ? this.layoutService.windowHeight() - triggerRect.bottom - MultiSelectDropdownComponent.VIEWPORT_MARGIN
+            : triggerRect.top - MultiSelectDropdownComponent.VIEWPORT_MARGIN;
+        const availableForList = availableVerticalSpace - filterRowHeight - 8 - MultiSelectDropdownComponent.OVERLAY_GAP;
 
-        return Math.max(MultiSelectDropdownComponent.MIN_MAX_HEIGHT, availableForList);
+        if (!Number.isFinite(availableForList) || availableForList <= 0) {
+            return MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK;
+        }
+
+        return Math.floor(availableForList);
     }
 
-    private captureOpenHeight() {
+    private measureFilterContainerHeight(): number {
+        const dropdown = this.optionsDropdownEl()?.nativeElement;
+        if (!dropdown) {
+            return 0;
+        }
+
+        const filterContainer = dropdown.querySelector<HTMLElement>('.filter-container:not([hidden])');
+        if (!filterContainer) {
+            return 0;
+        }
+
+        return Math.ceil(filterContainer.getBoundingClientRect().height);
+    }
+
+    private measureOverlayWidth(): number {
+        const displayArea = this.displayAreaEl()?.nativeElement;
+        if (!displayArea) {
+            return 0;
+        }
+
+        return displayArea.getBoundingClientRect().width;
+    }
+
+    private captureOpenMetrics() {
+        this.overlayMinWidth.set(this.measureOverlayWidth());
         this.openMaxHeight.set(this.measureDropdownMaxHeight());
+    }
+
+    private measureTriggerRect(): { left: number; top: number; width: number; height: number } | null {
+        const triggerElement = this.displayAreaEl()?.nativeElement;
+        if (!triggerElement?.isConnected) {
+            return null;
+        }
+
+        const rect = triggerElement.getBoundingClientRect();
+        return {
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+        };
+    }
+
+    private hasTriggerRectChanged(nextRect: { left: number; top: number; width: number; height: number }, previousRect: { left: number; top: number; width: number; height: number } | null): boolean {
+        if (!previousRect) {
+            return true;
+        }
+
+        return Math.abs(nextRect.left - previousRect.left) > 0.5
+            || Math.abs(nextRect.top - previousRect.top) > 0.5
+            || Math.abs(nextRect.width - previousRect.width) > 0.5
+            || Math.abs(nextRect.height - previousRect.height) > 0.5;
+    }
+
+    private startAnchorFollowLoop() {
+        if (this.anchorFollowFrameId !== null) {
+            return;
+        }
+
+        const step = () => {
+            this.anchorFollowFrameId = null;
+
+            if (this.destroyed || !this.isOpen()) {
+                return;
+            }
+
+            const nextRect = this.measureTriggerRect();
+            if (!nextRect) {
+                this.isOpen.set(false);
+                this.filterText.set('');
+                this.lastTriggerRect = null;
+                return;
+            }
+
+            if (this.hasTriggerRectChanged(nextRect, this.lastTriggerRect)) {
+                const widthOrHeightChanged = !this.lastTriggerRect
+                    || Math.abs(nextRect.width - this.lastTriggerRect.width) > 0.5
+                    || Math.abs(nextRect.height - this.lastTriggerRect.height) > 0.5;
+
+                this.lastTriggerRect = nextRect;
+
+                if (widthOrHeightChanged) {
+                    this.captureOpenMetrics();
+                }
+
+                this.connectedOverlay()?.overlayRef?.updatePosition();
+            }
+
+            this.anchorFollowFrameId = requestAnimationFrame(step);
+        };
+
+        this.anchorFollowFrameId = requestAnimationFrame(step);
+    }
+
+    private stopAnchorFollowLoop() {
+        if (this.anchorFollowFrameId !== null) {
+            cancelAnimationFrame(this.anchorFollowFrameId);
+            this.anchorFollowFrameId = null;
+        }
+
+        this.lastTriggerRect = null;
+    }
+
+    private scheduleOverlayRefresh(recalculateMetrics = false) {
+        if (recalculateMetrics) {
+            this.overlayRefreshNeedsMetrics = true;
+        }
+
+        if (this.overlayRefreshFrameId !== null) {
+            return;
+        }
+
+        this.overlayRefreshFrameId = requestAnimationFrame(() => {
+            this.overlayRefreshFrameId = null;
+            const shouldRecalculateMetrics = this.overlayRefreshNeedsMetrics;
+            this.overlayRefreshNeedsMetrics = false;
+
+            if (this.destroyed || !this.isOpen()) {
+                return;
+            }
+
+            const triggerElement = this.displayAreaEl()?.nativeElement;
+            if (!triggerElement?.isConnected) {
+                this.isOpen.set(false);
+                this.filterText.set('');
+                return;
+            }
+
+            if (shouldRecalculateMetrics) {
+                this.captureOpenMetrics();
+            }
+
+            this.connectedOverlay()?.overlayRef?.updatePosition();
+        });
+    }
+
+    private cancelScheduledOverlayRefresh() {
+        if (this.overlayRefreshFrameId === null) {
+            return;
+        }
+
+        cancelAnimationFrame(this.overlayRefreshFrameId);
+        this.overlayRefreshFrameId = null;
+        this.overlayRefreshNeedsMetrics = false;
     }
 
     onPointerDown(event: PointerEvent) {
@@ -292,13 +502,17 @@ export class MultiSelectDropdownComponent {
             // notify other instances
             document.dispatchEvent(new CustomEvent('multi-select-dropdown-open', { detail: this }));
         } else {
-            this.openMaxHeight.set(MultiSelectDropdownComponent.DEFAULT_MAX_HEIGHT);
+            this.stopAnchorFollowLoop();
+            this.cancelScheduledOverlayRefresh();
+            this.lastOverlayPositionKey = null;
+            this.overlayPlacement.set('below');
+            this.openMaxHeight.set(MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK);
         }
         this.filterText.set('');
         afterNextRender(() => {
             if (this.destroyed) return;
             if (this.isOpen()) {
-                this.captureOpenHeight();
+                this.captureOpenMetrics();
                 if (wasMouse) {
                     const inputEl = this.filterInput()?.nativeElement;
                     if (inputEl) {
@@ -316,7 +530,7 @@ export class MultiSelectDropdownComponent {
         this.filterText.set('');
         afterNextRender(() => {
             if (this.destroyed) return;
-            this.captureOpenHeight();
+            this.captureOpenMetrics();
             
             const options = this.filteredOptions();
             const optionIndex = options.findIndex(option => option.name === optionName);
@@ -347,6 +561,31 @@ export class MultiSelectDropdownComponent {
                 inputEl.focus();
             }
         }, { injector: this.injector });
+    }
+
+    onOverlayAttached() {
+        this.scheduleOverlayRefresh(true);
+    }
+
+    onOverlayDetached() {
+        this.stopAnchorFollowLoop();
+        this.cancelScheduledOverlayRefresh();
+        this.lastOverlayPositionKey = null;
+        this.overlayPlacement.set('below');
+        this.openMaxHeight.set(MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK);
+    }
+
+    onOverlayPositionChange(event: ConnectedOverlayPositionChange) {
+        this.overlayPlacement.set(event.connectionPair.overlayY === 'top' ? 'below' : 'above');
+        const positionKey = [
+            event.connectionPair.originX,
+            event.connectionPair.originY,
+            event.connectionPair.overlayX,
+            event.connectionPair.overlayY,
+        ].join(':');
+        const positionChanged = positionKey !== this.lastOverlayPositionKey;
+        this.lastOverlayPositionKey = positionKey;
+        this.scheduleOverlayRefresh(positionChanged);
     }
 
     onFilterInput(event: Event) {
