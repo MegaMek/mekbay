@@ -39,7 +39,6 @@ import type { GameSystem } from "./common.model";
 export type AvailabilitySource = 'mul' | 'megamek';
 
 export interface Options {
-    uuid?: string; // deprecated, use UserStateService instead
     sheetsColor: 'normal' | 'night';
     pickerStyle: 'default' | 'radial' | 'linear';
     quickActions: 'enabled' | 'disabled';
@@ -70,4 +69,8 @@ export interface Options {
     ASUnifiedDamagePicker: boolean;
     printRosterSummary: boolean;
     printMargin: 'none' | 'browserDefined';
+
+    // Force Generator
+    forceGenLastBVLimit?: number;
+    forceGenLastPVLimit?: number;
 }

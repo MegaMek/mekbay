@@ -70,6 +70,8 @@ const DEFAULT_OPTIONS: Options = {
     ASUseAutomations: true,
     ASVehiclesCriticalHitTable: 'default',
     ASUnifiedDamagePicker: true,
+    forceGenLastBVLimit: undefined,
+    forceGenLastPVLimit: undefined,
 };
 
 @Injectable({ providedIn: 'root' })
@@ -102,6 +104,8 @@ export class OptionsService {
         ASUnifiedDamagePicker: DEFAULT_OPTIONS.ASUnifiedDamagePicker,
         printRosterSummary: DEFAULT_OPTIONS.printRosterSummary,
         printMargin: DEFAULT_OPTIONS.printMargin,
+        forceGenLastBVLimit: DEFAULT_OPTIONS.forceGenLastBVLimit,
+        forceGenLastPVLimit: DEFAULT_OPTIONS.forceGenLastPVLimit,
     });
 
     constructor() {
@@ -138,6 +142,8 @@ export class OptionsService {
             ASUnifiedDamagePicker: saved?.ASUnifiedDamagePicker ?? DEFAULT_OPTIONS.ASUnifiedDamagePicker,
             printRosterSummary: saved?.printRosterSummary ?? DEFAULT_OPTIONS.printRosterSummary,
             printMargin: saved?.printMargin ?? DEFAULT_OPTIONS.printMargin,
+            forceGenLastBVLimit: saved?.forceGenLastBVLimit ?? DEFAULT_OPTIONS.forceGenLastBVLimit,
+            forceGenLastPVLimit: saved?.forceGenLastPVLimit ?? DEFAULT_OPTIONS.forceGenLastPVLimit,
         });
     }
 
