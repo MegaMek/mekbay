@@ -124,6 +124,7 @@ export class MultiSelectDropdownComponent {
     multiselect = input<boolean>(true);
     multistate = input<boolean>(false);
     countable = input<boolean>(false);
+    keepUnavailableVisible = input<boolean>(false);
     semanticOnly = input<boolean>(false);
     displayText = input<string | undefined>();  // Text to display instead of pills when in semantic-only mode (fallback)
     displayItems = input<{ text: string; state: 'or' | 'and' | 'not' }[] | undefined>();  // Structured display items with state
@@ -216,7 +217,7 @@ export class MultiSelectDropdownComponent {
 
         // if the toggle is off, hide unavailable items
         if (!this.showUnavailable()) {
-            if (hasActiveFilter) {
+            if (hasActiveFilter || this.keepUnavailableVisible()) {
                 return nameFiltered;
             }
             return nameFiltered.filter(option => option.available !== false || this.isSelected(option.name));

@@ -114,6 +114,23 @@ describe('MultiSelectDropdownComponent', () => {
         ]);
     });
 
+    it('can keep unavailable options visible when requested by the host', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+
+        fixture.componentRef.setInput('options', [
+            { name: 'Available', available: true },
+            { name: 'Not Available', available: false },
+        ]);
+        fixture.componentRef.setInput('keepUnavailableVisible', true);
+        fixture.componentInstance.isOpen.set(true);
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.filteredOptions().map(option => option.name)).toEqual([
+            'Available',
+            'Not Available',
+        ]);
+    });
+
     it('keeps matching unavailable options visible while filtering', () => {
         const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
 
