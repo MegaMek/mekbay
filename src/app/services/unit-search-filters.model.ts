@@ -312,7 +312,7 @@ export const DROPDOWN_FILTERS: readonly DropdownFilterConfig[] = Object.freeze([
     {
         key: 'availabilityRarity',
         semanticKey: 'rarity',
-        label: 'Rarity',
+        label: 'RAT Rarity',
         sortOptions: [...MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS],
         external: true,
         optionSource: 'external',
