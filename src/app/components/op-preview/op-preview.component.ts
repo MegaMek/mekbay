@@ -31,13 +31,12 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, computed, inject, input, model } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, model } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { type CdkDragDrop, DragDropModule, moveItemInArray, transferArrayItem } from '@angular/cdk/drag-drop';
 import type { ForceAlignment } from '../../models/force-slot.model';
 import type { GameSystem } from '../../models/common.model';
-import { FactionId, getFactionImg } from '../../models/factions.model';
-import { DataService } from '../../services/data.service';
+import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 
 /*
  * Author: Drake
@@ -54,55 +53,27 @@ export interface OpPreviewForce {
     type?: GameSystem;
     bv?: number;
     pv?: number;
-    factionId?:  FactionId;
+    factionId?: number;
     exists?: boolean;
-}
-
-interface OpPreviewDisplayForce extends OpPreviewForce {
-    factionImgUrl?: string;
 }
 
 @Component({
     selector: 'op-preview',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, DragDropModule],
+    imports: [CommonModule, FactionImgPipe, DragDropModule],
     templateUrl: './op-preview.component.html',
     styleUrls: ['./op-preview.component.scss']
 })
 export class OpPreviewComponent {
-    dataService = inject(DataService);
-    
     /** The forces to display in the preview. */
     forces = model.required<OpPreviewForce[]>();
     
     /** Whether to allow drag and drop between the two lists. */
     allowDragDrop = input<boolean>(false);
 
-    private displayForces = computed<OpPreviewDisplayForce[]>(() => {
-        const factionImgCache = new Map<FactionId, string | undefined>();
-
-        return this.forces().map(force => {
-            const factionId = force.factionId;
-
-            if (!factionId) {
-                return force;
-            }
-
-            if (!factionImgCache.has(factionId)) {
-                const faction = this.dataService.getFactionById(factionId);
-                factionImgCache.set(factionId, faction ? getFactionImg(faction) : undefined);
-            }
-
-            return {
-                ...force,
-                factionImgUrl: factionImgCache.get(factionId)
-            };
-        });
-    });
-
-    friendlyForces = computed(() => this.displayForces().filter(f => f.alignment === 'friendly'));
-    enemyForces = computed(() => this.displayForces().filter(f => f.alignment === 'enemy'));
+    friendlyForces = computed(() => this.forces().filter(f => f.alignment === 'friendly'));
+    enemyForces = computed(() => this.forces().filter(f => f.alignment === 'enemy'));
 
     friendlyBv = computed(() =>
         this.friendlyForces()
@@ -131,7 +102,7 @@ export class OpPreviewComponent {
     hasCbt = computed(() => this.forces().some(f => (f.type || 'cbt') !== 'as'));
     hasAs = computed(() => this.forces().some(f => f.type === 'as'));
 
-    onDrop(event: CdkDragDrop<OpPreviewDisplayForce[]>, targetAlignment: ForceAlignment) {
+    onDrop(event: CdkDragDrop<OpPreviewForce[]>, targetAlignment: ForceAlignment) {
         if (!this.allowDragDrop()) return;
 
         const item = event.item.data as OpPreviewForce;

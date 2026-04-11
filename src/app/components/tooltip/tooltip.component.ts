@@ -4,9 +4,6 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 export interface TooltipLine {
     label?: string;
     value: string;
-    iconSrc?: string;
-    iconAlt?: string;
-    isHeader?: boolean;
 }
 
 export type TooltipContent = string | TooltipLine[];
@@ -23,17 +20,14 @@ export type TooltipContent = string | TooltipLine[];
                 {{ content }}
             } @else {
                 @for (line of lines; track $index) {
-                    <div class="tooltip-row" [class.plain]="!line.label" [class.header]="!!line.isHeader">
-                        @if (line.iconSrc) {
-                            <img class="tooltip-icon" [src]="line.iconSrc" [alt]="line.iconAlt ?? ''" />
-                        }
-                        @if (line.label) {
+                    @if (line.label) {
+                        <div class="tooltip-row">
                             <span class="label">{{ line.label }}</span>
                             <span class="value">{{ line.value }}</span>
-                        } @else {
-                            <span class="value">{{ line.value }}</span>
-                        }
-                    </div>
+                        </div>
+                    } @else {
+                        <div class="tooltip-row plain">{{ line.value }}</div>
+                    }
                 }
             }
         </div>
@@ -57,20 +51,10 @@ export type TooltipContent = string | TooltipLine[];
             white-space: nowrap;
         }
         .tooltip-row.plain {
-            justify-content: flex-start;
-            gap: 8px;
-        }
-        .tooltip-row.header .value {
-            font-weight: 600;
+            display: block;
         }
         .tooltip-row .value {
             font-weight: 500;
-        }
-        .tooltip-icon {
-            width: 1.1em;
-            height: 1.1em;
-            object-fit: contain;
-            flex: 0 0 auto;
         }
     `]
 })

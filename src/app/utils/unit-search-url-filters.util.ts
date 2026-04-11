@@ -38,7 +38,6 @@ import { getAvailableDropdownValuesMap, type UnitSearchDropdownValuesDependencie
 import { AdvFilterType, type FilterState, SORT_OPTIONS } from '../services/unit-search-filters.model';
 import { getAdvancedFilterConfigByKey } from './unit-search-filter-config.util';
 import { parseValues } from './semantic-filter.util';
-import { normalizeMultiStateSelection } from './unit-search-shared.util';
 
 interface ParsedUnitSearchScalarUrlState {
     searchText: string | null;
@@ -158,7 +157,7 @@ function generateCompactFiltersParam(state: FilterState): string | null {
             parts.push(`${key}:${min}-${max}`);
         } else if (conf.type === AdvFilterType.DROPDOWN) {
             if (conf.multistate) {
-                const selection = normalizeMultiStateSelection(filterState.value);
+                const selection = filterState.value as MultiStateSelection;
                 const subParts: string[] = [];
 
                 for (const [name, selectionValue] of Object.entries(selection)) {
@@ -334,7 +333,7 @@ function validateParsedFiltersFromUrl(
             const availableValuesMap = getAvailableDropdownValuesMap(conf, dropdownValuesDependencies);
 
             if (conf.multistate) {
-                const selection = normalizeMultiStateSelection(state.value);
+                const selection = state.value as MultiStateSelection;
                 const validSelection: MultiStateSelection = {};
                 for (const [name, selectionValue] of Object.entries(selection)) {
                     const properCase = availableValuesMap.get(name.toLowerCase());

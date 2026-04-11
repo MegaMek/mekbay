@@ -31,7 +31,6 @@
  * affiliated with Microsoft.
  */
 
-import type { MultiStateOption, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import type { Unit } from '../models/units.model';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES, type SearchTelemetryStage } from '../services/unit-search-filters.model';
 
@@ -90,74 +89,6 @@ export function getProperty(obj: any, key?: string) {
 
 export function getNowMs(): number {
     return globalThis.performance?.now?.() ?? Date.now();
-}
-
-function isMultiState(value: unknown): value is MultiStateOption['state'] {
-    return value === false || value === 'or' || value === 'and' || value === 'not';
-}
-
-export function normalizeMultiStateSelection(value: unknown): MultiStateSelection {
-    if (!value) {
-        return {};
-    }
-
-    if (Array.isArray(value)) {
-        const selection: MultiStateSelection = {};
-        for (const entry of value) {
-            if (typeof entry !== 'string' || entry.length === 0) {
-                continue;
-            }
-
-            selection[entry] = {
-                name: entry,
-                state: 'or',
-                count: 1,
-            };
-        }
-        return selection;
-    }
-
-    if (typeof value !== 'object') {
-        return {};
-    }
-
-    const selection: MultiStateSelection = {};
-    for (const [rawName, rawOption] of Object.entries(value as Record<string, unknown>)) {
-        if (!rawOption || typeof rawOption !== 'object') {
-            continue;
-        }
-
-        const option = rawOption as Partial<MultiStateOption>;
-        const name = typeof option.name === 'string' && option.name.length > 0 ? option.name : rawName;
-        if (!name) {
-            continue;
-        }
-
-        selection[name] = {
-            ...option,
-            name,
-            state: isMultiState(option.state) ? option.state : false,
-            count: typeof option.count === 'number' && Number.isFinite(option.count) && option.count > 0
-                ? option.count
-                : 1,
-        };
-    }
-
-    return selection;
-}
-
-export function getSelectedPositiveDropdownNames(value: unknown): string[] {
-    if (Array.isArray(value)) {
-        return Array.from(new Set(
-            value.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0),
-        ));
-    }
-
-    return Array.from(new Set(
-        Object.values(normalizeMultiStateSelection(value))
-            .filter((option) => option.state === 'or' || option.state === 'and')
-            .map((option) => option.name),
-    ));
 }
 
 export function hasUnclosedQuote(text: string): boolean {

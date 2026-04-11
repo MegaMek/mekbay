@@ -41,7 +41,7 @@ import {
 import { isComplexQuery, parseSemanticQueryAST, type ParseResult } from './semantic-filter-ast.util';
 import { getAdvancedFilterConfigByKey, getAdvancedFilterConfigBySemanticField, getDropdownOptionSource } from './unit-search-filter-config.util';
 import { type AdvFilterConfig, AdvFilterType, type FilterState } from '../services/unit-search-filters.model';
-import { hasUnclosedQuote, isCommittedSemanticToken, normalizeMultiStateSelection } from './unit-search-shared.util';
+import { hasUnclosedQuote, isCommittedSemanticToken } from './unit-search-shared.util';
 
 export interface UnitSearchSemanticStateDependencies {
     getDropdownOptionUniverse: (filterKey: string) => readonly string[];
@@ -102,7 +102,7 @@ function canonicalizeSemanticDropdownState(
     const canonicalizeValue = (value: string): string => lookup.get(value.toLowerCase()) ?? value;
 
     if (conf.multistate) {
-        const selection = normalizeMultiStateSelection(state.value);
+        const selection = state.value as MultiStateSelection;
         const canonicalSelection: MultiStateSelection = {};
 
         for (const [name, option] of Object.entries(selection)) {

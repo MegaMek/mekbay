@@ -33,7 +33,6 @@
 
 import { type ApplicationRef, type ComponentRef, createComponent, EnvironmentInjector, type Injector } from '@angular/core';
 import type { ASForceUnit } from '../models/as-force-unit.model';
-import { getFactionAffinity } from '../models/factions.model';
 import type { Force, UnitGroup } from '../models/force.model';
 import { AlphaStrikeCardComponent } from '../components/alpha-strike-card/alpha-strike-card.component';
 import { getLayoutForUnitType } from '../components/alpha-strike-card/card-layout.config';
@@ -796,9 +795,8 @@ export class ASPrintUtil {
         const faction = force.faction();
         if (faction) {
             let factionLabel = faction.name;
-            const factionAffinity = getFactionAffinity(faction);
-            if (factionAffinity !== 'Other' && factionAffinity !== faction.name) {
-                factionLabel += ` · ${factionAffinity}`;
+            if (faction.group && faction.group !== faction.name) {
+                factionLabel += ` \u00B7 ${faction.group}`;
             }
             parts.push(factionLabel);
         }

@@ -3,7 +3,7 @@ import { DEFAULT_ORG_RULE_REGISTRY } from '../org-facts.util';
 import type {
     OrgComposedCountRule,
     OrgComposedPatternRule,
-    OrgDefinition,
+    OrgDefinitionSpec,
     OrgLeafCountRule,
 } from '../org-types';
 import {
@@ -146,7 +146,7 @@ export const WD_BATTALION: OrgComposedCountRule = {
     childBucketBy: 'promotionBasic',
 };
 
-export const WD_CORE_ORG: OrgDefinition = {
+export const WD_CORE_ORG: OrgDefinitionSpec = {
     rules: [
         IS_FLIGHT,
         IS_SQUADRON,

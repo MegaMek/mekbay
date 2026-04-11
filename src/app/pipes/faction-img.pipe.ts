@@ -33,7 +33,6 @@
 
 import { inject, Pipe, type PipeTransform } from '@angular/core';
 import { DataService } from '../services/data.service';
-import { FactionId, getFactionImg } from '../models/factions.model';
 
 /*
  * Author: Drake
@@ -48,10 +47,9 @@ import { FactionId, getFactionImg } from '../models/factions.model';
 export class FactionImgPipe implements PipeTransform {
     private dataService = inject(DataService);
 
-    transform(factionId: FactionId | undefined | null): string | undefined {
+    transform(factionId: number | undefined | null): string | undefined {
         if (factionId == null) return undefined;
         const faction = this.dataService.getFactionById(factionId);
-        if (!faction) return undefined;
-        return getFactionImg(faction);
+        return faction?.img || undefined;
     }
 }

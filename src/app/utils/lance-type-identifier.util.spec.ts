@@ -1,6 +1,5 @@
 import { GameSystem } from '../models/common.model';
-import { type Faction } from '../models/factions.model';
-import { MULFACTION_MERCENARY, type FactionAffinity } from '../models/mulfactions.model';
+import { FACTION_MERCENARY, type Faction, type FactionAffinity } from '../models/factions.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import type { UnitGroup } from '../models/force.model';
 import type { Unit } from '../models/units.model';
@@ -106,7 +105,7 @@ function createForceUnit(unit: Unit, gameSystem = GameSystem.ALPHA_STRIKE): Forc
 
 function createFaction(name: string, group: FactionAffinity): Faction {
     return {
-        id: group === 'Mercenary' ? MULFACTION_MERCENARY : 1,
+        id: group === 'Mercenary' ? FACTION_MERCENARY : 1,
         name,
         group,
         img: '',

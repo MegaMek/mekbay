@@ -34,8 +34,6 @@
 /*
  * Author: Drake
  */
-export type EraMembership = number[] | Set<number>;
-
 export interface Era {
     id: number; // MUL id (unique)
     name: string; // Faction name
@@ -46,8 +44,8 @@ export interface Era {
     description?: string; // Description of the era
     img?: string; // Logo URL for the era
     icon?: string; // Icon URL for the era (same as logo but aligned)
-    factions: EraMembership; // List of faction ids associated with this era
-    units: EraMembership; // List of unit ids associated with this era
+    factions: number[] | Set<number>; // List of faction ids associated with this era
+    units: number[] | Set<number>; // List of unit ids associated with this era
 }
 
 export interface Eras {

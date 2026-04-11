@@ -3,7 +3,7 @@ import { DEFAULT_ORG_RULE_REGISTRY } from '../org-facts.util';
 import type {
     OrgCIFormationRule,
     OrgComposedCountRule,
-    OrgDefinition,
+    OrgDefinitionSpec,
     OrgLeafCountRule,
 } from '../org-types';
 
@@ -168,7 +168,7 @@ export const IS_BRIGADE: OrgComposedCountRule = {
     childBucketBy: 'promotionBasic',
 };
 
-export const IS_CORE_ORG: OrgDefinition = {
+export const IS_CORE_ORG: OrgDefinitionSpec = {
     rules: [
         IS_FLIGHT,
         IS_SQUADRON,

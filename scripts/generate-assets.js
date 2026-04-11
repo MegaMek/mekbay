@@ -34,50 +34,45 @@
 const fs = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
-const { spawnSync } = require('child_process');
-const { loadOptionalEnvFile, resolveMmDataRoot } = require('./lib/script-paths.js');
+const { spawn } = require('child_process');
 
 const root = path.resolve(__dirname, '..');
-const tsxCli = path.join(root, 'node_modules', 'tsx', 'dist', 'cli.mjs');
 
-loadOptionalEnvFile(root, { logPrefix: 'Assets' });
-
-const mmDataRoot = resolveMmDataRoot(root);
-process.env.MM_DATA_PATH = mmDataRoot;
-const sourcebooksDir = path.join(mmDataRoot, 'data', 'sourcebooks');
-const sourcebooksOutput = path.join(root, 'public', 'assets', 'sourcebooks.json');
-const megaMekAvailabilityScript = path.join(__dirname, 'generate-megamek-availability.ts');
-const megaMekRulesetsScript = path.join(__dirname, 'generate-megamek-rulesets.ts');
-const ratGeneratorCsvScript = path.join(__dirname, 'ratgenerator_build_table.ts');
-
-console.log(`[Assets] Using MM data from: ${mmDataRoot}`);
-console.log(`[Assets] Using sourcebooks from: ${sourcebooksDir}`);
-
-function runTypeScriptScript(scriptPath) {
-  if (!fs.existsSync(scriptPath)) {
-    throw new Error(`TypeScript script not found: ${scriptPath}`);
-  }
-
-  if (!fs.existsSync(tsxCli)) {
-    throw new Error(`tsx CLI not found: ${tsxCli}`);
-  }
-
-  const result = spawnSync(process.execPath, [tsxCli, scriptPath], {
-    cwd: root,
-    stdio: 'inherit',
-    env: process.env
-  });
-
-  if (result.error) {
-    throw result.error;
-  }
-
-  if (result.status !== 0) {
-    const exitDetails = result.status === null ? 'no exit code' : `code ${result.status}`;
-    const signalDetails = result.signal ? ` (signal ${result.signal})` : '';
-    throw new Error(`${path.basename(scriptPath)} exited with ${exitDetails}${signalDetails}`);
+// Load .env file if it exists to support local configuration overrides
+const envPath = path.join(root, '.env');
+if (fs.existsSync(envPath)) {
+  try {
+    const envContent = fs.readFileSync(envPath, 'utf8');
+    envContent.split(/\r?\n/).forEach(line => {
+      line = line.trim();
+      if (!line || line.startsWith('#')) return;
+      const parts = line.split('=');
+      if (parts.length >= 2) {
+        const key = parts[0].trim();
+        let value = parts.slice(1).join('=').trim();
+        // Remove quotes if present
+        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1);
+        }
+        if (!process.env[key]) {
+          process.env[key] = value;
+        }
+      }
+    });
+    console.log(`[Assets] Loaded configuration from ${envPath}`);
+  } catch (e) {
+    console.warn('[Assets] Failed to parse .env file:', e.message);
   }
 }
+
+// Configuration:
+// MM_DATA_PATH can be set in .env or environment variables.
+// Default assumes mm-data is located at ../mm-data relative to this project root.
+const mmDataPath = process.env.MM_DATA_PATH || '../mm-data';
+const sourcebooksDir = path.resolve(root, mmDataPath, 'data/sourcebooks');
+const sourcebooksOutput = path.join(root, 'public', 'assets', 'sourcebooks.json');
+
+console.log(`[Assets] Using sourcebooks from: ${sourcebooksDir}`);
 
 function generateSourcebooks() {
   if (!fs.existsSync(sourcebooksDir)) {
@@ -153,9 +148,6 @@ function generateSourcebooks() {
 
 async function main() {
   try {
-    runTypeScriptScript(megaMekAvailabilityScript);
-    runTypeScriptScript(megaMekRulesetsScript);
-    // runTypeScriptScript(ratGeneratorCsvScript);
     generateSourcebooks();
     // await runCompressAssets();
     console.log('[Assets] All asset generation complete.');

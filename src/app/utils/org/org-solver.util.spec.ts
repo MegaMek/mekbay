@@ -1,6 +1,5 @@
 import type { Era } from '../../models/eras.model';
-import type { Faction } from '../../models/factions.model';
-import type { FactionAffinity } from '../../models/mulfactions.model';
+import type { Faction, FactionAffinity } from '../../models/factions.model';
 import type { ASUnitTypeCode, MoveType, Unit, UnitSubtype, UnitType } from '../../models/units.model';
 import {
     CC_AUGMENTED_BATTALION,
@@ -53,8 +52,8 @@ import {
     DEFAULT_ORG_RULE_REGISTRY,
 } from './org-facts.util';
 import {
-    DEFAULT_ORG_DEFINITION,
-    resolveOrgDefinition as resolveOrgDefinitionForFixture,
+    DEFAULT_ORG_SPEC,
+    resolveOrgDefinitionSpec as resolveOrgDefinitionSpecForFixture,
 } from './org-registry.util';
 import {
     evaluateComposedCountRule,
@@ -76,7 +75,7 @@ import {
 import type {
     GroupSizeResult,
     OrgComposedCountRule,
-    OrgDefinition,
+    OrgDefinitionSpec,
     OrgLeafCountRule,
     OrgLeafPatternRule,
     PromotionBasicBucketValue,
@@ -114,8 +113,8 @@ function createEra(from: number, to: number): Era | undefined {
     };
 }
 
-function resolveOrgDefinition(factionName: string, factionAffinity: FactionAffinity, era?: Era): OrgDefinition {
-    return resolveOrgDefinitionForFixture(createFaction(factionName, factionAffinity), era);
+function resolveOrgDefinitionSpec(factionName: string, factionAffinity: FactionAffinity, era?: Era): OrgDefinitionSpec {
+    return resolveOrgDefinitionSpecForFixture(createFaction(factionName, factionAffinity), era);
 }
 
 function evaluateFactionOrgDefinition(
@@ -2146,20 +2145,20 @@ describe('org-solver.util', () => {
         expect(result[0].type).toBe('Binary');
         expect(result[0].modifierKey).toBe('');
     });
-    it('resolves org definitions by faction registry', () => {
-        expect(resolveOrgDefinition('Word of Blake', 'Inner Sphere')).toBe(COMSTAR_CORE_ORG);
-        expect(resolveOrgDefinition('Capellan Confederation', 'Inner Sphere')).toBe(CC_CORE_ORG);
-        expect(resolveOrgDefinition('Wolf\'s Dragoons', 'Mercenary')).toBe(WD_CORE_ORG);
-        expect(resolveOrgDefinition('Unknown Clan', 'HW Clan')).toBe(CLAN_CORE_ORG);
+    it('resolves new-path org definitions by faction registry', () => {
+        expect(resolveOrgDefinitionSpec('Word of Blake', 'Inner Sphere')).toBe(COMSTAR_CORE_ORG);
+        expect(resolveOrgDefinitionSpec('Capellan Confederation', 'Inner Sphere')).toBe(CC_CORE_ORG);
+        expect(resolveOrgDefinitionSpec('Wolf\'s Dragoons', 'Mercenary')).toBe(WD_CORE_ORG);
+        expect(resolveOrgDefinitionSpec('Unknown Clan', 'HW Clan')).toBe(CLAN_CORE_ORG);
     });
 
     it('resolves Wolf\'s Dragoons to Inner Sphere orgs before 3051', () => {
-        expect(resolveOrgDefinition('Wolf\'s Dragoons', 'Mercenary', createEra(3000, 3050))).toBe(IS_CORE_ORG);
-        expect(resolveOrgDefinition('Wolf\'s Dragoons', 'Mercenary', createEra(3051, 3100))).toBe(WD_CORE_ORG);
+        expect(resolveOrgDefinitionSpec('Wolf\'s Dragoons', 'Mercenary', createEra(3000, 3050))).toBe(IS_CORE_ORG);
+        expect(resolveOrgDefinitionSpec('Wolf\'s Dragoons', 'Mercenary', createEra(3051, 3100))).toBe(WD_CORE_ORG);
     });
 
-    it('falls back to the default org definition', () => {
-        expect(resolveOrgDefinition('Federated Suns', 'Inner Sphere')).toBe(DEFAULT_ORG_DEFINITION);
+    it('falls back to the new-path default org definition', () => {
+        expect(resolveOrgDefinitionSpec('Federated Suns', 'Inner Sphere')).toBe(DEFAULT_ORG_SPEC);
     });
 
     it('evaluates a faction org definition through the registry helper', () => {

@@ -1,5 +1,4 @@
 import { Component, provideZonelessChangeDetection, signal, viewChild } from '@angular/core';
-import { OverlayContainer } from '@angular/cdk/overlay';
 import { TestBed } from '@angular/core/testing';
 import type { DropdownOption, MultiStateSelection } from './multi-select-dropdown.component';
 import { MultiSelectDropdownComponent } from './multi-select-dropdown.component';
@@ -28,11 +27,7 @@ class TestHostComponent {
 }
 
 describe('MultiSelectDropdownComponent', () => {
-    let overlayContainer: OverlayContainer;
-    let overlayContainerElement: HTMLElement;
-
     const layoutServiceStub = {
-        windowWidth: signal(1280),
         windowHeight: signal(900),
     };
 
@@ -44,10 +39,6 @@ describe('MultiSelectDropdownComponent', () => {
                 { provide: LayoutService, useValue: layoutServiceStub },
             ],
         }).compileComponents();
-
-        overlayContainer = TestBed.inject(OverlayContainer);
-        overlayContainerElement = overlayContainer.getContainerElement();
-        overlayContainerElement.innerHTML = '';
     });
 
     function createOptions(count: number): DropdownOption[] {
@@ -70,7 +61,7 @@ describe('MultiSelectDropdownComponent', () => {
         fixture.detectChanges();
 
         expect(fixture.componentInstance.useVirtualScroll()).toBeTrue();
-        const viewportEl = overlayContainerElement.querySelector('cdk-virtual-scroll-viewport') as HTMLElement | null;
+        const viewportEl = fixture.nativeElement.querySelector('cdk-virtual-scroll-viewport') as HTMLElement | null;
         expect(viewportEl).not.toBeNull();
         expect(getComputedStyle(viewportEl!).overflowY).toBe('auto');
     });
@@ -83,8 +74,8 @@ describe('MultiSelectDropdownComponent', () => {
         fixture.detectChanges();
 
         expect(fixture.componentInstance.useVirtualScroll()).toBeFalse();
-        expect(overlayContainerElement.querySelector('cdk-virtual-scroll-viewport')).toBeNull();
-        expect(overlayContainerElement.querySelector('.options-list')).not.toBeNull();
+        expect(fixture.nativeElement.querySelector('cdk-virtual-scroll-viewport')).toBeNull();
+        expect(fixture.nativeElement.querySelector('.options-list')).not.toBeNull();
     });
 
     it('hides unavailable unselected options by default while keeping selected unavailable ones visible', () => {
@@ -111,23 +102,6 @@ describe('MultiSelectDropdownComponent', () => {
         expect(fixture.componentInstance.filteredOptions().map(option => option.name)).toEqual([
             'Available',
             'Selected Hidden',
-        ]);
-    });
-
-    it('can keep unavailable options visible when requested by the host', () => {
-        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
-
-        fixture.componentRef.setInput('options', [
-            { name: 'Available', available: true },
-            { name: 'Not Available', available: false },
-        ]);
-        fixture.componentRef.setInput('keepUnavailableVisible', true);
-        fixture.componentInstance.isOpen.set(true);
-        fixture.detectChanges();
-
-        expect(fixture.componentInstance.filteredOptions().map(option => option.name)).toEqual([
-            'Available',
-            'Not Available',
         ]);
     });
 

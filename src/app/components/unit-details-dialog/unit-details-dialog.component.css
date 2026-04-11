@@ -9,6 +9,21 @@
 
 :host ::ng-deep .modal {
     max-width: 1000px !important;
+    position: relative;
+    overflow: visible;
+    clip-path: polygon(0 0, calc(100% - 40px) 0, 100% 40px, 100% 100%, 0 100%);
+}
+
+:host ::ng-deep .modal::before {
+    content: "";
+    position: absolute;
+    top: 0px;
+    right: 26px;
+    width: 120px;
+    height: 10px;
+    pointer-events: none;
+    background: repeating-linear-gradient(-60deg, rgba(255, 255, 255, 0.18) 0px, rgba(255, 255, 255, 0.18) 2px, transparent 4px, transparent 10px);
+    z-index: 2;
 }
 
 :host ::ng-deep .modal-body {

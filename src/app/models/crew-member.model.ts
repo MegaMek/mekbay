@@ -32,7 +32,6 @@
  */
 import { getEffectivePilotingSkill } from "../utils/cbt-common.util";
 import type { CBTForceUnit } from "./cbt-force-unit.model";
-import type { SerializedCrewMember } from './force-serialization';
 
 export const DEFAULT_GUNNERY_SKILL = 4;
 export const DEFAULT_PILOTING_SKILL = 5;
@@ -146,7 +145,7 @@ export class CrewMember {
     }
 
     /** Serialize this CrewMember instance to a plain object */
-    public serialize(): SerializedCrewMember {
+    public serialize(): any {
         return {
             id: this.getId(),
             name: this.getName(),
@@ -160,7 +159,7 @@ export class CrewMember {
     }
 
     /** Deserialize a plain object to a CrewMember instance */
-    public static deserialize(data: SerializedCrewMember, unit: CBTForceUnit): CrewMember {
+    public static deserialize(data: any, unit: CBTForceUnit): CrewMember {
         const crew = new CrewMember(data.id, unit);
         crew.setName(data.name);
         crew.setSkill('gunnery', data.gunnerySkill);
@@ -175,7 +174,7 @@ export class CrewMember {
         return crew;
     }
 
-    public update(data: SerializedCrewMember) {
+    public update(data: any) {
         if (data.name !== this.name) this.name = data.name;
         if (data.gunnerySkill !== this.gunnerySkill) this.gunnerySkill = data.gunnerySkill;
         if (data.pilotingSkill !== this.pilotingSkill) this.pilotingSkill = data.pilotingSkill;
