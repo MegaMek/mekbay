@@ -51,6 +51,7 @@ import type {
     MegaMekRulesetWhen,
 } from '../models/megamek/rulesets.model';
 import { LoadForceEntry, type LoadForceGroup } from '../models/load-force-entry.model';
+import { MAX_UNITS as FORCE_MAX_UNITS } from '../models/force.model';
 import { MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.model';
 import type { Options } from '../models/options.model';
 import type { Unit } from '../models/units.model';
@@ -64,6 +65,13 @@ import { ForceNamerUtil } from '../utils/force-namer.util';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 import { DataService } from './data.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
+
+/**
+ * Author: Drake
+ */
+const LOG_ATTEMPTS = false;
+const DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT = 1;
+const FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS = 200;
 
 interface RulesetPreferenceSource {
     unitTypes?: string[];
@@ -110,10 +118,56 @@ interface ForceGenerationRulesetTemplate {
     motives: Set<string>;
 }
 
+interface ForceGenerationCandidateUnitTypeSummary {
+    unitType: string;
+    candidateCount: number;
+    totalAvailabilityWeight: number;
+}
+
+interface ForceGenerationTopLevelEchelonOption {
+    echelon: string;
+    preferredUnitCount: number;
+    weight: number;
+}
+
+interface ForceGenerationTopLevelUnitTypeChoice {
+    summary: ForceGenerationCandidateUnitTypeSummary;
+    echelons: ForceGenerationTopLevelEchelonOption[];
+}
+
+interface ForceGenerationTopLevelForceNodeChoice {
+    summary: ForceGenerationCandidateUnitTypeSummary;
+    matchContext: RulesetMatchContext;
+}
+
+interface ForceGenerationSuccessfulAttemptRankSnapshot {
+    structureScore: number;
+    midpointDistance: number;
+    unitCount: number;
+}
+
+interface ForceGenerationSuccessfulAttemptLog {
+    attemptNumber: number;
+    selectedEchelon?: string;
+    totalCost: number;
+    unitCount: number;
+    structureScore: number;
+    structureSummary: string | null;
+    midpointDistance: number;
+    perfectMatch: boolean;
+    becameBest: boolean;
+    decisionReason: string;
+    units: {
+        label: string;
+        cost: number;
+    }[];
+}
+
 interface ForceGenerationRulesetProfile {
     selectedEchelon?: string;
     preferredOrgType?: OrgType;
     preferredUnitCount?: number;
+    requiredUnitTypes: Set<string>;
     preferredUnitTypes: Set<string>;
     preferredWeightClasses: Set<string>;
     preferredRoles: Set<string>;
@@ -223,9 +277,6 @@ export interface ForceGeneratorUnitCountDefaults {
     max: number;
 }
 
-const DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT = 1;
-const FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS = 300;
-
 const COMMON_ECHELON_UNIT_COUNTS = new Map<string, number>([
     ['ELEMENT', 1],
     ['POINT', 1],
@@ -279,12 +330,72 @@ function normalizeInitialBudgetRange(min: number, max: number): ForceGenerationB
 }
 
 function normalizeInitialUnitCountRange(min: number, max: number): ForceGeneratorUnitCountDefaults {
-    const normalizedMin = Math.max(1, Math.floor(min));
+    const normalizedMin = Math.min(FORCE_MAX_UNITS, Math.max(1, Math.floor(min)));
     const normalizedMax = Math.max(normalizedMin, Math.floor(max));
 
     return {
         min: normalizedMin,
-        max: normalizedMax,
+        max: Math.min(FORCE_MAX_UNITS, normalizedMax),
+    };
+}
+
+function normalizeBudgetBound(value: number): number {
+    return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+}
+
+function normalizeUnitCountBound(value: number): number {
+    return Number.isFinite(value) ? Math.min(FORCE_MAX_UNITS, Math.max(1, Math.floor(value))) : 1;
+}
+
+function resolveBudgetRangeWithEditedMin(
+    range: ForceGenerationBudgetRange,
+    editedMin: number,
+): ForceGenerationBudgetRange {
+    const nextMin = normalizeBudgetBound(editedMin);
+    const currentMax = normalizeBudgetBound(range.max);
+
+    return {
+        min: nextMin,
+        max: currentMax > 0 ? Math.max(nextMin, currentMax) : 0,
+    };
+}
+
+function resolveBudgetRangeWithEditedMax(
+    range: ForceGenerationBudgetRange,
+    editedMax: number,
+): ForceGenerationBudgetRange {
+    const currentMin = normalizeBudgetBound(range.min);
+    const nextMax = normalizeBudgetBound(editedMax);
+
+    return {
+        min: nextMax > 0 ? Math.min(currentMin, nextMax) : currentMin,
+        max: nextMax,
+    };
+}
+
+function resolveUnitCountRangeWithEditedMin(
+    range: ForceGeneratorUnitCountDefaults,
+    editedMin: number,
+): ForceGeneratorUnitCountDefaults {
+    const nextMin = normalizeUnitCountBound(editedMin);
+    const currentMax = normalizeUnitCountBound(range.max);
+
+    return {
+        min: nextMin,
+        max: Math.max(nextMin, currentMax),
+    };
+}
+
+function resolveUnitCountRangeWithEditedMax(
+    range: ForceGeneratorUnitCountDefaults,
+    editedMax: number,
+): ForceGeneratorUnitCountDefaults {
+    const currentMin = normalizeUnitCountBound(range.min);
+    const nextMax = normalizeUnitCountBound(editedMax);
+
+    return {
+        min: Math.min(currentMin, nextMax),
+        max: nextMax,
     };
 }
 
@@ -743,6 +854,34 @@ export class ForceGeneratorService {
         };
     }
 
+    public resolveBudgetRangeForEditedMin(
+        range: ForceGenerationBudgetRange,
+        editedMin: number,
+    ): ForceGenerationBudgetRange {
+        return resolveBudgetRangeWithEditedMin(range, editedMin);
+    }
+
+    public resolveBudgetRangeForEditedMax(
+        range: ForceGenerationBudgetRange,
+        editedMax: number,
+    ): ForceGenerationBudgetRange {
+        return resolveBudgetRangeWithEditedMax(range, editedMax);
+    }
+
+    public resolveUnitCountRangeForEditedMin(
+        range: ForceGeneratorUnitCountDefaults,
+        editedMin: number,
+    ): ForceGeneratorUnitCountDefaults {
+        return resolveUnitCountRangeWithEditedMin(range, editedMin);
+    }
+
+    public resolveUnitCountRangeForEditedMax(
+        range: ForceGeneratorUnitCountDefaults,
+        editedMax: number,
+    ): ForceGeneratorUnitCountDefaults {
+        return resolveUnitCountRangeWithEditedMax(range, editedMax);
+    }
+
     public getBudgetMetric(unit: Unit, gameSystem: GameSystem, gunnery: number, piloting: number): number {
         return getBudgetMetric(unit, gameSystem, gunnery, piloting);
     }
@@ -781,8 +920,8 @@ export class ForceGeneratorService {
 
     public buildPreview(options: ForceGenerationRequest): ForceGenerationPreview {
         const eligibleUnits = options.eligibleUnits ?? this.filtersService.filteredUnits();
-        const minUnitCount = Math.max(1, Math.floor(options.minUnitCount));
-        const maxUnitCount = Math.max(minUnitCount, Math.floor(options.maxUnitCount));
+        const minUnitCount = Math.min(FORCE_MAX_UNITS, Math.max(1, Math.floor(options.minUnitCount)));
+        const maxUnitCount = Math.min(FORCE_MAX_UNITS, Math.max(minUnitCount, Math.floor(options.maxUnitCount)));
         const budgetRange = this.normalizeBudgetRange(options.budgetRange);
 
         if (eligibleUnits.length < minUnitCount) {
@@ -832,27 +971,35 @@ export class ForceGeneratorService {
             };
         }
 
-        const candidateCosts = candidates.map((candidate) => candidate.cost);
-        if (getMinimumMetricTotal(candidateCosts, minUnitCount) > budgetRange.max) {
-            return {
-                gameSystem: options.gameSystem,
-                units: [],
-                totalCost: 0,
-                faction: options.context.forceFaction,
-                era: options.context.forceEra,
-                explanationLines: this.buildPreviewExplanation(
-                    options.gameSystem,
-                    candidates.length,
-                    options.context,
-                    budgetRange,
-                    minUnitCount,
-                    maxUnitCount,
-                    null,
-                    'The selected BV/PV maximum is too low to satisfy the minimum unit count.',
-                ),
-                error: 'The selected BV/PV maximum is too low to satisfy the minimum unit count.',
-            };
+        if (this.isFirstCompatibleResultBudgetRequest(options.budgetRange)) {
+            const selectionAttempt = this.buildCandidateSelection(
+                candidates,
+                options.context,
+                budgetRange,
+                minUnitCount,
+                maxUnitCount,
+            );
+            return this.buildPreviewFromSelectionAttempt(
+                options,
+                candidates.length,
+                budgetRange,
+                minUnitCount,
+                maxUnitCount,
+                selectionAttempt,
+                null,
+                'Budget 0/0 requested, so the first compatible result was returned.',
+            );
         }
+
+        const effectiveFallbackCandidates = this.filterCandidatesForAvailableTopLevelEchelons(
+            candidates,
+            options.context,
+            minUnitCount,
+            maxUnitCount,
+        );
+        const candidateCosts = effectiveFallbackCandidates.map((candidate) => candidate.cost);
+        const noUnderMaxForcePossible = Number.isFinite(budgetRange.max)
+            && getMinimumMetricTotal(candidateCosts, minUnitCount) > budgetRange.max;
 
         if (budgetRange.min > 0 && getMaximumMetricTotal(candidateCosts, Math.min(maxUnitCount, candidateCosts.length)) < budgetRange.min) {
             return {
@@ -882,10 +1029,14 @@ export class ForceGeneratorService {
             selectionSteps: [],
             rulesetProfile: null,
         };
-        let bestAttemptDistance = Number.POSITIVE_INFINITY;
+        let bestAttemptTotalCost = Number.POSITIVE_INFINITY;
+        let bestAttemptExceedsMax = true;
+        let bestAttemptUnitCountDistance = Number.POSITIVE_INFINITY;
         let bestValidAttempt: ForceGenerationSelectionAttempt | null = null;
+        let bestValidAttemptNumber: number | null = null;
         let bestValidMidpointDistance = Number.POSITIVE_INFINITY;
         let bestValidStructureScore = Number.NEGATIVE_INFINITY;
+        const successfulAttempts: ForceGenerationSuccessfulAttemptLog[] = [];
         let averageAttemptDurationMs = 0;
         let attemptLimit = attemptBudget.minAttempts;
 
@@ -897,16 +1048,35 @@ export class ForceGeneratorService {
                 budgetRange,
                 minUnitCount,
                 maxUnitCount,
+                noUnderMaxForcePossible,
             );
             const totalCost = selectionAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
-            const attemptDistance = this.getBudgetRangeDistance(totalCost, budgetRange)
-                + (selectionAttempt.selectedCandidates.length < minUnitCount
-                    ? (minUnitCount - selectionAttempt.selectedCandidates.length) * Math.max(1, this.getBudgetTarget(budgetRange))
-                    : 0);
+            const attemptExceedsMax = Number.isFinite(budgetRange.max) && totalCost > budgetRange.max;
+            const attemptUnitCountDistance = this.getUnitCountRangeDistance(selectionAttempt.selectedCandidates.length, minUnitCount, maxUnitCount);
 
-            if (attemptDistance < bestAttemptDistance) {
+            if (
+                bestAttempt.selectedCandidates.length === 0
+                || (
+                    attemptExceedsMax !== bestAttemptExceedsMax
+                    && !attemptExceedsMax
+                )
+                || (
+                    attemptExceedsMax === bestAttemptExceedsMax
+                    && (
+                        (!attemptExceedsMax && totalCost > bestAttemptTotalCost)
+                        || (attemptExceedsMax && totalCost < bestAttemptTotalCost)
+                    )
+                )
+                || (
+                    attemptExceedsMax === bestAttemptExceedsMax
+                    && totalCost === bestAttemptTotalCost
+                    && attemptUnitCountDistance < bestAttemptUnitCountDistance
+                )
+            ) {
                 bestAttempt = selectionAttempt;
-                bestAttemptDistance = attemptDistance;
+                bestAttemptTotalCost = totalCost;
+                bestAttemptExceedsMax = attemptExceedsMax;
+                bestAttemptUnitCountDistance = attemptUnitCountDistance;
             }
 
             const isValid = selectionAttempt.selectedCandidates.length >= minUnitCount
@@ -920,22 +1090,49 @@ export class ForceGeneratorService {
 
                 const midpointDistance = Math.abs(totalCost - this.getBudgetTarget(budgetRange));
                 const structureScore = structureEvaluation?.score ?? 0;
-                if (
-                    !bestValidAttempt
-                    || structureScore > bestValidStructureScore
-                    || (structureScore === bestValidStructureScore && midpointDistance < bestValidMidpointDistance)
-                    || (
-                        structureScore === bestValidStructureScore
-                        && midpointDistance === bestValidMidpointDistance
-                        && selectionAttempt.selectedCandidates.length < bestValidAttempt.selectedCandidates.length
-                    )
-                ) {
+                const bestAttemptComparison = this.compareSuccessfulAttemptToBest(
+                    {
+                        structureScore,
+                        midpointDistance,
+                        unitCount: selectionAttempt.selectedCandidates.length,
+                    },
+                    bestValidAttempt
+                        ? {
+                            structureScore: bestValidStructureScore,
+                            midpointDistance: bestValidMidpointDistance,
+                            unitCount: bestValidAttempt.selectedCandidates.length,
+                        }
+                        : null,
+                );
+                successfulAttempts.push(this.createSuccessfulAttemptLog(
+                    attempt + 1,
+                    selectionAttempt,
+                    totalCost,
+                    midpointDistance,
+                    structureEvaluation ?? null,
+                    bestAttemptComparison.becomesBest,
+                    bestAttemptComparison.reason,
+                ));
+
+                if (bestAttemptComparison.becomesBest) {
                     bestValidAttempt = selectionAttempt;
+                    bestValidAttemptNumber = attempt + 1;
                     bestValidStructureScore = structureScore;
                     bestValidMidpointDistance = midpointDistance;
                 }
 
                 if (!structureEvaluation || structureEvaluation.perfectMatch) {
+                    this.logSuccessfulAttemptDiagnostics(
+                        options,
+                        budgetRange,
+                        minUnitCount,
+                        maxUnitCount,
+                        successfulAttempts,
+                        attempt + 1,
+                        structureEvaluation?.perfectMatch
+                            ? 'Stopped early because this successful attempt was a perfect structure match.'
+                            : 'Stopped early because no structure preference applied, so the first successful attempt was accepted immediately.',
+                    );
                     const generatedUnits = selectionAttempt.selectedCandidates.map((candidate) => this.createGeneratedUnit(
                         candidate.unit,
                         options.gameSystem,
@@ -976,6 +1173,15 @@ export class ForceGeneratorService {
         }
 
         if (bestValidAttempt) {
+            this.logSuccessfulAttemptDiagnostics(
+                options,
+                budgetRange,
+                minUnitCount,
+                maxUnitCount,
+                successfulAttempts,
+                bestValidAttemptNumber ?? 1,
+                'Search ended without a perfect structure match, so the best successful attempt was chosen by structure score, then target distance, then unit count.',
+            );
             const totalCost = bestValidAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
             const generatedUnits = bestValidAttempt.selectedCandidates.map((candidate) => this.createGeneratedUnit(
                 candidate.unit,
@@ -1004,17 +1210,26 @@ export class ForceGeneratorService {
             };
         }
 
-        const fallbackUnits = bestAttempt.selectedCandidates.map((candidate) => this.createGeneratedUnit(
-            candidate.unit,
-            options.gameSystem,
-            options.gunnery,
-            options.piloting,
-        ));
+        if (bestAttempt.selectedCandidates.length > 0) {
+            const budgetLabel = options.gameSystem === GameSystem.ALPHA_STRIKE ? 'PV' : 'BV';
+            return this.buildPreviewFromSelectionAttempt(
+                options,
+                candidates.length,
+                budgetRange,
+                minUnitCount,
+                maxUnitCount,
+                bestAttempt,
+                null,
+                noUnderMaxForcePossible && bestAttemptExceedsMax
+                    ? `No attempt stayed at or below the selected ${budgetLabel} maximum, so the lowest-total force in the requested unit-count range was returned.`
+                    : 'No force matched the full budget and unit-count constraints, so the nearest force toward the target was returned.',
+            );
+        }
 
         return {
             gameSystem: options.gameSystem,
-            units: fallbackUnits,
-            totalCost: fallbackUnits.reduce((sum, unit) => sum + unit.cost, 0),
+            units: [],
+            totalCost: 0,
             faction: options.context.forceFaction,
             era: options.context.forceEra,
             explanationLines: this.buildPreviewExplanation(
@@ -1024,7 +1239,7 @@ export class ForceGeneratorService {
                 budgetRange,
                 minUnitCount,
                 maxUnitCount,
-                bestAttempt,
+                null,
                 'Unable to build a force within the selected BV/PV range and unit count constraints.',
             ),
             error: 'Unable to build a force within the selected BV/PV range and unit count constraints.',
@@ -1399,6 +1614,56 @@ export class ForceGeneratorService {
         return lines;
     }
 
+    private buildPreviewFromSelectionAttempt(
+        options: ForceGenerationRequest,
+        eligibleUnitCount: number,
+        budgetRange: { min: number; max: number },
+        minUnitCount: number,
+        maxUnitCount: number,
+        selectionAttempt: ForceGenerationSelectionAttempt,
+        error: string | null,
+        resultNote?: string,
+    ): ForceGenerationPreview {
+        if (!selectionAttempt.structureEvaluation) {
+            const structureEvaluation = this.evaluateSelectionStructure(selectionAttempt, options.context);
+            if (structureEvaluation) {
+                selectionAttempt.structureEvaluation = structureEvaluation;
+            }
+        }
+
+        const totalCost = selectionAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
+        const units = selectionAttempt.selectedCandidates.map((candidate) => this.createGeneratedUnit(
+            candidate.unit,
+            options.gameSystem,
+            options.gunnery,
+            options.piloting,
+        ));
+        const explanationLines = this.buildPreviewExplanation(
+            options.gameSystem,
+            eligibleUnitCount,
+            options.context,
+            budgetRange,
+            minUnitCount,
+            maxUnitCount,
+            selectionAttempt,
+            error,
+        );
+
+        if (resultNote && resultNote !== error) {
+            explanationLines.push(`Result note: ${resultNote}`);
+        }
+
+        return {
+            gameSystem: options.gameSystem,
+            units,
+            totalCost,
+            faction: options.context.forceFaction,
+            era: options.context.forceEra,
+            explanationLines,
+            error,
+        };
+    }
+
     private normalizeBudgetRange(range: ForceGenerationBudgetRange): { min: number; max: number } {
         const min = Math.max(0, Math.floor(range.min));
         const rawMax = Math.max(0, Math.floor(range.max));
@@ -1406,6 +1671,10 @@ export class ForceGeneratorService {
             min,
             max: rawMax > 0 ? Math.max(min, rawMax) : Number.POSITIVE_INFINITY,
         };
+    }
+
+    private isFirstCompatibleResultBudgetRequest(range: ForceGenerationBudgetRange): boolean {
+        return Math.max(0, Math.floor(range.min)) === 0 && Math.max(0, Math.floor(range.max)) === 0;
     }
 
     private isBudgetWithinRange(totalCost: number, budgetRange: { min: number; max: number }): boolean {
@@ -1418,6 +1687,175 @@ export class ForceGeneratorService {
         }
         if (totalCost > budgetRange.max) {
             return totalCost - budgetRange.max;
+        }
+
+        return 0;
+    }
+
+    private createSelectionAttemptFromCandidates(
+        selectedCandidates: readonly ForceGenerationCandidateUnit[],
+        rulesetProfile: ForceGenerationRulesetProfile | null,
+    ): ForceGenerationSelectionAttempt {
+        const selectionSteps = selectedCandidates.map((candidate) => {
+            const source: ForceGenerationAvailabilitySource = candidate.productionWeight >= candidate.salvageWeight
+                ? 'production'
+                : 'salvage';
+
+            return {
+                unit: candidate.unit,
+                rolledSource: source,
+                source,
+                usedFallbackSource: false,
+                productionWeight: candidate.productionWeight,
+                salvageWeight: candidate.salvageWeight,
+                cost: candidate.cost,
+                rulesetReasons: this.getRulesetMatchReasons(candidate, rulesetProfile),
+            };
+        });
+
+        return {
+            selectedCandidates: [...selectedCandidates],
+            selectionSteps,
+            rulesetProfile,
+        };
+    }
+
+    private compareSuccessfulAttemptToBest(
+        current: ForceGenerationSuccessfulAttemptRankSnapshot,
+        best: ForceGenerationSuccessfulAttemptRankSnapshot | null,
+    ): { becomesBest: boolean; reason: string } {
+        if (!best) {
+            return {
+                becomesBest: true,
+                reason: 'First successful attempt, so it becomes the current best.',
+            };
+        }
+
+        if (current.structureScore !== best.structureScore) {
+            return current.structureScore > best.structureScore
+                ? {
+                    becomesBest: true,
+                    reason: `Higher structure score (${current.structureScore.toFixed(2)} > ${best.structureScore.toFixed(2)}).`,
+                }
+                : {
+                    becomesBest: false,
+                    reason: `Lower structure score (${current.structureScore.toFixed(2)} < ${best.structureScore.toFixed(2)}), so the current best stays ahead.`,
+                };
+        }
+
+        if (current.midpointDistance !== best.midpointDistance) {
+            return current.midpointDistance < best.midpointDistance
+                ? {
+                    becomesBest: true,
+                    reason: `Same structure score, but closer to the budget target (${current.midpointDistance.toFixed(2)} < ${best.midpointDistance.toFixed(2)}).`,
+                }
+                : {
+                    becomesBest: false,
+                    reason: `Same structure score, but farther from the budget target (${current.midpointDistance.toFixed(2)} > ${best.midpointDistance.toFixed(2)}).`,
+                };
+        }
+
+        if (current.unitCount !== best.unitCount) {
+            return current.unitCount < best.unitCount
+                ? {
+                    becomesBest: true,
+                    reason: `Same structure score and target distance, but fewer units (${current.unitCount} < ${best.unitCount}).`,
+                }
+                : {
+                    becomesBest: false,
+                    reason: `Same structure score and target distance, but more units (${current.unitCount} > ${best.unitCount}).`,
+                };
+        }
+
+        return {
+            becomesBest: false,
+            reason: 'Tied with the current best attempt, so the earlier successful attempt was kept.',
+        };
+    }
+
+    private createSuccessfulAttemptLog(
+        attemptNumber: number,
+        selectionAttempt: ForceGenerationSelectionAttempt,
+        totalCost: number,
+        midpointDistance: number,
+        structureEvaluation: ForceGenerationStructureEvaluation | null,
+        becameBest: boolean,
+        decisionReason: string,
+    ): ForceGenerationSuccessfulAttemptLog {
+        return {
+            attemptNumber,
+            selectedEchelon: selectionAttempt.rulesetProfile?.selectedEchelon,
+            totalCost,
+            unitCount: selectionAttempt.selectedCandidates.length,
+            structureScore: structureEvaluation?.score ?? 0,
+            structureSummary: structureEvaluation?.summary ?? null,
+            midpointDistance,
+            perfectMatch: structureEvaluation?.perfectMatch ?? false,
+            becameBest,
+            decisionReason,
+            units: selectionAttempt.selectedCandidates.map((candidate) => ({
+                label: formatForceGenerationUnitLabel(candidate.unit),
+                cost: candidate.cost,
+            })),
+        };
+    }
+
+    private logSuccessfulAttemptDiagnostics(
+        options: ForceGenerationRequest,
+        budgetRange: { min: number; max: number },
+        minUnitCount: number,
+        maxUnitCount: number,
+        successfulAttempts: readonly ForceGenerationSuccessfulAttemptLog[],
+        selectedAttemptNumber: number,
+        selectedReason: string,
+    ): void {
+        if (!LOG_ATTEMPTS) return;
+        if (successfulAttempts.length === 0 || typeof console === 'undefined' || typeof console.log !== 'function') {
+            return;
+        }
+
+        const budgetLabel = options.gameSystem === GameSystem.ALPHA_STRIKE ? 'PV' : 'BV';
+        const maxLabel = Number.isFinite(budgetRange.max) ? budgetRange.max.toLocaleString() : 'no max';
+        const contextLabel = [options.context.forceFaction?.name, options.context.forceEra?.name]
+            .filter(Boolean)
+            .join(' - ') || 'unknown context';
+
+        console.log('[ForceGenerator] Successful attempt search', {
+            context: contextLabel,
+            successfulAttempts: successfulAttempts.length,
+            target: `${minUnitCount}-${maxUnitCount} units, ${budgetLabel} ${budgetRange.min.toLocaleString()} to ${maxLabel}`,
+            ranking: 'Higher structure score, then closer to the budget target, then fewer units.',
+        });
+
+        for (const attempt of successfulAttempts) {
+            console.log('[ForceGenerator] Successful attempt', {
+                attempt: attempt.attemptNumber,
+                echelon: attempt.selectedEchelon ?? 'none',
+                totalCost: attempt.totalCost,
+                budgetLabel,
+                unitCount: attempt.unitCount,
+                structureScore: Number(attempt.structureScore.toFixed(2)),
+                structureSummary: attempt.structureSummary ?? 'No org-structure preference applied.',
+                targetDistance: Number(attempt.midpointDistance.toFixed(2)),
+                perfectMatch: attempt.perfectMatch,
+                becameBest: attempt.becameBest,
+                decision: attempt.decisionReason,
+                units: attempt.units.map((unit) => `${unit.label} (${unit.cost.toLocaleString()} ${budgetLabel})`),
+            });
+        }
+
+        console.log('[ForceGenerator] Best successful attempt selected', {
+            attempt: selectedAttemptNumber,
+            reason: selectedReason,
+        });
+    }
+
+    private getUnitCountRangeDistance(unitCount: number, minUnitCount: number, maxUnitCount: number): number {
+        if (unitCount < minUnitCount) {
+            return minUnitCount - unitCount;
+        }
+        if (unitCount > maxUnitCount) {
+            return unitCount - maxUnitCount;
         }
 
         return 0;
@@ -1593,25 +2031,32 @@ export class ForceGeneratorService {
         budgetRange: { min: number; max: number },
         minUnitCount: number,
         maxUnitCount: number,
+        allowOverMaxFallbackSelection = false,
     ): ForceGenerationSelectionAttempt {
-        const remainingCandidates = [...candidates];
+        const rulesetProfile = this.buildRulesetProfile(candidates, context, minUnitCount, maxUnitCount);
+        const remainingCandidates = this.filterCandidatesForRulesetProfile(candidates, rulesetProfile);
         const selectedCandidates: ForceGenerationCandidateUnit[] = [];
         const selectionSteps: ForceGenerationSelectionStep[] = [];
         let totalCost = 0;
-        const rulesetProfile = this.buildRulesetProfile(context, minUnitCount, maxUnitCount);
         const preferredSelectionUnitCount = this.getPreferredSelectionUnitCount(
             rulesetProfile?.preferredUnitCount,
             minUnitCount,
             maxUnitCount,
         );
         const targetBudget = this.getBudgetTarget(budgetRange);
+        const useOverMaxFallbackSelection = allowOverMaxFallbackSelection && Number.isFinite(budgetRange.max);
 
         while (selectedCandidates.length < maxUnitCount) {
             if (
                 selectedCandidates.length >= minUnitCount
-                && this.isBudgetWithinRange(totalCost, budgetRange)
-                && ((preferredSelectionUnitCount !== undefined && selectedCandidates.length >= preferredSelectionUnitCount)
-                    || (preferredSelectionUnitCount === undefined && totalCost >= targetBudget))
+                && (
+                    (
+                        this.isBudgetWithinRange(totalCost, budgetRange)
+                        && ((preferredSelectionUnitCount !== undefined && selectedCandidates.length >= preferredSelectionUnitCount)
+                            || (preferredSelectionUnitCount === undefined && totalCost >= targetBudget))
+                    )
+                    || (useOverMaxFallbackSelection && totalCost > budgetRange.max)
+                )
             ) {
                 break;
             }
@@ -1648,12 +2093,18 @@ export class ForceGeneratorService {
                 return nextTotal + maximumRemainingTotal >= budgetRange.min;
             });
 
-            if (feasibleCandidates.length === 0) {
+            const candidatePool = feasibleCandidates.length > 0
+                ? feasibleCandidates
+                : useOverMaxFallbackSelection && selectedCandidates.length < minUnitCount
+                    ? remainingCandidates
+                    : [];
+
+            if (candidatePool.length === 0) {
                 break;
             }
 
             const nextPick = this.pickNextCandidate(
-                feasibleCandidates,
+                candidatePool,
                 rulesetProfile,
                 totalCost,
                 budgetRange,
@@ -1697,6 +2148,7 @@ export class ForceGeneratorService {
     }
 
     private buildRulesetProfile(
+        candidates: readonly ForceGenerationCandidateUnit[],
         context: ForceGenerationContext,
         minUnitCount: number,
         maxUnitCount: number,
@@ -1711,24 +2163,27 @@ export class ForceGeneratorService {
             factionKey: rulesetContext.primary?.factionKey,
             topLevel: true,
         };
-        const selectedEchelon = this.pickPreferredEchelon(
+        const orgDefinition = context.forceFaction ? resolveOrgDefinitionSpec(context.forceFaction, context.forceEra) : null;
+        const topLevelMatchContext = this.resolveAttemptTopLevelMatchContext(
             rulesetContext.chain,
+            candidates,
             baseMatchContext,
             minUnitCount,
             maxUnitCount,
+            orgDefinition,
         );
         const forceNodeSelection = this.findPreferredForceNode(rulesetContext.chain, {
-            ...baseMatchContext,
-            echelon: selectedEchelon,
+            ...topLevelMatchContext,
         });
         const forceNode = forceNodeSelection.forceNode;
-        const resolvedSelectedEchelon = selectedEchelon
+        const resolvedSelectedEchelon = topLevelMatchContext.echelon
             ?? forceNodeSelection.matchContext.echelon
             ?? getRulesetEchelonCode(forceNode?.echelon);
         const profile: ForceGenerationRulesetProfile = {
             selectedEchelon: resolvedSelectedEchelon,
             preferredOrgType: undefined,
             preferredUnitCount: undefined,
+            requiredUnitTypes: new Set<string>(),
             preferredUnitTypes: new Set<string>(),
             preferredWeightClasses: new Set<string>(),
             preferredRoles: new Set<string>(),
@@ -1737,9 +2192,9 @@ export class ForceGeneratorService {
             explanationNotes: [],
         };
 
-        const orgDefinition = context.forceFaction ? resolveOrgDefinitionSpec(context.forceFaction, context.forceEra) : null;
-    profile.preferredOrgType = getPreferredOrgTypeForEchelon(resolvedSelectedEchelon);
-    profile.preferredUnitCount = getPreferredUnitCountForEchelon(resolvedSelectedEchelon, orgDefinition);
+        profile.preferredOrgType = getPreferredOrgTypeForEchelon(resolvedSelectedEchelon);
+        profile.preferredUnitCount = getPreferredUnitCountForEchelon(resolvedSelectedEchelon, orgDefinition);
+        this.addRulesetValues(profile.requiredUnitTypes, topLevelMatchContext.unitType ? [topLevelMatchContext.unitType] : []);
         this.mergeRulesetNodeIntoProfile(profile, rulesetContext.primary?.assign);
 
         if (profile.preferredOrgType) {
@@ -1764,6 +2219,325 @@ export class ForceGeneratorService {
             new Set<string>(),
         );
         return profile;
+    }
+
+    private resolveAttemptTopLevelMatchContext(
+        rulesetChain: readonly MegaMekRulesetRecord[],
+        candidates: readonly ForceGenerationCandidateUnit[],
+        baseMatchContext: RulesetMatchContext,
+        minUnitCount: number,
+        maxUnitCount: number,
+        orgDefinition: OrgDefinitionSpec | null,
+    ): RulesetMatchContext {
+        const unitTypeChoices = this.getTopLevelUnitTypeChoices(
+            rulesetChain,
+            candidates,
+            baseMatchContext,
+            minUnitCount,
+            maxUnitCount,
+            orgDefinition,
+        );
+        if (unitTypeChoices.length === 0) {
+            const forceNodeChoices = this.getForceNodeBackedTopLevelUnitTypeChoices(
+                rulesetChain,
+                candidates,
+                baseMatchContext,
+            );
+            if (forceNodeChoices.length === 0) {
+                return baseMatchContext;
+            }
+
+            return pickWeightedRandomEntry(forceNodeChoices, (choice) => {
+                return Math.max(0.05, choice.summary.totalAvailabilityWeight);
+            }).matchContext;
+        }
+
+        const selectedUnitTypeChoice = pickWeightedRandomEntry(unitTypeChoices, (choice) => {
+            return Math.max(0.05, choice.summary.totalAvailabilityWeight);
+        });
+        const selectedEchelonChoice = pickWeightedRandomEntry(selectedUnitTypeChoice.echelons, (choice) => {
+            return Math.max(0.05, choice.weight);
+        });
+        const nextMatchContext: RulesetMatchContext = {
+            ...baseMatchContext,
+            unitType: selectedUnitTypeChoice.summary.unitType,
+            echelon: selectedEchelonChoice.echelon,
+        };
+        const previewSelection = this.peekPreferredForceNode(rulesetChain, nextMatchContext);
+        const resolvedEchelon = selectedEchelonChoice.echelon
+            ?? previewSelection.matchContext.echelon
+            ?? getRulesetEchelonCode(previewSelection.forceNode?.echelon);
+
+        return {
+            ...previewSelection.matchContext,
+            unitType: selectedUnitTypeChoice.summary.unitType,
+            echelon: resolvedEchelon,
+        };
+    }
+
+    private getTopLevelUnitTypeChoices(
+        rulesetChain: readonly MegaMekRulesetRecord[],
+        candidates: readonly ForceGenerationCandidateUnit[],
+        baseMatchContext: RulesetMatchContext,
+        minUnitCount: number,
+        maxUnitCount: number,
+        orgDefinition: OrgDefinitionSpec | null,
+    ): ForceGenerationTopLevelUnitTypeChoice[] {
+        return this.getCandidateUnitTypeSummaries(candidates)
+            .map((summary) => {
+                const echelons = this.getValidTopLevelEchelonOptions(
+                    rulesetChain,
+                    {
+                        ...baseMatchContext,
+                        unitType: summary.unitType,
+                    },
+                    minUnitCount,
+                    maxUnitCount,
+                    summary.candidateCount,
+                    orgDefinition,
+                );
+
+                return {
+                    summary,
+                    echelons,
+                };
+            })
+            .filter((choice) => choice.echelons.length > 0);
+    }
+
+    private getValidTopLevelEchelonOptions(
+        rulesetChain: readonly MegaMekRulesetRecord[],
+        matchContext: RulesetMatchContext,
+        minUnitCount: number,
+        maxUnitCount: number,
+        candidateCount: number,
+        orgDefinition: OrgDefinitionSpec | null,
+    ): ForceGenerationTopLevelEchelonOption[] {
+        for (const ruleset of rulesetChain) {
+            const matchingOptions = (ruleset.toc?.echelon?.options ?? [])
+                .filter((option) => this.matchesRulesetWhen(option.when, matchContext));
+            if (matchingOptions.length === 0) {
+                continue;
+            }
+
+            const validEchelons = matchingOptions.flatMap((option) => {
+                return getRulesetOptionEchelons(option)
+                    .map((token) => token.code)
+                    .filter((echelon): echelon is string => !!echelon)
+                    .map((echelon) => {
+                        const preferredUnitCount = getPreferredUnitCountForEchelon(echelon, orgDefinition);
+                        if (
+                            preferredUnitCount === undefined
+                            || preferredUnitCount < minUnitCount
+                            || preferredUnitCount > maxUnitCount
+                            || preferredUnitCount > candidateCount
+                        ) {
+                            return null;
+                        }
+
+                        return {
+                            echelon,
+                            preferredUnitCount,
+                            weight: getRulesetOptionWeight(option),
+                        };
+                    })
+                    .filter((entry): entry is ForceGenerationTopLevelEchelonOption => entry !== null);
+            });
+
+            if (validEchelons.length > 0) {
+                return validEchelons;
+            }
+        }
+
+        return [];
+    }
+
+    private getForceNodeBackedTopLevelUnitTypeChoices(
+        rulesetChain: readonly MegaMekRulesetRecord[],
+        candidates: readonly ForceGenerationCandidateUnit[],
+        baseMatchContext: RulesetMatchContext,
+    ): ForceGenerationTopLevelForceNodeChoice[] {
+        const choices: ForceGenerationTopLevelForceNodeChoice[] = [];
+
+        for (const summary of this.getCandidateUnitTypeSummaries(candidates)) {
+            const previewSelection = this.peekPreferredForceNode(rulesetChain, {
+                ...baseMatchContext,
+                unitType: summary.unitType,
+            });
+            if (!previewSelection.forceNode) {
+                continue;
+            }
+
+            choices.push({
+                summary,
+                matchContext: {
+                    ...previewSelection.matchContext,
+                    unitType: summary.unitType,
+                },
+            });
+        }
+
+        return choices;
+    }
+
+    private getCandidateUnitTypeSummaries(
+        candidates: readonly ForceGenerationCandidateUnit[],
+    ): ForceGenerationCandidateUnitTypeSummary[] {
+        const summaries = new Map<string, ForceGenerationCandidateUnitTypeSummary>();
+
+        for (const candidate of candidates) {
+            const currentSummary = summaries.get(candidate.megaMekUnitType) ?? {
+                unitType: candidate.megaMekUnitType,
+                candidateCount: 0,
+                totalAvailabilityWeight: 0,
+            };
+            currentSummary.candidateCount += 1;
+            currentSummary.totalAvailabilityWeight += Math.max(0, candidate.productionWeight) + Math.max(0, candidate.salvageWeight);
+            summaries.set(candidate.megaMekUnitType, currentSummary);
+        }
+
+        return [...summaries.values()].sort((left, right) => {
+            if (left.totalAvailabilityWeight !== right.totalAvailabilityWeight) {
+                return right.totalAvailabilityWeight - left.totalAvailabilityWeight;
+            }
+            if (left.candidateCount !== right.candidateCount) {
+                return right.candidateCount - left.candidateCount;
+            }
+
+            return left.unitType.localeCompare(right.unitType);
+        });
+    }
+
+    private filterCandidatesForAvailableTopLevelEchelons(
+        candidates: readonly ForceGenerationCandidateUnit[],
+        context: ForceGenerationContext,
+        minUnitCount: number,
+        maxUnitCount: number,
+    ): ForceGenerationCandidateUnit[] {
+        const rulesetContext = this.resolveRulesetContext(context.forceFaction, context.forceEra);
+        if (rulesetContext.chain.length === 0) {
+            return [...candidates];
+        }
+
+        const orgDefinition = context.forceFaction ? resolveOrgDefinitionSpec(context.forceFaction, context.forceEra) : null;
+        const unitTypeChoices = this.getTopLevelUnitTypeChoices(
+            rulesetContext.chain,
+            candidates,
+            {
+                year: getEraReferenceYear(context.forceEra),
+                factionKey: rulesetContext.primary?.factionKey,
+                topLevel: true,
+            },
+            minUnitCount,
+            maxUnitCount,
+            orgDefinition,
+        );
+        const allowedUnitTypes = new Set(
+            (unitTypeChoices.length > 0
+                ? unitTypeChoices.map((choice) => choice.summary.unitType)
+                : this.getForceNodeBackedTopLevelUnitTypeChoices(
+                    rulesetContext.chain,
+                    candidates,
+                    {
+                        year: getEraReferenceYear(context.forceEra),
+                        factionKey: rulesetContext.primary?.factionKey,
+                        topLevel: true,
+                    },
+                ).map((choice) => choice.summary.unitType))
+                .map((unitType) => normalizeRulesetToken(unitType)),
+        );
+        if (allowedUnitTypes.size === 0) {
+            return [...candidates];
+        }
+
+        return candidates.filter((candidate) => allowedUnitTypes.has(normalizeRulesetToken(candidate.megaMekUnitType)));
+    }
+
+    private filterCandidatesForRulesetProfile(
+        candidates: readonly ForceGenerationCandidateUnit[],
+        rulesetProfile: ForceGenerationRulesetProfile | null,
+    ): ForceGenerationCandidateUnit[] {
+        if (!rulesetProfile || rulesetProfile.requiredUnitTypes.size === 0) {
+            return [...candidates];
+        }
+
+        return candidates.filter((candidate) => {
+            return rulesetProfile.requiredUnitTypes.has(normalizeRulesetToken(candidate.megaMekUnitType));
+        });
+    }
+
+    private peekPreferredForceNode(
+        rulesetChain: readonly MegaMekRulesetRecord[],
+        matchContext: RulesetMatchContext,
+    ): ForceGenerationForceNodeSelection {
+        const exactMatch = this.peekMatchingForceNode(rulesetChain, matchContext, (when, nextContext) => {
+            return this.matchesRulesetWhen(when, nextContext);
+        });
+        if (exactMatch) {
+            return {
+                forceNode: exactMatch,
+                matchContext: this.deriveForceNodeMatchContext(matchContext, exactMatch),
+            };
+        }
+
+        const structuralMatch = this.peekMatchingForceNode(rulesetChain, matchContext, (when, nextContext) => {
+            return this.matchesRulesetWhenForForceSelection(when, nextContext);
+        });
+        if (structuralMatch) {
+            return {
+                forceNode: structuralMatch,
+                matchContext: this.deriveForceNodeMatchContext(matchContext, structuralMatch),
+            };
+        }
+
+        if (!matchContext.echelon) {
+            return { matchContext };
+        }
+
+        const fallbackContext = { ...matchContext, echelon: undefined };
+        const fallbackExactMatch = this.peekMatchingForceNode(rulesetChain, fallbackContext, (when, nextContext) => {
+            return this.matchesRulesetWhen(when, nextContext);
+        });
+        if (fallbackExactMatch) {
+            return {
+                forceNode: fallbackExactMatch,
+                matchContext: this.deriveForceNodeMatchContext(fallbackContext, fallbackExactMatch),
+            };
+        }
+
+        const fallbackStructuralMatch = this.peekMatchingForceNode(rulesetChain, fallbackContext, (when, nextContext) => {
+            return this.matchesRulesetWhenForForceSelection(when, nextContext);
+        });
+        if (fallbackStructuralMatch) {
+            return {
+                forceNode: fallbackStructuralMatch,
+                matchContext: this.deriveForceNodeMatchContext(fallbackContext, fallbackStructuralMatch),
+            };
+        }
+
+        return { matchContext };
+    }
+
+    private peekMatchingForceNode(
+        rulesetChain: readonly MegaMekRulesetRecord[],
+        matchContext: RulesetMatchContext,
+        matcher: (when: MegaMekRulesetWhen | undefined, matchContext: RulesetMatchContext) => boolean,
+    ): MegaMekRulesetForceNode | undefined {
+        for (const ruleset of rulesetChain) {
+            const indexedForceNodes = matchContext.echelon
+                ? (ruleset.indexes.forceIndexesByEchelon[matchContext.echelon] ?? [])
+                    .map((index) => ruleset.forces[index])
+                    .filter((forceNode): forceNode is MegaMekRulesetForceNode => forceNode !== undefined)
+                : ruleset.forces;
+
+            const forceNodes = indexedForceNodes.length > 0 ? indexedForceNodes : ruleset.forces;
+            const matchingForceNode = forceNodes.find((forceNode) => matcher(forceNode.when, matchContext));
+            if (matchingForceNode) {
+                return matchingForceNode;
+            }
+        }
+
+        return undefined;
     }
 
     private findPreferredForceNode(
@@ -1861,6 +2635,9 @@ export class ForceGeneratorService {
         if (!this.matchesRulesetStringValues(when.factions ?? [], matchContext.factionKey)) {
             return false;
         }
+        if (!this.matchesRulesetStringValues(when.unitTypes ?? [], matchContext.unitType)) {
+            return false;
+        }
 
         const topLevel = when.topLevel;
         if (topLevel !== undefined && topLevel !== (matchContext.topLevel ?? false)) {
@@ -1912,6 +2689,7 @@ export class ForceGeneratorService {
         forceNode: MegaMekRulesetForceNode,
         matchContext: RulesetMatchContext,
     ): void {
+        this.addRulesetValues(profile.requiredUnitTypes, getPositiveRulesetValues(forceNode.when?.unitTypes));
         this.mergeRulesetWhenIntoProfile(profile, forceNode.when);
         this.mergeRulesetNodeIntoProfile(profile, forceNode.assign);
         this.mergeRulesetGroupIntoProfile(profile, forceNode.unitType, matchContext);

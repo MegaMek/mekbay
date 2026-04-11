@@ -15,6 +15,7 @@ import { UnitSearchFiltersService } from './unit-search-filters.service';
 
 describe('ForceGeneratorService', () => {
     let service: ForceGeneratorService;
+    let consoleLogSpy: jasmine.Spy;
 
     const erasByName = new Map<string, Era>();
     const erasById = new Map<number, Era>();
@@ -119,6 +120,8 @@ describe('ForceGeneratorService', () => {
             }
         }
 
+        consoleLogSpy = spyOn(console, 'log');
+
         TestBed.configureTestingModule({
             providers: [
                 ForceGeneratorService,
@@ -177,6 +180,40 @@ describe('ForceGeneratorService', () => {
 
         expect(invalidDefaults).toEqual({ min: 6, max: 6 });
         expect(emptyDefaults).toEqual({ min: 1, max: 1 });
+    });
+
+    it('caps stored unit count defaults at MAX_UNITS', () => {
+        const defaults = service.resolveInitialUnitCountDefaults({
+            forceGenLastMinUnitCount: 120,
+            forceGenLastMaxUnitCount: 150,
+        });
+
+        expect(defaults).toEqual({ min: 100, max: 100 });
+    });
+
+    it('raises the budget max to follow an edited minimum unless the max is unbounded', () => {
+        expect(service.resolveBudgetRangeForEditedMin({ min: 5800, max: 5900 }, 6000)).toEqual({ min: 6000, max: 6000 });
+        expect(service.resolveBudgetRangeForEditedMin({ min: 5800, max: 0 }, 6000)).toEqual({ min: 6000, max: 0 });
+    });
+
+    it('drops the budget min to follow an edited maximum and preserves zero as no maximum', () => {
+        expect(service.resolveBudgetRangeForEditedMax({ min: 5800, max: 5900 }, 1)).toEqual({ min: 1, max: 1 });
+        expect(service.resolveBudgetRangeForEditedMax({ min: 5800, max: 5900 }, 0)).toEqual({ min: 5800, max: 0 });
+    });
+
+    it('keeps unit counts linked to the edited minimum and maximum', () => {
+        expect(service.resolveUnitCountRangeForEditedMin({ min: 4, max: 8 }, 10)).toEqual({ min: 10, max: 10 });
+        expect(service.resolveUnitCountRangeForEditedMax({ min: 4, max: 8 }, 2)).toEqual({ min: 2, max: 2 });
+    });
+
+    it('never allows unit counts below one when editing either bound', () => {
+        expect(service.resolveUnitCountRangeForEditedMin({ min: 4, max: 8 }, 0)).toEqual({ min: 1, max: 8 });
+        expect(service.resolveUnitCountRangeForEditedMax({ min: 4, max: 8 }, 0)).toEqual({ min: 1, max: 1 });
+    });
+
+    it('never allows unit counts above MAX_UNITS when editing either bound', () => {
+        expect(service.resolveUnitCountRangeForEditedMin({ min: 4, max: 8 }, 150)).toEqual({ min: 100, max: 100 });
+        expect(service.resolveUnitCountRangeForEditedMax({ min: 4, max: 8 }, 150)).toEqual({ min: 4, max: 100 });
     });
 
     it('resolves explicit era and faction scope and picks a force faction from the selected factions', () => {
@@ -447,6 +484,140 @@ describe('ForceGeneratorService', () => {
         expect(preview.error).toContain('minimum is too high');
     });
 
+    it('returns the lowest-total compatible force in the requested unit-count range when nothing can stay at or below the maximum budget', () => {
+        const era = createEra(3025, 'Succession Wars');
+        const faction = createFaction(10, 'Capellan Confederation');
+        const expensiveMek = createUnit({ id: 1, name: 'Expensive Mek', as: { PV: 6 } as Unit['as'] });
+        const moreExpensiveMek = createUnit({ id: 2, name: 'More Expensive Mek', as: { PV: 8 } as Unit['as'] });
+        const cheaperAero = createUnit({
+            id: 3,
+            name: 'Cheaper Aero',
+            type: 'Aero',
+            subtype: 'Aerospace Fighter',
+            moveType: 'Aerodyne',
+            as: { PV: 4, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'],
+        });
+        const ruleset: MegaMekRulesetRecord = {
+            factionKey: 'CC',
+            indexes: { forceIndexesByEchelon: {} },
+            forceCount: 1,
+            forces: [
+                {
+                    when: {
+                        unitTypes: ['Mek'],
+                        topLevel: true,
+                    },
+                },
+            ],
+        };
+
+        megaMekRulesetsByMulFactionId.set(faction.id, [ruleset]);
+        megaMekRulesetsByFactionKey.set(ruleset.factionKey, ruleset);
+
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [expensiveMek, moreExpensiveMek, cheaperAero],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 1 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Expensive Mek']);
+        expect(preview.totalCost).toBe(6);
+        expect(preview.explanationLines.some((line) => line.includes('lowest-total force in the requested unit-count range was returned'))).toBeTrue();
+        expect(service.createForceEntry(preview)).not.toBeNull();
+    });
+
+    it('keeps the requested unit-count range when every possible force is above the maximum budget', () => {
+        const era = createEra(3025, 'Succession Wars');
+        const faction = createFaction(10, 'Capellan Confederation');
+        const units = [
+            createUnit({ id: 1, name: 'Unit 1', as: { PV: 4 } as Unit['as'] }),
+            createUnit({ id: 2, name: 'Unit 2', as: { PV: 5 } as Unit['as'] }),
+            createUnit({ id: 3, name: 'Unit 3', as: { PV: 6 } as Unit['as'] }),
+            createUnit({ id: 4, name: 'Unit 4', as: { PV: 7 } as Unit['as'] }),
+            createUnit({ id: 5, name: 'Unit 5', as: { PV: 8 } as Unit['as'] }),
+        ];
+
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: units,
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 1, max: 1 },
+            minUnitCount: 4,
+            maxUnitCount: 8,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.length).toBe(4);
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Unit 1', 'Unit 2', 'Unit 3', 'Unit 4']);
+        expect(preview.totalCost).toBe(22);
+        expect(preview.explanationLines.some((line) => line.includes('lowest-total force in the requested unit-count range was returned'))).toBeTrue();
+        expect(service.createForceEntry(preview)).not.toBeNull();
+    });
+
+    it('treats a 0/0 budget request as the first compatible result', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const firstUnit = createUnit({ id: 1, name: 'First Unit', as: { PV: 6 } as Unit['as'] });
+        const secondUnit = createUnit({ id: 2, name: 'Second Unit', as: { PV: 8 } as Unit['as'] });
+        const firstAttempt = {
+            selectedCandidates: [firstUnit].map((unit) => ({
+                unit,
+                productionWeight: 1,
+                salvageWeight: 1,
+                cost: unit.as.PV,
+                megaMekUnitType: 'Mek',
+            })),
+            selectionSteps: [],
+            rulesetProfile: null,
+        };
+        const secondAttempt = {
+            selectedCandidates: [secondUnit].map((unit) => ({
+                unit,
+                productionWeight: 1,
+                salvageWeight: 1,
+                cost: unit.as.PV,
+                megaMekUnitType: 'Mek',
+            })),
+            selectionSteps: [],
+            rulesetProfile: null,
+        };
+
+        const buildSelectionSpy = spyOn<any>(service, 'buildCandidateSelection').and.returnValues(
+            firstAttempt as any,
+            secondAttempt as any,
+        );
+
+        const preview = service.buildPreview({
+            eligibleUnits: [firstUnit, secondUnit],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 0 },
+            minUnitCount: 1,
+            maxUnitCount: 2,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['First Unit']);
+        expect(preview.totalCost).toBe(6);
+        expect(preview.explanationLines.some((line) => line.includes('Budget 0/0 requested'))).toBeTrue();
+        expect(buildSelectionSpy.calls.count()).toBe(1);
+        expect(service.createForceEntry(preview)).not.toBeNull();
+    });
+
     it('keeps retrying until the 300ms no-match search window expires', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
@@ -473,9 +644,133 @@ describe('ForceGeneratorService', () => {
             piloting: 5,
         });
 
-        expect(preview.error).toContain('Unable to build a force');
+        expect(preview.error).toBeNull();
+        expect(preview.units.length).toBe(1);
+        expect(service.createForceEntry(preview)).not.toBeNull();
         expect(buildSelectionSpy.calls.count()).toBeGreaterThan(10);
         expect(buildSelectionSpy.calls.count()).toBeLessThan(20);
+    });
+
+    it('returns the highest failed attempt that does not exceed the target even if another attempt is closer on unit count', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const nearBudgetA = createUnit({ id: 1, name: 'Near Budget A', as: { PV: 10 } as Unit['as'] });
+        const nearBudgetB = createUnit({ id: 2, name: 'Near Budget B', as: { PV: 9 } as Unit['as'] });
+        const countMatchA = createUnit({ id: 3, name: 'Count Match A', as: { PV: 4 } as Unit['as'] });
+        const countMatchB = createUnit({ id: 4, name: 'Count Match B', as: { PV: 4 } as Unit['as'] });
+        const countMatchC = createUnit({ id: 5, name: 'Count Match C', as: { PV: 4 } as Unit['as'] });
+        const countMatchD = createUnit({ id: 6, name: 'Count Match D', as: { PV: 4 } as Unit['as'] });
+
+        const budgetCloserAttempt = {
+            selectedCandidates: [nearBudgetA, nearBudgetB].map((unit) => ({
+                unit,
+                productionWeight: 1,
+                salvageWeight: 1,
+                cost: unit.as.PV,
+                megaMekUnitType: 'Mek',
+            })),
+            selectionSteps: [],
+            rulesetProfile: null,
+        };
+        const countCloserAttempt = {
+            selectedCandidates: [countMatchA, countMatchB, countMatchC, countMatchD].map((unit) => ({
+                unit,
+                productionWeight: 1,
+                salvageWeight: 1,
+                cost: unit.as.PV,
+                megaMekUnitType: 'Mek',
+            })),
+            selectionSteps: [],
+            rulesetProfile: null,
+        };
+
+        let callCount = 0;
+        spyOn(Math, 'random').and.returnValue(0);
+        spyOn<any>(service, 'buildCandidateSelection').and.callFake(() => {
+            callCount += 1;
+            return callCount === 1 ? countCloserAttempt as any : budgetCloserAttempt as any;
+        });
+
+        let nowValue = 0;
+        spyOn(performance, 'now').and.callFake(() => {
+            nowValue += 100;
+            return nowValue;
+        });
+
+        const preview = service.buildPreview({
+            eligibleUnits: [nearBudgetA, nearBudgetB, countMatchA, countMatchB, countMatchC, countMatchD],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 20, max: 20 },
+            minUnitCount: 4,
+            maxUnitCount: 8,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Near Budget A', 'Near Budget B']);
+        expect(preview.totalCost).toBe(19);
+        expect(service.createForceEntry(preview)).not.toBeNull();
+    });
+
+    it('prefers the highest total below the target over a closer total that exceeds it', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const underTargetUnit = createUnit({ id: 1, name: 'Under Target', as: { PV: 5890 } as Unit['as'] });
+        const overTargetUnit = createUnit({ id: 2, name: 'Over Target', as: { PV: 5910 } as Unit['as'] });
+
+        const underTargetAttempt = {
+            selectedCandidates: [underTargetUnit].map((unit) => ({
+                unit,
+                productionWeight: 1,
+                salvageWeight: 1,
+                cost: unit.as.PV,
+                megaMekUnitType: 'Mek',
+            })),
+            selectionSteps: [],
+            rulesetProfile: null,
+        };
+        const overTargetAttempt = {
+            selectedCandidates: [overTargetUnit].map((unit) => ({
+                unit,
+                productionWeight: 1,
+                salvageWeight: 1,
+                cost: unit.as.PV,
+                megaMekUnitType: 'Mek',
+            })),
+            selectionSteps: [],
+            rulesetProfile: null,
+        };
+
+        let callCount = 0;
+        spyOn(Math, 'random').and.returnValue(0);
+        spyOn<any>(service, 'buildCandidateSelection').and.callFake(() => {
+            callCount += 1;
+            return callCount === 1 ? overTargetAttempt as any : underTargetAttempt as any;
+        });
+
+        let nowValue = 0;
+        spyOn(performance, 'now').and.callFake(() => {
+            nowValue += 100;
+            return nowValue;
+        });
+
+        const preview = service.buildPreview({
+            eligibleUnits: [underTargetUnit, overTargetUnit],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 5900, max: 5900 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Under Target']);
+        expect(preview.totalCost).toBe(5890);
+        expect(service.createForceEntry(preview)).not.toBeNull();
     });
 
     it('uses ruleset preferences to bias additional unit selection', () => {
@@ -532,7 +827,7 @@ describe('ForceGeneratorService', () => {
         randomSpy.and.returnValues(0, 0, 0, 0.6);
         preview = service.buildPreview(baseRequest);
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Seed', 'Command']);
-        expect(preview.explanationLines.some((line) => line.includes('Selected echelon: LANCE.'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('Ruleset guidance: Federated Suns, echelon LANCE.'))).toBeTrue();
     });
 
     it('applies ruleset bias before the first pick instead of deriving it from a random seed unit', () => {
@@ -603,6 +898,245 @@ describe('ForceGeneratorService', () => {
         expect(preview.error).toBeNull();
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['BattleMek Pick']);
         expect(preview.explanationLines.some((line) => line.includes('no matching force node'))).toBeFalse();
+    });
+
+    it('does not resolve an aero echelon from a mixed pool when only mek candidates can satisfy the requested size', () => {
+        const era = createEra(3052, 'Clan Invasion');
+        const faction = createFaction(10, 'Capellan Confederation');
+        const mekUnits = [
+            createUnit({ id: 1, name: 'Mek 1', as: { PV: 5 } as Unit['as'] }),
+            createUnit({ id: 2, name: 'Mek 2', as: { PV: 5 } as Unit['as'] }),
+            createUnit({ id: 3, name: 'Mek 3', as: { PV: 5 } as Unit['as'] }),
+            createUnit({ id: 4, name: 'Mek 4', as: { PV: 5 } as Unit['as'] }),
+        ];
+        const aeroUnit = createUnit({
+            id: 5,
+            name: 'Fighter 1',
+            type: 'Aero',
+            subtype: 'Aerospace Fighter',
+            moveType: 'Aerodyne',
+            as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'],
+        });
+        const ruleset: MegaMekRulesetRecord = {
+            factionKey: 'CC',
+            indexes: {
+                forceIndexesByEchelon: {
+                    LANCE: [0],
+                    WING: [1],
+                },
+            },
+            forceCount: 2,
+            toc: {
+                echelon: {
+                    options: [
+                        {
+                            echelons: [{ code: 'LANCE' }],
+                            when: { unitTypes: ['Mek'] },
+                        },
+                        {
+                            echelons: [{ code: 'WING' }],
+                            when: { unitTypes: ['AeroSpaceFighter'] },
+                        },
+                    ],
+                },
+            },
+            forces: [
+                {
+                    when: {
+                        unitTypes: ['Mek'],
+                        topLevel: true,
+                    },
+                    echelon: { code: 'LANCE' },
+                },
+                {
+                    when: {
+                        unitTypes: ['AeroSpaceFighter'],
+                        topLevel: true,
+                    },
+                    echelon: { code: 'WING' },
+                },
+            ],
+        };
+
+        megaMekRulesetsByMulFactionId.set(faction.id, [ruleset]);
+        megaMekRulesetsByFactionKey.set(ruleset.factionKey, ruleset);
+
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [...mekUnits, aeroUnit],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 20, max: 20 },
+            minUnitCount: 4,
+            maxUnitCount: 8,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.explanationLines.some((line) => line.includes('echelon WING'))).toBeFalse();
+        expect(preview.explanationLines.some((line) => line.includes('Ruleset guidance: Capellan Confederation, echelon LANCE.'))).toBeTrue();
+        expect(preview.units.every((unit) => unit.unit.type === 'Mek')).toBeTrue();
+    });
+
+    it('samples different valid top-level echelons from the weighted unit-type pool instead of fixing the midpoint choice', () => {
+        const era = createEra(3052, 'Clan Invasion');
+        const faction = createFaction(10, 'Capellan Confederation');
+        const mekUnits = [
+            createUnit({ id: 1, name: 'Mek 1', as: { PV: 5 } as Unit['as'] }),
+            createUnit({ id: 2, name: 'Mek 2', as: { PV: 5 } as Unit['as'] }),
+            createUnit({ id: 3, name: 'Mek 3', as: { PV: 5 } as Unit['as'] }),
+            createUnit({ id: 4, name: 'Mek 4', as: { PV: 5 } as Unit['as'] }),
+        ];
+        const aeroUnits = [
+            createUnit({
+                id: 5,
+                name: 'Fighter 1',
+                type: 'Aero',
+                subtype: 'Aerospace Fighter',
+                moveType: 'Aerodyne',
+                as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'],
+            }),
+            createUnit({
+                id: 6,
+                name: 'Fighter 2',
+                type: 'Aero',
+                subtype: 'Aerospace Fighter',
+                moveType: 'Aerodyne',
+                as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'],
+            }),
+            createUnit({
+                id: 7,
+                name: 'Fighter 3',
+                type: 'Aero',
+                subtype: 'Aerospace Fighter',
+                moveType: 'Aerodyne',
+                as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'],
+            }),
+            createUnit({
+                id: 8,
+                name: 'Fighter 4',
+                type: 'Aero',
+                subtype: 'Aerospace Fighter',
+                moveType: 'Aerodyne',
+                as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'],
+            }),
+            createUnit({
+                id: 9,
+                name: 'Fighter 5',
+                type: 'Aero',
+                subtype: 'Aerospace Fighter',
+                moveType: 'Aerodyne',
+                as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'],
+            }),
+            createUnit({
+                id: 10,
+                name: 'Fighter 6',
+                type: 'Aero',
+                subtype: 'Aerospace Fighter',
+                moveType: 'Aerodyne',
+                as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'],
+            }),
+        ];
+        const ruleset: MegaMekRulesetRecord = {
+            factionKey: 'CC',
+            indexes: {
+                forceIndexesByEchelon: {
+                    LANCE: [0],
+                    SQUADRON: [1],
+                },
+            },
+            forceCount: 2,
+            toc: {
+                echelon: {
+                    options: [
+                        {
+                            echelons: [{ code: 'LANCE' }],
+                            when: { unitTypes: ['Mek'] },
+                        },
+                        {
+                            echelons: [{ code: 'SQUADRON' }],
+                            when: { unitTypes: ['AeroSpaceFighter'] },
+                        },
+                    ],
+                },
+            },
+            forces: [
+                {
+                    when: {
+                        unitTypes: ['Mek'],
+                        topLevel: true,
+                    },
+                    echelon: { code: 'LANCE' },
+                },
+                {
+                    when: {
+                        unitTypes: ['AeroSpaceFighter'],
+                        topLevel: true,
+                    },
+                    echelon: { code: 'SQUADRON' },
+                },
+            ],
+        };
+
+        for (const unit of mekUnits) {
+            megaMekAvailabilityByUnitName.set(unit.name, {
+                e: {
+                    '3052': {
+                        '10': [10, 0],
+                    },
+                },
+            });
+        }
+        for (const unit of aeroUnits) {
+            megaMekAvailabilityByUnitName.set(unit.name, {
+                e: {
+                    '3052': {
+                        '10': [5, 0],
+                    },
+                },
+            });
+        }
+        megaMekRulesetsByMulFactionId.set(faction.id, [ruleset]);
+        megaMekRulesetsByFactionKey.set(ruleset.factionKey, ruleset);
+
+        const randomSpy = spyOn(Math, 'random');
+
+        randomSpy.and.returnValue(0);
+        let preview = service.buildPreview({
+            eligibleUnits: [...mekUnits, ...aeroUnits],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 20, max: 30 },
+            minUnitCount: 4,
+            maxUnitCount: 12,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.explanationLines.some((line) => line.includes('Ruleset guidance: Capellan Confederation, echelon LANCE.'))).toBeTrue();
+        expect(preview.units.length).toBe(4);
+        expect(preview.units.every((unit) => unit.unit.type === 'Mek')).toBeTrue();
+
+        randomSpy.calls.reset();
+        randomSpy.and.returnValue(0.9);
+        preview = service.buildPreview({
+            eligibleUnits: [...mekUnits, ...aeroUnits],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 20, max: 30 },
+            minUnitCount: 4,
+            maxUnitCount: 12,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.explanationLines.some((line) => line.includes('Ruleset guidance: Capellan Confederation, echelon SQUADRON.'))).toBeTrue();
+        expect(preview.units.length).toBe(6);
+        expect(preview.units.every((unit) => unit.unit.type === 'Aero')).toBeTrue();
     });
 
     it('switches child ruleset context with asFactionKey when building templates', () => {
@@ -796,6 +1330,7 @@ describe('ForceGeneratorService', () => {
         megaMekRulesetsByFactionKey.set(ruleset.factionKey, ruleset);
 
         const profile = (service as any).buildRulesetProfile(
+            [],
             { ...createContext(faction, era), ruleset },
             10,
             20,
@@ -885,6 +1420,31 @@ describe('ForceGeneratorService', () => {
         expect(preview.error).toBeNull();
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Lance 1', 'Lance 2', 'Lance 3', 'Lance 4']);
         expect(preview.explanationLines.some((line) => line.includes('Resolved org shape: Lance.'))).toBeTrue();
+
+        const successfulAttemptCalls = consoleLogSpy.calls.allArgs()
+            .filter(([message]) => message === '[ForceGenerator] Successful attempt');
+        expect(successfulAttemptCalls.length).toBe(2);
+        expect(successfulAttemptCalls[0][1]).toEqual(jasmine.objectContaining({
+            attempt: 1,
+            echelon: 'LANCE',
+            totalCost: 5880,
+            becameBest: true,
+        }));
+        expect(successfulAttemptCalls[1][1]).toEqual(jasmine.objectContaining({
+            attempt: 2,
+            echelon: 'LANCE',
+            totalCost: 5800,
+            becameBest: true,
+        }));
+        expect(String(successfulAttemptCalls[1][1].decision)).toContain('Higher structure score');
+
+        const finalDecisionCall = consoleLogSpy.calls.allArgs()
+            .find(([message]) => message === '[ForceGenerator] Best successful attempt selected');
+        expect(finalDecisionCall).toBeDefined();
+        expect(finalDecisionCall?.[1]).toEqual(jasmine.objectContaining({
+            attempt: 2,
+        }));
+        expect(String(finalDecisionCall?.[1].reason ?? '')).toContain('perfect structure match');
     });
 
     it('prefers a squadron-shaped valid force over a company-shaped valid force when the ruleset selects SQUADRON', () => {

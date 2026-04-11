@@ -36,6 +36,7 @@ import { DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 
 import { GameSystem } from '../../models/common.model';
+import { MAX_UNITS as FORCE_MAX_UNITS } from '../../models/force.model';
 import type { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { AvailabilitySource } from '../../models/options.model';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
@@ -75,6 +76,7 @@ export interface SearchForceGeneratorDialogResult {
 })
 export class SearchForceGeneratorDialogComponent {
     readonly GameSystem = GameSystem;
+    readonly MAX_UNITS = FORCE_MAX_UNITS;
     private readonly dialogRef = inject(DialogRef<SearchForceGeneratorDialogResult | null>);
     readonly dataService = inject(DataService);
     private readonly forceGeneratorService = inject(ForceGeneratorService);
@@ -206,27 +208,49 @@ export class SearchForceGeneratorDialogComponent {
     onBudgetMinChange(event: Event): void {
         this.setBudgetRangeForSystem(
             this.gameSystem(),
-            this.parseNumericValue(event, this.budgetRange().min),
-            this.budgetRange().max,
+            this.forceGeneratorService.resolveBudgetRangeForEditedMin(
+                this.budgetRange(),
+                this.parseNumericValue(event, this.budgetRange().min),
+            ),
         );
     }
 
     onBudgetMaxChange(event: Event): void {
         this.setBudgetRangeForSystem(
             this.gameSystem(),
-            this.budgetRange().min,
-            this.parseNumericValue(event, this.budgetRange().max),
+            this.forceGeneratorService.resolveBudgetRangeForEditedMax(
+                this.budgetRange(),
+                this.parseNumericValue(event, this.budgetRange().max),
+            ),
         );
     }
 
     onMinUnitCountChange(event: Event): void {
-        const nextValue = Math.max(1, this.parseNumericValue(event, this.minUnitCount()));
-        this.setUnitCountRange(nextValue, Math.max(this.maxUnitCount(), nextValue));
+        this.setUnitCountRange(this.forceGeneratorService.resolveUnitCountRangeForEditedMin(
+            {
+                min: this.minUnitCount(),
+                max: this.maxUnitCount(),
+            },
+            this.parseNumericValue(event, this.minUnitCount()),
+        ));
     }
 
     onMaxUnitCountChange(event: Event): void {
-        const nextValue = Math.max(1, this.parseNumericValue(event, this.maxUnitCount()));
-        this.setUnitCountRange(Math.min(this.minUnitCount(), nextValue), nextValue);
+        this.setUnitCountRange(this.forceGeneratorService.resolveUnitCountRangeForEditedMax(
+            {
+                min: this.minUnitCount(),
+                max: this.maxUnitCount(),
+            },
+            this.parseNumericValue(event, this.maxUnitCount()),
+        ));
+    }
+
+    onMinUnitCountBlur(event: Event): void {
+        this.syncInputValue(event, this.minUnitCount());
+    }
+
+    onMaxUnitCountBlur(event: Event): void {
+        this.syncInputValue(event, this.maxUnitCount());
     }
 
     reroll(): void {
@@ -315,9 +339,9 @@ export class SearchForceGeneratorDialogComponent {
         return `${option.label} ${visibleSelections.join(', ')}${hiddenCount > 0 ? ` +${hiddenCount}` : ''}`;
     }
 
-    private setBudgetRangeForSystem(gameSystem: GameSystem, minValue: number, maxValue: number): void {
-        const nextMin = Math.max(0, minValue);
-        const nextMax = maxValue > 0 ? Math.max(nextMin, maxValue) : 0;
+    private setBudgetRangeForSystem(gameSystem: GameSystem, range: { min: number; max: number }): void {
+        const nextMin = Math.max(0, Math.floor(range.min));
+        const nextMax = Math.max(0, Math.floor(range.max));
         const optionKeys = this.forceGeneratorService.getStoredBudgetOptionKeys(gameSystem);
 
         if (gameSystem === GameSystem.ALPHA_STRIKE) {
@@ -355,9 +379,9 @@ export class SearchForceGeneratorDialogComponent {
         }
     }
 
-    private setUnitCountRange(minValue: number, maxValue: number): void {
-        const nextMin = Math.max(1, minValue);
-        const nextMax = Math.max(nextMin, maxValue);
+    private setUnitCountRange(range: { min: number; max: number }): void {
+        const nextMin = Math.max(1, Math.floor(range.min));
+        const nextMax = Math.max(nextMin, Math.floor(range.max));
         const optionKeys = this.forceGeneratorService.getStoredUnitCountOptionKeys();
         const didChangeMin = this.minUnitCount() !== nextMin;
         const didChangeMax = this.maxUnitCount() !== nextMax;
@@ -380,5 +404,14 @@ export class SearchForceGeneratorDialogComponent {
     private parseNumericValue(event: Event, fallback: number): number {
         const value = Number.parseInt((event.target as HTMLInputElement).value, 10);
         return Number.isFinite(value) ? value : fallback;
+    }
+
+    private syncInputValue(event: Event, value: number): void {
+        const input = event.target as HTMLInputElement | null;
+        if (!input) {
+            return;
+        }
+
+        input.value = `${value}`;
     }
 }

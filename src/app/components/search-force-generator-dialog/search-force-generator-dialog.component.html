@@ -95,12 +95,12 @@
 
                     <div class="form-fields">
                         <label class="field-label">Min Units</label>
-                        <input class="bt-input field-input" type="number" min="1" step="1" [value]="minUnitCount()" (input)="onMinUnitCountChange($event)" />
+                        <input class="bt-input field-input" type="number" min="1" [max]="MAX_UNITS" step="1" [value]="minUnitCount()" (input)="onMinUnitCountChange($event)" (blur)="onMinUnitCountBlur($event)" />
                     </div>
 
                     <div class="form-fields">
                         <label class="field-label">Max Units</label>
-                        <input class="bt-input field-input" type="number" min="1" step="1" [value]="maxUnitCount()" (input)="onMaxUnitCountChange($event)" />
+                        <input class="bt-input field-input" type="number" min="1" [max]="MAX_UNITS" step="1" [value]="maxUnitCount()" (input)="onMaxUnitCountChange($event)" (blur)="onMaxUnitCountBlur($event)" />
                     </div>
 
                     <div class="form-fields">
@@ -124,7 +124,7 @@
                             step="1"
                             [value]="budgetRange().max || ''"
                             (input)="onBudgetMaxChange($event)"
-                            placeholder="0 = no maximum" />
+                            placeholder="0 = no maximum; 0/0 = first result" />
                     </div>
                 </div>
 
@@ -148,7 +148,7 @@
 
                 @if (preview().explanationLines.length > 0) {
                     <div class="preview-explanation-overlay">
-                        <div class="preview-explanation-shell framed-borders" [class.expanded]="collapsedHowPicksWhereChosen()">
+                        <div class="preview-explanation-shell glass framed-borders" [class.expanded]="collapsedHowPicksWhereChosen()">
                             <button class="preview-explanation-toggle" type="button" (click)="toggleHowPicksWereChosen()">
                                 <span class="preview-explanation-title">How Picks Were Chosen</span>
                                 <svg class="chevron" width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!collapsedHowPicksWhereChosen()">
