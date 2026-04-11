@@ -361,7 +361,7 @@ function formatStatValue(value: number): string {
 
         .radar-label {
             fill: var(--text-color, #fff);
-            font-size: 13.2px;
+            font-size: 15px;
             font-weight: 600;
             letter-spacing: 0.04em;
             text-transform: uppercase;
@@ -369,7 +369,7 @@ function formatStatValue(value: number): string {
 
         .radar-label-value {
             fill: var(--text-color-secondary);
-            font-size: 12px;
+            font-size: 13px;
         }
 
         .radar-empty {
@@ -388,35 +388,18 @@ function formatStatValue(value: number): string {
             }
 
             .radar-label {
-                font-size: 12px;
+                font-size: 18px;
             }
 
             .radar-label-value {
-                font-size: 10.8px;
+                fill: var(--text-color-secondary);
+                font-size: 15px;
             }
         }
 
         @media (max-width: 520px) {
             :host {
                 min-height: var(--radar-panel-min-height-mobile, 230px);
-            }
-
-            .radar-label {
-                font-size: 10.8px;
-            }
-
-            .radar-label-value {
-                font-size: 9.6px;
-            }
-        }
-
-        @media (max-width: 420px) {
-            .radar-label {
-                font-size: 9.6px;
-            }
-
-            .radar-label-value {
-                font-size: 8.4px;
             }
         }
     `],
