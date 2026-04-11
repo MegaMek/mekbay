@@ -33,6 +33,7 @@
 
 import { Component, ElementRef, computed, input, signal, output, inject, ChangeDetectionStrategy, viewChild, afterNextRender, Injector, effect, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { CdkConnectedOverlay, Overlay, OverlayModule, type ConnectedOverlayPositionChange, type ConnectedPosition } from '@angular/cdk/overlay';
 import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import { LayoutService } from '../../services/layout.service';
 import { highlightMatches, matchesSearch, parseSearchQuery } from '../../utils/search.util';
@@ -75,30 +76,55 @@ type ScrollRestoreState =
         | { kind: 'virtual'; optionName: string; scrollOffset: number; optionVisibleTop?: number }
         | { kind: 'dom'; optionName: string; visibleTop: number };
 
+type TriggerRect = { left: number; top: number; width: number; height: number };
+
+interface OpenDropdownOptions {
+    focusInput: boolean;
+    scrollToOptionName?: string;
+}
+
 @Component({
     selector: 'multi-select-dropdown',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule],
+    imports: [CommonModule, ScrollingModule, OverlayModule],
     templateUrl: './multi-select-dropdown.component.html',
     styleUrls: ['./multi-select-dropdown.component.css']
 })
 export class MultiSelectDropdownComponent {
+    private static readonly BELOW_OVERLAY_POSITIONS: ConnectedPosition[] = [
+        { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top' },
+        { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top' },
+    ];
+    private static readonly ABOVE_OVERLAY_POSITIONS: ConnectedPosition[] = [
+        { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom' },
+        { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom' },
+    ];
     private elementRef = inject(ElementRef);
     private injector = inject(Injector);
     private layoutService = inject(LayoutService);
     private destroyRef = inject(DestroyRef);
+    private overlay = inject(Overlay);
     private destroyed = false;
     private lastPointerType = '';
+    private anchorFollowFrameId: number | null = null;
+    private lastTriggerRect: TriggerRect | null = null;
+    private overlayRefreshFrameId: number | null = null;
+    private overlayRefreshNeedsMetrics = false;
+    private lastOverlayPositionKey: string | null = null;
+    private preferredOverlayPlacement = signal<'above' | 'below'>('below');
+    displayAreaEl = viewChild<ElementRef<HTMLDivElement>>('displayArea');
     filterInput = viewChild<ElementRef<HTMLInputElement>>('filterInput');
     optionsEl = viewChild<ElementRef<HTMLDivElement>>('optionsEl');
     optionsDropdownEl = viewChild<ElementRef<HTMLDivElement>>('optionsDropdown');
     optionsViewport = viewChild<CdkVirtualScrollViewport>('optionsViewport');
+    connectedOverlay = viewChild(CdkConnectedOverlay);
     
     label = input<string>('');
     multiselect = input<boolean>(true);
     multistate = input<boolean>(false);
     countable = input<boolean>(false);
+    keepUnavailableVisible = input<boolean>(false);
     semanticOnly = input<boolean>(false);
     displayText = input<string | undefined>();  // Text to display instead of pills when in semantic-only mode (fallback)
     displayItems = input<{ text: string; state: 'or' | 'and' | 'not' }[] | undefined>();  // Structured display items with state
@@ -111,11 +137,20 @@ export class MultiSelectDropdownComponent {
     showUnavailableToggle = computed(() => this.multistate() && this.options().some(o => o.available === false));
     isOpen = signal(false);
     filterText = signal('');
-    private static readonly DEFAULT_MAX_HEIGHT = 248;
-    private static readonly MIN_MAX_HEIGHT = 200;
-    private openMaxHeight = signal(MultiSelectDropdownComponent.DEFAULT_MAX_HEIGHT);
+    private static readonly OVERLAY_GAP = 4;
+    private static readonly DEFAULT_PANEL_HEIGHT_FALLBACK = 248;
+    private static readonly FILTER_CONTAINER_HEIGHT_FALLBACK = 41;
+    private static readonly VIEWPORT_MARGIN = 12;
+    private openMaxHeight = signal(MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK);
+    private overlayMinWidth = signal(0);
     readonly virtualScrollThreshold = 80;
     readonly optionItemSize = 44;
+    readonly overlayWidth = computed(() => this.overlayMinWidth() || this.measureOverlayWidth());
+    readonly repositionScrollStrategy = this.overlay.scrollStrategies.reposition();
+    readonly overlayPlacement = signal<'above' | 'below'>('below');
+    readonly overlayPositions = computed(() => this.preferredOverlayPlacement() === 'above'
+        ? MultiSelectDropdownComponent.ABOVE_OVERLAY_POSITIONS
+        : MultiSelectDropdownComponent.BELOW_OVERLAY_POSITIONS);
 
     private displayNameMap = computed(() => {
         const map = new Map<string, string>();
@@ -158,9 +193,15 @@ export class MultiSelectDropdownComponent {
 
     maxHeightOptions = computed(() => {
         if (!this.isOpen()) {
-            return MultiSelectDropdownComponent.DEFAULT_MAX_HEIGHT;
+            return MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK;
         }
         return this.openMaxHeight();
+    });
+
+    viewportHeight = computed(() => {
+        const maxHeight = this.maxHeightOptions();
+        const contentHeight = this.filteredOptions().length * this.optionItemSize;
+        return Math.min(maxHeight, contentHeight || this.optionItemSize);
     });
 
     filteredOptions = computed(() => {
@@ -176,7 +217,7 @@ export class MultiSelectDropdownComponent {
 
         // if the toggle is off, hide unavailable items
         if (!this.showUnavailable()) {
-            if (hasActiveFilter) {
+            if (hasActiveFilter || this.keepUnavailableVisible()) {
                 return nameFiltered;
             }
             return nameFiltered.filter(option => option.available !== false || this.isSelected(option.name));
@@ -201,8 +242,7 @@ export class MultiSelectDropdownComponent {
         const ce = ev as CustomEvent;
         // if another instance opened, close this one
         if (ce.detail !== this && this.isOpen()) {
-            this.isOpen.set(false);
-            this.filterText.set('');
+            this.closeDropdown();
         }
     };
 
@@ -211,15 +251,21 @@ export class MultiSelectDropdownComponent {
         const target = event.target;
         if (!(target instanceof Node)) return;
 
+        const overlayElement = this.connectedOverlay()?.overlayRef?.overlayElement;
+        if (overlayElement?.contains(target)) {
+            return;
+        }
+
         if (!this.elementRef.nativeElement.contains(target)) {
-            this.isOpen.set(false);
-            this.filterText.set('');
+            this.closeDropdown();
         }
     };
 
     constructor() {
         this.destroyRef.onDestroy(() => {
             this.destroyed = true;
+            this.stopAnchorFollowLoop();
+            this.cancelScheduledOverlayRefresh();
             this.isOpen.set(false);
         });
         effect((cleanup) => {
@@ -239,6 +285,36 @@ export class MultiSelectDropdownComponent {
             });
         });
 
+        effect((cleanup) => {
+            if (!this.isOpen()) {
+                return;
+            }
+
+            this.startAnchorFollowLoop();
+
+            cleanup(() => {
+                this.stopAnchorFollowLoop();
+                this.cancelScheduledOverlayRefresh();
+            });
+        });
+
+        effect(() => {
+            if (!this.isOpen()) {
+                return;
+            }
+
+            this.layoutService.windowWidth();
+            this.layoutService.windowHeight();
+
+            afterNextRender(() => {
+                if (this.destroyed || !this.isOpen()) {
+                    return;
+                }
+
+                this.scheduleOverlayRefresh(true);
+            }, { injector: this.injector });
+        });
+
         effect(() => {
             if (!this.isOpen() || !this.useVirtualScroll()) {
                 return;
@@ -255,98 +331,356 @@ export class MultiSelectDropdownComponent {
         });
     }
 
-    private measureDropdownMaxHeight(): number {
-        const dropdown = this.optionsDropdownEl()?.nativeElement;
-        if (!dropdown) {
-            return MultiSelectDropdownComponent.DEFAULT_MAX_HEIGHT;
+    private measureDropdownMaxHeight(placement = this.overlayPlacement()): number {
+        const availableForList = this.measureAvailableListHeight(placement);
+        if (!Number.isFinite(availableForList) || availableForList <= 0) {
+            return MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK;
         }
 
-        const rect = dropdown.getBoundingClientRect();
-        if (rect.height === 0) {
-            return MultiSelectDropdownComponent.DEFAULT_MAX_HEIGHT;
-        }
-
-        const hasFilterRow = this.options().length > 20 || this.showUnavailableToggle();
-        const filterRowHeight = hasFilterRow ? 50 : 0;
-        const bottomPadding = 16;
-        const availableForList = this.layoutService.windowHeight() - rect.top - filterRowHeight - bottomPadding;
-
-        return Math.max(MultiSelectDropdownComponent.MIN_MAX_HEIGHT, availableForList);
+        return availableForList;
     }
 
-    private captureOpenHeight() {
-        this.openMaxHeight.set(this.measureDropdownMaxHeight());
+    private shouldShowFilterControls(): boolean {
+        return this.options().length > 20 || this.showUnavailableToggle();
+    }
+
+    private measureAvailableVerticalSpace(placement: 'above' | 'below'): number {
+        const displayArea = this.displayAreaEl()?.nativeElement;
+        if (!displayArea) {
+            return 0;
+        }
+
+        const triggerRect = displayArea.getBoundingClientRect();
+        if (triggerRect.height === 0) {
+            return 0;
+        }
+
+        const availableVerticalSpace = placement === 'below'
+            ? this.layoutService.windowHeight() - triggerRect.bottom - MultiSelectDropdownComponent.VIEWPORT_MARGIN
+            : triggerRect.top - MultiSelectDropdownComponent.VIEWPORT_MARGIN;
+
+        if (!Number.isFinite(availableVerticalSpace) || availableVerticalSpace <= 0) {
+            return 0;
+        }
+
+        return Math.floor(availableVerticalSpace);
+    }
+
+    private getFilterContainerHeightForMeasurements(): number {
+        const measuredHeight = this.measureFilterContainerHeight();
+        if (measuredHeight > 0) {
+            return measuredHeight;
+        }
+
+        return this.shouldShowFilterControls()
+            ? MultiSelectDropdownComponent.FILTER_CONTAINER_HEIGHT_FALLBACK
+            : 0;
+    }
+
+    private measureAvailableListHeight(placement: 'above' | 'below'): number {
+        const displayArea = this.displayAreaEl()?.nativeElement;
+        if (!displayArea) {
+            return 0;
+        }
+
+        const triggerRect = displayArea.getBoundingClientRect();
+        if (triggerRect.height === 0) {
+            return 0;
+        }
+
+        const filterRowHeight = this.getFilterContainerHeightForMeasurements();
+        const availableVerticalSpace = placement === 'below'
+            ? this.layoutService.windowHeight() - triggerRect.bottom - MultiSelectDropdownComponent.VIEWPORT_MARGIN
+            : triggerRect.top - MultiSelectDropdownComponent.VIEWPORT_MARGIN;
+        const availableForList = availableVerticalSpace - filterRowHeight - 8 - MultiSelectDropdownComponent.OVERLAY_GAP;
+
+        if (!Number.isFinite(availableForList) || availableForList <= 0) {
+            return 0;
+        }
+
+        return Math.floor(availableForList);
+    }
+
+    private determinePreferredOverlayPlacement(): 'above' | 'below' {
+        const belowAvailableHeight = this.measureAvailableVerticalSpace('below');
+        const aboveAvailableHeight = this.measureAvailableVerticalSpace('above');
+
+        if (belowAvailableHeight < MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK
+            && aboveAvailableHeight > belowAvailableHeight) {
+            return 'above';
+        }
+
+        return 'below';
+    }
+
+    private updatePreferredOverlayPlacement(): 'above' | 'below' {
+        const preferredPlacement = this.determinePreferredOverlayPlacement();
+        this.preferredOverlayPlacement.set(preferredPlacement);
+        return preferredPlacement;
+    }
+
+    private measureFilterContainerHeight(): number {
+        const dropdown = this.optionsDropdownEl()?.nativeElement;
+        if (!dropdown) {
+            return 0;
+        }
+
+        const filterContainer = dropdown.querySelector<HTMLElement>('.filter-container:not([hidden])');
+        if (!filterContainer) {
+            return 0;
+        }
+
+        return Math.ceil(filterContainer.getBoundingClientRect().height);
+    }
+
+    private measureOverlayWidth(): number {
+        const displayArea = this.displayAreaEl()?.nativeElement;
+        if (!displayArea) {
+            return 0;
+        }
+
+        return displayArea.getBoundingClientRect().width;
+    }
+
+    private captureOpenMetrics(placement = this.overlayPlacement()) {
+        this.overlayMinWidth.set(this.measureOverlayWidth());
+        this.openMaxHeight.set(this.measureDropdownMaxHeight(placement));
+    }
+
+    private measureTriggerRect(): TriggerRect | null {
+        const triggerElement = this.displayAreaEl()?.nativeElement;
+        if (!triggerElement?.isConnected) {
+            return null;
+        }
+
+        const rect = triggerElement.getBoundingClientRect();
+        return {
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+        };
+    }
+
+    private hasTriggerRectChanged(nextRect: TriggerRect, previousRect: TriggerRect | null): boolean {
+        if (!previousRect) {
+            return true;
+        }
+
+        return Math.abs(nextRect.left - previousRect.left) > 0.5
+            || Math.abs(nextRect.top - previousRect.top) > 0.5
+            || Math.abs(nextRect.width - previousRect.width) > 0.5
+            || Math.abs(nextRect.height - previousRect.height) > 0.5;
+    }
+
+    private startAnchorFollowLoop() {
+        if (this.anchorFollowFrameId !== null) {
+            return;
+        }
+
+        const step = () => {
+            this.anchorFollowFrameId = null;
+
+            if (this.destroyed || !this.isOpen()) {
+                return;
+            }
+
+            const nextRect = this.measureTriggerRect();
+            if (!nextRect) {
+                this.closeDropdown();
+                return;
+            }
+
+            if (this.hasTriggerRectChanged(nextRect, this.lastTriggerRect)) {
+                const preferredPlacement = this.updatePreferredOverlayPlacement();
+                const widthOrHeightChanged = !this.lastTriggerRect
+                    || Math.abs(nextRect.width - this.lastTriggerRect.width) > 0.5
+                    || Math.abs(nextRect.height - this.lastTriggerRect.height) > 0.5;
+                const placementPreferenceChanged = preferredPlacement !== this.overlayPlacement();
+
+                this.lastTriggerRect = nextRect;
+
+                if (widthOrHeightChanged || placementPreferenceChanged) {
+                    this.captureOpenMetrics(preferredPlacement);
+                }
+
+                this.connectedOverlay()?.overlayRef?.updatePosition();
+            }
+
+            this.anchorFollowFrameId = requestAnimationFrame(step);
+        };
+
+        this.anchorFollowFrameId = requestAnimationFrame(step);
+    }
+
+    private stopAnchorFollowLoop() {
+        if (this.anchorFollowFrameId !== null) {
+            cancelAnimationFrame(this.anchorFollowFrameId);
+            this.anchorFollowFrameId = null;
+        }
+
+        this.lastTriggerRect = null;
+    }
+
+    private resetOverlayState() {
+        this.stopAnchorFollowLoop();
+        this.cancelScheduledOverlayRefresh();
+        this.lastOverlayPositionKey = null;
+        this.preferredOverlayPlacement.set('below');
+        this.overlayPlacement.set('below');
+        this.openMaxHeight.set(MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK);
+    }
+
+    private closeDropdown() {
+        this.isOpen.set(false);
+        this.filterText.set('');
+        this.resetOverlayState();
+    }
+
+    private focusFilterInput() {
+        const inputEl = this.filterInput()?.nativeElement;
+        if (inputEl) {
+            inputEl.focus();
+        }
+    }
+
+    private scrollToOption(optionName: string) {
+        const options = this.filteredOptions();
+        const optionIndex = options.findIndex(option => option.name === optionName);
+
+        if (this.useVirtualScroll()) {
+            const viewport = this.optionsViewport();
+            if (viewport && optionIndex >= 0) {
+                viewport.scrollToIndex(optionIndex, 'smooth');
+            }
+            return;
+        }
+
+        const container = this.optionsEl()?.nativeElement;
+        if (!container) {
+            return;
+        }
+
+        const items = Array.from(container.querySelectorAll<HTMLElement>('.option-item'));
+        for (const item of items) {
+            if (item.getAttribute('data-option-name') === optionName) {
+                try {
+                    item.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                } catch {
+                    item.scrollIntoView();
+                }
+                break;
+            }
+        }
+    }
+
+    private openDropdown({ focusInput, scrollToOptionName }: OpenDropdownOptions) {
+        const preferredPlacement = this.updatePreferredOverlayPlacement();
+        this.overlayPlacement.set(preferredPlacement);
+        this.captureOpenMetrics(preferredPlacement);
+        document.dispatchEvent(new CustomEvent('multi-select-dropdown-open', { detail: this }));
+        this.isOpen.set(true);
+        this.filterText.set('');
+
+        afterNextRender(() => {
+            if (this.destroyed || !this.isOpen()) {
+                return;
+            }
+
+            if (scrollToOptionName) {
+                this.scrollToOption(scrollToOptionName);
+            }
+            if (focusInput) {
+                this.focusFilterInput();
+            }
+        }, { injector: this.injector });
+    }
+
+    private scheduleOverlayRefresh(recalculateMetrics = false) {
+        if (recalculateMetrics) {
+            this.overlayRefreshNeedsMetrics = true;
+        }
+
+        if (this.overlayRefreshFrameId !== null) {
+            return;
+        }
+
+        this.overlayRefreshFrameId = requestAnimationFrame(() => {
+            this.overlayRefreshFrameId = null;
+            const shouldRecalculateMetrics = this.overlayRefreshNeedsMetrics;
+            this.overlayRefreshNeedsMetrics = false;
+
+            if (this.destroyed || !this.isOpen()) {
+                return;
+            }
+
+            const triggerElement = this.displayAreaEl()?.nativeElement;
+            if (!triggerElement?.isConnected) {
+                this.closeDropdown();
+                return;
+            }
+
+            const preferredPlacement = this.updatePreferredOverlayPlacement();
+            if (shouldRecalculateMetrics) {
+                this.captureOpenMetrics(preferredPlacement);
+            }
+
+            if (shouldRecalculateMetrics || preferredPlacement !== this.overlayPlacement()) {
+                this.connectedOverlay()?.overlayRef?.updatePosition();
+            }
+        });
+    }
+
+    private cancelScheduledOverlayRefresh() {
+        if (this.overlayRefreshFrameId === null) {
+            return;
+        }
+
+        cancelAnimationFrame(this.overlayRefreshFrameId);
+        this.overlayRefreshFrameId = null;
+        this.overlayRefreshNeedsMetrics = false;
     }
 
     onPointerDown(event: PointerEvent) {
         this.lastPointerType = event.pointerType;
     }
 
-    toggleDropdown(event?: MouseEvent) {
+    toggleDropdown() {
         if (this.semanticOnly()) return;
-        const wasMouse = this.lastPointerType === 'mouse';
+        const shouldFocusFilter = this.lastPointerType === 'mouse';
         this.lastPointerType = '';
-        const nextIsOpen = !this.isOpen();
-        this.isOpen.set(nextIsOpen);
-        if (nextIsOpen) {
-            // notify other instances
-            document.dispatchEvent(new CustomEvent('multi-select-dropdown-open', { detail: this }));
-        } else {
-            this.openMaxHeight.set(MultiSelectDropdownComponent.DEFAULT_MAX_HEIGHT);
+        if (this.isOpen()) {
+            this.closeDropdown();
+            return;
         }
-        this.filterText.set('');
-        afterNextRender(() => {
-            if (this.destroyed) return;
-            if (this.isOpen()) {
-                this.captureOpenHeight();
-                if (wasMouse) {
-                    const inputEl = this.filterInput()?.nativeElement;
-                    if (inputEl) {
-                        inputEl.focus();
-                    }
-                }
-            }
-        }, { injector: this.injector });
+
+        this.openDropdown({ focusInput: shouldFocusFilter });
     }
 
     openAndScrollTo(optionName: string, event: MouseEvent) {
-        document.dispatchEvent(new CustomEvent('multi-select-dropdown-open', { detail: this }));
         event.stopPropagation();
-        this.isOpen.set(true);
-        this.filterText.set('');
-        afterNextRender(() => {
-            if (this.destroyed) return;
-            this.captureOpenHeight();
-            
-            const options = this.filteredOptions();
-            const optionIndex = options.findIndex(option => option.name === optionName);
-            if (this.useVirtualScroll()) {
-                const viewport = this.optionsViewport();
-                if (viewport && optionIndex >= 0) {
-                    viewport.scrollToIndex(optionIndex, 'smooth');
-                }
-            } else {
-                const container = this.optionsEl()?.nativeElement;
-                if (container) {
-                    const items = Array.from(container.querySelectorAll<HTMLElement>('.option-item'));
-                    for (const item of items) {
-                        if (item.getAttribute('data-option-name') === optionName) {
-                            try {
-                                item.scrollIntoView({ block: 'center', behavior: 'smooth' });
-                            } catch {
-                                item.scrollIntoView();
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
+        this.openDropdown({ focusInput: true, scrollToOptionName: optionName });
+    }
 
-            const inputEl = this.filterInput()?.nativeElement;
-            if (inputEl) {
-                inputEl.focus();
-            }
-        }, { injector: this.injector });
+    onOverlayAttached() {
+        this.scheduleOverlayRefresh(true);
+    }
+
+    onOverlayDetached() {
+        this.resetOverlayState();
+    }
+
+    onOverlayPositionChange(event: ConnectedOverlayPositionChange) {
+        this.overlayPlacement.set(event.connectionPair.overlayY === 'top' ? 'below' : 'above');
+        const positionKey = [
+            event.connectionPair.originX,
+            event.connectionPair.originY,
+            event.connectionPair.overlayX,
+            event.connectionPair.overlayY,
+        ].join(':');
+        const positionChanged = positionKey !== this.lastOverlayPositionKey;
+        this.lastOverlayPositionKey = positionKey;
+        this.scheduleOverlayRefresh(positionChanged);
     }
 
     onFilterInput(event: Event) {
@@ -428,7 +762,7 @@ export class MultiSelectDropdownComponent {
         };
     }
 
-    restoreScrollPosition(restoreState: ScrollRestoreState | null) {
+    private restoreScrollPosition(restoreState: ScrollRestoreState | null) {
         // restore the preserved scroll after the DOM updates
         afterNextRender(() => {
             if (!restoreState) {
@@ -548,8 +882,7 @@ export class MultiSelectDropdownComponent {
     onSingleSelect(optionName: string) {
         if (!this.multiselect()) {
             this.selectionChange.emit([optionName]);
-            this.isOpen.set(false);
-            this.filterText.set('');
+            this.closeDropdown();
         }
     }
 

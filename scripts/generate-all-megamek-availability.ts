@@ -1,0 +1,4670 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+import { XMLParser } from 'fast-xml-parser';
+import { load as loadYaml } from 'js-yaml';
+
+const {
+    loadOptionalEnvFile,
+    resolveMmDataRoot,
+} = require('./lib/script-paths.js') as typeof import('./lib/script-paths.js');
+
+type JsonObject = Record<string, unknown>;
+type CompactAvailabilityByRating = [number, number, number, number, number];
+type CompactAvailabilityValue = number | `${number}+` | `${number}-` | CompactAvailabilityByRating;
+type CompactWeightedByRating = [number, number, number, number, number];
+type CompactWeightedValue = [number, number];
+type AvailabilityWeightedQName = 'X' | 'R' | 'U' | 'C' | 'I';
+type CompactWeightedQValue = [AvailabilityWeightedQName, AvailabilityWeightedQName];
+
+interface DateRange {
+    start?: number;
+    end?: number;
+}
+
+interface YearKeyedChange {
+    year: number;
+    name: string;
+}
+
+interface FactionLeader {
+    title: string;
+    firstName: string;
+    surname: string;
+    gender?: string;
+    honorific?: string;
+    startYear?: number;
+    endYear?: number;
+}
+
+type RgbColor = [number, number, number];
+
+interface UniverseFactionRecord {
+    id: string;
+    name: string;
+    mulId: number[];
+    filename: string;
+    isCommand: boolean;
+    yearsActive: DateRange[];
+    ratingLevels: string[];
+    fallBackFactions: string[];
+    tags: string[];
+    nameChanges: YearKeyedChange[];
+    capital?: string;
+    capitalChanges?: YearKeyedChange[];
+    color?: RgbColor;
+    logo?: string;
+    camos?: string;
+    nameGenerator?: string;
+    eraMods?: number[];
+    rankSystem?: string;
+    factionLeaders?: FactionLeader[];
+    successor?: string;
+    preInvasionHonorRating?: string;
+    postInvasionHonorRating?: string;
+    formationBaseSize?: number;
+    formationGrouping?: number;
+}
+
+interface MegaMekEra {
+    code: string;
+    name: string;
+    startYear?: number;
+    endYear?: number;
+    mulId?: number;
+    icon?: string;
+}
+
+interface ParsedAvailability {
+    factionKey: string;
+    fileYear: number;
+    entryYear?: number;
+    baseAvailability?: number;
+    ratingAdjustment: -1 | 0 | 1;
+    byRating?: Record<string, number>;
+}
+
+type CompactEraAvailability = Record<string, CompactAvailabilityValue>;
+type CompactWeightedEraAvailability = Record<string, CompactWeightedValue>;
+
+interface CompactAvailabilityRecordBase {
+    t: UnitType;
+    c: string;
+    o?: 'Clan' | 'IS';
+    e: Record<string, CompactEraAvailability>;
+}
+
+interface CompactChassisRecord extends CompactAvailabilityRecordBase {}
+
+interface CompactModelRecord extends CompactAvailabilityRecordBase {
+    m: string;
+}
+
+type CompactAvailabilityRecord = CompactChassisRecord | CompactModelRecord;
+
+interface CompactWeightedModelRecord {
+    t: UnitType;
+    c: string;
+    m: string;
+    e: Record<string, CompactWeightedEraAvailability>;
+}
+
+interface CompactWeightedQModelRecord {
+    t: UnitType;
+    c: string;
+    m: string;
+    e: Record<string, Record<string, CompactWeightedQValue>>;
+}
+
+interface EraFactionStats {
+    pctOmni?: number[];
+    pctOmniAero?: number[];
+    pctClan?: number[];
+    pctClanAero?: number[];
+    pctClanVehicle?: number[];
+    pctSL?: number[];
+    pctSLAero?: number[];
+    pctSLVehicle?: number[];
+    omniMargin?: number;
+    techMargin?: number;
+    upgradeMargin?: number;
+    salvage?: {
+        pct: number;
+        weights: Record<string, number>;
+    };
+    weightDistribution?: Record<string, number[]>;
+}
+
+interface UnitMetadataRecord {
+    unitType: string;
+    chassis: string;
+    model: string;
+    introYear: number;
+    weightClass?: number;
+    isClanTech: boolean;
+    isStarLeague: boolean;
+}
+
+interface UnitMetadataIndex {
+    byCompositeKey: Map<string, UnitMetadataRecord>;
+    byLegacyKey: Map<string, UnitMetadataRecord>;
+    byNormalizedKey: Map<string, UnitMetadataRecord>;
+    byNormalizedModel: Map<string, UnitMetadataRecord | null>;
+    byNormalizedChassis: Map<string, UnitMetadataRecord | null>;
+    byNormalizedModelCandidates: Map<string, UnitMetadataRecord[]>;
+}
+
+interface ResolvedFactionEraStats {
+    pctOmni?: number[];
+    pctOmniAero?: number[];
+    pctClan?: number[];
+    pctClanAero?: number[];
+    pctClanVehicle?: number[];
+    pctSL?: number[];
+    pctSLAero?: number[];
+    pctSLVehicle?: number[];
+    omniMargin: number;
+    techMargin: number;
+    upgradeMargin: number;
+    salvagePct?: number;
+    salvageWeights: Record<string, number>;
+    weightDistribution: Record<string, number[]>;
+}
+
+interface WeightedRecordChannels {
+    normal: CompactWeightedByRating;
+    salvage: CompactWeightedByRating;
+}
+
+interface RulesetRecord {
+    factionKey: string;
+    parentFactionKey?: string;
+    ratingSystem?: string;
+    assign?: JsonObject;
+    customRanks?: JsonObject;
+    defaults?: JsonObject;
+    toc?: JsonObject;
+    forces: JsonObject[];
+    indexes: {
+        forceIndexesByEchelon: Record<string, number[]>;
+    };
+    forceCount: number;
+}
+
+interface FactionMulIdConfig {
+    mappedIds: Map<string, number[]>;
+    skippedFactions: Set<string>;
+}
+
+interface MegaMekAvailabilitySharedMetadata {
+    version: 3;
+    generatedAt: string;
+    generator: string;
+    source: {
+        type: 'MegaMek';
+        mmDataPath: string;
+        paths: {
+            universeFactions: string;
+            universeCommands: string;
+            universeEras: string;
+            forceGenerator: string;
+            forceGeneratorRules: string;
+        };
+    };
+    summary: {
+        factionCount: number;
+        commandCount: number;
+        forceGeneratorEraCount: number;
+        megaMekEraCount: number;
+        chassisCount: number;
+        modelCount: number;
+    };
+}
+
+interface MegaMekAvailabilityExport extends MegaMekAvailabilitySharedMetadata {
+    eras: {
+        eras: MegaMekEra[];
+        forceGenerator: Record<string, number[]>;
+    };
+    factions: Record<string, UniverseFactionRecord & { ancestry: string[] }>;
+    factionEraData: Record<string, Record<string, EraFactionStats>>;
+    chassis: Record<string, CompactChassisRecord>;
+    models: Record<string, CompactModelRecord>;
+    availability: Record<string, CompactModelRecord>;
+    rulesets: RulesetRecord[];
+}
+
+const USE_ERA_CODE_KEYS = false;
+const USE_MULIZED_FACTION_NAMES = false;
+const BEAUTIFY_OUTPUT = true;
+const JSON_INDENT = 2;
+const INLINE_JSON_ARRAY_MAX_ITEMS = 8;
+const INLINE_JSON_ARRAY_MAX_LENGTH = 40;
+const OUTPUT_DECIMAL_PLACES = 1;
+const WEIGHTED_Q_BUCKETS = ['R', 'U', 'C', 'I'] as const;
+const APP_ROOT = path.resolve(__dirname, '..');
+const MIN_OMNI_DIFFERENCE = 2.5;
+const MIN_SL_DIFFERENCE = 2.5;
+const MIN_CLAN_DIFFERENCE = 2.5;
+const MEK_WEIGHT_LIMITS = [15, 35, 55, 75, 100, 135] as const;
+const VEHICLE_WEIGHT_LIMITS = [0, 39, 59, 79, 100, 300] as const;
+const AEROSPACE_WEIGHT_LIMITS = [0, 45, 70, 100] as const;
+const WEIGHT_DISTRIBUTION_BUCKET_INDEX = [0, 0, 1, 2, 3, 3] as const;
+
+loadOptionalEnvFile(APP_ROOT, { logPrefix: 'MegaMek' });
+
+const MM_DATA_ROOT = resolveMmDataRoot(APP_ROOT);
+const UNIVERSE_ROOT = path.join(MM_DATA_ROOT, 'data', 'universe');
+const FORCEGEN_ROOT = path.join(MM_DATA_ROOT, 'data', 'forcegenerator');
+const UNIT_FILES_ROOT = path.join(MM_DATA_ROOT, 'data', 'mekfiles');
+const NAME_CHANGES_FILE_PATH = path.join(UNIT_FILES_ROOT, 'name_changes.txt');
+const FACTIONS_MM_TO_MUL_PATH = path.join(APP_ROOT, 'scripts', 'config', 'factions-mm-to-mul.csv');
+const MUL_FACTIONS_PATH = path.join(APP_ROOT, 'scripts', 'config', 'mulfactions.csv');
+const MM_FACTIONS_IMAGE_DIR = path.join(APP_ROOT, 'public', 'images', 'mmfactions');
+const OUTPUT_DIR = path.join(APP_ROOT, 'public', 'assets');
+const EXPAND_RATING_ADJUSTMENTS = true;
+const GENERAL_FACTION_KEY = 'General';
+type UnitType =
+    | 'Aero'
+    | 'Handheld Weapon'
+    | 'Infantry'
+    | 'Mek'
+    | 'Naval'
+    | 'ProtoMek'
+    | 'Tank'
+    | 'VTOL';
+
+const COMPILED_UNIT_TYPE_BY_XML_UNIT_TYPE: Record<string, UnitType> = {
+    Mek: 'Mek',
+    Tank: 'Tank',
+    BattleArmor: 'Infantry',
+    Infantry: 'Infantry',
+    ProtoMek: 'ProtoMek',
+    VTOL: 'VTOL',
+    Naval: 'Naval',
+    'Conventional Fighter': 'Aero',
+    AeroSpaceFighter: 'Aero',
+    'Small Craft': 'Aero',
+    Dropship: 'Aero',
+    Jumpship: 'Aero',
+    Warship: 'Aero',
+    'Space Station': 'Aero',
+};
+
+const VALID_XML_UNIT_TYPES = new Set(Object.keys(COMPILED_UNIT_TYPE_BY_XML_UNIT_TYPE));
+const DEFAULT_CANONICAL_RATINGS = ['F', 'D', 'C', 'B', 'A'] as const;
+const CANONICAL_RATING_INDEX: Record<(typeof DEFAULT_CANONICAL_RATINGS)[number], number> = {
+    F: 0,
+    D: 1,
+    C: 2,
+    B: 3,
+    A: 4,
+};
+const RATING_ALIASES_BY_CANONICAL: Record<
+    (typeof DEFAULT_CANONICAL_RATINGS)[number],
+    string[]
+> = {
+    F: ['F', 'PROVISIONAL GARRISON', 'PG'],
+    D: ['D', 'SOLAHMA'],
+    C: ['C', 'SECOND LINE'],
+    B: ['B', 'FRONT LINE'],
+    A: ['A', 'KESHIK'],
+};
+
+interface ResolvedFactionRatingProfile {
+    sourceLevels: string[];
+    canonicalLevels: (typeof DEFAULT_CANONICAL_RATINGS)[number][];
+}
+
+function getFactionLogoFilename(factionKey: string): string | undefined {
+    const fileName = `${factionKey}.png`;
+    const filePath = path.join(MM_FACTIONS_IMAGE_DIR, fileName);
+    return fs.existsSync(filePath) ? fileName : undefined;
+}
+
+function shouldTreatXmlNodeAsArray(name: string, jpath: unknown): boolean {
+    const pathKey = typeof jpath === 'string' ? jpath : '';
+    return [
+        'eras.era',
+        'ruleset.customRanks.rank',
+        'ruleset.defaults.unitType',
+        'ruleset.defaults.echelon',
+        'ruleset.defaults.rankSystem',
+        'ruleset.defaults.rating',
+        'ruleset.toc.unitType.option',
+        'ruleset.toc.echelon.option',
+        'ruleset.toc.rating.option',
+        'ruleset.toc.flags.option',
+        'ruleset.force',
+    ].includes(pathKey)
+        || name === 'option'
+        || name === 'subforceOption'
+        || name === 'subforce'
+        || name === 'name'
+        || name === 'co'
+        || name === 'xo'
+        || name === 'ruleGroup'
+        || name === 'subforces'
+        || name === 'attachedForces';
+}
+
+const xmlParser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: '',
+    trimValues: true,
+    parseTagValue: false,
+    parseAttributeValue: false,
+    isArray: (name, jpath) => shouldTreatXmlNodeAsArray(name, jpath),
+});
+
+const rulesetXmlParser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: '@_',
+    trimValues: true,
+    parseTagValue: false,
+    parseAttributeValue: false,
+    isArray: (name, jpath) => shouldTreatXmlNodeAsArray(name, jpath),
+});
+
+function ensureArray<T>(value: T | T[] | undefined | null): T[] {
+    if (value === undefined || value === null) {
+        return [];
+    }
+
+    return Array.isArray(value) ? value : [value];
+}
+
+function normalizeTextList(value: unknown): string[] {
+    return ensureArray(value)
+        .flatMap((entry) => {
+            if (typeof entry === 'string') {
+                return entry.split(',');
+            }
+
+            if (entry && typeof entry === 'object') {
+                const record = entry as Record<string, unknown>;
+                if (typeof record['#text'] === 'string') {
+                    return record['#text'].split(',');
+                }
+
+                if ('name' in record) {
+                    return [String(record.name)];
+                }
+
+                return [];
+            }
+
+            return [String(entry)];
+        })
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+}
+
+function parseDateBetweenAttribute(value: string): { fromYear?: number; toYear?: number } {
+    const [fromRaw = '', toRaw = ''] = value.split(',', 2);
+    const fromYear = parseYear(fromRaw);
+    const toYear = parseYear(toRaw);
+
+    return {
+        fromYear,
+        toYear,
+    };
+}
+
+const ECHELON_TOKEN_RE = /^([0-9]+|%[A-Z_]+%)([+\-^])?$/;
+const CONSTANT_TOKEN_RE = /^%([A-Z_]+)%$/;
+
+const PREDICATE_ATTR_NAMES = new Set([
+    'ifUnitType', 'ifWeightClass', 'ifRating', 'ifEschelon',
+    'ifFormation', 'ifRole', 'ifMotive', 'ifAugmented',
+    'ifDateBetween', 'ifYearBetween', 'ifTopLevel', 'ifName',
+    'ifFaction', 'ifFlags', 'ifIndex',
+]);
+
+const ASSERTION_ATTR_NAMES = new Set([
+    'unitType', 'weightClass', 'rating', 'formation', 'role',
+    'motive', 'augmented', 'chassis', 'model', 'variant',
+    'name', 'fluffName', 'faction', 'flags',
+]);
+
+function parseEchelonToken(raw: string): JsonObject {
+    const token = raw.trim();
+    const match = token.match(ECHELON_TOKEN_RE);
+    if (!match) {
+        return { echelon: normalizeConstantToken(token) };
+    }
+
+    const result: JsonObject = { echelon: normalizeConstantToken(match[1]) };
+    if (match[2] === '^') {
+        result.augmented = true;
+    } else if (match[2] === '+') {
+        result.modifier = 'R';
+    } else if (match[2] === '-') {
+        result.modifier = 'US';
+    }
+    return result;
+}
+
+function isEchelonList(text: string): boolean {
+    const tokens = text.split(',');
+    return tokens.length > 0 && tokens.every((t) => ECHELON_TOKEN_RE.test(t.trim()));
+}
+
+function normalizeConstantToken(value: string): string {
+    const match = value.trim().match(CONSTANT_TOKEN_RE);
+    return match ? match[1] : value.trim();
+}
+
+function splitDelimitedValues(value: string, delimiter = ','): string[] {
+    return value.split(delimiter).map((entry) => entry.trim()).filter(Boolean);
+}
+
+function parseBooleanToken(value: string): boolean | undefined {
+    const normalized = value.trim().toLowerCase();
+    if (['1', 'true', 'yes'].includes(normalized)) {
+        return true;
+    }
+    if (['0', 'false', 'no'].includes(normalized)) {
+        return false;
+    }
+    return undefined;
+}
+
+function parseCodeLabelToken(raw: string): JsonObject {
+    const [codePart, ...labelParts] = raw.split(':');
+    const code = normalizeConstantToken(codePart);
+    const label = labelParts.join(':').trim();
+    return label ? { code, label } : { code };
+}
+
+function parseCodeLabelList(value: string): JsonObject[] {
+    return splitDelimitedValues(value).map((entry) => parseCodeLabelToken(entry));
+}
+
+function parseStringList(value: string): string[] {
+    return splitDelimitedValues(value).map((entry) => normalizeConstantToken(entry));
+}
+
+function parseEchelonList(value: string): JsonObject[] {
+    return splitDelimitedValues(value).map((entry) => parseEchelonToken(entry));
+}
+
+function parseSingleEchelon(value: string): JsonObject | string {
+    const parsed = parseEchelonList(value);
+    return parsed.length === 1 ? parsed[0] : value.trim();
+}
+
+function mergeNormalizedContent(target: JsonObject, content: unknown): void {
+    if (content === undefined) {
+        return;
+    }
+
+    if (content && typeof content === 'object' && !Array.isArray(content)) {
+        Object.assign(target, content as JsonObject);
+        return;
+    }
+
+    target.value = content;
+}
+
+function normalizeRulesetScalar(raw: string, path: string[]): unknown {
+    const nodeName = path[path.length - 1] || '';
+    const parentName = path[path.length - 2] || '';
+    const trimmed = raw.trim();
+
+    if (trimmed === '') {
+        if ([
+            'option', 'subforce', 'name', 'co', 'xo', 'unitType', 'echelon',
+            'rankSystem', 'rating', 'weightClass', 'formation', 'role',
+            'motive', 'flags', 'chassis', 'variant', 'changeEschelon', 'rank',
+        ].includes(nodeName)) {
+            return {};
+        }
+        return '';
+    }
+
+    if (nodeName === 'asParent') {
+        return true;
+    }
+
+    if (nodeName === 'asFaction') {
+        return normalizeConstantToken(trimmed);
+    }
+
+    if (nodeName === 'base') {
+        return normalizeConstantToken(trimmed);
+    }
+
+    if (nodeName === 'rank') {
+        return parseCodeLabelToken(trimmed);
+    }
+
+    if (nodeName === 'co' || nodeName === 'xo') {
+        return { rank: normalizeConstantToken(trimmed) };
+    }
+
+    if (nodeName === 'name') {
+        return { name: trimmed };
+    }
+
+    if (nodeName === 'subforce') {
+        return { echelon: parseSingleEchelon(trimmed) };
+    }
+
+    if (nodeName === 'unitType' || (nodeName === 'option' && parentName === 'unitType')) {
+        return { unitTypes: parseStringList(trimmed) };
+    }
+
+    if (nodeName === 'echelon' || (nodeName === 'option' && parentName === 'echelon')) {
+        return { echelons: parseEchelonList(trimmed) };
+    }
+
+    if (nodeName === 'rankSystem') {
+        return { rankSystems: parseStringList(trimmed) };
+    }
+
+    if (nodeName === 'rating' || (nodeName === 'option' && parentName === 'rating')) {
+        return { ratings: parseCodeLabelList(trimmed) };
+    }
+
+    if (nodeName === 'weightClass' || (nodeName === 'option' && parentName === 'weightClass')) {
+        return { weightClasses: parseStringList(trimmed) };
+    }
+
+    if (nodeName === 'formation' || (nodeName === 'option' && parentName === 'formation')) {
+        return { formations: parseStringList(trimmed) };
+    }
+
+    if (nodeName === 'role' || (nodeName === 'option' && parentName === 'role')) {
+        return { roles: parseStringList(trimmed) };
+    }
+
+    if (nodeName === 'motive' || (nodeName === 'option' && parentName === 'motive')) {
+        return { motives: parseStringList(trimmed) };
+    }
+
+    if (nodeName === 'flags' || (nodeName === 'option' && parentName === 'flags')) {
+        return { flags: parseStringList(trimmed) };
+    }
+
+    if (nodeName === 'chassis' || (nodeName === 'option' && parentName === 'chassis')) {
+        return { chassis: parseStringList(trimmed) };
+    }
+
+    if (nodeName === 'variant' || (nodeName === 'option' && parentName === 'variant')) {
+        return { variants: parseStringList(trimmed) };
+    }
+
+    if (nodeName === 'changeEschelon' || (nodeName === 'option' && parentName === 'changeEschelon')) {
+        const echelons = parseEchelonList(trimmed);
+        return echelons.length === 1 ? { echelon: echelons[0] } : { echelons };
+    }
+
+    if (isEchelonList(trimmed)) {
+        const echelons = parseEchelonList(trimmed);
+        return echelons.length === 1 ? { echelon: echelons[0] } : { echelons };
+    }
+
+    return normalizeConstantToken(trimmed);
+}
+
+function normalizeRulesetAttributeValue(attrName: string, attrValue: string): unknown {
+    switch (attrName) {
+        case 'ifUnitType':
+        case 'unitType':
+        case 'ifFormation':
+        case 'ifRole':
+        case 'ifMotive':
+        case 'ifName':
+        case 'ifFaction':
+        case 'ifFlags':
+        case 'ifIndex':
+            return splitDelimitedValues(attrValue, '|');
+        case 'ifWeightClass':
+            return splitDelimitedValues(attrValue, '|');
+        case 'ifRating':
+            return splitDelimitedValues(attrValue, '|');
+        case 'ifEschelon':
+            return splitDelimitedValues(attrValue, '|').map((entry) => parseEchelonToken(entry));
+        case 'weightClass':
+            return splitDelimitedValues(attrValue);
+        case 'rating':
+            return splitDelimitedValues(attrValue);
+        case 'formation':
+            return splitDelimitedValues(attrValue);
+        case 'role':
+            return splitDelimitedValues(attrValue);
+        case 'motive':
+            return splitDelimitedValues(attrValue);
+        case 'flags':
+            return splitDelimitedValues(attrValue);
+        case 'augmented':
+        case 'ifAugmented':
+        case 'ifTopLevel': {
+            const parsed = parseBooleanToken(attrValue);
+            return parsed === undefined ? attrValue : parsed;
+        }
+        case 'echelon':
+            return parseSingleEchelon(attrValue);
+        case 'weight':
+        case 'num':
+        case 'position':
+            return Number.parseInt(attrValue, 10);
+        default:
+            return normalizeConstantToken(attrValue);
+    }
+}
+
+function mapPredicateAttrName(attrName: string): string {
+    switch (attrName) {
+        case 'ifUnitType':
+            return 'unitTypes';
+        case 'ifWeightClass':
+            return 'weightClasses';
+        case 'ifRating':
+            return 'ratings';
+        case 'ifEschelon':
+            return 'echelons';
+        case 'ifFormation':
+            return 'formations';
+        case 'ifRole':
+            return 'roles';
+        case 'ifMotive':
+            return 'motives';
+        case 'ifAugmented':
+            return 'augmented';
+        case 'ifTopLevel':
+            return 'topLevel';
+        case 'ifName':
+            return 'names';
+        case 'ifFaction':
+            return 'factions';
+        case 'ifFlags':
+            return 'flags';
+        case 'ifIndex':
+            return 'indexes';
+        default:
+            return attrName;
+    }
+}
+
+function mapAssertionAttrName(attrName: string): string {
+    switch (attrName) {
+        case 'unitType':
+            return 'unitTypes';
+        case 'weightClass':
+            return 'weightClasses';
+        case 'rating':
+            return 'ratings';
+        case 'formation':
+            return 'formations';
+        case 'role':
+            return 'roles';
+        case 'motive':
+            return 'motives';
+        case 'flags':
+            return 'flags';
+        default:
+            return attrName;
+    }
+}
+
+function mapRulesetChildKey(key: string, path: string[]): string {
+    if (key === 'force' && path.length === 1 && path[0] === 'ruleset') {
+        return 'forces';
+    }
+    if (key === 'option') {
+        return 'options';
+    }
+    if (key === 'subforce') {
+        return 'subforces';
+    }
+    if (key === 'subforceOption') {
+        return 'subforceOptions';
+    }
+    return key;
+}
+
+function normalizeRulesetNode(value: unknown, path: string[] = []): unknown {
+    if (value === undefined || value === null) {
+        return undefined;
+    }
+
+    if (Array.isArray(value)) {
+        return value.map((entry) => normalizeRulesetNode(entry, path));
+    }
+
+    if (typeof value !== 'object') {
+        return normalizeRulesetScalar(String(value), path);
+    }
+
+    const source = value as Record<string, unknown>;
+    const normalized: JsonObject = {};
+    const when: JsonObject = {};
+    const assign: JsonObject = {};
+
+    for (const [key, entry] of Object.entries(source)) {
+        if (key === '#text') {
+            mergeNormalizedContent(normalized, normalizeRulesetScalar(String(entry), path));
+            continue;
+        }
+
+        if (key.startsWith('@_')) {
+            const attrName = key.slice(2);
+            const attrValue = entry === undefined || entry === null ? '' : String(entry);
+
+            if (attrName === 'ifDateBetween' || attrName === 'ifYearBetween') {
+                const { fromYear, toYear } = parseDateBetweenAttribute(attrValue);
+                if (fromYear !== undefined) {
+                    when.fromYear = fromYear;
+                }
+                if (toYear !== undefined) {
+                    when.toYear = toYear;
+                }
+                continue;
+            }
+
+            if (attrName === 'xmlns:xsi') {
+                continue;
+            }
+
+            if (attrName === 'xsi:noNamespaceSchemaLocation') {
+                continue;
+            }
+
+            if (PREDICATE_ATTR_NAMES.has(attrName)) {
+                when[mapPredicateAttrName(attrName)] = normalizeRulesetAttributeValue(attrName, attrValue);
+                continue;
+            }
+
+            if (ASSERTION_ATTR_NAMES.has(attrName)) {
+                assign[mapAssertionAttrName(attrName)] = normalizeRulesetAttributeValue(attrName, attrValue);
+                continue;
+            }
+
+            switch (attrName) {
+                case 'echelon':
+                    normalized.echelon = normalizeRulesetAttributeValue(attrName, attrValue);
+                    break;
+                case 'eschName':
+                    normalized.echelonName = attrValue;
+                    break;
+                case 'weight':
+                case 'num':
+                case 'position':
+                    normalized[attrName] = normalizeRulesetAttributeValue(attrName, attrValue);
+                    break;
+                case 'title':
+                case 'generate':
+                case 'faction':
+                case 'ratingSystem':
+                    if (attrValue !== '') {
+                        normalized[attrName] = attrValue;
+                    }
+                    break;
+                default:
+                    normalized[attrName] = normalizeRulesetAttributeValue(attrName, attrValue);
+                    break;
+            }
+            continue;
+        }
+
+        const child = normalizeRulesetNode(entry, [...path, key]);
+        if (child !== undefined) {
+            normalized[mapRulesetChildKey(key, path)] = child;
+        }
+    }
+
+    if (Object.keys(when).length > 0) {
+        normalized.when = when;
+    }
+
+    if (Object.keys(assign).length > 0) {
+        normalized.assign = assign;
+    }
+
+    return normalized;
+}
+
+function isLegacyRulesetEchelonToken(value: unknown): value is JsonObject & { echelon: string } {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return false;
+    }
+
+    const keys = Object.keys(value as JsonObject);
+    return 'echelon' in (value as JsonObject)
+        && keys.every((key) => ['echelon', 'modifier', 'augmented'].includes(key));
+}
+
+function mapRulesetExportKey(key: string): string {
+    switch (key) {
+        case 'faction':
+            return 'factionKey';
+        case 'num':
+            return 'count';
+        case 'asFaction':
+            return 'asFactionKey';
+        case 'asParent':
+            return 'useParentFaction';
+        default:
+            return key;
+    }
+}
+
+function finalizeRulesetExportValue(value: unknown): unknown {
+    if (value === undefined || value === null) {
+        return undefined;
+    }
+
+    if (Array.isArray(value)) {
+        return value
+            .map((entry) => finalizeRulesetExportValue(entry))
+            .filter((entry) => entry !== undefined);
+    }
+
+    if (isLegacyRulesetEchelonToken(value)) {
+        return {
+            code: String(value.echelon),
+            ...(value.modifier === undefined ? {} : { modifier: value.modifier }),
+            ...(value.augmented === undefined ? {} : { augmented: value.augmented }),
+        };
+    }
+
+    if (typeof value !== 'object') {
+        return value;
+    }
+
+    const source = value as JsonObject;
+    const normalized: JsonObject = {};
+
+    for (const [key, entry] of Object.entries(source)) {
+        if (key === 'parent' || key === 'ratingSystem') {
+            continue;
+        }
+
+        const nextValue = finalizeRulesetExportValue(entry);
+        if (nextValue === undefined) {
+            continue;
+        }
+
+        normalized[mapRulesetExportKey(key)] = key === 'asParent'
+            ? Boolean(nextValue)
+            : nextValue;
+    }
+
+    return normalized;
+}
+
+function buildRulesetIndexes(forces: JsonObject[]): { forceIndexesByEchelon: Record<string, number[]> } {
+    const forceIndexesByEchelon: Record<string, number[]> = {};
+
+    forces.forEach((force, index) => {
+        const echelon = force.echelon;
+        if (!echelon || typeof echelon !== 'object' || Array.isArray(echelon)) {
+            return;
+        }
+
+        const code = typeof (echelon as JsonObject).code === 'string'
+            ? String((echelon as JsonObject).code)
+            : '';
+        if (!code) {
+            return;
+        }
+
+        const bucket = forceIndexesByEchelon[code] ?? [];
+        bucket.push(index);
+        forceIndexesByEchelon[code] = bucket;
+    });
+
+    return { forceIndexesByEchelon };
+}
+
+function readText(filePath: string): string {
+    return fs.readFileSync(filePath, 'utf8');
+}
+
+function readYamlFile(filePath: string): JsonObject {
+    const parsed = loadYaml(readText(filePath));
+    if (!parsed || typeof parsed !== 'object') {
+        throw new Error(`Invalid YAML data in ${filePath}`);
+    }
+
+    return parsed as JsonObject;
+}
+
+function parseYear(value: unknown): number | undefined {
+    if (value === undefined || value === null || value === '') {
+        return undefined;
+    }
+
+    const raw = String(value).trim();
+    const match = raw.match(/^(\d{4})/);
+    return match ? Number.parseInt(match[1], 10) : undefined;
+}
+
+function listFiles(dirPath: string, extension: string): string[] {
+    return fs.readdirSync(dirPath)
+        .filter((name) => name.toLowerCase().endsWith(extension.toLowerCase()))
+        .sort((left, right) => left.localeCompare(right));
+}
+
+function listFilesRecursive(dirPath: string, extensions: string[]): string[] {
+    const normalizedExtensions = extensions.map((extension) => extension.toLowerCase());
+    const files: string[] = [];
+
+    for (const entry of fs.readdirSync(dirPath, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
+        const fullPath = path.join(dirPath, entry.name);
+        if (entry.isDirectory()) {
+            files.push(...listFilesRecursive(fullPath, normalizedExtensions));
+            continue;
+        }
+
+        if (normalizedExtensions.includes(path.extname(entry.name).toLowerCase())) {
+            files.push(fullPath);
+        }
+    }
+
+    return files;
+}
+
+function normalizeLookupKey(value: string): string {
+    return value
+        .normalize('NFKD')
+        .replace(/\p{Diacritic}/gu, '')
+        .replace(/[\u2019'`"\[\]\(\)\-]/g, ' ')
+        .replace(/\bclass\b/gi, ' ')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .toLowerCase();
+}
+
+function tokenizeLookupKey(value: string): string[] {
+    return normalizeLookupKey(value)
+        .split(' ')
+        .filter(Boolean);
+}
+
+function scoreLookupTokens(requestedTokens: string[], candidateTokens: string[]): number {
+    if (requestedTokens.length === 0 || candidateTokens.length === 0) {
+        return 0;
+    }
+
+    const candidateTokenSet = new Set(candidateTokens);
+    let shared = 0;
+    for (const token of requestedTokens) {
+        if (candidateTokenSet.has(token)) {
+            shared += 1;
+        }
+    }
+
+    let prefixMatches = 0;
+    const prefixLimit = Math.min(requestedTokens.length, candidateTokens.length);
+    for (let index = 0; index < prefixLimit; index += 1) {
+        if (requestedTokens[index] !== candidateTokens[index]) {
+            break;
+        }
+        prefixMatches += 1;
+    }
+
+    return (prefixMatches * 100) + (shared * 10) - Math.abs(requestedTokens.length - candidateTokens.length);
+}
+
+function buildUnitMetadataCompositeKey(unitType: string, chassis: string, model: string): string {
+    return `${unitType}\u0000${chassis}\u0000${model}`;
+}
+
+function buildUnitMetadataLegacyKey(chassis: string, model: string): string {
+    return `${chassis} ${model}`.trim();
+}
+
+function buildChassisName(chassis: string, clanName: string): string {
+    if (!chassis || !clanName) {
+        return chassis;
+    }
+
+    const expectedSuffix = `(${clanName})`;
+    if (chassis.includes(expectedSuffix)) {
+        return chassis;
+    }
+
+    return `${chassis} ${expectedSuffix}`;
+}
+
+function addUniqueUnitMetadataLookup(
+    index: Map<string, UnitMetadataRecord | null>,
+    key: string,
+    unitMetadata: UnitMetadataRecord,
+): void {
+    if (!key) {
+        return;
+    }
+
+    if (!index.has(key)) {
+        index.set(key, unitMetadata);
+        return;
+    }
+
+    const existing = index.get(key);
+    if (existing && existing !== unitMetadata) {
+        index.set(key, null);
+    }
+}
+
+function normalizeMetadataUnitTypeName(rawUnitType: string, context: string, motionType?: string): string {
+    const normalized = rawUnitType.trim();
+    const normalizedMotionType = motionType?.trim().toLowerCase();
+
+    switch (normalized) {
+        case 'Mek':
+        case 'BattleArmor':
+        case 'Infantry':
+        case 'ProtoMek':
+        case 'VTOL':
+        case 'Naval':
+        case 'Gun Emplacement':
+        case 'Conventional Fighter':
+        case 'AeroSpaceFighter':
+        case 'Aero':
+        case 'Small Craft':
+        case 'Dropship':
+        case 'Jumpship':
+        case 'Warship':
+        case 'Space Station':
+        case 'Handheld Weapon':
+        case 'Mobile Structure':
+        case 'Advanced Building':
+            return normalized;
+        case 'Battle Armor':
+            return 'BattleArmor';
+        case 'Protomek':
+        case 'ProtoMech':
+            return 'ProtoMek';
+        case 'GunEmplacement':
+            return 'Gun Emplacement';
+        case 'ConvFighter':
+            return 'Conventional Fighter';
+        case 'Aerospace Fighter':
+        case 'AerospaceFighter':
+            return 'AeroSpaceFighter';
+        case 'SmallCraft':
+            return 'Small Craft';
+        case 'DropShip':
+            return 'Dropship';
+        case 'JumpShip':
+            return 'Jumpship';
+        case 'SpaceStation':
+            return 'Space Station';
+        case 'HandheldWeapon':
+            return 'Handheld Weapon';
+        case 'MobileStructure':
+            return 'Mobile Structure';
+        case 'AdvancedBuilding':
+            return 'Advanced Building';
+        case 'Tank':
+        case 'SupportTank':
+        case 'LargeSupportTank':
+            if (normalizedMotionType === 'hydrofoil'
+                || normalizedMotionType === 'submarine'
+                || normalizedMotionType === 'naval') {
+                return 'Naval';
+            }
+            return 'Tank';
+        case 'SupportVTOL':
+            return 'VTOL';
+        case 'FixedWingSupport':
+            return 'Conventional Fighter';
+        case 'BuildingEntity':
+            return 'Advanced Building';
+        default:
+            throw new Error(`[MegaMek] unknown unit type "${rawUnitType}" in ${context}`);
+    }
+}
+
+function normalizeMetadataUnitTypeFromDirectory(filePath: string, rootPath: string): string {
+    const relativePath = path.relative(rootPath, filePath);
+    const topLevelDir = relativePath.split(path.sep)[0]?.trim().toLowerCase();
+
+    switch (topLevelDir) {
+        case 'meks':
+            return 'Mek';
+        case 'vehicles':
+        case 'tanks':
+            return 'Tank';
+        case 'battlearmor':
+            return 'BattleArmor';
+        case 'infantry':
+            return 'Infantry';
+        case 'protomeks':
+            return 'ProtoMek';
+        case 'vtol':
+            return 'VTOL';
+        case 'naval':
+            return 'Naval';
+        case 'gunemplacement':
+        case 'gunemplacements':
+        case 'ge':
+            return 'Gun Emplacement';
+        case 'convfighter':
+            return 'Conventional Fighter';
+        case 'fighters':
+            return 'AeroSpaceFighter';
+        case 'smallcraft':
+            return 'Small Craft';
+        case 'dropships':
+            return 'Dropship';
+        case 'jumpships':
+            return 'Jumpship';
+        case 'warship':
+            return 'Warship';
+        case 'spacestation':
+            return 'Space Station';
+        case 'handheld':
+            return 'Handheld Weapon';
+        case 'mobilestructure':
+            return 'Mobile Structure';
+        case 'advancedbuildings':
+        case 'advancedbuilding':
+            return 'Advanced Building';
+        default:
+            throw new Error(`[MegaMek] cannot derive unit type from path ${filePath}`);
+    }
+}
+
+function deriveWeightClass(unitType: string, tonnage: number): number | undefined {
+    if (!Number.isFinite(tonnage) || tonnage <= 0) {
+        return undefined;
+    }
+
+    if (unitType === 'Mek') {
+        for (let index = 0; index < MEK_WEIGHT_LIMITS.length - 1; index += 1) {
+            if (tonnage <= MEK_WEIGHT_LIMITS[index]) {
+                return index;
+            }
+        }
+        return MEK_WEIGHT_LIMITS.length - 1;
+    }
+
+    if (unitType === 'Tank' || unitType === 'Naval' || unitType === 'VTOL') {
+        for (let index = 1; index < VEHICLE_WEIGHT_LIMITS.length - 1; index += 1) {
+            if (tonnage <= VEHICLE_WEIGHT_LIMITS[index]) {
+                return index;
+            }
+        }
+        return VEHICLE_WEIGHT_LIMITS.length - 1;
+    }
+
+    if (unitType === 'AeroSpaceFighter' || unitType === 'Conventional Fighter' || unitType === 'Aero') {
+        for (let index = 1; index < AEROSPACE_WEIGHT_LIMITS.length - 1; index += 1) {
+            if (tonnage <= AEROSPACE_WEIGHT_LIMITS[index]) {
+                return index;
+            }
+        }
+        return AEROSPACE_WEIGHT_LIMITS.length - 1;
+    }
+
+    return undefined;
+}
+
+function getTaggedText(raw: string, tagName: string): string | undefined {
+    const escapedTagName = tagName.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+    const match = raw.match(new RegExp(`<${escapedTagName}>([\\s\\S]*?)</${escapedTagName}>`, 'i'));
+    return match?.[1]?.trim();
+}
+
+function parseBlkTechFlags(rawType: string): { isClanTech: boolean; isStarLeague: boolean } {
+    const normalizedType = rawType.trim().toLowerCase();
+    const isClanTech = normalizedType.includes('clan') || normalizedType.includes('mixed');
+    const isStarLeague = !isClanTech
+        && (normalizedType.includes('advanced') || normalizedType.includes('experimental') || normalizedType.includes('unofficial'));
+
+    return { isClanTech, isStarLeague };
+}
+
+function parseMtfTechFlags(techBase: string, rulesLevel: number | undefined): { isClanTech: boolean; isStarLeague: boolean } {
+    const normalizedTechBase = techBase.trim().toLowerCase();
+    const isClanTech = normalizedTechBase.includes('clan') || normalizedTechBase.includes('mixed');
+    const isStarLeague = !isClanTech && rulesLevel !== undefined && rulesLevel >= 3;
+
+    return { isClanTech, isStarLeague };
+}
+
+function parseBlkUnitMetadata(raw: string, filePath: string): UnitMetadataRecord | undefined {
+    const unitType = normalizeMetadataUnitTypeName(
+        getTaggedText(raw, 'UnitType') ?? '',
+        filePath,
+        getTaggedText(raw, 'motion_type'),
+    );
+    const chassis = getTaggedText(raw, 'Name') ?? '';
+    const model = getTaggedText(raw, 'Model') ?? '';
+    const introYear = parseYear(getTaggedText(raw, 'year'));
+    if (!chassis || introYear === undefined) {
+        return undefined;
+    }
+
+    const parsedWeightClass = Number.parseInt(getTaggedText(raw, 'weightclass') ?? '', 10);
+    const tonnage = Number.parseFloat(getTaggedText(raw, 'tonnage') ?? '');
+    const weightClass = Number.isFinite(parsedWeightClass)
+        ? parsedWeightClass
+        : deriveWeightClass(unitType, tonnage);
+    const techFlags = parseBlkTechFlags(getTaggedText(raw, 'type') ?? '');
+
+    return {
+        unitType,
+        chassis,
+        model,
+        introYear,
+        weightClass,
+        isClanTech: techFlags.isClanTech,
+        isStarLeague: techFlags.isStarLeague,
+    };
+}
+
+function parseMtfUnitMetadata(raw: string, filePath: string, rootPath: string): UnitMetadataRecord | undefined {
+    const fields = new Map<string, string>();
+    for (const line of raw.split(/\r?\n/u)) {
+        const separatorIndex = line.indexOf(':');
+        if (separatorIndex <= 0) {
+            continue;
+        }
+
+        const key = line.slice(0, separatorIndex).trim().toLowerCase();
+        const value = line.slice(separatorIndex + 1).trim();
+        if (value && !fields.has(key)) {
+            fields.set(key, value);
+        }
+    }
+
+    const unitType = normalizeMetadataUnitTypeFromDirectory(filePath, rootPath);
+    const baseChassis = fields.get('chassis') ?? '';
+    const clanName = fields.get('clanname') ?? '';
+    const chassis = buildChassisName(baseChassis, clanName);
+    const model = fields.get('model') ?? '';
+    const introYear = parseYear(fields.get('era'));
+    if (!chassis || introYear === undefined) {
+        return undefined;
+    }
+
+    const rulesLevel = Number.parseInt(fields.get('rules level') ?? '', 10);
+    const tonnage = Number.parseFloat(fields.get('mass') ?? '');
+    const techFlags = parseMtfTechFlags(fields.get('techbase') ?? '', Number.isFinite(rulesLevel) ? rulesLevel : undefined);
+
+    return {
+        unitType,
+        chassis,
+        model,
+        introYear,
+        weightClass: deriveWeightClass(unitType, tonnage),
+        isClanTech: techFlags.isClanTech,
+        isStarLeague: techFlags.isStarLeague,
+    };
+}
+
+function loadNameChangeAliases(filePath: string): Map<string, string> {
+    const aliasMap = new Map<string, string>();
+    const raw = readText(filePath);
+
+    for (const line of raw.split(/\r?\n/u)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) {
+            continue;
+        }
+
+        const separatorIndex = trimmed.indexOf('|');
+        if (separatorIndex <= 0 || separatorIndex >= trimmed.length - 1) {
+            continue;
+        }
+
+        const previousName = trimmed.slice(0, separatorIndex).trim();
+        const replacementName = trimmed.slice(separatorIndex + 1).trim();
+        if (previousName && replacementName) {
+            aliasMap.set(previousName, replacementName);
+        }
+    }
+
+    return aliasMap;
+}
+
+function resolveAliasName(name: string, aliases: Map<string, string>): string {
+    let currentName = name;
+    const visited = new Set<string>();
+
+    while (!visited.has(currentName)) {
+        visited.add(currentName);
+        const nextName = aliases.get(currentName);
+        if (!nextName) {
+            break;
+        }
+        currentName = nextName;
+    }
+
+    return currentName;
+}
+
+function createUnitMetadataIndex(): UnitMetadataIndex {
+    return {
+        byCompositeKey: new Map<string, UnitMetadataRecord>(),
+        byLegacyKey: new Map<string, UnitMetadataRecord>(),
+        byNormalizedKey: new Map<string, UnitMetadataRecord>(),
+        byNormalizedModel: new Map<string, UnitMetadataRecord | null>(),
+        byNormalizedChassis: new Map<string, UnitMetadataRecord | null>(),
+        byNormalizedModelCandidates: new Map<string, UnitMetadataRecord[]>(),
+    };
+}
+
+function indexUnitMetadata(index: UnitMetadataIndex, unitMetadata: UnitMetadataRecord): void {
+    const compositeKey = buildUnitMetadataCompositeKey(unitMetadata.unitType, unitMetadata.chassis, unitMetadata.model);
+    if (!index.byCompositeKey.has(compositeKey)) {
+        index.byCompositeKey.set(compositeKey, unitMetadata);
+    }
+
+    const legacyKey = buildUnitMetadataLegacyKey(unitMetadata.chassis, unitMetadata.model);
+    if (!index.byLegacyKey.has(legacyKey)) {
+        index.byLegacyKey.set(legacyKey, unitMetadata);
+
+        const normalizedKey = normalizeLookupKey(legacyKey);
+        if (!index.byNormalizedKey.has(normalizedKey)) {
+            index.byNormalizedKey.set(normalizedKey, unitMetadata);
+        }
+
+        addUniqueUnitMetadataLookup(index.byNormalizedModel, normalizeLookupKey(unitMetadata.model), unitMetadata);
+        addUniqueUnitMetadataLookup(index.byNormalizedChassis, normalizeLookupKey(unitMetadata.chassis), unitMetadata);
+
+        const normalizedModel = normalizeLookupKey(unitMetadata.model);
+        if (normalizedModel) {
+            const candidates = index.byNormalizedModelCandidates.get(normalizedModel) ?? [];
+            candidates.push(unitMetadata);
+            index.byNormalizedModelCandidates.set(normalizedModel, candidates);
+        }
+    }
+}
+
+function loadUnitMetadataIndex(unitFilesRoot: string, nameChangesFilePath: string): UnitMetadataIndex {
+    const index = createUnitMetadataIndex();
+
+    for (const filePath of listFilesRecursive(unitFilesRoot, ['.blk', '.mtf'])) {
+        const raw = readText(filePath);
+        const unitMetadata = path.extname(filePath).toLowerCase() === '.blk'
+            ? parseBlkUnitMetadata(raw, filePath)
+            : parseMtfUnitMetadata(raw, filePath, unitFilesRoot);
+        if (unitMetadata) {
+            indexUnitMetadata(index, unitMetadata);
+        }
+    }
+
+    const aliases = loadNameChangeAliases(nameChangesFilePath);
+    for (const [previousName, replacementName] of aliases) {
+        const resolvedName = resolveAliasName(replacementName, aliases);
+        const unitMetadata = index.byLegacyKey.get(resolvedName)
+            ?? index.byNormalizedKey.get(normalizeLookupKey(resolvedName));
+        if (!unitMetadata || index.byLegacyKey.has(previousName)) {
+            continue;
+        }
+
+        index.byLegacyKey.set(previousName, unitMetadata);
+
+        const normalizedPreviousName = normalizeLookupKey(previousName);
+        if (normalizedPreviousName && !index.byNormalizedKey.has(normalizedPreviousName)) {
+            index.byNormalizedKey.set(normalizedPreviousName, unitMetadata);
+        }
+    }
+
+    return index;
+}
+
+function findClosestUnitMetadataByModelAndChassis(
+    index: UnitMetadataIndex,
+    chassis: string,
+    model: string,
+): UnitMetadataRecord | undefined {
+    const normalizedModel = normalizeLookupKey(model);
+    if (!normalizedModel) {
+        return undefined;
+    }
+
+    const candidates = index.byNormalizedModelCandidates.get(normalizedModel);
+    if (!candidates || candidates.length === 0) {
+        return undefined;
+    }
+    if (candidates.length === 1) {
+        return candidates[0];
+    }
+
+    const requestedTokens = tokenizeLookupKey(chassis);
+    let bestCandidate: UnitMetadataRecord | undefined;
+    let bestScore = Number.NEGATIVE_INFINITY;
+    let bestScoreCount = 0;
+
+    for (const candidate of candidates) {
+        const candidateTokens = tokenizeLookupKey(candidate.chassis);
+        const score = scoreLookupTokens(requestedTokens, candidateTokens);
+        if (score > bestScore) {
+            bestCandidate = candidate;
+            bestScore = score;
+            bestScoreCount = 1;
+        } else if (score === bestScore) {
+            bestScoreCount += 1;
+        }
+    }
+
+    if (bestCandidate && bestScore > 0 && bestScoreCount === 1) {
+        return bestCandidate;
+    }
+
+    return undefined;
+}
+
+function getCandidateMetadataUnitTypes(compiledUnitType: UnitType): string[] {
+    switch (compiledUnitType) {
+        case 'Aero':
+            return ['AeroSpaceFighter', 'Conventional Fighter', 'Small Craft', 'Dropship', 'Jumpship', 'Warship', 'Space Station'];
+        case 'Infantry':
+            return ['BattleArmor', 'Infantry'];
+        default:
+            return [compiledUnitType];
+    }
+}
+
+function findUnitMetadata(
+    index: UnitMetadataIndex,
+    unitType: UnitType,
+    chassis: string,
+    model: string,
+): UnitMetadataRecord | undefined {
+    for (const candidateUnitType of getCandidateMetadataUnitTypes(unitType)) {
+        const exact = index.byCompositeKey.get(buildUnitMetadataCompositeKey(candidateUnitType, chassis, model));
+        if (exact) {
+            return exact;
+        }
+    }
+
+    const legacyKey = buildUnitMetadataLegacyKey(chassis, model);
+    const legacyMatch = index.byLegacyKey.get(legacyKey);
+    if (legacyMatch) {
+        return legacyMatch;
+    }
+
+    const normalizedLegacyMatch = index.byNormalizedKey.get(normalizeLookupKey(legacyKey));
+    if (normalizedLegacyMatch) {
+        return normalizedLegacyMatch;
+    }
+
+    const closestMatch = findClosestUnitMetadataByModelAndChassis(index, chassis, model);
+    if (closestMatch) {
+        return closestMatch;
+    }
+
+    if (model) {
+        const normalizedModelMatch = index.byNormalizedModel.get(normalizeLookupKey(model));
+        if (normalizedModelMatch) {
+            return normalizedModelMatch;
+        }
+    }
+
+    const normalizedChassisMatch = index.byNormalizedChassis.get(normalizeLookupKey(chassis));
+    return normalizedChassisMatch ?? undefined;
+}
+
+function parseYearsActive(rawRanges: unknown): DateRange[] {
+    return ensureArray(rawRanges).map((entry) => {
+        if (!entry || typeof entry !== 'object') {
+            return {};
+        }
+
+        const range = entry as Record<string, unknown>;
+        return {
+            start: parseYear(range.start),
+            end: parseYear(range.end),
+        };
+    });
+}
+
+function parseYearKeyedChanges(raw: unknown): YearKeyedChange[] {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return [];
+    }
+
+    return Object.entries(raw as Record<string, unknown>)
+        .map(([yearStr, name]) => ({
+            year: Number.parseInt(String(yearStr), 10),
+            name: String(name),
+        }))
+        .filter((entry) => Number.isFinite(entry.year) && entry.name.length > 0)
+        .sort((left, right) => left.year - right.year);
+}
+
+function parseColor(raw: unknown): RgbColor | undefined {
+    if (!raw || typeof raw !== 'object') {
+        return undefined;
+    }
+
+    const c = raw as Record<string, unknown>;
+    const red = Number(c.red);
+    const green = Number(c.green);
+    const blue = Number(c.blue);
+
+    if (!Number.isFinite(red) || !Number.isFinite(green) || !Number.isFinite(blue)) {
+        return undefined;
+    }
+
+    return [red, green, blue];
+}
+
+function parseFactionLeaders(raw: unknown): FactionLeader[] | undefined {
+    const entries = ensureArray(raw).filter((e) => e && typeof e === 'object');
+    if (entries.length === 0) {
+        return undefined;
+    }
+
+    return entries.map((entry) => {
+        const e = entry as Record<string, unknown>;
+        return {
+            title: String(e.title || ''),
+            firstName: String(e.firstName || ''),
+            surname: String(e.surname || ''),
+            gender: e.gender ? String(e.gender) : undefined,
+            honorific: e.honorific ? String(e.honorific) : undefined,
+            startYear: parseYear(e.startYear),
+            endYear: parseYear(e.endYear),
+        };
+    });
+}
+
+function parseEraMods(raw: unknown): number[] | undefined {
+    const arr = ensureArray(raw);
+    if (arr.length === 0) {
+        return undefined;
+    }
+
+    return arr.map((v) => Number(v));
+}
+
+function loadFactionMulIdMap(filePath: string): FactionMulIdConfig {
+    const mappedIds = new Map<string, number[]>();
+    const skippedFactions = new Set<string>();
+
+    if (!fs.existsSync(filePath)) {
+        return {
+            mappedIds,
+            skippedFactions,
+        };
+    }
+
+    const lines = readText(filePath)
+        .split(/\r?\n/u)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+    for (const line of lines.slice(1)) {
+        const [rawFactionId = '', rawMulIds = ''] = line.split(',', 2);
+        const factionId = rawFactionId.trim();
+        if (!factionId) {
+            continue;
+        }
+
+        const rawValues = rawMulIds
+            .split(';')
+            .map((value) => Number.parseInt(value.trim(), 10))
+            .filter((value) => Number.isFinite(value));
+
+        if (rawValues.includes(-1)) {
+            skippedFactions.add(factionId);
+            continue;
+        }
+
+        const mulIds = rawValues.filter((value) => value > 0);
+
+        if (mulIds.length > 0) {
+            mappedIds.set(factionId, mulIds);
+        }
+    }
+
+    return {
+        mappedIds,
+        skippedFactions,
+    };
+}
+
+function loadMulFactionNames(filePath: string): Map<number, string> {
+    const mulFactionNames = new Map<number, string>();
+
+    if (!fs.existsSync(filePath)) {
+        return mulFactionNames;
+    }
+
+    const lines = readText(filePath)
+        .split(/\r?\n/u)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+    for (const line of lines.slice(1)) {
+        const [rawId = '', rawName = ''] = line.split(',', 3);
+        const mulId = Number.parseInt(rawId.trim(), 10);
+        const mulName = rawName.trim();
+
+        if (Number.isFinite(mulId) && mulName) {
+            mulFactionNames.set(mulId, mulName);
+        }
+    }
+
+    return mulFactionNames;
+}
+
+function loadUniverseFactions(
+    dirPath: string,
+    isCommand: boolean,
+    factionMulIds: ReadonlyMap<string, number[]>
+): Record<string, UniverseFactionRecord> {
+    const result: Record<string, UniverseFactionRecord> = {};
+
+    for (const fileName of listFiles(dirPath, '.yml')) {
+        const filePath = path.join(dirPath, fileName);
+        const raw = readYamlFile(filePath);
+        const id = String(raw.key);
+        const logo = getFactionLogoFilename(id);
+        const mulId = factionMulIds.get(id) ?? [];
+
+        result[id] = {
+            id,
+            name: String(raw.name || id),
+            mulId: [...mulId],
+            filename: fileName,
+            isCommand,
+            yearsActive: parseYearsActive(raw.yearsActive),
+            ratingLevels: normalizeTextList(raw.ratingLevels),
+            fallBackFactions: normalizeTextList(raw.fallBackFactions),
+            tags: normalizeTextList(raw.tags),
+            nameChanges: parseYearKeyedChanges(raw.nameChanges),
+            capital: raw.capital ? String(raw.capital) : undefined,
+            capitalChanges: raw.capitalChanges ? parseYearKeyedChanges(raw.capitalChanges) : undefined,
+            color: parseColor(raw.color),
+            logo,
+            camos: raw.camos ? String(raw.camos) : undefined,
+            nameGenerator: raw.nameGenerator ? String(raw.nameGenerator) : undefined,
+            eraMods: parseEraMods(raw.eraMods),
+            rankSystem: raw.rankSystem ? String(raw.rankSystem) : undefined,
+            factionLeaders: parseFactionLeaders(raw.factionLeaders),
+            successor: raw.successor ? String(raw.successor) : undefined,
+            preInvasionHonorRating: raw.preInvasionHonorRating ? String(raw.preInvasionHonorRating) : undefined,
+            postInvasionHonorRating: raw.postInvasionHonorRating ? String(raw.postInvasionHonorRating) : undefined,
+            formationBaseSize: raw.formationBaseSize !== undefined ? Number(raw.formationBaseSize) : undefined,
+            formationGrouping: raw.formationGrouping !== undefined ? Number(raw.formationGrouping) : undefined,
+        };
+    }
+
+    return result;
+}
+
+function loadMegaMekEras(filePath: string): MegaMekEra[] {
+    const parsed = xmlParser.parse(readText(filePath)) as { eras?: { era?: Array<Record<string, unknown>> } };
+    const eras: MegaMekEra[] = ensureArray(parsed.eras?.era).map((era) => ({
+        code: String(era.code),
+        name: String(era.name),
+        endYear: parseYear(era.end),
+        mulId: era.mulid === undefined ? undefined : Number.parseInt(String(era.mulid), 10),
+        icon: era.icon === undefined ? undefined : String(era.icon),
+    }));
+
+    let previousEnd: number | undefined;
+    for (const era of eras) {
+        era.startYear = previousEnd === undefined ? undefined : previousEnd + 1;
+        previousEnd = era.endYear;
+    }
+
+    return eras;
+}
+
+function parseAvailability(rawCode: string, eraYear: number): ParsedAvailability {
+    const trimmed = rawCode.trim();
+    if (trimmed.includes('!')) {
+        const [factionKey, ...ratingParts] = trimmed.split('!');
+        const byRating: Record<string, number> = {};
+        for (const ratingPart of ratingParts) {
+            const [rating, value] = ratingPart.split(':');
+            if (rating && value) {
+                byRating[rating] = Number.parseInt(value, 10);
+            }
+        }
+
+        return {
+            factionKey,
+            fileYear: eraYear,
+            ratingAdjustment: 0,
+            baseAvailability: Object.values(byRating).reduce(
+                (highest, value) => Math.max(highest, value),
+                0
+            ),
+            byRating,
+        };
+    }
+
+    const parts = trimmed.split(':');
+    if (parts.length < 2 || parts.length > 3) {
+        throw new Error(`Unsupported availability code: ${trimmed}`);
+    }
+
+    let ratingAdjustment: -1 | 0 | 1 = 0;
+    let availabilityToken = parts[1];
+    if (availabilityToken.endsWith('+')) {
+        ratingAdjustment = 1;
+        availabilityToken = availabilityToken.slice(0, -1);
+    } else if (availabilityToken.endsWith('-')) {
+        ratingAdjustment = -1;
+        availabilityToken = availabilityToken.slice(0, -1);
+    }
+
+    return {
+        factionKey: parts[0],
+        fileYear: eraYear,
+        entryYear: parts[2] ? Number.parseInt(parts[2], 10) : undefined,
+        baseAvailability: Number.parseInt(availabilityToken, 10),
+        ratingAdjustment,
+    };
+}
+
+function parseAvailabilityList(raw: unknown, eraYear: number): ParsedAvailability[] {
+    if (typeof raw !== 'string') {
+        return [];
+    }
+
+    return raw.split(',')
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .map((entry) => parseAvailability(entry, eraYear));
+}
+
+function warnOnInvalidXmlUnitType(unitType: string, sourceLabel: string): void {
+    if (!unitType || VALID_XML_UNIT_TYPES.has(unitType)) {
+        return;
+    }
+
+    console.warn(
+        `[MegaMek] unexpected unit type "${unitType}" in ${sourceLabel}`
+    );
+}
+
+function compileXmlUnitType(unitType: string, sourceLabel: string): UnitType {
+    const compiledUnitType = COMPILED_UNIT_TYPE_BY_XML_UNIT_TYPE[unitType];
+    if (compiledUnitType) {
+        return compiledUnitType;
+    }
+
+    console.warn(
+        `[MegaMek] could not compile unit type "${unitType}" in ${sourceLabel}; keeping original value`
+    );
+    return unitType as UnitType;
+}
+
+function parseWeightDistributionNode(node: Record<string, unknown>): { unitType: string; weights: number[] } | null {
+    if (!node.unitType || !node['#text']) {
+        return null;
+    }
+
+    const unitType = String(node.unitType);
+    warnOnInvalidXmlUnitType(unitType, 'weightDistribution');
+
+    return {
+        unitType,
+        weights: String(node['#text'])
+            .split(',')
+            .map((value) => Number.parseInt(value.trim(), 10))
+            .filter((value) => Number.isFinite(value)),
+    };
+}
+
+function parseSalvage(node: Record<string, unknown>): EraFactionStats['salvage'] | undefined {
+    if (!node.pct) {
+        return undefined;
+    }
+
+    const weights: Record<string, number> = {};
+    const raw = typeof node['#text'] === 'string' ? node['#text'] : '';
+    for (const entry of raw.split(',').map((part) => part.trim()).filter(Boolean)) {
+        const [factionKey, value] = entry.split(':');
+        if (factionKey && value) {
+            weights[factionKey] = Number.parseInt(value, 10);
+        }
+    }
+
+    return {
+        pct: Number.parseInt(String(node.pct), 10),
+        weights,
+    };
+}
+
+function getNodeText(node: unknown): string | undefined {
+    if (typeof node === 'string') {
+        return node.trim();
+    }
+
+    if (node && typeof node === 'object' && '#text' in (node as Record<string, unknown>)) {
+        const value = (node as Record<string, unknown>)['#text'];
+        return typeof value === 'string' ? value.trim() : undefined;
+    }
+
+    return undefined;
+}
+
+function findEraForYear(eras: MegaMekEra[], year: number): MegaMekEra | undefined {
+    return eras.find((era) => {
+        const startYear = era.startYear ?? Number.MIN_SAFE_INTEGER;
+        const endYear = era.endYear ?? 9999;
+        return year >= startYear && year <= endYear;
+    });
+}
+
+function resolveEraKey(era: MegaMekEra | undefined): string | number | undefined {
+    if (!era) {
+        return undefined;
+    }
+
+    if (USE_ERA_CODE_KEYS) {
+        return era.code;
+    }
+
+    return era.mulId;
+}
+
+function findEraKey(eras: MegaMekEra[], year: number): string | number | undefined {
+    return resolveEraKey(findEraForYear(eras, year));
+}
+
+function isFactionActiveInYear(
+    factions: Record<string, UniverseFactionRecord>,
+    factionKey: string,
+    year: number
+): boolean {
+    const faction = factions[factionKey];
+    if (!faction || faction.yearsActive.length === 0) {
+        return true;
+    }
+
+    return faction.yearsActive.some((activeRange) => {
+        const startYear = activeRange.start ?? Number.NEGATIVE_INFINITY;
+        const endYear = activeRange.end ?? Number.POSITIVE_INFINITY;
+        return year >= startYear && year <= endYear;
+    });
+}
+
+function normalizeRatingName(value: string): string {
+    return value.trim().toUpperCase();
+}
+
+function roundOutputValue(value: number): number {
+    if (!Number.isFinite(value)) {
+        return 0;
+    }
+
+    const decimalPlaces = Math.max(0, OUTPUT_DECIMAL_PLACES);
+    if (decimalPlaces === 0) {
+        return Math.round(value);
+    }
+
+    const factor = 10 ** decimalPlaces;
+    return Math.round(value * factor) / factor;
+}
+
+function normalizeAvailabilityValue(value: number): number {
+    return roundOutputValue(value);
+}
+
+function createEmptyAvailabilityByRating(): CompactAvailabilityByRating {
+    return [0, 0, 0, 0, 0];
+}
+
+function createEmptyWeightedByRating(): CompactWeightedByRating {
+    return [0, 0, 0, 0, 0];
+}
+
+function setAvailabilityByCanonical(
+    availability: CompactAvailabilityByRating,
+    canonical: (typeof DEFAULT_CANONICAL_RATINGS)[number],
+    value: number
+): void {
+    availability[CANONICAL_RATING_INDEX[canonical]] = value;
+}
+
+function createAvailabilityByCanonicalLevels(
+    canonicalLevels: readonly (typeof DEFAULT_CANONICAL_RATINGS)[number][],
+    value: number
+): CompactAvailabilityByRating {
+    const encoded = createEmptyAvailabilityByRating();
+    for (const canonical of canonicalLevels) {
+        setAvailabilityByCanonical(encoded, canonical, value);
+    }
+    return encoded;
+}
+
+function getCanonicalRatingCodes(ratingLevels: string[]): (typeof DEFAULT_CANONICAL_RATINGS)[number][] {
+    if (ratingLevels.length >= DEFAULT_CANONICAL_RATINGS.length) {
+        return [...DEFAULT_CANONICAL_RATINGS];
+    }
+
+    return [...DEFAULT_CANONICAL_RATINGS.slice(DEFAULT_CANONICAL_RATINGS.length - ratingLevels.length)];
+}
+
+function buildRatingMapFromLevels(
+    ratingLevels: string[],
+    canonicalLevels = getCanonicalRatingCodes(ratingLevels)
+): Map<string, (typeof DEFAULT_CANONICAL_RATINGS)[number]> {
+    const ratingMap = new Map<string, (typeof DEFAULT_CANONICAL_RATINGS)[number]>();
+
+    ratingLevels.forEach((level, index) => {
+        const canonical = canonicalLevels[index];
+        if (!canonical) {
+            return;
+        }
+
+        ratingMap.set(normalizeRatingName(level), canonical);
+        for (const alias of RATING_ALIASES_BY_CANONICAL[canonical]) {
+            ratingMap.set(alias, canonical);
+        }
+    });
+
+    return ratingMap;
+}
+
+function resolveFactionRatingSystem(
+    factions: Record<string, UniverseFactionRecord>,
+    factionKey: string,
+    visited = new Set<string>()
+): string[] {
+    if (visited.has(factionKey)) {
+        return [];
+    }
+
+    visited.add(factionKey);
+    const faction = factions[factionKey];
+    if (!faction) {
+        return [];
+    }
+
+    let singleLevelCandidate = faction.ratingLevels.length === 1 ? faction.ratingLevels : [];
+    if (faction.ratingLevels.length > 1) {
+        return faction.ratingLevels;
+    }
+
+    for (const fallbackFactionKey of faction.fallBackFactions) {
+        const fallbackLevels = resolveFactionRatingSystem(factions, fallbackFactionKey, new Set(visited));
+        if (fallbackLevels.length > 1) {
+            return fallbackLevels;
+        }
+
+        if (singleLevelCandidate.length === 0 && fallbackLevels.length === 1) {
+            singleLevelCandidate = fallbackLevels;
+        }
+    }
+
+    return singleLevelCandidate;
+}
+
+function resolveSingleFactionRatingProfile(
+    factions: Record<string, UniverseFactionRecord>,
+    faction: UniverseFactionRecord
+): ResolvedFactionRatingProfile {
+    const sourceLevels = faction.ratingLevels.slice(0, 1);
+    const parentSystem = resolveFactionRatingSystem(factions, faction.id);
+    const systemLevels = parentSystem.length > 0 ? parentSystem : sourceLevels;
+    const systemRatingMap = buildRatingMapFromLevels(systemLevels);
+    const ownLevel = normalizeRatingName(sourceLevels[0]);
+    const canonical = systemRatingMap.get(ownLevel)
+        ?? buildRatingMapFromLevels(sourceLevels).get(ownLevel)
+        ?? 'A';
+
+    return {
+        sourceLevels,
+        canonicalLevels: [canonical],
+    };
+}
+
+function resolveFactionRatingProfile(
+    factions: Record<string, UniverseFactionRecord>,
+    factionKey: string,
+    visited = new Set<string>()
+): ResolvedFactionRatingProfile {
+    if (factionKey === GENERAL_FACTION_KEY) {
+        return {
+            sourceLevels: [...DEFAULT_CANONICAL_RATINGS],
+            canonicalLevels: [...DEFAULT_CANONICAL_RATINGS],
+        };
+    }
+
+    if (visited.has(factionKey)) {
+        return {
+            sourceLevels: [],
+            canonicalLevels: [],
+        };
+    }
+
+    visited.add(factionKey);
+    const faction = factions[factionKey];
+    if (!faction) {
+        return {
+            sourceLevels: [],
+            canonicalLevels: [],
+        };
+    }
+
+    if (faction.ratingLevels.length === 0) {
+        for (const fallbackFactionKey of faction.fallBackFactions) {
+            const fallbackProfile = resolveFactionRatingProfile(factions, fallbackFactionKey, new Set(visited));
+            if (fallbackProfile.canonicalLevels.length > 0) {
+                return fallbackProfile;
+            }
+        }
+
+        return {
+            sourceLevels: [],
+            canonicalLevels: [],
+        };
+    }
+
+    if (faction.ratingLevels.length === 1) {
+        return resolveSingleFactionRatingProfile(factions, faction);
+    }
+
+    return {
+        sourceLevels: [...faction.ratingLevels],
+        canonicalLevels: getCanonicalRatingCodes(faction.ratingLevels),
+    };
+}
+
+function resolveFactionRatingLevels(
+    factions: Record<string, UniverseFactionRecord>,
+    factionKey: string,
+    visited = new Set<string>()
+): string[] {
+    return resolveFactionRatingProfile(factions, factionKey, visited).sourceLevels;
+}
+
+function getFactionRatingMap(
+    factions: Record<string, UniverseFactionRecord>,
+    factionKey: string
+): Map<string, (typeof DEFAULT_CANONICAL_RATINGS)[number]> {
+    const profile = resolveFactionRatingProfile(factions, factionKey);
+    if (profile.sourceLevels.length === 0 || profile.canonicalLevels.length === 0) {
+        return buildRatingMapFromLevels([...DEFAULT_CANONICAL_RATINGS]);
+    }
+
+    return buildRatingMapFromLevels(profile.sourceLevels, profile.canonicalLevels);
+}
+
+function addCompactAvailability(
+    target: Record<string, CompactEraAvailability>,
+    eras: MegaMekEra[],
+    factions: Record<string, UniverseFactionRecord>,
+    availabilityList: ParsedAvailability[],
+    sourceLabel: string
+): void {
+    for (const availability of availabilityList) {
+        if (availability.baseAvailability === undefined) {
+            continue;
+        }
+
+        const availabilityYear = resolveAvailabilityYearForFaction(factions, availability, sourceLabel);
+        if (availabilityYear === undefined) {
+            continue;
+        }
+
+        const eraKey = findEraKey(eras, availabilityYear);
+        if (eraKey === undefined) {
+            // console.log(`[MegaMek] skipping availability for ${availability.factionKey} in year ${availabilityYear} (${sourceLabel}) due to undefined era`);
+            continue;
+        }
+
+        const eraAvailability = target[eraKey] || {};
+        const previousValue = eraAvailability[availability.factionKey];
+        const nextValue = encodeCompactAvailabilityValue(availability, factions, sourceLabel);
+
+        eraAvailability[availability.factionKey] = previousValue === undefined
+            ? nextValue
+            : mergeCompactAvailabilityValue(previousValue, nextValue);
+        target[eraKey] = eraAvailability;
+    }
+}
+
+function resolveAvailabilityYearForFaction(
+    factions: Record<string, UniverseFactionRecord>,
+    availability: ParsedAvailability,
+    sourceLabel: string
+): number | undefined {
+    const fileYearIsActive = isFactionActiveInYear(factions, availability.factionKey, availability.fileYear);
+    const entryYearIsActive = availability.entryYear !== undefined
+        ? isFactionActiveInYear(factions, availability.factionKey, availability.entryYear)
+        : undefined;
+
+    if (availability.entryYear !== undefined) {
+        if (entryYearIsActive) {
+            if (!fileYearIsActive && availability.entryYear !== availability.fileYear) {
+                // console.warn(
+                //     `[MegaMek] using availability entry year ${availability.entryYear} for inactive file year ` +
+                //     `${availability.fileYear} on faction ${availability.factionKey} (${sourceLabel})`
+                // );
+            }
+
+            return availability.entryYear;
+        }
+
+        if (fileYearIsActive) {
+            // console.warn(
+            //     `[MegaMek] using file year ${availability.fileYear} because availability entry year ` +
+            //     `${availability.entryYear} is inactive for faction ${availability.factionKey} (${sourceLabel})`
+            // );
+            return availability.fileYear;
+        }
+
+        // console.warn(
+        //     `[MegaMek] keeping availability for inactive faction ${availability.factionKey}: ` +
+        //     `entry year ${availability.entryYear}, file year ${availability.fileYear} (${sourceLabel})`
+        // );
+        return availability.entryYear;
+    }
+
+    if (!fileYearIsActive) {
+        // console.warn(
+        //     `[MegaMek] keeping availability for inactive faction ${availability.factionKey}: ` +
+        //     `file year ${availability.fileYear} (${sourceLabel})`
+        // );
+    }
+
+    return availability.fileYear;
+}
+
+function encodeCompactAvailabilityValue(
+    availability: ParsedAvailability,
+    factions: Record<string, UniverseFactionRecord>,
+    sourceLabel: string
+): CompactAvailabilityValue {
+    const profile = resolveFactionRatingProfile(factions, availability.factionKey);
+
+    if (availability.byRating) {
+        return normalizeExplicitAvailabilityByRating(availability.factionKey, availability.byRating, factions, sourceLabel);
+    }
+
+    if (availability.ratingAdjustment !== 0) {
+        if (!EXPAND_RATING_ADJUSTMENTS) {
+            const baseAvailability = availability.baseAvailability ?? 0;
+            return availability.ratingAdjustment > 0 ? `${baseAvailability}+` : `${baseAvailability}-`;
+        }
+        return expandAdjustedAvailabilityByRating(availability, factions);
+    }
+
+    const baseAvailability = normalizeAvailabilityValue(availability.baseAvailability ?? 0);
+    if (profile.canonicalLevels.length > 0) {
+        return createAvailabilityByCanonicalLevels(profile.canonicalLevels, baseAvailability);
+    }
+
+    return baseAvailability;
+}
+
+function normalizeExplicitAvailabilityByRating(
+    factionKey: string,
+    byRating: Record<string, number>,
+    factions: Record<string, UniverseFactionRecord>,
+    sourceLabel: string
+): CompactAvailabilityByRating {
+    const ratingMap = getFactionRatingMap(factions, factionKey);
+    const normalized = createEmptyAvailabilityByRating();
+
+    for (const [ratingName, value] of Object.entries(byRating)) {
+        const canonical = ratingMap.get(normalizeRatingName(ratingName));
+        if (!canonical) {
+            console.warn(
+                `[MegaMek] bad ! rating "${ratingName}" for ${factionKey} in ${sourceLabel}`
+            );
+            continue;
+        }
+
+        const index = CANONICAL_RATING_INDEX[canonical];
+        normalized[index] = Math.max(normalized[index], normalizeAvailabilityValue(value));
+    }
+
+    return normalized;
+}
+
+function expandAdjustedAvailabilityByRating(
+    availability: ParsedAvailability,
+    factions: Record<string, UniverseFactionRecord>
+): CompactAvailabilityByRating {
+    const profile = resolveFactionRatingProfile(factions, availability.factionKey);
+    const canonicalLevels = profile.canonicalLevels.length > 0
+        ? profile.canonicalLevels
+        : [...DEFAULT_CANONICAL_RATINGS];
+    const baseAvailability = normalizeAvailabilityValue(availability.baseAvailability ?? 0);
+    const expanded = createEmptyAvailabilityByRating();
+
+    for (let index = 0; index < canonicalLevels.length; index += 1) {
+        const canonical = canonicalLevels[index];
+        const value = normalizeAvailabilityValue(availability.ratingAdjustment > 0
+            ? baseAvailability - (canonicalLevels.length - 1 - index)
+            : baseAvailability - index);
+
+        setAvailabilityByCanonical(expanded, canonical, value);
+    }
+
+    return expanded;
+}
+
+function hasRatingSpecificAvailability(value: CompactAvailabilityValue): value is CompactAvailabilityByRating {
+    return Array.isArray(value);
+}
+
+function mergeCompactAvailabilityByRating(
+    current: CompactAvailabilityByRating,
+    incoming: CompactAvailabilityByRating
+): CompactAvailabilityByRating {
+    const merged = [...current] as CompactAvailabilityByRating;
+    for (let index = 0; index < merged.length; index += 1) {
+        merged[index] = Math.max(merged[index], incoming[index]);
+    }
+    return merged;
+}
+
+function mergeCompactAvailabilityValue(
+    current: CompactAvailabilityValue,
+    incoming: CompactAvailabilityValue
+): CompactAvailabilityValue {
+    if (hasRatingSpecificAvailability(current) && hasRatingSpecificAvailability(incoming)) {
+        return mergeCompactAvailabilityByRating(current, incoming);
+    }
+    throw new Error(`Cannot merge incompatible availability values: ${current} vs ${incoming}`);
+}
+
+function expandAvailabilityValueToByRating(value: CompactAvailabilityValue): CompactAvailabilityByRating {
+    if (hasRatingSpecificAvailability(value)) {
+        return [...value] as CompactAvailabilityByRating;
+    }
+
+    const numericValue = Number.parseInt(String(value), 10);
+    return [numericValue, numericValue, numericValue, numericValue, numericValue];
+}
+
+function hasPositiveAvailabilityValue(value: CompactAvailabilityValue | undefined): boolean {
+    if (value === undefined) {
+        return false;
+    }
+
+    return expandAvailabilityValueToByRating(value).some((entry) => entry > 0);
+}
+
+function calcAvailabilityWeight(value: number): number {
+    return Math.pow(2, value / 2);
+}
+
+function calcAvailabilityFromWeight(weight: number): number {
+    if (weight <= 0) {
+        return 0;
+    }
+
+    return 2 * Math.log2(weight);
+}
+
+function averageAvailabilityNumbers(values: number[]): number {
+    if (values.length === 0) {
+        return 0;
+    }
+
+    const totalWeight = values.reduce((sum, value) => sum + calcAvailabilityWeight(value), 0);
+    return normalizeAvailabilityValue(calcAvailabilityFromWeight(totalWeight / values.length));
+}
+
+function averageCompactAvailabilityValues(values: CompactAvailabilityValue[]): CompactAvailabilityValue | undefined {
+    if (values.length === 0) {
+        return undefined;
+    }
+
+    const expandedValues = values.map((value) => expandAvailabilityValueToByRating(value));
+    const averaged = createEmptyAvailabilityByRating();
+
+    for (let index = 0; index < averaged.length; index += 1) {
+        averaged[index] = averageAvailabilityNumbers(expandedValues.map((value) => value[index]));
+    }
+
+    return averaged;
+}
+
+function resolveCompactAvailabilityForFaction(
+    eraAvailability: CompactEraAvailability,
+    factions: Record<string, UniverseFactionRecord>,
+    factionKey: string,
+    visited = new Set<string>()
+): CompactAvailabilityValue | undefined {
+    if (Object.prototype.hasOwnProperty.call(eraAvailability, factionKey)) {
+        return eraAvailability[factionKey];
+    }
+
+    if (visited.has(factionKey)) {
+        return undefined;
+    }
+
+    visited.add(factionKey);
+
+    if (factionKey === GENERAL_FACTION_KEY) {
+        return eraAvailability[GENERAL_FACTION_KEY];
+    }
+
+    const faction = factions[factionKey];
+    if (!faction) {
+        return eraAvailability[GENERAL_FACTION_KEY];
+    }
+
+    if (faction.fallBackFactions.length === 1) {
+        return resolveCompactAvailabilityForFaction(
+            eraAvailability,
+            factions,
+            faction.fallBackFactions[0],
+            new Set(visited)
+        );
+    }
+
+    if (faction.fallBackFactions.length > 1) {
+        const resolvedParents = faction.fallBackFactions
+            .map((fallbackFactionKey) => resolveCompactAvailabilityForFaction(
+                eraAvailability,
+                factions,
+                fallbackFactionKey,
+                new Set(visited)
+            ))
+            .filter((value): value is CompactAvailabilityValue => value !== undefined);
+
+        return averageCompactAvailabilityValues(resolvedParents);
+    }
+
+    return eraAvailability[GENERAL_FACTION_KEY];
+}
+
+function combineResolvedAvailabilityValues(
+    chassisValue: CompactAvailabilityValue | undefined,
+    modelValue: CompactAvailabilityValue | undefined
+): CompactAvailabilityValue | undefined {
+    if (chassisValue === undefined || modelValue === undefined) {
+        return undefined;
+    }
+
+    const chassisByRating = expandAvailabilityValueToByRating(chassisValue);
+    const modelByRating = expandAvailabilityValueToByRating(modelValue);
+    const combined = createEmptyAvailabilityByRating();
+
+    for (let index = 0; index < combined.length; index += 1) {
+        const chassisAvailability = chassisByRating[index];
+        const modelAvailability = modelByRating[index];
+        combined[index] = (chassisAvailability <= 0 || modelAvailability <= 0)
+            ? 0
+            : averageAvailabilityNumbers([chassisAvailability, modelAvailability]);
+    }
+
+    return combined;
+}
+
+function calcWeightedScore(relativeWeight: number): number {
+    if (!Number.isFinite(relativeWeight) || relativeWeight <= 0) {
+        return 0;
+    }
+
+    const score = 5.5 + calcAvailabilityFromWeight(relativeWeight);
+    return roundOutputValue(Math.min(10, Math.max(1, score)));
+}
+
+function mergeCompactWeightedValueForMul(
+    current: CompactWeightedValue,
+    incoming: CompactWeightedValue
+): CompactWeightedValue {
+    return [
+        Math.max(current[0], incoming[0]),
+        Math.max(current[1], incoming[1]),
+    ];
+}
+
+function mergeCompactAvailabilityValueForMul(
+    current: CompactAvailabilityValue,
+    incoming: CompactAvailabilityValue
+): CompactAvailabilityValue {
+    if (!hasRatingSpecificAvailability(current) && !hasRatingSpecificAvailability(incoming)) {
+        return Math.max(Number.parseInt(String(current), 10), Number.parseInt(String(incoming), 10));
+    }
+
+    return mergeCompactAvailabilityByRating(
+        expandAvailabilityValueToByRating(current),
+        expandAvailabilityValueToByRating(incoming)
+    );
+}
+
+function mergeNumberArrays(current: number[] | undefined, incoming: number[] | undefined): number[] | undefined {
+    if (!incoming || incoming.length === 0) {
+        return current;
+    }
+
+    if (!current || current.length === 0) {
+        return [...incoming];
+    }
+
+    const mergedLength = Math.max(current.length, incoming.length);
+    const merged: number[] = [];
+    for (let index = 0; index < mergedLength; index += 1) {
+        const currentValue = current[index];
+        const incomingValue = incoming[index];
+        if (currentValue === undefined) {
+            merged[index] = incomingValue;
+        } else if (incomingValue === undefined) {
+            merged[index] = currentValue;
+        } else {
+            merged[index] = Math.max(currentValue, incomingValue);
+        }
+    }
+
+    return merged;
+}
+
+function mergeWeightDistribution(
+    current: Record<string, number[]> | undefined,
+    incoming: Record<string, number[]> | undefined
+): Record<string, number[]> | undefined {
+    if (!incoming) {
+        return current;
+    }
+
+    const merged = { ...(current || {}) };
+    for (const [unitType, weights] of Object.entries(incoming)) {
+        merged[unitType] = mergeNumberArrays(merged[unitType], weights) || [];
+    }
+
+    return merged;
+}
+
+function mergeSalvage(
+    current: EraFactionStats['salvage'],
+    incoming: EraFactionStats['salvage']
+): EraFactionStats['salvage'] {
+    if (!incoming) {
+        return current;
+    }
+
+    if (!current) {
+        return {
+            pct: incoming.pct,
+            weights: { ...incoming.weights },
+        };
+    }
+
+    const weights = { ...current.weights };
+    for (const [factionKey, value] of Object.entries(incoming.weights)) {
+        weights[factionKey] = weights[factionKey] === undefined
+            ? value
+            : Math.max(weights[factionKey], value);
+    }
+
+    return {
+        pct: Math.max(current.pct, incoming.pct),
+        weights,
+    };
+}
+
+function mergeEraFactionStats(current: EraFactionStats | undefined, incoming: EraFactionStats): EraFactionStats {
+    if (!current) {
+        return {
+            pctOmni: incoming.pctOmni ? [...incoming.pctOmni] : undefined,
+            pctOmniAero: incoming.pctOmniAero ? [...incoming.pctOmniAero] : undefined,
+            pctClan: incoming.pctClan ? [...incoming.pctClan] : undefined,
+            pctClanAero: incoming.pctClanAero ? [...incoming.pctClanAero] : undefined,
+            pctClanVehicle: incoming.pctClanVehicle ? [...incoming.pctClanVehicle] : undefined,
+            pctSL: incoming.pctSL ? [...incoming.pctSL] : undefined,
+            pctSLAero: incoming.pctSLAero ? [...incoming.pctSLAero] : undefined,
+            pctSLVehicle: incoming.pctSLVehicle ? [...incoming.pctSLVehicle] : undefined,
+            omniMargin: incoming.omniMargin,
+            techMargin: incoming.techMargin,
+            upgradeMargin: incoming.upgradeMargin,
+            salvage: mergeSalvage(undefined, incoming.salvage),
+            weightDistribution: mergeWeightDistribution(undefined, incoming.weightDistribution),
+        };
+    }
+
+    return {
+        pctOmni: mergeNumberArrays(current.pctOmni, incoming.pctOmni),
+        pctOmniAero: mergeNumberArrays(current.pctOmniAero, incoming.pctOmniAero),
+        pctClan: mergeNumberArrays(current.pctClan, incoming.pctClan),
+        pctClanAero: mergeNumberArrays(current.pctClanAero, incoming.pctClanAero),
+        pctClanVehicle: mergeNumberArrays(current.pctClanVehicle, incoming.pctClanVehicle),
+        pctSL: mergeNumberArrays(current.pctSL, incoming.pctSL),
+        pctSLAero: mergeNumberArrays(current.pctSLAero, incoming.pctSLAero),
+        pctSLVehicle: mergeNumberArrays(current.pctSLVehicle, incoming.pctSLVehicle),
+        omniMargin: incoming.omniMargin === undefined
+            ? current.omniMargin
+            : current.omniMargin === undefined
+                ? incoming.omniMargin
+                : Math.max(current.omniMargin, incoming.omniMargin),
+        techMargin: incoming.techMargin === undefined
+            ? current.techMargin
+            : current.techMargin === undefined
+                ? incoming.techMargin
+                : Math.max(current.techMargin, incoming.techMargin),
+        upgradeMargin: incoming.upgradeMargin === undefined
+            ? current.upgradeMargin
+            : current.upgradeMargin === undefined
+                ? incoming.upgradeMargin
+                : Math.max(current.upgradeMargin, incoming.upgradeMargin),
+        salvage: mergeSalvage(current.salvage, incoming.salvage),
+        weightDistribution: mergeWeightDistribution(current.weightDistribution, incoming.weightDistribution),
+    };
+}
+
+function addCompactFactionEraStats(
+    target: Record<string, Record<string, EraFactionStats>>,
+    eras: MegaMekEra[],
+    year: number,
+    factionKey: string,
+    stats: EraFactionStats
+): void {
+    const eraKey = findEraKey(eras, year);
+    if (eraKey === undefined) {
+        return;
+    }
+
+    const eraStats = target[eraKey] || {};
+    eraStats[factionKey] = mergeEraFactionStats(eraStats[factionKey], stats);
+    target[eraKey] = eraStats;
+}
+
+function buildChassisRecordKey(unitType: string, chassisName: string): string {
+    return `${unitType}|${chassisName}`;
+}
+
+function buildModelRecordKey(unitType: string, chassisName: string, modelName: string): string {
+    return `${unitType}|${chassisName}|${modelName}`;
+}
+
+function hasAnyPositiveDirectAvailability(eraAvailability: CompactEraAvailability): boolean {
+    return Object.values(eraAvailability).some((value) => hasPositiveAvailabilityValue(value));
+}
+
+function warnOnAvailabilityMismatches(
+    chassis: Record<string, CompactChassisRecord>,
+    models: Record<string, CompactModelRecord>,
+    factions: Record<string, UniverseFactionRecord>
+): void {
+    const modelsByChassis = new Map<string, CompactModelRecord[]>();
+
+    for (const modelRecord of Object.values(models)) {
+        const chassisKey = buildChassisRecordKey(modelRecord.t, modelRecord.c);
+        const groupedModels = modelsByChassis.get(chassisKey) || [];
+        groupedModels.push(modelRecord);
+        modelsByChassis.set(chassisKey, groupedModels);
+    }
+
+    for (const [chassisKey, chassisRecord] of Object.entries(chassis)) {
+        const chassisModels = modelsByChassis.get(chassisKey) || [];
+        const eraKeys = new Set<string>([
+            ...Object.keys(chassisRecord.e),
+            ...chassisModels.flatMap((modelRecord) => Object.keys(modelRecord.e)),
+        ]);
+
+        for (const eraKey of eraKeys) {
+            const chassisEraAvailability = chassisRecord.e[eraKey] || {};
+            const directFactionKeys = new Set<string>([
+                ...Object.keys(chassisEraAvailability),
+                ...chassisModels.flatMap((modelRecord) => Object.keys(modelRecord.e[eraKey] || {})),
+            ]);
+
+            for (const modelRecord of chassisModels) {
+                const modelEraAvailability = modelRecord.e[eraKey] || {};
+                for (const [factionKey, modelValue] of Object.entries(modelEraAvailability)) {
+                    if (!hasPositiveAvailabilityValue(modelValue)) {
+                        continue;
+                    }
+
+                    if (factionKey === GENERAL_FACTION_KEY
+                        && !hasPositiveAvailabilityValue(chassisEraAvailability[GENERAL_FACTION_KEY])
+                        && hasAnyPositiveDirectAvailability(chassisEraAvailability)) {
+                        continue;
+                    }
+
+                    if (hasPositiveAvailabilityValue(resolveCompactAvailabilityForFaction(
+                        chassisEraAvailability,
+                        factions,
+                        factionKey,
+                    ))) {
+                        continue;
+                    }
+
+                    console.warn(
+                        `[MegaMek] model availability without chassis availability: ${modelRecord.t}|${modelRecord.c}|${modelRecord.m} ` +
+                        `era ${eraKey} faction ${factionKey}`
+                    );
+                }
+            }
+
+            for (const [factionKey, chassisValue] of Object.entries(chassisEraAvailability)) {
+                if (!hasPositiveAvailabilityValue(chassisValue)) {
+                    continue;
+                }
+
+                const hasAnyModelAvailability = chassisModels.some((modelRecord) => {
+                    const modelEraAvailability = modelRecord.e[eraKey] || {};
+                    return hasPositiveAvailabilityValue(resolveCompactAvailabilityForFaction(
+                        modelEraAvailability,
+                        factions,
+                        factionKey,
+                    ));
+                });
+
+                if (hasAnyModelAvailability) {
+                    continue;
+                }
+
+                console.warn(
+                    `[MegaMek] chassis availability without model availability: ${chassisKey} ` +
+                    `era ${eraKey} faction ${factionKey}`
+                );
+            }
+
+            for (const factionKey of directFactionKeys) {
+                const resolvedChassisAvailability = resolveCompactAvailabilityForFaction(
+                    chassisEraAvailability,
+                    factions,
+                    factionKey,
+                );
+                if (!hasPositiveAvailabilityValue(resolvedChassisAvailability)) {
+                    continue;
+                }
+
+                const hasResolvedModelAvailability = chassisModels.some((modelRecord) => {
+                    const modelEraAvailability = modelRecord.e[eraKey] || {};
+                    return hasPositiveAvailabilityValue(resolveCompactAvailabilityForFaction(
+                        modelEraAvailability,
+                        factions,
+                        factionKey,
+                    ));
+                });
+
+                if (!hasResolvedModelAvailability) {
+                    console.warn(
+                        `[MegaMek] chassis availability without resolved model availability: ${chassisKey} ` +
+                        `era ${eraKey} faction ${factionKey}`
+                    );
+                }
+            }
+        }
+    }
+}
+
+function buildCombinedAvailabilityRecords(
+    chassis: Record<string, CompactChassisRecord>,
+    models: Record<string, CompactModelRecord>,
+    factions: Record<string, UniverseFactionRecord>
+): Record<string, CompactModelRecord> {
+    const combinedAvailability: Record<string, CompactModelRecord> = {};
+
+    for (const [modelKey, modelRecord] of Object.entries(models)) {
+        const chassisKey = buildChassisRecordKey(modelRecord.t, modelRecord.c);
+        const chassisRecord = chassis[chassisKey];
+
+        if (!chassisRecord) {
+            console.warn(`[MegaMek] missing chassis record for model ${modelKey}`);
+            continue;
+        }
+
+        const combinedRecord: CompactModelRecord = {
+            t: modelRecord.t,
+            c: modelRecord.c,
+            m: modelRecord.m,
+            e: {},
+        };
+
+        const eraKeys = new Set<string>([
+            ...Object.keys(chassisRecord.e),
+            ...Object.keys(modelRecord.e),
+        ]);
+
+        for (const eraKey of eraKeys) {
+            const chassisEraAvailability = chassisRecord.e[eraKey] || {};
+            const modelEraAvailability = modelRecord.e[eraKey] || {};
+            const factionKeys = new Set<string>([
+                ...Object.keys(chassisEraAvailability),
+                ...Object.keys(modelEraAvailability),
+            ]);
+
+            const combinedEraAvailability: CompactEraAvailability = {};
+
+            for (const factionKey of factionKeys) {
+                const combinedValue = combineResolvedAvailabilityValues(
+                    resolveCompactAvailabilityForFaction(chassisEraAvailability, factions, factionKey),
+                    resolveCompactAvailabilityForFaction(modelEraAvailability, factions, factionKey)
+                );
+
+                if (combinedValue !== undefined) {
+                    combinedEraAvailability[factionKey] = combinedValue;
+                }
+            }
+
+            if (Object.keys(combinedEraAvailability).length > 0) {
+                combinedRecord.e[eraKey] = combinedEraAvailability;
+            }
+        }
+
+        combinedAvailability[modelKey] = combinedRecord;
+    }
+
+    return combinedAvailability;
+}
+
+function averagePositiveWeightedScores(values: number[]): number {
+    const positiveValues = values.filter((value) => value > 0);
+    if (positiveValues.length === 0) {
+        return 0;
+    }
+
+    const total = positiveValues.reduce((sum, value) => sum + value, 0);
+    return roundOutputValue(total / positiveValues.length);
+}
+
+function cloneWeightedByRating(value?: CompactWeightedByRating): CompactWeightedByRating {
+    return value ? [...value] as CompactWeightedByRating : createEmptyWeightedByRating();
+}
+
+function createEmptyWeightedChannels(): WeightedRecordChannels {
+    return {
+        normal: createEmptyWeightedByRating(),
+        salvage: createEmptyWeightedByRating(),
+    };
+}
+
+function mergeResolvedPercentageArrays(values: Array<number[] | undefined>): number[] | undefined {
+    const definedValues = values.filter((value): value is number[] => value !== undefined && value.length > 0);
+    if (definedValues.length === 0) {
+        return undefined;
+    }
+
+    const length = Math.max(...definedValues.map((value) => value.length));
+    const merged: number[] = [];
+    for (let index = 0; index < length; index += 1) {
+        let total = 0;
+        let count = 0;
+        for (const value of definedValues) {
+            if (value[index] !== undefined) {
+                total += value[index];
+                count += 1;
+            }
+        }
+        if (count > 0) {
+            merged[index] = Math.trunc(total / count);
+        }
+    }
+
+    return merged;
+}
+
+function mergeSummedNumberArrays(values: Array<number[] | undefined>): number[] | undefined {
+    const definedValues = values.filter((value): value is number[] => value !== undefined && value.length > 0);
+    if (definedValues.length === 0) {
+        return undefined;
+    }
+
+    const length = Math.max(...definedValues.map((value) => value.length));
+    const merged = new Array<number>(length).fill(0);
+    for (const value of definedValues) {
+        for (let index = 0; index < value.length; index += 1) {
+            merged[index] += value[index] ?? 0;
+        }
+    }
+
+    return merged;
+}
+
+function isClanFaction(faction: UniverseFactionRecord | undefined): boolean {
+    if (!faction) {
+        return false;
+    }
+
+    return faction.name.startsWith('Clan ')
+        || faction.id.startsWith('CLAN')
+        || faction.tags.some((tag) => tag.toLowerCase() === 'clan');
+}
+
+function resolveFactionEraStats(
+    factionEraData: Record<string, Record<string, EraFactionStats>>,
+    factions: Record<string, UniverseFactionRecord>,
+    eraKey: string,
+    factionKey: string,
+    cache: Map<string, ResolvedFactionEraStats>,
+    visited = new Set<string>(),
+): ResolvedFactionEraStats {
+    const cacheKey = `${eraKey}\u0000${factionKey}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+        return cached;
+    }
+
+    if (visited.has(factionKey)) {
+        return {
+            omniMargin: 0,
+            techMargin: 0,
+            upgradeMargin: 0,
+            salvageWeights: {},
+            weightDistribution: {},
+        };
+    }
+
+    visited.add(factionKey);
+
+    const direct = factionEraData[eraKey]?.[factionKey];
+    const parentStats = (factions[factionKey]?.fallBackFactions ?? [])
+        .map((parentFactionKey) => resolveFactionEraStats(
+            factionEraData,
+            factions,
+            eraKey,
+            parentFactionKey,
+            cache,
+            new Set(visited),
+        ));
+
+    const directWeightDistribution = direct?.weightDistribution ?? {};
+    const weightDistributionKeys = new Set<string>([
+        ...Object.keys(directWeightDistribution),
+        ...parentStats.flatMap((entry) => Object.keys(entry.weightDistribution)),
+    ]);
+
+    const weightDistribution: Record<string, number[]> = {};
+    for (const unitType of weightDistributionKeys) {
+        if (directWeightDistribution[unitType]?.length) {
+            weightDistribution[unitType] = [...directWeightDistribution[unitType]];
+            continue;
+        }
+
+        const merged = mergeSummedNumberArrays(parentStats.map((entry) => entry.weightDistribution[unitType]));
+        if (merged?.length) {
+            weightDistribution[unitType] = merged;
+        }
+    }
+
+    const hasDirectSalvageWeights = Boolean(direct?.salvage && Object.keys(direct.salvage.weights).length > 0);
+    const salvageWeights = hasDirectSalvageWeights
+        ? { ...(direct?.salvage?.weights ?? {}) }
+        : Object.fromEntries(
+            Object.entries(
+                parentStats.reduce<Record<string, number>>((merged, parent) => {
+                    for (const [sourceFactionKey, value] of Object.entries(parent.salvageWeights)) {
+                        merged[sourceFactionKey] = (merged[sourceFactionKey] ?? 0) + value;
+                    }
+                    return merged;
+                }, {})
+            )
+        );
+
+    const resolved: ResolvedFactionEraStats = {
+        pctOmni: direct?.pctOmni?.length ? [...direct.pctOmni] : mergeResolvedPercentageArrays(parentStats.map((entry) => entry.pctOmni)),
+        pctOmniAero: direct?.pctOmniAero?.length ? [...direct.pctOmniAero] : mergeResolvedPercentageArrays(parentStats.map((entry) => entry.pctOmniAero)),
+        pctClan: direct?.pctClan?.length ? [...direct.pctClan] : mergeResolvedPercentageArrays(parentStats.map((entry) => entry.pctClan)),
+        pctClanAero: direct?.pctClanAero?.length ? [...direct.pctClanAero] : mergeResolvedPercentageArrays(parentStats.map((entry) => entry.pctClanAero)),
+        pctClanVehicle: direct?.pctClanVehicle?.length ? [...direct.pctClanVehicle] : mergeResolvedPercentageArrays(parentStats.map((entry) => entry.pctClanVehicle)),
+        pctSL: direct?.pctSL?.length ? [...direct.pctSL] : mergeResolvedPercentageArrays(parentStats.map((entry) => entry.pctSL)),
+        pctSLAero: direct?.pctSLAero?.length ? [...direct.pctSLAero] : mergeResolvedPercentageArrays(parentStats.map((entry) => entry.pctSLAero)),
+        pctSLVehicle: direct?.pctSLVehicle?.length ? [...direct.pctSLVehicle] : mergeResolvedPercentageArrays(parentStats.map((entry) => entry.pctSLVehicle)),
+        omniMargin: direct?.omniMargin ?? 0,
+        techMargin: direct?.techMargin ?? 0,
+        upgradeMargin: direct?.upgradeMargin ?? 0,
+        salvagePct: direct?.salvage?.pct,
+        salvageWeights,
+        weightDistribution,
+    };
+
+    cache.set(cacheKey, resolved);
+    return resolved;
+}
+
+function getRatingTargetValue(values: number[] | undefined, ratingIndex: number): number | undefined {
+    if (!values || values.length === 0 || values[ratingIndex] === undefined) {
+        return undefined;
+    }
+
+    return values[ratingIndex];
+}
+
+function getWeightDistributionForUnitType(stats: ResolvedFactionEraStats, unitType: string): number[] | undefined {
+    if (unitType === 'Mek') {
+        return stats.weightDistribution.Mek;
+    }
+
+    if (unitType === 'Tank') {
+        return stats.weightDistribution.Tank;
+    }
+
+    if (unitType === 'AeroSpaceFighter') {
+        return stats.weightDistribution.AeroSpaceFighter;
+    }
+
+    return undefined;
+}
+
+function getTechCategoryTargets(
+    stats: ResolvedFactionEraStats,
+    unitType: string,
+): { pctOmni?: number[]; pctClan?: number[]; pctSL?: number[] } {
+    if (unitType === 'Mek') {
+        return {
+            pctOmni: stats.pctOmni,
+            pctClan: stats.pctClan,
+            pctSL: stats.pctSL,
+        };
+    }
+
+    if (unitType === 'AeroSpaceFighter') {
+        return {
+            pctOmni: stats.pctOmniAero,
+            pctClan: stats.pctClanAero,
+            pctSL: stats.pctSLAero,
+        };
+    }
+
+    if (unitType === 'Tank' || unitType === 'VTOL') {
+        return {
+            pctClan: stats.pctClanVehicle,
+            pctSL: stats.pctSLVehicle,
+        };
+    }
+
+    return {};
+}
+
+function getEligibleModelKeysBySourceUnitType(
+    modelWeightsByKey: Map<string, CompactWeightedByRating>,
+    modelMetadataByKey: Map<string, UnitMetadataRecord>,
+    unitType: string,
+): string[] {
+    return Array.from(modelWeightsByKey.keys()).filter((modelKey) => modelMetadataByKey.get(modelKey)?.unitType === unitType);
+}
+
+function sumModelWeightsAtRating(modelWeightsByKey: Map<string, CompactWeightedByRating>, ratingIndex: number): number {
+    let total = 0;
+    for (const weights of modelWeightsByKey.values()) {
+        total += weights[ratingIndex] ?? 0;
+    }
+    return total;
+}
+
+function buildSalvageAllocations(
+    stats: ResolvedFactionEraStats,
+    normalWeightsByModelKey: Map<string, CompactWeightedByRating>,
+): { allocations: Map<string, CompactWeightedByRating>; clearNormalRatings: boolean[] } {
+    const allocations = new Map<string, CompactWeightedByRating>();
+    const clearNormalRatings = [false, false, false, false, false];
+    const salvagePct = stats.salvagePct;
+    const salvageWeights = Object.entries(stats.salvageWeights).filter(([, value]) => value > 0);
+
+    if (salvagePct === undefined || salvageWeights.length === 0) {
+        return { allocations, clearNormalRatings };
+    }
+
+    const totalFactionWeight = salvageWeights.reduce((sum, [, value]) => sum + value, 0);
+    if (totalFactionWeight <= 0) {
+        return { allocations, clearNormalRatings };
+    }
+
+    for (let ratingIndex = 0; ratingIndex < 5; ratingIndex += 1) {
+        const totalTableWeight = sumModelWeightsAtRating(normalWeightsByModelKey, ratingIndex);
+        if (totalTableWeight <= 0) {
+            continue;
+        }
+
+        let overallSalvage = totalTableWeight * salvagePct / 100;
+        if (salvagePct >= 100) {
+            overallSalvage = totalTableWeight;
+            clearNormalRatings[ratingIndex] = true;
+        }
+
+        for (const [sourceFactionKey, weight] of salvageWeights) {
+            const factionAllocation = allocations.get(sourceFactionKey) ?? createEmptyWeightedByRating();
+            factionAllocation[ratingIndex] = overallSalvage * weight / totalFactionWeight;
+            allocations.set(sourceFactionKey, factionAllocation);
+        }
+    }
+
+    return { allocations, clearNormalRatings };
+}
+
+function applyWeightDistributionToModels(
+    modelWeightsByKey: Map<string, CompactWeightedByRating>,
+    eligibleModelKeys: string[],
+    modelMetadataByKey: Map<string, UnitMetadataRecord>,
+    distribution: number[] | undefined,
+): void {
+    if (!distribution || distribution.length === 0 || eligibleModelKeys.length === 0) {
+        return;
+    }
+
+    for (let ratingIndex = 0; ratingIndex < 5; ratingIndex += 1) {
+        const bucketGroups = new Map<number, string[]>();
+        let totalTableWeight = 0;
+
+        for (const modelKey of eligibleModelKeys) {
+            const weight = modelWeightsByKey.get(modelKey)?.[ratingIndex] ?? 0;
+            const weightClass = modelMetadataByKey.get(modelKey)?.weightClass;
+            if (weight <= 0 || weightClass === undefined) {
+                continue;
+            }
+
+            const bucketIndex = WEIGHT_DISTRIBUTION_BUCKET_INDEX[weightClass];
+            if (bucketIndex === undefined || bucketIndex >= distribution.length) {
+                continue;
+            }
+
+            totalTableWeight += weight;
+            const bucketModels = bucketGroups.get(bucketIndex) ?? [];
+            bucketModels.push(modelKey);
+            bucketGroups.set(bucketIndex, bucketModels);
+        }
+
+        if (totalTableWeight <= 0 || bucketGroups.size <= 1) {
+            continue;
+        }
+
+        const totalDistributionWeight = Array.from(bucketGroups.keys())
+            .reduce((sum, bucketIndex) => sum + (distribution[bucketIndex] ?? 0), 0);
+        if (totalDistributionWeight <= 0) {
+            continue;
+        }
+
+        for (const [bucketIndex, bucketModelKeys] of bucketGroups.entries()) {
+            const bucketWeight = bucketModelKeys.reduce(
+                (sum, modelKey) => sum + (modelWeightsByKey.get(modelKey)?.[ratingIndex] ?? 0),
+                0,
+            );
+            if (bucketWeight <= 0) {
+                continue;
+            }
+
+            const adjustment = totalTableWeight * (distribution[bucketIndex] ?? 0) / (bucketWeight * totalDistributionWeight);
+            for (const modelKey of bucketModelKeys) {
+                const weights = modelWeightsByKey.get(modelKey);
+                if (!weights || weights[ratingIndex] <= 0) {
+                    continue;
+                }
+                weights[ratingIndex] *= adjustment;
+            }
+        }
+    }
+}
+
+function applyTechRebalanceToModels(
+    modelWeightsByKey: Map<string, CompactWeightedByRating>,
+    eligibleModelKeys: string[],
+    modelMetadataByKey: Map<string, UnitMetadataRecord>,
+    modelRecords: Record<string, CompactModelRecord>,
+    factions: Record<string, UniverseFactionRecord>,
+    factionKey: string,
+    unitType: string,
+    stats: ResolvedFactionEraStats,
+    salvageAllocations: Map<string, CompactWeightedByRating>,
+): void {
+    if (eligibleModelKeys.length === 0) {
+        return;
+    }
+
+    const targetArrays = getTechCategoryTargets(stats, unitType);
+    const factionIsClan = isClanFaction(factions[factionKey]);
+
+    for (let ratingIndex = 0; ratingIndex < 5; ratingIndex += 1) {
+        const summarize = () => {
+            let totalWeight = 0;
+            let totalOmniWeight = 0;
+            let totalClanWeight = 0;
+            let totalSLWeight = 0;
+            let totalOtherWeight = 0;
+
+            for (const modelKey of eligibleModelKeys) {
+                const weight = modelWeightsByKey.get(modelKey)?.[ratingIndex] ?? 0;
+                if (weight <= 0) {
+                    continue;
+                }
+
+                totalWeight += weight;
+                if (modelRecords[modelKey]?.o) {
+                    totalOmniWeight += weight;
+                }
+
+                const metadata = modelMetadataByKey.get(modelKey);
+                if (metadata?.isClanTech) {
+                    totalClanWeight += weight;
+                } else if (metadata?.isStarLeague) {
+                    totalSLWeight += weight;
+                } else {
+                    totalOtherWeight += weight;
+                }
+            }
+
+            return {
+                totalWeight,
+                totalOmniWeight,
+                totalClanWeight,
+                totalSLWeight,
+                totalOtherWeight,
+            };
+        };
+
+        let { totalWeight, totalOmniWeight, totalClanWeight, totalSLWeight, totalOtherWeight } = summarize();
+        if (totalWeight <= 0) {
+            continue;
+        }
+
+        let pctOmni = getRatingTargetValue(targetArrays.pctOmni, ratingIndex);
+        let pctClan = getRatingTargetValue(targetArrays.pctClan, ratingIndex);
+        let pctSL = getRatingTargetValue(targetArrays.pctSL, ratingIndex);
+        let pctOther: number | undefined;
+
+        if (pctOmni !== undefined && stats.omniMargin > 0) {
+            const pct = 100 * totalOmniWeight / totalWeight;
+            if (pct < pctOmni - stats.omniMargin) {
+                pctOmni -= stats.omniMargin;
+            } else if (pct > pctOmni + stats.omniMargin) {
+                pctOmni += stats.omniMargin;
+            }
+        }
+
+        if ((unitType === 'Mek' || unitType === 'AeroSpaceFighter') && pctOmni !== undefined) {
+            const omniPctDifference = pctOmni - (100 * totalOmniWeight / totalWeight);
+            if (Math.abs(omniPctDifference) > MIN_OMNI_DIFFERENCE && totalOmniWeight > 0 && pctOmni >= 0) {
+                const totalNonOmniWeight = totalOmniWeight - totalWeight;
+                for (const modelKey of eligibleModelKeys) {
+                    const weights = modelWeightsByKey.get(modelKey);
+                    if (!weights || weights[ratingIndex] <= 0) {
+                        continue;
+                    }
+
+                    let currentWeight = weights[ratingIndex];
+                    if (modelRecords[modelKey]?.o) {
+                        currentWeight = pctOmni > 0
+                            ? currentWeight + currentWeight * omniPctDifference / totalOmniWeight
+                            : 0;
+                    } else {
+                        currentWeight = pctOmni < 100
+                            ? currentWeight + currentWeight * omniPctDifference / totalNonOmniWeight
+                            : 0;
+                    }
+
+                    weights[ratingIndex] = Math.max(0, currentWeight);
+                }
+
+                ({ totalWeight, totalOmniWeight, totalClanWeight, totalSLWeight, totalOtherWeight } = summarize());
+                if (totalWeight <= 0) {
+                    continue;
+                }
+            }
+        }
+
+        if (pctSL !== undefined || pctClan !== undefined) {
+            pctOther = 100;
+            if (pctSL !== undefined) {
+                pctOther -= pctSL;
+            }
+            if (pctClan !== undefined) {
+                pctOther -= pctClan;
+            }
+
+            if (stats.techMargin > 0) {
+                if (pctClan !== undefined) {
+                    const pct = 100 * totalClanWeight / totalWeight;
+                    if (pct < pctClan - stats.techMargin) {
+                        pctClan -= stats.techMargin;
+                    } else if (pct > pctClan + stats.techMargin) {
+                        pctClan += stats.techMargin;
+                    }
+                }
+
+                if (pctSL !== undefined) {
+                    const pct = 100 * totalSLWeight / totalWeight;
+                    if (pct < pctSL - stats.techMargin) {
+                        pctSL -= stats.techMargin;
+                    } else if (pct > pctSL + stats.techMargin) {
+                        pctSL += stats.techMargin;
+                    }
+                }
+            }
+
+            if (stats.upgradeMargin > 0 && pctOther !== undefined) {
+                const pct = 100 * (totalWeight - totalClanWeight - totalSLWeight) / totalWeight;
+                if (pct < pctOther - stats.upgradeMargin) {
+                    pctOther -= stats.upgradeMargin;
+                } else if (pct > pctOther + stats.upgradeMargin) {
+                    pctOther += stats.upgradeMargin;
+                }
+
+                if (stats.techMargin > 0 && stats.upgradeMargin <= stats.techMargin) {
+                    if (pctClan === undefined || pctClan === 0) {
+                        pctSL = 100 - pctOther;
+                    } else if (pctSL === undefined || pctSL === 0) {
+                        pctClan = 100 - pctOther;
+                    } else {
+                        pctSL = (100 - pctOther) * pctSL / (pctSL + pctClan);
+                        pctClan = 100 - pctOther - pctSL;
+                    }
+                }
+            }
+        }
+
+        if (pctSL !== undefined) {
+            const slPctDifference = pctSL - (100 * totalSLWeight / totalWeight);
+            if (Math.abs(slPctDifference) > MIN_SL_DIFFERENCE && totalSLWeight > 0) {
+                const totalNonSLWeight = totalSLWeight - totalWeight;
+                for (const modelKey of eligibleModelKeys) {
+                    const weights = modelWeightsByKey.get(modelKey);
+                    const metadata = modelMetadataByKey.get(modelKey);
+                    if (!weights || !metadata || weights[ratingIndex] <= 0) {
+                        continue;
+                    }
+
+                    let currentWeight = weights[ratingIndex];
+                    if (metadata.isStarLeague) {
+                        currentWeight = pctSL > 0
+                            ? currentWeight + currentWeight * slPctDifference / totalSLWeight
+                            : 0;
+                    } else {
+                        currentWeight = pctSL < 100
+                            ? currentWeight + currentWeight * slPctDifference / totalNonSLWeight
+                            : 0;
+                    }
+
+                    weights[ratingIndex] = Math.max(0, currentWeight);
+                }
+
+                ({ totalWeight, totalOmniWeight, totalClanWeight, totalSLWeight, totalOtherWeight } = summarize());
+                if (totalWeight <= 0) {
+                    continue;
+                }
+            }
+        }
+
+        let clanSalvageWeight = 0;
+        if (pctClan !== undefined && !factionIsClan) {
+            for (const [sourceFactionKey, weights] of salvageAllocations.entries()) {
+                if (isClanFaction(factions[sourceFactionKey])) {
+                    clanSalvageWeight += weights[ratingIndex] ?? 0;
+                }
+            }
+        }
+
+        if (pctClan !== undefined) {
+            const clanPctDifference = pctClan - (100 * Math.min(totalWeight, totalClanWeight + clanSalvageWeight) / totalWeight);
+            if (Math.abs(clanPctDifference) > MIN_CLAN_DIFFERENCE && totalClanWeight > 0) {
+                const totalNonClanWeight = Math.min(totalWeight, totalClanWeight + clanSalvageWeight) - totalWeight;
+                for (const modelKey of eligibleModelKeys) {
+                    const weights = modelWeightsByKey.get(modelKey);
+                    const metadata = modelMetadataByKey.get(modelKey);
+                    if (!weights || !metadata || weights[ratingIndex] <= 0) {
+                        continue;
+                    }
+
+                    let currentWeight = weights[ratingIndex];
+                    if (metadata.isClanTech) {
+                        currentWeight = pctClan > 0
+                            ? currentWeight + currentWeight * clanPctDifference / totalClanWeight
+                            : 0;
+                    } else {
+                        currentWeight = pctClan < 100
+                            ? currentWeight + currentWeight * clanPctDifference / totalNonClanWeight
+                            : 0;
+                    }
+
+                    weights[ratingIndex] = Math.max(0, currentWeight);
+                }
+
+                ({ totalWeight, totalOmniWeight, totalClanWeight, totalSLWeight, totalOtherWeight } = summarize());
+                if (totalWeight <= 0) {
+                    continue;
+                }
+            }
+        }
+
+        if (pctSL !== undefined && pctClan !== undefined && pctOther !== undefined && (pctOther === 0 || pctSL + pctClan >= 100)) {
+            const pctOtherDifference = pctOther - 100 * totalOtherWeight / totalWeight;
+            const totalAdvancedWeight = totalOtherWeight - totalWeight;
+            for (const modelKey of eligibleModelKeys) {
+                const weights = modelWeightsByKey.get(modelKey);
+                const metadata = modelMetadataByKey.get(modelKey);
+                if (!weights || !metadata || weights[ratingIndex] <= 0) {
+                    continue;
+                }
+
+                let currentWeight = weights[ratingIndex];
+                if (!metadata.isStarLeague && !metadata.isClanTech) {
+                    currentWeight = 0;
+                } else {
+                    currentWeight = currentWeight + currentWeight * pctOtherDifference / totalAdvancedWeight;
+                }
+
+                weights[ratingIndex] = Math.max(0, currentWeight);
+            }
+        }
+    }
+}
+
+function resolveModelMetadataByKey(
+    models: Record<string, CompactModelRecord>,
+    unitMetadataIndex: UnitMetadataIndex,
+): Map<string, UnitMetadataRecord> {
+    const metadataByKey = new Map<string, UnitMetadataRecord>();
+
+    for (const [modelKey, modelRecord] of Object.entries(models)) {
+        const metadata = findUnitMetadata(unitMetadataIndex, modelRecord.t, modelRecord.c, modelRecord.m);
+        if (!metadata) {
+            console.warn(`[MegaMek] missing unit metadata for weighted availability model ${modelKey}`);
+            continue;
+        }
+
+        metadataByKey.set(modelKey, metadata);
+    }
+
+    return metadataByKey;
+}
+
+function buildWeightedAvailabilityRecords(
+    chassis: Record<string, CompactChassisRecord>,
+    models: Record<string, CompactModelRecord>,
+    factions: Record<string, UniverseFactionRecord>,
+    factionEraData: Record<string, Record<string, EraFactionStats>>,
+    unitMetadataIndex: UnitMetadataIndex,
+): Record<string, CompactWeightedModelRecord> {
+    const weightedAvailability: Record<string, CompactWeightedModelRecord> = {};
+    const modelsByChassis = new Map<string, Array<[string, CompactModelRecord]>>();
+    const chassisKeysByUnitType = new Map<string, string[]>();
+    const modelMetadataByKey = resolveModelMetadataByKey(models, unitMetadataIndex);
+    const factionStatsCache = new Map<string, ResolvedFactionEraStats>();
+
+    for (const [modelKey, modelRecord] of Object.entries(models)) {
+        const chassisKey = buildChassisRecordKey(modelRecord.t, modelRecord.c);
+        const groupedModels = modelsByChassis.get(chassisKey) || [];
+        groupedModels.push([modelKey, modelRecord]);
+        modelsByChassis.set(chassisKey, groupedModels);
+
+        weightedAvailability[modelKey] = {
+            t: modelRecord.t,
+            c: modelRecord.c,
+            m: modelRecord.m,
+            e: {},
+        };
+    }
+
+    for (const [chassisKey, chassisRecord] of Object.entries(chassis)) {
+        const chassisKeys = chassisKeysByUnitType.get(chassisRecord.t) || [];
+        chassisKeys.push(chassisKey);
+        chassisKeysByUnitType.set(chassisRecord.t, chassisKeys);
+    }
+
+    for (const chassisKeys of chassisKeysByUnitType.values()) {
+        const eraKeys = new Set<string>();
+
+        for (const chassisKey of chassisKeys) {
+            const chassisRecord = chassis[chassisKey];
+            Object.keys(chassisRecord.e).forEach((eraKey) => eraKeys.add(eraKey));
+            for (const [, modelRecord] of modelsByChassis.get(chassisKey) || []) {
+                Object.keys(modelRecord.e).forEach((eraKey) => eraKeys.add(eraKey));
+            }
+        }
+
+        for (const eraKey of eraKeys) {
+            const directFactionKeys = new Set<string>();
+
+            for (const chassisKey of chassisKeys) {
+                const chassisRecord = chassis[chassisKey];
+                Object.keys(chassisRecord.e[eraKey] || {}).forEach((factionKey) => directFactionKeys.add(factionKey));
+                for (const [, modelRecord] of modelsByChassis.get(chassisKey) || []) {
+                    Object.keys(modelRecord.e[eraKey] || {}).forEach((factionKey) => directFactionKeys.add(factionKey));
+                }
+            }
+
+            const factionKeys = new Set<string>(directFactionKeys);
+            for (const factionKey of directFactionKeys) {
+                const stats = resolveFactionEraStats(factionEraData, factions, eraKey, factionKey, factionStatsCache);
+                Object.keys(stats.salvageWeights).forEach((sourceFactionKey) => factionKeys.add(sourceFactionKey));
+            }
+
+            const normalWeightsByFaction = new Map<string, Map<string, CompactWeightedByRating>>();
+            const salvageAllocationsByFaction = new Map<string, Map<string, CompactWeightedByRating>>();
+
+            for (const factionKey of factionKeys) {
+                const modelWeightsByKey = new Map<string, CompactWeightedByRating>();
+
+                for (const chassisKey of chassisKeys) {
+                    const chassisRecord = chassis[chassisKey];
+                    const chassisValue = resolveCompactAvailabilityForFaction(
+                        chassisRecord.e[eraKey] || {},
+                        factions,
+                        factionKey,
+                    );
+
+                    if (chassisValue === undefined) {
+                        continue;
+                    }
+
+                    const chassisByRating = expandAvailabilityValueToByRating(chassisValue);
+                    const siblingModelWeights = new Map<string, CompactWeightedByRating>();
+                    const totalModelWeight = createEmptyWeightedByRating();
+
+                    for (const [modelKey, modelRecord] of modelsByChassis.get(chassisKey) || []) {
+                        const modelValue = resolveCompactAvailabilityForFaction(
+                            modelRecord.e[eraKey] || {},
+                            factions,
+                            factionKey,
+                        );
+
+                        if (modelValue === undefined) {
+                            continue;
+                        }
+
+                        const modelByRating = expandAvailabilityValueToByRating(modelValue);
+                        const weightedByRating = createEmptyWeightedByRating();
+                        let hasPositiveWeight = false;
+
+                        for (let index = 0; index < weightedByRating.length; index += 1) {
+                            if (chassisByRating[index] <= 0 || modelByRating[index] <= 0) {
+                                continue;
+                            }
+
+                            const modelWeight = calcAvailabilityWeight(modelByRating[index]);
+                            weightedByRating[index] = modelWeight;
+                            totalModelWeight[index] += modelWeight;
+                            hasPositiveWeight = true;
+                        }
+
+                        if (hasPositiveWeight) {
+                            siblingModelWeights.set(modelKey, weightedByRating);
+                        }
+                    }
+
+                    for (let index = 0; index < totalModelWeight.length; index += 1) {
+                        if (chassisByRating[index] <= 0 || totalModelWeight[index] <= 0) {
+                            continue;
+                        }
+
+                        const chassisWeight = calcAvailabilityWeight(chassisByRating[index]);
+
+                        for (const [modelKey, siblingWeights] of siblingModelWeights.entries()) {
+                            if (siblingWeights[index] <= 0) {
+                                continue;
+                            }
+
+                            const currentWeights = modelWeightsByKey.get(modelKey) || createEmptyWeightedByRating();
+                            currentWeights[index] += chassisWeight * siblingWeights[index] / totalModelWeight[index];
+                            modelWeightsByKey.set(modelKey, currentWeights);
+                        }
+                    }
+                }
+
+                if (modelWeightsByKey.size === 0) {
+                    continue;
+                }
+
+                const resolvedStats = resolveFactionEraStats(factionEraData, factions, eraKey, factionKey, factionStatsCache);
+
+                for (const sourceUnitType of ['Mek', 'Tank', 'AeroSpaceFighter'] as const) {
+                    const eligibleModelKeys = getEligibleModelKeysBySourceUnitType(modelWeightsByKey, modelMetadataByKey, sourceUnitType);
+                    applyWeightDistributionToModels(
+                        modelWeightsByKey,
+                        eligibleModelKeys,
+                        modelMetadataByKey,
+                        getWeightDistributionForUnitType(resolvedStats, sourceUnitType),
+                    );
+                }
+
+                const { allocations, clearNormalRatings } = buildSalvageAllocations(resolvedStats, modelWeightsByKey);
+                for (let ratingIndex = 0; ratingIndex < clearNormalRatings.length; ratingIndex += 1) {
+                    if (!clearNormalRatings[ratingIndex]) {
+                        continue;
+                    }
+
+                    for (const weights of modelWeightsByKey.values()) {
+                        weights[ratingIndex] = 0;
+                    }
+                }
+
+                for (const sourceUnitType of ['Mek', 'AeroSpaceFighter', 'Tank', 'VTOL'] as const) {
+                    const eligibleModelKeys = getEligibleModelKeysBySourceUnitType(modelWeightsByKey, modelMetadataByKey, sourceUnitType);
+                    applyTechRebalanceToModels(
+                        modelWeightsByKey,
+                        eligibleModelKeys,
+                        modelMetadataByKey,
+                        models,
+                        factions,
+                        factionKey,
+                        sourceUnitType,
+                        resolvedStats,
+                        allocations,
+                    );
+                }
+
+                normalWeightsByFaction.set(factionKey, modelWeightsByKey);
+                salvageAllocationsByFaction.set(factionKey, allocations);
+            }
+
+            for (const factionKey of factionKeys) {
+                const normalWeightsByKey = normalWeightsByFaction.get(factionKey);
+                if (!normalWeightsByKey || normalWeightsByKey.size === 0) {
+                    continue;
+                }
+
+                const salvageWeightsByKey = new Map<string, CompactWeightedByRating>();
+                for (const [sourceFactionKey, sourceAllocations] of salvageAllocationsByFaction.get(factionKey) || new Map<string, CompactWeightedByRating>()) {
+                    const sourceWeightsByKey = normalWeightsByFaction.get(sourceFactionKey);
+                    if (!sourceWeightsByKey || sourceWeightsByKey.size === 0) {
+                        continue;
+                    }
+
+                    for (let ratingIndex = 0; ratingIndex < 5; ratingIndex += 1) {
+                        const sourceTotalWeight = Array.from(sourceWeightsByKey.values())
+                            .reduce((sum, value) => sum + (value[ratingIndex] ?? 0), 0);
+                        const allocatedWeight = sourceAllocations[ratingIndex] ?? 0;
+                        if (sourceTotalWeight <= 0 || allocatedWeight <= 0) {
+                            continue;
+                        }
+
+                        for (const [modelKey, sourceWeights] of sourceWeightsByKey.entries()) {
+                            const sourceWeight = sourceWeights[ratingIndex] ?? 0;
+                            if (sourceWeight <= 0) {
+                                continue;
+                            }
+
+                            const salvageWeights = salvageWeightsByKey.get(modelKey) ?? createEmptyWeightedByRating();
+                            salvageWeights[ratingIndex] += allocatedWeight * sourceWeight / sourceTotalWeight;
+                            salvageWeightsByKey.set(modelKey, salvageWeights);
+                        }
+                    }
+                }
+
+                const normalTotals = createEmptyWeightedByRating();
+                const normalPositiveCounts = createEmptyWeightedByRating();
+                for (const rawWeights of normalWeightsByKey.values()) {
+                    for (let index = 0; index < 5; index += 1) {
+                        normalTotals[index] += rawWeights[index] ?? 0;
+                        if ((rawWeights[index] ?? 0) > 0) {
+                            normalPositiveCounts[index] += 1;
+                        }
+                    }
+                }
+
+                const salvageTotals = createEmptyWeightedByRating();
+                const salvagePositiveCounts = createEmptyWeightedByRating();
+                for (const rawWeights of salvageWeightsByKey.values()) {
+                    for (let index = 0; index < 5; index += 1) {
+                        salvageTotals[index] += rawWeights[index] ?? 0;
+                        if ((rawWeights[index] ?? 0) > 0) {
+                            salvagePositiveCounts[index] += 1;
+                        }
+                    }
+                }
+
+                const outputModelKeys = new Set<string>([
+                    ...normalWeightsByKey.keys(),
+                    ...salvageWeightsByKey.keys(),
+                ]);
+
+                for (const modelKey of outputModelKeys) {
+                    const weightedChannels = createEmptyWeightedChannels();
+                    const normalRawWeights = cloneWeightedByRating(normalWeightsByKey.get(modelKey));
+                    const salvageRawWeights = cloneWeightedByRating(salvageWeightsByKey.get(modelKey));
+
+                    for (let index = 0; index < 5; index += 1) {
+                        if (normalRawWeights[index] > 0 && normalTotals[index] > 0 && normalPositiveCounts[index] > 0) {
+                            weightedChannels.normal[index] = calcWeightedScore(
+                                (normalRawWeights[index] * normalPositiveCounts[index]) / normalTotals[index],
+                            );
+                        }
+
+                        const salvageDenominator = normalTotals[index] > 0 ? normalTotals[index] : salvageTotals[index];
+                        if (salvageRawWeights[index] > 0 && salvageDenominator > 0 && salvagePositiveCounts[index] > 0) {
+                            weightedChannels.salvage[index] = calcWeightedScore(
+                                (salvageRawWeights[index] * salvagePositiveCounts[index]) / salvageDenominator,
+                            );
+                        }
+                    }
+
+                    const normalScore = averagePositiveWeightedScores(weightedChannels.normal);
+                    const salvageScore = averagePositiveWeightedScores(weightedChannels.salvage);
+                    if (normalScore <= 0 && salvageScore <= 0) {
+                        continue;
+                    }
+
+                    const modelRecord = weightedAvailability[modelKey];
+                    const weightedEraAvailability = modelRecord.e[eraKey] || {};
+                    weightedEraAvailability[factionKey] = [normalScore, salvageScore];
+                    modelRecord.e[eraKey] = weightedEraAvailability;
+                }
+            }
+        }
+    }
+
+    return Object.fromEntries(
+        Object.entries(weightedAvailability).filter(([, record]) => Object.keys(record.e).length > 0)
+    );
+}
+
+function loadForceGeneratorData(
+    dirPath: string,
+    eras: MegaMekEra[],
+    factions: Record<string, UniverseFactionRecord>
+): Pick<MegaMekAvailabilityExport, 'factionEraData' | 'chassis' | 'models' | 'availability'> & { forceGeneratorYears: number[] } {
+    const factionEraData: Record<string, Record<string, EraFactionStats>> = {};
+    const chassis: Record<string, CompactChassisRecord> = {};
+    const models: Record<string, CompactModelRecord> = {};
+    const forceGeneratorYears = listFiles(dirPath, '.xml')
+        .map((name) => name.replace(/\.xml$/i, ''))
+        .filter((name) => /^\d+$/.test(name))
+        .map((name) => Number.parseInt(name, 10))
+        .sort((left, right) => left - right);
+
+    for (const year of forceGeneratorYears) {
+        const filePath = path.join(dirPath, `${year}.xml`);
+        const sourceFileName = path.basename(filePath);
+        const parsed = xmlParser.parse(readText(filePath)) as {
+            ratgen?: {
+                factions?: { faction?: Array<Record<string, unknown>> };
+                units?: { chassis?: Array<Record<string, unknown>> };
+            };
+        };
+
+        for (const factionNode of ensureArray(parsed.ratgen?.factions?.faction)) {
+            const factionKey = String(factionNode.key);
+            const stats: EraFactionStats = {};
+
+            for (const key of ['pctOmni', 'pctClan', 'pctSL'] as const) {
+                for (const node of ensureArray(factionNode[key])) {
+                    const text = getNodeText(node);
+                    if (!text) {
+                        continue;
+                    }
+
+                    const values = text.split(',').map((entry) => Number.parseInt(entry.trim(), 10));
+                    const unitType = node && typeof node === 'object' ? String((node as Record<string, unknown>).unitType || '') : '';
+                    if (key === 'pctOmni' && unitType === 'AeroSpaceFighter') {
+                        stats.pctOmniAero = values;
+                    } else if (key === 'pctOmni') {
+                        stats.pctOmni = values;
+                    } else if (key === 'pctClan' && unitType === 'AeroSpaceFighter') {
+                        stats.pctClanAero = values;
+                    } else if (key === 'pctClan' && unitType === 'Vehicle') {
+                        stats.pctClanVehicle = values;
+                    } else if (key === 'pctClan') {
+                        stats.pctClan = values;
+                    } else if (key === 'pctSL' && unitType === 'AeroSpaceFighter') {
+                        stats.pctSLAero = values;
+                    } else if (key === 'pctSL' && unitType === 'Vehicle') {
+                        stats.pctSLVehicle = values;
+                    } else if (key === 'pctSL') {
+                        stats.pctSL = values;
+                    }
+                }
+            }
+
+            if (factionNode.omniMargin !== undefined) {
+                stats.omniMargin = Number.parseInt(String(factionNode.omniMargin), 10);
+            }
+            if (factionNode.techMargin !== undefined) {
+                stats.techMargin = Number.parseInt(String(factionNode.techMargin), 10);
+            }
+            if (factionNode.upgradeMargin !== undefined) {
+                stats.upgradeMargin = Number.parseInt(String(factionNode.upgradeMargin), 10);
+            }
+
+            const salvageNode = factionNode.salvage as Record<string, unknown> | undefined;
+            if (salvageNode) {
+                stats.salvage = parseSalvage(salvageNode);
+            }
+
+            const distributions = ensureArray(factionNode.weightDistribution)
+                .map((node) => parseWeightDistributionNode(node as Record<string, unknown>))
+                .filter((entry): entry is { unitType: string; weights: number[] } => entry !== null);
+            if (distributions.length > 0) {
+                stats.weightDistribution = Object.fromEntries(
+                    distributions.map((entry) => [entry.unitType, entry.weights])
+                );
+            }
+
+            addCompactFactionEraStats(factionEraData, eras, year, factionKey, stats);
+        }
+
+        for (const chassisNode of ensureArray(parsed.ratgen?.units?.chassis)) {
+            const chassisName = String(chassisNode.name);
+            const unitType = String(chassisNode.unitType);
+            warnOnInvalidXmlUnitType(unitType, `chassis ${chassisName} in ${sourceFileName}`);
+            const omniType = chassisNode.omni === undefined ? undefined : String(chassisNode.omni);
+            let omni: 'Clan' | 'IS' | undefined;
+            const chassisKey = buildChassisRecordKey(unitType, chassisName);
+            if (omniType === 'Clan') {
+                omni = 'Clan';
+            } else if (omniType === 'IS') {
+                omni = 'IS';
+            }
+
+            const chassisRecord = chassis[chassisKey] || {
+                t: unitType,
+                c: chassisName,
+                o: omni,
+                e: {},
+            };
+            chassis[chassisKey] = chassisRecord;
+
+            const chassisAvailability = parseAvailabilityList(getNodeText(chassisNode.availability), year);
+            addCompactAvailability(
+                chassisRecord.e,
+                eras,
+                factions,
+                chassisAvailability,
+                `chassis ${chassisKey} in ${sourceFileName}`
+            );
+
+            for (const rawModelNode of ensureArray(chassisNode.model)) {
+                const modelNode = rawModelNode as Record<string, unknown>;
+                const modelName = String(modelNode.name || '');
+                const modelKey = buildModelRecordKey(unitType, chassisName, modelName);
+                const modelRecord = models[modelKey] || {
+                    t: unitType,
+                    c: chassisName,
+                    m: modelName,
+                    o: omni,
+                    e: {},
+                };
+                models[modelKey] = modelRecord;
+
+                addCompactAvailability(
+                    modelRecord.e,
+                    eras,
+                    factions,
+                    parseAvailabilityList(getNodeText(modelNode.availability), year),
+                    `model ${modelKey} (chassis ${chassisKey}) in ${sourceFileName}`
+                );
+            }
+        }
+    }
+
+    warnOnAvailabilityMismatches(chassis, models, factions);
+    const availability = buildCombinedAvailabilityRecords(chassis, models, factions);
+
+    return {
+        factionEraData,
+        chassis,
+        models,
+        availability,
+        forceGeneratorYears,
+    };
+}
+
+function loadRulesets(dirPath: string): RulesetRecord[] {
+    const result: RulesetRecord[] = [];
+    for (const fileName of listFiles(dirPath, '.xml')) {
+        if (fileName.toLowerCase() === 'formationrulesetschema.xsd') {
+            continue;
+        }
+        const filePath = path.join(dirPath, fileName);
+        const parsed = rulesetXmlParser.parse(readText(filePath)) as { ruleset?: Record<string, unknown> };
+        const rawRuleset = parsed.ruleset;
+        if (!rawRuleset) {
+            continue;
+        }
+
+        const normalizedDocument = normalizeRulesetNode(rawRuleset, ['ruleset']);
+        if (!normalizedDocument || typeof normalizedDocument !== 'object' || Array.isArray(normalizedDocument)) {
+            throw new Error(`Failed to normalize ruleset ${fileName}`);
+        }
+
+        const document = finalizeRulesetExportValue(normalizedDocument) as JsonObject;
+        const forces = Array.isArray(document.forces)
+            ? document.forces.filter((entry): entry is JsonObject => !!entry && typeof entry === 'object' && !Array.isArray(entry))
+            : [];
+
+        const factionKey = String(rawRuleset['@_faction'] || fileName.replace(/\.xml$/i, ''));
+        result.push({
+            factionKey,
+            parentFactionKey: rawRuleset['@_parent'] === undefined ? undefined : String(rawRuleset['@_parent']),
+            ratingSystem: rawRuleset['@_ratingSystem'] === undefined ? undefined : String(rawRuleset['@_ratingSystem']),
+            assign: document.assign && typeof document.assign === 'object' && !Array.isArray(document.assign)
+                ? document.assign as JsonObject
+                : undefined,
+            customRanks: document.customRanks && typeof document.customRanks === 'object' && !Array.isArray(document.customRanks)
+                ? document.customRanks as JsonObject
+                : undefined,
+            defaults: document.defaults && typeof document.defaults === 'object' && !Array.isArray(document.defaults)
+                ? document.defaults as JsonObject
+                : undefined,
+            toc: document.toc && typeof document.toc === 'object' && !Array.isArray(document.toc)
+                ? document.toc as JsonObject
+                : undefined,
+            forces,
+            indexes: buildRulesetIndexes(forces),
+            forceCount: forces.length,
+        });
+    }
+
+    return result.sort((left, right) => left.factionKey.localeCompare(right.factionKey, undefined, { numeric: true }));
+}
+
+function buildAncestry(factions: Record<string, UniverseFactionRecord>, factionKey: string): string[] {
+    const visited = new Set<string>();
+    const ancestry = new Set<string>();
+
+    function visit(currentKey: string): void {
+        if (visited.has(currentKey)) {
+            return;
+        }
+        visited.add(currentKey);
+        const faction = factions[currentKey];
+        if (!faction) {
+            return;
+        }
+        for (const fallback of faction.fallBackFactions) {
+            ancestry.add(fallback);
+            visit(fallback);
+        }
+    }
+
+    visit(factionKey);
+    return Array.from(ancestry);
+}
+
+function groupForceGeneratorYearsByEra(
+    forceGeneratorYears: number[],
+    eras: MegaMekEra[]
+): Record<string, number[]> {
+    const groupedYears: Record<string, number[]> = {};
+
+    for (const year of forceGeneratorYears) {
+        const matched = eras.find((era) => {
+            const from = era.startYear ?? Number.MIN_SAFE_INTEGER;
+            const to = era.endYear ?? Number.MAX_SAFE_INTEGER;
+            return year >= from && year <= to;
+        });
+
+        if (!matched?.code) {
+            continue;
+        }
+
+        if (!groupedYears[matched.code]) {
+            groupedYears[matched.code] = [];
+        }
+
+        groupedYears[matched.code].push(year);
+    }
+
+    return groupedYears;
+}
+
+function isJsonInlinePrimitive(value: unknown): value is string | number | boolean | null {
+    return value === null
+        || typeof value === 'string'
+        || typeof value === 'number'
+        || typeof value === 'boolean';
+}
+
+function tryFormatInlineJsonArray(value: unknown[]): string | undefined {
+    if (value.length === 0) {
+        return '[]';
+    }
+
+    if (value.length > INLINE_JSON_ARRAY_MAX_ITEMS || !value.every((entry) => isJsonInlinePrimitive(entry))) {
+        return undefined;
+    }
+
+    const rendered = `[${value.map((entry) => JSON.stringify(entry)).join(',')}]`;
+    return rendered.length <= INLINE_JSON_ARRAY_MAX_LENGTH ? rendered : undefined;
+}
+
+function formatJsonValue(value: unknown, indentLevel = 0): string | undefined {
+    if (value && typeof value === 'object' && typeof (value as { toJSON?: () => unknown }).toJSON === 'function') {
+        return formatJsonValue((value as { toJSON: () => unknown }).toJSON(), indentLevel);
+    }
+
+    if (Array.isArray(value)) {
+        const inlineArray = tryFormatInlineJsonArray(value);
+        if (inlineArray !== undefined) {
+            return inlineArray;
+        }
+
+        if (value.length === 0) {
+            return '[]';
+        }
+
+        const currentIndent = ' '.repeat(indentLevel * JSON_INDENT);
+        const nextIndent = ' '.repeat((indentLevel + 1) * JSON_INDENT);
+        const renderedItems = value.map((entry) => `${nextIndent}${formatJsonValue(entry, indentLevel + 1) ?? 'null'}`);
+        return `[` + os.EOL
+            + renderedItems.join(`,${os.EOL}`)
+            + os.EOL
+            + `${currentIndent}]`;
+    }
+
+    if (value && typeof value === 'object') {
+        const entries = Object.entries(value as Record<string, unknown>)
+            .map(([key, entryValue]) => [key, formatJsonValue(entryValue, indentLevel + 1)] as const)
+            .filter(([, renderedValue]) => renderedValue !== undefined);
+
+        if (entries.length === 0) {
+            return '{}';
+        }
+
+        const currentIndent = ' '.repeat(indentLevel * JSON_INDENT);
+        const nextIndent = ' '.repeat((indentLevel + 1) * JSON_INDENT);
+        const renderedEntries = entries.map(
+            ([key, renderedValue]) => `${nextIndent}${JSON.stringify(key)}: ${renderedValue}`
+        );
+        return `{` + os.EOL
+            + renderedEntries.join(`,${os.EOL}`)
+            + os.EOL
+            + `${currentIndent}}`;
+    }
+
+    return JSON.stringify(value);
+}
+
+function writeJsonFile(filePath: string, data: unknown): void {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const contents = BEAUTIFY_OUTPUT
+        ? formatJsonValue(data) ?? ''
+        : JSON.stringify(data);
+    fs.writeFileSync(filePath, contents + os.EOL, 'utf8');
+}
+
+function collapseUniformAvailabilityValueForWrite(value: CompactAvailabilityValue): CompactAvailabilityValue {
+    if (!hasRatingSpecificAvailability(value)) {
+        return value;
+    }
+
+    const [first, ...rest] = value;
+    return rest.every((entry) => entry === first) ? first : value;
+}
+
+function collapseUniformAvailabilityRecordsForWrite<
+    TRecord extends CompactAvailabilityRecordBase,
+>(records: Record<string, TRecord>): Record<string, TRecord> {
+    return Object.fromEntries(
+        Object.entries(records).map(([recordKey, record]) => [
+            recordKey,
+            {
+                ...record,
+                e: Object.fromEntries(
+                    Object.entries(record.e).map(([eraKey, eraAvailability]) => [
+                        eraKey,
+                        Object.fromEntries(
+                            Object.entries(eraAvailability).map(([factionKey, value]) => [
+                                factionKey,
+                                collapseUniformAvailabilityValueForWrite(value),
+                            ])
+                        ),
+                    ])
+                ),
+            },
+        ])
+    );
+}
+
+function mergeCompactEraAvailabilityForWrite(
+    current: Record<string, CompactEraAvailability>,
+    incoming: Record<string, CompactEraAvailability>
+): Record<string, CompactEraAvailability> {
+    const merged: Record<string, CompactEraAvailability> = {
+        ...current,
+    };
+
+    for (const [eraKey, incomingEraAvailability] of Object.entries(incoming)) {
+        const currentEraAvailability = merged[eraKey] || {};
+        const nextEraAvailability: CompactEraAvailability = {
+            ...currentEraAvailability,
+        };
+
+        for (const [factionKey, incomingValue] of Object.entries(incomingEraAvailability)) {
+            const currentValue = nextEraAvailability[factionKey];
+            nextEraAvailability[factionKey] = currentValue === undefined
+                ? incomingValue
+                : mergeCompactAvailabilityValueForMul(currentValue, incomingValue);
+        }
+
+        merged[eraKey] = nextEraAvailability;
+    }
+
+    return merged;
+}
+
+function mergeCompactAvailabilityRecordForWrite<TRecord extends CompactAvailabilityRecord>(
+    current: TRecord,
+    incoming: TRecord
+): TRecord {
+    return {
+        ...current,
+        e: mergeCompactEraAvailabilityForWrite(current.e, incoming.e),
+    };
+}
+
+function buildCompiledRecordKey(record: CompactAvailabilityRecord, unitType: UnitType): string {
+    if ('m' in record) {
+        return buildModelRecordKey(unitType, record.c, record.m);
+    }
+
+    return buildChassisRecordKey(unitType, record.c);
+}
+
+function compileCompactAvailabilityRecords<TRecord extends CompactAvailabilityRecord>(
+    records: Record<string, TRecord>,
+    sourceLabel: string
+): Record<string, TRecord> {
+    const compiledRecords: Record<string, TRecord> = {};
+    const originalTypesByCompiledKey = new Map<string, Set<string>>();
+
+    for (const record of Object.values(records)) {
+        const compiledUnitType = compileXmlUnitType(record.t, `${sourceLabel} ${record.c}`);
+        const compiledRecord = {
+            ...record,
+            t: compiledUnitType,
+        } as TRecord;
+        const compiledKey = buildCompiledRecordKey(record, compiledUnitType);
+        const originalTypes = originalTypesByCompiledKey.get(compiledKey) || new Set<string>();
+
+        if (compiledRecords[compiledKey]) {
+            if (!originalTypes.has(record.t) && originalTypes.size > 0) {
+                const collidedTypes = [...originalTypes, record.t].sort((left, right) => left.localeCompare(right));
+                console.warn(
+                    `[MegaMek] ${sourceLabel} collision after unit type compilation for ${compiledKey}: ${collidedTypes.join(', ')}`
+                );
+            }
+
+            compiledRecords[compiledKey] = mergeCompactAvailabilityRecordForWrite(
+                compiledRecords[compiledKey],
+                compiledRecord
+            );
+        } else {
+            compiledRecords[compiledKey] = compiledRecord;
+        }
+
+        originalTypes.add(record.t);
+        originalTypesByCompiledKey.set(compiledKey, originalTypes);
+    }
+
+    return compiledRecords;
+}
+
+function compactAvailabilityRecordsToArrayForWrite<TRecord extends CompactAvailabilityRecord>(
+    records: Record<string, TRecord>
+): TRecord[] {
+    const collapsedRecords = collapseUniformAvailabilityRecordsForWrite(records);
+    return Object.entries(collapsedRecords)
+        .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey, undefined, { numeric: true }))
+        .map(([, record]) => record);
+}
+
+function collapseUniformWeightedValueForWrite(value: CompactWeightedValue): CompactWeightedValue {
+    return value;
+}
+
+function encodeWeightedQValue(value: number): AvailabilityWeightedQName {
+    if (!Number.isFinite(value) || value <= 0) {
+        return 'X';
+    }
+
+    const clampedValue = Math.min(10, Math.max(1, value));
+    const normalizedValue = (clampedValue - 1) / 9;
+    const bucketIndex = Math.min(
+        WEIGHTED_Q_BUCKETS.length - 1,
+        Math.floor(normalizedValue * WEIGHTED_Q_BUCKETS.length)
+    );
+
+    return WEIGHTED_Q_BUCKETS[bucketIndex];
+}
+
+function encodeWeightedQRecordValue(value: CompactWeightedValue): CompactWeightedQValue {
+    return [encodeWeightedQValue(value[0]), encodeWeightedQValue(value[1])];
+}
+
+function collapseUniformWeightedQValueForWrite(value: CompactWeightedQValue): CompactWeightedQValue {
+    return value;
+}
+
+function collapseUniformWeightedRecordsForWrite(
+    records: Record<string, CompactWeightedModelRecord>
+): Record<string, CompactWeightedModelRecord> {
+    return Object.fromEntries(
+        Object.entries(records).map(([recordKey, record]) => [
+            recordKey,
+            {
+                ...record,
+                e: Object.fromEntries(
+                    Object.entries(record.e).map(([eraKey, eraAvailability]) => [
+                        eraKey,
+                        Object.fromEntries(
+                            Object.entries(eraAvailability).map(([factionKey, value]) => [
+                                factionKey,
+                                collapseUniformWeightedValueForWrite(value),
+                            ])
+                        ),
+                    ])
+                ),
+            },
+        ])
+    );
+}
+
+function buildWeightedQRecords(
+    records: Record<string, CompactWeightedModelRecord>
+): Record<string, CompactWeightedQModelRecord> {
+    return Object.fromEntries(
+        Object.entries(records).map(([recordKey, record]) => [
+            recordKey,
+            {
+                ...record,
+                e: Object.fromEntries(
+                    Object.entries(record.e).map(([eraKey, eraAvailability]) => [
+                        eraKey,
+                        Object.fromEntries(
+                            Object.entries(eraAvailability).map(([factionKey, value]) => [
+                                factionKey,
+                                encodeWeightedQRecordValue(value),
+                            ])
+                        ),
+                    ])
+                ),
+            },
+        ])
+    );
+}
+
+function collapseUniformWeightedQRecordsForWrite(
+    records: Record<string, CompactWeightedQModelRecord>
+): Record<string, CompactWeightedQModelRecord> {
+    return Object.fromEntries(
+        Object.entries(records).map(([recordKey, record]) => [
+            recordKey,
+            {
+                ...record,
+                e: Object.fromEntries(
+                    Object.entries(record.e).map(([eraKey, eraAvailability]) => [
+                        eraKey,
+                        Object.fromEntries(
+                            Object.entries(eraAvailability).map(([factionKey, value]) => [
+                                factionKey,
+                                collapseUniformWeightedQValueForWrite(value),
+                            ])
+                        ),
+                    ])
+                ),
+            },
+        ])
+    );
+}
+
+function compactWeightedRecordsToArrayForWrite(
+    records: Record<string, CompactWeightedModelRecord>
+): CompactWeightedModelRecord[] {
+    const collapsedRecords = collapseUniformWeightedRecordsForWrite(records);
+    return Object.entries(collapsedRecords)
+        .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey, undefined, { numeric: true }))
+        .map(([, record]) => record);
+}
+
+function compactWeightedQRecordsToArrayForWrite(
+    records: Record<string, CompactWeightedQModelRecord>
+): CompactWeightedQModelRecord[] {
+    const collapsedRecords = collapseUniformWeightedQRecordsForWrite(records);
+    return Object.entries(collapsedRecords)
+        .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey, undefined, { numeric: true }))
+        .map(([, record]) => record);
+}
+
+function resolveMulOutputKeyForWrite(
+    mulKey: string,
+    mulFactionNames: ReadonlyMap<number, string>
+): string {
+    if (!USE_MULIZED_FACTION_NAMES || mulKey === GENERAL_FACTION_KEY) {
+        return mulKey;
+    }
+
+    const mulId = Number.parseInt(mulKey, 10);
+    if (!Number.isFinite(mulId)) {
+        return mulKey;
+    }
+
+    if (mulId === 0) {
+        return GENERAL_FACTION_KEY;
+    }
+
+    return mulFactionNames.get(mulId) ?? mulKey;
+}
+
+function applyMulFactionNamesToEraAvailabilityForWrite<TValue>(
+    eraAvailability: Record<string, TValue>,
+    mulFactionNames: ReadonlyMap<number, string>,
+    mergeValue: (current: TValue, incoming: TValue) => TValue,
+): Record<string, TValue> {
+    const renamedAvailability: Record<string, TValue> = {};
+
+    for (const [mulKey, value] of Object.entries(eraAvailability)) {
+        const outputKey = resolveMulOutputKeyForWrite(mulKey, mulFactionNames);
+        const previousValue = renamedAvailability[outputKey];
+        renamedAvailability[outputKey] = previousValue === undefined
+            ? value
+            : mergeValue(previousValue, value);
+    }
+
+    return renamedAvailability;
+}
+
+function applyMulFactionNamesToAvailabilityRecordsForWrite<TRecord extends CompactAvailabilityRecord>(
+    records: Record<string, TRecord>,
+    mulFactionNames: ReadonlyMap<number, string>
+): Record<string, TRecord> {
+    return Object.fromEntries(
+        Object.entries(records).map(([recordKey, record]) => [
+            recordKey,
+            {
+                ...record,
+                e: Object.fromEntries(
+                    Object.entries(record.e).map(([eraKey, eraAvailability]) => [
+                        eraKey,
+                        applyMulFactionNamesToEraAvailabilityForWrite(
+                            eraAvailability,
+                            mulFactionNames,
+                            mergeCompactAvailabilityValueForMul,
+                        ),
+                    ])
+                ),
+            },
+        ])
+    );
+}
+
+function applyMulFactionNamesToWeightedRecordsForWrite(
+    records: Record<string, CompactWeightedModelRecord>,
+    mulFactionNames: ReadonlyMap<number, string>
+): Record<string, CompactWeightedModelRecord> {
+    return Object.fromEntries(
+        Object.entries(records).map(([recordKey, record]) => [
+            recordKey,
+            {
+                ...record,
+                e: Object.fromEntries(
+                    Object.entries(record.e).map(([eraKey, eraAvailability]) => [
+                        eraKey,
+                        applyMulFactionNamesToEraAvailabilityForWrite(
+                            eraAvailability,
+                            mulFactionNames,
+                            mergeCompactWeightedValueForMul,
+                        ),
+                    ])
+                ),
+            },
+        ])
+    );
+}
+
+function resolveFactionMulIds(
+    factions: Record<string, UniverseFactionRecord>,
+    factionKey: string,
+    skippedFactions: ReadonlySet<string>,
+    visited = new Set<string>()
+): number[] {
+    if (factionKey === GENERAL_FACTION_KEY) {
+        return [0];
+    }
+
+    if (visited.has(factionKey)) {
+        return [];
+    }
+
+    visited.add(factionKey);
+
+    const faction = factions[factionKey];
+    if (!faction) {
+        return [];
+    }
+
+    if (skippedFactions.has(factionKey)) {
+        return [];
+    }
+
+    if (faction.mulId.length > 0) {
+        return [...faction.mulId];
+    }
+
+    for (const fallbackFactionKey of faction.fallBackFactions) {
+        const fallbackMulIds = resolveFactionMulIds(factions, fallbackFactionKey, skippedFactions, new Set(visited));
+        if (fallbackMulIds.length > 0) {
+            return fallbackMulIds;
+        }
+    }
+
+    return [];
+}
+
+function remapEraAvailabilityToMulIds(
+    eraAvailability: CompactEraAvailability,
+    factions: Record<string, UniverseFactionRecord>,
+    skippedFactions: ReadonlySet<string>
+): CompactEraAvailability {
+    const mulizedAvailability: CompactEraAvailability = {};
+
+    for (const [factionKey, value] of Object.entries(eraAvailability)) {
+        const faction = factions[factionKey];
+        if (factionKey !== GENERAL_FACTION_KEY && !faction) {
+            console.log(`[MegaMek] skipping MUL remap for unknown faction ${factionKey}`);
+            continue;
+        }
+
+        if (factionKey !== GENERAL_FACTION_KEY && skippedFactions.has(factionKey)) {
+            // console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to explicit -1 CSV mapping`);
+            continue;
+        }
+
+        const resolvedMulIds = resolveFactionMulIds(factions, factionKey, skippedFactions);
+        if (resolvedMulIds.length === 0) {
+            console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to missing CSV mapping`);
+            continue;
+        }
+
+        for (const mulId of resolvedMulIds) {
+            const mulKey = String(mulId);
+            const previousValue = mulizedAvailability[mulKey];
+            mulizedAvailability[mulKey] = previousValue === undefined
+                ? value
+                : mergeCompactAvailabilityValueForMul(previousValue, value);
+        }
+    }
+
+    return mulizedAvailability;
+}
+
+function remapWeightedEraAvailabilityToMulIds(
+    eraAvailability: CompactWeightedEraAvailability,
+    factions: Record<string, UniverseFactionRecord>,
+    skippedFactions: ReadonlySet<string>
+): CompactWeightedEraAvailability {
+    const mulizedAvailability: CompactWeightedEraAvailability = {};
+
+    for (const [factionKey, value] of Object.entries(eraAvailability)) {
+        const faction = factions[factionKey];
+        if (factionKey !== GENERAL_FACTION_KEY && !faction) {
+            console.log(`[MegaMek] skipping MUL remap for unknown faction ${factionKey}`);
+            continue;
+        }
+
+        if (factionKey !== GENERAL_FACTION_KEY && skippedFactions.has(factionKey)) {
+            // console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to explicit -1 CSV mapping`);
+            continue;
+        }
+
+        const resolvedMulIds = resolveFactionMulIds(factions, factionKey, skippedFactions);
+        if (resolvedMulIds.length === 0) {
+            console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to missing CSV mapping`);
+            continue;
+        }
+
+        for (const mulId of resolvedMulIds) {
+            const mulKey = String(mulId);
+            const previousValue = mulizedAvailability[mulKey];
+            mulizedAvailability[mulKey] = previousValue === undefined
+                ? value
+                : mergeCompactWeightedValueForMul(previousValue, value);
+        }
+    }
+
+    return mulizedAvailability;
+}
+
+function mulizeCompactAvailabilityRecords<TRecord extends CompactAvailabilityRecord>(
+    records: Record<string, TRecord>,
+    factions: Record<string, UniverseFactionRecord>,
+    skippedFactions: ReadonlySet<string>
+): Record<string, TRecord> {
+    return Object.fromEntries(
+        Object.entries(records).map(([recordKey, record]) => [
+            recordKey,
+            {
+                ...record,
+                e: Object.fromEntries(
+                    Object.entries(record.e)
+                        .map(([eraKey, eraAvailability]) => [
+                            eraKey,
+                            remapEraAvailabilityToMulIds(eraAvailability, factions, skippedFactions),
+                        ])
+                        .filter(([, eraAvailability]) => Object.keys(eraAvailability).length > 0)
+                ),
+            },
+        ])
+    );
+}
+
+function mulizeCompactWeightedRecords(
+    records: Record<string, CompactWeightedModelRecord>,
+    factions: Record<string, UniverseFactionRecord>,
+    skippedFactions: ReadonlySet<string>
+): Record<string, CompactWeightedModelRecord> {
+    return Object.fromEntries(
+        Object.entries(records).map(([recordKey, record]) => [
+            recordKey,
+            {
+                ...record,
+                e: Object.fromEntries(
+                    Object.entries(record.e)
+                        .map(([eraKey, eraAvailability]) => [
+                            eraKey,
+                            remapWeightedEraAvailabilityToMulIds(eraAvailability, factions, skippedFactions),
+                        ])
+                        .filter(([, eraAvailability]) => Object.keys(eraAvailability).length > 0)
+                ),
+            },
+        ])
+    );
+}
+
+function ensureOutputDir(dirPath: string): void {
+    fs.mkdirSync(dirPath, { recursive: true });
+}
+
+function isManagedOutputFile(fileName: string): boolean {
+    return fileName === 'index.json'
+        || fileName === 'eras.json'
+        || fileName === 'factions.json'
+        || fileName === 'mmfactions.json'
+        || fileName === 'faction-era-data.json'
+        || fileName === 'rulesets.json'
+        || fileName === 'chassis.json'
+        || fileName === 'models.json'
+        || fileName === 'availability.json'
+    || fileName === 'availability_weighted.json'
+        || fileName === 'availability_weighted_q.json'
+        || fileName === 'mulized_chassis.json'
+        || fileName === 'mulized_models.json'
+    || fileName === 'mulized_availability.json'
+    || fileName === 'mulized_availability_weighted.json';
+}
+
+function cleanupStaleOutputFiles(dirPath: string, expectedFiles: string[]): void {
+    if (!fs.existsSync(dirPath)) {
+        return;
+    }
+
+    const expected = new Set(expectedFiles);
+    for (const fileName of fs.readdirSync(dirPath)) {
+        const filePath = path.join(dirPath, fileName);
+        if (expected.has(fileName) || !fs.statSync(filePath).isFile() || !isManagedOutputFile(fileName)) {
+            continue;
+        }
+
+        try {
+            fs.rmSync(filePath, { force: true });
+        } catch (error) {
+            console.warn(`[MegaMek] Skipped cleanup for ${filePath}: ${String(error)}`);
+        }
+    }
+}
+
+function run(): void {
+    const universeFactionsDir = path.join(UNIVERSE_ROOT, 'factions');
+    const universeCommandsDir = path.join(UNIVERSE_ROOT, 'commands');
+    const universeErasPath = path.join(UNIVERSE_ROOT, 'eras.xml');
+    const forceGeneratorRulesDir = path.join(FORCEGEN_ROOT, 'faction_rules');
+
+    if (!fs.existsSync(MM_DATA_ROOT)) {
+        throw new Error(`MM_DATA_PATH does not exist: ${MM_DATA_ROOT}`);
+    }
+
+    const factionMulIdConfig = loadFactionMulIdMap(FACTIONS_MM_TO_MUL_PATH);
+    const factions = {
+        ...loadUniverseFactions(universeFactionsDir, false, factionMulIdConfig.mappedIds),
+        ...loadUniverseFactions(universeCommandsDir, true, factionMulIdConfig.mappedIds),
+    };
+    const eras = loadMegaMekEras(universeErasPath);
+    const forceGeneratorData = loadForceGeneratorData(FORCEGEN_ROOT, eras, factions);
+    const unitMetadataIndex = loadUnitMetadataIndex(UNIT_FILES_ROOT, NAME_CHANGES_FILE_PATH);
+    const compiledChassis = compileCompactAvailabilityRecords(forceGeneratorData.chassis, 'chassis');
+    const compiledModels = compileCompactAvailabilityRecords(forceGeneratorData.models, 'models');
+    const compiledAvailability = compileCompactAvailabilityRecords(forceGeneratorData.availability, 'availability');
+    const weightedAvailability = buildWeightedAvailabilityRecords(
+        compiledChassis,
+        compiledModels,
+        factions,
+        forceGeneratorData.factionEraData,
+        unitMetadataIndex,
+    );
+    const weightedAvailabilityQ = buildWeightedQRecords(weightedAvailability);
+    const rulesets = loadRulesets(forceGeneratorRulesDir);
+
+    const enrichedFactions = Object.fromEntries(
+        Object.entries(factions).map(([key, faction]) => [key, {
+            ...faction,
+            ancestry: buildAncestry(factions, key),
+        }])
+    );
+
+    const sharedMetadata: MegaMekAvailabilitySharedMetadata = {
+        version: 3,
+        generatedAt: new Date().toISOString(),
+        generator: 'scripts/generate-all-megamek-availability.ts',
+        source: {
+            type: 'MegaMek',
+            mmDataPath: MM_DATA_ROOT,
+            paths: {
+                universeFactions: universeFactionsDir,
+                universeCommands: universeCommandsDir,
+                universeEras: universeErasPath,
+                forceGenerator: FORCEGEN_ROOT,
+                forceGeneratorRules: forceGeneratorRulesDir,
+            },
+        },
+        summary: {
+            factionCount: Object.values(factions).filter((faction) => !faction.isCommand).length,
+            commandCount: Object.values(factions).filter((faction) => faction.isCommand).length,
+            forceGeneratorEraCount: forceGeneratorData.forceGeneratorYears.length,
+            megaMekEraCount: eras.length,
+            chassisCount: Object.keys(compiledChassis).length,
+            modelCount: Object.keys(compiledModels).length,
+        },
+    };
+
+    const exportData: MegaMekAvailabilityExport = {
+        ...sharedMetadata,
+        eras: {
+            eras,
+            forceGenerator: groupForceGeneratorYearsByEra(forceGeneratorData.forceGeneratorYears, eras),
+        },
+        factions: enrichedFactions,
+        factionEraData: forceGeneratorData.factionEraData,
+        chassis: compiledChassis,
+        models: compiledModels,
+        availability: compiledAvailability,
+        rulesets: rulesets,
+    };
+    const mulizedChassis = mulizeCompactAvailabilityRecords(
+        exportData.chassis,
+        factions,
+        factionMulIdConfig.skippedFactions
+    );
+    const mulizedModels = mulizeCompactAvailabilityRecords(
+        exportData.models,
+        factions,
+        factionMulIdConfig.skippedFactions
+    );
+    const mulizedAvailability = mulizeCompactAvailabilityRecords(
+        exportData.availability,
+        factions,
+        factionMulIdConfig.skippedFactions
+    );
+    const mulizedWeightedAvailability = mulizeCompactWeightedRecords(
+        weightedAvailability,
+        factions,
+        factionMulIdConfig.skippedFactions
+    );
+
+    ensureOutputDir(OUTPUT_DIR);
+
+    const mulFactionNames = loadMulFactionNames(MUL_FACTIONS_PATH);
+
+    writeJsonFile(path.join(OUTPUT_DIR, 'eras.json'), exportData.eras);
+    writeJsonFile(path.join(OUTPUT_DIR, 'factions.json'), exportData.factions);
+    writeJsonFile(path.join(OUTPUT_DIR, 'faction-era-data.json'), exportData.factionEraData);
+    writeJsonFile(
+        path.join(OUTPUT_DIR, 'chassis.json'),
+        compactAvailabilityRecordsToArrayForWrite(exportData.chassis)
+    );
+    writeJsonFile(
+        path.join(OUTPUT_DIR, 'models.json'),
+        compactAvailabilityRecordsToArrayForWrite(exportData.models)
+    );
+    writeJsonFile(
+        path.join(OUTPUT_DIR, 'availability.json'),
+        compactAvailabilityRecordsToArrayForWrite(exportData.availability)
+    );
+    writeJsonFile(
+        path.join(OUTPUT_DIR, 'availability_weighted.json'),
+        compactWeightedRecordsToArrayForWrite(weightedAvailability)
+    );
+    writeJsonFile(
+        path.join(OUTPUT_DIR, 'availability_weighted_q.json'),
+        compactWeightedQRecordsToArrayForWrite(weightedAvailabilityQ)
+    );
+    writeJsonFile(
+        path.join(OUTPUT_DIR, 'mulized_chassis.json'),
+        compactAvailabilityRecordsToArrayForWrite(
+            applyMulFactionNamesToAvailabilityRecordsForWrite(mulizedChassis, mulFactionNames)
+        )
+    );
+    writeJsonFile(
+        path.join(OUTPUT_DIR, 'mulized_models.json'),
+        compactAvailabilityRecordsToArrayForWrite(
+            applyMulFactionNamesToAvailabilityRecordsForWrite(mulizedModels, mulFactionNames)
+        )
+    );
+    writeJsonFile(
+        path.join(OUTPUT_DIR, 'mulized_availability.json'),
+        compactAvailabilityRecordsToArrayForWrite(
+            applyMulFactionNamesToAvailabilityRecordsForWrite(mulizedAvailability, mulFactionNames)
+        )
+    );
+    writeJsonFile(
+        path.join(OUTPUT_DIR, 'mulized_availability_weighted.json'),
+        compactWeightedRecordsToArrayForWrite(
+            applyMulFactionNamesToWeightedRecordsForWrite(mulizedWeightedAvailability, mulFactionNames)
+        )
+    );
+    writeJsonFile(
+        path.join(OUTPUT_DIR, 'rulesets.json'),
+        exportData.rulesets
+    );
+
+    cleanupStaleOutputFiles(
+        OUTPUT_DIR,
+        [
+            'eras.json',
+            'factions.json',
+            'faction-era-data.json',
+            'rulesets.json',
+            'chassis.json',
+            'models.json',
+            'availability.json',
+            'availability_weighted.json',
+            'availability_weighted_q.json',
+            'mulized_chassis.json',
+            'mulized_models.json',
+            'mulized_availability.json',
+            'mulized_availability_weighted.json',
+        ]
+    );
+
+    console.log(`[MegaMek] Generated ${OUTPUT_DIR}`);
+    console.log(
+        `[MegaMek] Factions: ${exportData.summary.factionCount}, commands: ${exportData.summary.commandCount}, ` +
+        `models: ${exportData.summary.modelCount}, chassis: ${exportData.summary.chassisCount}`
+    );
+}
+
+run();

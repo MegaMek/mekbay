@@ -23,6 +23,9 @@
     margin-right: 20px;
     box-sizing: border-box;
     container-type: inline-size;
+    position: relative;
+    overflow: visible;
+    clip-path: polygon(0 0, calc(100% - 40px) 0, 100% 40px, 100% 100%, 0 100%);
 
     &:not(.auto-height) {
         @media (max-width: 680px) {
@@ -61,8 +64,19 @@
                 max-height: 100%;
         }
     }
-}
 
+    &:before {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 26px;
+        width: 120px;
+        height: 10px;
+        pointer-events: none;
+        background: repeating-linear-gradient(-60deg, rgba(255, 255, 255, 0.18) 0, rgba(255, 255, 255, 0.18) 2px, transparent 4px, transparent 10px);
+        z-index: 2;
+    }
+}
 
 .modal-header {
     border-bottom: 2px solid #fff;

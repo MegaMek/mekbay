@@ -34,13 +34,20 @@
 import type { Unit } from '../models/units.model';
 import { GameSystem } from '../models/common.model';
 import { getForcePacks } from '../models/forcepacks.model';
-import { ADVANCED_FILTERS, AS_MOVEMENT_MODE_DISPLAY_NAMES, AdvFilterType, normalizeMotiveValue, type FilterState, type SearchTelemetryStage } from '../services/unit-search-filters.model';
-import { filterUnitsWithAST, getMatchingTextForUnit, isComplexQuery, type EvaluatorContext, type ParseResult } from './semantic-filter-ast.util';
+import { ADVANCED_FILTERS, AS_MOVEMENT_MODE_DISPLAY_NAMES, AdvFilterType, MEGAMEK_RARITY_SORT_KEY, normalizeMotiveValue, type FilterState, type SearchTelemetryStage } from '../services/unit-search-filters.model';
+import {
+    filterUnitsWithAST,
+    getMatchingTextForUnit,
+    isComplexQuery,
+    type EvaluatorContext,
+    type ParseResult,
+} from './semantic-filter-ast.util';
 import { matchesSearch, parseSearchQuery, type SearchTokensGroup } from './search.util';
 import { compareUnitsByName, computeRelevanceScore, naturalCompare } from './sort.util';
 import { wildcardToRegex } from './string.util';
 import { getNowMs, getProperty, getUnitComponentData, isCommittedSemanticToken, measureStage } from './unit-search-shared.util';
 import { applyFilterStateToUnits, type UnitFilterKernelDependencies } from './unit-filter-kernel.util';
+import type { AvailabilityFilterScope } from '../services/unit-search-filters.model';
 
 interface UnitSearchExecutionRequest {
     units: Unit[];
@@ -55,14 +62,20 @@ interface UnitSearchExecutionRequest {
     forceTotalBvPv: number;
     getAdjustedBV: (unit: Unit) => number;
     getAdjustedPV: (unit: Unit) => number;
-    unitBelongsToEra: (unit: Unit, eraName: string) => boolean;
+    unitBelongsToEra: (unit: Unit, eraName: string, scope?: AvailabilityFilterScope) => boolean;
     unitBelongsToFaction: (unit: Unit, factionName: string, eraNames?: readonly string[]) => boolean;
+    unitMatchesAvailabilityFrom?: (unit: Unit, availabilityFromName: string, scope?: AvailabilityFilterScope) => boolean;
+    unitMatchesAvailabilityRarity?: (unit: Unit, rarityName: string, scope?: AvailabilityFilterScope) => boolean;
     unitBelongsToForcePack: (unit: Unit, packName: string) => boolean;
     getAllEraNames: () => string[];
     getAllFactionNames: () => string[];
+    getAllAvailabilityFromNames?: () => string[];
+    getAllAvailabilityRarityNames?: () => string[];
     getDisplayName?: (filterKey: string, value: string) => string | undefined;
-    getIndexedUnitIds?: (filterKey: string, value: string) => ReadonlySet<string> | undefined;
+    getIndexedUnitIds?: (filterKey: string, value: string, scope?: AvailabilityFilterScope) => ReadonlySet<string> | undefined;
     getIndexedFilterValues?: (filterKey: string) => readonly string[];
+    availabilitySortScope?: AvailabilityFilterScope;
+    getMegaMekRaritySortScore?: (unit: Unit, scope?: AvailabilityFilterScope) => number;
 }
 
 interface UnitSearchExecutionResult {
@@ -158,9 +171,13 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
         },
         unitBelongsToEra: request.unitBelongsToEra,
         unitBelongsToFaction: request.unitBelongsToFaction,
+        unitMatchesAvailabilityFrom: request.unitMatchesAvailabilityFrom,
+        unitMatchesAvailabilityRarity: request.unitMatchesAvailabilityRarity,
         unitBelongsToForcePack: request.unitBelongsToForcePack,
         getAllEraNames: request.getAllEraNames,
         getAllFactionNames: request.getAllFactionNames,
+        getAllAvailabilityFromNames: request.getAllAvailabilityFromNames,
+        getAllAvailabilityRarityNames: request.getAllAvailabilityRarityNames,
         getAllForcePackNames: () => getForcePacks().map(pack => pack.name),
         getASMovementValues: (unit: Unit) => {
             const mvm = unit.as?.MVm;
@@ -223,6 +240,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
 
     const sorted = [...results];
     let relevanceScores: WeakMap<Unit, number> | null = null;
+    let megaMekRarityScores: WeakMap<Unit, number> | null = null;
     if (request.sortKey === '' && hasTextSearch) {
         relevanceScores = measureStage(
             telemetryStages,
@@ -262,6 +280,13 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
         );
     }
 
+    if (request.sortKey === MEGAMEK_RARITY_SORT_KEY && request.getMegaMekRaritySortScore) {
+        megaMekRarityScores = new WeakMap<Unit, number>();
+        for (const unit of sorted) {
+            megaMekRarityScores.set(unit, request.getMegaMekRaritySortScore(unit, request.availabilitySortScope));
+        }
+    }
+
     measureStage(
         telemetryStages,
         'sort',
@@ -283,6 +308,11 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
                     comparison = request.getAdjustedBV(a) - request.getAdjustedBV(b);
                 } else if (request.sortKey === 'as.PV') {
                     comparison = request.getAdjustedPV(a) - request.getAdjustedPV(b);
+                } else if (request.sortKey === MEGAMEK_RARITY_SORT_KEY) {
+                    comparison = (megaMekRarityScores?.get(a) ?? 0) - (megaMekRarityScores?.get(b) ?? 0);
+                    if (comparison === 0) {
+                        comparison = compareUnitsByName(a, b);
+                    }
                 } else {
                     const aValue = getProperty(a, request.sortKey);
                     const bValue = getProperty(b, request.sortKey);

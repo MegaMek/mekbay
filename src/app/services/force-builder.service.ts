@@ -38,9 +38,8 @@ import type { ForceUnit } from '../models/force-unit.model';
 import { DataService } from './data.service';
 import { LayoutService } from './layout.service';
 import { ForceNamerUtil } from '../utils/force-namer.util';
-import type { Faction } from '../models/factions.model';
+import { getFactionImg, type Faction } from '../models/factions.model';
 import type { Era } from '../models/eras.model';
-import type { FormationNamerUtil } from '../utils/formation-namer.util';
 import { ConfirmDialogComponent, type ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
 import { firstValueFrom, Subject } from 'rxjs';
 import { RenameForceDialogComponent, type RenameForceDialogData, type RenameForceDialogResult } from '../components/rename-force-dialog/rename-force-dialog.component';
@@ -52,9 +51,10 @@ import { ToastService } from './toast.service';
 import { LoggerService } from './logger.service';
 import { SheetService } from './sheet.service';
 import { OptionsService } from './options.service';
-import { LoadForceEntry } from '../models/load-force-entry.model';
+import { LoadForceEntry, type LoadForceUnit } from '../models/load-force-entry.model';
 import { ForceLoadDialogComponent, type ForceLoadDialogResult } from '../components/force-load-dialog/force-load-dialog.component';
 import { ForcePackDialogComponent, type ForcePackDialogResult } from '../components/force-pack-dialog/force-pack-dialog.component';
+import type { SearchForceGeneratorDialogResult } from '../components/search-force-generator-dialog/search-force-generator-dialog.component';
 import type { SerializedForce } from '../models/force-serialization';
 import { EditPilotDialogComponent, type EditPilotDialogData, type EditPilotResult } from '../components/edit-pilot-dialog/edit-pilot-dialog.component';
 import { EditASPilotDialogComponent, type EditASPilotDialogData, type EditASPilotResult } from '../components/edit-as-pilot-dialog/edit-as-pilot-dialog.component';
@@ -75,11 +75,13 @@ import { buildMultiForceQueryParams, parseForceFromUrl, type ForceQueryParams, t
 import { CBTPrintUtil } from '../utils/cbtprint.util';
 import { ASPrintUtil } from '../utils/asprint.util';
 import type { ForceSlot, ForceAlignment } from '../models/force-slot.model';
+import { MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationAbilityAssignmentUtil } from '../utils/formation-ability-assignment.util';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { getPositiveFactionNamesFromFilter } from '../utils/faction-filter.util';
+import { getSelectedPositiveDropdownNames } from '../utils/unit-search-shared.util';
 import { type SerializedOperation, LoadOperationEntry, type OperationForceRef } from '../models/operation.model';
 import { SaveOperationDialogComponent, type OperationDialogData, type OperationDialogResult } from '../components/save-operation-dialog/save-operation-dialog.component';
 import type { OpPreviewForce } from '../components/op-preview/op-preview.component';
@@ -688,6 +690,65 @@ export class ForceBuilderService {
         return newForce;
     }
 
+    async createGeneratedForce(entry: LoadForceEntry): Promise<Force | null> {
+        const loadUnits = entry.groups.flatMap((group) => group.units).filter((loadUnit) => loadUnit.unit !== undefined);
+        if (loadUnits.length === 0) {
+            return null;
+        }
+
+        const force = await this.createNewForce(entry.name, entry.type);
+        if (!force) {
+            return null;
+        }
+
+        force.faction.set(entry.faction ?? null);
+        force.era.set(entry.era ?? null);
+        force.groups.set([]);
+
+        let firstCreatedUnit: ForceUnit | null = null;
+        for (const groupEntry of entry.groups) {
+            const targetGroup = force.addGroup(groupEntry.name || undefined);
+            for (const loadUnit of groupEntry.units) {
+                if (!loadUnit.unit) {
+                    continue;
+                }
+
+                const createdUnit = await this.addUnit(
+                    loadUnit.unit,
+                    entry.type === GameSystem.ALPHA_STRIKE ? (loadUnit.skill ?? loadUnit.gunnery) : loadUnit.gunnery,
+                    loadUnit.piloting,
+                    targetGroup,
+                    entry.type,
+                );
+                if (!createdUnit) {
+                    continue;
+                }
+
+                this.applyGeneratedUnitOverrides(createdUnit, loadUnit);
+
+                firstCreatedUnit ??= createdUnit;
+            }
+        }
+
+        force.removeEmptyGroups();
+        this.selectUnit(firstCreatedUnit ?? null);
+        return force;
+    }
+
+    private applyGeneratedUnitOverrides(createdUnit: ForceUnit, loadUnit: LoadForceUnit): void {
+        if (loadUnit.alias) {
+            if (createdUnit instanceof ASForceUnit) {
+                createdUnit.setPilotName(loadUnit.alias);
+            } else if (createdUnit instanceof CBTForceUnit) {
+                createdUnit.getCrewMembers()[0]?.setName(loadUnit.alias);
+            }
+        }
+
+        if (loadUnit.commander) {
+            createdUnit.setFormationCommander(true, false);
+        }
+    }
+
     /**
      * Adds a new unit to the force. The unit is cloned to prevent
      * modifications to the original object, and it's set as the
@@ -716,21 +777,29 @@ export class ForceBuilderService {
 
         // Set crew skills if provided
         if (gunnerySkill !== undefined || pilotingSkill !== undefined) {
-            const crewMembers = newForceUnit.getCrewMembers();
             newForceUnit.disabledSaving = true;
-            if (pilotingSkill !== undefined) {
-                pilotingSkill = getEffectivePilotingSkill(unit, pilotingSkill);
-            }
-            for (const crew of crewMembers) {
-                if (gunnerySkill !== undefined) {
-                    crew.setSkill('gunnery', gunnerySkill);
+            try {
+                if (newForceUnit instanceof ASForceUnit) {
+                    if (typeof gunnerySkill === 'number') {
+                        newForceUnit.setPilotSkill(gunnerySkill);
+                    }
+                } else if (newForceUnit instanceof CBTForceUnit) {
+                    const crewMembers = newForceUnit.getCrewMembers();
+                    const effectivePilotingSkill = pilotingSkill === undefined
+                        ? undefined
+                        : getEffectivePilotingSkill(unit, pilotingSkill);
+                    for (const crew of crewMembers) {
+                        if (gunnerySkill !== undefined) {
+                            crew.setSkill('gunnery', gunnerySkill);
+                        }
+                        if (effectivePilotingSkill !== undefined) {
+                            crew.setSkill('piloting', effectivePilotingSkill);
+                        }
+                    }
                 }
-                if (pilotingSkill !== undefined) {
-                    crew.setSkill('piloting', pilotingSkill);
-                }
+            } finally {
+                newForceUnit.disabledSaving = false;
             }
-
-            newForceUnit.disabledSaving = false;
         }
 
         this.selectUnit(newForceUnit);
@@ -1207,8 +1276,8 @@ export class ForceBuilderService {
             if (!eraFilter?.interactedWith || !eraFilter.value) {
                 return null;
             }
-            const selectedEraNames = eraFilter.value as string[];
-            if (!Array.isArray(selectedEraNames) || selectedEraNames.length === 0) {
+            const selectedEraNames = getSelectedPositiveDropdownNames(eraFilter.value);
+            if (selectedEraNames.length === 0) {
                 return null;
             }
             return this.dataService.getEraByName(selectedEraNames[0]) ?? null;
@@ -1235,11 +1304,14 @@ export class ForceBuilderService {
                 allFactionNames,
                 factionFilter.wildcardPatterns
             );
-            if (positiveFactions.length === 0) {
-                return null;
+            const candidateFactions = positiveFactions
+                .map((name) => this.dataService.getFactionByName(name))
+                .filter((faction): faction is Faction => !!faction && faction.id !== MULFACTION_EXTINCT);
+            if (candidateFactions.length === 0) {
+                return this.dataService.getFactionById(MULFACTION_MERCENARY) ?? null;
             }
-            const pickedName = positiveFactions[Math.floor(Math.random() * positiveFactions.length)];
-            return this.dataService.getFactionByName(pickedName) ?? null;
+
+            return candidateFactions[Math.floor(Math.random() * candidateFactions.length)] ?? null;
         } catch {
             // UnitSearchFiltersService not available, fall through
             return null;
@@ -1861,6 +1933,46 @@ export class ForceBuilderService {
                 this.addUnit(entry.unit, undefined, undefined, group);
             }
         }
+    }
+
+    async showForceGeneratorDialog(): Promise<void> {
+        await this.showSearchForceGeneratorDialog();
+    }
+
+    async showSearchForceGeneratorDialog(): Promise<void> {
+        if (!this.dataService.isDataReady()) {
+            this.toastService.showToast('Data is still loading.', 'info');
+            return;
+        }
+
+        const { SearchForceGeneratorDialogComponent } = await import('../components/search-force-generator-dialog/search-force-generator-dialog.component');
+        const dialogRef = this.dialogsService.createDialog<SearchForceGeneratorDialogResult | null>(SearchForceGeneratorDialogComponent);
+
+        await this.finalizeGeneratedForceDialog((await firstValueFrom(dialogRef.closed)) ?? null);
+    }
+
+    private async finalizeGeneratedForceDialog(
+        result: { forceEntry: LoadForceEntry; config: { gameSystem: GameSystem }; totalCost: number } | null,
+    ): Promise<void> {
+        const unitCount = result?.forceEntry.groups.reduce(
+            (sum, group) => sum + group.units.filter((unitEntry) => unitEntry.unit).length,
+            0,
+        ) ?? 0;
+        if (!result || unitCount === 0) {
+            return;
+        }
+
+        const force = await this.createGeneratedForce(result.forceEntry);
+        if (!force) {
+            this.toastService.showToast('Failed to generate a new force.', 'error');
+            return;
+        }
+
+        const budgetMetric = result.config.gameSystem === GameSystem.ALPHA_STRIKE ? 'PV' : 'BV';
+        this.toastService.showToast(
+            `Generated ${unitCount} units for ${result.forceEntry.faction?.name ?? 'Unknown Faction'} (${budgetMetric} ${result.totalCost.toLocaleString()}).`,
+            'info',
+        );
     }
 
     /**
@@ -2833,11 +2945,12 @@ export class ForceBuilderService {
         for (const force of forces) {
             const units = force.units();
             if (units.some(u => !u.isLoaded())) {
+                const faction = force.faction();
                 entries.push({
                     force,
                     progress: {
                         forceName: force.displayName(),
-                        factionImg: force.faction()?.img || null,
+                        factionImg: faction ? getFactionImg(faction) || null : null,
                         loadedUnits: computed(() => units.filter(u => u.isLoaded()).length),
                         totalUnits: units.length
                     }

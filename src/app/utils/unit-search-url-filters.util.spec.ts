@@ -13,9 +13,15 @@ function createDropdownDependencies(): UnitSearchDropdownValuesDependencies {
                 return [SPECIAL, 'TAG'];
             }
 
+            if (filterKey === 'era') {
+                return ['Succession Wars', 'Jihad'];
+            }
+
             return [];
         },
-        getExternalDropdownValues: () => [],
+        getExternalDropdownValues: (filterKey: string) => {
+            return [];
+        },
         units: [] as readonly Unit[],
         getProperty: () => undefined,
     };
@@ -95,6 +101,44 @@ describe('unit search URL filters', () => {
             value: {
                 [SPECIAL]: { name: SPECIAL, state: 'or', count: 1 },
                 TAG: { name: 'TAG', state: 'not', count: 1 },
+            },
+            interactedWith: true,
+        });
+    });
+
+    it('round-trips multistate era dropdown values in compact filters', () => {
+        const filterState: FilterState = {
+            era: {
+                value: {
+                    'Succession Wars': { name: 'Succession Wars', state: 'or', count: 1 },
+                    Jihad: { name: 'Jihad', state: 'and', count: 1 },
+                },
+                interactedWith: true,
+            },
+        };
+
+        const queryParameters = buildUnitSearchQueryParameters({
+            searchText: '',
+            filterState,
+            semanticKeys: new Set<string>(),
+            selectedSort: '',
+            selectedSortDirection: 'asc',
+            expanded: false,
+            gunnery: DEFAULT_GUNNERY_SKILL,
+            piloting: DEFAULT_PILOTING_SKILL,
+            bvLimit: 0,
+            publicTagsParam: null,
+        });
+
+        const parsed = parseAndValidateCompactFiltersFromUrl(
+            queryParameters.filters!,
+            createDropdownDependencies(),
+        );
+
+        expect(parsed['era']).toEqual({
+            value: {
+                'Succession Wars': { name: 'Succession Wars', state: 'or', count: 1 },
+                Jihad: { name: 'Jihad', state: 'and', count: 1 },
             },
             interactedWith: true,
         });

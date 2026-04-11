@@ -65,6 +65,37 @@
     align-items: baseline;
 }
 
+.faction-megamek-availability {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 4px;
+    padding: 2px 4px;
+    color: var(--text-color-secondary);
+}
+
+.faction-megamek-availability-badges {
+    display: inline-flex;
+    align-items: center;
+}
+
+.faction-megamek-availability-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.faction-megamek-availability-icon {
+    width: 0.95em;
+    height: 0.95em;
+    display: block;
+}
+
+.faction-megamek-availability-separator {
+    width: 4px;
+    display: inline-block;
+}
+
 .faction-icon {
     height: 1.2em;
     width: 1.2em;
