@@ -56,6 +56,14 @@ interface MinMaxStatsRange {
     alphaNoPhysicalNoOneshots: [number, number],
     maxRange: [number, number],
     dpt: [number, number],
+    asTmm: [number, number],
+    asMvm: [number, number],
+    asArm: [number, number],
+    asStr: [number, number],
+    asDmgS: [number, number],
+    asDmgM: [number, number],
+    asDmgL: [number, number],
+    asSpecialsCount: [number, number],
     dropshipCapacity: [number, number],
     escapePods: [number, number],
     lifeBoats: [number, number],
@@ -96,6 +104,14 @@ export class UnitSearchIndexService {
                 alphaNoPhysicalNoOneshots: [number, number],
                 maxRange: [number, number],
                 dpt: [number, number],
+                asTmm: [number, number],
+                asMvm: [number, number],
+                asArm: [number, number],
+                asStr: [number, number],
+                asDmgS: [number, number],
+                asDmgM: [number, number],
+                asDmgL: [number, number],
+                asSpecialsCount: [number, number],
                 dropshipCapacity: [number, number],
                 escapePods: [number, number],
                 lifeBoats: [number, number],
@@ -175,6 +191,14 @@ export class UnitSearchIndexService {
                     alphaNoPhysicalNoOneshots: [Infinity, -Infinity],
                     maxRange: [Infinity, -Infinity],
                     dpt: [Infinity, -Infinity],
+                    asTmm: [Infinity, -Infinity],
+                    asMvm: [Infinity, -Infinity],
+                    asArm: [Infinity, -Infinity],
+                    asStr: [Infinity, -Infinity],
+                    asDmgS: [Infinity, -Infinity],
+                    asDmgM: [Infinity, -Infinity],
+                    asDmgL: [Infinity, -Infinity],
+                    asSpecialsCount: [Infinity, -Infinity],
                     dropshipCapacity: [Infinity, -Infinity],
                     escapePods: [Infinity, -Infinity],
                     lifeBoats: [Infinity, -Infinity],
@@ -197,6 +221,17 @@ export class UnitSearchIndexService {
             updateMinMax(stats.alphaNoPhysicalNoOneshots, unit._mdSumNoPhysicalNoOneshots || 0);
             updateMinMax(stats.maxRange, unit._maxRange || 0);
             updateMinMax(stats.dpt, unit.dpt || 0);
+            updateMinMax(stats.asTmm, unit.as?.TMM || 0);
+            updateMinMax(
+                stats.asMvm,
+                Object.values(unit.as?.MVm ?? {}).reduce((highest, value) => Math.max(highest, value || 0), 0),
+            );
+            updateMinMax(stats.asArm, unit.as?.Arm || 0);
+            updateMinMax(stats.asStr, unit.as?.Str || 0);
+            updateMinMax(stats.asDmgS, unit.as?.dmg._dmgS || 0);
+            updateMinMax(stats.asDmgM, unit.as?.dmg._dmgM || 0);
+            updateMinMax(stats.asDmgL, unit.as?.dmg._dmgL || 0);
+            updateMinMax(stats.asSpecialsCount, unit.as?.specials.length || 0);
 
             if (unit.capital) {
                 updateMinMax(stats.dropshipCapacity, unit.capital.dropshipCapacity || 0);
@@ -227,6 +262,14 @@ export class UnitSearchIndexService {
                 alphaNoPhysicalNoOneshots: normalize(stats.alphaNoPhysicalNoOneshots),
                 maxRange: normalize(stats.maxRange),
                 dpt: normalize(stats.dpt),
+                asTmm: normalize(stats.asTmm),
+                asMvm: normalize(stats.asMvm),
+                asArm: normalize(stats.asArm),
+                asStr: normalize(stats.asStr),
+                asDmgS: normalize(stats.asDmgS),
+                asDmgM: normalize(stats.asDmgM),
+                asDmgL: normalize(stats.asDmgL),
+                asSpecialsCount: normalize(stats.asSpecialsCount),
                 dropshipCapacity: normalize(stats.dropshipCapacity),
                 escapePods: normalize(stats.escapePods),
                 lifeBoats: normalize(stats.lifeBoats),
@@ -375,6 +418,14 @@ export class UnitSearchIndexService {
             alphaNoPhysicalNoOneshots: [0, 0],
             maxRange: [0, 0],
             dpt: [0, 0],
+            asTmm: [0, 0],
+            asMvm: [0, 0],
+            asArm: [0, 0],
+            asStr: [0, 0],
+            asDmgS: [0, 0],
+            asDmgM: [0, 0],
+            asDmgL: [0, 0],
+            asSpecialsCount: [0, 0],
             dropshipCapacity: [0, 0],
             escapePods: [0, 0],
             lifeBoats: [0, 0],
