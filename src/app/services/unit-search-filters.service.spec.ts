@@ -971,6 +971,148 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(namedEraOptions.find((option) => option.name === 'Succession Wars')).toEqual(jasmine.objectContaining({ available: true }));
     });
 
+    it('filters MUL era dropdown availability by the selected faction membership', () => {
+        const bundle = createStandaloneBundle();
+        bundle.eras.eras = [
+            {
+                id: 1,
+                name: 'Clan Invasion',
+                img: '',
+                years: {
+                    from: 3049,
+                    to: 3061,
+                },
+                units: [1, 2],
+                factions: [],
+            },
+            {
+                id: 2,
+                name: 'ilClan',
+                img: '',
+                years: {
+                    from: 3151,
+                    to: 9999,
+                },
+                units: [1, 2],
+                factions: [],
+            },
+        ];
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: 'Clan Jade Falcon',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    1: new Set([1]),
+                },
+            },
+            {
+                id: 2,
+                name: 'Clan Wolf',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    2: new Set([1]),
+                },
+            },
+        ];
+
+        const { service } = createService(bundle);
+        service.setFilter('faction', {
+            'Clan Jade Falcon': {
+                name: 'Clan Jade Falcon',
+                state: 'or',
+                count: 1,
+            },
+        });
+
+        const eraOptions = service.advOptions()['era']?.options ?? [];
+        const namedEraOptions = eraOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
+
+        expect(namedEraOptions.find((option) => option.name === 'Clan Invasion')).toEqual(jasmine.objectContaining({ available: true }));
+        expect(namedEraOptions.find((option) => option.name === 'ilClan')).toEqual(jasmine.objectContaining({ available: false }));
+    });
+
+    it('filters MUL faction dropdown availability by multistate era membership', () => {
+        const bundle = createStandaloneBundle();
+        bundle.eras.eras = [
+            {
+                id: 1,
+                name: 'Clan Invasion',
+                img: '',
+                years: {
+                    from: 3049,
+                    to: 3061,
+                },
+                units: [1, 2],
+                factions: [],
+            },
+            {
+                id: 2,
+                name: 'ilClan',
+                img: '',
+                years: {
+                    from: 3151,
+                    to: 9999,
+                },
+                units: [1, 2],
+                factions: [],
+            },
+        ];
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: 'Clan Jade Falcon',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    1: new Set([1]),
+                },
+            },
+            {
+                id: 2,
+                name: 'Clan Wolf',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    1: new Set([2]),
+                    2: new Set([2]),
+                },
+            },
+            {
+                id: 3,
+                name: 'Clan Sea Fox',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    2: new Set([1]),
+                },
+            },
+        ];
+
+        const { service } = createService(bundle);
+        service.setFilter('era', {
+            'Clan Invasion': {
+                name: 'Clan Invasion',
+                state: 'and',
+                count: 1,
+            },
+            ilClan: {
+                name: 'ilClan',
+                state: 'and',
+                count: 1,
+            },
+        });
+
+        const factionOptions = service.advOptions()['faction']?.options ?? [];
+        const namedFactionOptions = factionOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
+
+        expect(namedFactionOptions.find((option) => option.name === 'Clan Jade Falcon')).toEqual(jasmine.objectContaining({ available: false }));
+        expect(namedFactionOptions.find((option) => option.name === 'Clan Wolf')).toEqual(jasmine.objectContaining({ available: true }));
+        expect(namedFactionOptions.find((option) => option.name === 'Clan Sea Fox')).toEqual(jasmine.objectContaining({ available: false }));
+    });
+
     it('keeps era dropdown options in chronological catalog order', () => {
         const bundle = createStandaloneBundle();
         bundle.eras.eras = [
@@ -2478,6 +2620,76 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const workerSnapshot = (service as any).getWorkerCorpusSnapshot((service as any).getWorkerCorpusVersion());
         expect(workerSnapshot.factionEraIndex['Clan Invasion']?.['Clan Coyote']).toEqual(['Test Mek']);
         expect(workerSnapshot.factionEraIndex['Jihad']?.['Clan Coyote']).toEqual(['Test Tank']);
+    });
+
+    it('requires faction membership in every selected multistate era', async () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Masakari Prime';
+        bundle.units.units[0].chassis = 'Masakari';
+        bundle.units.units[0].model = 'Prime';
+        bundle.eras.eras = [
+            {
+                id: 1,
+                name: 'Clan Invasion',
+                img: '',
+                years: { from: 3049, to: 3061 },
+                units: [1, 2],
+                factions: [],
+            },
+            {
+                id: 2,
+                name: 'ilClan',
+                img: '',
+                years: { from: 3151, to: 9999 },
+                units: [1, 2],
+                factions: [],
+            },
+        ];
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: 'Clan Jade Falcon',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    1: new Set([1]),
+                },
+            },
+            {
+                id: 2,
+                name: 'Clan Wolf',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    2: new Set([1]),
+                },
+            },
+        ];
+
+        const { service } = createService(bundle);
+        service.setFilter('era', {
+            'Clan Invasion': {
+                name: 'Clan Invasion',
+                state: 'and',
+                count: 1,
+            },
+            ilClan: {
+                name: 'ilClan',
+                state: 'and',
+                count: 1,
+            },
+        });
+        service.setFilter('faction', {
+            'Clan Jade Falcon': {
+                name: 'Clan Jade Falcon',
+                state: 'or',
+                count: 1,
+            },
+        });
+        service.setSearchText('masakari');
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual([]);
     });
 
     it('promotes overlapping faction dropdown filters into wildcard semantic ownership', async () => {

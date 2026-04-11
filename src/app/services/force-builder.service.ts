@@ -80,7 +80,7 @@ import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationAbilityAssignmentUtil } from '../utils/formation-ability-assignment.util';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
-import { getPositiveFactionNamesFromFilter } from '../utils/faction-filter.util';
+import { getPositiveDropdownNamesFromFilter } from '../utils/filter-name-resolution.util';
 import { getSelectedPositiveDropdownNames } from '../utils/unit-search-shared.util';
 import { type SerializedOperation, LoadOperationEntry, type OperationForceRef } from '../models/operation.model';
 import { SaveOperationDialogComponent, type OperationDialogData, type OperationDialogResult } from '../components/save-operation-dialog/save-operation-dialog.component';
@@ -1299,7 +1299,7 @@ export class ForceBuilderService {
                 return null;
             }
             const allFactionNames = this.dataService.getFactions().map(f => f.name);
-            const positiveFactions = getPositiveFactionNamesFromFilter(
+            const positiveFactions = getPositiveDropdownNamesFromFilter(
                 factionFilter.value as MultiStateSelection,
                 allFactionNames,
                 factionFilter.wildcardPatterns

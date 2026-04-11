@@ -92,7 +92,12 @@ import { UserStateService } from './userState.service';
 import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
 import { type MegaMekAvailabilityFilterContext, UnitAvailabilitySourceService } from './unit-availability-source.service';
-import { resolveFactionNamesFromFilter } from '../utils/faction-filter.util';
+import {
+    getPositiveDropdownNamesFromFilter,
+    hasResolvedDropdownNames,
+    resolveDropdownNamesFromFilter,
+    type ResolvedDropdownNames,
+} from '../utils/filter-name-resolution.util';
 import { sortAvailableDropdownOptions, sortDropdownOptionObjects } from '../utils/unit-search-dropdown-sort.util';
 import { compareUnitsByName } from '../utils/sort.util';
 import type { UnitSearchWorkerCorpusSnapshot, UnitSearchWorkerQueryRequest, UnitSearchWorkerResultMessage } from '../utils/unit-search-worker-protocol.util';
@@ -433,11 +438,28 @@ export class UnitSearchFiltersService {
             return [];
         }
 
-        const selection = normalizeMultiStateSelection(filterStateEntry.value);
         const allFactionNames = this.dataService.getFactions().map(faction => faction.name);
-        const resolved = resolveFactionNamesFromFilter(selection, allFactionNames, filterStateEntry.wildcardPatterns);
+        return getPositiveDropdownNamesFromFilter(
+            normalizeMultiStateSelection(filterStateEntry.value),
+            allFactionNames,
+            filterStateEntry.wildcardPatterns,
+        );
+    }
 
-        return Array.from(new Set([...resolved.or, ...resolved.and]));
+    private resolveEraNamesFromFilter(filterStateEntry?: FilterState[string]): ResolvedDropdownNames {
+        if (!filterStateEntry?.interactedWith) {
+            return { or: [], and: [], not: [] };
+        }
+
+        return resolveDropdownNamesFromFilter(
+            normalizeMultiStateSelection(filterStateEntry.value),
+            this.dataService.getEras().map((era) => era.name),
+            filterStateEntry.wildcardPatterns,
+        );
+    }
+
+    private hasResolvedDropdownNames(resolved: ResolvedDropdownNames): boolean {
+        return hasResolvedDropdownNames(resolved);
     }
 
     private getAvailabilitySelectionScopeParts(state: FilterState): AvailabilitySelectionScopeParts {
@@ -566,23 +588,97 @@ export class UnitSearchFiltersService {
         contextUnits: Unit[],
         state: FilterState,
     ): { name: string; img?: string; displayName?: string; available: boolean }[] | null {
+        const useMegaMekAvailability = this.unitAvailabilitySource.useMegaMekAvailability();
+
+        if (conf.key === 'era') {
+            return useMegaMekAvailability
+                ? this.buildMegaMekEraDropdownOptions(conf, contextUnits, state)
+                : this.buildExternalDropdownOptions(conf, contextUnits, state);
+        }
+
+        if (conf.key === 'faction') {
+            return useMegaMekAvailability
+                ? this.buildMegaMekFactionDropdownOptions(conf, contextUnits, state)
+                : this.buildExternalDropdownOptions(conf, contextUnits, state);
+        }
+
         if (conf.key === 'availabilityRarity' || conf.key === 'availabilityFrom') {
             return this.buildInferredAvailabilityDropdownOptions(conf, contextUnits, state);
         }
 
-        if (!this.unitAvailabilitySource.useMegaMekAvailability()) {
+        if (!useMegaMekAvailability) {
             return null;
         }
 
-        if (conf.key === 'era') {
-            return this.buildMegaMekEraDropdownOptions(conf, contextUnits, state);
-        }
-
-        if (conf.key === 'faction') {
-            return this.buildMegaMekFactionDropdownOptions(conf, contextUnits, state);
-        }
-
         return null;
+    }
+
+    private buildExternalDropdownCandidateState(
+        currentFilterState: FilterState[string] | undefined,
+        optionName: string,
+    ): FilterState[string] {
+        const currentSelection = currentFilterState?.interactedWith
+            ? normalizeMultiStateSelection(currentFilterState.value)
+            : {};
+        const hasAndSelections = Object.values(currentSelection).some((selection) => selection.state === 'and');
+
+        if (!hasAndSelections) {
+            return {
+                value: {
+                    [optionName]: {
+                        name: optionName,
+                        state: 'or',
+                        count: 1,
+                    },
+                },
+                interactedWith: true,
+            };
+        }
+
+        const nextSelection: MultiStateSelection = { ...currentSelection };
+        if (!nextSelection[optionName]) {
+            nextSelection[optionName] = {
+                name: optionName,
+                state: 'and',
+                count: 1,
+            };
+        }
+
+        return {
+            ...currentFilterState,
+            value: nextSelection,
+            interactedWith: true,
+        };
+    }
+
+    private buildExternalDropdownOptions(
+        conf: AdvFilterConfig,
+        contextUnits: Unit[],
+        state: FilterState,
+    ): { name: string; img?: string; displayName?: string; available: boolean }[] | null {
+        if (conf.key !== 'era' && conf.key !== 'faction') {
+            return null;
+        }
+
+        const contextUnitIds = new Set(
+            contextUnits.map((unit) => this.unitAvailabilitySource.getUnitAvailabilityKey(unit)),
+        );
+        const currentFilterState = state[conf.key];
+
+        const options = this.dataService.getDropdownOptionUniverse(conf.key).map((option) => {
+            const candidateFilterState = this.buildExternalDropdownCandidateState(currentFilterState, option.name);
+            const candidateUnitIds = conf.key === 'era'
+                ? this.getUnitIdsForExternalFilters(candidateFilterState, state['faction'])
+                : this.getUnitIdsForExternalFilters(state['era'], candidateFilterState);
+
+            return {
+                name: option.name,
+                ...(option.img ? { img: option.img } : {}),
+                available: candidateUnitIds !== null && setHasAny(contextUnitIds, candidateUnitIds),
+            };
+        });
+
+        return sortDropdownOptionObjects(options, conf.sortOptions);
     }
 
     private buildInferredAvailabilityDropdownOptions(
@@ -1562,7 +1658,56 @@ export class UnitSearchFiltersService {
         return this.dataService.unitBelongsToForcePack(unit, packName);
     }
 
-    private getUnitIdsForSelectedEras(selectedEraNames: string[]): Set<string> | null {
+    private combineResolvedUnitIds(
+        resolved: ResolvedDropdownNames,
+        getUnitIds: (name: string) => ReadonlySet<string>,
+        getBaseUnitIds: () => ReadonlySet<string>,
+    ): Set<string> | null {
+        if (!this.hasResolvedDropdownNames(resolved)) {
+            return null;
+        }
+
+        let resultSet: Set<string> | null = null;
+
+        if (resolved.or.length > 0) {
+            resultSet = new Set<string>();
+            for (const name of resolved.or) {
+                for (const unitId of getUnitIds(name)) {
+                    resultSet.add(unitId);
+                }
+            }
+        }
+
+        for (const name of resolved.and) {
+            const unitIds = getUnitIds(name);
+            if (resultSet === null) {
+                resultSet = new Set(unitIds);
+                continue;
+            }
+
+            for (const unitId of Array.from(resultSet)) {
+                if (!unitIds.has(unitId)) {
+                    resultSet.delete(unitId);
+                }
+            }
+        }
+
+        if (resolved.not.length > 0) {
+            if (resultSet === null) {
+                resultSet = new Set(getBaseUnitIds());
+            }
+
+            for (const name of resolved.not) {
+                for (const unitId of getUnitIds(name)) {
+                    resultSet.delete(unitId);
+                }
+            }
+        }
+
+        return resultSet;
+    }
+
+    private getUnitIdsForEraNames(selectedEraNames: string[]): Set<string> | null {
         if (!selectedEraNames || selectedEraNames.length === 0) return null;
         const unitIds = new Set<string>();
 
@@ -1573,6 +1718,20 @@ export class UnitSearchFiltersService {
             }
         }
         return unitIds;
+    }
+
+    private getUnitIdsForSelectedEras(filterStateEntry?: FilterState[string]): Set<string> | null {
+        const resolvedEras = this.resolveEraNamesFromFilter(filterStateEntry);
+        return this.combineResolvedUnitIds(
+            resolvedEras,
+            (eraName) => {
+                const era = this.dataService.getEraByName(eraName);
+                return era
+                    ? this.unitAvailabilitySource.getVisibleEraUnitIds(era)
+                    : new Set<string>();
+            },
+            () => this.getAllUnitIdsInContext(),
+        );
     }
 
     private getUnitIdsForFaction(factionName: string, contextEraIds?: Set<number>): Set<string> {
@@ -1667,12 +1826,12 @@ export class UnitSearchFiltersService {
             .filter(e => contextEraIds.has(e.id))
             .map(e => e.name);
 
-        return this.getUnitIdsForSelectedEras(contextEraNames) || new Set<string>();
+        return this.getUnitIdsForEraNames(contextEraNames) || new Set<string>();
     }
 
     private getUnitIdsForSelectedFactions(selectedFactionEntries: MultiStateSelection, contextEraNames?: string[], wildcardPatterns?: WildcardPattern[]): Set<string> | null {
         const allFactionNames = this.dataService.getFactions().map(f => f.name);
-        const { or: orFactions, and: andFactions, not: notFactions } = resolveFactionNamesFromFilter(
+        const { or: orFactions, and: andFactions, not: notFactions } = resolveDropdownNamesFromFilter(
             selectedFactionEntries, allFactionNames, wildcardPatterns
         );
         if (orFactions.length === 0 && andFactions.length === 0 && notFactions.length === 0) {
@@ -1727,18 +1886,80 @@ export class UnitSearchFiltersService {
         return resultSet;
     }
 
+    private getUnitIdsForExternalFilters(
+        eraFilterState?: FilterState[string],
+        factionFilterState?: FilterState[string],
+    ): Set<string> | null {
+        const resolvedEras = this.resolveEraNamesFromFilter(eraFilterState);
+        const hasEraFilter = this.hasResolvedDropdownNames(resolvedEras);
+        const selectedFactionEntries = normalizeMultiStateSelection(factionFilterState?.value);
+        const factionWildcardPatterns = factionFilterState?.wildcardPatterns;
+        const allFactionNames = this.dataService.getFactions().map((faction) => faction.name);
+        const resolvedFactions = resolveDropdownNamesFromFilter(
+            selectedFactionEntries,
+            allFactionNames,
+            factionWildcardPatterns,
+        );
+        const hasFactionFilter = this.hasResolvedDropdownNames(resolvedFactions);
+
+        if (!hasEraFilter) {
+            if (!hasFactionFilter) {
+                return null;
+            }
+
+            return this.getUnitIdsForSelectedFactions(
+                selectedFactionEntries,
+                undefined,
+                factionWildcardPatterns,
+            );
+        }
+
+        if (!hasFactionFilter) {
+            return this.getUnitIdsForSelectedEras(eraFilterState);
+        }
+
+        const positiveEraNames = [...resolvedEras.or, ...resolvedEras.and];
+        const relevantEraNames = positiveEraNames.length > 0
+            ? Array.from(new Set([...positiveEraNames, ...resolvedEras.not]))
+            : this.dataService.getEras().map((era) => era.name);
+        const perEraFactionUnitIds = new Map<string, Set<string>>();
+
+        for (const eraName of relevantEraNames) {
+            perEraFactionUnitIds.set(
+                eraName,
+                this.getUnitIdsForSelectedFactions(
+                    selectedFactionEntries,
+                    [eraName],
+                    factionWildcardPatterns,
+                ) ?? new Set<string>(),
+            );
+        }
+
+        return this.combineResolvedUnitIds(
+            resolvedEras,
+            (eraName) => perEraFactionUnitIds.get(eraName) ?? new Set<string>(),
+            () => {
+                const unitIds = new Set<string>();
+                for (const ids of perEraFactionUnitIds.values()) {
+                    for (const unitId of ids) {
+                        unitIds.add(unitId);
+                    }
+                }
+                return unitIds;
+            },
+        );
+    }
+
     private getUnitFilterKernelDependencies(): UnitFilterKernelDependencies {
         return {
             getProperty,
             getAdjustedBV: (unit: Unit) => this.getAdjustedBV(unit),
             getAdjustedPV: (unit: Unit) => this.getAdjustedPV(unit),
-            getUnitIdsForSelectedEras: selectedEraNames => this.getUnitIdsForSelectedEras(selectedEraNames),
-            getUnitIdsForSelectedFactions: (selectedFactionEntries, contextEraNames, wildcardPatterns) =>
-                this.getUnitIdsForSelectedFactions(selectedFactionEntries, contextEraNames, wildcardPatterns),
+            getUnitIdsForExternalFilters: (eraFilterState, factionFilterState) =>
+                this.getUnitIdsForExternalFilters(eraFilterState, factionFilterState),
             getPositiveFactionNames: (selectedFactionEntries, wildcardPatterns) => {
                 const allFactionNames = this.dataService.getFactions().map(faction => faction.name);
-                const resolved = resolveFactionNamesFromFilter(selectedFactionEntries, allFactionNames, wildcardPatterns);
-                return Array.from(new Set([...resolved.or, ...resolved.and]));
+                return getPositiveDropdownNamesFromFilter(selectedFactionEntries, allFactionNames, wildcardPatterns);
             },
             getAvailabilityLookupKey: unit => this.unitAvailabilitySource.getUnitAvailabilityKey(unit),
             unitMatchesAvailabilityFrom: (unit, availabilityFromName, scope) =>

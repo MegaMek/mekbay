@@ -55,11 +55,9 @@ export interface UnitFilterKernelDependencies {
     getProperty: (unit: Unit, key?: string) => unknown;
     getAdjustedBV: (unit: Unit) => number;
     getAdjustedPV: (unit: Unit) => number;
-    getUnitIdsForSelectedEras: (selectedEraNames: string[]) => Set<string> | null;
-    getUnitIdsForSelectedFactions: (
-        selectedFactionEntries: MultiStateSelection,
-        contextEraNames?: string[],
-        wildcardPatterns?: WildcardPattern[],
+    getUnitIdsForExternalFilters: (
+        eraFilterState?: FilterState[string],
+        factionFilterState?: FilterState[string],
     ) => Set<string> | null;
     getPositiveFactionNames: (
         selectedFactionEntries: MultiStateSelection,
@@ -249,38 +247,18 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
     const selectedAvailabilityFromNames = getSelectedPositiveDropdownNames(activeFilters['availabilityFrom']);
     const selectedAvailabilityRarityNames = getSelectedPositiveDropdownNames(activeFilters['availabilityRarity']);
 
-    let eraUnitIds: Set<string> | null = null;
-    let factionUnitIds: Set<string> | null = null;
+    let externalUnitIds: Set<string> | null = null;
+    const eraFilterState = skipKey === 'era' ? undefined : state['era'];
     const factionFilterState = skipKey === 'faction' ? undefined : state['faction'];
     const factionWildcardPatterns = factionFilterState?.wildcardPatterns;
     const positiveFactionNames = Object.values(selectedFactionEntries).some(selection => selection.state)
         || (factionWildcardPatterns && factionWildcardPatterns.length > 0)
         ? dependencies.getPositiveFactionNames(selectedFactionEntries, factionWildcardPatterns)
         : [];
-    if (Object.values(selectedFactionEntries).some(selection => selection.state) || (factionWildcardPatterns && factionWildcardPatterns.length > 0)) {
-        factionUnitIds = dependencies.getUnitIdsForSelectedFactions(
-            selectedFactionEntries,
-            selectedEraNames.length > 0 ? selectedEraNames : undefined,
-            factionWildcardPatterns,
-        );
-    } else if (selectedEraNames.length > 0) {
-        eraUnitIds = dependencies.getUnitIdsForSelectedEras(selectedEraNames);
-    }
+    externalUnitIds = dependencies.getUnitIdsForExternalFilters(eraFilterState, factionFilterState);
 
-    if (eraUnitIds || factionUnitIds) {
-        let finalIds: Set<string>;
-        if (eraUnitIds && factionUnitIds) {
-            const [smaller, larger] = eraUnitIds.size <= factionUnitIds.size
-                ? [eraUnitIds, factionUnitIds]
-                : [factionUnitIds, eraUnitIds];
-            finalIds = new Set<string>();
-            for (const id of smaller) {
-                if (larger.has(id)) finalIds.add(id);
-            }
-        } else {
-            finalIds = (eraUnitIds || factionUnitIds)!;
-        }
-        results = results.filter(unit => finalIds.has(dependencies.getAvailabilityLookupKey(unit)));
+    if (externalUnitIds) {
+        results = results.filter(unit => externalUnitIds.has(dependencies.getAvailabilityLookupKey(unit)));
     }
 
     const selectedForcePackNames = activeFilters['forcePack'] as string[] || [];

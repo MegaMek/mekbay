@@ -101,13 +101,11 @@ export interface MinMaxStatsRange {
     maxRange: [number, number],
     dpt: [number, number],
     asTmm: [number, number],
-    asMvm: [number, number],
     asArm: [number, number],
     asStr: [number, number],
     asDmgS: [number, number],
     asDmgM: [number, number],
     asDmgL: [number, number],
-    asSpecialsCount: [number, number],
 
     // Capital ships
     dropshipCapacity: [number, number],

@@ -60,7 +60,7 @@ import { resolveFromUnits } from '../utils/org/org-solver.util';
 import type { GroupSizeResult, OrgDefinition, OrgRuleDefinition, OrgType } from '../utils/org/org-types';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
-import { getPositiveFactionNamesFromFilter } from '../utils/faction-filter.util';
+import { getPositiveDropdownNamesFromFilter } from '../utils/filter-name-resolution.util';
 import { ForceNamerUtil } from '../utils/force-namer.util';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 import { getSelectedPositiveDropdownNames, normalizeMultiStateSelection } from '../utils/unit-search-shared.util';
@@ -1397,7 +1397,7 @@ export class ForceGeneratorService {
 
         const selection = filterState.value as MultiStateSelection | undefined;
         const allFactionNames = this.dataService.getFactions().map((faction) => faction.name);
-        return getPositiveFactionNamesFromFilter(selection, allFactionNames, filterState.wildcardPatterns)
+        return getPositiveDropdownNamesFromFilter(selection, allFactionNames, filterState.wildcardPatterns)
             .map((factionName) => this.dataService.getFactionByName(factionName))
             .filter((faction): faction is Faction => faction !== undefined && faction.id !== MULFACTION_EXTINCT);
     }
