@@ -1448,7 +1448,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         requirements: () => 'Clan only. Minimum 2 combat vehicles or BattleMeks. Remainder must be Elementals, combat vehicles, or BattleMeks. Must be at least two different unit types.',
         validator: (units, gameSystem) => {
             if (!isClanForce(units)) return false;
-            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+            if (isAS) {
                 const BM = units.filter(u => u.getUnit().as?.TP === 'BM').length;
                 const BA = units.filter(u => u.getUnit().as?.TP === 'BA').length;
                 const CV = units.filter(u => u.getUnit().as?.TP === 'CV').length;
