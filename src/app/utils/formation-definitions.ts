@@ -237,8 +237,8 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 61 }],
         requirements: () => {
-            const infantry = isAS ? 'infantry (CI, BA, or PM)' : 'Infantry';
-            return `Minimum 3 units. All units must be ${infantry}.`;
+            const infantry = isAS ? ' (CI, BA, or PM)': '';
+            return `Minimum 3 units. All units must be Infantry${infantry}.`;
         },
         validator: (units) => {
             return units.every(u => isAS ? asIsInfantry(u.getUnit()) : u.getUnit().type === 'Infantry');
@@ -429,9 +429,9 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 62 }, { book: Rulebook.ASCE, page: 117 }],
         requirements: () => {
-            const heavyOrHeavier = isAS ? 'Size 3+' : 'heavy or assault';
+            const heavyOrAssault = isAS ? 'Size 3+' : 'heavy or assault';
             const heavy = isAS ? 'Size 3' : 'heavy';
-            return `Minimum 3 units. 50% must be ${heavyOrHeavier}. At least 3 Brawler, Sniper, or Skirmisher roles. Vehicle formations require 2 matched pairs of ${heavy} units.`;
+            return `Minimum 3 units. 50% must be ${heavyOrAssault}. At least 3 Brawler, Sniper, or Skirmisher roles. Vehicle formations require 2 matched pairs of ${heavy} units.`;
         },
         validator: (units) => {
             const heavyUnits = units.filter(u => isAS
@@ -761,8 +761,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.CO, page: 64 }, { book: Rulebook.ASCE, page: 119 }],
         requirements: () => 'Minimum 3 units. 75% must have the Missile Boat or Sniper role.',
         validator: (units) => {
-            const count = units.filter(u =>
-                u.getUnit().role === 'Missile Boat' || u.getUnit().role === 'Sniper');
+            const count = units.filter(u => u.getUnit().role === 'Missile Boat' || u.getUnit().role === 'Sniper');
             return count.length >= Math.ceil(units.length * 0.75);
         },
     },
@@ -914,8 +913,8 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 64 }, { book: Rulebook.ASCE, page: 119 }],
         requirements: () => {
-            const heavy = isAS ? 'Size 3+' : 'heavy or assault';
-            return `Minimum 3 units. No ${heavy} units. 50% must have the Missile Boat or Sniper role.`;
+            const heavyORAssault = isAS ? 'Size 3+' : 'heavy or assault';
+            return `Minimum 3 units. No ${heavyORAssault} units. 50% must have the Missile Boat or Sniper role.`;
         },
         validator: (units) => {
             const noHeavy = units.every(u =>
