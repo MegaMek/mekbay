@@ -38,6 +38,7 @@ import { GameSystem, Rulebook } from '../models/common.model';
 import { isClan } from './org/org-registry.util';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { ASForceUnit } from '../models/as-force-unit.model';
+import { OptionsService } from '../services/options.service';
 
 /*
  * Author: Drake
@@ -53,6 +54,11 @@ import { ASForceUnit } from '../models/as-force-unit.model';
 
 const isAS = GameSystem.ALPHA_STRIKE;
 const AEROSPACE_MODES = new Set(['a', 'p', 'k']);
+const getUnitOfMeasure = () => OptionsService.get()?.options()?.ASUseHex ?? false;
+
+function isHex(value: number): string {
+    return getUnitOfMeasure() ? `${Math.round(value / 2)}⬢` : `${value}"`;
+}
 
 function asGetSize(unit: Unit): number {
     return unit.as?.SZ ?? 0;
@@ -366,9 +372,8 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 62 }, { book: Rulebook.ASCE, page: 118 }],
         requirements: () => {
-            const move = isAS ? 'Move 10" or any jump capability' : 'walk ≥ 5 or jump > 0';
-//            const move = isAS ? `Move ${isHex ? '5 hexes' : '10"'} or any jump capability` : 'walk ≥ 5 or jump > 0';
-            return `Minimum 3 units. Must meet Assault Lance requirements. All units must have ${move}.`;
+            const move = isAS ? `${isHex(10)} or any jump capability` : 'walk ≥ 5 or jump > 0';
+            return `Must meet Assault Lance requirements. All units must have ${move}.`;
         },
         validator: (units) => {
             if (isAS) {
@@ -570,7 +575,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         requirements: () => {
             const mediumOrHeavy = isAS ? 'Size 2-3' : 'medium or heavy';
             const equipment = isAS
-                ? 'AC or FLK special. All units Move 8"+'
+                ? `AC or FLK special. All units Move ${isHex(8)}+`
                 : 'autocannons (including LB-X, Ultra, or Rotary). All units walk ≥ 4';
             return `Minimum 3 units. Federated Suns only. 75% must be ${mediumOrHeavy}. 50% must have ${equipment}.`;
         },
@@ -944,7 +949,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.CO, page: 65 }, { book: Rulebook.ASCE, page: 120 }],
         requirements: () => {
             const lightOrMedium = isAS ? 'Size ≤ 2' : 'light or medium';
-            const move = isAS ? 'Move 12"+' : 'walk ≥ 6';            
+            const move = isAS ? `Move ${isHex(12)}+` : 'walk ≥ 6';
             const mediumRange = isAS ? 'with medium-range damage > 1' : 'deal 5+ damage at 15 hexes';
             return `Minimum 3 units. All ${lightOrMedium}. 75% must have ${move}. At least 1 unit ${mediumRange}.`;
         },
@@ -978,7 +983,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.CO, page: 65 }, { book: Rulebook.ASCE, page: 120 }],
         requirements: () => {
             const assault = isAS ? 'Size 4+' : 'assault';
-            const move = isAS ? 'Move 10"+' : 'walk ≥ 6';
+            const move = isAS ? `Move ${isHex(10)}+` : 'walk ≥ 6';
             const mediumRange = isAS ? 'have medium-range damage > 1' : 'deal 5+ damage at 15 hexes';
             return `Minimum 3 units. No ${assault} units. 75% must have ${move}. All units must ${mediumRange}.`;
         },
@@ -1012,7 +1017,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.CO, page: 65 }, { book: Rulebook.ASCE, page: 120 }],
         requirements: () => {
             const lightOrMedium = isAS ? 'Size ≤ 2' : 'light or medium';
-            const move = isAS ? 'Move 10"+' : 'walk ≥ 5';
+            const move = isAS ? `Move ${isHex(10)}+` : 'walk ≥ 5';
             const shortRange = isAS ? 'have short-range damage ≥ 2' : 'deal 10+ damage at 6 hexes';
             return `Minimum 3 units. All ${lightOrMedium}. All units must have ${move}. All units must ${shortRange}.`;
         },
@@ -1056,7 +1061,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 65 }, { book: Rulebook.ASCE, page: 119 }],
         requirements: () => {
-            const move = isAS ? 'Move 10"+' : 'walk ≥ 5';
+            const move = isAS ? `Move ${isHex(10)}+` : 'walk ≥ 5';
             return `Minimum 3 units. All units must have ${move}. At least 2 Scout or Striker roles.`;
         },
         validator: (units) => {
@@ -1093,8 +1098,8 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 66 }, { book: Rulebook.ASCE, page: 119 }],
         requirements: () => {
-            const allMove = isAS ? 'Move 8"+' : 'walk ≥ 4';
-            const someMove = isAS ? 'Move 10"+' : 'walk ≥ 5';
+            const allMove = isAS ? `Move ${isHex(8)}+` : 'walk ≥ 4';
+            const someMove = isAS ? `Move ${isHex(10)}+` : 'walk ≥ 5';
             const heavyOrAssault = isAS ? 'Size 3+' : 'heavy or assault';
             return `Minimum 3 units. All ${allMove}. At least 2 with ${someMove}. At least 1 ${heavyOrAssault}. At least 2 Scouts.`;
         },
@@ -1136,7 +1141,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.CO, page: 66 }, { book: Rulebook.ASCE, page: 119 }],
         requirements: () => {
             const light = isAS ? 'Size 1' : 'light';
-            const move = isAS ? 'Move 12"+' : 'walk ≥ 6';
+            const move = isAS ? `Move ${isHex(12)}+` : 'walk ≥ 6';
             return `Minimum 3 units. All ${light}. All ${move}. All must have the Scout role.`;
         },
         validator: (units) => {
@@ -1202,7 +1207,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 66 }, { book: Rulebook.ASCE, page: 118 }],
         requirements: () => {
-            const move = isAS ? 'Move 10"+ or Jump 8+"' : 'walk ≥ 5 or jump ≥ 4';
+            const move = isAS ? `Move ${isHex(10)}+ or Jump ${isHex(8)}+` : 'walk ≥ 5 or jump ≥ 4';
             const assault = isAS ? 'Size 4+' : 'assault';
             return `Minimum 3 units. All ${move}. No ${assault} units. 50% must have Striker or Skirmisher role.`;
         },
@@ -1239,7 +1244,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 66 }],
         requirements: () => {
-            const move = isAS ? 'Move 10"+' : 'walk ≥ 5';
+            const move = isAS ? `Move ${isHex(10)}+` : 'walk ≥ 5';
             return `Minimum 3 units. Free Worlds League only. All units must have ${move}.`;
         },
         validator: (units) => {
@@ -1266,7 +1271,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 66 }, { book: Rulebook.ASCE, page: 118 }],
         requirements: () => {
-            const move = isAS ? 'Move 10"+' : 'walk ≥ 5';
+            const move = isAS ? `Move ${isHex(10)}+` : 'walk ≥ 5';
             const noHeavyOrAssault = isAS ? 'Size 3+' : 'heavy or assault';
             const longRange = isAS ? 'with long-range damage > 0' : 'deal 5+ damage at 18 hexes';
             return `Minimum 3 units. All ${move}. No ${noHeavyOrAssault} units. At least 2 ${longRange}. At least 2 Striker or Skirmisher roles.`;
@@ -1303,7 +1308,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 66 }, { book: Rulebook.ASCE, page: 118 }],
         requirements: () => {
-            const move = isAS ? 'Move 8"+' : 'walk ≥ 4';
+            const move = isAS ? `Move ${isHex(8)}+` : 'walk ≥ 4';
             const heavyOrAssault = isAS ? 'Size 3+. No Size 1' : 'heavy or assault. No light';
             const longRange = isAS ? 'with long-range damage > 1' : 'deals 5+ damage at 18 hexes';
             return `Minimum 3 units. All ${move}. At least 3 ${heavyOrAssault} units. At least 1 ${longRange}. At least 2 Striker or Skirmisher roles.`;
@@ -1412,7 +1417,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 67 }],
         requirements: () => {
-            const move = isAS ? 'ground Move ≤ 8"+' : 'walk ≤ 4';
+            const move = isAS ? `ground Move ≤ ${isHex(8)}+` : 'walk ≤ 4';
             return `Minimum 3 units. 50% must have jump movement or be infantry. 50% must have ${move}.`;
         },
         validator: (units) => {
