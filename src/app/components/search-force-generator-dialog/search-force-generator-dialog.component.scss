@@ -36,7 +36,6 @@
     gap: 12px;
     width: 100%;
     min-height: 0;
-    padding: 12px;
     box-sizing: border-box;
 }
 
@@ -58,10 +57,14 @@
     letter-spacing: 0.1em;
 }
 
+.preview-explanation-shell {
+    background-color: var(--background-color-light);
+}
+
 .preview-explanation-overlay {
     position: absolute;
     right: 8px;
-    bottom: 2px;
+    bottom: 8px;
     left: 8px;
     z-index: 2;
 }
@@ -69,10 +72,9 @@
 .preview-explanation-toggle {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 10px;
     width: 100%;
-    padding: 10px 12px;
+    padding: 10px 8px;
     border: 0;
     background: transparent;
     color: inherit;
@@ -90,7 +92,7 @@
     gap: 4px;
     font-size: 0.9em;
     max-height: min(36vh, 260px);
-    padding: 0 12px 12px;
+    padding: 0 8px 8px;
     overflow: auto;
 }
 
@@ -111,15 +113,16 @@
 
 .controls-panel {
     padding: 12px;
+    overflow: auto;
 }
 
 .description-panel {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    padding: 12px;
+    padding: 8px;
     margin-bottom: 12px;
-    background: color-mix(in srgb, var(--background-color-menu) 88%, white 12%);
+    background-color: var(--background-color-light);
 }
 
 .description-title {
@@ -376,9 +379,21 @@
         overflow: auto;
     }
 
+    :host ::ng-deep .search-force-generator-dialog-modal div[dialog-body],
+    .dialog-body {
+        display: block;
+        flex: 0 0 auto;
+        min-height: auto;
+    }
+
     .dialog-layout {
-        grid-template-columns: 1fr;
-        grid-template-rows: auto auto;
+        display: flex;
+        flex-direction: column;
+        min-height: auto;
+    }
+
+    .panel {
+        min-height: auto;
     }
 
     .preview-panel {
