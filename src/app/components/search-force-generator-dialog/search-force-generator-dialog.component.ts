@@ -45,6 +45,7 @@ import {
 import type { AvailabilitySource } from '../../models/options.model';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { LoadForcePreviewPanelComponent } from '../load-force-preview-panel/load-force-preview-panel.component';
+import { LoadForceRadarPanelComponent } from '../load-force-radar-panel/load-force-radar-panel.component';
 import { MultiSelectDropdownComponent, type MultiStateSelection } from '../multi-select-dropdown/multi-select-dropdown.component';
 import { DataService } from '../../services/data.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -74,11 +75,18 @@ export interface SearchForceGeneratorDialogResult {
 }
 
 type MultiStateFilterKey = 'era' | 'faction' | '_tags';
+type UnitTypeFilterKey = 'type' | 'as.TP';
 
 @Component({
     selector: 'search-force-generator-dialog',
     standalone: true,
-    imports: [CommonModule, BaseDialogComponent, LoadForcePreviewPanelComponent, MultiSelectDropdownComponent],
+    imports: [
+        CommonModule,
+        BaseDialogComponent,
+        LoadForcePreviewPanelComponent,
+        LoadForceRadarPanelComponent,
+        MultiSelectDropdownComponent,
+    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './search-force-generator-dialog.component.html',
     styleUrls: ['./search-force-generator-dialog.component.scss'],
@@ -90,28 +98,39 @@ export class SearchForceGeneratorDialogComponent {
     readonly dataService = inject(DataService);
     private readonly forceBuilderService = inject(ForceBuilderService);
     private readonly forceGeneratorService = inject(ForceGeneratorService);
-    readonly gameService = inject(GameService);
+    private readonly gameService = inject(GameService);
     private readonly optionsService = inject(OptionsService);
     readonly filtersService = inject(UnitSearchFiltersService);
+    private readonly initialGameSystem = this.gameService.currentGameSystem();
+    private readonly selectedGameSystem = signal<GameSystem>(this.initialGameSystem);
     private readonly initialBudgetDefaults = this.forceGeneratorService.resolveInitialBudgetDefaults(
         this.optionsService.options(),
         this.filtersService.bvPvLimit(),
-        this.gameService.currentGameSystem(),
+        this.initialGameSystem,
     );
     private readonly initialUnitCountDefaults = this.forceGeneratorService.resolveInitialUnitCountDefaults(
         this.optionsService.options(),
     );
 
-    readonly gameSystem = this.gameService.currentGameSystem;
+    readonly gameSystem = this.selectedGameSystem.asReadonly();
+    readonly isAlphaStrike = computed(() => this.gameSystem() === GameSystem.ALPHA_STRIKE);
     readonly availabilitySource = computed(() => this.optionsService.options().availabilitySource);
     readonly eligibleUnits = this.filtersService.filteredUnits;
     readonly pilotGunnerySkill = computed(() => this.filtersService.pilotGunnerySkill());
     readonly pilotPilotingSkill = computed(() => this.filtersService.pilotPilotingSkill());
     readonly eraFilter = computed(() => this.getDropdownFilter('era'));
     readonly factionFilter = computed(() => this.getDropdownFilter('faction'));
+    readonly unitTypeFilterKey = computed<UnitTypeFilterKey | null>(() => this.resolveUnitTypeFilterKey());
+    readonly unitTypeFilter = computed(() => {
+        const filterKey = this.unitTypeFilterKey();
+        return filterKey ? this.getDropdownFilter(filterKey) : null;
+    });
+    readonly subtypeFilter = computed(() => this.getDropdownFilter('subtype'));
     readonly tagsFilter = computed(() => this.getDropdownFilter('_tags'));
     readonly selectedEraValues = computed(() => this.getSelectedMultiStateValues(this.eraFilter()));
     readonly selectedFactionValues = computed(() => this.getSelectedMultiStateValues(this.factionFilter()));
+    readonly selectedUnitTypeValues = computed(() => this.getSelectedDropdownValues(this.unitTypeFilter()));
+    readonly selectedSubtypeValues = computed(() => this.getSelectedDropdownValues(this.subtypeFilter()));
     readonly selectedTagValues = computed(() => this.getSelectedMultiStateValues(this.tagsFilter()));
     readonly currentForce = this.forceBuilderService.smartCurrentForce;
     readonly canImportCurrentForce = computed(() => (this.currentForce()?.units().length ?? 0) > 0);
@@ -190,7 +209,12 @@ export class SearchForceGeneratorDialogComponent {
     readonly preview = computed(() => {
         const generationContext = this.resolvedGenerationContext();
         const settings = this.generationSettings();
-        const lockedUnits = untracked(() => this.lockedUnits());
+        const lockedUnits = this.resolveLockedUnitsForPreview(
+            untracked(() => this.lockedUnits()),
+            settings.gameSystem,
+            settings.gunnery,
+            settings.piloting,
+        );
 
         return this.forceGeneratorService.buildPreview({
             eligibleUnits: this.eligibleUnits(),
@@ -218,12 +242,37 @@ export class SearchForceGeneratorDialogComponent {
         return this.gameSystem() === GameSystem.ALPHA_STRIKE ? 'Max PV' : 'Max BV';
     }
 
+    setGameSystem(gameSystem: GameSystem): void {
+        if (!this.dataService.isDataReady() || this.gameSystem() === gameSystem) {
+            return;
+        }
+
+        this.selectedGameSystem.set(gameSystem);
+    }
+
+    toggleGameSystem(): void {
+        this.setGameSystem(this.isAlphaStrike() ? GameSystem.CLASSIC : GameSystem.ALPHA_STRIKE);
+    }
+
     onEraSelectionChange(selection: MultiStateSelection | readonly string[]): void {
         this.setMultiStateFilter('era', selection);
     }
 
     onFactionSelectionChange(selection: MultiStateSelection | readonly string[]): void {
         this.setMultiStateFilter('faction', selection);
+    }
+
+    onUnitTypeSelectionChange(selection: MultiStateSelection | readonly string[]): void {
+        const filterKey = this.unitTypeFilterKey();
+        if (!filterKey) {
+            return;
+        }
+
+        this.setArrayFilter(filterKey, selection);
+    }
+
+    onSubtypeSelectionChange(selection: MultiStateSelection | readonly string[]): void {
+        this.setArrayFilter('subtype', selection);
     }
 
     onTagsSelectionChange(selection: MultiStateSelection | readonly string[]): void {
@@ -299,6 +348,7 @@ export class SearchForceGeneratorDialogComponent {
             .filter((unit): unit is GeneratedForceUnit => unit !== null);
 
         this.lockedUnits.set(importedUnits);
+        this.reroll();
     }
 
     toggleHowPicksWereChosen(): void {
@@ -339,8 +389,69 @@ export class SearchForceGeneratorDialogComponent {
         return normalizeMultiStateSelection(option?.value);
     }
 
+    private getSelectedDropdownValues(option: DropdownFilterOptions | null): string[] {
+        return Array.isArray(option?.value) ? [...option.value] : [];
+    }
+
+    private resolveLockedUnitsForPreview(
+        lockedUnits: readonly GeneratedForceUnit[],
+        gameSystem: GameSystem,
+        gunnery: number,
+        piloting: number,
+    ): GeneratedForceUnit[] {
+        return lockedUnits.map((lockedUnit) => {
+            const skill = gameSystem === GameSystem.ALPHA_STRIKE
+                ? lockedUnit.skill ?? lockedUnit.gunnery ?? gunnery
+                : undefined;
+            const resolvedGunnery = gameSystem === GameSystem.CLASSIC
+                ? lockedUnit.gunnery ?? lockedUnit.skill ?? gunnery
+                : undefined;
+            const resolvedPiloting = gameSystem === GameSystem.CLASSIC
+                ? lockedUnit.piloting ?? piloting
+                : undefined;
+
+            return {
+                unit: lockedUnit.unit,
+                cost: this.forceGeneratorService.getBudgetMetric(
+                    lockedUnit.unit,
+                    gameSystem,
+                    skill ?? resolvedGunnery ?? gunnery,
+                    resolvedPiloting ?? piloting,
+                ),
+                skill,
+                gunnery: resolvedGunnery,
+                piloting: resolvedPiloting,
+                alias: lockedUnit.alias,
+                commander: lockedUnit.commander,
+                lockKey: lockedUnit.lockKey,
+            };
+        });
+    }
+
+    private resolveUnitTypeFilterKey(): UnitTypeFilterKey | null {
+        if (this.getDropdownFilter('type')) {
+            return 'type';
+        }
+        if (this.getDropdownFilter('as.TP')) {
+            return 'as.TP';
+        }
+        return null;
+    }
+
     private setMultiStateFilter(key: MultiStateFilterKey, selection: MultiStateSelection | readonly string[]): void {
         this.filtersService.setFilter(key, normalizeMultiStateSelection(selection));
+    }
+
+    private setArrayFilter(key: string, selection: MultiStateSelection | readonly string[]): void {
+        if (Array.isArray(selection)) {
+            this.filtersService.setFilter(key, [...selection]);
+            return;
+        }
+
+        const selectedValues = Object.values(selection)
+            .filter((option) => option.state !== false)
+            .map((option) => option.name);
+        this.filtersService.setFilter(key, selectedValues);
     }
 
     private summarizeActiveFilters(): string {

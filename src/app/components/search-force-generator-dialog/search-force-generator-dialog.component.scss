@@ -19,9 +19,9 @@
     min-height: 0;
 }
 
-:host ::ng-deep .preview-body load-force-preview-panel {
+:host ::ng-deep .preview-body load-force-preview-panel,
+:host ::ng-deep .preview-body load-force-radar-panel {
     display: block;
-    min-height: 100%;
 }
 
 .dialog-body {
@@ -143,6 +143,17 @@
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px 12px;
+}
+
+.field-pair {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 12px;
+    min-width: 0;
+}
+
+.field-pair.single-field {
+    grid-template-columns: minmax(0, 1fr);
 }
 
 .form-fields {
@@ -367,10 +378,28 @@
 }
 
 .preview-body {
+    display: flex;
+    flex-direction: column;
     flex: 1 1 auto;
     min-height: 0;
     overflow: auto;
     padding: 8px 8px 48px 8px;
+}
+
+.preview-stack {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    gap: 8px;
+    min-height: 100%;
+}
+
+:host ::ng-deep .preview-stack load-force-radar-panel {
+    --radar-panel-min-height: 280px;
+    --radar-panel-min-height-mobile: 230px;
+    flex: 1 1 320px;
+    min-height: 280px;
+    max-height: min(52vh, 520px);
 }
 
 .preview-empty {
@@ -427,6 +456,10 @@
 
     .preview-panel {
         min-height: 320px;
+    }
+
+    :host ::ng-deep .preview-stack load-force-radar-panel {
+        max-height: 420px;
     }
 }
 

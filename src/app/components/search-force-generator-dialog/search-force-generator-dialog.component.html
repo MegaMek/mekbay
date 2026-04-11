@@ -15,8 +15,8 @@
                     <div class="form-fields span-all">
                         <label class="field-label">Game System</label>
                         <div class="gameSystemSelector" [class.loading]="!this.dataService.isDataReady()">
-                            <div class="battletech-logo" [class.inactive]="gameService.isAlphaStrike()"
-                                (click)="this.dataService.isDataReady() && gameService.setMode(GameSystem.CLASSIC)">
+                            <div class="battletech-logo" [class.inactive]="isAlphaStrike()"
+                                (click)="setGameSystem(GameSystem.CLASSIC)">
                                 <svg fill="#fff" version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 790 100">
                                     <g>
                                         <path class="logo-text"
@@ -28,13 +28,13 @@
                                 </svg>
                             </div>
                             <div class="game-system-switch"
-                                (click)="this.dataService.isDataReady() && gameService.setMode(gameService.isAlphaStrike() ? GameSystem.CLASSIC : GameSystem.ALPHA_STRIKE)">
-                                <div class="switch-track" [class.as-active]="gameService.isAlphaStrike()">
+                                (click)="toggleGameSystem()">
+                                <div class="switch-track" [class.as-active]="isAlphaStrike()">
                                     <div class="switch-thumb"></div>
                                 </div>
                             </div>
-                            <div class="as-logo" [class.inactive]="!gameService.isAlphaStrike()"
-                                (click)="this.dataService.isDataReady() && gameService.setMode(GameSystem.ALPHA_STRIKE)">
+                            <div class="as-logo" [class.inactive]="!isAlphaStrike()"
+                                (click)="setGameSystem(GameSystem.ALPHA_STRIKE)">
                                 <svg viewBox="0 0 88 14" xmlns="http://www.w3.org/2000/svg">
                                     <g>
                                         <path style="fill:none;stroke:#fff200;stroke-width:0.8;stroke-miterlimit:3.226"
@@ -49,68 +49,108 @@
                         </div>
                     </div>
 
-                    <div class="form-fields">
-                        <label class="field-label">Min Units</label>
-                        <input class="bt-input field-input" type="number" min="1" [max]="MAX_UNITS" step="1" [value]="minUnitCount()" (input)="onMinUnitCountChange($event)" (blur)="onMinUnitCountBlur($event)" />
+                    <div class="field-pair span-all">
+                        <div class="form-fields">
+                            <label class="field-label">Min Units</label>
+                            <input class="bt-input field-input" type="number" min="1" [max]="MAX_UNITS" step="1" [value]="minUnitCount()" (input)="onMinUnitCountChange($event)" (blur)="onMinUnitCountBlur($event)" />
+                        </div>
+
+                        <div class="form-fields">
+                            <label class="field-label">Max Units</label>
+                            <input class="bt-input field-input" type="number" min="1" [max]="MAX_UNITS" step="1" [value]="maxUnitCount()" (input)="onMaxUnitCountChange($event)" (blur)="onMaxUnitCountBlur($event)" />
+                        </div>
                     </div>
 
-                    <div class="form-fields">
-                        <label class="field-label">Max Units</label>
-                        <input class="bt-input field-input" type="number" min="1" [max]="MAX_UNITS" step="1" [value]="maxUnitCount()" (input)="onMaxUnitCountChange($event)" (blur)="onMaxUnitCountBlur($event)" />
+                    <div class="field-pair span-all">
+                        <div class="form-fields">
+                            <label class="field-label">{{ budgetMinimumFieldLabel() }}</label>
+                            <input
+                                class="bt-input field-input"
+                                type="number"
+                                min="0"
+                                step="1"
+                                [value]="budgetRange().min"
+                                (input)="onBudgetMinChange($event)"
+                                placeholder="0 = no minimum" />
+                        </div>
+
+                        <div class="form-fields">
+                            <label class="field-label">{{ budgetMaximumFieldLabel() }}</label>
+                            <input
+                                class="bt-input field-input"
+                                type="number"
+                                min="0"
+                                step="1"
+                                [value]="budgetRange().max || ''"
+                                (input)="onBudgetMaxChange($event)"
+                                placeholder="0 = no maximum; 0/0 = first result" />
+                        </div>
                     </div>
 
-                    <div class="form-fields">
-                        <label class="field-label">{{ budgetMinimumFieldLabel() }}</label>
-                        <input
-                            class="bt-input field-input"
-                            type="number"
-                            min="0"
-                            step="1"
-                            [value]="budgetRange().min"
-                            (input)="onBudgetMinChange($event)"
-                            placeholder="0 = no minimum" />
+                    <div class="field-pair span-all">
+                        <div class="form-fields">
+                            <label class="field-label">Era</label>
+                            <multi-select-dropdown
+                                class="generator-dropdown"
+                                [label]="''"
+                                [options]="eraFilter()?.options ?? []"
+                                [selected]="selectedEraValues()"
+                                [multistate]="true"
+                                [semanticOnly]="eraFilter()?.semanticOnly ?? false"
+                                [displayText]="eraFilter()?.displayText"
+                                [displayItems]="eraFilter()?.displayItems"
+                                (selectionChange)="onEraSelectionChange($event)">
+                            </multi-select-dropdown>
+                        </div>
+
+                        <div class="form-fields">
+                            <label class="field-label">Faction</label>
+                            <multi-select-dropdown
+                                class="generator-dropdown"
+                                [label]="''"
+                                [options]="factionFilter()?.options ?? []"
+                                [selected]="selectedFactionValues()"
+                                [multistate]="true"
+                                [semanticOnly]="factionFilter()?.semanticOnly ?? false"
+                                [displayText]="factionFilter()?.displayText"
+                                [displayItems]="factionFilter()?.displayItems"
+                                (selectionChange)="onFactionSelectionChange($event)">
+                            </multi-select-dropdown>
+                        </div>
                     </div>
 
-                    <div class="form-fields">
-                        <label class="field-label">{{ budgetMaximumFieldLabel() }}</label>
-                        <input
-                            class="bt-input field-input"
-                            type="number"
-                            min="0"
-                            step="1"
-                            [value]="budgetRange().max || ''"
-                            (input)="onBudgetMaxChange($event)"
-                            placeholder="0 = no maximum; 0/0 = first result" />
-                    </div>
+                    <div class="field-pair span-all" [class.single-field]="subtypeFilter() === null">
+                        @if (unitTypeFilter(); as unitTypeFilter) {
+                            <div class="form-fields">
+                                <label class="field-label">Unit Type</label>
+                                <multi-select-dropdown
+                                    class="generator-dropdown"
+                                    [label]="''"
+                                    [options]="unitTypeFilter.options"
+                                    [selected]="selectedUnitTypeValues()"
+                                    [semanticOnly]="unitTypeFilter.semanticOnly ?? false"
+                                    [displayText]="unitTypeFilter.displayText"
+                                    [displayItems]="unitTypeFilter.displayItems"
+                                    (selectionChange)="onUnitTypeSelectionChange($event)">
+                                </multi-select-dropdown>
+                            </div>
+                        }
 
-                    <div class="form-fields span-all">
-                        <label class="field-label">Era</label>
-                        <multi-select-dropdown
-                            class="generator-dropdown"
-                            [label]="''"
-                            [options]="eraFilter()?.options ?? []"
-                            [selected]="selectedEraValues()"
-                            [multistate]="true"
-                            [semanticOnly]="eraFilter()?.semanticOnly ?? false"
-                            [displayText]="eraFilter()?.displayText"
-                            [displayItems]="eraFilter()?.displayItems"
-                            (selectionChange)="onEraSelectionChange($event)">
-                        </multi-select-dropdown>
-                    </div>
-
-                    <div class="form-fields span-all">
-                        <label class="field-label">Faction</label>
-                        <multi-select-dropdown
-                            class="generator-dropdown"
-                            [label]="''"
-                            [options]="factionFilter()?.options ?? []"
-                            [selected]="selectedFactionValues()"
-                            [multistate]="true"
-                            [semanticOnly]="factionFilter()?.semanticOnly ?? false"
-                            [displayText]="factionFilter()?.displayText"
-                            [displayItems]="factionFilter()?.displayItems"
-                            (selectionChange)="onFactionSelectionChange($event)">
-                        </multi-select-dropdown>
+                        @if (subtypeFilter(); as subtypeFilter) {
+                            <div class="form-fields">
+                                <label class="field-label">Subtype</label>
+                                <multi-select-dropdown
+                                    class="generator-dropdown"
+                                    [label]="''"
+                                    [options]="subtypeFilter.options"
+                                    [selected]="selectedSubtypeValues()"
+                                    [semanticOnly]="subtypeFilter.semanticOnly ?? false"
+                                    [displayText]="subtypeFilter.displayText"
+                                    [displayItems]="subtypeFilter.displayItems"
+                                    (selectionChange)="onSubtypeSelectionChange($event)">
+                                </multi-select-dropdown>
+                            </div>
+                        }
                     </div>
 
                     <div class="form-fields span-all">
@@ -127,20 +167,6 @@
                             (selectionChange)="onTagsSelectionChange($event)">
                         </multi-select-dropdown>
                     </div>
-
-                    <div class="form-fields span-all">
-                        <label class="generator-option">
-                            <input
-                                class="bt-checkbox"
-                                type="checkbox"
-                                [checked]="preventDuplicateChassis()"
-                                (change)="onPreventDuplicateChassisChange($event)" />
-                            <span class="generator-option-label">Prevent duplicate chassis</span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="controls-actions">
                     <div class="eligible-count">
                         <span class="eligible-label">Eligible Units</span>
                         <span class="eligible-value">{{ eligibleUnits().length }}</span>
@@ -154,16 +180,20 @@
             <section class="panel preview-panel">
                 <div class="preview-body">
                     @if (previewEntry(); as previewForceEntry) {
-                        <load-force-preview-panel
-                            [force]="previewForceEntry"
-                            [showLockControls]="true"
-                            [lockedUnitKeys]="lockedUnitKeys()"
-                            [lockToggle]="previewLockToggle">
-                        </load-force-preview-panel>
+                        <div class="preview-stack">
+                            <load-force-preview-panel
+                                [force]="previewForceEntry"
+                                [showLockControls]="true"
+                                [lockedUnitKeys]="lockedUnitKeys()"
+                                [lockToggle]="previewLockToggle">
+                            </load-force-preview-panel>
 
-                        @if (preview().error; as errorMessage) {
-                            <div class="preview-inline-error framed-borders">{{ errorMessage }}</div>
-                        }
+                            <load-force-radar-panel [force]="previewForceEntry"></load-force-radar-panel>
+
+                            @if (preview().error; as errorMessage) {
+                                <div class="preview-inline-error framed-borders">{{ errorMessage }}</div>
+                            }
+                        </div>
                     } @else if (preview().error; as errorMessage) {
                         <div class="preview-empty">{{ errorMessage }}</div>
                     }

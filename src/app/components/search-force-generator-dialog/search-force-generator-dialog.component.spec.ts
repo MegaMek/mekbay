@@ -1,6 +1,6 @@
 import { DialogRef } from '@angular/cdk/dialog';
 import { TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { signal, type WritableSignal } from '@angular/core';
 
 import { GameSystem } from '../../models/common.model';
 import type { LoadForceEntry } from '../../models/load-force-entry.model';
@@ -18,6 +18,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
     let setOptionSpy: jasmine.Spy;
     let setFilterSpy: jasmine.Spy;
     let buildPreviewSpy: jasmine.Spy;
+    let gameSystemSignal: WritableSignal<GameSystem>;
 
     beforeEach(() => {
         const optionsSignal = signal({
@@ -50,11 +51,40 @@ describe('SearchForceGeneratorDialogComponent', () => {
                 },
                 interacted: true,
             },
+            faction: {
+                type: 'dropdown' as const,
+                label: 'Faction',
+                options: [],
+                value: {},
+                interacted: false,
+            },
+            type: {
+                type: 'dropdown' as const,
+                label: 'Type',
+                options: [],
+                value: ['Mek'],
+                interacted: true,
+            },
+            subtype: {
+                type: 'dropdown' as const,
+                label: 'Subtype',
+                options: [],
+                value: ['BattleMek'],
+                interacted: true,
+            },
+            'as.TP': {
+                type: 'dropdown' as const,
+                label: 'Type',
+                options: [],
+                value: ['BM'],
+                interacted: true,
+            },
         });
 
         const currentForceSignal = signal<any>(null);
         const unitsByName = new Map<string, Unit>();
         const dataServiceMock = {
+            isDataReady: signal(true),
             getUnitByName: jasmine.createSpy('getUnitByName').and.callFake((name: string) => unitsByName.get(name)),
             getFactionById: jasmine.createSpy('getFactionById').and.returnValue(null),
             getEraById: jasmine.createSpy('getEraById').and.returnValue(null),
@@ -69,6 +99,8 @@ describe('SearchForceGeneratorDialogComponent', () => {
             explanationLines: [],
         };
         buildPreviewSpy = jasmine.createSpy('buildPreview').and.callFake(() => previewResult);
+
+        gameSystemSignal = signal(GameSystem.CLASSIC);
 
         TestBed.configureTestingModule({
             providers: [
@@ -142,7 +174,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
                 {
                     provide: GameService,
                     useValue: {
-                        currentGameSystem: signal(GameSystem.CLASSIC),
+                        currentGameSystem: gameSystemSignal,
                     },
                 },
                 {
@@ -218,7 +250,40 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(setFilterSpy).toHaveBeenCalledWith('era', selection);
     });
 
-    it('imports the current force without regenerating immediately and uses those locks on reroll', () => {
+    it('updates classic unit type and subtype filters from the dialog dropdowns', () => {
+        expect(component.selectedUnitTypeValues()).toEqual(['Mek']);
+        expect(component.selectedSubtypeValues()).toEqual(['BattleMek']);
+
+        component.onUnitTypeSelectionChange(['Tank']);
+        component.onSubtypeSelectionChange(['Combat Vehicle']);
+
+        expect(setFilterSpy).toHaveBeenCalledWith('type', ['Tank']);
+        expect(setFilterSpy).toHaveBeenCalledWith('subtype', ['Combat Vehicle']);
+    });
+
+    it('keeps shared filter mappings stable when the generator mode changes locally', () => {
+        component.setGameSystem(GameSystem.ALPHA_STRIKE);
+
+        expect(component.gameSystem()).toBe(GameSystem.ALPHA_STRIKE);
+        expect(gameSystemSignal()).toBe(GameSystem.CLASSIC);
+        expect(component.selectedUnitTypeValues()).toEqual(['Mek']);
+        expect(component.selectedSubtypeValues()).toEqual(['BattleMek']);
+
+        component.onUnitTypeSelectionChange(['Tank']);
+
+        expect(setFilterSpy).toHaveBeenCalledWith('type', ['Tank']);
+    });
+
+    it('uses the local generator mode for preview requests without changing the global game system', () => {
+        component.setGameSystem(GameSystem.ALPHA_STRIKE);
+
+        component.preview();
+
+        expect(buildPreviewSpy.calls.mostRecent().args[0].gameSystem).toBe(GameSystem.ALPHA_STRIKE);
+        expect(gameSystemSignal()).toBe(GameSystem.CLASSIC);
+    });
+
+    it('imports the current force into the locked preview immediately', () => {
         const atlas = {
             id: 1,
             name: 'Atlas AS7-D',
@@ -270,15 +335,13 @@ describe('SearchForceGeneratorDialogComponent', () => {
         buildPreviewSpy.calls.reset();
 
         component.importCurrentForce();
+        component.preview();
 
         expect(component.canImportCurrentForce()).toBeTrue();
         expect(component.lockedUnitKeys().size).toBe(2);
         expect(component.lockedUnitKeys().has('u-1')).toBeTrue();
         expect(component.lockedUnitKeys().has('u-2')).toBeTrue();
-        expect(buildPreviewSpy).not.toHaveBeenCalled();
-
-        component.reroll();
-        component.preview();
+        expect(buildPreviewSpy).toHaveBeenCalled();
 
         const request = buildPreviewSpy.calls.mostRecent().args[0];
         expect(request.lockedUnits.map((unit: { lockKey: string }) => unit.lockKey)).toEqual(['u-1', 'u-2']);
@@ -331,6 +394,101 @@ describe('SearchForceGeneratorDialogComponent', () => {
             lockKey: 'generated:0:Atlas AS7-D',
         });
         expect(component.lockedUnitKeys().has('generated:0:Atlas AS7-D')).toBeFalse();
+    });
+
+    it('recomputes locked unit values when switching from Alpha Strike to Classic', () => {
+        const atlas = {
+            id: 1,
+            name: 'Atlas AS7-D',
+            chassis: 'Atlas',
+            model: 'AS7-D',
+            bv: 1897,
+            as: { PV: 54 },
+        } as Unit;
+
+        component.setGameSystem(GameSystem.ALPHA_STRIKE);
+        (component as any).__test.setPreviewResult({
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            units: [{
+                unit: atlas,
+                cost: 54,
+                skill: 3,
+                lockKey: 'generated:0:Atlas AS7-D',
+            }],
+            totalCost: 54,
+            error: null,
+            faction: null,
+            era: null,
+            explanationLines: [],
+        });
+
+        component.preview();
+        component.previewLockToggle({
+            unit: atlas,
+            destroyed: false,
+            lockKey: 'generated:0:Atlas AS7-D',
+        });
+
+        buildPreviewSpy.calls.reset();
+        component.setGameSystem(GameSystem.CLASSIC);
+        component.preview();
+
+        expect(buildPreviewSpy).toHaveBeenCalled();
+        expect(buildPreviewSpy.calls.mostRecent().args[0].lockedUnits).toEqual([
+            jasmine.objectContaining({
+                lockKey: 'generated:0:Atlas AS7-D',
+                cost: 1897,
+                gunnery: 3,
+                piloting: 5,
+            }),
+        ]);
+    });
+
+    it('recomputes locked unit values when switching from Classic to Alpha Strike', () => {
+        const atlas = {
+            id: 1,
+            name: 'Atlas AS7-D',
+            chassis: 'Atlas',
+            model: 'AS7-D',
+            bv: 1897,
+            as: { PV: 54 },
+        } as Unit;
+
+        (component as any).__test.setPreviewResult({
+            gameSystem: GameSystem.CLASSIC,
+            units: [{
+                unit: atlas,
+                cost: 1897,
+                gunnery: 2,
+                piloting: 3,
+                lockKey: 'generated:0:Atlas AS7-D',
+            }],
+            totalCost: 1897,
+            error: null,
+            faction: null,
+            era: null,
+            explanationLines: [],
+        });
+
+        component.preview();
+        component.previewLockToggle({
+            unit: atlas,
+            destroyed: false,
+            lockKey: 'generated:0:Atlas AS7-D',
+        });
+
+        buildPreviewSpy.calls.reset();
+        component.setGameSystem(GameSystem.ALPHA_STRIKE);
+        component.preview();
+
+        expect(buildPreviewSpy).toHaveBeenCalled();
+        expect(buildPreviewSpy.calls.mostRecent().args[0].lockedUnits).toEqual([
+            jasmine.objectContaining({
+                lockKey: 'generated:0:Atlas AS7-D',
+                cost: 54,
+                skill: 2,
+            }),
+        ]);
     });
 
     it('does not regenerate the preview when a unit lock is toggled', () => {
