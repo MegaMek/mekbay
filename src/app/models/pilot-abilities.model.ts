@@ -39,9 +39,6 @@ import { OptionsService } from '../services/options.service';
 export function hexDisplay(summaries: string[]): string[] {
     const useHex = OptionsService.get()?.options()?.ASUseHex ?? false;
     return summaries.map(text => {
-        if (useHex) {
-            text = text.replace(/\[\[1\]\]\u2013\[\[2\]\]/g, '[[2]]');
-        }
         return text.replace(/\[\[(\d+)\]\]/g, (_, numValue) => {
             const val = parseInt(numValue, 10);
             return useHex ? `${Math.floor(val) / 2}⬢` : `${val}"`;
