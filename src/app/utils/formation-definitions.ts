@@ -57,7 +57,7 @@ const AEROSPACE_MODES = new Set(['a', 'p', 'k']);
 
 function isHex(value: number): string {
     const useHex = OptionsService.get()?.options()?.ASUseHex ?? false;
-    return useHex ? `${Math.round(value / 2)}⬢` : `${value}"`;
+    return useHex ? `${Math.round(value / 2)}⬢` : `${value}″`;
 }
 
 function asGetSize(unit: Unit): number {

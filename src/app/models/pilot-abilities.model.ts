@@ -40,7 +40,7 @@ export function hexDisplay(summaries: string[]): string[] {
     const useHex = OptionsService.get()?.options()?.ASUseHex ?? false;
     return summaries.map(text => {
         return text.replace(/\[\[(\d+)\]\]/g, (_, val) => {
-            return useHex ? `${Math.floor(val) / 2}⬢` : `${val}"`;
+            return useHex ? `${Math.floor(val) / 2}⬢` : `${val}″`;
         });
     });
 }
