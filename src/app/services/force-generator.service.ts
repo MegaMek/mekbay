@@ -1518,21 +1518,20 @@ export class ForceGeneratorService {
     }
 
     private getAvailabilityWeights(unit: Unit, context: ForceGenerationContext): { production: number; salvage: number } {
+        const useMegaMekAvailability = this.unitAvailabilitySource.useMegaMekAvailability();
         const availabilityRecord = this.dataService.getMegaMekAvailabilityRecordForUnit(unit);
         if (!availabilityRecord) {
-            // Fallback so we pick also units that have no RAT data when we are in MUL mode
             const mulFallbackWeights = this.getMulContextFallbackWeights(unit, context);
             if (mulFallbackWeights) {
                 return mulFallbackWeights;
             }
 
-            if (!this.unitAvailabilitySource.useMegaMekAvailability()) {
+            if (!useMegaMekAvailability) {
                 return {
                     production: 0,
                     salvage: 0,
                 };
             }
-            // End fallback
 
             return {
                 production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
@@ -1545,18 +1544,20 @@ export class ForceGeneratorService {
         if (forceEraId !== undefined && forceFactionId !== undefined) {
             const exactValue = availabilityRecord.e[String(forceEraId)]?.[String(forceFactionId)];
 
-            // Fallback so we pick also units that have no RAT data when we are in MUL mode
-            if ((exactValue?.[0] ?? 0) > 0 || (exactValue?.[1] ?? 0) > 0) {
+            if (useMegaMekAvailability) {
                 return {
                     production: exactValue?.[0] ?? 0,
                     salvage: exactValue?.[1] ?? 0,
                 };
             }
+
             const mulFallbackWeights = this.getMulContextFallbackWeights(unit, context);
             if (mulFallbackWeights) {
-                return mulFallbackWeights;
+                return {
+                    production: exactValue?.[0] ?? mulFallbackWeights.production,
+                    salvage: exactValue?.[1] ?? mulFallbackWeights.salvage,
+                };
             }
-            // End fallback
 
             return {
                 production: exactValue?.[0] ?? 0,
