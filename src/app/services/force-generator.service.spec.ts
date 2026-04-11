@@ -541,6 +541,69 @@ describe('ForceGeneratorService', () => {
         expect(preview.units.length).toBe(0);
     });
 
+    it('falls back to minimum unknown weights for MUL-visible units that are missing MegaMek availability records', () => {
+        const era = createEra(2570, 'Age of War', 2570, 2780);
+        const faction = createFaction(10, 'Draconis Combine');
+        const mulVisibleUnit = createUnit({ id: 1, name: 'MUL Visible Unknown', as: { PV: 5 } as Unit['as'] });
+
+        era.units = new Set<number>([mulVisibleUnit.id]);
+        faction.eras = {
+            [era.id]: new Set<number>([mulVisibleUnit.id]),
+        };
+
+        erasByName.set(era.name, era);
+        erasById.set(era.id, era);
+        factionsByName.set(faction.name, faction);
+        factionsById.set(faction.id, faction);
+        units.push(mulVisibleUnit);
+        optionsServiceMock.options.set({ availabilitySource: 'mul' });
+
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [mulVisibleUnit],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 10 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((generatedUnit) => generatedUnit.unit.name)).toEqual(['MUL Visible Unknown']);
+        expect(preview.explanationLines[0]).toContain('Candidates: 1 units.');
+        expect(preview.explanationLines.some((line) => line.includes('P 1 / S 1'))).toBeTrue();
+    });
+
+    it('keeps excluding MUL-invisible units that are missing MegaMek availability records', () => {
+        const era = createEra(2570, 'Age of War', 2570, 2780);
+        const faction = createFaction(10, 'Draconis Combine');
+        const mulInvisibleUnknown = createUnit({ id: 1, name: 'MUL Invisible Unknown', as: { PV: 5 } as Unit['as'] });
+
+        erasByName.set(era.name, era);
+        erasById.set(era.id, era);
+        factionsByName.set(faction.name, faction);
+        factionsById.set(faction.id, faction);
+        units.push(mulInvisibleUnknown);
+        optionsServiceMock.options.set({ availabilitySource: 'mul' });
+
+        const preview = service.buildPreview({
+            eligibleUnits: [mulInvisibleUnknown],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 10 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBe('Only 0 units have positive MegaMek availability in the rolled faction and era.');
+        expect(preview.units.length).toBe(0);
+    });
+
     it('rolls production and salvage separately before picking the unit', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');

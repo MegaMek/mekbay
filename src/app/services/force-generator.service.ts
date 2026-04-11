@@ -1520,6 +1520,20 @@ export class ForceGeneratorService {
     private getAvailabilityWeights(unit: Unit, context: ForceGenerationContext): { production: number; salvage: number } {
         const availabilityRecord = this.dataService.getMegaMekAvailabilityRecordForUnit(unit);
         if (!availabilityRecord) {
+            // Fallback so we pick also units that have no RAT data when we are in MUL mode
+            const mulFallbackWeights = this.getMulContextFallbackWeights(unit, context);
+            if (mulFallbackWeights) {
+                return mulFallbackWeights;
+            }
+
+            if (!this.unitAvailabilitySource.useMegaMekAvailability()) {
+                return {
+                    production: 0,
+                    salvage: 0,
+                };
+            }
+            // End fallback
+
             return {
                 production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
                 salvage: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
