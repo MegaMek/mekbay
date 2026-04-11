@@ -31,7 +31,6 @@
  * affiliated with Microsoft.
  */
 
-import type { AvailabilitySource } from '../models/options.model';
 import {
     ADVANCED_FILTERS,
     type AdvFilterConfig,
@@ -59,17 +58,6 @@ export function getAdvancedFilterConfigByKey(key: string): AdvFilterConfig | und
 
 export function getAdvancedFilterConfigBySemanticField(field: string): AdvFilterConfig | undefined {
     return advancedFilterConfigBySemanticField.get(field);
-}
-
-export function isFilterAvailableForAvailabilitySource(
-    config: Pick<AdvFilterConfig, 'availabilitySources'> | undefined,
-    availabilitySource: AvailabilitySource,
-): boolean {
-    if (!config?.availabilitySources || config.availabilitySources.length === 0) {
-        return true;
-    }
-
-    return config.availabilitySources.includes(availabilitySource);
 }
 
 export function isDropdownFilterConfig(config: AdvFilterConfig | undefined): config is AdvFilterConfig & DropdownFilterConfig {

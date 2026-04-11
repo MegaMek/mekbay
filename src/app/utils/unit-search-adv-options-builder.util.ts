@@ -38,7 +38,7 @@ import type { WildcardPattern } from './semantic-filter.util';
 import { getAdvOptionsContextSnapshot, getSnapshotAvailabilityNames, getSnapshotAvailableNames, getSnapshotComponentCounts, getSnapshotUnitIds, type AdvOptionsContextSnapshot } from './unit-search-adv-options.util';
 import { applyFilterStateToUnits, type UnitFilterKernelDependencies } from './unit-filter-kernel.util';
 import { matchesSearch, parseSearchQuery } from './search.util';
-import { getNowMs, getProperty, normalizeMultiStateSelection } from './unit-search-shared.util';
+import { getNowMs, getProperty } from './unit-search-shared.util';
 import { isComponentBackedDropdown, usesIndexedDropdownAvailability, usesIndexedDropdownUniverse } from './unit-search-filter-config.util';
 import { sortAvailableDropdownOptions, sortDropdownOptionObjects } from './unit-search-dropdown-sort.util';
 import { AdvFilterType, type AdvFilterConfig, type AdvFilterOptions, type AdvOptionsTelemetryFilterStage, type AdvOptionsTelemetrySnapshot, type FilterState, type SemanticDisplayItem } from '../services/unit-search-filters.model';
@@ -64,11 +64,6 @@ interface BuildUnitSearchAdvOptionsRequest {
         snapshot: AdvOptionsContextSnapshot,
         contextUnits: Unit[],
     ) => { name: string; available: boolean }[];
-    buildCustomDropdownOptions?: (
-        conf: AdvFilterConfig,
-        contextUnits: Unit[],
-        state: FilterState,
-    ) => { name: string; img?: string; displayName?: string; available?: boolean }[] | null;
     getIndexedUniverseNames: (filterKey: string) => string[];
     getSortedIndexedUniverseNames: (conf: AdvFilterConfig) => string[];
     collectIndexedAvailabilityNames: (
@@ -312,29 +307,24 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
             const displayNameFn = (value: string) => request.getDisplayName(conf.key, value);
             const contextSnapshot = getAdvOptionsContextSnapshot(contextSnapshotCache, contextUnits);
             const contextUnitIds = getSnapshotUnitIds(contextSnapshot, contextUnits);
-            const customOptions = request.buildCustomDropdownOptions?.(conf, contextUnits, request.state);
 
-            if (customOptions) {
-                availableOptions = customOptions;
-            } else if (usesIndexedDropdownUniverse(conf) && !conf.multistate) {
+            if (usesIndexedDropdownUniverse(conf) && !conf.multistate) {
                 availableOptions = request.buildIndexedDropdownOptions(conf, contextUnits, displayNameFn, contextUnitIds);
             } else if (conf.multistate) {
                 const isComponentFilter = isComponentBackedDropdown(conf);
                 const currentFilter = request.state[conf.key];
-                const normalizedCurrentSelection = currentFilter?.interactedWith
-                    ? normalizeMultiStateSelection(currentFilter.value)
-                    : {};
                 const hasQuantityFilters = conf.countable && isComponentFilter
-                    && Object.values(normalizedCurrentSelection).some(selection => selection.count > 1);
+                    && currentFilter?.interactedWith && currentFilter.value
+                    && Object.values(currentFilter.value as MultiStateSelection).some(selection => selection.count > 1);
                 const indexedUniverse = usesIndexedDropdownUniverse(conf);
                 const availableNames = indexedUniverse
                     ? request.getIndexedUniverseNames(conf.key)
                     : getSnapshotAvailableNames(contextSnapshot, conf.key, contextUnits, isComponentFilter);
-                const constrainedAvailableNameSet = Object.keys(normalizedCurrentSelection).length > 0
+                const constrainedAvailableNameSet = currentFilter?.interactedWith && currentFilter.value
                     ? request.collectConstrainedMultistateAvailabilityNames(
                         conf.key,
                         contextUnits,
-                        normalizedCurrentSelection,
+                        currentFilter.value as MultiStateSelection,
                         isComponentFilter,
                     )
                     : null;
@@ -378,10 +368,10 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
                 });
 
                 const currentFilterValue = filterStateEntry?.interactedWith ? filterStateEntry.value : {};
-                const currentSelection = normalizeMultiStateSelection(currentFilterValue);
+                const currentSelection = currentFilterValue as MultiStateSelection;
                 const wildcardPatternsMultistate = filterStateEntry?.wildcardPatterns;
                 const isExclusiveSemantic = filterStateEntry?.exclusive ?? false;
-                const displayItemsMultistate = Object.keys(currentSelection).length > 0
+                const displayItemsMultistate = currentSelection && typeof currentSelection === 'object'
                     ? buildSemanticDisplayItems(
                         currentSelection,
                         !!conf.countable,
@@ -395,7 +385,7 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
                     type: 'dropdown',
                     label,
                     options: optionsWithAvailability,
-                    value: currentSelection,
+                    value: currentFilterValue,
                     interacted: filterStateEntry?.interactedWith ?? false,
                     semanticOnly: semanticOnlyMultistate,
                     displayItems: displayItemsMultistate,
@@ -436,8 +426,8 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
             if (wildcardPatterns && wildcardPatterns.length > 0) {
                 semanticOnly = true;
                 if (conf.multistate) {
-                    const selection = normalizeMultiStateSelection(filterValue);
-                    if (Object.keys(selection).length > 0) {
+                    const selection = filterValue as MultiStateSelection;
+                    if (selection && typeof selection === 'object') {
                         displayItems = buildSemanticDisplayItems(
                             selection,
                             !!conf.countable,
@@ -455,8 +445,8 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
                     }
                 }
             } else if (conf.multistate) {
-                const selection = normalizeMultiStateSelection(filterValue);
-                if (Object.keys(selection).length > 0) {
+                const selection = filterValue as MultiStateSelection;
+                if (selection && typeof selection === 'object') {
                     const activeSelections = Object.entries(selection)
                         .filter(([, selectionValue]) => selectionValue.state !== false);
                     const unavailableSelections = activeSelections.filter(([name]) => !availableOptionNames.has(name));

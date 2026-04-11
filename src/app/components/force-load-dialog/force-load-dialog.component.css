@@ -241,7 +241,6 @@
     align-items: center;
     overflow: hidden;
     box-sizing: border-box;
-    position: relative;
 
     &.destroyed {
         background-image: repeating-linear-gradient(
@@ -293,43 +292,6 @@
     .unit-alias.thin {
         font-size: 0.6em;
         font-weight: normal;
-    }
-
-    .info-slot {
-        padding: 0 2px;
-        gap: 1px;
-        justify-content: start;
-        font-size: 0.7em;
-        position: absolute;
-    }
-
-    .info-slot.numeric {
-        justify-content: end;
-    }
-
-    .pilot-info {
-        top: 3px;
-        right: 3px;
-    }
-
-    .group-commander-indicator {
-        position: absolute;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--bt-yellow);
-        pointer-events: none;
-        z-index: 1;
-        opacity: 0.5;
-        top: 3px;
-        left: 3px;
-    }
-
-    .group-commander-icon {
-        width: 16px;
-        height: auto;
-        transform: rotate(180deg);
-        flex-shrink: 0;
     }
     
 }

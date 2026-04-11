@@ -249,7 +249,6 @@ export interface Unit {
     },
     sheets: string[];
     as: AlphaStrikeUnitStats;
-    unitFile?: string;
     _searchKey: string; // Pre-compiled lowercase search key: "chassis model"
     _displayType: string;
     _maxRange: number; // Max range of any weapon on this unit

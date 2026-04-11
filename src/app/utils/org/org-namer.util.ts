@@ -1,13 +1,12 @@
 import { type Force, UnitGroup } from '../../models/force.model';
 import type { Era } from '../../models/eras.model';
-import { type Faction } from '../../models/factions.model';
+import { FACTION_MERCENARY, type Faction } from '../../models/factions.model';
 import { LoadForceEntry, type LoadForceGroup } from '../../models/load-force-entry.model';
 import type { Unit } from '../../models/units.model';
-import { resolveOrgDefinition } from './org-registry.util';
+import { resolveOrgDefinitionSpec } from './org-registry.util';
 import { getAggregatedTier, getDynamicTierForModifier } from './org-tier.util';
 import { resolveFromGroups, resolveFromUnits } from './org-solver.util';
-import { type GroupSizeResult, type OrgDefinition, type OrgSizeResult } from './org-types';
-import { MULFACTION_MERCENARY } from '../../models/mulfactions.model';
+import { type GroupSizeResult, type OrgDefinitionSpec, type OrgSizeResult } from './org-types';
 
 /**
  * Author: Drake
@@ -34,7 +33,7 @@ interface ModifierSortKey {
 }
 
 const DEFAULT_FACTION: Faction = {
-	id: MULFACTION_MERCENARY,
+	id: FACTION_MERCENARY,
 	name: 'Mercenary',
 	group: 'Mercenary',
 	img: '',
@@ -139,7 +138,7 @@ function getResolvedOrgResult(
 		return toOrgSizeResult('Force', 0, []);
 	}
 
-	const definition = resolveOrgDefinition(faction, era);
+	const definition = resolveOrgDefinitionSpec(faction, era);
 	const displayBuckets = getDisplayBuckets(groups, definition);
 	const filteredBuckets = getDisplayBucketsForOptions(displayBuckets, options);
 	const displayWasTruncated = filteredBuckets.length < displayBuckets.length;
@@ -237,7 +236,7 @@ function getModifierTier(
 
 function getDisplayBucketModifierSortKey(
 	bucket: DisplayBucket,
-	definition: OrgDefinition,
+	definition: OrgDefinitionSpec,
 ): ModifierSortKey | null {
 	const representative = bucket.groups[0];
 	if (!representative?.type) {
@@ -271,7 +270,7 @@ function getDisplayBucketModifierSortKey(
 function compareDisplayBuckets(
 	left: DisplayBucket,
 	right: DisplayBucket,
-	definition: OrgDefinition,
+	definition: OrgDefinitionSpec,
 ): number {
 	const tierDelta = right.tier - left.tier;
 	if (tierDelta !== 0) {
@@ -306,7 +305,7 @@ function compareDisplayBuckets(
 
 function getDisplayBuckets(
 	groups: readonly GroupSizeResult[],
-	definition: OrgDefinition,
+	definition: OrgDefinitionSpec,
 ): DisplayBucket[] {
 	const buckets = new Map<string, { label: string; count: number; groups: GroupSizeResult[] }>();
 

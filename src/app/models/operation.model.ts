@@ -33,7 +33,6 @@
 
 import type { ForceAlignment } from './force-slot.model';
 import type { GameSystem } from './common.model';
-import { FactionId } from './factions.model';
 
 /*
  * Author: Drake
@@ -84,7 +83,7 @@ export interface OperationForceInfo {
     /** Game system type: from server join */
     type?: GameSystem;
     /** Faction ID: from server join */
-    factionId?: FactionId;
+    factionId?: number;
     eraId?: number;
     /** BV: from server join */
     bv?: number;

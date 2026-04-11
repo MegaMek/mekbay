@@ -149,8 +149,21 @@ export interface OrgTypeModifier {
     tier?: number;
 }
 
+export interface OrgTypeRuleBase {
+    readonly type: OrgType;
+    readonly modifiers: Record<string, number | OrgTypeModifier>;
+    readonly commandRank?: string;
+    readonly strict?: boolean;
+    readonly tier: number;
+    readonly dynamicTier?: number;
+    readonly filter?: (unit: Unit) => boolean;
+    readonly countsAs?: OrgType;
+    readonly priority?: number;
+    readonly tag?: OrgGroupTag;
+}
+
 // -----------------------------------------------------------------------------
-// Declarative org model
+// Next-generation declarative org model
 // -----------------------------------------------------------------------------
 
 export type OrgFactScalar = string | number | boolean;
@@ -294,7 +307,7 @@ export interface UnitFactScalars {
 /**
  * Normalized facts derived once from a Unit.
  *
- * This is the unit-level input to the declarative solver. Rules should
+ * This is the unit-level input to the next-generation solver. Rules should
  * primarily consume named selectors, buckets, and fact paths rather than raw
  * Unit callbacks.
  */
@@ -338,15 +351,7 @@ export interface OrgConstraintSpec {
     readonly right: OrgFactPath | number | boolean | string;
 }
 
-export interface OrgRuleMetadata {
-    readonly type: OrgType;
-    readonly modifiers: Record<string, number | OrgTypeModifier>;
-    readonly commandRank?: string;
-    readonly tier: number;
-    readonly dynamicTier?: number;
-    readonly countsAs?: OrgType;
-    readonly priority?: number;
-    readonly tag?: OrgGroupTag;
+export interface OrgRuleMetadata extends Omit<OrgTypeRuleBase, 'filter' | 'strict'> {
     readonly description?: string;
     readonly formationMatching?: OrgFormationMatchingSpec;
 }
@@ -522,11 +527,13 @@ export interface OrgRuleRegistry {
 }
 
 /**
- * Canonical org definition shape for the declarative solver.
+ * Future org definition shape for the count-based solver.
  *
- * Faction registries and solver entry points operate directly on this type.
+ * This lives alongside the legacy OrgDefinition during migration. The existing
+ * public API can continue to accept legacy rules until the new solver fully
+ * replaces the old path.
  */
-export interface OrgDefinition {
+export interface OrgDefinitionSpec {
     readonly rules: readonly OrgRuleDefinition[];
     readonly registry: OrgRuleRegistry;
     readonly distanceFactor: number;

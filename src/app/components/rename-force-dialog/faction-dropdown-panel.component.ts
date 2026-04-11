@@ -33,7 +33,7 @@
 
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
-import { FactionId, getFactionImg, type Faction } from '../../models/factions.model';
+import type { Faction } from '../../models/factions.model';
 import type { FactionDisplayInfo } from '../../utils/force-namer.util';
 import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-visuals.util';
 
@@ -69,8 +69,8 @@ import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-vis
                     <div class="dropdown-option matching"
                          [class.active]="selectedFactionId() === item.faction.id"
                          (click)="onSelect(item.faction)">
-                        @if (item.faction && getFactionImg(item.faction); as factionImage) {
-                            <img [src]="factionImage" class="faction-icon" [alt]="item.faction.name" />
+                        @if (item.faction.img) {
+                            <img [src]="item.faction.img" class="faction-icon" [alt]="item.faction.name" />
                         } @else {
                             <div class="faction-icon-spacer" aria-hidden="true"></div>
                         }
@@ -109,8 +109,8 @@ import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-vis
                     <div class="dropdown-option"
                          [class.active]="selectedFactionId() === item.faction.id"
                          (click)="onSelect(item.faction)">
-                        @if (item.faction && getFactionImg(item.faction); as factionImage) {
-                            <img [src]="factionImage" class="faction-icon" [alt]="item.faction.name" />
+                        @if (item.faction.img) {
+                            <img [src]="item.faction.img" class="faction-icon" [alt]="item.faction.name" />
                         } @else {
                             <div class="faction-icon-spacer" aria-hidden="true"></div>
                         }
@@ -426,11 +426,9 @@ export class FactionDropdownPanelComponent {
     readonly legendEraIcon = '/images/eras/era03-clan-invasion.png';
 
     factions = input.required<FactionDisplayInfo[]>();
-    selectedFactionId = input<FactionId | null>(null);
+    selectedFactionId = input<number | null>(null);
 
     selected = output<Faction | null>();
-
-    getFactionImg = getFactionImg;
 
     hasMatchingFactions(): boolean {
         return this.factions().some(f => f.isMatching);

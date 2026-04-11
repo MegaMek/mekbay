@@ -32,14 +32,13 @@
  */
 
 import type { ForceUnit } from '../models/force-unit.model';
-import { type MULFaction, MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.model';
+import { type Faction, FACTION_EXTINCT, FACTION_MERCENARY } from '../models/factions.model';
 import type { Era } from '../models/eras.model';
 import {
     MIDDLE_WORD_MERCENARY, END_WORD_MERCENARY,
     MIDDLE_WORD_CORPORATE, END_WORD_CORPORATE,
     PRE_FAB,
 } from './force-name-words.data';
-import { Faction } from '../models/factions.model';
 
 /*
  * Author: Drake
@@ -76,7 +75,7 @@ export interface FactionDisplayInfo {
 const MIN_UNITS_PERCENTAGE = 0.65;
 
 /** Factions that get corporate-flavored names (e.g. "ComStar Apex Solutions"). */
-const CORPORATE_FACTIONS = new Set(['SLCOMNET', 'ComStar', 'Word of Blake']);
+const CORPORATE_FACTIONS = new Set(['ComStar', 'Word of Blake']);
 
 // ─── Internal Helpers ──────────────────────────────────────────────────────────
 
@@ -295,7 +294,7 @@ export class ForceNamerUtil {
         const results: Map<Faction, number> = new Map();
 
         for (const faction of factions) {
-            if (faction.id === MULFACTION_EXTINCT) continue;
+            if (faction.id === FACTION_EXTINCT) continue;
             let bestMatchPercentage = 0;
             for (const era of eligibleEras) {
                 bestMatchPercentage = Math.max(
@@ -313,16 +312,16 @@ export class ForceNamerUtil {
 
     /**
      * Returns a random faction from the matching factions, weighted by match percentage.
-     * Falls back to MULFACTION_MERCENARY when no composition matches exist.
+     * Falls back to FACTION_MERCENARY when no composition matches exist.
      * Returns null only if the factions array itself is empty.
      */
     public static pickRandomFaction(units: ForceUnit[], factions: Faction[], eras: Era[], selectedEra: Era | null = null): Faction | null {
-        const mercenary = factions.find(f => f.id === MULFACTION_MERCENARY) ?? null;
+        const mercenary = factions.find(f => f.id === FACTION_MERCENARY) ?? null;
         const availableFactions = this.getAvailableFactions(units, factions, eras, MIN_UNITS_PERCENTAGE, selectedEra);
         if (!availableFactions || availableFactions.size === 0) {
             if (selectedEra) {
                 const eraFactions = factions.filter(faction =>
-                    faction.id !== MULFACTION_EXTINCT && hasFactionEraAvailability(faction, selectedEra.id)
+                    faction.id !== FACTION_EXTINCT && hasFactionEraAvailability(faction, selectedEra.id)
                 );
                 if (eraFactions.length > 0) return pick(eraFactions);
                 return mercenary && hasFactionEraAvailability(mercenary, selectedEra.id) ? mercenary : null;
@@ -345,7 +344,7 @@ export class ForceNamerUtil {
     }
 
     public static pickBestFaction(units: ForceUnit[], factions: Faction[], eras: Era[], currentFaction: Faction | null): Faction | null {
-        const mercenary = factions.find(f => f.id === MULFACTION_MERCENARY) ?? null;
+        const mercenary = factions.find(f => f.id === FACTION_MERCENARY) ?? null;
         const availableFactions = this.getAvailableFactions(units, factions, eras, MIN_UNITS_PERCENTAGE);
         if (!availableFactions || availableFactions.size === 0) return mercenary;
 
@@ -366,7 +365,7 @@ export class ForceNamerUtil {
     /**
      * Build the sorted faction display list for the faction selector.
      * Order: matching factions (sorted by percentage desc) → remaining factions (alpha).
-     * Excludes MULFACTION_EXTINCT.
+     * Excludes FACTION_EXTINCT.
      */
     public static buildFactionDisplayList(
         units: ForceUnit[],
@@ -381,7 +380,7 @@ export class ForceNamerUtil {
         const totalUnits = units.length;
 
         for (const faction of allFactions) {
-            if (faction.id === MULFACTION_EXTINCT) continue;
+            if (faction.id === FACTION_EXTINCT) continue;
             const rawPct = displayEras.reduce(
                 (bestMatchPercentage, era) => Math.max(
                     bestMatchPercentage,
@@ -396,7 +395,7 @@ export class ForceNamerUtil {
                 isMatching: rawPct >= MIN_UNITS_PERCENTAGE,
                 eraAvailability: eras.map(era => ({
                     era,
-                    isAvailable: faction.eras[era.id] != null && faction.eras[era.id].size > 0,
+                    isAvailable: faction.eras[era.id] != null && (faction.eras[era.id] as Set<number>).size > 0,
                     isBeforeReferenceYear: referenceYear != null && getEraEndYear(era) < referenceYear,
                     matchPercentage: getEraMatchPercentage(faction, era.id, unitIds, totalUnits)
                 }))
@@ -437,7 +436,7 @@ export class ForceNamerUtil {
      * Dispatches to the appropriate naming pattern based on faction type.
      */
     static generateForceNameForFaction(faction: Faction | null): string {
-        if (!faction || faction.id === MULFACTION_MERCENARY) {
+        if (!faction || faction.id === FACTION_MERCENARY) {
             return generateMercenaryName();
         }
         const name = cleanFactionNameForGeneration(faction.name);

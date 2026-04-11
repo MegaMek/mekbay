@@ -35,7 +35,7 @@ import { computed, createEnvironmentInjector, EnvironmentInjector, type Injector
 import type { DataService } from '../services/data.service';
 import type { Unit } from "./units.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
-import { type CriticalSlot, type HeatProfile, type LocationData, type MountedEquipment, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, type CBTSerializedState, type CBTSerializedUnit, type SerializedCrewMember } from './force-serialization';
+import { type CriticalSlot, type HeatProfile, type LocationData, type MountedEquipment, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, type CBTSerializedState, type CBTSerializedUnit } from './force-serialization';
 import { ForceUnit } from './force-unit.model';
 import type { CBTForce } from './cbt-force.model';
 import { UnitSvgService } from '../services/unit-svg.service';
@@ -787,7 +787,7 @@ export class CBTForceUnit extends ForceUnit {
             const inventoryData = Sanitizer.sanitizeArray(state.inventory, INVENTORY_SCHEMA);
             this.state.deserializeInventory(inventoryData);
         }
-        const crewArr = (state.crew || []).map((crewData: SerializedCrewMember) => CrewMember.deserialize(crewData, this));
+        const crewArr = (state.crew || []).map((crewData: any) => CrewMember.deserialize(crewData, this));
         this.state.crew.set(crewArr);
         if (state.c3Position) {
             this.state.c3Position.set(Sanitizer.sanitize(state.c3Position, C3_POSITION_SCHEMA));

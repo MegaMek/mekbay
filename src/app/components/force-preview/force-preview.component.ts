@@ -38,7 +38,6 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 import { OptionsService } from '../../services/options.service';
 import { CommonModule } from '@angular/common';
-import { getFactionImg } from '../../models/factions.model';
 
 /*
  * Author: Drake
@@ -268,10 +267,6 @@ export class ForcePreviewComponent {
 
     /** Resolved faction image URL, if available. */
     factionImg = computed<string | undefined>(() => {
-        const faction = this.force().faction();
-        if (!faction) {
-            return undefined;
-        }
-        return getFactionImg(faction);
+        return this.force().faction()?.img || undefined;
     });
 }

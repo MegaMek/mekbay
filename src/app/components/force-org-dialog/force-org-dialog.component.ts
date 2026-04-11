@@ -60,7 +60,7 @@ import { ForceEntryPreviewDialogComponent } from '../force-entry-preview-dialog/
 import { ShareForceOrgDialogComponent } from '../share-force-org-dialog/share-force-org-dialog.component';
 import type { Era } from '../../models/eras.model';
 import { getOrgFromForce, getOrgFromForceCollection } from '../../utils/org/org-namer.util';
-import { Faction, FactionId, getFactionImg } from '../../models/factions.model';
+import { Faction } from '../../models/factions.model';
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2.0;
@@ -144,7 +144,7 @@ function getForceValue(force: LoadForceEntry): number {
     return total;
 }
 
-function getLoadForceFactionId(force: LoadForceEntry): FactionId | undefined {
+function getLoadForceFactionId(force: LoadForceEntry): number | undefined {
     return force.faction?.id;
 }
 
@@ -163,22 +163,22 @@ function formatTotals(entries: LoadForceEntry[]): string {
 }
 
 /** Determine the dominant faction ID from a set of entries, using computed unit totals. */
-function getDominantFactionId(entries: LoadForceEntry[]): FactionId | undefined {
+function getDominantFactionId(entries: LoadForceEntry[]): number | undefined {
     const withFaction = entries.filter(e => getLoadForceFactionId(e) !== undefined);
     if (withFaction.length === 0) return undefined;
-    const valueSums = new Map<FactionId, number>();
-    const counts = new Map<FactionId, number>();
+    const valueSums = new Map<number, number>();
+    const counts = new Map<number, number>();
     for (const e of withFaction) {
         const fid = getLoadForceFactionId(e)!;
         valueSums.set(fid, (valueSums.get(fid) ?? 0) + getForceValue(e));
         counts.set(fid, (counts.get(fid) ?? 0) + 1);
     }
-    let bestValue = -1, bestId: FactionId | undefined;
+    let bestValue = -1, bestId: number | undefined;
     for (const [fid, total] of valueSums) {
         if (total > bestValue) { bestValue = total; bestId = fid; }
     }
     if (bestValue > 0 && bestId !== undefined) return bestId;
-    let maxCount = 0, mostFreqId: FactionId | undefined;
+    let maxCount = 0, mostFreqId: number | undefined;
     for (const [fid, count] of counts) {
         if (count > maxCount) { maxCount = count; mostFreqId = fid; }
     }
@@ -186,7 +186,7 @@ function getDominantFactionId(entries: LoadForceEntry[]): FactionId | undefined 
 }
 
 interface Rect { x: number; y: number; width: number; height: number }
-interface GroupPreview extends Rect { orgName: string; totals: string; factionId: FactionId | undefined }
+interface GroupPreview extends Rect { orgName: string; totals: string; factionId: number | undefined }
 
 interface PreviewOrgExtras {
     targetGroupId: string;
@@ -229,7 +229,7 @@ class OrgGroup {
     /** Computed org size name (not serialized). */
     readonly orgName = signal('');
     /** Computed dominant faction ID (not serialized). */
-    readonly factionId = signal<FactionId | undefined>(undefined);
+    readonly factionId = signal<number | undefined>(undefined);
     /** Computed dominant faction (not serialized). */
     readonly faction = signal<Faction | undefined>(undefined);
     /** Computed BV/PV totals string (not serialized). */
@@ -316,8 +316,6 @@ export class ForceOrgDialogComponent {
     protected saving = signal(false);
     protected dirty = signal(false);
 
-    getFactionImg = getFactionImg;
-
     /** Instance ID of the currently selected force in ForceBuilderService. */
     protected selectedForceInstanceId = computed(() => {
         const unit = this.forceBuilderService.selectedUnit();
@@ -335,13 +333,13 @@ export class ForceOrgDialogComponent {
     });
 
     /** Dominant faction ID computed hierarchically from top-level groups + ungrouped forces. */
-    protected organizationFactionId = computed<FactionId | undefined>(() => {
+    protected organizationFactionId = computed<number | undefined>(() => {
         const placed = this.placedForces();
         const groups = this.groups();
         const factionIds = this.groupFactionIds();
         const descendantsMap = this.descendantForcesMap();
-        const valueSums = new Map<FactionId, number>();
-        const counts = new Map<FactionId, number>();
+        const valueSums = new Map<number, number>();
+        const counts = new Map<number, number>();
 
         // Top-level groups as single entities
         for (const group of groups) {
@@ -366,12 +364,12 @@ export class ForceOrgDialogComponent {
         }
 
         if (valueSums.size === 0 && counts.size === 0) return undefined;
-        let bestValue = -1, bestId: FactionId | undefined;
+        let bestValue = -1, bestId: number | undefined;
         for (const [fid, total] of valueSums) {
             if (total > bestValue) { bestValue = total; bestId = fid; }
         }
         if (bestValue > 0 && bestId !== undefined) return bestId;
-        let maxCount = 0, mostFreqId: FactionId | undefined;
+        let maxCount = 0, mostFreqId: number | undefined;
         for (const [fid, count] of counts) {
             if (count > maxCount) { maxCount = count; mostFreqId = fid; }
         }
@@ -452,7 +450,7 @@ export class ForceOrgDialogComponent {
     /** Identity of the "other" target in the current new-group/create-parent preview. */
     private previewOtherId: string | null = null;
     /** Cached org metadata for the current preview (orgName, totals, factionId). */
-    private previewOrgCache: { orgName: string; totals: string; factionId: FactionId | undefined } | null = null;
+    private previewOrgCache: { orgName: string; totals: string; factionId: number | undefined } | null = null;
 
     /** Forces available in sidebar (not yet placed) */
     protected sidebarForces = computed(() => {
@@ -583,7 +581,7 @@ export class ForceOrgDialogComponent {
     });
 
     /** Faction IDs for all groups, computed as a signal. */
-    private groupFactionIds = computed<Map<string, FactionId | undefined>>(() =>
+    private groupFactionIds = computed<Map<string, number | undefined>>(() =>
         this.computeAllGroupFactionIds(this.placedForces(), this.groups(), this.descendantForcesMap()),
     );
 
@@ -606,7 +604,7 @@ export class ForceOrgDialogComponent {
     });
 
     /** Preview faction IDs: includes extra forces from drag preview. */
-    private previewFactionIds = computed<Map<string, FactionId | undefined>>(() => {
+    private previewFactionIds = computed<Map<string, number | undefined>>(() => {
         const extra = this.previewExtraForces();
         if (!extra) return this.groupFactionIds();
         return this.computeAllGroupFactionIds(
@@ -615,7 +613,7 @@ export class ForceOrgDialogComponent {
     });
 
     /** Preview group info for the target group and its ancestor chain. */
-    protected previewGroupInfo = computed<Map<string, { orgName: string; totals: string; factionId: FactionId | undefined }>>(() => {
+    protected previewGroupInfo = computed<Map<string, { orgName: string; totals: string; factionId: number | undefined }>>(() => {
         const extra = this.previewExtraForces();
         if (!extra) return new Map();
         const groups = this.groups();
@@ -623,7 +621,7 @@ export class ForceOrgDialogComponent {
         const previewDescendants = this.previewDescendantsMap();
         const previewFactions = this.previewFactionIds();
         const previewChildGroups = new Map<string, PreviewOrgExtras>(extra.childGroupResults ? [[extra.targetGroupId, extra]] : []);
-        const result = new Map<string, { orgName: string; totals: string; factionId: FactionId | undefined }>();
+        const result = new Map<string, { orgName: string; totals: string; factionId: number | undefined }>();
         const visited = new Set<string>();
         let currentId: string | null = extra.targetGroupId;
         while (currentId && !visited.has(currentId)) {
@@ -705,7 +703,7 @@ export class ForceOrgDialogComponent {
         groups: OrgGroup[],
         placed: PlacedForce[],
         descendantsOverride?: Map<string, LoadForceEntry[]>,
-        factionIdsOverride?: Map<string, FactionId | undefined>,
+        factionIdsOverride?: Map<string, number | undefined>,
         previewChildGroupsOverride?: Map<string, PreviewOrgExtras>,
     ): OrgSizeResult {
         const childGroups = groups.filter(g => g.parentGroupId === group.id);
@@ -1017,7 +1015,7 @@ export class ForceOrgDialogComponent {
         return s.trim().toLowerCase();
     }
 
-    private getFactionById(factionId: FactionId | undefined): Faction | undefined {
+    private getFactionById(factionId: number | undefined): Faction | undefined {
         return factionId !== undefined ? this.dataService.getFactionById(factionId) : undefined;
     }
 
@@ -1105,8 +1103,8 @@ export class ForceOrgDialogComponent {
         groups: OrgGroup[],
         descendantsMap: Map<string, LoadForceEntry[]>,
         extraForces?: { targetGroupId: string; entries: LoadForceEntry[] },
-    ): Map<string, FactionId | undefined> {
-        const result = new Map<string, FactionId | undefined>();
+    ): Map<string, number | undefined> {
+        const result = new Map<string, number | undefined>();
 
         // Pre-build lookup maps to avoid repeated full-array scans
         const childGroupsMap = new Map<string, OrgGroup[]>();
@@ -1126,11 +1124,11 @@ export class ForceOrgDialogComponent {
             }
         }
 
-        const resolve = (groupId: string): FactionId | undefined => {
+        const resolve = (groupId: string): number | undefined => {
             if (result.has(groupId)) return result.get(groupId);
 
-            const valueSums = new Map<FactionId, number>();
-            const counts = new Map<FactionId, number>();
+            const valueSums = new Map<number, number>();
+            const counts = new Map<number, number>();
 
             // Direct forces in this group
             for (const pf of directForcesMap.get(groupId) ?? []) {
@@ -1163,7 +1161,7 @@ export class ForceOrgDialogComponent {
                 counts.set(childFactionId, (counts.get(childFactionId) ?? 0) + 1);
             }
 
-            let bestValue = -1, bestId: FactionId | undefined;
+            let bestValue = -1, bestId: number | undefined;
             for (const [fid, total] of valueSums) {
                 if (total > bestValue) { bestValue = total; bestId = fid; }
             }
@@ -1171,7 +1169,7 @@ export class ForceOrgDialogComponent {
                 result.set(groupId, bestId);
                 return bestId;
             }
-            let maxCount = 0, mostFreqId: FactionId | undefined;
+            let maxCount = 0, mostFreqId: number | undefined;
             for (const [fid, count] of counts) {
                 if (count > maxCount) { maxCount = count; mostFreqId = fid; }
             }

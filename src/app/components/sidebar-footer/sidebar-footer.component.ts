@@ -17,7 +17,6 @@ import type { ForceSlot } from '../../models/force-slot.model';
 import type { LoadOrganizationEntry } from '../../models/organization.model';
 import { AlignmentPickerDialogComponent, type AlignmentPickerResult } from '../alignment-picker-dialog/alignment-picker-dialog.component';
 import { AddExternalForceDialogComponent } from '../add-external-force-dialog/add-external-force-dialog.component';
-import { getFactionImg } from '../../models/factions.model';
 
 /*
  * Sidebar footer component
@@ -196,7 +195,7 @@ export class SidebarFooterComponent {
         for (const org of orgs) {
             if (org.factionId != null) {
                 const faction = this.dataService.getFactionById(org.factionId);
-                factionImages.set(org.organizationId, faction ? getFactionImg(faction) : undefined);
+                factionImages.set(org.organizationId, faction?.img || undefined);
             }
         }
 

@@ -35,7 +35,6 @@ import type { GameSystem } from '../models/common.model';
 import { AdvFilterType, ADVANCED_FILTERS, type AdvFilterConfig } from '../services/unit-search-filters.model';
 import type { CountOperator, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { getAdvancedFilterConfigByKey } from './unit-search-filter-config.util';
-import { normalizeMultiStateSelection } from './unit-search-shared.util';
 
 // Cache for semantic key maps
 const semanticKeyMapCache = new Map<GameSystem, Map<string, AdvFilterConfig>>();
@@ -945,7 +944,7 @@ export function filterStateToSemanticText(
             const extState = state as SemanticFilterState[string];
             const includeOperator = extState.exclusive ? '==' : '=';
             if (conf.multistate) {
-                const selection = normalizeMultiStateSelection(state.value);
+                const selection = state.value as MultiStateSelection;
                 const includeValues: string[] = [];
                 const andValues: string[] = [];
                 const excludeValues: string[] = [];

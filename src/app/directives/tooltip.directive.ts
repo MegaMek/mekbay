@@ -31,14 +31,12 @@
  * affiliated with Microsoft.
  */
 
-import { DestroyRef, Directive, ElementRef, HostBinding, Input, inject } from '@angular/core';
+import { DestroyRef, Directive, ElementRef, Input, inject } from '@angular/core';
 import { Overlay, type OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { TooltipComponent, type TooltipContent } from '../components/tooltip/tooltip.component';
 import { take } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-
-const TOOLTIP_HOST_ATTRIBUTE = 'data-tooltip-host';
 
 @Directive({
     selector: '[tooltip]',
@@ -47,11 +45,6 @@ const TOOLTIP_HOST_ATTRIBUTE = 'data-tooltip-host';
 export class TooltipDirective {
     @Input('tooltip') tooltipContent: TooltipContent | null = null;
     @Input() tooltipDelay = 400; // ms
-
-    @HostBinding(`attr.${TOOLTIP_HOST_ATTRIBUTE}`)
-    get tooltipHostAttribute(): string | null {
-        return this.hasTooltipContent() ? '' : null;
-    }
 
     private overlay = inject(Overlay);
     private host = inject(ElementRef<HTMLElement>);
@@ -81,11 +74,6 @@ export class TooltipDirective {
     
     private onPointerOver = (ev: PointerEvent) => {
         if (ev.pointerType === 'touch') return;
-        if (this.isNestedTooltipTarget(ev.target)) {
-            this.clearShowTimeout();
-            this.hideImmediate();
-            return;
-        }
         const related = ev.relatedTarget as Node | null;
         // if coming from inside the host, ignore (it's an internal transition)
         if (related && this.host.nativeElement.contains(related)) return;
@@ -94,11 +82,6 @@ export class TooltipDirective {
 
     private onPointerDown = (ev: PointerEvent) => {
         if (ev.pointerType === 'touch') {
-            if (this.isNestedTooltipTarget(ev.target)) {
-                this.clearShowTimeout();
-                this.hideImmediate();
-                return;
-            }
             this.queueShow(ev, 250);
         }
     };
@@ -128,28 +111,8 @@ export class TooltipDirective {
         }
     }
 
-    private hasTooltipContent(): boolean {
-        return !!this.tooltipContent;
-    }
-
-    private isNestedTooltipTarget(target: EventTarget | null): boolean {
-        const targetElement = this.getTargetElement(target);
-        if (!targetElement) return false;
-
-        const nearestTooltipHost = targetElement.closest(`[${TOOLTIP_HOST_ATTRIBUTE}]`);
-        return !!nearestTooltipHost && nearestTooltipHost !== this.host.nativeElement;
-    }
-
-    private getTargetElement(target: EventTarget | null): Element | null {
-        if (!target) return null;
-        if (target instanceof Element) return target;
-        if (target instanceof Node) return target.parentElement;
-        return null;
-    }
-
     private show(ev: PointerEvent) {
-        const tooltipContent = this.tooltipContent;
-        if (!tooltipContent) return;
+        if (!this.tooltipContent) return;
         if (this.isVisible) return;
 
         // create overlay positioned relative to host native element
@@ -184,7 +147,7 @@ export class TooltipDirective {
 
         const portal = new ComponentPortal(TooltipComponent);
         const compRef = this.overlayRef.attach(portal);
-        compRef.instance.content = tooltipContent;
+        compRef.instance.content = this.tooltipContent;
         // ensure OnPush component renders immediately
         compRef.changeDetectorRef.detectChanges();
 

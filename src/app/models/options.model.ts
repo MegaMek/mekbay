@@ -36,9 +36,8 @@ import type { GameSystem } from "./common.model";
 /*
  * Author: Drake
  */
-export type AvailabilitySource = 'mul' | 'megamek';
-
 export interface Options {
+    uuid?: string; // deprecated, use UserStateService instead
     sheetsColor: 'normal' | 'night';
     pickerStyle: 'default' | 'radial' | 'linear';
     quickActions: 'enabled' | 'disabled';
@@ -47,7 +46,6 @@ export interface Options {
     syncZoomBetweenSheets: boolean;
     unitDisplayName: 'chassisModel' | 'alias' | 'both';
     gameSystem: GameSystem;
-    availabilitySource: AvailabilitySource;
     recordSheetCenterPanelContent: 'fluffImage' | 'clusterTable';
     lastCanvasState?: {
         brushSize: number;
@@ -69,12 +67,4 @@ export interface Options {
     ASUnifiedDamagePicker: boolean;
     printRosterSummary: boolean;
     printMargin: 'none' | 'browserDefined';
-
-    // Force Generator
-    forceGenLastBVMin: number;
-    forceGenLastBVMax: number;
-    forceGenLastPVMin: number;
-    forceGenLastPVMax: number;
-    forceGenLastMinUnitCount: number;
-    forceGenLastMaxUnitCount: number;
 }

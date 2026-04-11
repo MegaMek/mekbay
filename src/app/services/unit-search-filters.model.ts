@@ -32,12 +32,6 @@
  */
 
 import { GameSystem } from '../models/common.model';
-import type { AvailabilitySource } from '../models/options.model';
-import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
-import {
-    MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS,
-    MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS,
-} from '../models/megamek/availability.model';
 import { CBT_WEIGHT_CLASSES } from '../models/units.model';
 import type { SemanticFilterState } from '../utils/semantic-filter.util';
 
@@ -71,7 +65,6 @@ export interface AdvFilterConfig {
     key: string;
     label: string;
     type: AdvFilterType;
-    availabilitySources?: readonly AvailabilitySource[];
     sortOptions?: string[]; // For dropdowns, can be pre-defined sort order, supports wildcard '*' at the end for prefix matching
     external?: boolean; // If true, this filter datasource is not from the local data, but from an external source (era, faction, etc.)
     curve?: number; // for range sliders, defines the curve of the slider
@@ -86,12 +79,6 @@ export interface AdvFilterConfig {
 
 // Use SemanticFilterState from semantic-filter.util as our FilterState
 export type FilterState = SemanticFilterState;
-
-export interface AvailabilityFilterScope {
-    eraNames?: readonly string[];
-    factionNames?: readonly string[];
-    availabilityFromNames?: readonly string[];
-}
 
 export interface SearchTelemetryStage {
     name: string;
@@ -147,7 +134,7 @@ export type DropdownFilterOptions = {
     type: 'dropdown';
     label: string;
     options: { name: string, img?: string, displayName?: string, available?: boolean }[];
-    value: string[] | MultiStateSelection;
+    value: string[];
     interacted: boolean;
     semanticOnly?: boolean;  // True if this filter has semantic-only constraints (values not in options)
     displayText?: string;    // Display text for semantic-only values (plain string fallback)
@@ -272,7 +259,6 @@ export interface DropdownFilterConfig {
     label: string;
     semanticKey?: string;
     game?: GameSystem;
-    availabilitySources?: readonly AvailabilitySource[];
     sortOptions?: string[];
     external?: boolean;
     multistate?: boolean;
@@ -292,7 +278,6 @@ export interface RangeFilterConfig {
     label: string;
     semanticKey?: string;
     game?: GameSystem;
-    availabilitySources?: readonly AvailabilitySource[];
     curve?: number;
     stepSize?: number;
     ignoreValues?: any[];
@@ -303,33 +288,12 @@ export interface SemanticFilterConfig {
     key: string;
     label: string;
     semanticKey?: string;
-    availabilitySources?: readonly AvailabilitySource[];
 }
 
 /** Dropdown filters - separated for clean iteration */
 export const DROPDOWN_FILTERS: readonly DropdownFilterConfig[] = Object.freeze([
-    { key: 'era', semanticKey: 'era', label: 'Era', external: true, multistate: true, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
+    { key: 'era', semanticKey: 'era', label: 'Era', external: true, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
     { key: 'faction', semanticKey: 'faction', label: 'Faction', external: true, multistate: true, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
-    {
-        key: 'availabilityRarity',
-        semanticKey: 'rarity',
-        label: 'RAT Rarity',
-        sortOptions: [...MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS],
-        external: true,
-        optionSource: 'external',
-        availabilitySource: 'context',
-        propertyShape: 'scalar',
-    },
-    {
-        key: 'availabilityFrom',
-        semanticKey: 'from',
-        label: 'Available From',
-        sortOptions: [...MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS],
-        external: true,
-        optionSource: 'external',
-        availabilitySource: 'context',
-        propertyShape: 'scalar',
-    },
     { key: 'type', semanticKey: 'type', label: 'Type', game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
     { key: 'as.TP', semanticKey: 'type', label: 'Type', game: GameSystem.ALPHA_STRIKE, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar', displayNameFn: (v: string) => AS_TYPE_DISPLAY_NAMES[v] ? `${v} - ${AS_TYPE_DISPLAY_NAMES[v]}` : v },
     { key: 'subtype', semanticKey: 'subtype', label: 'Subtype', game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
@@ -397,19 +361,16 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     ...SEMANTIC_FILTERS.map(f => ({ ...f, type: AdvFilterType.SEMANTIC as const })),
 ];
 
-export const MEGAMEK_RARITY_SORT_KEY = 'mmRarity';
-
 export const SORT_OPTIONS: SortOption[] = [
     { key: '', label: 'Relevance' },
     { key: 'name', label: 'Name' },
     ...ADVANCED_FILTERS
-        .filter(f => !['era', 'faction', 'availabilityRarity', 'availabilityFrom', 'forcePack', 'componentName', 'source', '_tags', 'as.specials', 'name', 'chassis', 'model', 'as._motive', 'quirks', 'features'].includes(f.key))
+        .filter(f => !['era', 'faction', 'forcePack', 'componentName', 'source', '_tags', 'as.specials', 'name', 'chassis', 'model', 'as._motive', 'quirks', 'features'].includes(f.key))
         .map(f => ({
             key: f.key,
             label: f.label,
             slotLabel: f.label,
             gameSystem: f.game,
             // slotIcon: f.slotIcon
-        } as SortOption)),
-    { key: MEGAMEK_RARITY_SORT_KEY, label: 'RAT Rarity', slotLabel: 'RAT Rarity' },
+        } as SortOption))
 ];

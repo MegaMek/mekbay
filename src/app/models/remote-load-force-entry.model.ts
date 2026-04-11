@@ -37,8 +37,6 @@ export interface RemoteLoadForceUnit {
     unit: string;
     alias?: string;
     skill?: number;
-    g?: number; // gunnery
-    p?: number; // piloting
     commander?: boolean;
     state?: { destroyed?: boolean };
 }

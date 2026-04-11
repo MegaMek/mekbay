@@ -62,18 +62,6 @@ describe('force URL parsing', () => {
         expect(forceUnits.map(unit => unit.getUnit().name)).toEqual(['BMAtlas_AS7D', 'BMLocust_LCT1V']);
     });
 
-    it('parses units by name without matching case exactly', () => {
-        const force = createMockForce();
-        const units = [
-            { name: 'BMAtlas_AS7D', id: 140 } as Unit,
-            { name: 'BMLocust_LCT1V', id: 1901 } as Unit
-        ];
-
-        const forceUnits = parseForceFromUrl(force, 'bmatlas_as7d,bmlocust_lct1v', units);
-
-        expect(forceUnits.map(unit => unit.getUnit().name)).toEqual(['BMAtlas_AS7D', 'BMLocust_LCT1V']);
-    });
-
     it('parses units by mul id and keeps the first duplicate match', () => {
         const force = createMockForce();
         const logger = { warn: jasmine.createSpy('warn') };

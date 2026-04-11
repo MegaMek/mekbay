@@ -10,7 +10,7 @@ import {
     getNormalizedOrgUnitType,
 } from './org-facts.util';
 import { groupMatchesChildRole } from './org-role-match.util';
-import { resolveOrgDefinition } from './org-registry.util';
+import { resolveOrgDefinitionSpec } from './org-registry.util';
 import {
     getDynamicTierForModifier,
     getRepeatCountForTierDelta,
@@ -27,7 +27,7 @@ import {
     type OrgChildRoleSpec,
     type OrgComposedCountRule,
     type OrgComposedPatternRule,
-    type OrgDefinition,
+    type OrgDefinitionSpec,
     type OrgGroupBucketName,
     type OrgGroupProvenance,
     type OrgLeafCountRule,
@@ -416,7 +416,7 @@ interface AbstractAtomicGroupPlan {
 }
 
 interface ResolveContext {
-    readonly definition: OrgDefinition;
+    readonly definition: OrgDefinitionSpec;
     readonly ciFormationRules: readonly OrgCIFormationRule[];
     readonly leafCountRules: readonly OrgLeafCountRule[];
     readonly leafPatternRules: readonly OrgLeafPatternRule[];
@@ -477,7 +477,7 @@ const ABSTRACT_UNIT_BUCKET_NAMES: readonly OrgUnitBucketName[] = [
     'transport',
 ];
 
-const resolveContextTemplateByDefinition = new WeakMap<OrgDefinition, ResolveContextTemplate>();
+const resolveContextTemplateByDefinition = new WeakMap<OrgDefinitionSpec, ResolveContextTemplate>();
 const compiledRuleStageMetadataByRule = new WeakMap<OrgRuleDefinition, CompiledRuleStageMetadata>();
 const compiledGroupFactsByGroup = new WeakMap<GroupSizeResult, GroupFacts>();
 
@@ -706,7 +706,7 @@ function isSubRegularModifierKey(
     return metadata.allowedModifierKeysByStage['sub-regular']?.has(modifierKey) ?? false;
 }
 
-function getRuleRegistry(definition?: OrgDefinition, registry?: OrgRuleRegistry): OrgRuleRegistry {
+function getRuleRegistry(definition?: OrgDefinitionSpec, registry?: OrgRuleRegistry): OrgRuleRegistry {
     return registry ?? definition?.registry ?? DEFAULT_ORG_RULE_REGISTRY;
 }
 
@@ -3575,7 +3575,7 @@ export function materializeComposedPatternRule(
 }
 
 export function evaluateOrgDefinition(
-    definition: OrgDefinition,
+    definition: OrgDefinitionSpec,
     units: readonly Unit[],
     groups: readonly GroupSizeResult[] = [],
 ): OrgDefinitionEvaluationResult {
@@ -3617,7 +3617,7 @@ export function evaluateFactionOrgDefinition(
     groups: readonly GroupSizeResult[] = [],
     era?: Era | null,
 ): OrgDefinitionEvaluationResult {
-    return evaluateOrgDefinition(resolveOrgDefinition(faction, era), units, groups);
+    return evaluateOrgDefinition(resolveOrgDefinitionSpec(faction, era), units, groups);
 }
 
 function compareGroupScore(left: GroupSizeResult, right: GroupSizeResult): number {
@@ -3688,7 +3688,7 @@ function compareOrderedComposedRules(
 }
 
 function getRuleTierByTypeFromDefinition(
-    definition: OrgDefinition,
+    definition: OrgDefinitionSpec,
     type: GroupSizeResult['type'],
 ): number | null {
     if (!type) {
@@ -3701,7 +3701,7 @@ function getRuleTierByTypeFromDefinition(
 
 function getMinimumChildTierForComposedRule(
     rule: OrgComposedCountRule | OrgComposedPatternRule,
-    definition: OrgDefinition,
+    definition: OrgDefinitionSpec,
 ): number {
     const childTiers = rule.childRoles
         .flatMap((role) => role.matches)
@@ -3711,7 +3711,7 @@ function getMinimumChildTierForComposedRule(
     return childTiers.length > 0 ? Math.min(...childTiers) : rule.tier;
 }
 
-function getResolveContext(definition: OrgDefinition): ResolveContext {
+function getResolveContext(definition: OrgDefinitionSpec): ResolveContext {
     let template = resolveContextTemplateByDefinition.get(definition);
     if (!template) {
         const knownGroupTypes = new Set<string>();
@@ -5506,7 +5506,7 @@ function applyForeignDisplayName(
 }
 
 function preprocessGroupsForDefinition(
-    definition: OrgDefinition,
+    definition: OrgDefinitionSpec,
     groupResults: readonly GroupSizeResult[],
 ): GroupSizeResult[] {
     const context = getResolveContext(definition);
@@ -5546,7 +5546,7 @@ function preprocessGroupsForDefinition(
 }
 
 function resolveWithDefinition(
-    definition: OrgDefinition,
+    definition: OrgDefinitionSpec,
     units: readonly Unit[],
     groups: readonly GroupSizeResult[],
 ): GroupSizeResult[] {
@@ -5665,7 +5665,7 @@ export function resolveFromUnits(
     era: Era | null = null,
     _hierarchicalAggregation: boolean = false,
 ): GroupSizeResult[] {
-    const definition = resolveOrgDefinition(faction, era);
+    const definition = resolveOrgDefinitionSpec(faction, era);
     return resolveWithDefinition(definition, units, []);
 }
 
@@ -5675,7 +5675,7 @@ export function resolveFromGroups(
     era: Era | null = null,
     _hierarchicalAggregation: boolean = false,
 ): GroupSizeResult[] {
-    const definition = resolveOrgDefinition(faction, era);
+    const definition = resolveOrgDefinitionSpec(faction, era);
     const context = getResolveContext(definition);
     if (groupResults.length === 1 && isStableSingleGroupResolveResult(groupResults[0], context)) {
         return [groupResults[0]];

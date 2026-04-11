@@ -1,7 +1,7 @@
 import { createOrgRuleRegistry } from '../org-facts.util';
 import type {
     OrgComposedCountRule,
-    OrgDefinition,
+    OrgDefinitionSpec,
     OrgLeafCountRule,
     OrgLeafPatternRule,
     OrgSelectorName,
@@ -109,7 +109,7 @@ export const SOCIETY_SEPT: OrgComposedCountRule = {
     childBucketBy: 'promotionBasic',
 };
 
-export const SOCIETY_CORE_ORG: OrgDefinition = {
+export const SOCIETY_CORE_ORG: OrgDefinitionSpec = {
     rules: [
         SOCIETY_BA_UN,
         SOCIETY_CI_UN,

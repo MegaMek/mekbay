@@ -82,6 +82,14 @@ export class UserStateService {
             this.logger.info(`User publicId: ${userData.publicId ?? 'not set'}`);
             return;
         }
+        // Fallback for older versions that didn't have a user table
+        const options = await this.dbService.getOptions();
+        if (options && options.uuid) {
+            const newUserData = <UserData>{ uuid: options.uuid };
+            this.userData.set(newUserData);
+            await this.dbService.saveUserData(newUserData);
+            return;
+        }
         // No user data? We generate it anew
         await this.createNewUUID();
     }
