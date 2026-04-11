@@ -163,18 +163,18 @@ export class SearchForceGeneratorDialogComponent {
             : `Gunnery ${this.pilotGunnerySkill()} Piloting ${this.pilotPilotingSkill()}`;
         lines.push(`${skillLabel}`);
 
-        if (this.lockedUnits().length > 0) {
-            lines.push(`Locked Units: ${this.lockedUnits().length}.`);
-        }
-        if (this.preventDuplicateChassis()) {
-            lines.push('Prevent Duplicate Chassis: On.');
-        }
+        // if (this.lockedUnits().length > 0) {
+        //     lines.push(`Locked Units: ${this.lockedUnits().length}.`);
+        // }
+        // if (this.preventDuplicateChassis()) {
+        //     lines.push('Prevent Duplicate Chassis: On.');
+        // }
 
-        const generationContext = this.resolvedGenerationContext();
-        const contextParts = [generationContext.forceFaction?.name, generationContext.forceEra?.name].filter(Boolean);
-        if (contextParts.length > 0) {
-            lines.push(`Generation Context: ${contextParts.join(' - ')}.`);
-        }
+        // const generationContext = this.resolvedGenerationContext();
+        // const contextParts = [generationContext.forceFaction?.name, generationContext.forceEra?.name].filter(Boolean);
+        // if (contextParts.length > 0) {
+        //     lines.push(`Generation Context: ${contextParts.join(' - ')}.`);
+        // }
 
         return lines;
     });

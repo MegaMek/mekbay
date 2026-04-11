@@ -1758,7 +1758,7 @@ export class ForceGeneratorService {
 
         const contextParts = [context.forceFaction?.name, context.forceEra?.name].filter(Boolean);
         if (contextParts.length > 0) {
-            lines.push(`Resolved generation context: ${contextParts.join(' - ')}.`);
+            lines.push(`Generation context: ${contextParts.join(' - ')}.`);
         }
 
         if (selectionAttempt?.rulesetProfile) {

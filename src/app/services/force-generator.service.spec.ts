@@ -687,7 +687,7 @@ describe('ForceGeneratorService', () => {
 
         expect(preview.error).toBeNull();
         expect(preview.explanationLines[0]).toContain('Candidates: 1 units.');
-        expect(preview.explanationLines.some((line) => line.includes('Resolved generation context: Federated Suns - ilClan.'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('Generation context: Federated Suns - ilClan.'))).toBeTrue();
         expect(preview.explanationLines.some((line) => line.includes('Warhammer WHM-6R: production pick'))).toBeTrue();
         expect(preview.explanationLines.some((line) => line.includes('Explained Unit: production pick'))).toBeFalse();
     });
