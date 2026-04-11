@@ -33,17 +33,22 @@
 
 import { CommonModule } from '@angular/common';
 import { DialogRef } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal, untracked } from '@angular/core';
 
 import { GameSystem } from '../../models/common.model';
 import { MAX_UNITS as FORCE_MAX_UNITS } from '../../models/force.model';
-import type { LoadForceEntry } from '../../models/load-force-entry.model';
+import {
+    createLoadForceEntryFromSerializedForce,
+    type LoadForceEntry,
+    type LoadForceUnit,
+} from '../../models/load-force-entry.model';
 import type { AvailabilitySource } from '../../models/options.model';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { LoadForcePreviewPanelComponent } from '../load-force-preview-panel/load-force-preview-panel.component';
 import { MultiSelectDropdownComponent, type MultiStateSelection } from '../multi-select-dropdown/multi-select-dropdown.component';
 import { DataService } from '../../services/data.service';
-import { ForceGeneratorService } from '../../services/force-generator.service';
+import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceGeneratorService, type GeneratedForceUnit } from '../../services/force-generator.service';
 import { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
 import type { AdvFilterOptions, DropdownFilterOptions } from '../../services/unit-search-filters.model';
@@ -59,6 +64,7 @@ export interface SearchForceGeneratorDialogConfig {
     };
     minUnitCount: number;
     maxUnitCount: number;
+    preventDuplicateChassis: boolean;
 }
 
 export interface SearchForceGeneratorDialogResult {
@@ -82,6 +88,7 @@ export class SearchForceGeneratorDialogComponent {
     readonly MAX_UNITS = FORCE_MAX_UNITS;
     private readonly dialogRef = inject(DialogRef<SearchForceGeneratorDialogResult | null>);
     readonly dataService = inject(DataService);
+    private readonly forceBuilderService = inject(ForceBuilderService);
     private readonly forceGeneratorService = inject(ForceGeneratorService);
     readonly gameService = inject(GameService);
     private readonly optionsService = inject(OptionsService);
@@ -106,6 +113,20 @@ export class SearchForceGeneratorDialogComponent {
     readonly selectedEraValues = computed(() => this.getSelectedMultiStateValues(this.eraFilter()));
     readonly selectedFactionValues = computed(() => this.getSelectedMultiStateValues(this.factionFilter()));
     readonly selectedTagValues = computed(() => this.getSelectedMultiStateValues(this.tagsFilter()));
+    readonly currentForce = this.forceBuilderService.smartCurrentForce;
+    readonly canImportCurrentForce = computed(() => (this.currentForce()?.units().length ?? 0) > 0);
+    readonly preventDuplicateChassis = signal(false);
+    private readonly lockedUnits = signal<GeneratedForceUnit[]>([]);
+    readonly lockedUnitKeys = computed(() => {
+        return new Set(
+            this.lockedUnits()
+                .map((unit) => unit.lockKey)
+                .filter((lockKey): lockKey is string => !!lockKey),
+        );
+    });
+    readonly previewLockToggle = (unitEntry: LoadForceUnit): void => {
+        this.togglePreviewUnitLock(unitEntry);
+    };
     readonly descriptionLines = computed(() => {
         const lines = [];
         const query = this.filtersService.searchText().trim();
@@ -122,6 +143,13 @@ export class SearchForceGeneratorDialogComponent {
             ? `Pilot Skill ${this.pilotGunnerySkill()}`
             : `Gunnery ${this.pilotGunnerySkill()} Piloting ${this.pilotPilotingSkill()}`;
         lines.push(`${skillLabel}`);
+
+        if (this.lockedUnits().length > 0) {
+            lines.push(`Locked Units: ${this.lockedUnits().length}.`);
+        }
+        if (this.preventDuplicateChassis()) {
+            lines.push('Prevent Duplicate Chassis: On.');
+        }
 
         const generationContext = this.resolvedGenerationContext();
         const contextParts = [generationContext.forceFaction?.name, generationContext.forceEra?.name].filter(Boolean);
@@ -162,6 +190,7 @@ export class SearchForceGeneratorDialogComponent {
     readonly preview = computed(() => {
         const generationContext = this.resolvedGenerationContext();
         const settings = this.generationSettings();
+        const lockedUnits = untracked(() => this.lockedUnits());
 
         return this.forceGeneratorService.buildPreview({
             eligibleUnits: this.eligibleUnits(),
@@ -172,6 +201,8 @@ export class SearchForceGeneratorDialogComponent {
             maxUnitCount: settings.maxUnitCount,
             gunnery: settings.gunnery,
             piloting: settings.piloting,
+            lockedUnits,
+            preventDuplicateChassis: this.preventDuplicateChassis(),
         });
     });
     readonly previewEntry = computed(() => {
@@ -197,6 +228,10 @@ export class SearchForceGeneratorDialogComponent {
 
     onTagsSelectionChange(selection: MultiStateSelection | readonly string[]): void {
         this.setMultiStateFilter('_tags', selection);
+    }
+
+    onPreventDuplicateChassisChange(event: Event): void {
+        this.preventDuplicateChassis.set((event.target as HTMLInputElement).checked);
     }
 
     onBudgetMinChange(event: Event): void {
@@ -251,6 +286,21 @@ export class SearchForceGeneratorDialogComponent {
         this.rerollRevision.update((value) => value + 1);
     }
 
+    importCurrentForce(): void {
+        const currentForce = this.currentForce();
+        if (!currentForce) {
+            return;
+        }
+
+        const importedForceEntry = createLoadForceEntryFromSerializedForce(currentForce.serialize(), this.dataService);
+        const importedUnits = importedForceEntry.groups
+            .flatMap((group) => group.units)
+            .map((unitEntry, index) => this.toLockedGeneratedUnit(unitEntry, index))
+            .filter((unit): unit is GeneratedForceUnit => unit !== null);
+
+        this.lockedUnits.set(importedUnits);
+    }
+
     toggleHowPicksWereChosen(): void {
         this.collapsedHowPicksWhereChosen.update((value) => !value);
     }
@@ -270,6 +320,7 @@ export class SearchForceGeneratorDialogComponent {
                 budgetRange: this.budgetRange(),
                 minUnitCount: this.minUnitCount(),
                 maxUnitCount: this.maxUnitCount(),
+                preventDuplicateChassis: this.preventDuplicateChassis(),
             },
             totalCost: preview.totalCost,
         });
@@ -415,5 +466,54 @@ export class SearchForceGeneratorDialogComponent {
         }
 
         input.value = `${value}`;
+    }
+
+    private togglePreviewUnitLock(unitEntry: LoadForceUnit): void {
+        const lockKey = unitEntry.lockKey;
+        if (!lockKey) {
+            return;
+        }
+
+        this.lockedUnits.update((lockedUnits) => {
+            if (lockedUnits.some((unit) => unit.lockKey === lockKey)) {
+                return lockedUnits.filter((unit) => unit.lockKey !== lockKey);
+            }
+
+            const previewUnit = this.preview().units.find((unit) => unit.lockKey === lockKey);
+            return previewUnit ? [...lockedUnits, { ...previewUnit }] : lockedUnits;
+        });
+    }
+
+    private toLockedGeneratedUnit(unitEntry: LoadForceUnit, index: number): GeneratedForceUnit | null {
+        if (!unitEntry.unit) {
+            return null;
+        }
+
+        const gameSystem = this.gameSystem();
+        const skill = gameSystem === GameSystem.ALPHA_STRIKE
+            ? unitEntry.skill ?? this.pilotGunnerySkill()
+            : undefined;
+        const gunnery = gameSystem === GameSystem.CLASSIC
+            ? unitEntry.gunnery ?? this.pilotGunnerySkill()
+            : undefined;
+        const piloting = gameSystem === GameSystem.CLASSIC
+            ? unitEntry.piloting ?? this.pilotPilotingSkill()
+            : undefined;
+
+        return {
+            unit: unitEntry.unit,
+            cost: this.forceGeneratorService.getBudgetMetric(
+                unitEntry.unit,
+                gameSystem,
+                skill ?? gunnery ?? this.pilotGunnerySkill(),
+                piloting ?? this.pilotPilotingSkill(),
+            ),
+            skill,
+            gunnery,
+            piloting,
+            alias: unitEntry.alias,
+            commander: unitEntry.commander,
+            lockKey: unitEntry.lockKey ?? `imported:${index}:${unitEntry.unit.name}`,
+        };
     }
 }

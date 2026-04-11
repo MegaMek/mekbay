@@ -72,6 +72,7 @@ export interface LoadForceUnit {
     gunnery?: number;
     piloting?: number;
     commander?: boolean;
+    lockKey?: string;
 }
 
 function assignLoadForceUnitField<K extends keyof LoadForceUnit>(
@@ -132,6 +133,7 @@ export function createLoadForceUnitFromSerializedUnit(
     const loadForceUnit: LoadForceUnit = {
         unit: getUnitByName(unit.unit),
         destroyed: unit.state?.destroyed ?? false,
+        lockKey: unit.id,
     };
 
     assignLoadForceUnitField(loadForceUnit, 'alias', unit.alias);

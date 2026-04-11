@@ -876,6 +876,103 @@ describe('ForceGeneratorService', () => {
         expect(service.createForceEntry(preview)).not.toBeNull();
     });
 
+    it('preserves locked units and their preview metadata while filling the remaining slots', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const lockedAtlas = createUnit({ id: 1, name: 'Atlas AS7-D', chassis: 'Atlas', model: 'AS7-D', as: { PV: 6 } as Unit['as'] });
+        const locust = createUnit({ id: 2, name: 'Locust LCT-1V', chassis: 'Locust', model: 'LCT-1V', as: { PV: 4 } as Unit['as'] });
+
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [lockedAtlas, locust],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 2,
+            maxUnitCount: 2,
+            gunnery: 4,
+            piloting: 5,
+            lockedUnits: [{
+                unit: lockedAtlas,
+                cost: 6,
+                skill: 3,
+                alias: 'Ace Atlas',
+                commander: true,
+                lockKey: 'locked-atlas',
+            }],
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Atlas AS7-D', 'Locust LCT-1V']);
+        expect(preview.units[0].alias).toBe('Ace Atlas');
+        expect(preview.units[0].commander).toBeTrue();
+        expect(preview.units[0].lockKey).toBe('locked-atlas');
+        expect(preview.explanationLines.some((line) => line.includes('locked'))).toBeTrue();
+
+        const entry = service.createForceEntry(preview);
+        expect(entry).not.toBeNull();
+        expect(entry!.groups[0].units[0].alias).toBe('Ace Atlas');
+        expect(entry!.groups[0].units[0].commander).toBeTrue();
+        expect(entry!.groups[0].units[0].lockKey).toBe('locked-atlas');
+    });
+
+    it('prevents duplicate chassis when requested', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const atlasPrime = createUnit({ id: 1, name: 'Atlas Prime', chassis: 'Atlas', model: 'Prime', as: { PV: 4 } as Unit['as'] });
+        const atlasAlt = createUnit({ id: 2, name: 'Atlas Alt', chassis: 'Atlas', model: 'Alt', as: { PV: 4 } as Unit['as'] });
+        const locust = createUnit({ id: 3, name: 'Locust', chassis: 'Locust', model: 'LCT-1V', as: { PV: 4 } as Unit['as'] });
+
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const duplicatePreview = service.buildPreview({
+            eligibleUnits: [atlasPrime, atlasAlt, locust],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 2,
+            maxUnitCount: 2,
+            gunnery: 4,
+            piloting: 5,
+            preventDuplicateChassis: false,
+        });
+        const uniquePreview = service.buildPreview({
+            eligibleUnits: [atlasPrime, atlasAlt, locust],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 2,
+            maxUnitCount: 2,
+            gunnery: 4,
+            piloting: 5,
+            preventDuplicateChassis: true,
+        });
+
+        expect(duplicatePreview.units.map((unit) => unit.unit.name)).toEqual(['Atlas Prime', 'Atlas Alt']);
+        expect(uniquePreview.units.map((unit) => unit.unit.name)).toEqual(['Atlas Prime', 'Locust']);
+        expect(uniquePreview.explanationLines).toContain('Duplicate chassis prevention: enabled.');
+    });
+
+    it('creates a preview force entry even when the preview contains an error but still has units', () => {
+        const preview = {
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            units: [{
+                unit: createUnit({ id: 1, name: 'Locked Atlas', chassis: 'Atlas', as: { PV: 6 } as Unit['as'] }),
+                cost: 6,
+                skill: 3,
+                lockKey: 'locked-atlas',
+            }],
+            totalCost: 6,
+            error: 'Need at least 2 units.',
+            faction: null,
+            era: null,
+            explanationLines: ['Need at least 2 units.'],
+        };
+
+        expect(service.createForceEntry(preview)).not.toBeNull();
+    });
+
     it('keeps retrying until the no-match search window expires', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');

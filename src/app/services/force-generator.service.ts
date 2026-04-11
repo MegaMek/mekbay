@@ -87,6 +87,13 @@ interface ForceGenerationCandidateUnit {
     productionWeight: number;
     salvageWeight: number;
     cost: number;
+    alias?: string;
+    commander?: boolean;
+    skill?: number;
+    gunnery?: number;
+    piloting?: number;
+    lockKey?: string;
+    locked: boolean;
     megaMekUnitType: string;
     megaMekWeightClass?: string;
     role?: string;
@@ -185,6 +192,7 @@ interface ResolvedRulesetContext {
 
 interface ForceGenerationSelectionStep {
     unit: Unit;
+    locked: boolean;
     rolledSource: ForceGenerationAvailabilitySource;
     source: ForceGenerationAvailabilitySource;
     usedFallbackSource: boolean;
@@ -245,6 +253,8 @@ export interface ForceGenerationRequest {
     maxUnitCount: number;
     gunnery: number;
     piloting: number;
+    lockedUnits?: readonly GeneratedForceUnit[];
+    preventDuplicateChassis?: boolean;
 }
 
 export interface ForceGenerationBudgetRange {
@@ -267,6 +277,9 @@ export interface GeneratedForceUnit {
     skill?: number;
     gunnery?: number;
     piloting?: number;
+    alias?: string;
+    commander?: boolean;
+    lockKey?: string;
 }
 
 export interface ForceGeneratorBudgetDefaults {
@@ -664,6 +677,10 @@ function normalizeRole(value: string | undefined): string | undefined {
     return value?.trim().toLowerCase() || undefined;
 }
 
+function normalizeChassisKey(value: string | undefined): string {
+    return value?.trim().toLowerCase() || '';
+}
+
 function buildAvailabilityPairKey(eraId: number, factionId: number): string {
     return `${eraId}:${factionId}`;
 }
@@ -942,34 +959,36 @@ export class ForceGeneratorService {
         const minUnitCount = Math.min(FORCE_MAX_UNITS, Math.max(1, Math.floor(options.minUnitCount)));
         const maxUnitCount = Math.min(FORCE_MAX_UNITS, Math.max(minUnitCount, Math.floor(options.maxUnitCount)));
         const budgetRange = this.normalizeBudgetRange(options.budgetRange);
+        const lockedCandidates = (options.lockedUnits ?? []).map((lockedUnit, index) => this.createCandidateUnit(
+            lockedUnit.unit,
+            options.context,
+            options,
+            {
+                ...lockedUnit,
+                lockKey: lockedUnit.lockKey ?? `locked:${index}:${lockedUnit.unit.name}`,
+            },
+        ));
+        const lockedUnitNames = new Set(lockedCandidates.map((candidate) => candidate.unit.name));
+        const unlockedEligibleUnits = eligibleUnits.filter((unit) => !lockedUnitNames.has(unit.name));
+        const availableUnitCapacity = unlockedEligibleUnits.length + lockedCandidates.length;
 
-        if (eligibleUnits.length < minUnitCount) {
-            return {
-                gameSystem: options.gameSystem,
-                units: [],
-                totalCost: 0,
-                faction: options.context.forceFaction,
-                era: options.context.forceEra,
-                explanationLines: this.buildPreviewExplanation(
-                    options.gameSystem,
-                    eligibleUnits.length,
-                    options.context,
+        if (availableUnitCapacity < minUnitCount) {
+            const message = lockedCandidates.length > 0
+                ? `Only ${availableUnitCapacity} total units are available after preserving ${lockedCandidates.length} locked ${lockedCandidates.length === 1 ? 'unit' : 'units'}.`
+                : `Only ${eligibleUnits.length} eligible units match the current filters.`;
+
+            if (lockedCandidates.length > 0) {
+                return this.buildPreviewFromSelectionAttempt(
+                    options,
+                    availableUnitCapacity,
                     budgetRange,
                     minUnitCount,
                     maxUnitCount,
-                    null,
-                    `Only ${eligibleUnits.length} eligible units match the current filters.`,
-                ),
-                error: `Only ${eligibleUnits.length} eligible units match the current filters.`,
-            };
-        }
+                    this.createSelectionAttemptFromCandidates(lockedCandidates, null),
+                    message,
+                );
+            }
 
-        const candidates = eligibleUnits
-            .map((unit) => this.createCandidateUnit(unit, options.context, options))
-            .filter((candidate) => this.hasPositiveAvailability(candidate));
-
-        if (candidates.length < minUnitCount) {
-            const message = `Only ${candidates.length} units have positive MegaMek availability in the rolled faction and era.`;
             return {
                 gameSystem: options.gameSystem,
                 units: [],
@@ -978,13 +997,59 @@ export class ForceGeneratorService {
                 era: options.context.forceEra,
                 explanationLines: this.buildPreviewExplanation(
                     options.gameSystem,
-                    candidates.length,
+                    availableUnitCapacity,
                     options.context,
                     budgetRange,
                     minUnitCount,
                     maxUnitCount,
                     null,
                     message,
+                    lockedCandidates.length,
+                    options.preventDuplicateChassis === true,
+                ),
+                error: message,
+            };
+        }
+
+        const candidates = unlockedEligibleUnits
+            .map((unit) => this.createCandidateUnit(unit, options.context, options))
+            .filter((candidate) => this.hasPositiveAvailability(candidate));
+        const availableCandidateCapacity = candidates.length + lockedCandidates.length;
+
+        if (availableCandidateCapacity < minUnitCount) {
+            const message = lockedCandidates.length > 0
+                ? `Only ${availableCandidateCapacity} total units are available after preserving ${lockedCandidates.length} locked ${lockedCandidates.length === 1 ? 'unit' : 'units'}.`
+                : `Only ${candidates.length} units have positive MegaMek availability in the rolled faction and era.`;
+
+            if (lockedCandidates.length > 0) {
+                return this.buildPreviewFromSelectionAttempt(
+                    options,
+                    availableCandidateCapacity,
+                    budgetRange,
+                    minUnitCount,
+                    maxUnitCount,
+                    this.createSelectionAttemptFromCandidates(lockedCandidates, null),
+                    message,
+                );
+            }
+
+            return {
+                gameSystem: options.gameSystem,
+                units: [],
+                totalCost: 0,
+                faction: options.context.forceFaction,
+                era: options.context.forceEra,
+                explanationLines: this.buildPreviewExplanation(
+                    options.gameSystem,
+                    availableCandidateCapacity,
+                    options.context,
+                    budgetRange,
+                    minUnitCount,
+                    maxUnitCount,
+                    null,
+                    message,
+                    lockedCandidates.length,
+                    options.preventDuplicateChassis === true,
                 ),
                 error: message,
             };
@@ -997,10 +1062,13 @@ export class ForceGeneratorService {
                 budgetRange,
                 minUnitCount,
                 maxUnitCount,
+                false,
+                lockedCandidates,
+                options.preventDuplicateChassis === true,
             );
             return this.buildPreviewFromSelectionAttempt(
                 options,
-                candidates.length,
+                availableCandidateCapacity,
                 budgetRange,
                 minUnitCount,
                 maxUnitCount,
@@ -1010,15 +1078,19 @@ export class ForceGeneratorService {
             );
         }
 
+        const lockedTotalCost = lockedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
+        const remainingMinUnitCount = Math.max(0, minUnitCount - lockedCandidates.length);
+        const remainingMaxUnitCount = Math.max(0, maxUnitCount - lockedCandidates.length);
         const effectiveFallbackCandidates = this.filterCandidatesForAvailableTopLevelEchelons(
             candidates,
             options.context,
-            minUnitCount,
-            maxUnitCount,
+            remainingMinUnitCount,
+            remainingMaxUnitCount,
         );
         const candidateCosts = effectiveFallbackCandidates.map((candidate) => candidate.cost);
         const noUnderMaxForcePossible = Number.isFinite(budgetRange.max)
-            && getMinimumMetricTotal(candidateCosts, minUnitCount) > budgetRange.max;
+            && (lockedTotalCost > budgetRange.max
+                || lockedTotalCost + getMinimumMetricTotal(candidateCosts, remainingMinUnitCount) > budgetRange.max);
 
         const attemptBudget = this.createAttemptBudget(candidates.length, minUnitCount, maxUnitCount);
         const searchStartedAt = getForceGeneratorNow();
@@ -1047,6 +1119,8 @@ export class ForceGeneratorService {
                 minUnitCount,
                 maxUnitCount,
                 noUnderMaxForcePossible,
+                lockedCandidates,
+                options.preventDuplicateChassis === true,
             );
             const totalCost = selectionAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
             const attemptExceedsMax = Number.isFinite(budgetRange.max) && totalCost > budgetRange.max;
@@ -1131,12 +1205,9 @@ export class ForceGeneratorService {
                             ? 'Stopped early because this successful attempt was a perfect structure match.'
                             : 'Stopped early because no structure preference applied, so the first successful attempt was accepted immediately.',
                     );
-                    const generatedUnits = selectionAttempt.selectedCandidates.map((candidate) => this.createGeneratedUnit(
-                        candidate.unit,
-                        options.gameSystem,
-                        options.gunnery,
-                        options.piloting,
-                    ));
+                    const generatedUnits = selectionAttempt.selectedCandidates.map((candidate, index) => {
+                        return this.createGeneratedUnit(candidate, index);
+                    });
 
                     return {
                         gameSystem: options.gameSystem,
@@ -1146,13 +1217,15 @@ export class ForceGeneratorService {
                         era: options.context.forceEra,
                         explanationLines: this.buildPreviewExplanation(
                             options.gameSystem,
-                            candidates.length,
+                            availableCandidateCapacity,
                             options.context,
                             budgetRange,
                             minUnitCount,
                             maxUnitCount,
                             selectionAttempt,
                             null,
+                            lockedCandidates.length,
+                            options.preventDuplicateChassis === true,
                         ),
                         error: null,
                     };
@@ -1181,12 +1254,9 @@ export class ForceGeneratorService {
                 'Search ended without a perfect structure match, so the best successful attempt was chosen by structure score, then target distance, then unit count.',
             );
             const totalCost = bestValidAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
-            const generatedUnits = bestValidAttempt.selectedCandidates.map((candidate) => this.createGeneratedUnit(
-                candidate.unit,
-                options.gameSystem,
-                options.gunnery,
-                options.piloting,
-            ));
+            const generatedUnits = bestValidAttempt.selectedCandidates.map((candidate, index) => {
+                return this.createGeneratedUnit(candidate, index);
+            });
 
             return {
                 gameSystem: options.gameSystem,
@@ -1196,13 +1266,15 @@ export class ForceGeneratorService {
                 era: options.context.forceEra,
                 explanationLines: this.buildPreviewExplanation(
                     options.gameSystem,
-                    candidates.length,
+                    availableCandidateCapacity,
                     options.context,
                     budgetRange,
                     minUnitCount,
                     maxUnitCount,
                     bestValidAttempt,
                     null,
+                    lockedCandidates.length,
+                    options.preventDuplicateChassis === true,
                 ),
                 error: null,
             };
@@ -1212,7 +1284,7 @@ export class ForceGeneratorService {
             const budgetLabel = options.gameSystem === GameSystem.ALPHA_STRIKE ? 'PV' : 'BV';
             return this.buildPreviewFromSelectionAttempt(
                 options,
-                candidates.length,
+                availableCandidateCapacity,
                 budgetRange,
                 minUnitCount,
                 maxUnitCount,
@@ -1232,31 +1304,35 @@ export class ForceGeneratorService {
             era: options.context.forceEra,
             explanationLines: this.buildPreviewExplanation(
                 options.gameSystem,
-                candidates.length,
+                availableCandidateCapacity,
                 options.context,
                 budgetRange,
                 minUnitCount,
                 maxUnitCount,
                 null,
                 'Unable to build a force within the selected BV/PV range and unit count constraints.',
+                lockedCandidates.length,
+                options.preventDuplicateChassis === true,
             ),
             error: 'Unable to build a force within the selected BV/PV range and unit count constraints.',
         };
     }
 
     public createForceEntry(preview: ForceGenerationPreview, name?: string): LoadForceEntry | null {
-        if (preview.units.length === 0 || preview.error) {
+        if (preview.units.length === 0) {
             return null;
         }
 
         const previewGroup: LoadForceGroup = {
             units: preview.units.map((generatedUnit) => ({
                 unit: generatedUnit.unit,
-                alias: undefined,
                 destroyed: false,
                 gunnery: preview.gameSystem === GameSystem.CLASSIC ? generatedUnit.gunnery : undefined,
                 piloting: preview.gameSystem === GameSystem.CLASSIC ? generatedUnit.piloting : undefined,
                 skill: preview.gameSystem === GameSystem.ALPHA_STRIKE ? generatedUnit.skill : undefined,
+                alias: generatedUnit.alias,
+                commander: generatedUnit.commander,
+                lockKey: generatedUnit.lockKey,
             })),
         };
 
@@ -1503,13 +1579,36 @@ export class ForceGeneratorService {
         unit: Unit,
         context: ForceGenerationContext,
         options: ForceGenerationRequest,
+        lockedUnit?: GeneratedForceUnit,
     ): ForceGenerationCandidateUnit {
         const availabilityWeights = this.getAvailabilityWeights(unit, context);
+        const skill = options.gameSystem === GameSystem.ALPHA_STRIKE
+            ? lockedUnit?.skill ?? options.gunnery
+            : undefined;
+        const gunnery = options.gameSystem === GameSystem.CLASSIC
+            ? lockedUnit?.gunnery ?? options.gunnery
+            : undefined;
+        const piloting = options.gameSystem === GameSystem.CLASSIC
+            ? lockedUnit?.piloting ?? getEffectivePilotingSkill(unit, options.piloting)
+            : undefined;
+
         return {
             unit,
             productionWeight: availabilityWeights.production,
             salvageWeight: availabilityWeights.salvage,
-            cost: getBudgetMetric(unit, options.gameSystem, options.gunnery, options.piloting),
+            cost: lockedUnit?.cost ?? getBudgetMetric(
+                unit,
+                options.gameSystem,
+                skill ?? gunnery ?? options.gunnery,
+                piloting ?? options.piloting,
+            ),
+            alias: lockedUnit?.alias,
+            commander: lockedUnit?.commander,
+            skill,
+            gunnery,
+            piloting,
+            lockKey: lockedUnit?.lockKey,
+            locked: lockedUnit !== undefined,
             megaMekUnitType: toMegaMekUnitType(unit),
             megaMekWeightClass: toMegaMekWeightClass(unit),
             role: normalizeRole(unit.role),
@@ -1616,18 +1715,16 @@ export class ForceGeneratorService {
         };
     }
 
-    private createGeneratedUnit(
-        unit: Unit,
-        gameSystem: GameSystem,
-        gunnery: number,
-        piloting: number,
-    ): GeneratedForceUnit {
+    private createGeneratedUnit(candidate: ForceGenerationCandidateUnit, index: number): GeneratedForceUnit {
         return {
-            unit,
-            cost: getBudgetMetric(unit, gameSystem, gunnery, piloting),
-            skill: gameSystem === GameSystem.ALPHA_STRIKE ? gunnery : undefined,
-            gunnery: gameSystem === GameSystem.CLASSIC ? gunnery : undefined,
-            piloting: gameSystem === GameSystem.CLASSIC ? getEffectivePilotingSkill(unit, piloting) : undefined,
+            unit: candidate.unit,
+            cost: candidate.cost,
+            skill: candidate.skill,
+            gunnery: candidate.gunnery,
+            piloting: candidate.piloting,
+            alias: candidate.alias,
+            commander: candidate.commander,
+            lockKey: candidate.lockKey ?? `generated:${index}:${candidate.unit.name}`,
         };
     }
 
@@ -1644,11 +1741,20 @@ export class ForceGeneratorService {
         maxUnitCount: number,
         selectionAttempt: ForceGenerationSelectionAttempt | null,
         error: string | null,
+        lockedUnitCount: number,
+        preventDuplicateChassis: boolean,
     ): string[] {
         const lines: string[] = [];
         const budgetLabel = gameSystem === GameSystem.ALPHA_STRIKE ? 'PV' : 'BV';
         const maxLabel = Number.isFinite(budgetRange.max) ? budgetRange.max.toLocaleString() : 'no max';
         lines.push(`Candidates: ${eligibleUnitCount} units. Target: ${minUnitCount}-${maxUnitCount} units, ${budgetLabel} ${budgetRange.min.toLocaleString()} to ${maxLabel}.`);
+
+        if (lockedUnitCount > 0) {
+            lines.push(`Locked units: ${lockedUnitCount} preserved across rerolls.`);
+        }
+        if (preventDuplicateChassis) {
+            lines.push('Duplicate chassis prevention: enabled.');
+        }
 
         const contextParts = [context.forceFaction?.name, context.forceEra?.name].filter(Boolean);
         if (contextParts.length > 0) {
@@ -1674,6 +1780,16 @@ export class ForceGeneratorService {
         }
 
         for (const [index, step] of (selectionAttempt?.selectionSteps ?? []).entries()) {
+            if (step.locked) {
+                const reasons = step.rulesetReasons.length > 0
+                    ? `; ruleset bias ${step.rulesetReasons.join(', ')}`
+                    : '';
+                lines.push(
+                    `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: locked, P ${formatForceGeneratorWeight(step.productionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
+                );
+                continue;
+            }
+
             const fallbackNote = step.usedFallbackSource && step.source !== step.rolledSource
                 ? `; rolled ${step.rolledSource} but used ${step.source}`
                 : '';
@@ -1710,12 +1826,7 @@ export class ForceGeneratorService {
         }
 
         const totalCost = selectionAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
-        const units = selectionAttempt.selectedCandidates.map((candidate) => this.createGeneratedUnit(
-            candidate.unit,
-            options.gameSystem,
-            options.gunnery,
-            options.piloting,
-        ));
+        const units = selectionAttempt.selectedCandidates.map((candidate, index) => this.createGeneratedUnit(candidate, index));
         const explanationLines = this.buildPreviewExplanation(
             options.gameSystem,
             eligibleUnitCount,
@@ -1725,6 +1836,8 @@ export class ForceGeneratorService {
             maxUnitCount,
             selectionAttempt,
             error,
+            (options.lockedUnits ?? []).length,
+            options.preventDuplicateChassis === true,
         );
 
         if (resultNote && resultNote !== error) {
@@ -1774,22 +1887,7 @@ export class ForceGeneratorService {
         selectedCandidates: readonly ForceGenerationCandidateUnit[],
         rulesetProfile: ForceGenerationRulesetProfile | null,
     ): ForceGenerationSelectionAttempt {
-        const selectionSteps = selectedCandidates.map((candidate) => {
-            const source: ForceGenerationAvailabilitySource = candidate.productionWeight >= candidate.salvageWeight
-                ? 'production'
-                : 'salvage';
-
-            return {
-                unit: candidate.unit,
-                rolledSource: source,
-                source,
-                usedFallbackSource: false,
-                productionWeight: candidate.productionWeight,
-                salvageWeight: candidate.salvageWeight,
-                cost: candidate.cost,
-                rulesetReasons: this.getRulesetMatchReasons(candidate, rulesetProfile),
-            };
-        });
+        const selectionSteps = selectedCandidates.map((candidate) => this.createSelectionStep(candidate, rulesetProfile));
 
         return {
             selectedCandidates: [...selectedCandidates],
@@ -2110,12 +2208,21 @@ export class ForceGeneratorService {
         minUnitCount: number,
         maxUnitCount: number,
         allowOverMaxFallbackSelection = false,
+        preselectedCandidates: readonly ForceGenerationCandidateUnit[] = [],
+        preventDuplicateChassis = false,
     ): ForceGenerationSelectionAttempt {
-        const rulesetProfile = this.buildRulesetProfile(candidates, context, minUnitCount, maxUnitCount);
+        const rulesetProfile = this.buildRulesetProfile(
+            [...preselectedCandidates, ...candidates],
+            context,
+            minUnitCount,
+            maxUnitCount,
+        );
         const remainingCandidates = this.filterCandidatesForRulesetProfile(candidates, rulesetProfile);
-        const selectedCandidates: ForceGenerationCandidateUnit[] = [];
-        const selectionSteps: ForceGenerationSelectionStep[] = [];
-        let totalCost = 0;
+        const selectedCandidates: ForceGenerationCandidateUnit[] = [...preselectedCandidates];
+        const selectionSteps: ForceGenerationSelectionStep[] = preselectedCandidates.map((candidate) => {
+            return this.createSelectionStep(candidate, rulesetProfile);
+        });
+        let totalCost = selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
         const preferredSelectionUnitCount = this.getPreferredSelectionUnitCount(
             rulesetProfile?.preferredUnitCount,
             minUnitCount,
@@ -2123,6 +2230,11 @@ export class ForceGeneratorService {
         );
         const targetBudget = this.getBudgetTarget(budgetRange);
         const useOverMaxFallbackSelection = allowOverMaxFallbackSelection && Number.isFinite(budgetRange.max);
+        const selectedChassisKeys = new Set(
+            selectedCandidates
+                .map((candidate) => normalizeChassisKey(candidate.unit.chassis))
+                .filter((key) => key.length > 0),
+        );
 
         while (selectedCandidates.length < maxUnitCount) {
             if (
@@ -2183,12 +2295,19 @@ export class ForceGeneratorService {
                     ? remainingCandidates
                     : underMaxCandidates;
 
-            if (candidatePool.length === 0) {
+            const chassisFilteredCandidatePool = preventDuplicateChassis
+                ? candidatePool.filter((candidate) => {
+                    const chassisKey = normalizeChassisKey(candidate.unit.chassis);
+                    return chassisKey.length === 0 || !selectedChassisKeys.has(chassisKey);
+                })
+                : candidatePool;
+
+            if (chassisFilteredCandidatePool.length === 0) {
                 break;
             }
 
             const nextPick = this.pickNextCandidate(
-                candidatePool,
+                chassisFilteredCandidatePool,
                 rulesetProfile,
                 totalCost,
                 budgetRange,
@@ -2199,23 +2318,44 @@ export class ForceGeneratorService {
             selectedCandidates.push(nextCandidate);
             totalCost += nextCandidate.cost;
             remainingCandidates.splice(remainingCandidates.indexOf(nextCandidate), 1);
+            const chassisKey = normalizeChassisKey(nextCandidate.unit.chassis);
+            if (chassisKey.length > 0) {
+                selectedChassisKeys.add(chassisKey);
+            }
 
-            selectionSteps.push({
-                unit: nextCandidate.unit,
+            selectionSteps.push(this.createSelectionStep(nextCandidate, rulesetProfile, {
                 rolledSource: nextPick.rolledSource,
                 source: nextPick.source,
                 usedFallbackSource: nextPick.usedFallbackSource,
-                productionWeight: nextCandidate.productionWeight,
-                salvageWeight: nextCandidate.salvageWeight,
-                cost: nextCandidate.cost,
-                rulesetReasons: this.getRulesetMatchReasons(nextCandidate, rulesetProfile),
-            });
+            }));
         }
 
         return {
             selectedCandidates,
             selectionSteps,
             rulesetProfile,
+        };
+    }
+
+    private createSelectionStep(
+        candidate: ForceGenerationCandidateUnit,
+        rulesetProfile: ForceGenerationRulesetProfile | null,
+        overrides: Partial<Pick<ForceGenerationSelectionStep, 'rolledSource' | 'source' | 'usedFallbackSource'>> = {},
+    ): ForceGenerationSelectionStep {
+        const source: ForceGenerationAvailabilitySource = candidate.productionWeight >= candidate.salvageWeight
+            ? 'production'
+            : 'salvage';
+
+        return {
+            unit: candidate.unit,
+            locked: candidate.locked,
+            rolledSource: overrides.rolledSource ?? source,
+            source: overrides.source ?? source,
+            usedFallbackSource: overrides.usedFallbackSource ?? false,
+            productionWeight: candidate.productionWeight,
+            salvageWeight: candidate.salvageWeight,
+            cost: candidate.cost,
+            rulesetReasons: this.getRulesetMatchReasons(candidate, rulesetProfile),
         };
     }
 

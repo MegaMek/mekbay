@@ -49,6 +49,40 @@
                         </div>
                     </div>
 
+                    <div class="form-fields">
+                        <label class="field-label">Min Units</label>
+                        <input class="bt-input field-input" type="number" min="1" [max]="MAX_UNITS" step="1" [value]="minUnitCount()" (input)="onMinUnitCountChange($event)" (blur)="onMinUnitCountBlur($event)" />
+                    </div>
+
+                    <div class="form-fields">
+                        <label class="field-label">Max Units</label>
+                        <input class="bt-input field-input" type="number" min="1" [max]="MAX_UNITS" step="1" [value]="maxUnitCount()" (input)="onMaxUnitCountChange($event)" (blur)="onMaxUnitCountBlur($event)" />
+                    </div>
+
+                    <div class="form-fields">
+                        <label class="field-label">{{ budgetMinimumFieldLabel() }}</label>
+                        <input
+                            class="bt-input field-input"
+                            type="number"
+                            min="0"
+                            step="1"
+                            [value]="budgetRange().min"
+                            (input)="onBudgetMinChange($event)"
+                            placeholder="0 = no minimum" />
+                    </div>
+
+                    <div class="form-fields">
+                        <label class="field-label">{{ budgetMaximumFieldLabel() }}</label>
+                        <input
+                            class="bt-input field-input"
+                            type="number"
+                            min="0"
+                            step="1"
+                            [value]="budgetRange().max || ''"
+                            (input)="onBudgetMaxChange($event)"
+                            placeholder="0 = no maximum; 0/0 = first result" />
+                    </div>
+
                     <div class="form-fields span-all">
                         <label class="field-label">Era</label>
                         <multi-select-dropdown
@@ -94,38 +128,15 @@
                         </multi-select-dropdown>
                     </div>
 
-                    <div class="form-fields">
-                        <label class="field-label">Min Units</label>
-                        <input class="bt-input field-input" type="number" min="1" [max]="MAX_UNITS" step="1" [value]="minUnitCount()" (input)="onMinUnitCountChange($event)" (blur)="onMinUnitCountBlur($event)" />
-                    </div>
-
-                    <div class="form-fields">
-                        <label class="field-label">Max Units</label>
-                        <input class="bt-input field-input" type="number" min="1" [max]="MAX_UNITS" step="1" [value]="maxUnitCount()" (input)="onMaxUnitCountChange($event)" (blur)="onMaxUnitCountBlur($event)" />
-                    </div>
-
-                    <div class="form-fields">
-                        <label class="field-label">{{ budgetMinimumFieldLabel() }}</label>
-                        <input
-                            class="bt-input field-input"
-                            type="number"
-                            min="0"
-                            step="1"
-                            [value]="budgetRange().min"
-                            (input)="onBudgetMinChange($event)"
-                            placeholder="0 = no minimum" />
-                    </div>
-
-                    <div class="form-fields">
-                        <label class="field-label">{{ budgetMaximumFieldLabel() }}</label>
-                        <input
-                            class="bt-input field-input"
-                            type="number"
-                            min="0"
-                            step="1"
-                            [value]="budgetRange().max || ''"
-                            (input)="onBudgetMaxChange($event)"
-                            placeholder="0 = no maximum; 0/0 = first result" />
+                    <div class="form-fields span-all">
+                        <label class="generator-option">
+                            <input
+                                class="bt-checkbox"
+                                type="checkbox"
+                                [checked]="preventDuplicateChassis()"
+                                (change)="onPreventDuplicateChassisChange($event)" />
+                            <span class="generator-option-label">Prevent duplicate chassis</span>
+                        </label>
                     </div>
                 </div>
 
@@ -134,16 +145,27 @@
                         <span class="eligible-label">Eligible Units</span>
                         <span class="eligible-value">{{ eligibleUnits().length }}</span>
                     </div>
-                    <button class="bt-button" type="button" (click)="reroll()" [disabled]="eligibleUnits().length === 0">REROLL</button>
+                    <div class="controls-buttons">
+                        <button class="bt-button" type="button" (click)="importCurrentForce()" [disabled]="!canImportCurrentForce()">IMPORT CURRENT FORCE</button>
+                    </div>
                 </div>
             </section>
 
             <section class="panel preview-panel">
                 <div class="preview-body">
-                    @if (preview().error; as errorMessage) {
+                    @if (previewEntry(); as previewForceEntry) {
+                        <load-force-preview-panel
+                            [force]="previewForceEntry"
+                            [showLockControls]="true"
+                            [lockedUnitKeys]="lockedUnitKeys()"
+                            [lockToggle]="previewLockToggle">
+                        </load-force-preview-panel>
+
+                        @if (preview().error; as errorMessage) {
+                            <div class="preview-inline-error framed-borders">{{ errorMessage }}</div>
+                        }
+                    } @else if (preview().error; as errorMessage) {
                         <div class="preview-empty">{{ errorMessage }}</div>
-                    } @else if (previewEntry(); as previewForceEntry) {
-                        <load-force-preview-panel [force]="previewForceEntry"></load-force-preview-panel>
                     }
                 </div>
 
@@ -172,7 +194,8 @@
     </div>
 
     <div dialog-footer class="footer">
-        <button class="modal-btn bt-button" type="button" (click)="submit()" [disabled]="preview().error !== null || previewEntry() === null">GENERATE</button>
+        <button class="modal-btn bt-button" type="button" (click)="submit()" [disabled]="preview().error !== null || previewEntry() === null">CREATE</button>
+        <button class="modal-btn bt-button" type="button" (click)="reroll()" [disabled]="eligibleUnits().length === 0">REROLL</button>
         <button class="modal-btn bt-button" type="button" (click)="dismiss()">DISMISS</button>
     </div>
 </base-dialog>

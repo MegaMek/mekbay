@@ -69,39 +69,51 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
                     </div>
                     <div class="units">
                         @for (unitEntry of gd.group.units; let i = $index; track i) {
-                        <div class="unit-square compact-mode"
-                            [class.destroyed]="unitEntry.destroyed"
-                            [class.missing]="!unitEntry.unit"
-                            [class.clickable]="!!unitEntry.unit"
-                            (click)="onUnitClick(unitEntry)">
-                            @if (unitEntry.commander) {
-                                <div class="group-commander-indicator" aria-hidden="true">
-                                    <svg class="group-commander-icon" width="42.08" height="51.88" viewBox="0 0 21.04 25.94" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" focusable="false">
-                                        <g transform="translate(-.02)">
-                                            <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
-                                                <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
-                                                <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
+                        <div class="unit-tile">
+                            <div class="unit-square compact-mode"
+                                [class.destroyed]="unitEntry.destroyed"
+                                [class.missing]="!unitEntry.unit"
+                                [class.clickable]="!!unitEntry.unit"
+                                (click)="onUnitClick(unitEntry)">
+                                @if (unitEntry.commander) {
+                                    <div class="group-commander-indicator" aria-hidden="true">
+                                        <svg class="group-commander-icon" width="42.08" height="51.88" viewBox="0 0 21.04 25.94" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" focusable="false">
+                                            <g transform="translate(-.02)">
+                                                <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
+                                                    <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
+                                                    <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
+                                                </g>
                                             </g>
-                                        </g>
-                                    </svg>
-                                </div>
-                            }
-                            <div class="unit-content">
-                                <unit-icon [unit]="unitEntry.unit" [size]="32"></unit-icon>
-                                @if (unitDisplayName === 'chassisModel'
-                                    || unitDisplayName === 'both'
-                                    || !unitEntry.alias) {
-                                <div class="unit-model">{{ unitEntry.unit?.model | cleanModelString }}</div>
-                                <div class="unit-chassis">{{ unitEntry.unit?.chassis }}</div>
+                                        </svg>
+                                    </div>
                                 }
-                                @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
-                                <div class="unit-alias"
-                                    [class.thin]="unitDisplayName === 'both'">{{ unitEntry.alias }}</div>
-                                }
-                                <div class="pilot-info info-slot numeric slim">
-                                    <span class="value">{{ getPilotStats(unitEntry) }}</span>
+                                <div class="unit-content">
+                                    <unit-icon [unit]="unitEntry.unit" [size]="32"></unit-icon>
+                                    @if (unitDisplayName === 'chassisModel'
+                                        || unitDisplayName === 'both'
+                                        || !unitEntry.alias) {
+                                    <div class="unit-model">{{ unitEntry.unit?.model | cleanModelString }}</div>
+                                    <div class="unit-chassis">{{ unitEntry.unit?.chassis }}</div>
+                                    }
+                                    @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
+                                    <div class="unit-alias"
+                                        [class.thin]="unitDisplayName === 'both'">{{ unitEntry.alias }}</div>
+                                    }
+                                    <div class="pilot-info info-slot numeric slim">
+                                        <span class="value">{{ getPilotStats(unitEntry) }}</span>
+                                    </div>
                                 </div>
                             </div>
+
+                            @if (showLockControls()) {
+                                <button
+                                    class="unit-lock-button bt-button"
+                                    type="button"
+                                    [class.locked]="isLocked(unitEntry)"
+                                    (click)="onLockButtonClick($event, unitEntry)">
+                                    {{ isLocked(unitEntry) ? 'UNLOCK' : 'LOCK' }}
+                                </button>
+                            }
                         </div>
                         }
                     </div>
@@ -228,6 +240,13 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
             display: flex;
             flex-direction: row;
             flex-wrap: wrap;
+            gap: 4px;
+        }
+
+        .unit-tile {
+            width: 86px;
+            display: flex;
+            flex-direction: column;
             gap: 2px;
         }
 
@@ -313,6 +332,18 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
             background: #fff1;
         }
 
+        .unit-lock-button {
+            width: 100%;
+            min-height: 24px;
+            padding: 2px 4px;
+            font-size: 0.62em;
+            letter-spacing: 0.08em;
+        }
+
+        .unit-lock-button.locked {
+            background: #a2792c;
+        }
+
         .unit-model {
             color: var(--text-color-secondary);
             font-size: 0.6em;
@@ -380,6 +411,9 @@ export class LoadForcePreviewPanelComponent {
 
     readonly force = input.required<LoadForceEntry>();
     readonly showHint = input(true);
+    readonly showLockControls = input(false);
+    readonly lockedUnitKeys = input<ReadonlySet<string>>(new Set<string>());
+    readonly lockToggle = input<((unitEntry: LoadForceUnit) => void) | null>(null);
 
     readonly allUnits = computed(() => this.force().groups
         .flatMap((group) => group.units)
@@ -426,5 +460,14 @@ export class LoadForcePreviewPanelComponent {
                 gameSystem: this.force().type,
             } satisfies UnitDetailsDialogData,
         });
+    }
+
+    isLocked(loadForceUnit: LoadForceUnit): boolean {
+        return !!loadForceUnit.lockKey && this.lockedUnitKeys().has(loadForceUnit.lockKey);
+    }
+
+    onLockButtonClick(event: Event, loadForceUnit: LoadForceUnit): void {
+        event.stopPropagation();
+        this.lockToggle()?.(loadForceUnit);
     }
 }
