@@ -1020,27 +1020,6 @@ export class ForceGeneratorService {
         const noUnderMaxForcePossible = Number.isFinite(budgetRange.max)
             && getMinimumMetricTotal(candidateCosts, minUnitCount) > budgetRange.max;
 
-        if (budgetRange.min > 0 && getMaximumMetricTotal(candidateCosts, Math.min(maxUnitCount, candidateCosts.length)) < budgetRange.min) {
-            return {
-                gameSystem: options.gameSystem,
-                units: [],
-                totalCost: 0,
-                faction: options.context.forceFaction,
-                era: options.context.forceEra,
-                explanationLines: this.buildPreviewExplanation(
-                    options.gameSystem,
-                    candidates.length,
-                    options.context,
-                    budgetRange,
-                    minUnitCount,
-                    maxUnitCount,
-                    null,
-                    'The selected BV/PV minimum is too high for the current unit count range.',
-                ),
-                error: 'The selected BV/PV minimum is too high for the current unit count range.',
-            };
-        }
-
         const attemptBudget = this.createAttemptBudget(candidates.length, minUnitCount, maxUnitCount);
         const searchStartedAt = getForceGeneratorNow();
         let bestAttempt: ForceGenerationSelectionAttempt = {
@@ -2154,7 +2133,7 @@ export class ForceGeneratorService {
             const remainingSlotsAfterPick = maxUnitCount - selectedCandidates.length - 1;
             const costBoundsIndex = buildCostBoundsIndex(remainingCandidates);
 
-            const feasibleCandidates = remainingCandidates.filter((candidate) => {
+            const underMaxCandidates = remainingCandidates.filter((candidate) => {
                 const nextTotal = totalCost + candidate.cost;
                 if (nextTotal > budgetRange.max) {
                     return false;
@@ -2169,6 +2148,12 @@ export class ForceGeneratorService {
                     return false;
                 }
 
+                return true;
+            });
+
+            const feasibleCandidates = underMaxCandidates.filter((candidate) => {
+                const nextTotal = totalCost + candidate.cost;
+
                 const maximumRemainingTotal = getExcludedMaximumMetricTotal(
                     costBoundsIndex,
                     candidate,
@@ -2181,7 +2166,7 @@ export class ForceGeneratorService {
                 ? feasibleCandidates
                 : useOverMaxFallbackSelection && selectedCandidates.length < minUnitCount
                     ? remainingCandidates
-                    : [];
+                    : underMaxCandidates;
 
             if (candidatePool.length === 0) {
                 break;

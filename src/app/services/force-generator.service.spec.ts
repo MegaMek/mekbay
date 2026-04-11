@@ -460,7 +460,7 @@ describe('ForceGeneratorService', () => {
 
         expect(preview.error).toBeNull();
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Available Unit']);
-        expect(preview.explanationLines[0]).toContain('Eligible pool: 1 units.');
+        expect(preview.explanationLines[0]).toContain('Candidates: 1 units.');
     });
 
     it('falls back to minimum unknown weights for MUL-visible units when MegaMek has no positive exact-context weight', () => {
@@ -624,7 +624,7 @@ describe('ForceGeneratorService', () => {
         });
 
         expect(preview.error).toBeNull();
-        expect(preview.explanationLines[0]).toContain('Eligible pool: 1 units.');
+        expect(preview.explanationLines[0]).toContain('Candidates: 1 units.');
         expect(preview.explanationLines.some((line) => line.includes('Resolved generation context: Federated Suns - ilClan.'))).toBeTrue();
         expect(preview.explanationLines.some((line) => line.includes('Warhammer WHM-6R: production pick'))).toBeTrue();
         expect(preview.explanationLines.some((line) => line.includes('Explained Unit: production pick'))).toBeFalse();
@@ -656,7 +656,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.units[1].skill).toBe(4);
     });
 
-    it('returns an error when the minimum budget cannot be reached within the unit count range', () => {
+    it('returns the highest under-target result when the minimum budget cannot be reached within the unit count range', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
         const unit = createUnit({ id: 1, name: 'Too Cheap', as: { PV: 5 } as Unit['as'] });
@@ -674,7 +674,10 @@ describe('ForceGeneratorService', () => {
             piloting: 5,
         });
 
-        expect(preview.error).toContain('minimum is too high');
+        expect(preview.error).toBeNull();
+        expect(preview.totalCost).toBe(5);
+        expect(preview.units.map((generatedUnit) => generatedUnit.unit.name)).toEqual(['Too Cheap']);
+        expect(preview.explanationLines.some((line) => line.includes('No force matched the full budget and unit-count constraints'))).toBeTrue();
     });
 
     it('returns the lowest-total compatible force in the requested unit-count range when nothing can stay at or below the maximum budget', () => {
