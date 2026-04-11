@@ -358,6 +358,17 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(buildPreviewSpy.calls.mostRecent().args[0].preventDuplicateChassis).toBeTrue();
     });
 
+    it('renders the duplicate-chassis checkbox in the dialog controls', async () => {
+        const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        const checkbox = fixture.nativeElement.querySelector('.generator-option input.bt-checkbox') as HTMLInputElement | null;
+
+        expect(checkbox).not.toBeNull();
+        expect(fixture.nativeElement.textContent).toContain('Prevent Duplicate Chassis');
+    });
+
     it('toggles preview units in and out of the locked set', () => {
         const atlas = {
             id: 1,

@@ -167,6 +167,18 @@
                             (selectionChange)="onTagsSelectionChange($event)">
                         </multi-select-dropdown>
                     </div>
+
+                    <div class="form-fields span-all">
+                        <label class="generator-option">
+                            <input
+                                class="bt-checkbox"
+                                type="checkbox"
+                                [checked]="preventDuplicateChassis()"
+                                (change)="onPreventDuplicateChassisChange($event)" />
+                            <span class="generator-option-label">Prevent Duplicate Chassis</span>
+                        </label>
+                    </div>
+
                     <div class="eligible-count">
                         <span class="eligible-label">Eligible Units</span>
                         <span class="eligible-value">{{ eligibleUnits().length }}</span>
