@@ -1524,7 +1524,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         ],
         minUnits: 3,
         rulesRef: [{ book: Rulebook.BOT, page: 27 }],
-        requirements: (gameSystem) => {
+        requirements: () => {
             const gunnery = isAS ? '' : 'Gunnery ';
             const heavyOrAssault = isAS ? 'Size 3+, and no size 1' : 'heavy or assault, and no lights';
             return `Minimum 3 units. All must have ${gunnery}Skill 3 or lower. Must have 1 Aerospace Point. Others must be Mek or Battle Armor. If Mek, at least 2 units ${heavyOrAssault}.`;
@@ -1724,7 +1724,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 6,
         rulesRef: [{ book: Rulebook.CO, page: 68 }, { book: Rulebook.ASCE, page: 123 }],
-        requirements: (gameSystem) => {
+        requirements: () => {
             const aerospaceType = isAS ? 'type (AF, CF, SC, DS, SV, or DA)' : 'units';
             return `Minimum 6 units. All must be aerospace ${aerospaceType}. 50% or more must have the Transport role.`;
         },
