@@ -33,23 +33,42 @@
 
 import type { MultiStateOption, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import type { Unit } from '../models/units.model';
-import { ADVANCED_FILTERS, AS_MOVEMENT_MODE_DISPLAY_NAMES, type AdvFilterConfig, AdvFilterType, type FilterState } from '../services/unit-search-filters.model';
+import {
+    ADVANCED_FILTERS,
+    AS_MOVEMENT_MODE_DISPLAY_NAMES,
+    type AvailabilityFilterScope,
+    type AdvFilterConfig,
+    AdvFilterType,
+    type FilterState,
+} from '../services/unit-search-filters.model';
 import { getForcePackLookupKey } from './force-pack.util';
 import type { WildcardPattern } from './semantic-filter.util';
 import { wildcardToRegex } from './string.util';
-import { checkQuantityConstraint, getUnitComponentData } from './unit-search-shared.util';
+import {
+    checkQuantityConstraint,
+    getSelectedPositiveDropdownNames,
+    getUnitComponentData,
+    normalizeMultiStateSelection,
+} from './unit-search-shared.util';
 
 export interface UnitFilterKernelDependencies {
     getProperty: (unit: Unit, key?: string) => unknown;
     getAdjustedBV: (unit: Unit) => number;
     getAdjustedPV: (unit: Unit) => number;
-    getUnitIdsForSelectedEras: (selectedEraNames: string[]) => Set<number> | null;
+    getUnitIdsForSelectedEras: (selectedEraNames: string[]) => Set<string> | null;
     getUnitIdsForSelectedFactions: (
         selectedFactionEntries: MultiStateSelection,
         contextEraNames?: string[],
         wildcardPatterns?: WildcardPattern[],
-    ) => Set<number> | null;
+    ) => Set<string> | null;
+    getPositiveFactionNames: (
+        selectedFactionEntries: MultiStateSelection,
+        wildcardPatterns?: WildcardPattern[],
+    ) => string[];
+    unitMatchesAvailabilityFrom: (unit: Unit, availabilityFromName: string, scope?: AvailabilityFilterScope) => boolean;
+    unitMatchesAvailabilityRarity: (unit: Unit, rarityName: string, scope?: AvailabilityFilterScope) => boolean;
     getForcePackLookupSet: (packName: string) => ReadonlySet<string> | undefined;
+    getAvailabilityLookupKey: (unit: Unit) => string;
 }
 
 interface ApplyUnitFilterStateRequest {
@@ -207,21 +226,6 @@ function filterUnitsByMultiState(
     });
 }
 
-function getSelectedDropdownNames(value: unknown): string[] {
-    if (Array.isArray(value)) {
-        return value.filter((entry): entry is string => typeof entry === 'string');
-    }
-
-    if (!value || typeof value !== 'object') {
-        return [];
-    }
-
-    const selection = value as MultiStateSelection;
-    return Object.entries(selection)
-        .filter(([, option]) => option.state === 'or' || option.state === 'and')
-        .map(([name]) => name);
-}
-
 export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): Unit[] {
     const { units, state, dependencies, skipKey } = request;
     let results = units;
@@ -240,13 +244,19 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
         }
     }
 
-    const selectedEraNames = getSelectedDropdownNames(activeFilters['era']);
-    const selectedFactionEntries = activeFilters['faction'] as MultiStateSelection || {};
+    const selectedEraNames = getSelectedPositiveDropdownNames(activeFilters['era']);
+    const selectedFactionEntries = normalizeMultiStateSelection(activeFilters['faction']);
+    const selectedAvailabilityFromNames = getSelectedPositiveDropdownNames(activeFilters['availabilityFrom']);
+    const selectedAvailabilityRarityNames = getSelectedPositiveDropdownNames(activeFilters['availabilityRarity']);
 
-    let eraUnitIds: Set<number> | null = null;
-    let factionUnitIds: Set<number> | null = null;
+    let eraUnitIds: Set<string> | null = null;
+    let factionUnitIds: Set<string> | null = null;
     const factionFilterState = skipKey === 'faction' ? undefined : state['faction'];
     const factionWildcardPatterns = factionFilterState?.wildcardPatterns;
+    const positiveFactionNames = Object.values(selectedFactionEntries).some(selection => selection.state)
+        || (factionWildcardPatterns && factionWildcardPatterns.length > 0)
+        ? dependencies.getPositiveFactionNames(selectedFactionEntries, factionWildcardPatterns)
+        : [];
     if (Object.values(selectedFactionEntries).some(selection => selection.state) || (factionWildcardPatterns && factionWildcardPatterns.length > 0)) {
         factionUnitIds = dependencies.getUnitIdsForSelectedFactions(
             selectedFactionEntries,
@@ -258,19 +268,19 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
     }
 
     if (eraUnitIds || factionUnitIds) {
-        let finalIds: Set<number>;
+        let finalIds: Set<string>;
         if (eraUnitIds && factionUnitIds) {
             const [smaller, larger] = eraUnitIds.size <= factionUnitIds.size
                 ? [eraUnitIds, factionUnitIds]
                 : [factionUnitIds, eraUnitIds];
-            finalIds = new Set<number>();
+            finalIds = new Set<string>();
             for (const id of smaller) {
                 if (larger.has(id)) finalIds.add(id);
             }
         } else {
             finalIds = (eraUnitIds || factionUnitIds)!;
         }
-        results = results.filter(unit => finalIds.has(unit.id));
+        results = results.filter(unit => finalIds.has(dependencies.getAvailabilityLookupKey(unit)));
     }
 
     const selectedForcePackNames = activeFilters['forcePack'] as string[] || [];
@@ -285,12 +295,40 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
         results = results.filter(unit => lookupKeySet.has(getForcePackLookupKey(unit)));
     }
 
+    const availabilityScope: AvailabilityFilterScope = {
+        ...(selectedEraNames.length > 0 ? { eraNames: selectedEraNames } : {}),
+        ...(positiveFactionNames.length > 0 ? { factionNames: positiveFactionNames } : {}),
+        ...(selectedAvailabilityFromNames.length > 0 ? { availabilityFromNames: selectedAvailabilityFromNames } : {}),
+    };
+
+    if (selectedAvailabilityFromNames.length > 0) {
+        results = results.filter(unit => (
+            selectedAvailabilityFromNames.some(availabilityFromName => (
+                dependencies.unitMatchesAvailabilityFrom(unit, availabilityFromName, availabilityScope)
+            ))
+        ));
+    }
+
+    if (selectedAvailabilityRarityNames.length > 0) {
+        results = results.filter(unit => (
+            selectedAvailabilityRarityNames.some(rarityName => (
+                dependencies.unitMatchesAvailabilityRarity(unit, rarityName, availabilityScope)
+            ))
+        ));
+    }
+
     for (const { conf, filterState } of activeStandardFilters) {
         const val = filterState.value;
         const wildcardPatterns = filterState.wildcardPatterns;
 
-        if (conf.type === AdvFilterType.DROPDOWN && conf.multistate && val && typeof val === 'object') {
-            results = filterUnitsByMultiState(results, conf.key, val as MultiStateSelection, dependencies.getProperty, wildcardPatterns);
+        if (conf.type === AdvFilterType.DROPDOWN && conf.multistate) {
+            results = filterUnitsByMultiState(
+                results,
+                conf.key,
+                normalizeMultiStateSelection(val),
+                dependencies.getProperty,
+                wildcardPatterns,
+            );
             continue;
         }
 

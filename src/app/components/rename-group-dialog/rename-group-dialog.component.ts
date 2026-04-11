@@ -35,6 +35,7 @@
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, type ElementRef, inject, Injector, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
+import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { takeUntilDestroyed, outputToObservable } from '@angular/core/rxjs-interop';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import type { Force, UnitGroup } from '../../models/force.model';
@@ -132,10 +133,10 @@ export interface RenameGroupDialogResult {
                 <div class="formation-warning-body">
                   <strong>Missing requirements:</strong>
                   @if (getParentRequirementsText(formation); as parentReqText) {
-                    <span class="formation-warning-req"><strong>{{ getParentFormationName(formation) }}:</strong> {{ parentReqText }}</span>
-                    <span class="formation-warning-req"><strong>{{ formation.name }}:</strong> {{ reqText }}</span>
+                    <span class="formation-warning-req"><strong>{{ getParentFormationName(formation) }}:</strong> <span [innerHTML]="asTrustedHtml(parentReqText)"></span></span>
+                    <span class="formation-warning-req"><strong>{{ formation.name }}:</strong> <span [innerHTML]="asTrustedHtml(reqText)"></span></span>
                   } @else {
-                    <span class="formation-warning-req">{{ reqText }}</span>
+                    <span class="formation-warning-req" [innerHTML]="asTrustedHtml(reqText)"></span>
                   }
                 </div>
               } @else {
@@ -338,6 +339,7 @@ export class RenameGroupDialogComponent {
     private overlayManager = inject(OverlayManagerService);
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
+    private sanitizer = inject(DomSanitizer);
 
     /** Tracks whether the name input has text */
     nameHasText = signal<boolean>(!!this.data.group.name());
@@ -439,6 +441,10 @@ export class RenameGroupDialogComponent {
     getParentFormationName(formation: FormationTypeDefinition): string {
         if (!formation.parent) return '';
         return FORMATION_DEFINITIONS.find(d => d.id === formation.parent)?.name ?? '';
+    }
+
+    asTrustedHtml(html: string): SafeHtml {
+      return this.sanitizer.bypassSecurityTrustHtml(html);
     }
 
     /** Compose a display name for a formation definition */

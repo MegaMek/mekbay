@@ -35,42 +35,16 @@ const fs = require('fs');
 const path = require('path');
 const JSZip = require('jszip');
 const crypto = require('crypto');
+const { loadOptionalEnvFile, resolveMmDataRoot } = require('./lib/script-paths.js');
 
 const root = path.resolve(__dirname, '..');
 
-// Load .env file if it exists to support local configuration overrides
-const envPath = path.join(root, '.env');
-if (fs.existsSync(envPath)) {
-  try {
-    const envContent = fs.readFileSync(envPath, 'utf8');
-    envContent.split(/\r?\n/).forEach(line => {
-      line = line.trim();
-      if (!line || line.startsWith('#')) return;
-      const parts = line.split('=');
-      if (parts.length >= 2) {
-        const key = parts[0].trim();
-        let value = parts.slice(1).join('=').trim();
-        // Remove quotes if present
-        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-          value = value.slice(1, -1);
-        }
-        if (!process.env[key]) {
-          process.env[key] = value;
-        }
-      }
-    });
-    console.log(`[Compress] Loaded configuration from ${envPath}`);
-  } catch (e) {
-    console.warn('[Compress] Failed to parse .env file:', e.message);
-  }
-}
+loadOptionalEnvFile(root, { logPrefix: 'Compress' });
 
-// Configuration:
-// MM_DATA_PATH can be set in .env or environment variables.
-// Default assumes mm-data is located at ../mm-data relative to this project root.
-const mmDataPath = process.env.MM_DATA_PATH || '../mm-data';
-const unitIconsDir = path.resolve(root, mmDataPath, 'data/images/units');
+const mmDataRoot = resolveMmDataRoot(root, { allowMissing: true });
+const unitIconsDir = path.join(mmDataRoot, 'data/images/units');
 
+console.log(`[Compress] Using MM data from: ${mmDataRoot}`);
 console.log(`[Compress] Using unit icons from: ${unitIconsDir}`);
 
 const unitIconsOutputZip = path.join(root, 'public', 'zip', 'unitIcons.zip');
