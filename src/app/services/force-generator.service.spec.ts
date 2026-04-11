@@ -463,7 +463,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.explanationLines[0]).toContain('Candidates: 1 units.');
     });
 
-    it('falls back to minimum unknown weights for MUL-visible units when MegaMek has no positive exact-context weight', () => {
+    it('uses exact MegaMek weights for MUL-visible units when MegaMek has an exact-context record', () => {
         const era = createEra(3150, 'Jihad');
         const faction = createFaction(10, 'Draconis Combine');
         const mulVisibleUnit = createUnit({ id: 1, name: 'MUL Visible Unit', as: { PV: 5 } as Unit['as'] });
@@ -501,9 +501,8 @@ describe('ForceGeneratorService', () => {
             piloting: 5,
         });
 
-        expect(preview.error).toBeNull();
-        expect(preview.units.map((generatedUnit) => generatedUnit.unit.name)).toEqual(['MUL Visible Unit']);
-        expect(preview.explanationLines.some((line) => line.includes('P 1 / S 1'))).toBeTrue();
+        expect(preview.error).toBe('Only 0 units have positive MegaMek availability in the rolled faction and era.');
+        expect(preview.units.length).toBe(0);
     });
 
     it('keeps excluding zero-weight MegaMek units in MUL mode when the exact rolled MUL faction-era does not contain them', () => {
