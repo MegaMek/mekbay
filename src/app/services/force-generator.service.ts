@@ -1551,6 +1551,20 @@ export class ForceGeneratorService {
         const forceFactionId = context.forceFaction?.id;
         if (forceEraId !== undefined && forceFactionId !== undefined) {
             const exactValue = availabilityRecord.e[String(forceEraId)]?.[String(forceFactionId)];
+
+            // Fallback so we pick also units that have no RAT data when we are in MUL mode
+            if ((exactValue?.[0] ?? 0) > 0 || (exactValue?.[1] ?? 0) > 0) {
+                return {
+                    production: exactValue?.[0] ?? 0,
+                    salvage: exactValue?.[1] ?? 0,
+                };
+            }
+            const mulFallbackWeights = this.getMulContextFallbackWeights(unit, context);
+            if (mulFallbackWeights) {
+                return mulFallbackWeights;
+            }
+            // End fallback
+
             return {
                 production: exactValue?.[0] ?? 0,
                 salvage: exactValue?.[1] ?? 0,
@@ -1579,6 +1593,32 @@ export class ForceGeneratorService {
         return {
             production: productionWeight / pairCount,
             salvage: salvageWeight / pairCount,
+        };
+    }
+
+    private getMulContextFallbackWeights(
+        unit: Unit,
+        context: ForceGenerationContext,
+    ): { production: number; salvage: number } | null {
+        if (this.unitAvailabilitySource.useMegaMekAvailability()) {
+            return null;
+        }
+
+        const forceFaction = context.forceFaction;
+        const forceEra = context.forceEra;
+        if (!forceFaction || !forceEra) {
+            return null;
+        }
+
+        const mulUnitIds = this.unitAvailabilitySource.getFactionEraUnitIds(forceFaction, forceEra, 'mul');
+        const mulUnitKey = this.unitAvailabilitySource.getUnitAvailabilityKey(unit, 'mul');
+        if (!mulUnitIds.has(mulUnitKey)) {
+            return null;
+        }
+
+        return {
+            production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+            salvage: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
         };
     }
 
@@ -1614,7 +1654,7 @@ export class ForceGeneratorService {
         const lines: string[] = [];
         const budgetLabel = gameSystem === GameSystem.ALPHA_STRIKE ? 'PV' : 'BV';
         const maxLabel = Number.isFinite(budgetRange.max) ? budgetRange.max.toLocaleString() : 'no max';
-        lines.push(`Eligible pool: ${eligibleUnitCount} units. Target: ${minUnitCount}-${maxUnitCount} units, ${budgetLabel} ${budgetRange.min.toLocaleString()} to ${maxLabel}.`);
+        lines.push(`Candidates: ${eligibleUnitCount} units. Target: ${minUnitCount}-${maxUnitCount} units, ${budgetLabel} ${budgetRange.min.toLocaleString()} to ${maxLabel}.`);
 
         const contextParts = [context.forceFaction?.name, context.forceEra?.name].filter(Boolean);
         if (contextParts.length > 0) {
