@@ -44,7 +44,7 @@ export function hexDisplay(summaries: string[]): string[] {
         }
         return text.replace(/\[\[(\d+)\]\]/g, (_, numValue) => {
             const val = parseInt(numValue, 10);
-            return useHex ? `${Math.round(val / 2)}⬢` : `${val}"`;
+            return useHex ? `${Math.floor(val) / 2}⬢` : `${val}"`;
         });
     });
 }
@@ -1594,7 +1594,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             rulesRef: [{ book: Rulebook.ASCE, page: 101 }],
             unitType: "CI (foot motive type only)",
             unitTypeFilter: ['CI'],
-            summary: ["Foot infantry receives +[[2]] Move per turn, reduces additional movement costs for woods, jungle, rough, rubble, and building terrain by [[1]] per inch of travel, and halves elevation change costs (min +[[0]])."],
+            summary: ["Foot infantry receives +[[2]] Move per turn, reduces additional movement costs for woods, jungle, rough, rubble, and building terrain by [[1]] per [[1]] of travel, and halves elevation change costs (min +[[0]])."],
             description: [
                 "The foot cavalry\u2019s squad leader has trained for endurance running, even in full combat gear\u2014and pushes their troops hard to keep them up to their level.",
                 "A conventional foot infantry unit with this SPA receives an additional 2 inches of movement per turn, and reduces the additional movement costs for all wooded, jungle, rough, rubble, and building terrain types by 1 inch per inch of travel and halves the elevation change movement costs (to a minimum added movement cost of +0 inches).",
