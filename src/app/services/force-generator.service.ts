@@ -55,15 +55,17 @@ import { MAX_UNITS as FORCE_MAX_UNITS } from '../models/force.model';
 import { MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.model';
 import type { Options } from '../models/options.model';
 import type { Unit } from '../models/units.model';
-import { resolveOrgDefinitionSpec } from '../utils/org/org-registry.util';
+import { resolveOrgDefinition } from '../utils/org/org-registry.util';
 import { resolveFromUnits } from '../utils/org/org-solver.util';
-import type { GroupSizeResult, OrgDefinitionSpec, OrgRuleDefinition, OrgType } from '../utils/org/org-types';
+import type { GroupSizeResult, OrgDefinition, OrgRuleDefinition, OrgType } from '../utils/org/org-types';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import { getPositiveFactionNamesFromFilter } from '../utils/faction-filter.util';
 import { ForceNamerUtil } from '../utils/force-namer.util';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
+import { getSelectedPositiveDropdownNames, normalizeMultiStateSelection } from '../utils/unit-search-shared.util';
 import { DataService } from './data.service';
+import { UnitAvailabilitySourceService } from './unit-availability-source.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 
 /**
@@ -407,6 +409,20 @@ function getBudgetMetric(unit: Unit, gameSystem: GameSystem, gunnery: number, pi
     return Math.max(0, BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, getEffectivePilotingSkill(unit, piloting)));
 }
 
+function setHasAny<T>(left: ReadonlySet<T>, right: ReadonlySet<T>): boolean {
+    const [smaller, larger] = left.size <= right.size
+        ? [left, right]
+        : [right, left];
+
+    for (const value of smaller) {
+        if (larger.has(value)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function getMinimumMetricTotal(
     values: readonly number[],
     count: number,
@@ -542,12 +558,12 @@ function getRuleRegularCount(rule: Pick<OrgRuleDefinition, 'modifiers'>): number
     return typeof regularValue === 'number' ? regularValue : regularValue.count;
 }
 
-function findOrgRuleByType(definition: OrgDefinitionSpec, type: OrgType): OrgRuleDefinition | undefined {
+function findOrgRuleByType(definition: OrgDefinition, type: OrgType): OrgRuleDefinition | undefined {
     return definition.rules.find((rule) => rule.type === type);
 }
 
 function resolveRegularUnitCountForOrgType(
-    definition: OrgDefinitionSpec,
+    definition: OrgDefinition,
     type: OrgType,
     visited: Set<OrgType> = new Set<OrgType>(),
 ): number | undefined {
@@ -586,7 +602,7 @@ function resolveRegularUnitCountForOrgType(
 
 function getPreferredUnitCountForEchelon(
     echelon: string | undefined,
-    definition: OrgDefinitionSpec | null,
+    definition: OrgDefinition | null,
 ): number | undefined {
     if (!echelon) {
         return undefined;
@@ -796,6 +812,7 @@ function toMegaMekMotive(unit: Unit): string | undefined {
 export class ForceGeneratorService {
     private readonly dataService = inject(DataService);
     private readonly filtersService = inject(UnitSearchFiltersService);
+    private readonly unitAvailabilitySource = inject(UnitAvailabilitySourceService);
 
     public resolveInitialBudgetDefaults(
         options: Pick<Options,
@@ -888,11 +905,13 @@ export class ForceGeneratorService {
 
     public resolveGenerationContext(eligibleUnits: readonly Unit[]): ForceGenerationContext {
         const selectedEras = this.resolveSelectedEras();
+        const excludedEraIds = this.resolveExcludedEraIds();
         const selectedFactions = this.resolveSelectedFactions();
         const availablePairs = this.collectPositiveAvailabilityPairs(
             eligibleUnits,
             selectedEras.map((era) => era.id),
             selectedFactions.map((faction) => faction.id),
+            excludedEraIds,
         );
         const forceFaction = this.pickForceFaction(selectedFactions, availablePairs);
         const forceEra = this.pickForceEra(selectedEras, forceFaction, availablePairs);
@@ -1285,13 +1304,34 @@ export class ForceGeneratorService {
 
     private resolveSelectedEras(): Era[] {
         const filterState = this.filtersService.effectiveFilterState()['era'];
-        if (!filterState?.interactedWith || !Array.isArray(filterState.value) || filterState.value.length === 0) {
+        if (!filterState?.interactedWith) {
             return [];
         }
 
-        return filterState.value
+        return getSelectedPositiveDropdownNames(filterState.value)
             .map((eraName) => this.dataService.getEraByName(eraName))
             .filter((era): era is Era => era !== undefined);
+    }
+
+    private resolveExcludedEraIds(): Set<number> {
+        const filterState = this.filtersService.effectiveFilterState()['era'];
+        if (!filterState?.interactedWith) {
+            return new Set<number>();
+        }
+
+        const excludedEraIds = new Set<number>();
+        for (const selection of Object.values(normalizeMultiStateSelection(filterState.value))) {
+            if (selection.state !== 'not') {
+                continue;
+            }
+
+            const eraId = this.dataService.getEraByName(selection.name)?.id;
+            if (eraId !== undefined) {
+                excludedEraIds.add(eraId);
+            }
+        }
+
+        return excludedEraIds;
     }
 
     private resolveSelectedFactions(): Faction[] {
@@ -1311,43 +1351,47 @@ export class ForceGeneratorService {
         eligibleUnits: readonly Unit[],
         eraIds: readonly number[],
         factionIds: readonly number[],
+        excludedEraIds: ReadonlySet<number> = new Set<number>(),
     ): ForceGenerationAvailabilityPair[] {
         const scopedEraIds = new Set(eraIds);
         const scopedFactionIds = new Set(factionIds);
-        const pairMap = new Map<string, ForceGenerationAvailabilityPair>();
+        const eligibleUnitIds = new Set(
+            eligibleUnits.map((unit) => this.unitAvailabilitySource.getUnitAvailabilityKey(unit)),
+        );
 
-        for (const unit of eligibleUnits) {
-            const availabilityRecord = this.dataService.getMegaMekAvailabilityRecordForUnit(unit);
-            if (!availabilityRecord) {
-                continue;
-            }
+        if (eligibleUnitIds.size === 0) {
+            return [];
+        }
 
-            for (const [eraIdText, eraAvailability] of Object.entries(availabilityRecord.e)) {
-                const eraId = Number(eraIdText);
-                if (Number.isNaN(eraId) || (scopedEraIds.size > 0 && !scopedEraIds.has(eraId))) {
+        const candidateEras = (scopedEraIds.size > 0
+            ? [...scopedEraIds]
+                .map((eraId) => this.dataService.getEraById(eraId))
+                .filter((era): era is Era => era !== undefined)
+            : this.dataService.getEras())
+            .filter((era) => !excludedEraIds.has(era.id));
+        const candidateFactions = (scopedFactionIds.size > 0
+            ? [...scopedFactionIds]
+                .map((factionId) => this.dataService.getFactionById(factionId))
+                .filter((faction): faction is Faction => faction !== undefined)
+            : this.dataService.getFactions())
+            .filter((faction) => faction.id !== MULFACTION_EXTINCT);
+
+        const pairs: ForceGenerationAvailabilityPair[] = [];
+        for (const era of candidateEras) {
+            for (const faction of candidateFactions) {
+                const availableUnitIds = this.unitAvailabilitySource.getFactionEraUnitIds(faction, era);
+                if (!setHasAny(eligibleUnitIds, availableUnitIds)) {
                     continue;
                 }
 
-                for (const [factionIdText, value] of Object.entries(eraAvailability)) {
-                    const factionId = Number(factionIdText);
-                    if (
-                        Number.isNaN(factionId)
-                        || factionId === MULFACTION_EXTINCT
-                        || (scopedFactionIds.size > 0 && !scopedFactionIds.has(factionId))
-                    ) {
-                        continue;
-                    }
-
-                    if ((value[0] ?? 0) + (value[1] ?? 0) <= 0) {
-                        continue;
-                    }
-
-                    pairMap.set(buildAvailabilityPairKey(eraId, factionId), { eraId, factionId });
-                }
+                pairs.push({
+                    eraId: era.id,
+                    factionId: faction.id,
+                });
             }
         }
 
-        return [...pairMap.values()];
+        return pairs;
     }
 
     private pickForceFaction(
@@ -2163,7 +2207,7 @@ export class ForceGeneratorService {
             factionKey: rulesetContext.primary?.factionKey,
             topLevel: true,
         };
-        const orgDefinition = context.forceFaction ? resolveOrgDefinitionSpec(context.forceFaction, context.forceEra) : null;
+        const orgDefinition = context.forceFaction ? resolveOrgDefinition(context.forceFaction, context.forceEra) : null;
         const topLevelMatchContext = this.resolveAttemptTopLevelMatchContext(
             rulesetContext.chain,
             candidates,
@@ -2227,7 +2271,7 @@ export class ForceGeneratorService {
         baseMatchContext: RulesetMatchContext,
         minUnitCount: number,
         maxUnitCount: number,
-        orgDefinition: OrgDefinitionSpec | null,
+        orgDefinition: OrgDefinition | null,
     ): RulesetMatchContext {
         const unitTypeChoices = this.getTopLevelUnitTypeChoices(
             rulesetChain,
@@ -2281,7 +2325,7 @@ export class ForceGeneratorService {
         baseMatchContext: RulesetMatchContext,
         minUnitCount: number,
         maxUnitCount: number,
-        orgDefinition: OrgDefinitionSpec | null,
+        orgDefinition: OrgDefinition | null,
     ): ForceGenerationTopLevelUnitTypeChoice[] {
         return this.getCandidateUnitTypeSummaries(candidates)
             .map((summary) => {
@@ -2311,7 +2355,7 @@ export class ForceGeneratorService {
         minUnitCount: number,
         maxUnitCount: number,
         candidateCount: number,
-        orgDefinition: OrgDefinitionSpec | null,
+        orgDefinition: OrgDefinition | null,
     ): ForceGenerationTopLevelEchelonOption[] {
         for (const ruleset of rulesetChain) {
             const matchingOptions = (ruleset.toc?.echelon?.options ?? [])
@@ -2419,7 +2463,7 @@ export class ForceGeneratorService {
             return [...candidates];
         }
 
-        const orgDefinition = context.forceFaction ? resolveOrgDefinitionSpec(context.forceFaction, context.forceEra) : null;
+        const orgDefinition = context.forceFaction ? resolveOrgDefinition(context.forceFaction, context.forceEra) : null;
         const unitTypeChoices = this.getTopLevelUnitTypeChoices(
             rulesetContext.chain,
             candidates,

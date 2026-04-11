@@ -7,10 +7,13 @@ import type { Faction } from '../models/factions.model';
 import type { MegaMekFactionRecord } from '../models/megamek/factions.model';
 import type { MegaMekRulesetRecord } from '../models/megamek/rulesets.model';
 import { MULFACTION_MERCENARY } from '../models/mulfactions.model';
+import type { AvailabilitySource } from '../models/options.model';
 import type { Unit } from '../models/units.model';
 import { DataService } from './data.service';
 import type { ForceGenerationContext } from './force-generator.service';
 import { ForceGeneratorService } from './force-generator.service';
+import { OptionsService } from './options.service';
+import { UnitAvailabilitySourceService } from './unit-availability-source.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 
 describe('ForceGeneratorService', () => {
@@ -22,9 +25,14 @@ describe('ForceGeneratorService', () => {
     const factionsByName = new Map<string, Faction>();
     const factionsById = new Map<number, Faction>();
     const megaMekAvailabilityByUnitName = new Map<string, { e: Record<string, Record<string, [number, number]>> }>();
+    const megaMekAvailabilityRecords: Array<{ e: Record<string, Record<string, [number, number]>> }> = [];
     const megaMekRulesetsByMulFactionId = new Map<number, MegaMekRulesetRecord[]>();
     const megaMekRulesetsByFactionKey = new Map<string, MegaMekRulesetRecord>();
     const megaMekFactionsByKey = new Map<string, MegaMekFactionRecord>();
+    const units: Unit[] = [];
+    const optionsServiceMock = {
+        options: signal<{ availabilitySource: AvailabilitySource }>({ availabilitySource: 'megamek' }),
+    };
 
     const filtersServiceMock = {
         filteredUnits: signal<Unit[]>([]),
@@ -32,12 +40,15 @@ describe('ForceGeneratorService', () => {
     };
 
     const dataServiceMock = {
+        searchCorpusVersion: signal(1),
+        getUnits: jasmine.createSpy('getUnits').and.callFake(() => units),
         getEras: jasmine.createSpy('getEras').and.callFake(() => [...erasById.values()]),
         getEraById: jasmine.createSpy('getEraById').and.callFake((id: number) => erasById.get(id)),
         getEraByName: jasmine.createSpy('getEraByName').and.callFake((name: string) => erasByName.get(name)),
         getFactions: jasmine.createSpy('getFactions').and.callFake(() => [...factionsById.values()]),
         getFactionById: jasmine.createSpy('getFactionById').and.callFake((id: number) => factionsById.get(id)),
         getFactionByName: jasmine.createSpy('getFactionByName').and.callFake((name: string) => factionsByName.get(name)),
+        getMegaMekAvailabilityRecords: jasmine.createSpy('getMegaMekAvailabilityRecords').and.callFake(() => megaMekAvailabilityRecords),
         getMegaMekAvailabilityRecordForUnit: jasmine.createSpy('getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
             return megaMekAvailabilityByUnitName.get(unit.name);
         }),
@@ -106,9 +117,13 @@ describe('ForceGeneratorService', () => {
         factionsByName.clear();
         factionsById.clear();
         megaMekAvailabilityByUnitName.clear();
+        megaMekAvailabilityRecords.length = 0;
         megaMekRulesetsByMulFactionId.clear();
         megaMekRulesetsByFactionKey.clear();
         megaMekFactionsByKey.clear();
+        units.length = 0;
+        dataServiceMock.searchCorpusVersion.set(1);
+        optionsServiceMock.options.set({ availabilitySource: 'megamek' });
 
         filtersServiceMock.filteredUnits.set([]);
         filtersServiceMock.effectiveFilterState.calls.reset();
@@ -126,6 +141,8 @@ describe('ForceGeneratorService', () => {
             providers: [
                 ForceGeneratorService,
                 { provide: DataService, useValue: dataServiceMock },
+                { provide: OptionsService, useValue: optionsServiceMock },
+                UnitAvailabilitySourceService,
                 { provide: UnitSearchFiltersService, useValue: filtersServiceMock },
             ],
         });
@@ -231,14 +248,17 @@ describe('ForceGeneratorService', () => {
         factionsById.set(federatedSuns.id, federatedSuns);
         factionsById.set(lyranAlliance.id, lyranAlliance);
         factionsById.set(mercenary.id, mercenary);
-        megaMekAvailabilityByUnitName.set(unit.name, {
+        const availabilityRecord: { e: Record<string, Record<string, [number, number]>> } = {
             e: {
                 '3150': {
                     '10': [3, 1],
                     '20': [2, 2],
                 },
             },
-        });
+        };
+        megaMekAvailabilityByUnitName.set(unit.name, availabilityRecord);
+        megaMekAvailabilityRecords.push(availabilityRecord);
+        units.push(unit);
 
         filtersServiceMock.effectiveFilterState.and.returnValue({
             era: {
@@ -263,6 +283,101 @@ describe('ForceGeneratorService', () => {
         expect(context.forceFaction).toBe(lyranAlliance);
         expect(context.forceEra).toBe(era);
         expect(context.availablePairCount).toBe(2);
+    });
+
+    it('resolves positive multistate era selections from the active filter', () => {
+        const ilClan = createEra(3150, 'ilClan');
+        const clanInvasion = createEra(3052, 'Clan Invasion');
+        const jihad = createEra(3067, 'Jihad');
+
+        erasByName.set(ilClan.name, ilClan);
+        erasById.set(ilClan.id, ilClan);
+        erasByName.set(clanInvasion.name, clanInvasion);
+        erasById.set(clanInvasion.id, clanInvasion);
+        erasByName.set(jihad.name, jihad);
+        erasById.set(jihad.id, jihad);
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            era: {
+                interactedWith: true,
+                value: {
+                    ilClan: {
+                        name: 'ilClan',
+                        state: 'or',
+                        count: 1,
+                    },
+                    'Clan Invasion': {
+                        name: 'Clan Invasion',
+                        state: 'and',
+                        count: 1,
+                    },
+                    Jihad: {
+                        name: 'Jihad',
+                        state: 'not',
+                        count: 1,
+                    },
+                },
+            },
+        });
+
+        expect(((service as any).resolveSelectedEras() as Era[]).map((era) => era.name)).toEqual([
+            'ilClan',
+            'Clan Invasion',
+        ]);
+    });
+
+    it('uses the active MUL availability source when rolling the force era', () => {
+        const ageOfWar = createEra(2570, 'Age of War', 2570, 2780);
+        const civilWar = createEra(3067, 'Civil War', 3062, 3067);
+        const capellanConfederation = createFaction(10, 'Capellan Confederation');
+        const unit = createUnit({ id: 1, name: 'Vindicator' });
+        const availabilityRecord: { e: Record<string, Record<string, [number, number]>> } = {
+            e: {
+                '2570': {
+                    '10': [3, 0],
+                },
+                '3067': {
+                    '10': [3, 0],
+                },
+            },
+        };
+
+        ageOfWar.units = new Set<number>();
+        civilWar.units = new Set<number>([unit.id]);
+        capellanConfederation.eras = {
+            [civilWar.id]: new Set<number>([unit.id]),
+        };
+
+        erasByName.set(ageOfWar.name, ageOfWar);
+        erasById.set(ageOfWar.id, ageOfWar);
+        erasByName.set(civilWar.name, civilWar);
+        erasById.set(civilWar.id, civilWar);
+        factionsByName.set(capellanConfederation.name, capellanConfederation);
+        factionsById.set(capellanConfederation.id, capellanConfederation);
+        megaMekAvailabilityByUnitName.set(unit.name, availabilityRecord);
+        megaMekAvailabilityRecords.push(availabilityRecord);
+        units.push(unit);
+        optionsServiceMock.options.set({ availabilitySource: 'mul' });
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            faction: {
+                interactedWith: true,
+                value: {
+                    cc: {
+                        name: 'Capellan Confederation',
+                        state: 'or',
+                        count: 1,
+                    },
+                },
+            },
+        });
+
+        const context = service.resolveGenerationContext([unit]);
+
+        expect(context.forceFaction).toBe(capellanConfederation);
+        expect(context.forceEra).toBe(civilWar);
+        expect(context.averagingEraIds).toEqual([civilWar.id]);
+        expect(context.availablePairCount).toBe(1);
     });
 
     it('prefers the higher MegaMek availability weight and falls back unknown units to weight 2', () => {
@@ -618,7 +733,7 @@ describe('ForceGeneratorService', () => {
         expect(service.createForceEntry(preview)).not.toBeNull();
     });
 
-    it('keeps retrying until the 300ms no-match search window expires', () => {
+    it('keeps retrying until the no-match search window expires', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
         const lightUnit = createUnit({ id: 1, name: 'Light Unit', as: { PV: 4 } as Unit['as'] });
@@ -647,8 +762,8 @@ describe('ForceGeneratorService', () => {
         expect(preview.error).toBeNull();
         expect(preview.units.length).toBe(1);
         expect(service.createForceEntry(preview)).not.toBeNull();
-        expect(buildSelectionSpy.calls.count()).toBeGreaterThan(10);
-        expect(buildSelectionSpy.calls.count()).toBeLessThan(20);
+        expect(buildSelectionSpy.calls.count()).toBeGreaterThan(8);
+        expect(buildSelectionSpy.calls.count()).toBeLessThan(12);
     });
 
     it('returns the highest failed attempt that does not exceed the target even if another attempt is closer on unit count', () => {
@@ -1419,32 +1534,9 @@ describe('ForceGeneratorService', () => {
 
         expect(preview.error).toBeNull();
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Lance 1', 'Lance 2', 'Lance 3', 'Lance 4']);
+        expect(preview.totalCost).toBe(5800);
         expect(preview.explanationLines.some((line) => line.includes('Resolved org shape: Lance.'))).toBeTrue();
-
-        const successfulAttemptCalls = consoleLogSpy.calls.allArgs()
-            .filter(([message]) => message === '[ForceGenerator] Successful attempt');
-        expect(successfulAttemptCalls.length).toBe(2);
-        expect(successfulAttemptCalls[0][1]).toEqual(jasmine.objectContaining({
-            attempt: 1,
-            echelon: 'LANCE',
-            totalCost: 5880,
-            becameBest: true,
-        }));
-        expect(successfulAttemptCalls[1][1]).toEqual(jasmine.objectContaining({
-            attempt: 2,
-            echelon: 'LANCE',
-            totalCost: 5800,
-            becameBest: true,
-        }));
-        expect(String(successfulAttemptCalls[1][1].decision)).toContain('Higher structure score');
-
-        const finalDecisionCall = consoleLogSpy.calls.allArgs()
-            .find(([message]) => message === '[ForceGenerator] Best successful attempt selected');
-        expect(finalDecisionCall).toBeDefined();
-        expect(finalDecisionCall?.[1]).toEqual(jasmine.objectContaining({
-            attempt: 2,
-        }));
-        expect(String(finalDecisionCall?.[1].reason ?? '')).toContain('perfect structure match');
+        expect(callCount).toBe(2);
     });
 
     it('prefers a squadron-shaped valid force over a company-shaped valid force when the ruleset selects SQUADRON', () => {

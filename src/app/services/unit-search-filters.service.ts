@@ -69,7 +69,13 @@ import {
     getSemanticFilterKeysFromParsed,
     type UnitSearchSemanticStateDependencies,
 } from '../utils/unit-search-semantic-state.util';
-import { getProperty, getUnitComponentData, measureStage } from '../utils/unit-search-shared.util';
+import {
+    getProperty,
+    getSelectedPositiveDropdownNames,
+    getUnitComponentData,
+    measureStage,
+    normalizeMultiStateSelection,
+} from '../utils/unit-search-shared.util';
 import { executeUnitSearch } from '../utils/unit-search-executor.util';
 import { UnitSearchWorkerClient } from '../utils/unit-search-worker-client.util';
 import { SEARCH_WORKER_FACTORY } from '../utils/unit-search-worker-factory.util';
@@ -415,11 +421,11 @@ export class UnitSearchFiltersService {
     }
 
     private getSelectedRegularDropdownNames(filterStateEntry?: FilterState[string]): string[] {
-        if (!filterStateEntry?.interactedWith || !Array.isArray(filterStateEntry.value)) {
+        if (!filterStateEntry?.interactedWith) {
             return [];
         }
 
-        return filterStateEntry.value.filter((value): value is string => typeof value === 'string' && value.length > 0);
+        return getSelectedPositiveDropdownNames(filterStateEntry.value);
     }
 
     private getPositiveFactionNames(filterStateEntry?: FilterState[string]): string[] {
@@ -427,7 +433,7 @@ export class UnitSearchFiltersService {
             return [];
         }
 
-        const selection = filterStateEntry.value as MultiStateSelection;
+        const selection = normalizeMultiStateSelection(filterStateEntry.value);
         const allFactionNames = this.dataService.getFactions().map(faction => faction.name);
         const resolved = resolveFactionNamesFromFilter(selection, allFactionNames, filterStateEntry.wildcardPatterns);
 
@@ -1231,7 +1237,10 @@ export class UnitSearchFiltersService {
         const cacheKey = `${conf.key}|${conf.sortOptions?.join('\u0001') ?? ''}|${cacheVersion}`;
         let cached = this.indexedUniverseNamesCache.get(cacheKey);
         if (!cached) {
-            cached = sortAvailableDropdownOptions(this.getIndexedUniverseNames(conf.key), conf.sortOptions);
+            const optionNames = this.getIndexedUniverseNames(conf.key);
+            cached = conf.key === 'era' && (!conf.sortOptions || conf.sortOptions.length === 0)
+                ? optionNames
+                : sortAvailableDropdownOptions(optionNames, conf.sortOptions);
             this.indexedUniverseNamesCache.set(cacheKey, cached);
         }
         return cached;
@@ -2000,6 +2009,10 @@ export class UnitSearchFiltersService {
     setFilter(key: string, value: any) {
         const conf = getAdvancedFilterConfigByKey(key);
         if (!conf) return;
+
+        if (conf.type === AdvFilterType.DROPDOWN && conf.multistate) {
+            value = normalizeMultiStateSelection(value);
+        }
 
         let interacted = true;
         let atLeftBoundary = false;

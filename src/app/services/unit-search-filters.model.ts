@@ -33,6 +33,7 @@
 
 import { GameSystem } from '../models/common.model';
 import type { AvailabilitySource } from '../models/options.model';
+import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import {
     MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS,
     MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS,
@@ -146,7 +147,7 @@ export type DropdownFilterOptions = {
     type: 'dropdown';
     label: string;
     options: { name: string, img?: string, displayName?: string, available?: boolean }[];
-    value: string[];
+    value: string[] | MultiStateSelection;
     interacted: boolean;
     semanticOnly?: boolean;  // True if this filter has semantic-only constraints (values not in options)
     displayText?: string;    // Display text for semantic-only values (plain string fallback)
@@ -307,7 +308,7 @@ export interface SemanticFilterConfig {
 
 /** Dropdown filters - separated for clean iteration */
 export const DROPDOWN_FILTERS: readonly DropdownFilterConfig[] = Object.freeze([
-    { key: 'era', semanticKey: 'era', label: 'Era', external: true, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
+    { key: 'era', semanticKey: 'era', label: 'Era', external: true, multistate: true, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
     { key: 'faction', semanticKey: 'faction', label: 'Faction', external: true, multistate: true, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
     {
         key: 'availabilityRarity',

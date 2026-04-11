@@ -971,6 +971,66 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(namedEraOptions.find((option) => option.name === 'Succession Wars')).toEqual(jasmine.objectContaining({ available: true }));
     });
 
+    it('keeps era dropdown options in chronological catalog order', () => {
+        const bundle = createStandaloneBundle();
+        bundle.eras.eras = [
+            {
+                id: 2,
+                name: 'Succession Wars',
+                img: '',
+                years: {
+                    from: 2781,
+                    to: 3049,
+                },
+                units: [1, 2],
+                factions: [],
+            },
+            {
+                id: 1,
+                name: 'Age of War',
+                img: '',
+                years: {
+                    from: 2005,
+                    to: 2570,
+                },
+                units: [1],
+                factions: [],
+            },
+            {
+                id: 3,
+                name: 'Clan Invasion',
+                img: '',
+                years: {
+                    from: 3050,
+                    to: 3061,
+                },
+                units: [2],
+                factions: [],
+            },
+        ];
+        bundle.factions.factions = [{
+            id: 1,
+            name: 'Test Faction',
+            group: 'Other',
+            img: '',
+            eras: {
+                1: new Set([1]),
+                2: new Set([1, 2]),
+                3: new Set([2]),
+            },
+        }];
+
+        const { service } = createService(bundle);
+        const eraOptions = service.advOptions()['era']?.options ?? [];
+        const namedEraOptions = eraOptions.filter((option): option is { name: string } => typeof option !== 'number');
+
+        expect(namedEraOptions.map((option) => option.name)).toEqual([
+            'Age of War',
+            'Succession Wars',
+            'Clan Invasion',
+        ]);
+    });
+
     it('scopes MegaMek faction dropdown availability by Available From and Rarity selections', () => {
         if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
             pending('Real unit data could not be loaded for the MegaMek availability scope test.');
@@ -1865,7 +1925,13 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 count: 1,
             },
         });
-        expect(service.filterState()['era']?.value).toEqual(['Succession Wars']);
+        expect(service.filterState()['era']?.value).toEqual({
+            'Succession Wars': {
+                name: 'Succession Wars',
+                state: 'or',
+                count: 1,
+            },
+        });
     });
 
     it('loads legacy comma-containing Alpha Strike specials from URL params end to end', () => {
@@ -2164,6 +2230,48 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const request = (service as any).buildWorkerSearchRequest((service as any).getWorkerCorpusVersion());
 
         expect(request.executionQuery).toContain('chassis=Longbow');
+    });
+
+    it('serializes multistate era selections into worker execution queries', () => {
+        const bundle = createStandaloneBundle();
+        bundle.eras.eras = [
+            ...bundle.eras.eras,
+            {
+                id: 2,
+                name: 'Jihad',
+                img: '',
+                years: {
+                    from: 3067,
+                    to: 3080,
+                },
+                units: [1],
+                factions: [],
+            },
+        ];
+        bundle.factions.factions[0].eras = {
+            1: new Set([1, 2]),
+            2: new Set([1]),
+        };
+
+        const { service } = createService(bundle);
+
+        service.setFilter('era', {
+            'Succession Wars': {
+                name: 'Succession Wars',
+                state: 'or',
+                count: 1,
+            },
+            Jihad: {
+                name: 'Jihad',
+                state: 'and',
+                count: 1,
+            },
+        });
+
+        const request = (service as any).buildWorkerSearchRequest((service as any).getWorkerCorpusVersion());
+
+        expect(request.executionQuery).toContain('era="Succession Wars"');
+        expect(request.executionQuery).toContain('era&=Jihad');
     });
 
     it('canonicalizes semantic dropdown values to existing option casing', () => {

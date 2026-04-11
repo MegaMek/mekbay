@@ -44,7 +44,12 @@ import {
 import { getForcePackLookupKey } from './force-pack.util';
 import type { WildcardPattern } from './semantic-filter.util';
 import { wildcardToRegex } from './string.util';
-import { checkQuantityConstraint, getUnitComponentData } from './unit-search-shared.util';
+import {
+    checkQuantityConstraint,
+    getSelectedPositiveDropdownNames,
+    getUnitComponentData,
+    normalizeMultiStateSelection,
+} from './unit-search-shared.util';
 
 export interface UnitFilterKernelDependencies {
     getProperty: (unit: Unit, key?: string) => unknown;
@@ -221,21 +226,6 @@ function filterUnitsByMultiState(
     });
 }
 
-function getSelectedDropdownNames(value: unknown): string[] {
-    if (Array.isArray(value)) {
-        return value.filter((entry): entry is string => typeof entry === 'string');
-    }
-
-    if (!value || typeof value !== 'object') {
-        return [];
-    }
-
-    const selection = value as MultiStateSelection;
-    return Object.entries(selection)
-        .filter(([, option]) => option.state === 'or' || option.state === 'and')
-        .map(([name]) => name);
-}
-
 export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): Unit[] {
     const { units, state, dependencies, skipKey } = request;
     let results = units;
@@ -254,10 +244,10 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
         }
     }
 
-    const selectedEraNames = getSelectedDropdownNames(activeFilters['era']);
-    const selectedFactionEntries = activeFilters['faction'] as MultiStateSelection || {};
-    const selectedAvailabilityFromNames = getSelectedDropdownNames(activeFilters['availabilityFrom']);
-    const selectedAvailabilityRarityNames = getSelectedDropdownNames(activeFilters['availabilityRarity']);
+    const selectedEraNames = getSelectedPositiveDropdownNames(activeFilters['era']);
+    const selectedFactionEntries = normalizeMultiStateSelection(activeFilters['faction']);
+    const selectedAvailabilityFromNames = getSelectedPositiveDropdownNames(activeFilters['availabilityFrom']);
+    const selectedAvailabilityRarityNames = getSelectedPositiveDropdownNames(activeFilters['availabilityRarity']);
 
     let eraUnitIds: Set<string> | null = null;
     let factionUnitIds: Set<string> | null = null;
@@ -331,8 +321,14 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
         const val = filterState.value;
         const wildcardPatterns = filterState.wildcardPatterns;
 
-        if (conf.type === AdvFilterType.DROPDOWN && conf.multistate && val && typeof val === 'object') {
-            results = filterUnitsByMultiState(results, conf.key, val as MultiStateSelection, dependencies.getProperty, wildcardPatterns);
+        if (conf.type === AdvFilterType.DROPDOWN && conf.multistate) {
+            results = filterUnitsByMultiState(
+                results,
+                conf.key,
+                normalizeMultiStateSelection(val),
+                dependencies.getProperty,
+                wildcardPatterns,
+            );
             continue;
         }
 

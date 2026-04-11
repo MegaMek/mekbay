@@ -81,6 +81,7 @@ import { FormationAbilityAssignmentUtil } from '../utils/formation-ability-assig
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { getPositiveFactionNamesFromFilter } from '../utils/faction-filter.util';
+import { getSelectedPositiveDropdownNames } from '../utils/unit-search-shared.util';
 import { type SerializedOperation, LoadOperationEntry, type OperationForceRef } from '../models/operation.model';
 import { SaveOperationDialogComponent, type OperationDialogData, type OperationDialogResult } from '../components/save-operation-dialog/save-operation-dialog.component';
 import type { OpPreviewForce } from '../components/op-preview/op-preview.component';
@@ -1275,8 +1276,8 @@ export class ForceBuilderService {
             if (!eraFilter?.interactedWith || !eraFilter.value) {
                 return null;
             }
-            const selectedEraNames = eraFilter.value as string[];
-            if (!Array.isArray(selectedEraNames) || selectedEraNames.length === 0) {
+            const selectedEraNames = getSelectedPositiveDropdownNames(eraFilter.value);
+            if (selectedEraNames.length === 0) {
                 return null;
             }
             return this.dataService.getEraByName(selectedEraNames[0]) ?? null;

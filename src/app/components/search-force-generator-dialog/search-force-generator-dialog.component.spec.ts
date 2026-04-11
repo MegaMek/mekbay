@@ -13,6 +13,7 @@ import { UnitSearchFiltersService } from '../../services/unit-search-filters.ser
 describe('SearchForceGeneratorDialogComponent', () => {
     let component: SearchForceGeneratorDialogComponent;
     let setOptionSpy: jasmine.Spy;
+    let setFilterSpy: jasmine.Spy;
 
     beforeEach(() => {
         const optionsSignal = signal({
@@ -28,6 +29,23 @@ describe('SearchForceGeneratorDialogComponent', () => {
         setOptionSpy = jasmine.createSpy('setOption').and.callFake((key: string, value: number) => {
             optionsSignal.update((options) => ({ ...options, [key]: value }));
             return Promise.resolve();
+        });
+
+        setFilterSpy = jasmine.createSpy('setFilter');
+        const advOptionsSignal = signal({
+            era: {
+                type: 'dropdown' as const,
+                label: 'Era',
+                options: [],
+                value: {
+                    Jihad: {
+                        name: 'Jihad',
+                        state: 'and' as const,
+                        count: 1,
+                    },
+                },
+                interacted: true,
+            },
         });
 
         TestBed.configureTestingModule({
@@ -78,8 +96,13 @@ describe('SearchForceGeneratorDialogComponent', () => {
                 {
                     provide: UnitSearchFiltersService,
                     useValue: {
+                        advOptions: advOptionsSignal,
                         bvPvLimit: signal(0),
                         filteredUnits: signal([]),
+                        pilotGunnerySkill: signal(4),
+                        pilotPilotingSkill: signal(5),
+                        searchText: signal(''),
+                        setFilter: setFilterSpy,
                     },
                 },
             ],
@@ -102,5 +125,27 @@ describe('SearchForceGeneratorDialogComponent', () => {
         component.onMaxUnitCountBlur(event);
 
         expect(input.value).toBe('100');
+    });
+
+    it('preserves multistate era selections when updating filters', () => {
+        expect(component.selectedEraValues()).toEqual({
+            Jihad: {
+                name: 'Jihad',
+                state: 'and',
+                count: 1,
+            },
+        });
+
+        const selection = {
+            'Succession Wars': {
+                name: 'Succession Wars',
+                state: 'or' as const,
+                count: 1,
+            },
+        };
+
+        component.onEraSelectionChange(selection);
+
+        expect(setFilterSpy).toHaveBeenCalledWith('era', selection);
     });
 });

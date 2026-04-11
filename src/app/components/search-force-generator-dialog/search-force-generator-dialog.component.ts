@@ -48,6 +48,7 @@ import { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
 import type { AdvFilterOptions, DropdownFilterOptions } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
+import { normalizeMultiStateSelection } from '../../utils/unit-search-shared.util';
 
 export interface SearchForceGeneratorDialogConfig {
     gameSystem: GameSystem;
@@ -65,6 +66,8 @@ export interface SearchForceGeneratorDialogResult {
     config: SearchForceGeneratorDialogConfig;
     totalCost: number;
 }
+
+type MultiStateFilterKey = 'era' | 'faction' | '_tags';
 
 @Component({
     selector: 'search-force-generator-dialog',
@@ -100,18 +103,9 @@ export class SearchForceGeneratorDialogComponent {
     readonly eraFilter = computed(() => this.getDropdownFilter('era'));
     readonly factionFilter = computed(() => this.getDropdownFilter('faction'));
     readonly tagsFilter = computed(() => this.getDropdownFilter('_tags'));
-    readonly selectedEraValues = computed(() => {
-        const value = this.eraFilter()?.value;
-        return Array.isArray(value) ? [...value] : [];
-    });
-    readonly selectedFactionValues = computed(() => {
-        const value = this.factionFilter()?.value;
-        return Array.isArray(value) ? {} : (value as MultiStateSelection | undefined) ?? {};
-    });
-    readonly selectedTagValues = computed(() => {
-        const value = this.tagsFilter()?.value;
-        return Array.isArray(value) ? {} : (value as MultiStateSelection | undefined) ?? {};
-    });
+    readonly selectedEraValues = computed(() => this.getSelectedMultiStateValues(this.eraFilter()));
+    readonly selectedFactionValues = computed(() => this.getSelectedMultiStateValues(this.factionFilter()));
+    readonly selectedTagValues = computed(() => this.getSelectedMultiStateValues(this.tagsFilter()));
     readonly descriptionLines = computed(() => {
         const lines = [];
         const query = this.filtersService.searchText().trim();
@@ -194,15 +188,15 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     onEraSelectionChange(selection: MultiStateSelection | readonly string[]): void {
-        this.filtersService.setFilter('era', Array.isArray(selection) ? [...selection] : []);
+        this.setMultiStateFilter('era', selection);
     }
 
     onFactionSelectionChange(selection: MultiStateSelection | readonly string[]): void {
-        this.filtersService.setFilter('faction', Array.isArray(selection) ? {} : selection);
+        this.setMultiStateFilter('faction', selection);
     }
 
     onTagsSelectionChange(selection: MultiStateSelection | readonly string[]): void {
-        this.filtersService.setFilter('_tags', Array.isArray(selection) ? {} : selection);
+        this.setMultiStateFilter('_tags', selection);
     }
 
     onBudgetMinChange(event: Event): void {
@@ -288,6 +282,14 @@ export class SearchForceGeneratorDialogComponent {
     private getDropdownFilter(key: string): DropdownFilterOptions | null {
         const option = this.filtersService.advOptions()[key];
         return option?.type === 'dropdown' ? option : null;
+    }
+
+    private getSelectedMultiStateValues(option: DropdownFilterOptions | null): MultiStateSelection {
+        return normalizeMultiStateSelection(option?.value);
+    }
+
+    private setMultiStateFilter(key: MultiStateFilterKey, selection: MultiStateSelection | readonly string[]): void {
+        this.filtersService.setFilter(key, normalizeMultiStateSelection(selection));
     }
 
     private summarizeActiveFilters(): string {
