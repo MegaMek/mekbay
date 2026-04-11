@@ -54,10 +54,10 @@ import { OptionsService } from '../services/options.service';
 
 const isAS = GameSystem.ALPHA_STRIKE;
 const AEROSPACE_MODES = new Set(['a', 'p', 'k']);
-const getUnitOfMeasure = () => OptionsService.get()?.options()?.ASUseHex ?? false;
 
 function isHex(value: number): string {
-    return getUnitOfMeasure() ? `${Math.round(value / 2)}⬢` : `${value}"`;
+    const useHex = OptionsService.get()?.options()?.ASUseHex ?? false;
+    return useHex ? `${Math.round(value / 2)}⬢` : `${value}"`;
 }
 
 function asGetSize(unit: Unit): number {

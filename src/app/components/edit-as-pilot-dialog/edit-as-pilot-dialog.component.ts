@@ -34,7 +34,7 @@
 import { ChangeDetectionStrategy, Component, ElementRef, inject, signal, viewChild, computed, DestroyRef, Injector } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { PILOT_ABILITIES, type PilotAbility, type ASCustomPilotAbility, getAbilityLimitsForSkill, type PilotAbilityLimits, getAbilityDetails } from '../../models/pilot-abilities.model';
+import { PILOT_ABILITIES, type PilotAbility, type ASCustomPilotAbility, getAbilityLimitsForSkill, type PilotAbilityLimits, getAbilityDetails, hexDisplay } from '../../models/pilot-abilities.model';
 import type { ASForceUnit } from '../../models/as-force-unit.model';
 import { COMMAND_ABILITIES } from '../../models/command-abilities.model';
 import type { UnitGroup } from '../../models/force.model';
@@ -358,7 +358,7 @@ export class EditASPilotDialogComponent {
         return {
             name: standardAbility.name,
             cost: standardAbility.cost,
-            summary: details.summary[0],
+            summary: hexDisplay(details.summary)[0],
             isCustom: false,
             rulesRef: details.rulesRef,
             unitTypeInvalid
