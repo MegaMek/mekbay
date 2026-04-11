@@ -40,7 +40,7 @@ import { FORMATION_DEFINITIONS } from './formation-definitions';
 import type { UnitGroup } from '../models/force.model';
 import { collectGroupUnits, compileGroupFacts } from './org/org-facts.util';
 import { groupMatchesChildRole } from './org/org-role-match.util';
-import { resolveOrgDefinitionSpec } from './org/org-registry.util';
+import { resolveOrgDefinition } from './org/org-registry.util';
 import type {
     GroupSizeResult,
     OrgComposedCountRule,
@@ -167,7 +167,7 @@ export class LanceTypeIdentifierUtil {
         }
 
         const resolvedFaction = targetForce.faction() ?? this.DEFAULT_FACTION;
-        const orgDefinition = resolveOrgDefinitionSpec(resolvedFaction, targetForce.era());
+        const orgDefinition = resolveOrgDefinition(resolvedFaction, targetForce.era());
         const matchedRule = orgDefinition.rules.find((candidate) => candidate.type === resolvedGroup.type);
         if (!this.isFormationMatchingRule(matchedRule)) {
             return {};

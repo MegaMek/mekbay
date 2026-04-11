@@ -9,11 +9,11 @@ import {
 	SOCIETY_CORE_ORG,
 	WD_CORE_ORG,
 } from './definitions';
-import type { OrgDefinitionSpec } from './org-types';
+import type { OrgDefinition } from './org-types';
 
 export interface OrgDefinitionRegistryEntry {
 	readonly match: (faction: Faction, era?: Era | null) => boolean;
-	readonly org: OrgDefinitionSpec;
+	readonly org: OrgDefinition;
 }
 
 export function isClan(faction: Faction): boolean {
@@ -27,7 +27,7 @@ export function isClan(faction: Faction): boolean {
 }
 
 
-export const ORG_SPEC_REGISTRY: readonly OrgDefinitionRegistryEntry[] = [
+export const ORG_DEFINITION_REGISTRY: readonly OrgDefinitionRegistryEntry[] = [
 	{ match: (faction) => faction.name.includes('ComStar') || faction.name.includes('Word of Blake'), org: COMSTAR_CORE_ORG },
 	{ match: (faction) => faction.name.includes('Society'), org: SOCIETY_CORE_ORG },
 	{ match: (faction) => faction.name.includes('Marian Hegemony'), org: MH_CORE_ORG },
@@ -37,11 +37,11 @@ export const ORG_SPEC_REGISTRY: readonly OrgDefinitionRegistryEntry[] = [
 	{ match: (faction) => isClan(faction), org: CLAN_CORE_ORG },
 ];
 
-export const DEFAULT_ORG_SPEC: OrgDefinitionSpec = IS_CORE_ORG;
+export const DEFAULT_ORG_DEFINITION: OrgDefinition = IS_CORE_ORG;
 
-export function resolveOrgDefinitionSpec(
+export function resolveOrgDefinition(
 	faction: Faction,
 	era?: Era | null,
-): OrgDefinitionSpec {
-	return ORG_SPEC_REGISTRY.find((entry) => entry.match(faction, era))?.org ?? DEFAULT_ORG_SPEC;
+): OrgDefinition {
+	return ORG_DEFINITION_REGISTRY.find((entry) => entry.match(faction, era))?.org ?? DEFAULT_ORG_DEFINITION;
 }
