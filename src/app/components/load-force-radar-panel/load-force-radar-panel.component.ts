@@ -1,10 +1,10 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, effect, ElementRef, inject, input, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, ElementRef, input, signal, viewChild } from '@angular/core';
 
 import { GameSystem } from '../../models/common.model';
 import type { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { Unit } from '../../models/units.model';
-import { DataService, DOES_NOT_TRACK, type MinMaxStatsRange } from '../../services/data.service';
+import { DOES_NOT_TRACK, type MinMaxStatsRange } from '../../services/data.service';
 
 type RadarStatKey =
     | 'armor'
@@ -205,13 +205,6 @@ function getMobilityContribution(unit: Unit, maxStats: MinMaxStatsRange): RadarC
     };
 }
 
-function getHighestASMovementValue(unit: Unit): number {
-    return Object.values(unit.as?.MVm ?? {}).reduce(
-        (highest, value) => Math.max(highest, sanitizeStatValue(value)),
-        0,
-    );
-}
-
 function getASDamageValue(precomputed: number | undefined, rawValue: string | undefined): number {
     if (precomputed !== undefined) {
         return sanitizeStatValue(precomputed);
@@ -231,6 +224,86 @@ function formatStatValue(value: number): string {
         minimumFractionDigits: 1,
         maximumFractionDigits: 1,
     });
+}
+
+function createEmptyMaxStatsRange(): MinMaxStatsRange {
+    return {
+        armor: [0, 0],
+        internal: [0, 0],
+        heat: [0, 0],
+        dissipation: [0, 0],
+        dissipationEfficiency: [0, 0],
+        runMP: [0, 0],
+        run2MP: [0, 0],
+        umuMP: [0, 0],
+        jumpMP: [0, 0],
+        alphaNoPhysical: [0, 0],
+        alphaNoPhysicalNoOneshots: [0, 0],
+        maxRange: [0, 0],
+        dpt: [0, 0],
+        asTmm: [0, 0],
+        asArm: [0, 0],
+        asStr: [0, 0],
+        asDmgS: [0, 0],
+        asDmgM: [0, 0],
+        asDmgL: [0, 0],
+        dropshipCapacity: [0, 0],
+        escapePods: [0, 0],
+        lifeBoats: [0, 0],
+        sailIntegrity: [0, 0],
+        kfIntegrity: [0, 0],
+    };
+}
+
+function updateMaxRange(range: [number, number], value: number | undefined | null): void {
+    range[1] = Math.max(range[1], sanitizeStatValue(value));
+}
+
+function applyReferenceUnitToMaxStats(maxStats: MinMaxStatsRange, unit: Unit): void {
+    updateMaxRange(maxStats.armor, unit.armor);
+    updateMaxRange(maxStats.internal, unit.internal);
+    updateMaxRange(maxStats.alphaNoPhysicalNoOneshots, unit._mdSumNoPhysicalNoOneshots);
+    updateMaxRange(maxStats.dpt, unit.dpt);
+    updateMaxRange(maxStats.run2MP, unit.run2);
+    updateMaxRange(maxStats.jumpMP, unit.jump);
+    updateMaxRange(maxStats.asTmm, unit.as?.TMM);
+    updateMaxRange(maxStats.asArm, unit.as?.Arm);
+    updateMaxRange(maxStats.asStr, unit.as?.Str);
+    updateMaxRange(maxStats.asDmgS, getASDamageValue(unit.as?.dmg._dmgS, unit.as?.dmg.dmgS));
+    updateMaxRange(maxStats.asDmgM, getASDamageValue(unit.as?.dmg._dmgM, unit.as?.dmg.dmgM));
+    updateMaxRange(maxStats.asDmgL, getASDamageValue(unit.as?.dmg._dmgL, unit.as?.dmg.dmgL));
+}
+
+function getReferenceBucketKey(unit: Unit, gameSystem: GameSystem): string | null {
+    if (gameSystem === GameSystem.ALPHA_STRIKE) {
+        return unit.as?.TP ?? null;
+    }
+
+    return unit.subtype;
+}
+
+function buildReferenceMaxStatsByBucket(
+    units: readonly Unit[],
+    gameSystem: GameSystem,
+): ReadonlyMap<string, MinMaxStatsRange> {
+    const maxStatsByBucket = new Map<string, MinMaxStatsRange>();
+
+    for (const unit of units) {
+        const bucketKey = getReferenceBucketKey(unit, gameSystem);
+        if (!bucketKey) {
+            continue;
+        }
+
+        let maxStats = maxStatsByBucket.get(bucketKey);
+        if (!maxStats) {
+            maxStats = createEmptyMaxStatsRange();
+            maxStatsByBucket.set(bucketKey, maxStats);
+        }
+
+        applyReferenceUnitToMaxStats(maxStats, unit);
+    }
+
+    return maxStatsByBucket;
 }
 
 @Component({
@@ -405,13 +478,13 @@ function formatStatValue(value: number): string {
     `],
 })
 export class LoadForceRadarPanelComponent {
-    private readonly dataService = inject(DataService);
     private readonly radarArea = viewChild<ElementRef<HTMLDivElement>>('radarArea');
     private readonly chartPixelSize = signal(RADAR_FALLBACK_RENDER_SIZE);
 
     readonly center = RADAR_CENTER;
     readonly viewBoxSize = RADAR_VIEWBOX_SIZE;
     readonly force = input.required<LoadForceEntry>();
+    readonly referenceUnits = input<readonly Unit[] | null>(null);
     readonly axisDefinitions = computed(() => this.force().type === GameSystem.ALPHA_STRIKE
         ? ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS
         : CLASSIC_RADAR_AXIS_DEFINITIONS);
@@ -423,9 +496,25 @@ export class LoadForceRadarPanelComponent {
         .filter((unit): unit is Unit => unit !== undefined));
 
     readonly hasUnits = computed(() => this.units().length > 0);
+    readonly previewMaxStatsByBucket = computed<ReadonlyMap<string, MinMaxStatsRange>>(() => {
+        return buildReferenceMaxStatsByBucket(this.units(), this.force().type);
+    });
+    readonly referenceMaxStatsByBucket = computed<ReadonlyMap<string, MinMaxStatsRange>>(() => {
+        const referenceUnits = this.referenceUnits();
+        const gameSystem = this.force().type;
+
+        if (!referenceUnits || referenceUnits.length === 0) {
+            return this.previewMaxStatsByBucket();
+        }
+
+        return buildReferenceMaxStatsByBucket(referenceUnits, gameSystem);
+    });
 
     readonly chartAxes = computed<RadarAxis[]>(() => {
         const axisDefinitions = this.axisDefinitions();
+        const gameSystem = this.force().type;
+        const referenceMaxStatsByBucket = this.referenceMaxStatsByBucket();
+        const previewMaxStatsByBucket = this.previewMaxStatsByBucket();
         const totals = axisDefinitions.map((definition, index) => ({
             definition,
             index,
@@ -434,7 +523,10 @@ export class LoadForceRadarPanelComponent {
         }));
 
         for (const unit of this.units()) {
-            const maxStats = this.dataService.getUnitTypeMaxStats(unit.type);
+            const bucketKey = getReferenceBucketKey(unit, gameSystem);
+            const maxStats = bucketKey
+                ? referenceMaxStatsByBucket.get(bucketKey) ?? previewMaxStatsByBucket.get(bucketKey) ?? createEmptyMaxStatsRange()
+                : createEmptyMaxStatsRange();
 
             for (const total of totals) {
                 const contribution = total.definition.getContribution(unit, maxStats);

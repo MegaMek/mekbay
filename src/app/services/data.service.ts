@@ -114,8 +114,8 @@ export interface MinMaxStatsRange {
     sailIntegrity: [number, number],
     kfIntegrity: [number, number],
 }
-export interface UnitTypeMaxStats {
-    [unitType: string]: MinMaxStatsRange
+export interface UnitSubtypeMaxStats {
+    [unitSubtype: string]: MinMaxStatsRange
 }
 
 // Generic store update payload used for cross-tab notifications
@@ -451,8 +451,8 @@ export class DataService {
         this.unitSearchIndexService.rebuildTagSearchIndex(this.getUnits());
     }
 
-    public getUnitTypeMaxStats(type: string): MinMaxStatsRange {
-        return this.unitSearchIndexService.getUnitTypeMaxStats(type);
+    public getUnitSubtypeMaxStats(subtype: string): MinMaxStatsRange {
+        return this.unitSearchIndexService.getUnitSubtypeMaxStats(subtype);
     }
 
     private postprocessData(): void {

@@ -70,15 +70,15 @@ interface MinMaxStatsRange {
     gravDecks: [number, number],
 }
 
-interface UnitTypeMaxStats {
-    [unitType: string]: MinMaxStatsRange;
+interface UnitSubtypeMaxStats {
+    [unitSubtype: string]: MinMaxStatsRange;
 }
 
 @Injectable({
     providedIn: 'root'
 })
 export class UnitSearchIndexService {
-    private unitTypeMaxStats: UnitTypeMaxStats = {};
+    private unitSubtypeMaxStats: UnitSubtypeMaxStats = {};
     private searchFilterIndex = new Map<string, Map<string, Set<string>>>();
     private componentCountIndex = new Map<string, Map<string, number>>();
     private searchFilterValues = new Map<string, string[]>();
@@ -86,9 +86,9 @@ export class UnitSearchIndexService {
     private factionEraSnapshot: UnitSearchWorkerFactionEraSnapshot = {};
 
     public prepareUnits(units: Unit[]): void {
-        this.unitTypeMaxStats = {};
-        const statsByType: {
-            [type: string]: {
+        this.unitSubtypeMaxStats = {};
+        const statsBySubtype: {
+            [subtype: string]: {
                 armor: [number, number],
                 internal: [number, number],
                 heat: [number, number],
@@ -171,9 +171,9 @@ export class UnitSearchIndexService {
                 }
             }
 
-            const type = unit.type;
-            if (!statsByType[type]) {
-                statsByType[type] = {
+            const subtype = unit.subtype;
+            if (!statsBySubtype[subtype]) {
+                statsBySubtype[subtype] = {
                     armor: [Infinity, -Infinity],
                     internal: [Infinity, -Infinity],
                     heat: [Infinity, -Infinity],
@@ -201,7 +201,7 @@ export class UnitSearchIndexService {
                 };
             }
 
-            const stats = statsByType[type];
+            const stats = statsBySubtype[subtype];
             updateMinMax(stats.armor, unit.armor || 0);
             updateMinMax(stats.internal, unit.internal || 0);
             updateMinMax(stats.heat, unit.heat || 0);
@@ -236,8 +236,8 @@ export class UnitSearchIndexService {
             minMax[1] === -Infinity ? 0 : Math.max(minMax[1], 0)
         ];
 
-        for (const [type, stats] of Object.entries(statsByType)) {
-            this.unitTypeMaxStats[type] = {
+        for (const [subtype, stats] of Object.entries(statsBySubtype)) {
+            this.unitSubtypeMaxStats[subtype] = {
                 armor: normalize(stats.armor),
                 internal: normalize(stats.internal),
                 heat: normalize(stats.heat),
@@ -390,8 +390,8 @@ export class UnitSearchIndexService {
         return this.componentCountIndex.get(name.toLowerCase());
     }
 
-    public getUnitTypeMaxStats(type: string): MinMaxStatsRange {
-        return this.unitTypeMaxStats[type] || {
+    public getUnitSubtypeMaxStats(subtype: string): MinMaxStatsRange {
+        return this.unitSubtypeMaxStats[subtype] || {
             armor: [0, 0],
             internal: [0, 0],
             heat: [0, 0],
