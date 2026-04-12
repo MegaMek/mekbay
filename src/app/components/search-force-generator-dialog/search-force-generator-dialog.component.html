@@ -203,7 +203,7 @@
                             <load-force-radar-panel [force]="previewForceEntry" [referenceUnits]="eligibleUnits()"></load-force-radar-panel>
 
                             @if (preview().error; as errorMessage) {
-                                <div class="preview-inline-error framed-borders">{{ errorMessage }}</div>
+                                <div class="preview-inline-error error framed-borders">{{ errorMessage }}</div>
                             }
                         </div>
                     } @else if (preview().error; as errorMessage) {

@@ -2692,6 +2692,57 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.filteredUnits().map(unit => unit.name)).toEqual([]);
     });
 
+    it('requires faction membership in every selected multistate era for semantic search text', async () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Masakari Prime';
+        bundle.units.units[0].chassis = 'Masakari';
+        bundle.units.units[0].model = 'Prime';
+        bundle.eras.eras = [
+            {
+                id: 1,
+                name: 'Clan Invasion',
+                img: '',
+                years: { from: 3049, to: 3061 },
+                units: [1, 2],
+                factions: [],
+            },
+            {
+                id: 2,
+                name: 'ilClan',
+                img: '',
+                years: { from: 3151, to: 9999 },
+                units: [1, 2],
+                factions: [],
+            },
+        ];
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: 'Clan Jade Falcon',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    1: new Set([1]),
+                },
+            },
+            {
+                id: 2,
+                name: 'Clan Wolf',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    2: new Set([1]),
+                },
+            },
+        ];
+
+        const { service } = createService(bundle);
+        service.setSearchText('masak era&="Clan Invasion",ilClan faction="Clan Jade Falcon"');
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual([]);
+    });
+
     it('promotes overlapping faction dropdown filters into wildcard semantic ownership', async () => {
         if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
             pending('Real unit data could not be loaded for the faction wildcard promotion test.');

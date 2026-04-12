@@ -33,9 +33,11 @@
 
 import { CommonModule } from '@angular/common';
 import { DialogRef } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, inject, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 
 import { GameSystem } from '../../models/common.model';
+import type { Era } from '../../models/eras.model';
+import type { Faction } from '../../models/factions.model';
 import { MAX_UNITS as FORCE_MAX_UNITS } from '../../models/force.model';
 import {
     createLoadForceEntryFromSerializedForce,
@@ -49,7 +51,7 @@ import { LoadForceRadarPanelComponent } from '../load-force-radar-panel/load-for
 import { MultiSelectDropdownComponent, type MultiStateSelection } from '../multi-select-dropdown/multi-select-dropdown.component';
 import { DataService } from '../../services/data.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { ForceGeneratorService, type GeneratedForceUnit } from '../../services/force-generator.service';
+import { ForceGeneratorService, type ForceGenerationPreview, type GeneratedForceUnit } from '../../services/force-generator.service';
 import { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
 import type { AdvFilterOptions, DropdownFilterOptions } from '../../services/unit-search-filters.model';
@@ -187,7 +189,6 @@ export class SearchForceGeneratorDialogComponent {
         : { min: this.classicBudgetMin(), max: this.classicBudgetMax() });
     readonly minUnitCount = signal(this.initialUnitCountDefaults.min);
     readonly maxUnitCount = signal(this.initialUnitCountDefaults.max);
-    readonly rerollRevision = signal(0);
     readonly collapsedHowPicksWhereChosen = signal(false);
     readonly generationSettings = computed(() => {
         const gameSystem = this.gameSystem();
@@ -202,33 +203,8 @@ export class SearchForceGeneratorDialogComponent {
             maxUnitCount: this.maxUnitCount(),
         };
     });
-    readonly resolvedGenerationContext = computed(() => {
-        this.rerollRevision();
-        return this.forceGeneratorService.resolveGenerationContext(this.eligibleUnits());
-    });
-    readonly preview = computed(() => {
-        const generationContext = this.resolvedGenerationContext();
-        const settings = this.generationSettings();
-        const lockedUnits = this.resolveLockedUnitsForPreview(
-            untracked(() => this.lockedUnits()),
-            settings.gameSystem,
-            settings.gunnery,
-            settings.piloting,
-        );
-
-        return this.forceGeneratorService.buildPreview({
-            eligibleUnits: this.eligibleUnits(),
-            context: generationContext,
-            gameSystem: settings.gameSystem,
-            budgetRange: settings.budgetRange,
-            minUnitCount: settings.minUnitCount,
-            maxUnitCount: settings.maxUnitCount,
-            gunnery: settings.gunnery,
-            piloting: settings.piloting,
-            lockedUnits,
-            preventDuplicateChassis: this.preventDuplicateChassis(),
-        });
-    });
+    private readonly previewState = signal<ForceGenerationPreview>(this.buildGeneratedPreview());
+    readonly preview = computed(() => this.projectPreviewForCurrentSettings(this.previewState()));
     readonly previewEntry = computed(() => {
         const preview = this.preview();
         return this.forceGeneratorService.createForceEntry(preview);
@@ -332,7 +308,7 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     reroll(): void {
-        this.rerollRevision.update((value) => value + 1);
+        this.previewState.set(this.buildGeneratedPreview());
     }
 
     importCurrentForce(): void {
@@ -348,7 +324,12 @@ export class SearchForceGeneratorDialogComponent {
             .filter((unit): unit is GeneratedForceUnit => unit !== null);
 
         this.lockedUnits.set(importedUnits);
-        this.reroll();
+        this.previewState.set(this.createPreviewFromUnits(importedUnits, {
+            faction: importedForceEntry.faction,
+            era: importedForceEntry.era,
+            explanationLines: ['Imported current force into preview. Press REROLL to generate a new result for the current settings.'],
+            error: importedUnits.length === 0 ? 'No units from the current force could be loaded into the preview.' : null,
+        }));
     }
 
     toggleHowPicksWereChosen(): void {
@@ -393,7 +374,132 @@ export class SearchForceGeneratorDialogComponent {
         return Array.isArray(option?.value) ? [...option.value] : [];
     }
 
-    private resolveLockedUnitsForPreview(
+    private buildGeneratedPreview(): ForceGenerationPreview {
+        const settings = this.generationSettings();
+        const eligibleUnits = this.eligibleUnits();
+        const lockedUnits = this.resolvePreviewUnits(
+            this.lockedUnits(),
+            settings.gameSystem,
+            settings.gunnery,
+            settings.piloting,
+        );
+
+        return this.forceGeneratorService.buildPreview({
+            eligibleUnits,
+            context: this.forceGeneratorService.resolveGenerationContext(eligibleUnits),
+            gameSystem: settings.gameSystem,
+            budgetRange: settings.budgetRange,
+            minUnitCount: settings.minUnitCount,
+            maxUnitCount: settings.maxUnitCount,
+            gunnery: settings.gunnery,
+            piloting: settings.piloting,
+            lockedUnits,
+            preventDuplicateChassis: this.preventDuplicateChassis(),
+        });
+    }
+
+    private projectPreviewForCurrentSettings(storedPreview: ForceGenerationPreview): ForceGenerationPreview {
+        const settings = this.generationSettings();
+        const units = this.resolvePreviewUnits(
+            storedPreview.units,
+            settings.gameSystem,
+            settings.gunnery,
+            settings.piloting,
+        );
+        const totalCost = units.reduce((sum, unit) => sum + unit.cost, 0);
+
+        return {
+            gameSystem: settings.gameSystem,
+            units,
+            totalCost,
+            error: units.length === 0
+                ? storedPreview.error
+                : this.resolvePreviewValidationError(units.length, totalCost, settings),
+            faction: storedPreview.faction,
+            era: storedPreview.era,
+            explanationLines: storedPreview.explanationLines,
+        };
+    }
+
+    private createPreviewFromUnits(
+        units: readonly GeneratedForceUnit[],
+        options: {
+            faction?: Faction | null;
+            era?: Era | null;
+            explanationLines?: readonly string[];
+            error?: string | null;
+        } = {},
+    ): ForceGenerationPreview {
+        const settings = this.generationSettings();
+        const resolvedUnits = this.resolvePreviewUnits(
+            units,
+            settings.gameSystem,
+            settings.gunnery,
+            settings.piloting,
+        );
+
+        return {
+            gameSystem: settings.gameSystem,
+            units: resolvedUnits,
+            totalCost: resolvedUnits.reduce((sum, unit) => sum + unit.cost, 0),
+            error: options.error ?? null,
+            faction: options.faction ?? null,
+            era: options.era ?? null,
+            explanationLines: [...(options.explanationLines ?? [])],
+        };
+    }
+
+    private resolvePreviewValidationError(
+        unitCount: number,
+        totalCost: number,
+        settings: {
+            gameSystem: GameSystem;
+            budgetRange: { min: number; max: number };
+            minUnitCount: number;
+            maxUnitCount: number;
+        },
+    ): string | null {
+        if (unitCount < settings.minUnitCount || unitCount > settings.maxUnitCount) {
+            const unitLabel = unitCount === 1 ? 'unit' : 'units';
+            const unitRange = settings.minUnitCount === settings.maxUnitCount
+                ? `${settings.minUnitCount}`
+                : `${settings.minUnitCount}-${settings.maxUnitCount}`;
+            return `Current preview has ${unitCount} ${unitLabel}, outside the current unit range of ${unitRange}. Press REROLL to generate a force for the updated settings.`;
+        }
+
+        const budgetRange = this.normalizePreviewBudgetRange(settings.budgetRange);
+        if (totalCost < budgetRange.min || totalCost > budgetRange.max) {
+            const budgetLabel = settings.gameSystem === GameSystem.ALPHA_STRIKE ? 'PV' : 'BV';
+            return `Current preview totals ${totalCost.toLocaleString()} ${budgetLabel}, outside the current target of ${this.formatBudgetTarget(budgetRange, budgetLabel)}. Press REROLL to generate a force for the updated settings.`;
+        }
+
+        return null;
+    }
+
+    private normalizePreviewBudgetRange(range: { min: number; max: number }): { min: number; max: number } {
+        const min = Math.max(0, Math.floor(range.min));
+        const rawMax = Math.max(0, Math.floor(range.max));
+        return {
+            min,
+            max: rawMax > 0 ? Math.max(min, rawMax) : Number.POSITIVE_INFINITY,
+        };
+    }
+
+    private formatBudgetTarget(range: { min: number; max: number }, budgetLabel: 'BV' | 'PV'): string {
+        if (!Number.isFinite(range.max)) {
+            return `at least ${range.min.toLocaleString()} ${budgetLabel}`;
+        }
+        if (range.min === 0) {
+            return `at most ${range.max.toLocaleString()} ${budgetLabel}`;
+        }
+        if (range.min === range.max) {
+            return `${range.min.toLocaleString()} ${budgetLabel}`;
+        }
+
+        return `${range.min.toLocaleString()}-${range.max.toLocaleString()} ${budgetLabel}`;
+    }
+
+    private resolvePreviewUnits(
         lockedUnits: readonly GeneratedForceUnit[],
         gameSystem: GameSystem,
         gunnery: number,

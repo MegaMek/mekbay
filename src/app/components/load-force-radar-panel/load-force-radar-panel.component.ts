@@ -50,19 +50,16 @@ interface RadarAxis {
 
 const CLASSIC_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
     {
-        key: 'armor',
-        label: 'Armor',
-        getContribution: (unit, maxStats) => ({
-            value: sanitizeStatValue(unit.armor),
-            max: sanitizeStatValue(maxStats.armor[1]),
-        }),
+        key: 'mobility',
+        label: 'Mobility',
+        getContribution: (unit, maxStats) => getMobilityContribution(unit, maxStats),
     },
     {
-        key: 'internal',
-        label: 'Internal',
+        key: 'endurance',
+        label: 'Endurance',
         getContribution: (unit, maxStats) => ({
-            value: sanitizeStatValue(unit.internal),
-            max: sanitizeStatValue(maxStats.internal[1]),
+            value: sanitizeStatValue(unit.armor) + sanitizeStatValue(unit.internal),
+            max: sanitizeStatValue(maxStats.armor[1]) + sanitizeStatValue(maxStats.internal[1]),
         }),
     },
     {
@@ -80,11 +77,6 @@ const CLASSIC_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
             value: sanitizeStatValue(unit.dpt),
             max: sanitizeStatValue(maxStats.dpt[1]),
         }),
-    },
-    {
-        key: 'mobility',
-        label: 'Mobility',
-        getContribution: (unit, maxStats) => getMobilityContribution(unit, maxStats),
     },
 ] as const;
 
