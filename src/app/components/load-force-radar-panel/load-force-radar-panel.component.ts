@@ -139,7 +139,7 @@ const RADAR_RADIUS = 158;
 const RADAR_LABEL_RADIUS = 182;
 const RADAR_LABEL_SAFE_X = 58;
 const RADAR_LABEL_SAFE_TOP = 22;
-const RADAR_LABEL_SAFE_BOTTOM = 34;
+const RADAR_LABEL_SAFE_BOTTOM = 50;
 const RADAR_RING_FACTORS = [0.25, 0.5, 0.75, 1] as const;
 const RADAR_FALLBACK_RENDER_SIZE = 320;
 
@@ -280,6 +280,7 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
     template: `
     @let axes = chartAxes();
     @let overlayAxes = hoveredUnitAxes();
+    @let overlayAxisMap = hoveredAxisMap();
     <div class="force-radar-shell">
         @if (hasUnits()) {
             <div class="radar-area" #radarArea>
@@ -338,6 +339,11 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
                             <text class="radar-label-value" [attr.text-anchor]="axis.textAnchor" y="14">
                                 {{ axis.valueText }}/{{ axis.maxText }}
                             </text>
+                            @if (overlayAxisMap.get(axis.key); as overlayAxis) {
+                                <text class="radar-label-value radar-label-value-hover" [attr.text-anchor]="axis.textAnchor" y="28">
+                                    {{ overlayAxis.valueText }}/{{ overlayAxis.maxText }}
+                                </text>
+                            }
                         </g>
                     }
                 </svg>
@@ -438,6 +444,10 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
         .radar-label-value {
             fill: var(--text-color-secondary);
             font-size: 13px;
+        }
+
+        .radar-label-value-hover {
+            fill: #62c4ff;
         }
 
         .radar-empty {
@@ -541,6 +551,10 @@ export class LoadForceRadarPanelComponent {
             axisDefinitions.length,
             definition.getContribution(hoveredUnit, maxStats),
         ));
+    });
+
+    readonly hoveredAxisMap = computed(() => {
+        return new Map(this.hoveredUnitAxes().map((axis) => [axis.key, axis] as const));
     });
 
     readonly gridPolygonPoints = computed(() => {

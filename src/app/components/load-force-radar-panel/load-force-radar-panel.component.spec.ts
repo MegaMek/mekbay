@@ -306,6 +306,14 @@ describe('LoadForceRadarPanelComponent', () => {
         expect(getAxis('firepower')?.ratio).toBeCloseTo(0.25, 6);
         expect(getAxis('dpt')?.ratio).toBeCloseTo(1 / 3, 6);
         expect(fixture.nativeElement.querySelectorAll('.radar-hover-node').length).toBe(4);
+        const classicHoveredLabels = Array.from(fixture.nativeElement.querySelectorAll('.radar-label-value-hover')) as SVGTextElement[];
+
+        expect(classicHoveredLabels.map((element) => element.textContent?.trim())).toEqual([
+            '5/9',
+            '40/62',
+            '8/20',
+            '7/15',
+        ]);
     });
 
     it('uses the lower global subtype ceiling when jump and run are tied for a unit', () => {
@@ -502,6 +510,15 @@ describe('LoadForceRadarPanelComponent', () => {
         expect(getAxis('mediumRangeDamage')?.ratio).toBeCloseTo(0.5, 6);
         expect(getAxis('longRangeDamage')?.ratio).toBeCloseTo(0.5, 6);
         expect(fixture.nativeElement.querySelectorAll('.radar-hover-node').length).toBe(5);
+        const alphaStrikeHoveredLabels = Array.from(fixture.nativeElement.querySelectorAll('.radar-label-value-hover')) as SVGTextElement[];
+
+        expect(alphaStrikeHoveredLabels.map((element) => element.textContent?.trim())).toEqual([
+            '3/5',
+            '3/5',
+            '2/2',
+            '3/4',
+            '4/5',
+        ]);
     });
 
     it('shows the empty state when the force has no resolvable units', () => {
