@@ -35,8 +35,7 @@ import { CommonModule } from '@angular/common';
 import { Component, signal, type ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, type input, viewChild, ChangeDetectorRef, DestroyRef, untracked, type ComponentRef, type TemplateRef } from '@angular/core';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
-import { RangeSliderComponent } from '../range-slider/range-slider.component';
-import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
+import { UnitSearchAdvancedFiltersComponent } from '../unit-search-advanced-filters/unit-search-advanced-filters.component';
 import { MEGAMEK_RARITY_SORT_KEY, SORT_OPTIONS, type SortOption, type SerializedSearchFilter } from '../../services/unit-search-filters.model';
 import { getMegaMekAvailabilityRarityForScore, MEGAMEK_AVAILABILITY_UNKNOWN_SCORE } from '../../models/megamek/availability.model';
 import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
@@ -101,7 +100,7 @@ export interface ChassisGroup {
 @Component({
     selector: 'unit-search',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, TooltipDirective, MultiSelectDropdownComponent, AdjustedPV, FormatNumberPipe, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, SemanticGuideComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent],
+    imports: [CommonModule, ScrollingModule, LongPressDirective, TooltipDirective, AdjustedPV, FormatNumberPipe, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, UnitSearchAdvancedFiltersComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.scss',
     host: {

@@ -11,6 +11,7 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { ForceGeneratorService } from '../../services/force-generator.service';
 import { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
+import { DialogsService } from '../../services/dialogs.service';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 
 describe('SearchForceGeneratorDialogComponent', () => {
@@ -81,6 +82,21 @@ describe('SearchForceGeneratorDialogComponent', () => {
                 options: [],
                 value: ['BM'],
                 interacted: true,
+            },
+            techBase: {
+                type: 'dropdown' as const,
+                label: 'Tech',
+                options: [],
+                value: [],
+                interacted: false,
+            },
+            bv: {
+                type: 'range' as const,
+                label: 'BV',
+                totalRange: [0, 10000] as [number, number],
+                options: [0, 10000] as [number, number],
+                value: [0, 10000] as [number, number],
+                interacted: false,
             },
         });
 
@@ -212,16 +228,25 @@ describe('SearchForceGeneratorDialogComponent', () => {
                     },
                 },
                 {
+                    provide: DialogsService,
+                    useValue: {
+                        createDialog: jasmine.createSpy('createDialog'),
+                    },
+                },
+                {
                     provide: UnitSearchFiltersService,
                     useValue: {
                         advOptions: advOptionsSignal,
                         bvPvLimit: signal(5000),
+                        effectiveFilterState: signal({}),
                         filteredUnits: filteredUnitsSignal,
                         forceGeneratorEligibleUnits: forceGeneratorEligibleUnitsSignal,
+                        isComplexQuery: signal(false),
                         pilotGunnerySkill: signal(4),
                         pilotPilotingSkill: signal(5),
                         searchText: signal(''),
                         setFilter: setFilterSpy,
+                        unsetFilter: jasmine.createSpy('unsetFilter'),
                     },
                 },
             ],
@@ -466,6 +491,23 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         expect(checkbox).not.toBeNull();
         expect(fixture.nativeElement.textContent).toContain('Prevent Duplicate Chassis');
+    });
+
+    it('shows additional search filters behind an accordion without the force limit block', async () => {
+        const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        const toggle = fixture.nativeElement.querySelector('.additional-filters-toggle') as HTMLButtonElement | null;
+
+        expect(toggle).not.toBeNull();
+        expect(fixture.nativeElement.textContent).not.toContain('Force BV Limit');
+
+        toggle?.click();
+        fixture.detectChanges();
+
+        expect(fixture.nativeElement.textContent).toContain('Additional Search Filters');
+        expect(fixture.nativeElement.textContent).toContain('Tech');
     });
 
     it('toggles preview units in and out of the locked set', () => {

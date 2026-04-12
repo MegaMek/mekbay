@@ -548,69 +548,9 @@
         </button>
         }
     </div>
-    @if (megaMekAvailabilitySourceSelected()) {
-    <div class="availability-source-disclaimer">Availability source: MegaMek's RAT.</div>
-    }
-    <div class="adv-panel-content" [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
-        @if (isComplexQuery()) {
-        <!-- Complex query: show semantic guide as sidebar -->
-        <div class="complex-query-guide">
-            <div class="complex-query-notice">
-                <span class="notice-text">Filters controlled by search query</span>
-            </div>
-            <semantic-guide [compact]="true" />
-        </div>
-        } @else {
-        <!-- Dropdown filters -->
-        @for (conf of dropdownFilters(); let i = $index; track i) {
-          @let filterOpts = $any(filtersService.advOptions()[conf.key]);
-          <div class="filter-row" [class.semantic-only]="filterOpts?.semanticOnly">
-            <multi-select-dropdown class="dropdown"
-                [label]="filterOpts?.label ?? ''"
-                [options]="filterOpts?.options ?? []"
-                [selected]="filterOpts?.value ?? []"
-                [multistate]="conf.multistate ?? false"
-                [countable]="conf.countable ?? false" 
-                [semanticOnly]="filterOpts?.semanticOnly ?? false"
-                [displayText]="filterOpts?.displayText"
-                [displayItems]="filterOpts?.displayItems"
-                (selectionChange)="setAdvFilter(conf.key, $event)">
-            </multi-select-dropdown>
-          </div>
-        }
-        <!-- Range Filters -->
-        @for (conf of rangeFilters(); let i = $index; track i) {
-          @let rangeOpts = $any(filtersService.advOptions()[conf.key]);
-          <div class="filter-row" [class.semantic-only]="rangeOpts?.semanticOnly">
-            <div class="range">
-                <label class="range-label" [class.disabled]="rangeOpts?.semanticOnly"
-                    (click)="!rangeOpts?.semanticOnly && openRangeValueDialog(conf.key, rangeOpts?.value, rangeOpts?.options)">{{
-                    rangeOpts?.label }}
-                    @if (rangeOpts?.displayText) {
-                    <span class="effective-range" title="Effective range after exclusions">
-                        {{ rangeOpts?.displayText }}
-                    </span>
-                    } @else {
-                    <span class="range-values">
-                        (<span class="range-value-min">{{ rangeOpts?.value?.[0] | formatNumber:false:true }}</span>~<span
-                            class="range-value-max">{{ rangeOpts?.value?.[1] | formatNumber:false:true }}</span>)
-                    </span>
-                    }
-                </label>
-                <range-slider [min]="rangeOpts?.totalRange?.[0] ?? 0"
-                    [max]="rangeOpts?.totalRange?.[1] ?? 100"
-                    [value]="rangeOpts?.value"
-                    [availableRange]="rangeOpts?.options"
-                    [interacted]="rangeOpts?.interacted ?? false"
-                    [curve]="conf.curve ?? 1" [stepSize]="conf.stepSize ?? 1"
-                    [disabled]="rangeOpts?.semanticOnly ?? false"
-                    [excludeRanges]="rangeOpts?.excludeRanges"
-                    [includeRanges]="rangeOpts?.includeRanges"
-                    (valueChange)="setAdvFilter(conf.key, $event)">
-                </range-slider>
-            </div>
-          </div>
-        }
-        }
-    </div>
+    <unit-search-advanced-filters
+        [filterGameSystem]="advPanelFilterGameSystem()"
+        [columnsCount]="advPanelStyle().columnsCount"
+        [showAvailabilitySourceDisclaimer]="true">
+    </unit-search-advanced-filters>
 </div>

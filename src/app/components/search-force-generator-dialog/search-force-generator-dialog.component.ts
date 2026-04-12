@@ -33,7 +33,7 @@
 
 import { CommonModule } from '@angular/common';
 import { DialogRef } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 
 import { GameSystem } from '../../models/common.model';
 import type { Era } from '../../models/eras.model';
@@ -45,10 +45,12 @@ import {
     type LoadForceUnit,
 } from '../../models/load-force-entry.model';
 import type { AvailabilitySource } from '../../models/options.model';
+import { DROPDOWN_FILTERS, RANGE_FILTERS } from '../../services/unit-search-filters.model';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { LoadForcePreviewPanelComponent } from '../load-force-preview-panel/load-force-preview-panel.component';
 import { LoadForceRadarPanelComponent } from '../load-force-radar-panel/load-force-radar-panel.component';
 import { MultiSelectDropdownComponent, type MultiStateSelection } from '../multi-select-dropdown/multi-select-dropdown.component';
+import { UnitSearchAdvancedFiltersComponent } from '../unit-search-advanced-filters/unit-search-advanced-filters.component';
 import { DataService } from '../../services/data.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { ForceGeneratorService, type ForceGenerationPreview, type GeneratedForceUnit } from '../../services/force-generator.service';
@@ -88,6 +90,7 @@ type UnitTypeFilterKey = 'type' | 'as.TP';
         LoadForcePreviewPanelComponent,
         LoadForceRadarPanelComponent,
         MultiSelectDropdownComponent,
+        UnitSearchAdvancedFiltersComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './search-force-generator-dialog.component.html',
@@ -134,6 +137,29 @@ export class SearchForceGeneratorDialogComponent {
     readonly selectedUnitTypeValues = computed(() => this.getSelectedDropdownValues(this.unitTypeFilter()));
     readonly selectedSubtypeValues = computed(() => this.getSelectedDropdownValues(this.subtypeFilter()));
     readonly selectedTagValues = computed(() => this.getSelectedMultiStateValues(this.tagsFilter()));
+    readonly advPanelFilterGameSystem = signal<GameSystem>(this.initialGameSystem);
+    readonly additionalFiltersOpen = signal(false);
+    readonly additionalFiltersExcludedKeys = computed(() => {
+        const excludedKeys = new Set<string>(['era', 'faction', '_tags']);
+        const unitTypeFilterKey = this.unitTypeFilterKey();
+        if (unitTypeFilterKey) {
+            excludedKeys.add(unitTypeFilterKey);
+        }
+        if (this.subtypeFilter()) {
+            excludedKeys.add('subtype');
+        }
+
+        return [...excludedKeys];
+    });
+    readonly otherAdvPanelFilterGameSystem = computed(() => this.getOtherGameSystem(this.advPanelFilterGameSystem()));
+    readonly otherAdvPanelFilterGameSystemHasActiveFilters = computed(() => {
+        const filterState = this.filtersService.effectiveFilterState();
+        const otherGameSystem = this.otherAdvPanelFilterGameSystem();
+
+        return [...DROPDOWN_FILTERS, ...RANGE_FILTERS].some((filter) => (
+            filter.game === otherGameSystem && filterState[filter.key]?.interactedWith
+        ));
+    });
     readonly currentForce = this.forceBuilderService.smartCurrentForce;
     readonly canImportCurrentForce = computed(() => (this.currentForce()?.units().length ?? 0) > 0);
     readonly preventDuplicateChassis = signal(false);
@@ -212,12 +238,37 @@ export class SearchForceGeneratorDialogComponent {
         return this.forceGeneratorService.createForceEntry(preview);
     });
 
+    constructor() {
+        effect(() => {
+            const currentGameSystem = this.gameSystem();
+            untracked(() => this.advPanelFilterGameSystem.set(currentGameSystem));
+        });
+    }
+
     budgetMinimumFieldLabel(): string {
         return this.gameSystem() === GameSystem.ALPHA_STRIKE ? 'Min PV' : 'Min BV';
     }
 
     budgetMaximumFieldLabel(): string {
         return this.gameSystem() === GameSystem.ALPHA_STRIKE ? 'Max PV' : 'Max BV';
+    }
+
+    toggleAdditionalFilters(): void {
+        this.additionalFiltersOpen.update((value) => !value);
+    }
+
+    setAdvPanelFilterGameSystem(gameSystem: GameSystem): void {
+        this.advPanelFilterGameSystem.set(gameSystem);
+    }
+
+    toggleAdvPanelFilterGameSystem(): void {
+        this.advPanelFilterGameSystem.set(this.otherAdvPanelFilterGameSystem());
+    }
+
+    advPanelFilterGameSystemToggleTitle(): string {
+        return this.otherAdvPanelFilterGameSystem() === GameSystem.CLASSIC
+            ? 'Show BattleTech filters'
+            : 'Show Alpha Strike filters';
     }
 
     setGameSystem(gameSystem: GameSystem): void {
@@ -555,6 +606,12 @@ export class SearchForceGeneratorDialogComponent {
             return 'as.TP';
         }
         return null;
+    }
+
+    private getOtherGameSystem(gameSystem: GameSystem): GameSystem {
+        return gameSystem === GameSystem.CLASSIC
+            ? GameSystem.ALPHA_STRIKE
+            : GameSystem.CLASSIC;
     }
 
     private setMultiStateFilter(key: MultiStateFilterKey, selection: MultiStateSelection | readonly string[]): void {
