@@ -3,6 +3,7 @@ import { MULFACTION_MERCENARY, type MULFaction } from '../models/mulfactions.mod
 import type { ForceUnit } from '../models/force-unit.model';
 import type { Unit } from '../models/units.model';
 import { ForceNamerUtil } from './force-namer.util';
+import type { ForceAvailabilityContext } from './force-availability.util';
 
 function createUnit(id: number, year: number): Unit {
     return {
@@ -182,5 +183,63 @@ describe('ForceNamerUtil.buildFactionDisplayList', () => {
         expect(result.find(item => item.faction.id === earlierFaction.id)?.matchPercentage).toBe(0);
         expect(result.find(item => item.faction.id === eligibleFaction.id)?.matchPercentage).toBe(1);
         expect(result[0].faction.id).toBe(eligibleFaction.id);
+    });
+
+    it('uses the provided availability context instead of raw MUL membership', () => {
+        const selectedEra = createEra(3025, 3025, 3049);
+        const unit = createUnit(101, 3055);
+        unit.name = 'Shadow Hawk SHD-2H';
+        const forceUnits = [createForceUnit(unit)];
+        const rawFaction = createFaction(10, 'Raw Faction', { 3025: [101] });
+        const contextFaction = createFaction(11, 'Context Faction', { 3025: [] });
+
+        const availabilityContext: ForceAvailabilityContext = {
+            source: 'megamek',
+            getUnitKey: (candidate) => candidate.name,
+            getVisibleEraUnitIds: () => new Set([unit.name]),
+            getFactionUnitIds: (faction) => faction.id === contextFaction.id ? new Set([unit.name]) : new Set<string>(),
+            getFactionEraUnitIds: (faction) => faction.id === contextFaction.id ? new Set([unit.name]) : new Set<string>(),
+        };
+
+        const result = ForceNamerUtil.buildFactionDisplayList(
+            forceUnits,
+            [rawFaction, contextFaction],
+            [selectedEra],
+            selectedEra,
+            availabilityContext
+        );
+
+        expect(result.find(item => item.faction.id === rawFaction.id)?.matchPercentage).toBe(0);
+        expect(result.find(item => item.faction.id === contextFaction.id)?.matchPercentage).toBe(1);
+        expect(result[0].faction.id).toBe(contextFaction.id);
+    });
+});
+
+describe('ForceNamerUtil.pickBestFaction', () => {
+    it('uses the provided availability context for best-faction selection', () => {
+        const selectedEra = createEra(3025, 3025, 3049);
+        const unit = createUnit(101, 3025);
+        unit.name = 'Phoenix Hawk PXH-1';
+        const forceUnits = [createForceUnit(unit)];
+        const rawFaction = createFaction(10, 'Raw Faction', { 3025: [101] });
+        const contextFaction = createFaction(11, 'Context Faction', { 3025: [] });
+
+        const availabilityContext: ForceAvailabilityContext = {
+            source: 'megamek',
+            getUnitKey: (candidate) => candidate.name,
+            getVisibleEraUnitIds: () => new Set([unit.name]),
+            getFactionUnitIds: (faction) => faction.id === contextFaction.id ? new Set([unit.name]) : new Set<string>(),
+            getFactionEraUnitIds: (faction) => faction.id === contextFaction.id ? new Set([unit.name]) : new Set<string>(),
+        };
+
+        const result = ForceNamerUtil.pickBestFaction(
+            forceUnits,
+            [rawFaction, contextFaction],
+            [selectedEra],
+            null,
+            availabilityContext
+        );
+
+        expect(result).toBe(contextFaction);
     });
 });

@@ -48,6 +48,7 @@ import { FactionDropdownPanelComponent } from './faction-dropdown-panel.componen
 import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-visuals.util';
 import { EraDropdownPanelComponent, type EraDisplayInfo } from './era-dropdown-panel.component';
 import { MULFACTION_EXTINCT } from '../../models/mulfactions.model';
+import { UnitAvailabilitySourceService } from '../../services/unit-availability-source.service';
 
 
 
@@ -437,6 +438,7 @@ export class RenameForceDialogComponent {
     private overlayManager = inject(OverlayManagerService);
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
+    private unitAvailabilitySource = inject(UnitAvailabilitySourceService);
 
     getFactionImg = getFactionImg;
 
@@ -445,17 +447,19 @@ export class RenameForceDialogComponent {
 
     selectedFaction = signal<Faction | null>(this.data.force.faction());
     selectedEra = signal<Era | null>(this.data.force.era());
+    availabilityContext = computed(() => this.unitAvailabilitySource.getForceAvailabilityContext());
 
     eraDisplayList = computed<EraDisplayInfo[]>(() => {
         const eras = this.dataService.getEras();
         const units = this.data.force.units();
+        const availabilityContext = this.availabilityContext();
         if (units.length === 0) {
             return eras.map(era => ({ era, matchPercentage: 100 }));
         }
         const extinctFaction = this.dataService.getFactionById(MULFACTION_EXTINCT) ?? null;
 
         return eras.map(era => {
-            const validation = getEraUnitValidationSummary(units, era, eras, extinctFaction);
+            const validation = getEraUnitValidationSummary(units, era, eras, extinctFaction, availabilityContext);
             return {
                 era,
                 matchPercentage: validation.totalUnits > 0
@@ -472,7 +476,11 @@ export class RenameForceDialogComponent {
     });
 
     selectedEraWarning = computed<string | null>(() => {
-        return this.data.force.getEraWarningMessage(this.selectedEra(), this.selectedFaction());
+        return this.data.force.getEraWarningMessage(
+            this.selectedEra(),
+            this.selectedFaction(),
+            this.availabilityContext()
+        );
     });
 
     hasEraWarningState = computed<boolean>(() => {
@@ -492,7 +500,8 @@ export class RenameForceDialogComponent {
             units,
             this.dataService.getFactions(),
             this.dataService.getEras(),
-            this.selectedEra()
+            this.selectedEra(),
+            this.availabilityContext()
         );
     });
 
@@ -586,7 +595,8 @@ export class RenameForceDialogComponent {
             units,
             this.dataService.getFactions(),
             this.dataService.getEras(),
-            this.selectedEra()
+            this.selectedEra(),
+            this.availabilityContext()
         );
         if (randomFaction === this.selectedFaction()) return; // no change
         this.selectedFaction.set(randomFaction);

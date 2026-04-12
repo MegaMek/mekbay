@@ -50,6 +50,7 @@ import {
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import type { AvailabilitySource } from '../models/options.model';
 import type { Unit } from '../models/units.model';
+import type { ForceAvailabilityContext } from '../utils/force-availability.util';
 import type {
     UnitSearchWorkerMegaMekAvailabilityBucketSnapshot,
     UnitSearchWorkerMegaMekAvailabilitySnapshot,
@@ -185,6 +186,7 @@ function serializeMegaMekMembershipBucket(
 export class UnitAvailabilitySourceService {
     private readonly dataService = inject(DataService);
     private readonly optionsService = inject(OptionsService);
+    private readonly forceAvailabilityContextBySource = new Map<AvailabilitySource, ForceAvailabilityContext>();
 
     private mulEraUnitIdsCache = new WeakMap<Era, Set<AvailabilityUnitKey>>();
     private mulFactionUnitIdsCache = new WeakMap<Faction, Set<AvailabilityUnitKey>>();
@@ -522,6 +524,25 @@ export class UnitAvailabilitySourceService {
         }
 
         return this.getMegaMekRarityUnitIds(rarity, context).has(unit.name);
+    }
+
+    public getForceAvailabilityContext(availabilitySource?: AvailabilitySource): ForceAvailabilityContext {
+        const resolvedSource = availabilitySource ?? this.optionsService.options().availabilitySource;
+        const existing = this.forceAvailabilityContextBySource.get(resolvedSource);
+        if (existing) {
+            return existing;
+        }
+
+        const context: ForceAvailabilityContext = {
+            source: resolvedSource,
+            getUnitKey: (unit) => this.getUnitAvailabilityKey(unit, resolvedSource),
+            getVisibleEraUnitIds: (era) => this.getVisibleEraUnitIds(era, resolvedSource),
+            getFactionUnitIds: (faction, contextEraIds) => this.getFactionUnitIds(faction, contextEraIds, resolvedSource),
+            getFactionEraUnitIds: (faction, era) => this.getFactionEraUnitIds(faction, era, resolvedSource),
+        };
+
+        this.forceAvailabilityContextBySource.set(resolvedSource, context);
+        return context;
     }
 
     public useMegaMekAvailability(availabilitySource?: AvailabilitySource): boolean {

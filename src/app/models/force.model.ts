@@ -52,6 +52,7 @@ import type { OrgSizeResult } from '../utils/org/org-types';
 import { getOrgFromForce, getOrgFromGroup } from '../utils/org/org-namer.util';
 import { getUnitsAverageTechBase, TechBase } from './tech.model';
 import { MULFACTION_EXTINCT } from './mulfactions.model';
+import { createMulForceAvailabilityContext, type ForceAvailabilityContext } from '../utils/force-availability.util';
 
 /*
  * Author: Drake
@@ -63,22 +64,12 @@ function getEraEndYear(era: Era): number {
     return era.years.to ?? Number.POSITIVE_INFINITY;
 }
 
-function hasFactionEraAvailability(faction: Faction, eraId: number): boolean {
-    const eraUnits = faction.eras[eraId] as Set<number> | number[] | undefined;
-    if (!eraUnits) return false;
-    return eraUnits instanceof Set ? eraUnits.size > 0 : Array.isArray(eraUnits) && eraUnits.length > 0;
-}
-
-function hasFactionUnitMembership(faction: Faction | null | undefined, eraId: number, unitId: number): boolean {
-    if (!faction) return false;
-    const eraUnits = faction.eras[eraId] as Set<number> | number[] | undefined;
-    if (!eraUnits) return false;
-    return eraUnits instanceof Set ? eraUnits.has(unitId) : eraUnits.includes(unitId);
-}
-
-function hasEraUnitMembership(era: Era, unitId: number): boolean {
-    const eraUnits = era.units as Set<number> | number[];
-    return eraUnits instanceof Set ? eraUnits.has(unitId) : eraUnits.includes(unitId);
+function hasFactionEraAvailability(
+    faction: Faction,
+    era: Era,
+    availabilityContext: ForceAvailabilityContext = createMulForceAvailabilityContext(),
+): boolean {
+    return availabilityContext.getFactionEraUnitIds(faction, era).size > 0;
 }
 
 export interface EraUnitValidationSummary {
@@ -101,6 +92,7 @@ export function getEraUnitValidationSummary(
     era: Era,
     eras: readonly Era[],
     extinctFaction: Faction | null,
+    availabilityContext: ForceAvailabilityContext = createMulForceAvailabilityContext(),
 ): EraUnitValidationSummary {
     const eraEndYear = getEraEndYear(era);
     let invalidTrackedUnits = 0;
@@ -109,16 +101,27 @@ export function getEraUnitValidationSummary(
     const extinctTrackedUnitNames: string[] = [];
     let invalidYearFallbackUnits = 0;
     const invalidYearFallbackUnitNames: string[] = [];
+    const trackedUnitIds = new Set<string>();
+    const selectedEraUnitIds = availabilityContext.getVisibleEraUnitIds(era);
+    const extinctEraUnitIds = extinctFaction
+        ? availabilityContext.getFactionEraUnitIds(extinctFaction, era)
+        : new Set<string>();
+
+    for (const candidateEra of eras) {
+        for (const unitId of availabilityContext.getVisibleEraUnitIds(candidateEra)) {
+            trackedUnitIds.add(unitId);
+        }
+    }
 
     for (const forceUnit of units) {
         const unit = forceUnit.getUnit();
         const displayName = forceUnit.getDisplayName();
-        const isTrackedInAnyEra = eras.some(candidateEra => hasEraUnitMembership(candidateEra, unit.id));
+        const unitKey = availabilityContext.getUnitKey(unit);
+        const isTrackedInAnyEra = trackedUnitIds.has(unitKey);
 
         if (isTrackedInAnyEra) {
-            const existsInSelectedEra = hasEraUnitMembership(era, unit.id);
-            const isExtinctInSelectedEra = existsInSelectedEra
-                && hasFactionUnitMembership(extinctFaction, era.id, unit.id);
+            const existsInSelectedEra = selectedEraUnitIds.has(unitKey);
+            const isExtinctInSelectedEra = extinctEraUnitIds.has(unitKey);
 
             if (isExtinctInSelectedEra) {
                 extinctTrackedUnits++;
@@ -409,7 +412,11 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
      */
     protected abstract deserializeForceUnit(data: SerializedUnit): TUnit;
 
-    getEraWarningMessage(era: Era | null, faction: Faction | null): string | null {
+    getEraWarningMessage(
+        era: Era | null,
+        faction: Faction | null,
+        availabilityContext: ForceAvailabilityContext = createMulForceAvailabilityContext(),
+    ): string | null {
         if (!era) {
             return null;
         }
@@ -424,9 +431,9 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             extinctTrackedUnitNames,
             invalidYearFallbackUnits,
             invalidYearFallbackUnitNames,
-        } = getEraUnitValidationSummary(this.units(), era, eras, extinctFaction);
+        } = getEraUnitValidationSummary(this.units(), era, eras, extinctFaction, availabilityContext);
 
-        if (faction && !hasFactionEraAvailability(faction, era.id)) {
+        if (faction && !hasFactionEraAvailability(faction, era, availabilityContext)) {
             warnings.push(`${faction.name} does not exist in this era.`);
         }
 

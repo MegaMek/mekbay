@@ -87,6 +87,7 @@ import { SaveOperationDialogComponent, type OperationDialogData, type OperationD
 import type { OpPreviewForce } from '../components/op-preview/op-preview.component';
 import { ForceLoadingOverlayComponent, type ForceLoadingOverlayData, type ForceLoadingProgress } from '../components/force-loading-overlay/force-loading-overlay.component';
 import type { PrintAllOptions } from '../models/print-options.model';
+import { UnitAvailabilitySourceService } from './unit-availability-source.service';
 
 /*
  * Author: Drake
@@ -104,6 +105,7 @@ export class ForceBuilderService {
     private unitInitializer = inject(UnitInitializerService);
     private injector = inject(Injector);
     private urlStateService = inject(UrlStateService);
+    private unitAvailabilitySource = inject(UnitAvailabilitySourceService);
 
     public selectedUnit = signal<ForceUnit | null>(null, { equal: () => false });
     public loadedForces = signal<ForceSlot[]>([]);
@@ -1251,7 +1253,8 @@ export class ForceBuilderService {
                 force.units(),
                 this.dataService.getFactions(),
                 this.dataService.getEras(),
-                force.faction()
+                force.faction(),
+                this.unitAvailabilitySource.getForceAvailabilityContext()
             );
         }
         if (faction?.id === force.faction()?.id) {
