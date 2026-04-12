@@ -2814,6 +2814,43 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ]);
     });
 
+    it('exposes wildcard-only exclusive faction filters with both structured and plain semantic display values', async () => {
+        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
+            pending('Real unit data could not be loaded for the semantic faction wildcard display test.');
+            return;
+        }
+
+        const bundle = buildSmallBundle(benchmarkBundle);
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: 'Capellan Confederation',
+                group: 'Inner Sphere',
+                img: '',
+                eras: { 1: new Set([1]) },
+            },
+            {
+                id: 2,
+                name: 'Capellan March',
+                group: 'Inner Sphere',
+                img: '',
+                eras: { 1: new Set([2]) },
+            },
+        ];
+
+        const { service } = createService(bundle);
+        service.searchText.set('faction=="Capellan *"');
+        await flushAsyncWork();
+
+        const factionOptions = service.advOptions()['faction'];
+
+        expect(factionOptions && factionOptions.type === 'dropdown' ? factionOptions.semanticOnly : undefined).toBeTrue();
+        expect(factionOptions && factionOptions.type === 'dropdown' ? factionOptions.displayText : undefined).toBe('==Capellan *');
+        expect(factionOptions && factionOptions.type === 'dropdown' ? factionOptions.displayItems : undefined).toEqual([
+            { text: '==Capellan *', state: 'or' },
+        ]);
+    });
+
     it('does not promote overlapping faction filters while a semantic quote is still open', async () => {
         if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
             pending('Real unit data could not be loaded for the incomplete semantic faction test.');

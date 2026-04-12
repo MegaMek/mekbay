@@ -1174,6 +1174,7 @@ interface ExternalFilterRuntimeCache {
     allNamesByKey: Map<string, string[]>;
     expandedValuesByKey: Map<string, Map<string, string[]>>;
     unitMatchedNamesByKey: WeakMap<any, Map<string, Set<string>>>;
+    indexedResultsByKey: Map<string, { mode: 'match' | 'exclude'; unitIds: Set<string | number> }>;
 }
 
 const externalFilterRuntimeCache = new WeakMap<EvaluatorContext, ExternalFilterRuntimeCache>();
@@ -1185,6 +1186,7 @@ function getExternalFilterRuntimeCache(context: EvaluatorContext): ExternalFilte
             allNamesByKey: new Map<string, string[]>(),
             expandedValuesByKey: new Map<string, Map<string, string[]>>(),
             unitMatchedNamesByKey: new WeakMap<any, Map<string, Set<string>>>(),
+            indexedResultsByKey: new Map<string, { mode: 'match' | 'exclude'; unitIds: Set<string | number> }>(),
         };
         externalFilterRuntimeCache.set(context, cache);
     }
@@ -1289,6 +1291,172 @@ function getUnitMatchedExternalNames(
 
     unitCache.set(cacheKey, matchedNames);
     return matchedNames;
+}
+
+function buildExternalFilterScopeCacheKey(activeScope?: AvailabilityFilterScope): string {
+    const scopeParts: string[] = [];
+
+    if (activeScope?.eraNames && activeScope.eraNames.length > 0) {
+        scopeParts.push(`era=${[...activeScope.eraNames].map(name => name.toLowerCase()).sort().join('\u0001')}`);
+    }
+    if (activeScope?.factionNames && activeScope.factionNames.length > 0) {
+        scopeParts.push(`faction=${[...activeScope.factionNames].map(name => name.toLowerCase()).sort().join('\u0001')}`);
+    }
+    if (activeScope?.availabilityFromNames && activeScope.availabilityFromNames.length > 0) {
+        scopeParts.push(`from=${[...activeScope.availabilityFromNames].map(name => name.toLowerCase()).sort().join('\u0001')}`);
+    }
+
+    return scopeParts.join('\u0002');
+}
+
+function buildIndexedExternalFilterCacheKey(
+    filterKey: string,
+    operator: SemanticOperator,
+    values: readonly string[],
+    activeScope?: AvailabilityFilterScope,
+): string {
+    const normalizedValues = [...values].map(value => value.toLowerCase()).sort().join('\u0001');
+    const scopeKey = buildExternalFilterScopeCacheKey(activeScope);
+
+    return scopeKey
+        ? `${filterKey}\u0003${operator}\u0003${normalizedValues}\u0003${scopeKey}`
+        : `${filterKey}\u0003${operator}\u0003${normalizedValues}`;
+}
+
+function addIndexedExternalUnitIds(
+    target: Set<string | number>,
+    context: EvaluatorContext,
+    filterKey: string,
+    names: Iterable<string>,
+    activeScope?: AvailabilityFilterScope,
+): void {
+    for (const name of names) {
+        const unitIds = context.getIndexedUnitIds?.(filterKey, name, activeScope);
+        if (!unitIds) {
+            continue;
+        }
+
+        for (const unitId of unitIds) {
+            target.add(unitId);
+        }
+    }
+}
+
+function buildIndexedExternalUnitIdSet(
+    context: EvaluatorContext,
+    filterKey: string,
+    names: Iterable<string>,
+    activeScope?: AvailabilityFilterScope,
+): Set<string | number> {
+    const unitIds = new Set<string | number>();
+    addIndexedExternalUnitIds(unitIds, context, filterKey, names, activeScope);
+    return unitIds;
+}
+
+function getIndexedExternalFilterResult(
+    context: EvaluatorContext,
+    filterKey: string,
+    operator: SemanticOperator,
+    values: readonly string[],
+    activeScope?: AvailabilityFilterScope,
+): { mode: 'match' | 'exclude'; unitIds: Set<string | number> } | null {
+    if (!context.getIndexedUnitIds || !context.getIndexedFilterValues) {
+        return null;
+    }
+
+    const indexedNames = context.getIndexedFilterValues(filterKey);
+    if (!indexedNames || indexedNames.length === 0) {
+        return null;
+    }
+
+    const allNames = getCachedExternalNames(context, filterKey, () => [...indexedNames]);
+    const runtimeCache = getExternalFilterRuntimeCache(context);
+    const cacheKey = buildIndexedExternalFilterCacheKey(filterKey, operator, values, activeScope);
+    const cached = runtimeCache.indexedResultsByKey.get(cacheKey);
+    if (cached) {
+        return cached;
+    }
+
+    let result: { mode: 'match' | 'exclude'; unitIds: Set<string | number> };
+
+    if (operator === '!=') {
+        const excludedIds = new Set<string | number>();
+        for (const value of values) {
+            addIndexedExternalUnitIds(
+                excludedIds,
+                context,
+                filterKey,
+                expandExternalFilterValue(context, filterKey, value, allNames),
+                activeScope,
+            );
+        }
+
+        result = {
+            mode: 'exclude',
+            unitIds: excludedIds,
+        };
+    } else if (operator === '&=') {
+        let matchingIds: Set<string | number> | null = null;
+
+        for (const value of values) {
+            const expandedNames = expandExternalFilterValue(context, filterKey, value, allNames);
+            const valueMatchingIds = buildIndexedExternalUnitIdSet(context, filterKey, expandedNames, activeScope);
+
+            if (matchingIds === null) {
+                matchingIds = valueMatchingIds;
+                continue;
+            }
+
+            for (const unitId of Array.from(matchingIds)) {
+                if (!valueMatchingIds.has(unitId)) {
+                    matchingIds.delete(unitId);
+                }
+            }
+        }
+
+        result = {
+            mode: 'match',
+            unitIds: matchingIds ?? new Set<string | number>(),
+        };
+    } else {
+        const allowedNamesByLower = new Map<string, string>();
+        for (const value of values) {
+            for (const name of expandExternalFilterValue(context, filterKey, value, allNames)) {
+                const lowerName = name.toLowerCase();
+                if (!allowedNamesByLower.has(lowerName)) {
+                    allowedNamesByLower.set(lowerName, name);
+                }
+            }
+        }
+
+        const matchingIds = buildIndexedExternalUnitIdSet(
+            context,
+            filterKey,
+            allowedNamesByLower.values(),
+            activeScope,
+        );
+
+        if (operator === '==') {
+            const excludedIds = new Set<string | number>();
+            for (const name of allNames) {
+                if (!allowedNamesByLower.has(name.toLowerCase())) {
+                    addIndexedExternalUnitIds(excludedIds, context, filterKey, [name], activeScope);
+                }
+            }
+
+            for (const unitId of excludedIds) {
+                matchingIds.delete(unitId);
+            }
+        }
+
+        result = {
+            mode: 'match',
+            unitIds: matchingIds,
+        };
+    }
+
+    runtimeCache.indexedResultsByKey.set(cacheKey, result);
+    return result;
 }
 
 function getAllScopedNamesGetter(
@@ -1529,11 +1697,22 @@ function buildIndexedCandidateSetForConfig(
     if (!context.getIndexedUnitIds || !context.getIndexedFilterValues) {
         return null;
     }
-    if (conf.type !== AdvFilterType.DROPDOWN || conf.countable || operator === '!=') {
+    if (conf.type !== AdvFilterType.DROPDOWN || conf.countable) {
         return null;
     }
 
     if (!usesIndexedDropdownUniverse(conf)) {
+        return null;
+    }
+
+    if (conf.external && operator !== '!=') {
+        const indexedResult = getIndexedExternalFilterResult(context, conf.key, operator, values, activeScope);
+        if (indexedResult && indexedResult.mode === 'match') {
+            return new Set<string | number>(indexedResult.unitIds);
+        }
+    }
+
+    if (operator === '!=') {
         return null;
     }
 
@@ -1728,6 +1907,14 @@ function evaluateExternalFilter(
 
     const filterKey = conf.key;
     const allNames = getCachedExternalNames(context, filterKey, getAllNames);
+    const indexedResult = getIndexedExternalFilterResult(context, filterKey, operator, values, activeScope);
+    if (indexedResult) {
+        const unitId = context.getUnitId(unit);
+        return indexedResult.mode === 'exclude'
+            ? !indexedResult.unitIds.has(unitId)
+            : indexedResult.unitIds.has(unitId);
+    }
+
     const expandedValues = values.flatMap(value => expandExternalFilterValue(context, filterKey, value, allNames));
     
     // Handle operators

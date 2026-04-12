@@ -179,6 +179,35 @@ describe('MultiSelectDropdownComponent', () => {
         ]);
     });
 
+    it('renders semantic display text instead of the Any placeholder for wildcard-only semantic filters', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+
+        fixture.componentRef.setInput('multistate', true);
+        fixture.componentRef.setInput('semanticOnly', true);
+        fixture.componentRef.setInput('displayText', '==Capellan *');
+        fixture.componentRef.setInput('selected', {});
+        fixture.detectChanges();
+
+        const semanticText = fixture.nativeElement.querySelector('.semantic-display-text') as HTMLElement | null;
+        const placeholder = fixture.nativeElement.querySelector('.placeholder') as HTMLElement | null;
+
+        expect(semanticText?.textContent?.trim()).toBe('==Capellan *');
+        expect(placeholder).toBeNull();
+    });
+
+    it('does not show the Any placeholder for semantic-only filters without display metadata', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+
+        fixture.componentRef.setInput('multistate', true);
+        fixture.componentRef.setInput('semanticOnly', true);
+        fixture.componentRef.setInput('selected', {});
+        fixture.detectChanges();
+
+        const placeholder = fixture.nativeElement.querySelector('.placeholder') as HTMLElement | null;
+
+        expect(placeholder).toBeNull();
+    });
+
     xit('preserves scroll position when toggling an item in the virtualized list', async () => {
         const fixture = TestBed.createComponent(TestHostComponent);
         fixture.componentInstance.options.set(createOptions(140));

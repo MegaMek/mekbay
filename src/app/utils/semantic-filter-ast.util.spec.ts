@@ -92,7 +92,102 @@ describe('semantic filter exclusivity', () => {
         });
 
         expect(filtered).toEqual([units[0], units[1]]);
-        expect(membershipChecks).toBe(2);
+        expect(membershipChecks).toBe(0);
+    });
+
+    it('uses indexed results for exclusive external wildcard filters without per-unit membership scans', () => {
+        const units = [
+            { name: 'Unit 1', faction: ['Capellan Confederation'] },
+            { name: 'Unit 2', faction: ['Capellan Confederation', 'Federated Suns'] },
+            { name: 'Unit 3', faction: ['Federated Suns'] },
+        ];
+        const allFactionNames = [
+            'Capellan Confederation',
+            'Capellan March',
+            'Federated Suns',
+            ...Array.from({ length: 80 }, (_, index) => `Unused Faction ${index + 1}`),
+        ];
+        const result = parseSemanticQueryAST('faction=="Capellan *"', GameSystem.CLASSIC);
+        let membershipChecks = 0;
+
+        const filtered = filterUnitsWithAST(units, result.ast, {
+            gameSystem: GameSystem.CLASSIC,
+            getProperty: (unit: { faction?: string[] }, key: string) => unit[key as keyof typeof unit],
+            getUnitId,
+            getIndexedFilterValues: (filterKey: string) => filterKey === 'faction' ? allFactionNames : [],
+            getIndexedUnitIds: (filterKey: string, value: string) => {
+                if (filterKey !== 'faction') {
+                    return undefined;
+                }
+
+                if (value === 'Capellan Confederation') {
+                    return new Set(['Unit 1', 'Unit 2']);
+                }
+                if (value === 'Capellan March') {
+                    return new Set<string>();
+                }
+                if (value === 'Federated Suns') {
+                    return new Set(['Unit 2', 'Unit 3']);
+                }
+
+                return new Set<string>();
+            },
+            unitBelongsToFaction: (unit: { faction?: string[] }, factionName: string) => {
+                membershipChecks++;
+                return (unit.faction ?? []).includes(factionName);
+            },
+            getAllFactionNames: () => allFactionNames,
+        });
+
+        expect(filtered).toEqual([units[0]]);
+        expect(membershipChecks).toBe(0);
+    });
+
+    it('uses indexed results for wildcard external include filters without per-unit membership scans', () => {
+        const units = [
+            { name: 'Unit 1', faction: ['Capellan Confederation'] },
+            { name: 'Unit 2', faction: ['Capellan March'] },
+            { name: 'Unit 3', faction: ['Federated Suns'] },
+        ];
+        const allFactionNames = [
+            'Capellan Confederation',
+            'Capellan March',
+            'Federated Suns',
+        ];
+        const result = parseSemanticQueryAST('faction="Capellan *"', GameSystem.CLASSIC);
+        let membershipChecks = 0;
+
+        const filtered = filterUnitsWithAST(units, result.ast, {
+            gameSystem: GameSystem.CLASSIC,
+            getProperty: (unit: { faction?: string[] }, key: string) => unit[key as keyof typeof unit],
+            getUnitId,
+            getIndexedFilterValues: (filterKey: string) => filterKey === 'faction' ? allFactionNames : [],
+            getIndexedUnitIds: (filterKey: string, value: string) => {
+                if (filterKey !== 'faction') {
+                    return undefined;
+                }
+
+                if (value === 'Capellan Confederation') {
+                    return new Set(['Unit 1']);
+                }
+                if (value === 'Capellan March') {
+                    return new Set(['Unit 2']);
+                }
+                if (value === 'Federated Suns') {
+                    return new Set(['Unit 3']);
+                }
+
+                return new Set<string>();
+            },
+            unitBelongsToFaction: (unit: { faction?: string[] }, factionName: string) => {
+                membershipChecks++;
+                return (unit.faction ?? []).includes(factionName);
+            },
+            getAllFactionNames: () => allFactionNames,
+        });
+
+        expect(filtered).toEqual([units[0], units[1]]);
+        expect(membershipChecks).toBe(0);
     });
 
     it('does not try indexed pruning for external force pack filters', () => {

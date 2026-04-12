@@ -381,15 +381,16 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
                 const currentSelection = normalizeMultiStateSelection(currentFilterValue);
                 const wildcardPatternsMultistate = filterStateEntry?.wildcardPatterns;
                 const isExclusiveSemantic = filterStateEntry?.exclusive ?? false;
-                const displayItemsMultistate = Object.keys(currentSelection).length > 0
-                    ? buildSemanticDisplayItems(
-                        currentSelection,
-                        !!conf.countable,
-                        isExclusiveSemantic,
-                        wildcardPatternsMultistate,
-                    )
+                const displayItemsMultistate = buildSemanticDisplayItems(
+                    currentSelection,
+                    !!conf.countable,
+                    isExclusiveSemantic,
+                    wildcardPatternsMultistate,
+                );
+                const displayTextMultistate = displayItemsMultistate
+                    ? semanticDisplayItemsToText(displayItemsMultistate)
                     : undefined;
-                const semanticOnlyMultistate = displayItemsMultistate !== undefined;
+                const semanticOnlyMultistate = filterStateEntry?.semanticOnly ?? (displayItemsMultistate !== undefined);
 
                 result[conf.key] = {
                     type: 'dropdown',
@@ -398,6 +399,7 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
                     value: currentSelection,
                     interacted: filterStateEntry?.interactedWith ?? false,
                     semanticOnly: semanticOnlyMultistate,
+                    displayText: displayTextMultistate,
                     displayItems: displayItemsMultistate,
                 };
                 pushAdvOptionsTelemetry(conf, filterStartedAt, contextDerivationMs, contextUnits.length, contextStrategy, optionsWithAvailability);
@@ -437,14 +439,13 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
                 semanticOnly = true;
                 if (conf.multistate) {
                     const selection = normalizeMultiStateSelection(filterValue);
-                    if (Object.keys(selection).length > 0) {
-                        displayItems = buildSemanticDisplayItems(
-                            selection,
-                            !!conf.countable,
-                            isExclusiveSemantic,
-                            wildcardPatterns,
-                        );
-                    }
+                    displayItems = buildSemanticDisplayItems(
+                        selection,
+                        !!conf.countable,
+                        isExclusiveSemantic,
+                        wildcardPatterns,
+                    );
+                    displayText = displayItems ? semanticDisplayItemsToText(displayItems) : undefined;
                 } else {
                     displayText = wildcardPatterns.map(pattern => {
                         const prefix = pattern.state === 'not' ? '!' : '';

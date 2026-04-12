@@ -15,7 +15,7 @@
             } @else if (semanticOnly() && displayText()) {
                 <!-- Semantic-only mode fallback: show plain text -->
                 <span class="semantic-display-text">{{ displayText() }}</span>
-            } @else if (selectedOptions().length === 0) {
+            } @else if (!semanticOnly() && selectedOptions().length === 0) {
                 <span class="placeholder">Any</span>
             } @else if (compressedPills(); as compressed) {
                 @for (cp of compressed; track cp.state) {
