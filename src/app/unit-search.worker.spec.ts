@@ -130,6 +130,70 @@ function createSnapshot(): UnitSearchWorkerCorpusSnapshot {
     };
 }
 
+function createMegaMekSnapshot(): UnitSearchWorkerCorpusSnapshot {
+    const unitName = 'Masakari Prime';
+
+    return {
+        corpusVersion: '1:0',
+        units: [createUnit(unitName)],
+        indexes: {
+            era: {},
+            faction: {},
+        },
+        factionEraIndex: {},
+        megaMekAvailability: {
+            all: {
+                unitNames: [unitName],
+                bySource: {},
+                byRarity: {},
+            },
+            knownUnitNames: [unitName],
+            eras: {
+                'Clan Invasion': {
+                    unitNames: [unitName],
+                    bySource: {},
+                    byRarity: {},
+                },
+                ilClan: {
+                    unitNames: [unitName],
+                    bySource: {},
+                    byRarity: {},
+                },
+            },
+            factions: {
+                'Clan Jade Falcon': {
+                    unitNames: [unitName],
+                    bySource: {},
+                    byRarity: {},
+                },
+                'Clan Wolf': {
+                    unitNames: [unitName],
+                    bySource: {},
+                    byRarity: {},
+                },
+            },
+            eraFactions: {
+                'Clan Invasion': {
+                    'Clan Jade Falcon': {
+                        unitNames: [unitName],
+                        bySource: {},
+                        byRarity: {},
+                    },
+                },
+                ilClan: {
+                    'Clan Wolf': {
+                        unitNames: [unitName],
+                        bySource: {},
+                        byRarity: {},
+                    },
+                },
+            },
+            extinctUnitNames: [],
+            extinctByEra: {},
+        },
+    };
+}
+
 function createRequest(): UnitSearchWorkerQueryRequest {
     return {
         revision: 1,
@@ -147,10 +211,24 @@ function createRequest(): UnitSearchWorkerQueryRequest {
     };
 }
 
+function createMegaMekRequest(): UnitSearchWorkerQueryRequest {
+    return {
+        ...createRequest(),
+        availabilitySource: 'megamek',
+    };
+}
+
 describe('unit-search worker', () => {
     it('requires faction membership in every selected multistate era for MUL searches', () => {
         const runtime = __test__.hydrateCorpus(createSnapshot());
         const result = __test__.buildResultMessage(runtime, createRequest());
+
+        expect(result.unitNames).toEqual([]);
+    });
+
+    it('requires faction membership in every selected multistate era for MegaMek searches', () => {
+        const runtime = __test__.hydrateCorpus(createMegaMekSnapshot());
+        const result = __test__.buildResultMessage(runtime, createMegaMekRequest());
 
         expect(result.unitNames).toEqual([]);
     });
