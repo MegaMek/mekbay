@@ -53,6 +53,7 @@ type RadarStatKey =
 interface RadarContribution {
     value: number;
     min: number;
+    average: number;
     max: number;
 }
 
@@ -78,6 +79,7 @@ interface RadarAxis {
     angle: number;
     value: number;
     min: number;
+    average: number;
     max: number;
     ratio: number;
     valueText: string;
@@ -100,6 +102,7 @@ const CLASSIC_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
         getContribution: (unit, bucketStats) => ({
             value: sanitizeStatValue(unit.armor) + sanitizeStatValue(unit.internal),
             min: sanitizeStatValue(bucketStats.armor.min) + sanitizeStatValue(bucketStats.internal.min),
+            average: sanitizeStatValue(bucketStats.armor.average) + sanitizeStatValue(bucketStats.internal.average),
             max: sanitizeStatValue(bucketStats.armor.max) + sanitizeStatValue(bucketStats.internal.max),
         }),
     },
@@ -109,6 +112,7 @@ const CLASSIC_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
         getContribution: (unit, bucketStats) => ({
             value: sanitizeStatValue(unit._mdSumNoPhysical),
             min: sanitizeStatValue(bucketStats.alphaNoPhysicalNoOneshots.min),
+            average: sanitizeStatValue(bucketStats.alphaNoPhysicalNoOneshots.average),
             max: sanitizeStatValue(bucketStats.alphaNoPhysicalNoOneshots.max),
         }),
     },
@@ -118,6 +122,7 @@ const CLASSIC_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
         getContribution: (unit, bucketStats) => ({
             value: sanitizeStatValue(unit.dpt),
             min: sanitizeStatValue(bucketStats.dpt.min),
+            average: sanitizeStatValue(bucketStats.dpt.average),
             max: sanitizeStatValue(bucketStats.dpt.max),
         }),
     },
@@ -130,6 +135,7 @@ const ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
         getContribution: (unit, bucketStats) => ({
             value: sanitizeStatValue(unit.as?.TMM),
             min: sanitizeStatValue(bucketStats.asTmm.min),
+            average: sanitizeStatValue(bucketStats.asTmm.average),
             max: sanitizeStatValue(bucketStats.asTmm.max),
         }),
     },
@@ -139,6 +145,7 @@ const ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
         getContribution: (unit, bucketStats) => ({
             value: sanitizeStatValue(unit.as?.Arm) + sanitizeStatValue(unit.as?.Str),
             min: sanitizeStatValue(bucketStats.asArm.min) + sanitizeStatValue(bucketStats.asStr.min),
+            average: sanitizeStatValue(bucketStats.asArm.average) + sanitizeStatValue(bucketStats.asStr.average),
             max: sanitizeStatValue(bucketStats.asArm.max) + sanitizeStatValue(bucketStats.asStr.max),
         }),
     },
@@ -148,6 +155,7 @@ const ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
         getContribution: (unit, bucketStats) => ({
             value: getASDamageValue(unit.as?.dmg._dmgS, unit.as?.dmg.dmgS),
             min: sanitizeStatValue(bucketStats.asDmgS.min),
+            average: sanitizeStatValue(bucketStats.asDmgS.average),
             max: sanitizeStatValue(bucketStats.asDmgS.max),
         }),
     },
@@ -157,6 +165,7 @@ const ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
         getContribution: (unit, bucketStats) => ({
             value: getASDamageValue(unit.as?.dmg._dmgM, unit.as?.dmg.dmgM),
             min: sanitizeStatValue(bucketStats.asDmgM.min),
+            average: sanitizeStatValue(bucketStats.asDmgM.average),
             max: sanitizeStatValue(bucketStats.asDmgM.max),
         }),
     },
@@ -166,6 +175,7 @@ const ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
         getContribution: (unit, bucketStats) => ({
             value: getASDamageValue(unit.as?.dmg._dmgL, unit.as?.dmg.dmgL),
             min: sanitizeStatValue(bucketStats.asDmgL.min),
+            average: sanitizeStatValue(bucketStats.asDmgL.average),
             max: sanitizeStatValue(bucketStats.asDmgL.max),
         }),
     },
@@ -260,22 +270,41 @@ function getMobilityContribution(unit: Unit, bucketStats: MinMaxStatsRange): Rad
     const runValue = sanitizeStatValue(unit.run2);
     const jumpValue = sanitizeStatValue(unit.jump);
     const runMin = sanitizeStatValue(bucketStats.run2MP.min);
+    const runAverage = sanitizeStatValue(bucketStats.run2MP.average);
     const jumpMin = sanitizeStatValue(bucketStats.jumpMP.min);
+    const jumpAverage = sanitizeStatValue(bucketStats.jumpMP.average);
     const runMax = sanitizeStatValue(bucketStats.run2MP.max);
     const jumpMax = sanitizeStatValue(bucketStats.jumpMP.max);
 
     if (runValue > jumpValue) {
-        return { value: runValue, min: runMin, max: runMax };
+        return { value: runValue, min: runMin, average: runAverage, max: runMax };
     }
 
     if (jumpValue > runValue) {
-        return { value: jumpValue, min: jumpMin, max: jumpMax };
+        return { value: jumpValue, min: jumpMin, average: jumpAverage, max: jumpMax };
+    }
+
+    if (runMax < jumpMax) {
+        return { value: runValue, min: runMin, average: runAverage, max: runMax };
+    }
+
+    if (jumpMax < runMax) {
+        return { value: jumpValue, min: jumpMin, average: jumpAverage, max: jumpMax };
+    }
+
+    if (runMin < jumpMin) {
+        return { value: runValue, min: runMin, average: runAverage, max: runMax };
+    }
+
+    if (jumpMin < runMin) {
+        return { value: jumpValue, min: jumpMin, average: jumpAverage, max: jumpMax };
     }
 
     return {
         value: runValue,
-        min: Math.min(runMin, jumpMin),
-        max: Math.min(runMax, jumpMax),
+        min: runMin,
+        average: Math.min(runAverage, jumpAverage),
+        max: runMax,
     };
 }
 
@@ -300,12 +329,42 @@ function formatStatValue(value: number): string {
     });
 }
 
-function getRadarRatio(value: number, min: number, max: number): number {
-    if (max > min) {
-        return clamp((value - min) / (max - min), 0, 1);
+function getRadarRatio(value: number, min: number, average: number, max: number): number {
+    if (max <= min) {
+        if (value < average) {
+            return 0;
+        }
+
+        if (value > average) {
+            return 1;
+        }
+
+        return average > 0 ? 0.5 : 0;
     }
 
-    return value > 0 ? 1 : 0;
+    const clampedAverage = clamp(average, min, max);
+
+    if (value === clampedAverage) {
+        return clampedAverage > 0 ? 0.5 : 0;
+    }
+
+    if (value < clampedAverage) {
+        const lowerSpan = clampedAverage - min;
+        if (lowerSpan <= 0) {
+            return 0;
+        }
+
+        const lowerValue = clamp(value, min, clampedAverage);
+        return clamp(0.5 * ((lowerValue - min) / lowerSpan), 0, 1);
+    }
+
+    const upperSpan = max - clampedAverage;
+    if (upperSpan <= 0) {
+        return 1;
+    }
+
+    const upperValue = clamp(value, clampedAverage, max);
+    return clamp(0.5 + (0.5 * ((upperValue - clampedAverage) / upperSpan)), 0, 1);
 }
 
 function buildRadarAxis(
@@ -315,7 +374,7 @@ function buildRadarAxis(
     contribution: RadarContribution,
 ): RadarAxis {
     const angle = getAngle(index, axisCount);
-    const ratio = getRadarRatio(contribution.value, contribution.min, contribution.max);
+    const ratio = getRadarRatio(contribution.value, contribution.min, contribution.average, contribution.max);
     const labelPoint = getLabelPoint(angle);
 
     return {
@@ -324,6 +383,7 @@ function buildRadarAxis(
         angle,
         value: contribution.value,
         min: contribution.min,
+        average: contribution.average,
         max: contribution.max,
         ratio,
         valueText: formatStatValue(contribution.value),
@@ -583,6 +643,7 @@ export class LoadForceRadarPanelComponent {
             index,
             value: 0,
             min: 0,
+            average: 0,
             max: 0,
         }));
 
@@ -595,6 +656,7 @@ export class LoadForceRadarPanelComponent {
                 const contribution = total.definition.getContribution(unit, maxStats);
                 total.value += contribution.value;
                 total.min += contribution.min;
+                total.average += contribution.average;
                 total.max += contribution.max;
             }
         }
@@ -603,6 +665,7 @@ export class LoadForceRadarPanelComponent {
             return buildRadarAxis(total.definition, total.index, axisDefinitions.length, {
                 value: total.value,
                 min: total.min,
+                average: total.average,
                 max: total.max,
             });
         });

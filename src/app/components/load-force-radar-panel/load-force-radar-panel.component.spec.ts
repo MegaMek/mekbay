@@ -11,10 +11,13 @@ type MaxStatsOverride = {
 };
 
 function createBucketStatSummary(overrides: Partial<BucketStatSummary> = {}): BucketStatSummary {
+    const min = overrides.min ?? 0;
+    const max = overrides.max ?? 0;
+
     return {
-        min: 0,
-        max: 0,
-        average: 0,
+        min,
+        max,
+        average: overrides.average ?? ((min + max) / 2),
         ...overrides,
     };
 }
@@ -268,6 +271,49 @@ describe('LoadForceRadarPanelComponent', () => {
         expect(getAxis('endurance')?.ratio).toBeCloseTo(34 / 116, 6);
         expect(getAxis('firepower')?.ratio).toBeCloseTo(0.25, 6);
         expect(getAxis('dpt')?.ratio).toBeCloseTo(0.3, 6);
+    });
+
+    it('maps aggregated bucket averages to the midpoint ring', () => {
+        const fixture = TestBed.createComponent(LoadForceRadarPanelComponent);
+        const averageMekA = createUnit({
+            id: 31,
+            name: 'Average Mek A',
+            dpt: 7,
+        });
+        const averageMekB = createUnit({
+            id: 32,
+            name: 'Average Mek B',
+            dpt: 7,
+        });
+
+        subtypeMaxStats.set('BattleMek', createMaxStats({
+            armor: { min: 10, max: 50 },
+            internal: { min: 5, max: 12 },
+            alphaNoPhysicalNoOneshots: { min: 4, max: 20 },
+            dpt: { min: 3, average: 7, max: 15 },
+            run2MP: { min: 2, max: 9 },
+            jumpMP: { min: 1, max: 7 },
+        }));
+
+        fixture.componentRef.setInput('force', new LoadForceEntry({
+            groups: [{
+                units: [
+                    { unit: averageMekA, destroyed: false },
+                    { unit: averageMekB, destroyed: false },
+                ],
+            }],
+        }));
+        fixture.detectChanges();
+
+        const dptAxis = fixture.componentInstance.chartAxes().find((axis) => axis.key === 'dpt');
+
+        expect(dptAxis).toEqual(jasmine.objectContaining({
+            value: 14,
+            min: 6,
+            average: 14,
+            max: 30,
+        }));
+        expect(dptAxis?.ratio).toBeCloseTo(0.5, 6);
     });
 
     it('overlays hovered classic unit stats using that unit subtype range', () => {
@@ -534,6 +580,42 @@ describe('LoadForceRadarPanelComponent', () => {
             '3/4',
             '4/5',
         ]);
+    });
+
+    it('maps hovered unit bucket averages to the midpoint ring', () => {
+        const fixture = TestBed.createComponent(LoadForceRadarPanelComponent);
+        const averageMek = createUnit({
+            id: 33,
+            name: 'Average Hover Mek',
+            dpt: 7,
+        });
+
+        subtypeMaxStats.set('BattleMek', createMaxStats({
+            armor: { min: 10, max: 50 },
+            internal: { min: 5, max: 12 },
+            alphaNoPhysicalNoOneshots: { min: 4, max: 20 },
+            dpt: { min: 3, average: 7, max: 15 },
+            run2MP: { min: 2, max: 9 },
+            jumpMP: { min: 1, max: 7 },
+        }));
+
+        fixture.componentRef.setInput('force', new LoadForceEntry({
+            groups: [{
+                units: [{ unit: averageMek, destroyed: false }],
+            }],
+        }));
+        fixture.componentRef.setInput('hoveredUnit', averageMek);
+        fixture.detectChanges();
+
+        const dptAxis = fixture.componentInstance.hoveredUnitAxes().find((axis) => axis.key === 'dpt');
+
+        expect(dptAxis).toEqual(jasmine.objectContaining({
+            value: 7,
+            min: 3,
+            average: 7,
+            max: 15,
+        }));
+        expect(dptAxis?.ratio).toBeCloseTo(0.5, 6);
     });
 
     it('shows the empty state when the force has no resolvable units', () => {
