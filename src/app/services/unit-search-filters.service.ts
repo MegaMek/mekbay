@@ -138,6 +138,11 @@ interface AvailabilitySelectionScopeParts {
     availabilityRarityNames: MegaMekAvailabilityRarity[];
 }
 
+interface UnitSearchClosePanelsRequest {
+    requestId: number;
+    exitExpandedView: boolean;
+}
+
 @Injectable({ providedIn: 'root' })
 export class UnitSearchFiltersService {
     dataService = inject(DataService);
@@ -217,6 +222,11 @@ export class UnitSearchFiltersService {
     selectedSortDirection = signal<'asc' | 'desc'>('asc');
     expandedView = signal(false);
     advOpen = signal(false);
+    private readonly closePanelsRequestState = signal<UnitSearchClosePanelsRequest>({
+        requestId: 0,
+        exitExpandedView: false,
+    });
+    readonly closePanelsRequest = this.closePanelsRequestState.asReadonly();
     private totalRangesCache: Record<string, [number, number]> = {};
     private indexedUniverseNamesCache = new Map<string, string[]>();
     private urlStateInitialized = signal(false);
@@ -239,6 +249,14 @@ export class UnitSearchFiltersService {
     private readonly workerSearchActive = computed(() => {
         return this.workerSearchEnabled();
     });
+
+    requestClosePanels(options: { exitExpandedView?: boolean } = {}): void {
+        const currentRequest = this.closePanelsRequestState();
+        this.closePanelsRequestState.set({
+            requestId: currentRequest.requestId + 1,
+            exitExpandedView: !!options.exitExpandedView,
+        });
+    }
 
     /**
      * True when filtered results match the latest search request.

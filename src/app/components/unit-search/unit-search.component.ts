@@ -952,6 +952,19 @@ export class UnitSearchComponent {
                 }
             });
         });
+        effect(() => {
+            const closeRequest = this.filtersService.closePanelsRequest();
+            if (closeRequest.requestId === 0) {
+                return;
+            }
+
+            untracked(() => {
+                this.closeAllPanels();
+                if (closeRequest.exitExpandedView) {
+                    this.expandedView.set(false);
+                }
+            });
+        });
         // Keep the filters service in sync with the current force total BV/PV
         effect(() => {
             const force = this.forceBuilderService.smartCurrentForce();

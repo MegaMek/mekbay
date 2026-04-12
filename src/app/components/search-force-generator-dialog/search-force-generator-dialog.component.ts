@@ -419,6 +419,7 @@ export class SearchForceGeneratorDialogComponent {
             return;
         }
 
+        this.filtersService.requestClosePanels({ exitExpandedView: true });
         this.dialogRef.close({
             forceEntry: previewEntry,
             config: {

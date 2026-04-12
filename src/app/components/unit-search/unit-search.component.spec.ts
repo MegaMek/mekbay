@@ -23,6 +23,7 @@ import { UnitSearchComponent } from './unit-search.component';
 describe('UnitSearchComponent card virtualization', () => {
     const filteredUnitsSignal = signal<Unit[]>([]);
     const currentGameSystemSignal = signal(GameSystem.ALPHA_STRIKE);
+    const closePanelsRequestSignal = signal({ requestId: 0, exitExpandedView: false });
     const optionsSignal = signal({
         ASUseHex: false,
         ASCardStyle: 'monochrome',
@@ -43,6 +44,7 @@ describe('UnitSearchComponent card virtualization', () => {
         forceTotalBvPv: signal(0),
         selectedSort: signal('name'),
         selectedSortDirection: signal<'asc' | 'desc'>('asc'),
+        closePanelsRequest: closePanelsRequestSignal,
         filteredUnits: () => filteredUnitsSignal(),
         isDataReady: () => true,
         searchTokens: () => [],
@@ -55,6 +57,13 @@ describe('UnitSearchComponent card virtualization', () => {
         setFilter: jasmine.createSpy('setFilter'),
         unsetFilter: jasmine.createSpy('unsetFilter'),
         setPilotSkills: jasmine.createSpy('setPilotSkills'),
+        requestClosePanels: jasmine.createSpy('requestClosePanels').and.callFake((options?: { exitExpandedView?: boolean }) => {
+            const currentRequest = closePanelsRequestSignal();
+            closePanelsRequestSignal.set({
+                requestId: currentRequest.requestId + 1,
+                exitExpandedView: !!options?.exitExpandedView,
+            });
+        }),
         getMegaMekRaritySortScore: jasmine.createSpy('getMegaMekRaritySortScore').and.returnValue(0),
     };
 
@@ -134,6 +143,8 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.bvPvLimit.set(0);
         filtersServiceStub.selectedSort.set('name');
         filtersServiceStub.selectedSortDirection.set('asc');
+        closePanelsRequestSignal.set({ requestId: 0, exitExpandedView: false });
+        filtersServiceStub.requestClosePanels.calls.reset();
         filtersServiceStub.getMegaMekRaritySortScore.and.returnValue(0);
         savedSearchesServiceStub.version.set(0);
         currentGameSystemSignal.set(GameSystem.ALPHA_STRIKE);
@@ -302,5 +313,25 @@ describe('UnitSearchComponent card virtualization', () => {
 
         filtersServiceStub.getMegaMekRaritySortScore.and.returnValue(MEGAMEK_AVAILABILITY_UNKNOWN_SCORE);
         expect(component.getSearchResultMegaMekRarity(unit)).toBe('—');
+    });
+
+    it('closes panels and exits expanded view when requested by the filters service', async () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+
+        fixture.detectChanges();
+        component.focused.set(true);
+        component.activeIndex.set(2);
+        filtersServiceStub.advOpen.set(true);
+        filtersServiceStub.expandedView.set(true);
+
+        filtersServiceStub.requestClosePanels({ exitExpandedView: true });
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        expect(component.focused()).toBeFalse();
+        expect(component.activeIndex()).toBeNull();
+        expect(filtersServiceStub.advOpen()).toBeFalse();
+        expect(filtersServiceStub.expandedView()).toBeFalse();
     });
 });

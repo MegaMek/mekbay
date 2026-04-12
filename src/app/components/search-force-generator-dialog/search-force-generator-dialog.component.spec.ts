@@ -16,6 +16,8 @@ import { UnitSearchFiltersService } from '../../services/unit-search-filters.ser
 
 describe('SearchForceGeneratorDialogComponent', () => {
     let component: SearchForceGeneratorDialogComponent;
+    let dialogCloseSpy: jasmine.Spy;
+    let requestClosePanelsSpy: jasmine.Spy;
     let setOptionSpy: jasmine.Spy;
     let setFilterSpy: jasmine.Spy;
     let setPilotSkillsSpy: jasmine.Spy;
@@ -41,6 +43,8 @@ describe('SearchForceGeneratorDialogComponent', () => {
             return Promise.resolve();
         });
 
+        dialogCloseSpy = jasmine.createSpy('close');
+        requestClosePanelsSpy = jasmine.createSpy('requestClosePanels');
         setFilterSpy = jasmine.createSpy('setFilter');
         const pilotGunnerySkillSignal = signal(4);
         const pilotPilotingSkillSignal = signal(5);
@@ -138,7 +142,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
             providers: [
                 {
                     provide: DialogRef,
-                    useValue: { close: jasmine.createSpy('close') },
+                    useValue: { close: dialogCloseSpy },
                 },
                 {
                     provide: DataService,
@@ -245,12 +249,14 @@ describe('SearchForceGeneratorDialogComponent', () => {
                     useValue: {
                         advOptions: advOptionsSignal,
                         bvPvLimit: signal(5000),
+                        closePanelsRequest: signal({ requestId: 0, exitExpandedView: false }),
                         effectiveFilterState: signal({}),
                         filteredUnits: filteredUnitsSignal,
                         forceGeneratorEligibleUnits: forceGeneratorEligibleUnitsSignal,
                         isComplexQuery: signal(false),
                         pilotGunnerySkill: pilotGunnerySkillSignal,
                         pilotPilotingSkill: pilotPilotingSkillSignal,
+                        requestClosePanels: requestClosePanelsSpy,
                         searchText: signal(''),
                         setFilter: setFilterSpy,
                         setPilotSkills: setPilotSkillsSpy,
@@ -456,6 +462,43 @@ describe('SearchForceGeneratorDialogComponent', () => {
         component.reroll();
 
         expect(component.hoveredRadarUnit()).toBeNull();
+    });
+
+    it('requests the unit search to close when CREATE submits a generated force', () => {
+        const atlas = {
+            id: 4,
+            name: 'Atlas AS7-D',
+            chassis: 'Atlas',
+            model: 'AS7-D',
+            bv: 1897,
+        } as Unit;
+
+        (component as any).__test.setPreviewResult({
+            gameSystem: GameSystem.CLASSIC,
+            units: [{
+                unit: atlas,
+                cost: 1897,
+                gunnery: 4,
+                piloting: 5,
+                lockKey: 'generated:0:Atlas AS7-D',
+            }],
+            totalCost: 1897,
+            error: null,
+            faction: null,
+            era: null,
+            explanationLines: [],
+        });
+
+        component.reroll();
+    component.minUnitCount.set(1);
+    component.maxUnitCount.set(1);
+    component.classicBudgetMin.set(0);
+    component.classicBudgetMax.set(0);
+        component.submit();
+
+        expect(requestClosePanelsSpy).toHaveBeenCalledTimes(1);
+        expect(requestClosePanelsSpy).toHaveBeenCalledWith({ exitExpandedView: true });
+        expect(dialogCloseSpy).toHaveBeenCalledTimes(1);
     });
 
     it('forwards the duplicate-chassis checkbox state into the preview request', () => {

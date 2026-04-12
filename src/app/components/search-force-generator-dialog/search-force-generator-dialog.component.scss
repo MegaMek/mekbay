@@ -479,6 +479,7 @@
     flex-wrap: wrap;
     justify-content: flex-end;
     flex: 1 1 auto;
+    box-sizing: border-box;
 }
 
 .eligible-count {
@@ -487,6 +488,7 @@
     gap: 8px;
     padding: 8px 12px;
     color: var(--text-color);
+    box-sizing: border-box;
 }
 
 .eligible-label {
@@ -521,7 +523,7 @@
 :host ::ng-deep .preview-stack load-force-radar-panel {
     --radar-panel-min-height: 280px;
     --radar-panel-min-height-mobile: 230px;
-    flex: 1 1 320px;
+    flex: 1 1 auto;
     min-height: 280px;
     max-height: min(52vh, 520px);
 }
