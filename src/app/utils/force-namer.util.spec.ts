@@ -1,5 +1,5 @@
 import type { Era } from '../models/eras.model';
-import { FACTION_MERCENARY, type Faction } from '../models/factions.model';
+import { MULFACTION_MERCENARY, type MULFaction } from '../models/mulfactions.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import type { Unit } from '../models/units.model';
 import { ForceNamerUtil } from './force-namer.util';
@@ -89,7 +89,7 @@ function createEra(id: number, from: number, to: number): Era {
     };
 }
 
-function createFaction(id: number, name: string, eraUnits: Record<number, number[]>): Faction {
+function createFaction(id: number, name: string, eraUnits: Record<number, number[]>): MULFaction {
     const eras: Record<number, Set<number>> = {};
     for (const [eraId, unitIds] of Object.entries(eraUnits)) {
         eras[Number(eraId)] = new Set(unitIds);
@@ -98,7 +98,7 @@ function createFaction(id: number, name: string, eraUnits: Record<number, number
     return {
         id,
         name,
-        group: id === FACTION_MERCENARY ? 'Mercenary' : 'Inner Sphere',
+        group: id === MULFACTION_MERCENARY ? 'Mercenary' : 'Inner Sphere',
         img: '',
         eras
     };
@@ -128,7 +128,7 @@ describe('ForceNamerUtil.pickRandomFaction', () => {
         const unit = createUnit(101, 3055);
         const forceUnits = [createForceUnit(unit)];
         const selectedEraFaction = createFaction(10, 'Selected Era Faction', { 3025: [202] });
-        const outOfEraMercenary = createFaction(FACTION_MERCENARY, 'Mercenary', { 3050: [101] });
+        const outOfEraMercenary = createFaction(MULFACTION_MERCENARY, 'Mercenary', { 3050: [101] });
 
         spyOn(Math, 'random').and.returnValue(0);
 

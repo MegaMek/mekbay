@@ -34,6 +34,19 @@ function createSnapshot(version: string): UnitSearchWorkerCorpusSnapshot {
             faction: {},
         },
         factionEraIndex: {},
+        megaMekAvailability: {
+            all: {
+                unitNames: [],
+                bySource: {},
+                byRarity: {},
+            },
+            knownUnitNames: [],
+            eras: {},
+            factions: {},
+            eraFactions: {},
+            extinctUnitNames: [],
+            extinctByEra: {},
+        },
     };
 }
 
@@ -44,6 +57,7 @@ function createRequest(revision: number, version: string): UnitSearchWorkerQuery
         executionQuery: '',
         telemetryQuery: '',
         gameSystem: GameSystem.CLASSIC,
+        availabilitySource: 'mul',
         sortKey: '',
         sortDirection: 'asc',
         bvPvLimit: 0,

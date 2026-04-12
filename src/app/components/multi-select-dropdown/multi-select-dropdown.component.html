@@ -1,5 +1,5 @@
 <div class="multi-select-container corner-borders" [class.open]="isOpen()" [class.disabled]="semanticOnly()" [class.semantic-only]="semanticOnly()">
-    <div class="display-area" (pointerdown)="onPointerDown($event)" (click)="toggleDropdown($event)">
+    <div #displayArea class="display-area" cdkOverlayOrigin #overlayOrigin="cdkOverlayOrigin" (pointerdown)="onPointerDown($event)" (click)="toggleDropdown()">
         <span class="label" [class.semantic-only]="semanticOnly()">{{ label() }}</span>
         <div class="pills-container">
             @if (semanticOnly() && displayItems()?.length) {
@@ -61,7 +61,26 @@
         }
     </div>
 
-    <div #optionsDropdown class="options-dropdown framed-borders has-shadow" [hidden]="!isOpen()">
+    <ng-template
+        cdkConnectedOverlay
+        [cdkConnectedOverlayOrigin]="overlayOrigin"
+        [cdkConnectedOverlayOpen]="isOpen()"
+        [cdkConnectedOverlayPositions]="overlayPositions()"
+        [cdkConnectedOverlayPush]="false"
+        [cdkConnectedOverlayFlexibleDimensions]="false"
+        [cdkConnectedOverlayViewportMargin]="8"
+        [cdkConnectedOverlayWidth]="overlayWidth()"
+        [cdkConnectedOverlayPanelClass]="'multi-select-dropdown-overlay-pane'"
+        [cdkConnectedOverlayScrollStrategy]="repositionScrollStrategy"
+        (attach)="onOverlayAttached()"
+        (detach)="onOverlayDetached()"
+        (positionChange)="onOverlayPositionChange($event)">
+    <div
+        #optionsDropdown
+        class="options-dropdown framed-borders has-shadow"
+        [class.options-dropdown-below]="overlayPlacement() === 'below'"
+        [class.options-dropdown-above]="overlayPlacement() === 'above'"
+        (click)="$event.stopPropagation()">
         <div class="filter-container" [hidden]="!(options().length > 20 || showUnavailableToggle())" (click)="$event.stopPropagation()">
             <div class="filter-row">
                 <input 
@@ -100,7 +119,7 @@
                 #optionsViewport
                 class="options-list options-viewport"
                 [itemSize]="optionItemSize"
-                [style.height.px]="maxHeightOptions()">
+                [style.height.px]="viewportHeight()">
                 <label class="option-item"
                     *cdkVirtualFor="let option of filteredOptions(); trackBy: trackOptionName"
                     [attr.data-option-name]="option.name"
@@ -138,7 +157,7 @@
                     @if (option.img) {
                         <img [src]="option.img" class="option-img" alt="">
                     }
-                    <span [innerHTML]="highlight(option.displayName ?? option.name)"></span>
+                    <span class="option-label" [innerHTML]="highlight(option.displayName ?? option.name)"></span>
                     @if (countable() && (getState(option.name) === 'and' || getState(option.name) === 'or')) {
                         <div class="quantity-input">
                             <input type="number"
@@ -193,7 +212,7 @@
                             @if (option.img) {
                                 <img [src]="option.img" class="option-img" alt="">
                             }
-                            <span [innerHTML]="highlight(option.displayName ?? option.name)"></span>
+                            <span class="option-label" [innerHTML]="highlight(option.displayName ?? option.name)"></span>
                             @if (countable() && (getState(option.name) === 'and' || getState(option.name) === 'or')) {
                                 <div class="quantity-input">
                                 <input type="number" 
@@ -220,4 +239,5 @@
             </div>
         }
         </div>
+    </ng-template>
 </div>

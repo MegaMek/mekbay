@@ -55,7 +55,7 @@ export class StatBarSpecsPipe implements PipeTransform {
     private dataService = inject(DataService);
 
     transform(unit: Unit): statBarSpec[] {
-        const maxStats = this.dataService.getUnitTypeMaxStats(unit.type);
+        const maxStats = this.dataService.getUnitSubtypeMaxStats(unit.subtype);
         // const armorLabel = unit.armorType ? `Armor (${unit.armorType.replace(/armor/i,'').trim()})` : 'Armor';
         const armorLabel = 'Armor';
         let structureLabel;

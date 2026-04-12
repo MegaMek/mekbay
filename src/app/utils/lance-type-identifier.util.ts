@@ -33,14 +33,14 @@
 
 import type { ForceUnit } from '../models/force-unit.model';
 import { GameSystem } from '../models/common.model';
-import { FACTION_MERCENARY, type Faction } from '../models/factions.model';
+import { type Faction } from '../models/factions.model';
 import type { Unit } from '../models/units.model';
 import { type FormationTypeDefinition, type FormationMatch, NO_FORMATION, NO_FORMATION_ID } from './formation-type.model';
 import { FORMATION_DEFINITIONS } from './formation-definitions';
 import type { UnitGroup } from '../models/force.model';
 import { collectGroupUnits, compileGroupFacts } from './org/org-facts.util';
 import { groupMatchesChildRole } from './org/org-role-match.util';
-import { resolveOrgDefinitionSpec } from './org/org-registry.util';
+import { resolveOrgDefinition } from './org/org-registry.util';
 import type {
     GroupSizeResult,
     OrgComposedCountRule,
@@ -48,6 +48,7 @@ import type {
     OrgFormationMatchingSpec,
     OrgRuleDefinition,
 } from './org/org-types';
+import { MULFACTION_MERCENARY } from '../models/mulfactions.model';
 
 /*
  * Author: Drake
@@ -69,7 +70,7 @@ export interface FormationRequirementsFilterContext {
 
 export class LanceTypeIdentifierUtil {
     private static readonly DEFAULT_FACTION: Faction = {
-        id: FACTION_MERCENARY,
+        id: MULFACTION_MERCENARY,
         name: 'Mercenary',
         group: 'Mercenary',
         img: '',
@@ -166,7 +167,7 @@ export class LanceTypeIdentifierUtil {
         }
 
         const resolvedFaction = targetForce.faction() ?? this.DEFAULT_FACTION;
-        const orgDefinition = resolveOrgDefinitionSpec(resolvedFaction, targetForce.era());
+        const orgDefinition = resolveOrgDefinition(resolvedFaction, targetForce.era());
         const matchedRule = orgDefinition.rules.find((candidate) => candidate.type === resolvedGroup.type);
         if (!this.isFormationMatchingRule(matchedRule)) {
             return {};

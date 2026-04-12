@@ -44,6 +44,7 @@ import { isIOS } from '../../utils/platform.util';
 import { LoggerService } from '../../services/logger.service';
 import { GameService } from '../../services/game.service';
 import type { GameSystem } from '../../models/common.model';
+import type { AvailabilitySource } from '../../models/options.model';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { DataService } from '../../services/data.service';
 import { PublicTagsService } from '../../services/public-tags.service';
@@ -350,6 +351,11 @@ export class OptionsDialogComponent {
     onGameSystemChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as GameSystem;
         this.optionsService.setOption('gameSystem', value);
+    }
+
+    onAvailabilitySourceChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as AvailabilitySource;
+        this.optionsService.setOption('availabilitySource', value);
     }
 
     onSheetsColorChange(event: Event) {

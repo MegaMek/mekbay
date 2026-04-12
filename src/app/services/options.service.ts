@@ -44,6 +44,7 @@ const DEFAULT_OPTIONS: Options = {
     canvasInput: 'all',
     unitDisplayName: 'chassisModel',
     gameSystem: GameSystem.CLASSIC,
+    availabilitySource: 'mul',
     c3NetworkConnectionsAboveNodes: false,
     automaticallyConvertFiltersToSemantic: false,
     unitSearchExpandedViewLayout: 'panel-list-filters',
@@ -69,6 +70,12 @@ const DEFAULT_OPTIONS: Options = {
     ASUseAutomations: true,
     ASVehiclesCriticalHitTable: 'default',
     ASUnifiedDamagePicker: true,
+    forceGenLastBVMin: 7900,
+    forceGenLastBVMax: 8000,
+    forceGenLastPVMin: 290,
+    forceGenLastPVMax: 300,
+    forceGenLastMinUnitCount: 4,
+    forceGenLastMaxUnitCount: 8,
 };
 
 @Injectable({ providedIn: 'root' })
@@ -85,6 +92,7 @@ export class OptionsService {
         syncZoomBetweenSheets: DEFAULT_OPTIONS.syncZoomBetweenSheets,
         unitDisplayName: DEFAULT_OPTIONS.unitDisplayName,
         gameSystem: DEFAULT_OPTIONS.gameSystem,
+        availabilitySource: DEFAULT_OPTIONS.availabilitySource,
         recordSheetCenterPanelContent: DEFAULT_OPTIONS.recordSheetCenterPanelContent,
         useAutomations: DEFAULT_OPTIONS.useAutomations,
         ASUseHex: DEFAULT_OPTIONS.ASUseHex,
@@ -101,6 +109,12 @@ export class OptionsService {
         ASUnifiedDamagePicker: DEFAULT_OPTIONS.ASUnifiedDamagePicker,
         printRosterSummary: DEFAULT_OPTIONS.printRosterSummary,
         printMargin: DEFAULT_OPTIONS.printMargin,
+        forceGenLastBVMin: DEFAULT_OPTIONS.forceGenLastBVMin,
+        forceGenLastBVMax: DEFAULT_OPTIONS.forceGenLastBVMax,
+        forceGenLastPVMin: DEFAULT_OPTIONS.forceGenLastPVMin,
+        forceGenLastPVMax: DEFAULT_OPTIONS.forceGenLastPVMax,
+        forceGenLastMinUnitCount: DEFAULT_OPTIONS.forceGenLastMinUnitCount,
+        forceGenLastMaxUnitCount: DEFAULT_OPTIONS.forceGenLastMaxUnitCount,
     });
 
     constructor() {
@@ -119,6 +133,7 @@ export class OptionsService {
             syncZoomBetweenSheets: saved?.syncZoomBetweenSheets ?? DEFAULT_OPTIONS.syncZoomBetweenSheets,
             unitDisplayName: saved?.unitDisplayName ?? DEFAULT_OPTIONS.unitDisplayName,
             gameSystem: saved?.gameSystem ?? DEFAULT_OPTIONS.gameSystem,
+            availabilitySource: saved?.availabilitySource ?? DEFAULT_OPTIONS.availabilitySource,
             recordSheetCenterPanelContent: saved?.recordSheetCenterPanelContent ?? DEFAULT_OPTIONS.recordSheetCenterPanelContent,
             lastCanvasState: saved?.lastCanvasState,
             sidebarLipPosition: saved?.sidebarLipPosition,
@@ -137,6 +152,12 @@ export class OptionsService {
             ASUnifiedDamagePicker: saved?.ASUnifiedDamagePicker ?? DEFAULT_OPTIONS.ASUnifiedDamagePicker,
             printRosterSummary: saved?.printRosterSummary ?? DEFAULT_OPTIONS.printRosterSummary,
             printMargin: saved?.printMargin ?? DEFAULT_OPTIONS.printMargin,
+            forceGenLastBVMin: saved?.forceGenLastBVMin ?? DEFAULT_OPTIONS.forceGenLastBVMin,
+            forceGenLastBVMax: saved?.forceGenLastBVMax ?? DEFAULT_OPTIONS.forceGenLastBVMax,
+            forceGenLastPVMin: saved?.forceGenLastPVMin ?? DEFAULT_OPTIONS.forceGenLastPVMin,
+            forceGenLastPVMax: saved?.forceGenLastPVMax ?? DEFAULT_OPTIONS.forceGenLastPVMax,
+            forceGenLastMinUnitCount: saved?.forceGenLastMinUnitCount ?? DEFAULT_OPTIONS.forceGenLastMinUnitCount,
+            forceGenLastMaxUnitCount: saved?.forceGenLastMaxUnitCount ?? DEFAULT_OPTIONS.forceGenLastMaxUnitCount,
         });
     }
 
