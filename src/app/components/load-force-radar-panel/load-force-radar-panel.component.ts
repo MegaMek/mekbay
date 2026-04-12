@@ -28,6 +28,11 @@ interface RadarPoint {
     y: number;
 }
 
+interface RadarRenderSize {
+    width: number;
+    height: number;
+}
+
 interface RadarAxisDefinition {
     key: RadarStatKey;
     label: string;
@@ -133,15 +138,18 @@ const ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
     },
 ] as const;
 
-const RADAR_VIEWBOX_SIZE = 440;
-const RADAR_CENTER = RADAR_VIEWBOX_SIZE / 2;
-const RADAR_RADIUS = 158;
-const RADAR_LABEL_RADIUS = 182;
+const RADAR_VIEWBOX_WIDTH = 500;
+const RADAR_VIEWBOX_HEIGHT = 400;
+const RADAR_CENTER_X = RADAR_VIEWBOX_WIDTH / 2;
+const RADAR_CENTER_Y = RADAR_VIEWBOX_HEIGHT / 2;
+const RADAR_RADIUS = 140;
+const RADAR_LABEL_RADIUS = 170;
 const RADAR_LABEL_SAFE_X = 58;
 const RADAR_LABEL_SAFE_TOP = 22;
 const RADAR_LABEL_SAFE_BOTTOM = 50;
 const RADAR_RING_FACTORS = [0.25, 0.5, 0.75, 1] as const;
-const RADAR_FALLBACK_RENDER_SIZE = 320;
+const RADAR_FALLBACK_RENDER_HEIGHT = 270;
+const RADAR_FALLBACK_RENDER_WIDTH = Math.round((RADAR_VIEWBOX_WIDTH / RADAR_VIEWBOX_HEIGHT) * RADAR_FALLBACK_RENDER_HEIGHT);
 
 function roundCoordinate(value: number): number {
     return Math.round(value * 100) / 100;
@@ -154,8 +162,8 @@ function clamp(value: number, min: number, max: number): number {
 function toPoint(angleDegrees: number, distance: number): RadarPoint {
     const radians = angleDegrees * Math.PI / 180;
     return {
-        x: roundCoordinate(RADAR_CENTER + Math.cos(radians) * distance),
-        y: roundCoordinate(RADAR_CENTER + Math.sin(radians) * distance),
+        x: roundCoordinate(RADAR_CENTER_X + Math.cos(radians) * distance),
+        y: roundCoordinate(RADAR_CENTER_Y + Math.sin(radians) * distance),
     };
 }
 
@@ -174,8 +182,36 @@ function getTextAnchor(_point: RadarPoint): 'start' | 'middle' | 'end' {
 function getLabelPoint(angleDegrees: number): RadarPoint {
     const point = toPoint(angleDegrees, RADAR_LABEL_RADIUS);
     return {
-        x: roundCoordinate(clamp(point.x, RADAR_LABEL_SAFE_X, RADAR_VIEWBOX_SIZE - RADAR_LABEL_SAFE_X)),
-        y: roundCoordinate(clamp(point.y, RADAR_LABEL_SAFE_TOP, RADAR_VIEWBOX_SIZE - RADAR_LABEL_SAFE_BOTTOM)),
+        x: roundCoordinate(clamp(point.x, RADAR_LABEL_SAFE_X, RADAR_VIEWBOX_WIDTH - RADAR_LABEL_SAFE_X)),
+        y: roundCoordinate(clamp(point.y, RADAR_LABEL_SAFE_TOP, RADAR_VIEWBOX_HEIGHT - RADAR_LABEL_SAFE_BOTTOM)),
+    };
+}
+
+function getRadarRenderSize(width: number, height: number): RadarRenderSize {
+    const availableWidth = Math.floor(Math.max(0, width));
+    const availableHeight = Math.floor(Math.max(0, height));
+
+    if (availableWidth === 0 || availableHeight === 0) {
+        return {
+            width: RADAR_FALLBACK_RENDER_WIDTH,
+            height: RADAR_FALLBACK_RENDER_HEIGHT,
+        };
+    }
+
+    const scale = Math.min(availableWidth / RADAR_VIEWBOX_WIDTH, availableHeight / RADAR_VIEWBOX_HEIGHT);
+    const renderWidth = Math.floor(RADAR_VIEWBOX_WIDTH * scale);
+    const renderHeight = Math.floor(RADAR_VIEWBOX_HEIGHT * scale);
+
+    if (renderWidth === 0 || renderHeight === 0) {
+        return {
+            width: RADAR_FALLBACK_RENDER_WIDTH,
+            height: RADAR_FALLBACK_RENDER_HEIGHT,
+        };
+    }
+
+    return {
+        width: renderWidth,
+        height: renderHeight,
     };
 }
 
@@ -286,9 +322,8 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
             <div class="radar-area" #radarArea>
                 <svg
                     class="radar-chart"
-                    [attr.viewBox]="'0 0 ' + viewBoxSize + ' ' + viewBoxSize"
-                    [style.width.px]="chartRenderSize()"
-                    [style.height.px]="chartRenderSize()"
+                    [attr.viewBox]="'0 0 ' + viewBoxWidth + ' ' + viewBoxHeight"
+                    width="100%"
                     preserveAspectRatio="xMidYMid meet"
                     role="img">
 
@@ -299,8 +334,8 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
                     @for (axis of axes; track axis.key) {
                         <line
                             class="radar-axis"
-                            [attr.x1]="center"
-                            [attr.y1]="center"
+                            [attr.x1]="centerX"
+                            [attr.y1]="centerY"
                             [attr.x2]="axis.axisPoint.x"
                             [attr.y2]="axis.axisPoint.y"></line>
                     }
@@ -329,18 +364,18 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
                         }
                     }
 
-                    <circle class="radar-center" [attr.cx]="center" [attr.cy]="center" r="2.5"></circle>
+                    <circle class="radar-center" [attr.cx]="centerX" [attr.cy]="centerY" r="2.5"></circle>
 
                     @for (axis of axes; track axis.key) {
                         <g
                             class="radar-label-group"
                             [attr.transform]="'translate(' + axis.labelPoint.x + ' ' + axis.labelPoint.y + ')'">
                             <text class="radar-label" [attr.text-anchor]="axis.textAnchor">{{ axis.label }}</text>
-                            <text class="radar-label-value" [attr.text-anchor]="axis.textAnchor" y="14">
+                            <text class="radar-label-value" [attr.text-anchor]="axis.textAnchor" y="16">
                                 {{ axis.valueText }}/{{ axis.maxText }}
                             </text>
                             @if (overlayAxisMap.get(axis.key); as overlayAxis) {
-                                <text class="radar-label-value radar-label-value-hover" [attr.text-anchor]="axis.textAnchor" y="28">
+                                <text class="radar-label-value radar-label-value-hover" [attr.text-anchor]="axis.textAnchor" y="32">
                                     {{ overlayAxis.valueText }}/{{ overlayAxis.maxText }}
                                 </text>
                             }
@@ -364,7 +399,6 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
             display: flex;
             flex-direction: column;
             width: 100%;
-            height: 100%;
             min-height: inherit;
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid var(--border-color, #333);
@@ -435,7 +469,7 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
 
         .radar-label {
             fill: var(--text-color, #fff);
-            font-size: 15px;
+            font-size: 16px;
             font-weight: 600;
             letter-spacing: 0.04em;
             text-transform: uppercase;
@@ -443,7 +477,7 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
 
         .radar-label-value {
             fill: var(--text-color-secondary);
-            font-size: 13px;
+            font-size: 14px;
         }
 
         .radar-label-value-hover {
@@ -466,12 +500,11 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
             }
 
             .radar-label {
-                font-size: 18px;
+                font-size: 19px;
             }
 
             .radar-label-value {
-                fill: var(--text-color-secondary);
-                font-size: 15px;
+                font-size: 17px;
             }
         }
 
@@ -485,16 +518,22 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
 export class LoadForceRadarPanelComponent {
     private readonly dataService = inject(DataService);
     private readonly radarArea = viewChild<ElementRef<HTMLDivElement>>('radarArea');
-    private readonly chartPixelSize = signal(RADAR_FALLBACK_RENDER_SIZE);
+    private readonly chartRenderSize = signal<RadarRenderSize>({
+        width: RADAR_FALLBACK_RENDER_WIDTH,
+        height: RADAR_FALLBACK_RENDER_HEIGHT,
+    });
 
-    readonly center = RADAR_CENTER;
-    readonly viewBoxSize = RADAR_VIEWBOX_SIZE;
+    readonly centerX = RADAR_CENTER_X;
+    readonly centerY = RADAR_CENTER_Y;
+    readonly viewBoxWidth = RADAR_VIEWBOX_WIDTH;
+    readonly viewBoxHeight = RADAR_VIEWBOX_HEIGHT;
     readonly force = input.required<LoadForceEntry>();
     readonly hoveredUnit = input<Unit | null>(null);
     readonly axisDefinitions = computed(() => this.force().type === GameSystem.ALPHA_STRIKE
         ? ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS
         : CLASSIC_RADAR_AXIS_DEFINITIONS);
-    readonly chartRenderSize = computed(() => this.chartPixelSize());
+    readonly chartRenderWidth = computed(() => this.chartRenderSize().width);
+    readonly chartRenderHeight = computed(() => this.chartRenderSize().height);
 
     readonly units = computed(() => this.force().groups
         .flatMap((group) => group.units)
@@ -580,9 +619,10 @@ export class LoadForceRadarPanelComponent {
             }
 
             const updateChartSize = (width: number, height: number): void => {
-                const nextSize = Math.floor(Math.max(0, Math.min(width, height)));
-                if (nextSize > 0) {
-                    this.chartPixelSize.set(nextSize);
+                const nextSize = getRadarRenderSize(width, height);
+                const currentSize = this.chartRenderSize();
+                if (currentSize.width !== nextSize.width || currentSize.height !== nextSize.height) {
+                    this.chartRenderSize.set(nextSize);
                 }
             };
 
