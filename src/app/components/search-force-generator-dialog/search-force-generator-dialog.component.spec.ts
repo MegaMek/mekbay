@@ -312,20 +312,83 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(buildPreviewSpy.calls.mostRecent().args[0].eligibleUnits).toEqual([limitedUnit, extraEligibleUnit]);
     });
 
+    it('does not lower the min units while typing a larger max until blur', async () => {
+        const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        const dialog = fixture.componentInstance;
+        const inputs = Array.from(
+            fixture.nativeElement.querySelectorAll('input.bt-input.field-input[type="number"]'),
+        ) as HTMLInputElement[];
+        const maxUnitsInput = inputs[1];
+
+        maxUnitsInput.value = '1';
+        maxUnitsInput.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+
+        expect(dialog.minUnitCount()).toBe(4);
+        expect(dialog.maxUnitCount()).toBe(8);
+        expect(setOptionSpy).not.toHaveBeenCalled();
+
+        maxUnitsInput.value = '10';
+        maxUnitsInput.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+
+        expect(dialog.minUnitCount()).toBe(4);
+        expect(dialog.maxUnitCount()).toBe(8);
+
+        maxUnitsInput.dispatchEvent(new Event('blur'));
+        fixture.detectChanges();
+
+        expect(dialog.minUnitCount()).toBe(4);
+        expect(dialog.maxUnitCount()).toBe(10);
+        expect(setOptionSpy).toHaveBeenCalledOnceWith('forceGenLastMaxUnitCount', 10);
+        expect(maxUnitsInput.value).toBe('10');
+    });
+
     it('snaps the max units input back to the clamped maximum on blur', () => {
         const input = document.createElement('input');
         input.value = '1003';
         const event = { target: input } as unknown as Event;
 
-        component.onMaxUnitCountChange(event);
-
-        expect(component.maxUnitCount()).toBe(100);
-        expect(setOptionSpy).toHaveBeenCalledWith('forceGenLastMaxUnitCount', 100);
-        expect(input.value).toBe('1003');
-
         component.onMaxUnitCountBlur(event);
 
+        expect(component.maxUnitCount()).toBe(100);
+        expect(setOptionSpy).toHaveBeenCalledOnceWith('forceGenLastMaxUnitCount', 100);
         expect(input.value).toBe('100');
+    });
+
+    it('does not lower the minimum budget while typing a larger maximum until blur', async () => {
+        const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        const dialog = fixture.componentInstance;
+        const inputs = Array.from(
+            fixture.nativeElement.querySelectorAll('input.bt-input.field-input[type="number"]'),
+        ) as HTMLInputElement[];
+        const maxBudgetInput = inputs[3];
+
+        maxBudgetInput.value = '1';
+        maxBudgetInput.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+
+        expect(dialog.budgetRange()).toEqual({ min: 7900, max: 8000 });
+        expect(setOptionSpy).not.toHaveBeenCalled();
+
+        maxBudgetInput.value = '10000';
+        maxBudgetInput.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+
+        expect(dialog.budgetRange()).toEqual({ min: 7900, max: 8000 });
+
+        maxBudgetInput.dispatchEvent(new Event('blur'));
+        fixture.detectChanges();
+
+        expect(dialog.budgetRange()).toEqual({ min: 7900, max: 10000 });
+        expect(setOptionSpy).toHaveBeenCalledOnceWith('forceGenLastBVMax', 10000);
+        expect(maxBudgetInput.value).toBe('10000');
     });
 
     it('preserves multistate era selections when updating filters', () => {
@@ -513,17 +576,37 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(buildPreviewSpy.calls.mostRecent().args[0].preventDuplicateChassis).toBeTrue();
     });
 
-    it('does not regenerate while budget inputs are edited', () => {
-        component.onBudgetMinChange({
+    it('keeps using the last committed budget range until the max field blurs', async () => {
+        const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        const dialog = fixture.componentInstance;
+        const inputs = Array.from(
+            fixture.nativeElement.querySelectorAll('input.bt-input.field-input[type="number"]'),
+        ) as HTMLInputElement[];
+        const maxBudgetInput = inputs[3];
+
+        buildPreviewSpy.calls.reset();
+
+        dialog.onBudgetMinChange({
             target: { value: '9000' },
         } as unknown as Event);
-        component.onBudgetMaxChange({
-            target: { value: '9100' },
-        } as unknown as Event);
+        fixture.detectChanges();
+
+        maxBudgetInput.value = '9100';
+        maxBudgetInput.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
 
         expect(buildPreviewSpy).not.toHaveBeenCalled();
 
-        component.reroll();
+        dialog.reroll();
+
+        expect(buildPreviewSpy.calls.mostRecent().args[0].budgetRange).toEqual({ min: 9000, max: 9000 });
+
+        maxBudgetInput.dispatchEvent(new Event('blur'));
+        fixture.detectChanges();
+        dialog.reroll();
 
         expect(buildPreviewSpy.calls.mostRecent().args[0].budgetRange).toEqual({ min: 9000, max: 9100 });
     });

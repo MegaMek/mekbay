@@ -337,3 +337,40 @@ describe('LanceTypeIdentifierUtil CBT weight-class validation', () => {
         expect(LanceTypeIdentifierUtil.isValid(definition!, units, GameSystem.CLASSIC)).toBeTrue();
     });
 });
+
+describe('LanceTypeIdentifierUtil formation priority weights', () => {
+    it('prefers higher-priority formations using the shared match weight rules', () => {
+        const battleFormation = {
+            id: 'battle-lance',
+            name: 'Battle',
+            description: 'Base line battle lance.',
+            minUnits: 4,
+        } as FormationTypeDefinition;
+        const parentFormation = {
+            id: 'elite-lance',
+            name: 'Elite',
+            description: 'Child formation used to test weighting.',
+            minUnits: 4,
+            parent: 'battle-lance',
+        } as FormationTypeDefinition;
+        const exclusiveFormation = {
+            id: 'faction-lance',
+            name: 'Faction',
+            description: 'Exclusive formation used to test weighting.',
+            minUnits: 4,
+            exclusiveFaction: 'Dragoons',
+        } as FormationTypeDefinition;
+
+        spyOn(LanceTypeIdentifierUtil, 'identifyFormations').and.returnValue([
+            { definition: battleFormation, requirementsFiltered: false },
+            { definition: parentFormation, requirementsFiltered: false },
+            { definition: exclusiveFormation, requirementsFiltered: false },
+        ]);
+
+        expect(LanceTypeIdentifierUtil.getFormationPriorityWeight(battleFormation, 'Wolf\'s Dragoons')).toBe(1);
+        expect(LanceTypeIdentifierUtil.getFormationPriorityWeight(parentFormation, 'Wolf\'s Dragoons')).toBe(3);
+        expect(LanceTypeIdentifierUtil.getFormationPriorityWeight(exclusiveFormation, 'Wolf\'s Dragoons')).toBe(5);
+        expect(LanceTypeIdentifierUtil.getBestMatch([], 'Inner Sphere', 'Wolf\'s Dragoons', GameSystem.ALPHA_STRIKE))
+            .toEqual(jasmine.objectContaining({ definition: exclusiveFormation }));
+    });
+});

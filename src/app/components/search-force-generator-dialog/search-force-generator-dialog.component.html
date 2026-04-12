@@ -57,7 +57,7 @@
 
                         <div class="form-fields">
                             <label class="field-label">Max Units</label>
-                            <input class="bt-input field-input" type="number" min="1" [max]="MAX_UNITS" step="1" [value]="maxUnitCount()" (input)="onMaxUnitCountChange($event)" (blur)="onMaxUnitCountBlur($event)" />
+                            <input class="bt-input field-input" type="number" min="1" [max]="MAX_UNITS" step="1" [value]="maxUnitCount()" (blur)="onMaxUnitCountBlur($event)" />
                         </div>
                     </div>
 
@@ -82,7 +82,7 @@
                                 min="0"
                                 step="1"
                                 [value]="budgetRange().max || ''"
-                                (input)="onBudgetMaxChange($event)"
+                                (blur)="onBudgetMaxBlur($event)"
                                 placeholder="0 = no maximum; 0/0 = first result" />
                         </div>
                     </div>

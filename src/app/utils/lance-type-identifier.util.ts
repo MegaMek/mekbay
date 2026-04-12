@@ -228,6 +228,22 @@ export class LanceTypeIdentifierUtil {
         return FORMATION_DEFINITIONS.find((definition) => definition.id === formationId)?.name ?? null;
     }
 
+    public static getFormationPriorityWeight(
+        definition: FormationTypeDefinition,
+        factionName: string,
+    ): number {
+        let weight = 1;
+        if (definition.exclusiveFaction && factionName.includes(definition.exclusiveFaction)) {
+            weight *= 5;
+        } else if (definition.parent) {
+            weight *= 3;
+        } else if (definition.id !== 'support-lance' && definition.id !== 'command-lance' && definition.id !== 'battle-lance') {
+            weight *= 2;
+        }
+
+        return weight;
+    }
+
     public static identifyLanceTypes(
         units: ForceUnit[],
         techBase: string,
@@ -366,14 +382,7 @@ export class LanceTypeIdentifierUtil {
         let bestWeight = -1;
 
         for (const match of matches) {
-            let weight = 1;
-            if (match.definition.exclusiveFaction && factionName.includes(match.definition.exclusiveFaction)) {
-                weight *= 5;
-            } else if (match.definition.parent) {
-                weight *= 3;
-            } else if (match.definition.id !== 'support-lance' && match.definition.id !== 'command-lance' && match.definition.id !== 'battle-lance') {
-                weight *= 2;
-            }
+            const weight = this.getFormationPriorityWeight(match.definition, factionName);
 
             if (weight > bestWeight) {
                 bestWeight = weight;

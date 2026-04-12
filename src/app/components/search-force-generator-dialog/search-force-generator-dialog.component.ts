@@ -338,7 +338,7 @@ export class SearchForceGeneratorDialogComponent {
         );
     }
 
-    onBudgetMaxChange(event: Event): void {
+    onBudgetMaxBlur(event: Event): void {
         this.setBudgetRangeForSystem(
             this.gameSystem(),
             this.forceGeneratorService.resolveBudgetRangeForEditedMax(
@@ -346,6 +346,7 @@ export class SearchForceGeneratorDialogComponent {
                 this.parseNumericValue(event, this.budgetRange().max),
             ),
         );
+        this.syncInputValue(event, this.budgetRange().max || '');
     }
 
     onMinUnitCountChange(event: Event): void {
@@ -358,7 +359,11 @@ export class SearchForceGeneratorDialogComponent {
         ));
     }
 
-    onMaxUnitCountChange(event: Event): void {
+    onMinUnitCountBlur(event: Event): void {
+        this.syncInputValue(event, this.minUnitCount());
+    }
+
+    onMaxUnitCountBlur(event: Event): void {
         this.setUnitCountRange(this.forceGeneratorService.resolveUnitCountRangeForEditedMax(
             {
                 min: this.minUnitCount(),
@@ -366,13 +371,6 @@ export class SearchForceGeneratorDialogComponent {
             },
             this.parseNumericValue(event, this.maxUnitCount()),
         ));
-    }
-
-    onMinUnitCountBlur(event: Event): void {
-        this.syncInputValue(event, this.minUnitCount());
-    }
-
-    onMaxUnitCountBlur(event: Event): void {
         this.syncInputValue(event, this.maxUnitCount());
     }
 
@@ -763,7 +761,7 @@ export class SearchForceGeneratorDialogComponent {
         return Number.isFinite(value) ? value : fallback;
     }
 
-    private syncInputValue(event: Event, value: number): void {
+    private syncInputValue(event: Event, value: string | number): void {
         const input = event.target as HTMLInputElement | null;
         if (!input) {
             return;

@@ -51,12 +51,16 @@ import type {
     MegaMekRulesetWhen,
 } from '../models/megamek/rulesets.model';
 import { LoadForceEntry, type LoadForceGroup } from '../models/load-force-entry.model';
+import type { ForceUnit } from '../models/force-unit.model';
 import { MAX_UNITS as FORCE_MAX_UNITS } from '../models/force.model';
 import { MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.model';
 import type { Options } from '../models/options.model';
+import { getUnitsAverageTechBase } from '../models/tech.model';
 import type { Unit } from '../models/units.model';
 import { resolveOrgDefinition } from '../utils/org/org-registry.util';
-import { resolveFromUnits } from '../utils/org/org-solver.util';
+import { resolveFromGroups, resolveFromUnits } from '../utils/org/org-solver.util';
+import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
+import { collectGroupUnits } from '../utils/org/org-facts.util';
 import type { GroupSizeResult, OrgDefinition, OrgRuleDefinition, OrgType } from '../utils/org/org-types';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
@@ -74,6 +78,18 @@ import { UnitSearchFiltersService } from './unit-search-filters.service';
 const LOG_ATTEMPTS = false;
 const DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT = 1;
 const FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS = 200;
+const PREVIEW_GROUP_SPLIT_MIN_TIER = 1;
+const PREVIEW_GROUP_TIER_EPSILON = 0.0001;
+const PREVIEW_GROUP_SEARCH_MAX_UNITS = 12;
+const PREVIEW_GROUP_SEARCH_MAX_VISITS = 100_000;
+
+const DEFAULT_PREVIEW_FORCE_FACTION: Faction = {
+    id: MULFACTION_MERCENARY,
+    name: 'Mercenary',
+    group: 'Mercenary',
+    img: '',
+    eras: {},
+};
 
 interface RulesetPreferenceSource {
     unitTypes?: string[];
@@ -292,6 +308,35 @@ export interface ForceGeneratorUnitCountDefaults {
     max: number;
 }
 
+interface PreviewGroupPlanContext {
+    faction: Faction;
+    era: Era | null;
+    gameSystem: GameSystem;
+    factionName: string;
+}
+
+interface PlannedPreviewLoadGroup {
+    loadGroup: LoadForceGroup;
+    firstUnitIndex: number;
+}
+
+interface PreviewGroupPlan {
+    groups: PlannedPreviewLoadGroup[];
+    score: number;
+    formationCount: number;
+}
+
+interface PreviewGroupTemplate {
+    group: GroupSizeResult;
+    unitCount: number;
+    signature: string;
+}
+
+interface PreviewGroupSearchState {
+    visits: number;
+    aborted: boolean;
+}
+
 const COMMON_ECHELON_UNIT_COUNTS = new Map<string, number>([
     ['ELEMENT', 1],
     ['POINT', 1],
@@ -333,6 +378,489 @@ const ECHELON_TO_ORG_TYPE = new Map<string, OrgType>([
     ['LEVEL_V', 'Level V'],
     ['LEVEL_VI', 'Level VI'],
 ]);
+
+function resolvePreviewGroupSignature(group: GroupSizeResult): string {
+    return `${group.type ?? 'null'}|${group.modifierKey}|${group.countsAsType ?? 'null'}`;
+}
+
+function isPreviewGroupTierOneOrHigher(group: GroupSizeResult): boolean {
+    return group.tier + PREVIEW_GROUP_TIER_EPSILON >= PREVIEW_GROUP_SPLIT_MIN_TIER;
+}
+
+function shouldSplitPreviewGroup(group: GroupSizeResult): boolean {
+    const children = group.children ?? [];
+    return children.length > 0 && children.every((child) => isPreviewGroupTierOneOrHigher(child));
+}
+
+function matchesPreviewGroupTemplate(candidate: GroupSizeResult, template: GroupSizeResult): boolean {
+    return candidate.type === template.type
+        && candidate.modifierKey === template.modifierKey
+        && candidate.countsAsType === template.countsAsType;
+}
+
+function createGeneratedUnitQueues(generatedUnits: readonly GeneratedForceUnit[]): Map<Unit, GeneratedForceUnit[]> {
+    const queueByUnit = new Map<Unit, GeneratedForceUnit[]>();
+
+    for (const generatedUnit of generatedUnits) {
+        const queue = queueByUnit.get(generatedUnit.unit);
+        if (queue) {
+            queue.push(generatedUnit);
+            continue;
+        }
+
+        queueByUnit.set(generatedUnit.unit, [generatedUnit]);
+    }
+
+    return queueByUnit;
+}
+
+function takeGeneratedUnitsForUnitList(
+    units: readonly Unit[],
+    queueByUnit: Map<Unit, GeneratedForceUnit[]>,
+): GeneratedForceUnit[] | null {
+    const result: GeneratedForceUnit[] = [];
+
+    for (const unit of units) {
+        const queue = queueByUnit.get(unit);
+        const generatedUnit = queue?.shift();
+        if (!generatedUnit) {
+            return null;
+        }
+
+        result.push(generatedUnit);
+    }
+
+    return result;
+}
+
+function countQueuedGeneratedUnits(queueByUnit: ReadonlyMap<Unit, readonly GeneratedForceUnit[]>): number {
+    let count = 0;
+    for (const queue of queueByUnit.values()) {
+        count += queue.length;
+    }
+
+    return count;
+}
+
+function combinePreviewGroupPlans(plans: readonly PreviewGroupPlan[]): PreviewGroupPlan {
+    return {
+        groups: [...plans.flatMap((plan) => plan.groups)].sort((left, right) => left.firstUnitIndex - right.firstUnitIndex),
+        score: plans.reduce((sum, plan) => sum + plan.score, 0),
+        formationCount: plans.reduce((sum, plan) => sum + plan.formationCount, 0),
+    };
+}
+
+function isBetterPreviewGroupPlan(candidate: PreviewGroupPlan, incumbent: PreviewGroupPlan | null): boolean {
+    if (!incumbent) {
+        return true;
+    }
+
+    if (candidate.score !== incumbent.score) {
+        return candidate.score > incumbent.score;
+    }
+
+    if (candidate.formationCount !== incumbent.formationCount) {
+        return candidate.formationCount > incumbent.formationCount;
+    }
+
+    return false;
+}
+
+function createGeneratedLoadForceGroup(
+    generatedUnits: readonly GeneratedForceUnit[],
+    gameSystem: GameSystem,
+    formationId?: string,
+): LoadForceGroup {
+    return {
+        formationId,
+        units: generatedUnits.map((generatedUnit) => ({
+            unit: generatedUnit.unit,
+            destroyed: false,
+            gunnery: gameSystem === GameSystem.CLASSIC ? generatedUnit.gunnery : undefined,
+            piloting: gameSystem === GameSystem.CLASSIC ? generatedUnit.piloting : undefined,
+            skill: gameSystem === GameSystem.ALPHA_STRIKE ? generatedUnit.skill : undefined,
+            alias: generatedUnit.alias,
+            commander: generatedUnit.commander,
+            lockKey: generatedUnit.lockKey,
+        })),
+    };
+}
+
+function getGeneratedUnitFirstIndex(
+    generatedUnits: readonly GeneratedForceUnit[],
+    unitIndexByGeneratedUnit: ReadonlyMap<GeneratedForceUnit, number>,
+): number {
+    let firstIndex = Number.MAX_SAFE_INTEGER;
+
+    for (const generatedUnit of generatedUnits) {
+        firstIndex = Math.min(firstIndex, unitIndexByGeneratedUnit.get(generatedUnit) ?? Number.MAX_SAFE_INTEGER);
+    }
+
+    return firstIndex;
+}
+
+function createPreviewForceUnitStub(
+    generatedUnit: GeneratedForceUnit,
+    forceContext: {
+        faction: () => Faction | null;
+        era: () => Era | null;
+        techBase: () => string;
+        gameSystem: GameSystem;
+    },
+): ForceUnit {
+    return {
+        force: forceContext,
+        getUnit: () => generatedUnit.unit,
+        getBv: () => generatedUnit.cost,
+        pilotSkill: () => generatedUnit.skill ?? generatedUnit.gunnery ?? 4,
+        gunnerySkill: () => generatedUnit.gunnery ?? generatedUnit.skill ?? 4,
+    } as unknown as ForceUnit;
+}
+
+function getBestPreviewFormationMatch(
+    generatedUnits: readonly GeneratedForceUnit[],
+    resolvedGroup: GroupSizeResult,
+    context: PreviewGroupPlanContext,
+): ReturnType<typeof LanceTypeIdentifierUtil.getBestMatchForGroup> {
+    const techBase = getUnitsAverageTechBase(generatedUnits.map((generatedUnit) => generatedUnit.unit));
+    const forceContext = {
+        faction: () => context.faction,
+        era: () => context.era,
+        techBase: () => techBase,
+        gameSystem: context.gameSystem,
+    };
+    const forceUnits = generatedUnits.map((generatedUnit) => createPreviewForceUnitStub(generatedUnit, forceContext));
+    const group = {
+        force: forceContext,
+        units: () => forceUnits,
+        organizationalResult: () => ({
+            name: resolvedGroup.name,
+            tier: resolvedGroup.tier,
+            groups: [resolvedGroup],
+        }),
+        formationHistory: new Set<string>(),
+    } as unknown as import('../models/force.model').UnitGroup<ForceUnit>;
+
+    return LanceTypeIdentifierUtil.getBestMatchForGroup(group);
+}
+
+function createPreviewLeafGroupPlan(
+    resolvedGroup: GroupSizeResult,
+    generatedUnits: readonly GeneratedForceUnit[],
+    context: PreviewGroupPlanContext,
+    unitIndexByGeneratedUnit: ReadonlyMap<GeneratedForceUnit, number>,
+): PreviewGroupPlan {
+    const orderedGeneratedUnits = [...generatedUnits].sort((left, right) => (
+        (unitIndexByGeneratedUnit.get(left) ?? Number.MAX_SAFE_INTEGER)
+        - (unitIndexByGeneratedUnit.get(right) ?? Number.MAX_SAFE_INTEGER)
+    ));
+    const bestMatch = getBestPreviewFormationMatch(orderedGeneratedUnits, resolvedGroup, context);
+    const formationId = bestMatch?.definition.id;
+
+    return {
+        groups: [{
+            loadGroup: createGeneratedLoadForceGroup(orderedGeneratedUnits, context.gameSystem, formationId),
+            firstUnitIndex: getGeneratedUnitFirstIndex(orderedGeneratedUnits, unitIndexByGeneratedUnit),
+        }],
+        score: bestMatch
+            ? LanceTypeIdentifierUtil.getFormationPriorityWeight(bestMatch.definition, context.factionName)
+            : 0,
+        formationCount: formationId ? 1 : 0,
+    };
+}
+
+function materializePreviewTemplateLeafGroup(
+    template: GroupSizeResult,
+    generatedUnits: readonly GeneratedForceUnit[],
+): GroupSizeResult {
+    return {
+        name: template.name,
+        type: template.type,
+        modifierKey: template.modifierKey,
+        countsAsType: template.countsAsType,
+        tier: template.tier,
+        units: generatedUnits.map((generatedUnit) => generatedUnit.unit),
+        tag: template.tag,
+        priority: template.priority,
+    };
+}
+
+function buildPreviewGroupPlanFromChildren(
+    group: GroupSizeResult,
+    generatedUnits: readonly GeneratedForceUnit[],
+    context: PreviewGroupPlanContext,
+    unitIndexByGeneratedUnit: ReadonlyMap<GeneratedForceUnit, number>,
+): PreviewGroupPlan | null {
+    const children = group.children ?? [];
+    if (children.length === 0) {
+        return null;
+    }
+
+    const queueByUnit = createGeneratedUnitQueues(generatedUnits);
+    const childPlans: PreviewGroupPlan[] = [];
+
+    for (const child of children) {
+        const childGeneratedUnits = takeGeneratedUnitsForUnitList(collectGroupUnits(child), queueByUnit);
+        if (!childGeneratedUnits) {
+            return null;
+        }
+
+        childPlans.push(buildPreviewGroupPlanFromResolvedGroup(child, childGeneratedUnits, context, unitIndexByGeneratedUnit));
+    }
+
+    if (countQueuedGeneratedUnits(queueByUnit) > 0) {
+        return null;
+    }
+
+    return combinePreviewGroupPlans(childPlans);
+}
+
+function forEachIndexCombination(
+    indices: readonly number[],
+    size: number,
+    callback: (selected: readonly number[]) => boolean,
+): boolean {
+    const selected: number[] = [];
+
+    const visit = (start: number, remaining: number): boolean => {
+        if (remaining === 0) {
+            return callback(selected);
+        }
+
+        for (let index = start; index <= indices.length - remaining; index += 1) {
+            selected.push(indices[index]);
+            if (visit(index + 1, remaining - 1)) {
+                return true;
+            }
+            selected.pop();
+        }
+
+        return false;
+    };
+
+    return visit(0, size);
+}
+
+function searchOptimizedPreviewGroupPlan(
+    templates: readonly PreviewGroupTemplate[],
+    generatedUnits: readonly GeneratedForceUnit[],
+    context: PreviewGroupPlanContext,
+    unitIndexByGeneratedUnit: ReadonlyMap<GeneratedForceUnit, number>,
+    evaluationCache: Map<string, PreviewGroupPlan | null>,
+    searchState: PreviewGroupSearchState,
+    templateIndex: number,
+    remainingIndices: readonly number[],
+): PreviewGroupPlan | null {
+    if (templateIndex >= templates.length) {
+        return remainingIndices.length === 0
+            ? { groups: [], score: 0, formationCount: 0 }
+            : null;
+    }
+
+    const template = templates[templateIndex];
+    if (remainingIndices.length < template.unitCount) {
+        return null;
+    }
+
+    let bestPlan: PreviewGroupPlan | null = null;
+    const candidateSelections = templateIndex === templates.length - 1
+        ? [remainingIndices]
+        : null;
+
+    const evaluateSelection = (selectedIndices: readonly number[]): boolean => {
+        if (searchState.visits >= PREVIEW_GROUP_SEARCH_MAX_VISITS) {
+            searchState.aborted = true;
+            return true;
+        }
+
+        searchState.visits += 1;
+
+        const cacheKey = `${template.signature}:${selectedIndices.join(',')}`;
+        let childPlan = evaluationCache.get(cacheKey);
+        if (childPlan === undefined) {
+            const selectedIndexSet = new Set(selectedIndices);
+            const childGeneratedUnits = generatedUnits.filter((_, index) => selectedIndexSet.has(index));
+            const resolvedChildGroups = resolveFromUnits(
+                childGeneratedUnits.map((generatedUnit) => generatedUnit.unit),
+                context.faction,
+                context.era,
+            );
+            const resolvedChildGroup = resolvedChildGroups.length === 1 && matchesPreviewGroupTemplate(resolvedChildGroups[0], template.group)
+                ? resolvedChildGroups[0]
+                : (!shouldSplitPreviewGroup(template.group) && childGeneratedUnits.length === template.unitCount
+                    ? materializePreviewTemplateLeafGroup(template.group, childGeneratedUnits)
+                    : null);
+
+            if (!resolvedChildGroup) {
+                childPlan = null;
+            } else {
+                childPlan = buildPreviewGroupPlanFromResolvedGroup(
+                    resolvedChildGroup,
+                    childGeneratedUnits,
+                    context,
+                    unitIndexByGeneratedUnit,
+                );
+            }
+
+            evaluationCache.set(cacheKey, childPlan);
+        }
+
+        if (!childPlan) {
+            return false;
+        }
+
+        const selectedIndexSet = new Set(selectedIndices);
+        const nextRemainingIndices = remainingIndices.filter((index) => !selectedIndexSet.has(index));
+        const tailPlan = searchOptimizedPreviewGroupPlan(
+            templates,
+            generatedUnits,
+            context,
+            unitIndexByGeneratedUnit,
+            evaluationCache,
+            searchState,
+            templateIndex + 1,
+            nextRemainingIndices,
+        );
+        if (!tailPlan) {
+            return searchState.aborted;
+        }
+
+        const combinedPlan = combinePreviewGroupPlans([childPlan, tailPlan]);
+        if (isBetterPreviewGroupPlan(combinedPlan, bestPlan)) {
+            bestPlan = combinedPlan;
+        }
+
+        return searchState.aborted;
+    };
+
+    if (candidateSelections) {
+        evaluateSelection(candidateSelections[0]);
+        return searchState.aborted ? null : bestPlan;
+    }
+
+    forEachIndexCombination(remainingIndices, template.unitCount, evaluateSelection);
+    return searchState.aborted ? null : bestPlan;
+}
+
+function tryBuildOptimizedPreviewPlanForGroups(
+    groups: readonly GroupSizeResult[],
+    generatedUnits: readonly GeneratedForceUnit[],
+    context: PreviewGroupPlanContext,
+    unitIndexByGeneratedUnit: ReadonlyMap<GeneratedForceUnit, number>,
+): PreviewGroupPlan | null {
+    if (groups.length <= 1 || generatedUnits.length > PREVIEW_GROUP_SEARCH_MAX_UNITS) {
+        return null;
+    }
+
+    const templates = groups
+        .map((group) => ({
+            group,
+            unitCount: collectGroupUnits(group).length,
+            signature: resolvePreviewGroupSignature(group),
+        }))
+        .filter((template) => template.unitCount > 0);
+    if (templates.length !== groups.length) {
+        return null;
+    }
+
+    const evaluationCache = new Map<string, PreviewGroupPlan | null>();
+    const searchState: PreviewGroupSearchState = { visits: 0, aborted: false };
+
+    return searchOptimizedPreviewGroupPlan(
+        templates,
+        generatedUnits,
+        context,
+        unitIndexByGeneratedUnit,
+        evaluationCache,
+        searchState,
+        0,
+        generatedUnits.map((_, index) => index),
+    );
+}
+
+function tryBuildOptimizedPreviewGroupPlan(
+    group: GroupSizeResult,
+    generatedUnits: readonly GeneratedForceUnit[],
+    context: PreviewGroupPlanContext,
+    unitIndexByGeneratedUnit: ReadonlyMap<GeneratedForceUnit, number>,
+): PreviewGroupPlan | null {
+    return tryBuildOptimizedPreviewPlanForGroups(
+        group.children ?? [],
+        generatedUnits,
+        context,
+        unitIndexByGeneratedUnit,
+    );
+}
+
+function buildPreviewGroupPlanFromResolvedGroup(
+    group: GroupSizeResult,
+    generatedUnits: readonly GeneratedForceUnit[],
+    context: PreviewGroupPlanContext,
+    unitIndexByGeneratedUnit: ReadonlyMap<GeneratedForceUnit, number>,
+): PreviewGroupPlan {
+    if (!shouldSplitPreviewGroup(group)) {
+        return createPreviewLeafGroupPlan(group, generatedUnits, context, unitIndexByGeneratedUnit);
+    }
+
+    const optimizedPlan = tryBuildOptimizedPreviewGroupPlan(group, generatedUnits, context, unitIndexByGeneratedUnit);
+    if (optimizedPlan) {
+        return optimizedPlan;
+    }
+
+    const childPlan = buildPreviewGroupPlanFromChildren(group, generatedUnits, context, unitIndexByGeneratedUnit);
+    if (childPlan) {
+        return childPlan;
+    }
+
+    return createPreviewLeafGroupPlan(group, generatedUnits, context, unitIndexByGeneratedUnit);
+}
+
+function buildPreviewLoadGroups(
+    generatedUnits: readonly GeneratedForceUnit[],
+    context: PreviewGroupPlanContext,
+): LoadForceGroup[] {
+    const resolvedUnitGroups = resolveFromUnits(
+        generatedUnits.map((generatedUnit) => generatedUnit.unit),
+        context.faction,
+        context.era,
+    );
+    const resolvedGroups = resolvedUnitGroups.length > 1
+        ? resolveFromGroups(resolvedUnitGroups, context.faction, context.era)
+        : resolvedUnitGroups;
+    const unitIndexByGeneratedUnit = new Map(generatedUnits.map((generatedUnit, index) => [generatedUnit, index]));
+    const optimizedTopLevelPlan = tryBuildOptimizedPreviewPlanForGroups(
+        resolvedGroups,
+        generatedUnits,
+        context,
+        unitIndexByGeneratedUnit,
+    );
+    if (optimizedTopLevelPlan) {
+        return optimizedTopLevelPlan.groups.map((plannedGroup) => plannedGroup.loadGroup);
+    }
+
+    const queueByUnit = createGeneratedUnitQueues(generatedUnits);
+    const plannedGroups: PreviewGroupPlan[] = [];
+
+    for (const resolvedGroup of resolvedGroups) {
+        const groupGeneratedUnits = takeGeneratedUnitsForUnitList(collectGroupUnits(resolvedGroup), queueByUnit);
+        if (!groupGeneratedUnits) {
+            return [createGeneratedLoadForceGroup(generatedUnits, context.gameSystem)];
+        }
+
+        plannedGroups.push(buildPreviewGroupPlanFromResolvedGroup(
+            resolvedGroup,
+            groupGeneratedUnits,
+            context,
+            unitIndexByGeneratedUnit,
+        ));
+    }
+
+    if (countQueuedGeneratedUnits(queueByUnit) > 0) {
+        return [createGeneratedLoadForceGroup(generatedUnits, context.gameSystem)];
+    }
+
+    return combinePreviewGroupPlans(plannedGroups).groups.map((plannedGroup) => plannedGroup.loadGroup);
+}
 
 function normalizeInitialBudgetRange(min: number, max: number): ForceGenerationBudgetRange {
     const normalizedMin = Math.max(0, min);
@@ -1323,22 +1851,19 @@ export class ForceGeneratorService {
             return null;
         }
 
-        const previewGroup: LoadForceGroup = {
-            units: preview.units.map((generatedUnit) => ({
-                unit: generatedUnit.unit,
-                destroyed: false,
-                gunnery: preview.gameSystem === GameSystem.CLASSIC ? generatedUnit.gunnery : undefined,
-                piloting: preview.gameSystem === GameSystem.CLASSIC ? generatedUnit.piloting : undefined,
-                skill: preview.gameSystem === GameSystem.ALPHA_STRIKE ? generatedUnit.skill : undefined,
-                alias: generatedUnit.alias,
-                commander: generatedUnit.commander,
-                lockKey: generatedUnit.lockKey,
-            })),
-        };
-
         const faction = preview.faction ?? null;
         const era = preview.era ?? null;
         const resolvedName = name?.trim() || ForceNamerUtil.generateForceNameForFaction(faction);
+        const previewGroups = buildPreviewLoadGroups(preview.units, {
+            faction: preview.faction
+                ?? this.dataService.getFactionById(MULFACTION_MERCENARY)
+                ?? DEFAULT_PREVIEW_FORCE_FACTION,
+            era,
+            gameSystem: preview.gameSystem,
+            factionName: preview.faction?.name
+                ?? this.dataService.getFactionById(MULFACTION_MERCENARY)?.name
+                ?? DEFAULT_PREVIEW_FORCE_FACTION.name,
+        });
 
         return new LoadForceEntry({
             instanceId: `generated-${Date.now()}-${Math.round(Math.random() * 1_000_000)}`,
@@ -1353,7 +1878,7 @@ export class ForceGeneratorService {
             era,
             bv: preview.gameSystem === GameSystem.CLASSIC ? preview.totalCost : undefined,
             pv: preview.gameSystem === GameSystem.ALPHA_STRIKE ? preview.totalCost : undefined,
-            groups: [previewGroup],
+            groups: previewGroups,
         });
     }
 

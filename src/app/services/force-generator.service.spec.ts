@@ -9,6 +9,7 @@ import type { MegaMekRulesetRecord } from '../models/megamek/rulesets.model';
 import { MULFACTION_MERCENARY } from '../models/mulfactions.model';
 import type { AvailabilitySource } from '../models/options.model';
 import type { Unit } from '../models/units.model';
+import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { DataService } from './data.service';
 import type { ForceGenerationContext } from './force-generator.service';
 import { ForceGeneratorService } from './force-generator.service';
@@ -84,6 +85,18 @@ describe('ForceGeneratorService', () => {
     }
 
     function createUnit(overrides: Partial<Unit> = {}): Unit {
+        const type = overrides.type ?? 'Mek';
+        const subtype = overrides.subtype ?? 'BattleMek';
+        const moveType = overrides.moveType ?? 'Tracked';
+        const alphaStrikeType = overrides.as?.TP ?? (() => {
+            if (type === 'Mek') return 'BM';
+            if (type === 'ProtoMek') return 'PM';
+            if (type === 'Infantry') return subtype === 'Battle Armor' ? 'BA' : 'CI';
+            if (type === 'VTOL') return 'CV';
+            if (type === 'Aero') return subtype === 'Conventional Fighter' ? 'CF' : 'AF';
+            return 'CV';
+        })();
+
         return {
             id: overrides.id ?? 1,
             name: overrides.name ?? 'Test Unit',
@@ -91,12 +104,83 @@ describe('ForceGeneratorService', () => {
             model: overrides.model ?? 'TST-1',
             year: overrides.year ?? 3151,
             weightClass: overrides.weightClass ?? 'Medium',
+            tons: overrides.tons ?? 50,
+            offSpeedFactor: overrides.offSpeedFactor ?? 0,
             bv: overrides.bv ?? 1000,
+            pv: overrides.pv ?? 0,
+            cost: overrides.cost ?? 0,
+            level: overrides.level ?? 0,
+            techBase: overrides.techBase ?? 'Inner Sphere',
+            techRating: overrides.techRating ?? 'D',
             role: overrides.role ?? 'skirmisher',
-            type: overrides.type ?? 'Mek',
-            subtype: overrides.subtype ?? 'BattleMek',
-            moveType: overrides.moveType ?? 'Biped',
-            as: overrides.as ?? ({ PV: 5 } as Unit['as']),
+            type,
+            subtype,
+            omni: overrides.omni ?? 0,
+            engine: overrides.engine ?? 'Fusion',
+            engineRating: overrides.engineRating ?? 0,
+            engineHS: overrides.engineHS ?? 0,
+            engineHSType: overrides.engineHSType ?? 'Heat Sink',
+            source: overrides.source ?? [],
+            armorType: overrides.armorType ?? '',
+            structureType: overrides.structureType ?? '',
+            armor: overrides.armor ?? 0,
+            armorPer: overrides.armorPer ?? 0,
+            internal: overrides.internal ?? 1,
+            heat: overrides.heat ?? 0,
+            dissipation: overrides.dissipation ?? 0,
+            moveType,
+            walk: overrides.walk ?? 0,
+            walk2: overrides.walk2 ?? 0,
+            run: overrides.run ?? 0,
+            run2: overrides.run2 ?? 0,
+            jump: overrides.jump ?? 0,
+            jump2: overrides.jump2 ?? 0,
+            umu: overrides.umu ?? 0,
+            c3: overrides.c3 ?? '',
+            dpt: overrides.dpt ?? 0,
+            comp: overrides.comp ?? [],
+            su: overrides.su ?? 0,
+            crewSize: overrides.crewSize ?? 1,
+            quirks: overrides.quirks ?? [],
+            features: overrides.features ?? [],
+            icon: overrides.icon ?? '',
+            sheets: overrides.sheets ?? [],
+            as: {
+                TP: alphaStrikeType,
+                PV: overrides.as?.PV ?? 5,
+                SZ: overrides.as?.SZ ?? 0,
+                TMM: overrides.as?.TMM ?? 0,
+                usesOV: overrides.as?.usesOV ?? false,
+                OV: overrides.as?.OV ?? 0,
+                MV: overrides.as?.MV ?? '0',
+                MVm: overrides.as?.MVm ?? {},
+                usesTh: overrides.as?.usesTh ?? false,
+                Th: overrides.as?.Th ?? 0,
+                Arm: overrides.as?.Arm ?? 0,
+                Str: overrides.as?.Str ?? 0,
+                specials: overrides.as?.specials ?? [],
+                dmg: {
+                    dmgS: overrides.as?.dmg?.dmgS ?? '0',
+                    dmgM: overrides.as?.dmg?.dmgM ?? '0',
+                    dmgL: overrides.as?.dmg?.dmgL ?? '0',
+                    dmgE: overrides.as?.dmg?.dmgE ?? '0',
+                    _dmgS: overrides.as?.dmg?._dmgS,
+                    _dmgM: overrides.as?.dmg?._dmgM,
+                    _dmgL: overrides.as?.dmg?._dmgL,
+                    _dmgE: overrides.as?.dmg?._dmgE,
+                },
+                usesE: overrides.as?.usesE ?? false,
+                usesArcs: overrides.as?.usesArcs ?? false,
+                ...overrides.as,
+            },
+            _searchKey: overrides._searchKey ?? '',
+            _displayType: overrides._displayType ?? '',
+            _maxRange: overrides._maxRange ?? 0,
+            _dissipationEfficiency: overrides._dissipationEfficiency ?? 0,
+            _mdSumNoPhysical: overrides._mdSumNoPhysical ?? 0,
+            _mdSumNoPhysicalNoOneshots: overrides._mdSumNoPhysicalNoOneshots ?? 0,
+            _nameTags: overrides._nameTags ?? [],
+            _chassisTags: overrides._chassisTags ?? [],
         } as Unit;
     }
 
@@ -971,6 +1055,176 @@ describe('ForceGeneratorService', () => {
         };
 
         expect(service.createForceEntry(preview)).not.toBeNull();
+    });
+
+    it('splits a generated company into lance groups and picks the best formation layout', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const previewUnits = [
+            createUnit({ id: 1, name: 'A-1', chassis: 'Alpha', model: '1', role: 'brawler' }),
+            createUnit({ id: 2, name: 'B-1', chassis: 'Beta', model: '1', role: 'sniper' }),
+            createUnit({ id: 3, name: 'C-1', chassis: 'Gamma', model: '1', role: 'scout' }),
+            createUnit({ id: 4, name: 'A-2', chassis: 'Alpha', model: '2', role: 'brawler' }),
+            createUnit({ id: 5, name: 'B-2', chassis: 'Beta', model: '2', role: 'sniper' }),
+            createUnit({ id: 6, name: 'C-2', chassis: 'Gamma', model: '2', role: 'scout' }),
+            createUnit({ id: 7, name: 'A-3', chassis: 'Alpha', model: '3', role: 'brawler' }),
+            createUnit({ id: 8, name: 'B-3', chassis: 'Beta', model: '3', role: 'sniper' }),
+            createUnit({ id: 9, name: 'C-3', chassis: 'Gamma', model: '3', role: 'scout' }),
+            createUnit({ id: 10, name: 'A-4', chassis: 'Alpha', model: '4', role: 'brawler' }),
+            createUnit({ id: 11, name: 'B-4', chassis: 'Beta', model: '4', role: 'sniper' }),
+            createUnit({ id: 12, name: 'C-4', chassis: 'Gamma', model: '4', role: 'scout' }),
+        ];
+        const eliteFormation = {
+            id: 'elite-lance',
+            name: 'Elite',
+            description: 'Parent-weighted test formation.',
+            minUnits: 4,
+            parent: 'battle-lance',
+        } as any;
+        const reconFormation = {
+            id: 'recon-lance',
+            name: 'Recon',
+            description: 'Standard weighted test formation.',
+            minUnits: 4,
+        } as any;
+        const battleFormation = {
+            id: 'battle-lance',
+            name: 'Battle',
+            description: 'Baseline battle formation.',
+            minUnits: 4,
+        } as any;
+        const supportFormation = {
+            id: 'support-lance',
+            name: 'Support',
+            description: 'Low-priority fallback formation.',
+            minUnits: 4,
+        } as any;
+
+        spyOn(LanceTypeIdentifierUtil, 'identifyFormations').and.callFake((forceUnits) => {
+            const unitNames = forceUnits.map((unit) => unit.getUnit().name);
+            if (unitNames.length !== 4) {
+                return [];
+            }
+
+            if (unitNames.every((name) => name.startsWith('A-'))) {
+                return [{ definition: eliteFormation, requirementsFiltered: false }];
+            }
+            if (unitNames.every((name) => name.startsWith('B-'))) {
+                return [{ definition: reconFormation, requirementsFiltered: false }];
+            }
+            if (unitNames.every((name) => name.startsWith('C-'))) {
+                return [{ definition: battleFormation, requirementsFiltered: false }];
+            }
+
+            return [{ definition: supportFormation, requirementsFiltered: false }];
+        });
+
+        const entry = service.createForceEntry({
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            units: previewUnits.map((unit, index) => ({
+                unit,
+                cost: 25 + index,
+                skill: 4,
+            })),
+            totalCost: 400,
+            error: null,
+            faction,
+            era,
+            explanationLines: [],
+        });
+
+        expect(entry).not.toBeNull();
+        expect(entry!.groups.length).toBe(3);
+        expect(entry!.groups.map((group) => group.units.map((unit) => unit.unit?.name))).toEqual([
+            ['A-1', 'A-2', 'A-3', 'A-4'],
+            ['B-1', 'B-2', 'B-3', 'B-4'],
+            ['C-1', 'C-2', 'C-3', 'C-4'],
+        ]);
+        expect(entry!.groups.map((group) => group.formationId)).toEqual([
+            'elite-lance',
+            'recon-lance',
+            'battle-lance',
+        ]);
+    });
+
+    it('splits a generated binary into star groups before assigning formations', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = {
+            ...createFaction(10, 'Clan Test'),
+            group: 'HW Clan',
+        } as Faction;
+        const previewUnits = [
+            createUnit({ id: 1, name: 'X-1', chassis: 'X', model: '1', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as Unit['as'] }),
+            createUnit({ id: 2, name: 'Y-1', chassis: 'Y', model: '1', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as Unit['as'] }),
+            createUnit({ id: 3, name: 'X-2', chassis: 'X', model: '2', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as Unit['as'] }),
+            createUnit({ id: 4, name: 'Y-2', chassis: 'Y', model: '2', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as Unit['as'] }),
+            createUnit({ id: 5, name: 'X-3', chassis: 'X', model: '3', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as Unit['as'] }),
+            createUnit({ id: 6, name: 'Y-3', chassis: 'Y', model: '3', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as Unit['as'] }),
+            createUnit({ id: 7, name: 'X-4', chassis: 'X', model: '4', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as Unit['as'] }),
+            createUnit({ id: 8, name: 'Y-4', chassis: 'Y', model: '4', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as Unit['as'] }),
+            createUnit({ id: 9, name: 'X-5', chassis: 'X', model: '5', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as Unit['as'] }),
+            createUnit({ id: 10, name: 'Y-5', chassis: 'Y', model: '5', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as Unit['as'] }),
+        ];
+        const clanFormation = {
+            id: 'clan-star',
+            name: 'Clan Star',
+            description: 'Parent-weighted Clan test formation.',
+            minUnits: 5,
+            parent: 'battle-lance',
+        } as any;
+        const hunterFormation = {
+            id: 'hunter-star',
+            name: 'Hunter Star',
+            description: 'Standard weighted Clan test formation.',
+            minUnits: 5,
+        } as any;
+        const supportFormation = {
+            id: 'support-lance',
+            name: 'Support',
+            description: 'Low-priority fallback formation.',
+            minUnits: 5,
+        } as any;
+
+        spyOn(LanceTypeIdentifierUtil, 'identifyFormations').and.callFake((forceUnits) => {
+            const unitNames = forceUnits.map((unit) => unit.getUnit().name);
+            if (unitNames.length !== 5) {
+                return [];
+            }
+
+            if (unitNames.every((name) => name.startsWith('X-'))) {
+                return [{ definition: clanFormation, requirementsFiltered: false }];
+            }
+            if (unitNames.every((name) => name.startsWith('Y-'))) {
+                return [{ definition: hunterFormation, requirementsFiltered: false }];
+            }
+
+            return [{ definition: supportFormation, requirementsFiltered: false }];
+        });
+
+        const entry = service.createForceEntry({
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            units: previewUnits.map((unit, index) => ({
+                unit,
+                cost: 30 + index,
+                skill: 4,
+            })),
+            totalCost: 345,
+            error: null,
+            faction,
+            era,
+            explanationLines: [],
+        });
+
+        expect(entry).not.toBeNull();
+        expect(entry!.groups.length).toBe(2);
+        expect(entry!.groups.map((group) => group.units.map((unit) => unit.unit?.name))).toEqual([
+            ['X-1', 'X-2', 'X-3', 'X-4', 'X-5'],
+            ['Y-1', 'Y-2', 'Y-3', 'Y-4', 'Y-5'],
+        ]);
+        expect(entry!.groups.map((group) => group.formationId)).toEqual([
+            'clan-star',
+            'hunter-star',
+        ]);
     });
 
     it('keeps retrying until the no-match search window expires', () => {
