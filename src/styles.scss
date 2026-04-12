@@ -271,6 +271,14 @@ hr {
             linear-gradient(red, red),
             linear-gradient(red, red),
     }
+    &.muted-frame {
+        border-color: silver;
+        background-image:
+            linear-gradient(silver, silver),
+            linear-gradient(silver, silver),
+            linear-gradient(silver, silver),
+            linear-gradient(silver, silver),
+    }
 }
 
 .corner-borders {

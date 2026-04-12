@@ -18,6 +18,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
     let component: SearchForceGeneratorDialogComponent;
     let setOptionSpy: jasmine.Spy;
     let setFilterSpy: jasmine.Spy;
+    let setPilotSkillsSpy: jasmine.Spy;
     let buildPreviewSpy: jasmine.Spy;
     let resolveInitialBudgetDefaultsSpy: jasmine.Spy;
     let filteredUnitsSignal: WritableSignal<Unit[]>;
@@ -41,6 +42,12 @@ describe('SearchForceGeneratorDialogComponent', () => {
         });
 
         setFilterSpy = jasmine.createSpy('setFilter');
+        const pilotGunnerySkillSignal = signal(4);
+        const pilotPilotingSkillSignal = signal(5);
+        setPilotSkillsSpy = jasmine.createSpy('setPilotSkills').and.callFake((gunnery: number, piloting: number) => {
+            pilotGunnerySkillSignal.set(gunnery);
+            pilotPilotingSkillSignal.set(piloting);
+        });
         const advOptionsSignal = signal({
             era: {
                 type: 'dropdown' as const,
@@ -242,10 +249,11 @@ describe('SearchForceGeneratorDialogComponent', () => {
                         filteredUnits: filteredUnitsSignal,
                         forceGeneratorEligibleUnits: forceGeneratorEligibleUnitsSignal,
                         isComplexQuery: signal(false),
-                        pilotGunnerySkill: signal(4),
-                        pilotPilotingSkill: signal(5),
+                        pilotGunnerySkill: pilotGunnerySkillSignal,
+                        pilotPilotingSkill: pilotPilotingSkillSignal,
                         searchText: signal(''),
                         setFilter: setFilterSpy,
+                        setPilotSkills: setPilotSkillsSpy,
                         unsetFilter: jasmine.createSpy('unsetFilter'),
                     },
                 },
@@ -486,6 +494,46 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         expect(checkbox).not.toBeNull();
         expect(fixture.nativeElement.textContent).toContain('Prevent Duplicate Chassis');
+    });
+
+    it('renders pilot skill controls and updates them for the current game system', async () => {
+        const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        expect(fixture.nativeElement.querySelector('#force-generator-gunnery-skill')).toBeNull();
+        expect(fixture.nativeElement.querySelector('#force-generator-piloting-skill')).toBeNull();
+
+        const toggle = fixture.nativeElement.querySelector('.additional-filters-toggle') as HTMLButtonElement | null;
+        toggle?.click();
+        fixture.detectChanges();
+
+        const classicText = fixture.nativeElement.textContent as string;
+        const gunnerySelect = fixture.nativeElement.querySelector('#force-generator-gunnery-skill') as HTMLSelectElement | null;
+        const pilotingSelect = fixture.nativeElement.querySelector('#force-generator-piloting-skill') as HTMLSelectElement | null;
+
+        expect(classicText).toContain('Gunnery:');
+        expect(classicText).toContain('Piloting:');
+        expect(gunnerySelect).not.toBeNull();
+        expect(pilotingSelect).not.toBeNull();
+
+        if (!gunnerySelect) {
+            fail('Expected gunnery select to be rendered.');
+            return;
+        }
+
+        gunnerySelect.value = '3';
+        gunnerySelect.dispatchEvent(new Event('change'));
+        fixture.detectChanges();
+
+        expect(setPilotSkillsSpy).toHaveBeenCalledWith(3, 5);
+
+        fixture.componentInstance.setGameSystem(GameSystem.ALPHA_STRIKE);
+        fixture.detectChanges();
+
+        const alphaStrikeText = fixture.nativeElement.textContent as string;
+        expect(alphaStrikeText).toContain('Pilot Skill:');
+        expect(fixture.nativeElement.querySelector('#force-generator-piloting-skill')).toBeNull();
     });
 
     it('shows additional search filters behind an accordion without the force limit block', async () => {

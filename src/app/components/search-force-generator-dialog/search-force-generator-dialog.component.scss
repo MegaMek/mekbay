@@ -176,6 +176,51 @@
     background-color: var(--background-color-light);
 }
 
+.additional-filters-header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
+}
+
+.pilot-skills-controls {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px 4px 6px;
+    justify-content: flex-start;
+}
+
+.skill-control {
+    max-width: 160px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 160px;
+}
+
+.skill-control label {
+    color: var(--text-color-secondary);
+    white-space: nowrap;
+    font-size: 0.9em;
+}
+
+.skill-select {
+    height: 32px;
+    min-width: 48px;
+    padding: 0 4px;
+    background-color: #222;
+    flex: 1 0 auto;
+    text-align: center;
+    font-size: 1em;
+}
+
 .additional-filters-toggle {
     display: flex;
     align-items: center;
@@ -201,24 +246,27 @@
 }
 
 .additional-filters-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 12px;
+    align-items: start;
     padding: 0 12px 12px;
 }
 
 .additional-filters-actions {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: 8px;
+    align-self: center;
+    flex: 0 0 auto;
+    margin-left: auto;
 }
 
-.additional-filters-caption {
-    color: var(--text-color-secondary);
-    font-size: 0.75em;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
+:host ::ng-deep .additional-filters-panel unit-search-advanced-filters {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
 }
 
 .adv-filter-system-toggle {
@@ -541,8 +589,17 @@
         grid-template-columns: 1fr;
     }
 
+    .skill-control {
+        max-width: none;
+    }
+
+    .additional-filters-panel {
+        grid-template-columns: 1fr;
+    }
+
     .additional-filters-actions {
         align-items: flex-start;
+        justify-content: flex-end;
     }
 
     .span-all {

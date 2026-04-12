@@ -110,7 +110,7 @@ export class SearchForceGeneratorDialogComponent {
     private readonly selectedGameSystem = signal<GameSystem>(this.initialGameSystem);
     private readonly initialBudgetDefaults = this.forceGeneratorService.resolveInitialBudgetDefaults(
         this.optionsService.options(),
-        this.filtersService.bvPvLimit(),
+        0,
         this.initialGameSystem,
     );
     private readonly initialUnitCountDefaults = this.forceGeneratorService.resolveInitialUnitCountDefaults(
@@ -251,6 +251,22 @@ export class SearchForceGeneratorDialogComponent {
 
     budgetMaximumFieldLabel(): string {
         return this.gameSystem() === GameSystem.ALPHA_STRIKE ? 'Max PV' : 'Max BV';
+    }
+
+    setPilotSkill(type: 'gunnery' | 'piloting', value: number): void {
+        const currentGunnery = this.filtersService.pilotGunnerySkill();
+        const currentPiloting = this.filtersService.pilotPilotingSkill();
+        if (type === 'gunnery') {
+            this.filtersService.setPilotSkills(value, currentPiloting);
+        } else {
+            this.filtersService.setPilotSkills(currentGunnery, value);
+        }
+    }
+
+    openSelect(event: Event, select: HTMLSelectElement): void {
+        event.preventDefault();
+        event.stopPropagation();
+        select.showPicker?.() ?? select.focus();
     }
 
     toggleAdditionalFilters(): void {
