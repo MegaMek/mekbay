@@ -120,6 +120,27 @@ describe('SearchForceGeneratorDialogComponent', () => {
                             alphaStrike: { min: 290, max: 300 },
                         }),
                         resolveInitialUnitCountDefaults: () => ({ min: 4, max: 8 }),
+                        resolveBudgetRangeForEditedMin: (range: { min: number; max: number }, editedMin: number) => {
+                            const nextMin = Math.max(0, Math.floor(editedMin));
+                            const nextMax = range.max > 0
+                                ? Math.max(nextMin, Math.floor(range.max))
+                                : Math.max(0, Math.floor(range.max));
+                            return { min: nextMin, max: nextMax };
+                        },
+                        resolveBudgetRangeForEditedMax: (range: { min: number; max: number }, editedMax: number) => {
+                            const nextMax = Math.max(0, Math.floor(editedMax));
+                            if (nextMax === 0) {
+                                return {
+                                    min: Math.max(0, Math.floor(range.min)),
+                                    max: 0,
+                                };
+                            }
+
+                            return {
+                                min: Math.min(Math.max(0, Math.floor(range.min)), nextMax),
+                                max: nextMax,
+                            };
+                        },
                         resolveUnitCountRangeForEditedMin: (range: { min: number; max: number }, editedMin: number) => {
                             const nextMin = Math.min(100, Math.max(1, Math.floor(editedMin)));
                             return { min: nextMin, max: Math.max(nextMin, range.max) };
@@ -210,6 +231,14 @@ describe('SearchForceGeneratorDialogComponent', () => {
                 },
             },
         });
+
+        buildPreviewSpy.calls.reset();
+    });
+
+    it('builds an initial preview when the dialog opens', () => {
+        TestBed.runInInjectionContext(() => new SearchForceGeneratorDialogComponent());
+
+        expect(buildPreviewSpy).toHaveBeenCalled();
     });
 
     it('snaps the max units input back to the clamped maximum on blur', () => {
@@ -277,13 +306,13 @@ describe('SearchForceGeneratorDialogComponent', () => {
     it('uses the local generator mode for preview requests without changing the global game system', () => {
         component.setGameSystem(GameSystem.ALPHA_STRIKE);
 
-        component.preview();
+        component.reroll();
 
         expect(buildPreviewSpy.calls.mostRecent().args[0].gameSystem).toBe(GameSystem.ALPHA_STRIKE);
         expect(gameSystemSignal()).toBe(GameSystem.CLASSIC);
     });
 
-    it('imports the current force into the locked preview immediately', () => {
+    it('imports the current force into the locked preview without rerolling', () => {
         const atlas = {
             id: 1,
             name: 'Atlas AS7-D',
@@ -331,31 +360,44 @@ describe('SearchForceGeneratorDialogComponent', () => {
             }),
         });
 
-        component.preview();
-        buildPreviewSpy.calls.reset();
-
         component.importCurrentForce();
-        component.preview();
+        const preview = component.preview();
 
         expect(component.canImportCurrentForce()).toBeTrue();
         expect(component.lockedUnitKeys().size).toBe(2);
         expect(component.lockedUnitKeys().has('u-1')).toBeTrue();
         expect(component.lockedUnitKeys().has('u-2')).toBeTrue();
-        expect(buildPreviewSpy).toHaveBeenCalled();
-
-        const request = buildPreviewSpy.calls.mostRecent().args[0];
-        expect(request.lockedUnits.map((unit: { lockKey: string }) => unit.lockKey)).toEqual(['u-1', 'u-2']);
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual([atlas.name, locust.name]);
+        expect(preview.units.map((unit) => unit.lockKey)).toEqual(['u-1', 'u-2']);
+        expect(preview.explanationLines).toContain('Imported current force into preview. Press REROLL to generate a new result for the current settings.');
+        expect(buildPreviewSpy).not.toHaveBeenCalled();
     });
 
     it('forwards the duplicate-chassis checkbox state into the preview request', () => {
-        buildPreviewSpy.calls.reset();
-
         component.onPreventDuplicateChassisChange({
             target: { checked: true },
         } as unknown as Event);
-        component.preview();
+
+        expect(buildPreviewSpy).not.toHaveBeenCalled();
+
+        component.reroll();
 
         expect(buildPreviewSpy.calls.mostRecent().args[0].preventDuplicateChassis).toBeTrue();
+    });
+
+    it('does not regenerate while budget inputs are edited', () => {
+        component.onBudgetMinChange({
+            target: { value: '9000' },
+        } as unknown as Event);
+        component.onBudgetMaxChange({
+            target: { value: '9100' },
+        } as unknown as Event);
+
+        expect(buildPreviewSpy).not.toHaveBeenCalled();
+
+        component.reroll();
+
+        expect(buildPreviewSpy.calls.mostRecent().args[0].budgetRange).toEqual({ min: 9000, max: 9100 });
     });
 
     it('renders the duplicate-chassis checkbox in the dialog controls', async () => {
@@ -391,6 +433,8 @@ describe('SearchForceGeneratorDialogComponent', () => {
             era: null,
             explanationLines: [],
         });
+
+        component.reroll();
 
         component.previewLockToggle({
             unit: atlas,
@@ -433,7 +477,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
             explanationLines: [],
         });
 
-        component.preview();
+        component.reroll();
         component.previewLockToggle({
             unit: atlas,
             destroyed: false,
@@ -442,10 +486,11 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         buildPreviewSpy.calls.reset();
         component.setGameSystem(GameSystem.CLASSIC);
-        component.preview();
+        const preview = component.preview();
 
-        expect(buildPreviewSpy).toHaveBeenCalled();
-        expect(buildPreviewSpy.calls.mostRecent().args[0].lockedUnits).toEqual([
+        expect(buildPreviewSpy).not.toHaveBeenCalled();
+        expect(preview.gameSystem).toBe(GameSystem.CLASSIC);
+        expect(preview.units).toEqual([
             jasmine.objectContaining({
                 lockKey: 'generated:0:Atlas AS7-D',
                 cost: 1897,
@@ -481,7 +526,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
             explanationLines: [],
         });
 
-        component.preview();
+        component.reroll();
         component.previewLockToggle({
             unit: atlas,
             destroyed: false,
@@ -490,10 +535,11 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         buildPreviewSpy.calls.reset();
         component.setGameSystem(GameSystem.ALPHA_STRIKE);
-        component.preview();
+        const preview = component.preview();
 
-        expect(buildPreviewSpy).toHaveBeenCalled();
-        expect(buildPreviewSpy.calls.mostRecent().args[0].lockedUnits).toEqual([
+        expect(buildPreviewSpy).not.toHaveBeenCalled();
+        expect(preview.gameSystem).toBe(GameSystem.ALPHA_STRIKE);
+        expect(preview.units).toEqual([
             jasmine.objectContaining({
                 lockKey: 'generated:0:Atlas AS7-D',
                 cost: 54,
@@ -526,7 +572,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
             explanationLines: [],
         });
 
-        component.preview();
+        component.reroll();
         buildPreviewSpy.calls.reset();
 
         component.previewLockToggle({
