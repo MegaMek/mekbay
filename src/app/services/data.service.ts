@@ -455,6 +455,10 @@ export class DataService {
         return this.unitSearchIndexService.getUnitSubtypeMaxStats(subtype);
     }
 
+    public getASUnitTypeMaxStats(asUnitType: string): MinMaxStatsRange {
+        return this.unitSearchIndexService.getASUnitTypeMaxStats(asUnitType);
+    }
+
     private postprocessData(): void {
         this.unitRuntimeService.postprocessUnits(this.getUnits(), this.getEras());
         this.unitRuntimeService.linkEquipmentToUnits(this.getUnits(), this.getEquipments());

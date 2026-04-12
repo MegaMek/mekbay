@@ -74,11 +74,16 @@ interface UnitSubtypeMaxStats {
     [unitSubtype: string]: MinMaxStatsRange;
 }
 
+interface ASUnitTypeMaxStats {
+    [asUnitType: string]: MinMaxStatsRange;
+}
+
 @Injectable({
     providedIn: 'root'
 })
 export class UnitSearchIndexService {
     private unitSubtypeMaxStats: UnitSubtypeMaxStats = {};
+    private unitAsTypeMaxStats: ASUnitTypeMaxStats = {};
     private searchFilterIndex = new Map<string, Map<string, Set<string>>>();
     private componentCountIndex = new Map<string, Map<string, number>>();
     private searchFilterValues = new Map<string, string[]>();
@@ -87,39 +92,105 @@ export class UnitSearchIndexService {
 
     public prepareUnits(units: Unit[]): void {
         this.unitSubtypeMaxStats = {};
-        const statsBySubtype: {
-            [subtype: string]: {
-                armor: [number, number],
-                internal: [number, number],
-                heat: [number, number],
-                dissipation: [number, number],
-                dissipationEfficiency: [number, number],
-                runMP: [number, number],
-                run2MP: [number, number],
-                jumpMP: [number, number],
-                umuMP: [number, number],
-                alphaNoPhysical: [number, number],
-                alphaNoPhysicalNoOneshots: [number, number],
-                maxRange: [number, number],
-                dpt: [number, number],
-                asTmm: [number, number],
-                asArm: [number, number],
-                asStr: [number, number],
-                asDmgS: [number, number],
-                asDmgM: [number, number],
-                asDmgL: [number, number],
-                dropshipCapacity: [number, number],
-                escapePods: [number, number],
-                lifeBoats: [number, number],
-                sailIntegrity: [number, number],
-                kfIntegrity: [number, number],
-            }
-        } = {};
+        this.unitAsTypeMaxStats = {};
 
         const updateMinMax = (minMax: [number, number], value: number): void => {
             if (value < minMax[0]) minMax[0] = value;
             if (value > minMax[1]) minMax[1] = value;
         };
+
+        const createStatsAccumulator = () => ({
+            armor: [Infinity, -Infinity] as [number, number],
+            internal: [Infinity, -Infinity] as [number, number],
+            heat: [Infinity, -Infinity] as [number, number],
+            dissipation: [Infinity, -Infinity] as [number, number],
+            dissipationEfficiency: [Infinity, -Infinity] as [number, number],
+            runMP: [Infinity, -Infinity] as [number, number],
+            run2MP: [Infinity, -Infinity] as [number, number],
+            jumpMP: [Infinity, -Infinity] as [number, number],
+            umuMP: [Infinity, -Infinity] as [number, number],
+            alphaNoPhysical: [Infinity, -Infinity] as [number, number],
+            alphaNoPhysicalNoOneshots: [Infinity, -Infinity] as [number, number],
+            maxRange: [Infinity, -Infinity] as [number, number],
+            dpt: [Infinity, -Infinity] as [number, number],
+            asTmm: [Infinity, -Infinity] as [number, number],
+            asArm: [Infinity, -Infinity] as [number, number],
+            asStr: [Infinity, -Infinity] as [number, number],
+            asDmgS: [Infinity, -Infinity] as [number, number],
+            asDmgM: [Infinity, -Infinity] as [number, number],
+            asDmgL: [Infinity, -Infinity] as [number, number],
+            dropshipCapacity: [Infinity, -Infinity] as [number, number],
+            escapePods: [Infinity, -Infinity] as [number, number],
+            lifeBoats: [Infinity, -Infinity] as [number, number],
+            sailIntegrity: [Infinity, -Infinity] as [number, number],
+            kfIntegrity: [Infinity, -Infinity] as [number, number],
+        });
+
+        const updateTrackedStats = (stats: ReturnType<typeof createStatsAccumulator>, unit: Unit): void => {
+            updateMinMax(stats.armor, unit.armor || 0);
+            updateMinMax(stats.internal, unit.internal || 0);
+            updateMinMax(stats.heat, unit.heat || 0);
+            updateMinMax(stats.dissipation, unit.dissipation || 0);
+            updateMinMax(stats.dissipationEfficiency, unit._dissipationEfficiency || 0);
+            updateMinMax(stats.runMP, unit.run || 0);
+            updateMinMax(stats.run2MP, unit.run2 || 0);
+            updateMinMax(stats.jumpMP, unit.jump || 0);
+            updateMinMax(stats.umuMP, unit.umu || 0);
+            updateMinMax(stats.alphaNoPhysical, unit._mdSumNoPhysical || 0);
+            updateMinMax(stats.alphaNoPhysicalNoOneshots, unit._mdSumNoPhysicalNoOneshots || 0);
+            updateMinMax(stats.maxRange, unit._maxRange || 0);
+            updateMinMax(stats.dpt, unit.dpt || 0);
+            updateMinMax(stats.asTmm, unit.as?.TMM || 0);
+            updateMinMax(stats.asArm, unit.as?.Arm || 0);
+            updateMinMax(stats.asStr, unit.as?.Str || 0);
+            updateMinMax(stats.asDmgS, unit.as?.dmg._dmgS || 0);
+            updateMinMax(stats.asDmgM, unit.as?.dmg._dmgM || 0);
+            updateMinMax(stats.asDmgL, unit.as?.dmg._dmgL || 0);
+
+            if (unit.capital) {
+                updateMinMax(stats.dropshipCapacity, unit.capital.dropshipCapacity || 0);
+                updateMinMax(stats.escapePods, unit.capital.escapePods || 0);
+                updateMinMax(stats.lifeBoats, unit.capital.lifeBoats || 0);
+                updateMinMax(stats.sailIntegrity, unit.capital.sailIntegrity || 0);
+                updateMinMax(stats.kfIntegrity, unit.capital.kfIntegrity || 0);
+            }
+        };
+
+        const normalize = (minMax: [number, number]): [number, number] => [
+            minMax[0] === Infinity ? 0 : minMax[0],
+            minMax[1] === -Infinity ? 0 : Math.max(minMax[1], 0)
+        ];
+
+        const toNormalizedStats = (stats: ReturnType<typeof createStatsAccumulator>): MinMaxStatsRange => ({
+            armor: normalize(stats.armor),
+            internal: normalize(stats.internal),
+            heat: normalize(stats.heat),
+            dissipation: normalize(stats.dissipation),
+            dissipationEfficiency: normalize(stats.dissipationEfficiency),
+            runMP: normalize(stats.runMP),
+            run2MP: normalize(stats.run2MP),
+            jumpMP: normalize(stats.jumpMP),
+            umuMP: normalize(stats.umuMP),
+            alphaNoPhysical: normalize(stats.alphaNoPhysical),
+            alphaNoPhysicalNoOneshots: normalize(stats.alphaNoPhysicalNoOneshots),
+            maxRange: normalize(stats.maxRange),
+            dpt: normalize(stats.dpt),
+            asTmm: normalize(stats.asTmm),
+            asArm: normalize(stats.asArm),
+            asStr: normalize(stats.asStr),
+            asDmgS: normalize(stats.asDmgS),
+            asDmgM: normalize(stats.asDmgM),
+            asDmgL: normalize(stats.asDmgL),
+            dropshipCapacity: normalize(stats.dropshipCapacity),
+            escapePods: normalize(stats.escapePods),
+            lifeBoats: normalize(stats.lifeBoats),
+            sailIntegrity: normalize(stats.sailIntegrity),
+            kfIntegrity: normalize(stats.kfIntegrity),
+            gravDecks: [0, 0],
+        });
+
+        const statsBySubtype: { [subtype: string]: ReturnType<typeof createStatsAccumulator> } = {};
+        const statsByAsType: { [asUnitType: string]: ReturnType<typeof createStatsAccumulator> } = {};
 
         for (const unit of units) {
             const chassis = removeAccents(unit.chassis?.toLowerCase() || '');
@@ -172,98 +243,22 @@ export class UnitSearchIndexService {
             }
 
             const subtype = unit.subtype;
-            if (!statsBySubtype[subtype]) {
-                statsBySubtype[subtype] = {
-                    armor: [Infinity, -Infinity],
-                    internal: [Infinity, -Infinity],
-                    heat: [Infinity, -Infinity],
-                    dissipation: [Infinity, -Infinity],
-                    dissipationEfficiency: [Infinity, -Infinity],
-                    runMP: [Infinity, -Infinity],
-                    run2MP: [Infinity, -Infinity],
-                    jumpMP: [Infinity, -Infinity],
-                    umuMP: [Infinity, -Infinity],
-                    alphaNoPhysical: [Infinity, -Infinity],
-                    alphaNoPhysicalNoOneshots: [Infinity, -Infinity],
-                    maxRange: [Infinity, -Infinity],
-                    dpt: [Infinity, -Infinity],
-                    asTmm: [Infinity, -Infinity],
-                    asArm: [Infinity, -Infinity],
-                    asStr: [Infinity, -Infinity],
-                    asDmgS: [Infinity, -Infinity],
-                    asDmgM: [Infinity, -Infinity],
-                    asDmgL: [Infinity, -Infinity],
-                    dropshipCapacity: [Infinity, -Infinity],
-                    escapePods: [Infinity, -Infinity],
-                    lifeBoats: [Infinity, -Infinity],
-                    sailIntegrity: [Infinity, -Infinity],
-                    kfIntegrity: [Infinity, -Infinity],
-                };
-            }
+            statsBySubtype[subtype] ??= createStatsAccumulator();
+            updateTrackedStats(statsBySubtype[subtype], unit);
 
-            const stats = statsBySubtype[subtype];
-            updateMinMax(stats.armor, unit.armor || 0);
-            updateMinMax(stats.internal, unit.internal || 0);
-            updateMinMax(stats.heat, unit.heat || 0);
-            updateMinMax(stats.dissipation, unit.dissipation || 0);
-            updateMinMax(stats.dissipationEfficiency, unit._dissipationEfficiency || 0);
-            updateMinMax(stats.runMP, unit.run || 0);
-            updateMinMax(stats.run2MP, unit.run2 || 0);
-            updateMinMax(stats.jumpMP, unit.jump || 0);
-            updateMinMax(stats.umuMP, unit.umu || 0);
-            updateMinMax(stats.alphaNoPhysical, unit._mdSumNoPhysical || 0);
-            updateMinMax(stats.alphaNoPhysicalNoOneshots, unit._mdSumNoPhysicalNoOneshots || 0);
-            updateMinMax(stats.maxRange, unit._maxRange || 0);
-            updateMinMax(stats.dpt, unit.dpt || 0);
-            updateMinMax(stats.asTmm, unit.as?.TMM || 0);
-            updateMinMax(stats.asArm, unit.as?.Arm || 0);
-            updateMinMax(stats.asStr, unit.as?.Str || 0);
-            updateMinMax(stats.asDmgS, unit.as?.dmg._dmgS || 0);
-            updateMinMax(stats.asDmgM, unit.as?.dmg._dmgM || 0);
-            updateMinMax(stats.asDmgL, unit.as?.dmg._dmgL || 0);
-
-            if (unit.capital) {
-                updateMinMax(stats.dropshipCapacity, unit.capital.dropshipCapacity || 0);
-                updateMinMax(stats.escapePods, unit.capital.escapePods || 0);
-                updateMinMax(stats.lifeBoats, unit.capital.lifeBoats || 0);
-                updateMinMax(stats.sailIntegrity, unit.capital.sailIntegrity || 0);
-                updateMinMax(stats.kfIntegrity, unit.capital.kfIntegrity || 0);
+            const asUnitType = unit.as?.TP;
+            if (asUnitType) {
+                statsByAsType[asUnitType] ??= createStatsAccumulator();
+                updateTrackedStats(statsByAsType[asUnitType], unit);
             }
         }
 
-        const normalize = (minMax: [number, number]): [number, number] => [
-            minMax[0] === Infinity ? 0 : Math.min(minMax[0], 0),
-            minMax[1] === -Infinity ? 0 : Math.max(minMax[1], 0)
-        ];
-
         for (const [subtype, stats] of Object.entries(statsBySubtype)) {
-            this.unitSubtypeMaxStats[subtype] = {
-                armor: normalize(stats.armor),
-                internal: normalize(stats.internal),
-                heat: normalize(stats.heat),
-                dissipation: normalize(stats.dissipation),
-                dissipationEfficiency: normalize(stats.dissipationEfficiency),
-                runMP: normalize(stats.runMP),
-                run2MP: normalize(stats.run2MP),
-                jumpMP: normalize(stats.jumpMP),
-                umuMP: normalize(stats.umuMP),
-                alphaNoPhysical: normalize(stats.alphaNoPhysical),
-                alphaNoPhysicalNoOneshots: normalize(stats.alphaNoPhysicalNoOneshots),
-                maxRange: normalize(stats.maxRange),
-                dpt: normalize(stats.dpt),
-                asTmm: normalize(stats.asTmm),
-                asArm: normalize(stats.asArm),
-                asStr: normalize(stats.asStr),
-                asDmgS: normalize(stats.asDmgS),
-                asDmgM: normalize(stats.asDmgM),
-                asDmgL: normalize(stats.asDmgL),
-                dropshipCapacity: normalize(stats.dropshipCapacity),
-                escapePods: normalize(stats.escapePods),
-                lifeBoats: normalize(stats.lifeBoats),
-                sailIntegrity: normalize(stats.sailIntegrity),
-                kfIntegrity: normalize(stats.kfIntegrity),
-                gravDecks: [0, 0],
-            };
+            this.unitSubtypeMaxStats[subtype] = toNormalizedStats(stats);
+        }
+
+        for (const [asUnitType, stats] of Object.entries(statsByAsType)) {
+            this.unitAsTypeMaxStats[asUnitType] = toNormalizedStats(stats);
         }
     }
 
@@ -392,6 +387,36 @@ export class UnitSearchIndexService {
 
     public getUnitSubtypeMaxStats(subtype: string): MinMaxStatsRange {
         return this.unitSubtypeMaxStats[subtype] || {
+            armor: [0, 0],
+            internal: [0, 0],
+            heat: [0, 0],
+            dissipation: [0, 0],
+            dissipationEfficiency: [0, 0],
+            runMP: [0, 0],
+            run2MP: [0, 0],
+            umuMP: [0, 0],
+            jumpMP: [0, 0],
+            alphaNoPhysical: [0, 0],
+            alphaNoPhysicalNoOneshots: [0, 0],
+            maxRange: [0, 0],
+            dpt: [0, 0],
+            asTmm: [0, 0],
+            asArm: [0, 0],
+            asStr: [0, 0],
+            asDmgS: [0, 0],
+            asDmgM: [0, 0],
+            asDmgL: [0, 0],
+            dropshipCapacity: [0, 0],
+            escapePods: [0, 0],
+            lifeBoats: [0, 0],
+            sailIntegrity: [0, 0],
+            kfIntegrity: [0, 0],
+            gravDecks: [0, 0],
+        };
+    }
+
+    public getASUnitTypeMaxStats(asUnitType: string): MinMaxStatsRange {
+        return this.unitAsTypeMaxStats[asUnitType] || {
             armor: [0, 0],
             internal: [0, 0],
             heat: [0, 0],

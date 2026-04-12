@@ -200,7 +200,7 @@
                                 [lockToggle]="previewLockToggle">
                             </load-force-preview-panel>
 
-                            <load-force-radar-panel [force]="previewForceEntry" [referenceUnits]="eligibleUnits()"></load-force-radar-panel>
+                            <load-force-radar-panel [force]="previewForceEntry"></load-force-radar-panel>
 
                             @if (preview().error; as errorMessage) {
                                 <div class="preview-inline-error error framed-borders">{{ errorMessage }}</div>

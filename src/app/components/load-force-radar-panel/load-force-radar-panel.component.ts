@@ -1,10 +1,10 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, effect, ElementRef, input, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, ElementRef, inject, input, signal, viewChild } from '@angular/core';
 
 import { GameSystem } from '../../models/common.model';
 import type { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { Unit } from '../../models/units.model';
-import { DOES_NOT_TRACK, type MinMaxStatsRange } from '../../services/data.service';
+import { DataService, DOES_NOT_TRACK, type MinMaxStatsRange } from '../../services/data.service';
 
 type RadarStatKey =
     | 'armor'
@@ -19,6 +19,7 @@ type RadarStatKey =
 
 interface RadarContribution {
     value: number;
+    min: number;
     max: number;
 }
 
@@ -38,6 +39,7 @@ interface RadarAxis {
     label: string;
     angle: number;
     value: number;
+    min: number;
     max: number;
     ratio: number;
     valueText: string;
@@ -59,6 +61,7 @@ const CLASSIC_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
         label: 'Endurance',
         getContribution: (unit, maxStats) => ({
             value: sanitizeStatValue(unit.armor) + sanitizeStatValue(unit.internal),
+            min: sanitizeStatValue(maxStats.armor[0]) + sanitizeStatValue(maxStats.internal[0]),
             max: sanitizeStatValue(maxStats.armor[1]) + sanitizeStatValue(maxStats.internal[1]),
         }),
     },
@@ -67,6 +70,7 @@ const CLASSIC_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
         label: 'Firepower',
         getContribution: (unit, maxStats) => ({
             value: sanitizeStatValue(unit._mdSumNoPhysical),
+            min: sanitizeStatValue(maxStats.alphaNoPhysicalNoOneshots[0]),
             max: sanitizeStatValue(maxStats.alphaNoPhysicalNoOneshots[1]),
         }),
     },
@@ -75,6 +79,7 @@ const CLASSIC_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
         label: 'Damage/Turn',
         getContribution: (unit, maxStats) => ({
             value: sanitizeStatValue(unit.dpt),
+            min: sanitizeStatValue(maxStats.dpt[0]),
             max: sanitizeStatValue(maxStats.dpt[1]),
         }),
     },
@@ -86,6 +91,7 @@ const ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
         label: 'Mobility',
         getContribution: (unit, maxStats) => ({
             value: sanitizeStatValue(unit.as?.TMM),
+            min: sanitizeStatValue(maxStats.asTmm[0]),
             max: sanitizeStatValue(maxStats.asTmm[1]),
         }),
     },
@@ -94,6 +100,7 @@ const ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
         label: 'Endurance',
         getContribution: (unit, maxStats) => ({
             value: sanitizeStatValue(unit.as?.Arm) + sanitizeStatValue(unit.as?.Str),
+            min: sanitizeStatValue(maxStats.asArm[0]) + sanitizeStatValue(maxStats.asStr[0]),
             max: sanitizeStatValue(maxStats.asArm[1]) + sanitizeStatValue(maxStats.asStr[1]),
         }),
     },
@@ -102,6 +109,7 @@ const ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
         label: 'Damage (S)',
         getContribution: (unit, maxStats) => ({
             value: getASDamageValue(unit.as?.dmg._dmgS, unit.as?.dmg.dmgS),
+            min: sanitizeStatValue(maxStats.asDmgS[0]),
             max: sanitizeStatValue(maxStats.asDmgS[1]),
         }),
     },
@@ -110,6 +118,7 @@ const ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
         label: 'Damage (M)',
         getContribution: (unit, maxStats) => ({
             value: getASDamageValue(unit.as?.dmg._dmgM, unit.as?.dmg.dmgM),
+            min: sanitizeStatValue(maxStats.asDmgM[0]),
             max: sanitizeStatValue(maxStats.asDmgM[1]),
         }),
     },
@@ -118,6 +127,7 @@ const ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
         label: 'Damage (L)',
         getContribution: (unit, maxStats) => ({
             value: getASDamageValue(unit.as?.dmg._dmgL, unit.as?.dmg.dmgL),
+            min: sanitizeStatValue(maxStats.asDmgL[0]),
             max: sanitizeStatValue(maxStats.asDmgL[1]),
         }),
     },
@@ -180,19 +190,22 @@ function sanitizeStatValue(value: number | undefined | null): number {
 function getMobilityContribution(unit: Unit, maxStats: MinMaxStatsRange): RadarContribution {
     const runValue = sanitizeStatValue(unit.run2);
     const jumpValue = sanitizeStatValue(unit.jump);
+    const runMin = sanitizeStatValue(maxStats.run2MP[0]);
+    const jumpMin = sanitizeStatValue(maxStats.jumpMP[0]);
     const runMax = sanitizeStatValue(maxStats.run2MP[1]);
     const jumpMax = sanitizeStatValue(maxStats.jumpMP[1]);
 
     if (runValue > jumpValue) {
-        return { value: runValue, max: runMax };
+        return { value: runValue, min: runMin, max: runMax };
     }
 
     if (jumpValue > runValue) {
-        return { value: jumpValue, max: jumpMax };
+        return { value: jumpValue, min: jumpMin, max: jumpMax };
     }
 
     return {
         value: runValue,
+        min: Math.min(runMin, jumpMin),
         max: Math.min(runMax, jumpMax),
     };
 }
@@ -218,84 +231,12 @@ function formatStatValue(value: number): string {
     });
 }
 
-function createEmptyMaxStatsRange(): MinMaxStatsRange {
-    return {
-        armor: [0, 0],
-        internal: [0, 0],
-        heat: [0, 0],
-        dissipation: [0, 0],
-        dissipationEfficiency: [0, 0],
-        runMP: [0, 0],
-        run2MP: [0, 0],
-        umuMP: [0, 0],
-        jumpMP: [0, 0],
-        alphaNoPhysical: [0, 0],
-        alphaNoPhysicalNoOneshots: [0, 0],
-        maxRange: [0, 0],
-        dpt: [0, 0],
-        asTmm: [0, 0],
-        asArm: [0, 0],
-        asStr: [0, 0],
-        asDmgS: [0, 0],
-        asDmgM: [0, 0],
-        asDmgL: [0, 0],
-        dropshipCapacity: [0, 0],
-        escapePods: [0, 0],
-        lifeBoats: [0, 0],
-        sailIntegrity: [0, 0],
-        kfIntegrity: [0, 0],
-    };
-}
-
-function updateMaxRange(range: [number, number], value: number | undefined | null): void {
-    range[1] = Math.max(range[1], sanitizeStatValue(value));
-}
-
-function applyReferenceUnitToMaxStats(maxStats: MinMaxStatsRange, unit: Unit): void {
-    updateMaxRange(maxStats.armor, unit.armor);
-    updateMaxRange(maxStats.internal, unit.internal);
-    updateMaxRange(maxStats.alphaNoPhysicalNoOneshots, unit._mdSumNoPhysicalNoOneshots);
-    updateMaxRange(maxStats.dpt, unit.dpt);
-    updateMaxRange(maxStats.run2MP, unit.run2);
-    updateMaxRange(maxStats.jumpMP, unit.jump);
-    updateMaxRange(maxStats.asTmm, unit.as?.TMM);
-    updateMaxRange(maxStats.asArm, unit.as?.Arm);
-    updateMaxRange(maxStats.asStr, unit.as?.Str);
-    updateMaxRange(maxStats.asDmgS, getASDamageValue(unit.as?.dmg._dmgS, unit.as?.dmg.dmgS));
-    updateMaxRange(maxStats.asDmgM, getASDamageValue(unit.as?.dmg._dmgM, unit.as?.dmg.dmgM));
-    updateMaxRange(maxStats.asDmgL, getASDamageValue(unit.as?.dmg._dmgL, unit.as?.dmg.dmgL));
-}
-
-function getReferenceBucketKey(unit: Unit, gameSystem: GameSystem): string | null {
-    if (gameSystem === GameSystem.ALPHA_STRIKE) {
-        return unit.as?.TP ?? null;
+function getRadarRatio(value: number, min: number, max: number): number {
+    if (max > min) {
+        return clamp((value - min) / (max - min), 0, 1);
     }
 
-    return unit.subtype;
-}
-
-function buildReferenceMaxStatsByBucket(
-    units: readonly Unit[],
-    gameSystem: GameSystem,
-): ReadonlyMap<string, MinMaxStatsRange> {
-    const maxStatsByBucket = new Map<string, MinMaxStatsRange>();
-
-    for (const unit of units) {
-        const bucketKey = getReferenceBucketKey(unit, gameSystem);
-        if (!bucketKey) {
-            continue;
-        }
-
-        let maxStats = maxStatsByBucket.get(bucketKey);
-        if (!maxStats) {
-            maxStats = createEmptyMaxStatsRange();
-            maxStatsByBucket.set(bucketKey, maxStats);
-        }
-
-        applyReferenceUnitToMaxStats(maxStats, unit);
-    }
-
-    return maxStatsByBucket;
+    return value > 0 ? 1 : 0;
 }
 
 @Component({
@@ -470,13 +411,13 @@ function buildReferenceMaxStatsByBucket(
     `],
 })
 export class LoadForceRadarPanelComponent {
+    private readonly dataService = inject(DataService);
     private readonly radarArea = viewChild<ElementRef<HTMLDivElement>>('radarArea');
     private readonly chartPixelSize = signal(RADAR_FALLBACK_RENDER_SIZE);
 
     readonly center = RADAR_CENTER;
     readonly viewBoxSize = RADAR_VIEWBOX_SIZE;
     readonly force = input.required<LoadForceEntry>();
-    readonly referenceUnits = input<readonly Unit[] | null>(null);
     readonly axisDefinitions = computed(() => this.force().type === GameSystem.ALPHA_STRIKE
         ? ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS
         : CLASSIC_RADAR_AXIS_DEFINITIONS);
@@ -488,48 +429,34 @@ export class LoadForceRadarPanelComponent {
         .filter((unit): unit is Unit => unit !== undefined));
 
     readonly hasUnits = computed(() => this.units().length > 0);
-    readonly previewMaxStatsByBucket = computed<ReadonlyMap<string, MinMaxStatsRange>>(() => {
-        return buildReferenceMaxStatsByBucket(this.units(), this.force().type);
-    });
-    readonly referenceMaxStatsByBucket = computed<ReadonlyMap<string, MinMaxStatsRange>>(() => {
-        const referenceUnits = this.referenceUnits();
-        const gameSystem = this.force().type;
-
-        if (!referenceUnits || referenceUnits.length === 0) {
-            return this.previewMaxStatsByBucket();
-        }
-
-        return buildReferenceMaxStatsByBucket(referenceUnits, gameSystem);
-    });
 
     readonly chartAxes = computed<RadarAxis[]>(() => {
         const axisDefinitions = this.axisDefinitions();
         const gameSystem = this.force().type;
-        const referenceMaxStatsByBucket = this.referenceMaxStatsByBucket();
-        const previewMaxStatsByBucket = this.previewMaxStatsByBucket();
         const totals = axisDefinitions.map((definition, index) => ({
             definition,
             index,
             value: 0,
+            min: 0,
             max: 0,
         }));
 
         for (const unit of this.units()) {
-            const bucketKey = getReferenceBucketKey(unit, gameSystem);
-            const maxStats = bucketKey
-                ? referenceMaxStatsByBucket.get(bucketKey) ?? previewMaxStatsByBucket.get(bucketKey) ?? createEmptyMaxStatsRange()
-                : createEmptyMaxStatsRange();
+            const maxStats = gameSystem === GameSystem.ALPHA_STRIKE
+                ? this.dataService.getASUnitTypeMaxStats(unit.as?.TP ?? '')
+                : this.dataService.getUnitSubtypeMaxStats(unit.subtype);
 
             for (const total of totals) {
                 const contribution = total.definition.getContribution(unit, maxStats);
                 total.value += contribution.value;
+                total.min += contribution.min;
                 total.max += contribution.max;
             }
         }
 
         return totals.map((total) => {
             const angle = getAngle(total.index, axisDefinitions.length);
-            const ratio = total.max > 0 ? Math.min(total.value / total.max, 1) : 0;
+            const ratio = getRadarRatio(total.value, total.min, total.max);
             const labelPoint = getLabelPoint(angle);
 
             return {
@@ -537,6 +464,7 @@ export class LoadForceRadarPanelComponent {
                 label: total.definition.label,
                 angle,
                 value: total.value,
+                min: total.min,
                 max: total.max,
                 ratio,
                 valueText: formatStatValue(total.value),

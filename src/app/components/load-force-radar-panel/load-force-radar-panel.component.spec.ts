@@ -3,7 +3,38 @@ import { TestBed } from '@angular/core/testing';
 import { GameSystem } from '../../models/common.model';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { Unit } from '../../models/units.model';
+import { DataService, type MinMaxStatsRange } from '../../services/data.service';
 import { LoadForceRadarPanelComponent } from './load-force-radar-panel.component';
+
+function createMaxStats(overrides: Partial<MinMaxStatsRange>): MinMaxStatsRange {
+    return {
+        armor: [0, 0],
+        internal: [0, 0],
+        heat: [0, 0],
+        dissipation: [0, 0],
+        dissipationEfficiency: [0, 0],
+        runMP: [0, 0],
+        run2MP: [0, 0],
+        umuMP: [0, 0],
+        jumpMP: [0, 0],
+        alphaNoPhysical: [0, 0],
+        alphaNoPhysicalNoOneshots: [0, 0],
+        maxRange: [0, 0],
+        dpt: [0, 0],
+        asTmm: [0, 0],
+        asArm: [0, 0],
+        asStr: [0, 0],
+        asDmgS: [0, 0],
+        asDmgM: [0, 0],
+        asDmgL: [0, 0],
+        dropshipCapacity: [0, 0],
+        escapePods: [0, 0],
+        lifeBoats: [0, 0],
+        sailIntegrity: [0, 0],
+        kfIntegrity: [0, 0],
+        ...overrides,
+    };
+}
 
 function createUnit(overrides: Partial<Unit>): Unit {
     return {
@@ -90,13 +121,78 @@ function createUnit(overrides: Partial<Unit>): Unit {
 }
 
 describe('LoadForceRadarPanelComponent', () => {
+    let subtypeMaxStats = new Map<string, MinMaxStatsRange>();
+    let asTypeMaxStats = new Map<string, MinMaxStatsRange>();
+
     beforeEach(() => {
+        subtypeMaxStats = new Map<string, MinMaxStatsRange>([
+            ['BattleMek', createMaxStats({
+                armor: [10, 50],
+                internal: [5, 12],
+                alphaNoPhysicalNoOneshots: [4, 20],
+                dpt: [3, 15],
+                run2MP: [2, 9],
+                jumpMP: [1, 7],
+            })],
+            ['Industrial Mek', createMaxStats({
+                armor: [30, 95],
+                internal: [18, 40],
+                alphaNoPhysicalNoOneshots: [12, 60],
+                dpt: [8, 28],
+                run2MP: [8, 20],
+                jumpMP: [4, 20],
+            })],
+            ['Aerospace Fighter', createMaxStats({
+                armor: [18, 35],
+                internal: [6, 11],
+                alphaNoPhysicalNoOneshots: [6, 14],
+                dpt: [4, 10],
+                run2MP: [8, 12],
+                jumpMP: [0, 0],
+            })],
+        ]);
+        asTypeMaxStats = new Map<string, MinMaxStatsRange>([
+            ['BM', createMaxStats({
+                asTmm: [1, 4],
+                asArm: [2, 5],
+                asStr: [1, 4],
+                asDmgS: [1, 4],
+                asDmgM: [1, 3],
+                asDmgL: [0, 2],
+            })],
+            ['AF', createMaxStats({
+                asTmm: [2, 5],
+                asArm: [1, 3],
+                asStr: [1, 2],
+                asDmgS: [1, 2],
+                asDmgM: [2, 4],
+                asDmgL: [3, 5],
+            })],
+            ['PM', createMaxStats({
+                asTmm: [4, 6],
+                asArm: [5, 8],
+                asStr: [4, 6],
+                asDmgS: [4, 6],
+                asDmgM: [4, 6],
+                asDmgL: [4, 6],
+            })],
+        ]);
+
         TestBed.configureTestingModule({
             imports: [LoadForceRadarPanelComponent],
+            providers: [
+                {
+                    provide: DataService,
+                    useValue: {
+                        getUnitSubtypeMaxStats: (subtype: string) => subtypeMaxStats.get(subtype) ?? createMaxStats({}),
+                        getASUnitTypeMaxStats: (asUnitType: string) => asTypeMaxStats.get(asUnitType) ?? createMaxStats({}),
+                    },
+                },
+            ],
         });
     });
 
-    it('aggregates stat totals and per-subtype maxima across the provided reference units', () => {
+    it('aggregates classic radar stats using global subtype maxima', () => {
         const fixture = TestBed.createComponent(LoadForceRadarPanelComponent);
         const mekA = createUnit({
             id: 1,
@@ -134,40 +230,6 @@ describe('LoadForceRadarPanelComponent', () => {
             run2: 10,
             jump: 0,
         });
-        const eligibleMek = createUnit({
-            id: 4,
-            name: 'Eligible BattleMek',
-            armor: 50,
-            internal: 12,
-            _mdSumNoPhysicalNoOneshots: 20,
-            dpt: 15,
-            run2: 7,
-            jump: 1,
-        });
-        const industrialMek = createUnit({
-            id: 5,
-            name: 'Industrial Mek',
-            subtype: 'Industrial Mek',
-            armor: 95,
-            internal: 40,
-            _mdSumNoPhysicalNoOneshots: 60,
-            dpt: 28,
-            run2: 16,
-            jump: 10,
-        });
-        const eligibleAero = createUnit({
-            id: 6,
-            name: 'Eligible Aero',
-            type: 'Aero',
-            subtype: 'Aerospace Fighter',
-            moveType: 'Aerodyne',
-            armor: 35,
-            internal: 11,
-            _mdSumNoPhysicalNoOneshots: 14,
-            dpt: 10,
-            run2: 12,
-            jump: 0,
-        });
 
         fixture.componentRef.setInput('force', new LoadForceEntry({
             groups: [{
@@ -178,20 +240,22 @@ describe('LoadForceRadarPanelComponent', () => {
                 ],
             }],
         }));
-        fixture.componentRef.setInput('referenceUnits', [mekA, mekB, aero, eligibleMek, industrialMek, eligibleAero]);
         fixture.detectChanges();
 
         const axes = fixture.componentInstance.chartAxes();
         const getAxis = (key: string) => axes.find((axis) => axis.key === key);
 
-        expect(getAxis('armor')).toEqual(jasmine.objectContaining({ value: 65, max: 135 }));
-        expect(getAxis('internal')).toEqual(jasmine.objectContaining({ value: 23, max: 35 }));
-        expect(getAxis('firepower')).toEqual(jasmine.objectContaining({ value: 24, max: 54 }));
-        expect(getAxis('dpt')).toEqual(jasmine.objectContaining({ value: 19, max: 40 }));
-        expect(getAxis('mobility')).toEqual(jasmine.objectContaining({ value: 17, max: 22 }));
+        expect(getAxis('mobility')).toEqual(jasmine.objectContaining({ value: 17, min: 11, max: 28 }));
+        expect(getAxis('endurance')).toEqual(jasmine.objectContaining({ value: 88, min: 54, max: 170 }));
+        expect(getAxis('firepower')).toEqual(jasmine.objectContaining({ value: 24, min: 14, max: 54 }));
+        expect(getAxis('dpt')).toEqual(jasmine.objectContaining({ value: 19, min: 10, max: 40 }));
+        expect(getAxis('mobility')?.ratio).toBeCloseTo(6 / 17, 6);
+        expect(getAxis('endurance')?.ratio).toBeCloseTo(34 / 116, 6);
+        expect(getAxis('firepower')?.ratio).toBeCloseTo(0.25, 6);
+        expect(getAxis('dpt')?.ratio).toBeCloseTo(0.3, 6);
     });
 
-    it('uses the lower reference ceiling when jump and run are tied for a unit', () => {
+    it('uses the lower global subtype ceiling when jump and run are tied for a unit', () => {
         const fixture = TestBed.createComponent(LoadForceRadarPanelComponent);
         const tiedMobilityMek = createUnit({
             id: 4,
@@ -199,40 +263,20 @@ describe('LoadForceRadarPanelComponent', () => {
             run2: 6,
             jump: 6,
         });
-        const fastRunner = createUnit({
-            id: 5,
-            name: 'Fast Runner',
-            run2: 9,
-            jump: 2,
-        });
-        const highJumper = createUnit({
-            id: 6,
-            name: 'High Jumper',
-            run2: 4,
-            jump: 7,
-        });
-        const industrialTieMek = createUnit({
-            id: 7,
-            name: 'Industrial Tie Mek',
-            subtype: 'Industrial Mek',
-            run2: 20,
-            jump: 20,
-        });
-
         fixture.componentRef.setInput('force', new LoadForceEntry({
             groups: [{
                 units: [{ unit: tiedMobilityMek, destroyed: false }],
             }],
         }));
-        fixture.componentRef.setInput('referenceUnits', [tiedMobilityMek, fastRunner, highJumper, industrialTieMek]);
         fixture.detectChanges();
 
         const mobilityAxis = fixture.componentInstance.chartAxes().find((axis) => axis.key === 'mobility');
 
-        expect(mobilityAxis).toEqual(jasmine.objectContaining({ value: 6, max: 7 }));
+        expect(mobilityAxis).toEqual(jasmine.objectContaining({ value: 6, min: 1, max: 7 }));
+        expect(mobilityAxis?.ratio).toBeCloseTo(5 / 6, 6);
     });
 
-    it('aggregates Alpha Strike radar stats from the provided as.TP reference buckets', () => {
+    it('aggregates Alpha Strike radar stats from global as.TP maxima', () => {
         const fixture = TestBed.createComponent(LoadForceRadarPanelComponent);
 
         const asMek = createUnit({
@@ -292,93 +336,6 @@ describe('LoadForceRadarPanelComponent', () => {
                 usesArcs: false,
             },
         });
-        const eligibleAsMek = createUnit({
-            id: 7,
-            name: 'Eligible AS Mek',
-            as: {
-                TP: 'BM',
-                PV: 36,
-                SZ: 3,
-                TMM: 4,
-                usesOV: false,
-                OV: 0,
-                MV: '10j',
-                MVm: { '': 10, j: 14 },
-                usesTh: false,
-                Th: 0,
-                Arm: 5,
-                Str: 4,
-                specials: ['TAG'],
-                dmg: {
-                    dmgS: '4',
-                    dmgM: '3',
-                    dmgL: '2',
-                    dmgE: '0',
-                },
-                usesE: false,
-                usesArcs: false,
-            },
-        });
-        const protoBucketOutlier = createUnit({
-            id: 8,
-            name: 'Proto Bucket Outlier',
-            type: 'Mek',
-            subtype: 'BattleMek',
-            as: {
-                TP: 'PM',
-                PV: 20,
-                SZ: 1,
-                TMM: 6,
-                usesOV: false,
-                OV: 0,
-                MV: '12j',
-                MVm: { '': 12, j: 18 },
-                usesTh: false,
-                Th: 0,
-                Arm: 8,
-                Str: 6,
-                specials: [],
-                dmg: {
-                    dmgS: '6',
-                    dmgM: '6',
-                    dmgL: '6',
-                    dmgE: '0',
-                },
-                usesE: false,
-                usesArcs: false,
-            },
-        });
-        const eligibleAsAero = createUnit({
-            id: 9,
-            name: 'Eligible AS Aero',
-            type: 'Aero',
-            subtype: 'Aerospace Fighter',
-            moveType: 'Aerodyne',
-            as: {
-                TP: 'AF',
-                PV: 31,
-                SZ: 2,
-                TMM: 5,
-                usesOV: false,
-                OV: 0,
-                MV: '18a',
-                MVm: { a: 18 },
-                usesTh: false,
-                Th: 0,
-                Arm: 3,
-                Str: 2,
-                specials: ['BOMB'],
-                dmg: {
-                    dmgS: '2',
-                    dmgM: '4',
-                    dmgL: '5',
-                    dmgE: '0',
-                },
-                usesE: false,
-                usesArcs: false,
-            },
-        });
-
         fixture.componentRef.setInput('force', new LoadForceEntry({
             type: GameSystem.ALPHA_STRIKE,
             groups: [{
@@ -388,17 +345,21 @@ describe('LoadForceRadarPanelComponent', () => {
                 ],
             }],
         }));
-        fixture.componentRef.setInput('referenceUnits', [asMek, asAero, eligibleAsMek, protoBucketOutlier, eligibleAsAero]);
         fixture.detectChanges();
 
         const axes = fixture.componentInstance.chartAxes();
         const getAxis = (key: string) => axes.find((axis) => axis.key === key);
 
-        expect(getAxis('mobility')).toEqual(jasmine.objectContaining({ value: 5, max: 9 }));
-        expect(getAxis('endurance')).toEqual(jasmine.objectContaining({ value: 10, max: 14 }));
-        expect(getAxis('shortRangeDamage')).toEqual(jasmine.objectContaining({ value: 5, max: 6 }));
-        expect(getAxis('mediumRangeDamage')).toEqual(jasmine.objectContaining({ value: 5, max: 7 }));
-        expect(getAxis('longRangeDamage')).toEqual(jasmine.objectContaining({ value: 5, max: 7 }));
+        expect(getAxis('mobility')).toEqual(jasmine.objectContaining({ value: 5, min: 3, max: 9 }));
+        expect(getAxis('endurance')).toEqual(jasmine.objectContaining({ value: 10, min: 5, max: 14 }));
+        expect(getAxis('shortRangeDamage')).toEqual(jasmine.objectContaining({ value: 5, min: 2, max: 6 }));
+        expect(getAxis('mediumRangeDamage')).toEqual(jasmine.objectContaining({ value: 5, min: 3, max: 7 }));
+        expect(getAxis('longRangeDamage')).toEqual(jasmine.objectContaining({ value: 5, min: 3, max: 7 }));
+        expect(getAxis('mobility')?.ratio).toBeCloseTo(1 / 3, 6);
+        expect(getAxis('endurance')?.ratio).toBeCloseTo(5 / 9, 6);
+        expect(getAxis('shortRangeDamage')?.ratio).toBeCloseTo(0.75, 6);
+        expect(getAxis('mediumRangeDamage')?.ratio).toBeCloseTo(0.5, 6);
+        expect(getAxis('longRangeDamage')?.ratio).toBeCloseTo(0.5, 6);
     });
 
     it('shows the empty state when the force has no resolvable units', () => {
