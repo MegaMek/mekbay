@@ -1,3 +1,36 @@
+/*
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
+ *
+ * This file is part of MekBay.
+ *
+ * MekBay is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MekBay is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
+ */
+
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, ElementRef, inject, input, signal, viewChild } from '@angular/core';
 
@@ -36,7 +69,7 @@ interface RadarRenderSize {
 interface RadarAxisDefinition {
     key: RadarStatKey;
     label: string;
-    getContribution: (unit: Unit, maxStats: MinMaxStatsRange) => RadarContribution;
+    getContribution: (unit: Unit, bucketStats: MinMaxStatsRange) => RadarContribution;
 }
 
 interface RadarAxis {
@@ -59,33 +92,33 @@ const CLASSIC_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
     {
         key: 'mobility',
         label: 'Mobility',
-        getContribution: (unit, maxStats) => getMobilityContribution(unit, maxStats),
+        getContribution: (unit, bucketStats) => getMobilityContribution(unit, bucketStats),
     },
     {
         key: 'endurance',
         label: 'Endurance',
-        getContribution: (unit, maxStats) => ({
+        getContribution: (unit, bucketStats) => ({
             value: sanitizeStatValue(unit.armor) + sanitizeStatValue(unit.internal),
-            min: sanitizeStatValue(maxStats.armor[0]) + sanitizeStatValue(maxStats.internal[0]),
-            max: sanitizeStatValue(maxStats.armor[1]) + sanitizeStatValue(maxStats.internal[1]),
+            min: sanitizeStatValue(bucketStats.armor.min) + sanitizeStatValue(bucketStats.internal.min),
+            max: sanitizeStatValue(bucketStats.armor.max) + sanitizeStatValue(bucketStats.internal.max),
         }),
     },
     {
         key: 'firepower',
         label: 'Firepower',
-        getContribution: (unit, maxStats) => ({
+        getContribution: (unit, bucketStats) => ({
             value: sanitizeStatValue(unit._mdSumNoPhysical),
-            min: sanitizeStatValue(maxStats.alphaNoPhysicalNoOneshots[0]),
-            max: sanitizeStatValue(maxStats.alphaNoPhysicalNoOneshots[1]),
+            min: sanitizeStatValue(bucketStats.alphaNoPhysicalNoOneshots.min),
+            max: sanitizeStatValue(bucketStats.alphaNoPhysicalNoOneshots.max),
         }),
     },
     {
         key: 'dpt',
         label: 'Damage/Turn',
-        getContribution: (unit, maxStats) => ({
+        getContribution: (unit, bucketStats) => ({
             value: sanitizeStatValue(unit.dpt),
-            min: sanitizeStatValue(maxStats.dpt[0]),
-            max: sanitizeStatValue(maxStats.dpt[1]),
+            min: sanitizeStatValue(bucketStats.dpt.min),
+            max: sanitizeStatValue(bucketStats.dpt.max),
         }),
     },
 ] as const;
@@ -94,46 +127,46 @@ const ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
     {
         key: 'mobility',
         label: 'Mobility',
-        getContribution: (unit, maxStats) => ({
+        getContribution: (unit, bucketStats) => ({
             value: sanitizeStatValue(unit.as?.TMM),
-            min: sanitizeStatValue(maxStats.asTmm[0]),
-            max: sanitizeStatValue(maxStats.asTmm[1]),
+            min: sanitizeStatValue(bucketStats.asTmm.min),
+            max: sanitizeStatValue(bucketStats.asTmm.max),
         }),
     },
     {
         key: 'endurance',
         label: 'Endurance',
-        getContribution: (unit, maxStats) => ({
+        getContribution: (unit, bucketStats) => ({
             value: sanitizeStatValue(unit.as?.Arm) + sanitizeStatValue(unit.as?.Str),
-            min: sanitizeStatValue(maxStats.asArm[0]) + sanitizeStatValue(maxStats.asStr[0]),
-            max: sanitizeStatValue(maxStats.asArm[1]) + sanitizeStatValue(maxStats.asStr[1]),
+            min: sanitizeStatValue(bucketStats.asArm.min) + sanitizeStatValue(bucketStats.asStr.min),
+            max: sanitizeStatValue(bucketStats.asArm.max) + sanitizeStatValue(bucketStats.asStr.max),
         }),
     },
     {
         key: 'shortRangeDamage',
         label: 'Damage (S)',
-        getContribution: (unit, maxStats) => ({
+        getContribution: (unit, bucketStats) => ({
             value: getASDamageValue(unit.as?.dmg._dmgS, unit.as?.dmg.dmgS),
-            min: sanitizeStatValue(maxStats.asDmgS[0]),
-            max: sanitizeStatValue(maxStats.asDmgS[1]),
+            min: sanitizeStatValue(bucketStats.asDmgS.min),
+            max: sanitizeStatValue(bucketStats.asDmgS.max),
         }),
     },
     {
         key: 'mediumRangeDamage',
         label: 'Damage (M)',
-        getContribution: (unit, maxStats) => ({
+        getContribution: (unit, bucketStats) => ({
             value: getASDamageValue(unit.as?.dmg._dmgM, unit.as?.dmg.dmgM),
-            min: sanitizeStatValue(maxStats.asDmgM[0]),
-            max: sanitizeStatValue(maxStats.asDmgM[1]),
+            min: sanitizeStatValue(bucketStats.asDmgM.min),
+            max: sanitizeStatValue(bucketStats.asDmgM.max),
         }),
     },
     {
         key: 'longRangeDamage',
         label: 'Damage (L)',
-        getContribution: (unit, maxStats) => ({
+        getContribution: (unit, bucketStats) => ({
             value: getASDamageValue(unit.as?.dmg._dmgL, unit.as?.dmg.dmgL),
-            min: sanitizeStatValue(maxStats.asDmgL[0]),
-            max: sanitizeStatValue(maxStats.asDmgL[1]),
+            min: sanitizeStatValue(bucketStats.asDmgL.min),
+            max: sanitizeStatValue(bucketStats.asDmgL.max),
         }),
     },
 ] as const;
@@ -223,13 +256,13 @@ function sanitizeStatValue(value: number | undefined | null): number {
     return Math.max(0, value);
 }
 
-function getMobilityContribution(unit: Unit, maxStats: MinMaxStatsRange): RadarContribution {
+function getMobilityContribution(unit: Unit, bucketStats: MinMaxStatsRange): RadarContribution {
     const runValue = sanitizeStatValue(unit.run2);
     const jumpValue = sanitizeStatValue(unit.jump);
-    const runMin = sanitizeStatValue(maxStats.run2MP[0]);
-    const jumpMin = sanitizeStatValue(maxStats.jumpMP[0]);
-    const runMax = sanitizeStatValue(maxStats.run2MP[1]);
-    const jumpMax = sanitizeStatValue(maxStats.jumpMP[1]);
+    const runMin = sanitizeStatValue(bucketStats.run2MP.min);
+    const jumpMin = sanitizeStatValue(bucketStats.jumpMP.min);
+    const runMax = sanitizeStatValue(bucketStats.run2MP.max);
+    const jumpMax = sanitizeStatValue(bucketStats.jumpMP.max);
 
     if (runValue > jumpValue) {
         return { value: runValue, min: runMin, max: runMax };

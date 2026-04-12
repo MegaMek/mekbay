@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -86,33 +86,40 @@ import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
  */
 export const DOES_NOT_TRACK = 999;
 
+export interface BucketStatSummary {
+    min: number;
+    max: number;
+    average: number;
+}
+
 export interface MinMaxStatsRange {
-    armor: [number, number],
-    internal: [number, number],
-    heat: [number, number],
-    dissipation: [number, number],
-    dissipationEfficiency: [number, number],
-    runMP: [number, number],
-    run2MP: [number, number],
-    umuMP: [number, number],
-    jumpMP: [number, number],
-    alphaNoPhysical: [number, number],
-    alphaNoPhysicalNoOneshots: [number, number],
-    maxRange: [number, number],
-    dpt: [number, number],
-    asTmm: [number, number],
-    asArm: [number, number],
-    asStr: [number, number],
-    asDmgS: [number, number],
-    asDmgM: [number, number],
-    asDmgL: [number, number],
+    armor: BucketStatSummary,
+    internal: BucketStatSummary,
+    heat: BucketStatSummary,
+    dissipation: BucketStatSummary,
+    dissipationEfficiency: BucketStatSummary,
+    runMP: BucketStatSummary,
+    run2MP: BucketStatSummary,
+    umuMP: BucketStatSummary,
+    jumpMP: BucketStatSummary,
+    alphaNoPhysical: BucketStatSummary,
+    alphaNoPhysicalNoOneshots: BucketStatSummary,
+    maxRange: BucketStatSummary,
+    dpt: BucketStatSummary,
+    asTmm: BucketStatSummary,
+    asArm: BucketStatSummary,
+    asStr: BucketStatSummary,
+    asDmgS: BucketStatSummary,
+    asDmgM: BucketStatSummary,
+    asDmgL: BucketStatSummary,
 
     // Capital ships
-    dropshipCapacity: [number, number],
-    escapePods: [number, number],
-    lifeBoats: [number, number],
-    sailIntegrity: [number, number],
-    kfIntegrity: [number, number],
+    dropshipCapacity: BucketStatSummary,
+    escapePods: BucketStatSummary,
+    lifeBoats: BucketStatSummary,
+    gravDecks: BucketStatSummary,
+    sailIntegrity: BucketStatSummary,
+    kfIntegrity: BucketStatSummary,
 }
 export interface UnitSubtypeMaxStats {
     [unitSubtype: string]: MinMaxStatsRange

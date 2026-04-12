@@ -3,36 +3,51 @@ import { TestBed } from '@angular/core/testing';
 import { GameSystem } from '../../models/common.model';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { Unit } from '../../models/units.model';
-import { DataService, type MinMaxStatsRange } from '../../services/data.service';
+import { DataService, type BucketStatSummary, type MinMaxStatsRange } from '../../services/data.service';
 import { LoadForceRadarPanelComponent } from './load-force-radar-panel.component';
 
-function createMaxStats(overrides: Partial<MinMaxStatsRange>): MinMaxStatsRange {
+type MaxStatsOverride = {
+    [Key in keyof MinMaxStatsRange]?: Partial<BucketStatSummary>;
+};
+
+function createBucketStatSummary(overrides: Partial<BucketStatSummary> = {}): BucketStatSummary {
     return {
-        armor: [0, 0],
-        internal: [0, 0],
-        heat: [0, 0],
-        dissipation: [0, 0],
-        dissipationEfficiency: [0, 0],
-        runMP: [0, 0],
-        run2MP: [0, 0],
-        umuMP: [0, 0],
-        jumpMP: [0, 0],
-        alphaNoPhysical: [0, 0],
-        alphaNoPhysicalNoOneshots: [0, 0],
-        maxRange: [0, 0],
-        dpt: [0, 0],
-        asTmm: [0, 0],
-        asArm: [0, 0],
-        asStr: [0, 0],
-        asDmgS: [0, 0],
-        asDmgM: [0, 0],
-        asDmgL: [0, 0],
-        dropshipCapacity: [0, 0],
-        escapePods: [0, 0],
-        lifeBoats: [0, 0],
-        sailIntegrity: [0, 0],
-        kfIntegrity: [0, 0],
+        min: 0,
+        max: 0,
+        average: 0,
         ...overrides,
+    };
+}
+
+function createMaxStats(overrides: MaxStatsOverride): MinMaxStatsRange {
+    const pick = <Key extends keyof MinMaxStatsRange>(key: Key): Partial<BucketStatSummary> | undefined => overrides[key];
+
+    return {
+        armor: createBucketStatSummary(pick('armor')),
+        internal: createBucketStatSummary(pick('internal')),
+        heat: createBucketStatSummary(pick('heat')),
+        dissipation: createBucketStatSummary(pick('dissipation')),
+        dissipationEfficiency: createBucketStatSummary(pick('dissipationEfficiency')),
+        runMP: createBucketStatSummary(pick('runMP')),
+        run2MP: createBucketStatSummary(pick('run2MP')),
+        umuMP: createBucketStatSummary(pick('umuMP')),
+        jumpMP: createBucketStatSummary(pick('jumpMP')),
+        alphaNoPhysical: createBucketStatSummary(pick('alphaNoPhysical')),
+        alphaNoPhysicalNoOneshots: createBucketStatSummary(pick('alphaNoPhysicalNoOneshots')),
+        maxRange: createBucketStatSummary(pick('maxRange')),
+        dpt: createBucketStatSummary(pick('dpt')),
+        asTmm: createBucketStatSummary(pick('asTmm')),
+        asArm: createBucketStatSummary(pick('asArm')),
+        asStr: createBucketStatSummary(pick('asStr')),
+        asDmgS: createBucketStatSummary(pick('asDmgS')),
+        asDmgM: createBucketStatSummary(pick('asDmgM')),
+        asDmgL: createBucketStatSummary(pick('asDmgL')),
+        dropshipCapacity: createBucketStatSummary(pick('dropshipCapacity')),
+        escapePods: createBucketStatSummary(pick('escapePods')),
+        lifeBoats: createBucketStatSummary(pick('lifeBoats')),
+        gravDecks: createBucketStatSummary(pick('gravDecks')),
+        sailIntegrity: createBucketStatSummary(pick('sailIntegrity')),
+        kfIntegrity: createBucketStatSummary(pick('kfIntegrity')),
     };
 }
 
@@ -127,54 +142,54 @@ describe('LoadForceRadarPanelComponent', () => {
     beforeEach(() => {
         subtypeMaxStats = new Map<string, MinMaxStatsRange>([
             ['BattleMek', createMaxStats({
-                armor: [10, 50],
-                internal: [5, 12],
-                alphaNoPhysicalNoOneshots: [4, 20],
-                dpt: [3, 15],
-                run2MP: [2, 9],
-                jumpMP: [1, 7],
+                armor: { min: 10, max: 50 },
+                internal: { min: 5, max: 12 },
+                alphaNoPhysicalNoOneshots: { min: 4, max: 20 },
+                dpt: { min: 3, max: 15 },
+                run2MP: { min: 2, max: 9 },
+                jumpMP: { min: 1, max: 7 },
             })],
             ['Industrial Mek', createMaxStats({
-                armor: [30, 95],
-                internal: [18, 40],
-                alphaNoPhysicalNoOneshots: [12, 60],
-                dpt: [8, 28],
-                run2MP: [8, 20],
-                jumpMP: [4, 20],
+                armor: { min: 30, max: 95 },
+                internal: { min: 18, max: 40 },
+                alphaNoPhysicalNoOneshots: { min: 12, max: 60 },
+                dpt: { min: 8, max: 28 },
+                run2MP: { min: 8, max: 20 },
+                jumpMP: { min: 4, max: 20 },
             })],
             ['Aerospace Fighter', createMaxStats({
-                armor: [18, 35],
-                internal: [6, 11],
-                alphaNoPhysicalNoOneshots: [6, 14],
-                dpt: [4, 10],
-                run2MP: [8, 12],
-                jumpMP: [0, 0],
+                armor: { min: 18, max: 35 },
+                internal: { min: 6, max: 11 },
+                alphaNoPhysicalNoOneshots: { min: 6, max: 14 },
+                dpt: { min: 4, max: 10 },
+                run2MP: { min: 8, max: 12 },
+                jumpMP: { min: 0, max: 0 },
             })],
         ]);
         asTypeMaxStats = new Map<string, MinMaxStatsRange>([
             ['BM', createMaxStats({
-                asTmm: [1, 4],
-                asArm: [2, 5],
-                asStr: [1, 4],
-                asDmgS: [1, 4],
-                asDmgM: [1, 3],
-                asDmgL: [0, 2],
+                asTmm: { min: 1, max: 4 },
+                asArm: { min: 2, max: 5 },
+                asStr: { min: 1, max: 4 },
+                asDmgS: { min: 1, max: 4 },
+                asDmgM: { min: 1, max: 3 },
+                asDmgL: { min: 0, max: 2 },
             })],
             ['AF', createMaxStats({
-                asTmm: [2, 5],
-                asArm: [1, 3],
-                asStr: [1, 2],
-                asDmgS: [1, 2],
-                asDmgM: [2, 4],
-                asDmgL: [3, 5],
+                asTmm: { min: 2, max: 5 },
+                asArm: { min: 1, max: 3 },
+                asStr: { min: 1, max: 2 },
+                asDmgS: { min: 1, max: 2 },
+                asDmgM: { min: 2, max: 4 },
+                asDmgL: { min: 3, max: 5 },
             })],
             ['PM', createMaxStats({
-                asTmm: [4, 6],
-                asArm: [5, 8],
-                asStr: [4, 6],
-                asDmgS: [4, 6],
-                asDmgM: [4, 6],
-                asDmgL: [4, 6],
+                asTmm: { min: 4, max: 6 },
+                asArm: { min: 5, max: 8 },
+                asStr: { min: 4, max: 6 },
+                asDmgS: { min: 4, max: 6 },
+                asDmgM: { min: 4, max: 6 },
+                asDmgL: { min: 4, max: 6 },
             })],
         ]);
 

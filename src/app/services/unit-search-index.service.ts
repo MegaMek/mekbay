@@ -35,6 +35,7 @@ import { Injectable } from '@angular/core';
 import type { Unit, UnitComponent } from '../models/units.model';
 import { type Faction } from '../models/factions.model';
 import type { Era } from '../models/eras.model';
+import type { BucketStatSummary, MinMaxStatsRange, UnitSubtypeMaxStats } from './data.service';
 import { removeAccents } from '../utils/string.util';
 import { naturalCompare } from '../utils/sort.util';
 import { getMergedTags } from '../utils/unit-search-shared.util';
@@ -42,40 +43,83 @@ import { AS_MOVEMENT_MODE_DISPLAY_NAMES } from './unit-search-filters.model';
 import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 
-interface MinMaxStatsRange {
-    armor: [number, number],
-    internal: [number, number],
-    heat: [number, number],
-    dissipation: [number, number],
-    dissipationEfficiency: [number, number],
-    runMP: [number, number],
-    run2MP: [number, number],
-    umuMP: [number, number],
-    jumpMP: [number, number],
-    alphaNoPhysical: [number, number],
-    alphaNoPhysicalNoOneshots: [number, number],
-    maxRange: [number, number],
-    dpt: [number, number],
-    asTmm: [number, number],
-    asArm: [number, number],
-    asStr: [number, number],
-    asDmgS: [number, number],
-    asDmgM: [number, number],
-    asDmgL: [number, number],
-    dropshipCapacity: [number, number],
-    escapePods: [number, number],
-    lifeBoats: [number, number],
-    sailIntegrity: [number, number],
-    kfIntegrity: [number, number],
-    gravDecks: [number, number],
-}
-
-interface UnitSubtypeMaxStats {
-    [unitSubtype: string]: MinMaxStatsRange;
-}
-
 interface ASUnitTypeMaxStats {
     [asUnitType: string]: MinMaxStatsRange;
+}
+
+interface TrackedStatAccumulator {
+    min: number;
+    max: number;
+    total: number;
+    count: number;
+}
+
+function createBucketStatSummary(min = 0, max = 0, average = 0): BucketStatSummary {
+    return { min, max, average };
+}
+
+function createTrackedStatAccumulator(): TrackedStatAccumulator {
+    return {
+        min: Infinity,
+        max: -Infinity,
+        total: 0,
+        count: 0,
+    };
+}
+
+function updateTrackedStat(stat: TrackedStatAccumulator, value: number): void {
+    if (value < stat.min) {
+        stat.min = value;
+    }
+
+    if (value > stat.max) {
+        stat.max = value;
+    }
+
+    stat.total += value;
+    stat.count += 1;
+}
+
+function normalizeTrackedStat(stat: TrackedStatAccumulator): BucketStatSummary {
+    if (stat.count === 0) {
+        return createBucketStatSummary();
+    }
+
+    return createBucketStatSummary(
+        stat.min === Infinity ? 0 : stat.min,
+        stat.max === -Infinity ? 0 : Math.max(stat.max, 0),
+        stat.total / stat.count,
+    );
+}
+
+function createEmptyMinMaxStatsRange(): MinMaxStatsRange {
+    return {
+        armor: createBucketStatSummary(),
+        internal: createBucketStatSummary(),
+        heat: createBucketStatSummary(),
+        dissipation: createBucketStatSummary(),
+        dissipationEfficiency: createBucketStatSummary(),
+        runMP: createBucketStatSummary(),
+        run2MP: createBucketStatSummary(),
+        umuMP: createBucketStatSummary(),
+        jumpMP: createBucketStatSummary(),
+        alphaNoPhysical: createBucketStatSummary(),
+        alphaNoPhysicalNoOneshots: createBucketStatSummary(),
+        maxRange: createBucketStatSummary(),
+        dpt: createBucketStatSummary(),
+        asTmm: createBucketStatSummary(),
+        asArm: createBucketStatSummary(),
+        asStr: createBucketStatSummary(),
+        asDmgS: createBucketStatSummary(),
+        asDmgM: createBucketStatSummary(),
+        asDmgL: createBucketStatSummary(),
+        dropshipCapacity: createBucketStatSummary(),
+        escapePods: createBucketStatSummary(),
+        lifeBoats: createBucketStatSummary(),
+        gravDecks: createBucketStatSummary(),
+        sailIntegrity: createBucketStatSummary(),
+        kfIntegrity: createBucketStatSummary(),
+    };
 }
 
 @Injectable({
@@ -94,99 +138,91 @@ export class UnitSearchIndexService {
         this.unitSubtypeMaxStats = {};
         this.unitAsTypeMaxStats = {};
 
-        const updateMinMax = (minMax: [number, number], value: number): void => {
-            if (value < minMax[0]) minMax[0] = value;
-            if (value > minMax[1]) minMax[1] = value;
-        };
-
         const createStatsAccumulator = () => ({
-            armor: [Infinity, -Infinity] as [number, number],
-            internal: [Infinity, -Infinity] as [number, number],
-            heat: [Infinity, -Infinity] as [number, number],
-            dissipation: [Infinity, -Infinity] as [number, number],
-            dissipationEfficiency: [Infinity, -Infinity] as [number, number],
-            runMP: [Infinity, -Infinity] as [number, number],
-            run2MP: [Infinity, -Infinity] as [number, number],
-            jumpMP: [Infinity, -Infinity] as [number, number],
-            umuMP: [Infinity, -Infinity] as [number, number],
-            alphaNoPhysical: [Infinity, -Infinity] as [number, number],
-            alphaNoPhysicalNoOneshots: [Infinity, -Infinity] as [number, number],
-            maxRange: [Infinity, -Infinity] as [number, number],
-            dpt: [Infinity, -Infinity] as [number, number],
-            asTmm: [Infinity, -Infinity] as [number, number],
-            asArm: [Infinity, -Infinity] as [number, number],
-            asStr: [Infinity, -Infinity] as [number, number],
-            asDmgS: [Infinity, -Infinity] as [number, number],
-            asDmgM: [Infinity, -Infinity] as [number, number],
-            asDmgL: [Infinity, -Infinity] as [number, number],
-            dropshipCapacity: [Infinity, -Infinity] as [number, number],
-            escapePods: [Infinity, -Infinity] as [number, number],
-            lifeBoats: [Infinity, -Infinity] as [number, number],
-            sailIntegrity: [Infinity, -Infinity] as [number, number],
-            kfIntegrity: [Infinity, -Infinity] as [number, number],
+            armor: createTrackedStatAccumulator(),
+            internal: createTrackedStatAccumulator(),
+            heat: createTrackedStatAccumulator(),
+            dissipation: createTrackedStatAccumulator(),
+            dissipationEfficiency: createTrackedStatAccumulator(),
+            runMP: createTrackedStatAccumulator(),
+            run2MP: createTrackedStatAccumulator(),
+            jumpMP: createTrackedStatAccumulator(),
+            umuMP: createTrackedStatAccumulator(),
+            alphaNoPhysical: createTrackedStatAccumulator(),
+            alphaNoPhysicalNoOneshots: createTrackedStatAccumulator(),
+            maxRange: createTrackedStatAccumulator(),
+            dpt: createTrackedStatAccumulator(),
+            asTmm: createTrackedStatAccumulator(),
+            asArm: createTrackedStatAccumulator(),
+            asStr: createTrackedStatAccumulator(),
+            asDmgS: createTrackedStatAccumulator(),
+            asDmgM: createTrackedStatAccumulator(),
+            asDmgL: createTrackedStatAccumulator(),
+            dropshipCapacity: createTrackedStatAccumulator(),
+            escapePods: createTrackedStatAccumulator(),
+            lifeBoats: createTrackedStatAccumulator(),
+            sailIntegrity: createTrackedStatAccumulator(),
+            kfIntegrity: createTrackedStatAccumulator(),
+            gravDecks: createTrackedStatAccumulator(),
         });
 
         const updateTrackedStats = (stats: ReturnType<typeof createStatsAccumulator>, unit: Unit): void => {
-            updateMinMax(stats.armor, unit.armor || 0);
-            updateMinMax(stats.internal, unit.internal || 0);
-            updateMinMax(stats.heat, unit.heat || 0);
-            updateMinMax(stats.dissipation, unit.dissipation || 0);
-            updateMinMax(stats.dissipationEfficiency, unit._dissipationEfficiency || 0);
-            updateMinMax(stats.runMP, unit.run || 0);
-            updateMinMax(stats.run2MP, unit.run2 || 0);
-            updateMinMax(stats.jumpMP, unit.jump || 0);
-            updateMinMax(stats.umuMP, unit.umu || 0);
-            updateMinMax(stats.alphaNoPhysical, unit._mdSumNoPhysical || 0);
-            updateMinMax(stats.alphaNoPhysicalNoOneshots, unit._mdSumNoPhysicalNoOneshots || 0);
-            updateMinMax(stats.maxRange, unit._maxRange || 0);
-            updateMinMax(stats.dpt, unit.dpt || 0);
-            updateMinMax(stats.asTmm, unit.as?.TMM || 0);
-            updateMinMax(stats.asArm, unit.as?.Arm || 0);
-            updateMinMax(stats.asStr, unit.as?.Str || 0);
-            updateMinMax(stats.asDmgS, unit.as?.dmg._dmgS || 0);
-            updateMinMax(stats.asDmgM, unit.as?.dmg._dmgM || 0);
-            updateMinMax(stats.asDmgL, unit.as?.dmg._dmgL || 0);
+            updateTrackedStat(stats.armor, unit.armor || 0);
+            updateTrackedStat(stats.internal, unit.internal || 0);
+            updateTrackedStat(stats.heat, unit.heat || 0);
+            updateTrackedStat(stats.dissipation, unit.dissipation || 0);
+            updateTrackedStat(stats.dissipationEfficiency, unit._dissipationEfficiency || 0);
+            updateTrackedStat(stats.runMP, unit.run || 0);
+            updateTrackedStat(stats.run2MP, unit.run2 || 0);
+            updateTrackedStat(stats.jumpMP, unit.jump || 0);
+            updateTrackedStat(stats.umuMP, unit.umu || 0);
+            updateTrackedStat(stats.alphaNoPhysical, unit._mdSumNoPhysical || 0);
+            updateTrackedStat(stats.alphaNoPhysicalNoOneshots, unit._mdSumNoPhysicalNoOneshots || 0);
+            updateTrackedStat(stats.maxRange, unit._maxRange || 0);
+            updateTrackedStat(stats.dpt, unit.dpt || 0);
+            updateTrackedStat(stats.asTmm, unit.as?.TMM || 0);
+            updateTrackedStat(stats.asArm, unit.as?.Arm || 0);
+            updateTrackedStat(stats.asStr, unit.as?.Str || 0);
+            updateTrackedStat(stats.asDmgS, unit.as?.dmg._dmgS || 0);
+            updateTrackedStat(stats.asDmgM, unit.as?.dmg._dmgM || 0);
+            updateTrackedStat(stats.asDmgL, unit.as?.dmg._dmgL || 0);
 
             if (unit.capital) {
-                updateMinMax(stats.dropshipCapacity, unit.capital.dropshipCapacity || 0);
-                updateMinMax(stats.escapePods, unit.capital.escapePods || 0);
-                updateMinMax(stats.lifeBoats, unit.capital.lifeBoats || 0);
-                updateMinMax(stats.sailIntegrity, unit.capital.sailIntegrity || 0);
-                updateMinMax(stats.kfIntegrity, unit.capital.kfIntegrity || 0);
+                updateTrackedStat(stats.dropshipCapacity, unit.capital.dropshipCapacity || 0);
+                updateTrackedStat(stats.escapePods, unit.capital.escapePods || 0);
+                updateTrackedStat(stats.lifeBoats, unit.capital.lifeBoats || 0);
+                updateTrackedStat(stats.sailIntegrity, unit.capital.sailIntegrity || 0);
+                updateTrackedStat(stats.kfIntegrity, unit.capital.kfIntegrity || 0);
+                updateTrackedStat(stats.gravDecks, unit.capital.gravDecks?.length || 0);
             }
         };
 
-        const normalize = (minMax: [number, number]): [number, number] => [
-            minMax[0] === Infinity ? 0 : minMax[0],
-            minMax[1] === -Infinity ? 0 : Math.max(minMax[1], 0)
-        ];
-
         const toNormalizedStats = (stats: ReturnType<typeof createStatsAccumulator>): MinMaxStatsRange => ({
-            armor: normalize(stats.armor),
-            internal: normalize(stats.internal),
-            heat: normalize(stats.heat),
-            dissipation: normalize(stats.dissipation),
-            dissipationEfficiency: normalize(stats.dissipationEfficiency),
-            runMP: normalize(stats.runMP),
-            run2MP: normalize(stats.run2MP),
-            jumpMP: normalize(stats.jumpMP),
-            umuMP: normalize(stats.umuMP),
-            alphaNoPhysical: normalize(stats.alphaNoPhysical),
-            alphaNoPhysicalNoOneshots: normalize(stats.alphaNoPhysicalNoOneshots),
-            maxRange: normalize(stats.maxRange),
-            dpt: normalize(stats.dpt),
-            asTmm: normalize(stats.asTmm),
-            asArm: normalize(stats.asArm),
-            asStr: normalize(stats.asStr),
-            asDmgS: normalize(stats.asDmgS),
-            asDmgM: normalize(stats.asDmgM),
-            asDmgL: normalize(stats.asDmgL),
-            dropshipCapacity: normalize(stats.dropshipCapacity),
-            escapePods: normalize(stats.escapePods),
-            lifeBoats: normalize(stats.lifeBoats),
-            sailIntegrity: normalize(stats.sailIntegrity),
-            kfIntegrity: normalize(stats.kfIntegrity),
-            gravDecks: [0, 0],
+            armor: normalizeTrackedStat(stats.armor),
+            internal: normalizeTrackedStat(stats.internal),
+            heat: normalizeTrackedStat(stats.heat),
+            dissipation: normalizeTrackedStat(stats.dissipation),
+            dissipationEfficiency: normalizeTrackedStat(stats.dissipationEfficiency),
+            runMP: normalizeTrackedStat(stats.runMP),
+            run2MP: normalizeTrackedStat(stats.run2MP),
+            jumpMP: normalizeTrackedStat(stats.jumpMP),
+            umuMP: normalizeTrackedStat(stats.umuMP),
+            alphaNoPhysical: normalizeTrackedStat(stats.alphaNoPhysical),
+            alphaNoPhysicalNoOneshots: normalizeTrackedStat(stats.alphaNoPhysicalNoOneshots),
+            maxRange: normalizeTrackedStat(stats.maxRange),
+            dpt: normalizeTrackedStat(stats.dpt),
+            asTmm: normalizeTrackedStat(stats.asTmm),
+            asArm: normalizeTrackedStat(stats.asArm),
+            asStr: normalizeTrackedStat(stats.asStr),
+            asDmgS: normalizeTrackedStat(stats.asDmgS),
+            asDmgM: normalizeTrackedStat(stats.asDmgM),
+            asDmgL: normalizeTrackedStat(stats.asDmgL),
+            dropshipCapacity: normalizeTrackedStat(stats.dropshipCapacity),
+            escapePods: normalizeTrackedStat(stats.escapePods),
+            lifeBoats: normalizeTrackedStat(stats.lifeBoats),
+            sailIntegrity: normalizeTrackedStat(stats.sailIntegrity),
+            kfIntegrity: normalizeTrackedStat(stats.kfIntegrity),
+            gravDecks: normalizeTrackedStat(stats.gravDecks),
         });
 
         const statsBySubtype: { [subtype: string]: ReturnType<typeof createStatsAccumulator> } = {};
@@ -386,63 +422,11 @@ export class UnitSearchIndexService {
     }
 
     public getUnitSubtypeMaxStats(subtype: string): MinMaxStatsRange {
-        return this.unitSubtypeMaxStats[subtype] || {
-            armor: [0, 0],
-            internal: [0, 0],
-            heat: [0, 0],
-            dissipation: [0, 0],
-            dissipationEfficiency: [0, 0],
-            runMP: [0, 0],
-            run2MP: [0, 0],
-            umuMP: [0, 0],
-            jumpMP: [0, 0],
-            alphaNoPhysical: [0, 0],
-            alphaNoPhysicalNoOneshots: [0, 0],
-            maxRange: [0, 0],
-            dpt: [0, 0],
-            asTmm: [0, 0],
-            asArm: [0, 0],
-            asStr: [0, 0],
-            asDmgS: [0, 0],
-            asDmgM: [0, 0],
-            asDmgL: [0, 0],
-            dropshipCapacity: [0, 0],
-            escapePods: [0, 0],
-            lifeBoats: [0, 0],
-            sailIntegrity: [0, 0],
-            kfIntegrity: [0, 0],
-            gravDecks: [0, 0],
-        };
+        return this.unitSubtypeMaxStats[subtype] || createEmptyMinMaxStatsRange();
     }
 
     public getASUnitTypeMaxStats(asUnitType: string): MinMaxStatsRange {
-        return this.unitAsTypeMaxStats[asUnitType] || {
-            armor: [0, 0],
-            internal: [0, 0],
-            heat: [0, 0],
-            dissipation: [0, 0],
-            dissipationEfficiency: [0, 0],
-            runMP: [0, 0],
-            run2MP: [0, 0],
-            umuMP: [0, 0],
-            jumpMP: [0, 0],
-            alphaNoPhysical: [0, 0],
-            alphaNoPhysicalNoOneshots: [0, 0],
-            maxRange: [0, 0],
-            dpt: [0, 0],
-            asTmm: [0, 0],
-            asArm: [0, 0],
-            asStr: [0, 0],
-            asDmgS: [0, 0],
-            asDmgM: [0, 0],
-            asDmgL: [0, 0],
-            dropshipCapacity: [0, 0],
-            escapePods: [0, 0],
-            lifeBoats: [0, 0],
-            sailIntegrity: [0, 0],
-            kfIntegrity: [0, 0],
-            gravDecks: [0, 0],
-        };
+        return this.unitAsTypeMaxStats[asUnitType] || createEmptyMinMaxStatsRange();
     }
 
     private rebuildDropdownOptionUniverse(eras: Era[], factions: Faction[]): void {
