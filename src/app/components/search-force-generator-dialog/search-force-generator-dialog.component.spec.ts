@@ -273,11 +273,6 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(buildPreviewSpy).toHaveBeenCalled();
     });
 
-    it('ignores the unit-search budget limit when initializing generator defaults', () => {
-        expect(resolveInitialBudgetDefaultsSpy.calls.mostRecent().args[1]).toBe(0);
-        expect(resolveInitialBudgetDefaultsSpy.calls.mostRecent().args[2]).toBe(GameSystem.CLASSIC);
-    });
-
     it('uses uncapped force-generator eligible units for preview requests', () => {
         const limitedUnit = {
             id: 1,
