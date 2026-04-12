@@ -684,6 +684,28 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect((dataService as any).lookupKeyToForcePacks).toBeNull();
     });
 
+    it('ignores the remaining BV/PV cap when computing force generator eligible units', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].bv = 1200;
+        bundle.units.units[0].as.PV = 28;
+        bundle.units.units[1].bv = 2800;
+        bundle.units.units[1].as.PV = 55;
+
+        const { service, gameServiceStub } = createService(bundle);
+
+        service.bvPvLimit.set(1500);
+        service.forceTotalBvPv.set(0);
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
+        expect(service.forceGeneratorEligibleUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
+
+        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        service.bvPvLimit.set(30);
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
+        expect(service.forceGeneratorEligibleUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
+    });
+
     it('distinguishes force packs by subtype when chassis and type match', () => {
         if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
             pending('Real unit data could not be loaded for the force pack subtype test.');

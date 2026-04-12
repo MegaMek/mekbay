@@ -225,7 +225,7 @@ export class UnitSearchFiltersService {
     private readonly advOptionsTelemetryState = signal<AdvOptionsTelemetrySnapshot | null>(null);
     readonly advOptionsTelemetry = this.advOptionsTelemetryState.asReadonly();
     private readonly workerSearchEnabled = signal(this.canUseSearchWorker());
-    private readonly workerFilteredUnitsState = signal<Unit[]>([]);
+    private readonly uncappedWorkerFilteredUnitsState = signal<Unit[]>([]);
     private advOptionsTelemetryPublishVersion = 0;
     private lastSearchTelemetryLogKey = '';
     private readonly slowSearchTelemetryThresholdMs = 75;
@@ -945,11 +945,43 @@ export class UnitSearchFiltersService {
             availabilitySource: this.optionsService.options().availabilitySource,
             sortKey: this.selectedSort(),
             sortDirection: this.selectedSortDirection(),
-            bvPvLimit: this.bvPvLimit(),
-            forceTotalBvPv: this.forceTotalBvPv(),
+            bvPvLimit: 0,
+            forceTotalBvPv: 0,
             pilotGunnerySkill: this.pilotGunnerySkill(),
             pilotPilotingSkill: this.pilotPilotingSkill(),
         });
+    }
+
+    private applyRemainingBudgetLimit(units: readonly Unit[], telemetryStages?: SearchTelemetryStage[]): Unit[] {
+        const budgetLimit = this.bvPvLimit();
+        if (budgetLimit <= 0) {
+            return units as Unit[];
+        }
+
+        const remainingBudget = budgetLimit - this.forceTotalBvPv();
+        if (remainingBudget < 0) {
+            return [];
+        }
+
+        const filterUnits = () => {
+            const isAlphaStrike = this.gameService.currentGameSystem() === GameSystem.ALPHA_STRIKE;
+            return units.filter((unit) => {
+                const unitValue = isAlphaStrike ? this.getAdjustedPV(unit) : this.getAdjustedBV(unit);
+                return unitValue <= remainingBudget;
+            });
+        };
+
+        if (!telemetryStages) {
+            return filterUnits();
+        }
+
+        return measureStage(
+            telemetryStages,
+            'budget-filter',
+            units.length,
+            filterUnits,
+            (value) => value.length,
+        );
     }
 
     private applyWorkerSearchResult(result: UnitSearchWorkerResultMessage): void {
@@ -959,15 +991,16 @@ export class UnitSearchFiltersService {
 
         const hydratedResults = hydrateWorkerResultUnits(result, unitName => this.dataService.getUnitByName(unitName));
         const sortedResults = this.sortHydratedWorkerResults(hydratedResults);
+        const cappedResults = this.applyRemainingBudgetLimit(sortedResults);
 
-        this.workerFilteredUnitsState.set(sortedResults);
+        this.uncappedWorkerFilteredUnitsState.set(sortedResults);
         this.workerResultRevision.set(result.revision);
         this.updateSearchTelemetry(buildWorkerSearchTelemetrySnapshot(result, {
             timestamp: Date.now(),
             gameSystem: this.gameService.currentGameSystem(),
             sortKey: this.selectedSort(),
             sortDirection: this.selectedSortDirection(),
-            resultCount: sortedResults.length,
+            resultCount: cappedResults.length,
         }));
     }
 
@@ -1007,7 +1040,7 @@ export class UnitSearchFiltersService {
             }
 
             if (!this.isDataReady()) {
-                this.workerFilteredUnitsState.set([]);
+                this.uncappedWorkerFilteredUnitsState.set([]);
                 return;
             }
 
@@ -2012,7 +2045,10 @@ export class UnitSearchFiltersService {
         };
     }
 
-    syncFilteredUnits = computed(() => {
+    private executeSyncSearch(): {
+        execution: ReturnType<typeof executeUnitSearch>;
+        parseTelemetry: SearchTelemetryStage[];
+    } {
         this.dataService.searchCorpusVersion();
 
         // Depend on tagsVersion so we recompute when tags change (user tags or public tags)
@@ -2041,8 +2077,8 @@ export class UnitSearchFiltersService {
             gameSystem: this.gameService.currentGameSystem(),
             sortKey: this.selectedSort(),
             sortDirection: this.selectedSortDirection(),
-            bvPvLimit: this.bvPvLimit(),
-            forceTotalBvPv: this.forceTotalBvPv(),
+            bvPvLimit: 0,
+            forceTotalBvPv: 0,
             getAdjustedBV: (unit: Unit) => this.getAdjustedBV(unit),
             getAdjustedPV: (unit: Unit) => this.getAdjustedPV(unit),
             unitBelongsToEra: (unit: Unit, eraName: string, scope?: AvailabilityFilterScope) => this.unitBelongsToEra(unit, eraName, scope),
@@ -2067,20 +2103,42 @@ export class UnitSearchFiltersService {
                 : undefined,
         });
 
+        return {
+            execution,
+            parseTelemetry,
+        };
+    }
+
+    private readonly uncappedSyncSearch = computed(() => this.executeSyncSearch());
+
+    syncFilteredUnits = computed(() => {
+        const { execution, parseTelemetry } = this.uncappedSyncSearch();
+        const budgetTelemetry: SearchTelemetryStage[] = [];
+        const cappedResults = this.applyRemainingBudgetLimit(execution.results, budgetTelemetry);
+
         this.updateSearchTelemetry({
             timestamp: Date.now(),
             query: this.searchText().trim(),
             gameSystem: this.gameService.currentGameSystem(),
             unitCount: execution.unitCount,
-            resultCount: execution.results.length,
+            resultCount: cappedResults.length,
             sortKey: this.selectedSort(),
             sortDirection: this.selectedSortDirection(),
             isComplex: execution.isComplex,
-            stages: [...parseTelemetry, ...execution.telemetryStages],
+            stages: [...parseTelemetry, ...execution.telemetryStages, ...budgetTelemetry],
             totalMs: execution.totalMs,
         });
 
-        return execution.results;
+        return cappedResults;
+    });
+
+    /** Force generator eligibility uses the active search criteria but ignores the remaining BV/PV cap from unit search. */
+    readonly forceGeneratorEligibleUnits = computed(() => {
+        if (this.workerSearchActive()) {
+            return this.uncappedWorkerFilteredUnitsState();
+        }
+
+        return this.uncappedSyncSearch().execution.results;
     });
 
     filteredUnits = computed(() => {
@@ -2088,7 +2146,7 @@ export class UnitSearchFiltersService {
             return this.syncFilteredUnits();
         }
 
-        return this.workerFilteredUnitsState();
+        return this.applyRemainingBudgetLimit(this.uncappedWorkerFilteredUnitsState());
     });
 
     // Advanced filter options
