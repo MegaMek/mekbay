@@ -117,7 +117,7 @@ export class SearchForceGeneratorDialogComponent {
     readonly gameSystem = this.selectedGameSystem.asReadonly();
     readonly isAlphaStrike = computed(() => this.gameSystem() === GameSystem.ALPHA_STRIKE);
     readonly availabilitySource = computed(() => this.optionsService.options().availabilitySource);
-    readonly eligibleUnits = this.filtersService.filteredUnits;
+    readonly eligibleUnits = this.filtersService.forceGeneratorEligibleUnits;
     readonly pilotGunnerySkill = computed(() => this.filtersService.pilotGunnerySkill());
     readonly pilotPilotingSkill = computed(() => this.filtersService.pilotPilotingSkill());
     readonly eraFilter = computed(() => this.getDropdownFilter('era'));

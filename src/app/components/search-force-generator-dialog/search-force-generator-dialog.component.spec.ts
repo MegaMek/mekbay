@@ -18,6 +18,9 @@ describe('SearchForceGeneratorDialogComponent', () => {
     let setOptionSpy: jasmine.Spy;
     let setFilterSpy: jasmine.Spy;
     let buildPreviewSpy: jasmine.Spy;
+    let resolveInitialBudgetDefaultsSpy: jasmine.Spy;
+    let filteredUnitsSignal: WritableSignal<Unit[]>;
+    let forceGeneratorEligibleUnitsSignal: WritableSignal<Unit[]>;
     let gameSystemSignal: WritableSignal<GameSystem>;
 
     beforeEach(() => {
@@ -82,6 +85,8 @@ describe('SearchForceGeneratorDialogComponent', () => {
         });
 
         const currentForceSignal = signal<any>(null);
+        filteredUnitsSignal = signal<Unit[]>([]);
+        forceGeneratorEligibleUnitsSignal = signal<Unit[]>([]);
         const unitsByName = new Map<string, Unit>();
         const dataServiceMock = {
             isDataReady: signal(true),
@@ -99,6 +104,10 @@ describe('SearchForceGeneratorDialogComponent', () => {
             explanationLines: [],
         };
         buildPreviewSpy = jasmine.createSpy('buildPreview').and.callFake(() => previewResult);
+        resolveInitialBudgetDefaultsSpy = jasmine.createSpy('resolveInitialBudgetDefaults').and.returnValue({
+            classic: { min: 7900, max: 8000 },
+            alphaStrike: { min: 290, max: 300 },
+        });
 
         gameSystemSignal = signal(GameSystem.CLASSIC);
 
@@ -115,10 +124,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
                 {
                     provide: ForceGeneratorService,
                     useValue: {
-                        resolveInitialBudgetDefaults: () => ({
-                            classic: { min: 7900, max: 8000 },
-                            alphaStrike: { min: 290, max: 300 },
-                        }),
+                        resolveInitialBudgetDefaults: resolveInitialBudgetDefaultsSpy,
                         resolveInitialUnitCountDefaults: () => ({ min: 4, max: 8 }),
                         resolveBudgetRangeForEditedMin: (range: { min: number; max: number }, editedMin: number) => {
                             const nextMin = Math.max(0, Math.floor(editedMin));
@@ -209,8 +215,9 @@ describe('SearchForceGeneratorDialogComponent', () => {
                     provide: UnitSearchFiltersService,
                     useValue: {
                         advOptions: advOptionsSignal,
-                        bvPvLimit: signal(0),
-                        filteredUnits: signal([]),
+                        bvPvLimit: signal(5000),
+                        filteredUnits: filteredUnitsSignal,
+                        forceGeneratorEligibleUnits: forceGeneratorEligibleUnitsSignal,
                         pilotGunnerySkill: signal(4),
                         pilotPilotingSkill: signal(5),
                         searchText: signal(''),
@@ -239,6 +246,36 @@ describe('SearchForceGeneratorDialogComponent', () => {
         TestBed.runInInjectionContext(() => new SearchForceGeneratorDialogComponent());
 
         expect(buildPreviewSpy).toHaveBeenCalled();
+    });
+
+    it('ignores the unit-search budget limit when initializing generator defaults', () => {
+        expect(resolveInitialBudgetDefaultsSpy.calls.mostRecent().args[1]).toBe(0);
+        expect(resolveInitialBudgetDefaultsSpy.calls.mostRecent().args[2]).toBe(GameSystem.CLASSIC);
+    });
+
+    it('uses uncapped force-generator eligible units for preview requests', () => {
+        const limitedUnit = {
+            id: 1,
+            name: 'Limited Unit',
+            chassis: 'Limited',
+            model: 'Prime',
+            as: { PV: 25 },
+        } as Unit;
+        const extraEligibleUnit = {
+            id: 2,
+            name: 'Extra Eligible Unit',
+            chassis: 'Extra',
+            model: 'Prime',
+            as: { PV: 40 },
+        } as Unit;
+
+        filteredUnitsSignal.set([limitedUnit]);
+        forceGeneratorEligibleUnitsSignal.set([limitedUnit, extraEligibleUnit]);
+
+        component.reroll();
+
+        expect(component.eligibleUnits()).toEqual([limitedUnit, extraEligibleUnit]);
+        expect(buildPreviewSpy.calls.mostRecent().args[0].eligibleUnits).toEqual([limitedUnit, extraEligibleUnit]);
     });
 
     it('snaps the max units input back to the clamped maximum on blur', () => {
