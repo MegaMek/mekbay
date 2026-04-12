@@ -293,11 +293,11 @@
                                 [hoveredUnit]="hoveredRadarUnit()">
                             </load-force-radar-panel>
 
-                            @if (preview().error; as errorMessage) {
+                            @if (previewError(); as errorMessage) {
                                 <div class="preview-inline-error error framed-borders">{{ errorMessage }}</div>
                             }
                         </div>
-                    } @else if (preview().error; as errorMessage) {
+                    } @else if (previewError(); as errorMessage) {
                         <div class="preview-empty">{{ errorMessage }}</div>
                     }
                 </div>
@@ -327,7 +327,7 @@
     </div>
 
     <div dialog-footer class="footer">
-        <button class="modal-btn bt-button" type="button" (click)="submit()" [disabled]="preview().error !== null || previewEntry() === null">CREATE</button>
+        <button class="modal-btn bt-button" type="button" (click)="submit()" [disabled]="previewError() !== null || previewEntry() === null">CREATE</button>
         <button class="modal-btn bt-button" type="button" (click)="reroll()" [disabled]="eligibleUnits().length === 0">REROLL</button>
         <button class="modal-btn bt-button" type="button" (click)="dismiss()">DISMISS</button>
     </div>

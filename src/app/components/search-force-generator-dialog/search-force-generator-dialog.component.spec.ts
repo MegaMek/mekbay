@@ -359,6 +359,45 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(input.value).toBe('100');
     });
 
+    it('does not replace the displayed preview when max units are committed on blur', () => {
+        const atlas = {
+            id: 1,
+            name: 'Atlas AS7-D',
+            chassis: 'Atlas',
+            model: 'AS7-D',
+            bv: 7950,
+            as: { PV: 54 },
+        } as Unit;
+
+        (component as any).__test.setPreviewResult({
+            gameSystem: GameSystem.CLASSIC,
+            units: [{
+                unit: atlas,
+                cost: 7950,
+                gunnery: 4,
+                piloting: 5,
+                lockKey: 'generated:0:Atlas AS7-D',
+            }],
+            totalCost: 7950,
+            error: null,
+            faction: null,
+            era: null,
+            explanationLines: [],
+        });
+
+        component.reroll();
+        buildPreviewSpy.calls.reset();
+
+        const previewEntry = component.previewEntry();
+
+        component.onMaxUnitCountBlur({
+            target: { value: '10' },
+        } as unknown as Event);
+
+        expect(buildPreviewSpy).not.toHaveBeenCalled();
+        expect(component.previewEntry()).toBe(previewEntry);
+    });
+
     it('does not lower the minimum budget while typing a larger maximum until blur', async () => {
         const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
         await fixture.whenStable();
@@ -389,6 +428,45 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(dialog.budgetRange()).toEqual({ min: 7900, max: 10000 });
         expect(setOptionSpy).toHaveBeenCalledOnceWith('forceGenLastBVMax', 10000);
         expect(maxBudgetInput.value).toBe('10000');
+    });
+
+    it('does not replace the displayed preview when max budget is committed on blur', () => {
+        const atlas = {
+            id: 1,
+            name: 'Atlas AS7-D',
+            chassis: 'Atlas',
+            model: 'AS7-D',
+            bv: 7950,
+            as: { PV: 54 },
+        } as Unit;
+
+        (component as any).__test.setPreviewResult({
+            gameSystem: GameSystem.CLASSIC,
+            units: [{
+                unit: atlas,
+                cost: 7950,
+                gunnery: 4,
+                piloting: 5,
+                lockKey: 'generated:0:Atlas AS7-D',
+            }],
+            totalCost: 7950,
+            error: null,
+            faction: null,
+            era: null,
+            explanationLines: [],
+        });
+
+        component.reroll();
+        buildPreviewSpy.calls.reset();
+
+        const previewEntry = component.previewEntry();
+
+        component.onBudgetMaxBlur({
+            target: { value: '10000' },
+        } as unknown as Event);
+
+        expect(buildPreviewSpy).not.toHaveBeenCalled();
+        expect(component.previewEntry()).toBe(previewEntry);
     });
 
     it('preserves multistate era selections when updating filters', () => {

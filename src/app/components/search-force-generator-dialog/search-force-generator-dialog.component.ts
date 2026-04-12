@@ -218,6 +218,11 @@ export class SearchForceGeneratorDialogComponent {
     readonly minUnitCount = signal(this.initialUnitCountDefaults.min);
     readonly maxUnitCount = signal(this.initialUnitCountDefaults.max);
     readonly collapsedHowPicksWhereChosen = signal(false);
+    readonly previewDisplaySettings = computed(() => ({
+        gameSystem: this.gameSystem(),
+        gunnery: this.pilotGunnerySkill(),
+        piloting: this.pilotPilotingSkill(),
+    }));
     readonly generationSettings = computed(() => {
         const gameSystem = this.gameSystem();
         return {
@@ -232,7 +237,22 @@ export class SearchForceGeneratorDialogComponent {
         };
     });
     private readonly previewState = signal<ForceGenerationPreview>(this.buildGeneratedPreview());
-    readonly preview = computed(() => this.projectPreviewForCurrentSettings(this.previewState()));
+    readonly preview = computed(() => this.projectPreviewForDisplay(this.previewState()));
+    readonly previewError = computed(() => {
+        const preview = this.preview();
+        if (preview.error) {
+            return preview.error;
+        }
+        if (preview.units.length === 0) {
+            return null;
+        }
+
+        return this.resolvePreviewValidationError(
+            preview.units.length,
+            preview.totalCost,
+            this.generationSettings(),
+        );
+    });
     readonly previewEntry = computed(() => {
         const preview = this.preview();
         return this.forceGeneratorService.createForceEntry(preview);
@@ -412,10 +432,11 @@ export class SearchForceGeneratorDialogComponent {
 
     submit(): void {
         const previewEntry = this.previewEntry();
-        const preview = this.preview();
-        if (!previewEntry || preview.error) {
+        if (!previewEntry || this.previewError()) {
             return;
         }
+
+        const preview = this.preview();
 
         this.filtersService.requestClosePanels({ exitExpandedView: true });
         this.dialogRef.close({
@@ -477,8 +498,8 @@ export class SearchForceGeneratorDialogComponent {
         });
     }
 
-    private projectPreviewForCurrentSettings(storedPreview: ForceGenerationPreview): ForceGenerationPreview {
-        const settings = this.generationSettings();
+    private projectPreviewForDisplay(storedPreview: ForceGenerationPreview): ForceGenerationPreview {
+        const settings = this.previewDisplaySettings();
         const units = this.resolvePreviewUnits(
             storedPreview.units,
             settings.gameSystem,
@@ -491,9 +512,7 @@ export class SearchForceGeneratorDialogComponent {
             gameSystem: settings.gameSystem,
             units,
             totalCost,
-            error: units.length === 0
-                ? storedPreview.error
-                : this.resolvePreviewValidationError(units.length, totalCost, settings),
+            error: storedPreview.error,
             faction: storedPreview.faction,
             era: storedPreview.era,
             explanationLines: storedPreview.explanationLines,
@@ -509,7 +528,7 @@ export class SearchForceGeneratorDialogComponent {
             error?: string | null;
         } = {},
     ): ForceGenerationPreview {
-        const settings = this.generationSettings();
+        const settings = this.previewDisplaySettings();
         const resolvedUnits = this.resolvePreviewUnits(
             units,
             settings.gameSystem,
