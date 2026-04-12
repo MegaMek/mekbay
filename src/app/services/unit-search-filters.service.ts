@@ -1628,9 +1628,31 @@ export class UnitSearchFiltersService {
         return this.unitAvailabilitySource.unitBelongsToFaction(unit, faction);
     }
 
+    private getUnitIdsForEraInFactionScope(eraName: string, factionNames: readonly string[]): Set<string> {
+        const era = this.dataService.getEraByName(eraName);
+        if (!era || factionNames.length === 0) {
+            return new Set<string>();
+        }
+
+        const contextEraIds = new Set([era.id]);
+        const unitIds = new Set<string>();
+        for (const factionName of factionNames) {
+            for (const unitId of this.getUnitIdsForFaction(factionName, contextEraIds)) {
+                unitIds.add(unitId);
+            }
+        }
+
+        return unitIds;
+    }
+
     private unitBelongsToEraInScope(unit: Unit, era: Era, scope?: AvailabilityFilterScope): boolean {
-        if (!this.unitAvailabilitySource.useMegaMekAvailability() || scope?.factionNames === undefined) {
+        if (scope?.factionNames === undefined) {
             return this.unitAvailabilitySource.unitBelongsToEra(unit, era);
+        }
+
+        if (!this.unitAvailabilitySource.useMegaMekAvailability()) {
+            return this.getUnitIdsForEraInFactionScope(era.name, scope.factionNames)
+                .has(this.unitAvailabilitySource.getUnitAvailabilityKey(unit));
         }
 
         const context = this.buildAvailabilityFilterContext({
@@ -1747,6 +1769,26 @@ export class UnitSearchFiltersService {
         scope?: AvailabilityFilterScope,
     ): ReadonlySet<string> | undefined {
         if (!this.unitAvailabilitySource.useMegaMekAvailability()) {
+            if (filterKey === 'era' && scope?.factionNames !== undefined) {
+                return this.getUnitIdsForEraInFactionScope(value, scope.factionNames);
+            }
+
+            if (filterKey === 'faction' && scope?.eraNames !== undefined) {
+                const faction = this.dataService.getFactionByName(value);
+                if (!faction) {
+                    return undefined;
+                }
+
+                const contextEraIds = new Set(
+                    scope.eraNames
+                        .map((eraName) => this.dataService.getEraByName(eraName)?.id)
+                        .filter((eraId): eraId is number => eraId !== undefined),
+                );
+                return contextEraIds.size === 0
+                    ? new Set<string>()
+                    : this.unitAvailabilitySource.getFactionUnitIds(faction, contextEraIds);
+            }
+
             return this.dataService.getIndexedUnitIds(filterKey, value);
         }
 

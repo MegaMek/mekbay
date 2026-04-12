@@ -284,6 +284,11 @@ function hydrateCorpus(snapshot: UnitSearchWorkerCorpusSnapshot): WorkerCorpusRu
     };
 }
 
+export const __test__ = {
+    hydrateCorpus,
+    buildResultMessage,
+};
+
 function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWorkerQueryRequest): UnitSearchWorkerResultMessage {
     const parseStartedAt = getNowMs();
     const parsedQuery = parseSemanticQueryAST(request.executionQuery, request.gameSystem);
@@ -298,6 +303,33 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
     ) {
         megaMekFactionNames.push(runtime.megaMekAvailability.extinctFactionName);
     }
+
+    const getFactionEraUnitNames = (eraName: string, factionNames: readonly string[]): ReadonlySet<string> => {
+        const unitNames = new Set<string>();
+        if (factionNames.length === 0) {
+            return unitNames;
+        }
+
+        const eraFactionUnitIds = runtime.factionEraUnitIds.get(eraName);
+        for (const factionName of factionNames) {
+            addUnitNames(unitNames, eraFactionUnitIds?.get(factionName));
+        }
+
+        return unitNames;
+    };
+
+    const getEraScopedFactionUnitNames = (factionName: string, eraNames: readonly string[]): ReadonlySet<string> => {
+        const unitNames = new Set<string>();
+        if (eraNames.length === 0) {
+            return unitNames;
+        }
+
+        for (const eraName of eraNames) {
+            addUnitNames(unitNames, runtime.factionEraUnitIds.get(eraName)?.get(factionName));
+        }
+
+        return unitNames;
+    };
 
     const getMegaMekMembershipUnitNames = (scope?: AvailabilityFilterScope): ReadonlySet<string> => {
         const cacheKey = buildMegaMekScopedCacheKey('membership', scope);
@@ -505,6 +537,14 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
         scope?: AvailabilityFilterScope,
     ): ReadonlySet<string> | undefined => {
         if (!useMegaMekAvailability) {
+            if (filterKey === 'era' && scope?.factionNames !== undefined) {
+                return getFactionEraUnitNames(value, scope.factionNames);
+            }
+
+            if (filterKey === 'faction' && scope?.eraNames !== undefined) {
+                return getEraScopedFactionUnitNames(value, scope.eraNames);
+            }
+
             return runtime.indexedUnitIds.get(filterKey)?.get(value);
         }
 
@@ -582,6 +622,10 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
         },
         unitBelongsToEra: (unit: Unit, eraName: string, scope?: AvailabilityFilterScope) => {
             if (!useMegaMekAvailability) {
+                if (scope?.factionNames !== undefined) {
+                    return getFactionEraUnitNames(eraName, scope.factionNames).has(unit.name);
+                }
+
                 return runtime.indexedUnitIds.get('era')?.get(eraName)?.has(unit.name) ?? false;
             }
 
@@ -619,7 +663,7 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
                     return false;
                 }
 
-                return eraNames.some(eraName => runtime.factionEraUnitIds.get(eraName)?.get(factionName)?.has(unit.name) ?? false);
+                return getEraScopedFactionUnitNames(factionName, eraNames).has(unit.name);
             }
 
             return runtime.indexedUnitIds.get('faction')?.get(factionName)?.has(unit.name) ?? false;
@@ -680,25 +724,27 @@ function postError(message: string, revision?: number, corpusVersion?: string): 
     postMessage(error satisfies UnitSearchWorkerResponseMessage);
 }
 
-addEventListener('message', ({ data }: MessageEvent<UnitSearchWorkerRequestMessage>) => {
-    try {
-        if (data.type === 'init') {
-            corpus = hydrateCorpus(data.snapshot);
-            postMessage({
-                type: 'ready',
-                corpusVersion: data.snapshot.corpusVersion,
-            } satisfies UnitSearchWorkerResponseMessage);
-            return;
-        }
+if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope) {
+    addEventListener('message', ({ data }: MessageEvent<UnitSearchWorkerRequestMessage>) => {
+        try {
+            if (data.type === 'init') {
+                corpus = hydrateCorpus(data.snapshot);
+                postMessage({
+                    type: 'ready',
+                    corpusVersion: data.snapshot.corpusVersion,
+                } satisfies UnitSearchWorkerResponseMessage);
+                return;
+            }
 
-        if (!corpus || corpus.corpusVersion !== data.request.corpusVersion) {
-            postError('Search worker corpus is not ready for this request', data.request.revision, data.request.corpusVersion);
-            return;
-        }
+            if (!corpus || corpus.corpusVersion !== data.request.corpusVersion) {
+                postError('Search worker corpus is not ready for this request', data.request.revision, data.request.corpusVersion);
+                return;
+            }
 
-        postMessage(buildResultMessage(corpus, data.request) satisfies UnitSearchWorkerResponseMessage);
-    } catch (error) {
-        const request = data.type === 'execute' ? data.request : undefined;
-        postError(error instanceof Error ? error.message : 'Search worker failed', request?.revision, request?.corpusVersion);
-    }
-});
+            postMessage(buildResultMessage(corpus, data.request) satisfies UnitSearchWorkerResponseMessage);
+        } catch (error) {
+            const request = data.type === 'execute' ? data.request : undefined;
+            postError(error instanceof Error ? error.message : 'Search worker failed', request?.revision, request?.corpusVersion);
+        }
+    });
+}
