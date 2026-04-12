@@ -21,8 +21,7 @@ const DEFAULT_HEIGHT = 72;
     <div class="icon-container"
          [class]="styleClass()"
          [style.width.px]="containerWidth()"
-         [style.height.px]="containerHeight()"
-         [title]="displayTitle()">
+         [style.height.px]="containerHeight()">
       @if (spriteData(); as sprite) {
         <div class="sprite"
              [style.width.px]="sprite.info.w"
@@ -64,7 +63,6 @@ export class UnitIconComponent {
   // Inputs
   unit = input<Unit | undefined | null>(null);
   alt = input<string | undefined>(undefined);
-  title = input<string | undefined>(undefined);
   styleClass = input<string>('');
   
   /** Square size shorthand (sets both width and height) */
@@ -84,7 +82,6 @@ export class UnitIconComponent {
   });
 
   displayAlt = computed(() => this.alt() || this.unitLabel());
-  displayTitle = computed(() => this.title() || this.unitLabel());
 
   /** Container width: explicit input or sprite's natural width */
   containerWidth = computed(() => {

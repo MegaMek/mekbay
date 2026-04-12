@@ -148,6 +148,8 @@ export class SearchForceGeneratorDialogComponent {
     readonly previewLockToggle = (unitEntry: LoadForceUnit): void => {
         this.togglePreviewUnitLock(unitEntry);
     };
+    readonly hoveredPreviewUnit = signal<LoadForceUnit | null>(null);
+    readonly hoveredRadarUnit = computed(() => this.hoveredPreviewUnit()?.unit ?? null);
     readonly descriptionLines = computed(() => {
         const lines = [];
         const query = this.filtersService.searchText().trim();
@@ -308,6 +310,7 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     reroll(): void {
+        this.clearHoveredPreviewUnit();
         this.previewState.set(this.buildGeneratedPreview());
     }
 
@@ -316,6 +319,8 @@ export class SearchForceGeneratorDialogComponent {
         if (!currentForce) {
             return;
         }
+
+        this.clearHoveredPreviewUnit();
 
         const importedForceEntry = createLoadForceEntryFromSerializedForce(currentForce.serialize(), this.dataService);
         const importedUnits = importedForceEntry.groups
@@ -334,6 +339,10 @@ export class SearchForceGeneratorDialogComponent {
 
     toggleHowPicksWereChosen(): void {
         this.collapsedHowPicksWhereChosen.update((value) => !value);
+    }
+
+    onPreviewUnitHover(unitEntry: LoadForceUnit | null): void {
+        this.hoveredPreviewUnit.set(unitEntry?.unit ? unitEntry : null);
     }
 
     submit(): void {
@@ -359,6 +368,10 @@ export class SearchForceGeneratorDialogComponent {
 
     dismiss(): void {
         this.dialogRef.close(null);
+    }
+
+    private clearHoveredPreviewUnit(): void {
+        this.hoveredPreviewUnit.set(null);
     }
 
     private getDropdownFilter(key: string): DropdownFilterOptions | null {

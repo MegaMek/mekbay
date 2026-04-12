@@ -239,6 +239,39 @@ function getRadarRatio(value: number, min: number, max: number): number {
     return value > 0 ? 1 : 0;
 }
 
+function buildRadarAxis(
+    definition: RadarAxisDefinition,
+    index: number,
+    axisCount: number,
+    contribution: RadarContribution,
+): RadarAxis {
+    const angle = getAngle(index, axisCount);
+    const ratio = getRadarRatio(contribution.value, contribution.min, contribution.max);
+    const labelPoint = getLabelPoint(angle);
+
+    return {
+        key: definition.key,
+        label: definition.label,
+        angle,
+        value: contribution.value,
+        min: contribution.min,
+        max: contribution.max,
+        ratio,
+        valueText: formatStatValue(contribution.value),
+        maxText: formatStatValue(contribution.max),
+        axisPoint: toPoint(angle, RADAR_RADIUS),
+        dataPoint: toPoint(angle, RADAR_RADIUS * ratio),
+        labelPoint,
+        textAnchor: getTextAnchor(labelPoint),
+    };
+}
+
+function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem, unit: Unit): MinMaxStatsRange {
+    return gameSystem === GameSystem.ALPHA_STRIKE
+        ? dataService.getASUnitTypeMaxStats(unit.as?.TP ?? '')
+        : dataService.getUnitSubtypeMaxStats(unit.subtype);
+}
+
 @Component({
     selector: 'load-force-radar-panel',
     standalone: true,
@@ -246,6 +279,7 @@ function getRadarRatio(value: number, min: number, max: number): number {
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
     @let axes = chartAxes();
+    @let overlayAxes = hoveredUnitAxes();
     <div class="force-radar-shell">
         @if (hasUnits()) {
             <div class="radar-area" #radarArea>
@@ -279,6 +313,19 @@ function getRadarRatio(value: number, min: number, max: number): number {
                             [attr.cx]="axis.dataPoint.x"
                             [attr.cy]="axis.dataPoint.y"
                             r="3.5"></circle>
+                    }
+
+                    @if (overlayAxes.length > 0) {
+                        <polygon class="radar-hover-fill" [attr.points]="hoveredValuePolygonPoints()"></polygon>
+                        <polygon class="radar-hover-outline" [attr.points]="hoveredValuePolygonPoints()"></polygon>
+
+                        @for (axis of overlayAxes; track axis.key) {
+                            <circle
+                                class="radar-hover-node"
+                                [attr.cx]="axis.dataPoint.x"
+                                [attr.cy]="axis.dataPoint.y"
+                                r="3.5"></circle>
+                        }
                     }
 
                     <circle class="radar-center" [attr.cx]="center" [attr.cy]="center" r="2.5"></circle>
@@ -357,8 +404,23 @@ function getRadarRatio(value: number, min: number, max: number): number {
             stroke-width: 2;
         }
 
+        .radar-hover-fill {
+            fill: rgba(98, 196, 255, 0.16);
+        }
+
+        .radar-hover-outline {
+            fill: none;
+            stroke: #62c4ff;
+            stroke-width: 2;
+            stroke-dasharray: 6 4;
+        }
+
         .radar-node {
             fill: var(--bt-yellow, #eaae3f);
+        }
+
+        .radar-hover-node {
+            fill: #62c4ff;
         }
 
         .radar-center {
@@ -418,6 +480,7 @@ export class LoadForceRadarPanelComponent {
     readonly center = RADAR_CENTER;
     readonly viewBoxSize = RADAR_VIEWBOX_SIZE;
     readonly force = input.required<LoadForceEntry>();
+    readonly hoveredUnit = input<Unit | null>(null);
     readonly axisDefinitions = computed(() => this.force().type === GameSystem.ALPHA_STRIKE
         ? ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS
         : CLASSIC_RADAR_AXIS_DEFINITIONS);
@@ -455,26 +518,29 @@ export class LoadForceRadarPanelComponent {
         }
 
         return totals.map((total) => {
-            const angle = getAngle(total.index, axisDefinitions.length);
-            const ratio = getRadarRatio(total.value, total.min, total.max);
-            const labelPoint = getLabelPoint(angle);
-
-            return {
-                key: total.definition.key,
-                label: total.definition.label,
-                angle,
+            return buildRadarAxis(total.definition, total.index, axisDefinitions.length, {
                 value: total.value,
                 min: total.min,
                 max: total.max,
-                ratio,
-                valueText: formatStatValue(total.value),
-                maxText: formatStatValue(total.max),
-                axisPoint: toPoint(angle, RADAR_RADIUS),
-                dataPoint: toPoint(angle, RADAR_RADIUS * ratio),
-                labelPoint,
-                textAnchor: getTextAnchor(labelPoint),
-            };
+            });
         });
+    });
+
+    readonly hoveredUnitAxes = computed<RadarAxis[]>(() => {
+        const hoveredUnit = this.hoveredUnit();
+        if (!hoveredUnit) {
+            return [];
+        }
+
+        const axisDefinitions = this.axisDefinitions();
+        const maxStats = this.getUnitBucketMaxStats(hoveredUnit);
+
+        return axisDefinitions.map((definition, index) => buildRadarAxis(
+            definition,
+            index,
+            axisDefinitions.length,
+            definition.getContribution(hoveredUnit, maxStats),
+        ));
     });
 
     readonly gridPolygonPoints = computed(() => {
@@ -486,6 +552,10 @@ export class LoadForceRadarPanelComponent {
 
     readonly valuePolygonPoints = computed(() => {
         return toPointString(this.chartAxes().map((axis) => axis.dataPoint));
+    });
+
+    readonly hoveredValuePolygonPoints = computed(() => {
+        return toPointString(this.hoveredUnitAxes().map((axis) => axis.dataPoint));
     });
 
     constructor() {
@@ -521,5 +591,9 @@ export class LoadForceRadarPanelComponent {
                 observer.disconnect();
             });
         });
+    }
+
+    private getUnitBucketMaxStats(unit: Unit): MinMaxStatsRange {
+        return getUnitBucketMaxStats(this.dataService, this.force().type, unit);
     }
 }

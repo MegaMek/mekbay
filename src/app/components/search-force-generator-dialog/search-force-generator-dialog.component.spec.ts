@@ -373,6 +373,26 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(buildPreviewSpy).not.toHaveBeenCalled();
     });
 
+    it('clears the hovered radar overlay when rerolling a new preview', () => {
+        const atlas = {
+            id: 3,
+            name: 'Atlas AS7-D',
+            chassis: 'Atlas',
+            model: 'AS7-D',
+        } as Unit;
+
+        component.onPreviewUnitHover({
+            unit: atlas,
+            destroyed: false,
+        });
+
+        expect(component.hoveredRadarUnit()).toBe(atlas);
+
+        component.reroll();
+
+        expect(component.hoveredRadarUnit()).toBeNull();
+    });
+
     it('forwards the duplicate-chassis checkbox state into the preview request', () => {
         component.onPreventDuplicateChassisChange({
             target: { checked: true },

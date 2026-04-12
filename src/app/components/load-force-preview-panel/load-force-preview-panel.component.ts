@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 
 import {
     getLoadForceUnitPilotStats,
@@ -69,7 +69,9 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
                     </div>
                     <div class="units">
                         @for (unitEntry of gd.group.units; let i = $index; track i) {
-                        <div class="unit-tile">
+                        <div class="unit-tile"
+                            (pointerenter)="onUnitHover(unitEntry)"
+                            (pointerleave)="onUnitHover(null)">
                             <div class="unit-square compact-mode"
                                 [class.destroyed]="unitEntry.destroyed"
                                 [class.missing]="!unitEntry.unit"
@@ -414,6 +416,7 @@ export class LoadForcePreviewPanelComponent {
     readonly showLockControls = input(false);
     readonly lockedUnitKeys = input<ReadonlySet<string>>(new Set<string>());
     readonly lockToggle = input<((unitEntry: LoadForceUnit) => void) | null>(null);
+    readonly hoveredUnitChange = output<LoadForceUnit | null>();
 
     readonly allUnits = computed(() => this.force().groups
         .flatMap((group) => group.units)
@@ -460,6 +463,10 @@ export class LoadForcePreviewPanelComponent {
                 gameSystem: this.force().type,
             } satisfies UnitDetailsDialogData,
         });
+    }
+
+    onUnitHover(loadForceUnit: LoadForceUnit | null): void {
+        this.hoveredUnitChange.emit(loadForceUnit?.unit ? loadForceUnit : null);
     }
 
     isLocked(loadForceUnit: LoadForceUnit): boolean {

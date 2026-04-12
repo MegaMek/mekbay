@@ -255,6 +255,59 @@ describe('LoadForceRadarPanelComponent', () => {
         expect(getAxis('dpt')?.ratio).toBeCloseTo(0.3, 6);
     });
 
+    it('overlays hovered classic unit stats using that unit subtype range', () => {
+        const fixture = TestBed.createComponent(LoadForceRadarPanelComponent);
+        const mekA = createUnit({
+            id: 7,
+            name: 'Hover Mek',
+            armor: 30,
+            internal: 10,
+            _mdSumNoPhysical: 8,
+            _mdSumNoPhysicalNoOneshots: 9,
+            dpt: 7,
+            run2: 5,
+            jump: 3,
+        });
+        const aero = createUnit({
+            id: 8,
+            name: 'Other Aero',
+            type: 'Aero',
+            subtype: 'Aerospace Fighter',
+            moveType: 'Aerodyne',
+            armor: 20,
+            internal: 8,
+            _mdSumNoPhysical: 12,
+            _mdSumNoPhysicalNoOneshots: 13,
+            dpt: 9,
+            run2: 10,
+            jump: 0,
+        });
+
+        fixture.componentRef.setInput('force', new LoadForceEntry({
+            groups: [{
+                units: [
+                    { unit: mekA, destroyed: false },
+                    { unit: aero, destroyed: false },
+                ],
+            }],
+        }));
+        fixture.componentRef.setInput('hoveredUnit', mekA);
+        fixture.detectChanges();
+
+        const axes = fixture.componentInstance.hoveredUnitAxes();
+        const getAxis = (key: string) => axes.find((axis) => axis.key === key);
+
+        expect(getAxis('mobility')).toEqual(jasmine.objectContaining({ value: 5, min: 2, max: 9 }));
+        expect(getAxis('endurance')).toEqual(jasmine.objectContaining({ value: 40, min: 15, max: 62 }));
+        expect(getAxis('firepower')).toEqual(jasmine.objectContaining({ value: 8, min: 4, max: 20 }));
+        expect(getAxis('dpt')).toEqual(jasmine.objectContaining({ value: 7, min: 3, max: 15 }));
+        expect(getAxis('mobility')?.ratio).toBeCloseTo(3 / 7, 6);
+        expect(getAxis('endurance')?.ratio).toBeCloseTo(25 / 47, 6);
+        expect(getAxis('firepower')?.ratio).toBeCloseTo(0.25, 6);
+        expect(getAxis('dpt')?.ratio).toBeCloseTo(1 / 3, 6);
+        expect(fixture.nativeElement.querySelectorAll('.radar-hover-node').length).toBe(4);
+    });
+
     it('uses the lower global subtype ceiling when jump and run are tied for a unit', () => {
         const fixture = TestBed.createComponent(LoadForceRadarPanelComponent);
         const tiedMobilityMek = createUnit({
@@ -360,6 +413,95 @@ describe('LoadForceRadarPanelComponent', () => {
         expect(getAxis('shortRangeDamage')?.ratio).toBeCloseTo(0.75, 6);
         expect(getAxis('mediumRangeDamage')?.ratio).toBeCloseTo(0.5, 6);
         expect(getAxis('longRangeDamage')?.ratio).toBeCloseTo(0.5, 6);
+    });
+
+    it('overlays hovered Alpha Strike unit stats using that unit as.TP range', () => {
+        const fixture = TestBed.createComponent(LoadForceRadarPanelComponent);
+
+        const asMek = createUnit({
+            id: 9,
+            name: 'AS Hover Mek',
+            as: {
+                TP: 'BM',
+                PV: 34,
+                SZ: 3,
+                TMM: 2,
+                usesOV: false,
+                OV: 0,
+                MV: '8j',
+                MVm: { '': 8, j: 12 },
+                usesTh: false,
+                Th: 0,
+                Arm: 4,
+                Str: 3,
+                specials: ['ECM', 'CASE'],
+                dmg: {
+                    dmgS: '3',
+                    dmgM: '2',
+                    dmgL: '1',
+                    dmgE: '0',
+                },
+                usesE: false,
+                usesArcs: false,
+            },
+        });
+        const asAero = createUnit({
+            id: 10,
+            name: 'AS Hover Aero',
+            type: 'Aero',
+            subtype: 'Aerospace Fighter',
+            moveType: 'Aerodyne',
+            as: {
+                TP: 'AF',
+                PV: 29,
+                SZ: 2,
+                TMM: 3,
+                usesOV: false,
+                OV: 0,
+                MV: '16a',
+                MVm: { a: 16 },
+                usesTh: false,
+                Th: 0,
+                Arm: 2,
+                Str: 1,
+                specials: ['BOMB'],
+                dmg: {
+                    dmgS: '2',
+                    dmgM: '3',
+                    dmgL: '4',
+                    dmgE: '0',
+                },
+                usesE: false,
+                usesArcs: false,
+            },
+        });
+
+        fixture.componentRef.setInput('force', new LoadForceEntry({
+            type: GameSystem.ALPHA_STRIKE,
+            groups: [{
+                units: [
+                    { unit: asMek, destroyed: false },
+                    { unit: asAero, destroyed: false },
+                ],
+            }],
+        }));
+        fixture.componentRef.setInput('hoveredUnit', asAero);
+        fixture.detectChanges();
+
+        const axes = fixture.componentInstance.hoveredUnitAxes();
+        const getAxis = (key: string) => axes.find((axis) => axis.key === key);
+
+        expect(getAxis('mobility')).toEqual(jasmine.objectContaining({ value: 3, min: 2, max: 5 }));
+        expect(getAxis('endurance')).toEqual(jasmine.objectContaining({ value: 3, min: 2, max: 5 }));
+        expect(getAxis('shortRangeDamage')).toEqual(jasmine.objectContaining({ value: 2, min: 1, max: 2 }));
+        expect(getAxis('mediumRangeDamage')).toEqual(jasmine.objectContaining({ value: 3, min: 2, max: 4 }));
+        expect(getAxis('longRangeDamage')).toEqual(jasmine.objectContaining({ value: 4, min: 3, max: 5 }));
+        expect(getAxis('mobility')?.ratio).toBeCloseTo(1 / 3, 6);
+        expect(getAxis('endurance')?.ratio).toBeCloseTo(1 / 3, 6);
+        expect(getAxis('shortRangeDamage')?.ratio).toBeCloseTo(1, 6);
+        expect(getAxis('mediumRangeDamage')?.ratio).toBeCloseTo(0.5, 6);
+        expect(getAxis('longRangeDamage')?.ratio).toBeCloseTo(0.5, 6);
+        expect(fixture.nativeElement.querySelectorAll('.radar-hover-node').length).toBe(5);
     });
 
     it('shows the empty state when the force has no resolvable units', () => {
