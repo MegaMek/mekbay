@@ -281,10 +281,12 @@ describe('SearchForceGeneratorDialogComponent', () => {
         buildPreviewSpy.calls.reset();
     });
 
-    it('builds an initial preview when the dialog opens', () => {
+    it('does not build an initial preview when the dialog opens', () => {
         TestBed.runInInjectionContext(() => new SearchForceGeneratorDialogComponent());
 
-        expect(buildPreviewSpy).toHaveBeenCalled();
+        expect(buildPreviewSpy).not.toHaveBeenCalled();
+        expect(component.previewEntry()).toBeNull();
+        expect(component.previewError()).toBe('Press REROLL to generate a force preview for the current settings.');
     });
 
     it('uses uncapped force-generator eligible units for preview requests', () => {

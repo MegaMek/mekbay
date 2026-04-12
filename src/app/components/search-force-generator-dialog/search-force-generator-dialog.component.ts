@@ -236,7 +236,9 @@ export class SearchForceGeneratorDialogComponent {
             maxUnitCount: this.maxUnitCount(),
         };
     });
-    private readonly previewState = signal<ForceGenerationPreview>(this.buildGeneratedPreview());
+    private readonly previewState = signal<ForceGenerationPreview>(this.createEmptyPreview(
+        'Press REROLL to generate a force preview for the current settings.',
+    ));
     readonly preview = computed(() => this.projectPreviewForDisplay(this.previewState()));
     readonly previewError = computed(() => {
         const preview = this.preview();
@@ -496,6 +498,18 @@ export class SearchForceGeneratorDialogComponent {
             lockedUnits,
             preventDuplicateChassis: this.preventDuplicateChassis(),
         });
+    }
+
+    private createEmptyPreview(error: string | null = null): ForceGenerationPreview {
+        return {
+            gameSystem: this.gameSystem(),
+            units: [],
+            totalCost: 0,
+            error,
+            faction: null,
+            era: null,
+            explanationLines: [],
+        };
     }
 
     private projectPreviewForDisplay(storedPreview: ForceGenerationPreview): ForceGenerationPreview {
