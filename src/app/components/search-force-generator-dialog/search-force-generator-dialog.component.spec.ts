@@ -545,12 +545,16 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         expect(toggle).not.toBeNull();
         expect(fixture.nativeElement.textContent).not.toContain('Force BV Limit');
+        expect(fixture.nativeElement.querySelector('.additional-filters-panel')).toBeNull();
 
         toggle?.click();
         fixture.detectChanges();
 
-        expect(fixture.nativeElement.textContent).toContain('Additional Search Filters');
-        expect(fixture.nativeElement.textContent).toContain('Tech');
+        const panel = fixture.nativeElement.querySelector('.additional-filters-panel') as HTMLElement | null;
+
+        expect(fixture.nativeElement.textContent).toContain('Additional Filters and Settings');
+        expect(panel).not.toBeNull();
+        expect(panel?.textContent).toContain('Tech');
     });
 
     it('toggles preview units in and out of the locked set', () => {
