@@ -318,15 +318,37 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
         return unitNames;
     };
 
-    const getEraScopedFactionUnitNames = (factionName: string, eraNames: readonly string[]): ReadonlySet<string> => {
+    const getMulMembershipUnitNames = (scope?: AvailabilityFilterScope): ReadonlySet<string> => {
         const unitNames = new Set<string>();
-        if (eraNames.length === 0) {
+
+        if (scope?.eraNames !== undefined && scope.factionNames !== undefined) {
+            for (const eraName of scope.eraNames) {
+                const eraFactionUnitIds = runtime.factionEraUnitIds.get(eraName);
+                for (const factionName of scope.factionNames) {
+                    addUnitNames(unitNames, eraFactionUnitIds?.get(factionName));
+                }
+            }
+
             return unitNames;
         }
 
-        for (const eraName of eraNames) {
-            addUnitNames(unitNames, runtime.factionEraUnitIds.get(eraName)?.get(factionName));
+        if (scope?.eraNames !== undefined) {
+            for (const eraName of scope.eraNames) {
+                addUnitNames(unitNames, runtime.indexedUnitIds.get('era')?.get(eraName));
+            }
+
+            return unitNames;
         }
+
+        if (scope?.factionNames !== undefined) {
+            for (const factionName of scope.factionNames) {
+                addUnitNames(unitNames, runtime.indexedUnitIds.get('faction')?.get(factionName));
+            }
+
+            return unitNames;
+        }
+
+        addUnitNames(unitNames, runtime.allUnitNames);
 
         return unitNames;
     };
@@ -531,67 +553,69 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
         return unitNames;
     };
 
+    const getMembershipUnitNames = (scope?: AvailabilityFilterScope): ReadonlySet<string> => {
+        return useMegaMekAvailability
+            ? getMegaMekMembershipUnitNames(scope)
+            : getMulMembershipUnitNames(scope);
+    };
+
+    const getScopedEraUnitNames = (
+        eraName: string,
+        scope?: AvailabilityFilterScope,
+    ): ReadonlySet<string> => {
+        return getMembershipUnitNames(
+            scope?.factionNames === undefined
+                ? { eraNames: [eraName] }
+                : { eraNames: [eraName], factionNames: scope.factionNames },
+        );
+    };
+
+    const getScopedFactionUnitNames = (
+        factionName: string,
+        eraNames?: readonly string[],
+    ): ReadonlySet<string> => {
+        return getMembershipUnitNames(
+            eraNames === undefined
+                ? { factionNames: [factionName] }
+                : { eraNames: [...eraNames], factionNames: [factionName] },
+        );
+    };
+
+    const getEraFilterValues = (): string[] => {
+        return useMegaMekAvailability
+            ? [...megaMekEraNames]
+            : [...(runtime.indexedFilterValues.get('era') ?? [])];
+    };
+
+    const getFactionFilterValues = (): string[] => {
+        return useMegaMekAvailability
+            ? [...megaMekFactionNames]
+            : [...(runtime.indexedFilterValues.get('faction') ?? [])];
+    };
+
     const getIndexedUnitIds = (
         filterKey: string,
         value: string,
         scope?: AvailabilityFilterScope,
     ): ReadonlySet<string> | undefined => {
-        if (!useMegaMekAvailability) {
-            if (filterKey === 'era' && scope?.factionNames !== undefined) {
-                return getFactionEraUnitNames(value, scope.factionNames);
-            }
-
-            if (filterKey === 'faction' && scope?.eraNames !== undefined) {
-                return getEraScopedFactionUnitNames(value, scope.eraNames);
-            }
-
-            return runtime.indexedUnitIds.get(filterKey)?.get(value);
-        }
-
         if (filterKey === 'era') {
-            if (scope?.factionNames !== undefined) {
-                return scope.factionNames.length === 0
-                    ? new Set<string>()
-                    : getMegaMekMembershipUnitNames({
-                        eraNames: [value],
-                        factionNames: scope.factionNames,
-                    });
-            }
-
-            return runtime.megaMekAvailability.eras.get(value)?.unitNames;
+            return getScopedEraUnitNames(value, scope);
         }
 
         if (filterKey === 'faction') {
-            if (scope?.eraNames !== undefined) {
-                return scope.eraNames.length === 0
-                    ? new Set<string>()
-                    : getMegaMekMembershipUnitNames({
-                        eraNames: scope.eraNames,
-                        factionNames: [value],
-                    });
-            }
-
-            if (value === runtime.megaMekAvailability.extinctFactionName) {
-                return runtime.megaMekAvailability.factions.get(value)?.unitNames ?? runtime.megaMekAvailability.extinctUnitNames;
-            }
-
-            return runtime.megaMekAvailability.factions.get(value)?.unitNames;
+            return getScopedFactionUnitNames(value, scope?.eraNames);
         }
 
         return runtime.indexedUnitIds.get(filterKey)?.get(value);
     };
 
     const getIndexedFilterValues = (filterKey: string): readonly string[] => {
-        if (!useMegaMekAvailability) {
-            return runtime.indexedFilterValues.get(filterKey) ?? [];
-        }
-
         if (filterKey === 'era') {
-            return megaMekEraNames;
+            return getEraFilterValues();
         }
 
         if (filterKey === 'faction') {
-            return megaMekFactionNames;
+            return getFactionFilterValues();
         }
 
         return runtime.indexedFilterValues.get(filterKey) ?? [];
@@ -620,54 +644,8 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
             }
             return PVCalculatorUtil.calculateAdjustedPV(unit.as.PV, request.pilotGunnerySkill);
         },
-        unitBelongsToEra: (unit: Unit, eraName: string, scope?: AvailabilityFilterScope) => {
-            if (!useMegaMekAvailability) {
-                if (scope?.factionNames !== undefined) {
-                    return getFactionEraUnitNames(eraName, scope.factionNames).has(unit.name);
-                }
-
-                return runtime.indexedUnitIds.get('era')?.get(eraName)?.has(unit.name) ?? false;
-            }
-
-            if (scope?.factionNames !== undefined) {
-                if (scope.factionNames.length === 0) {
-                    return false;
-                }
-
-                return getMegaMekMembershipUnitNames({
-                    eraNames: [eraName],
-                    factionNames: scope.factionNames,
-                }).has(unit.name);
-            }
-
-            return runtime.megaMekAvailability.eras.get(eraName)?.unitNames.has(unit.name) ?? false;
-        },
-        unitBelongsToFaction: (unit: Unit, factionName: string, eraNames?: readonly string[]) => {
-            if (useMegaMekAvailability) {
-                if (eraNames !== undefined) {
-                    if (eraNames.length === 0) {
-                        return false;
-                    }
-
-                    return getMegaMekMembershipUnitNames({
-                        eraNames,
-                        factionNames: [factionName],
-                    }).has(unit.name);
-                }
-
-                return runtime.megaMekAvailability.factions.get(factionName)?.unitNames.has(unit.name) ?? false;
-            }
-
-            if (eraNames !== undefined) {
-                if (eraNames.length === 0) {
-                    return false;
-                }
-
-                return getEraScopedFactionUnitNames(factionName, eraNames).has(unit.name);
-            }
-
-            return runtime.indexedUnitIds.get('faction')?.get(factionName)?.has(unit.name) ?? false;
-        },
+        unitBelongsToEra: (unit: Unit, eraName: string, scope?: AvailabilityFilterScope) => getScopedEraUnitNames(eraName, scope).has(unit.name),
+        unitBelongsToFaction: (unit: Unit, factionName: string, eraNames?: readonly string[]) => getScopedFactionUnitNames(factionName, eraNames).has(unit.name),
         unitMatchesAvailabilityFrom: (unit: Unit, availabilityFromName: string, scope?: AvailabilityFilterScope) => {
             if (availabilityFromName.trim().toLowerCase() === MEGAMEK_AVAILABILITY_UNKNOWN.toLowerCase()) {
                 return getMegaMekUnknownUnitNames().has(unit.name);
@@ -686,8 +664,8 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
             return getMegaMekRarityUnitNames(rarityName as MegaMekAvailabilityRarity, scope).has(unit.name);
         },
         unitBelongsToForcePack: (unit: Unit, packName: string) => runtime.forcePackToLookupKey.get(packName)?.has(getForcePackLookupKey(unit)) ?? false,
-        getAllEraNames: () => useMegaMekAvailability ? megaMekEraNames : runtime.indexedFilterValues.get('era') ?? [],
-        getAllFactionNames: () => useMegaMekAvailability ? megaMekFactionNames : runtime.indexedFilterValues.get('faction') ?? [],
+        getAllEraNames: getEraFilterValues,
+        getAllFactionNames: getFactionFilterValues,
         getAllAvailabilityFromNames: () => [...MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS],
         getAllAvailabilityRarityNames: () => [...MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS],
         getDisplayName: (filterKey: string, value: string) => workerDisplayNameFns.get(filterKey)?.(value),
