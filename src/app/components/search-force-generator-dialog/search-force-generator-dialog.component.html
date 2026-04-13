@@ -71,7 +71,7 @@
                                 step="1"
                                 [value]="budgetRange().min"
                                 (input)="onBudgetMinChange($event)"
-                                placeholder="0 = no minimum" />
+                                placeholder="0" />
                         </div>
 
                         <div class="form-fields">
@@ -83,7 +83,7 @@
                                 step="1"
                                 [value]="budgetRange().max || ''"
                                 (blur)="onBudgetMaxBlur($event)"
-                                placeholder="0 = no maximum; 0/0 = first result" />
+                                placeholder="0 = No maximum" />
                         </div>
                     </div>
 

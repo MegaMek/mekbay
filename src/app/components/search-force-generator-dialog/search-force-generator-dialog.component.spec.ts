@@ -149,6 +149,67 @@ describe('SearchForceGeneratorDialogComponent', () => {
             classic: { min: 7900, max: 8000 },
             alphaStrike: { min: 290, max: 300 },
         });
+        const forceGeneratorServiceMock = {
+            resolveInitialBudgetDefaults: resolveInitialBudgetDefaultsSpy,
+            resolveInitialUnitCountDefaults: () => ({ min: 4, max: 8 }),
+            resolveBudgetRangeForEditedMin: (range: { min: number; max: number }, editedMin: number) => {
+                const nextMin = Math.max(0, Math.floor(editedMin));
+                const nextMax = range.max > 0
+                    ? Math.max(nextMin, Math.floor(range.max))
+                    : Math.max(0, Math.floor(range.max));
+                return { min: nextMin, max: nextMax };
+            },
+            resolveBudgetRangeForEditedMax: (range: { min: number; max: number }, editedMax: number) => {
+                const nextMax = Math.max(0, Math.floor(editedMax));
+                if (nextMax === 0) {
+                    return {
+                        min: Math.max(0, Math.floor(range.min)),
+                        max: 0,
+                    };
+                }
+
+                return {
+                    min: Math.min(Math.max(0, Math.floor(range.min)), nextMax),
+                    max: nextMax,
+                };
+            },
+            resolveUnitCountRangeForEditedMin: (range: { min: number; max: number }, editedMin: number) => {
+                const nextMin = Math.min(100, Math.max(1, Math.floor(editedMin)));
+                return { min: nextMin, max: Math.max(nextMin, range.max) };
+            },
+            resolveUnitCountRangeForEditedMax: (range: { min: number; max: number }, editedMax: number) => {
+                const nextMax = Math.min(100, Math.max(1, Math.floor(editedMax)));
+                return { min: Math.min(range.min, nextMax), max: nextMax };
+            },
+            getStoredUnitCountOptionKeys: () => ({
+                min: 'forceGenLastMinUnitCount',
+                max: 'forceGenLastMaxUnitCount',
+            }),
+            getStoredBudgetOptionKeys: () => ({
+                min: 'forceGenLastBVMin',
+                max: 'forceGenLastBVMax',
+            }),
+            resolveGenerationContext: resolveGenerationContextSpy,
+            buildPreview: buildPreviewSpy,
+            createForceEntry: jasmine.createSpy('createForceEntry').and.callFake((preview: any) => {
+                if (preview.units.length === 0) {
+                    return null;
+                }
+
+                return {
+                    groups: [{
+                        units: preview.units.map((unit: any) => ({
+                            unit: unit.unit,
+                            destroyed: false,
+                            lockKey: unit.lockKey,
+                        })),
+                    }],
+                } as LoadForceEntry;
+            }),
+            getBudgetMetric: (unit: Unit, gameSystem: GameSystem) => {
+                return gameSystem === GameSystem.ALPHA_STRIKE ? unit.as?.PV ?? 0 : unit.bv ?? 0;
+            },
+        };
 
         gameSystemSignal = signal(GameSystem.CLASSIC);
 
@@ -164,67 +225,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
                 },
                 {
                     provide: ForceGeneratorService,
-                    useValue: {
-                        resolveInitialBudgetDefaults: resolveInitialBudgetDefaultsSpy,
-                        resolveInitialUnitCountDefaults: () => ({ min: 4, max: 8 }),
-                        resolveBudgetRangeForEditedMin: (range: { min: number; max: number }, editedMin: number) => {
-                            const nextMin = Math.max(0, Math.floor(editedMin));
-                            const nextMax = range.max > 0
-                                ? Math.max(nextMin, Math.floor(range.max))
-                                : Math.max(0, Math.floor(range.max));
-                            return { min: nextMin, max: nextMax };
-                        },
-                        resolveBudgetRangeForEditedMax: (range: { min: number; max: number }, editedMax: number) => {
-                            const nextMax = Math.max(0, Math.floor(editedMax));
-                            if (nextMax === 0) {
-                                return {
-                                    min: Math.max(0, Math.floor(range.min)),
-                                    max: 0,
-                                };
-                            }
-
-                            return {
-                                min: Math.min(Math.max(0, Math.floor(range.min)), nextMax),
-                                max: nextMax,
-                            };
-                        },
-                        resolveUnitCountRangeForEditedMin: (range: { min: number; max: number }, editedMin: number) => {
-                            const nextMin = Math.min(100, Math.max(1, Math.floor(editedMin)));
-                            return { min: nextMin, max: Math.max(nextMin, range.max) };
-                        },
-                        resolveUnitCountRangeForEditedMax: (range: { min: number; max: number }, editedMax: number) => {
-                            const nextMax = Math.min(100, Math.max(1, Math.floor(editedMax)));
-                            return { min: Math.min(range.min, nextMax), max: nextMax };
-                        },
-                        getStoredUnitCountOptionKeys: () => ({
-                            min: 'forceGenLastMinUnitCount',
-                            max: 'forceGenLastMaxUnitCount',
-                        }),
-                        getStoredBudgetOptionKeys: () => ({
-                            min: 'forceGenLastBVMin',
-                            max: 'forceGenLastBVMax',
-                        }),
-                        resolveGenerationContext: resolveGenerationContextSpy,
-                        buildPreview: buildPreviewSpy,
-                        createForceEntry: jasmine.createSpy('createForceEntry').and.callFake((preview: any) => {
-                            if (preview.units.length === 0) {
-                                return null;
-                            }
-
-                            return {
-                                groups: [{
-                                    units: preview.units.map((unit: any) => ({
-                                        unit: unit.unit,
-                                        destroyed: false,
-                                        lockKey: unit.lockKey,
-                                    })),
-                                }],
-                            } as LoadForceEntry;
-                        }),
-                        getBudgetMetric: (unit: Unit, gameSystem: GameSystem) => {
-                            return gameSystem === GameSystem.ALPHA_STRIKE ? unit.as?.PV ?? 0 : unit.bv ?? 0;
-                        },
-                    },
+                    useValue: forceGeneratorServiceMock,
                 },
                 {
                     provide: ForceBuilderService,
@@ -271,6 +272,15 @@ describe('SearchForceGeneratorDialogComponent', () => {
                     },
                 },
             ],
+        });
+
+        TestBed.overrideComponent(SearchForceGeneratorDialogComponent, {
+            set: {
+                providers: [{
+                    provide: ForceGeneratorService,
+                    useValue: forceGeneratorServiceMock,
+                }],
+            },
         });
 
         component = TestBed.runInInjectionContext(() => new SearchForceGeneratorDialogComponent());
@@ -366,6 +376,22 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(component.maxUnitCount()).toBe(100);
         expect(setOptionSpy).toHaveBeenCalledOnceWith('forceGenLastMaxUnitCount', 100);
         expect(input.value).toBe('100');
+    });
+
+    it('snaps an empty max units blur to the current minimum', () => {
+        component.minUnitCount.set(6);
+        component.maxUnitCount.set(10);
+
+        const input = document.createElement('input');
+        input.value = '';
+        const event = { target: input } as unknown as Event;
+
+        component.onMaxUnitCountBlur(event);
+
+        expect(component.minUnitCount()).toBe(6);
+        expect(component.maxUnitCount()).toBe(6);
+        expect(setOptionSpy).toHaveBeenCalledOnceWith('forceGenLastMaxUnitCount', 6);
+        expect(input.value).toBe('6');
     });
 
     it('does not replace the displayed preview when max units are committed on blur', () => {
@@ -476,6 +502,21 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         expect(buildPreviewSpy).not.toHaveBeenCalled();
         expect(component.previewEntry()).toBe(previewEntry);
+    });
+
+    it('treats an empty max budget blur as unbounded zero', () => {
+        component.classicBudgetMin.set(9000);
+        component.classicBudgetMax.set(10000);
+
+        const event = {
+            target: { value: '' },
+        } as unknown as Event;
+
+        component.onBudgetMaxBlur(event);
+
+        expect(component.classicBudgetMin()).toBe(9000);
+        expect(component.classicBudgetMax()).toBe(0);
+        expect((event.target as HTMLInputElement).value).toBe('');
     });
 
     it('preserves multistate era selections when updating filters', () => {

@@ -87,6 +87,7 @@ type UnitTypeFilterKey = 'type' | 'as.TP';
 @Component({
     selector: 'search-force-generator-dialog',
     standalone: true,
+    providers: [ForceGeneratorService],
     imports: [
         CommonModule,
         BaseDialogComponent,
@@ -394,7 +395,7 @@ export class SearchForceGeneratorDialogComponent {
             this.gameSystem(),
             this.forceGeneratorService.resolveBudgetRangeForEditedMax(
                 this.budgetRange(),
-                this.parseNumericValue(event, this.budgetRange().max),
+                this.parseNumericValue(event, 0),
             ),
         );
         this.syncInputValue(event, this.budgetRange().max || '');
@@ -420,7 +421,7 @@ export class SearchForceGeneratorDialogComponent {
                 min: this.minUnitCount(),
                 max: this.maxUnitCount(),
             },
-            this.parseNumericValue(event, this.maxUnitCount()),
+            this.parseNumericValue(event, this.minUnitCount()),
         ));
         this.syncInputValue(event, this.maxUnitCount());
     }
