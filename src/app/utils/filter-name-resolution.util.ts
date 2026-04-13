@@ -36,17 +36,16 @@ import type { WildcardPattern } from './semantic-filter.util';
 import { normalizeLooseText, wildcardToRegex } from './string.util';
 
 /**
- * Author: Drake
- * Resolved faction names from a filter, categorized by their filter state.
+ * Resolved dropdown values from a filter, categorized by their filter state.
  */
-export interface ResolvedFactionNames {
+export interface ResolvedDropdownNames {
     or: string[];
     and: string[];
     not: string[];
 }
 
-function resolveExplicitFactionNames(name: string, allFactionNames: string[]): string[] {
-    const exactMatches = allFactionNames.filter(candidate => candidate.toLowerCase() === name.toLowerCase());
+function resolveExplicitDropdownNames(name: string, allNames: string[]): string[] {
+    const exactMatches = allNames.filter(candidate => candidate.toLowerCase() === name.toLowerCase());
     if (exactMatches.length > 0) {
         return exactMatches;
     }
@@ -56,71 +55,65 @@ function resolveExplicitFactionNames(name: string, allFactionNames: string[]): s
         return [name];
     }
 
-    const looseMatches = allFactionNames.filter(candidate => normalizeLooseText(candidate) === normalizedName);
+    const looseMatches = allNames.filter(candidate => normalizeLooseText(candidate) === normalizedName);
     return looseMatches.length > 0 ? looseMatches : [name];
 }
 
 /**
- * Resolves faction names from a filter's MultiStateSelection and optional
- * wildcard patterns. Wildcard patterns ("Free World*") are expanded
- * against the provided list of all available faction names.
- *
- * @param selection The MultiStateSelection from the faction filter value
- * @param allFactionNames All available faction names for wildcard expansion
- * @param wildcardPatterns Optional wildcard patterns from the filter state
- * @returns Resolved faction names categorized by state (or/and/not)
+ * Resolves dropdown names from a filter's MultiStateSelection and optional
+ * wildcard patterns. Wildcard patterns are expanded against the provided
+ * list of all available names.
  */
-export function resolveFactionNamesFromFilter(
+export function resolveDropdownNamesFromFilter(
     selection: MultiStateSelection | undefined,
-    allFactionNames: string[],
+    allNames: string[],
     wildcardPatterns?: WildcardPattern[]
-): ResolvedFactionNames {
+): ResolvedDropdownNames {
     const or: string[] = [];
     const and: string[] = [];
     const not: string[] = [];
 
-    // Collect explicit faction names from MultiStateSelection
     if (selection) {
         for (const [, opt] of Object.entries(selection)) {
             if (!opt.state) continue;
-            const resolvedNames = resolveExplicitFactionNames(opt.name, allFactionNames);
+            const resolvedNames = resolveExplicitDropdownNames(opt.name, allNames);
             if (opt.state === 'or') or.push(...resolvedNames);
             else if (opt.state === 'and') and.push(...resolvedNames);
             else if (opt.state === 'not') not.push(...resolvedNames);
         }
     }
 
-    // Expand wildcard patterns against all faction names
     if (wildcardPatterns && wildcardPatterns.length > 0) {
         for (const wp of wildcardPatterns) {
             const regex = wildcardToRegex(wp.pattern);
-            const matched = allFactionNames.filter(name => regex.test(name));
+            const matched = allNames.filter(name => regex.test(name));
             if (wp.state === 'or') or.push(...matched);
             else if (wp.state === 'and') and.push(...matched);
             else if (wp.state === 'not') not.push(...matched);
         }
     }
 
-    return { or, and, not };
+    return {
+        or: Array.from(new Set(or)),
+        and: Array.from(new Set(and)),
+        not: Array.from(new Set(not)),
+    };
 }
 
 /**
- * Collects all positively-selected faction names (OR + AND) from a filter,
- * including wildcard expansion. Useful for picking a random faction from
- * the active filter.
- *
- * @param selection The MultiStateSelection from the faction filter value
- * @param allFactionNames All available faction names for wildcard expansion
- * @param wildcardPatterns Optional wildcard patterns from the filter state
- * @returns Deduplicated array of positively-selected faction names
+ * Collects all positively-selected dropdown names (OR + AND) from a filter,
+ * including wildcard expansion.
  */
-export function getPositiveFactionNamesFromFilter(
+export function getPositiveDropdownNamesFromFilter(
     selection: MultiStateSelection | undefined,
-    allFactionNames: string[],
+    allNames: string[],
     wildcardPatterns?: WildcardPattern[]
 ): string[] {
-    const resolved = resolveFactionNamesFromFilter(selection, allFactionNames, wildcardPatterns);
+    const resolved = resolveDropdownNamesFromFilter(selection, allNames, wildcardPatterns);
     const positive = [...resolved.or, ...resolved.and];
-    // Deduplicate
     return [...new Set(positive)];
+}
+
+export function hasResolvedDropdownNames(resolved: ResolvedDropdownNames): boolean {
+    return resolved.or.length > 0 || resolved.and.length > 0 || resolved.not.length > 0;
 }

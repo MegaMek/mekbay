@@ -34,37 +34,14 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { loadOptionalEnvFile, resolveMmDataRoot } = require('./lib/script-paths.js');
 
 const root = path.resolve(__dirname, '..');
 
-// Load .env file if it exists
-const envPath = path.join(root, '.env');
-if (fs.existsSync(envPath)) {
-  try {
-    const envContent = fs.readFileSync(envPath, 'utf8');
-    envContent.split(/\r?\n/).forEach(line => {
-      line = line.trim();
-      if (!line || line.startsWith('#')) return;
-      const parts = line.split('=');
-      if (parts.length >= 2) {
-        const key = parts[0].trim();
-        let value = parts.slice(1).join('=').trim();
-        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-          value = value.slice(1, -1);
-        }
-        if (!process.env[key]) {
-          process.env[key] = value;
-        }
-      }
-    });
-    console.log(`[SpriteMap] Loaded configuration from ${envPath}`);
-  } catch (e) {
-    console.warn('[SpriteMap] Failed to parse .env file:', e.message);
-  }
-}
+loadOptionalEnvFile(root, { logPrefix: 'SpriteMap' });
 
-const mmDataPath = process.env.MM_DATA_PATH || '../mm-data';
-const unitIconsDir = path.resolve(root, mmDataPath, 'data/images/units');
+const mmDataRoot = resolveMmDataRoot(root, { allowMissing: true });
+const unitIconsDir = path.join(mmDataRoot, 'data/images/units');
 const outputDir = path.join(root, 'public', 'sprites');
 
 // Sprite configuration
@@ -92,6 +69,7 @@ function calculateOptimalColumns(iconCount) {
   return Math.max(1, Math.min(optimalCols, iconCount));
 }
 
+console.log(`[SpriteMap] Using MM data from: ${mmDataRoot}`);
 console.log(`[SpriteMap] Using unit icons from: ${unitIconsDir}`);
 console.log(`[SpriteMap] Icon size: ${ICON_WIDTH}x${ICON_HEIGHT} (scale: ${ICON_SCALE})`);
 

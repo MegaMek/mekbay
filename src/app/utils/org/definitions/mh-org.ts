@@ -2,7 +2,7 @@ import { DEFAULT_ORG_RULE_REGISTRY } from '../org-facts.util';
 import type {
     OrgCIFormationRule,
     OrgComposedCountRule,
-    OrgDefinitionSpec,
+    OrgDefinition,
     OrgLeafCountRule,
 } from '../org-types';
 
@@ -79,7 +79,7 @@ export const MH_LEGION: OrgComposedCountRule = {
     childBucketBy: 'promotionBasic',
 };
 
-export const MH_CORE_ORG: OrgDefinitionSpec = {
+export const MH_CORE_ORG: OrgDefinition = {
     rules: [
         MH_CONTUBERNIUM_NON_INFANTRY,
         MH_CENTURY_NON_INFANTRY,

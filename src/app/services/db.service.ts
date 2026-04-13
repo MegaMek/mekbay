@@ -34,19 +34,24 @@
 import { inject, Injectable } from '@angular/core';
 import type { Units } from '../models/units.model';
 import type { Eras } from '../models/eras.model';
-import type { Factions } from '../models/factions.model';
+import type { RawMULFactions } from '../models/mulfactions.model';
 import type { Options } from '../models/options.model';
 import type { Quirks } from '../models/quirks.model';
 import type { Sourcebooks } from '../models/sourcebook.model';
+import type { MegaMekFactionsData } from '../models/megamek/factions.model';
+import type { MegaMekAvailabilityData } from '../models/megamek/availability.model';
+import type { MegaMekRulesetsData } from '../models/megamek/rulesets.model';
 import type { MULUnitSources } from '../models/mul-unit-sources.model';
-import type { EquipmentData } from '../models/equipment.model';
-import type { SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-serialization';
+import type { RawEquipmentData } from '../models/equipment.model';
+import type { SerializedForce } from '../models/force-serialization';
 import type { DataService } from './data.service';
-import type { UnitInitializerService } from './unit-initializer.service';
-import type { Injector } from '@angular/core';
 import { DialogsService } from './dialogs.service';
 import type { SerializedSearchFilter } from './unit-search-filters.model';
-import { LoadForceEntry, type LoadForceGroup, type LoadForceUnit } from '../models/load-force-entry.model';
+import {
+    createLoadForceEntryFromSerializedForce,
+    LoadForceEntry,
+    type LoadForceEntryResolver,
+} from '../models/load-force-entry.model';
 import { LoggerService } from './logger.service';
 import type { SerializedOperation } from '../models/operation.model';
 import type { SerializedOrganization } from '../models/organization.model';
@@ -62,6 +67,9 @@ const DB_STORE = 'store';
 const UNITS_KEY = 'units';
 const EQUIPMENT_KEY = 'equipment';
 const FACTIONS_KEY = 'factions';
+const MEGAMEK_FACTIONS_KEY = 'megamekFactions';
+const MEGAMEK_AVAILABILITY_KEY = 'megamekAvailability';
+const MEGAMEK_RULESETS_KEY = 'megamekRulesets';
 const ERAS_KEY = 'eras';
 const SOURCEBOOKS_KEY = 'sourcebooks';
 const SHEETS_STORE = 'sheetsStore';
@@ -498,24 +506,48 @@ export class DbService {
         return await this.getDataFromGeneralStore<Units>(UNITS_KEY);
     }
 
-    public async saveEquipment(equipmentData: EquipmentData): Promise<void> {
+    public async saveEquipment(equipmentData: RawEquipmentData): Promise<void> {
         return await this.saveDataFromGeneralStore(equipmentData, EQUIPMENT_KEY);
     }
 
-    public async getEquipments(): Promise<EquipmentData | null> {
-        return await this.getDataFromGeneralStore<EquipmentData>(EQUIPMENT_KEY);
+    public async getEquipments(): Promise<RawEquipmentData | null> {
+        return await this.getDataFromGeneralStore<RawEquipmentData>(EQUIPMENT_KEY);
     }
 
     public async saveUnits(unitsData: Units): Promise<void> {
         return await this.saveDataFromGeneralStore(unitsData, UNITS_KEY);
     }
 
-    public async getFactions(): Promise<Factions | null> {
-        return await this.getDataFromGeneralStore<Factions>(FACTIONS_KEY);
+    public async getFactions(): Promise<RawMULFactions | null> {
+        return await this.getDataFromGeneralStore<RawMULFactions>(FACTIONS_KEY);
     }
 
-    public async saveFactions(factionsData: Factions): Promise<void> {
+    public async saveFactions(factionsData: RawMULFactions): Promise<void> {
         return await this.saveDataFromGeneralStore(factionsData, FACTIONS_KEY);
+    }
+
+    public async getMegaMekFactions(): Promise<MegaMekFactionsData | null> {
+        return await this.getDataFromGeneralStore<MegaMekFactionsData>(MEGAMEK_FACTIONS_KEY);
+    }
+
+    public async saveMegaMekFactions(factionsData: MegaMekFactionsData): Promise<void> {
+        return await this.saveDataFromGeneralStore(factionsData, MEGAMEK_FACTIONS_KEY);
+    }
+
+    public async getMegaMekAvailability(): Promise<MegaMekAvailabilityData | null> {
+        return await this.getDataFromGeneralStore<MegaMekAvailabilityData>(MEGAMEK_AVAILABILITY_KEY);
+    }
+
+    public async saveMegaMekAvailability(availabilityData: MegaMekAvailabilityData): Promise<void> {
+        return await this.saveDataFromGeneralStore(availabilityData, MEGAMEK_AVAILABILITY_KEY);
+    }
+
+    public async getMegaMekRulesets(): Promise<MegaMekRulesetsData | null> {
+        return await this.getDataFromGeneralStore<MegaMekRulesetsData>(MEGAMEK_RULESETS_KEY);
+    }
+
+    public async saveMegaMekRulesets(rulesetsData: MegaMekRulesetsData): Promise<void> {
+        return await this.saveDataFromGeneralStore(rulesetsData, MEGAMEK_RULESETS_KEY);
     }
 
     public async getEras(): Promise<Eras | null> {
@@ -958,7 +990,7 @@ export class DbService {
     /**
      * Retrieves all forces from IndexedDB, sorted by timestamp descending.
      */
-    public async listForces(dataService: DataService, unitInitializer: UnitInitializerService, injector: Injector): Promise<LoadForceEntry[]> {
+    public async listForces(dataService: LoadForceEntryResolver): Promise<LoadForceEntry[]> {
         const db = await this.dbPromise;
         if (!db) return []; // Degraded mode
         return new Promise<LoadForceEntry[]>((resolve, reject) => {
@@ -986,57 +1018,9 @@ export class DbService {
                     }
                     // Deserialize each force
                     try {
-                        const result: LoadForceEntry[] = [];
-                        for (const raw of forces) {
-                            const groups: LoadForceGroup[] = [];
-                            if (raw.groups && Array.isArray(raw.groups)) {
-                                for (const group of raw.groups as SerializedGroup[]) {
-                                    const loadGroup: LoadForceGroup = {
-                                        name: group.name,
-                                        formationId: group.formationId,
-                                        units: []
-                                    };
-                                    for (const unit of group.units as SerializedUnit[]) {
-                                        const loadUnit: LoadForceUnit = {
-                                            unit: dataService.getUnitByName(unit.unit),
-                                            alias: unit.alias,
-                                            destroyed: unit.state.destroyed ?? false
-                                        };
-                                        loadGroup.units.push(loadUnit);
-                                    }
-                                    groups.push(loadGroup);
-                                }
-                            } else if (raw.units && Array.isArray(raw.units)) {
-                                const loadUnits: LoadForceUnit[] = [];
-                                for (const unit of raw.units as SerializedUnit[]) {
-                                    const loadUnit: LoadForceUnit = {
-                                        unit: dataService.getUnitByName(unit.unit),
-                                        alias: unit.alias,
-                                        destroyed: unit.state.destroyed ?? false
-                                    }
-                                    loadUnits.push(loadUnit);
-                                };
-                                groups.push({
-                                    name: '',
-                                    units: loadUnits
-                                });
-                            }
-                            const entry: LoadForceEntry = new LoadForceEntry({
-                                owned: true,
-                                cloud: false,
-                                instanceId: raw.instanceId,
-                                name: raw.name,
-                                type: raw.type,
-                                faction: raw.factionId != null ? dataService.getFactionById(raw.factionId) ?? null : null,
-                                era: raw.eraId != null ? dataService.getEraById(raw.eraId) ?? null : null,
-                                bv: raw.bv ?? undefined,
-                                pv: raw.pv ?? undefined,
-                                timestamp: raw.timestamp, 
-                                groups: groups
-                            });
-                            result.push(entry);
-                        }
-                        resolve(result);
+                        resolve(
+                            forces.map((raw) => createLoadForceEntryFromSerializedForce(raw as SerializedForce, dataService, { local: true })),
+                        );
                     } catch (err) {
                         reject(err);
                     }

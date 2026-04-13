@@ -46,6 +46,7 @@ import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { ToastService } from '../../services/toast.service';
 import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
+import { UnitAvailabilitySourceService } from '../../services/unit-availability-source.service';
 
 
 /*
@@ -66,6 +67,7 @@ export class ForceBuilderViewerComponent {
     compactModeService = inject(CompactModeService);
     private dialogsService = inject(DialogsService);
     private injector = inject(Injector);
+    private unitAvailabilitySource = inject(UnitAvailabilitySourceService);
     private scrollableContent = viewChild<ElementRef<HTMLDivElement>>('scrollableContent');
 
     forceUnitItems = viewChildren<ElementRef<HTMLElement>>('forceUnitItem');
@@ -78,6 +80,8 @@ export class ForceBuilderViewerComponent {
     compactMode = computed(() => {
         return this.compactModeService.compactMode();
     });
+
+    availabilityContext = computed(() => this.unitAvailabilitySource.getForceAvailabilityContext());
 
     /**
      * Alignment styling (friendly/enemy) is shown on non-owned forces only when:
@@ -95,6 +99,10 @@ export class ForceBuilderViewerComponent {
     // });
 
     hasOwnedForce = computed<boolean>(() => this.forceBuilderService.loadedForces().some(s => !s.force.readOnly()));
+
+    forceEraWarning(force: Force): string | null {
+        return force.getEraWarningMessage(force.era(), force.faction(), this.availabilityContext());
+    }
 
     /** Set of Force instances whose headers are currently blinking (remote update on visible force). */
     blinkingForces = signal<Set<Force>>(new Set());

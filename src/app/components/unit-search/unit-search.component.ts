@@ -35,10 +35,11 @@ import { CommonModule } from '@angular/common';
 import { Component, signal, type ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, type input, viewChild, ChangeDetectorRef, DestroyRef, untracked, type ComponentRef, type TemplateRef } from '@angular/core';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
-import { RangeSliderComponent } from '../range-slider/range-slider.component';
-import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
-import { SORT_OPTIONS, type SortOption, type SerializedSearchFilter } from '../../services/unit-search-filters.model';
+import { UnitSearchAdvancedFiltersComponent } from '../unit-search-advanced-filters/unit-search-advanced-filters.component';
+import { MEGAMEK_RARITY_SORT_KEY, SORT_OPTIONS, type SortOption, type SerializedSearchFilter } from '../../services/unit-search-filters.model';
+import { getMegaMekAvailabilityRarityForScore, MEGAMEK_AVAILABILITY_UNKNOWN_SCORE } from '../../models/megamek/availability.model';
 import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
+import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
 import type { Unit } from '../../models/units.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { Overlay, type OverlayRef } from '@angular/cdk/overlay';
@@ -99,7 +100,7 @@ export interface ChassisGroup {
 @Component({
     selector: 'unit-search',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, RangeSliderComponent, LongPressDirective, TooltipDirective, MultiSelectDropdownComponent, AdjustedPV, FormatNumberPipe, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, SemanticGuideComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent],
+    imports: [CommonModule, ScrollingModule, LongPressDirective, TooltipDirective, AdjustedPV, FormatNumberPipe, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, UnitSearchAdvancedFiltersComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.scss',
     host: {
@@ -128,6 +129,7 @@ export class UnitSearchComponent {
 
     readonly useHex = computed(() => this.optionsService.options().ASUseHex);
     readonly cardStyle = computed(() => this.optionsService.options().ASCardStyle);
+    readonly megaMekAvailabilitySourceSelected = computed(() => this.optionsService.options().availabilitySource === 'megamek');
     /** Whether the layout is filters-list-panel (filters on left) */
     readonly filtersOnLeft = computed(() => this.optionsService.options().unitSearchExpandedViewLayout === 'filters-list-panel');
 
@@ -137,11 +139,19 @@ export class UnitSearchComponent {
     readonly advPanelFilterGameSystem = signal<GameSystem>(this.gameService.currentGameSystem());
     readonly dropdownFilters = computed(() => {
         const gameSystem = this.advPanelFilterGameSystem();
-        return DROPDOWN_FILTERS.filter(f => !f.game || f.game === gameSystem);
+        const availabilitySource = this.optionsService.options().availabilitySource;
+        return DROPDOWN_FILTERS.filter(f => (
+            (!f.game || f.game === gameSystem)
+            && isFilterAvailableForAvailabilitySource(f, availabilitySource)
+        ));
     });
     readonly rangeFilters = computed(() => {
         const gameSystem = this.advPanelFilterGameSystem();
-        return RANGE_FILTERS.filter(f => !f.game || f.game === gameSystem);
+        const availabilitySource = this.optionsService.options().availabilitySource;
+        return RANGE_FILTERS.filter(f => (
+            (!f.game || f.game === gameSystem)
+            && isFilterAvailableForAvailabilitySource(f, availabilitySource)
+        ));
     });
     readonly otherAdvPanelFilterGameSystem = computed(() => this.getOtherGameSystem(this.advPanelFilterGameSystem()));
     readonly otherAdvPanelFilterGameSystemHasActiveFilters = computed(() => {
@@ -371,7 +381,7 @@ export class UnitSearchComponent {
         // Check if the sort key produces numerical values
         const units = this.filtersService.filteredUnits();
         if (units.length === 0) return null;
-        const sample = this.getNestedProperty(units[0], key);
+        const sample = this.getUnitSortRawValue(units[0], key);
         if (typeof sample !== 'number') return null;
 
         const opt: SortOption | undefined = this.SORT_OPTIONS.find(o => o.key === key);
@@ -939,6 +949,19 @@ export class UnitSearchComponent {
             untracked(() => {
                 if (this.immediateSearchText() !== text) {
                     this.immediateSearchText.set(text);
+                }
+            });
+        });
+        effect(() => {
+            const closeRequest = this.filtersService.closePanelsRequest();
+            if (closeRequest.requestId === 0) {
+                return;
+            }
+
+            untracked(() => {
+                this.closeAllPanels();
+                if (closeRequest.exitExpandedView) {
+                    this.expandedView.set(false);
                 }
             });
         });
@@ -1894,7 +1917,7 @@ export class UnitSearchComponent {
         let isNumeric = false;
 
         for (const unit of group.units) {
-            const raw = this.getNestedProperty(unit, key);
+            const raw = this.getUnitSortRawValue(unit, key);
             if (typeof raw === 'number') {
                 isNumeric = true;
                 if (raw < min) min = raw;
@@ -1903,6 +1926,12 @@ export class UnitSearchComponent {
         }
 
         if (!isNumeric) return null;
+
+        if (key === MEGAMEK_RARITY_SORT_KEY) {
+            const fmtMin = this.formatMegaMekRaritySortScore(min);
+            const fmtMax = this.formatMegaMekRaritySortScore(max);
+            return min === max ? fmtMin : `${fmtMin}–${fmtMax}`;
+        }
 
         const fmtMin = FormatNumberPipe.formatValue(min, true, false);
         const fmtMax = FormatNumberPipe.formatValue(max, true, false);
@@ -1962,10 +1991,45 @@ export class UnitSearchComponent {
             return this.formatClassicSubtype(unit) || '—';
         }
 
-        const raw = this.getNestedProperty(unit, key);
+        if (key === MEGAMEK_RARITY_SORT_KEY) {
+            return this.formatMegaMekRaritySortScore(this.filtersService.getMegaMekRaritySortScore(unit));
+        }
+
+        const raw = this.getUnitSortRawValue(unit, key);
         if (raw == null) return '—';
 
         return typeof raw === 'number' ? FormatNumberPipe.formatValue(raw, true, false) : String(raw);
+    }
+
+    getSearchResultMegaMekRarity(unit: Unit): string {
+        return this.formatMegaMekRaritySortScore(this.filtersService.getMegaMekRaritySortScore(unit));
+    }
+
+    getCardSortSlotOverride(unit: Unit): { value: string; numeric?: boolean } | null {
+        if (this.filtersService.selectedSort() !== MEGAMEK_RARITY_SORT_KEY) {
+            return null;
+        }
+
+        return {
+            value: this.getSearchResultMegaMekRarity(unit),
+            numeric: false,
+        };
+    }
+
+    private formatMegaMekRaritySortScore(score: number): string {
+        if (score === MEGAMEK_AVAILABILITY_UNKNOWN_SCORE) {
+            return '—';
+        }
+
+        return getMegaMekAvailabilityRarityForScore(score);
+    }
+
+    private getUnitSortRawValue(unit: Unit, key: string): unknown {
+        if (key === MEGAMEK_RARITY_SORT_KEY) {
+            return this.filtersService.getMegaMekRaritySortScore(unit);
+        }
+
+        return this.getNestedProperty(unit, key);
     }
 
     formatClassicStat(value: number | undefined): string {
@@ -2178,6 +2242,10 @@ export class UnitSearchComponent {
         };
         this.clearSelection();
         this.closeAllPanels();
+    }
+
+    showGenerateForceDialog(): void {
+        void this.forceBuilderService.showSearchForceGeneratorDialog();
     }
 
     /**

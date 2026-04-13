@@ -7,7 +7,7 @@
              (cdkDropListDropped)="onDrop($event, 'friendly')">
             @for (f of friendlyForces(); track f.instanceId) {
                 <div class="op-force" [class.missing]="f.exists === false" cdkDrag [cdkDragData]="f" [cdkDragDisabled]="!allowDragDrop()">
-                    @if (f.factionId | factionImg; as factionImgUrl) {
+                    @if (f.factionImgUrl; as factionImgUrl) {
                         <img [src]="factionImgUrl" class="op-faction-icon" />
                     }
                     <span class="op-force-name">{{ f.name || f.instanceId }}</span>
@@ -43,7 +43,7 @@
              (cdkDropListDropped)="onDrop($event, 'enemy')">
             @for (f of enemyForces(); track f.instanceId) {
                 <div class="op-force" [class.missing]="f.exists === false" cdkDrag [cdkDragData]="f" [cdkDragDisabled]="!allowDragDrop()">
-                    @if (f.factionId | factionImg; as factionImgUrl) {
+                    @if (f.factionImgUrl; as factionImgUrl) {
                         <img [src]="factionImgUrl" class="op-faction-icon" />
                     }
                     <span class="op-force-name">{{ f.name || f.instanceId }}</span>

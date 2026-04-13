@@ -3,7 +3,7 @@ import type {
     OrgCIFormationRule,
     OrgComposedCountRule,
     OrgComposedPatternRule,
-    OrgDefinitionSpec,
+    OrgDefinition,
     OrgLeafCountRule,
 } from '../org-types';
 import {
@@ -235,7 +235,7 @@ export const CLAN_GALAXY: OrgComposedCountRule = {
     childBucketBy: 'promotionBasic',
 };
 
-export const CLAN_CORE_ORG: OrgDefinitionSpec = {
+export const CLAN_CORE_ORG: OrgDefinition = {
     rules: [
         CLAN_NOVA,
         CLAN_SUPERNOVA_BINARY,

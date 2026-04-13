@@ -32,6 +32,7 @@
  */
 
 import type { HeatProfile } from '../models/force-serialization';
+import { getFactionAffinity } from '../models/factions.model';
 import type { SheetService } from '../services/sheet.service';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { PrintAllOptions } from '../models/print-options.model';
@@ -326,8 +327,9 @@ export class CBTPrintUtil {
         const faction = force.faction();
         if (faction) {
             let factionLabel = faction.name;
-            if (faction.group && faction.group !== faction.name) {
-                factionLabel += ` · ${faction.group}`;
+            const factionAffinity = getFactionAffinity(faction);
+            if (factionAffinity !== 'Other' && factionAffinity !== faction.name) {
+                factionLabel += ` · ${factionAffinity}`;
             }
             headerParts.push(factionLabel);
         }

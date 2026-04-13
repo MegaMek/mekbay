@@ -33,14 +33,14 @@
 
 import type { ForceUnit } from '../models/force-unit.model';
 import { GameSystem } from '../models/common.model';
-import { FACTION_MERCENARY, type Faction } from '../models/factions.model';
+import { type Faction } from '../models/factions.model';
 import type { Unit } from '../models/units.model';
 import { type FormationTypeDefinition, type FormationMatch, NO_FORMATION, NO_FORMATION_ID } from './formation-type.model';
 import { FORMATION_DEFINITIONS } from './formation-definitions';
 import type { UnitGroup } from '../models/force.model';
 import { collectGroupUnits, compileGroupFacts } from './org/org-facts.util';
 import { groupMatchesChildRole } from './org/org-role-match.util';
-import { resolveOrgDefinitionSpec } from './org/org-registry.util';
+import { resolveOrgDefinition } from './org/org-registry.util';
 import type {
     GroupSizeResult,
     OrgComposedCountRule,
@@ -48,6 +48,7 @@ import type {
     OrgFormationMatchingSpec,
     OrgRuleDefinition,
 } from './org/org-types';
+import { MULFACTION_MERCENARY } from '../models/mulfactions.model';
 
 /*
  * Author: Drake
@@ -69,7 +70,7 @@ export interface FormationRequirementsFilterContext {
 
 export class LanceTypeIdentifierUtil {
     private static readonly DEFAULT_FACTION: Faction = {
-        id: FACTION_MERCENARY,
+        id: MULFACTION_MERCENARY,
         name: 'Mercenary',
         group: 'Mercenary',
         img: '',
@@ -166,7 +167,7 @@ export class LanceTypeIdentifierUtil {
         }
 
         const resolvedFaction = targetForce.faction() ?? this.DEFAULT_FACTION;
-        const orgDefinition = resolveOrgDefinitionSpec(resolvedFaction, targetForce.era());
+        const orgDefinition = resolveOrgDefinition(resolvedFaction, targetForce.era());
         const matchedRule = orgDefinition.rules.find((candidate) => candidate.type === resolvedGroup.type);
         if (!this.isFormationMatchingRule(matchedRule)) {
             return {};
@@ -225,6 +226,22 @@ export class LanceTypeIdentifierUtil {
             return null;
         }
         return FORMATION_DEFINITIONS.find((definition) => definition.id === formationId)?.name ?? null;
+    }
+
+    public static getFormationPriorityWeight(
+        definition: FormationTypeDefinition,
+        factionName: string,
+    ): number {
+        let weight = 1;
+        if (definition.exclusiveFaction && factionName.includes(definition.exclusiveFaction)) {
+            weight *= 5;
+        } else if (definition.parent) {
+            weight *= 3;
+        } else if (definition.id !== 'support-lance' && definition.id !== 'command-lance' && definition.id !== 'battle-lance') {
+            weight *= 2;
+        }
+
+        return weight;
     }
 
     public static identifyLanceTypes(
@@ -365,14 +382,7 @@ export class LanceTypeIdentifierUtil {
         let bestWeight = -1;
 
         for (const match of matches) {
-            let weight = 1;
-            if (match.definition.exclusiveFaction && factionName.includes(match.definition.exclusiveFaction)) {
-                weight *= 5;
-            } else if (match.definition.parent) {
-                weight *= 3;
-            } else if (match.definition.id !== 'support-lance' && match.definition.id !== 'command-lance' && match.definition.id !== 'battle-lance') {
-                weight *= 2;
-            }
+            const weight = this.getFormationPriorityWeight(match.definition, factionName);
 
             if (weight > bestWeight) {
                 bestWeight = weight;
