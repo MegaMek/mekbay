@@ -31,10 +31,11 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { type PilotAbility, getAbilityDetails, formatSummaryMovement, type PilotAbilityRuleDetails } from '../../models/pilot-abilities.model';
 import { GameSystem, formatRulesReference, type RulesReference } from '../../models/common.model';
 import type { ASUnitTypeCode } from '../../models/units.model';
+import { OptionsService } from '../../services/options.service';
 
 interface ResolvedDropdownAbility {
     ability: PilotAbility;
@@ -85,7 +86,7 @@ interface ResolvedDropdownAbility {
                         {{ resolved.unitTypeLabel }}
                     </div>
                     }
-                    <div class="ability-summary">{{ resolved.summary }}</div>
+                    <div class="ability-summary" [innerHTML]="resolved.summary"></div>
                     @if (resolved.rulesRef.length) {
                     <div class="ability-meta">
                         <span class="ability-rules">
@@ -207,6 +208,7 @@ interface ResolvedDropdownAbility {
     `]
 })
 export class AbilityDropdownPanelComponent {
+    private readonly optionsService = inject(OptionsService);
     abilities = input.required<PilotAbility[]>();
     disabledIds = input<string[]>([]);
     remainingCost = input<number>(999);
@@ -228,7 +230,7 @@ export class AbilityDropdownPanelComponent {
             return {
                 ability,
                 details,
-                summary: formatSummaryMovement(details.summary)[0] ?? '',
+                summary: formatSummaryMovement(details.summary, this.optionsService.options().ASUseHex)[0] ?? '',
                 rulesRef: details.rulesRef ?? [],
                 unitTypeRestricted,
                 unitTypeLabel: details.unitType,

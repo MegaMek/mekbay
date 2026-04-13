@@ -204,7 +204,7 @@
                                     }
                                 </div>
                                 @if (abilityInfo?.summary; as abilitySummary) {
-                                <div class="ability-detail-summary">{{ abilitySummary }}</div>
+                                <div class="ability-detail-summary" [innerHTML]="abilitySummary"></div>
                                 }
                                 @if (abilityInfo?.rulesRef; as abilityRules) {
                                 @if (abilityRules.length > 0) {

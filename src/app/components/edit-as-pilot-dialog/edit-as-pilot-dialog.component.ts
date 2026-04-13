@@ -54,6 +54,7 @@ import {
     type FormationEffectPreview,
     type UnsupportedFormationEffectDescriptor,
 } from '../../utils/formation-ability-assignment.util';
+import { OptionsService } from '../../services/options.service';
 
 /*
  * Author: Drake
@@ -116,6 +117,7 @@ export class EditASPilotDialogComponent {
     private dialogsService = inject(DialogsService);
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
+    private readonly optionsService = inject(OptionsService);
     readonly formatRuleReference = formatRulesReference;
 
     availableAbilities = signal<PilotAbility[]>(PILOT_ABILITIES);
@@ -358,7 +360,7 @@ export class EditASPilotDialogComponent {
         return {
             name: standardAbility.name,
             cost: standardAbility.cost,
-            summary: formatSummaryMovement(details.summary)[0],
+            summary: formatSummaryMovement(details.summary, this.optionsService.options().ASUseHex)[0],
             isCustom: false,
             rulesRef: details.rulesRef,
             unitTypeInvalid
@@ -432,7 +434,7 @@ export class EditASPilotDialogComponent {
         const details = getAbilityDetails(ability, GameSystem.ALPHA_STRIKE);
         return {
             name: ability.name,
-            summary: details.summary[0] ?? '',
+            summary: formatSummaryMovement(details.summary, this.optionsService.options().ASUseHex)[0] ?? '',
             rulesRef: details.rulesRef,
         };
     }

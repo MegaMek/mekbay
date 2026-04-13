@@ -34,11 +34,9 @@
 import { Rulebook, type RulesReference } from './common.model';
 import { GameSystem } from '../models/common.model';
 import type { ASUnitTypeCode } from './units.model';
-import { OptionsService } from '../services/options.service';
 import { formatMovement } from '../utils/as-common.util';
 
-export function formatSummaryMovement(summaries: string[]): string[] {
-    const useHex = OptionsService.get()?.options()?.ASUseHex ?? false;
+export function formatSummaryMovement(summaries: string[], useHex: boolean = false): string[] {
     return summaries.map(text => {
         return text.replace(/\[\[(\d+)\]\]/g, (_, val) => {
             return formatMovement(Number(val), '', useHex);

@@ -31,13 +31,14 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { formationInheritsParentEffects, type FormationTypeDefinition, type FormationEffectGroup } from '../../utils/formation-type.model';
 import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
 import { type PilotAbility, PILOT_ABILITIES, getAbilityDetails, formatSummaryMovement } from '../../models/pilot-abilities.model';
 import { type CommandAbility, COMMAND_ABILITIES } from '../../models/command-abilities.model';
 import { GameSystem, formatRulesReference, type RulesReference } from '../../models/common.model';
 import { getInheritedFormationEffectGroups } from '../../utils/formation-ability-assignment.util';
+import { OptionsService } from '../../services/options.service';
 
 /*
  * Author: Drake
@@ -423,6 +424,7 @@ export interface ResolvedEffectGroup {
     `]
 })
 export class FormationInfoComponent {
+    private readonly optionsService = inject(OptionsService);
     formation = input<FormationTypeDefinition | null>(null);
     /** Game system of the owning force: determines which ability summaries to display. */
     gameSystem = input<GameSystem>(GameSystem.ALPHA_STRIKE);
@@ -521,7 +523,7 @@ export class FormationInfoComponent {
                         abilities.push({
                             pilotAbility: pilot,
                             name: pilot.name,
-                            summary: formatSummaryMovement(details.summary),
+                            summary: formatSummaryMovement(details.summary, this.optionsService.options().ASUseHex),
                             rulesRef: details.rulesRef ?? [],
                             unitType: details.unitType,
                         });
