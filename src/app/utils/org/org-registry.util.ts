@@ -4,6 +4,7 @@ import {
 	CC_CORE_ORG,
 	CLAN_CORE_ORG,
 	COMSTAR_CORE_ORG,
+	DC_CORE_ORG,
 	IS_CORE_ORG,
 	MH_CORE_ORG,
 	SOCIETY_CORE_ORG,
@@ -26,7 +27,6 @@ export function isClan(faction: Faction): boolean {
 	return false;
 }
 
-
 export const ORG_DEFINITION_REGISTRY: readonly OrgDefinitionRegistryEntry[] = [
 	{ match: (faction) => faction.name.includes('ComStar') || faction.name.includes('Word of Blake'), org: COMSTAR_CORE_ORG },
 	{ match: (faction) => faction.name.includes('Society'), org: SOCIETY_CORE_ORG },
@@ -34,6 +34,7 @@ export const ORG_DEFINITION_REGISTRY: readonly OrgDefinitionRegistryEntry[] = [
 	{ match: (faction, era) => faction.name.includes('Dragoons') && (era?.years.to ?? Number.POSITIVE_INFINITY) <= 3050, org: IS_CORE_ORG },
 	{ match: (faction) => faction.name.includes('Dragoons'), org: WD_CORE_ORG },
 	{ match: (faction) => faction.name.includes('Capellan Confederation'), org: CC_CORE_ORG },
+	{ match: (faction) => faction.name.includes('Draconis'), org: DC_CORE_ORG },
 	{ match: (faction) => isClan(faction), org: CLAN_CORE_ORG },
 ];
 

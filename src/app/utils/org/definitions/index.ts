@@ -4,4 +4,5 @@ export * from './comstar-org';
 export * from './society-org';
 export * from './mh-org';
 export * from './cc-org';
+export * from './dc-org';
 export * from './wd-org';
