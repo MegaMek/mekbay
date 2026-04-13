@@ -26,7 +26,7 @@ import {
     usesIndexedDropdownUniverse,
 } from '../utils/unit-search-filter-config.util';
 import type { MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
-import { MEGAMEK_RARITY_SORT_KEY } from './unit-search-filters.model';
+import { MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from './unit-search-filters.model';
 import { SEARCH_WORKER_FACTORY } from '../utils/unit-search-worker-factory.util';
 import type { SearchWorkerLike } from '../utils/unit-search-worker-client.util';
 import type { UnitSearchWorkerResponseMessage } from '../utils/unit-search-worker-protocol.util';
@@ -1493,7 +1493,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
-        service.setSortOrder(MEGAMEK_RARITY_SORT_KEY);
+        service.setSortOrder(MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
         service.setSortDirection('desc');
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['High Unit', 'Low Unit', 'Unknown Unit']);
@@ -1897,7 +1897,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         await flushAsyncWork();
 
-        service.setSortOrder(MEGAMEK_RARITY_SORT_KEY);
+        service.setSortOrder(MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
         service.setSortDirection('desc');
 
         const corpusVersion = (service as any).getWorkerCorpusVersion();
@@ -1913,7 +1913,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         await flushAsyncWork();
 
         const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
-        expect(executeMessage?.request.sortKey).toBe(MEGAMEK_RARITY_SORT_KEY);
+        expect(executeMessage?.request.sortKey).toBe(MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
 
         worker.emit({
             type: 'result',
@@ -3294,7 +3294,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         await flushAsyncWork();
         const setupMs = performance.now() - setupStartedAt;
 
-        service.setSortOrder(MEGAMEK_RARITY_SORT_KEY);
+        service.setSortOrder(MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
         service.setSortDirection('desc');
         service.searchText.set('');
 
@@ -3311,7 +3311,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         service.filteredUnits();
         await flushAsyncWork();
 
-        service.setSortOrder(MEGAMEK_RARITY_SORT_KEY);
+        service.setSortOrder(MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
 
         const warmStartedAt = performance.now();
         const filteredUnits = service.filteredUnits();
