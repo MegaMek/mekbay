@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, effect, ElementRef, inject, input, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 
 import { GameSystem } from '../../models/common.model';
 import type { LoadForceEntry } from '../../models/load-force-entry.model';
@@ -60,11 +60,6 @@ interface RadarContribution {
 interface RadarPoint {
     x: number;
     y: number;
-}
-
-interface RadarRenderSize {
-    width: number;
-    height: number;
 }
 
 interface RadarAxisDefinition {
@@ -191,8 +186,6 @@ const RADAR_LABEL_SAFE_X = 58;
 const RADAR_LABEL_SAFE_TOP = 22;
 const RADAR_LABEL_SAFE_BOTTOM = 50;
 const RADAR_RING_FACTORS = [0.25, 0.5, 0.75, 1] as const;
-const RADAR_FALLBACK_RENDER_HEIGHT = 270;
-const RADAR_FALLBACK_RENDER_WIDTH = Math.round((RADAR_VIEWBOX_WIDTH / RADAR_VIEWBOX_HEIGHT) * RADAR_FALLBACK_RENDER_HEIGHT);
 
 function roundCoordinate(value: number): number {
     return Math.round(value * 100) / 100;
@@ -227,34 +220,6 @@ function getLabelPoint(angleDegrees: number): RadarPoint {
     return {
         x: roundCoordinate(clamp(point.x, RADAR_LABEL_SAFE_X, RADAR_VIEWBOX_WIDTH - RADAR_LABEL_SAFE_X)),
         y: roundCoordinate(clamp(point.y, RADAR_LABEL_SAFE_TOP, RADAR_VIEWBOX_HEIGHT - RADAR_LABEL_SAFE_BOTTOM)),
-    };
-}
-
-function getRadarRenderSize(width: number, height: number): RadarRenderSize {
-    const availableWidth = Math.floor(Math.max(0, width));
-    const availableHeight = Math.floor(Math.max(0, height));
-
-    if (availableWidth === 0 || availableHeight === 0) {
-        return {
-            width: RADAR_FALLBACK_RENDER_WIDTH,
-            height: RADAR_FALLBACK_RENDER_HEIGHT,
-        };
-    }
-
-    const scale = Math.min(availableWidth / RADAR_VIEWBOX_WIDTH, availableHeight / RADAR_VIEWBOX_HEIGHT);
-    const renderWidth = Math.floor(RADAR_VIEWBOX_WIDTH * scale);
-    const renderHeight = Math.floor(RADAR_VIEWBOX_HEIGHT * scale);
-
-    if (renderWidth === 0 || renderHeight === 0) {
-        return {
-            width: RADAR_FALLBACK_RENDER_WIDTH,
-            height: RADAR_FALLBACK_RENDER_HEIGHT,
-        };
-    }
-
-    return {
-        width: renderWidth,
-        height: renderHeight,
     };
 }
 
@@ -412,11 +377,12 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
     @let overlayAxisMap = hoveredAxisMap();
     <div class="force-radar-shell">
         @if (hasUnits()) {
-            <div class="radar-area" #radarArea>
+            <div class="radar-area">
                 <svg
                     class="radar-chart"
                     [attr.viewBox]="'0 0 ' + viewBoxWidth + ' ' + viewBoxHeight"
-                    width="100%"
+                    [attr.width]="viewBoxWidth"
+                    [attr.height]="viewBoxHeight"
                     preserveAspectRatio="xMidYMid meet"
                     role="img">
 
@@ -485,14 +451,10 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
         :host {
             display: block;
             width: 100%;
-            min-height: var(--radar-panel-min-height, 280px);
         }
 
         .force-radar-shell {
-            display: flex;
-            flex-direction: column;
             width: 100%;
-            min-height: inherit;
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid var(--border-color, #333);
             box-sizing: border-box;
@@ -500,20 +462,16 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
         }
 
         .radar-area {
-            flex: 1 1 auto;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: calc(var(--radar-panel-min-height, 280px) - 20px);
+            width: 100%;
             padding: 0 2px;
+            box-sizing: border-box;
             overflow: hidden;
         }
 
         .radar-chart {
             display: block;
-            max-width: 100%;
-            max-height: 100%;
-            flex: 0 0 auto;
+            width: 100%;
+            height: auto;
         }
 
         .radar-ring {
@@ -578,7 +536,6 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
         }
 
         .radar-empty {
-            min-height: calc(var(--radar-panel-min-height, 280px) - 20px);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -588,10 +545,6 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
         }
 
         @media (max-width: 700px) {
-            :host {
-                min-height: var(--radar-panel-min-height-mobile, 250px);
-            }
-
             .radar-label {
                 font-size: 19px;
             }
@@ -600,21 +553,10 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
                 font-size: 17px;
             }
         }
-
-        @media (max-width: 520px) {
-            :host {
-                min-height: var(--radar-panel-min-height-mobile, 230px);
-            }
-        }
     `],
 })
 export class LoadForceRadarPanelComponent {
     private readonly dataService = inject(DataService);
-    private readonly radarArea = viewChild<ElementRef<HTMLDivElement>>('radarArea');
-    private readonly chartRenderSize = signal<RadarRenderSize>({
-        width: RADAR_FALLBACK_RENDER_WIDTH,
-        height: RADAR_FALLBACK_RENDER_HEIGHT,
-    });
 
     readonly centerX = RADAR_CENTER_X;
     readonly centerY = RADAR_CENTER_Y;
@@ -625,8 +567,6 @@ export class LoadForceRadarPanelComponent {
     readonly axisDefinitions = computed(() => this.force().type === GameSystem.ALPHA_STRIKE
         ? ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS
         : CLASSIC_RADAR_AXIS_DEFINITIONS);
-    readonly chartRenderWidth = computed(() => this.chartRenderSize().width);
-    readonly chartRenderHeight = computed(() => this.chartRenderSize().height);
 
     readonly units = computed(() => this.force().groups
         .flatMap((group) => group.units)
@@ -706,42 +646,6 @@ export class LoadForceRadarPanelComponent {
     readonly hoveredValuePolygonPoints = computed(() => {
         return toPointString(this.hoveredUnitAxes().map((axis) => axis.dataPoint));
     });
-
-    constructor() {
-        effect((onCleanup) => {
-            const radarArea = this.radarArea()?.nativeElement;
-            if (!radarArea) {
-                return;
-            }
-
-            const updateChartSize = (width: number, height: number): void => {
-                const nextSize = getRadarRenderSize(width, height);
-                const currentSize = this.chartRenderSize();
-                if (currentSize.width !== nextSize.width || currentSize.height !== nextSize.height) {
-                    this.chartRenderSize.set(nextSize);
-                }
-            };
-
-            updateChartSize(radarArea.clientWidth, radarArea.clientHeight);
-
-            if (typeof ResizeObserver === 'undefined') {
-                return;
-            }
-
-            const observer = new ResizeObserver((entries) => {
-                const entry = entries[0];
-                if (entry) {
-                    updateChartSize(entry.contentRect.width, entry.contentRect.height);
-                }
-            });
-
-            observer.observe(radarArea);
-
-            onCleanup(() => {
-                observer.disconnect();
-            });
-        });
-    }
 
     private getUnitBucketMaxStats(unit: Unit): MinMaxStatsRange {
         return getUnitBucketMaxStats(this.dataService, this.force().type, unit);

@@ -71,7 +71,7 @@
                                 step="1"
                                 [value]="budgetRange().min"
                                 (input)="onBudgetMinChange($event)"
-                                placeholder="0 = no minimum" />
+                                placeholder="0" />
                         </div>
 
                         <div class="form-fields">
@@ -83,24 +83,39 @@
                                 step="1"
                                 [value]="budgetRange().max || ''"
                                 (blur)="onBudgetMaxBlur($event)"
-                                placeholder="0 = no maximum; 0/0 = first result" />
+                                placeholder="0 = No maximum" />
                         </div>
                     </div>
 
                     <div class="form-fields span-all">
                         <div class="form-fields">
                             <label class="field-label">Era</label>
-                            <multi-select-dropdown
-                                class="generator-dropdown"
-                                [label]="''"
-                                [options]="eraFilter()?.options ?? []"
-                                [selected]="selectedEraValues()"
-                                [multistate]="true"
-                                [semanticOnly]="eraFilter()?.semanticOnly ?? false"
-                                [displayText]="eraFilter()?.displayText"
-                                [displayItems]="eraFilter()?.displayItems"
-                                (selectionChange)="onEraSelectionChange($event)">
-                            </multi-select-dropdown>
+                            <div class="dropdown-option-row">
+                                <multi-select-dropdown
+                                    class="generator-dropdown era-dropdown"
+                                    [label]="''"
+                                    [options]="eraFilter()?.options ?? []"
+                                    [selected]="selectedEraValues()"
+                                    [multistate]="true"
+                                    [semanticOnly]="eraFilter()?.semanticOnly ?? false"
+                                    [displayText]="eraFilter()?.displayText"
+                                    [displayItems]="eraFilter()?.displayItems"
+                                    (selectionChange)="onEraSelectionChange($event)">
+                                </multi-select-dropdown>
+
+                                <label
+                                    class="generator-option generator-option-inline"
+                                    [class.disabled]="!crossEraAvailabilityToggleEnabled()"
+                                    [tooltip]="crossEraAvailabilityTooltip()">
+                                    <input
+                                        class="bt-checkbox"
+                                        type="checkbox"
+                                        [checked]="crossEraAvailabilityInMultiEraSelection()"
+                                        [disabled]="!crossEraAvailabilityToggleEnabled()"
+                                        (change)="onCrossEraAvailabilityInMultiEraSelectionChange($event)" />
+                                    <span class="generator-option-label">Multi-Era</span>
+                                </label>
+                            </div>
                         </div>
 
                         <div class="form-fields span-all">

@@ -31,12 +31,13 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable, OnDestroy, inject } from '@angular/core';
 
 import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { GameSystem } from '../models/common.model';
 import type { Era } from '../models/eras.model';
 import type { Faction } from '../models/factions.model';
+import type { MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
 import type {
     MegaMekRulesetAssign,
     MegaMekRulesetEchelonToken,
@@ -64,10 +65,10 @@ import { collectGroupUnits } from '../utils/org/org-facts.util';
 import type { GroupSizeResult, OrgDefinition, OrgRuleDefinition, OrgType } from '../utils/org/org-types';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
-import { getPositiveDropdownNamesFromFilter } from '../utils/filter-name-resolution.util';
+import { resolveDropdownNamesFromFilter } from '../utils/filter-name-resolution.util';
 import { ForceNamerUtil } from '../utils/force-namer.util';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
-import { getSelectedPositiveDropdownNames, normalizeMultiStateSelection } from '../utils/unit-search-shared.util';
+import { normalizeMultiStateSelection } from '../utils/unit-search-shared.util';
 import { DataService } from './data.service';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
@@ -77,6 +78,7 @@ import { UnitSearchFiltersService } from './unit-search-filters.service';
  */
 const LOG_ATTEMPTS = false;
 const DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT = 1;
+const IMPLICIT_MULTI_FACTION_EXCLUDED_IDS = new Set<number>([MULFACTION_EXTINCT]);
 const FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS = 200;
 const PREVIEW_GROUP_SPLIT_MIN_TIER = 1;
 const PREVIEW_GROUP_TIER_EPSILON = 0.0001;
@@ -118,6 +120,8 @@ interface ForceGenerationCandidateUnit {
 
 type ForceGenerationAvailabilitySource = 'production' | 'salvage';
 
+type ForceGenerationForceNodeSelectionMode = 'first' | 'weighted';
+
 interface ForceGenerationAvailabilityPair {
     eraId: number;
     factionId: number;
@@ -147,6 +151,55 @@ interface ForceGenerationCandidateUnitTypeSummary {
     unitType: string;
     candidateCount: number;
     totalAvailabilityWeight: number;
+}
+
+interface ForceGenerationAvailabilityWeightCache {
+    signature: string;
+    useMegaMekAvailability: boolean;
+    scopeState: ForceGenerationAvailabilityScopeState;
+    weightsByUnitId: Map<number, { production: number; salvage: number }>;
+}
+
+interface ForceGenerationPreparedCandidateCache {
+    signature: string;
+    candidates: readonly ForceGenerationCandidateUnit[];
+}
+
+interface ForceGenerationBaseCandidateUnit {
+    unit: Unit;
+    cost: number;
+    skill?: number;
+    gunnery?: number;
+    piloting?: number;
+    megaMekUnitType: string;
+    megaMekWeightClass?: string;
+    role?: string;
+    motive?: string;
+}
+
+interface ForceGenerationBaseCandidateCache {
+    signature: string;
+    candidates: readonly ForceGenerationBaseCandidateUnit[];
+}
+
+interface ForceGenerationSelectionPreparationCache {
+    signature: string;
+    preparation: ForceGenerationSelectionPreparation;
+}
+
+interface ForceGenerationAvailabilityScopeState {
+    pairs: readonly ForceGenerationAvailabilityPair[];
+    eraIds: readonly number[];
+    factionIds: readonly number[];
+    eraIdTexts: readonly string[];
+    factionIdTexts: readonly string[];
+    factionIdTextSet: ReadonlySet<string>;
+    pairCount: number;
+}
+
+interface ForceGenerationAvailabilityReductionState {
+    productionMax: number;
+    salvageMax: number;
 }
 
 interface ForceGenerationTopLevelEchelonOption {
@@ -225,18 +278,19 @@ interface ForceGenerationSelectionAttempt {
     structureEvaluation?: ForceGenerationStructureEvaluation;
 }
 
+interface ForceGenerationSelectionPreparation {
+    rulesetProfile: ForceGenerationRulesetProfile | null;
+    selectableCandidates: readonly ForceGenerationCandidateUnit[];
+    lowestCostCandidates: readonly ForceGenerationCandidateUnit[];
+    highestCostCandidates: readonly ForceGenerationCandidateUnit[];
+    rulesetScoreByCandidate: Map<ForceGenerationCandidateUnit, number>;
+    rulesetReasonsByCandidate: Map<ForceGenerationCandidateUnit, string[]>;
+}
+
 interface ForceGenerationAttemptBudget {
     minAttempts: number;
     maxAttempts: number;
     targetDurationMs: number;
-}
-
-interface ForceGenerationCostBoundsIndex {
-    candidateCount: number;
-    ascendingPositions: Map<ForceGenerationCandidateUnit, number>;
-    descendingPositions: Map<ForceGenerationCandidateUnit, number>;
-    ascendingPrefixSums: number[];
-    descendingPrefixSums: number[];
 }
 
 interface ForceGenerationStructureEvaluation {
@@ -278,11 +332,17 @@ export interface ForceGenerationBudgetRange {
     max: number;
 }
 
+export interface ForceGenerationContextOptions {
+    crossEraAvailabilityInMultiEraSelection?: boolean;
+}
+
 export interface ForceGenerationContext {
     forceFaction: Faction | null;
     forceEra: Era | null;
-    averagingFactionIds: readonly number[];
-    averagingEraIds: readonly number[];
+    availabilityFactionIds: readonly number[];
+    availabilityEraIds: readonly number[];
+    useAvailabilityFactionScope?: boolean;
+    useAvailabilityEraScope?: boolean;
     availablePairCount: number;
     ruleset: MegaMekRulesetRecord | null;
 }
@@ -978,94 +1038,31 @@ function getMinimumMetricTotal(
         .reduce((sum, value) => sum + value, 0);
 }
 
-function getMaximumMetricTotal(values: readonly number[], count: number): number {
-    if (count <= 0) {
-        return 0;
-    }
-
-    return [...values]
-        .sort((left, right) => right - left)
-        .slice(0, count)
-        .reduce((sum, value) => sum + value, 0);
-}
-
-function buildCostBoundsIndex(candidates: readonly ForceGenerationCandidateUnit[]): ForceGenerationCostBoundsIndex {
-    const ascendingPositions = new Map<ForceGenerationCandidateUnit, number>();
-    const descendingPositions = new Map<ForceGenerationCandidateUnit, number>();
-    const ascendingPrefixSums = [0];
-    const descendingPrefixSums = [0];
-
-    const ascendingCandidates = [...candidates].sort((left, right) => left.cost - right.cost);
-    const descendingCandidates = [...candidates].sort((left, right) => right.cost - left.cost);
-
-    for (const [index, candidate] of ascendingCandidates.entries()) {
-        ascendingPositions.set(candidate, index);
-        ascendingPrefixSums.push(ascendingPrefixSums[index] + candidate.cost);
-    }
-
-    for (const [index, candidate] of descendingCandidates.entries()) {
-        descendingPositions.set(candidate, index);
-        descendingPrefixSums.push(descendingPrefixSums[index] + candidate.cost);
-    }
-
-    return {
-        candidateCount: candidates.length,
-        ascendingPositions,
-        descendingPositions,
-        ascendingPrefixSums,
-        descendingPrefixSums,
-    };
-}
-
-function getExcludedOrderedMetricTotal(
-    prefixSums: readonly number[],
-    candidateCount: number,
-    excludedPosition: number | undefined,
-    excludedCost: number,
-    count: number,
-): number {
-    if (count <= 0 || candidateCount <= 1) {
-        return 0;
-    }
-
-    const boundedCount = Math.min(count, candidateCount - 1);
-    if (boundedCount <= 0) {
-        return 0;
-    }
-
-    if (excludedPosition !== undefined && excludedPosition < boundedCount) {
-        return prefixSums[Math.min(candidateCount, boundedCount + 1)] - excludedCost;
-    }
-
-    return prefixSums[boundedCount];
-}
-
-function getExcludedMinimumMetricTotal(
-    costBoundsIndex: ForceGenerationCostBoundsIndex,
+function getOrderedCandidateCostTotalExcluding(
+    orderedCandidates: readonly ForceGenerationCandidateUnit[],
     excludedCandidate: ForceGenerationCandidateUnit,
     count: number,
 ): number {
-    return getExcludedOrderedMetricTotal(
-        costBoundsIndex.ascendingPrefixSums,
-        costBoundsIndex.candidateCount,
-        costBoundsIndex.ascendingPositions.get(excludedCandidate),
-        excludedCandidate.cost,
-        count,
-    );
-}
+    if (count <= 0 || orderedCandidates.length <= 1) {
+        return 0;
+    }
 
-function getExcludedMaximumMetricTotal(
-    costBoundsIndex: ForceGenerationCostBoundsIndex,
-    excludedCandidate: ForceGenerationCandidateUnit,
-    count: number,
-): number {
-    return getExcludedOrderedMetricTotal(
-        costBoundsIndex.descendingPrefixSums,
-        costBoundsIndex.candidateCount,
-        costBoundsIndex.descendingPositions.get(excludedCandidate),
-        excludedCandidate.cost,
-        count,
-    );
+    let total = 0;
+    let includedCount = 0;
+    const boundedCount = Math.min(count, orderedCandidates.length - 1);
+    for (const candidate of orderedCandidates) {
+        if (candidate === excludedCandidate) {
+            continue;
+        }
+
+        total += candidate.cost;
+        includedCount += 1;
+        if (includedCount >= boundedCount) {
+            break;
+        }
+    }
+
+    return total;
 }
 
 function getPreferredOrgTypeForEchelon(echelon: string | undefined): OrgType | undefined {
@@ -1213,6 +1210,29 @@ function buildAvailabilityPairKey(eraId: number, factionId: number): string {
     return `${eraId}:${factionId}`;
 }
 
+function serializeForceGenerationCacheIds(ids: readonly number[]): string {
+    return [...new Set(ids)].sort((left, right) => left - right).join(',');
+}
+
+function buildForceGenerationUnitListSignature(units: readonly Pick<Unit, 'id'>[]): string {
+    let rollingHash = 0;
+    let weightedSum = 0;
+
+    for (let index = 0; index < units.length; index += 1) {
+        const unitId = units[index].id | 0;
+        rollingHash = (((rollingHash * 33) ^ unitId) | 0);
+        weightedSum = ((weightedSum + ((unitId * (index + 1)) | 0)) | 0);
+    }
+
+    return [
+        units.length,
+        units[0]?.id ?? 'none',
+        units[units.length - 1]?.id ?? 'none',
+        rollingHash >>> 0,
+        weightedSum >>> 0,
+    ].join(':');
+}
+
 function getEraReferenceYear(era: Era | null): number | undefined {
     if (!era) {
         return undefined;
@@ -1351,13 +1371,19 @@ function toMegaMekMotive(unit: Unit): string | undefined {
     }
 }
 
-@Injectable({
-    providedIn: 'root',
-})
-export class ForceGeneratorService {
+@Injectable()
+export class ForceGeneratorService implements OnDestroy {
     private readonly dataService = inject(DataService);
     private readonly filtersService = inject(UnitSearchFiltersService);
     private readonly unitAvailabilitySource = inject(UnitAvailabilitySourceService);
+    private availabilityWeightCache: ForceGenerationAvailabilityWeightCache | null = null;
+    private baseCandidateCache: ForceGenerationBaseCandidateCache | null = null;
+    private preparedCandidateCache: ForceGenerationPreparedCandidateCache | null = null;
+    private selectionPreparationCache: ForceGenerationSelectionPreparationCache | null = null;
+
+    public ngOnDestroy(): void {
+        this.clearGenerationCaches();
+    }
 
     public resolveInitialBudgetDefaults(
         options: Pick<Options,
@@ -1448,35 +1474,59 @@ export class ForceGeneratorService {
         return getBudgetMetric(unit, gameSystem, gunnery, piloting);
     }
 
-    public resolveGenerationContext(eligibleUnits: readonly Unit[]): ForceGenerationContext {
+    public resolveGenerationContext(
+        eligibleUnits: readonly Unit[],
+        options: ForceGenerationContextOptions = {},
+    ): ForceGenerationContext {
         const selectedEras = this.resolveSelectedEras();
         const excludedEraIds = this.resolveExcludedEraIds();
         const selectedFactions = this.resolveSelectedFactions();
+        const excludedFactionIds = this.resolveExcludedFactionIds();
+        const crossEraAvailabilityInMultiEraSelection = options.crossEraAvailabilityInMultiEraSelection ?? false;
         const availablePairs = this.collectPositiveAvailabilityPairs(
             eligibleUnits,
             selectedEras.map((era) => era.id),
             selectedFactions.map((faction) => faction.id),
             excludedEraIds,
+            excludedFactionIds,
         );
-        const forceFaction = this.pickForceFaction(selectedFactions, availablePairs);
-        const forceEra = this.pickForceEra(selectedEras, forceFaction, availablePairs);
-        const averagingFactionIds = selectedFactions.length > 0
-            ? selectedFactions.map((faction) => faction.id)
-            : forceFaction
-                ? [forceFaction.id]
-                : [];
-        const averagingEraIds = selectedEras.length > 0
-            ? selectedEras.map((era) => era.id)
-            : forceEra
-                ? [forceEra.id]
-                : [];
+        const forceFaction = selectedFactions.length > 0
+            ? this.pickForceFaction(selectedFactions, availablePairs)
+            : this.dataService.getFactionById(MULFACTION_MERCENARY) ?? null;
+        const forceEra = this.resolveContextEra(
+            selectedEras,
+            excludedEraIds,
+            selectedFactions.length > 0 ? forceFaction : null,
+            availablePairs,
+            crossEraAvailabilityInMultiEraSelection,
+        );
+        const availabilityEraIds = this.resolveAvailabilityEraIds(
+            selectedEras,
+            excludedEraIds,
+            forceEra,
+            crossEraAvailabilityInMultiEraSelection,
+        );
+        const availabilityFactionIds = this.resolveAvailabilityFactionIds(
+            selectedFactions,
+            excludedFactionIds,
+            availablePairs,
+            availabilityEraIds,
+        );
+        const useAvailabilityFactionScope = this.shouldUseAvailabilityFactionScopeFromFilters(selectedFactions, availabilityFactionIds);
+        const useAvailabilityEraScope = this.shouldUseAvailabilityEraScopeFromFilters(
+            selectedEras,
+            availabilityEraIds,
+            crossEraAvailabilityInMultiEraSelection,
+        );
         const rulesetContext = this.resolveRulesetContext(forceFaction, forceEra);
 
         return {
             forceFaction,
             forceEra,
-            averagingFactionIds,
-            averagingEraIds,
+            availabilityFactionIds,
+            availabilityEraIds,
+            useAvailabilityFactionScope,
+            useAvailabilityEraScope,
             availablePairCount: availablePairs.length,
             ruleset: rulesetContext.primary,
         };
@@ -1487,6 +1537,7 @@ export class ForceGeneratorService {
         const minUnitCount = Math.min(FORCE_MAX_UNITS, Math.max(1, Math.floor(options.minUnitCount)));
         const maxUnitCount = Math.min(FORCE_MAX_UNITS, Math.max(minUnitCount, Math.floor(options.maxUnitCount)));
         const budgetRange = this.normalizeBudgetRange(options.budgetRange);
+        const availabilityWeightCache = this.resolveAvailabilityWeightCache(eligibleUnits, options.context);
         const lockedCandidates = (options.lockedUnits ?? []).map((lockedUnit, index) => this.createCandidateUnit(
             lockedUnit.unit,
             options.context,
@@ -1495,9 +1546,16 @@ export class ForceGeneratorService {
                 ...lockedUnit,
                 lockKey: lockedUnit.lockKey ?? `locked:${index}:${lockedUnit.unit.name}`,
             },
+            availabilityWeightCache,
         ));
         const lockedUnitNames = new Set(lockedCandidates.map((candidate) => candidate.unit.name));
         const unlockedEligibleUnits = eligibleUnits.filter((unit) => !lockedUnitNames.has(unit.name));
+        const preparedCandidateCache = this.resolvePreparedCandidateCache(
+            eligibleUnits,
+            options.context,
+            options,
+            availabilityWeightCache,
+        );
         const availableUnitCapacity = unlockedEligibleUnits.length + lockedCandidates.length;
 
         if (availableUnitCapacity < minUnitCount) {
@@ -1508,6 +1566,7 @@ export class ForceGeneratorService {
             if (lockedCandidates.length > 0) {
                 return this.buildPreviewFromSelectionAttempt(
                     options,
+                    eligibleUnits.length,
                     availableUnitCapacity,
                     budgetRange,
                     minUnitCount,
@@ -1517,41 +1576,31 @@ export class ForceGeneratorService {
                 );
             }
 
-            return {
-                gameSystem: options.gameSystem,
-                units: [],
-                totalCost: 0,
-                faction: options.context.forceFaction,
-                era: options.context.forceEra,
-                explanationLines: this.buildPreviewExplanation(
-                    options.gameSystem,
-                    availableUnitCapacity,
-                    options.context,
-                    budgetRange,
-                    minUnitCount,
-                    maxUnitCount,
-                    null,
-                    message,
-                    lockedCandidates.length,
-                    options.preventDuplicateChassis === true,
-                ),
-                error: message,
-            };
+            return this.buildEmptyPreview(
+                options,
+                eligibleUnits.length,
+                availableUnitCapacity,
+                budgetRange,
+                minUnitCount,
+                maxUnitCount,
+                message,
+            );
         }
 
-        const candidates = unlockedEligibleUnits
-            .map((unit) => this.createCandidateUnit(unit, options.context, options))
-            .filter((candidate) => this.hasPositiveAvailability(candidate));
+        const candidates = lockedUnitNames.size === 0
+            ? preparedCandidateCache.candidates
+            : preparedCandidateCache.candidates.filter((candidate) => !lockedUnitNames.has(candidate.unit.name));
         const availableCandidateCapacity = candidates.length + lockedCandidates.length;
 
         if (availableCandidateCapacity < minUnitCount) {
             const message = lockedCandidates.length > 0
                 ? `Only ${availableCandidateCapacity} total units are available after preserving ${lockedCandidates.length} locked ${lockedCandidates.length === 1 ? 'unit' : 'units'}.`
-                : `Only ${candidates.length} units have positive MegaMek availability in the rolled faction and era.`;
+                : this.getPositiveAvailabilityMessage(candidates.length, options.context);
 
             if (lockedCandidates.length > 0) {
                 return this.buildPreviewFromSelectionAttempt(
                     options,
+                    eligibleUnits.length,
                     availableCandidateCapacity,
                     budgetRange,
                     minUnitCount,
@@ -1561,27 +1610,33 @@ export class ForceGeneratorService {
                 );
             }
 
-            return {
-                gameSystem: options.gameSystem,
-                units: [],
-                totalCost: 0,
-                faction: options.context.forceFaction,
-                era: options.context.forceEra,
-                explanationLines: this.buildPreviewExplanation(
-                    options.gameSystem,
-                    availableCandidateCapacity,
-                    options.context,
-                    budgetRange,
-                    minUnitCount,
-                    maxUnitCount,
-                    null,
-                    message,
-                    lockedCandidates.length,
-                    options.preventDuplicateChassis === true,
-                ),
-                error: message,
-            };
+            return this.buildEmptyPreview(
+                options,
+                eligibleUnits.length,
+                availableCandidateCapacity,
+                budgetRange,
+                minUnitCount,
+                maxUnitCount,
+                message,
+            );
         }
+
+        const hasResolvedRuleset = this.resolveRulesetContext(options.context.forceFaction, options.context.forceEra).primary !== null;
+        const canReuseSelectionPreparationCache = lockedCandidates.length === 0 && !hasResolvedRuleset;
+        const selectionPreparation = canReuseSelectionPreparationCache
+            ? this.resolveSelectionPreparationCache(
+                preparedCandidateCache,
+                options.context,
+                minUnitCount,
+                maxUnitCount,
+            )
+            : this.prepareSelectionPreparation(
+                candidates,
+                lockedCandidates,
+                options.context,
+                minUnitCount,
+                maxUnitCount,
+            );
 
         if (this.isFirstCompatibleResultBudgetRequest(options.budgetRange)) {
             const selectionAttempt = this.buildCandidateSelection(
@@ -1593,9 +1648,11 @@ export class ForceGeneratorService {
                 false,
                 lockedCandidates,
                 options.preventDuplicateChassis === true,
+                selectionPreparation,
             );
             return this.buildPreviewFromSelectionAttempt(
                 options,
+                eligibleUnits.length,
                 availableCandidateCapacity,
                 budgetRange,
                 minUnitCount,
@@ -1635,7 +1692,7 @@ export class ForceGeneratorService {
         let bestValidMidpointDistance = Number.POSITIVE_INFINITY;
         let bestValidStructureScore = Number.NEGATIVE_INFINITY;
         const successfulAttempts: ForceGenerationSuccessfulAttemptLog[] = [];
-        let averageAttemptDurationMs = 0;
+        let attemptDurationEstimateMs = 0;
         let attemptLimit = attemptBudget.minAttempts;
 
         for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
@@ -1649,6 +1706,7 @@ export class ForceGeneratorService {
                 noUnderMaxForcePossible,
                 lockedCandidates,
                 options.preventDuplicateChassis === true,
+                selectionPreparation,
             );
             const totalCost = selectionAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
             const attemptExceedsMax = Number.isFinite(budgetRange.max) && totalCost > budgetRange.max;
@@ -1745,6 +1803,7 @@ export class ForceGeneratorService {
                         era: options.context.forceEra,
                         explanationLines: this.buildPreviewExplanation(
                             options.gameSystem,
+                            eligibleUnits.length,
                             availableCandidateCapacity,
                             options.context,
                             budgetRange,
@@ -1761,11 +1820,11 @@ export class ForceGeneratorService {
             }
 
             const attemptDurationMs = Math.max(0.05, getForceGeneratorNow() - attemptStartedAt);
-            averageAttemptDurationMs = this.updateAverageAttemptDuration(averageAttemptDurationMs, attemptDurationMs, attempt + 1);
+            attemptDurationEstimateMs = this.updateAttemptDurationEstimate(attemptDurationEstimateMs, attemptDurationMs, attempt + 1);
             attemptLimit = this.resolveAttemptLimit(
                 attemptBudget,
                 attempt + 1,
-                averageAttemptDurationMs,
+                attemptDurationEstimateMs,
                 getForceGeneratorNow() - searchStartedAt,
                 bestValidAttempt !== null,
             );
@@ -1794,6 +1853,7 @@ export class ForceGeneratorService {
                 era: options.context.forceEra,
                 explanationLines: this.buildPreviewExplanation(
                     options.gameSystem,
+                    eligibleUnits.length,
                     availableCandidateCapacity,
                     options.context,
                     budgetRange,
@@ -1812,6 +1872,7 @@ export class ForceGeneratorService {
             const budgetLabel = options.gameSystem === GameSystem.ALPHA_STRIKE ? 'PV' : 'BV';
             return this.buildPreviewFromSelectionAttempt(
                 options,
+                eligibleUnits.length,
                 availableCandidateCapacity,
                 budgetRange,
                 minUnitCount,
@@ -1824,26 +1885,15 @@ export class ForceGeneratorService {
             );
         }
 
-        return {
-            gameSystem: options.gameSystem,
-            units: [],
-            totalCost: 0,
-            faction: options.context.forceFaction,
-            era: options.context.forceEra,
-            explanationLines: this.buildPreviewExplanation(
-                options.gameSystem,
-                availableCandidateCapacity,
-                options.context,
-                budgetRange,
-                minUnitCount,
-                maxUnitCount,
-                null,
-                'Unable to build a force within the selected BV/PV range and unit count constraints.',
-                lockedCandidates.length,
-                options.preventDuplicateChassis === true,
-            ),
-            error: 'Unable to build a force within the selected BV/PV range and unit count constraints.',
-        };
+        return this.buildEmptyPreview(
+            options,
+            eligibleUnits.length,
+            availableCandidateCapacity,
+            budgetRange,
+            minUnitCount,
+            maxUnitCount,
+            'Unable to build a force within the selected BV/PV range and unit count constraints.',
+        );
     }
 
     public createForceEntry(preview: ForceGenerationPreview, name?: string): LoadForceEntry | null {
@@ -1888,7 +1938,14 @@ export class ForceGeneratorService {
             return [];
         }
 
-        return getSelectedPositiveDropdownNames(filterState.value)
+        const allEraNames = this.dataService.getEras().map((era) => era.name);
+        const resolvedNames = resolveDropdownNamesFromFilter(
+            normalizeMultiStateSelection(filterState.value),
+            allEraNames,
+            filterState.wildcardPatterns,
+        );
+
+        return [...resolvedNames.or, ...resolvedNames.and]
             .map((eraName) => this.dataService.getEraByName(eraName))
             .filter((era): era is Era => era !== undefined);
     }
@@ -1899,13 +1956,15 @@ export class ForceGeneratorService {
             return new Set<number>();
         }
 
+        const allEraNames = this.dataService.getEras().map((era) => era.name);
+        const resolvedNames = resolveDropdownNamesFromFilter(
+            normalizeMultiStateSelection(filterState.value),
+            allEraNames,
+            filterState.wildcardPatterns,
+        );
         const excludedEraIds = new Set<number>();
-        for (const selection of Object.values(normalizeMultiStateSelection(filterState.value))) {
-            if (selection.state !== 'not') {
-                continue;
-            }
-
-            const eraId = this.dataService.getEraByName(selection.name)?.id;
+        for (const eraName of resolvedNames.not) {
+            const eraId = this.dataService.getEraByName(eraName)?.id;
             if (eraId !== undefined) {
                 excludedEraIds.add(eraId);
             }
@@ -1916,15 +1975,185 @@ export class ForceGeneratorService {
 
     private resolveSelectedFactions(): Faction[] {
         const filterState = this.filtersService.effectiveFilterState()['faction'];
-        if (!filterState?.interactedWith || !filterState.value) {
+        if (!filterState?.interactedWith) {
             return [];
         }
 
-        const selection = filterState.value as MultiStateSelection | undefined;
         const allFactionNames = this.dataService.getFactions().map((faction) => faction.name);
-        return getPositiveDropdownNamesFromFilter(selection, allFactionNames, filterState.wildcardPatterns)
+        const resolvedNames = resolveDropdownNamesFromFilter(
+            normalizeMultiStateSelection(filterState.value),
+            allFactionNames,
+            filterState.wildcardPatterns,
+        );
+
+        return [...resolvedNames.or, ...resolvedNames.and]
             .map((factionName) => this.dataService.getFactionByName(factionName))
-            .filter((faction): faction is Faction => faction !== undefined && faction.id !== MULFACTION_EXTINCT);
+            .filter((faction): faction is Faction => faction !== undefined);
+    }
+
+    private resolveExcludedFactionIds(): Set<number> {
+        const filterState = this.filtersService.effectiveFilterState()['faction'];
+        if (!filterState?.interactedWith) {
+            return new Set<number>();
+        }
+
+        const allFactionNames = this.dataService.getFactions().map((faction) => faction.name);
+        const resolvedNames = resolveDropdownNamesFromFilter(
+            normalizeMultiStateSelection(filterState.value),
+            allFactionNames,
+            filterState.wildcardPatterns,
+        );
+        const excludedFactionIds = new Set<number>();
+        for (const factionName of resolvedNames.not) {
+            const factionId = this.dataService.getFactionByName(factionName)?.id;
+            if (factionId !== undefined) {
+                excludedFactionIds.add(factionId);
+            }
+        }
+
+        return excludedFactionIds;
+    }
+
+    private resolveRemainingEraIds(excludedEraIds: ReadonlySet<number>): number[] {
+        return this.dataService.getEras()
+            .filter((era) => !excludedEraIds.has(era.id))
+            .map((era) => era.id);
+    }
+
+    private resolveRemainingFactionIds(excludedFactionIds: ReadonlySet<number>): number[] {
+        return this.dataService.getFactions()
+            .filter((faction) => {
+                return !this.shouldExcludeFactionFromImplicitAvailabilityScope(faction.id)
+                    && !excludedFactionIds.has(faction.id);
+            })
+            .map((faction) => faction.id);
+    }
+
+    private shouldExcludeFactionFromImplicitAvailabilityScope(
+        factionId: number,
+        explicitlySelectedFactionIds?: ReadonlySet<number>,
+    ): boolean {
+        return IMPLICIT_MULTI_FACTION_EXCLUDED_IDS.has(factionId)
+            && !(explicitlySelectedFactionIds?.has(factionId) ?? false);
+    }
+
+    private shouldUseCrossEraAvailabilityForSelection(
+        selectedEras: readonly Era[],
+        crossEraAvailabilityInMultiEraSelection: boolean,
+    ): boolean {
+        return crossEraAvailabilityInMultiEraSelection && selectedEras.length !== 1;
+    }
+
+    private pickHighestEraFromIds(eraIds: readonly number[]): Era | null {
+        const eras = eraIds
+            .map((eraId) => this.dataService.getEraById(eraId))
+            .filter((era): era is Era => era !== undefined);
+
+        if (eras.length === 0) {
+            return null;
+        }
+
+        return [...eras].sort((left, right) => {
+            const leftYear = getEraReferenceYear(left) ?? Number.NEGATIVE_INFINITY;
+            const rightYear = getEraReferenceYear(right) ?? Number.NEGATIVE_INFINITY;
+            if (leftYear !== rightYear) {
+                return rightYear - leftYear;
+            }
+
+            return right.id - left.id;
+        })[0] ?? null;
+    }
+
+    private resolveContextEra(
+        selectedEras: readonly Era[],
+        excludedEraIds: ReadonlySet<number>,
+        availabilityFaction: Faction | null,
+        availablePairs: readonly ForceGenerationAvailabilityPair[],
+        crossEraAvailabilityInMultiEraSelection: boolean,
+    ): Era | null {
+        if (this.shouldUseCrossEraAvailabilityForSelection(selectedEras, crossEraAvailabilityInMultiEraSelection)) {
+            const eraIds = selectedEras.length > 0
+                ? selectedEras.map((era) => era.id)
+                : this.resolveRemainingEraIds(excludedEraIds);
+            const highestEra = this.pickHighestEraFromIds(eraIds);
+            if (highestEra) {
+                return highestEra;
+            }
+        }
+
+        return this.pickForceEra(selectedEras, availabilityFaction, availablePairs);
+    }
+
+    private resolveAvailabilityEraIds(
+        selectedEras: readonly Era[],
+        excludedEraIds: ReadonlySet<number>,
+        forceEra: Era | null,
+        crossEraAvailabilityInMultiEraSelection: boolean,
+    ): readonly number[] {
+        if (this.shouldUseCrossEraAvailabilityForSelection(selectedEras, crossEraAvailabilityInMultiEraSelection)) {
+            return selectedEras.length > 0
+                ? selectedEras.map((era) => era.id)
+                : this.resolveRemainingEraIds(excludedEraIds);
+        }
+
+        return forceEra ? [forceEra.id] : [];
+    }
+
+    private resolveAvailabilityFactionIds(
+        selectedFactions: readonly Faction[],
+        excludedFactionIds: ReadonlySet<number>,
+        availablePairs: readonly ForceGenerationAvailabilityPair[],
+        availabilityEraIds: readonly number[],
+    ): readonly number[] {
+        if (selectedFactions.length > 0) {
+            return selectedFactions.map((faction) => faction.id);
+        }
+
+        const scopedEraIds = new Set(availabilityEraIds);
+        const scopedFactionIds = new Set(
+            availablePairs
+                .filter((pair) => scopedEraIds.size === 0 || scopedEraIds.has(pair.eraId))
+                .map((pair) => pair.factionId),
+        );
+
+        if (scopedFactionIds.size === 0) {
+            return [];
+        }
+
+        return this.dataService.getFactions()
+            .filter((faction) => {
+                return scopedFactionIds.has(faction.id)
+                    && !this.shouldExcludeFactionFromImplicitAvailabilityScope(faction.id)
+                    && !excludedFactionIds.has(faction.id);
+            })
+            .map((faction) => faction.id);
+    }
+
+    private shouldUseAvailabilityEraScopeFromFilters(
+        selectedEras: readonly Era[],
+        availabilityEraIds: readonly number[],
+        crossEraAvailabilityInMultiEraSelection: boolean,
+    ): boolean {
+        if (!this.shouldUseCrossEraAvailabilityForSelection(selectedEras, crossEraAvailabilityInMultiEraSelection)) {
+            return false;
+        }
+
+        if (selectedEras.length > 1) {
+            return true;
+        }
+
+        return selectedEras.length === 0 && availabilityEraIds.length > 0;
+    }
+
+    private shouldUseAvailabilityFactionScopeFromFilters(
+        selectedFactions: readonly Faction[],
+        availabilityFactionIds: readonly number[],
+    ): boolean {
+        if (selectedFactions.length > 1) {
+            return true;
+        }
+
+        return selectedFactions.length === 0 && availabilityFactionIds.length > 0;
     }
 
     private collectPositiveAvailabilityPairs(
@@ -1932,9 +2161,21 @@ export class ForceGeneratorService {
         eraIds: readonly number[],
         factionIds: readonly number[],
         excludedEraIds: ReadonlySet<number> = new Set<number>(),
+        excludedFactionIds: ReadonlySet<number> = new Set<number>(),
     ): ForceGenerationAvailabilityPair[] {
         const scopedEraIds = new Set(eraIds);
         const scopedFactionIds = new Set(factionIds);
+
+        if (this.unitAvailabilitySource.useMegaMekAvailability()) {
+            return this.collectPositiveMegaMekAvailabilityPairs(
+                eligibleUnits,
+                scopedEraIds,
+                scopedFactionIds,
+                excludedEraIds,
+                excludedFactionIds,
+            );
+        }
+
         const eligibleUnitIds = new Set(
             eligibleUnits.map((unit) => this.unitAvailabilitySource.getUnitAvailabilityKey(unit)),
         );
@@ -1954,7 +2195,10 @@ export class ForceGeneratorService {
                 .map((factionId) => this.dataService.getFactionById(factionId))
                 .filter((faction): faction is Faction => faction !== undefined)
             : this.dataService.getFactions())
-            .filter((faction) => faction.id !== MULFACTION_EXTINCT);
+            .filter((faction) => {
+                return !this.shouldExcludeFactionFromImplicitAvailabilityScope(faction.id, scopedFactionIds)
+                    && !excludedFactionIds.has(faction.id);
+            });
 
         const pairs: ForceGenerationAvailabilityPair[] = [];
         for (const era of candidateEras) {
@@ -1972,6 +2216,59 @@ export class ForceGeneratorService {
         }
 
         return pairs;
+    }
+
+    private collectPositiveMegaMekAvailabilityPairs(
+        eligibleUnits: readonly Unit[],
+        scopedEraIds: ReadonlySet<number>,
+        scopedFactionIds: ReadonlySet<number>,
+        excludedEraIds: ReadonlySet<number>,
+        excludedFactionIds: ReadonlySet<number>,
+    ): ForceGenerationAvailabilityPair[] {
+        const pairsByKey = new Map<string, ForceGenerationAvailabilityPair>();
+
+        for (const unit of eligibleUnits) {
+            const availabilityRecord = this.dataService.getMegaMekAvailabilityRecordForUnit(unit);
+            if (!availabilityRecord) {
+                continue;
+            }
+
+            for (const [eraIdText, eraAvailability] of Object.entries(availabilityRecord.e)) {
+                const eraId = Number(eraIdText);
+                if (
+                    Number.isNaN(eraId)
+                    || excludedEraIds.has(eraId)
+                    || (scopedEraIds.size > 0 && !scopedEraIds.has(eraId))
+                ) {
+                    continue;
+                }
+
+                for (const [factionIdText, weights] of Object.entries(eraAvailability)) {
+                    const factionId = Number(factionIdText);
+                    if (
+                        Number.isNaN(factionId)
+                        || this.shouldExcludeFactionFromImplicitAvailabilityScope(factionId, scopedFactionIds)
+                        || excludedFactionIds.has(factionId)
+                        || (scopedFactionIds.size > 0 && !scopedFactionIds.has(factionId))
+                    ) {
+                        continue;
+                    }
+
+                    const productionWeight = weights[0] ?? 0;
+                    const salvageWeight = weights[1] ?? 0;
+                    if (productionWeight <= 0 && salvageWeight <= 0) {
+                        continue;
+                    }
+
+                    const pairKey = buildAvailabilityPairKey(eraId, factionId);
+                    if (!pairsByKey.has(pairKey)) {
+                        pairsByKey.set(pairKey, { eraId, factionId });
+                    }
+                }
+            }
+        }
+
+        return [...pairsByKey.values()];
     }
 
     private pickForceFaction(
@@ -2105,35 +2402,55 @@ export class ForceGeneratorService {
         context: ForceGenerationContext,
         options: ForceGenerationRequest,
         lockedUnit?: GeneratedForceUnit,
+        availabilityWeightCache?: ForceGenerationAvailabilityWeightCache,
     ): ForceGenerationCandidateUnit {
-        const availabilityWeights = this.getAvailabilityWeights(unit, context);
-        const skill = options.gameSystem === GameSystem.ALPHA_STRIKE
-            ? lockedUnit?.skill ?? options.gunnery
-            : undefined;
-        const gunnery = options.gameSystem === GameSystem.CLASSIC
-            ? lockedUnit?.gunnery ?? options.gunnery
-            : undefined;
-        const piloting = options.gameSystem === GameSystem.CLASSIC
-            ? lockedUnit?.piloting ?? getEffectivePilotingSkill(unit, options.piloting)
-            : undefined;
+        const availabilityWeights = this.getCachedAvailabilityWeights(unit, context, availabilityWeightCache);
+        const baseCandidate = this.createBaseCandidateUnit(unit, options);
 
         return {
             unit,
             productionWeight: availabilityWeights.production,
             salvageWeight: availabilityWeights.salvage,
-            cost: lockedUnit?.cost ?? getBudgetMetric(
+            cost: lockedUnit?.cost ?? baseCandidate.cost,
+            alias: lockedUnit?.alias,
+            commander: lockedUnit?.commander,
+            skill: lockedUnit?.skill ?? baseCandidate.skill,
+            gunnery: lockedUnit?.gunnery ?? baseCandidate.gunnery,
+            piloting: lockedUnit?.piloting ?? baseCandidate.piloting,
+            lockKey: lockedUnit?.lockKey,
+            locked: lockedUnit !== undefined,
+            megaMekUnitType: baseCandidate.megaMekUnitType,
+            megaMekWeightClass: baseCandidate.megaMekWeightClass,
+            role: baseCandidate.role,
+            motive: baseCandidate.motive,
+        };
+    }
+
+    private createBaseCandidateUnit(
+        unit: Unit,
+        options: ForceGenerationRequest,
+    ): ForceGenerationBaseCandidateUnit {
+        const skill = options.gameSystem === GameSystem.ALPHA_STRIKE
+            ? options.gunnery
+            : undefined;
+        const gunnery = options.gameSystem === GameSystem.CLASSIC
+            ? options.gunnery
+            : undefined;
+        const piloting = options.gameSystem === GameSystem.CLASSIC
+            ? getEffectivePilotingSkill(unit, options.piloting)
+            : undefined;
+
+        return {
+            unit,
+            cost: getBudgetMetric(
                 unit,
                 options.gameSystem,
                 skill ?? gunnery ?? options.gunnery,
                 piloting ?? options.piloting,
             ),
-            alias: lockedUnit?.alias,
-            commander: lockedUnit?.commander,
             skill,
             gunnery,
             piloting,
-            lockKey: lockedUnit?.lockKey,
-            locked: lockedUnit !== undefined,
             megaMekUnitType: toMegaMekUnitType(unit),
             megaMekWeightClass: toMegaMekWeightClass(unit),
             role: normalizeRole(unit.role),
@@ -2141,89 +2458,718 @@ export class ForceGeneratorService {
         };
     }
 
-    private getAvailabilityWeights(unit: Unit, context: ForceGenerationContext): { production: number; salvage: number } {
+    private resolveAvailabilityWeightCache(
+        eligibleUnits: readonly Unit[],
+        context: ForceGenerationContext,
+    ): ForceGenerationAvailabilityWeightCache {
         const useMegaMekAvailability = this.unitAvailabilitySource.useMegaMekAvailability();
-        const availabilityRecord = this.dataService.getMegaMekAvailabilityRecordForUnit(unit);
-        if (!availabilityRecord) {
-            const mulFallbackWeights = this.getMulContextFallbackWeights(unit, context);
-            if (mulFallbackWeights) {
-                return mulFallbackWeights;
+        const availabilityScopeState = this.buildAvailabilityScopeState(context);
+        const signature = this.buildAvailabilityWeightCacheSignature(context, useMegaMekAvailability, availabilityScopeState);
+        if (this.availabilityWeightCache?.signature === signature) {
+            return this.availabilityWeightCache;
+        }
+
+        this.availabilityWeightCache = this.buildAvailabilityWeightCache(
+            signature,
+            useMegaMekAvailability,
+            availabilityScopeState,
+            eligibleUnits,
+        );
+
+        return this.availabilityWeightCache;
+    }
+
+    private buildAvailabilityWeightCache(
+        signature: string,
+        useMegaMekAvailability: boolean,
+        scopeState: ForceGenerationAvailabilityScopeState,
+        eligibleUnits: readonly Unit[],
+    ): ForceGenerationAvailabilityWeightCache {
+        const unitById = new Map(eligibleUnits.map((unit) => [unit.id, unit]));
+        const weightsByUnitId = useMegaMekAvailability
+            ? this.buildMegaMekAvailabilityWeightMap(scopeState, eligibleUnits)
+            : this.buildMulAvailabilityWeightMap(scopeState, eligibleUnits, unitById);
+
+        return {
+            signature,
+            useMegaMekAvailability,
+            scopeState,
+            weightsByUnitId,
+        };
+    }
+
+    private buildMegaMekAvailabilityWeightMap(
+        scopeState: ForceGenerationAvailabilityScopeState,
+        eligibleUnits: readonly Unit[],
+        exactPairKeysByUnitId?: Map<number, Set<string>>,
+        includeUnknownForMissingRecords = true,
+    ): Map<number, { production: number; salvage: number }> {
+        const weightsByUnitId = new Map<number, { production: number; salvage: number }>();
+        if (scopeState.pairCount <= 0) {
+            if (includeUnknownForMissingRecords) {
+                for (const unit of eligibleUnits) {
+                    weightsByUnitId.set(unit.id, {
+                        production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                        salvage: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                    });
+                }
+            }
+            return weightsByUnitId;
+        }
+
+        const exactEraIdText = scopeState.eraIdTexts.length === 1 ? scopeState.eraIdTexts[0] : null;
+        const exactFactionIdText = scopeState.factionIdTexts.length === 1 ? scopeState.factionIdTexts[0] : null;
+        const exactPairKey = exactEraIdText !== null && exactFactionIdText !== null
+            ? `${exactEraIdText}:${exactFactionIdText}`
+            : null;
+
+        for (const unit of eligibleUnits) {
+            const record = this.dataService.getMegaMekAvailabilityRecordForUnit(unit);
+            if (!record) {
+                if (includeUnknownForMissingRecords) {
+                    weightsByUnitId.set(unit.id, {
+                        production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                        salvage: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                    });
+                }
+                continue;
             }
 
-            if (!useMegaMekAvailability) {
-                return {
+            if (exactEraIdText !== null && exactFactionIdText !== null) {
+                const exactWeights = {
+                    production: record.e[exactEraIdText]?.[exactFactionIdText]?.[0] ?? 0,
+                    salvage: record.e[exactEraIdText]?.[exactFactionIdText]?.[1] ?? 0,
+                };
+                const exactValue = record.e[exactEraIdText]?.[exactFactionIdText];
+                weightsByUnitId.set(unit.id, exactWeights);
+
+                if (exactValue && exactPairKeysByUnitId && exactPairKey !== null) {
+                    exactPairKeysByUnitId.set(unit.id, new Set<string>([exactPairKey]));
+                }
+
+                continue;
+            }
+
+            let productionMax = 0;
+            let salvageMax = 0;
+            let exactPairKeys: Set<string> | undefined;
+
+            for (const eraIdText of scopeState.eraIdTexts) {
+                const eraAvailability = record.e[eraIdText];
+                if (!eraAvailability) {
+                    continue;
+                }
+
+                for (const factionIdText in eraAvailability) {
+                    if (!scopeState.factionIdTextSet.has(factionIdText)) {
+                        continue;
+                    }
+
+                    if (exactPairKeysByUnitId) {
+                        exactPairKeys ??= new Set<string>();
+                        exactPairKeys.add(`${eraIdText}:${factionIdText}`);
+                    }
+
+                    const value = eraAvailability[factionIdText];
+                    const production = value[0] ?? 0;
+                    const salvage = value[1] ?? 0;
+                    if (production > productionMax) {
+                        productionMax = production;
+                    }
+                    if (salvage > salvageMax) {
+                        salvageMax = salvage;
+                    }
+                }
+            }
+
+            weightsByUnitId.set(unit.id, {
+                production: productionMax,
+                salvage: salvageMax,
+            });
+
+            if (exactPairKeysByUnitId && exactPairKeys && exactPairKeys.size > 0) {
+                exactPairKeysByUnitId.set(unit.id, exactPairKeys);
+            }
+        }
+
+        return weightsByUnitId;
+    }
+
+    private buildMulAvailabilityWeightMap(
+        scopeState: ForceGenerationAvailabilityScopeState,
+        eligibleUnits: readonly Unit[],
+        unitById: ReadonlyMap<number, Unit>,
+    ): Map<number, { production: number; salvage: number }> {
+        if (scopeState.pairCount <= 0) {
+            const zeroWeightsByUnitId = new Map<number, { production: number; salvage: number }>();
+            for (const unit of eligibleUnits) {
+                zeroWeightsByUnitId.set(unit.id, {
+                    production: 0,
+                    salvage: 0,
+                });
+            }
+            return zeroWeightsByUnitId;
+        }
+
+        const exactPairKeysByUnitId = new Map<number, Set<string>>();
+        const eligibleUnitIds = new Set(eligibleUnits.map((unit) => unit.id));
+        const weightsByUnitId = this.buildMegaMekAvailabilityWeightMap(
+            scopeState,
+            eligibleUnits,
+            exactPairKeysByUnitId,
+            false,
+        );
+
+        for (const pair of scopeState.pairs) {
+            const forceFaction = this.dataService.getFactionById(pair.factionId);
+            const forceEra = this.dataService.getEraById(pair.eraId);
+            if (!forceFaction || !forceEra) {
+                continue;
+            }
+
+            const pairKey = buildAvailabilityPairKey(pair.eraId, pair.factionId);
+            const mulUnitIds = this.unitAvailabilitySource.getFactionEraUnitIds(forceFaction, forceEra, 'mul');
+            for (const unitIdText of mulUnitIds) {
+                const unitId = Number(unitIdText);
+                if (Number.isNaN(unitId) || !eligibleUnitIds.has(unitId) || exactPairKeysByUnitId.get(unitId)?.has(pairKey)) {
+                    continue;
+                }
+
+                const unit = unitById.get(unitId);
+                const exactValue = unit
+                    ? this.dataService.getMegaMekAvailabilityRecordForUnit(unit)?.e[String(pair.eraId)]?.[String(pair.factionId)]
+                    : undefined;
+                if (exactValue !== undefined) {
+                    const weights = weightsByUnitId.get(unitId) ?? {
+                        production: 0,
+                        salvage: 0,
+                    };
+                    const production = exactValue[0] ?? 0;
+                    const salvage = exactValue[1] ?? 0;
+                    if (production > weights.production) {
+                        weights.production = production;
+                    }
+                    if (salvage > weights.salvage) {
+                        weights.salvage = salvage;
+                    }
+                    weightsByUnitId.set(unitId, weights);
+                    continue;
+                }
+
+                const weights = weightsByUnitId.get(unitId);
+                if (weights) {
+                    if (weights.production < DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT) {
+                        weights.production = DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT;
+                    }
+                    if (weights.salvage < DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT) {
+                        weights.salvage = DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT;
+                    }
+                    continue;
+                }
+
+                weightsByUnitId.set(unitId, {
+                    production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                    salvage: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                });
+            }
+        }
+
+        for (const unit of eligibleUnits) {
+            if (!weightsByUnitId.has(unit.id)) {
+                weightsByUnitId.set(unit.id, {
+                    production: 0,
+                    salvage: 0,
+                });
+            }
+        }
+
+        return weightsByUnitId;
+    }
+
+    private buildAvailabilityScopeState(context: ForceGenerationContext): ForceGenerationAvailabilityScopeState {
+        const eraIds = this.getScopedAvailabilityEraIds(context);
+        const factionIds = this.getScopedAvailabilityFactionIds(context);
+        const pairs = eraIds.flatMap((eraId) => factionIds.map((factionId) => ({ eraId, factionId })));
+
+        return {
+            pairs,
+            eraIds,
+            factionIds,
+            eraIdTexts: eraIds.map((eraId) => String(eraId)),
+            factionIdTexts: factionIds.map((factionId) => String(factionId)),
+            factionIdTextSet: new Set(factionIds.map((factionId) => String(factionId))),
+            pairCount: pairs.length,
+        };
+    }
+
+    private buildAvailabilityWeightCacheSignature(
+        context: ForceGenerationContext,
+        useMegaMekAvailability: boolean,
+        scopeState?: ForceGenerationAvailabilityScopeState,
+    ): string {
+        const resolvedScopeState = scopeState ?? this.buildAvailabilityScopeState(context);
+        return [
+            `corpus:${this.dataService.searchCorpusVersion()}`,
+            `source:${useMegaMekAvailability ? 'megamek' : 'mul'}`,
+            `weightEras:${serializeForceGenerationCacheIds(resolvedScopeState.eraIds)}`,
+            `weightFactions:${serializeForceGenerationCacheIds(resolvedScopeState.factionIds)}`,
+        ].join('|');
+    }
+
+    private getCachedAvailabilityWeights(
+        unit: Unit,
+        context: ForceGenerationContext,
+        availabilityWeightCache?: ForceGenerationAvailabilityWeightCache,
+    ): { production: number; salvage: number } {
+        const cachedWeights = availabilityWeightCache?.weightsByUnitId.get(unit.id);
+        if (cachedWeights !== undefined) {
+            return cachedWeights;
+        }
+
+        const computedWeights = this.getAvailabilityWeights(unit, context, availabilityWeightCache?.scopeState);
+        availabilityWeightCache?.weightsByUnitId.set(unit.id, computedWeights);
+        return computedWeights;
+    }
+
+    private resolvePreparedCandidateCache(
+        eligibleUnits: readonly Unit[],
+        context: ForceGenerationContext,
+        options: ForceGenerationRequest,
+        availabilityWeightCache: ForceGenerationAvailabilityWeightCache,
+    ): ForceGenerationPreparedCandidateCache {
+        const signature = this.buildPreparedCandidateCacheSignature(
+            eligibleUnits,
+            options,
+            availabilityWeightCache,
+        );
+        if (this.preparedCandidateCache?.signature === signature) {
+            return this.preparedCandidateCache;
+        }
+
+        this.preparedCandidateCache = this.buildPreparedCandidateCache(
+            signature,
+            eligibleUnits,
+            context,
+            options,
+            availabilityWeightCache,
+        );
+        return this.preparedCandidateCache;
+    }
+
+    private buildPreparedCandidateCacheSignature(
+        eligibleUnits: readonly Unit[],
+        options: ForceGenerationRequest,
+        availabilityWeightCache: ForceGenerationAvailabilityWeightCache,
+    ): string {
+        return [
+            availabilityWeightCache.signature,
+            `eligible:${buildForceGenerationUnitListSignature(eligibleUnits)}`,
+            `game:${options.gameSystem}`,
+            `g:${options.gunnery}`,
+            `p:${options.piloting}`,
+        ].join('|');
+    }
+
+    private buildPreparedCandidateCache(
+        signature: string,
+        eligibleUnits: readonly Unit[],
+        context: ForceGenerationContext,
+        options: ForceGenerationRequest,
+        availabilityWeightCache: ForceGenerationAvailabilityWeightCache,
+    ): ForceGenerationPreparedCandidateCache {
+        const baseCandidateCache = this.resolveBaseCandidateCache(eligibleUnits, options);
+        const weightsByUnitId = availabilityWeightCache.weightsByUnitId;
+        const candidates: ForceGenerationCandidateUnit[] = [];
+
+        for (const baseCandidate of baseCandidateCache.candidates) {
+            const availabilityWeights = this.getCachedAvailabilityWeights(
+                baseCandidate.unit,
+                context,
+                availabilityWeightCache,
+            );
+
+            if (availabilityWeights.production <= 0 && availabilityWeights.salvage <= 0) {
+                continue;
+            }
+
+            candidates.push({
+                unit: baseCandidate.unit,
+                productionWeight: availabilityWeights.production,
+                salvageWeight: availabilityWeights.salvage,
+                cost: baseCandidate.cost,
+                skill: baseCandidate.skill,
+                gunnery: baseCandidate.gunnery,
+                piloting: baseCandidate.piloting,
+                locked: false,
+                megaMekUnitType: baseCandidate.megaMekUnitType,
+                megaMekWeightClass: baseCandidate.megaMekWeightClass,
+                role: baseCandidate.role,
+                motive: baseCandidate.motive,
+            });
+        }
+
+        return {
+            signature,
+            candidates,
+        };
+    }
+
+    private resolveBaseCandidateCache(
+        eligibleUnits: readonly Unit[],
+        options: ForceGenerationRequest,
+    ): ForceGenerationBaseCandidateCache {
+        const signature = this.buildBaseCandidateCacheSignature(eligibleUnits, options);
+        if (this.baseCandidateCache?.signature === signature) {
+            return this.baseCandidateCache;
+        }
+
+        this.baseCandidateCache = this.buildBaseCandidateCache(signature, eligibleUnits, options);
+        return this.baseCandidateCache;
+    }
+
+    private buildBaseCandidateCacheSignature(
+        eligibleUnits: readonly Unit[],
+        options: ForceGenerationRequest,
+    ): string {
+        return [
+            `eligible:${buildForceGenerationUnitListSignature(eligibleUnits)}`,
+            `game:${options.gameSystem}`,
+            `g:${options.gunnery}`,
+            `p:${options.piloting}`,
+        ].join('|');
+    }
+
+    private buildBaseCandidateCache(
+        signature: string,
+        eligibleUnits: readonly Unit[],
+        options: ForceGenerationRequest,
+    ): ForceGenerationBaseCandidateCache {
+        const candidates = eligibleUnits.map((unit) => this.createBaseCandidateUnit(unit, options));
+
+        return {
+            signature,
+            candidates,
+        };
+    }
+
+    private prepareSelectionPreparation(
+        candidates: readonly ForceGenerationCandidateUnit[],
+        preselectedCandidates: readonly ForceGenerationCandidateUnit[],
+        context: ForceGenerationContext,
+        minUnitCount: number,
+        maxUnitCount: number,
+    ): ForceGenerationSelectionPreparation {
+        const rulesetProfile = this.buildRulesetProfile(
+            [...preselectedCandidates, ...candidates],
+            context,
+            minUnitCount,
+            maxUnitCount,
+        );
+        const selectableCandidates = this.filterCandidatesForRulesetProfile(candidates, rulesetProfile);
+        const lowestCostCandidates = [...selectableCandidates].sort((left, right) => left.cost - right.cost);
+        const highestCostCandidates = [...lowestCostCandidates].reverse();
+        const rulesetScoreByCandidate = new Map<ForceGenerationCandidateUnit, number>();
+        const rulesetReasonsByCandidate = new Map<ForceGenerationCandidateUnit, string[]>();
+
+        if (rulesetProfile) {
+            for (const candidate of [...preselectedCandidates, ...selectableCandidates]) {
+                rulesetScoreByCandidate.set(candidate, this.getRulesetMatchScore(candidate, rulesetProfile));
+                rulesetReasonsByCandidate.set(candidate, this.getRulesetMatchReasons(candidate, rulesetProfile));
+            }
+        }
+
+        return {
+            rulesetProfile,
+            selectableCandidates,
+            lowestCostCandidates,
+            highestCostCandidates,
+            rulesetScoreByCandidate,
+            rulesetReasonsByCandidate,
+        };
+    }
+
+    private resolveSelectionPreparationCache(
+        preparedCandidateCache: ForceGenerationPreparedCandidateCache,
+        context: ForceGenerationContext,
+        minUnitCount: number,
+        maxUnitCount: number,
+    ): ForceGenerationSelectionPreparation {
+        const signature = this.buildSelectionPreparationCacheSignature(
+            preparedCandidateCache,
+            context,
+            minUnitCount,
+            maxUnitCount,
+        );
+        if (this.selectionPreparationCache?.signature === signature) {
+            return this.selectionPreparationCache.preparation;
+        }
+
+        const preparation = this.prepareSelectionPreparation(
+            preparedCandidateCache.candidates,
+            [],
+            context,
+            minUnitCount,
+            maxUnitCount,
+        );
+        this.selectionPreparationCache = {
+            signature,
+            preparation,
+        };
+        return preparation;
+    }
+
+    private buildSelectionPreparationCacheSignature(
+        preparedCandidateCache: ForceGenerationPreparedCandidateCache,
+        context: ForceGenerationContext,
+        minUnitCount: number,
+        maxUnitCount: number,
+    ): string {
+        return [
+            preparedCandidateCache.signature,
+            `forceFaction:${context.forceFaction?.id ?? 'none'}`,
+            `forceEra:${context.forceEra?.id ?? 'none'}`,
+            `ruleset:${context.ruleset?.factionKey ?? 'none'}`,
+            `min:${minUnitCount}`,
+            `max:${maxUnitCount}`,
+        ].join('|');
+    }
+
+    private getAvailabilityWeights(
+        unit: Unit,
+        context: ForceGenerationContext,
+        availabilityScopeState?: ForceGenerationAvailabilityScopeState,
+    ): { production: number; salvage: number } {
+        const useMegaMekAvailability = this.unitAvailabilitySource.useMegaMekAvailability();
+        const availabilityRecord = this.dataService.getMegaMekAvailabilityRecordForUnit(unit);
+        return this.getScopedAvailabilityWeights(
+            unit,
+            context,
+            availabilityRecord,
+            useMegaMekAvailability,
+            availabilityScopeState,
+        );
+    }
+
+    private shouldUseAvailabilityEraScope(context: ForceGenerationContext): boolean {
+        return context.useAvailabilityEraScope ?? false;
+    }
+
+    private shouldUseAvailabilityFactionScope(context: ForceGenerationContext): boolean {
+        return context.useAvailabilityFactionScope ?? context.availabilityFactionIds.length > 1;
+    }
+
+    private shouldUseAvailabilityScope(context: ForceGenerationContext): boolean {
+        return this.shouldUseAvailabilityEraScope(context) || this.shouldUseAvailabilityFactionScope(context);
+    }
+
+    private getScopedAvailabilityEraIds(context: ForceGenerationContext): readonly number[] {
+        if (this.shouldUseAvailabilityEraScope(context)) {
+            return context.availabilityEraIds;
+        }
+
+        return context.forceEra
+            ? [context.forceEra.id]
+            : context.availabilityEraIds.length > 0
+                ? [context.availabilityEraIds[0]]
+                : [];
+    }
+
+    private getScopedAvailabilityFactionIds(context: ForceGenerationContext): readonly number[] {
+        if (this.shouldUseAvailabilityFactionScope(context)) {
+            return context.availabilityFactionIds;
+        }
+
+        return context.forceFaction
+            ? [context.forceFaction.id]
+            : context.availabilityFactionIds.length > 0
+                ? [context.availabilityFactionIds[0]]
+                : [];
+    }
+
+    private getScopedAvailabilityWeights(
+        unit: Unit,
+        context: ForceGenerationContext,
+        availabilityRecord: MegaMekWeightedAvailabilityRecord | undefined,
+        useMegaMekAvailability: boolean,
+        availabilityScopeState?: ForceGenerationAvailabilityScopeState,
+    ): { production: number; salvage: number } {
+        const scopeState = availabilityScopeState ?? this.buildAvailabilityScopeState(context);
+        if (scopeState.pairCount <= 0) {
+            return useMegaMekAvailability
+                ? {
+                    production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                    salvage: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                }
+                : {
                     production: 0,
                     salvage: 0,
                 };
-            }
+        }
 
+        if (!availabilityRecord && useMegaMekAvailability) {
             return {
                 production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
                 salvage: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
             };
         }
 
-        const forceEraId = context.forceEra?.id;
-        const forceFactionId = context.forceFaction?.id;
-        if (forceEraId !== undefined && forceFactionId !== undefined) {
-            const exactValue = availabilityRecord.e[String(forceEraId)]?.[String(forceFactionId)];
+        if (useMegaMekAvailability) {
+            return this.reduceMegaMekScopedAvailabilityWeights(availabilityRecord, scopeState);
+        }
 
-            if (useMegaMekAvailability) {
-                return {
-                    production: exactValue?.[0] ?? 0,
-                    salvage: exactValue?.[1] ?? 0,
-                };
+        return this.reduceScopedAvailabilityWeights(
+            scopeState,
+            (eraId, factionId) => {
+                return availabilityRecord
+                    ? this.getAvailabilityWeightsForPair(
+                        unit,
+                        availabilityRecord,
+                        eraId,
+                        factionId,
+                        useMegaMekAvailability,
+                    )
+                    : this.getMissingAvailabilityWeightsForPair(unit, eraId, factionId, useMegaMekAvailability);
+            },
+        );
+    }
+
+    private createAvailabilityReductionState(): ForceGenerationAvailabilityReductionState {
+        return {
+            productionMax: 0,
+            salvageMax: 0,
+        };
+    }
+
+    private accumulateAvailabilityReductionState(
+        state: ForceGenerationAvailabilityReductionState,
+        weights: { production: number; salvage: number },
+    ): void {
+        this.accumulateAvailabilityReductionValues(state, weights.production, weights.salvage);
+    }
+
+    private accumulateAvailabilityReductionValues(
+        state: ForceGenerationAvailabilityReductionState,
+        production: number,
+        salvage: number,
+    ): void {
+        if (production > state.productionMax) {
+            state.productionMax = production;
+        }
+
+        if (salvage > state.salvageMax) {
+            state.salvageMax = salvage;
+        }
+    }
+
+    private finalizeAvailabilityReductionState(
+        state: ForceGenerationAvailabilityReductionState,
+    ): { production: number; salvage: number } {
+        return {
+            production: state.productionMax,
+            salvage: state.salvageMax,
+        };
+    }
+
+    private reduceScopedAvailabilityWeights(
+        scopeState: ForceGenerationAvailabilityScopeState,
+        getPairWeights: (eraId: number, factionId: number) => { production: number; salvage: number },
+    ): { production: number; salvage: number } {
+        const state = this.createAvailabilityReductionState();
+
+        for (const eraId of scopeState.eraIds) {
+            for (const factionId of scopeState.factionIds) {
+                this.accumulateAvailabilityReductionState(state, getPairWeights(eraId, factionId));
+            }
+        }
+
+        return this.finalizeAvailabilityReductionState(state);
+    }
+
+    private reduceMegaMekScopedAvailabilityWeights(
+        availabilityRecord: MegaMekWeightedAvailabilityRecord | undefined,
+        scopeState: ForceGenerationAvailabilityScopeState,
+    ): { production: number; salvage: number } {
+        if (!availabilityRecord) {
+            return {
+                production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                salvage: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+            };
+        }
+
+        const state = this.createAvailabilityReductionState();
+
+        for (const eraIdText of scopeState.eraIdTexts) {
+            const eraAvailability = availabilityRecord.e[eraIdText];
+            if (!eraAvailability) {
+                continue;
             }
 
-            const mulFallbackWeights = this.getMulContextFallbackWeights(unit, context);
-            if (mulFallbackWeights) {
-                return {
-                    production: exactValue?.[0] ?? mulFallbackWeights.production,
-                    salvage: exactValue?.[1] ?? mulFallbackWeights.salvage,
-                };
-            }
+            for (const factionIdText in eraAvailability) {
+                if (!scopeState.factionIdTextSet.has(factionIdText)) {
+                    continue;
+                }
 
+                const value = eraAvailability[factionIdText];
+                this.accumulateAvailabilityReductionValues(state, value[0] ?? 0, value[1] ?? 0);
+            }
+        }
+
+        return this.finalizeAvailabilityReductionState(state);
+    }
+
+    private getMissingAvailabilityWeightsForPair(
+        unit: Unit,
+        eraId: number,
+        factionId: number,
+        useMegaMekAvailability: boolean,
+    ): { production: number; salvage: number } {
+        if (useMegaMekAvailability) {
+            return {
+                production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                salvage: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+            };
+        }
+
+        return this.getMulFallbackWeightsForPair(unit, eraId, factionId) ?? {
+            production: 0,
+            salvage: 0,
+        };
+    }
+
+    private getAvailabilityWeightsForPair(
+        unit: Unit,
+        availabilityRecord: MegaMekWeightedAvailabilityRecord,
+        eraId: number,
+        factionId: number,
+        useMegaMekAvailability: boolean,
+    ): { production: number; salvage: number } {
+        const exactValue = availabilityRecord.e[String(eraId)]?.[String(factionId)];
+
+        if (useMegaMekAvailability || exactValue) {
             return {
                 production: exactValue?.[0] ?? 0,
                 salvage: exactValue?.[1] ?? 0,
             };
         }
 
-        const pairCount = context.averagingEraIds.length * context.averagingFactionIds.length;
-        if (pairCount <= 0) {
-            return {
-                production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
-                salvage: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
-            };
-        }
-
-        let productionWeight = 0;
-        let salvageWeight = 0;
-        for (const eraId of context.averagingEraIds) {
-            const eraAvailability = availabilityRecord.e[String(eraId)];
-            for (const factionId of context.averagingFactionIds) {
-                const value = eraAvailability?.[String(factionId)];
-                productionWeight += value?.[0] ?? 0;
-                salvageWeight += value?.[1] ?? 0;
-            }
+        const mulFallbackWeights = this.getMulFallbackWeightsForPair(unit, eraId, factionId);
+        if (mulFallbackWeights) {
+            return mulFallbackWeights;
         }
 
         return {
-            production: productionWeight / pairCount,
-            salvage: salvageWeight / pairCount,
+            production: 0,
+            salvage: 0,
         };
     }
 
-    private getMulContextFallbackWeights(
+    private getMulFallbackWeightsForPair(
         unit: Unit,
-        context: ForceGenerationContext,
+        eraId: number,
+        factionId: number,
     ): { production: number; salvage: number } | null {
-        if (this.unitAvailabilitySource.useMegaMekAvailability()) {
-            return null;
-        }
-
-        const forceFaction = context.forceFaction;
-        const forceEra = context.forceEra;
+        const forceFaction = this.dataService.getFactionById(factionId);
+        const forceEra = this.dataService.getEraById(eraId);
         if (!forceFaction || !forceEra) {
             return null;
         }
@@ -2253,13 +3199,10 @@ export class ForceGeneratorService {
         };
     }
 
-    private hasPositiveAvailability(candidate: ForceGenerationCandidateUnit): boolean {
-        return candidate.productionWeight > 0 || candidate.salvageWeight > 0;
-    }
-
     private buildPreviewExplanation(
         gameSystem: GameSystem,
         eligibleUnitCount: number,
+        candidateUnitCount: number,
         context: ForceGenerationContext,
         budgetRange: { min: number; max: number },
         minUnitCount: number,
@@ -2272,7 +3215,7 @@ export class ForceGeneratorService {
         const lines: string[] = [];
         const budgetLabel = gameSystem === GameSystem.ALPHA_STRIKE ? 'PV' : 'BV';
         const maxLabel = Number.isFinite(budgetRange.max) ? budgetRange.max.toLocaleString() : 'no max';
-        lines.push(`Candidates: ${eligibleUnitCount} units. Target: ${minUnitCount}-${maxUnitCount} units, ${budgetLabel} ${budgetRange.min.toLocaleString()} to ${maxLabel}.`);
+        lines.push(`Eligible units: ${eligibleUnitCount} units. Availability-positive candidates: ${candidateUnitCount} units. Target: ${minUnitCount}-${maxUnitCount} units, ${budgetLabel} ${budgetRange.min.toLocaleString()} to ${maxLabel}.`);
 
         if (lockedUnitCount > 0) {
             lines.push(`Locked units: ${lockedUnitCount} preserved across rerolls.`);
@@ -2282,8 +3225,13 @@ export class ForceGeneratorService {
         }
 
         const contextParts = [context.forceFaction?.name, context.forceEra?.name].filter(Boolean);
+        const weightScopeNote = this.getAvailabilityWeightScopeNote(context);
         if (contextParts.length > 0) {
-            lines.push(`Generation context: ${contextParts.join(' - ')}.`);
+            lines.push(weightScopeNote
+                ? `Generation context: ${contextParts.join(' - ')}. ${weightScopeNote}`
+                : `Generation context: ${contextParts.join(' - ')}.`);
+        } else if (weightScopeNote) {
+            lines.push(weightScopeNote);
         }
 
         if (selectionAttempt?.rulesetProfile) {
@@ -2333,9 +3281,40 @@ export class ForceGeneratorService {
         return lines;
     }
 
+    private getPositiveAvailabilityMessage(candidateCount: number, context: ForceGenerationContext): string {
+        if (!this.shouldUseAvailabilityScope(context)) {
+            return `Only ${candidateCount} units have positive MegaMek availability in the rolled faction and era.`;
+        }
+
+        return `Only ${candidateCount} units have positive MegaMek availability within the current era/faction availability scope.`;
+    }
+
+    private getAvailabilityWeightScopeNote(context: ForceGenerationContext): string | null {
+        const usesEraScope = this.shouldUseAvailabilityEraScope(context);
+        const usesFactionScope = this.shouldUseAvailabilityFactionScope(context);
+        if (!usesEraScope && !usesFactionScope) {
+            return null;
+        }
+
+        const eraCount = this.getScopedAvailabilityEraIds(context).length;
+        const factionCount = this.getScopedAvailabilityFactionIds(context).length;
+        if (usesEraScope && usesFactionScope && eraCount > 0 && factionCount > 0) {
+            return `Availability weights: max P/S across ${eraCount} eras x ${factionCount} factions.`;
+        }
+        if (usesEraScope && eraCount > 0) {
+            return `Availability weights: max P/S across ${eraCount} eras.`;
+        }
+        if (usesFactionScope && factionCount > 0) {
+            return `Availability weights: max P/S across ${factionCount} factions.`;
+        }
+
+        return null;
+    }
+
     private buildPreviewFromSelectionAttempt(
         options: ForceGenerationRequest,
         eligibleUnitCount: number,
+        candidateUnitCount: number,
         budgetRange: { min: number; max: number },
         minUnitCount: number,
         maxUnitCount: number,
@@ -2355,6 +3334,7 @@ export class ForceGeneratorService {
         const explanationLines = this.buildPreviewExplanation(
             options.gameSystem,
             eligibleUnitCount,
+            candidateUnitCount,
             options.context,
             budgetRange,
             minUnitCount,
@@ -2378,6 +3358,45 @@ export class ForceGeneratorService {
             explanationLines,
             error,
         };
+    }
+
+    private buildEmptyPreview(
+        options: ForceGenerationRequest,
+        eligibleUnitCount: number,
+        candidateUnitCount: number,
+        budgetRange: { min: number; max: number },
+        minUnitCount: number,
+        maxUnitCount: number,
+        error: string,
+    ): ForceGenerationPreview {
+        return {
+            gameSystem: options.gameSystem,
+            units: [],
+            totalCost: 0,
+            faction: options.context.forceFaction,
+            era: options.context.forceEra,
+            explanationLines: this.buildPreviewExplanation(
+                options.gameSystem,
+                eligibleUnitCount,
+                candidateUnitCount,
+                options.context,
+                budgetRange,
+                minUnitCount,
+                maxUnitCount,
+                null,
+                error,
+                (options.lockedUnits ?? []).length,
+                options.preventDuplicateChassis === true,
+            ),
+            error,
+        };
+    }
+
+    private clearGenerationCaches(): void {
+        this.availabilityWeightCache = null;
+        this.baseCandidateCache = null;
+        this.preparedCandidateCache = null;
+        this.selectionPreparationCache = null;
     }
 
     private normalizeBudgetRange(range: ForceGenerationBudgetRange): { min: number; max: number } {
@@ -2579,22 +3598,22 @@ export class ForceGeneratorService {
         };
     }
 
-    private updateAverageAttemptDuration(
-        currentAverageMs: number,
+    private updateAttemptDurationEstimate(
+        currentEstimateMs: number,
         attemptDurationMs: number,
         completedAttempts: number,
     ): number {
-        if (completedAttempts <= 1 || currentAverageMs <= 0) {
+        if (completedAttempts <= 1 || currentEstimateMs <= 0) {
             return attemptDurationMs;
         }
 
-        return ((currentAverageMs * (completedAttempts - 1)) + attemptDurationMs) / completedAttempts;
+        return ((currentEstimateMs * (completedAttempts - 1)) + attemptDurationMs) / completedAttempts;
     }
 
     private resolveAttemptLimit(
         attemptBudget: ForceGenerationAttemptBudget,
         completedAttempts: number,
-        averageAttemptDurationMs: number,
+        attemptDurationEstimateMs: number,
         elapsedMs: number,
         hasValidAttempt: boolean,
     ): number {
@@ -2611,12 +3630,12 @@ export class ForceGeneratorService {
             return maxAttempts;
         }
 
-        if (averageAttemptDurationMs <= 0 || elapsedMs >= targetDurationMs) {
+        if (attemptDurationEstimateMs <= 0 || elapsedMs >= targetDurationMs) {
             return completedAttempts;
         }
 
         const remainingMs = Math.max(0, targetDurationMs - elapsedMs);
-        const additionalAttempts = Math.max(1, Math.floor(remainingMs / Math.max(0.05, averageAttemptDurationMs)));
+        const additionalAttempts = Math.max(1, Math.floor(remainingMs / Math.max(0.05, attemptDurationEstimateMs)));
         return Math.min(
             maxAttempts,
             Math.max(attemptBudget.minAttempts, completedAttempts + additionalAttempts),
@@ -2689,6 +3708,7 @@ export class ForceGeneratorService {
         budgetRange: { min: number; max: number },
         currentUnitCount: number,
         preferredUnitCount?: number,
+        selectionPreparation?: ForceGenerationSelectionPreparation,
     ): {
         candidate: ForceGenerationCandidateUnit;
         rolledSource: ForceGenerationAvailabilitySource;
@@ -2717,7 +3737,8 @@ export class ForceGeneratorService {
                     currentUnitCount + 1,
                     preferredUnitCount,
                 );
-                const rulesetScore = this.getRulesetMatchScore(candidate, rulesetProfile);
+                const rulesetScore = selectionPreparation?.rulesetScoreByCandidate.get(candidate)
+                    ?? this.getRulesetMatchScore(candidate, rulesetProfile);
                 return availabilityWeight * budgetScore * rulesetScore;
             }),
             rolledSource: source,
@@ -2735,17 +3756,22 @@ export class ForceGeneratorService {
         allowOverMaxFallbackSelection = false,
         preselectedCandidates: readonly ForceGenerationCandidateUnit[] = [],
         preventDuplicateChassis = false,
+        selectionPreparation?: ForceGenerationSelectionPreparation,
     ): ForceGenerationSelectionAttempt {
-        const rulesetProfile = this.buildRulesetProfile(
-            [...preselectedCandidates, ...candidates],
+        const preparedSelection = selectionPreparation ?? this.prepareSelectionPreparation(
+            candidates,
+            preselectedCandidates,
             context,
             minUnitCount,
             maxUnitCount,
         );
-        const remainingCandidates = this.filterCandidatesForRulesetProfile(candidates, rulesetProfile);
+        const rulesetProfile = preparedSelection.rulesetProfile;
+        const remainingCandidates = [...preparedSelection.selectableCandidates];
+        const lowestCostRemainingCandidates = [...preparedSelection.lowestCostCandidates];
+        const highestCostRemainingCandidates = [...preparedSelection.highestCostCandidates];
         const selectedCandidates: ForceGenerationCandidateUnit[] = [...preselectedCandidates];
         const selectionSteps: ForceGenerationSelectionStep[] = preselectedCandidates.map((candidate) => {
-            return this.createSelectionStep(candidate, rulesetProfile);
+            return this.createSelectionStep(candidate, rulesetProfile, {}, preparedSelection);
         });
         let totalCost = selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
         const preferredSelectionUnitCount = this.getPreferredSelectionUnitCount(
@@ -2783,7 +3809,6 @@ export class ForceGeneratorService {
             }
 
             const remainingSlotsAfterPick = maxUnitCount - selectedCandidates.length - 1;
-            const costBoundsIndex = buildCostBoundsIndex(remainingCandidates);
 
             const underMaxCandidates = remainingCandidates.filter((candidate) => {
                 const nextTotal = totalCost + candidate.cost;
@@ -2791,8 +3816,8 @@ export class ForceGeneratorService {
                     return false;
                 }
 
-                const minimumRemainingTotal = getExcludedMinimumMetricTotal(
-                    costBoundsIndex,
+                const minimumRemainingTotal = getOrderedCandidateCostTotalExcluding(
+                    lowestCostRemainingCandidates,
                     candidate,
                     requiredAfterPick,
                 );
@@ -2806,8 +3831,8 @@ export class ForceGeneratorService {
             const feasibleCandidates = underMaxCandidates.filter((candidate) => {
                 const nextTotal = totalCost + candidate.cost;
 
-                const maximumRemainingTotal = getExcludedMaximumMetricTotal(
-                    costBoundsIndex,
+                const maximumRemainingTotal = getOrderedCandidateCostTotalExcluding(
+                    highestCostRemainingCandidates,
                     candidate,
                     remainingSlotsAfterPick,
                 );
@@ -2838,11 +3863,20 @@ export class ForceGeneratorService {
                 budgetRange,
                 selectedCandidates.length,
                 preferredSelectionUnitCount,
+                preparedSelection,
             );
             const nextCandidate = nextPick.candidate;
             selectedCandidates.push(nextCandidate);
             totalCost += nextCandidate.cost;
             remainingCandidates.splice(remainingCandidates.indexOf(nextCandidate), 1);
+            const lowestCostIndex = lowestCostRemainingCandidates.indexOf(nextCandidate);
+            if (lowestCostIndex >= 0) {
+                lowestCostRemainingCandidates.splice(lowestCostIndex, 1);
+            }
+            const highestCostIndex = highestCostRemainingCandidates.indexOf(nextCandidate);
+            if (highestCostIndex >= 0) {
+                highestCostRemainingCandidates.splice(highestCostIndex, 1);
+            }
             const chassisKey = normalizeChassisKey(nextCandidate.unit.chassis);
             if (chassisKey.length > 0) {
                 selectedChassisKeys.add(chassisKey);
@@ -2852,7 +3886,7 @@ export class ForceGeneratorService {
                 rolledSource: nextPick.rolledSource,
                 source: nextPick.source,
                 usedFallbackSource: nextPick.usedFallbackSource,
-            }));
+            }, preparedSelection));
         }
 
         return {
@@ -2866,6 +3900,7 @@ export class ForceGeneratorService {
         candidate: ForceGenerationCandidateUnit,
         rulesetProfile: ForceGenerationRulesetProfile | null,
         overrides: Partial<Pick<ForceGenerationSelectionStep, 'rolledSource' | 'source' | 'usedFallbackSource'>> = {},
+        selectionPreparation?: ForceGenerationSelectionPreparation,
     ): ForceGenerationSelectionStep {
         const source: ForceGenerationAvailabilitySource = candidate.productionWeight >= candidate.salvageWeight
             ? 'production'
@@ -2880,7 +3915,8 @@ export class ForceGeneratorService {
             productionWeight: candidate.productionWeight,
             salvageWeight: candidate.salvageWeight,
             cost: candidate.cost,
-            rulesetReasons: this.getRulesetMatchReasons(candidate, rulesetProfile),
+            rulesetReasons: selectionPreparation?.rulesetReasonsByCandidate.get(candidate)
+                ?? this.getRulesetMatchReasons(candidate, rulesetProfile),
         };
     }
 
@@ -3219,24 +4255,32 @@ export class ForceGeneratorService {
         rulesetChain: readonly MegaMekRulesetRecord[],
         matchContext: RulesetMatchContext,
     ): ForceGenerationForceNodeSelection {
-        const exactMatch = this.peekMatchingForceNode(rulesetChain, matchContext, (when, nextContext) => {
-            return this.matchesRulesetWhen(when, nextContext);
-        });
+        return this.resolvePreferredForceNode(rulesetChain, matchContext, 'first');
+    }
+
+    private resolvePreferredForceNode(
+        rulesetChain: readonly MegaMekRulesetRecord[],
+        matchContext: RulesetMatchContext,
+        selectionMode: ForceGenerationForceNodeSelectionMode,
+    ): ForceGenerationForceNodeSelection {
+        const exactMatch = this.selectMatchingForceNode(
+            rulesetChain,
+            matchContext,
+            (when, nextContext) => this.matchesRulesetWhen(when, nextContext),
+            selectionMode,
+        );
         if (exactMatch) {
-            return {
-                forceNode: exactMatch,
-                matchContext: this.deriveForceNodeMatchContext(matchContext, exactMatch),
-            };
+            return this.createForceNodeSelection(matchContext, exactMatch);
         }
 
-        const structuralMatch = this.peekMatchingForceNode(rulesetChain, matchContext, (when, nextContext) => {
-            return this.matchesRulesetWhenForForceSelection(when, nextContext);
-        });
+        const structuralMatch = this.selectMatchingForceNode(
+            rulesetChain,
+            matchContext,
+            (when, nextContext) => this.matchesRulesetWhenForForceSelection(when, nextContext),
+            selectionMode,
+        );
         if (structuralMatch) {
-            return {
-                forceNode: structuralMatch,
-                matchContext: this.deriveForceNodeMatchContext(matchContext, structuralMatch),
-            };
+            return this.createForceNodeSelection(matchContext, structuralMatch);
         }
 
         if (!matchContext.echelon) {
@@ -3244,107 +4288,51 @@ export class ForceGeneratorService {
         }
 
         const fallbackContext = { ...matchContext, echelon: undefined };
-        const fallbackExactMatch = this.peekMatchingForceNode(rulesetChain, fallbackContext, (when, nextContext) => {
-            return this.matchesRulesetWhen(when, nextContext);
-        });
+        const fallbackExactMatch = this.selectMatchingForceNode(
+            rulesetChain,
+            fallbackContext,
+            (when, nextContext) => this.matchesRulesetWhen(when, nextContext),
+            selectionMode,
+        );
         if (fallbackExactMatch) {
-            return {
-                forceNode: fallbackExactMatch,
-                matchContext: this.deriveForceNodeMatchContext(fallbackContext, fallbackExactMatch),
-            };
+            return this.createForceNodeSelection(fallbackContext, fallbackExactMatch);
         }
 
-        const fallbackStructuralMatch = this.peekMatchingForceNode(rulesetChain, fallbackContext, (when, nextContext) => {
-            return this.matchesRulesetWhenForForceSelection(when, nextContext);
-        });
+        const fallbackStructuralMatch = this.selectMatchingForceNode(
+            rulesetChain,
+            fallbackContext,
+            (when, nextContext) => this.matchesRulesetWhenForForceSelection(when, nextContext),
+            selectionMode,
+        );
         if (fallbackStructuralMatch) {
-            return {
-                forceNode: fallbackStructuralMatch,
-                matchContext: this.deriveForceNodeMatchContext(fallbackContext, fallbackStructuralMatch),
-            };
+            return this.createForceNodeSelection(fallbackContext, fallbackStructuralMatch);
         }
 
         return { matchContext };
     }
 
-    private peekMatchingForceNode(
-        rulesetChain: readonly MegaMekRulesetRecord[],
+    private createForceNodeSelection(
         matchContext: RulesetMatchContext,
-        matcher: (when: MegaMekRulesetWhen | undefined, matchContext: RulesetMatchContext) => boolean,
-    ): MegaMekRulesetForceNode | undefined {
-        for (const ruleset of rulesetChain) {
-            const indexedForceNodes = matchContext.echelon
-                ? (ruleset.indexes.forceIndexesByEchelon[matchContext.echelon] ?? [])
-                    .map((index) => ruleset.forces[index])
-                    .filter((forceNode): forceNode is MegaMekRulesetForceNode => forceNode !== undefined)
-                : ruleset.forces;
-
-            const forceNodes = indexedForceNodes.length > 0 ? indexedForceNodes : ruleset.forces;
-            const matchingForceNode = forceNodes.find((forceNode) => matcher(forceNode.when, matchContext));
-            if (matchingForceNode) {
-                return matchingForceNode;
-            }
-        }
-
-        return undefined;
+        forceNode: MegaMekRulesetForceNode,
+    ): ForceGenerationForceNodeSelection {
+        return {
+            forceNode,
+            matchContext: this.deriveForceNodeMatchContext(matchContext, forceNode),
+        };
     }
 
     private findPreferredForceNode(
         rulesetChain: readonly MegaMekRulesetRecord[],
         matchContext: RulesetMatchContext,
     ): ForceGenerationForceNodeSelection {
-        const exactMatch = this.pickMatchingForceNode(rulesetChain, matchContext, (when, nextContext) => {
-            return this.matchesRulesetWhen(when, nextContext);
-        });
-        if (exactMatch) {
-            return {
-                forceNode: exactMatch,
-                matchContext: this.deriveForceNodeMatchContext(matchContext, exactMatch),
-            };
-        }
-
-        const structuralMatch = this.pickMatchingForceNode(rulesetChain, matchContext, (when, nextContext) => {
-            return this.matchesRulesetWhenForForceSelection(when, nextContext);
-        });
-        if (structuralMatch) {
-            return {
-                forceNode: structuralMatch,
-                matchContext: this.deriveForceNodeMatchContext(matchContext, structuralMatch),
-            };
-        }
-
-        if (!matchContext.echelon) {
-            return { matchContext };
-        }
-
-        const fallbackContext = { ...matchContext, echelon: undefined };
-        const fallbackExactMatch = this.pickMatchingForceNode(rulesetChain, fallbackContext, (when, nextContext) => {
-            return this.matchesRulesetWhen(when, nextContext);
-        });
-        if (fallbackExactMatch) {
-            return {
-                forceNode: fallbackExactMatch,
-                matchContext: this.deriveForceNodeMatchContext(fallbackContext, fallbackExactMatch),
-            };
-        }
-
-        const fallbackStructuralMatch = this.pickMatchingForceNode(rulesetChain, fallbackContext, (when, nextContext) => {
-            return this.matchesRulesetWhenForForceSelection(when, nextContext);
-        });
-        if (fallbackStructuralMatch) {
-            return {
-                forceNode: fallbackStructuralMatch,
-                matchContext: this.deriveForceNodeMatchContext(fallbackContext, fallbackStructuralMatch),
-            };
-        }
-
-        return { matchContext };
+        return this.resolvePreferredForceNode(rulesetChain, matchContext, 'weighted');
     }
 
-    private pickMatchingForceNode(
+    private selectMatchingForceNode(
         rulesetChain: readonly MegaMekRulesetRecord[],
         matchContext: RulesetMatchContext,
         matcher: (when: MegaMekRulesetWhen | undefined, matchContext: RulesetMatchContext) => boolean,
+        selectionMode: ForceGenerationForceNodeSelectionMode,
     ): MegaMekRulesetForceNode | undefined {
         for (const ruleset of rulesetChain) {
             const indexedForceNodes = matchContext.echelon
@@ -3354,6 +4342,14 @@ export class ForceGeneratorService {
                 : ruleset.forces;
 
             const forceNodes = indexedForceNodes.length > 0 ? indexedForceNodes : ruleset.forces;
+            if (selectionMode === 'first') {
+                const matchingForceNode = forceNodes.find((forceNode) => matcher(forceNode.when, matchContext));
+                if (matchingForceNode) {
+                    return matchingForceNode;
+                }
+                continue;
+            }
+
             const matchingForceNodes = forceNodes.filter((forceNode) => matcher(forceNode.when, matchContext));
             if (matchingForceNodes.length > 0) {
                 return pickWeightedRandomEntry(matchingForceNodes, (forceNode) => getRulesetOptionWeight(forceNode));

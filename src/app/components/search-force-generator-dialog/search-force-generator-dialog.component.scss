@@ -160,12 +160,34 @@
     min-width: 0;
 }
 
+.dropdown-option-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.era-dropdown {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
 .generator-option {
     display: inline-flex;
     align-items: center;
     gap: 8px;
     min-height: 38px;
     color: var(--text-color);
+}
+
+.generator-option-inline {
+    flex: 0 0 auto;
+    min-height: auto;
+    white-space: nowrap;
+}
+
+.generator-option.disabled {
+    opacity: 0.6;
 }
 
 .generator-option-label {
@@ -509,7 +531,7 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow: auto;
-    padding: 8px 8px 48px 8px;
+    padding: 8px;
 }
 
 .preview-stack {
@@ -521,11 +543,8 @@
 }
 
 :host ::ng-deep .preview-stack load-force-radar-panel {
-    --radar-panel-min-height: 280px;
-    --radar-panel-min-height-mobile: 230px;
-    flex: 1 1 auto;
-    min-height: 280px;
-    max-height: min(52vh, 520px);
+    width: 100%;
+    padding-bottom: 52px;
 }
 
 .preview-empty {
@@ -558,6 +577,7 @@
 @media (max-width: 960px) {
     :host ::ng-deep .search-force-generator-dialog-modal .modal-body {
         overflow: auto;
+        padding-bottom: 48px;
     }
 
     :host ::ng-deep .search-force-generator-dialog-modal div[dialog-body],
@@ -589,6 +609,11 @@
 @media (max-width: 720px) {
     .generator-grid {
         grid-template-columns: 1fr;
+    }
+
+    .dropdown-option-row {
+        flex-wrap: wrap;
+        align-items: flex-start;
     }
 
     .skill-control {

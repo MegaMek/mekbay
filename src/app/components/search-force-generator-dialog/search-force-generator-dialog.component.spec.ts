@@ -22,7 +22,9 @@ describe('SearchForceGeneratorDialogComponent', () => {
     let setFilterSpy: jasmine.Spy;
     let setPilotSkillsSpy: jasmine.Spy;
     let buildPreviewSpy: jasmine.Spy;
+    let resolveGenerationContextSpy: jasmine.Spy;
     let resolveInitialBudgetDefaultsSpy: jasmine.Spy;
+    let advOptionsSignal: WritableSignal<any>;
     let filteredUnitsSignal: WritableSignal<Unit[]>;
     let forceGeneratorEligibleUnitsSignal: WritableSignal<Unit[]>;
     let gameSystemSignal: WritableSignal<GameSystem>;
@@ -52,11 +54,15 @@ describe('SearchForceGeneratorDialogComponent', () => {
             pilotGunnerySkillSignal.set(gunnery);
             pilotPilotingSkillSignal.set(piloting);
         });
-        const advOptionsSignal = signal({
+        advOptionsSignal = signal({
             era: {
                 type: 'dropdown' as const,
                 label: 'Era',
-                options: [],
+                options: [
+                    { name: 'Jihad' },
+                    { name: 'Succession Wars' },
+                    { name: 'Dark Age' },
+                ],
                 value: {
                     Jihad: {
                         name: 'Jihad',
@@ -131,10 +137,79 @@ describe('SearchForceGeneratorDialogComponent', () => {
             explanationLines: [],
         };
         buildPreviewSpy = jasmine.createSpy('buildPreview').and.callFake(() => previewResult);
+        resolveGenerationContextSpy = jasmine.createSpy('resolveGenerationContext').and.returnValue({
+            forceFaction: null,
+            forceEra: null,
+            availabilityFactionIds: [],
+            availabilityEraIds: [],
+            availablePairCount: 0,
+            ruleset: null,
+        });
         resolveInitialBudgetDefaultsSpy = jasmine.createSpy('resolveInitialBudgetDefaults').and.returnValue({
             classic: { min: 7900, max: 8000 },
             alphaStrike: { min: 290, max: 300 },
         });
+        const forceGeneratorServiceMock = {
+            resolveInitialBudgetDefaults: resolveInitialBudgetDefaultsSpy,
+            resolveInitialUnitCountDefaults: () => ({ min: 4, max: 8 }),
+            resolveBudgetRangeForEditedMin: (range: { min: number; max: number }, editedMin: number) => {
+                const nextMin = Math.max(0, Math.floor(editedMin));
+                const nextMax = range.max > 0
+                    ? Math.max(nextMin, Math.floor(range.max))
+                    : Math.max(0, Math.floor(range.max));
+                return { min: nextMin, max: nextMax };
+            },
+            resolveBudgetRangeForEditedMax: (range: { min: number; max: number }, editedMax: number) => {
+                const nextMax = Math.max(0, Math.floor(editedMax));
+                if (nextMax === 0) {
+                    return {
+                        min: Math.max(0, Math.floor(range.min)),
+                        max: 0,
+                    };
+                }
+
+                return {
+                    min: Math.min(Math.max(0, Math.floor(range.min)), nextMax),
+                    max: nextMax,
+                };
+            },
+            resolveUnitCountRangeForEditedMin: (range: { min: number; max: number }, editedMin: number) => {
+                const nextMin = Math.min(100, Math.max(1, Math.floor(editedMin)));
+                return { min: nextMin, max: Math.max(nextMin, range.max) };
+            },
+            resolveUnitCountRangeForEditedMax: (range: { min: number; max: number }, editedMax: number) => {
+                const nextMax = Math.min(100, Math.max(1, Math.floor(editedMax)));
+                return { min: Math.min(range.min, nextMax), max: nextMax };
+            },
+            getStoredUnitCountOptionKeys: () => ({
+                min: 'forceGenLastMinUnitCount',
+                max: 'forceGenLastMaxUnitCount',
+            }),
+            getStoredBudgetOptionKeys: () => ({
+                min: 'forceGenLastBVMin',
+                max: 'forceGenLastBVMax',
+            }),
+            resolveGenerationContext: resolveGenerationContextSpy,
+            buildPreview: buildPreviewSpy,
+            createForceEntry: jasmine.createSpy('createForceEntry').and.callFake((preview: any) => {
+                if (preview.units.length === 0) {
+                    return null;
+                }
+
+                return {
+                    groups: [{
+                        units: preview.units.map((unit: any) => ({
+                            unit: unit.unit,
+                            destroyed: false,
+                            lockKey: unit.lockKey,
+                        })),
+                    }],
+                } as LoadForceEntry;
+            }),
+            getBudgetMetric: (unit: Unit, gameSystem: GameSystem) => {
+                return gameSystem === GameSystem.ALPHA_STRIKE ? unit.as?.PV ?? 0 : unit.bv ?? 0;
+            },
+        };
 
         gameSystemSignal = signal(GameSystem.CLASSIC);
 
@@ -150,74 +225,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
                 },
                 {
                     provide: ForceGeneratorService,
-                    useValue: {
-                        resolveInitialBudgetDefaults: resolveInitialBudgetDefaultsSpy,
-                        resolveInitialUnitCountDefaults: () => ({ min: 4, max: 8 }),
-                        resolveBudgetRangeForEditedMin: (range: { min: number; max: number }, editedMin: number) => {
-                            const nextMin = Math.max(0, Math.floor(editedMin));
-                            const nextMax = range.max > 0
-                                ? Math.max(nextMin, Math.floor(range.max))
-                                : Math.max(0, Math.floor(range.max));
-                            return { min: nextMin, max: nextMax };
-                        },
-                        resolveBudgetRangeForEditedMax: (range: { min: number; max: number }, editedMax: number) => {
-                            const nextMax = Math.max(0, Math.floor(editedMax));
-                            if (nextMax === 0) {
-                                return {
-                                    min: Math.max(0, Math.floor(range.min)),
-                                    max: 0,
-                                };
-                            }
-
-                            return {
-                                min: Math.min(Math.max(0, Math.floor(range.min)), nextMax),
-                                max: nextMax,
-                            };
-                        },
-                        resolveUnitCountRangeForEditedMin: (range: { min: number; max: number }, editedMin: number) => {
-                            const nextMin = Math.min(100, Math.max(1, Math.floor(editedMin)));
-                            return { min: nextMin, max: Math.max(nextMin, range.max) };
-                        },
-                        resolveUnitCountRangeForEditedMax: (range: { min: number; max: number }, editedMax: number) => {
-                            const nextMax = Math.min(100, Math.max(1, Math.floor(editedMax)));
-                            return { min: Math.min(range.min, nextMax), max: nextMax };
-                        },
-                        getStoredUnitCountOptionKeys: () => ({
-                            min: 'forceGenLastMinUnitCount',
-                            max: 'forceGenLastMaxUnitCount',
-                        }),
-                        getStoredBudgetOptionKeys: () => ({
-                            min: 'forceGenLastBVMin',
-                            max: 'forceGenLastBVMax',
-                        }),
-                        resolveGenerationContext: () => ({
-                            forceFaction: null,
-                            forceEra: null,
-                            averagingFactionIds: [],
-                            averagingEraIds: [],
-                            availablePairCount: 0,
-                            ruleset: null,
-                        }),
-                        buildPreview: buildPreviewSpy,
-                        createForceEntry: jasmine.createSpy('createForceEntry').and.callFake((preview: any) => {
-                            if (preview.units.length === 0) {
-                                return null;
-                            }
-
-                            return {
-                                groups: [{
-                                    units: preview.units.map((unit: any) => ({
-                                        unit: unit.unit,
-                                        destroyed: false,
-                                        lockKey: unit.lockKey,
-                                    })),
-                                }],
-                            } as LoadForceEntry;
-                        }),
-                        getBudgetMetric: (unit: Unit, gameSystem: GameSystem) => {
-                            return gameSystem === GameSystem.ALPHA_STRIKE ? unit.as?.PV ?? 0 : unit.bv ?? 0;
-                        },
-                    },
+                    useValue: forceGeneratorServiceMock,
                 },
                 {
                     provide: ForceBuilderService,
@@ -264,6 +272,15 @@ describe('SearchForceGeneratorDialogComponent', () => {
                     },
                 },
             ],
+        });
+
+        TestBed.overrideComponent(SearchForceGeneratorDialogComponent, {
+            set: {
+                providers: [{
+                    provide: ForceGeneratorService,
+                    useValue: forceGeneratorServiceMock,
+                }],
+            },
         });
 
         component = TestBed.runInInjectionContext(() => new SearchForceGeneratorDialogComponent());
@@ -359,6 +376,22 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(component.maxUnitCount()).toBe(100);
         expect(setOptionSpy).toHaveBeenCalledOnceWith('forceGenLastMaxUnitCount', 100);
         expect(input.value).toBe('100');
+    });
+
+    it('snaps an empty max units blur to the current minimum', () => {
+        component.minUnitCount.set(6);
+        component.maxUnitCount.set(10);
+
+        const input = document.createElement('input');
+        input.value = '';
+        const event = { target: input } as unknown as Event;
+
+        component.onMaxUnitCountBlur(event);
+
+        expect(component.minUnitCount()).toBe(6);
+        expect(component.maxUnitCount()).toBe(6);
+        expect(setOptionSpy).toHaveBeenCalledOnceWith('forceGenLastMaxUnitCount', 6);
+        expect(input.value).toBe('6');
     });
 
     it('does not replace the displayed preview when max units are committed on blur', () => {
@@ -469,6 +502,21 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         expect(buildPreviewSpy).not.toHaveBeenCalled();
         expect(component.previewEntry()).toBe(previewEntry);
+    });
+
+    it('treats an empty max budget blur as unbounded zero', () => {
+        component.classicBudgetMin.set(9000);
+        component.classicBudgetMax.set(10000);
+
+        const event = {
+            target: { value: '' },
+        } as unknown as Event;
+
+        component.onBudgetMaxBlur(event);
+
+        expect(component.classicBudgetMin()).toBe(9000);
+        expect(component.classicBudgetMax()).toBe(0);
+        expect((event.target as HTMLInputElement).value).toBe('');
     });
 
     it('preserves multistate era selections when updating filters', () => {
@@ -656,6 +704,119 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(buildPreviewSpy.calls.mostRecent().args[0].preventDuplicateChassis).toBeTrue();
     });
 
+    it('renders the Multi-Era checkbox disabled for a single positive era selection', async () => {
+        const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        const checkbox = fixture.nativeElement.querySelector(
+            '.dropdown-option-row .generator-option-inline input.bt-checkbox',
+        ) as HTMLInputElement | null;
+
+        expect(checkbox).not.toBeNull();
+        expect(checkbox?.disabled).toBeTrue();
+        expect(fixture.nativeElement.textContent).toContain('Multi-Era');
+    });
+
+    it('enables the Multi-Era checkbox when there are no positive era selections', async () => {
+        advOptionsSignal.update((options) => ({
+            ...options,
+            era: {
+                ...options.era,
+                value: {},
+            },
+        }));
+
+        const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        const checkbox = fixture.nativeElement.querySelector(
+            '.dropdown-option-row .generator-option-inline input.bt-checkbox',
+        ) as HTMLInputElement | null;
+
+        expect(checkbox).not.toBeNull();
+        expect(checkbox?.disabled).toBeFalse();
+    });
+
+    it('clears the Multi-Era checkbox when era selection returns to a single positive value', async () => {
+        advOptionsSignal.update((options) => ({
+            ...options,
+            era: {
+                ...options.era,
+                value: {
+                    Jihad: {
+                        name: 'Jihad',
+                        state: 'and' as const,
+                        count: 1,
+                    },
+                    'Succession Wars': {
+                        name: 'Succession Wars',
+                        state: 'or' as const,
+                        count: 1,
+                    },
+                },
+            },
+        }));
+
+        const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        const checkbox = fixture.nativeElement.querySelector(
+            '.dropdown-option-row .generator-option-inline input.bt-checkbox',
+        ) as HTMLInputElement | null;
+
+        if (!checkbox) {
+            fail('Expected Multi-Era checkbox to be rendered.');
+            return;
+        }
+
+        checkbox.click();
+        fixture.detectChanges();
+        expect(fixture.componentInstance.crossEraAvailabilityInMultiEraSelection()).toBeTrue();
+
+        advOptionsSignal.update((options) => ({
+            ...options,
+            era: {
+                ...options.era,
+                value: {
+                    Jihad: {
+                        name: 'Jihad',
+                        state: 'and' as const,
+                        count: 1,
+                    },
+                },
+            },
+        }));
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.crossEraAvailabilityInMultiEraSelection()).toBeFalse();
+        expect(checkbox.disabled).toBeTrue();
+        expect(checkbox.checked).toBeFalse();
+    });
+
+    it('forwards the Multi-Era checkbox state into generation context resolution', () => {
+        advOptionsSignal.update((options) => ({
+            ...options,
+            era: {
+                ...options.era,
+                value: {},
+            },
+        }));
+
+        component.onCrossEraAvailabilityInMultiEraSelectionChange({
+            target: { checked: true },
+        } as unknown as Event);
+
+        component.reroll();
+
+        expect(resolveGenerationContextSpy).toHaveBeenCalledWith(
+            [],
+            { crossEraAvailabilityInMultiEraSelection: true },
+        );
+    });
+
     it('keeps using the last committed budget range until the max field blurs', async () => {
         const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
         await fixture.whenStable();
@@ -700,6 +861,53 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         expect(checkbox).not.toBeNull();
         expect(fixture.nativeElement.textContent).toContain('Prevent Duplicate Chassis');
+    });
+
+    it('includes the Multi-Era checkbox state in the submitted config', () => {
+        const atlas = {
+            id: 4,
+            name: 'Atlas AS7-D',
+            chassis: 'Atlas',
+            model: 'AS7-D',
+            bv: 1897,
+        } as Unit;
+
+        advOptionsSignal.update((options) => ({
+            ...options,
+            era: {
+                ...options.era,
+                value: {},
+            },
+        }));
+        component.onCrossEraAvailabilityInMultiEraSelectionChange({
+            target: { checked: true },
+        } as unknown as Event);
+
+        (component as any).__test.setPreviewResult({
+            gameSystem: GameSystem.CLASSIC,
+            units: [{
+                unit: atlas,
+                cost: 1897,
+                gunnery: 4,
+                piloting: 5,
+                lockKey: 'generated:0:Atlas AS7-D',
+            }],
+            totalCost: 1897,
+            error: null,
+            faction: null,
+            era: null,
+            explanationLines: [],
+        });
+
+        component.minUnitCount.set(1);
+        component.maxUnitCount.set(1);
+        component.classicBudgetMin.set(0);
+        component.classicBudgetMax.set(0);
+        component.reroll();
+        component.submit();
+
+        expect(dialogCloseSpy).toHaveBeenCalledTimes(1);
+        expect(dialogCloseSpy.calls.mostRecent().args[0].config.crossEraAvailabilityInMultiEraSelection).toBeTrue();
     });
 
     it('renders pilot skill controls and updates them for the current game system', async () => {

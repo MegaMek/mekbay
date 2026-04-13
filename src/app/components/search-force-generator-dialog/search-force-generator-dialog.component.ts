@@ -50,6 +50,7 @@ import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { LoadForcePreviewPanelComponent } from '../load-force-preview-panel/load-force-preview-panel.component';
 import { LoadForceRadarPanelComponent } from '../load-force-radar-panel/load-force-radar-panel.component';
 import { MultiSelectDropdownComponent, type MultiStateSelection } from '../multi-select-dropdown/multi-select-dropdown.component';
+import { TooltipDirective } from '../../directives/tooltip.directive';
 import { UnitSearchAdvancedFiltersComponent } from '../unit-search-advanced-filters/unit-search-advanced-filters.component';
 import { DataService } from '../../services/data.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -58,6 +59,7 @@ import { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
 import type { AdvFilterOptions, DropdownFilterOptions } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
+import { resolveDropdownNamesFromFilter } from '../../utils/filter-name-resolution.util';
 import { normalizeMultiStateSelection } from '../../utils/unit-search-shared.util';
 
 export interface SearchForceGeneratorDialogConfig {
@@ -69,6 +71,7 @@ export interface SearchForceGeneratorDialogConfig {
     };
     minUnitCount: number;
     maxUnitCount: number;
+    crossEraAvailabilityInMultiEraSelection: boolean;
     preventDuplicateChassis: boolean;
 }
 
@@ -84,12 +87,14 @@ type UnitTypeFilterKey = 'type' | 'as.TP';
 @Component({
     selector: 'search-force-generator-dialog',
     standalone: true,
+    providers: [ForceGeneratorService],
     imports: [
         CommonModule,
         BaseDialogComponent,
         LoadForcePreviewPanelComponent,
         LoadForceRadarPanelComponent,
         MultiSelectDropdownComponent,
+        TooltipDirective,
         UnitSearchAdvancedFiltersComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -137,6 +142,18 @@ export class SearchForceGeneratorDialogComponent {
     readonly selectedUnitTypeValues = computed(() => this.getSelectedDropdownValues(this.unitTypeFilter()));
     readonly selectedSubtypeValues = computed(() => this.getSelectedDropdownValues(this.subtypeFilter()));
     readonly selectedTagValues = computed(() => this.getSelectedMultiStateValues(this.tagsFilter()));
+    readonly crossEraAvailabilityInMultiEraSelection = signal(false);
+    readonly positiveEraSelectionCount = computed(() => this.countPositiveMultiStateSelections(this.eraFilter()));
+    readonly crossEraAvailabilityToggleEnabled = computed(() => {
+        const positiveEraSelectionCount = this.positiveEraSelectionCount();
+        return positiveEraSelectionCount === 0 || positiveEraSelectionCount > 1;
+    });
+    readonly crossEraAvailabilityTooltip = computed(() => {
+        const baseMessage = 'When enabled, MegaMek availability weights can span the full multi-era selection instead of staying on a single resolved era.';
+        return this.crossEraAvailabilityToggleEnabled()
+            ? baseMessage
+            : `${baseMessage} Available only when no positive era is selected or when multiple eras are selected.`;
+    });
     readonly advPanelFilterGameSystem = signal<GameSystem>(this.initialGameSystem);
     readonly additionalFiltersOpen = signal(false);
     readonly additionalFiltersExcludedKeys = computed(() => {
@@ -265,6 +282,12 @@ export class SearchForceGeneratorDialogComponent {
             const currentGameSystem = this.gameSystem();
             untracked(() => this.advPanelFilterGameSystem.set(currentGameSystem));
         });
+
+        effect(() => {
+            if (!this.crossEraAvailabilityToggleEnabled()) {
+                untracked(() => this.crossEraAvailabilityInMultiEraSelection.set(false));
+            }
+        });
     }
 
     budgetMinimumFieldLabel(): string {
@@ -350,6 +373,13 @@ export class SearchForceGeneratorDialogComponent {
         this.preventDuplicateChassis.set((event.target as HTMLInputElement).checked);
     }
 
+    onCrossEraAvailabilityInMultiEraSelectionChange(event: Event): void {
+        const target = event.target as HTMLInputElement;
+        this.crossEraAvailabilityInMultiEraSelection.set(
+            this.crossEraAvailabilityToggleEnabled() && target.checked,
+        );
+    }
+
     onBudgetMinChange(event: Event): void {
         this.setBudgetRangeForSystem(
             this.gameSystem(),
@@ -365,7 +395,7 @@ export class SearchForceGeneratorDialogComponent {
             this.gameSystem(),
             this.forceGeneratorService.resolveBudgetRangeForEditedMax(
                 this.budgetRange(),
-                this.parseNumericValue(event, this.budgetRange().max),
+                this.parseNumericValue(event, 0),
             ),
         );
         this.syncInputValue(event, this.budgetRange().max || '');
@@ -391,7 +421,7 @@ export class SearchForceGeneratorDialogComponent {
                 min: this.minUnitCount(),
                 max: this.maxUnitCount(),
             },
-            this.parseNumericValue(event, this.maxUnitCount()),
+            this.parseNumericValue(event, this.minUnitCount()),
         ));
         this.syncInputValue(event, this.maxUnitCount());
     }
@@ -449,6 +479,7 @@ export class SearchForceGeneratorDialogComponent {
                 budgetRange: this.budgetRange(),
                 minUnitCount: this.minUnitCount(),
                 maxUnitCount: this.maxUnitCount(),
+                crossEraAvailabilityInMultiEraSelection: this.crossEraAvailabilityInMultiEraSelection(),
                 preventDuplicateChassis: this.preventDuplicateChassis(),
             },
             totalCost: preview.totalCost,
@@ -476,6 +507,19 @@ export class SearchForceGeneratorDialogComponent {
         return Array.isArray(option?.value) ? [...option.value] : [];
     }
 
+    private countPositiveMultiStateSelections(option: DropdownFilterOptions | null): number {
+        if (!option) {
+            return 0;
+        }
+
+        const resolvedNames = resolveDropdownNamesFromFilter(
+            this.getSelectedMultiStateValues(option),
+            option.options.map((entry) => entry.name),
+        );
+
+        return new Set([...resolvedNames.or, ...resolvedNames.and]).size;
+    }
+
     private buildGeneratedPreview(): ForceGenerationPreview {
         const settings = this.generationSettings();
         const eligibleUnits = this.eligibleUnits();
@@ -488,7 +532,9 @@ export class SearchForceGeneratorDialogComponent {
 
         return this.forceGeneratorService.buildPreview({
             eligibleUnits,
-            context: this.forceGeneratorService.resolveGenerationContext(eligibleUnits),
+            context: this.forceGeneratorService.resolveGenerationContext(eligibleUnits, {
+                crossEraAvailabilityInMultiEraSelection: this.crossEraAvailabilityInMultiEraSelection(),
+            }),
             gameSystem: settings.gameSystem,
             budgetRange: settings.budgetRange,
             minUnitCount: settings.minUnitCount,
