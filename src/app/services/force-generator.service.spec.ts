@@ -846,45 +846,6 @@ describe('ForceGeneratorService', () => {
         expect(preview.explanationLines.some((line) => line.includes('production pick, P 20 / S 0'))).toBeTrue();
     });
 
-    it('reports eligible units separately from availability-positive candidates in the preview explanation', () => {
-        const era = createEra(3150, 'Jihad');
-        const faction = createFaction(10, 'Capellan Confederation');
-        const positiveUnit = createUnit({ id: 1, name: 'Positive Unit', as: { PV: 5 } as Unit['as'] });
-        const unavailableUnit = createUnit({ id: 2, name: 'Unavailable Unit', as: { PV: 5 } as Unit['as'] });
-
-        megaMekAvailabilityByUnitName.set(positiveUnit.name, {
-            e: {
-                '3150': {
-                    '10': [2, 0],
-                },
-            },
-        });
-        megaMekAvailabilityByUnitName.set(unavailableUnit.name, {
-            e: {
-                '3150': {
-                    '10': [0, 0],
-                },
-            },
-        });
-
-        spyOn(Math, 'random').and.returnValue(0);
-
-        const preview = service.buildPreview({
-            eligibleUnits: [positiveUnit, unavailableUnit],
-            context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
-            budgetRange: { min: 0, max: 10 },
-            minUnitCount: 1,
-            maxUnitCount: 1,
-            gunnery: 4,
-            piloting: 5,
-        });
-
-        expect(preview.error).toBeNull();
-        expect(preview.explanationLines[0]).toContain('Eligible units: 2 units. Availability-positive candidates: 1 units.');
-        expect(preview.explanationLines[1]).toContain('Availability filter: 1 eligible units have no positive availability in the current scope');
-    });
-
     it('uses max weights across selected eras for a single rolled faction when multiselect expansion is enabled', () => {
         const rolledEra = createEra(3150, 'Jihad');
         const rolledFaction = createFaction(10, 'Capellan Confederation');

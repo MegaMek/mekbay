@@ -281,8 +281,8 @@ interface ForceGenerationSelectionAttempt {
 interface ForceGenerationSelectionPreparation {
     rulesetProfile: ForceGenerationRulesetProfile | null;
     selectableCandidates: readonly ForceGenerationCandidateUnit[];
-    ascendingCostCandidates: readonly ForceGenerationCandidateUnit[];
-    descendingCostCandidates: readonly ForceGenerationCandidateUnit[];
+    lowestCostCandidates: readonly ForceGenerationCandidateUnit[];
+    highestCostCandidates: readonly ForceGenerationCandidateUnit[];
     rulesetScoreByCandidate: Map<ForceGenerationCandidateUnit, number>;
     rulesetReasonsByCandidate: Map<ForceGenerationCandidateUnit, string[]>;
 }
@@ -291,14 +291,6 @@ interface ForceGenerationAttemptBudget {
     minAttempts: number;
     maxAttempts: number;
     targetDurationMs: number;
-}
-
-interface ForceGenerationCostBoundsIndex {
-    candidateCount: number;
-    ascendingPositions: Map<ForceGenerationCandidateUnit, number>;
-    descendingPositions: Map<ForceGenerationCandidateUnit, number>;
-    ascendingPrefixSums: number[];
-    descendingPrefixSums: number[];
 }
 
 interface ForceGenerationStructureEvaluation {
@@ -1046,18 +1038,7 @@ function getMinimumMetricTotal(
         .reduce((sum, value) => sum + value, 0);
 }
 
-function getMaximumMetricTotal(values: readonly number[], count: number): number {
-    if (count <= 0) {
-        return 0;
-    }
-
-    return [...values]
-        .sort((left, right) => right - left)
-        .slice(0, count)
-        .reduce((sum, value) => sum + value, 0);
-}
-
-function getOrderedCandidateMetricTotalExcluding(
+function getOrderedCandidateCostTotalExcluding(
     orderedCandidates: readonly ForceGenerationCandidateUnit[],
     excludedCandidate: ForceGenerationCandidateUnit,
     count: number,
@@ -1082,85 +1063,6 @@ function getOrderedCandidateMetricTotalExcluding(
     }
 
     return total;
-}
-
-function buildCostBoundsIndex(candidates: readonly ForceGenerationCandidateUnit[]): ForceGenerationCostBoundsIndex {
-    const ascendingPositions = new Map<ForceGenerationCandidateUnit, number>();
-    const descendingPositions = new Map<ForceGenerationCandidateUnit, number>();
-    const ascendingPrefixSums = [0];
-    const descendingPrefixSums = [0];
-
-    const ascendingCandidates = [...candidates].sort((left, right) => left.cost - right.cost);
-    const descendingCandidates = [...candidates].sort((left, right) => right.cost - left.cost);
-
-    for (const [index, candidate] of ascendingCandidates.entries()) {
-        ascendingPositions.set(candidate, index);
-        ascendingPrefixSums.push(ascendingPrefixSums[index] + candidate.cost);
-    }
-
-    for (const [index, candidate] of descendingCandidates.entries()) {
-        descendingPositions.set(candidate, index);
-        descendingPrefixSums.push(descendingPrefixSums[index] + candidate.cost);
-    }
-
-    return {
-        candidateCount: candidates.length,
-        ascendingPositions,
-        descendingPositions,
-        ascendingPrefixSums,
-        descendingPrefixSums,
-    };
-}
-
-function getExcludedOrderedMetricTotal(
-    prefixSums: readonly number[],
-    candidateCount: number,
-    excludedPosition: number | undefined,
-    excludedCost: number,
-    count: number,
-): number {
-    if (count <= 0 || candidateCount <= 1) {
-        return 0;
-    }
-
-    const boundedCount = Math.min(count, candidateCount - 1);
-    if (boundedCount <= 0) {
-        return 0;
-    }
-
-    if (excludedPosition !== undefined && excludedPosition < boundedCount) {
-        return prefixSums[Math.min(candidateCount, boundedCount + 1)] - excludedCost;
-    }
-
-    return prefixSums[boundedCount];
-}
-
-function getExcludedMinimumMetricTotal(
-    costBoundsIndex: ForceGenerationCostBoundsIndex,
-    excludedCandidate: ForceGenerationCandidateUnit,
-    count: number,
-): number {
-    return getExcludedOrderedMetricTotal(
-        costBoundsIndex.ascendingPrefixSums,
-        costBoundsIndex.candidateCount,
-        costBoundsIndex.ascendingPositions.get(excludedCandidate),
-        excludedCandidate.cost,
-        count,
-    );
-}
-
-function getExcludedMaximumMetricTotal(
-    costBoundsIndex: ForceGenerationCostBoundsIndex,
-    excludedCandidate: ForceGenerationCandidateUnit,
-    count: number,
-): number {
-    return getExcludedOrderedMetricTotal(
-        costBoundsIndex.descendingPrefixSums,
-        costBoundsIndex.candidateCount,
-        costBoundsIndex.descendingPositions.get(excludedCandidate),
-        excludedCandidate.cost,
-        count,
-    );
 }
 
 function getPreferredOrgTypeForEchelon(echelon: string | undefined): OrgType | undefined {
@@ -2911,15 +2813,14 @@ export class ForceGeneratorService {
     ): ForceGenerationPreparedCandidateCache {
         const baseCandidateCache = this.resolveBaseCandidateCache(eligibleUnits, options);
         const weightsByUnitId = availabilityWeightCache.weightsByUnitId;
-        const scopeState = availabilityWeightCache.scopeState;
         const candidates: ForceGenerationCandidateUnit[] = [];
 
         for (const baseCandidate of baseCandidateCache.candidates) {
-            const availabilityWeights = weightsByUnitId.get(baseCandidate.unit.id)
-                ?? this.getAvailabilityWeights(baseCandidate.unit, context, scopeState);
-            if (!weightsByUnitId.has(baseCandidate.unit.id)) {
-                weightsByUnitId.set(baseCandidate.unit.id, availabilityWeights);
-            }
+            const availabilityWeights = this.getCachedAvailabilityWeights(
+                baseCandidate.unit,
+                context,
+                availabilityWeightCache,
+            );
 
             if (availabilityWeights.production <= 0 && availabilityWeights.salvage <= 0) {
                 continue;
@@ -2999,8 +2900,8 @@ export class ForceGeneratorService {
             maxUnitCount,
         );
         const selectableCandidates = this.filterCandidatesForRulesetProfile(candidates, rulesetProfile);
-        const ascendingCostCandidates = [...selectableCandidates].sort((left, right) => left.cost - right.cost);
-        const descendingCostCandidates = [...ascendingCostCandidates].reverse();
+        const lowestCostCandidates = [...selectableCandidates].sort((left, right) => left.cost - right.cost);
+        const highestCostCandidates = [...lowestCostCandidates].reverse();
         const rulesetScoreByCandidate = new Map<ForceGenerationCandidateUnit, number>();
         const rulesetReasonsByCandidate = new Map<ForceGenerationCandidateUnit, string[]>();
 
@@ -3014,8 +2915,8 @@ export class ForceGeneratorService {
         return {
             rulesetProfile,
             selectableCandidates,
-            ascendingCostCandidates,
-            descendingCostCandidates,
+            lowestCostCandidates,
+            highestCostCandidates,
             rulesetScoreByCandidate,
             rulesetReasonsByCandidate,
         };
@@ -3861,8 +3762,8 @@ export class ForceGeneratorService {
         );
         const rulesetProfile = preparedSelection.rulesetProfile;
         const remainingCandidates = [...preparedSelection.selectableCandidates];
-        const ascendingRemainingCandidates = [...preparedSelection.ascendingCostCandidates];
-        const descendingRemainingCandidates = [...preparedSelection.descendingCostCandidates];
+        const lowestCostRemainingCandidates = [...preparedSelection.lowestCostCandidates];
+        const highestCostRemainingCandidates = [...preparedSelection.highestCostCandidates];
         const selectedCandidates: ForceGenerationCandidateUnit[] = [...preselectedCandidates];
         const selectionSteps: ForceGenerationSelectionStep[] = preselectedCandidates.map((candidate) => {
             return this.createSelectionStep(candidate, rulesetProfile, {}, preparedSelection);
@@ -3910,8 +3811,8 @@ export class ForceGeneratorService {
                     return false;
                 }
 
-                const minimumRemainingTotal = getOrderedCandidateMetricTotalExcluding(
-                    ascendingRemainingCandidates,
+                const minimumRemainingTotal = getOrderedCandidateCostTotalExcluding(
+                    lowestCostRemainingCandidates,
                     candidate,
                     requiredAfterPick,
                 );
@@ -3925,8 +3826,8 @@ export class ForceGeneratorService {
             const feasibleCandidates = underMaxCandidates.filter((candidate) => {
                 const nextTotal = totalCost + candidate.cost;
 
-                const maximumRemainingTotal = getOrderedCandidateMetricTotalExcluding(
-                    descendingRemainingCandidates,
+                const maximumRemainingTotal = getOrderedCandidateCostTotalExcluding(
+                    highestCostRemainingCandidates,
                     candidate,
                     remainingSlotsAfterPick,
                 );
@@ -3963,13 +3864,13 @@ export class ForceGeneratorService {
             selectedCandidates.push(nextCandidate);
             totalCost += nextCandidate.cost;
             remainingCandidates.splice(remainingCandidates.indexOf(nextCandidate), 1);
-            const ascendingIndex = ascendingRemainingCandidates.indexOf(nextCandidate);
-            if (ascendingIndex >= 0) {
-                ascendingRemainingCandidates.splice(ascendingIndex, 1);
+            const lowestCostIndex = lowestCostRemainingCandidates.indexOf(nextCandidate);
+            if (lowestCostIndex >= 0) {
+                lowestCostRemainingCandidates.splice(lowestCostIndex, 1);
             }
-            const descendingIndex = descendingRemainingCandidates.indexOf(nextCandidate);
-            if (descendingIndex >= 0) {
-                descendingRemainingCandidates.splice(descendingIndex, 1);
+            const highestCostIndex = highestCostRemainingCandidates.indexOf(nextCandidate);
+            if (highestCostIndex >= 0) {
+                highestCostRemainingCandidates.splice(highestCostIndex, 1);
             }
             const chassisKey = normalizeChassisKey(nextCandidate.unit.chassis);
             if (chassisKey.length > 0) {
