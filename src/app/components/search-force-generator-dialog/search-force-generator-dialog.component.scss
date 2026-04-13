@@ -531,7 +531,7 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow: auto;
-    padding: 8px 8px 48px 8px;
+    padding: 8px;
 }
 
 .preview-stack {
@@ -543,11 +543,8 @@
 }
 
 :host ::ng-deep .preview-stack load-force-radar-panel {
-    --radar-panel-min-height: 280px;
-    --radar-panel-min-height-mobile: 230px;
-    flex: 1 1 auto;
-    min-height: 280px;
-    max-height: min(52vh, 520px);
+    width: 100%;
+    padding-bottom: 52px;
 }
 
 .preview-empty {
@@ -580,6 +577,7 @@
 @media (max-width: 960px) {
     :host ::ng-deep .search-force-generator-dialog-modal .modal-body {
         overflow: auto;
+        padding-bottom: 48px;
     }
 
     :host ::ng-deep .search-force-generator-dialog-modal div[dialog-body],
