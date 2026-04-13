@@ -80,6 +80,7 @@ const DEFAULT_OPTIONS: Options = {
 
 @Injectable({ providedIn: 'root' })
 export class OptionsService {
+    private static instance: OptionsService;
     private dbService = inject(DbService);
 
     public options = signal<Options>({
@@ -117,6 +118,7 @@ export class OptionsService {
     });
 
     constructor() {
+        OptionsService.instance = this;
         this.initOptions();
     }
 
@@ -163,5 +165,9 @@ export class OptionsService {
         const updated = { ...this.options(), [key]: value };
         this.options.set(updated);
         await this.dbService.saveOptions(updated);
+    }
+
+    static get(): OptionsService {
+        return OptionsService.instance;
     }
 }
