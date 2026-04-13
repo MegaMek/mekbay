@@ -160,12 +160,34 @@
     min-width: 0;
 }
 
+.dropdown-option-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.era-dropdown {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
 .generator-option {
     display: inline-flex;
     align-items: center;
     gap: 8px;
     min-height: 38px;
     color: var(--text-color);
+}
+
+.generator-option-inline {
+    flex: 0 0 auto;
+    min-height: auto;
+    white-space: nowrap;
+}
+
+.generator-option.disabled {
+    opacity: 0.6;
 }
 
 .generator-option-label {
@@ -589,6 +611,11 @@
 @media (max-width: 720px) {
     .generator-grid {
         grid-template-columns: 1fr;
+    }
+
+    .dropdown-option-row {
+        flex-wrap: wrap;
+        align-items: flex-start;
     }
 
     .skill-control {
