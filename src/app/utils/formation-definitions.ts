@@ -241,7 +241,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         description: 'All infantry units for urban and anti-mech warfare',
         effectDescription: 'Distracting Swarm: units in this formation swarming an enemy unit cause a +1 To-Hit modifier to any weapon attacks made by the enemy unit.',
         minUnits: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 61 }, { book: Rulebook.CO, page: 87 }],
+        rulesRef: [{ book: Rulebook.CO, page: [61, 87] }],
         requirements: () => {
             const infantry = isAS ? ' (CI, BA, or PM)': '';
             return `Minimum 3 units. All units must be Infantry${infantry}.`;
