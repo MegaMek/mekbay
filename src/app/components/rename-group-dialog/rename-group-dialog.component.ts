@@ -39,7 +39,7 @@ import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { takeUntilDestroyed, outputToObservable } from '@angular/core/rxjs-interop';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import type { Force, UnitGroup } from '../../models/force.model';
-import { type FormationTypeDefinition, isNoFormation } from '../../utils/formation-type.model';
+import { formationInheritsParentEffects, type FormationTypeDefinition, isNoFormation } from '../../utils/formation-type.model';
 import { FormationInfoComponent } from '../formation-info/formation-info.component';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { FormationDropdownPanelComponent, type FormationDisplayItem } from './formation-dropdown-panel.component';
@@ -423,7 +423,7 @@ export class RenameGroupDialogComponent {
     /** Expose isNoFormation to the template */
     isNoFormation = isNoFormation;
 
-    /** Get requirements text for a formation definition, including parent requirements */
+    /** Get requirements text for a formation definition. */
     getRequirementsText(formation: FormationTypeDefinition): string | null {
         if (!formation.requirements) return null;
         return formation.requirements(this.data.group.force.gameSystem) || null;
@@ -431,7 +431,7 @@ export class RenameGroupDialogComponent {
 
     /** Get parent formation requirements text */
     getParentRequirementsText(formation: FormationTypeDefinition): string | null {
-        if (!formation.parent) return null;
+      if (!formationInheritsParentEffects(formation) || !formation.parent) return null;
         const parent = FORMATION_DEFINITIONS.find(d => d.id === formation.parent);
         if (!parent?.requirements) return null;
         return parent.requirements(this.data.group.force.gameSystem) || null;
@@ -439,7 +439,7 @@ export class RenameGroupDialogComponent {
 
     /** Get parent formation name */
     getParentFormationName(formation: FormationTypeDefinition): string {
-        if (!formation.parent) return '';
+      if (!formationInheritsParentEffects(formation) || !formation.parent) return '';
         return FORMATION_DEFINITIONS.find(d => d.id === formation.parent)?.name ?? '';
     }
 

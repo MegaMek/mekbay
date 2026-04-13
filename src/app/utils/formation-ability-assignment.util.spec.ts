@@ -186,6 +186,26 @@ describe('FormationAbilityAssignmentUtil', () => {
         ]);
     });
 
+    it('does not include parent effect groups unless the child opts in', () => {
+        const formation = getFormation('anti-air-lance');
+        const units = [
+            createASForceUnit('unit-1', createUnit(1, 'Rifleman', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('unit-2', createUnit(2, 'JagerMech', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('unit-3', createUnit(3, 'Catapult', 'Mek', 'BattleMek', 'BM')),
+        ];
+        const group = createGroup(
+            units,
+            formation,
+            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: units.map((unit) => unit.getUnit()) })],
+            createFaction('Mercenary', 'Mercenary'),
+        );
+
+        const preview = FormationAbilityAssignmentUtil.previewGroupFormationAssignments(group);
+
+        expect(preview.effectPreviews).toEqual([]);
+        expect(preview.unsupportedEffects.map((effect) => effect.sourceFormationId)).toEqual(['anti-air-lance']);
+    });
+
     it('filters structurally ineligible Air Lance units out of formation bonus recipients', () => {
         const formation = getFormation('command-lance');
         const bmUnits = [

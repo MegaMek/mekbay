@@ -35,7 +35,7 @@ import type { ASForceUnit } from '../models/as-force-unit.model';
 import type { UnitGroup } from '../models/force.model';
 import { FORMATION_DEFINITIONS } from './formation-definitions';
 import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
-import type { FormationEffectGroup, FormationTypeDefinition } from './formation-type.model';
+import { formationInheritsParentEffects, type FormationEffectGroup, type FormationTypeDefinition } from './formation-type.model';
 
 export interface FormationAssignmentPreviewOptions {
     readonly abilityOverrides?: ReadonlyMap<string, readonly string[]>;
@@ -102,24 +102,30 @@ function uniqueAbilityIds(abilityIds: readonly string[] | undefined): string[] {
     return [...new Set(abilityIds.filter((abilityId) => typeof abilityId === 'string' && abilityId.length > 0))];
 }
 
-function getFormationChain(definition: FormationTypeDefinition | null | undefined, visited = new Set<string>()): FormationTypeDefinition[] {
+function getParentFormationDefinition(definition: FormationTypeDefinition): FormationTypeDefinition | null {
+    return definition.parent
+        ? FORMATION_DEFINITIONS.find((candidate) => candidate.id === definition.parent) ?? null
+        : null;
+}
+
+function getFormationEffectChain(definition: FormationTypeDefinition | null | undefined, visited = new Set<string>()): FormationTypeDefinition[] {
     if (!definition || visited.has(definition.id)) {
         return [];
     }
 
     visited.add(definition.id);
-    const parentDefinition = definition.parent
-        ? FORMATION_DEFINITIONS.find((candidate) => candidate.id === definition.parent) ?? null
-        : null;
+    const inheritedParentDefinitions = formationInheritsParentEffects(definition)
+        ? getFormationEffectChain(getParentFormationDefinition(definition), visited)
+        : [];
 
     return [
-        ...getFormationChain(parentDefinition, visited),
+        ...inheritedParentDefinitions,
         definition,
     ];
 }
 
 export function getInheritedFormationEffectGroups(definition: FormationTypeDefinition | null | undefined): FormationEffectGroup[] {
-    return getFormationChain(definition).flatMap((sourceDefinition) => sourceDefinition.effectGroups ?? []);
+    return getFormationEffectChain(definition).flatMap((sourceDefinition) => sourceDefinition.effectGroups ?? []);
 }
 
 function orderAbilityIds(abilityIds: readonly string[], preferredOrder: readonly string[]): string[] {
@@ -188,7 +194,7 @@ function getSupportedEffectDescriptors(definition: FormationTypeDefinition | nul
     const supported: FormationEffectDescriptor[] = [];
     const unsupported: UnsupportedFormationEffectDescriptor[] = [];
 
-    for (const sourceDefinition of getFormationChain(definition)) {
+    for (const sourceDefinition of getFormationEffectChain(definition)) {
         const effectGroups = sourceDefinition.effectGroups ?? [];
         effectGroups.forEach((group, index) => {
             const key = `${sourceDefinition.id}:${index}`;
