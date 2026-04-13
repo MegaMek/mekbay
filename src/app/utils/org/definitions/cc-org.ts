@@ -3,19 +3,18 @@ import type {
     OrgComposedCountRule,
     OrgDefinition,
     OrgLeafPatternRule,
+    OrgLeafCountRule,
 } from '../org-types';
 import {
     IS_BA_PLATOON,
     IS_BATTALION,
     IS_BA_SQUAD,
     IS_COMPANY,
-    IS_FLIGHT,
     IS_LANCE,
     IS_PLATOON,
     IS_REGIMENT,
+    IS_BRIGADE,
     IS_UNIT,
-    IS_SQUADRON,
-    IS_WING,
 } from './is-org';
 import {
     TRANSPORT_BA_ALL_BUCKETS,
@@ -26,6 +25,105 @@ import {
     TRANSPORT_CV_CARRIER_BUCKETS,
     TRANSPORT_CV_OMNI_CARRIER_BUCKETS,
 } from './common';
+
+export const CC_ELEMENT: OrgLeafCountRule = {
+    kind: 'leaf-count',
+    type: 'Element',
+    priority: 1,
+    modifiers: { '': 2 },
+    commandRank: 'Lieutenant',
+    tier: 1,
+    unitSelector: 'flightEligible',
+    bucketBy: 'flightType',
+    pointModel: 'fixed',
+};
+
+export const CC_TRIPLE: OrgLeafCountRule = {
+    kind: 'leaf-count',
+    type: 'Triple',
+    priority: 1,
+    modifiers: { '': 3 },
+    commandRank: 'Lieutenant',
+    tier: 1,
+    unitSelector: 'flightEligible',
+    bucketBy: 'flightType',
+    pointModel: 'fixed',
+};
+
+export const CC_SQUADRON_ELEMENT: OrgComposedCountRule = {
+    kind: 'composed-count',
+    type: 'Squadron',
+    modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
+    commandRank: 'Captain',
+    tier: 2,
+    childRoles: [{ matches: ['Element'] }],
+    childBucketBy: 'promotionBasic',
+};
+
+export const CC_SQUADRON_TRIPLE: OrgComposedCountRule = {
+    kind: 'composed-count',
+    type: 'Squadron',
+    modifiers: { '': 2, 'Reinforced ': 3 },
+    commandRank: 'Captain',
+    tier: 2,
+    childRoles: [{ matches: ['Triple'] }],
+    childBucketBy: 'promotionBasic',
+};
+
+export const CC_FLIGHT: OrgComposedCountRule = {
+    kind: 'composed-count',
+    type: 'Flight',
+    modifiers: { '': 2, 'Reinforced ': 3 },
+    commandRank: 'Major',
+    tier: 3.1,
+    childRoles: [{ matches: ['Squadron'] }],    
+    childBucketBy: 'promotionBasic',
+};
+
+export const CC_WING: OrgComposedCountRule = {
+    kind: 'composed-count',
+    type: 'Wing',
+    modifiers: { 'Under-Strength ': 3, '': 4, 'Reinforced ': 5 },
+    commandRank: 'Lieutenant Colonel',
+    tier: 3.5,
+    childRoles: [
+        { matches: ['Flight'], min: 2 },
+        { matches: ['Element', 'Triple'], min: 1, max: 1 },
+    ],
+    childBucketBy: 'promotionBasic',
+};
+
+export const CC_FLEET_REGIMENT: OrgComposedCountRule = {
+    kind: 'composed-count',
+    type: 'Fleet Regiment',
+    modifiers: { 'Under-Strength ': 4, '': 5, 'Reinforced ': 6 },
+    commandRank: 'Colonel',
+    tier: 3.9,
+    childRoles: [
+        { matches: ['Wing'], min: 2 },
+        { matches: ['Element', 'Triple'], min: 2, max: 2 },
+    ],
+    childBucketBy: 'promotionBasic',
+};
+
+export const CC_AIR_LANCE: OrgComposedCountRule = {
+    kind: 'composed-count',
+    type: 'Air Lance',
+    priority: 1,
+    countsAs: 'Lance',
+    modifiers: { '': 2 },
+    commandRank: 'Lieutenant',
+    tier: 1.5,
+    formationMatching: {
+        ignoredChildRoles: [{ matches: ['Element'] }],
+        notice: 'Element child groups are ignored for formation requirements.',
+    },
+    childRoles: [
+        { matches: ['Element'], min: 1 },
+        { matches: ['Lance'], min: 1, onlyUnitTypes: ['BM'] },
+    ],
+    childBucketBy: 'promotionWithUnitKinds',
+};
 
 export const CC_AUGMENTED_LANCE: OrgLeafPatternRule = {
     kind: 'leaf-pattern',
@@ -147,9 +245,14 @@ export const CC_AUGMENTED_REGIMENT: OrgComposedCountRule = {
 
 export const CC_CORE_ORG: OrgDefinition = {
     rules: [
-        IS_FLIGHT,
-        IS_SQUADRON,
-        IS_WING,
+        CC_ELEMENT,
+        CC_TRIPLE,
+        CC_SQUADRON_ELEMENT,
+        CC_SQUADRON_TRIPLE,
+        CC_FLIGHT,
+        CC_WING,
+        CC_FLEET_REGIMENT,
+        CC_AIR_LANCE,
         IS_BA_SQUAD,
         IS_BA_PLATOON,
         IS_PLATOON,
@@ -158,6 +261,7 @@ export const CC_CORE_ORG: OrgDefinition = {
         IS_COMPANY,
         IS_BATTALION,
         IS_REGIMENT,
+        IS_BRIGADE,
         CC_AUGMENTED_LANCE,
         CC_AUGMENTED_COMPANY,
         CC_AUGMENTED_BATTALION,
