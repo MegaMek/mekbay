@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable, OnDestroy, inject } from '@angular/core';
 
 import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { GameSystem } from '../models/common.model';
@@ -1371,10 +1371,8 @@ function toMegaMekMotive(unit: Unit): string | undefined {
     }
 }
 
-@Injectable({
-    providedIn: 'root',
-})
-export class ForceGeneratorService {
+@Injectable()
+export class ForceGeneratorService implements OnDestroy {
     private readonly dataService = inject(DataService);
     private readonly filtersService = inject(UnitSearchFiltersService);
     private readonly unitAvailabilitySource = inject(UnitAvailabilitySourceService);
@@ -1382,6 +1380,10 @@ export class ForceGeneratorService {
     private baseCandidateCache: ForceGenerationBaseCandidateCache | null = null;
     private preparedCandidateCache: ForceGenerationPreparedCandidateCache | null = null;
     private selectionPreparationCache: ForceGenerationSelectionPreparationCache | null = null;
+
+    public ngOnDestroy(): void {
+        this.clearGenerationCaches();
+    }
 
     public resolveInitialBudgetDefaults(
         options: Pick<Options,
@@ -1574,27 +1576,15 @@ export class ForceGeneratorService {
                 );
             }
 
-            return {
-                gameSystem: options.gameSystem,
-                units: [],
-                totalCost: 0,
-                faction: options.context.forceFaction,
-                era: options.context.forceEra,
-                explanationLines: this.buildPreviewExplanation(
-                    options.gameSystem,
-                    eligibleUnits.length,
-                    availableUnitCapacity,
-                    options.context,
-                    budgetRange,
-                    minUnitCount,
-                    maxUnitCount,
-                    null,
-                    message,
-                    lockedCandidates.length,
-                    options.preventDuplicateChassis === true,
-                ),
-                error: message,
-            };
+            return this.buildEmptyPreview(
+                options,
+                eligibleUnits.length,
+                availableUnitCapacity,
+                budgetRange,
+                minUnitCount,
+                maxUnitCount,
+                message,
+            );
         }
 
         const candidates = lockedUnitNames.size === 0
@@ -1620,27 +1610,15 @@ export class ForceGeneratorService {
                 );
             }
 
-            return {
-                gameSystem: options.gameSystem,
-                units: [],
-                totalCost: 0,
-                faction: options.context.forceFaction,
-                era: options.context.forceEra,
-                explanationLines: this.buildPreviewExplanation(
-                    options.gameSystem,
-                    eligibleUnits.length,
-                    availableCandidateCapacity,
-                    options.context,
-                    budgetRange,
-                    minUnitCount,
-                    maxUnitCount,
-                    null,
-                    message,
-                    lockedCandidates.length,
-                    options.preventDuplicateChassis === true,
-                ),
-                error: message,
-            };
+            return this.buildEmptyPreview(
+                options,
+                eligibleUnits.length,
+                availableCandidateCapacity,
+                budgetRange,
+                minUnitCount,
+                maxUnitCount,
+                message,
+            );
         }
 
         const hasResolvedRuleset = this.resolveRulesetContext(options.context.forceFaction, options.context.forceEra).primary !== null;
@@ -1907,27 +1885,15 @@ export class ForceGeneratorService {
             );
         }
 
-        return {
-            gameSystem: options.gameSystem,
-            units: [],
-            totalCost: 0,
-            faction: options.context.forceFaction,
-            era: options.context.forceEra,
-            explanationLines: this.buildPreviewExplanation(
-                options.gameSystem,
-                eligibleUnits.length,
-                availableCandidateCapacity,
-                options.context,
-                budgetRange,
-                minUnitCount,
-                maxUnitCount,
-                null,
-                'Unable to build a force within the selected BV/PV range and unit count constraints.',
-                lockedCandidates.length,
-                options.preventDuplicateChassis === true,
-            ),
-            error: 'Unable to build a force within the selected BV/PV range and unit count constraints.',
-        };
+        return this.buildEmptyPreview(
+            options,
+            eligibleUnits.length,
+            availableCandidateCapacity,
+            budgetRange,
+            minUnitCount,
+            maxUnitCount,
+            'Unable to build a force within the selected BV/PV range and unit count constraints.',
+        );
     }
 
     public createForceEntry(preview: ForceGenerationPreview, name?: string): LoadForceEntry | null {
@@ -3392,6 +3358,45 @@ export class ForceGeneratorService {
             explanationLines,
             error,
         };
+    }
+
+    private buildEmptyPreview(
+        options: ForceGenerationRequest,
+        eligibleUnitCount: number,
+        candidateUnitCount: number,
+        budgetRange: { min: number; max: number },
+        minUnitCount: number,
+        maxUnitCount: number,
+        error: string,
+    ): ForceGenerationPreview {
+        return {
+            gameSystem: options.gameSystem,
+            units: [],
+            totalCost: 0,
+            faction: options.context.forceFaction,
+            era: options.context.forceEra,
+            explanationLines: this.buildPreviewExplanation(
+                options.gameSystem,
+                eligibleUnitCount,
+                candidateUnitCount,
+                options.context,
+                budgetRange,
+                minUnitCount,
+                maxUnitCount,
+                null,
+                error,
+                (options.lockedUnits ?? []).length,
+                options.preventDuplicateChassis === true,
+            ),
+            error,
+        };
+    }
+
+    private clearGenerationCaches(): void {
+        this.availabilityWeightCache = null;
+        this.baseCandidateCache = null;
+        this.preparedCandidateCache = null;
+        this.selectionPreparationCache = null;
     }
 
     private normalizeBudgetRange(range: ForceGenerationBudgetRange): { min: number; max: number } {
