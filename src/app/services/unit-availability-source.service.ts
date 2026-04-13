@@ -190,6 +190,7 @@ export class UnitAvailabilitySourceService {
 
     private mulEraUnitIdsCache = new WeakMap<Era, Set<AvailabilityUnitKey>>();
     private mulFactionUnitIdsCache = new WeakMap<Faction, Set<AvailabilityUnitKey>>();
+    private mulFactionEraUnitIdsCache = new WeakMap<Faction, Map<number, Set<AvailabilityUnitKey>>>();
     private mulCacheVersion = -1;
 
     private megaMekUnitsVersion = -1;
@@ -226,7 +227,14 @@ export class UnitAvailabilitySourceService {
         era: Era,
         availabilitySource?: AvailabilitySource,
     ): Set<AvailabilityUnitKey> {
-        return this.getFactionUnitIds(faction, new Set([era.id]), availabilitySource);
+        this.ensureMulCacheVersion();
+
+        if (!this.useMegaMekAvailability(availabilitySource)) {
+            return new Set(this.getMulFactionEraUnitIds(faction, era.id));
+        }
+
+        this.ensureMegaMekIndexes();
+        return this.getMegaMekFactionEraUnitIds(faction, era.id);
     }
 
     public getFactionUnitIds(
@@ -235,12 +243,21 @@ export class UnitAvailabilitySourceService {
         availabilitySource?: AvailabilitySource,
     ): Set<AvailabilityUnitKey> {
         this.ensureMulCacheVersion();
+        const singleEraId = this.getSingleScopedEraId(contextEraIds);
 
         if (!this.useMegaMekAvailability(availabilitySource)) {
+            if (singleEraId !== null) {
+                return new Set(this.getMulFactionEraUnitIds(faction, singleEraId));
+            }
+
             return this.getMulFactionUnitIds(faction, contextEraIds);
         }
 
         this.ensureMegaMekIndexes();
+
+        if (singleEraId !== null) {
+            return this.getMegaMekFactionEraUnitIds(faction, singleEraId);
+        }
 
         if (faction.id === MULFACTION_EXTINCT) {
             return this.getMegaMekExtinctUnitIds(contextEraIds);
@@ -558,6 +575,7 @@ export class UnitAvailabilitySourceService {
         this.mulCacheVersion = nextVersion;
         this.mulEraUnitIdsCache = new WeakMap<Era, Set<AvailabilityUnitKey>>();
         this.mulFactionUnitIdsCache = new WeakMap<Faction, Set<AvailabilityUnitKey>>();
+        this.mulFactionEraUnitIdsCache = new WeakMap<Faction, Map<number, Set<AvailabilityUnitKey>>>();
         this.megaMekUnitsVersion = -1;
         this.megaMekAvailabilityRecordsRef = null;
         this.megaMekEraUnitIds.clear();
@@ -593,6 +611,48 @@ export class UnitAvailabilitySourceService {
 
         this.mulEraUnitIdsCache.set(era, visibleUnitIds);
         return visibleUnitIds;
+    }
+
+    private getSingleScopedEraId(contextEraIds?: ReadonlySet<number>): number | null {
+        if (!contextEraIds || contextEraIds.size !== 1) {
+            return null;
+        }
+
+        const firstEntry = contextEraIds.values().next();
+        return firstEntry.done ? null : firstEntry.value;
+    }
+
+    private getMulFactionEraUnitIds(faction: Faction, eraId: number): Set<AvailabilityUnitKey> {
+        let factionEraUnitIds = this.mulFactionEraUnitIdsCache.get(faction);
+        if (!factionEraUnitIds) {
+            factionEraUnitIds = new Map<number, Set<AvailabilityUnitKey>>();
+            this.mulFactionEraUnitIdsCache.set(faction, factionEraUnitIds);
+        }
+
+        const cached = factionEraUnitIds.get(eraId);
+        if (cached) {
+            return cached;
+        }
+
+        const unitIds = new Set<AvailabilityUnitKey>();
+        const eraUnitIds = faction.eras[eraId] as Set<number> | undefined;
+        if (eraUnitIds) {
+            for (const unitId of eraUnitIds) {
+                unitIds.add(String(unitId));
+            }
+        }
+
+        factionEraUnitIds.set(eraId, unitIds);
+        return unitIds;
+    }
+
+    private getMegaMekFactionEraUnitIds(faction: Faction, eraId: number): Set<AvailabilityUnitKey> {
+        if (faction.id === MULFACTION_EXTINCT) {
+            return new Set(this.megaMekExtinctEraUnitIds.get(eraId) ?? []);
+        }
+
+        const eraUnitIds = this.megaMekFactionEraUnitIds.get(faction.id)?.get(eraId);
+        return new Set(eraUnitIds ?? []);
     }
 
     private getMulFactionUnitIds(faction: Faction, contextEraIds?: ReadonlySet<number>): Set<AvailabilityUnitKey> {

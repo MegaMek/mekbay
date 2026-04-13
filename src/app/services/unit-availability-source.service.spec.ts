@@ -214,6 +214,37 @@ describe('UnitAvailabilitySourceService', () => {
         expect(service.useMegaMekAvailability()).toBeTrue();
     });
 
+    it('returns isolated sets for single-era MUL lookups while using the cached faction-era membership', () => {
+        const era = {
+            id: 100,
+            name: 'Succession Wars',
+            units: new Set([1, 2]),
+            years: { from: 2780, to: 3049 },
+        } as Era;
+        const otherEra = {
+            id: 200,
+            name: 'Clan Invasion',
+            units: new Set([3]),
+            years: { from: 3050, to: 3067 },
+        } as Era;
+        const faction = {
+            id: 42,
+            name: 'Federated Suns',
+            group: 'Inner Sphere',
+            img: '',
+            eras: {
+                100: new Set([1]),
+                200: new Set([3]),
+            },
+        } as Faction;
+
+        const first = service.getFactionEraUnitIds(faction, era, 'mul');
+        first.add('999');
+
+        expect(Array.from(service.getFactionEraUnitIds(faction, era, 'mul'))).toEqual(['1']);
+        expect(Array.from(service.getFactionUnitIds(faction, new Set([otherEra.id]), 'mul'))).toEqual(['3']);
+    });
+
     it('returns MegaMek per-source details even when MUL availability is selected and omits zero scores', () => {
         const era = {
             id: 3150,
