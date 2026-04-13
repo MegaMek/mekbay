@@ -36,7 +36,12 @@ import { Component, signal, type ElementRef, computed, effect, afterNextRender, 
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { UnitSearchAdvancedFiltersComponent } from '../unit-search-advanced-filters/unit-search-advanced-filters.component';
-import { MEGAMEK_RARITY_SORT_KEY, SORT_OPTIONS, type SortOption, type SerializedSearchFilter } from '../../services/unit-search-filters.model';
+import {
+    isMegaMekRaritySortKey,
+    SORT_OPTIONS,
+    type SortOption,
+    type SerializedSearchFilter,
+} from '../../services/unit-search-filters.model';
 import { getMegaMekAvailabilityRarityForScore, MEGAMEK_AVAILABILITY_UNKNOWN_SCORE } from '../../models/megamek/availability.model';
 import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
 import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
@@ -1927,7 +1932,7 @@ export class UnitSearchComponent {
 
         if (!isNumeric) return null;
 
-        if (key === MEGAMEK_RARITY_SORT_KEY) {
+        if (isMegaMekRaritySortKey(key)) {
             const fmtMin = this.formatMegaMekRaritySortScore(min);
             const fmtMax = this.formatMegaMekRaritySortScore(max);
             return min === max ? fmtMin : `${fmtMin}–${fmtMax}`;
@@ -1991,7 +1996,7 @@ export class UnitSearchComponent {
             return this.formatClassicSubtype(unit) || '—';
         }
 
-        if (key === MEGAMEK_RARITY_SORT_KEY) {
+        if (isMegaMekRaritySortKey(key)) {
             return this.formatMegaMekRaritySortScore(this.filtersService.getMegaMekRaritySortScore(unit));
         }
 
@@ -2005,8 +2010,12 @@ export class UnitSearchComponent {
         return this.formatMegaMekRaritySortScore(this.filtersService.getMegaMekRaritySortScore(unit));
     }
 
+    getSearchResultMegaMekAvailability(unit: Unit) {
+        return this.filtersService.getMegaMekAvailabilityBadges(unit);
+    }
+
     getCardSortSlotOverride(unit: Unit): { value: string; numeric?: boolean } | null {
-        if (this.filtersService.selectedSort() !== MEGAMEK_RARITY_SORT_KEY) {
+        if (!isMegaMekRaritySortKey(this.filtersService.selectedSort())) {
             return null;
         }
 
@@ -2025,7 +2034,7 @@ export class UnitSearchComponent {
     }
 
     private getUnitSortRawValue(unit: Unit, key: string): unknown {
-        if (key === MEGAMEK_RARITY_SORT_KEY) {
+        if (isMegaMekRaritySortKey(key)) {
             return this.filtersService.getMegaMekRaritySortScore(unit);
         }
 

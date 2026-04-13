@@ -38,6 +38,7 @@ import {
     MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS,
     MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS,
     MEGAMEK_AVAILABILITY_FROM_OPTIONS,
+    getMegaMekAvailabilityRarityForScore,
     MEGAMEK_AVAILABILITY_UNKNOWN,
     type MegaMekAvailabilityFrom,
     type MegaMekAvailabilityRarity,
@@ -91,7 +92,7 @@ import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import { UserStateService } from './userState.service';
 import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
-import { type MegaMekAvailabilityFilterContext, UnitAvailabilitySourceService } from './unit-availability-source.service';
+import { type MegaMekAvailabilityFilterContext, type MegaMekUnitAvailabilityDetail, UnitAvailabilitySourceService } from './unit-availability-source.service';
 import {
     getPositiveDropdownNamesFromFilter,
     hasResolvedDropdownNames,
@@ -109,7 +110,8 @@ import {
     AdvFilterType,
     type FilterState,
     DROPDOWN_FILTERS,
-    MEGAMEK_RARITY_SORT_KEY,
+    getMegaMekRaritySortAvailabilitySources,
+    isMegaMekRaritySortKey,
     RANGE_FILTERS,
     type DropdownFilterConfig,
     type RangeFilterConfig,
@@ -542,9 +544,13 @@ export class UnitSearchFiltersService {
         return context;
     }
 
-    private buildMegaMekRaritySortScope(state: FilterState): AvailabilityFilterScope | undefined {
+    private buildMegaMekAvailabilityScope(
+        state: FilterState,
+        options: { includeAvailabilityFrom?: boolean } = {},
+    ): AvailabilityFilterScope | undefined {
         const { eraNames, factionNames, availabilityFromNames } = this.getAvailabilitySelectionScopeParts(state);
         const scope: AvailabilityFilterScope = {};
+        const includeAvailabilityFrom = options.includeAvailabilityFrom ?? true;
 
         if (eraNames.length > 0) {
             scope.eraNames = eraNames;
@@ -552,12 +558,35 @@ export class UnitSearchFiltersService {
         if (factionNames.length > 0) {
             scope.factionNames = factionNames;
         }
-        if (availabilityFromNames.length > 0) {
+        if (includeAvailabilityFrom && availabilityFromNames.length > 0) {
             scope.availabilityFromNames = availabilityFromNames;
         }
 
         return Object.keys(scope).length > 0 ? scope : undefined;
     }
+
+    private buildMegaMekRaritySortScope(state: FilterState): AvailabilityFilterScope | undefined {
+        const scope = this.buildMegaMekAvailabilityScope(state, { includeAvailabilityFrom: false });
+        const selectedSort = this.selectedSort();
+        if (!isMegaMekRaritySortKey(selectedSort)) {
+            return scope;
+        }
+
+        return {
+            ...(scope ?? {}),
+            availabilityFromNames: [...getMegaMekRaritySortAvailabilitySources(selectedSort)],
+        };
+    }
+
+    private readonly megaMekAvailabilityDisplayScope = computed(() => {
+        return this.buildMegaMekAvailabilityScope(this.getApplicableFilterState(this.effectiveFilterState()), {
+            includeAvailabilityFrom: false,
+        });
+    });
+
+    private readonly megaMekAvailabilityDisplayContext = computed<MegaMekAvailabilityFilterContext | null>(() => {
+        return this.buildAvailabilityFilterContext(this.megaMekAvailabilityDisplayScope());
+    });
 
     private readonly megaMekRaritySortScope = computed(() => {
         return this.buildMegaMekRaritySortScope(this.getApplicableFilterState(this.effectiveFilterState()));
@@ -581,6 +610,52 @@ export class UnitSearchFiltersService {
         }
 
         return this.getMegaMekRaritySortScoreFromContext(unit, this.buildAvailabilityFilterContext(scope));
+    }
+
+    public getMegaMekAvailabilitySources(unit: Unit, scope?: AvailabilityFilterScope): readonly MegaMekAvailabilityFrom[] {
+        const context = scope === undefined
+            ? this.megaMekAvailabilityDisplayContext()
+            : this.buildAvailabilityFilterContext(scope);
+        if (context === null) {
+            return [];
+        }
+
+        return MEGAMEK_AVAILABILITY_FROM_OPTIONS.filter((source) => {
+            return this.unitAvailabilitySource.unitMatchesAvailabilityFrom(unit, source, context);
+        });
+    }
+
+    public getMegaMekAvailabilityBadges(unit: Unit, scope?: AvailabilityFilterScope): readonly MegaMekUnitAvailabilityDetail[] {
+        const baseScope = scope === undefined
+            ? this.megaMekAvailabilityDisplayScope()
+            : {
+                eraNames: scope.eraNames,
+                factionNames: scope.factionNames,
+            };
+        const badges: MegaMekUnitAvailabilityDetail[] = [];
+
+        for (const source of MEGAMEK_AVAILABILITY_FROM_OPTIONS) {
+            const score = this.getMegaMekRaritySortScore(unit, {
+                ...(baseScope ?? {}),
+                availabilityFromNames: [source],
+            });
+            if (score < 1) {
+                continue;
+            }
+
+            const rarity = getMegaMekAvailabilityRarityForScore(score);
+            if (rarity === 'Not Available') {
+                continue;
+            }
+
+            badges.push({
+                source,
+                score,
+                rarity,
+            });
+        }
+
+        return badges;
     }
 
     private unitMatchesAvailabilityFrom(unit: Unit, availabilityFromName: string, scope?: AvailabilityFilterScope): boolean {
@@ -1023,7 +1098,7 @@ export class UnitSearchFiltersService {
     }
 
     private sortHydratedWorkerResults(units: Unit[]): Unit[] {
-        if (this.selectedSort() !== MEGAMEK_RARITY_SORT_KEY) {
+        if (!isMegaMekRaritySortKey(this.selectedSort())) {
             return units;
         }
 

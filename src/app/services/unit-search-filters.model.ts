@@ -35,6 +35,7 @@ import { GameSystem } from '../models/common.model';
 import type { AvailabilitySource } from '../models/options.model';
 import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import {
+    type MegaMekAvailabilityFrom,
     MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS,
     MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS,
 } from '../models/megamek/availability.model';
@@ -56,6 +57,10 @@ export interface SortOption {
     slotIcon?: string;  // Optional icon for the slot (e.g., '/images/calendar.svg')
     gameSystem?: GameSystem;
 }
+
+export type MegaMekRaritySortKey =
+    | typeof MEGAMEK_RARITY_PRODUCTION_SORT_KEY
+    | typeof MEGAMEK_RARITY_SALVAGE_SORT_KEY;
 
 export type DropdownOptionSource = 'indexed' | 'external' | 'context';
 export type DropdownAvailabilitySource = 'indexed' | 'context';
@@ -397,7 +402,22 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     ...SEMANTIC_FILTERS.map(f => ({ ...f, type: AdvFilterType.SEMANTIC as const })),
 ];
 
-export const MEGAMEK_RARITY_SORT_KEY = 'mmRarity';
+export const MEGAMEK_RARITY_PRODUCTION_SORT_KEY = 'mmRarityProduction';
+export const MEGAMEK_RARITY_SALVAGE_SORT_KEY = 'mmRaritySalvage';
+export const MEGAMEK_RARITY_SORT_KEYS = [
+    MEGAMEK_RARITY_PRODUCTION_SORT_KEY,
+    MEGAMEK_RARITY_SALVAGE_SORT_KEY,
+] as const;
+
+export function isMegaMekRaritySortKey(key: string | null | undefined): key is MegaMekRaritySortKey {
+    return key === MEGAMEK_RARITY_PRODUCTION_SORT_KEY || key === MEGAMEK_RARITY_SALVAGE_SORT_KEY;
+}
+
+export function getMegaMekRaritySortAvailabilitySources(sortKey: MegaMekRaritySortKey): readonly MegaMekAvailabilityFrom[] {
+    return sortKey === MEGAMEK_RARITY_PRODUCTION_SORT_KEY
+        ? ['Production']
+        : ['Salvage'];
+}
 
 export const SORT_OPTIONS: SortOption[] = [
     { key: '', label: 'Relevance' },
@@ -411,5 +431,6 @@ export const SORT_OPTIONS: SortOption[] = [
             gameSystem: f.game,
             // slotIcon: f.slotIcon
         } as SortOption)),
-    { key: MEGAMEK_RARITY_SORT_KEY, label: 'RAT Rarity', slotLabel: 'RAT Rarity' },
+    { key: MEGAMEK_RARITY_PRODUCTION_SORT_KEY, label: 'RAT Rarity (P)', slotLabel: 'RAT Rarity (P)' },
+    { key: MEGAMEK_RARITY_SALVAGE_SORT_KEY, label: 'RAT Rarity (S)', slotLabel: 'RAT Rarity (S)' },
 ];
