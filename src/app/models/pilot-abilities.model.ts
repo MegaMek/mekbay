@@ -35,12 +35,13 @@ import { Rulebook, type RulesReference } from './common.model';
 import { GameSystem } from '../models/common.model';
 import type { ASUnitTypeCode } from './units.model';
 import { OptionsService } from '../services/options.service';
+import { formatMovement } from '../utils/as-common.util';
 
-export function hexDisplay(summaries: string[]): string[] {
+export function formatSummaryMovement(summaries: string[]): string[] {
     const useHex = OptionsService.get()?.options()?.ASUseHex ?? false;
     return summaries.map(text => {
         return text.replace(/\[\[(\d+)\]\]/g, (_, val) => {
-            return useHex ? `${Math.floor(val) / 2}⬢` : `${val}″`;
+            return formatMovement(Number(val), '', useHex);
         });
     });
 }

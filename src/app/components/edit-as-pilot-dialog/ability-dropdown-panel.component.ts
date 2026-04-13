@@ -32,7 +32,7 @@
  */
 
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { type PilotAbility, getAbilityDetails, hexDisplay, type PilotAbilityRuleDetails } from '../../models/pilot-abilities.model';
+import { type PilotAbility, getAbilityDetails, formatSummaryMovement, type PilotAbilityRuleDetails } from '../../models/pilot-abilities.model';
 import { GameSystem, formatRulesReference, type RulesReference } from '../../models/common.model';
 import type { ASUnitTypeCode } from '../../models/units.model';
 
@@ -228,7 +228,7 @@ export class AbilityDropdownPanelComponent {
             return {
                 ability,
                 details,
-                summary: hexDisplay(details.summary)[0] ?? '',
+                summary: formatSummaryMovement(details.summary)[0] ?? '',
                 rulesRef: details.rulesRef ?? [],
                 unitTypeRestricted,
                 unitTypeLabel: details.unitType,

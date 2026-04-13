@@ -34,7 +34,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 import type { FormationTypeDefinition, FormationEffectGroup } from '../../utils/formation-type.model';
 import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
-import { type PilotAbility, PILOT_ABILITIES, getAbilityDetails, hexDisplay } from '../../models/pilot-abilities.model';
+import { type PilotAbility, PILOT_ABILITIES, getAbilityDetails, formatSummaryMovement } from '../../models/pilot-abilities.model';
 import { type CommandAbility, COMMAND_ABILITIES } from '../../models/command-abilities.model';
 import { GameSystem, formatRulesReference, type RulesReference } from '../../models/common.model';
 import { getInheritedFormationEffectGroups } from '../../utils/formation-ability-assignment.util';
@@ -521,7 +521,7 @@ export class FormationInfoComponent {
                         abilities.push({
                             pilotAbility: pilot,
                             name: pilot.name,
-                            summary: hexDisplay(details.summary),
+                            summary: formatSummaryMovement(details.summary),
                             rulesRef: details.rulesRef ?? [],
                             unitType: details.unitType,
                         });
