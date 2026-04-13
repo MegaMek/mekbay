@@ -241,7 +241,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         description: 'All infantry units for urban and anti-mech warfare',
         effectDescription: 'Distracting Swarm: units in this formation swarming an enemy unit cause a +1 To-Hit modifier to any weapon attacks made by the enemy unit.',
         minUnits: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 61 }],
+        rulesRef: [{ book: Rulebook.CO, page: 61 }, { book: Rulebook.CO, page: 87 }],
         requirements: () => {
             const infantry = isAS ? ' (CI, BA, or PM)': '';
             return `Minimum 3 units. All units must be Infantry${infantry}.`;
@@ -465,7 +465,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             distribution: 'shared-pool',
         }],
         minUnits: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 62 }, { book: Rulebook.ASCE, page: 117 }],
+        rulesRef: [{ book: Rulebook.CO, page: 63 }, { book: Rulebook.ASCE, page: 117 }],
         requirements: () => {
             const lightNoAssault = isAS ? 'Size 1. No Size 4+' : 'light. No assault';
             const light = isAS ? 'Size 1' : 'light';
@@ -500,7 +500,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             distribution: 'shared-pool',
         }],
         minUnits: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 62 }, { book: Rulebook.ASCE, page: 117 }],
+        rulesRef: [{ book: Rulebook.CO, page: 63 }, { book: Rulebook.ASCE, page: 117 }],
         requirements: () => {
             const mediumNoAssault = isAS ? 'Size 2. No Size 4+' : 'medium. No assault';
             const medium = isAS ? 'Size 2' : 'medium';
@@ -611,7 +611,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'berserker-lance',
         name: 'Berserker/Close Combat',
-        parent: 'battle-lance',
         nameAliases: ['Berserker', 'Close Combat'],
         description: 'Close combat specialists for physical attacks',
         effectDescription: 'Two units in this formation receive the Swordsman or Zweihander SPA. The same ability must be assigned to both units.',
@@ -622,8 +621,12 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             count: 2,
         }],
         minUnits: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 63 }],
-        requirements: () => 'Same as Battle Lance.',
+        rulesRef: [{ book: Rulebook.CO, page: 63 }, { book: Rulebook.FMK, page: 87}],
+        requirements: () => {
+            const heavyOrAssault = isAS ? 'Size 3+' : 'heavy or assault';
+            const heavy = isAS ? 'Size 3' : 'heavy';
+            return `Minimum 3 units. 50% must be ${heavyOrAssault}. At least 3 Brawler, Sniper, or Skirmisher roles. Vehicle formations require 2 matched pairs of ${heavy} units.`;
+        },
         validator: (units) => {
             const heavyUnits = units.filter(u =>
                 isAS ? asGetSize(u.getUnit()) >= 3 : cbtIsHeavyOrLarger(u.getUnit()));
@@ -697,7 +700,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         ],
         exclusiveFaction: 'Draconis Combine',
         minUnits: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 63 }],
+        rulesRef: [{ book: Rulebook.CO, page: 63 }, { book: Rulebook.FMK, page: 89}],
         requirements: () => {
             const weight = isAS ? 'Size' : 'weight';
             return `Minimum 3 units. Draconis Combine only. All units must share the same ${weight} class and chassis.`;
@@ -777,7 +780,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
     //
     {
         id: 'anti-air-lance',
-        parent: 'fire-lance',
         name: 'Anti-Air',
         description: 'Air defense specialists',
         effectDescription: 'At the beginning of each turn, up to two units in this formation may receive the Anti-Aircraft Specialist Special Command Ability. This will affect the weapon attacks made by the designated units during that turn.',
@@ -794,22 +796,25 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             const weapons = isAS
                 ? 'FLK, AC, or ART specials'
                 : 'an LBX autocannon, standard autocannon, artillery weapon, or Anti-Aircraft Targeting quirk';
-            return `Minimum 3 units. Must meet Fire Lance requirements. At least 2 units with ${weapons}.`;
+            return `Minimum 3 units. 75% must have the Missile Boat or Sniper role. At least 2 units with ${weapons}.`;
         },
         validator: (units) => {
-            if (isAS) {
-                const qualifyingUnits = units.filter(u =>
-                    asHasSpecial(u.getUnit(), 'FLK') ||
-                    asHasSpecial(u.getUnit(), 'AC') ||
-                    asHasSpecial(u.getUnit(), 'ART'));
-                return qualifyingUnits.length >= 2;
-            } else {
-                const qualifyingUnits = units.filter(u =>
-                    cbtHasAutocannon(u.getUnit()) ||
-                    cbtHasArtillery(u.getUnit()) ||
-                    u.getUnit().quirks.includes('Anti-Aircraft Targeting'));
-                return qualifyingUnits.length >= 2;
-            }
+            const count = units.filter(u => u.getUnit().role === 'Missile Boat' || u.getUnit().role === 'Sniper');
+            if (count.length >= Math.ceil(units.length * 0.75)) {
+                if (isAS) {
+                    const qualifyingUnits = units.filter(u =>
+                        asHasSpecial(u.getUnit(), 'FLK') ||
+                        asHasSpecial(u.getUnit(), 'AC') ||
+                        asHasSpecial(u.getUnit(), 'ART'));
+                    return qualifyingUnits.length >= 2;
+                } else {
+                    const qualifyingUnits = units.filter(u =>
+                        cbtHasAutocannon(u.getUnit()) ||
+                        cbtHasArtillery(u.getUnit()) ||
+                        u.getUnit().quirks.includes('Anti-Aircraft Targeting'));
+                    return qualifyingUnits.length >= 2;
+                }
+            } else return false;
         },
     },
 
@@ -1341,7 +1346,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         effectDescription: 'Swarm: When any unit in this formation is targeted by an enemy attack, that unit\'s player may switch the target to any other unit in this formation that is still a legal target (within line of sight) and at the same range or less from the attacker. This ability can only be used by units which spent Running, Jumping, or Flank movement points that turn.',
         minUnits: 5,
         maxUnits: 10,
-        rulesRef: [{ book: Rulebook.CO, page: 67 }],
+        rulesRef: [{ book: Rulebook.CO, page: 66 }, { book: Rulebook.FMK, page: 87 }],
         requirements: () => {
             const light = isAS ? 'Size 1' : 'light';
             const mediumRange = isAS ? 'have medium-range damage < 2' : 'deal less than 11 damage at 9 hexes';
@@ -1374,7 +1379,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         idealRole: 'Skirmisher',
         minUnits: 3,
-        rulesRef: [{ book: Rulebook.CO, page: 67 }],
+        rulesRef: [{ book: Rulebook.CO, page: 66 }],
         requirements: () => {
             const assault = isAS ? 'Size 4+' : 'assault';
             return `Minimum 3 units. No ${assault} units.`;
@@ -1432,130 +1437,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         },
     },
 
-    // ─── CLAN-EXCLUSIVE FORMATIONS ──────────────────────────────────────────────
-    //
-    // Phalanx Star
-    // Bonus: Float Like a Butterfly SPA shared pool. Max 6 rerolls per track. Only one reroll per attack or critical hit roll.
-    //
-    {
-        id: 'phalanx-star',
-        name: 'Phalanx',
-        description: 'Second-Line combined arms defensive formation.',
-        effectDescription: 'The formation receives a Float Like a Butterfly SPA. Useable by any unit in the formation. (max 6 rerolls per scenario).',
-        effectGroups: [{
-            abilityIds: ['float_like_a_butterfly'],
-            selection: 'all',
-            distribution: 'shared-pool',
-        }],
-        minUnits: 3,
-        rulesRef: [{ book: Rulebook.BOT, page: 27 }],
-        requirements: () => 'Clan only. Minimum 2 combat vehicles or BattleMeks. Remainder must be Elementals, combat vehicles, or BattleMeks. Must be at least two different unit types.',
-        validator: (units) => {
-            if (!isClanForce(units)) return false;
-            if (isAS) {
-                const BM = units.filter(u => u.getUnit().as?.TP === 'BM').length;
-                const BA = units.filter(u => u.getUnit().as?.TP === 'BA').length;
-                const CV = units.filter(u => u.getUnit().as?.TP === 'CV').length;
-                if (units.length > BM + BA + CV) return false;
-                return (BM >= 2 && (BA > 0 || CV > 0)) || (CV >= 2 && (BM > 0 || BA > 0)); 
-            } else {
-                const BM = units.filter(u => u.getUnit().type === 'Mek').length;
-                const BA = units.filter(u => u.getUnit().subtype === 'Battle Armor').length;
-                const CV = units.filter(u => u.getUnit().type === 'Tank' || u.getUnit().type === 'VTOL' || u.getUnit().type === 'Naval').length;
-                if (units.length > BM + BA + CV) return false;
-                return (BM >= 2 && (BA > 0 || CV > 0)) || (CV >= 2 && (BM > 0 || BA > 0)); 
-            }
-        },
-    },
-
-    //
-    // Rogue Star
-    // Bonus: At the beginning of each turn, up to 2 units get Combat Intuition SPA.
-    //
-
-    {
-        id: 'rogue-star',
-        name: 'Rogue',
-        description: 'Swift strike formation.',
-        effectDescription: 'At the beginning of each turn, up to two units in this formation may receive the Combat Intuition SPA.',
-        effectGroups: [{
-            abilityIds: ['combat_intuition'],
-            selection: 'all',
-            distribution: 'fixed',
-            count: 2,
-            perTurn: true,
-        }],
-        minUnits: 3,
-        rulesRef: [{ book: Rulebook.BOT, page: 27 }],
-        requirements: () => 'Clan only. At least two units in the Formation must be the same model (including the same OmniMek configuration)',
-        validator: (units) => {
-            if (!isClanForce(units)) return false;
-            const seen = new Set<string>();
-            const hasPair = units.some(unit => {
-                const name = unit.getUnit().name;
-                if (seen.has(name)) return true;
-                seen.add(name);
-                return false;
-            });
-            return hasPair;
-        },
-    },
-
-    //
-    // Strategic Command Star
-    // Bonus: Two non-commander units get one free SPA each (Antagonizer,
-    //   Blood Stalker, Combat Intuition, Eagle's Eyes, Marksman, Multi-Tasker).
-    //   Commander gets Tactical Genius.
-
-    {
-        id: 'strategic-command-star',
-        name: 'Strategic Command',
-        description: 'Combined arms command star.',
-        effectDescription: 'Clan only. Prior to the beginning of play, two of the non-commander units in this formation receive one of the following Special Pilot Abilities for free (each unit may receive a different SPA): Antagonizer, Combat Intuition, Blood Stalker, Eagle\'s Eyes, Marksman, or Multi-Tasker. In addition, the commander\'s unit receives the Tactical Genius SPA. If the commander already has the Tactical Genius SPA, instead add a +1 modifier to the force\'s Initiative roll results, including any rerolls made as a result of the Tactical Genius SPA. Aerospace units cannot be designated force commander.',
-        effectGroups: [
-            {
-                abilityIds: ['antagonizer', 'blood_stalker', 'combat_intuition', 'eagles_eyes', 'marksman', 'multi_tasker'],
-                selection: 'choose-each',
-                distribution: 'fixed',
-                count: 2,
-                excludeCommander: true,
-            },
-            {
-                abilityIds: ['tactical_genius'],
-                selection: 'all',
-                distribution: 'commander',
-            },
-        ],
-        minUnits: 3,
-        rulesRef: [{ book: Rulebook.BOT, page: 27 }],
-        requirements: () => {
-            const gunnery = isAS ? '' : 'Gunnery ';
-            const heavyOrAssault = isAS ? 'Size 3+, and no size 1' : 'heavy or assault, and no lights';
-            return `Minimum 3 units. All must have ${gunnery}Skill 3 or lower. Must have 1 Aerospace Point. Others must be Mek or Battle Armor. If Mek, at least 2 units ${heavyOrAssault}.`;
-        },
-        validator: (units) => {
-            if (!isClanForce(units)) return false;
-            const skillCheck = units.every(u =>
-            (isAS ? (u as ASForceUnit).pilotSkill() : (u as CBTForceUnit).gunnerySkill()) <= 3);
-            if (!skillCheck) return false;
-            const hasAF = units.filter(u =>
-                (isAS ? u.getUnit().as?.TP === 'AF' : u.getUnit().type === 'Aero')).length;
-            if (hasAF !== 2) return false;
-            const hasBM = units.filter(u =>
-                (isAS ? u.getUnit().as?.TP === 'BM' : u.getUnit().type === 'Mek')).length;
-                if (hasBM > 0) { 
-                    const heavyMeks = units.filter(u => isAS ? (u.getUnit().as?.TP === 'BM' && asGetSize(u.getUnit()) >= 3) : (u.getUnit().type === 'Mek' && cbtIsHeavyOrLarger(u.getUnit()))).length;
-                    const lightMeks = units.some(u => isAS ? (u.getUnit().as?.TP === 'BM' && asGetSize(u.getUnit()) === 1) : (u.getUnit().type === 'Mek' && cbtIsLightWeight(u.getUnit())));
-                    if (heavyMeks < 2 || lightMeks) return false;
-                }
-            const hasBA = units.filter(u =>
-                (isAS ? u.getUnit().as?.TP === 'BA' : u.getUnit().subtype === 'Battle Armor')).length;
-            return hasAF === 2 && (hasBM >= 2 || hasBA >= 1);
-        },
-    },
-
     // ─── Aerospace Formations ────────────────────────────────────────────
-
     //
     // INTERCEPTOR SQUADRON
     // Bonus: Units with Thrust ≤ 9 get Speed Demon. Up to 2 get Range Master (Long).
@@ -1740,6 +1622,128 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
                 if (!units.every(u => u.getUnit().type === 'Aero')) return false;
             }
             return units.filter(u => u.getUnit().role?.includes('Transport')).length >= Math.ceil(units.length * 0.5);
+        },
+    },
+
+    // ─── CLAN-EXCLUSIVE FORMATIONS ──────────────────────────────────────────────
+    //
+    // Phalanx Star
+    // Bonus: Float Like a Butterfly SPA shared pool. Max 6 rerolls per track. Only one reroll per attack or critical hit roll.
+    //
+    {
+        id: 'phalanx-star',
+        name: 'Phalanx',
+        description: 'Second-Line combined arms defensive formation.',
+        effectDescription: 'The formation receives a Float Like a Butterfly SPA. Useable by any unit in the formation. (max 6 rerolls per scenario).',
+        effectGroups: [{
+            abilityIds: ['float_like_a_butterfly'],
+            selection: 'all',
+            distribution: 'shared-pool',
+        }],
+        minUnits: 3,
+        rulesRef: [{ book: Rulebook.BOT, page: 27 }],
+        requirements: () => 'Clan only. Minimum 2 combat vehicles or BattleMeks. Remainder must be Elementals, combat vehicles, or BattleMeks. Must be at least two different unit types.',
+        validator: (units) => {
+            if (!isClanForce(units)) return false;
+            if (isAS) {
+                const BM = units.filter(u => u.getUnit().as?.TP === 'BM').length;
+                const BA = units.filter(u => u.getUnit().as?.TP === 'BA').length;
+                const CV = units.filter(u => u.getUnit().as?.TP === 'CV').length;
+                if (units.length > BM + BA + CV) return false;
+                return (BM >= 2 && (BA > 0 || CV > 0)) || (CV >= 2 && (BM > 0 || BA > 0)); 
+            } else {
+                const BM = units.filter(u => u.getUnit().type === 'Mek').length;
+                const BA = units.filter(u => u.getUnit().subtype === 'Battle Armor').length;
+                const CV = units.filter(u => u.getUnit().type === 'Tank' || u.getUnit().type === 'VTOL' || u.getUnit().type === 'Naval').length;
+                if (units.length > BM + BA + CV) return false;
+                return (BM >= 2 && (BA > 0 || CV > 0)) || (CV >= 2 && (BM > 0 || BA > 0)); 
+            }
+        },
+    },
+
+    //
+    // Rogue Star
+    // Bonus: At the beginning of each turn, up to 2 units get Combat Intuition SPA.
+    //
+
+    {
+        id: 'rogue-star',
+        name: 'Rogue',
+        description: 'Swift strike formation.',
+        effectDescription: 'At the beginning of each turn, up to two units in this formation may receive the Combat Intuition SPA.',
+        effectGroups: [{
+            abilityIds: ['combat_intuition'],
+            selection: 'all',
+            distribution: 'fixed',
+            count: 2,
+            perTurn: true,
+        }],
+        minUnits: 3,
+        rulesRef: [{ book: Rulebook.BOT, page: 27 }],
+        requirements: () => 'Clan only. At least two units in the Formation must be the same model (including the same OmniMek configuration)',
+        validator: (units) => {
+            if (!isClanForce(units)) return false;
+            const seen = new Set<string>();
+            const hasPair = units.some(unit => {
+                const name = unit.getUnit().name;
+                if (seen.has(name)) return true;
+                seen.add(name);
+                return false;
+            });
+            return hasPair;
+        },
+    },
+
+    //
+    // Strategic Command Star
+    // Bonus: Two non-commander units get one free SPA each (Antagonizer,
+    //   Blood Stalker, Combat Intuition, Eagle's Eyes, Marksman, Multi-Tasker).
+    //   Commander gets Tactical Genius.
+
+    {
+        id: 'strategic-command-star',
+        name: 'Strategic Command',
+        description: 'Combined arms command star.',
+        effectDescription: 'Clan only. Prior to the beginning of play, two of the non-commander units in this formation receive one of the following Special Pilot Abilities for free (each unit may receive a different SPA): Antagonizer, Combat Intuition, Blood Stalker, Eagle\'s Eyes, Marksman, or Multi-Tasker. In addition, the commander\'s unit receives the Tactical Genius SPA. If the commander already has the Tactical Genius SPA, instead add a +1 modifier to the force\'s Initiative roll results, including any rerolls made as a result of the Tactical Genius SPA. Aerospace units cannot be designated force commander.',
+        effectGroups: [
+            {
+                abilityIds: ['antagonizer', 'blood_stalker', 'combat_intuition', 'eagles_eyes', 'marksman', 'multi_tasker'],
+                selection: 'choose-each',
+                distribution: 'fixed',
+                count: 2,
+                excludeCommander: true,
+            },
+            {
+                abilityIds: ['tactical_genius'],
+                selection: 'all',
+                distribution: 'commander',
+            },
+        ],
+        minUnits: 3,
+        rulesRef: [{ book: Rulebook.BOT, page: 27 }],
+        requirements: () => {
+            const gunnery = isAS ? '' : 'Gunnery ';
+            const heavyOrAssault = isAS ? 'Size 3+, and no size 1' : 'heavy or assault, and no lights';
+            return `Minimum 3 units. All must have ${gunnery}Skill 3 or lower. Must have 1 Aerospace Point. Others must be Mek or Battle Armor. If Mek, at least 2 units ${heavyOrAssault}.`;
+        },
+        validator: (units) => {
+            if (!isClanForce(units)) return false;
+            const skillCheck = units.every(u =>
+            (isAS ? (u as ASForceUnit).pilotSkill() : (u as CBTForceUnit).gunnerySkill()) <= 3);
+            if (!skillCheck) return false;
+            const hasAF = units.filter(u =>
+                (isAS ? u.getUnit().as?.TP === 'AF' : u.getUnit().type === 'Aero')).length;
+            if (hasAF !== 2) return false;
+            const hasBM = units.filter(u =>
+                (isAS ? u.getUnit().as?.TP === 'BM' : u.getUnit().type === 'Mek')).length;
+                if (hasBM > 0) { 
+                    const heavyMeks = units.filter(u => isAS ? (u.getUnit().as?.TP === 'BM' && asGetSize(u.getUnit()) >= 3) : (u.getUnit().type === 'Mek' && cbtIsHeavyOrLarger(u.getUnit()))).length;
+                    const lightMeks = units.some(u => isAS ? (u.getUnit().as?.TP === 'BM' && asGetSize(u.getUnit()) === 1) : (u.getUnit().type === 'Mek' && cbtIsLightWeight(u.getUnit())));
+                    if (heavyMeks < 2 || lightMeks) return false;
+                }
+            const hasBA = units.filter(u =>
+                (isAS ? u.getUnit().as?.TP === 'BA' : u.getUnit().subtype === 'Battle Armor')).length;
+            return hasAF === 2 && (hasBM >= 2 || hasBA >= 1);
         },
     },
 ];
