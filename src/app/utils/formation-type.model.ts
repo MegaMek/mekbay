@@ -96,6 +96,7 @@ export interface FormationTypeDefinition {
     nameAliases?: string[];
     description: string;
     effectDescription?: string;
+    inheritParentEffects?: boolean;
     /** Structured SPA distribution rules for this formation's bonus ability. */
     effectGroups?: FormationEffectGroup[];
     validator?: (units: ForceUnit[], gameSystem: GameSystem) => boolean;

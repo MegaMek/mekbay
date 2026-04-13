@@ -355,6 +355,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         name: 'Fast Assault',
         description: 'Mobile assault formation with speed advantage',
         effectDescription: 'In addition to the Assault Lance bonus, up to 2 units per Fast Assault Lance may receive the Stand Aside SPA per turn. These may stack with the Demoralizer or Multi-Tasker abilities.',
+        inheritParentEffects: true,
         effectGroups: [{
             abilityIds: ['stand_aside'],
             selection: 'all',
