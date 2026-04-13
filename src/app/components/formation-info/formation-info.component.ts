@@ -168,7 +168,7 @@ export interface ResolvedEffectGroup {
                                             <div class="ability-card-unit-type">{{ ability.unitType }}</div>
                                         }
                                         @for (line of ability.summary; track line) {
-                                            <div class="ability-card-summary">{{ line }}</div>
+                                            <div class="ability-card-summary" [innerHTML]="line"></div>
                                         }
                                         <div class="ability-card-rules">
                                             @for (ref of ability.rulesRef; let last = $last; track $index) {

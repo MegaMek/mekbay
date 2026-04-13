@@ -95,7 +95,11 @@
                         Not valid for this unit type
                     </div>
                     }
+                    @if (displayInfo.isCustom) {
                     <div class="ability-detail-summary">{{ displayInfo.summary }}</div>
+                    } @else {
+                    <div class="ability-detail-summary" [innerHTML]="displayInfo.summary"></div>
+                    }
                     @if (displayInfo.rulesRef) {
                     <div class="ability-detail-rules">
                         @for (rule of displayInfo.rulesRef; let last = $last; track $index) {
