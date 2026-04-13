@@ -1949,7 +1949,9 @@ export class ForceBuilderService {
         }
 
         const { SearchForceGeneratorDialogComponent } = await import('../components/search-force-generator-dialog/search-force-generator-dialog.component');
-        const dialogRef = this.dialogsService.createDialog<SearchForceGeneratorDialogResult | null>(SearchForceGeneratorDialogComponent);
+        const dialogRef = this.dialogsService.createDialog<SearchForceGeneratorDialogResult | null>(SearchForceGeneratorDialogComponent, {
+            disableClose: true
+        });
 
         await this.finalizeGeneratedForceDialog((await firstValueFrom(dialogRef.closed)) ?? null);
     }
