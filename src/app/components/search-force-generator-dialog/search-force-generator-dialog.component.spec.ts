@@ -140,8 +140,8 @@ describe('SearchForceGeneratorDialogComponent', () => {
         resolveGenerationContextSpy = jasmine.createSpy('resolveGenerationContext').and.returnValue({
             forceFaction: null,
             forceEra: null,
-            averagingFactionIds: [],
-            averagingEraIds: [],
+            availabilityFactionIds: [],
+            availabilityEraIds: [],
             availablePairCount: 0,
             ruleset: null,
         });

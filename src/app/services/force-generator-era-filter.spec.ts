@@ -144,7 +144,7 @@ describe('ForceGeneratorService negative era filters', () => {
         const context = service.resolveGenerationContext([unit]);
 
         expect(context.forceEra?.id).toBe(3150);
-        expect(context.averagingEraIds).toEqual([3150]);
+        expect(context.availabilityEraIds).toEqual([3150]);
     });
 
     it('does not roll MUL-invisible eras when only the faction filter is active', () => {
@@ -197,7 +197,7 @@ describe('ForceGeneratorService negative era filters', () => {
 
         expect(context.forceFaction).toBe(faction);
         expect(context.forceEra).toBe(visibleEra);
-        expect(context.averagingEraIds).toEqual([visibleEra.id]);
+        expect(context.availabilityEraIds).toEqual([visibleEra.id]);
         expect(context.availablePairCount).toBe(1);
     });
 });
