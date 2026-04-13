@@ -15,6 +15,7 @@ import {
     IS_REGIMENT,
     IS_BRIGADE,
     IS_UNIT,
+    IS_AIR_LANCE,
 } from './is-org';
 import {
     TRANSPORT_BA_ALL_BUCKETS,
@@ -107,22 +108,15 @@ export const CC_FLEET_REGIMENT: OrgComposedCountRule = {
 };
 
 export const CC_AIR_LANCE: OrgComposedCountRule = {
-    kind: 'composed-count',
-    type: 'Air Lance',
-    priority: 1,
-    countsAs: 'Lance',
-    modifiers: { '': 2 },
-    commandRank: 'Lieutenant',
-    tier: 1.5,
+    ...IS_AIR_LANCE,
     formationMatching: {
         ignoredChildRoles: [{ matches: ['Element'] }],
         notice: 'Element child groups are ignored for formation requirements.',
     },
     childRoles: [
-        { matches: ['Element'], min: 1 },
+        { matches: ['Element'], min: 1, max: 1 },
         { matches: ['Lance'], min: 1, onlyUnitTypes: ['BM'] },
     ],
-    childBucketBy: 'promotionWithUnitKinds',
 };
 
 export const CC_AUGMENTED_LANCE: OrgLeafPatternRule = {
