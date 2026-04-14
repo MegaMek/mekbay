@@ -133,6 +133,18 @@ export type BroadcastPayload = {
     meta?: any;         // optional misc info
 };
 
+interface CatalogInitializationState {
+    ready: boolean;
+    promise: Promise<boolean> | null;
+}
+
+function createCatalogInitializationState(): CatalogInitializationState {
+    return {
+        ready: false,
+        promise: null,
+    };
+}
+
 @Injectable({
     providedIn: 'root'
 })
@@ -160,6 +172,11 @@ export class DataService {
     private mulUnitSourcesCatalog = inject(MulUnitSourcesCatalogService);
     private quirksCatalog = inject(QuirksCatalogService);
     private sourcebooksCatalog = inject(SourcebooksCatalogService);
+    private readonly megaMekAvailabilityCatalogState = createCatalogInitializationState();
+    private readonly megaMekFactionsCatalogState = createCatalogInitializationState();
+    private readonly megaMekRulesetsCatalogState = createCatalogInitializationState();
+    private readonly quirksCatalogState = createCatalogInitializationState();
+    private readonly sourcebooksCatalogState = createCatalogInitializationState();
 
     isDataReady = signal(false);
     isDownloading = signal(false);
@@ -497,32 +514,107 @@ export class DataService {
         return String(error);
     }
 
-    private async initializeSupplementalCatalogs(): Promise<void> {
-        const catalogs = [
-            { name: 'megamek_availability', initialize: () => this.megaMekAvailabilityCatalog.initialize() },
-            { name: 'megamek_factions', initialize: () => this.megaMekFactionsCatalog.initialize() },
-            { name: 'megamek_rulesets', initialize: () => this.megaMekRulesetsCatalog.initialize() },
-            { name: 'quirks', initialize: () => this.quirksCatalog.initialize() },
-            { name: 'sourcebooks', initialize: () => this.sourcebooksCatalog.initialize() },
-        ] as const;
-        const results = await Promise.allSettled(catalogs.map(({ initialize }) => initialize()));
-        const failures = results.flatMap((result, index) => (
-            result.status === 'rejected'
-                ? [{ name: catalogs[index].name, error: result.reason }]
-                : []
-        ));
-
-        if (failures.length === 0) {
-            return;
+    private ensureCatalogInitialized(
+        state: CatalogInitializationState,
+        name: string,
+        initialize: () => Promise<void>,
+        onInitialized?: () => void,
+    ): Promise<boolean> {
+        if (state.ready) {
+            return Promise.resolve(true);
         }
 
-        for (const failure of failures) {
-            this.logger.error(`Failed to initialize catalog service "${failure.name}": ${this.describeError(failure.error)}`);
+        if (state.promise) {
+            return state.promise;
+        }
+
+        state.promise = initialize()
+            .then(() => {
+                state.ready = true;
+                onInitialized?.();
+                return true;
+            })
+            .catch((error) => {
+                this.logger.error(`Failed to initialize catalog service "${name}": ${this.describeError(error)}`);
+                return false;
+            })
+            .finally(() => {
+                state.promise = null;
+            });
+
+        return state.promise;
+    }
+
+    private async ensureCatalogGroupInitialized(
+        catalogs: readonly { name: string; ensure: () => Promise<boolean> }[],
+    ): Promise<boolean> {
+        const results = await Promise.all(catalogs.map(async ({ name, ensure }) => ({ name, success: await ensure() })));
+        const failures = results.filter((result) => !result.success).map((result) => result.name);
+
+        if (failures.length === 0) {
+            return true;
         }
 
         this.logger.error(
-            `Failed to initialize ${failures.length} catalog service${failures.length === 1 ? '' : 's'}: ${failures.map(({ name }) => `"${name}"`).join(', ')}`,
+            `Failed to initialize ${failures.length} catalog service${failures.length === 1 ? '' : 's'}: ${failures.map((name) => `"${name}"`).join(', ')}`,
         );
+        return false;
+    }
+
+    private ensureQuirksCatalogInitialized(): Promise<boolean> {
+        return this.ensureCatalogInitialized(
+            this.quirksCatalogState,
+            'quirks',
+            () => this.quirksCatalog.initialize(),
+        );
+    }
+
+    private ensureSourcebooksCatalogInitialized(): Promise<boolean> {
+        return this.ensureCatalogInitialized(
+            this.sourcebooksCatalogState,
+            'sourcebooks',
+            () => this.sourcebooksCatalog.initialize(),
+        );
+    }
+
+    private initializeStartupCatalogs(): Promise<boolean> {
+        return this.ensureCatalogGroupInitialized([
+            { name: 'quirks', ensure: () => this.ensureQuirksCatalogInitialized() },
+            { name: 'sourcebooks', ensure: () => this.ensureSourcebooksCatalogInitialized() },
+        ]);
+    }
+
+    public ensureMegaMekAvailabilityCatalogInitialized(): Promise<boolean> {
+        return this.ensureCatalogInitialized(
+            this.megaMekAvailabilityCatalogState,
+            'megamek_availability',
+            () => this.megaMekAvailabilityCatalog.initialize(),
+            () => this.bumpSearchCorpusVersion(),
+        );
+    }
+
+    private ensureMegaMekFactionsCatalogInitialized(): Promise<boolean> {
+        return this.ensureCatalogInitialized(
+            this.megaMekFactionsCatalogState,
+            'megamek_factions',
+            () => this.megaMekFactionsCatalog.initialize(),
+        );
+    }
+
+    private ensureMegaMekRulesetsCatalogInitialized(): Promise<boolean> {
+        return this.ensureCatalogInitialized(
+            this.megaMekRulesetsCatalogState,
+            'megamek_rulesets',
+            () => this.megaMekRulesetsCatalog.initialize(),
+        );
+    }
+
+    public ensureMegaMekCatalogsInitialized(): Promise<boolean> {
+        return this.ensureCatalogGroupInitialized([
+            { name: 'megamek_availability', ensure: () => this.ensureMegaMekAvailabilityCatalogInitialized() },
+            { name: 'megamek_factions', ensure: () => this.ensureMegaMekFactionsCatalogInitialized() },
+            { name: 'megamek_rulesets', ensure: () => this.ensureMegaMekRulesetsCatalogInitialized() },
+        ]);
     }
 
     public async initialize(): Promise<void> {
@@ -532,7 +624,7 @@ export class DataService {
         this.logger.info('Database is ready, checking for updates...');
         try {
             await this.checkForUpdate();
-            await this.initializeSupplementalCatalogs();
+            await this.initializeStartupCatalogs();
             this.logger.info('All data stores are ready.');
             // Apply public tags to units now that data is ready
             // (PublicTagsService.initialize() may have loaded cached tags before units were ready)

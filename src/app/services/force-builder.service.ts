@@ -1948,6 +1948,12 @@ export class ForceBuilderService {
             return;
         }
 
+        const megaMekDataReady = await this.dataService.ensureMegaMekCatalogsInitialized();
+        if (!megaMekDataReady) {
+            this.toastService.showToast('MegaMek force generator data could not be loaded.', 'error');
+            return;
+        }
+
         const { SearchForceGeneratorDialogComponent } = await import('../components/search-force-generator-dialog/search-force-generator-dialog.component');
         const dialogRef = this.dialogsService.createDialog<SearchForceGeneratorDialogResult | null>(SearchForceGeneratorDialogComponent, {
             disableClose: true
