@@ -46,7 +46,7 @@ export function shouldUseSearchWorker(options: SearchWorkerSupportOptions = {
     workerAvailable: typeof Worker !== 'undefined',
     iOS: isIOS(),
 }): boolean {
-    return options.workerAvailable; // && !options.iOS; // Disable service worker on iOS.
+    return options.workerAvailable && !options.iOS; // Disable service worker on iOS.
 }
 
 export const SEARCH_WORKER_FACTORY = new InjectionToken<SearchWorkerFactory>('SEARCH_WORKER_FACTORY', {
