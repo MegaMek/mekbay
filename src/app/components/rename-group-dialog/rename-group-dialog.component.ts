@@ -36,7 +36,6 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, type ElementR
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { takeUntilDestroyed, outputToObservable } from '@angular/core/rxjs-interop';
-import { ForceBuilderService } from '../../services/force-builder.service';
 import { OptionsService } from '../../services/options.service';
 import type { UnitGroup } from '../../models/force.model';
 import { formatSummaryMovement } from '../../models/pilot-abilities.model';
