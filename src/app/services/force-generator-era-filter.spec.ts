@@ -33,6 +33,7 @@ describe('ForceGeneratorService negative era filters', () => {
 
     const dataServiceMock = {
         searchCorpusVersion: signal(1),
+        megaMekAvailabilityVersion: signal(0),
         getUnits: jasmine.createSpy('getUnits').and.callFake(() => units),
         getEras: jasmine.createSpy('getEras').and.callFake(() => [...erasById.values()]),
         getEraByName: jasmine.createSpy('getEraByName').and.callFake((name: string) => erasByName.get(name)),
@@ -77,6 +78,7 @@ describe('ForceGeneratorService negative era filters', () => {
         megaMekAvailabilityRecords.length = 0;
         units.length = 0;
         dataServiceMock.searchCorpusVersion.set(1);
+        dataServiceMock.megaMekAvailabilityVersion.set(0);
         optionsServiceMock.options.set({ availabilitySource: 'megamek' });
         filtersServiceMock.effectiveFilterState.calls.reset();
         filtersServiceMock.effectiveFilterState.and.returnValue({});

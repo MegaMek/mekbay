@@ -129,9 +129,9 @@ type CompactAvailabilityRecord = CompactChassisRecord | CompactModelRecord;
 
 interface CompactWeightedModelRecord {
     n: string;
-    t: UnitType;
-    c: string;
-    m: string;
+    // t: UnitType;
+    // c: string;
+    // m: string;
     e: Record<string, CompactWeightedEraAvailability>;
 }
 
@@ -207,7 +207,7 @@ interface ResolvedFactionRatingProfile {
 }
 
 const USE_ERA_CODE_KEYS = false;
-const BEAUTIFY_OUTPUT = true;
+const BEAUTIFY_OUTPUT = false;
 const JSON_INDENT = 2;
 const INLINE_JSON_ARRAY_MAX_ITEMS = 8;
 const INLINE_JSON_ARRAY_MAX_LENGTH = 40;
@@ -216,9 +216,6 @@ const APP_ROOT = path.resolve(__dirname, '..');
 const MIN_OMNI_DIFFERENCE = 2.5;
 const MIN_SL_DIFFERENCE = 2.5;
 const MIN_CLAN_DIFFERENCE = 2.5;
-const MEK_WEIGHT_LIMITS = [15, 35, 55, 75, 100, 135] as const;
-const VEHICLE_WEIGHT_LIMITS = [0, 39, 59, 79, 100, 300] as const;
-const AEROSPACE_WEIGHT_LIMITS = [0, 45, 70, 100] as const;
 const WEIGHT_DISTRIBUTION_BUCKET_INDEX = [0, 0, 1, 2, 3, 3] as const;
 const EXPAND_RATING_ADJUSTMENTS = true;
 const GENERAL_FACTION_KEY = 'General';
@@ -2285,9 +2282,9 @@ function buildWeightedAvailabilityRecords(
 
         weightedAvailability[modelKey] = {
             n: metadata?.unitName ?? buildMegaMekUnitName(modelRecord.t, modelRecord.c, modelRecord.m),
-            t: modelRecord.t,
-            c: metadata?.chassis ?? modelRecord.c,
-            m: metadata?.model ?? modelRecord.m,
+            // t: modelRecord.t,
+            // c: metadata?.chassis ?? modelRecord.c,
+            // m: metadata?.model ?? modelRecord.m,
             e: {},
         };
     }
