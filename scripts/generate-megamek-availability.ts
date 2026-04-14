@@ -129,9 +129,9 @@ type CompactAvailabilityRecord = CompactChassisRecord | CompactModelRecord;
 
 interface CompactWeightedModelRecord {
     n: string;
-    t: UnitType;
-    c: string;
-    m: string;
+    // t: UnitType;
+    // c: string;
+    // m: string;
     e: Record<string, CompactWeightedEraAvailability>;
 }
 
@@ -2285,9 +2285,9 @@ function buildWeightedAvailabilityRecords(
 
         weightedAvailability[modelKey] = {
             n: metadata?.unitName ?? buildMegaMekUnitName(modelRecord.t, modelRecord.c, modelRecord.m),
-            t: modelRecord.t,
-            c: metadata?.chassis ?? modelRecord.c,
-            m: metadata?.model ?? modelRecord.m,
+            // t: modelRecord.t,
+            // c: metadata?.chassis ?? modelRecord.c,
+            // m: metadata?.model ?? modelRecord.m,
             e: {},
         };
     }
