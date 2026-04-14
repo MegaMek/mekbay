@@ -368,10 +368,10 @@ describe('DataService', () => {
         expect(dbServiceMock.saveForce).toHaveBeenCalledWith(jasmine.objectContaining({ instanceId: 'force-missing' }));
     });
 
-    it('skips MegaMek catalogs during startup initialize', async () => {
+    it('initializes only MegaMek availability during startup initialize', async () => {
         await service.initialize();
 
-        expect(megaMekAvailabilityCatalogMock.initialize).not.toHaveBeenCalled();
+        expect(megaMekAvailabilityCatalogMock.initialize).toHaveBeenCalledTimes(1);
         expect(megaMekFactionsCatalogMock.initialize).not.toHaveBeenCalled();
         expect(megaMekRulesetsCatalogMock.initialize).not.toHaveBeenCalled();
         expect(quirksCatalogMock.initialize).toHaveBeenCalledTimes(1);

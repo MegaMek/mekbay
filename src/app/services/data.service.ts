@@ -579,6 +579,7 @@ export class DataService {
 
     private initializeStartupCatalogs(): Promise<boolean> {
         return this.ensureCatalogGroupInitialized([
+            { name: 'megamek_availability', ensure: () => this.ensureMegaMekAvailabilityCatalogInitialized() },
             { name: 'quirks', ensure: () => this.ensureQuirksCatalogInitialized() },
             { name: 'sourcebooks', ensure: () => this.ensureSourcebooksCatalogInitialized() },
         ]);

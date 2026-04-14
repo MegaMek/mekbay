@@ -207,7 +207,7 @@ interface ResolvedFactionRatingProfile {
 }
 
 const USE_ERA_CODE_KEYS = false;
-const BEAUTIFY_OUTPUT = true;
+const BEAUTIFY_OUTPUT = false;
 const JSON_INDENT = 2;
 const INLINE_JSON_ARRAY_MAX_ITEMS = 8;
 const INLINE_JSON_ARRAY_MAX_LENGTH = 40;
