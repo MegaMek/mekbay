@@ -1,12 +1,15 @@
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { provideZonelessChangeDetection, signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
 import { TestBed } from '@angular/core/testing';
 import { GameSystem } from '../../models/common.model';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
+import type { Options } from '../../models/options.model';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { OptionsService } from '../../services/options.service';
 import { ToastService } from '../../services/toast.service';
+import { LoadForcePreviewPanelComponent } from '../load-force-preview-panel/load-force-preview-panel.component';
 import { ForceEntryPreviewDialogComponent } from './force-entry-preview-dialog.component';
 
 describe('ForceEntryPreviewDialogComponent', () => {
@@ -20,7 +23,13 @@ describe('ForceEntryPreviewDialogComponent', () => {
         });
     }
 
-    async function render(force: LoadForceEntry) {
+    async function render(
+        force: LoadForceEntry,
+        config: {
+            unitDisplayName?: Options['unitDisplayName'];
+            unitDisplayNameOverride?: Options['unitDisplayName'];
+        } = {},
+    ) {
         const dialogsServiceStub = {
             createDialog: jasmine.createSpy('createDialog'),
         };
@@ -32,7 +41,7 @@ describe('ForceEntryPreviewDialogComponent', () => {
         };
 
         const optionsServiceStub = {
-            options: signal({ unitDisplayName: 'chassisModel' }),
+            options: signal({ unitDisplayName: config.unitDisplayName ?? 'chassisModel' }),
         };
 
         const toastServiceStub = {
@@ -44,7 +53,13 @@ describe('ForceEntryPreviewDialogComponent', () => {
             providers: [
                 provideZonelessChangeDetection(),
                 { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
-                { provide: DIALOG_DATA, useValue: { force } },
+                {
+                    provide: DIALOG_DATA,
+                    useValue: {
+                        force,
+                        unitDisplayNameOverride: config.unitDisplayNameOverride,
+                    },
+                },
                 { provide: DialogsService, useValue: dialogsServiceStub },
                 { provide: ForceBuilderService, useValue: forceBuilderServiceStub },
                 { provide: OptionsService, useValue: optionsServiceStub },
@@ -76,5 +91,18 @@ describe('ForceEntryPreviewDialogComponent', () => {
             .map((button) => button.textContent?.trim());
 
         expect(buttonLabels).toEqual(['ADD', 'DISMISS']);
+    });
+
+    it('forwards the unit display override to the preview panel', async () => {
+        const { fixture } = await render(createForceEntry(), {
+            unitDisplayName: 'alias',
+            unitDisplayNameOverride: 'both',
+        });
+
+        const previewPanel = fixture.debugElement.query(By.directive(LoadForcePreviewPanelComponent))
+            .componentInstance as LoadForcePreviewPanelComponent;
+
+        expect(previewPanel.displayMode()).toBe('both');
+        expect(previewPanel.effectiveUnitDisplayName()).toBe('both');
     });
 });

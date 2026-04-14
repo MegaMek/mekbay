@@ -79,17 +79,34 @@ import { getFactionImg } from '../../models/factions.model';
                 <div class="units">
                     @for (fu of group.units(); track fu.id) {
                         <div class="unit-square compact-mode" [class.destroyed]="fu.destroyed">
-                            <unit-icon [unit]="fu.getUnit()" [size]="32"></unit-icon>
-                            @if (unitDisplayName === 'chassisModel'
-                                || unitDisplayName === 'both'
-                                || !fu.alias()) {
-                                <div class="unit-model">{{ fu.getUnit().model | cleanModelString }}</div>
-                                <div class="unit-chassis">{{ fu.getUnit().chassis }}</div>
+                            @if (fu.commander()) {
+                                <div class="group-commander-indicator" aria-hidden="true">
+                                    <svg class="group-commander-icon" width="42.08" height="51.88" viewBox="0 0 21.04 25.94" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" focusable="false">
+                                        <g transform="translate(-.02)">
+                                            <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
+                                                <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
+                                                <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
+                                            </g>
+                                        </g>
+                                    </svg>
+                                </div>
                             }
-                            @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
-                                <div class="unit-alias"
-                                    [class.thin]="unitDisplayName === 'both'">{{ fu.alias() }}</div>
-                            }
+                            <div class="unit-content">
+                                <unit-icon [unit]="fu.getUnit()" [size]="32"></unit-icon>
+                                @if (unitDisplayName === 'chassisModel'
+                                    || unitDisplayName === 'both'
+                                    || !fu.alias()) {
+                                    <div class="unit-model">{{ fu.getUnit().model | cleanModelString }}</div>
+                                    <div class="unit-chassis">{{ fu.getUnit().chassis }}</div>
+                                }
+                                @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
+                                    <div class="unit-alias"
+                                        [class.thin]="unitDisplayName === 'both'">{{ fu.alias() }}</div>
+                                }
+                                <div class="pilot-info info-slot numeric slim">
+                                    <span class="value">{{ fu.getPilotStats() }}</span>
+                                </div>
+                            </div>
                         </div>
                     }
                 </div>
@@ -208,6 +225,36 @@ import { getFactionImg } from '../../models/factions.model';
             align-items: center;
             overflow: hidden;
             box-sizing: border-box;
+            position: relative;
+        }
+
+        .group-commander-indicator {
+            position: absolute;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--bt-yellow);
+            pointer-events: none;
+            z-index: 1;
+            opacity: 0.5;
+            top: 3px;
+            left: 3px;
+        }
+
+        .group-commander-icon {
+            width: 16px;
+            height: auto;
+            transform: rotate(180deg);
+            flex-shrink: 0;
+        }
+
+        .unit-content {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            z-index: 2;
         }
 
         .unit-square.compact-mode.destroyed {
@@ -256,6 +303,23 @@ import { getFactionImg } from '../../models/factions.model';
         .unit-square.compact-mode .unit-alias.thin {
             font-size: 0.6em;
             font-weight: normal;
+        }
+
+        .info-slot {
+            padding: 0 2px;
+            gap: 1px;
+            justify-content: start;
+            font-size: 0.7em;
+            position: absolute;
+        }
+
+        .info-slot.numeric {
+            justify-content: end;
+        }
+
+        .pilot-info {
+            top: 3px;
+            right: 3px;
         }
     `]
 })

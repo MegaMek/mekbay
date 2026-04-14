@@ -7,6 +7,7 @@ import {
     type LoadForceGroup,
     type LoadForceUnit,
 } from '../../models/load-force-entry.model';
+import type { Options } from '../../models/options.model';
 import type { Unit } from '../../models/units.model';
 import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 import { DialogsService } from '../../services/dialogs.service';
@@ -23,7 +24,7 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
     imports: [CommonModule, CleanModelStringPipe, UnitIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-    @let unitDisplayName = optionsService.options().unitDisplayName;
+    @let unitDisplayName = effectiveUnitDisplayName();
     @let entry = force();
     <div class="force-preview-shell">
         <div class="force-preview-header">
@@ -414,9 +415,14 @@ export class LoadForcePreviewPanelComponent {
     readonly force = input.required<LoadForceEntry>();
     readonly showHint = input(true);
     readonly showLockControls = input(false);
+    readonly displayMode = input<Options['unitDisplayName'] | null>(null);
     readonly lockedUnitKeys = input<ReadonlySet<string>>(new Set<string>());
     readonly lockToggle = input<((unitEntry: LoadForceUnit) => void) | null>(null);
     readonly hoveredUnitChange = output<LoadForceUnit | null>();
+
+    readonly effectiveUnitDisplayName = computed<Options['unitDisplayName']>(
+        () => this.displayMode() ?? this.optionsService.options().unitDisplayName,
+    );
 
     readonly allUnits = computed(() => this.force().groups
         .flatMap((group) => group.units)

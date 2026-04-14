@@ -1188,7 +1188,10 @@ export class ForceOrgDialogComponent {
 
     protected async previewForce(force: LoadForceEntry): Promise<void> {
         this.dialogsService.createDialog(ForceEntryPreviewDialogComponent, {
-            data: { force }
+            data: {
+                force,
+                unitDisplayNameOverride: 'both',
+            }
         });
     }
 
