@@ -779,6 +779,7 @@ function createLeafGroup(
     rule: OrgLeafCountRule | OrgLeafPatternRule,
     modifierStep: ModifierStep,
     units: readonly UnitFacts[],
+    formationMatchingIgnoredUnits: readonly Unit[] = [],
 ): GroupSizeResult {
     return {
         name: makeGroupName(rule.type, modifierStep.modifierKey),
@@ -788,6 +789,9 @@ function createLeafGroup(
         tier: modifierStep.tier,
         provenance: 'produced-group',
         units: units.map((facts) => facts.unit),
+        formationMatchingIgnoredUnits: formationMatchingIgnoredUnits.length > 0
+            ? [...formationMatchingIgnoredUnits]
+            : undefined,
         tag: rule.tag,
         priority: rule.priority,
     };
@@ -963,6 +967,7 @@ function createAbstractLeafGroupRecord(
     rule: OrgLeafCountRule | OrgLeafPatternRule,
     modifierStep: ModifierStep,
     units: readonly UnitFacts[],
+    formationMatchingIgnoredUnits: readonly Unit[] = [],
 ): PlannedGroupRecord {
     const template = createAtomicGroupTemplate(
         rule.type,
@@ -976,7 +981,7 @@ function createAbstractLeafGroupRecord(
 
     return createAbstractAtomicGroupRecord(
         facts,
-        () => createLeafGroup(rule, modifierStep, units),
+        () => createLeafGroup(rule, modifierStep, units, formationMatchingIgnoredUnits),
         'leaf',
     );
 }
@@ -1747,6 +1752,17 @@ function resolvePatternBucketValues(
     return availableBucketValues.filter((bucketValue) => bucketValue.startsWith(matcher.prefix));
 }
 
+function getPatternRefBucketValues(
+    ref: OrgPatternReferenceName,
+    pattern: OrgPatternSpec,
+    availableBucketValues: readonly string[],
+): readonly string[] {
+    const matcher = pattern.bucketGroups?.[ref];
+    return matcher
+        ? resolvePatternBucketValues(matcher, availableBucketValues)
+        : [String(ref)];
+}
+
 function isPatternBucketListMatcher(
     matcher: OrgPatternBucketMatcher,
 ): matcher is readonly OrgBucketValue[] {
@@ -1765,9 +1781,7 @@ function getPatternRefTotal(
     pattern: OrgPatternSpec,
     availableBucketValues: readonly string[],
 ): number {
-    const values = pattern.bucketGroups?.[ref]
-        ? resolvePatternBucketValues(pattern.bucketGroups[ref], availableBucketValues)
-        : [String(ref)];
+    const values = getPatternRefBucketValues(ref, pattern, availableBucketValues);
 
     return values.reduce((sum, bucketValue) => sum + (allocation.get(bucketValue) ?? 0), 0);
 }
@@ -1783,9 +1797,7 @@ function getPatternRefNumericTotal(
     pattern: OrgPatternSpec,
     availableBucketValues: readonly string[],
 ): number {
-    const values = pattern.bucketGroups?.[ref]
-        ? resolvePatternBucketValues(pattern.bucketGroups[ref], availableBucketValues)
-        : [String(ref)];
+    const values = getPatternRefBucketValues(ref, pattern, availableBucketValues);
 
     return values.reduce(
         (sum, bucketValue) => sum + parseBucketNumericValue(bucketValue) * (allocation.get(bucketValue) ?? 0),
@@ -1991,6 +2003,38 @@ function buildWorkingBucketUnits(
     return working;
 }
 
+function getLeafPatternFormationMatchingIgnoredUnits(
+    rule: OrgLeafPatternRule,
+    pattern: OrgPatternSpec,
+    units: readonly UnitFacts[],
+    registry: OrgRuleRegistry,
+): Unit[] {
+    const ignoredPatternRefs = rule.formationMatching?.ignoredPatternRefs;
+    if (!ignoredPatternRefs || ignoredPatternRefs.length === 0 || units.length === 0) {
+        return [];
+    }
+
+    const bucketValueByUnit = new Map(
+        units.map((facts) => [facts.unit, String(getUnitBucketValue(rule.bucketBy, facts, registry))]),
+    );
+    const availableBucketValues = Array.from(new Set(bucketValueByUnit.values()));
+    const ignoredBucketValues = new Set<string>();
+
+    for (const ref of ignoredPatternRefs) {
+        for (const bucketValue of getPatternRefBucketValues(ref, pattern, availableBucketValues)) {
+            ignoredBucketValues.add(String(bucketValue));
+        }
+    }
+
+    if (ignoredBucketValues.size === 0) {
+        return [];
+    }
+
+    return units
+        .filter((facts) => ignoredBucketValues.has(bucketValueByUnit.get(facts.unit) ?? ''))
+        .map((facts) => facts.unit);
+}
+
 function materializeSinglePatternCandidate(
     pattern: OrgPatternSpec,
     workingUnits: ReadonlyMap<string, UnitFacts[]>,
@@ -2149,7 +2193,18 @@ function materializeLeafPatternWithCandidates(
 
     const selections = materializeLeafPatternsShared(rule.patterns, unitsByBucket, guard);
     for (const selection of selections) {
-        groups.push(createLeafGroup(rule, getPatternModifierStep(descriptor, selection.pattern.copySize), selection.candidate.units));
+        const ignoredUnits = getLeafPatternFormationMatchingIgnoredUnits(
+            rule,
+            selection.pattern,
+            selection.candidate.units,
+            registry,
+        );
+        groups.push(createLeafGroup(
+            rule,
+            getPatternModifierStep(descriptor, selection.pattern.copySize),
+            selection.candidate.units,
+            ignoredUnits,
+        ));
         selection.candidate.units.forEach((unit) => selectedFactIds.add(unit.factId));
     }
 
@@ -2176,7 +2231,18 @@ function materializeLeafPatternWithCandidateRecords(
 
     const selections = materializeLeafPatternsShared(rule.patterns, unitsByBucket, guard);
     for (const selection of selections) {
-        records.push(createAbstractLeafGroupRecord(rule, getPatternModifierStep(descriptor, selection.pattern.copySize), selection.candidate.units));
+        const ignoredUnits = getLeafPatternFormationMatchingIgnoredUnits(
+            rule,
+            selection.pattern,
+            selection.candidate.units,
+            registry,
+        );
+        records.push(createAbstractLeafGroupRecord(
+            rule,
+            getPatternModifierStep(descriptor, selection.pattern.copySize),
+            selection.candidate.units,
+            ignoredUnits,
+        ));
         selection.candidate.units.forEach((unit) => selectedFactIds.add(unit.factId));
     }
 

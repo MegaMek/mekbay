@@ -1326,6 +1326,50 @@ describe('org-solver.util', () => {
         expect(result.leftoverCount).toBe(0);
     });
 
+    it('materializes Augmented Lance with ignored BA units for formation matching', () => {
+        const carrierUnits = [
+            createUnit('Carrier 1', 'Mek', 'BattleMek Omni', true),
+            createUnit('Carrier 2', 'Mek', 'BattleMek Omni', true),
+            createUnit('Carrier 3', 'Mek', 'BattleMek', false),
+            createUnit('Carrier 4', 'Mek', 'BattleMek', false),
+        ];
+        const baUnits = [
+            createUnit('BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 2', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+        ];
+
+        const materialized = materializeLeafPatternRule(CC_AUGMENTED_LANCE, compileUnitFactsList([...carrierUnits, ...baUnits]));
+
+        expect(materialized.groups).toHaveSize(1);
+        expect(materialized.groups[0]).toEqual(jasmine.objectContaining({
+            type: 'Augmented Lance',
+            countsAsType: 'Lance',
+            formationMatchingIgnoredUnits: baUnits,
+        }));
+    });
+
+    it('materializes Augmented Lance with ignored support transports for formation matching', () => {
+        const carrierUnits = [
+            createUnit('Carrier 1', 'Mek', 'BattleMek'),
+            createUnit('Carrier 2', 'Mek', 'BattleMek'),
+            createUnit('Carrier 3', 'Mek', 'BattleMek'),
+            createUnit('Carrier 4', 'Mek', 'BattleMek'),
+        ];
+        const supportUnits = [
+            createUnit('Support 1', 'Tank', 'Combat Vehicle'),
+            createUnit('Support 2', 'Tank', 'Combat Vehicle'),
+        ];
+
+        const materialized = materializeLeafPatternRule(CC_AUGMENTED_LANCE, compileUnitFactsList([...carrierUnits, ...supportUnits]));
+
+        expect(materialized.groups).toHaveSize(1);
+        expect(materialized.groups[0]).toEqual(jasmine.objectContaining({
+            type: 'Augmented Lance',
+            countsAsType: 'Lance',
+            formationMatchingIgnoredUnits: supportUnits,
+        }));
+    });
+
     it('rejects non-qualified battle armor in Augmented Lance matching', () => {
         const units = compileUnitFactsList([
             createUnit('Carrier 1', 'Mek', 'BattleMek Omni', true),
