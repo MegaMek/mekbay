@@ -1,0 +1,43 @@
+name: Pull Request Tests
+run-name: Validate PR #${{ github.event.pull_request.number }}
+
+on:
+  pull_request:
+    branches:
+      - main
+      - next
+
+concurrency:
+  group: pr-tests-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test-suite:
+    name: Test suite
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Get latest code
+        uses: actions/checkout@v5
+
+      - name: Use Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 'latest'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate metadata
+        run: npm run gen-meta
+
+      - name: Generate sprites
+        run: npm run gen-sprites
+
+      - name: Generate assets
+        run: npm run gen-assets
+
+      - name: Run Angular test suite
+        run: npm test -- --watch=false --browsers ChromeHeadless
