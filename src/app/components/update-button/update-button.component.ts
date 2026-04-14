@@ -48,6 +48,7 @@ export class UpdateButtonComponent {
     public START_COUNTDOWN = 120; // seconds
     public WARNING_THRESHOLD = 30; // seconds
     updateAvailable = input<boolean>(false);
+    autoReloadEnabled = input<boolean>(false);
     countdown = signal(this.START_COUNTDOWN);
     isVisible = signal(false);
     pulse = signal(false);
@@ -61,10 +62,14 @@ export class UpdateButtonComponent {
         effect(() => {
             if (this.updateAvailable()) {
                 this.isVisible.set(true);
-                this.startCountdown();
+                if (this.autoReloadEnabled()) {
+                    this.startCountdown();
+                } else {
+                    this.stopCountdown();
+                }
             } else {
                 this.cancelReload();
-                }
+            }
         });
     }
 
@@ -80,23 +85,27 @@ export class UpdateButtonComponent {
                     this.triggerPulse();
                 }
             } else {
-                this.app.removeBeforeUnloadHandler();
                 this.cancelReload();
-                this.reloadForUpdate();
+                void this.app.reloadForUpdate();
             }
         }, 1000);
     }
 
-    reloadForUpdate() {
-        window.location.reload();
-    }
-
-    cancelReload() {
-        this.isVisible.set(false);
+    private stopCountdown() {
         if (this.countdownInterval) {
             clearInterval(this.countdownInterval);
             this.countdownInterval = undefined;
         }
+        this.countdown.set(this.START_COUNTDOWN);
+    }
+
+    reloadForUpdate() {
+        void this.app.reloadForUpdate();
+    }
+
+    cancelReload() {
+        this.isVisible.set(false);
+        this.stopCountdown();
     }
 
     triggerPulse() {

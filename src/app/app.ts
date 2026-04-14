@@ -67,6 +67,8 @@ import { AccountAuthService } from './services/account-auth.service';
 import { GameSystem } from './models/common.model';
 import { UrlStateService } from './services/url-state.service';
 
+const SW_UPDATE_RELOAD_HASH_STORAGE_KEY = 'mekbay:sw-update-reload-hash';
+
 /*
  * Author: Drake
  */
@@ -116,12 +118,14 @@ export class App {
     private updateCheckInterval = 60 * 60 * 1000; // 1 hour
     private updateCheckTimeoutId: number | null = null;
     protected updateAvailable = signal(false);
+    protected updateAutoReloadEnabled = signal(false);
     protected showInstallButton = signal(false);
     private deferredPrompt: any;
     private urlAtLastBlur = this.getCurrentAppUrl();
     private lastHandledCapturedUrl: string | null = null;
     private lastHandledCapturedUrlAt = 0;
     private readonly capturedUrlDedupWindowMs = 2000;
+    private pendingUpdateHash: string | null = null;
 
 
     private readonly unitSearchContainer = viewChild.required<ElementRef>('unitSearchContainer');
@@ -173,8 +177,7 @@ export class App {
                             this.logger.info('Service worker update detected, downloading...');
                             break;
                         case 'VERSION_READY':
-                            this.logger.info('Service worker update is ready');
-                            this.updateAvailable.set(true);
+                            this.handleReadyServiceWorkerUpdate(event);
                             break;
                         case 'VERSION_INSTALLATION_FAILED':
                             this.logger.error('Service worker update installation failed: ' + event.error);
@@ -404,6 +407,61 @@ export class App {
         }
     }
 
+    private getLatestServiceWorkerHash(event: { latestVersion?: { hash?: string } }): string | null {
+        const hash = event.latestVersion?.hash?.trim();
+        return hash ? hash : null;
+    }
+
+    private getRecordedUpdateReloadHash(): string | null {
+        try {
+            const hash = localStorage.getItem(SW_UPDATE_RELOAD_HASH_STORAGE_KEY)?.trim();
+            return hash ? hash : null;
+        } catch {
+            return null;
+        }
+    }
+
+    private recordUpdateReloadHash(hash: string | null): void {
+        if (!hash) {
+            return;
+        }
+
+        try {
+            localStorage.setItem(SW_UPDATE_RELOAD_HASH_STORAGE_KEY, hash);
+        } catch {
+            // Best effort only; startup must continue even if storage is unavailable.
+        }
+    }
+
+    private clearRecordedUpdateReloadHash(): void {
+        try {
+            localStorage.removeItem(SW_UPDATE_RELOAD_HASH_STORAGE_KEY);
+        } catch {
+            // Best effort only; startup must continue even if storage is unavailable.
+        }
+    }
+
+    private handleReadyServiceWorkerUpdate(event: { latestVersion?: { hash?: string } }): void {
+        const latestHash = this.getLatestServiceWorkerHash(event);
+        const recordedHash = this.getRecordedUpdateReloadHash();
+        const shouldSuppressAutoReload = !!latestHash && latestHash === recordedHash;
+
+        if (latestHash && recordedHash && latestHash !== recordedHash) {
+            this.clearRecordedUpdateReloadHash();
+        }
+
+        this.pendingUpdateHash = latestHash;
+        this.updateAutoReloadEnabled.set(!!latestHash && !shouldSuppressAutoReload);
+
+        if (shouldSuppressAutoReload) {
+            this.logger.warn(`Service worker update ${latestHash} is still pending after a previous reload attempt; suppressing automatic reload.`);
+        } else {
+            this.logger.info('Service worker update is ready');
+        }
+
+        this.updateAvailable.set(true);
+    }
+
     private beforeInstallPromptHandler = (e: any) => {
         e.preventDefault();
         this.deferredPrompt = e;
@@ -439,6 +497,9 @@ export class App {
             if (await this.swUpdate.checkForUpdate()) {
                 this.logger.info('Update available');
                 this.updateAvailable.set(true);
+                if (!this.pendingUpdateHash) {
+                    this.updateAutoReloadEnabled.set(false);
+                }
             }
         } catch (err) {
             this.logger.error('Error checking for updates:' + err);
@@ -649,7 +710,27 @@ export class App {
     };
 
 
-    reloadForUpdate(): void {
+    async reloadForUpdate(): Promise<void> {
+        this.removeBeforeUnloadHandler();
+
+        if (this.swUpdate.isEnabled) {
+            this.recordUpdateReloadHash(this.pendingUpdateHash);
+            try {
+                const activated = await this.swUpdate.activateUpdate();
+                if (activated) {
+                    this.logger.info('Activated service worker update; reloading app.');
+                } else {
+                    this.logger.warn('Service worker activation returned false; reloading app anyway.');
+                }
+            } catch (err) {
+                this.logger.error('Error activating service worker update: ' + err);
+            }
+        }
+
+        this.performPageReload();
+    }
+
+    private performPageReload(): void {
         window.location.reload();
     }
 
