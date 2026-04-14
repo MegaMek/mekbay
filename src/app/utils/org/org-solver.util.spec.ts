@@ -1259,10 +1259,10 @@ describe('org-solver.util', () => {
         expect(result.leftoverCount).toBe(12);
     });
 
-    it('evaluates Augmented Lance with MEC penalties against available omni carriers', () => {
+    it('evaluates Augmented Lance when MEC battle armor has enough omni carriers', () => {
         const units = compileUnitFactsList([
-            createUnit('Carrier 1', 'Mek', 'BattleMek', false),
-            createUnit('Carrier 2', 'Mek', 'BattleMek', false),
+            createUnit('Carrier 1', 'Mek', 'BattleMek Omni', true),
+            createUnit('Carrier 2', 'Mek', 'BattleMek Omni', true),
             createUnit('Carrier 3', 'Mek', 'BattleMek', false),
             createUnit('Carrier 4', 'Mek', 'BattleMek', false),
             createUnit('BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
@@ -1276,15 +1276,60 @@ describe('org-solver.util', () => {
             modifierKey: '',
             perGroupCount: 6,
             copies: 1,
-            score: 2,
         }));
         expect(result.leftoverCount).toBe(0);
     });
 
-    it('penalizes non-qualified battle armor in Augmented Lance matching', () => {
+    it('evaluates Augmented Lance for combat vehicles when MEC battle armor has enough omni carriers', () => {
         const units = compileUnitFactsList([
-            createUnit('Carrier 1', 'Mek', 'BattleMek'),
-            createUnit('Carrier 2', 'Mek', 'BattleMek'),
+            createUnit('Carrier 1', 'Tank', 'Combat Vehicle Omni', true),
+            createUnit('Carrier 2', 'Tank', 'Combat Vehicle Omni', true),
+            createUnit('Carrier 3', 'Tank', 'Combat Vehicle Omni', true),
+            createUnit('Carrier 4', 'Tank', 'Combat Vehicle Omni', true),
+            createUnit('BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 2', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 3', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+            createUnit('BA 4', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
+        ]);
+
+        const result = evaluateLeafPatternRule(CC_AUGMENTED_LANCE, units);
+
+        expect(result.emitted).toHaveSize(1);
+        expect(result.emitted[0]).toEqual(jasmine.objectContaining({
+            modifierKey: '',
+            perGroupCount: 8,
+            copies: 1,
+        }));
+        expect(result.leftoverCount).toBe(0);
+    });
+
+    it('evaluates Augmented Lance for combat vehicles when XMEC battle armor does not need omni carriers', () => {
+        const units = compileUnitFactsList([
+            createUnit('Carrier 1', 'Tank', 'Combat Vehicle'),
+            createUnit('Carrier 2', 'Tank', 'Combat Vehicle'),
+            createUnit('Carrier 3', 'Tank', 'Combat Vehicle'),
+            createUnit('Carrier 4', 'Tank', 'Combat Vehicle'),
+            createUnit('BA 1', 'Infantry', 'Battle Armor', false, ['XMEC'], 4),
+            createUnit('BA 2', 'Infantry', 'Battle Armor', false, ['XMEC'], 4),
+            createUnit('BA 3', 'Infantry', 'Battle Armor', false, ['XMEC'], 4),
+            createUnit('BA 4', 'Infantry', 'Battle Armor', false, ['XMEC'], 4),
+        ]);
+
+        const result = evaluateLeafPatternRule(CC_AUGMENTED_LANCE, units);
+
+        expect(result.emitted).toHaveSize(1);
+        expect(result.emitted[0]).toEqual(jasmine.objectContaining({
+            modifierKey: '',
+            perGroupCount: 8,
+            copies: 1,
+        }));
+        expect(result.leftoverCount).toBe(0);
+    });
+
+    it('rejects non-qualified battle armor in Augmented Lance matching', () => {
+        const units = compileUnitFactsList([
+            createUnit('Carrier 1', 'Mek', 'BattleMek Omni', true),
+            createUnit('Carrier 2', 'Mek', 'BattleMek Omni', true),
             createUnit('Carrier 3', 'Mek', 'BattleMek'),
             createUnit('Carrier 4', 'Mek', 'BattleMek'),
             createUnit('BA 1', 'Infantry', 'Battle Armor', false, [], 4),
@@ -1293,9 +1338,8 @@ describe('org-solver.util', () => {
 
         const result = evaluateLeafPatternRule(CC_AUGMENTED_LANCE, units);
 
-        expect(result.emitted).toHaveSize(1);
-        expect(result.emitted[0]?.score).toBe(4);
-        expect(result.leftoverCount).toBe(0);
+        expect(result.emitted).toEqual([]);
+        expect(result.leftoverCount).toBe(6);
     });
 
     it('evaluates the real Clan core definitions module', () => {
@@ -1642,8 +1686,8 @@ describe('org-solver.util', () => {
 
     it('evaluates the real Capellan core definitions module', () => {
         const units = [
-            createUnit('Mek 1', 'Mek', 'BattleMek'),
-            createUnit('Mek 2', 'Mek', 'BattleMek'),
+            createUnit('Mek 1', 'Mek', 'BattleMek Omni', true),
+            createUnit('Mek 2', 'Mek', 'BattleMek Omni', true),
             createUnit('Mek 3', 'Mek', 'BattleMek'),
             createUnit('Mek 4', 'Mek', 'BattleMek'),
             createUnit('BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 4),
