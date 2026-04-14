@@ -36,17 +36,20 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, type ElementR
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { takeUntilDestroyed, outputToObservable } from '@angular/core/rxjs-interop';
-import { ForceBuilderService } from '../../services/force-builder.service';
-import type { Force, UnitGroup } from '../../models/force.model';
-import { type FormationTypeDefinition, isNoFormation } from '../../utils/formation-type.model';
+import { OptionsService } from '../../services/options.service';
+import type { UnitGroup } from '../../models/force.model';
+import { formatSummaryMovement } from '../../models/pilot-abilities.model';
+import { formationInheritsParentEffects, type FormationTypeDefinition, isNoFormation } from '../../utils/formation-type.model';
 import { FormationInfoComponent } from '../formation-info/formation-info.component';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { FormationDropdownPanelComponent, type FormationDisplayItem } from './formation-dropdown-panel.component';
 import { FormationNamerUtil } from '../../utils/formation-namer.util';
 import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
+
 /*
  * Author: Drake
  */
+
 export interface RenameGroupDialogData {
     group: UnitGroup;
 }
@@ -130,12 +133,12 @@ export interface RenameGroupDialogResult {
             <div class="formation-warning">
               @if (getRequirementsText(formation); as reqText) {
                 <div class="formation-warning-body">
-                  <strong>Missing requirements:</strong>
+                  <strong class="formation-warning-title">Missing requirements:</strong>
                   @if (getParentRequirementsText(formation); as parentReqText) {
-                    <span class="formation-warning-req"><strong>{{ getParentFormationName(formation) }}:</strong> {{ parentReqText }}</span>
-                    <span class="formation-warning-req"><strong>{{ formation.name }}:</strong> {{ reqText }}</span>
+                    <span class="formation-warning-req"><strong>{{ getParentFormationName(formation) }}: </strong><span [innerHTML]="parentReqText"></span></span>
+                    <span class="formation-warning-req"><strong>{{ formation.name }}: </strong><span [innerHTML]="reqText"></span></span>
                   } @else {
-                    <span class="formation-warning-req">{{ reqText }}</span>
+                    <span class="formation-warning-req" [innerHTML]="reqText"></span>
                   }
                 </div>
               } @else {
@@ -269,9 +272,12 @@ export interface RenameGroupDialogResult {
             padding: 6px 10px;
             margin-top: 4px;
             font-size: 0.85em;
-            color: red;
             background: rgba(255, 0, 0, 0.08);
             border-left: 3px solid red;
+        }
+
+        .formation-warning-title {
+            color: red;
         }
 
         .formation-warning-body {
@@ -334,7 +340,7 @@ export class RenameGroupDialogComponent {
 
     public dialogRef: DialogRef<RenameGroupDialogResult | null, RenameGroupDialogComponent> = inject(DialogRef);
     readonly data: RenameGroupDialogData = inject(DIALOG_DATA);
-    private forceBuilder = inject(ForceBuilderService);
+    private optionsService = inject(OptionsService);
     private overlayManager = inject(OverlayManagerService);
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
@@ -421,23 +427,25 @@ export class RenameGroupDialogComponent {
     /** Expose isNoFormation to the template */
     isNoFormation = isNoFormation;
 
-    /** Get requirements text for a formation definition, including parent requirements */
+    /** Get requirements text for a formation definition. */
     getRequirementsText(formation: FormationTypeDefinition): string | null {
         if (!formation.requirements) return null;
-        return formation.requirements(this.data.group.force.gameSystem) || null;
+      const requirements = formation.requirements(this.data.group.force.gameSystem);
+      return requirements ? formatSummaryMovement(requirements, this.optionsService.options().ASUseHex) : null;
     }
 
     /** Get parent formation requirements text */
     getParentRequirementsText(formation: FormationTypeDefinition): string | null {
-        if (!formation.parent) return null;
+      if (!formationInheritsParentEffects(formation) || !formation.parent) return null;
         const parent = FORMATION_DEFINITIONS.find(d => d.id === formation.parent);
         if (!parent?.requirements) return null;
-        return parent.requirements(this.data.group.force.gameSystem) || null;
+        const requirements = parent.requirements(this.data.group.force.gameSystem);
+        return requirements ? formatSummaryMovement(requirements, this.optionsService.options().ASUseHex) : null;
     }
 
     /** Get parent formation name */
     getParentFormationName(formation: FormationTypeDefinition): string {
-        if (!formation.parent) return '';
+      if (!formationInheritsParentEffects(formation) || !formation.parent) return '';
         return FORMATION_DEFINITIONS.find(d => d.id === formation.parent)?.name ?? '';
     }
 

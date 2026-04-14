@@ -673,6 +673,10 @@ export class App {
         this.forceBuilderService.showLoadForceDialog();
     }
 
+    showForceGeneratorDialog(): void {
+        void this.forceBuilderService.showForceGeneratorDialog();
+    }
+
     showSingleUnitDetails(unit: Unit, tab?: string) {
         const ref = this.dialogService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{

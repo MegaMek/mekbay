@@ -3,7 +3,7 @@ import { DEFAULT_ORG_RULE_REGISTRY } from '../org-facts.util';
 import type {
     OrgCIFormationRule,
     OrgComposedCountRule,
-    OrgDefinitionSpec,
+    OrgDefinition,
     OrgLeafCountRule,
 } from '../org-types';
 
@@ -11,7 +11,7 @@ export const IS_FLIGHT: OrgLeafCountRule = {
     kind: 'leaf-count',
     type: 'Flight',
     priority: 1,
-    modifiers: { 'Under-Strength ': 1, '': 2, 'Reinforced ': 3 },
+    modifiers: { '': 2, 'Reinforced ': 3 },
     commandRank: 'Lieutenant',
     tier: 1,
     unitSelector: 'flightEligible',
@@ -34,7 +34,8 @@ export const IS_WING: OrgComposedCountRule = {
     type: 'Wing',
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
     commandRank: 'Major',
-    tier: 4,
+    tier: 3,
+    priority: 1,
     childRoles: [{ matches: ['Squadron'] }],
     childBucketBy: 'promotionBasic',
 };
@@ -120,7 +121,7 @@ export const IS_LANCE: OrgLeafCountRule = {
     modifiers: { 'Short ': 2, 'Under-Strength ': 3, '': 4, 'Reinforced ': 5, 'Fortified ': 6 },
     commandRank: 'Lieutenant',
     tier: 1,
-    unitSelector: 'nonInfantry',
+    unitSelector: ['BM', 'CV', 'IM', 'SV'],
     pointModel: 'fixed',
 };
 
@@ -168,7 +169,7 @@ export const IS_BRIGADE: OrgComposedCountRule = {
     childBucketBy: 'promotionBasic',
 };
 
-export const IS_CORE_ORG: OrgDefinitionSpec = {
+export const IS_CORE_ORG: OrgDefinition = {
     rules: [
         IS_FLIGHT,
         IS_SQUADRON,

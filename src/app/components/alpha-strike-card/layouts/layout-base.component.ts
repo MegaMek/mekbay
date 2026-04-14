@@ -153,21 +153,12 @@ export abstract class AsLayoutBaseComponent {
             abilities.filter((ability): ability is string => typeof ability === 'string')
         );
 
-        for (const effect of preview.unsupportedEffects) {
-            if (effect.reason !== 'auto-command-ability' || effect.group.distribution !== 'all') {
+        for (const abilityId of preview.assignmentsByUnitId.get(forceUnit.id) ?? []) {
+            if (seenAbilityIds.has(abilityId)) {
                 continue;
             }
-            if (effect.group.excludeCommander && forceUnit.commander()) {
-                continue;
-            }
-
-            for (const commandAbilityId of effect.group.commandAbilityIds ?? []) {
-                if (seenAbilityIds.has(commandAbilityId)) {
-                    continue;
-                }
-                abilities.push(commandAbilityId);
-                seenAbilityIds.add(commandAbilityId);
-            }
+            abilities.push(abilityId);
+            seenAbilityIds.add(abilityId);
         }
 
         return abilities;

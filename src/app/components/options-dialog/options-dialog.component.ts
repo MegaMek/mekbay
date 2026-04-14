@@ -44,6 +44,7 @@ import { isIOS } from '../../utils/platform.util';
 import { LoggerService } from '../../services/logger.service';
 import { GameService } from '../../services/game.service';
 import type { GameSystem } from '../../models/common.model';
+import type { AvailabilitySource } from '../../models/options.model';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { DataService } from '../../services/data.service';
 import { PublicTagsService } from '../../services/public-tags.service';
@@ -119,7 +120,7 @@ const TOP_LEVEL_OPTIONS_VIEWS = OPTIONS_VIEW_DEFINITIONS.filter(view => !view.pa
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CommonModule, BaseDialogComponent],
     templateUrl: './options-dialog.component.html',
-    styleUrls: ['./options-dialog.component.css']
+    styleUrls: ['./options-dialog.component.scss']
 })
 export class OptionsDialogComponent {
     logger = inject(LoggerService)
@@ -350,6 +351,11 @@ export class OptionsDialogComponent {
     onGameSystemChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as GameSystem;
         this.optionsService.setOption('gameSystem', value);
+    }
+
+    onAvailabilitySourceChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as AvailabilitySource;
+        this.optionsService.setOption('availabilitySource', value);
     }
 
     onSheetsColorChange(event: Event) {

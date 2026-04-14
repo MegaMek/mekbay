@@ -34,9 +34,10 @@
 import { ChangeDetectionStrategy, Component, inject, computed } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import type { CommandAbility } from '../../models/command-abilities.model';
-import { type PilotAbility, type ASCustomPilotAbility, getAbilityDetails } from '../../models/pilot-abilities.model';
+import { type PilotAbility, type ASCustomPilotAbility, formatSummaryMovement, getAbilityDetails } from '../../models/pilot-abilities.model';
 import { formatRulesReference, type GameSystem, type RulesReference } from '../../models/common.model';
 import type { GameService } from '../../services/game.service';
+import { OptionsService } from '../../services/options.service';
 
 export interface PilotAbilityInfoDialogData {
     gameSystem: GameSystem;
@@ -62,10 +63,12 @@ export interface PilotAbilityInfoDialogData {
 export class PilotAbilityInfoDialogComponent {
     private readonly dialogRef = inject(DialogRef);
     private readonly data = inject<PilotAbilityInfoDialogData>(DIALOG_DATA);
+    private readonly optionsService = inject(OptionsService);
 
     readonly ability = computed(() => this.data.ability);
     readonly isCustom = computed(() => this.data.isCustom);
     readonly isCommand = computed(() => this.data.isCommand ?? false);
+    readonly summaryIsHtml = computed(() => !this.isCustom());
     readonly abilityName = computed(() => this.ability().name);
     readonly abilityCost = computed<number | null>(() => {
         if (this.isCommand()) {
@@ -84,7 +87,10 @@ export class PilotAbilityInfoDialogComponent {
         if (this.isCommand()) {
             return [...(ability as CommandAbility).summary];
         }
-        return getAbilityDetails(ability as PilotAbility, this.data.gameSystem).summary;
+        return formatSummaryMovement(
+            getAbilityDetails(ability as PilotAbility, this.data.gameSystem).summary,
+            this.optionsService.options().ASUseHex,
+        );
     });
     
     readonly rulesReference = computed<RulesReference[] | null>(() => {

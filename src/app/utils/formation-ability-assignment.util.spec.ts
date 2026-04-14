@@ -1,5 +1,5 @@
 import { GameSystem } from '../models/common.model';
-import { FACTION_MERCENARY, type Faction, type FactionAffinity } from '../models/factions.model';
+import { type Faction } from '../models/factions.model';
 import type { ASForceUnit } from '../models/as-force-unit.model';
 import type { UnitGroup } from '../models/force.model';
 import type { Unit } from '../models/units.model';
@@ -7,6 +7,7 @@ import { FormationAbilityAssignmentUtil } from './formation-ability-assignment.u
 import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
 import type { FormationTypeDefinition } from './formation-type.model';
 import type { GroupSizeResult } from './org/org-types';
+import { MULFACTION_MERCENARY, type FactionAffinity } from '../models/mulfactions.model';
 
 function createUnit(
     id: number,
@@ -89,7 +90,7 @@ function createUnit(
 
 function createFaction(name: string, group: FactionAffinity): Faction {
     return {
-        id: group === 'Mercenary' ? FACTION_MERCENARY : 1,
+        id: group === 'Mercenary' ? MULFACTION_MERCENARY : 1,
         name,
         group,
         img: '',
@@ -183,6 +184,57 @@ describe('FormationAbilityAssignmentUtil', () => {
             'assault-lance',
             'fast-assault-lance',
         ]);
+    });
+
+    it('does not include parent effect groups unless the child opts in', () => {
+        const formation = getFormation('anti-air-lance');
+        const units = [
+            createASForceUnit('unit-1', createUnit(1, 'Rifleman', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('unit-2', createUnit(2, 'JagerMech', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('unit-3', createUnit(3, 'Catapult', 'Mek', 'BattleMek', 'BM')),
+        ];
+        const group = createGroup(
+            units,
+            formation,
+            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: units.map((unit) => unit.getUnit()) })],
+            createFaction('Mercenary', 'Mercenary'),
+        );
+
+        const preview = FormationAbilityAssignmentUtil.previewGroupFormationAssignments(group);
+
+        expect(preview.effectPreviews.map((effect) => effect.descriptor.sourceFormationId)).toEqual(['anti-air-lance']);
+        expect(preview.unsupportedEffects).toEqual([]);
+    });
+
+    it('supports fixed command ability assignments with the same recipient limits as pilot abilities', () => {
+        const formation = getFormation('anti-air-lance');
+        const units = [
+            createASForceUnit('unit-1', createUnit(1, 'Rifleman', 'Mek', 'BattleMek', 'BM'), {
+                formationAbilities: ['anti_aircraft_specialists'],
+            }),
+            createASForceUnit('unit-2', createUnit(2, 'JagerMech', 'Mek', 'BattleMek', 'BM'), {
+                formationAbilities: ['anti_aircraft_specialists'],
+            }),
+            createASForceUnit('unit-3', createUnit(3, 'Catapult', 'Mek', 'BattleMek', 'BM')),
+        ];
+        const group = createGroup(
+            units,
+            formation,
+            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: units.map((unit) => unit.getUnit()) })],
+            createFaction('Mercenary', 'Mercenary'),
+        );
+
+        const preview = FormationAbilityAssignmentUtil.previewGroupFormationAssignments(group);
+
+        expect(preview.effectPreviews).toEqual([
+            jasmine.objectContaining({
+                recipientLimit: 2,
+                recipientUnitIds: ['unit-1', 'unit-2'],
+            }),
+        ]);
+        expect(preview.assignmentsByUnitId.get('unit-1')).toEqual(['anti_aircraft_specialists']);
+        expect(preview.assignmentsByUnitId.get('unit-2')).toEqual(['anti_aircraft_specialists']);
+        expect(preview.assignmentsByUnitId.get('unit-3')).toEqual([]);
     });
 
     it('filters structurally ineligible Air Lance units out of formation bonus recipients', () => {
@@ -352,7 +404,7 @@ describe('FormationAbilityAssignmentUtil', () => {
         expect(preview.assignmentsByUnitId.get('unit-3')).toEqual(['maneuvering_ace', 'forward_observer']);
     });
 
-    it('marks automatic all-unit command abilities as informational instead of editable', () => {
+    it('auto-assigns all-unit command abilities through the formation preview', () => {
         const formation = getFormation('electronic-warfare-squadron');
         const units = [
             createASForceUnit('unit-1', createUnit(1, 'Sholagar', 'Aero', 'Aero', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: ['ECM'] } })),
@@ -371,12 +423,10 @@ describe('FormationAbilityAssignmentUtil', () => {
 
         const preview = FormationAbilityAssignmentUtil.previewGroupFormationAssignments(group);
 
-        expect(preview.unsupportedEffects).toEqual([
-            jasmine.objectContaining({
-                sourceFormationId: 'electronic-warfare-squadron',
-                reason: 'auto-command-ability',
-            }),
-        ]);
+        expect(preview.unsupportedEffects).toEqual([]);
+        for (const unit of units) {
+            expect(preview.assignmentsByUnitId.get(unit.id)).toEqual(['communications_disruption']);
+        }
     });
 
     it('clears unit formation abilities when the group has no active formation', () => {

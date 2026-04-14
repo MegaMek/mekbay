@@ -31,13 +31,14 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
-import type { FormationTypeDefinition, FormationEffectGroup } from '../../utils/formation-type.model';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { formationInheritsParentEffects, type FormationTypeDefinition, type FormationEffectGroup } from '../../utils/formation-type.model';
 import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
-import { type PilotAbility, PILOT_ABILITIES, getAbilityDetails } from '../../models/pilot-abilities.model';
+import { type PilotAbility, PILOT_ABILITIES, getAbilityDetails, formatSummaryMovement } from '../../models/pilot-abilities.model';
 import { type CommandAbility, COMMAND_ABILITIES } from '../../models/command-abilities.model';
 import { GameSystem, formatRulesReference, type RulesReference } from '../../models/common.model';
 import { getInheritedFormationEffectGroups } from '../../utils/formation-ability-assignment.util';
+import { OptionsService } from '../../services/options.service';
 
 /*
  * Author: Drake
@@ -98,13 +99,13 @@ export interface ResolvedEffectGroup {
                     </div>
                     @if (parentRequirementsText(); as parentReqText) {
                         <div class="requirements-text requirements-parent">
-                            <strong>{{ parentFormationName() }}:</strong> {{ parentReqText }}
+                            <strong>{{ parentFormationName() }}: </strong><span [innerHTML]="parentReqText"></span>
                         </div>
                         <div class="requirements-text">
-                            <strong>{{ formation()!.name }}:</strong> {{ reqText }}
+                            <strong>{{ formation()!.name }}: </strong><span [innerHTML]="reqText"></span>
                         </div>
                     } @else {
-                        <div class="requirements-text">{{ reqText }}</div>
+                        <div class="requirements-text" [innerHTML]="reqText"></div>
                     }
                 </div>
             }
@@ -167,7 +168,7 @@ export interface ResolvedEffectGroup {
                                             <div class="ability-card-unit-type">{{ ability.unitType }}</div>
                                         }
                                         @for (line of ability.summary; track line) {
-                                            <div class="ability-card-summary">{{ line }}</div>
+                                            <div class="ability-card-summary" [innerHTML]="line"></div>
                                         }
                                         <div class="ability-card-rules">
                                             @for (ref of ability.rulesRef; let last = $last; track $index) {
@@ -237,8 +238,7 @@ export interface ResolvedEffectGroup {
             border-left-color: red;
             background: rgba(255, 0, 0, 0.08);
 
-            .requirements-label,
-            .requirements-text {
+            .requirements-label {
                 color: red;
             }
         }
@@ -423,6 +423,7 @@ export interface ResolvedEffectGroup {
     `]
 })
 export class FormationInfoComponent {
+    private readonly optionsService = inject(OptionsService);
     formation = input<FormationTypeDefinition | null>(null);
     /** Game system of the owning force: determines which ability summaries to display. */
     gameSystem = input<GameSystem>(GameSystem.ALPHA_STRIKE);
@@ -442,13 +443,14 @@ export class FormationInfoComponent {
     requirementsText = computed<string | null>(() => {
         const def = this.formation();
         if (!def?.requirements) return null;
-        return def.requirements(this.gameSystem()) || null;
+        const requirements = def.requirements(this.gameSystem());
+        return requirements ? formatSummaryMovement(requirements, this.optionsService.options().ASUseHex) : null;
     });
 
     /** Resolved parent formation definition (if any). */
     private parentFormation = computed<FormationTypeDefinition | null>(() => {
         const def = this.formation();
-        if (!def?.parent) return null;
+        if (!formationInheritsParentEffects(def) || !def?.parent) return null;
         return FORMATION_DEFINITIONS.find(d => d.id === def.parent) ?? null;
     });
 
@@ -456,7 +458,8 @@ export class FormationInfoComponent {
     parentRequirementsText = computed<string | null>(() => {
         const parent = this.parentFormation();
         if (!parent?.requirements) return null;
-        return parent.requirements(this.gameSystem()) || null;
+        const requirements = parent.requirements(this.gameSystem());
+        return requirements ? formatSummaryMovement(requirements, this.optionsService.options().ASUseHex) : null;
     });
 
     /** Parent formation name for display. */
@@ -521,7 +524,7 @@ export class FormationInfoComponent {
                         abilities.push({
                             pilotAbility: pilot,
                             name: pilot.name,
-                            summary: details.summary,
+                            summary: formatSummaryMovement(details.summary, this.optionsService.options().ASUseHex),
                             rulesRef: details.rulesRef ?? [],
                             unitType: details.unitType,
                         });

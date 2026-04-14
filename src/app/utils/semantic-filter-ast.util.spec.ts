@@ -92,7 +92,102 @@ describe('semantic filter exclusivity', () => {
         });
 
         expect(filtered).toEqual([units[0], units[1]]);
-        expect(membershipChecks).toBe(2);
+        expect(membershipChecks).toBe(0);
+    });
+
+    it('uses indexed results for exclusive external wildcard filters without per-unit membership scans', () => {
+        const units = [
+            { name: 'Unit 1', faction: ['Capellan Confederation'] },
+            { name: 'Unit 2', faction: ['Capellan Confederation', 'Federated Suns'] },
+            { name: 'Unit 3', faction: ['Federated Suns'] },
+        ];
+        const allFactionNames = [
+            'Capellan Confederation',
+            'Capellan March',
+            'Federated Suns',
+            ...Array.from({ length: 80 }, (_, index) => `Unused Faction ${index + 1}`),
+        ];
+        const result = parseSemanticQueryAST('faction=="Capellan *"', GameSystem.CLASSIC);
+        let membershipChecks = 0;
+
+        const filtered = filterUnitsWithAST(units, result.ast, {
+            gameSystem: GameSystem.CLASSIC,
+            getProperty: (unit: { faction?: string[] }, key: string) => unit[key as keyof typeof unit],
+            getUnitId,
+            getIndexedFilterValues: (filterKey: string) => filterKey === 'faction' ? allFactionNames : [],
+            getIndexedUnitIds: (filterKey: string, value: string) => {
+                if (filterKey !== 'faction') {
+                    return undefined;
+                }
+
+                if (value === 'Capellan Confederation') {
+                    return new Set(['Unit 1', 'Unit 2']);
+                }
+                if (value === 'Capellan March') {
+                    return new Set<string>();
+                }
+                if (value === 'Federated Suns') {
+                    return new Set(['Unit 2', 'Unit 3']);
+                }
+
+                return new Set<string>();
+            },
+            unitBelongsToFaction: (unit: { faction?: string[] }, factionName: string) => {
+                membershipChecks++;
+                return (unit.faction ?? []).includes(factionName);
+            },
+            getAllFactionNames: () => allFactionNames,
+        });
+
+        expect(filtered).toEqual([units[0]]);
+        expect(membershipChecks).toBe(0);
+    });
+
+    it('uses indexed results for wildcard external include filters without per-unit membership scans', () => {
+        const units = [
+            { name: 'Unit 1', faction: ['Capellan Confederation'] },
+            { name: 'Unit 2', faction: ['Capellan March'] },
+            { name: 'Unit 3', faction: ['Federated Suns'] },
+        ];
+        const allFactionNames = [
+            'Capellan Confederation',
+            'Capellan March',
+            'Federated Suns',
+        ];
+        const result = parseSemanticQueryAST('faction="Capellan *"', GameSystem.CLASSIC);
+        let membershipChecks = 0;
+
+        const filtered = filterUnitsWithAST(units, result.ast, {
+            gameSystem: GameSystem.CLASSIC,
+            getProperty: (unit: { faction?: string[] }, key: string) => unit[key as keyof typeof unit],
+            getUnitId,
+            getIndexedFilterValues: (filterKey: string) => filterKey === 'faction' ? allFactionNames : [],
+            getIndexedUnitIds: (filterKey: string, value: string) => {
+                if (filterKey !== 'faction') {
+                    return undefined;
+                }
+
+                if (value === 'Capellan Confederation') {
+                    return new Set(['Unit 1']);
+                }
+                if (value === 'Capellan March') {
+                    return new Set(['Unit 2']);
+                }
+                if (value === 'Federated Suns') {
+                    return new Set(['Unit 3']);
+                }
+
+                return new Set<string>();
+            },
+            unitBelongsToFaction: (unit: { faction?: string[] }, factionName: string) => {
+                membershipChecks++;
+                return (unit.faction ?? []).includes(factionName);
+            },
+            getAllFactionNames: () => allFactionNames,
+        });
+
+        expect(filtered).toEqual([units[0], units[1]]);
+        expect(membershipChecks).toBe(0);
     });
 
     it('does not try indexed pruning for external force pack filters', () => {
@@ -198,6 +293,214 @@ describe('semantic filter exclusivity', () => {
         });
 
         expect(filtered).toEqual([units[0]]);
+    });
+
+    it('scopes MegaMek rarity matches to the selected availability source', () => {
+        const units = [
+            {
+                id: 1,
+                bySource: {
+                    Production: 'Common',
+                    Salvage: 'Rare',
+                },
+            },
+            {
+                id: 2,
+                bySource: {
+                    Production: 'Rare',
+                    Salvage: 'Common',
+                },
+            },
+        ];
+        const result = parseSemanticQueryAST('from=Production rarity=Rare', GameSystem.CLASSIC);
+
+        const filtered = filterUnitsWithAST(units, result.ast, {
+            gameSystem: GameSystem.CLASSIC,
+            getUnitId,
+            getProperty: () => undefined,
+            unitMatchesAvailabilityFrom: (unit: { bySource: Record<string, string> }, availabilityFromName: string) => {
+                return unit.bySource[availabilityFromName] !== 'Not Available';
+            },
+            unitMatchesAvailabilityRarity: (
+                unit: { bySource: Record<string, string> },
+                rarityName: string,
+                scope,
+            ) => {
+                const activeSources = scope?.availabilityFromNames ?? ['Production', 'Salvage'];
+                return activeSources.some((availabilityFromName) => unit.bySource[availabilityFromName] === rarityName);
+            },
+            getAllAvailabilityFromNames: () => ['Production', 'Salvage'],
+            getAllAvailabilityRarityNames: () => ['Not Available', 'Very Rare', 'Rare', 'Uncommon', 'Common', 'Very Common'],
+        });
+
+        expect(filtered).toEqual([units[1]]);
+    });
+
+    it('passes active era and faction scope to MegaMek rarity filters', () => {
+        const units = [
+            {
+                id: 1,
+                eras: ['Clan Invasion'],
+                factionEras: {
+                    'Federated Suns': ['Clan Invasion'],
+                },
+                rarityByContext: {
+                    'Clan Invasion|Federated Suns': 'Rare',
+                },
+            },
+            {
+                id: 2,
+                eras: ['Clan Invasion'],
+                factionEras: {
+                    'Federated Suns': ['Clan Invasion'],
+                },
+                rarityByContext: {
+                    'Clan Invasion|Federated Suns': 'Common',
+                },
+            },
+        ];
+        const result = parseSemanticQueryAST('era="Clan Invasion" faction="Federated Suns" rarity=Rare', GameSystem.CLASSIC);
+
+        const filtered = filterUnitsWithAST(units, result.ast, {
+            gameSystem: GameSystem.CLASSIC,
+            getUnitId,
+            getProperty: () => undefined,
+            unitBelongsToEra: (unit: { eras?: string[] }, eraName: string) => (unit.eras ?? []).includes(eraName),
+            unitBelongsToFaction: (
+                unit: { factionEras?: Record<string, string[]> },
+                factionName: string,
+                eraNames?: readonly string[],
+            ) => {
+                const membershipEraNames = unit.factionEras?.[factionName] ?? [];
+                if (eraNames !== undefined) {
+                    return eraNames.some((eraName) => membershipEraNames.includes(eraName));
+                }
+                return membershipEraNames.length > 0;
+            },
+            unitMatchesAvailabilityRarity: (
+                unit: { rarityByContext: Record<string, string> },
+                rarityName: string,
+                scope,
+            ) => {
+                const eraNames = scope?.eraNames ?? [];
+                const factionNames = scope?.factionNames ?? [];
+                return eraNames.some((eraName) => (
+                    factionNames.some((factionName) => unit.rarityByContext[`${eraName}|${factionName}`] === rarityName)
+                ));
+            },
+            getAllEraNames: () => ['Clan Invasion'],
+            getAllFactionNames: () => ['Federated Suns'],
+            getAllAvailabilityRarityNames: () => ['Not Available', 'Very Rare', 'Rare', 'Uncommon', 'Common', 'Very Common'],
+        });
+
+        expect(filtered).toEqual([units[0]]);
+    });
+
+    it('uses active faction scope for MegaMek era matches and indexed era candidates', () => {
+        const units: Array<{
+            id: number;
+            eras: string[];
+            factionEras: Record<string, string[]>;
+        }> = [
+            {
+                id: 1,
+                eras: ['Late Succession War - LosTech'],
+                factionEras: {
+                    Extinct: ['Early Succession War'],
+                },
+            },
+            {
+                id: 2,
+                eras: ['Early Succession War'],
+                factionEras: {
+                    'Draconis Combine': ['Early Succession War'],
+                },
+            },
+        ];
+        const indexedScopes: Array<{ filterKey: string; value: string; factionNames?: readonly string[] }> = [];
+        const result = parseSemanticQueryAST('faction=Extinct era="Early Succession War"', GameSystem.CLASSIC);
+
+        const filtered = filterUnitsWithAST(units, result.ast, {
+            gameSystem: GameSystem.CLASSIC,
+            getUnitId,
+            getProperty: () => undefined,
+            unitBelongsToEra: (
+                unit: { eras?: string[]; factionEras?: Record<string, string[]> },
+                eraName: string,
+                scope,
+            ) => {
+                if (scope?.factionNames !== undefined) {
+                    return scope.factionNames.some((factionName) => (
+                        unit.factionEras?.[factionName]?.includes(eraName) ?? false
+                    ));
+                }
+
+                return unit.eras?.includes(eraName) ?? false;
+            },
+            unitBelongsToFaction: (
+                unit: { factionEras?: Record<string, string[]> },
+                factionName: string,
+                eraNames?: readonly string[],
+            ) => {
+                const membershipEraNames = unit.factionEras?.[factionName] ?? [];
+                if (eraNames !== undefined) {
+                    return eraNames.some((eraName) => membershipEraNames.includes(eraName));
+                }
+
+                return membershipEraNames.length > 0;
+            },
+            getAllEraNames: () => ['Early Succession War', 'Late Succession War - LosTech'],
+            getAllFactionNames: () => ['Draconis Combine', 'Extinct'],
+            getIndexedUnitIds: (filterKey: string, value: string, scope) => {
+                indexedScopes.push({ filterKey, value, factionNames: scope?.factionNames });
+
+                if (filterKey === 'faction') {
+                    return new Set(
+                        units
+                            .filter((unit) => (unit.factionEras?.[value]?.length ?? 0) > 0)
+                            .map(getUnitId),
+                    );
+                }
+
+                if (filterKey === 'era') {
+                    if (scope?.factionNames !== undefined) {
+                        return new Set(
+                            units
+                                .filter((unit) => scope.factionNames!.some((factionName) => (
+                                    unit.factionEras?.[factionName]?.includes(value) ?? false
+                                )))
+                                .map(getUnitId),
+                        );
+                    }
+
+                    return new Set(
+                        units
+                            .filter((unit) => unit.eras?.includes(value) ?? false)
+                            .map(getUnitId),
+                    );
+                }
+
+                return undefined;
+            },
+            getIndexedFilterValues: (filterKey: string) => {
+                if (filterKey === 'era') {
+                    return ['Early Succession War', 'Late Succession War - LosTech'];
+                }
+
+                if (filterKey === 'faction') {
+                    return ['Draconis Combine', 'Extinct'];
+                }
+
+                return [];
+            },
+        });
+
+        expect(filtered).toEqual([units[0]]);
+        expect(indexedScopes).toContain(jasmine.objectContaining({
+            filterKey: 'era',
+            value: 'Early Succession War',
+            factionNames: ['Extinct'],
+        }));
     });
 
     it('preserves grouped boolean expressions with parentheses', () => {

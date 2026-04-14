@@ -34,25 +34,18 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import type { LoadForceEntry, LoadForceGroup } from '../../models/load-force-entry.model';
-import { FactionImgPipe } from '../../pipes/faction-img.pipe';
-import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
-import { UnitIconComponent } from '../unit-icon/unit-icon.component';
-import { OptionsService } from '../../services/options.service';
-import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
-import { NO_FORMATION_ID } from '../../utils/formation-type.model';
-import { DialogsService } from '../../services/dialogs.service';
-import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
-import type { Unit } from '../../models/units.model';
+import type { LoadForceEntry } from '../../models/load-force-entry.model';
+import type { Options } from '../../models/options.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { ToastService } from '../../services/toast.service';
 import { type ForceAddModePickerData, ForceAddModePickerDialogComponent, type ForceAddModePickerResult } from '../force-add-mode-picker-dialog/force-add-mode-picker-dialog.component';
 import { firstValueFrom } from 'rxjs';
-import { getOrgFromForce, getOrgFromGroup } from '../../utils/org/org-namer.util';
-import { getUnitsAverageTechBase } from '../../models/tech.model';
+import { DialogsService } from '../../services/dialogs.service';
+import { LoadForcePreviewPanelComponent } from '../load-force-preview-panel/load-force-preview-panel.component';
 
 export interface ForceEntryPreviewDialogData {
     force: LoadForceEntry;
+    unitDisplayNameOverride?: Options['unitDisplayName'];
 }
 
 /**
@@ -65,7 +58,7 @@ export interface ForceEntryPreviewDialogData {
     selector: 'force-entry-preview-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, CleanModelStringPipe, UnitIconComponent],
+    imports: [CommonModule, LoadForcePreviewPanelComponent],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
@@ -78,65 +71,17 @@ export class ForceEntryPreviewDialogComponent {
     private dialogsService = inject(DialogsService);
     private forceBuilderService = inject(ForceBuilderService);
     private toastService = inject(ToastService);
-    optionsService = inject(OptionsService);
+    readonly displayMode = this.data.unitDisplayNameOverride ?? null;
     force: LoadForceEntry;
-    forceOrgName: string | null = null;
-    groupDisplayData: { group: LoadForceGroup; name: string; orgName: string | null; formationName: string | null }[];
-    private allUnits: Unit[];
 
     isForceLoaded = signal(false);
     canLoadForce = computed(() => !this.isForceLoaded() && this.force.owned);
 
     constructor() {
         this.force = this.data.force;
-        this.allUnits = this.force.groups
-            .flatMap(g => g.units)
-            .map(u => u.unit)
-            .filter((u): u is Unit => !!u);
-
-        this.groupDisplayData = this.force.groups.map(group => {
-            const sizeResult = getOrgFromGroup(group);
-            const orgName = (sizeResult.name && sizeResult.name !== 'Force') ? sizeResult.name : null;
-
-            let name: string;
-            if (!group.name) {
-                name = LanceTypeIdentifierUtil.getFormationName(group.formationId) || '';
-            } else {
-                name = group.name;
-            }
-
-            let formationName: string | null = null;
-            if (group.formationId && group.formationId !== NO_FORMATION_ID && group.name) {
-                const fName = LanceTypeIdentifierUtil.getFormationName(group.formationId);
-                if (fName && !group.name.includes(fName)) {
-                    formationName = fName;
-                }
-            }
-
-            return { group, name, orgName, formationName };
-        });
-
-        const forceResult = getOrgFromForce(this.force);
-        if (forceResult.name !== 'Force') {
-            this.forceOrgName = forceResult.name;
-        }
-
         this.isForceLoaded.set(
             this.forceBuilderService.loadedForces().some(s => s.force.instanceId() === this.force.instanceId)
         );
-    }
-
-    onUnitClick(unit: Unit | undefined): void {
-        if (!unit) return;
-        const unitIndex = this.allUnits.findIndex(u => u.name === unit.name);
-        this.dialogsService.createDialog(UnitDetailsDialogComponent, {
-            data: {
-                unitList: this.allUnits,
-                unitIndex: unitIndex >= 0 ? unitIndex : 0,
-                hideAddButton: true,
-                gameSystem: this.force.type
-            } as UnitDetailsDialogData
-        });
     }
 
     async onLoad(): Promise<void> {

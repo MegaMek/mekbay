@@ -288,7 +288,7 @@ export class MekRules implements UnitTypeRules {
             preExisting -= 2; // AES in legs intact gives -2 modifier
             modifiers.push({
                 pilotCheck: -2,
-                reason: "'Mech mounts AES in its legs"
+                reason: "Mounts AES in its legs"
             });
         }
         const hardenedArmor = this.unit.getUnit().armorType === 'Hardened';
@@ -296,7 +296,7 @@ export class MekRules implements UnitTypeRules {
             preExisting += 1; // Hardened armor gives +1 modifier
             modifiers.push({
                 pilotCheck: 1,
-                reason: "'Mech mounts Hardened Armor"
+                reason: "Mounts Hardened Armor"
             });
         }
         const modularArmorPanelsCount = critSlots.filter(slot => slot.name && slot.name.includes('Modular Armor')).length;
@@ -306,7 +306,7 @@ export class MekRules implements UnitTypeRules {
                 preExisting += 1; // Modular armor gives +1 modifier (until destroyed or fully consumed)
                 modifiers.push({
                     pilotCheck: 1,
-                    reason: "'Mech mounts Modular Armor"
+                    reason: "Mounts Modular Armor"
                 });
             }
         }
@@ -318,7 +318,7 @@ export class MekRules implements UnitTypeRules {
             preExisting += 1; // Small or Torso cockpit gives +1 modifier
             modifiers.push({
                 pilotCheck: +1,
-                reason: "'Mech mounts small or torso-mounted cockpit"
+                reason: "Mounts small or torso cockpit"
             });
         }
         const destroyedHips = critSlots.filter(slot => slot.name && slot.loc && slot.destroyed && LEG_LOCATIONS.has(slot.loc) && !ignoreLeg.has(slot.loc) && slot.name.includes('Hip'));

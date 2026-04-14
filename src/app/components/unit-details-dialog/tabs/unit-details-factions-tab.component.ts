@@ -33,8 +33,23 @@
 
 import { Component, ChangeDetectionStrategy, input, inject, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { TooltipDirective } from '../../../directives/tooltip.directive';
+import type { TooltipLine } from '../../tooltip/tooltip.component';
+import type { Era } from '../../../models/eras.model';
+import type { Faction } from '../../../models/factions.model';
+import {
+    MEGAMEK_AVAILABILITY_RARITY_ICON_COLORS,
+    MEGAMEK_PRODUCTION_ICON_PATH,
+    type MegaMekAvailabilityFrom,
+    MEGAMEK_AVAILABILITY_RARITY_OPTIONS,
+    MEGAMEK_SALVAGE_ICON_PATH,
+} from '../../../models/megamek/availability.model';
 import type { Unit } from '../../../models/units.model';
 import { DataService } from '../../../services/data.service';
+import {
+    type MegaMekUnitAvailabilityDetail,
+    UnitAvailabilitySourceService,
+} from '../../../services/unit-availability-source.service';
 
 const CATCH_ALL_FACTIONS: Record<string, string> = {
     'Inner Sphere General': 'Inner Sphere',
@@ -46,28 +61,43 @@ const CATCH_ALL_FACTIONS: Record<string, string> = {
 const PREFIX_CATCH_ALL = 'Star League General';
 const PREFIX_CATCH_ALL_PREFIX = 'Star League';
 
+interface FactionMegaMekAvailability {
+    source: MegaMekAvailabilityFrom;
+    rarity: typeof MEGAMEK_AVAILABILITY_RARITY_OPTIONS[number];
+    color: string;
+    label: string;
+}
+
+interface FactionAvailabilityItem {
+    name: string;
+    img: string;
+    megaMekAvailability: FactionMegaMekAvailability[];
+    megaMekTooltip: TooltipLine[] | null;
+    isCatchAll?: boolean;
+    collapsedFactions?: FactionAvailabilityItem[];
+}
+
 export interface FactionAvailability {
     eraName: string;
     eraImg?: string;
     eraYearFrom?: number;
     eraYearTo?: number;
-    factions: {
-        name: string;
-        img: string;
-        isCatchAll?: boolean;
-        collapsedFactions?: { name: string; img: string }[];
-    }[];
+    factions: FactionAvailabilityItem[];
 }
 
 @Component({
     selector: 'unit-details-factions-tab',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [CommonModule, TooltipDirective],
     templateUrl: './unit-details-factions-tab.component.html',
     styleUrls: ['./unit-details-factions-tab.component.css']
 })
 export class UnitDetailsFactionTabComponent {
     private dataService = inject(DataService);
+    private unitAvailabilitySource = inject(UnitAvailabilitySourceService);
+
+    readonly megaMekProductionIconPath = MEGAMEK_PRODUCTION_ICON_PATH;
+    readonly megaMekSalvageIconPath = MEGAMEK_SALVAGE_ICON_PATH;
 
     unit = input.required<Unit>();
 
@@ -75,17 +105,22 @@ export class UnitDetailsFactionTabComponent {
         const u = this.unit();
         if (!u) return [];
 
-        const unitId = u.id;
+        const unitAvailabilityKey = this.unitAvailabilitySource.getUnitAvailabilityKey(u);
         const allEras = this.dataService.getEras();
         const allFactions = this.dataService.getFactions();
         const availability: FactionAvailability[] = [];
 
         for (const era of allEras) {
-            const matchingFactions: { name: string; img: string; group: string }[] = [];
+            const matchingFactions: Array<FactionAvailabilityItem & { group: string }> = [];
             for (const faction of allFactions) {
-                const factionEras = faction.eras[era.id];
-                if (factionEras && (factionEras as Set<number>).has(unitId)) {
-                    matchingFactions.push({ name: faction.name, img: faction.img, group: faction.group });
+                if (this.unitAvailabilitySource.getFactionEraUnitIds(faction, era).has(unitAvailabilityKey)) {
+                    matchingFactions.push({
+                        name: faction.name,
+                        img: faction.img,
+                        group: faction.group,
+                        megaMekAvailability: this.getFactionMegaMekAvailability(u, faction, era),
+                        megaMekTooltip: null,
+                    });
                 }
             }
 
@@ -102,21 +137,43 @@ export class UnitDetailsFactionTabComponent {
                 }
 
                 const factions: FactionAvailability['factions'] = [];
-                const collapsedByGroup = new Map<string, { name: string; img: string }[]>();
-                const prefixCollapsed: { name: string; img: string }[] = [];
+                const collapsedByGroup = new Map<string, FactionAvailabilityItem[]>();
+                const prefixCollapsed: FactionAvailabilityItem[] = [];
 
                 for (const f of matchingFactions) {
+                    const megaMekTooltip = this.buildFactionMegaMekTooltip(f);
                     if (CATCH_ALL_FACTIONS[f.name] || f.name === PREFIX_CATCH_ALL) {
-                        factions.push({ name: f.name, img: f.img, isCatchAll: true });
+                        factions.push({
+                            name: f.name,
+                            img: f.img,
+                            megaMekAvailability: f.megaMekAvailability,
+                            megaMekTooltip,
+                            isCatchAll: true,
+                        });
                     } else if (hasPrefixCatchAll && f.name.startsWith(PREFIX_CATCH_ALL_PREFIX)) {
-                        prefixCollapsed.push({ name: f.name, img: f.img });
+                        prefixCollapsed.push({
+                            name: f.name,
+                            img: f.img,
+                            megaMekAvailability: f.megaMekAvailability,
+                            megaMekTooltip,
+                        });
                     } else if (activeCatchAllGroups.has(f.group)) {
                         if (!collapsedByGroup.has(f.group)) {
                             collapsedByGroup.set(f.group, []);
                         }
-                        collapsedByGroup.get(f.group)!.push({ name: f.name, img: f.img });
+                        collapsedByGroup.get(f.group)!.push({
+                            name: f.name,
+                            img: f.img,
+                            megaMekAvailability: f.megaMekAvailability,
+                            megaMekTooltip,
+                        });
                     } else {
-                        factions.push({ name: f.name, img: f.img });
+                        factions.push({
+                            name: f.name,
+                            img: f.img,
+                            megaMekAvailability: f.megaMekAvailability,
+                            megaMekTooltip,
+                        });
                     }
                 }
 
@@ -168,5 +225,39 @@ export class UnitDetailsFactionTabComponent {
 
     isCatchAllExpanded(eraIndex: number, factionName: string): boolean {
         return this.expandedCatchAlls().has(`${eraIndex}:${factionName}`);
+    }
+
+    private getFactionMegaMekAvailability(unit: Unit, faction: Faction, era: Era): FactionMegaMekAvailability[] {
+        return this.unitAvailabilitySource.getMegaMekAvailabilityDetails(unit, faction, era)
+            .map((detail) => this.mapMegaMekAvailabilityDetail(detail));
+    }
+
+    private mapMegaMekAvailabilityDetail(detail: MegaMekUnitAvailabilityDetail): FactionMegaMekAvailability {
+        return {
+            source: detail.source,
+            rarity: detail.rarity,
+            color: MEGAMEK_AVAILABILITY_RARITY_ICON_COLORS[detail.rarity],
+            label: `${detail.source}: ${detail.rarity}`,
+        };
+    }
+
+    private buildFactionMegaMekTooltip(
+        faction: Pick<FactionAvailabilityItem, 'name' | 'img' | 'megaMekAvailability'>,
+    ): TooltipLine[] | null {
+        if (faction.megaMekAvailability.length === 0) {
+            return null;
+        }
+
+        return [
+            {
+                value: faction.name,
+                ...(faction.img ? { iconSrc: faction.img, iconAlt: faction.name } : {}),
+                isHeader: true,
+            },
+            ...faction.megaMekAvailability.map((availability) => ({
+                label: availability.source,
+                value: availability.rarity,
+            })),
+        ];
     }
 }

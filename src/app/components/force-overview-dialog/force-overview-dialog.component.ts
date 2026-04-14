@@ -46,17 +46,20 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { ToastService } from '../../services/toast.service';
 import { OptionsService } from '../../services/options.service';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
+import { formatSummaryMovement } from '../../models/pilot-abilities.model';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import type { TagClickEvent } from '../unit-tags/unit-tags.component';
 import { AbilityInfoDialogComponent, type AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
-import { SORT_OPTIONS } from '../../services/unit-search-filters.model';
+import { isMegaMekRaritySortKey, SORT_OPTIONS } from '../../services/unit-search-filters.model';
 import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
+import { formationInheritsParentEffects } from '../../utils/formation-type.model';
 import { TaggingService } from '../../services/tagging.service';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { formatMovement } from '../../utils/as-common.util';
 import { DataTableComponent, type DataTableCellContext, type DataTableColumn, type DataTableRowClickEvent, type DataTableSortEvent } from '../data-table/data-table.component';
+import { TooltipDirective } from '../../directives/tooltip.directive';
 
 export interface ForceOverviewDialogData {
     force: Force;
@@ -95,7 +98,7 @@ export const DEFAULT_OVERVIEW_STATE: OverviewState = {
 @Component({
     selector: 'force-overview-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, DragDropModule, UnitCardExpandedComponent, UnitBlockComponent, UnitIconComponent, DataTableComponent],
+    imports: [CommonModule, DragDropModule, UnitCardExpandedComponent, UnitBlockComponent, UnitIconComponent, DataTableComponent, TooltipDirective],
     host: {
         class: 'fullscreen-dialog-host fullheight tv-fade'
     },
@@ -143,9 +146,9 @@ export class ForceOverviewDialogComponent {
     private readonly AUTOSCROLL_MIN = 40;    // px/sec min scroll speed
 
     /** Sort options available - Custom is the default order by the user */
-    readonly SORT_OPTIONS = SORT_OPTIONS.map(opt => 
-        opt.key === '' ? { ...opt, label: 'Custom' } : opt
-    );
+    readonly SORT_OPTIONS = SORT_OPTIONS
+        .filter(opt => !isMegaMekRaritySortKey(opt.key))
+        .map(opt => opt.key === '' ? { ...opt, label: 'Custom' } : opt);
 
     /** Current view mode */
     viewMode = signal<'expanded' | 'compact' | 'table'>(this.optionsService.options().forceOverviewViewMode);
@@ -556,23 +559,35 @@ export class ForceOverviewDialogComponent {
         this.forceBuilderService.showFormationInfo(group);
     }
 
-    /** Build a tooltip title for a mismatched formation */
+    /** Build tooltip HTML for a mismatched formation */
     getFormationMismatchTitle(group: UnitGroup): string {
         const formation = group.formation();
         if (!formation) return 'Formation does not match group composition';
+
         const parts: string[] = [];
-        if (formation.parent) {
+        const showParentRequirements = formationInheritsParentEffects(formation) && !!formation.parent;
+
+        if (showParentRequirements) {
             const parent = FORMATION_DEFINITIONS.find(d => d.id === formation.parent);
             if (parent?.requirements) {
                 const parentReq = parent.requirements(group.force.gameSystem);
-                if (parentReq) parts.push(`${parent.name}: ${parentReq}`);
+                if (parentReq) parts.push(this.buildFormationRequirementTooltipLine(parent.name, parentReq));
             }
         }
+
         if (formation.requirements) {
             const req = formation.requirements(group.force.gameSystem);
-            if (req) parts.push(req);
+            if (req) parts.push(this.buildFormationRequirementTooltipLine(showParentRequirements ? formation.name : null, req));
         }
-        return parts.length > 0 ? parts.join('\n') : 'Formation does not match group composition';
+
+        return parts.length > 0 ? parts.join('') : 'Formation does not match group composition';
+    }
+
+    private buildFormationRequirementTooltipLine(label: string | null, requirements: string): string {
+        const formattedRequirements = formatSummaryMovement(requirements, this.optionsService.options().ASUseHex);
+        return label
+            ? `<div><strong>${label}:</strong> ${formattedRequirements}</div>`
+            : `<div>${formattedRequirements}</div>`;
     }
 
     /** Handle group name click - open rename dialog */

@@ -355,6 +355,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         name: 'Fast Assault',
         description: 'Mobile assault formation with speed advantage',
         effectDescription: 'In addition to the Assault Lance bonus, up to 2 units per Fast Assault Lance may receive the Stand Aside SPA per turn. These may stack with the Demoralizer or Multi-Tasker abilities.',
+        inheritParentEffects: true,
         effectGroups: [{
             abilityIds: ['stand_aside'],
             selection: 'all',
@@ -366,7 +367,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.CO, page: 62 }, { book: Rulebook.ASCE, page: 118 }],
         requirements: (gameSystem) => {
             if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                return 'Minimum 3 units. Must meet Assault Lance requirements. All units must have Move 10"+ or any jump capability.';
+                return 'Minimum 3 units. Must meet Assault Lance requirements. All units must have Move [[10]]+ or any jump capability.';
             }
             return 'Minimum 3 units. Must meet Assault Lance requirements. All units must have walk ≥ 5 or jump > 0.';
         },
@@ -575,7 +576,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.CO, page: 63 }],
         requirements: (gameSystem) => {
             if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                return 'Minimum 3 units. Federated Suns only. 75% must be Size 2-3. 50% must have AC or FLK special. All units Move 8"+.';
+                return 'Minimum 3 units. Federated Suns only. 75% must be Size 2-3. 50% must have AC or FLK special. All units Move [[8]]+.';
             }
             return 'Minimum 3 units. Federated Suns only. 75% must be medium or heavy. 50% must have autocannons (including LB-X, Ultra, or Rotary). All units walk ≥ 4.';
         },
@@ -965,7 +966,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.CO, page: 65 }, { book: Rulebook.ASCE, page: 120 }],
         requirements: (gameSystem) => {
             if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                return 'Minimum 3 units. All Size ≤ 2. 75% must have Move 12"+. At least 1 unit with medium-range damage > 1.';
+                return 'Minimum 3 units. All Size ≤ 2. 75% must have Move [[12]]+. At least 1 unit with medium-range damage > 1.';
             }
             return 'Minimum 3 units. All light or medium. 75% must have walk ≥ 6. At least 1 unit dealing 5+ damage at 15 hexes.';
         },
@@ -1000,7 +1001,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.CO, page: 65 }, { book: Rulebook.ASCE, page: 120 }],
         requirements: (gameSystem) => {
             if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                return 'Minimum 3 units. No Size 4+ units. 75% must have Move 10"+. All units must have medium-range damage ≥ 2.';
+                return 'Minimum 3 units. No Size 4+ units. 75% must have Move [[10]]+. All units must have medium-range damage ≥ 2.';
             }
             return 'Minimum 3 units. No assault units. 75% must have walk ≥ 6. All units must deal 10+ damage at 9 hexes.';
         },
@@ -1035,7 +1036,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.CO, page: 65 }, { book: Rulebook.ASCE, page: 120 }],
         requirements: (gameSystem) => {
             if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                return 'Minimum 3 units. All Size ≤ 2. All units must have Move 10"+. All units must have short-range damage ≥ 2.';
+                return 'Minimum 3 units. All Size ≤ 2. All units must have Move [[10]]+. All units must have short-range damage ≥ 2.';
             }
             return 'Minimum 3 units. All light or medium. All units must have walk ≥ 5. All units must deal 10+ damage at 6 hexes.';
         },
@@ -1080,7 +1081,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 65 }, { book: Rulebook.ASCE, page: 119 }],
         requirements: (gameSystem) => {
-            const fast = gameSystem === GameSystem.ALPHA_STRIKE ? 'Move 10"+' : 'walk ≥ 5';
+            const fast = gameSystem === GameSystem.ALPHA_STRIKE ? 'Move [[10]]+' : 'walk ≥ 5';
             return `Minimum 3 units. All units must have ${fast}. At least 2 Scout or Striker roles.`;
         },
         validator: (units, gameSystem) => {
@@ -1119,7 +1120,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.CO, page: 66 }, { book: Rulebook.ASCE, page: 119 }],
         requirements: (gameSystem) => {
             if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                return 'Minimum 3 units. All Move 8"+. At least 2 with Move 10"+. At least 1 Size 3+ unit. At least 2 Scouts.';
+                return 'Minimum 3 units. All Move [[8]]+. At least 2 with Move [[10]]+. At least 1 Size 3+ unit. At least 2 Scouts.';
             }
             return 'Minimum 3 units. All walk ≥ 4. At least 2 with walk ≥ 5. At least 1 heavy or assault. At least 2 Scouts.';
         },
@@ -1162,7 +1163,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.CO, page: 66 }, { book: Rulebook.ASCE, page: 119 }],
         requirements: (gameSystem) => {
             if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                return 'Minimum 3 units. All Size 1. All Move 12"+. All must have the Scout role.';
+                return 'Minimum 3 units. All Size 1. All Move [[12]]+. All must have the Scout role.';
             }
             return 'Minimum 3 units. All light. All walk ≥ 6. All must have the Scout role.';
         },
@@ -1232,7 +1233,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.CO, page: 66 }, { book: Rulebook.ASCE, page: 118 }],
         requirements: (gameSystem) => {
             if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                return 'Minimum 3 units. All Move 10"+ or Jump 8"+. No Size 4+ units. 50% must have Striker or Skirmisher role.';
+                return 'Minimum 3 units. All Move [[10]]+ or Jump [[8]]+. No Size 4+ units. 50% must have Striker or Skirmisher role.';
             }
             return 'Minimum 3 units. All walk ≥ 5 or jump ≥ 4. No assault units. 50% must have Striker or Skirmisher role.';
         },
@@ -1270,7 +1271,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 66 }],
         requirements: (gameSystem) => {
-            const fast = gameSystem === GameSystem.ALPHA_STRIKE ? 'Move 10"+' : 'walk ≥ 5';
+            const fast = gameSystem === GameSystem.ALPHA_STRIKE ? 'Move [[10]]+' : 'walk ≥ 5';
             return `Minimum 3 units. Free Worlds League only. All units must have ${fast}.`;
         },
         validator: (units, gameSystem) => {
@@ -1299,7 +1300,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.CO, page: 67 }, { book: Rulebook.ASCE, page: 118 }],
         requirements: (gameSystem) => {
             if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                return 'Minimum 3 units. All Move 10"+. No Size 3+ units. At least 2 with long-range damage. At least 2 Striker or Skirmisher roles.';
+                return 'Minimum 3 units. All Move [[10]]+. No Size 3+ units. At least 2 with long-range damage. At least 2 Striker or Skirmisher roles.';
             }
             return 'Minimum 3 units. All walk ≥ 5. No heavy or assault units. At least 2 with long-range capability. At least 2 Striker or Skirmisher roles.';
         },
@@ -1337,7 +1338,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.CO, page: 66 }, { book: Rulebook.ASCE, page: 118 }],
         requirements: (gameSystem) => {
             if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                return 'Minimum 3 units. All Move 8"+. At least 3 Size 3+. No Size 1 units. At least 1 with long-range damage > 1. At least 2 Striker or Skirmisher roles.';
+                return 'Minimum 3 units. All Move [[8]]+. At least 3 Size 3+. No Size 1 units. At least 1 with long-range damage > 1. At least 2 Striker or Skirmisher roles.';
             }
             return 'Minimum 3 units. All walk ≥ 4. At least 3 heavy or assault. No light units. At least 1 with long-range capability. At least 2 Striker or Skirmisher roles.';
         },
@@ -1450,7 +1451,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.CO, page: 67 }],
         requirements: (gameSystem) => {
             if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                return 'Minimum 3 units. 50% must have jump movement or be infantry. 50% must have ground Move ≤ 8".';
+                return 'Minimum 3 units. 50% must have jump movement or be infantry. 50% must have ground Move ≤ [[8]]+.';
             }
             return 'Minimum 3 units. 50% must have jump movement or be infantry. 50% must have walk ≤ 4.';
         },

@@ -2,7 +2,7 @@ import { DEFAULT_ORG_RULE_REGISTRY } from '../org-facts.util';
 import type {
     OrgCIFormationRule,
     OrgComposedCountRule,
-    OrgDefinitionSpec,
+    OrgDefinition,
     OrgLeafCountRule,
     OrgLeafPatternRule,
 } from '../org-types';
@@ -144,7 +144,7 @@ export const COMSTAR_LEVEL_VI: OrgComposedCountRule = {
     childBucketBy: 'promotionBasic',
 };
 
-export const COMSTAR_CORE_ORG: OrgDefinitionSpec = {
+export const COMSTAR_CORE_ORG: OrgDefinition = {
     rules: [
         COMSTAR_LEVEL_I,
         COMSTAR_LEVEL_I_FROM_SQUADS,
