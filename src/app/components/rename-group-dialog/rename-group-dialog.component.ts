@@ -36,7 +36,6 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, type ElementR
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { takeUntilDestroyed, outputToObservable } from '@angular/core/rxjs-interop';
-import { ForceBuilderService } from '../../services/force-builder.service';
 import { OptionsService } from '../../services/options.service';
 import type { UnitGroup } from '../../models/force.model';
 import { formatSummaryMovement } from '../../models/pilot-abilities.model';
@@ -46,9 +45,11 @@ import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { FormationDropdownPanelComponent, type FormationDisplayItem } from './formation-dropdown-panel.component';
 import { FormationNamerUtil } from '../../utils/formation-namer.util';
 import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
+
 /*
  * Author: Drake
  */
+
 export interface RenameGroupDialogData {
     group: UnitGroup;
 }
