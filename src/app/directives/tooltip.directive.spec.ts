@@ -9,7 +9,7 @@ import { TooltipDirective } from './tooltip.directive';
     template: `
         <div class="parent" [tooltip]="'Parent tooltip'" [tooltipDelay]="0">
             <span class="parent-label">Parent</span>
-            <button class="child" type="button" [tooltip]="'Child tooltip'" [tooltipDelay]="0">Child</button>
+            <button class="child" type="button" [tooltip]="'Child tooltip'" tooltipType="error" [tooltipDelay]="0">Child</button>
         </div>
     `,
 })
@@ -64,6 +64,21 @@ describe('TooltipDirective', () => {
         await flushTooltipTasks(fixture);
 
         expect(getTooltipTexts()).toEqual(['Child tooltip']);
+    });
+
+    it('applies the error frame class when tooltipType is error', async () => {
+        const fixture = TestBed.createComponent(TestHostComponent);
+        fixture.detectChanges();
+
+        const child = fixture.nativeElement.querySelector('.child') as HTMLElement | null;
+
+        expect(child).withContext('child tooltip host').not.toBeNull();
+
+        dispatchPointerOver(child!);
+        await flushTooltipTasks(fixture);
+
+        const tooltip = overlayContainerElement.querySelector('.tooltip-content');
+        expect(tooltip?.classList.contains('error')).toBeTrue();
     });
 
     function getTooltipTexts(): string[] {

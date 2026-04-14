@@ -36,12 +36,20 @@ import { GameSystem } from '../models/common.model';
 import type { ASUnitTypeCode } from './units.model';
 import { formatMovement } from '../utils/as-common.util';
 
-export function formatSummaryMovement(summaries: string[], useHex: boolean = false): string[] {
-    return summaries.map(text => {
-        return text.replace(/\[\[(\d+)\]\]/g, (_, val) => {
-            return formatMovement(Number(val), '', useHex);
-        });
+function formatMovementPlaceholders(text: string, useHex: boolean): string {
+    return text.replace(/\[\[(\d+)\]\]/g, (_, val) => {
+        return formatMovement(Number(val), '', useHex);
     });
+}
+
+export function formatSummaryMovement(summary: string, useHex?: boolean): string;
+export function formatSummaryMovement(summaries: string[], useHex?: boolean): string[];
+export function formatSummaryMovement(summaries: string | string[], useHex: boolean = false): string | string[] {
+    if (Array.isArray(summaries)) {
+        return summaries.map(text => formatMovementPlaceholders(text, useHex));
+    }
+
+    return formatMovementPlaceholders(summaries, useHex);
 }
 
 /** Game-system-specific details for a pilot ability */
