@@ -31,19 +31,17 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
-import { type PilotAbility, getAbilityDetails, formatSummaryMovement, type PilotAbilityRuleDetails } from '../../models/pilot-abilities.model';
-import { GameSystem, formatRulesReference, type RulesReference } from '../../models/common.model';
-import type { ASUnitTypeCode } from '../../models/units.model';
-import { OptionsService } from '../../services/options.service';
+import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { formatRulesReference, type RulesReference } from '../../models/common.model';
 
-interface ResolvedDropdownAbility {
-    ability: PilotAbility;
-    details: PilotAbilityRuleDetails;
+export interface AbilityDropdownOption {
+    id: string;
+    name: string;
     summary: string;
     rulesRef: RulesReference[];
-    unitTypeRestricted: boolean;
-    unitTypeLabel: string | undefined;
+    cost?: number;
+    unitTypeRestricted?: boolean;
+    unitTypeLabel?: string;
 }
 
 @Component({
@@ -61,36 +59,37 @@ interface ResolvedDropdownAbility {
                 <div class="ability-summary">Create a custom ability with your own name, cost, and description</div>
             </div>
             }
-            @if (allowCustom() && resolvedAbilities().length > 0) {
+            @if (allowCustom() && abilities().length > 0) {
             <hr class="divider"/>
             }
-            @for (resolved of resolvedAbilities(); track resolved.ability.id) {
-                @let isDisabled = disabledIds().includes(resolved.ability.id) || resolved.ability.cost > remainingCost();
+            @for (ability of abilities(); track ability.id) {
+                @let abilityCost = ability.cost ?? 0;
+                @let isDisabled = disabledIds().includes(ability.id) || abilityCost > remainingCost();
                 <div 
                     class="dropdown-option"
                     [class.disabled]="isDisabled"
-                    [class.over-budget]="!disabledIds().includes(resolved.ability.id) && resolved.ability.cost > remainingCost()"
-                    [class.unit-type-restricted]="resolved.unitTypeRestricted"
-                    (click)="onSelect(resolved.ability.id)">
+                    [class.over-budget]="!disabledIds().includes(ability.id) && abilityCost > remainingCost()"
+                    [class.unit-type-restricted]="!!ability.unitTypeRestricted"
+                    (click)="onSelect(ability.id)">
                     <div class="ability-header">
-                        <span class="ability-name">{{ resolved.ability.name }}</span>
+                        <span class="ability-name">{{ ability.name }}</span>
                         @if (showCost()) {
-                        <span class="ability-cost" [class.exceeds-budget]="resolved.ability.cost > remainingCost()">Cost: {{ resolved.ability.cost }}</span>
+                        <span class="ability-cost" [class.exceeds-budget]="abilityCost > remainingCost()">Cost: {{ abilityCost }}</span>
                         }
                     </div>
-                    @if (resolved.unitTypeLabel) {
-                    <div class="unit-type-info" [class.unit-type-warning]="resolved.unitTypeRestricted">
-                        @if (resolved.unitTypeRestricted) {
+                    @if (ability.unitTypeLabel) {
+                    <div class="unit-type-info" [class.unit-type-warning]="!!ability.unitTypeRestricted">
+                        @if (ability.unitTypeRestricted) {
                         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z"/></svg>
                         }
-                        {{ resolved.unitTypeLabel }}
+                        {{ ability.unitTypeLabel }}
                     </div>
                     }
-                    <div class="ability-summary" [innerHTML]="resolved.summary"></div>
-                    @if (resolved.rulesRef.length) {
+                    <div class="ability-summary" [innerHTML]="ability.summary"></div>
+                    @if (ability.rulesRef.length) {
                     <div class="ability-meta">
                         <span class="ability-rules">
-                        @for (rule of resolved.rulesRef; let last = $last; track $index) {
+                        @for (rule of ability.rulesRef; let last = $last; track $index) {
                             {{ formatRuleReference(rule) }}
                             @if (!last) {
                                 <span class="separator"> · </span>
@@ -208,40 +207,20 @@ interface ResolvedDropdownAbility {
     `]
 })
 export class AbilityDropdownPanelComponent {
-    private readonly optionsService = inject(OptionsService);
-    abilities = input.required<PilotAbility[]>();
+    abilities = input.required<AbilityDropdownOption[]>();
     disabledIds = input<string[]>([]);
     remainingCost = input<number>(999);
     allowCustom = input<boolean>(true);
     showCost = input<boolean>(true);
-    /** The unit's AS type code for filtering abilities by unitTypeFilter. */
-    unitTypeCode = input<ASUnitTypeCode | undefined>(undefined);
     readonly formatRuleReference = formatRulesReference;
     
     selected = output<string>();
     addCustom = output<void>();
 
-    /** Pre-resolve all display data for each ability once via computed. */
-    resolvedAbilities = computed<ResolvedDropdownAbility[]>(() => {
-        const unitType = this.unitTypeCode();
-        return this.abilities().map(ability => {
-            const details = getAbilityDetails(ability, GameSystem.ALPHA_STRIKE);
-            const unitTypeRestricted = !!(unitType && details.unitTypeFilter?.length && !details.unitTypeFilter.includes(unitType));
-            return {
-                ability,
-                details,
-                summary: formatSummaryMovement(details.summary, this.optionsService.options().ASUseHex)[0] ?? '',
-                rulesRef: details.rulesRef ?? [],
-                unitTypeRestricted,
-                unitTypeLabel: details.unitType,
-            };
-        });
-    });
-
     onSelect(abilityId: string) {
-        const resolved = this.resolvedAbilities().find(r => r.ability.id === abilityId);
-        if (!resolved) return;
-        if (this.disabledIds().includes(abilityId) || resolved.ability.cost > this.remainingCost()) return;
+        const ability = this.abilities().find((entry) => entry.id === abilityId);
+        if (!ability) return;
+        if (this.disabledIds().includes(abilityId) || (ability.cost ?? 0) > this.remainingCost()) return;
         this.selected.emit(abilityId);
     }
 

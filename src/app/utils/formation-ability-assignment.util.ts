@@ -52,6 +52,7 @@ export interface FormationEffectDescriptor {
     readonly sourceFormationName: string;
     readonly sourceFormationDescription: string;
     readonly group: FormationEffectGroup;
+    /** Formation-granted ability ids from either PILOT_ABILITIES or COMMAND_ABILITIES. */
     readonly abilityIds: readonly string[];
 }
 
@@ -60,7 +61,7 @@ export interface UnsupportedFormationEffectDescriptor {
     readonly sourceFormationId: string;
     readonly sourceFormationName: string;
     readonly group: FormationEffectGroup;
-    readonly reason: 'command-ability' | 'shared-pool' | 'auto-command-ability';
+    readonly reason: 'shared-pool';
 }
 
 export interface FormationEffectPreview {
@@ -100,6 +101,13 @@ function uniqueAbilityIds(abilityIds: readonly string[] | undefined): string[] {
     }
 
     return [...new Set(abilityIds.filter((abilityId) => typeof abilityId === 'string' && abilityId.length > 0))];
+}
+
+function getEffectAbilityIds(group: FormationEffectGroup): string[] {
+    return uniqueAbilityIds([
+        ...(group.abilityIds ?? []),
+        ...(group.commandAbilityIds ?? []),
+    ]);
 }
 
 function getParentFormationDefinition(definition: FormationTypeDefinition): FormationTypeDefinition | null {
@@ -198,20 +206,7 @@ function getSupportedEffectDescriptors(definition: FormationTypeDefinition | nul
         const effectGroups = sourceDefinition.effectGroups ?? [];
         effectGroups.forEach((group, index) => {
             const key = `${sourceDefinition.id}:${index}`;
-            const abilityIds = uniqueAbilityIds(group.abilityIds);
-            const commandAbilityIds = uniqueAbilityIds(group.commandAbilityIds);
-
-            if (commandAbilityIds.length > 0) {
-                unsupported.push({
-                    key,
-                    sourceFormationId: sourceDefinition.id,
-                    sourceFormationName: sourceDefinition.name,
-                    group,
-                    reason: hasAutomaticRecipients(group) && group.selection === 'all'
-                        ? 'auto-command-ability'
-                        : 'command-ability',
-                });
-            }
+            const abilityIds = getEffectAbilityIds(group);
 
             if (group.distribution === 'shared-pool' && abilityIds.length > 0) {
                 unsupported.push({
