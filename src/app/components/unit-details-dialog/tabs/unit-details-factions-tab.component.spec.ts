@@ -78,7 +78,6 @@ describe('UnitDetailsFactionTabComponent', () => {
         useMegaMekAvailability: jasmine.createSpy('useMegaMekAvailability').and.callFake(() => useMegaMekAvailability),
         getUnitAvailabilityKey: jasmine.createSpy('getUnitAvailabilityKey'),
         getFactionEraUnitIds: jasmine.createSpy('getFactionEraUnitIds'),
-        getMegaMekAvailabilityDetails: jasmine.createSpy('getMegaMekAvailabilityDetails'),
     };
 
     beforeEach(() => {
@@ -98,7 +97,6 @@ describe('UnitDetailsFactionTabComponent', () => {
         unitAvailabilitySourceMock.useMegaMekAvailability.calls.reset();
         unitAvailabilitySourceMock.getUnitAvailabilityKey.calls.reset();
         unitAvailabilitySourceMock.getFactionEraUnitIds.calls.reset();
-        unitAvailabilitySourceMock.getMegaMekAvailabilityDetails.calls.reset();
 
         TestBed.configureTestingModule({
             imports: [UnitDetailsFactionTabComponent],
@@ -133,7 +131,6 @@ describe('UnitDetailsFactionTabComponent', () => {
         expect(dataServiceMock.getMegaMekAvailabilityRecordForUnit).toHaveBeenCalledWith(unit);
         expect(unitAvailabilitySourceMock.useMegaMekAvailability).toHaveBeenCalled();
         expect(unitAvailabilitySourceMock.getFactionEraUnitIds).not.toHaveBeenCalled();
-        expect(unitAvailabilitySourceMock.getMegaMekAvailabilityDetails).not.toHaveBeenCalled();
         expect(unitAvailabilitySourceMock.getUnitAvailabilityKey).not.toHaveBeenCalled();
 
         const viewModel = fixture.componentInstance.factionAvailability();
@@ -186,7 +183,6 @@ describe('UnitDetailsFactionTabComponent', () => {
         ]);
         expect(viewModel[1].factions[0].megaMekTooltip).toBeNull();
         expect(unitAvailabilitySourceMock.getFactionEraUnitIds).not.toHaveBeenCalled();
-        expect(unitAvailabilitySourceMock.getMegaMekAvailabilityDetails).not.toHaveBeenCalled();
         expect(unitAvailabilitySourceMock.getUnitAvailabilityKey).not.toHaveBeenCalled();
     });
 });
