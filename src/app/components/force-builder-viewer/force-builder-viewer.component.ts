@@ -36,6 +36,7 @@ import { CommonModule } from '@angular/common';
 import type { Subscription } from 'rxjs';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
+import { OptionsService } from '../../services/options.service';
 import type { Force, UnitGroup } from '../../models/force.model';
 import type { ForceSlot } from '../../models/force-slot.model';
 import type { ForceUnit } from '../../models/force-unit.model';
@@ -45,8 +46,11 @@ import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { ToastService } from '../../services/toast.service';
+import { formatSummaryMovement } from '../../models/pilot-abilities.model';
 import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
+import { formationInheritsParentEffects } from '../../utils/formation-type.model';
 import { UnitAvailabilitySourceService } from '../../services/unit-availability-source.service';
+import { TooltipDirective } from '../../directives/tooltip.directive';
 
 
 /*
@@ -56,7 +60,7 @@ import { UnitAvailabilitySourceService } from '../../services/unit-availability-
     selector: 'force-builder-viewer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, DragDropModule, UnitBlockComponent],
+    imports: [CommonModule, DragDropModule, UnitBlockComponent, TooltipDirective],
     templateUrl: './force-builder-viewer.component.html',
     styleUrls: ['./force-builder-viewer.component.scss']
 })
@@ -66,6 +70,7 @@ export class ForceBuilderViewerComponent {
     protected layoutService = inject(LayoutService);
     compactModeService = inject(CompactModeService);
     private dialogsService = inject(DialogsService);
+    private optionsService = inject(OptionsService);
     private injector = inject(Injector);
     private unitAvailabilitySource = inject(UnitAvailabilitySourceService);
     private scrollableContent = viewChild<ElementRef<HTMLDivElement>>('scrollableContent');
@@ -779,23 +784,35 @@ export class ForceBuilderViewerComponent {
         this.forceBuilderService.showFormationInfo(group);
     }
 
-    /** Build a tooltip title for a mismatched formation, including requirements if available. */
+    /** Build tooltip HTML for a mismatched formation, including formatted requirements if available. */
     getFormationMismatchTitle(group: UnitGroup): string {
         const formation = group.formation();
         if (!formation) return 'Formation does not match group composition';
+
         const parts: string[] = [];
-        if (formation.parent) {
+        const showParentRequirements = formationInheritsParentEffects(formation) && !!formation.parent;
+
+        if (showParentRequirements) {
             const parent = FORMATION_DEFINITIONS.find(d => d.id === formation.parent);
             if (parent?.requirements) {
                 const parentReq = parent.requirements(group.force.gameSystem);
-                if (parentReq) parts.push(`${parent.name}: ${parentReq}`);
+                if (parentReq) parts.push(this.buildFormationRequirementTooltipLine(parent.name, parentReq));
             }
         }
+
         if (formation.requirements) {
             const req = formation.requirements(group.force.gameSystem);
-            if (req) parts.push(req);
+            if (req) parts.push(this.buildFormationRequirementTooltipLine(showParentRequirements ? formation.name : null, req));
         }
-        return parts.length > 0 ? parts.join('\n') : 'Formation does not match group composition';
+
+        return parts.length > 0 ? parts.join('') : 'Formation does not match group composition';
+    }
+
+    private buildFormationRequirementTooltipLine(label: string | null, requirements: string): string {
+        const formattedRequirements = formatSummaryMovement(requirements, this.optionsService.options().ASUseHex);
+        return label
+            ? `<div><strong>${label}:</strong> ${formattedRequirements}</div>`
+            : `<div>${formattedRequirements}</div>`;
     }
 
     shareForce() {

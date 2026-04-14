@@ -34,7 +34,7 @@
 import { DestroyRef, Directive, ElementRef, HostBinding, Input, inject } from '@angular/core';
 import { Overlay, type OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { TooltipComponent, type TooltipContent } from '../components/tooltip/tooltip.component';
+import { TooltipComponent, type TooltipContent, type TooltipType } from '../components/tooltip/tooltip.component';
 import { take } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
@@ -46,6 +46,7 @@ const TOOLTIP_HOST_ATTRIBUTE = 'data-tooltip-host';
 })
 export class TooltipDirective {
     @Input('tooltip') tooltipContent: TooltipContent | null = null;
+    @Input() tooltipType: TooltipType = 'info';
     @Input() tooltipDelay = 400; // ms
 
     @HostBinding(`attr.${TOOLTIP_HOST_ATTRIBUTE}`)
@@ -169,9 +170,38 @@ export class TooltipDirective {
                     overlayX: 'center',
                     overlayY: 'top',
                     offsetY: 8
+                },
+                {
+                    originX: 'start',
+                    originY: 'top',
+                    overlayX: 'start',
+                    overlayY: 'bottom',
+                    offsetY: -8
+                },
+                {
+                    originX: 'end',
+                    originY: 'top',
+                    overlayX: 'end',
+                    overlayY: 'bottom',
+                    offsetY: -8
+                },
+                {
+                    originX: 'start',
+                    originY: 'bottom',
+                    overlayX: 'start',
+                    overlayY: 'top',
+                    offsetY: 8
+                },
+                {
+                    originX: 'end',
+                    originY: 'bottom',
+                    overlayX: 'end',
+                    overlayY: 'top',
+                    offsetY: 8
                 }
             ])
-            .withFlexibleDimensions(false)
+            .withFlexibleDimensions(true)
+            .withGrowAfterOpen(true)
             .withPush(true)
             .withViewportMargin(12);
 
@@ -185,6 +215,7 @@ export class TooltipDirective {
         const portal = new ComponentPortal(TooltipComponent);
         const compRef = this.overlayRef.attach(portal);
         compRef.instance.content = tooltipContent;
+        compRef.instance.type = this.tooltipType;
         // ensure OnPush component renders immediately
         compRef.changeDetectorRef.detectChanges();
 

@@ -8,4 +8,8 @@ describe('formatSummaryMovement', () => {
     it('formats embedded movement placeholders as hexes when requested', () => {
         expect(formatSummaryMovement(['Move up to [[12]]'], true).at(0)).toBe('Move up to 6<span class="hex-symbol">⬢</span>');
     });
+
+    it('formats a single summary string as hexes when requested', () => {
+        expect(formatSummaryMovement('Move up to [[12]]', true)).toBe('Move up to 6<span class="hex-symbol">⬢</span>');
+    });
 });

@@ -99,10 +99,10 @@ export interface ResolvedEffectGroup {
                     </div>
                     @if (parentRequirementsText(); as parentReqText) {
                         <div class="requirements-text requirements-parent">
-                            <strong>{{ parentFormationName() }}:</strong> <span [innerHTML]="parentReqText"></span>
+                            <strong>{{ parentFormationName() }}: </strong><span [innerHTML]="parentReqText"></span>
                         </div>
                         <div class="requirements-text">
-                            <strong>{{ formation()!.name }}:</strong> <span [innerHTML]="reqText"></span>
+                            <strong>{{ formation()!.name }}: </strong><span [innerHTML]="reqText"></span>
                         </div>
                     } @else {
                         <div class="requirements-text" [innerHTML]="reqText"></div>
@@ -238,8 +238,7 @@ export interface ResolvedEffectGroup {
             border-left-color: red;
             background: rgba(255, 0, 0, 0.08);
 
-            .requirements-label,
-            .requirements-text {
+            .requirements-label {
                 color: red;
             }
         }
@@ -444,7 +443,8 @@ export class FormationInfoComponent {
     requirementsText = computed<string | null>(() => {
         const def = this.formation();
         if (!def?.requirements) return null;
-        return def.requirements(this.gameSystem()) || null;
+        const requirements = def.requirements(this.gameSystem());
+        return requirements ? formatSummaryMovement(requirements, this.optionsService.options().ASUseHex) : null;
     });
 
     /** Resolved parent formation definition (if any). */
@@ -458,7 +458,8 @@ export class FormationInfoComponent {
     parentRequirementsText = computed<string | null>(() => {
         const parent = this.parentFormation();
         if (!parent?.requirements) return null;
-        return parent.requirements(this.gameSystem()) || null;
+        const requirements = parent.requirements(this.gameSystem());
+        return requirements ? formatSummaryMovement(requirements, this.optionsService.options().ASUseHex) : null;
     });
 
     /** Parent formation name for display. */
