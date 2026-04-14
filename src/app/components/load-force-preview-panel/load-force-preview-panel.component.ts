@@ -26,7 +26,7 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
     template: `
     @let unitDisplayName = effectiveUnitDisplayName();
     @let entry = force();
-    <div class="force-preview-shell">
+    <div class="force-preview-shell" [class.scroll-units-only]="scrollUnitsOnly()">
         <div class="force-preview-header">
             <div class="faction-name-wrapper">
                 @if (entry.faction?.img; as factionImg) {
@@ -133,10 +133,23 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
         :host {
             display: block;
             width: 100%;
+            min-height: 0;
         }
 
         .force-preview-shell {
             width: 100%;
+        }
+
+        .force-preview-shell.scroll-units-only {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            min-height: 0;
+        }
+
+        .force-preview-shell.scroll-units-only .force-preview-header,
+        .force-preview-shell.scroll-units-only .hint {
+            flex-shrink: 0;
         }
 
         .force-preview {
@@ -145,6 +158,15 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
             border: 1px solid var(--border-color, #333);
             padding: 8px 12px;
             box-sizing: border-box;
+        }
+
+        .force-preview-shell.scroll-units-only .force-preview {
+            display: flex;
+            flex: 1 1 auto;
+            flex-direction: column;
+            min-height: 0;
+            overflow-x: hidden;
+            overflow-y: auto;
         }
 
         .force-preview-header {
@@ -218,6 +240,12 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
             flex-direction: column;
             gap: 4px;
             overflow-y: auto;
+        }
+
+        .force-preview-shell.scroll-units-only .unit-scroll {
+            flex: 0 0 auto;
+            min-height: auto;
+            overflow: visible;
         }
 
         .unit-group {
@@ -414,6 +442,7 @@ export class LoadForcePreviewPanelComponent {
 
     readonly force = input.required<LoadForceEntry>();
     readonly showHint = input(true);
+    readonly scrollUnitsOnly = input(false);
     readonly showLockControls = input(false);
     readonly displayMode = input<Options['unitDisplayName'] | null>(null);
     readonly lockedUnitKeys = input<ReadonlySet<string>>(new Set<string>());

@@ -105,4 +105,26 @@ describe('ForceEntryPreviewDialogComponent', () => {
         expect(previewPanel.displayMode()).toBe('both');
         expect(previewPanel.effectiveUnitDisplayName()).toBe('both');
     });
+
+    it('pins the preview summary and scrolls the unit list inside the panel', async () => {
+        const { fixture } = await render(createForceEntry());
+        const nativeElement = fixture.nativeElement as HTMLElement;
+        const previewDebugElement = fixture.debugElement.query(By.directive(LoadForcePreviewPanelComponent));
+        const previewPanel = previewDebugElement.componentInstance as LoadForcePreviewPanelComponent;
+        const previewHost = previewDebugElement.nativeElement as HTMLElement;
+        const dialogBody = nativeElement.querySelector('.wide-dialog-body') as HTMLElement | null;
+        const previewShell = previewHost.querySelector('.force-preview-shell') as HTMLElement | null;
+        const forcePreview = previewHost.querySelector('.force-preview') as HTMLElement | null;
+        const unitScroll = previewHost.querySelector('.unit-scroll') as HTMLElement | null;
+
+        expect(previewPanel.scrollUnitsOnly()).toBeTrue();
+        expect(dialogBody).not.toBeNull();
+        expect(previewShell).not.toBeNull();
+        expect(forcePreview).not.toBeNull();
+        expect(unitScroll).not.toBeNull();
+        expect(getComputedStyle(dialogBody!).overflowY).toBe('hidden');
+        expect(previewShell?.classList.contains('scroll-units-only')).toBeTrue();
+        expect(getComputedStyle(forcePreview!).overflowY).toBe('auto');
+        expect(getComputedStyle(unitScroll!).overflowY).toBe('visible');
+    });
 });
