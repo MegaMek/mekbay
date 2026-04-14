@@ -13,6 +13,7 @@ import { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
+import { WsService } from '../../services/ws.service';
 
 describe('SearchForceGeneratorDialogComponent', () => {
     let component: SearchForceGeneratorDialogComponent;
@@ -24,6 +25,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
     let buildPreviewSpy: jasmine.Spy;
     let resolveGenerationContextSpy: jasmine.Spy;
     let resolveInitialBudgetDefaultsSpy: jasmine.Spy;
+    let sendWsMessageSpy: jasmine.Spy;
     let advOptionsSignal: WritableSignal<any>;
     let filteredUnitsSignal: WritableSignal<Unit[]>;
     let forceGeneratorEligibleUnitsSignal: WritableSignal<Unit[]>;
@@ -54,6 +56,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
             pilotGunnerySkillSignal.set(gunnery);
             pilotPilotingSkillSignal.set(piloting);
         });
+        sendWsMessageSpy = jasmine.createSpy('send');
         advOptionsSignal = signal({
             era: {
                 type: 'dropdown' as const,
@@ -271,6 +274,13 @@ describe('SearchForceGeneratorDialogComponent', () => {
                         unsetFilter: jasmine.createSpy('unsetFilter'),
                     },
                 },
+                {
+                    provide: WsService,
+                    useValue: {
+                        send: sendWsMessageSpy,
+                        wsConnected: signal(true),
+                    },
+                },
             ],
         });
 
@@ -296,6 +306,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         });
 
         buildPreviewSpy.calls.reset();
+        sendWsMessageSpy.calls.reset();
     });
 
     it('does not build an initial preview when the dialog opens', () => {
@@ -574,6 +585,52 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(gameSystemSignal()).toBe(GameSystem.CLASSIC);
     });
 
+    it('records successful force generations over websocket when reroll produces a preview', () => {
+        const atlas = {
+            id: 11,
+            name: 'Atlas AS7-D',
+            chassis: 'Atlas',
+            model: 'AS7-D',
+            bv: 1897,
+        } as Unit;
+
+        (component as any).__test.setPreviewResult({
+            gameSystem: GameSystem.CLASSIC,
+            units: [{
+                unit: atlas,
+                cost: 1897,
+                gunnery: 4,
+                piloting: 5,
+                lockKey: 'generated:0:Atlas AS7-D',
+            }],
+            totalCost: 1897,
+            error: null,
+            faction: null,
+            era: null,
+            explanationLines: [],
+        });
+
+        component.reroll();
+
+        expect(sendWsMessageSpy).toHaveBeenCalledOnceWith({ action: 'recordForceGeneration' });
+    });
+
+    it('does not record force generations when reroll fails to produce a preview', () => {
+        (component as any).__test.setPreviewResult({
+            gameSystem: GameSystem.CLASSIC,
+            units: [],
+            totalCost: 0,
+            error: 'No matching units found.',
+            faction: null,
+            era: null,
+            explanationLines: [],
+        });
+
+        component.reroll();
+
+        expect(sendWsMessageSpy).not.toHaveBeenCalled();
+    });
+
     it('imports the current force into the locked preview without rerolling', () => {
         const atlas = {
             id: 1,
@@ -633,6 +690,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(preview.units.map((unit) => unit.lockKey)).toEqual(['u-1', 'u-2']);
         expect(preview.explanationLines).toContain('Imported current force into preview. Press REROLL to generate a new result for the current settings.');
         expect(buildPreviewSpy).not.toHaveBeenCalled();
+        expect(sendWsMessageSpy).not.toHaveBeenCalled();
     });
 
     it('clears the hovered radar overlay when rerolling a new preview', () => {

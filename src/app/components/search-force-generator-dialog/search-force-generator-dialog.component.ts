@@ -57,6 +57,7 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { ForceGeneratorService, type ForceGenerationPreview, type GeneratedForceUnit } from '../../services/force-generator.service';
 import { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
+import { WsService } from '../../services/ws.service';
 import type { AdvFilterOptions, DropdownFilterOptions } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { resolveDropdownNamesFromFilter } from '../../utils/filter-name-resolution.util';
@@ -110,6 +111,7 @@ export class SearchForceGeneratorDialogComponent {
     private readonly forceGeneratorService = inject(ForceGeneratorService);
     private readonly gameService = inject(GameService);
     private readonly optionsService = inject(OptionsService);
+    private readonly wsService = inject(WsService);
     readonly filtersService = inject(UnitSearchFiltersService);
     private readonly initialGameSystem = this.gameService.currentGameSystem();
     private readonly selectedGameSystem = signal<GameSystem>(this.initialGameSystem);
@@ -428,7 +430,9 @@ export class SearchForceGeneratorDialogComponent {
 
     reroll(): void {
         this.clearHoveredPreviewUnit();
-        this.previewState.set(this.buildGeneratedPreview());
+        const preview = this.buildGeneratedPreview();
+        this.previewState.set(preview);
+        this.recordForceGeneration(preview);
     }
 
     importCurrentForce(): void {
@@ -544,6 +548,14 @@ export class SearchForceGeneratorDialogComponent {
             lockedUnits,
             preventDuplicateChassis: this.preventDuplicateChassis(),
         });
+    }
+
+    private recordForceGeneration(preview: ForceGenerationPreview): void {
+        if (preview.error || preview.units.length === 0 || !this.wsService.wsConnected()) {
+            return;
+        }
+
+        this.wsService.send({ action: 'recordForceGeneration' });
     }
 
     private createEmptyPreview(error: string | null = null): ForceGenerationPreview {
