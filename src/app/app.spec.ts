@@ -7,6 +7,7 @@ import { App } from './app';
 describe('App', () => {
   const reloadHashStorageKey = 'mekbay:sw-update-reload-hash';
   let versionUpdates: Subject<any>;
+  let fixture: ReturnType<typeof TestBed.createComponent<App>> | null;
   let swUpdateMock: {
     isEnabled: boolean;
     versionUpdates: Subject<any>;
@@ -16,6 +17,7 @@ describe('App', () => {
 
   beforeEach(async () => {
     versionUpdates = new Subject();
+    fixture = null;
     swUpdateMock = {
       isEnabled: false,
       versionUpdates,
@@ -36,12 +38,14 @@ describe('App', () => {
   });
 
   afterEach(() => {
+    fixture?.destroy();
+    fixture = null;
     localStorage.removeItem(reloadHashStorageKey);
     versionUpdates.complete();
   });
 
   it('should create the app', () => {
-    const fixture = TestBed.createComponent(App);
+    fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance;
     expect(app).toBeTruthy();
   });
@@ -50,7 +54,7 @@ describe('App', () => {
     localStorage.setItem(reloadHashStorageKey, 'hash-ready');
     swUpdateMock.isEnabled = true;
 
-    const fixture = TestBed.createComponent(App);
+    fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance as any;
 
     versionUpdates.next({
@@ -66,7 +70,7 @@ describe('App', () => {
   it('activates a pending service worker update before reloading', async () => {
     swUpdateMock.isEnabled = true;
 
-    const fixture = TestBed.createComponent(App);
+    fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance as any;
     spyOn(app, 'performPageReload');
     app.pendingUpdateHash = 'hash-ready';

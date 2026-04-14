@@ -198,6 +198,13 @@ export class App {
             document.documentElement.classList.toggle('night-mode', (colorMode === 'night'));
         });
         effect(() => {
+            if (!this.dataService.isDataReady() || this.optionsService.options().availabilitySource !== 'megamek') {
+                return;
+            }
+
+            void this.dataService.ensureMegaMekAvailabilityCatalogInitialized();
+        });
+        effect(() => {
             const unitSearchContainer = this.unitSearchContainer();
             const hasForces = this.hasForces();
             const expandedView = this.unitSearchFiltersService.expandedView();
