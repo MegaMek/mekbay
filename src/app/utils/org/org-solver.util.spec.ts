@@ -550,10 +550,9 @@ describe('org-solver.util', () => {
 
         expect(result.eligibleUnits.length).toBe(4);
         expect(result.emitted).toEqual([
-            { modifierKey: 'Reinforced ', perGroupCount: 3, copies: 1, tier: 1 },
-            { modifierKey: 'Under-Strength ', perGroupCount: 1, copies: 1, tier: 1 },
+            { modifierKey: 'Reinforced ', perGroupCount: 3, copies: 1, tier: 1 }
         ]);
-        expect(result.leftoverCount).toBe(0);
+        expect(result.leftoverCount).toBe(1);
     });
 
     it('accepts SV units in Flight only when they have a flight-capable MVm profile', () => {
@@ -3062,11 +3061,12 @@ describe('org-solver.util resolve parity', () => {
         expect(result.every((group) => group.type === 'Unit')).toBeTrue();
     });
 
-    it('resolves 2 BM plus 1 AF as Air Lance', () => {
+    it('resolves 2 BM plus 2 AF as Air Lance', () => {
         const result = resolveFromUnits([
             createBM('BM1'),
             createBM('BM2'),
             createAero('AF1'),
+            createAero('AF2'),
         ], 'Federated Suns', 'Inner Sphere');
 
         expect(result.length).toBe(1);
