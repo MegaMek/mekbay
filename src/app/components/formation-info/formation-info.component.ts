@@ -99,13 +99,13 @@ export interface ResolvedEffectGroup {
                     </div>
                     @if (parentRequirementsText(); as parentReqText) {
                         <div class="requirements-text requirements-parent">
-                            <strong>{{ parentFormationName() }}:</strong> {{ parentReqText }}
+                            <strong>{{ parentFormationName() }}:</strong> <span [innerHTML]="parentReqText"></span>
                         </div>
                         <div class="requirements-text">
-                            <strong>{{ formation()!.name }}:</strong> {{ reqText }}
+                            <strong>{{ formation()!.name }}:</strong> <span [innerHTML]="reqText"></span>
                         </div>
                     } @else {
-                        <div class="requirements-text">{{ reqText }}</div>
+                        <div class="requirements-text" [innerHTML]="reqText"></div>
                     }
                 </div>
             }
