@@ -675,18 +675,6 @@ export class UnitAvailabilitySourceService {
         return unitIds;
     }
 
-    private getMegaMekAvailabilityValue(
-        unit: Pick<Unit, 'name'>,
-        eraId: number,
-        factionId: number,
-    ): [number, number] | undefined {
-        if (factionId === MULFACTION_EXTINCT) {
-            return undefined;
-        }
-
-        return this.dataService.getMegaMekAvailabilityRecordForUnit(unit)?.e[String(eraId)]?.[String(factionId)];
-    }
-
     private getOrCreateMegaMekScopedUnitScoreCache(
         context?: MegaMekAvailabilityFilterContext,
     ): Map<AvailabilityUnitKey, number> {
