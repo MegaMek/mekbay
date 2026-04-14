@@ -192,6 +192,7 @@ export class DataService {
 
     public tagsVersion = signal(0);
     public searchCorpusVersion = signal(0);
+    public megaMekAvailabilityVersion = signal(0);
 
 
     constructor() {
@@ -431,6 +432,10 @@ export class DataService {
         this.searchCorpusVersion.update(version => version + 1);
     }
 
+    private bumpMegaMekAvailabilityVersion(): void {
+        this.megaMekAvailabilityVersion.update(version => version + 1);
+    }
+
     private invalidateForcePackCaches(): void {
         this.forcePackToLookupKey = null;
         this.lookupKeyToForcePacks = null;
@@ -590,7 +595,7 @@ export class DataService {
             this.megaMekAvailabilityCatalogState,
             'megamek_availability',
             () => this.megaMekAvailabilityCatalog.initialize(),
-            () => this.bumpSearchCorpusVersion(),
+            () => this.bumpMegaMekAvailabilityVersion(),
         );
     }
 

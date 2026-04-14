@@ -379,15 +379,18 @@ describe('DataService', () => {
         expect(service.isDataReady()).toBeTrue();
     });
 
-    it('initializes MegaMek availability on demand once and bumps the search corpus version', async () => {
+    it('initializes MegaMek availability on demand once without bumping the search corpus version', async () => {
         expect(service.searchCorpusVersion()).toBe(0);
+        expect(service.megaMekAvailabilityVersion()).toBe(0);
 
         expect(await service.ensureMegaMekAvailabilityCatalogInitialized()).toBeTrue();
-        expect(service.searchCorpusVersion()).toBe(1);
+        expect(service.searchCorpusVersion()).toBe(0);
+        expect(service.megaMekAvailabilityVersion()).toBe(1);
         expect(megaMekAvailabilityCatalogMock.initialize).toHaveBeenCalledTimes(1);
 
         expect(await service.ensureMegaMekAvailabilityCatalogInitialized()).toBeTrue();
-        expect(service.searchCorpusVersion()).toBe(1);
+        expect(service.searchCorpusVersion()).toBe(0);
+        expect(service.megaMekAvailabilityVersion()).toBe(1);
         expect(megaMekAvailabilityCatalogMock.initialize).toHaveBeenCalledTimes(1);
     });
 

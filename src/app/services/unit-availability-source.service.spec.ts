@@ -29,6 +29,7 @@ describe('UnitAvailabilitySourceService', () => {
 
     const dataServiceMock = {
         searchCorpusVersion: signal(1),
+        megaMekAvailabilityVersion: signal(0),
         getUnits: jasmine.createSpy('getUnits').and.callFake(() => units),
         getEras: jasmine.createSpy('getEras').and.callFake(() => orderedEras),
         getFactionById: jasmine.createSpy('getFactionById').and.callFake((id: number) => factionsById.get(id) ?? null),
@@ -45,6 +46,7 @@ describe('UnitAvailabilitySourceService', () => {
         megaMekAvailabilityByUnitName.clear();
         megaMekAvailabilityRecords.length = 0;
         dataServiceMock.searchCorpusVersion.set(1);
+        dataServiceMock.megaMekAvailabilityVersion.set(0);
         dataServiceMock.getUnits.calls.reset();
         dataServiceMock.getEras.calls.reset();
         dataServiceMock.getFactionById.calls.reset();

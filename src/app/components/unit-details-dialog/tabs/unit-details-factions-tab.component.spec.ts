@@ -3,10 +3,10 @@ import { TestBed } from '@angular/core/testing';
 
 import type { Era } from '../../../models/eras.model';
 import type { Faction } from '../../../models/factions.model';
+import type { MegaMekWeightedAvailabilityRecord } from '../../../models/megamek/availability.model';
 import { MULFACTION_EXTINCT } from '../../../models/mulfactions.model';
 import type { Unit } from '../../../models/units.model';
 import { DataService } from '../../../services/data.service';
-import type { MegaMekUnitAvailabilityDetail } from '../../../services/unit-availability-source.service';
 import { UnitAvailabilitySourceService } from '../../../services/unit-availability-source.service';
 import { UnitDetailsFactionTabComponent } from './unit-details-factions-tab.component';
 
@@ -18,6 +18,14 @@ describe('UnitDetailsFactionTabComponent', () => {
             img: '',
             years: { from: 3050, to: 3061 },
             units: new Set([1]),
+            factions: [],
+        } as Era,
+        {
+            id: 3151,
+            name: 'ilClan',
+            img: '',
+            years: { from: 3151, to: 9999 },
+            units: new Set<number>(),
             factions: [],
         } as Era,
     ];
@@ -37,7 +45,7 @@ describe('UnitDetailsFactionTabComponent', () => {
             group: 'Mercenary',
             img: '',
             eras: {
-                3050: new Set([1]),
+                3050: new Set([2]),
             },
         } as Faction,
         {
@@ -58,48 +66,36 @@ describe('UnitDetailsFactionTabComponent', () => {
         type: 'Mek',
     } as Unit;
 
+    let megaMekAvailabilityRecord: MegaMekWeightedAvailabilityRecord | undefined;
+    let useMegaMekAvailability = false;
+
     const dataServiceMock = {
         getEras: jasmine.createSpy('getEras').and.callFake(() => eras),
         getFactions: jasmine.createSpy('getFactions').and.callFake(() => factions),
+        getMegaMekAvailabilityRecordForUnit: jasmine.createSpy('getMegaMekAvailabilityRecordForUnit').and.callFake(() => megaMekAvailabilityRecord),
     };
     const unitAvailabilitySourceMock = {
-        getUnitAvailabilityKey: jasmine.createSpy('getUnitAvailabilityKey').and.callFake((inputUnit: Unit) => inputUnit.name),
-        getFactionEraUnitIds: jasmine.createSpy('getFactionEraUnitIds').and.callFake((faction: Faction, era: Era) => {
-            if (era.id !== 3050) {
-                return new Set<string>();
-            }
-
-            if (faction.id === 7 || faction.id === MULFACTION_EXTINCT) {
-                return new Set<string>([unit.name]);
-            }
-
-            return new Set<string>();
-        }),
-        getMegaMekAvailabilityDetails: jasmine.createSpy('getMegaMekAvailabilityDetails').and.callFake((_: Unit, faction: Faction, era: Era): MegaMekUnitAvailabilityDetail[] => {
-            if (era.id !== 3050) {
-                return [];
-            }
-
-            if (faction.id === 7) {
-                return [
-                    { source: 'Production', score: 7, rarity: 'Common' },
-                    { source: 'Salvage', score: 3, rarity: 'Rare' },
-                ];
-            }
-
-            if (faction.id === 8) {
-                return [
-                    { source: 'Salvage', score: 5, rarity: 'Uncommon' },
-                ];
-            }
-
-            return [];
-        }),
+        useMegaMekAvailability: jasmine.createSpy('useMegaMekAvailability').and.callFake(() => useMegaMekAvailability),
+        getUnitAvailabilityKey: jasmine.createSpy('getUnitAvailabilityKey'),
+        getFactionEraUnitIds: jasmine.createSpy('getFactionEraUnitIds'),
+        getMegaMekAvailabilityDetails: jasmine.createSpy('getMegaMekAvailabilityDetails'),
     };
 
     beforeEach(() => {
+        megaMekAvailabilityRecord = {
+            n: unit.name,
+            e: {
+                '3050': {
+                    '7': [7, 3],
+                },
+            },
+        };
+        useMegaMekAvailability = false;
+
         dataServiceMock.getEras.calls.reset();
         dataServiceMock.getFactions.calls.reset();
+        dataServiceMock.getMegaMekAvailabilityRecordForUnit.calls.reset();
+        unitAvailabilitySourceMock.useMegaMekAvailability.calls.reset();
         unitAvailabilitySourceMock.getUnitAvailabilityKey.calls.reset();
         unitAvailabilitySourceMock.getFactionEraUnitIds.calls.reset();
         unitAvailabilitySourceMock.getMegaMekAvailabilityDetails.calls.reset();
@@ -114,7 +110,7 @@ describe('UnitDetailsFactionTabComponent', () => {
         });
     });
 
-    it('renders factions from the active availability source and keeps Extinct without MegaMek badges', () => {
+    it('renders MUL factions from direct membership and keeps Extinct without MegaMek badges', () => {
         const fixture = TestBed.createComponent(UnitDetailsFactionTabComponent);
         fixture.componentRef.setInput('unit', unit);
         fixture.detectChanges();
@@ -134,7 +130,11 @@ describe('UnitDetailsFactionTabComponent', () => {
         expect(draconisCombineItem?.querySelectorAll('.faction-megamek-availability-badge').length).toBe(2);
         expect(extinctItem?.querySelectorAll('.faction-megamek-availability-badge').length).toBe(0);
         expect(badgeLabels).toEqual(['Production: Common', 'Salvage: Rare']);
-        expect(unitAvailabilitySourceMock.getFactionEraUnitIds).toHaveBeenCalled();
+        expect(dataServiceMock.getMegaMekAvailabilityRecordForUnit).toHaveBeenCalledWith(unit);
+        expect(unitAvailabilitySourceMock.useMegaMekAvailability).toHaveBeenCalled();
+        expect(unitAvailabilitySourceMock.getFactionEraUnitIds).not.toHaveBeenCalled();
+        expect(unitAvailabilitySourceMock.getMegaMekAvailabilityDetails).not.toHaveBeenCalled();
+        expect(unitAvailabilitySourceMock.getUnitAvailabilityKey).not.toHaveBeenCalled();
 
         const viewModel = fixture.componentInstance.factionAvailability();
         expect(viewModel[0].factions.find((faction) => faction.name === 'Draconis Combine')?.megaMekTooltip).toEqual([
@@ -154,5 +154,39 @@ describe('UnitDetailsFactionTabComponent', () => {
             },
         ]);
         expect(viewModel[0].factions.find((faction) => faction.name === 'Extinct')?.megaMekTooltip).toBeNull();
+    });
+
+    it('renders MegaMek factions directly from the unit record and adds extinct eras', () => {
+        useMegaMekAvailability = true;
+
+        const fixture = TestBed.createComponent(UnitDetailsFactionTabComponent);
+        fixture.componentRef.setInput('unit', unit);
+        fixture.detectChanges();
+
+        const viewModel = fixture.componentInstance.factionAvailability();
+
+        expect(viewModel.map((era) => era.eraName)).toEqual(['Clan Invasion', 'ilClan']);
+        expect(viewModel[0].factions.map((faction) => faction.name)).toEqual(['Draconis Combine']);
+        expect(viewModel[1].factions.map((faction) => faction.name)).toEqual(['Extinct']);
+        expect(viewModel[0].factions[0].megaMekTooltip).toEqual([
+            {
+                value: 'Draconis Combine',
+                iconSrc: '/assets/draconis-combine.png',
+                iconAlt: 'Draconis Combine',
+                isHeader: true,
+            },
+            {
+                label: 'Production',
+                value: 'Common',
+            },
+            {
+                label: 'Salvage',
+                value: 'Rare',
+            },
+        ]);
+        expect(viewModel[1].factions[0].megaMekTooltip).toBeNull();
+        expect(unitAvailabilitySourceMock.getFactionEraUnitIds).not.toHaveBeenCalled();
+        expect(unitAvailabilitySourceMock.getMegaMekAvailabilityDetails).not.toHaveBeenCalled();
+        expect(unitAvailabilitySourceMock.getUnitAvailabilityKey).not.toHaveBeenCalled();
     });
 });

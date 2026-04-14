@@ -114,83 +114,6 @@ function createSnapshot(): UnitSearchWorkerCorpusSnapshot {
                 'Clan Wolf': [unitName],
             },
         },
-        megaMekAvailability: {
-            all: {
-                unitNames: [],
-                bySource: {},
-                byRarity: {},
-            },
-            knownUnitNames: [],
-            eras: {},
-            factions: {},
-            eraFactions: {},
-            extinctUnitNames: [],
-            extinctByEra: {},
-        },
-    };
-}
-
-function createMegaMekSnapshot(): UnitSearchWorkerCorpusSnapshot {
-    const unitName = 'Masakari Prime';
-
-    return {
-        corpusVersion: '1:0',
-        units: [createUnit(unitName)],
-        indexes: {
-            era: {},
-            faction: {},
-        },
-        factionEraIndex: {},
-        megaMekAvailability: {
-            all: {
-                unitNames: [unitName],
-                bySource: {},
-                byRarity: {},
-            },
-            knownUnitNames: [unitName],
-            eras: {
-                'Clan Invasion': {
-                    unitNames: [unitName],
-                    bySource: {},
-                    byRarity: {},
-                },
-                ilClan: {
-                    unitNames: [unitName],
-                    bySource: {},
-                    byRarity: {},
-                },
-            },
-            factions: {
-                'Clan Jade Falcon': {
-                    unitNames: [unitName],
-                    bySource: {},
-                    byRarity: {},
-                },
-                'Clan Wolf': {
-                    unitNames: [unitName],
-                    bySource: {},
-                    byRarity: {},
-                },
-            },
-            eraFactions: {
-                'Clan Invasion': {
-                    'Clan Jade Falcon': {
-                        unitNames: [unitName],
-                        bySource: {},
-                        byRarity: {},
-                    },
-                },
-                ilClan: {
-                    'Clan Wolf': {
-                        unitNames: [unitName],
-                        bySource: {},
-                        byRarity: {},
-                    },
-                },
-            },
-            extinctUnitNames: [],
-            extinctByEra: {},
-        },
     };
 }
 
@@ -201,7 +124,6 @@ function createRequest(): UnitSearchWorkerQueryRequest {
         executionQuery: 'masak era&="Clan Invasion",ilClan faction="Clan Jade Falcon"',
         telemetryQuery: 'masak era&="Clan Invasion",ilClan faction="Clan Jade Falcon"',
         gameSystem: GameSystem.CLASSIC,
-        availabilitySource: 'mul',
         sortKey: '',
         sortDirection: 'asc',
         bvPvLimit: 0,
@@ -211,24 +133,10 @@ function createRequest(): UnitSearchWorkerQueryRequest {
     };
 }
 
-function createMegaMekRequest(): UnitSearchWorkerQueryRequest {
-    return {
-        ...createRequest(),
-        availabilitySource: 'megamek',
-    };
-}
-
 describe('unit-search worker', () => {
-    it('requires faction membership in every selected multistate era for MUL searches', () => {
+    it('requires faction membership in every selected multistate era', () => {
         const runtime = __test__.hydrateCorpus(createSnapshot());
         const result = __test__.buildResultMessage(runtime, createRequest());
-
-        expect(result.unitNames).toEqual([]);
-    });
-
-    it('requires faction membership in every selected multistate era for MegaMek searches', () => {
-        const runtime = __test__.hydrateCorpus(createMegaMekSnapshot());
-        const result = __test__.buildResultMessage(runtime, createMegaMekRequest());
 
         expect(result.unitNames).toEqual([]);
     });
