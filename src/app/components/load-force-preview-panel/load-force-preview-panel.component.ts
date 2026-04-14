@@ -131,20 +131,21 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
     `,
     styles: [`
         :host {
-            display: block;
+            display: flex;
+            flex-direction: column;
             width: 100%;
             min-height: 0;
         }
 
         .force-preview-shell {
+            display: flex;
+            flex-direction: column;
             width: 100%;
+            min-height: 0;
         }
 
         .force-preview-shell.scroll-units-only {
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-            min-height: 0;
+            flex: 1 1 auto;
         }
 
         .force-preview-shell.scroll-units-only .force-preview-header,
@@ -158,6 +159,7 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
             border: 1px solid var(--border-color, #333);
             padding: 8px 12px;
             box-sizing: border-box;
+            min-height: 0;
         }
 
         .force-preview-shell.scroll-units-only .force-preview {
@@ -268,17 +270,26 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
         }
 
         .units {
-            display: flex;
-            flex-direction: row;
-            flex-wrap: wrap;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(86px, 92px));
             gap: 4px;
+            justify-content: start;
+            align-items: stretch;
         }
 
         .unit-tile {
-            width: 86px;
             display: flex;
             flex-direction: column;
             gap: 2px;
+            width: 100%;
+            min-width: 0;
+            min-height: 0;
+            height: 100%;
+            align-self: stretch;
+
+            .unit-square {
+                width: 100%;
+            }
         }
 
         .group-sep {
@@ -293,10 +304,11 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
         }
 
         .unit-square.compact-mode {
-            width: 86px;
-            height: 80px;
+            width: 100%;
+            flex: 1 1 auto;
+            min-height: 80px;
             max-height: 105px;
-            min-width: 86px;
+            min-width: 0;
             background: #0003;
             border: 1px solid var(--border-color, #333);
             padding: 2px;

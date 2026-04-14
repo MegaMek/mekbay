@@ -13,6 +13,13 @@ import { LoadForcePreviewPanelComponent } from '../load-force-preview-panel/load
 import { ForceEntryPreviewDialogComponent } from './force-entry-preview-dialog.component';
 
 describe('ForceEntryPreviewDialogComponent', () => {
+    function createUnitEntries(count: number) {
+        return Array.from({ length: count }, () => ({
+            unit: undefined,
+            destroyed: false,
+        }));
+    }
+
     function createForceEntry(overrides: Partial<LoadForceEntry> = {}): LoadForceEntry {
         return new LoadForceEntry({
             instanceId: 'force-1',
@@ -123,8 +130,67 @@ describe('ForceEntryPreviewDialogComponent', () => {
         expect(forcePreview).not.toBeNull();
         expect(unitScroll).not.toBeNull();
         expect(getComputedStyle(dialogBody!).overflowY).toBe('hidden');
+        expect(getComputedStyle(previewHost).display).toBe('flex');
         expect(previewShell?.classList.contains('scroll-units-only')).toBeTrue();
+        expect(getComputedStyle(previewShell!).display).toBe('flex');
         expect(getComputedStyle(forcePreview!).overflowY).toBe('auto');
         expect(getComputedStyle(unitScroll!).overflowY).toBe('visible');
+    });
+
+    it('keeps unit tile widths consistent across wrapped rows within the compact size cap', async () => {
+        const { fixture } = await render(createForceEntry({
+            groups: [{
+                name: 'Command Force',
+                units: createUnitEntries(20),
+            }],
+        }));
+        const previewHost = fixture.debugElement.query(By.directive(LoadForcePreviewPanelComponent))
+            .nativeElement as HTMLElement;
+        const units = previewHost.querySelector('.units') as HTMLElement | null;
+        const unitTiles = Array.from(previewHost.querySelectorAll('.unit-tile')) as HTMLElement[];
+        const unitSquares = Array.from(previewHost.querySelectorAll('.unit-square.compact-mode')) as HTMLElement[];
+        const firstTileWidth = parseFloat(getComputedStyle(unitTiles[0]).width);
+        const lastTileWidth = parseFloat(getComputedStyle(unitTiles[unitTiles.length - 1]).width);
+
+        expect(units).not.toBeNull();
+        expect(unitTiles.length).toBe(20);
+        expect(unitSquares.length).toBe(20);
+        expect(getComputedStyle(units!).display).toBe('grid');
+        expect(firstTileWidth).toBeGreaterThanOrEqual(86);
+        expect(firstTileWidth).toBeLessThanOrEqual(92);
+        expect(Math.abs(firstTileWidth - lastTileWidth)).toBeLessThan(0.1);
+        expect(getComputedStyle(unitSquares[0]).width).toBe(getComputedStyle(unitTiles[0]).width);
+    });
+
+    it('stretches tiles in the same row to the tallest compact square height', async () => {
+        const { fixture } = await render(createForceEntry({
+            groups: [{
+                name: 'Battle Force',
+                units: [
+                    { unit: undefined, destroyed: false, alias: 'SAFFIRON JARRIL POLUTAR' },
+                    { unit: undefined, destroyed: false, alias: 'Alpha Wolf' },
+                ],
+            }],
+        }), {
+            unitDisplayNameOverride: 'alias',
+        });
+        const previewHost = fixture.debugElement.query(By.directive(LoadForcePreviewPanelComponent))
+            .nativeElement as HTMLElement;
+        const units = previewHost.querySelector('.units') as HTMLElement | null;
+        const unitTiles = Array.from(previewHost.querySelectorAll('.unit-tile')) as HTMLElement[];
+        const unitSquares = Array.from(previewHost.querySelectorAll('.unit-square.compact-mode')) as HTMLElement[];
+        const firstTileHeight = unitTiles[0].getBoundingClientRect().height;
+        const secondTileHeight = unitTiles[1].getBoundingClientRect().height;
+        const firstSquareHeight = unitSquares[0].getBoundingClientRect().height;
+        const secondSquareHeight = unitSquares[1].getBoundingClientRect().height;
+
+        expect(units).not.toBeNull();
+        expect(unitTiles.length).toBe(2);
+        expect(unitSquares.length).toBe(2);
+        expect(getComputedStyle(units!).alignItems).toBe('stretch');
+        expect(getComputedStyle(unitTiles[0]).alignSelf).toBe('stretch');
+        expect(getComputedStyle(unitSquares[0]).flexGrow).toBe('1');
+        expect(Math.abs(firstTileHeight - secondTileHeight)).toBeLessThan(0.5);
+        expect(Math.abs(firstSquareHeight - secondSquareHeight)).toBeLessThan(0.5);
     });
 });
