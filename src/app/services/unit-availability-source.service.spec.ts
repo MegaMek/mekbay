@@ -24,7 +24,10 @@ describe('UnitAvailabilitySourceService', () => {
     const megaMekAvailabilityByUnitName = new Map<string, { n?: string; e: Record<string, Record<string, [number, number]>> }>();
     const megaMekAvailabilityRecords: Array<{ n?: string; e: Record<string, Record<string, [number, number]>> }> = [];
     const optionsServiceMock = {
-        options: signal({ availabilitySource: 'mul' as AvailabilitySource }),
+        options: signal<{
+            availabilitySource: AvailabilitySource;
+            megaMekAvailabilityFiltersUseAllScopedOptions?: boolean;
+        }>({ availabilitySource: 'mul', megaMekAvailabilityFiltersUseAllScopedOptions: true }),
     };
 
     const dataServiceMock = {
@@ -58,7 +61,7 @@ describe('UnitAvailabilitySourceService', () => {
         dataServiceMock.getFactionById.calls.reset();
         dataServiceMock.getMegaMekAvailabilityRecordForUnit.calls.reset();
         dataServiceMock.getMegaMekAvailabilityRecords.calls.reset();
-        optionsServiceMock.options.set({ availabilitySource: 'mul' });
+        optionsServiceMock.options.set({ availabilitySource: 'mul', megaMekAvailabilityFiltersUseAllScopedOptions: true });
 
         TestBed.configureTestingModule({
             providers: [
@@ -324,6 +327,55 @@ describe('UnitAvailabilitySourceService', () => {
             eraIds: new Set([ilClan.id]),
             availabilityFrom: new Set(['Production']),
         }).has(unit.name)).toBeTrue();
+    });
+
+    it('rebuilds scoped MegaMek rarity caches when the rarity mode changes', () => {
+        const ilClan = {
+            id: 3151,
+            name: 'ilClan',
+            units: new Set<number>(),
+            years: { from: 3151 },
+        } as Era;
+        const unit = {
+            id: 3,
+            name: 'BattleMaster C3',
+            type: 'Mek',
+            chassis: 'BattleMaster',
+            model: 'C3',
+        } as Unit;
+
+        orderedEras.push(ilClan);
+        units.push(unit);
+        megaMekAvailabilityByUnitName.set(unit.name, {
+            n: unit.name,
+            e: {
+                '3151': {
+                    '1': [2, 0],
+                    '2': [7, 0],
+                },
+            },
+        });
+        megaMekAvailabilityRecords.push(megaMekAvailabilityByUnitName.get(unit.name)!);
+
+        const context = {
+            eraIds: new Set([ilClan.id]),
+            availabilityFrom: new Set(['Production' as const]),
+        };
+
+        optionsServiceMock.options.set({
+            availabilitySource: 'megamek',
+            megaMekAvailabilityFiltersUseAllScopedOptions: true,
+        });
+
+        expect(service.getMegaMekRarityUnitIds('Very Rare', context).has(unit.name)).toBeTrue();
+
+        optionsServiceMock.options.set({
+            availabilitySource: 'megamek',
+            megaMekAvailabilityFiltersUseAllScopedOptions: false,
+        });
+
+        expect(service.getMegaMekRarityUnitIds('Very Rare', context).has(unit.name)).toBeFalse();
+        expect(service.getMegaMekRarityUnitIds('Common', context).has(unit.name)).toBeTrue();
     });
 
     it('bridges MegaMek scope through MUL faction membership when MUL availability is selected', () => {

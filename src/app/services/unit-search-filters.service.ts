@@ -36,7 +36,6 @@ import type { Era } from '../models/eras.model';
 import type { Unit } from '../models/units.model';
 import {
     MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS,
-    MEGAMEK_AVAILABILITY_FILTERS_USE_ALL_SCOPED_OPTIONS,
     MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS,
     MEGAMEK_AVAILABILITY_FROM_OPTIONS,
     getMegaMekAvailabilityRarityForScore,
@@ -245,7 +244,7 @@ export class UnitSearchFiltersService {
     private readonly advOptionsTelemetryState = signal<AdvOptionsTelemetrySnapshot | null>(null);
     readonly advOptionsTelemetry = this.advOptionsTelemetryState.asReadonly();
     private readonly workerSearchEnabled = signal(this.canUseSearchWorker());
-    private readonly uncappedWorkerFilteredUnitsState = signal<Unit[]>([]);
+    private readonly rawWorkerResultUnitsState = signal<Unit[]>([]);
     private advOptionsTelemetryPublishVersion = 0;
     private lastSearchTelemetryLogKey = '';
     private readonly slowSearchTelemetryThresholdMs = 75;
@@ -253,6 +252,7 @@ export class UnitSearchFiltersService {
     private cachedWorkerCorpusVersion: string | null = null;
     private cachedWorkerCorpusSnapshot: UnitSearchWorkerCorpusSnapshot | null = null;
     private searchRequestRevision = 0;
+    private lastWorkerSearchExecutionKey: string | null = null;
     private readonly availabilitySelectionScopePartsCache = new WeakMap<FilterState, AvailabilitySelectionScopeParts>();
     private readonly workerRequestRevision = signal(0);
     private readonly workerResultRevision = signal(0);
@@ -580,6 +580,10 @@ export class UnitSearchFiltersService {
         return parts;
     }
 
+    private useAllScopedMegaMekAvailabilityOptions(): boolean {
+        return this.optionsService.options().megaMekAvailabilityFiltersUseAllScopedOptions;
+    }
+
     private buildAvailabilityFilterContext(scope?: AvailabilityFilterScope): MegaMekAvailabilityFilterContext | null {
         if (!scope) {
             return {
@@ -628,7 +632,7 @@ export class UnitSearchFiltersService {
             }
         }
 
-        if (MEGAMEK_AVAILABILITY_FILTERS_USE_ALL_SCOPED_OPTIONS && scope.availabilityRarityNames !== undefined) {
+        if (this.useAllScopedMegaMekAvailabilityOptions() && scope.availabilityRarityNames !== undefined) {
             const availabilityRarities = new Set(
                 scope.availabilityRarityNames.filter((rarity): rarity is Exclude<MegaMekAvailabilityRarity, typeof MEGAMEK_AVAILABILITY_UNKNOWN | typeof MEGAMEK_AVAILABILITY_NOT_AVAILABLE> => (
                     rarity !== MEGAMEK_AVAILABILITY_UNKNOWN && rarity !== MEGAMEK_AVAILABILITY_NOT_AVAILABLE
@@ -676,7 +680,7 @@ export class UnitSearchFiltersService {
                 availabilityFromNames: [...getMegaMekRaritySortAvailabilitySources(selectedSort)],
             };
 
-        if (MEGAMEK_AVAILABILITY_FILTERS_USE_ALL_SCOPED_OPTIONS && availabilityRarityNames.length > 0) {
+        if (this.useAllScopedMegaMekAvailabilityOptions() && availabilityRarityNames.length > 0) {
             scopedSort.availabilityRarityNames = availabilityRarityNames;
         }
 
@@ -774,7 +778,7 @@ export class UnitSearchFiltersService {
             const score = this.getMegaMekRaritySortScore(unit, {
                 ...(baseScope ?? {}),
                 availabilityFromNames: [source],
-                ...(MEGAMEK_AVAILABILITY_FILTERS_USE_ALL_SCOPED_OPTIONS && selectedPositiveRarities.size > 0
+                ...(this.useAllScopedMegaMekAvailabilityOptions() && selectedPositiveRarities.size > 0
                     ? { availabilityRarityNames: [...selectedPositiveRarities] }
                     : {}),
             });
@@ -1225,7 +1229,7 @@ export class UnitSearchFiltersService {
         }
 
         const availableIds = new Set<number>();
-        const useAllScopedAvailabilityOptions = MEGAMEK_AVAILABILITY_FILTERS_USE_ALL_SCOPED_OPTIONS && selectedRarities !== null;
+        const useAllScopedAvailabilityOptions = this.useAllScopedMegaMekAvailabilityOptions() && selectedRarities !== null;
 
         for (const unit of contextUnits) {
             const availabilityRecord = this.dataService.getMegaMekAvailabilityRecordForUnit(unit);
@@ -1444,6 +1448,8 @@ export class UnitSearchFiltersService {
             });
         }
 
+        this.refreshWorkerSearchIfNeeded();
+
         return next.text;
     }
 
@@ -1509,6 +1515,40 @@ export class UnitSearchFiltersService {
         this.searchWorkerClient = null;
         this.workerResultRevision.set(this.workerRequestRevision());
         this.logger.warn(`Unit search worker disabled, falling back to main-thread execution: ${message}`);
+    }
+
+    private submitWorkerSearchRequest(): void {
+        const workerSearchExecutionState = this.workerSearchExecutionState();
+        if (!workerSearchExecutionState) {
+            return;
+        }
+
+        const executionKey = JSON.stringify(workerSearchExecutionState);
+        if (executionKey === this.lastWorkerSearchExecutionKey) {
+            return;
+        }
+
+        const corpusVersion = workerSearchExecutionState.corpusVersion;
+        const request = this.buildWorkerSearchRequest(corpusVersion);
+        const snapshot = this.getWorkerCorpusSnapshot(corpusVersion);
+
+        try {
+            this.workerRequestRevision.set(request.revision);
+            this.searchWorkerClient?.submit(snapshot, request);
+            this.lastWorkerSearchExecutionKey = executionKey;
+        } catch (error) {
+            this.disableWorkerSearch(error instanceof Error ? error.message : 'Search worker submission failed');
+        }
+    }
+
+    private refreshWorkerSearchIfNeeded(): void {
+        if (!this.searchWorkerClient || !this.workerSearchEnabled() || !this.isDataReady() || !this.workerSearchActive()) {
+            return;
+        }
+
+        untracked(() => {
+            this.submitWorkerSearchRequest();
+        });
     }
 
     private getWorkerCorpusVersion(): string {
@@ -1618,7 +1658,7 @@ export class UnitSearchFiltersService {
             .slice(stageCountBeforePostProcessing)
             .reduce((totalMs, stage) => totalMs + stage.durationMs, 0);
 
-        this.uncappedWorkerFilteredUnitsState.set(sortedResults);
+        this.rawWorkerResultUnitsState.set(hydratedResults);
         this.workerResultRevision.set(result.revision);
         this.updateSearchTelemetry(buildWorkerSearchTelemetrySnapshot(result, {
             timestamp: Date.now(),
@@ -1714,37 +1754,82 @@ export class UnitSearchFiltersService {
         );
     }
 
+    private readonly workerSearchExecutionState = computed(() => {
+        if (!this.workerSearchEnabled()) {
+            return null;
+        }
+
+        const availabilitySource = this.optionsService.options().availabilitySource;
+        const selectedSort = this.selectedSort();
+        const workerFilterState = this.getWorkerFilterState(this.getApplicableFilterState(this.effectiveFilterState()));
+
+        return {
+            workerSearchActive: !this.shouldForceMegaMekSyncSearch(),
+            isDataReady: this.isDataReady(),
+            corpusVersion: this.getWorkerCorpusVersion(),
+            searchText: this.searchText(),
+            effectiveTextSearch: this.effectiveTextSearch(),
+            workerFilterState,
+            gameSystem: this.gameService.currentGameSystem(),
+            sortKey: this.getWorkerSortKey(),
+            sortDirection: this.selectedSortDirection(),
+            pilotGunnerySkill: this.pilotGunnerySkill(),
+            pilotPilotingSkill: this.pilotPilotingSkill(),
+            megaMekAvailabilityVersion: availabilitySource === 'megamek' || isMegaMekRaritySortKey(selectedSort)
+                ? this.dataService.megaMekAvailabilityVersion()
+                : 0,
+        };
+    });
+
     private setupWorkerSearchExecution(): void {
         effect(() => {
-            if (!this.workerSearchActive()) {
+            const workerSearchExecutionState = this.workerSearchExecutionState();
+            if (!workerSearchExecutionState) {
                 return;
             }
 
-            if (!this.isDataReady()) {
-                this.uncappedWorkerFilteredUnitsState.set([]);
+            if (!workerSearchExecutionState.isDataReady) {
+                if (workerSearchExecutionState.workerSearchActive) {
+                    this.rawWorkerResultUnitsState.set([]);
+                }
                 return;
             }
 
-            this.dataService.searchCorpusVersion();
-            this.tagsVersion();
-            if (
-                this.optionsService.options().availabilitySource === 'megamek'
-                || isMegaMekRaritySortKey(this.selectedSort())
-            ) {
-                this.dataService.megaMekAvailabilityVersion();
+            if (!workerSearchExecutionState.workerSearchActive) {
+                return;
             }
-
-            const corpusVersion = this.getWorkerCorpusVersion();
-            const request = this.buildWorkerSearchRequest(corpusVersion);
-            const snapshot = this.getWorkerCorpusSnapshot(corpusVersion);
 
             untracked(() => {
-                try {
-                    this.workerRequestRevision.set(request.revision);
-                    this.searchWorkerClient?.submit(snapshot, request);
-                } catch (error) {
-                    this.disableWorkerSearch(error instanceof Error ? error.message : 'Search worker submission failed');
-                }
+                this.submitWorkerSearchRequest();
+            });
+        });
+    }
+
+    private setupMegaMekAvailabilityOptionRefresh(): void {
+        let previousMode = this.useAllScopedMegaMekAvailabilityOptions();
+        let initialized = false;
+
+        effect(() => {
+            const currentMode = this.useAllScopedMegaMekAvailabilityOptions();
+
+            if (!initialized) {
+                initialized = true;
+                previousMode = currentMode;
+                return;
+            }
+
+            if (currentMode === previousMode) {
+                return;
+            }
+
+            previousMode = currentMode;
+
+            if (!this.workerSearchActive() || !this.isDataReady() || !this.searchWorkerClient) {
+                return;
+            }
+
+            untracked(() => {
+                this.submitWorkerSearchRequest();
             });
         });
     }
@@ -1809,6 +1894,7 @@ export class UnitSearchFiltersService {
         // This ensures filters aren't silently applied without being visible
         this.setupComplexQueryFilterConversion();
         this.setupWorkerSearchExecution();
+        this.setupMegaMekAvailabilityOptionRefresh();
         this.loadFiltersFromUrlOnStartup();
         this.updateUrlOnFiltersChange();
     }
@@ -2015,10 +2101,12 @@ export class UnitSearchFiltersService {
 
     public setSortOrder(key: string) {
         this.selectedSort.set(key);
+        this.refreshWorkerSearchIfNeeded();
     }
 
     public setSortDirection(direction: 'asc' | 'desc') {
         this.selectedSortDirection.set(direction);
+        this.refreshWorkerSearchIfNeeded();
     }
 
     private updateSearchTelemetry(snapshot: SearchTelemetrySnapshot): void {
@@ -2868,10 +2956,16 @@ export class UnitSearchFiltersService {
                 return pendingFallback;
             }
 
-            return this.uncappedWorkerFilteredUnitsState();
+            return this.uncappedWorkerFilteredUnits();
         }
 
         return this.uncappedSyncSearch().execution.results;
+    });
+
+    private readonly uncappedWorkerFilteredUnits = computed(() => {
+        const hydratedResults = this.rawWorkerResultUnitsState();
+        const postFilteredResults = this.applyWorkerPostFilters(hydratedResults);
+        return this.sortHydratedWorkerResults(postFilteredResults);
     });
 
     filteredUnits = computed(() => {
@@ -2884,7 +2978,7 @@ export class UnitSearchFiltersService {
             return this.applyRemainingBudgetLimit(pendingFallback);
         }
 
-        return this.applyRemainingBudgetLimit(this.uncappedWorkerFilteredUnitsState());
+        return this.applyRemainingBudgetLimit(this.uncappedWorkerFilteredUnits());
     });
 
     // Advanced filter options
@@ -3117,6 +3211,7 @@ export class UnitSearchFiltersService {
                 ...current,
                 [key]: { value, interactedWith: interacted }
             }));
+            this.refreshWorkerSearchIfNeeded();
         }
     }
 
@@ -3145,6 +3240,7 @@ export class UnitSearchFiltersService {
                 delete updated[key];
                 return updated;
             });
+            this.refreshWorkerSearchIfNeeded();
         }
     }
 
@@ -3195,6 +3291,7 @@ export class UnitSearchFiltersService {
                 delete updated[key];
                 return updated;
             });
+            this.refreshWorkerSearchIfNeeded();
         } finally {
             this.isSyncingToText = false;
         }
@@ -3212,6 +3309,7 @@ export class UnitSearchFiltersService {
         this.pilotGunnerySkill.set(4);
         this.pilotPilotingSkill.set(5);
         this.bvPvLimit.set(0);
+        this.refreshWorkerSearchIfNeeded();
     }
 
     /**
@@ -3352,6 +3450,7 @@ export class UnitSearchFiltersService {
     setPilotSkills(gunnery: number, piloting: number) {
         this.pilotGunnerySkill.set(gunnery);
         this.pilotPilotingSkill.set(piloting);
+        this.refreshWorkerSearchIfNeeded();
     }
 
     getAdjustedBV(unit: Unit): number {

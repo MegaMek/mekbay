@@ -459,6 +459,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             options: signal({
                 automaticallyConvertFiltersToSemantic: options?.automaticallyConvertFiltersToSemantic ?? false,
                 availabilitySource: 'mul' as AvailabilitySource,
+                megaMekAvailabilityFiltersUseAllScopedOptions: true,
             }),
         };
 
@@ -2934,6 +2935,114 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
     });
 
+    it('reapplies MegaMek worker post-filters when the scoped rarity mode changes', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'BattleMaster C3';
+        bundle.units.units[0].chassis = 'BattleMaster';
+        bundle.units.units[0].model = 'C3';
+        bundle.units.units[1].name = 'Other Unit';
+        bundle.units.units[1].chassis = 'Other Unit';
+        bundle.units.units[1].model = 'OTH-1';
+        bundle.eras.eras = [
+            {
+                id: 1,
+                name: 'ilClan',
+                img: '',
+                years: {
+                    from: 3151,
+                    to: 9999,
+                },
+                units: [1, 2],
+                factions: [],
+            },
+        ];
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: 'Rasalhague Dominion',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    1: new Set([1]),
+                },
+            },
+            {
+                id: 2,
+                name: 'Clan Protectorate',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    1: new Set([1]),
+                },
+            },
+        ];
+
+        const { dataService, service, optionsServiceStub } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'BattleMaster C3',
+                e: {
+                    '1': {
+                        '1': [2, 0],
+                        '2': [7, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        await flushAsyncWork();
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+            megaMekAvailabilityFiltersUseAllScopedOptions: true,
+        });
+        service.searchText.set('BattleMaster');
+        service.setFilter('era', ['ilClan']);
+        service.setFilter('availabilityRarity', ['Very Rare']);
+        service.filteredUnits();
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        (service as any).searchWorkerClient.submit(snapshot, request);
+
+        const initMessage = worker.messages.at(-1) as any;
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+
+        const firstExecuteMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        worker.emit({
+            type: 'result',
+            revision: firstExecuteMessage.request.revision,
+            corpusVersion: firstExecuteMessage.request.corpusVersion,
+            telemetryQuery: firstExecuteMessage.request.telemetryQuery,
+            unitNames: ['BattleMaster C3'],
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            megaMekAvailabilityFiltersUseAllScopedOptions: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits()).toEqual([]);
+    });
+
     it('keeps MegaMek-backed availability filters on the main thread while MUL worker search stays active', async () => {
         const worker = new FakeSearchWorker();
         const bundle = createStandaloneBundle();
@@ -5148,6 +5257,77 @@ describe('UnitSearchFiltersService search telemetry', () => {
         await flushAsyncWork();
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Tank']);
+    });
+
+    it('resubmits worker searches when the text query changes', async () => {
+        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
+            pending('Real unit data could not be loaded for the worker integration test.');
+            return;
+        }
+
+        const worker = new FakeSearchWorker();
+        const bundle = buildSmallBundle(benchmarkBundle);
+        bundle.units.units[0].name = 'BattleMaster C3';
+        bundle.units.units[0].chassis = 'BattleMaster C3';
+        bundle.units.units[0].model = 'BLR-1C3';
+        bundle.units.units[1].name = 'Awesome PPC';
+        bundle.units.units[1].chassis = 'Awesome PPC';
+        bundle.units.units[1].model = 'AWS-8Q';
+
+        const { service } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+
+        service.filteredUnits();
+        await flushAsyncWork();
+
+        const initialCorpusVersion = (service as any).getWorkerCorpusVersion();
+        const initialSnapshot = (service as any).getWorkerCorpusSnapshot(initialCorpusVersion);
+        const initialRequest = (service as any).buildWorkerSearchRequest(initialCorpusVersion);
+        (service as any).searchWorkerClient.submit(initialSnapshot, initialRequest);
+
+        const initMessage = worker.messages.at(-1) as any;
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+
+        const initialExecute = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        worker.emit({
+            type: 'result',
+            revision: initialExecute.request.revision,
+            corpusVersion: initialExecute.request.corpusVersion,
+            telemetryQuery: initialExecute.request.telemetryQuery,
+            unitNames: bundle.units.units.map((unit) => unit.name),
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3', 'Awesome PPC']);
+
+        service.setSearchText('battlemaster c3');
+        service.filteredUnits();
+        await flushAsyncWork();
+
+        const updatedExecute = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        expect(updatedExecute.request.revision).toBeGreaterThan(initialExecute.request.revision);
+        expect(updatedExecute.request.telemetryQuery).toBe('battlemaster c3');
+
+        worker.emit({
+            type: 'result',
+            revision: updatedExecute.request.revision,
+            corpusVersion: updatedExecute.request.corpusVersion,
+            telemetryQuery: updatedExecute.request.telemetryQuery,
+            unitNames: ['BattleMaster C3'],
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
     });
 
     it('falls back to synchronous execution when the worker fails', async () => {

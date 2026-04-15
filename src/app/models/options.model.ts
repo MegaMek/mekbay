@@ -48,6 +48,7 @@ export interface Options {
     unitDisplayName: 'chassisModel' | 'alias' | 'both';
     gameSystem: GameSystem;
     availabilitySource: AvailabilitySource;
+    megaMekAvailabilityFiltersUseAllScopedOptions: boolean;
     recordSheetCenterPanelContent: 'fluffImage' | 'clusterTable';
     lastCanvasState?: {
         brushSize: number;
