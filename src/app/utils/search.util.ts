@@ -41,6 +41,14 @@ function toAlphanumericSearchValue(value: string): string {
     return normalizeSearchValue(value).replace(/[^a-z0-9]/gi, '');
 }
 
+function toWordBoundedAlphanumericSearchValue(value: string): string {
+    return normalizeSearchValue(value)
+        .split(/\s+/)
+        .map(word => word.replace(/[^a-z0-9]/gi, ''))
+        .filter(Boolean)
+        .join(' ');
+}
+
 /**
  * Represents a single token from a search query.
  */
@@ -163,7 +171,7 @@ export function matchesSearch(
 
     const normalizedText = normalizeSearchValue(textToSearch);
     const alphaNumText = alphanumericNormalization 
-        ? toAlphanumericSearchValue(textToSearch)
+        ? toWordBoundedAlphanumericSearchValue(textToSearch)
         : '';
 
     // The text matches if it matches ANY of the OR groups
@@ -253,7 +261,7 @@ export function highlightMatches(
                 const chars = token.split('');
             return chars.map((char, index) => {
                 const isLastChar = index === chars.length - 1;
-                return `${escapeRegExp(char)}${isLastChar ? '' : '[^a-zA-Z0-9]*'}`;
+                return `${escapeRegExp(char)}${isLastChar ? '' : '[^a-zA-Z0-9\\s]*'}`;
             }).join('');
             });
         if (alphaNumTokens.length > 0) {
