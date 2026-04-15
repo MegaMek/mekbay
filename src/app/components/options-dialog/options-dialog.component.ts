@@ -367,6 +367,11 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('availabilitySource', value);
     }
 
+    onMegaMekAvailabilityFiltersUseAllScopedOptionsChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value === 'true';
+        this.optionsService.setOption('megaMekAvailabilityFiltersUseAllScopedOptions', value);
+    }
+
     onSheetsColorChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'normal' | 'night';
         this.optionsService.setOption('sheetsColor', value);

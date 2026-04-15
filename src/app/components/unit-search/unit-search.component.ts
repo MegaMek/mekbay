@@ -2330,7 +2330,7 @@ export class UnitSearchComponent {
 
     clearSearch() {
         this.immediateSearchText.set('');
-        this.filtersService.searchText.set('');
+        this.filtersService.setSearchText('');
         this.activeIndex.set(null);
     }
 
@@ -2395,7 +2395,7 @@ export class UnitSearchComponent {
         const current = this.filtersService.searchText().trim();
         const newSearch = current ? `${current} ${fullFilter}` : fullFilter;
         this.immediateSearchText.set(newSearch);
-        this.filtersService.searchText.set(newSearch);
+        this.filtersService.setSearchText(newSearch);
         // Switch back to list view to show variants
         this.setViewMode('list');
     }

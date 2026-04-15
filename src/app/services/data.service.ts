@@ -105,6 +105,7 @@ export interface MinMaxStatsRange {
     alphaNoPhysical: BucketStatSummary,
     alphaNoPhysicalNoOneshots: BucketStatSummary,
     maxRange: BucketStatSummary,
+    weightedMaxRange: BucketStatSummary,
     dpt: BucketStatSummary,
     asTmm: BucketStatSummary,
     asArm: BucketStatSummary,
@@ -391,10 +392,6 @@ export class DataService {
 
     public getMegaMekFactionsByMulId(mulId: number): MegaMekFactionRecord[] {
         return this.megaMekFactionsCatalog.getFactionsByMulId(mulId);
-    }
-
-    public getMegaMekFactionAffiliation(factionKey: string): MegaMekFactionAffiliation {
-        return this.megaMekFactionsCatalog.getFactionAffiliation(factionKey);
     }
 
     public getMegaMekRulesets(): readonly MegaMekRulesetRecord[] {

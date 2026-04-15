@@ -50,6 +50,7 @@ import {
     MEGAMEK_SALVAGE_ICON_PATH,
     type MegaMekWeightedAvailabilityRecord,
     type MegaMekWeightedAvailabilityValue,
+    MEGAMEK_AVAILABILITY_NOT_AVAILABLE,
 } from '../../../models/megamek/availability.model';
 import type { Unit } from '../../../models/units.model';
 import { DataService } from '../../../services/data.service';
@@ -262,7 +263,7 @@ export class UnitDetailsFactionTabComponent {
             }
 
             const rarity = getMegaMekAvailabilityRarityForScore(score);
-            if (rarity === 'Not Available') {
+            if (rarity === MEGAMEK_AVAILABILITY_NOT_AVAILABLE) {
                 continue;
             }
 

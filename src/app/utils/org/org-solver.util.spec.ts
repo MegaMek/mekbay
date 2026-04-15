@@ -238,6 +238,7 @@ function createUnit(
         _searchKey: '',
         _displayType: '',
         _maxRange: 0,
+        _weightedMaxRange: 0,
         _dissipationEfficiency: 0,
         _mdSumNoPhysical: 0,
         _mdSumNoPhysicalNoOneshots: 0,

@@ -68,6 +68,21 @@
             </div>
             <div class="option-col">
                 <div class="option-row">
+                    <label for="megaMekAvailabilityScopeMode">Rarity filter scope:</label>
+                    <select id="megaMekAvailabilityScopeMode" class="bt-select"
+                        [value]="optionsService.options().megaMekAvailabilityFiltersUseAllScopedOptions"
+                        (change)="onMegaMekAvailabilityFiltersUseAllScopedOptionsChange($event)">
+                        <option value="true">All matches (default)</option>
+                        <option value="false">Best match only</option>
+                    </select>
+                </div>
+                <div class="description">
+                    <p>Controls how MegaMek-backed <strong>Rarity</strong> filter behave inside the current Era, Faction scope.</p>
+                    <p><strong>All matches</strong> keeps every rarity found. <strong>Best match only</strong> uses the single best rarity.</p>
+                </div>
+            </div>
+            <div class="option-col">
+                <div class="option-row">
                     <label for="autoConvertFilters">Auto-convert filters to semantic:</label>
                     <select id="autoConvertFilters" class="bt-select"
                         [value]="optionsService.options().automaticallyConvertFiltersToSemantic"

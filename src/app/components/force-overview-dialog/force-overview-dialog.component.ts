@@ -41,13 +41,17 @@ import { ASForceUnit } from '../../models/as-force-unit.model';
 import type { Unit } from '../../models/units.model';
 import { GameService } from '../../services/game.service';
 import { LayoutService } from '../../services/layout.service';
+import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { ToastService } from '../../services/toast.service';
 import { OptionsService } from '../../services/options.service';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { formatSummaryMovement } from '../../models/pilot-abilities.model';
+import { createLoadForceEntryFromSerializedForce, type LoadForceEntry, type LoadForceUnit } from '../../models/load-force-entry.model';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
+import { LoadForcePreviewPanelComponent } from '../load-force-preview-panel/load-force-preview-panel.component';
+import { LoadForceRadarPanelComponent } from '../load-force-radar-panel/load-force-radar-panel.component';
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import type { TagClickEvent } from '../unit-tags/unit-tags.component';
@@ -75,6 +79,8 @@ type ForceTableRow =
     | { kind: 'group'; group: UnitGroup }
     | { kind: 'unit'; vm: ForceUnitViewModel; group: UnitGroup };
 
+type ForceOverviewTab = 'summary' | 'units';
+
 /**
  * State for the overview that can be persisted.
  */
@@ -98,7 +104,17 @@ export const DEFAULT_OVERVIEW_STATE: OverviewState = {
 @Component({
     selector: 'force-overview-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, DragDropModule, UnitCardExpandedComponent, UnitBlockComponent, UnitIconComponent, DataTableComponent, TooltipDirective],
+    imports: [
+        CommonModule,
+        DragDropModule,
+        UnitCardExpandedComponent,
+        LoadForcePreviewPanelComponent,
+        LoadForceRadarPanelComponent,
+        UnitBlockComponent,
+        UnitIconComponent,
+        DataTableComponent,
+        TooltipDirective,
+    ],
     host: {
         class: 'fullscreen-dialog-host fullheight tv-fade'
     },
@@ -110,6 +126,7 @@ export class ForceOverviewDialogComponent {
     protected data = inject<ForceOverviewDialogData>(DIALOG_DATA);
     protected gameService = inject(GameService);
     protected layoutService = inject(LayoutService);
+    private dataService = inject(DataService);
     private dialogsService = inject(DialogsService);
     private forceBuilderService = inject(ForceBuilderService);
     private toastService = inject(ToastService);
@@ -136,6 +153,12 @@ export class ForceOverviewDialogComponent {
 
     /** Flag for group drag/reorder */
     readonly isGroupDragging = signal<boolean>(false);
+
+    /** Active high-level tab */
+    readonly activeTab = signal<ForceOverviewTab>('summary');
+
+    /** Hovered unit for the radar overlay */
+    readonly hoveredPreviewUnit = signal<LoadForceUnit | null>(null);
 
     // --- Autoscroll State ---
     private autoScrollVelocity = signal<number>(0);
@@ -169,17 +192,31 @@ export class ForceOverviewDialogComponent {
     /** Get the current game system for filtering sort options */
     gameSystem = computed(() => this.gameService.currentGameSystem());
 
+    /** Force faction for header display */
+    readonly forceFaction = computed(() => this.data.force.faction());
+
     /** Force name for display */
     forceName = computed(() => this.data.force.displayName());
 
+    /** Serialized force adapter for the preview and summary panels */
+    readonly summaryPreviewForce = computed<LoadForceEntry>(() => {
+        return createLoadForceEntryFromSerializedForce(this.data.force.serialize(), this.dataService);
+    });
+
     /** Total unit count */
     unitCount = computed(() => this.units().length);
+
+    /** Hovered unit projected to the radar panel */
+    readonly hoveredRadarUnit = computed(() => this.hoveredPreviewUnit()?.unit ?? null);
 
     /** Whether this is an Alpha Strike force */
     isAlphaStrike = computed(() => this.gameService.isAlphaStrike());
 
     /** Whether table mode is active */
     readonly isTableMode = computed(() => this.viewMode() === 'table' && this.isAlphaStrike());
+
+    /** Whether the summary tab is active */
+    readonly isSummaryTab = computed(() => this.activeTab() === 'summary');
 
     readonly nextViewMode = computed<'compact' | 'expanded' | 'table'>(() => {
         const current = this.viewMode();
@@ -491,6 +528,17 @@ export class ForceOverviewDialogComponent {
         this.setViewMode(this.nextViewMode());
     }
 
+    setActiveTab(tab: ForceOverviewTab): void {
+        if (this.activeTab() === tab) {
+            return;
+        }
+
+        this.activeTab.set(tab);
+        if (tab !== 'summary') {
+            this.clearHoveredPreviewUnit();
+        }
+    }
+
     /** Set the sort key */
     setSortOrder(key: string): void {
         this.selectedSort.set(key);
@@ -511,6 +559,10 @@ export class ForceOverviewDialogComponent {
         }
 
         this.onUnitClick(event.row.vm);
+    }
+
+    onPreviewUnitHover(unitEntry: LoadForceUnit | null): void {
+        this.hoveredPreviewUnit.set(unitEntry?.unit ? unitEntry : null);
     }
 
     trackByForceUnitId = (_index: number, row: ForceTableRow) => row.kind === 'group' ? `group-${row.group.id}` : row.vm.forceUnit.id;
@@ -671,6 +723,10 @@ export class ForceOverviewDialogComponent {
     /** Close the dialog */
     close(): void {
         this.dialogRef.close();
+    }
+
+    private clearHoveredPreviewUnit(): void {
+        this.hoveredPreviewUnit.set(null);
     }
 
     /** Get a nested property value using dot notation (e.g., 'as.PV') */

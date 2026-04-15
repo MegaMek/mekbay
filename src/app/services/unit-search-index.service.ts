@@ -39,6 +39,7 @@ import type { BucketStatSummary, MinMaxStatsRange, UnitSubtypeMaxStats } from '.
 import { removeAccents } from '../utils/string.util';
 import { naturalCompare } from '../utils/sort.util';
 import { getMergedTags } from '../utils/unit-search-shared.util';
+import { calculateWeightedMaxRange, getMaxRangeFromComponents } from '../utils/unit-range.util';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES } from './unit-search-filters.model';
 import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
@@ -106,6 +107,7 @@ function createEmptyMinMaxStatsRange(): MinMaxStatsRange {
         alphaNoPhysical: createBucketStatSummary(),
         alphaNoPhysicalNoOneshots: createBucketStatSummary(),
         maxRange: createBucketStatSummary(),
+        weightedMaxRange: createBucketStatSummary(),
         dpt: createBucketStatSummary(),
         asTmm: createBucketStatSummary(),
         asArm: createBucketStatSummary(),
@@ -151,6 +153,7 @@ export class UnitSearchIndexService {
             alphaNoPhysical: createTrackedStatAccumulator(),
             alphaNoPhysicalNoOneshots: createTrackedStatAccumulator(),
             maxRange: createTrackedStatAccumulator(),
+            weightedMaxRange: createTrackedStatAccumulator(),
             dpt: createTrackedStatAccumulator(),
             asTmm: createTrackedStatAccumulator(),
             asArm: createTrackedStatAccumulator(),
@@ -179,6 +182,7 @@ export class UnitSearchIndexService {
             updateTrackedStat(stats.alphaNoPhysical, unit._mdSumNoPhysical || 0);
             updateTrackedStat(stats.alphaNoPhysicalNoOneshots, unit._mdSumNoPhysicalNoOneshots || 0);
             updateTrackedStat(stats.maxRange, unit._maxRange || 0);
+            updateTrackedStat(stats.weightedMaxRange, unit._weightedMaxRange || 0);
             updateTrackedStat(stats.dpt, unit.dpt || 0);
             updateTrackedStat(stats.asTmm, unit.as?.TMM || 0);
             updateTrackedStat(stats.asArm, unit.as?.Arm || 0);
@@ -210,6 +214,7 @@ export class UnitSearchIndexService {
             alphaNoPhysical: normalizeTrackedStat(stats.alphaNoPhysical),
             alphaNoPhysicalNoOneshots: normalizeTrackedStat(stats.alphaNoPhysicalNoOneshots),
             maxRange: normalizeTrackedStat(stats.maxRange),
+            weightedMaxRange: normalizeTrackedStat(stats.weightedMaxRange),
             dpt: normalizeTrackedStat(stats.dpt),
             asTmm: normalizeTrackedStat(stats.asTmm),
             asArm: normalizeTrackedStat(stats.asArm),
@@ -235,7 +240,8 @@ export class UnitSearchIndexService {
             unit._displayType = this.formatUnitType(unit.type);
             unit._mdSumNoPhysical = unit.comp ? this.sumWeaponDamageNoPhysical(unit, unit.comp) : 0;
             unit._mdSumNoPhysicalNoOneshots = unit.comp ? this.sumWeaponDamageNoPhysical(unit, unit.comp, true) : 0;
-            unit._maxRange = unit.comp ? this.weaponsMaxRange(unit.comp) : 0;
+            unit._maxRange = unit.comp ? getMaxRangeFromComponents(unit.comp) : 0;
+            unit._weightedMaxRange = unit.comp ? calculateWeightedMaxRange(unit) : 0;
             unit._dissipationEfficiency = (unit.heat && unit.dissipation) ? unit.dissipation - unit.heat : 0;
 
             if (unit.as) {
@@ -598,16 +604,4 @@ export class UnitSearchIndexService {
         return Math.round(sum);
     }
 
-    private weaponsMaxRange(components: UnitComponent[]): number {
-        let maxRange = 0;
-        for (const weapon of components) {
-            if (weapon.r) {
-                const rangeParts = weapon.r.split('/');
-                const weaponMaxRange = Math.max(...rangeParts.map(range => parseInt(range, 10) || 0));
-                maxRange = Math.max(maxRange, weaponMaxRange);
-            }
-        }
-
-        return maxRange;
-    }
 }

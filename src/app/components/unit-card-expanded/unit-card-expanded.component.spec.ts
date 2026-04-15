@@ -7,7 +7,7 @@ import { AsAbilityLookupService } from '../../services/as-ability-lookup.service
 import { DialogsService } from '../../services/dialogs.service';
 import { GameService } from '../../services/game.service';
 import { MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from '../../services/unit-search-filters.model';
-import { MEGAMEK_AVAILABILITY_RARITY_ICON_COLORS } from '../../models/megamek/availability.model';
+import { MEGAMEK_AVAILABILITY_BADGE_COLORS, MEGAMEK_AVAILABILITY_RARITY_ICON_COLORS, MEGAMEK_AVAILABILITY_UNKNOWN } from '../../models/megamek/availability.model';
 import { UnitCardExpandedComponent } from './unit-card-expanded.component';
 
 describe('UnitCardExpandedComponent MegaMek availability display', () => {
@@ -100,8 +100,25 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
             { label: 'Salvage', value: 'Common' },
         ]);
         expect(fixture.componentInstance.megaMekAvailabilityBadges()).toEqual([
-            { source: 'Production', score: 4, rarity: 'Rare', color: MEGAMEK_AVAILABILITY_RARITY_ICON_COLORS['Rare'] },
-            { source: 'Salvage', score: 7, rarity: 'Common', color: MEGAMEK_AVAILABILITY_RARITY_ICON_COLORS['Common'] },
+            { source: 'Production', score: 4, rarity: 'Rare', color: MEGAMEK_AVAILABILITY_BADGE_COLORS['Rare'] },
+            { source: 'Salvage', score: 7, rarity: 'Common', color: MEGAMEK_AVAILABILITY_BADGE_COLORS['Common'] },
+        ]);
+    });
+
+    it('renders an Unknown pseudo-badge with a neutral tooltip label', () => {
+        const fixture = TestBed.createComponent(UnitCardExpandedComponent);
+
+        fixture.componentRef.setInput('unit', createUnit());
+        fixture.componentRef.setInput('megaMekAvailability', [
+            { source: MEGAMEK_AVAILABILITY_UNKNOWN, score: -1, rarity: MEGAMEK_AVAILABILITY_UNKNOWN },
+        ]);
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.megaMekAvailabilityTooltip()).toEqual([
+            { label: 'Availability', value: MEGAMEK_AVAILABILITY_UNKNOWN },
+        ]);
+        expect(fixture.componentInstance.megaMekAvailabilityBadges()).toEqual([
+            { source: MEGAMEK_AVAILABILITY_UNKNOWN, score: -1, rarity: MEGAMEK_AVAILABILITY_UNKNOWN, color: MEGAMEK_AVAILABILITY_BADGE_COLORS[MEGAMEK_AVAILABILITY_UNKNOWN] },
         ]);
     });
 

@@ -38,6 +38,7 @@ function createMaxStats(overrides: MaxStatsOverride): MinMaxStatsRange {
         alphaNoPhysical: createBucketStatSummary(pick('alphaNoPhysical')),
         alphaNoPhysicalNoOneshots: createBucketStatSummary(pick('alphaNoPhysicalNoOneshots')),
         maxRange: createBucketStatSummary(pick('maxRange')),
+        weightedMaxRange: createBucketStatSummary(pick('weightedMaxRange')),
         dpt: createBucketStatSummary(pick('dpt')),
         asTmm: createBucketStatSummary(pick('asTmm')),
         asArm: createBucketStatSummary(pick('asArm')),
@@ -129,6 +130,7 @@ function createUnit(overrides: Partial<Unit>): Unit {
         _searchKey: '',
         _displayType: 'Mek',
         _maxRange: 0,
+        _weightedMaxRange: 0,
         _dissipationEfficiency: 0,
         _mdSumNoPhysical: 0,
         _mdSumNoPhysicalNoOneshots: 0,
@@ -148,6 +150,7 @@ describe('LoadForceRadarPanelComponent', () => {
                 armor: { min: 10, max: 50 },
                 internal: { min: 5, max: 12 },
                 alphaNoPhysicalNoOneshots: { min: 4, max: 20 },
+                weightedMaxRange: { min: 6, max: 14 },
                 dpt: { min: 3, max: 15 },
                 run2MP: { min: 2, max: 9 },
                 jumpMP: { min: 1, max: 7 },
@@ -156,6 +159,7 @@ describe('LoadForceRadarPanelComponent', () => {
                 armor: { min: 30, max: 95 },
                 internal: { min: 18, max: 40 },
                 alphaNoPhysicalNoOneshots: { min: 12, max: 60 },
+                weightedMaxRange: { min: 4, max: 12 },
                 dpt: { min: 8, max: 28 },
                 run2MP: { min: 8, max: 20 },
                 jumpMP: { min: 4, max: 20 },
@@ -164,6 +168,7 @@ describe('LoadForceRadarPanelComponent', () => {
                 armor: { min: 18, max: 35 },
                 internal: { min: 6, max: 11 },
                 alphaNoPhysicalNoOneshots: { min: 6, max: 14 },
+                weightedMaxRange: { min: 10, max: 18 },
                 dpt: { min: 4, max: 10 },
                 run2MP: { min: 8, max: 12 },
                 jumpMP: { min: 0, max: 0 },
@@ -217,6 +222,7 @@ describe('LoadForceRadarPanelComponent', () => {
             name: 'Mek A',
             armor: 30,
             internal: 10,
+            _weightedMaxRange: 8,
             _mdSumNoPhysical: 8,
             _mdSumNoPhysicalNoOneshots: 9,
             dpt: 7,
@@ -228,6 +234,7 @@ describe('LoadForceRadarPanelComponent', () => {
             name: 'Mek B',
             armor: 15,
             internal: 5,
+            _weightedMaxRange: 8,
             _mdSumNoPhysical: 4,
             _mdSumNoPhysicalNoOneshots: 5,
             dpt: 3,
@@ -242,6 +249,7 @@ describe('LoadForceRadarPanelComponent', () => {
             moveType: 'Aerodyne',
             armor: 20,
             internal: 8,
+            _weightedMaxRange: 12,
             _mdSumNoPhysical: 12,
             _mdSumNoPhysicalNoOneshots: 13,
             dpt: 9,
@@ -265,11 +273,11 @@ describe('LoadForceRadarPanelComponent', () => {
 
         expect(getAxis('mobility')).toEqual(jasmine.objectContaining({ value: 17, min: 11, max: 28 }));
         expect(getAxis('endurance')).toEqual(jasmine.objectContaining({ value: 88, min: 54, max: 170 }));
-        expect(getAxis('firepower')).toEqual(jasmine.objectContaining({ value: 24, min: 14, max: 54 }));
+        expect(getAxis('range')).toEqual(jasmine.objectContaining({ value: 28, min: 22, max: 46 }));
         expect(getAxis('dpt')).toEqual(jasmine.objectContaining({ value: 19, min: 10, max: 40 }));
         expect(getAxis('mobility')?.ratio).toBeCloseTo(6 / 17, 6);
         expect(getAxis('endurance')?.ratio).toBeCloseTo(34 / 116, 6);
-        expect(getAxis('firepower')?.ratio).toBeCloseTo(0.25, 6);
+        expect(getAxis('range')?.ratio).toBeCloseTo(0.25, 6);
         expect(getAxis('dpt')?.ratio).toBeCloseTo(0.3, 6);
     });
 
@@ -306,6 +314,7 @@ describe('LoadForceRadarPanelComponent', () => {
         fixture.detectChanges();
 
         const dptAxis = fixture.componentInstance.chartAxes().find((axis) => axis.key === 'dpt');
+        const midpointRing = fixture.nativeElement.querySelector('.radar-ring-midpoint') as SVGPolygonElement | null;
 
         expect(dptAxis).toEqual(jasmine.objectContaining({
             value: 14,
@@ -314,6 +323,8 @@ describe('LoadForceRadarPanelComponent', () => {
             max: 30,
         }));
         expect(dptAxis?.ratio).toBeCloseTo(0.5, 6);
+        expect(midpointRing).not.toBeNull();
+        expect(fixture.nativeElement.querySelectorAll('.radar-ring-midpoint').length).toBe(1);
     });
 
     it('overlays hovered classic unit stats using that unit subtype range', () => {
@@ -323,6 +334,7 @@ describe('LoadForceRadarPanelComponent', () => {
             name: 'Hover Mek',
             armor: 30,
             internal: 10,
+            _weightedMaxRange: 8,
             _mdSumNoPhysical: 8,
             _mdSumNoPhysicalNoOneshots: 9,
             dpt: 7,
@@ -337,6 +349,7 @@ describe('LoadForceRadarPanelComponent', () => {
             moveType: 'Aerodyne',
             armor: 20,
             internal: 8,
+            _weightedMaxRange: 12,
             _mdSumNoPhysical: 12,
             _mdSumNoPhysicalNoOneshots: 13,
             dpt: 9,
@@ -360,11 +373,11 @@ describe('LoadForceRadarPanelComponent', () => {
 
         expect(getAxis('mobility')).toEqual(jasmine.objectContaining({ value: 5, min: 2, max: 9 }));
         expect(getAxis('endurance')).toEqual(jasmine.objectContaining({ value: 40, min: 15, max: 62 }));
-        expect(getAxis('firepower')).toEqual(jasmine.objectContaining({ value: 8, min: 4, max: 20 }));
+        expect(getAxis('range')).toEqual(jasmine.objectContaining({ value: 8, min: 6, max: 14 }));
         expect(getAxis('dpt')).toEqual(jasmine.objectContaining({ value: 7, min: 3, max: 15 }));
         expect(getAxis('mobility')?.ratio).toBeCloseTo(3 / 7, 6);
         expect(getAxis('endurance')?.ratio).toBeCloseTo(25 / 47, 6);
-        expect(getAxis('firepower')?.ratio).toBeCloseTo(0.25, 6);
+        expect(getAxis('range')?.ratio).toBeCloseTo(0.25, 6);
         expect(getAxis('dpt')?.ratio).toBeCloseTo(1 / 3, 6);
         expect(fixture.nativeElement.querySelectorAll('.radar-hover-node').length).toBe(4);
         const classicHoveredLabels = Array.from(fixture.nativeElement.querySelectorAll('.radar-label-value-hover')) as SVGTextElement[];
@@ -372,7 +385,7 @@ describe('LoadForceRadarPanelComponent', () => {
         expect(classicHoveredLabels.map((element) => element.textContent?.trim())).toEqual([
             '5/9',
             '40/62',
-            '8/20',
+            '8/14',
             '7/15',
         ]);
     });

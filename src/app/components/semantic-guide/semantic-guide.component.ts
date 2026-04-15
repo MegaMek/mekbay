@@ -77,7 +77,7 @@ export class SemanticGuideComponent {
     appendToSearch(filterText: string): void {
         const current = this.filtersService.searchText().trim();
         const newText = current ? `${current} ${filterText}` : filterText;
-        this.filtersService.searchText.set(newText);
+        this.filtersService.setSearchText(newText);
     }
 
     /** Get filters for a specific game system */
