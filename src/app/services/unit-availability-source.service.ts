@@ -110,7 +110,6 @@ const MEGAMEK_AVAILABILITY_FROM_LOOKUP = new Map(
 );
 
 const MEGAMEK_SCOPED_AVAILABILITY_BLOCK_CACHE_LIMIT = 48;
-const MEGAMEK_SCOPED_UNIT_IDS_CACHE_LIMIT = 128;
 const MEGAMEK_SCOPED_UNIT_SCORE_CACHE_LIMIT = 48;
 
 function createMegaMekSourceScoreMaps(): Record<MegaMekAvailabilityFrom, Map<AvailabilityUnitKey, number>> {
@@ -195,7 +194,6 @@ export class UnitAvailabilitySourceService {
     private megaMekUnitNameById = new Map<number, AvailabilityUnitKey>();
     private megaMekExtinctAllUnitIds = new Set<AvailabilityUnitKey>();
     private megaMekScopedAvailabilityBlocks = new Map<string, MegaMekScopedAvailabilityBlock>();
-    private megaMekScopedUnitIdsCache = new Map<string, ReadonlySet<AvailabilityUnitKey>>();
     private megaMekScopedUnitScoreCache = new Map<string, Map<AvailabilityUnitKey, number>>();
 
     public getVisibleEraUnitIds(era: Era, availabilitySource?: AvailabilitySource): Set<AvailabilityUnitKey> {
@@ -1129,106 +1127,11 @@ export class UnitAvailabilitySourceService {
         this.megaMekUnitNameById.clear();
         this.megaMekExtinctAllUnitIds.clear();
         this.megaMekScopedAvailabilityBlocks.clear();
-        this.megaMekScopedUnitIdsCache.clear();
         this.megaMekScopedUnitScoreCache.clear();
-    }
-
-    private getMegaMekScopedUnitIdsFromCache(cacheKey: string): ReadonlySet<AvailabilityUnitKey> | undefined {
-        const cached = this.megaMekScopedUnitIdsCache.get(cacheKey);
-        if (!cached) {
-            return undefined;
-        }
-
-        this.megaMekScopedUnitIdsCache.delete(cacheKey);
-        this.megaMekScopedUnitIdsCache.set(cacheKey, cached);
-        return cached;
-    }
-
-    private setMegaMekScopedUnitIdsCache(cacheKey: string, unitIds: ReadonlySet<AvailabilityUnitKey>): void {
-        if (this.megaMekScopedUnitIdsCache.has(cacheKey)) {
-            this.megaMekScopedUnitIdsCache.delete(cacheKey);
-        }
-
-        this.megaMekScopedUnitIdsCache.set(cacheKey, unitIds);
-        while (this.megaMekScopedUnitIdsCache.size > MEGAMEK_SCOPED_UNIT_IDS_CACHE_LIMIT) {
-            const oldestKey = this.megaMekScopedUnitIdsCache.keys().next().value;
-            if (oldestKey === undefined) {
-                break;
-            }
-
-            this.megaMekScopedUnitIdsCache.delete(oldestKey);
-        }
     }
 
     private getMegaMekEntries(unitKey: AvailabilityUnitKey): readonly MegaMekUnitAvailabilityEntry[] {
         return this.megaMekAvailabilityEntriesByUnitKey.get(unitKey) ?? [];
-    }
-
-    private collectMegaMekKnownUnitIds(
-        predicate: (unitKey: AvailabilityUnitKey, entries: readonly MegaMekUnitAvailabilityEntry[]) => boolean,
-    ): ReadonlySet<AvailabilityUnitKey> {
-        const unitIds = new Set<AvailabilityUnitKey>();
-
-        for (const unitKey of this.megaMekKnownUnitIds) {
-            const entries = this.getMegaMekEntries(unitKey);
-            if (predicate(unitKey, entries)) {
-                unitIds.add(unitKey);
-            }
-        }
-
-        return unitIds;
-    }
-
-    private collectMegaMekMembershipUnitIds(
-        context?: MegaMekAvailabilityFilterContext,
-    ): ReadonlySet<AvailabilityUnitKey> {
-        return this.collectMegaMekKnownUnitIds((unitKey, entries) => {
-            return this.matchesMegaMekMembership(unitKey, entries, context);
-        });
-    }
-
-    private collectMegaMekAvailabilityUnitIdsForSources(
-        availabilityFrom: readonly MegaMekAvailabilityFrom[],
-        context?: MegaMekAvailabilityFilterContext,
-    ): ReadonlySet<AvailabilityUnitKey> {
-        return this.collectMegaMekKnownUnitIds((unitKey, entries) => {
-            return this.matchesMegaMekAvailabilityPredicate(entries, context, (entry) => {
-                return this.entryHasSelectedAvailability(entry, availabilityFrom);
-            });
-        });
-    }
-
-    private collectMegaMekRarityUnitIds(
-        rarity: MegaMekAvailabilityRarity,
-        availabilityFrom: readonly MegaMekAvailabilityFrom[],
-        context?: MegaMekAvailabilityFilterContext,
-    ): ReadonlySet<AvailabilityUnitKey> {
-        return this.collectMegaMekKnownUnitIds((unitKey, entries) => {
-            return this.matchesMegaMekAvailabilityPredicate(entries, context, (entry) => {
-                return this.entryMatchesSelectedRarity(entry, rarity, availabilityFrom);
-            });
-        });
-    }
-
-    private collectMegaMekUnavailableUnitIds(
-        availabilityFrom: readonly MegaMekAvailabilityFrom[],
-        context?: MegaMekAvailabilityFilterContext,
-    ): ReadonlySet<AvailabilityUnitKey> {
-        return this.collectMegaMekKnownUnitIds((unitKey, entries) => {
-            return this.matchesMegaMekUnavailable(unitKey, entries, context, availabilityFrom);
-        });
-    }
-
-    private collectMegaMekUnknownUnitIds(): ReadonlySet<AvailabilityUnitKey> {
-        const unitIds = new Set<AvailabilityUnitKey>();
-
-        for (const unitKey of this.megaMekAllUnitIds) {
-            if (!this.megaMekKnownUnitIds.has(unitKey)) {
-                unitIds.add(unitKey);
-            }
-        }
-
-        return unitIds;
     }
 
     private getOrCreateMegaMekScopedUnitScoreCache(
