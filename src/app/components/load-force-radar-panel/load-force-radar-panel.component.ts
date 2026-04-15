@@ -42,7 +42,7 @@ import { DataService, DOES_NOT_TRACK, type MinMaxStatsRange } from '../../servic
 type RadarStatKey =
     | 'armor'
     | 'internal'
-    | 'firepower'
+    | 'range'
     | 'dpt'
     | 'mobility'
     | 'endurance'
@@ -102,18 +102,18 @@ const CLASSIC_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
         }),
     },
     {
-        key: 'firepower',
-        label: 'Firepower',
+        key: 'range',
+        label: 'Range',
         getContribution: (unit, bucketStats) => ({
-            value: sanitizeStatValue(unit._mdSumNoPhysical),
-            min: sanitizeStatValue(bucketStats.alphaNoPhysicalNoOneshots.min),
-            average: sanitizeStatValue(bucketStats.alphaNoPhysicalNoOneshots.average),
-            max: sanitizeStatValue(bucketStats.alphaNoPhysicalNoOneshots.max),
+            value: sanitizeStatValue(unit._weightedMaxRange),
+            min: sanitizeStatValue(bucketStats.weightedMaxRange.min),
+            average: sanitizeStatValue(bucketStats.weightedMaxRange.average),
+            max: sanitizeStatValue(bucketStats.weightedMaxRange.max),
         }),
     },
     {
         key: 'dpt',
-        label: 'Damage/Turn',
+        label: 'Damage',
         getContribution: (unit, bucketStats) => ({
             value: sanitizeStatValue(unit.dpt),
             min: sanitizeStatValue(bucketStats.dpt.min),
