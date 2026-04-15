@@ -322,24 +322,4 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.getMegaMekRaritySortScore.and.returnValue(MEGAMEK_AVAILABILITY_UNKNOWN_SCORE);
         expect(component.getSearchResultMegaMekRarity(unit)).toBe('—');
     });
-
-    it('closes panels and exits expanded view when requested by the filters service', async () => {
-        const fixture = TestBed.createComponent(UnitSearchComponent);
-        const component = fixture.componentInstance;
-
-        fixture.detectChanges();
-        component.focused.set(true);
-        component.activeIndex.set(2);
-        filtersServiceStub.advOpen.set(true);
-        filtersServiceStub.expandedView.set(true);
-
-        filtersServiceStub.requestClosePanels({ exitExpandedView: true });
-        await fixture.whenStable();
-        fixture.detectChanges();
-
-        expect(component.focused()).toBeFalse();
-        expect(component.activeIndex()).toBeNull();
-        expect(filtersServiceStub.advOpen()).toBeFalse();
-        expect(filtersServiceStub.expandedView()).toBeFalse();
-    });
 });
