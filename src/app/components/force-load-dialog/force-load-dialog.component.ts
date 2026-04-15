@@ -93,10 +93,25 @@ export interface ForceLoadDialogData {
     initialTab?: string;
 }
 
+type SortDirection = 'asc' | 'desc';
+type SortOption = { key: string; label: string };
+
 const HANGAR_SORT_SESSION_KEY = 'mekbay:force-load-dialog:hangar-sort';
 const HANGAR_SORT_DIRECTION_SESSION_KEY = 'mekbay:force-load-dialog:hangar-sort-direction';
+const PACK_SORT_SESSION_KEY = 'mekbay:force-load-dialog:pack-sort';
+const PACK_SORT_DIRECTION_SESSION_KEY = 'mekbay:force-load-dialog:pack-sort-direction';
+const ORGANIZATION_SORT_SESSION_KEY = 'mekbay:force-load-dialog:organization-sort';
+const ORGANIZATION_SORT_DIRECTION_SESSION_KEY = 'mekbay:force-load-dialog:organization-sort-direction';
+const OPERATION_SORT_SESSION_KEY = 'mekbay:force-load-dialog:operation-sort';
+const OPERATION_SORT_DIRECTION_SESSION_KEY = 'mekbay:force-load-dialog:operation-sort-direction';
 const DEFAULT_HANGAR_SORT_KEY = 'timestamp';
-const DEFAULT_HANGAR_SORT_DIRECTION: 'asc' | 'desc' = 'desc';
+const DEFAULT_HANGAR_SORT_DIRECTION: SortDirection = 'desc';
+const DEFAULT_PACK_SORT_KEY = 'name';
+const DEFAULT_PACK_SORT_DIRECTION: SortDirection = 'asc';
+const DEFAULT_ORGANIZATION_SORT_KEY = 'timestamp';
+const DEFAULT_ORGANIZATION_SORT_DIRECTION: SortDirection = 'desc';
+const DEFAULT_OPERATION_SORT_KEY = 'timestamp';
+const DEFAULT_OPERATION_SORT_DIRECTION: SortDirection = 'desc';
 
 @Component({
     selector: 'force-load-dialog',
@@ -128,27 +143,69 @@ export class ForceLoadDialogComponent {
         { key: 'faction', label: 'Faction' },
         { key: 'size', label: 'Size' },
     ];
-    readonly PACK_SORT_OPTIONS: { key: string; label: string }[] = [
+    readonly PACK_SORT_OPTIONS: SortOption[] = [
         { key: 'name', label: 'Name' },
         { key: 'value', label: 'Value' },
         { key: 'size', label: 'Size' },
     ];
+    readonly ORGANIZATION_SORT_OPTIONS: SortOption[] = [
+        { key: 'timestamp', label: 'Date' },
+        { key: 'name', label: 'Name' },
+        { key: 'faction', label: 'Faction' },
+        { key: 'forces', label: 'Forces' },
+    ];
+    readonly OPERATION_SORT_OPTIONS: SortOption[] = [
+        { key: 'timestamp', label: 'Date' },
+        { key: 'name', label: 'Name' },
+        { key: 'forces', label: 'Forces' },
+    ];
 
-    hangarSort = signal<string>(this.getStoredHangarSortKey());
-    hangarSortDirection = signal<'asc' | 'desc'>(this.getStoredHangarSortDirection());
-    packSort = signal<string>('name');
-    packSortDirection = signal<'asc' | 'desc'>('asc');
+    hangarSort = signal<string>(this.getStoredSortKey(HANGAR_SORT_SESSION_KEY, this.HANGAR_SORT_OPTIONS, DEFAULT_HANGAR_SORT_KEY));
+    hangarSortDirection = signal<SortDirection>(this.getStoredSortDirection(HANGAR_SORT_DIRECTION_SESSION_KEY, DEFAULT_HANGAR_SORT_DIRECTION));
+    packSort = signal<string>(this.getStoredSortKey(PACK_SORT_SESSION_KEY, this.PACK_SORT_OPTIONS, DEFAULT_PACK_SORT_KEY));
+    packSortDirection = signal<SortDirection>(this.getStoredSortDirection(PACK_SORT_DIRECTION_SESSION_KEY, DEFAULT_PACK_SORT_DIRECTION));
+    organizationSort = signal<string>(this.getStoredSortKey(ORGANIZATION_SORT_SESSION_KEY, this.ORGANIZATION_SORT_OPTIONS, DEFAULT_ORGANIZATION_SORT_KEY));
+    organizationSortDirection = signal<SortDirection>(this.getStoredSortDirection(ORGANIZATION_SORT_DIRECTION_SESSION_KEY, DEFAULT_ORGANIZATION_SORT_DIRECTION));
+    operationSort = signal<string>(this.getStoredSortKey(OPERATION_SORT_SESSION_KEY, this.OPERATION_SORT_OPTIONS, DEFAULT_OPERATION_SORT_KEY));
+    operationSortDirection = signal<SortDirection>(this.getStoredSortDirection(OPERATION_SORT_DIRECTION_SESSION_KEY, DEFAULT_OPERATION_SORT_DIRECTION));
 
     /** Active sort options/state based on the current tab */
-    activeSortOptions = computed(() =>
-        this.activeTab() === 'Force Packs' ? this.PACK_SORT_OPTIONS : this.HANGAR_SORT_OPTIONS
-    );
-    activeSort = computed(() =>
-        this.activeTab() === 'Force Packs' ? this.packSort() : this.hangarSort()
-    );
-    activeSortDirection = computed(() =>
-        this.activeTab() === 'Force Packs' ? this.packSortDirection() : this.hangarSortDirection()
-    );
+    activeSortOptions = computed(() => {
+        switch (this.activeTab()) {
+            case 'Force Packs':
+                return this.PACK_SORT_OPTIONS;
+            case 'TO&E':
+                return this.ORGANIZATION_SORT_OPTIONS;
+            case 'Operations':
+                return this.OPERATION_SORT_OPTIONS;
+            default:
+                return this.HANGAR_SORT_OPTIONS;
+        }
+    });
+    activeSort = computed(() => {
+        switch (this.activeTab()) {
+            case 'Force Packs':
+                return this.packSort();
+            case 'TO&E':
+                return this.organizationSort();
+            case 'Operations':
+                return this.operationSort();
+            default:
+                return this.hangarSort();
+        }
+    });
+    activeSortDirection = computed(() => {
+        switch (this.activeTab()) {
+            case 'Force Packs':
+                return this.packSortDirection();
+            case 'TO&E':
+                return this.organizationSortDirection();
+            case 'Operations':
+                return this.operationSortDirection();
+            default:
+                return this.hangarSortDirection();
+        }
+    });
 
     forces = signal<LoadForceEntry[]>([]);
     selectedForce = signal<LoadForceEntry | null>(null);
@@ -221,7 +278,10 @@ export class ForceLoadDialogComponent {
     filteredOperations = computed<LoadOperationEntry[]>(() => {
         const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
         const typeFilter = this.gameTypeFilter();
-        return this.operations().filter(op => {
+        const sortKey = this.operationSort();
+        const sortDir = this.operationSortDirection();
+
+        const filtered = this.operations().filter(op => {
             // Game type filter: check if any of the operation's game types match
             if (typeFilter !== 'all') {
                 const types = op.gameTypes;
@@ -236,6 +296,8 @@ export class ForceLoadDialogComponent {
             ].join(' ').toLowerCase();
             return tokens.every(t => hay.indexOf(t) !== -1);
         });
+
+        return this.sortOperations(filtered, sortKey, sortDir);
     });
 
     constructor() {
@@ -243,7 +305,19 @@ export class ForceLoadDialogComponent {
         this.loadForces();
 
         effect(() => {
-            this.persistHangarSortState(this.hangarSort(), this.hangarSortDirection());
+            this.persistSortState(HANGAR_SORT_SESSION_KEY, HANGAR_SORT_DIRECTION_SESSION_KEY, this.hangarSort(), this.hangarSortDirection());
+        });
+
+        effect(() => {
+            this.persistSortState(PACK_SORT_SESSION_KEY, PACK_SORT_DIRECTION_SESSION_KEY, this.packSort(), this.packSortDirection());
+        });
+
+        effect(() => {
+            this.persistSortState(ORGANIZATION_SORT_SESSION_KEY, ORGANIZATION_SORT_DIRECTION_SESSION_KEY, this.organizationSort(), this.organizationSortDirection());
+        });
+
+        effect(() => {
+            this.persistSortState(OPERATION_SORT_SESSION_KEY, OPERATION_SORT_DIRECTION_SESSION_KEY, this.operationSort(), this.operationSortDirection());
         });
         
         // Resolve force packs
@@ -417,48 +491,71 @@ export class ForceLoadDialogComponent {
         if (selOp && !this.filteredOperations().includes(selOp)) {
             this.selectedOperation.set(null);
         }
+        // if selected organization is filtered out, clear selection
+        const selOrg = this.selectedOrganization();
+        if (selOrg && !this.filteredOrganizations().includes(selOrg)) {
+            this.selectedOrganization.set(null);
+        }
     }
 
     setSortOrder(key: string) {
-        if (this.activeTab() === 'Force Packs') {
-            this.packSort.set(key);
-        } else {
-            this.hangarSort.set(key);
+        switch (this.activeTab()) {
+            case 'Force Packs':
+                this.packSort.set(key);
+                break;
+            case 'TO&E':
+                this.organizationSort.set(key);
+                break;
+            case 'Operations':
+                this.operationSort.set(key);
+                break;
+            default:
+                this.hangarSort.set(key);
+                break;
         }
     }
 
-    setSortDirection(dir: 'asc' | 'desc') {
-        if (this.activeTab() === 'Force Packs') {
-            this.packSortDirection.set(dir);
-        } else {
-            this.hangarSortDirection.set(dir);
+    setSortDirection(dir: SortDirection) {
+        switch (this.activeTab()) {
+            case 'Force Packs':
+                this.packSortDirection.set(dir);
+                break;
+            case 'TO&E':
+                this.organizationSortDirection.set(dir);
+                break;
+            case 'Operations':
+                this.operationSortDirection.set(dir);
+                break;
+            default:
+                this.hangarSortDirection.set(dir);
+                break;
         }
     }
 
-    private getStoredHangarSortKey(): string {
-        const stored = this.sessionPersistenceService.getItem(HANGAR_SORT_SESSION_KEY)?.trim();
+    private getStoredSortKey(storageKey: string, options: readonly SortOption[], defaultKey: string): string {
+        const stored = this.sessionPersistenceService.getItem(storageKey)?.trim();
         if (!stored) {
-            return DEFAULT_HANGAR_SORT_KEY;
+            return defaultKey;
         }
-        return this.HANGAR_SORT_OPTIONS.some(option => option.key === stored)
+        return options.some(option => option.key === stored)
             ? stored
-            : DEFAULT_HANGAR_SORT_KEY;
+            : defaultKey;
     }
 
-    private getStoredHangarSortDirection(): 'asc' | 'desc' {
-        const stored = this.sessionPersistenceService.getItem(HANGAR_SORT_DIRECTION_SESSION_KEY)?.trim();
+    private getStoredSortDirection(storageKey: string, defaultDirection: SortDirection): SortDirection {
+        const stored = this.sessionPersistenceService.getItem(storageKey)?.trim();
         return stored === 'asc' || stored === 'desc'
             ? stored
-            : DEFAULT_HANGAR_SORT_DIRECTION;
+            : defaultDirection;
     }
 
-    private persistHangarSortState(sortKey: string, sortDirection: 'asc' | 'desc'): void {
-        this.sessionPersistenceService.setItem(HANGAR_SORT_SESSION_KEY, sortKey);
-        this.sessionPersistenceService.setItem(HANGAR_SORT_DIRECTION_SESSION_KEY, sortDirection);
+    private persistSortState(sortKeyStorage: string, sortDirectionStorage: string, sortKey: string, sortDirection: SortDirection): void {
+        this.sessionPersistenceService.setItem(sortKeyStorage, sortKey);
+        this.sessionPersistenceService.setItem(sortDirectionStorage, sortDirection);
     }
 
     /** Shared sort comparator for forces and packs */
-    private sortItems<T extends { name?: string; type?: GameSystem; bv?: number; pv?: number; factionId?: number; timestamp?: string; groups?: { units?: any[] }[]; units?: any[] }>(items: T[], sortKey: string, sortDir: 'asc' | 'desc'): T[] {
+    private sortItems<T extends { name?: string; type?: GameSystem; bv?: number; pv?: number; factionId?: number; timestamp?: string; groups?: { units?: any[] }[]; units?: any[] }>(items: T[], sortKey: string, sortDir: SortDirection): T[] {
         const dir = sortDir === 'asc' ? 1 : -1;
         return items.sort((a, b) => {
             switch (sortKey) {
@@ -486,6 +583,41 @@ export class ForceLoadDialogComponent {
                 case 'timestamp':
                 default:
                     return dir * ((a.timestamp || '').localeCompare(b.timestamp || ''));
+            }
+        });
+    }
+
+    private sortOperations(items: LoadOperationEntry[], sortKey: string, sortDir: SortDirection): LoadOperationEntry[] {
+        const dir = sortDir === 'asc' ? 1 : -1;
+        return items.sort((a, b) => {
+            switch (sortKey) {
+                case 'name':
+                    return dir * (a.name || '').localeCompare(b.name || '');
+                case 'forces':
+                    return dir * (a.forces.length - b.forces.length);
+                case 'timestamp':
+                default:
+                    return dir * (a.timestamp - b.timestamp);
+            }
+        });
+    }
+
+    private sortOrganizations(items: LoadOrganizationEntry[], sortKey: string, sortDir: SortDirection): LoadOrganizationEntry[] {
+        const dir = sortDir === 'asc' ? 1 : -1;
+        return items.sort((a, b) => {
+            switch (sortKey) {
+                case 'name':
+                    return dir * (a.name || '').localeCompare(b.name || '');
+                case 'faction': {
+                    const aFaction = a.factionId != null ? (this.dataService.getFactionById(a.factionId)?.name ?? '') : '';
+                    const bFaction = b.factionId != null ? (this.dataService.getFactionById(b.factionId)?.name ?? '') : '';
+                    return dir * aFaction.localeCompare(bFaction);
+                }
+                case 'forces':
+                    return dir * (a.forceCount - b.forceCount);
+                case 'timestamp':
+                default:
+                    return dir * (a.timestamp - b.timestamp);
             }
         });
     }
@@ -723,11 +855,16 @@ export class ForceLoadDialogComponent {
 
     filteredOrganizations = computed<LoadOrganizationEntry[]>(() => {
         const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
-        return this.organizations().filter(org => {
+        const sortKey = this.organizationSort();
+        const sortDir = this.organizationSortDirection();
+
+        const filtered = this.organizations().filter(org => {
             if (tokens.length === 0) return true;
             const hay = (org.name || '').toLowerCase();
             return tokens.every(t => hay.indexOf(t) !== -1);
         });
+
+        return this.sortOrganizations(filtered, sortKey, sortDir);
     });
 
     async onOpenOrganization() {
