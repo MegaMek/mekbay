@@ -1,12 +1,21 @@
 <div class="dialog-header">
     <div class="dialog-header-main">
-        @if (forceFaction()?.img; as factionImg) {
-            <img
-                class="dialog-faction-icon"
-                [src]="factionImg"
-                [alt]="forceFaction()?.name || 'Faction'"
-                [title]="forceFaction()?.name || ''" />
-        }
+        <div class="dialog-header-icons">
+            @if (forceFaction()?.img; as factionImg) {
+                <img
+                    class="dialog-faction-icon"
+                    [src]="factionImg"
+                    [alt]="forceFaction()?.name || 'Faction'"
+                    [title]="forceFaction()?.name || ''" />
+            }
+            @if (forceEra()?.img || forceEra()?.icon; as eraImg) {
+                <img
+                    class="dialog-era-icon"
+                    [src]="eraImg"
+                    [alt]="forceEra()?.name || 'Era'"
+                    [title]="forceEra()?.name || ''" />
+            }
+        </div>
         <h2 class="force-name" [class.clickable]="!isReadOnly()" (click)="onForceNameClick()" [title]="isReadOnly() ? '' : 'Click to rename'">{{ forceName() }}</h2>
     </div>
     <div class="dialog-header-actions">

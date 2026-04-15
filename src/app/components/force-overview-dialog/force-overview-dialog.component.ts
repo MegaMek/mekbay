@@ -195,6 +195,9 @@ export class ForceOverviewDialogComponent {
     /** Force faction for header display */
     readonly forceFaction = computed(() => this.data.force.faction());
 
+    /** Force era for header display */
+    readonly forceEra = computed(() => this.data.force.era());
+
     /** Force name for display */
     forceName = computed(() => this.data.force.displayName());
 

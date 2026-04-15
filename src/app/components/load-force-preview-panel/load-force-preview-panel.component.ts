@@ -51,6 +51,9 @@ const UNIT_TILE_GAP = 4;
                 @if (entry.faction?.img; as factionImg) {
                     <img [src]="factionImg" class="faction-icon" />
                 }
+                @if (entry.era?.img || entry.era?.icon; as eraImg) {
+                    <img [src]="eraImg" class="era-icon" [alt]="entry.era?.name || 'Era'" [title]="entry.era?.name || 'Era'" />
+                }
                 <div class="force-name-block">
                     <span class="force-preview-name">{{ entry.name || forceOrgName() }}</span>
                     @if (entry.name && forceOrgName()) {
@@ -202,7 +205,8 @@ const UNIT_TILE_GAP = 4;
             flex: 1 1 0;
         }
 
-        .faction-icon {
+        .faction-icon,
+        .era-icon {
             width: 1.2em;
             height: 1.2em;
             object-fit: contain;

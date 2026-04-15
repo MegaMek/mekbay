@@ -42,6 +42,9 @@
                                 @if (force.faction) {
                                     <img [src]="force.faction.img" class="faction-icon" />
                                 }
+                                @if (force.era?.img || force.era?.icon; as eraImg) {
+                                    <img [src]="eraImg" class="era-icon" [alt]="force.era?.name || 'Era'" [title]="force.era?.name || 'Era'" />
+                                }
                                 <div class="force-name">{{ force.name }}</div>
                             </div>
                             <div class="force-info">                                

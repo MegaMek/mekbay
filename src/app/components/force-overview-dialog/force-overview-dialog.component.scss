@@ -57,7 +57,15 @@
     min-width: 0;
 }
 
-.dialog-faction-icon {
+.dialog-header-icons {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+}
+
+.dialog-faction-icon,
+.dialog-era-icon {
     width: 1.75rem;
     height: 1.75rem;
     object-fit: contain;
