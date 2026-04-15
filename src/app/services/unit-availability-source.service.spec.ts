@@ -407,6 +407,85 @@ describe('UnitAvailabilitySourceService', () => {
         expect(service.unitMatchesAvailabilityRarity(unit, 'Common', ilClanContext)).toBeTrue();
     });
 
+    it('marks MUL memberships without scoped MegaMek data as Unknown even when other scoped factions are known', () => {
+        const ilClan = {
+            id: 3151,
+            name: 'ilClan',
+            units: new Set<number>(),
+            years: { from: 3151 },
+        } as Era;
+        const unit = {
+            id: 3,
+            name: 'BattleMaster C3',
+            type: 'Mek',
+            chassis: 'BattleMaster',
+            model: 'C3',
+        } as Unit;
+
+        orderedEras.push(ilClan);
+        units.push(unit);
+        factionsById.set(40, {
+            id: 40,
+            name: 'Rasalhague Dominion',
+            group: 'IS Clan',
+            img: '',
+            eras: {
+                3151: new Set([unit.id]),
+            },
+        } as Faction);
+        factionsById.set(100, {
+            id: 100,
+            name: 'Clan Protectorate',
+            group: 'IS Clan',
+            img: '',
+            eras: {
+                3151: new Set([unit.id]),
+            },
+        } as Faction);
+        factionsById.set(120, {
+            id: 120,
+            name: 'Raven Alliance',
+            group: 'IS Clan',
+            img: '',
+            eras: {
+                3151: new Set([unit.id]),
+            },
+        } as Faction);
+
+        megaMekAvailabilityByUnitName.set(unit.name, {
+            n: unit.name,
+            e: {
+                '3151': {
+                    '40': [2, 0],
+                    '100': [7, 0],
+                },
+            },
+        });
+        megaMekAvailabilityRecords.push(megaMekAvailabilityByUnitName.get(unit.name)!);
+
+        const ilClanContext = {
+            bridgeThroughMulMembership: true,
+            eraIds: new Set([ilClan.id]),
+        };
+        const ravenAllianceContext = {
+            bridgeThroughMulMembership: true,
+            eraIds: new Set([ilClan.id]),
+            factionIds: new Set([120]),
+        };
+
+        expect(service.getMegaMekUnknownUnitIds(ilClanContext).has(unit.name)).toBeTrue();
+        expect(service.getMegaMekAvailabilityUnitIds(ilClanContext).has(unit.name)).toBeTrue();
+        expect(service.unitMatchesAvailabilityFrom(unit, MEGAMEK_AVAILABILITY_UNKNOWN, ilClanContext)).toBeTrue();
+        expect(service.unitMatchesAvailabilityRarity(unit, MEGAMEK_AVAILABILITY_UNKNOWN, ilClanContext)).toBeTrue();
+        expect(service.unitMatchesAvailabilityRarity(unit, 'Common', ilClanContext)).toBeTrue();
+
+        expect(service.getMegaMekUnknownUnitIds(ravenAllianceContext).has(unit.name)).toBeTrue();
+        expect(service.unitMatchesAvailabilityFrom(unit, MEGAMEK_AVAILABILITY_UNKNOWN, ravenAllianceContext)).toBeTrue();
+        expect(service.unitMatchesAvailabilityFrom(unit, 'Production', ravenAllianceContext)).toBeFalse();
+        expect(service.unitMatchesAvailabilityRarity(unit, MEGAMEK_AVAILABILITY_UNKNOWN, ravenAllianceContext)).toBeTrue();
+        expect(service.unitMatchesAvailabilityRarity(unit, 'Common', ravenAllianceContext)).toBeFalse();
+    });
+
     it('does not fall back to MUL era visibility when MegaMek availability has no matching entries', () => {
         const era = {
             id: 100,

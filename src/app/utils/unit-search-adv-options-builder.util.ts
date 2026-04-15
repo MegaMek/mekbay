@@ -43,6 +43,8 @@ import { isComponentBackedDropdown, usesIndexedDropdownAvailability, usesIndexed
 import { sortAvailableDropdownOptions, sortDropdownOptionObjects } from './unit-search-dropdown-sort.util';
 import { AdvFilterType, type AdvFilterConfig, type AdvFilterOptions, type AdvOptionsTelemetryFilterStage, type AdvOptionsTelemetrySnapshot, type FilterState, type SemanticDisplayItem } from '../services/unit-search-filters.model';
 
+const AVAILABILITY_CASCADE_FILTER_KEYS = new Set(['era', 'faction', 'availabilityFrom', 'availabilityRarity']);
+
 interface BuildUnitSearchAdvOptionsRequest {
     advancedFilters: readonly AdvFilterConfig[];
     state: FilterState;
@@ -243,6 +245,7 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
 
     const contextUnitsCache = new Map<string, Unit[]>();
     const contextSnapshotCache = new WeakMap<Unit[], AdvOptionsContextSnapshot>();
+    let availabilityContextUnits: Unit[] | null = null;
 
     const pushAdvOptionsTelemetry = (
         conf: AdvFilterConfig,
@@ -303,6 +306,26 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
                 }
                 contextUnits = cachedContextUnits;
             }
+        }
+
+        if (request.buildCustomDropdownOptions && AVAILABILITY_CASCADE_FILTER_KEYS.has(conf.key)) {
+            if (!availabilityContextUnits) {
+                const nonAvailabilityState = Object.fromEntries(
+                    Object.entries(request.state).filter(([key, value]) => (
+                        value.interactedWith && !AVAILABILITY_CASCADE_FILTER_KEYS.has(key)
+                    )),
+                ) as FilterState;
+
+                availabilityContextUnits = Object.keys(nonAvailabilityState).length === 0
+                    ? baseUnits
+                    : applyFilterStateToUnits({
+                        units: baseUnits,
+                        state: nonAvailabilityState,
+                        dependencies: request.getUnitFilterKernelDependencies(),
+                    });
+            }
+
+            contextUnits = availabilityContextUnits;
         }
 
         const contextDerivationMs = getNowMs() - contextDerivationStartedAt;

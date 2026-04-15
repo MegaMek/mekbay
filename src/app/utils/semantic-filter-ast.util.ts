@@ -1296,6 +1296,9 @@ function getUnitMatchedExternalNames(
 function buildExternalFilterScopeCacheKey(activeScope?: AvailabilityFilterScope): string {
     const scopeParts: string[] = [];
 
+    if (activeScope?.bridgeThroughMulMembership) {
+        scopeParts.push('bridge=mul');
+    }
     if (activeScope?.eraNames && activeScope.eraNames.length > 0) {
         scopeParts.push(`era=${[...activeScope.eraNames].map(name => name.toLowerCase()).sort().join('\u0001')}`);
     }
@@ -1824,6 +1827,7 @@ function getIndexedCandidateIdsForNode(
 
             if (node.operator === 'AND') {
                 const nextActiveScope: AvailabilityFilterScope = {
+                    bridgeThroughMulMembership: activeScope?.bridgeThroughMulMembership,
                     eraNames: mergeActiveNames(activeScope?.eraNames, collectScopedNames(node, context, 'era')),
                     factionNames: mergeActiveNames(activeScope?.factionNames, collectScopedNames(node, context, 'faction')),
                     availabilityFromNames: mergeActiveNames(activeScope?.availabilityFromNames, collectScopedNames(node, context, 'availabilityFrom')),
@@ -2346,6 +2350,7 @@ function evaluateGroup(
     
     if (group.operator === 'AND') {
         const nextActiveScope: AvailabilityFilterScope = {
+            bridgeThroughMulMembership: activeScope?.bridgeThroughMulMembership,
             eraNames: mergeActiveNames(activeScope?.eraNames, collectScopedNames(group, context, 'era')),
             factionNames: mergeActiveNames(activeScope?.factionNames, collectScopedNames(group, context, 'faction')),
             availabilityFromNames: mergeActiveNames(activeScope?.availabilityFromNames, collectScopedNames(group, context, 'availabilityFrom')),

@@ -56,7 +56,8 @@ import { TooltipDirective } from '../../directives/tooltip.directive';
 import { type SearchTokensGroup, highlightMatches } from '../../utils/search.util';
 import type { TooltipLine } from '../tooltip/tooltip.component';
 import {
-    MEGAMEK_AVAILABILITY_RARITY_ICON_COLORS,
+    MEGAMEK_AVAILABILITY_BADGE_COLORS,
+    MEGAMEK_AVAILABILITY_UNKNOWN,
     MEGAMEK_PRODUCTION_ICON_PATH,
     MEGAMEK_SALVAGE_ICON_PATH,
 } from '../../models/megamek/availability.model';
@@ -97,6 +98,8 @@ import type { MegaMekUnitAvailabilityDetail } from '../../services/unit-availabi
     styleUrl: './unit-card-expanded.component.scss'
 })
 export class UnitCardExpandedComponent {
+    readonly megaMekAvailabilityUnknown = MEGAMEK_AVAILABILITY_UNKNOWN;
+
     gameService = inject(GameService);
     private dialogsService = inject(DialogsService);
     private abilityLookup = inject(AsAbilityLookupService);
@@ -241,7 +244,7 @@ export class UnitCardExpandedComponent {
         const badges = this.megaMekAvailability() ?? [];
         return badges.map((badge) => ({
             ...badge,
-            color: MEGAMEK_AVAILABILITY_RARITY_ICON_COLORS[badge.rarity],
+            color: MEGAMEK_AVAILABILITY_BADGE_COLORS[badge.rarity],
         }));
     });
 
@@ -252,7 +255,7 @@ export class UnitCardExpandedComponent {
         }
 
         return badges.map((badge) => ({
-            label: badge.source,
+            label: badge.source === MEGAMEK_AVAILABILITY_UNKNOWN ? 'Availability' : badge.source,
             value: badge.rarity,
         }));
     });
