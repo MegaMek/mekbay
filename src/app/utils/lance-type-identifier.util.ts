@@ -43,8 +43,6 @@ import { groupMatchesChildRole } from './org/org-role-match.util';
 import { resolveOrgDefinition } from './org/org-registry.util';
 import type {
     GroupSizeResult,
-    OrgComposedCountRule,
-    OrgComposedPatternRule,
     OrgFormationMatchingSpec,
     OrgRuleDefinition,
 } from './org/org-types';
@@ -116,21 +114,21 @@ export class LanceTypeIdentifierUtil {
         }
     }
 
-    private static isFormationMatchingRule(
+    private static hasFormationMatchingRule(
         rule: OrgRuleDefinition | undefined,
-    ): rule is (OrgComposedCountRule | OrgComposedPatternRule) & { formationMatching: OrgFormationMatchingSpec } {
-        if (!rule?.formationMatching) {
-            return false;
-        }
-
-        return rule.kind === 'composed-count' || rule.kind === 'composed-pattern';
+    ): rule is OrgRuleDefinition & { formationMatching: OrgFormationMatchingSpec } {
+        return !!rule?.formationMatching;
     }
 
     private static collectIgnoredUnits(
         group: GroupSizeResult,
         formationMatching: OrgFormationMatchingSpec,
     ): Set<Unit> {
-        const ignoredUnits = new Set<Unit>();
+        const ignoredUnits = new Set<Unit>(group.formationMatchingIgnoredUnits ?? []);
+
+        if (!formationMatching.ignoredChildRoles || formationMatching.ignoredChildRoles.length === 0) {
+            return ignoredUnits;
+        }
 
         for (const child of group.children ?? []) {
             const childFacts = compileGroupFacts(child);
@@ -158,7 +156,10 @@ export class LanceTypeIdentifierUtil {
         }
 
         const [resolvedGroup] = resolvedGroups;
-        if (!resolvedGroup.type || !resolvedGroup.children || resolvedGroup.children.length === 0) {
+        const hasChildren = !!resolvedGroup.children && resolvedGroup.children.length > 0;
+        const hasExplicitIgnoredUnits = !!resolvedGroup.formationMatchingIgnoredUnits
+            && resolvedGroup.formationMatchingIgnoredUnits.length > 0;
+        if (!resolvedGroup.type || (!hasChildren && !hasExplicitIgnoredUnits)) {
             return {};
         }
 
@@ -169,7 +170,7 @@ export class LanceTypeIdentifierUtil {
         const resolvedFaction = targetForce.faction() ?? this.DEFAULT_FACTION;
         const orgDefinition = resolveOrgDefinition(resolvedFaction, targetForce.era());
         const matchedRule = orgDefinition.rules.find((candidate) => candidate.type === resolvedGroup.type);
-        if (!this.isFormationMatchingRule(matchedRule)) {
+        if (!this.hasFormationMatchingRule(matchedRule)) {
             return {};
         }
 

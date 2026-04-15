@@ -127,6 +127,10 @@ export const CC_AUGMENTED_LANCE: OrgLeafPatternRule = {
     modifiers: { '': 6 },
     commandRank: 'Lieutenant',
     tier: 1.05,
+    formationMatching: {
+        ignoredPatternRefs: ['other', 'qualifiedBa'],
+        notice: 'Transported units are ignored for formation requirements.',
+    },
     unitSelector: ['BM', 'CV', 'BA'],
     bucketBy: 'transport',
     patterns: [

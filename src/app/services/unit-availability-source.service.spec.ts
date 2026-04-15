@@ -29,6 +29,7 @@ describe('UnitAvailabilitySourceService', () => {
 
     const dataServiceMock = {
         searchCorpusVersion: signal(1),
+        megaMekAvailabilityVersion: signal(0),
         getUnits: jasmine.createSpy('getUnits').and.callFake(() => units),
         getEras: jasmine.createSpy('getEras').and.callFake(() => orderedEras),
         getFactionById: jasmine.createSpy('getFactionById').and.callFake((id: number) => factionsById.get(id) ?? null),
@@ -45,6 +46,7 @@ describe('UnitAvailabilitySourceService', () => {
         megaMekAvailabilityByUnitName.clear();
         megaMekAvailabilityRecords.length = 0;
         dataServiceMock.searchCorpusVersion.set(1);
+        dataServiceMock.megaMekAvailabilityVersion.set(0);
         dataServiceMock.getUnits.calls.reset();
         dataServiceMock.getEras.calls.reset();
         dataServiceMock.getFactionById.calls.reset();
@@ -100,57 +102,6 @@ describe('UnitAvailabilitySourceService', () => {
         expect(Array.from(service.getFactionUnitIds(faction, new Set([200]))).sort((left, right) => left.localeCompare(right))).toEqual(['3', '4']);
     });
 
-    it('does not expose MegaMek weights while Master Unit List availability is selected', () => {
-        const era = {
-            id: 3150,
-            name: 'ilClan',
-            units: new Set<number>(),
-            years: { from: 3151 },
-        } as Era;
-        const faction = {
-            id: 99,
-            name: 'Test Faction',
-            group: 'Other',
-            img: '',
-            eras: {},
-        } as Faction;
-        const unit = { id: 1, name: 'Atlas', type: 'Mek', chassis: 'Atlas', model: 'AS7-D' } as Unit;
-
-        expect(service.getUnitAvailabilityWeight(unit, faction, era)).toBeNull();
-        expect(dataServiceMock.getMegaMekAvailabilityRecordForUnit).not.toHaveBeenCalled();
-    });
-
-    it('exposes MegaMek weights when the MegaMek availability option is selected', () => {
-        const era = {
-            id: 3150,
-            name: 'ilClan',
-            units: new Set<number>(),
-            years: { from: 3151 },
-        } as Era;
-        const faction = {
-            id: 99,
-            name: 'Test Faction',
-            group: 'Other',
-            img: '',
-            eras: {},
-        } as Faction;
-        const unit = { id: 1, name: 'Atlas', type: 'Mek', chassis: 'Atlas', model: 'AS7-D' } as Unit;
-
-        optionsServiceMock.options.set({ availabilitySource: 'megamek' });
-        megaMekAvailabilityByUnitName.set(unit.name, {
-            n: unit.name,
-            e: {
-                '3150': {
-                    '99': [7, 0],
-                },
-            },
-        });
-        megaMekAvailabilityRecords.push(megaMekAvailabilityByUnitName.get(unit.name)!);
-
-        expect(service.getUnitAvailabilityWeight(unit, faction, era)).toBe(7);
-        expect(dataServiceMock.getMegaMekAvailabilityRecordForUnit).toHaveBeenCalledWith(unit);
-    });
-
     it('supports MegaMek availability overrides without changing the global option', () => {
         const era = {
             id: 3150,
@@ -182,7 +133,6 @@ describe('UnitAvailabilitySourceService', () => {
         expect(service.getFactionEraUnitIds(faction, era).size).toBe(0);
         expect(service.getFactionEraUnitIds(faction, era, 'megamek').has(unit.name)).toBeTrue();
         expect(service.getUnitAvailabilityKey(unit, 'megamek')).toBe(unit.name);
-        expect(service.getUnitAvailabilityWeight(unit, faction, era, 'megamek')).toBe(7);
         expect(optionsServiceMock.options().availabilitySource).toBe('mul');
     });
 
@@ -209,7 +159,6 @@ describe('UnitAvailabilitySourceService', () => {
 
         expect(Array.from(service.getFactionEraUnitIds(faction, era, 'mul'))).toEqual(['1']);
         expect(service.getUnitAvailabilityKey(unit, 'mul')).toBe('1');
-        expect(service.getUnitAvailabilityWeight(unit, faction, era, 'mul')).toBeNull();
         expect(service.useMegaMekAvailability('mul')).toBeFalse();
         expect(service.useMegaMekAvailability()).toBeTrue();
     });
@@ -243,41 +192,6 @@ describe('UnitAvailabilitySourceService', () => {
 
         expect(Array.from(service.getFactionEraUnitIds(faction, era, 'mul'))).toEqual(['1']);
         expect(Array.from(service.getFactionUnitIds(faction, new Set([otherEra.id]), 'mul'))).toEqual(['3']);
-    });
-
-    it('returns MegaMek per-source details even when MUL availability is selected and omits zero scores', () => {
-        const era = {
-            id: 3150,
-            name: 'ilClan',
-            units: new Set<number>(),
-            years: { from: 3151 },
-        } as Era;
-        const faction = {
-            id: 99,
-            name: 'Test Faction',
-            group: 'Other',
-            img: '',
-            eras: {},
-        } as Faction;
-        const unit = { id: 1, name: 'Atlas', type: 'Mek', chassis: 'Atlas', model: 'AS7-D' } as Unit;
-
-        megaMekAvailabilityByUnitName.set(unit.name, {
-            n: unit.name,
-            e: {
-                '3150': {
-                    '99': [7, 0],
-                },
-            },
-        });
-        megaMekAvailabilityRecords.push(megaMekAvailabilityByUnitName.get(unit.name)!);
-
-        expect(service.getMegaMekAvailabilityDetails(unit, faction, era)).toEqual([
-            {
-                source: 'Production',
-                score: 7,
-                rarity: 'Common',
-            },
-        ]);
     });
 
     it('returns the highest scoped MegaMek score and marks missing data as unknown', () => {
@@ -365,7 +279,6 @@ describe('UnitAvailabilitySourceService', () => {
 
         expect(service.getVisibleEraUnitIds(era).has(unit.name)).toBeTrue();
         expect(service.getFactionEraUnitIds(faction, era).has(unit.name)).toBeTrue();
-        expect(service.getUnitAvailabilityWeight(unit, faction, era)).toBe(3);
     });
 
     it('builds MegaMek extinct availability from sorted era order instead of numeric era ids', () => {

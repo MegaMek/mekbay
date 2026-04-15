@@ -43,6 +43,7 @@ describe('ForceGeneratorService', () => {
 
     const dataServiceMock = {
         searchCorpusVersion: signal(1),
+        megaMekAvailabilityVersion: signal(0),
         getUnits: jasmine.createSpy('getUnits').and.callFake(() => units),
         getEras: jasmine.createSpy('getEras').and.callFake(() => [...erasById.values()]),
         getEraById: jasmine.createSpy('getEraById').and.callFake((id: number) => erasById.get(id)),
@@ -210,6 +211,7 @@ describe('ForceGeneratorService', () => {
         megaMekFactionsByKey.clear();
         units.length = 0;
         dataServiceMock.searchCorpusVersion.set(1);
+        dataServiceMock.megaMekAvailabilityVersion.set(0);
         optionsServiceMock.options.set({ availabilitySource: 'megamek' });
 
         filtersServiceMock.filteredUnits.set([]);

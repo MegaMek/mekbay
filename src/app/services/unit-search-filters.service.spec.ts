@@ -1449,6 +1449,264 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Available Unit', 'Missing Data Unit']);
     });
 
+    it('filters MegaMek units by Available From from the UI', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Production Unit';
+        bundle.units.units[0].chassis = 'Production Unit';
+        bundle.units.units[0].model = 'PROD-1';
+        bundle.units.units[1].name = 'Salvage Unit';
+        bundle.units.units[1].chassis = 'Salvage Unit';
+        bundle.units.units[1].model = 'SALV-1';
+        bundle.eras.eras[0].units = [1, 2];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
+
+        const { dataService, service, optionsServiceStub } = createService(bundle);
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'Production Unit',
+                e: {
+                    '1': {
+                        '1': [5, 0],
+                    },
+                },
+            },
+            {
+                n: 'Salvage Unit',
+                e: {
+                    '1': {
+                        '1': [0, 3],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+
+        service.setFilter('availabilityFrom', ['Production']);
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Production Unit']);
+
+        service.setFilter('availabilityFrom', ['Salvage']);
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Salvage Unit']);
+    });
+
+    it('filters MegaMek units by semantic rarity queries', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Very Rare Unit';
+        bundle.units.units[0].chassis = 'Very Rare Unit';
+        bundle.units.units[0].model = 'VR-1';
+        bundle.units.units[1].name = 'Common Unit';
+        bundle.units.units[1].chassis = 'Common Unit';
+        bundle.units.units[1].model = 'COM-1';
+        bundle.eras.eras[0].units = [1, 2];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
+
+        const { dataService, service, optionsServiceStub } = createService(bundle);
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'Very Rare Unit',
+                e: {
+                    '1': {
+                        '1': [1, 0],
+                    },
+                },
+            },
+            {
+                n: 'Common Unit',
+                e: {
+                    '1': {
+                        '1': [7, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+
+        service.searchText.set('rarity="very rare"');
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Very Rare Unit']);
+    });
+
+    it('filters MegaMek units by semantic rarity queries while the worker is active', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Very Common Crab';
+        bundle.units.units[0].chassis = 'Very Common Crab';
+        bundle.units.units[0].model = 'VCC-1';
+        bundle.units.units[1].name = 'Unknown Crab';
+        bundle.units.units[1].chassis = 'Unknown Crab';
+        bundle.units.units[1].model = 'UNC-1';
+        bundle.eras.eras[0].units = [1, 2];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
+
+        const { dataService, service, optionsServiceStub } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'Very Common Crab',
+                e: {
+                    '1': {
+                        '1': [9, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        await flushAsyncWork();
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+        service.searchText.set('crab rarity="very common"');
+        service.filteredUnits();
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        (service as any).searchWorkerClient.submit(snapshot, request);
+
+        const initMessage = worker.messages.at(-1) as any;
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+
+        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        worker.emit({
+            type: 'result',
+            revision: executeMessage.request.revision,
+            corpusVersion: executeMessage.request.corpusVersion,
+            telemetryQuery: executeMessage.request.telemetryQuery,
+            unitNames: ['Very Common Crab', 'Unknown Crab'],
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Very Common Crab']);
+    });
+
+    it('filters MegaMek units by semantic Unknown rarity queries while the worker is active', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Known Crab';
+        bundle.units.units[0].chassis = 'Known Crab';
+        bundle.units.units[0].model = 'KNC-1';
+        bundle.units.units[1].name = 'Unknown Crab';
+        bundle.units.units[1].chassis = 'Unknown Crab';
+        bundle.units.units[1].model = 'UNC-1';
+        bundle.eras.eras[0].units = [1, 2];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
+
+        const { dataService, service, optionsServiceStub } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'Known Crab',
+                e: {
+                    '1': {
+                        '1': [9, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        await flushAsyncWork();
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+        service.searchText.set('crab rarity="unknown"');
+        service.filteredUnits();
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        (service as any).searchWorkerClient.submit(snapshot, request);
+
+        const initMessage = worker.messages.at(-1) as any;
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+
+        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        worker.emit({
+            type: 'result',
+            revision: executeMessage.request.revision,
+            corpusVersion: executeMessage.request.corpusVersion,
+            telemetryQuery: executeMessage.request.telemetryQuery,
+            unitNames: ['Known Crab', 'Unknown Crab'],
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Unknown Crab']);
+    });
+
+    it('filters MegaMek units by Unknown rarity from the UI', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Known Unit';
+        bundle.units.units[0].chassis = 'Known Unit';
+        bundle.units.units[0].model = 'KNO-1';
+        bundle.units.units[1].name = 'Unknown Unit';
+        bundle.units.units[1].chassis = 'Unknown Unit';
+        bundle.units.units[1].model = 'UNK-1';
+        bundle.eras.eras[0].units = [1, 2];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
+
+        const { dataService, service, optionsServiceStub } = createService(bundle);
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'Known Unit',
+                e: {
+                    '1': {
+                        '1': [9, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+
+        service.setFilter('availabilityRarity', ['Unknown']);
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Unknown Unit']);
+    });
+
     it('sorts by MegaMek rarity even when MUL availability is selected', () => {
         const bundle = createStandaloneBundle();
         const lowUnit = bundle.units.units[0];
@@ -1773,7 +2031,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Boomerang']);
     });
 
-    it('keeps the worker active in MegaMek mode and sends MegaMek availability data to the worker', async () => {
+    it('keeps the worker active in MegaMek mode while applying MegaMek availability filters after worker search', async () => {
         const worker = new FakeSearchWorker();
         const bundle = benchmarkBundle && benchmarkBundle.units.units.length >= 2
             ? buildSmallBundle(benchmarkBundle)
@@ -1806,7 +2064,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             availabilitySource: 'megamek',
         });
         service.setFilter('availabilityFrom', ['Production']);
-        service.searchText.set('Test Mek');
+        service.searchText.set('Test');
         service.filteredUnits();
 
         expect((service as any).workerSearchActive()).toBeTrue();
@@ -1816,28 +2074,23 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
         const request = (service as any).buildWorkerSearchRequest(corpusVersion);
 
-        expect(snapshot.megaMekAvailability).toBeTruthy();
-        expect(request.availabilitySource).toBe('megamek');
-
         (service as any).searchWorkerClient.submit(snapshot, request);
 
         const initMessage = worker.messages.at(-1) as any;
-        expect(initMessage?.snapshot?.megaMekAvailability).toBeTruthy();
 
         worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
         await flushAsyncWork();
 
         const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
         expect(executeMessage).toBeTruthy();
-        expect(executeMessage.request.availabilitySource).toBe('megamek');
-        expect(executeMessage.request.executionQuery).toContain('from=Production');
+        expect(executeMessage.request.executionQuery).not.toContain('from=Production');
 
         worker.emit({
             type: 'result',
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            unitNames: [bundle.units.units[0].name],
+            unitNames: bundle.units.units.map((unit) => unit.name),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -1846,6 +2099,338 @@ describe('UnitSearchFiltersService search telemetry', () => {
         await flushAsyncWork();
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
+    });
+
+    it('keeps MegaMek-backed availability filters on the main thread while MUL worker search stays active', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Rare Salvage Crab';
+        bundle.units.units[0].chassis = 'Rare Salvage Crab';
+        bundle.units.units[0].model = 'RSC-1';
+        bundle.units.units[1].name = 'Common Production Crab';
+        bundle.units.units[1].chassis = 'Common Production Crab';
+        bundle.units.units[1].model = 'CPC-1';
+        bundle.eras.eras[0].units = [1, 2];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
+
+        const { dataService, service } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'Rare Salvage Crab',
+                e: {
+                    '1': {
+                        '1': [0, 4],
+                    },
+                },
+            },
+            {
+                n: 'Common Production Crab',
+                e: {
+                    '1': {
+                        '1': [7, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        await flushAsyncWork();
+
+        service.setFilter('availabilityFrom', ['Salvage']);
+        service.setFilter('availabilityRarity', ['Rare']);
+        service.searchText.set('Crab');
+        service.filteredUnits();
+
+        expect((service as any).workerSearchActive()).toBeTrue();
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        expect(request.executionQuery.toLowerCase()).not.toContain('from');
+        expect(request.executionQuery.toLowerCase()).not.toContain('rarity');
+
+        (service as any).searchWorkerClient.submit(snapshot, request);
+
+        const initMessage = worker.messages.at(-1) as any;
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+
+        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        expect(executeMessage.request.executionQuery.toLowerCase()).not.toContain('from');
+        expect(executeMessage.request.executionQuery.toLowerCase()).not.toContain('rarity');
+
+        worker.emit({
+            type: 'result',
+            revision: executeMessage.request.revision,
+            corpusVersion: executeMessage.request.corpusVersion,
+            telemetryQuery: executeMessage.request.telemetryQuery,
+            unitNames: ['Rare Salvage Crab', 'Common Production Crab'],
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Rare Salvage Crab']);
+    });
+
+    it('filters MUL semantic rarity queries after worker results', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Very Common Crab';
+        bundle.units.units[0].chassis = 'Very Common Crab';
+        bundle.units.units[0].model = 'VCC-1';
+        bundle.units.units[1].name = 'Unknown Crab';
+        bundle.units.units[1].chassis = 'Unknown Crab';
+        bundle.units.units[1].model = 'UNC-1';
+        bundle.eras.eras[0].units = [1, 2];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
+
+        const { dataService, service } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'Very Common Crab',
+                e: {
+                    '1': {
+                        '1': [9, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        await flushAsyncWork();
+
+        service.searchText.set('crab rarity="very common"');
+        service.filteredUnits();
+
+        expect((service as any).workerSearchActive()).toBeTrue();
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        expect(request.executionQuery.toLowerCase()).not.toContain('rarity');
+
+        (service as any).searchWorkerClient.submit(snapshot, request);
+
+        const initMessage = worker.messages.at(-1) as any;
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+
+        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        expect(executeMessage.request.executionQuery.toLowerCase()).not.toContain('rarity');
+
+        worker.emit({
+            type: 'result',
+            revision: executeMessage.request.revision,
+            corpusVersion: executeMessage.request.corpusVersion,
+            telemetryQuery: executeMessage.request.telemetryQuery,
+            unitNames: ['Very Common Crab', 'Unknown Crab'],
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Very Common Crab']);
+    });
+
+    it('uses sync fallback results while MegaMek availability worker filters are pending', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Rare Salvage Crab';
+        bundle.units.units[0].chassis = 'Rare Salvage Crab';
+        bundle.units.units[0].model = 'RSC-1';
+        bundle.units.units[1].name = 'Common Salvage Crab';
+        bundle.units.units[1].chassis = 'Common Salvage Crab';
+        bundle.units.units[1].model = 'CSC-1';
+        bundle.eras.eras[0].units = [1, 2];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
+
+        const { dataService, service, optionsServiceStub } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'Rare Salvage Crab',
+                e: {
+                    '1': {
+                        '1': [0, 4],
+                    },
+                },
+            },
+            {
+                n: 'Common Salvage Crab',
+                e: {
+                    '1': {
+                        '1': [0, 7],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        await flushAsyncWork();
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+        service.setFilter('availabilityFrom', ['Salvage']);
+        service.setFilter('availabilityRarity', ['Rare']);
+        service.searchText.set('Crab');
+        await flushAsyncWork();
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        (service as any).workerRequestRevision.set(request.revision);
+        (service as any).searchWorkerClient.submit(snapshot, request);
+
+        expect((service as any).workerSearchActive()).toBeTrue();
+        expect(service.isSearchSettled()).toBeFalse();
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Rare Salvage Crab']);
+        expect(service.forceGeneratorEligibleUnits().map((unit) => unit.name)).toEqual(['Rare Salvage Crab']);
+    });
+
+    it('filters Unknown rarity on the main thread after worker results', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Known Unit';
+        bundle.units.units[0].chassis = 'Known Unit';
+        bundle.units.units[0].model = 'KNO-1';
+        bundle.units.units[1].name = 'Unknown Unit';
+        bundle.units.units[1].chassis = 'Unknown Unit';
+        bundle.units.units[1].model = 'UNK-1';
+        bundle.eras.eras[0].units = [1, 2];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
+
+        const { dataService, service, optionsServiceStub } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'Known Unit',
+                e: {
+                    '1': {
+                        '1': [9, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        await flushAsyncWork();
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+        service.setFilter('availabilityRarity', ['Unknown']);
+        service.searchText.set('Unit');
+        service.filteredUnits();
+
+        expect((service as any).workerSearchActive()).toBeTrue();
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        (service as any).searchWorkerClient.submit(snapshot, request);
+
+        const initMessage = worker.messages.at(-1) as any;
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+
+        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        worker.emit({
+            type: 'result',
+            revision: executeMessage.request.revision,
+            corpusVersion: executeMessage.request.corpusVersion,
+            telemetryQuery: executeMessage.request.telemetryQuery,
+            unitNames: ['Known Unit', 'Unknown Unit'],
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Unknown Unit']);
+    });
+
+    it('falls back to sync execution for complex MegaMek semantic queries', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        const { service, optionsServiceStub } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+
+        await flushAsyncWork();
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+        service.searchText.set('Test OR from=Production');
+        service.filteredUnits();
+
+        expect((service as any).workerSearchActive()).toBeFalse();
+    });
+
+    it('falls back to sync execution for complex MUL semantic availability queries', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Very Common Crab';
+        bundle.units.units[0].chassis = 'Very Common Crab';
+        bundle.units.units[0].model = 'VCC-1';
+        bundle.units.units[1].name = 'Unknown Crab';
+        bundle.units.units[1].chassis = 'Unknown Crab';
+        bundle.units.units[1].model = 'UNC-1';
+        bundle.eras.eras[0].units = [1, 2];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
+
+        const { dataService, service } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'Very Common Crab',
+                e: {
+                    '1': {
+                        '1': [9, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        await flushAsyncWork();
+
+        service.searchText.set('NoMatch OR rarity="very common"');
+        service.filteredUnits();
+
+        expect((service as any).workerSearchActive()).toBeFalse();
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Very Common Crab']);
     });
 
     it('re-sorts worker results by MegaMek rarity on the main thread', async () => {
@@ -1913,7 +2498,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         await flushAsyncWork();
 
         const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
-        expect(executeMessage?.request.sortKey).toBe(MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
+        expect(executeMessage?.request.sortKey).toBe('');
 
         worker.emit({
             type: 'result',
@@ -2436,6 +3021,30 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         expect(request.executionQuery).toContain('era="Succession Wars"');
         expect(request.executionQuery).toContain('era&=Jihad');
+    });
+
+    it('keeps MUL era and faction filters in worker execution queries while stripping availability filters', () => {
+        const bundle = createStandaloneBundle();
+
+        const { service } = createService(bundle);
+
+        service.setFilter('era', ['Succession Wars']);
+        service.setFilter('faction', {
+            'Test Faction': {
+                name: 'Test Faction',
+                state: 'or',
+                count: 1,
+            },
+        });
+        service.setFilter('availabilityFrom', ['Production']);
+        service.setFilter('availabilityRarity', ['Common']);
+
+        const request = (service as any).buildWorkerSearchRequest((service as any).getWorkerCorpusVersion());
+
+        expect(request.executionQuery).toContain('era="Succession Wars"');
+        expect(request.executionQuery).toContain('faction="Test Faction"');
+        expect(request.executionQuery.toLowerCase()).not.toContain('from');
+        expect(request.executionQuery.toLowerCase()).not.toContain('rarity');
     });
 
     it('canonicalizes semantic dropdown values to existing option casing', () => {

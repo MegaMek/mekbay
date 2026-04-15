@@ -278,6 +278,32 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
         }));
     });
 
+    it('uses Augmented Lance metadata to ignore solver-supplied transported units', () => {
+        const faction = createFaction('Capellan Confederation', 'Inner Sphere');
+        const bmUnits = Array.from({ length: 4 }, (_, index) => createUnit(index + 1, `BM-${index + 1}`, 'Mek', 'BattleMek', 'BM'));
+        const baUnits = Array.from({ length: 2 }, (_, index) => createUnit(index + 201, `BA-${index + 1}`, 'Infantry', 'Battle Armor', 'BA'));
+        const group = createTestGroup(
+            [...bmUnits, ...baUnits],
+            [createResolvedGroup({
+                name: 'Augmented Lance',
+                type: 'Augmented Lance',
+                countsAsType: 'Lance',
+                tier: 1.05,
+                units: [...bmUnits, ...baUnits],
+                formationMatchingIgnoredUnits: baUnits,
+            })],
+            faction,
+        );
+
+        const match = LanceTypeIdentifierUtil.isFormationValidForGroup(bmOnlyLanceFormation, group);
+
+        expect(match).toEqual(jasmine.objectContaining({
+            definition: bmOnlyLanceFormation,
+            requirementsFiltered: true,
+            requirementsFilterNotice: 'Transported units are ignored for formation requirements.',
+        }));
+    });
+
     it('does not apply requirement filtering when the group resolves to multiple top-level organizations', () => {
         const faction = createFaction('Clan Test', 'HW Clan');
         const bmUnits = Array.from({ length: 5 }, (_, index) => createUnit(index + 1, `BM-${index + 1}`, 'Mek', 'BattleMek', 'BM'));
