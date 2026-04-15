@@ -233,7 +233,7 @@ describe('UnitAvailabilitySourceService', () => {
         expect(service.getMegaMekAvailabilityScore(missingUnit)).toBe(MEGAMEK_AVAILABILITY_UNKNOWN_SCORE);
     });
 
-    it('classifies MegaMek rarity by the highest scoped score instead of any matching entry', () => {
+    it('matches MegaMek rarity against any selected source when no availability source is scoped', () => {
         const ilClan = {
             id: 3151,
             name: 'ilClan',
@@ -275,7 +275,7 @@ describe('UnitAvailabilitySourceService', () => {
         })).toBeTrue();
         expect(service.unitMatchesAvailabilityRarity(unit, 'Very Rare', {
             eraIds: new Set([ilClan.id]),
-        })).toBeFalse();
+        })).toBeTrue();
 
         expect(service.unitMatchesAvailabilityRarity(unit, 'Very Rare', {
             eraIds: new Set([darkAge.id]),
@@ -307,7 +307,7 @@ describe('UnitAvailabilitySourceService', () => {
         }).has(unit.name)).toBeTrue();
         expect(service.getMegaMekRarityUnitIds('Very Rare', {
             eraIds: new Set([ilClan.id]),
-        }).has(unit.name)).toBeFalse();
+        }).has(unit.name)).toBeTrue();
     });
 
     it('bridges MegaMek scope through MUL faction membership when MUL availability is selected', () => {

@@ -783,13 +783,17 @@ export class UnitAvailabilitySourceService {
             if (availabilityFrom.length === 1) {
                 rarityUnitIds = availabilityBlock.sourceRarityUnitIds[availabilityFrom[0]];
             } else {
-                const combinedPositiveScores = this.getMegaMekCombinedPositiveScoreMap(availabilityBlock, availabilityFrom);
                 const combinedRarityUnitIds = createMegaMekRarityUnitIdSets();
 
-                for (const [unitKey, score] of combinedPositiveScores.entries()) {
-                    const resolvedRarity = getMegaMekAvailabilityRarityForScore(score);
-                    if (resolvedRarity !== MEGAMEK_AVAILABILITY_NOT_AVAILABLE) {
-                        combinedRarityUnitIds.get(resolvedRarity)?.add(unitKey);
+                for (const source of availabilityFrom) {
+                    const sourceRarityUnitIds = availabilityBlock.sourceRarityUnitIds[source];
+                    for (const sourceRarity of MEGAMEK_AVAILABILITY_RARITY_OPTIONS) {
+                        const combinedUnitIds = combinedRarityUnitIds.get(sourceRarity);
+                        if (!combinedUnitIds) {
+                            continue;
+                        }
+
+                        addUnitKeys(combinedUnitIds, sourceRarityUnitIds.get(sourceRarity));
                     }
                 }
 

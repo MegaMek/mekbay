@@ -1212,7 +1212,7 @@ export class UnitSearchFiltersService {
                 continue;
             }
 
-            const maxScoreByOptionId = new Map<number, number>();
+            const maxScoresByOptionId = new Map<number, Record<MegaMekAvailabilityFrom, number>>();
 
             for (const eraIdText in availabilityRecord.e) {
                 const eraId = Number(eraIdText);
@@ -1233,31 +1233,45 @@ export class UnitSearchFiltersService {
 
                     const candidateId = target === 'faction' ? factionId : eraId;
                     const value = eraAvailability[factionIdText];
-                    let maxScore = maxScoreByOptionId.get(candidateId) ?? 0;
+                    let maxScores = maxScoresByOptionId.get(candidateId);
+                    if (!maxScores) {
+                        maxScores = {
+                            Production: 0,
+                            Salvage: 0,
+                        };
+                        maxScoresByOptionId.set(candidateId, maxScores);
+                    }
 
                     for (const source of activeSources) {
                         const score = getMegaMekAvailabilityValueForSource(value, source);
-                        if (score > maxScore) {
-                            maxScore = score;
+                        if (score > maxScores[source]) {
+                            maxScores[source] = score;
                         }
-                    }
-
-                    if (maxScore > 0) {
-                        maxScoreByOptionId.set(candidateId, maxScore);
                     }
                 }
             }
 
             if (!selectedRarities) {
-                for (const optionId of maxScoreByOptionId.keys()) {
-                    availableIds.add(optionId);
+                for (const [optionId, maxScores] of maxScoresByOptionId.entries()) {
+                    if (activeSources.some((source) => maxScores[source] > 0)) {
+                        availableIds.add(optionId);
+                    }
                 }
                 continue;
             }
 
-            for (const [optionId, maxScore] of maxScoreByOptionId.entries()) {
-                const rarity = getMegaMekAvailabilityRarityForScore(maxScore);
-                if (rarity !== MEGAMEK_AVAILABILITY_NOT_AVAILABLE && selectedRarities.has(rarity)) {
+            for (const [optionId, maxScores] of maxScoresByOptionId.entries()) {
+                const matchesSelectedRarity = activeSources.some((source) => {
+                    const maxScore = maxScores[source];
+                    if (maxScore <= 0) {
+                        return false;
+                    }
+
+                    const rarity = getMegaMekAvailabilityRarityForScore(maxScore);
+                    return rarity !== MEGAMEK_AVAILABILITY_NOT_AVAILABLE && selectedRarities.has(rarity);
+                });
+
+                if (matchesSelectedRarity) {
                     availableIds.add(optionId);
                 }
             }

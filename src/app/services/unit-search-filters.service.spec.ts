@@ -1470,7 +1470,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         let namedRarityOptions = rarityOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
 
         expect(namedRarityOptions.find((option) => option.name === 'Common')).toEqual(jasmine.objectContaining({ available: true }));
-        expect(namedRarityOptions.find((option) => option.name === 'Very Rare')).toEqual(jasmine.objectContaining({ available: false }));
+        expect(namedRarityOptions.find((option) => option.name === 'Very Rare')).toEqual(jasmine.objectContaining({ available: true }));
 
         service.setFilter('availabilityFrom', ['Salvage']);
 
@@ -1497,7 +1497,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(namedRarityOptions.find((option) => option.name === 'Very Rare')).toEqual(jasmine.objectContaining({ available: true }));
     });
 
-    it('filters MegaMek units by the highest rarity within the selected era, faction, and source', () => {
+    it('filters MegaMek units by any matching source rarity when no availability source is selected', () => {
         const bundle = createStandaloneBundle();
         bundle.units.units[0].name = 'BattleMaster C3';
         bundle.units.units[0].chassis = 'BattleMaster';
@@ -1590,7 +1590,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         service.setFilter('availabilityRarity', ['Very Rare']);
 
-        expect(service.filteredUnits().map((unit) => unit.name)).toEqual([]);
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
 
         service.setFilter('availabilityFrom', ['Salvage']);
 
