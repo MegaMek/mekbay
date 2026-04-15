@@ -1330,61 +1330,12 @@ export class UnitSearchFiltersService {
         selectedEraIds?: ReadonlySet<number>,
         selectedFactionIds?: ReadonlySet<number>,
     ): ReadonlySet<number> {
-        const availableIds = new Set<number>();
-        const allFactions = this.dataService.getFactions();
-
-        for (const unit of contextUnits) {
-            const availabilityRecord = this.dataService.getMegaMekAvailabilityRecordForUnit(unit);
-            const scopedEntryKeys = new Set<string>();
-
-            if (availabilityRecord) {
-                for (const [eraIdText, eraAvailability] of Object.entries(availabilityRecord.e)) {
-                    const eraId = Number(eraIdText);
-                    if (Number.isNaN(eraId)) {
-                        continue;
-                    }
-
-                    for (const factionIdText of Object.keys(eraAvailability)) {
-                        const factionId = Number(factionIdText);
-                        if (!Number.isNaN(factionId)) {
-                            scopedEntryKeys.add(`${eraId}:${factionId}`);
-                        }
-                    }
-                }
-            }
-
-            for (const faction of allFactions) {
-                if (faction.id === MULFACTION_EXTINCT) {
-                    continue;
-                }
-
-                if (selectedFactionIds && !selectedFactionIds.has(faction.id)) {
-                    continue;
-                }
-
-                for (const [eraIdText, membership] of Object.entries(faction.eras) as Array<[string, Set<number> | number[]]>) {
-                    const eraId = Number(eraIdText);
-                    if (Number.isNaN(eraId) || (selectedEraIds && !selectedEraIds.has(eraId))) {
-                        continue;
-                    }
-
-                    if (!this.membershipContainsUnitId(membership, unit.id)) {
-                        continue;
-                    }
-
-                    if (scopedEntryKeys.has(`${eraId}:${faction.id}`)) {
-                        continue;
-                    }
-
-                    availableIds.add(target === 'era' ? eraId : faction.id);
-                    if (target === 'faction') {
-                        break;
-                    }
-                }
-            }
-        }
-
-        return availableIds;
+        return this.unitAvailabilitySource.collectFastMulUnknownOptionIds(
+            contextUnits,
+            target,
+            selectedEraIds,
+            selectedFactionIds,
+        );
     }
 
     private resolveAvailabilityScopeIds(

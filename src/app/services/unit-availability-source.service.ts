@@ -436,6 +436,48 @@ export class UnitAvailabilitySourceService {
         return context;
     }
 
+    public collectFastMulUnknownOptionIds(
+        contextUnits: readonly Pick<Unit, 'id' | 'name'>[],
+        target: 'era' | 'faction',
+        selectedEraIds?: ReadonlySet<number>,
+        selectedFactionIds?: ReadonlySet<number>,
+    ): ReadonlySet<number> {
+        this.ensureMulCacheVersion();
+        this.ensureMegaMekIndexes();
+
+        const availableIds = new Set<number>();
+        const maxAvailableIds = target === 'era'
+            ? selectedEraIds?.size ?? this.dataService.getEras().length
+            : selectedFactionIds?.size
+                ?? this.dataService.getFactions().filter((faction) => faction.id !== MULFACTION_EXTINCT).length;
+
+        for (const unit of contextUnits) {
+            const availabilityEntriesByEra = this.dataService.getMegaMekAvailabilityRecordForUnit(unit)?.e;
+
+            for (const membershipPair of this.getMulMembershipPairsByUnitId(unit.id)) {
+                if (selectedEraIds && !selectedEraIds.has(membershipPair.eraId)) {
+                    continue;
+                }
+
+                if (selectedFactionIds && !selectedFactionIds.has(membershipPair.factionId)) {
+                    continue;
+                }
+
+                const eraAvailability = availabilityEntriesByEra?.[membershipPair.eraId];
+                if (eraAvailability?.[membershipPair.factionId] !== undefined) {
+                    continue;
+                }
+
+                availableIds.add(target === 'era' ? membershipPair.eraId : membershipPair.factionId);
+                if (availableIds.size === maxAvailableIds) {
+                    return availableIds;
+                }
+            }
+        }
+
+        return availableIds;
+    }
+
     public useMegaMekAvailability(availabilitySource?: AvailabilitySource): boolean {
         return (availabilitySource ?? this.optionsService.options().availabilitySource) === 'megamek';
     }
