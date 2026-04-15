@@ -308,6 +308,7 @@ describe('LoadForceRadarPanelComponent', () => {
         fixture.detectChanges();
 
         const dptAxis = fixture.componentInstance.chartAxes().find((axis) => axis.key === 'dpt');
+        const midpointRing = fixture.nativeElement.querySelector('.radar-ring-midpoint') as SVGPolygonElement | null;
 
         expect(dptAxis).toEqual(jasmine.objectContaining({
             value: 14,
@@ -316,6 +317,8 @@ describe('LoadForceRadarPanelComponent', () => {
             max: 30,
         }));
         expect(dptAxis?.ratio).toBeCloseTo(0.5, 6);
+        expect(midpointRing).not.toBeNull();
+        expect(fixture.nativeElement.querySelectorAll('.radar-ring-midpoint').length).toBe(1);
     });
 
     it('overlays hovered classic unit stats using that unit subtype range', () => {

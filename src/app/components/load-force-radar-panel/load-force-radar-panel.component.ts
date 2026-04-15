@@ -62,6 +62,11 @@ interface RadarPoint {
     y: number;
 }
 
+interface RadarRing {
+    factor: number;
+    points: string;
+}
+
 interface RadarAxisDefinition {
     key: RadarStatKey;
     label: string;
@@ -386,8 +391,11 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
                     preserveAspectRatio="xMidYMid meet"
                     role="img">
 
-                    @for (ringPoints of gridPolygonPoints(); track $index) {
-                        <polygon class="radar-ring" [attr.points]="ringPoints"></polygon>
+                    @for (ring of gridRings(); track ring.factor) {
+                        <polygon
+                            class="radar-ring"
+                            [class.radar-ring-midpoint]="ring.factor === 0.5"
+                            [attr.points]="ring.points"></polygon>
                     }
 
                     @for (axis of axes; track axis.key) {
@@ -478,6 +486,12 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
             fill: none;
             stroke: rgba(255, 255, 255, 0.14);
             stroke-width: 1;
+        }
+
+        .radar-ring-midpoint {
+            stroke: rgba(255, 255, 255, 0.18);
+            stroke-width: 1.5;
+            stroke-dasharray: 6 4;
         }
 
         .radar-axis {
@@ -632,11 +646,14 @@ export class LoadForceRadarPanelComponent {
         return new Map(this.hoveredUnitAxes().map((axis) => [axis.key, axis] as const));
     });
 
-    readonly gridPolygonPoints = computed(() => {
+    readonly gridRings = computed<RadarRing[]>(() => {
         const axisDefinitions = this.axisDefinitions();
-        return RADAR_RING_FACTORS.map((factor) => toPointString(
-            axisDefinitions.map((_, index) => toPoint(getAngle(index, axisDefinitions.length), RADAR_RADIUS * factor)),
-        ));
+        return RADAR_RING_FACTORS.map((factor) => ({
+            factor,
+            points: toPointString(
+                axisDefinitions.map((_, index) => toPoint(getAngle(index, axisDefinitions.length), RADAR_RADIUS * factor)),
+            ),
+        }));
     });
 
     readonly valuePolygonPoints = computed(() => {
