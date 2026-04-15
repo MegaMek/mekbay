@@ -1,5 +1,5 @@
 import { GameSystem } from '../models/common.model';
-import { filterUnitsWithAST, parseSemanticQueryAST } from './semantic-filter-ast.util';
+import { filterUnitsWithAST, parseSemanticQueryAST, tokenizeForHighlight } from './semantic-filter-ast.util';
 import { matchesSearch, parseSearchQuery } from './search.util';
 
 function getUnitId(unit: { id?: string | number; name?: string }): string {
@@ -542,6 +542,33 @@ describe('semantic filter exclusivity', () => {
             'RPAREN',
             'EOF',
         ]);
+    });
+
+    it('keeps apostrophes inside plain text words while parsing following semantic filters', () => {
+        const input = "Ti Ts'ang type=Mek";
+        const result = parseSemanticQueryAST(input, GameSystem.CLASSIC, true);
+        const highlightTokens = tokenizeForHighlight(input, GameSystem.CLASSIC);
+
+        expect(result.errors).toEqual([]);
+        expect(result.textSearch).toBe("Ti Ts'ang");
+        expect(result.tokens).toEqual([
+            jasmine.objectContaining({
+                field: 'type',
+                operator: '=',
+                values: ['Mek'],
+                rawText: 'type=Mek',
+            }),
+        ]);
+        expect(result.lexTokens.map(token => ({ type: token.type, value: token.value }))).toEqual([
+            { type: 'TEXT', value: 'Ti' },
+            { type: 'TEXT', value: "Ts'ang" },
+            { type: 'FILTER', value: 'type=Mek' },
+            { type: 'EOF', value: '' },
+        ]);
+        expect(highlightTokens.some(token => token.type === 'error')).toBeFalse();
+        expect(highlightTokens).toContain(jasmine.objectContaining({ type: 'key', value: 'type' }));
+        expect(highlightTokens).toContain(jasmine.objectContaining({ type: 'operator', value: '=' }));
+        expect(highlightTokens).toContain(jasmine.objectContaining({ type: 'value', value: 'Mek' }));
     });
 
     it('keeps quoted Alpha Strike specials intact for plain text matching', () => {

@@ -68,6 +68,12 @@ interface BuildWorkerSearchRequestArgs {
     pilotPilotingSkill: number;
 }
 
+const SEMANTIC_TEXT_ESCAPE_PATTERN = /([()=><!"'&\\])/g;
+
+function escapePlainTextForWorkerExecutionQuery(text: string): string {
+    return text.replace(SEMANTIC_TEXT_ESCAPE_PATTERN, '\\$1');
+}
+
 export function getWorkerCorpusVersion(searchCorpusVersion: string | number, tagsVersion: number): string {
     return `${searchCorpusVersion}:${tagsVersion}`;
 }
@@ -107,7 +113,7 @@ export function buildWorkerExecutionQuery({
 }: BuildWorkerExecutionQueryArgs): string {
     return filterStateToSemanticText(
         effectiveFilterState,
-        effectiveTextSearch,
+        escapePlainTextForWorkerExecutionQuery(effectiveTextSearch),
         gameSystem,
         totalRangesCache,
     ).trim();

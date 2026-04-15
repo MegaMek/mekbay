@@ -160,6 +160,23 @@ export function getSelectedPositiveDropdownNames(value: unknown): string[] {
     ));
 }
 
+function isAlphaNumericChar(char: string | undefined): boolean {
+    if (!char) {
+        return false;
+    }
+
+    const code = char.charCodeAt(0);
+    return (code >= 48 && code <= 57)
+        || (code >= 65 && code <= 90)
+        || (code >= 97 && code <= 122);
+}
+
+export function isEmbeddedApostrophe(text: string, index: number): boolean {
+    return text[index] === '\''
+        && isAlphaNumericChar(text[index - 1])
+        && isAlphaNumericChar(text[index + 1]);
+}
+
 export function hasUnclosedQuote(text: string): boolean {
     let activeQuote: '"' | '\'' | null = null;
 
@@ -171,13 +188,13 @@ export function hasUnclosedQuote(text: string): boolean {
         }
 
         if (activeQuote) {
-            if (char === activeQuote) {
+            if (char === activeQuote && (char !== '\'' || !isEmbeddedApostrophe(text, index))) {
                 activeQuote = null;
             }
             continue;
         }
 
-        if (char === '"' || char === '\'') {
+        if (char === '"' || (char === '\'' && !isEmbeddedApostrophe(text, index))) {
             activeQuote = char;
         }
     }
