@@ -166,7 +166,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "environmental_specialization",
         name: "Environmental Specialization",
-        rulesRef: [{ book: Rulebook.CO, page: 84 }, { book: Rulebook.ASCE, page: 104 }, { book: Rulebook.FMK, page: 86 }, { book: Rulebook.FMD, page: 80 }],
+        rulesRef: [{ book: Rulebook.CO, page: 84 }, { book: Rulebook.ASCE, page: 104 }, { book: Rulebook.FMK, page: 86 }, { book: Rulebook.FMD, page: 80 }, { book: Rulebook.FMMERC, page: 90 }],
         summary: [
             "Designate terrain type or environmental condition before play.",
             "Benefits (Improved Mobility / Combat / Initiative) scale with average skill rating.",
@@ -244,7 +244,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "gun_it",
         name: "Gun It",
-        rulesRef: [{ book: Rulebook.FMD, page: 81 }],
+        rulesRef: [{ book: Rulebook.FMD, page: 81 }, { book: Rulebook.FMMERC, page: 90 }],
         summary: [
             "Units may sprint and attack, but with a +1 TN modifier in addition to the runnong or flank movement modifiers.",
             "Increases Heat Scale by 1 (AS) or doubles the heat of any weapons fired (TW)."
