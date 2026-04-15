@@ -237,7 +237,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.CO, page: 61 }, { book: Rulebook.FMK, page: 87 }],
         requirements: (gameSystem) => {
 			const inf = gameSystem === GameSystem.ALPHA_STRIKE ? ' (CI, BA, or PM)' : '';
-            return `Minimum 3 units. All units must be Infantry ${inf}.`;
+            return `Minimum 3 units. All units must be Infantry${inf}.`;
         },
         validator: (units, gameSystem) => {
             const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
