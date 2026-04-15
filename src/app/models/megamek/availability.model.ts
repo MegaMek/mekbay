@@ -79,9 +79,6 @@ export type MegaMekWeightedEraAvailability = Record<string, MegaMekWeightedAvail
 
 export interface MegaMekWeightedAvailabilityRecord {
     n: string;
-    // t: UnitType;
-    // c: string;
-    // m: string;
     e: Record<string, MegaMekWeightedEraAvailability>;
 }
 
