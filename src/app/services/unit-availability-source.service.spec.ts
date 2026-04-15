@@ -31,7 +31,11 @@ describe('UnitAvailabilitySourceService', () => {
         searchCorpusVersion: signal(1),
         megaMekAvailabilityVersion: signal(0),
         getUnits: jasmine.createSpy('getUnits').and.callFake(() => units),
+        getUnitByName: jasmine.createSpy('getUnitByName').and.callFake((name: string) => {
+            return units.find((unit) => unit.name === name);
+        }),
         getEras: jasmine.createSpy('getEras').and.callFake(() => orderedEras),
+        getFactions: jasmine.createSpy('getFactions').and.callFake(() => Array.from(factionsById.values())),
         getFactionById: jasmine.createSpy('getFactionById').and.callFake((id: number) => factionsById.get(id) ?? null),
         getMegaMekAvailabilityRecordForUnit: jasmine.createSpy('getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
             return megaMekAvailabilityByUnitName.get(unit.name);
@@ -48,7 +52,9 @@ describe('UnitAvailabilitySourceService', () => {
         dataServiceMock.searchCorpusVersion.set(1);
         dataServiceMock.megaMekAvailabilityVersion.set(0);
         dataServiceMock.getUnits.calls.reset();
+        dataServiceMock.getUnitByName.calls.reset();
         dataServiceMock.getEras.calls.reset();
+        dataServiceMock.getFactions.calls.reset();
         dataServiceMock.getFactionById.calls.reset();
         dataServiceMock.getMegaMekAvailabilityRecordForUnit.calls.reset();
         dataServiceMock.getMegaMekAvailabilityRecords.calls.reset();
@@ -225,6 +231,180 @@ describe('UnitAvailabilitySourceService', () => {
             factionIds: new Set([8]),
         })).toBe(0);
         expect(service.getMegaMekAvailabilityScore(missingUnit)).toBe(MEGAMEK_AVAILABILITY_UNKNOWN_SCORE);
+    });
+
+    it('classifies MegaMek rarity by the highest scoped score instead of any matching entry', () => {
+        const ilClan = {
+            id: 3151,
+            name: 'ilClan',
+            units: new Set<number>(),
+            years: { from: 3151 },
+        } as Era;
+        const darkAge = {
+            id: 3131,
+            name: 'Dark Age',
+            units: new Set<number>(),
+            years: { from: 3131, to: 3150 },
+        } as Era;
+        const unit = {
+            id: 3,
+            name: 'BattleMaster C3',
+            type: 'Mek',
+            chassis: 'BattleMaster',
+            model: 'C3',
+        } as Unit;
+
+        orderedEras.push(darkAge, ilClan);
+        units.push(unit);
+        megaMekAvailabilityByUnitName.set(unit.name, {
+            n: unit.name,
+            e: {
+                '3131': {
+                    '1': [2, 2],
+                },
+                '3151': {
+                    '1': [2, 2],
+                    '2': [7, 0],
+                },
+            },
+        });
+        megaMekAvailabilityRecords.push(megaMekAvailabilityByUnitName.get(unit.name)!);
+
+        expect(service.unitMatchesAvailabilityRarity(unit, 'Common', {
+            eraIds: new Set([ilClan.id]),
+        })).toBeTrue();
+        expect(service.unitMatchesAvailabilityRarity(unit, 'Very Rare', {
+            eraIds: new Set([ilClan.id]),
+        })).toBeFalse();
+
+        expect(service.unitMatchesAvailabilityRarity(unit, 'Very Rare', {
+            eraIds: new Set([darkAge.id]),
+        })).toBeTrue();
+        expect(service.unitMatchesAvailabilityRarity(unit, 'Common', {
+            eraIds: new Set([darkAge.id]),
+        })).toBeFalse();
+
+        expect(service.unitMatchesAvailabilityRarity(unit, 'Very Rare', {
+            eraIds: new Set([ilClan.id]),
+            factionIds: new Set([1]),
+        })).toBeTrue();
+        expect(service.unitMatchesAvailabilityRarity(unit, 'Common', {
+            eraIds: new Set([ilClan.id]),
+            factionIds: new Set([2]),
+        })).toBeTrue();
+
+        expect(service.unitMatchesAvailabilityRarity(unit, 'Very Rare', {
+            eraIds: new Set([ilClan.id]),
+            availabilityFrom: new Set(['Salvage']),
+        })).toBeTrue();
+        expect(service.unitMatchesAvailabilityRarity(unit, 'Common', {
+            eraIds: new Set([ilClan.id]),
+            availabilityFrom: new Set(['Salvage']),
+        })).toBeFalse();
+
+        expect(service.getMegaMekRarityUnitIds('Common', {
+            eraIds: new Set([ilClan.id]),
+        }).has(unit.name)).toBeTrue();
+        expect(service.getMegaMekRarityUnitIds('Very Rare', {
+            eraIds: new Set([ilClan.id]),
+        }).has(unit.name)).toBeFalse();
+    });
+
+    it('bridges MegaMek scope through MUL faction membership when MUL availability is selected', () => {
+        const darkAge = {
+            id: 3131,
+            name: 'Dark Age',
+            units: new Set<number>(),
+            years: { from: 3131, to: 3150 },
+        } as Era;
+        const ilClan = {
+            id: 3151,
+            name: 'ilClan',
+            units: new Set<number>(),
+            years: { from: 3151 },
+        } as Era;
+        const unit = {
+            id: 3,
+            name: 'BattleMaster C3',
+            type: 'Mek',
+            chassis: 'BattleMaster',
+            model: 'C3',
+        } as Unit;
+
+        orderedEras.push(darkAge, ilClan);
+        units.push(unit);
+        factionsById.set(40, {
+            id: 40,
+            name: 'Rasalhague Dominion',
+            group: 'IS Clan',
+            img: '',
+            eras: {
+                3131: new Set([unit.id]),
+                3151: new Set([unit.id]),
+            },
+        } as Faction);
+        factionsById.set(82, {
+            id: 82,
+            name: 'Clan Sea Fox',
+            group: 'IS Clan',
+            img: '',
+            eras: {
+                3131: new Set([unit.id]),
+            },
+        } as Faction);
+        factionsById.set(100, {
+            id: 100,
+            name: 'Clan Protectorate',
+            group: 'IS Clan',
+            img: '',
+            eras: {
+                3151: new Set([unit.id]),
+            },
+        } as Faction);
+
+        megaMekAvailabilityByUnitName.set(unit.name, {
+            n: unit.name,
+            e: {
+                '3131': {
+                    '40': [1.7, 0],
+                    '82': [0, 1],
+                    '100': [7.7, 1],
+                },
+                '3151': {
+                    '40': [1.2, 0],
+                    '100': [7.6, 1],
+                },
+            },
+        });
+        megaMekAvailabilityRecords.push(megaMekAvailabilityByUnitName.get(unit.name)!);
+
+        const darkAgeContext = {
+            bridgeThroughMulMembership: true,
+            eraIds: new Set([darkAge.id]),
+        };
+        const ilClanContext = {
+            bridgeThroughMulMembership: true,
+            eraIds: new Set([ilClan.id]),
+        };
+
+        expect(service.getMegaMekAvailabilityScore(unit, {
+            ...darkAgeContext,
+            availabilityFrom: new Set(['Production']),
+        })).toBe(1.7);
+        expect(service.getMegaMekAvailabilityScore(unit, {
+            ...darkAgeContext,
+            availabilityFrom: new Set(['Salvage']),
+        })).toBe(1);
+        expect(service.unitMatchesAvailabilityRarity(unit, 'Common', darkAgeContext)).toBeFalse();
+        expect(service.unitMatchesAvailabilityRarity(unit, 'Very Rare', darkAgeContext)).toBeTrue();
+        expect(service.getMegaMekRarityUnitIds('Common', darkAgeContext).has(unit.name)).toBeFalse();
+        expect(service.getMegaMekRarityUnitIds('Very Rare', darkAgeContext).has(unit.name)).toBeTrue();
+
+        expect(service.getMegaMekAvailabilityScore(unit, {
+            ...ilClanContext,
+            availabilityFrom: new Set(['Production']),
+        })).toBe(7.6);
+        expect(service.unitMatchesAvailabilityRarity(unit, 'Common', ilClanContext)).toBeTrue();
     });
 
     it('does not fall back to MUL era visibility when MegaMek availability has no matching entries', () => {
