@@ -37,6 +37,7 @@ import type { Era } from '../models/eras.model';
 import type { Faction } from '../models/factions.model';
 import {
     type MegaMekAvailabilityFromFilter,
+    MEGAMEK_AVAILABILITY_FILTERS_USE_ALL_SCOPED_OPTIONS,
     MEGAMEK_AVAILABILITY_UNKNOWN_SCORE,
     MEGAMEK_AVAILABILITY_UNKNOWN,
     MEGAMEK_AVAILABILITY_NOT_AVAILABLE,
@@ -72,6 +73,7 @@ export interface MegaMekAvailabilityFilterContext {
     eraIds?: ReadonlySet<number>;
     factionIds?: ReadonlySet<number>;
     availabilityFrom?: ReadonlySet<MegaMekAvailabilityFrom>;
+    availabilityRarities?: ReadonlySet<MegaMekPositiveAvailabilityRarity>;
     bridgeThroughMulMembership?: boolean;
 }
 
@@ -139,6 +141,13 @@ function createMegaMekSourceRarityUnitIdSets(): Record<MegaMekAvailabilityFrom, 
     return {
         Production: createMegaMekRarityUnitIdSets(),
         Salvage: createMegaMekRarityUnitIdSets(),
+    };
+}
+
+function createMegaMekSourceRaritySets(): Record<MegaMekAvailabilityFrom, Set<MegaMekPositiveAvailabilityRarity>> {
+    return {
+        Production: new Set<MegaMekPositiveAvailabilityRarity>(),
+        Salvage: new Set<MegaMekPositiveAvailabilityRarity>(),
     };
 }
 
@@ -274,6 +283,22 @@ export class UnitAvailabilitySourceService {
             return (unit: Pick<Unit, 'name'>): number => this.megaMekKnownUnitIds.has(unit.name)
                 ? 0
                 : MEGAMEK_AVAILABILITY_UNKNOWN_SCORE;
+        }
+
+        if (context?.availabilityRarities && context.availabilityRarities.size > 0) {
+            const scoreCache = this.getOrCreateMegaMekScopedUnitScoreCache(context);
+            const availabilityFrom = this.getRequestedAvailabilitySources(context);
+
+            return (unit: Pick<Unit, 'name'>): number => {
+                const cached = scoreCache.get(unit.name);
+                if (cached !== undefined) {
+                    return cached;
+                }
+
+                const score = this.computeMegaMekAvailabilityScore(unit.name, context, availabilityFrom);
+                scoreCache.set(unit.name, score);
+                return score;
+            };
         }
 
         const availabilityBlock = this.getMegaMekScopedAvailabilityBlock(context);
@@ -696,6 +721,9 @@ export class UnitAvailabilitySourceService {
             knownUnitIds.add(unitKey);
 
             const scopedScores = this.computeScopedSourceScoresForUnit(unitId, entries, context);
+            const scopedSourceRarities = MEGAMEK_AVAILABILITY_FILTERS_USE_ALL_SCOPED_OPTIONS
+                ? this.collectScopedSourceRaritiesForUnit(unitId, entries, context)
+                : null;
             for (const source of MEGAMEK_AVAILABILITY_FROM_OPTIONS) {
                 const score = scopedScores[source];
                 if (score <= 0) {
@@ -704,6 +732,13 @@ export class UnitAvailabilitySourceService {
 
                 sourceScores[source].set(unitKey, score);
                 sourceAvailableUnitIds[source].add(unitKey);
+
+                if (MEGAMEK_AVAILABILITY_FILTERS_USE_ALL_SCOPED_OPTIONS && scopedSourceRarities) {
+                    for (const rarity of scopedSourceRarities[source]) {
+                        sourceRarityUnitIds[source].get(rarity)?.add(unitKey);
+                    }
+                    continue;
+                }
 
                 const rarity = getMegaMekAvailabilityRarityForScore(score);
                 if (rarity !== MEGAMEK_AVAILABILITY_NOT_AVAILABLE) {
@@ -920,6 +955,35 @@ export class UnitAvailabilitySourceService {
         };
     }
 
+    private collectScopedSourceRaritiesForUnit(
+        unitId: number | undefined,
+        entries: readonly MegaMekUnitAvailabilityEntry[],
+        context?: MegaMekAvailabilityFilterContext,
+    ): Record<MegaMekAvailabilityFrom, Set<MegaMekPositiveAvailabilityRarity>> {
+        const raritiesBySource = createMegaMekSourceRaritySets();
+
+        for (const entry of entries) {
+            if (!this.entryMatchesMegaMekScopeForUnit(unitId, entry, context)) {
+                continue;
+            }
+
+            const value = [entry.production, entry.salvage] as [number, number];
+            for (const source of MEGAMEK_AVAILABILITY_FROM_OPTIONS) {
+                const score = getMegaMekAvailabilityValueForSource(value, source);
+                if (score <= 0) {
+                    continue;
+                }
+
+                const rarity = getMegaMekAvailabilityRarityForScore(score);
+                if (rarity !== MEGAMEK_AVAILABILITY_NOT_AVAILABLE) {
+                    raritiesBySource[source].add(rarity);
+                }
+            }
+        }
+
+        return raritiesBySource;
+    }
+
     private entryMatchesMegaMekScopeForUnit(
         unitId: number | undefined,
         entry: MegaMekUnitAvailabilityEntry,
@@ -1048,9 +1112,12 @@ export class UnitAvailabilitySourceService {
         const availabilityFromKey = context?.availabilityFrom
             ? [...context.availabilityFrom].sort().join(',')
             : '*';
+        const availabilityRarityKey = context?.availabilityRarities
+            ? [...context.availabilityRarities].sort().join(',')
+            : '*';
         const suffix = extras.length > 0 ? `|${extras.join('|')}` : '';
 
-        return `${kind}|e=${eraKey}|f=${factionKey}|from=${availabilityFromKey}${suffix}`;
+        return `${kind}|e=${eraKey}|f=${factionKey}|from=${availabilityFromKey}|rarity=${availabilityRarityKey}${suffix}`;
     }
 
     private resetMegaMekIndexes(): void {
@@ -1191,8 +1258,7 @@ export class UnitAvailabilitySourceService {
 
     private computeMegaMekAvailabilityScore(
         unitName: AvailabilityUnitKey,
-        eraIds: ReadonlySet<number> | undefined,
-        factionIds: ReadonlySet<number> | undefined,
+        context: MegaMekAvailabilityFilterContext | undefined,
         availabilityFrom: readonly MegaMekAvailabilityFrom[],
     ): number {
         const entries = this.megaMekAvailabilityEntriesByUnitKey.get(unitName);
@@ -1200,17 +1266,15 @@ export class UnitAvailabilitySourceService {
             return MEGAMEK_AVAILABILITY_UNKNOWN_SCORE;
         }
 
+        const unitId = this.megaMekUnitIdByName.get(unitName);
         let maxScore = 0;
 
         for (const entry of entries) {
-            if (eraIds && !eraIds.has(entry.eraId)) {
-                continue;
-            }
-            if (factionIds && !factionIds.has(entry.factionId)) {
+            if (!this.entryMatchesMegaMekScopeForUnit(unitId, entry, context)) {
                 continue;
             }
 
-            const score = this.getEntryMaxSelectedAvailabilityScore(entry, availabilityFrom);
+            const score = this.getEntryMaxSelectedAvailabilityScore(entry, availabilityFrom, context?.availabilityRarities);
             if (score > maxScore) {
                 maxScore = score;
             }
@@ -1222,6 +1286,7 @@ export class UnitAvailabilitySourceService {
     private getEntryMaxSelectedAvailabilityScore(
         entry: MegaMekUnitAvailabilityEntry,
         availabilityFrom: readonly MegaMekAvailabilityFrom[],
+        availabilityRarities?: ReadonlySet<MegaMekPositiveAvailabilityRarity>,
     ): number {
         let maxScore = 0;
 
@@ -1229,6 +1294,17 @@ export class UnitAvailabilitySourceService {
             const score = source === 'Production'
                 ? entry.production
                 : entry.salvage;
+            if (score <= 0) {
+                continue;
+            }
+
+            if (availabilityRarities) {
+                const rarity = getMegaMekAvailabilityRarityForScore(score);
+                if (rarity === MEGAMEK_AVAILABILITY_NOT_AVAILABLE || !availabilityRarities.has(rarity)) {
+                    continue;
+                }
+            }
+
             if (score > maxScore) {
                 maxScore = score;
             }

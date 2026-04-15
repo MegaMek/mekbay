@@ -233,7 +233,7 @@ describe('UnitAvailabilitySourceService', () => {
         expect(service.getMegaMekAvailabilityScore(missingUnit)).toBe(MEGAMEK_AVAILABILITY_UNKNOWN_SCORE);
     });
 
-    it('matches MegaMek rarity against any selected source when no availability source is scoped', () => {
+    it('matches MegaMek rarity against any scoped availability option when the feature flag is enabled', () => {
         const ilClan = {
             id: 3151,
             name: 'ilClan',
@@ -301,12 +301,28 @@ describe('UnitAvailabilitySourceService', () => {
             eraIds: new Set([ilClan.id]),
             availabilityFrom: new Set(['Salvage']),
         })).toBeFalse();
+        expect(service.unitMatchesAvailabilityRarity(unit, 'Very Rare', {
+            eraIds: new Set([ilClan.id]),
+            availabilityFrom: new Set(['Production']),
+        })).toBeTrue();
+        expect(service.unitMatchesAvailabilityRarity(unit, 'Common', {
+            eraIds: new Set([ilClan.id]),
+            availabilityFrom: new Set(['Production']),
+        })).toBeTrue();
 
         expect(service.getMegaMekRarityUnitIds('Common', {
             eraIds: new Set([ilClan.id]),
         }).has(unit.name)).toBeTrue();
         expect(service.getMegaMekRarityUnitIds('Very Rare', {
             eraIds: new Set([ilClan.id]),
+        }).has(unit.name)).toBeTrue();
+        expect(service.getMegaMekRarityUnitIds('Common', {
+            eraIds: new Set([ilClan.id]),
+            availabilityFrom: new Set(['Production']),
+        }).has(unit.name)).toBeTrue();
+        expect(service.getMegaMekRarityUnitIds('Very Rare', {
+            eraIds: new Set([ilClan.id]),
+            availabilityFrom: new Set(['Production']),
         }).has(unit.name)).toBeTrue();
     });
 

@@ -36,6 +36,7 @@ import type { Era } from '../models/eras.model';
 import type { Unit } from '../models/units.model';
 import {
     MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS,
+    MEGAMEK_AVAILABILITY_FILTERS_USE_ALL_SCOPED_OPTIONS,
     MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS,
     MEGAMEK_AVAILABILITY_FROM_OPTIONS,
     getMegaMekAvailabilityRarityForScore,
@@ -627,6 +628,17 @@ export class UnitSearchFiltersService {
             }
         }
 
+        if (MEGAMEK_AVAILABILITY_FILTERS_USE_ALL_SCOPED_OPTIONS && scope.availabilityRarityNames !== undefined) {
+            const availabilityRarities = new Set(
+                scope.availabilityRarityNames.filter((rarity): rarity is Exclude<MegaMekAvailabilityRarity, typeof MEGAMEK_AVAILABILITY_UNKNOWN | typeof MEGAMEK_AVAILABILITY_NOT_AVAILABLE> => (
+                    rarity !== MEGAMEK_AVAILABILITY_UNKNOWN && rarity !== MEGAMEK_AVAILABILITY_NOT_AVAILABLE
+                )),
+            );
+            if (availabilityRarities.size > 0) {
+                context.availabilityRarities = availabilityRarities;
+            }
+        }
+
         return context;
     }
 
@@ -654,16 +666,21 @@ export class UnitSearchFiltersService {
     }
 
     private buildMegaMekRaritySortScope(state: FilterState): AvailabilityFilterScope | undefined {
-        const scope = this.buildMegaMekAvailabilityScope(state, { includeAvailabilityFrom: false });
+        const { availabilityRarityNames } = this.getAvailabilitySelectionScopeParts(state);
+        const scope = this.buildMegaMekAvailabilityScope(state, { includeAvailabilityFrom: true });
         const selectedSort = this.selectedSort();
-        if (!isMegaMekRaritySortKey(selectedSort)) {
-            return scope;
+        const scopedSort: AvailabilityFilterScope = !isMegaMekRaritySortKey(selectedSort)
+            ? { ...(scope ?? {}) }
+            : {
+                ...(scope ?? {}),
+                availabilityFromNames: [...getMegaMekRaritySortAvailabilitySources(selectedSort)],
+            };
+
+        if (MEGAMEK_AVAILABILITY_FILTERS_USE_ALL_SCOPED_OPTIONS && availabilityRarityNames.length > 0) {
+            scopedSort.availabilityRarityNames = availabilityRarityNames;
         }
 
-        return {
-            ...(scope ?? {}),
-            availabilityFromNames: [...getMegaMekRaritySortAvailabilitySources(selectedSort)],
-        };
+        return Object.keys(scopedSort).length > 0 ? scopedSort : undefined;
     }
 
     private readonly megaMekAvailabilityDisplayScope = computed(() => {
@@ -757,6 +774,9 @@ export class UnitSearchFiltersService {
             const score = this.getMegaMekRaritySortScore(unit, {
                 ...(baseScope ?? {}),
                 availabilityFromNames: [source],
+                ...(MEGAMEK_AVAILABILITY_FILTERS_USE_ALL_SCOPED_OPTIONS && selectedPositiveRarities.size > 0
+                    ? { availabilityRarityNames: [...selectedPositiveRarities] }
+                    : {}),
             });
             if (score < 1) {
                 continue;
@@ -1205,6 +1225,7 @@ export class UnitSearchFiltersService {
         }
 
         const availableIds = new Set<number>();
+        const useAllScopedAvailabilityOptions = MEGAMEK_AVAILABILITY_FILTERS_USE_ALL_SCOPED_OPTIONS && selectedRarities !== null;
 
         for (const unit of contextUnits) {
             const availabilityRecord = this.dataService.getMegaMekAvailabilityRecordForUnit(unit);
@@ -1212,7 +1233,9 @@ export class UnitSearchFiltersService {
                 continue;
             }
 
-            const maxScoresByOptionId = new Map<number, Record<MegaMekAvailabilityFrom, number>>();
+            const maxScoresByOptionId = useAllScopedAvailabilityOptions
+                ? null
+                : new Map<number, Record<MegaMekAvailabilityFrom, number>>();
 
             for (const eraIdText in availabilityRecord.e) {
                 const eraId = Number(eraIdText);
@@ -1233,17 +1256,29 @@ export class UnitSearchFiltersService {
 
                     const candidateId = target === 'faction' ? factionId : eraId;
                     const value = eraAvailability[factionIdText];
-                    let maxScores = maxScoresByOptionId.get(candidateId);
-                    if (!maxScores) {
-                        maxScores = {
-                            Production: 0,
-                            Salvage: 0,
-                        };
-                        maxScoresByOptionId.set(candidateId, maxScores);
-                    }
-
                     for (const source of activeSources) {
                         const score = getMegaMekAvailabilityValueForSource(value, source);
+                        if (useAllScopedAvailabilityOptions) {
+                            if (score <= 0) {
+                                continue;
+                            }
+
+                            const rarity = getMegaMekAvailabilityRarityForScore(score);
+                            if (rarity !== MEGAMEK_AVAILABILITY_NOT_AVAILABLE && selectedRarities.has(rarity)) {
+                                availableIds.add(candidateId);
+                            }
+                            continue;
+                        }
+
+                        let maxScores = maxScoresByOptionId?.get(candidateId);
+                        if (!maxScores) {
+                            maxScores = {
+                                Production: 0,
+                                Salvage: 0,
+                            };
+                            maxScoresByOptionId?.set(candidateId, maxScores);
+                        }
+
                         if (score > maxScores[source]) {
                             maxScores[source] = score;
                         }
@@ -1251,8 +1286,17 @@ export class UnitSearchFiltersService {
                 }
             }
 
+            if (useAllScopedAvailabilityOptions) {
+                continue;
+            }
+
+            const scopedMaxScoresByOptionId = maxScoresByOptionId;
+            if (!scopedMaxScoresByOptionId) {
+                continue;
+            }
+
             if (!selectedRarities) {
-                for (const [optionId, maxScores] of maxScoresByOptionId.entries()) {
+                for (const [optionId, maxScores] of scopedMaxScoresByOptionId.entries()) {
                     if (activeSources.some((source) => maxScores[source] > 0)) {
                         availableIds.add(optionId);
                     }
@@ -1260,7 +1304,7 @@ export class UnitSearchFiltersService {
                 continue;
             }
 
-            for (const [optionId, maxScores] of maxScoresByOptionId.entries()) {
+            for (const [optionId, maxScores] of scopedMaxScoresByOptionId.entries()) {
                 const matchesSelectedRarity = activeSources.some((source) => {
                     const maxScore = maxScores[source];
                     if (maxScore <= 0) {
