@@ -53,9 +53,10 @@ import { TaggingService } from '../../services/tagging.service';
 import { ToastService } from '../../services/toast.service';
 import { AccountAuthService } from '../../services/account-auth.service';
 import { OAuthProviderPickerDialogComponent, type OAuthProviderPickerDialogResult } from '../oauth-provider-picker-dialog/oauth-provider-picker-dialog.component';
+import { RestrictionListSettingsComponent } from '../restriction-list-settings/restriction-list-settings.component';
 import type { AvailableAuthProvider, LinkedOAuthProvider, OAuthProvider } from '../../models/account-auth.model';
 
-type OptionsSectionId = 'General' | 'Account' | 'Tags' | 'Sheets' | 'Alpha Strike' | 'Advanced' | 'Logs';
+type OptionsSectionId = 'General' | 'Account' | 'Tags' | 'Restrictions' | 'Sheets' | 'Alpha Strike' | 'Advanced' | 'Logs';
 type OptionsViewId = OptionsSectionId;
 
 interface OptionsViewDefinition {
@@ -82,6 +83,11 @@ const OPTIONS_VIEW_DEFINITIONS: readonly OptionsViewDefinition[] = [
         id: 'Tags',
         title: 'Tags',
         description: 'Share your tags, copy public links, and manage subscriptions.'
+    },
+    {
+        id: 'Restrictions',
+        title: 'Restrictions',
+        description: 'Create local restriction profiles and activate them in the current workspace.'
     },
     {
         id: 'Sheets',
@@ -118,7 +124,7 @@ const TOP_LEVEL_OPTIONS_VIEWS = OPTIONS_VIEW_DEFINITIONS.filter(view => !view.pa
     selector: 'options-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent],
+    imports: [CommonModule, BaseDialogComponent, RestrictionListSettingsComponent],
     templateUrl: './options-dialog.component.html',
     styleUrls: ['./options-dialog.component.scss']
 })

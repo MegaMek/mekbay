@@ -49,6 +49,7 @@ import { ToastService } from '../../services/toast.service';
 import { formatSummaryMovement } from '../../models/pilot-abilities.model';
 import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
 import { formationInheritsParentEffects } from '../../utils/formation-type.model';
+import { RestrictionListsService } from '../../services/restriction-lists.service';
 import { UnitAvailabilitySourceService } from '../../services/unit-availability-source.service';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 
@@ -72,6 +73,7 @@ export class ForceBuilderViewerComponent {
     private dialogsService = inject(DialogsService);
     private optionsService = inject(OptionsService);
     private injector = inject(Injector);
+    private restrictionListsService = inject(RestrictionListsService);
     private unitAvailabilitySource = inject(UnitAvailabilitySourceService);
     private scrollableContent = viewChild<ElementRef<HTMLDivElement>>('scrollableContent');
 
@@ -107,6 +109,10 @@ export class ForceBuilderViewerComponent {
 
     forceEraWarning(force: Force): string | null {
         return force.getEraWarningMessage(force.era(), force.faction(), this.availabilityContext());
+    }
+
+    forceRestrictionWarning(force: Force): string | null {
+        return this.restrictionListsService.getForceWarningMessage(force);
     }
 
     /** Set of Force instances whose headers are currently blinking (remote update on visible force). */

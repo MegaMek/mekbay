@@ -44,6 +44,7 @@ import { buildForceQueryParams } from '../../utils/force-url.util';
 import { firstValueFrom } from 'rxjs';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForcePreviewComponent } from '../force-preview/force-preview.component';
+import { RestrictionListsService } from '../../services/restriction-lists.service';
 
 /*
  * Author: Drake
@@ -209,6 +210,7 @@ export class ShareForceDialogComponent {
         this.force = this.data.force;
         this.buildUrls();
     }
+    private restrictionListsService = inject(RestrictionListsService);
 
     private async confirmDataExportLicense(): Promise<boolean> {
         const { DataExportLicenseDialogComponent } = await import('../data-export-license-dialog/data-export-license-dialog.component');
@@ -280,7 +282,8 @@ export class ShareForceDialogComponent {
         const instanceTree = this.router.createUrlTree([], {
             relativeTo: this.route,
             queryParams: {
-                instance: this.force.instanceId() || null
+                instance: this.force.instanceId() || null,
+                rl: this.restrictionListsService.restrictionListsParam(),
             }
         });
         const shareLiveUrl = this.router.serializeUrl(instanceTree);
@@ -292,7 +295,8 @@ export class ShareForceDialogComponent {
                 gs: singleForceParams.gs || null,
                 units: singleForceParams.units,
                 name: singleForceParams.name || null,
-                factionId: singleForceParams.factionId || null
+                factionId: singleForceParams.factionId || null,
+                rl: this.restrictionListsService.restrictionListsParam(),
             }
         });
         const cleanUrl = this.router.serializeUrl(cleanTree);

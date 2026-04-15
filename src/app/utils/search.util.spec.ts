@@ -39,6 +39,14 @@ describe('search.util', () => {
         expect(highlightMatches('Yao Lien YOL-4C', query, true)).not.toContain('matchHighlight');
     });
 
+    it('requires repeated partial tokens to match distinct spans', () => {
+        const query = parseSearchQuery('ya ya ya ya li li li');
+
+        expect(query[0].tokens.filter(token => token.token === 'ya')).toHaveSize(4);
+        expect(query[0].tokens.filter(token => token.token === 'li')).toHaveSize(3);
+        expect(matchesSearch('Yao Lien YOL-4C', query, true)).toBeFalse();
+    });
+
     it('prefers the longest alphanumeric highlight span before shorter overlapping tokens', () => {
         const query = parseSearchQuery('yaolien y');
 
@@ -56,6 +64,20 @@ describe('search.util', () => {
         ]);
         expect(matchesSearch('TUR(4/4/2,IF1,TAG)', query, true)).toBeTrue();
         expect(matchesSearch('IF1', query, true)).toBeFalse();
+    });
+
+    it('requires repeated exact tokens to match distinct whole-word occurrences', () => {
+        const query = parseSearchQuery('"atlas" "atlas"');
+
+        expect(query[0].tokens.filter(token => token.token === 'atlas')).toHaveSize(2);
+        expect(matchesSearch('Atlas', query, true)).toBeFalse();
+        expect(matchesSearch('Atlas Atlas', query, true)).toBeTrue();
+    });
+
+    it('does not reuse the same whole-text exact match for repeated phrases', () => {
+        const query = parseSearchQuery('"shadow hawk" "shadow hawk"');
+
+        expect(matchesSearch('Shadow Hawk', query, true)).toBeFalse();
     });
 
     it('splits comma and semicolon separated groups as OR branches', () => {

@@ -19,7 +19,7 @@ function createDropdownDependencies(): UnitSearchDropdownValuesDependencies {
 
             return [];
         },
-        getExternalDropdownValues: (filterKey: string) => {
+        getExternalDropdownValues: () => {
             return [];
         },
         units: [] as readonly Unit[],
@@ -49,6 +49,7 @@ describe('unit search URL filters', () => {
             piloting: DEFAULT_PILOTING_SKILL,
             bvLimit: 0,
             publicTagsParam: null,
+            restrictionListsParam: null,
         });
 
         expect(queryParameters.filters).toBe(`as.specials:"${SPECIAL}"`);
@@ -90,6 +91,7 @@ describe('unit search URL filters', () => {
             piloting: DEFAULT_PILOTING_SKILL,
             bvLimit: 0,
             publicTagsParam: null,
+            restrictionListsParam: null,
         });
 
         const parsed = parseAndValidateCompactFiltersFromUrl(
@@ -128,6 +130,7 @@ describe('unit search URL filters', () => {
             piloting: DEFAULT_PILOTING_SKILL,
             bvLimit: 0,
             publicTagsParam: null,
+            restrictionListsParam: null,
         });
 
         const parsed = parseAndValidateCompactFiltersFromUrl(
@@ -142,5 +145,23 @@ describe('unit search URL filters', () => {
             },
             interactedWith: true,
         });
+    });
+
+    it('includes active restriction list refs in query params', () => {
+        const queryParameters = buildUnitSearchQueryParameters({
+            searchText: '',
+            filterState: {},
+            semanticKeys: new Set<string>(),
+            selectedSort: '',
+            selectedSortDirection: 'asc',
+            expanded: false,
+            gunnery: DEFAULT_GUNNERY_SKILL,
+            piloting: DEFAULT_PILOTING_SKILL,
+            bvLimit: 0,
+            publicTagsParam: null,
+            restrictionListsParam: 'custom-local-profile',
+        });
+
+        expect(queryParameters.rl).toBe('custom-local-profile');
     });
 });

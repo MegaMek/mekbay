@@ -1,0 +1,332 @@
+<div class="restriction-settings-shell">
+    <section class="restriction-intro-card framed-borders">
+        <div class="restriction-intro-copy">
+            <h3>Restriction Profiles</h3>
+            <p>Active profiles immediately filter unit search, constrain force generation, and warn inside the force builder against the latest currently loaded rules.</p>
+            <p>Create as many local profiles as you need and switch them on or off per workspace from here.</p>
+        </div>
+        <div class="restriction-intro-stats">
+            <div class="restriction-stat">
+                <span class="restriction-stat-label">Active now</span>
+                <strong>{{ activeRestrictionCount() }}</strong>
+            </div>
+            <div class="restriction-stat">
+                <span class="restriction-stat-label">Saved locally</span>
+                <strong>{{ availableRestrictionLists().length }}</strong>
+            </div>
+        </div>
+    </section>
+
+    <div class="restriction-layout">
+        <aside class="restriction-browser-panel framed-borders">
+            <div class="restriction-toolbar">
+                <button type="button" class="bt-button primary" (click)="createNewList()">NEW LIST</button>
+                <button type="button" class="bt-button" [disabled]="!selectedRestrictionList()" (click)="duplicateSelectedList()">DUPLICATE</button>
+                <button type="button" class="bt-button" [disabled]="activeRestrictionCount() === 0" (click)="clearActiveRestrictions()">CLEAR ACTIVE</button>
+            </div>
+
+            <div class="restriction-group">
+                <div class="restriction-group-title">Saved profiles</div>
+                @if (availableRestrictionLists().length > 0) {
+                @for (list of availableRestrictionLists(); track list.slug) {
+                <button type="button" class="restriction-list-card" [class.selected]="selectedSlug() === list.slug"
+                    (click)="onSelectList(list.slug)">
+                    <div class="restriction-list-card-main">
+                        <span class="restriction-list-name">{{ list.name }}</span>
+                        <span class="restriction-list-meta">{{ formatGameSystem(list.gameSystem) }} · local</span>
+                    </div>
+                    <label class="restriction-active-toggle" (click)="$event.stopPropagation()">
+                        <input type="checkbox" class="bt-checkbox" [checked]="isRestrictionActive(list.slug)"
+                            (change)="toggleRestrictionActive(list.slug, $any($event.target).checked)" />
+                        <span>Active</span>
+                    </label>
+                </button>
+                }
+                } @else {
+                <div class="restriction-empty-state">
+                    <p>No restriction profiles yet.</p>
+                    <p>Create one here to store a local restriction profile on this browser.</p>
+                </div>
+                }
+            </div>
+        </aside>
+
+        <section class="restriction-editor-panel framed-borders">
+            @if (!selectedRestrictionList()) {
+            <div class="restriction-editor-empty-state">
+                <h3>No Profile Selected</h3>
+                <p>Create a restriction profile to define catalog rules, roster limits, and live validation rules.</p>
+                <button type="button" class="bt-button primary" (click)="createNewList()">CREATE FIRST PROFILE</button>
+            </div>
+            } @else {
+            @if (selectedRestrictionList(); as selected) {
+            @if (draft(); as draft) {
+            <div class="restriction-editor-header">
+                <div>
+                    <div class="restriction-editor-kicker">Local restriction profile</div>
+                    <h3>{{ selected.name }}</h3>
+                    <p>Last updated {{ selected.updatedAt | date:'mediumDate' }}.</p>
+                </div>
+                <label class="restriction-selected-active">
+                    <input type="checkbox" class="bt-checkbox" [checked]="isRestrictionActive(selected.slug)"
+                        (change)="toggleRestrictionActive(selected.slug, $any($event.target).checked)" />
+                    <span>Use this profile now</span>
+                </label>
+            </div>
+
+            <div class="restriction-inline-note">
+                <p>Profiles are stored locally on this browser for now. They can be activated immediately, but they are not published or synced yet.</p>
+            </div>
+
+            <div class="restriction-editor-grid">
+                <section class="restriction-editor-section restriction-editor-section-wide">
+                    <div class="restriction-section-title">Profile</div>
+                    <div class="restriction-field-grid restriction-field-grid-two">
+                        <label class="restriction-field">
+                            <span>Name</span>
+                            <input class="bt-input" type="text"
+                                [ngModel]="draft.name" [ngModelOptions]="{ standalone: true }"
+                                (ngModelChange)="updateName($event)" />
+                        </label>
+                        <label class="restriction-field">
+                            <span>Game system</span>
+                            <select class="bt-select"
+                                [ngModel]="draft.gameSystem" [ngModelOptions]="{ standalone: true }"
+                                (ngModelChange)="updateGameSystem($event)">
+                                <option [value]="gameSystem.CLASSIC">BattleTech Classic</option>
+                                <option [value]="gameSystem.ALPHA_STRIKE">Alpha Strike</option>
+                            </select>
+                        </label>
+                    </div>
+                    <label class="restriction-field">
+                        <span>Description</span>
+                        <textarea class="bt-input restriction-textarea"
+                            [ngModel]="draft.description" [ngModelOptions]="{ standalone: true }"
+                            (ngModelChange)="updateDescription($event)"></textarea>
+                    </label>
+                </section>
+
+                <section class="restriction-editor-section">
+                    <div class="restriction-section-title">Catalog rules</div>
+                    @if (draft.gameSystem === gameSystem.CLASSIC) {
+                    <div class="restriction-pill-editor">
+                        <div class="restriction-subtitle">Allowed Classic types</div>
+                        <p class="restriction-field-help">Uses the unit <strong>type</strong> field. Leave empty to allow any type.</p>
+                        <div class="restriction-pill-input-row">
+                            <input class="bt-input" type="text" list="restriction-classic-type-suggestions" placeholder="Add a Classic type"
+                                [value]="classicTypeInput()" (input)="updateClassicTypeInput($any($event.target).value)"
+                                (keydown)="onCatalogPillKeydown($event, 'classicUnitTypes')" />
+                            <button type="button" class="bt-button" (click)="addClassicUnitType()">ADD</button>
+                        </div>
+                        <datalist id="restriction-classic-type-suggestions">
+                            @for (option of classicTypeSuggestions(); track option) {
+                            <option [value]="option"></option>
+                            }
+                        </datalist>
+                        @if (draft.classicUnitTypes.length > 0) {
+                        <div class="restriction-pill-list">
+                            @for (value of draft.classicUnitTypes; track value) {
+                            <span class="restriction-pill">
+                                <span>{{ value }}</span>
+                                <button type="button" class="restriction-pill-remove" (click)="removeClassicUnitType(value)" aria-label="Remove Classic type">&#10005;</button>
+                            </span>
+                            }
+                        </div>
+                        } @else {
+                        <div class="restriction-mini-empty">Any Classic type</div>
+                        }
+                    </div>
+
+                    <div class="restriction-pill-editor">
+                        <div class="restriction-subtitle">Allowed Classic subtypes</div>
+                        <p class="restriction-field-help">Uses the unit <strong>subtype</strong> field. Leave empty to allow any subtype.</p>
+                        <div class="restriction-pill-input-row">
+                            <input class="bt-input" type="text" list="restriction-classic-subtype-suggestions" placeholder="Add a Classic subtype"
+                                [value]="classicSubtypeInput()" (input)="updateClassicSubtypeInput($any($event.target).value)"
+                                (keydown)="onCatalogPillKeydown($event, 'classicUnitSubtypes')" />
+                            <button type="button" class="bt-button" (click)="addClassicUnitSubtype()">ADD</button>
+                        </div>
+                        <datalist id="restriction-classic-subtype-suggestions">
+                            @for (option of classicSubtypeSuggestions(); track option) {
+                            <option [value]="option"></option>
+                            }
+                        </datalist>
+                        @if (draft.classicUnitSubtypes.length > 0) {
+                        <div class="restriction-pill-list">
+                            @for (value of draft.classicUnitSubtypes; track value) {
+                            <span class="restriction-pill">
+                                <span>{{ value }}</span>
+                                <button type="button" class="restriction-pill-remove" (click)="removeClassicUnitSubtype(value)" aria-label="Remove Classic subtype">&#10005;</button>
+                            </span>
+                            }
+                        </div>
+                        } @else {
+                        <div class="restriction-mini-empty">Any Classic subtype</div>
+                        }
+                    </div>
+                    } @else {
+                    <div class="restriction-pill-editor">
+                        <div class="restriction-subtitle">Allowed Alpha Strike types</div>
+                        <p class="restriction-field-help">Uses the unit <strong>as.TP</strong> value. Leave empty to allow any Alpha Strike type.</p>
+                        <div class="restriction-pill-input-row">
+                            <input class="bt-input" type="text" list="restriction-alpha-strike-type-suggestions" placeholder="Add an Alpha Strike TP code"
+                                [value]="alphaStrikeTypeInput()" (input)="updateAlphaStrikeTypeInput($any($event.target).value)"
+                                (keydown)="onCatalogPillKeydown($event, 'alphaStrikeUnitTypes')" />
+                            <button type="button" class="bt-button" (click)="addAlphaStrikeUnitType()">ADD</button>
+                        </div>
+                        <datalist id="restriction-alpha-strike-type-suggestions">
+                            @for (option of alphaStrikeTypeSuggestions(); track option.value) {
+                            <option [value]="option.value">{{ option.label }}</option>
+                            }
+                        </datalist>
+                        @if (draft.alphaStrikeUnitTypes.length > 0) {
+                        <div class="restriction-pill-list">
+                            @for (value of draft.alphaStrikeUnitTypes; track value) {
+                            <span class="restriction-pill">
+                                <span>{{ formatAlphaStrikeType(value) }}</span>
+                                <button type="button" class="restriction-pill-remove" (click)="removeAlphaStrikeUnitType(value)" aria-label="Remove Alpha Strike type">&#10005;</button>
+                            </span>
+                            }
+                        </div>
+                        } @else {
+                        <div class="restriction-mini-empty">Any Alpha Strike TP value</div>
+                        }
+                    </div>
+                    }
+                    <label class="restriction-toggle-row">
+                        <input type="checkbox" class="bt-checkbox"
+                            [checked]="draft.requireCanon" (change)="updateRequireCanon($any($event.target).checked)" />
+                        <span>Require canon MUL units only</span>
+                    </label>
+                    <label class="restriction-toggle-row">
+                        <input type="checkbox" class="bt-checkbox"
+                            [checked]="draft.forbidQuirks" (change)="updateForbidQuirks($any($event.target).checked)" />
+                        <span>Forbid quirks</span>
+                    </label>
+                    <div class="restriction-mini-group">
+                        <div class="restriction-subtitle">Banned ammo types</div>
+                        @for (option of ammoTypeOptions; track option.value) {
+                        <label class="restriction-toggle-row">
+                            <input type="checkbox" class="bt-checkbox"
+                                [checked]="draft.forbidAmmoTypes.includes(option.value)"
+                                (change)="toggleAmmoType(option.value, $any($event.target).checked)" />
+                            <span>{{ option.label }}</span>
+                        </label>
+                        }
+                        <label class="restriction-toggle-row">
+                            <input type="checkbox" class="bt-checkbox"
+                                [checked]="draft.forbidArrowIVHoming"
+                                (change)="updateForbidArrowIVHoming($any($event.target).checked)" />
+                            <span>Forbid Arrow IV Homing ammo</span>
+                        </label>
+                    </div>
+                </section>
+
+                <section class="restriction-editor-section">
+                    <div class="restriction-section-title">Roster rules</div>
+                    <div class="restriction-field-grid restriction-field-grid-two">
+                        <label class="restriction-field">
+                            <span>Minimum units</span>
+                            <input class="bt-input" type="number" min="1"
+                                [ngModel]="draft.minUnits" [ngModelOptions]="{ standalone: true }"
+                                (ngModelChange)="updateMinUnits($event)" />
+                        </label>
+                        <label class="restriction-field">
+                            <span>Maximum units</span>
+                            <input class="bt-input" type="number" min="1"
+                                [ngModel]="draft.maxUnits" [ngModelOptions]="{ standalone: true }"
+                                (ngModelChange)="updateMaxUnits($event)" />
+                        </label>
+                    </div>
+                    <label class="restriction-toggle-row">
+                        <input type="checkbox" class="bt-checkbox"
+                            [checked]="draft.uniqueChassis" (change)="updateUniqueChassis($any($event.target).checked)" />
+                        <span>Require unique chassis</span>
+                    </label>
+                    <label class="restriction-toggle-row">
+                        <input type="checkbox" class="bt-checkbox"
+                            [checked]="draft.jumpRuleEnabled" (change)="updateJumpRuleEnabled($any($event.target).checked)" />
+                        <span>Limit how many units can meet a jump threshold</span>
+                    </label>
+                    <div class="restriction-field-grid restriction-field-grid-two" [class.disabled-block]="!draft.jumpRuleEnabled">
+                        <label class="restriction-field">
+                            <span>Minimum jump MP</span>
+                            <input class="bt-input" type="number" min="0"
+                                [disabled]="!draft.jumpRuleEnabled"
+                                [ngModel]="draft.jumpMinimum" [ngModelOptions]="{ standalone: true }"
+                                (ngModelChange)="updateJumpMinimum($event)" />
+                        </label>
+                        <label class="restriction-field">
+                            <span>Max units at or above threshold</span>
+                            <input class="bt-input" type="number" min="1"
+                                [disabled]="!draft.jumpRuleEnabled"
+                                [ngModel]="draft.jumpMaxUnits" [ngModelOptions]="{ standalone: true }"
+                                (ngModelChange)="updateJumpMaxUnits($event)" />
+                        </label>
+                    </div>
+                </section>
+
+                @if (draft.gameSystem === gameSystem.CLASSIC) {
+                <section class="restriction-editor-section">
+                    <div class="restriction-section-title">Classic live rules</div>
+                    <div class="restriction-field-grid restriction-field-grid-three">
+                        <label class="restriction-field">
+                            <span>Min crew skill</span>
+                            <input class="bt-input" type="number" min="0"
+                                [ngModel]="draft.crewSkillMin" [ngModelOptions]="{ standalone: true }"
+                                (ngModelChange)="updateCrewSkillMin($event)" />
+                        </label>
+                        <label class="restriction-field">
+                            <span>Max crew skill</span>
+                            <input class="bt-input" type="number" min="0"
+                                [ngModel]="draft.crewSkillMax" [ngModelOptions]="{ standalone: true }"
+                                (ngModelChange)="updateCrewSkillMax($event)" />
+                        </label>
+                        <label class="restriction-field">
+                            <span>Max delta</span>
+                            <input class="bt-input" type="number" min="0"
+                                [ngModel]="draft.maxGunneryPilotingDelta" [ngModelOptions]="{ standalone: true }"
+                                (ngModelChange)="updateMaxGunneryPilotingDelta($event)" />
+                        </label>
+                    </div>
+                </section>
+                } @else {
+                <section class="restriction-editor-section">
+                    <div class="restriction-section-title">Alpha Strike live rules</div>
+                    <label class="restriction-toggle-row">
+                        <input type="checkbox" class="bt-checkbox"
+                            [checked]="draft.allowManualPilotAbilities"
+                            (change)="updateAllowManualPilotAbilities($any($event.target).checked)" />
+                        <span>Allow manual pilot abilities</span>
+                    </label>
+                    <label class="restriction-toggle-row">
+                        <input type="checkbox" class="bt-checkbox"
+                            [checked]="draft.allowFormationAbilities"
+                            (change)="updateAllowFormationAbilities($any($event.target).checked)" />
+                        <span>Allow formation abilities</span>
+                    </label>
+                </section>
+                }
+
+                <section class="restriction-editor-section restriction-editor-section-wide">
+                    <div class="restriction-section-title">Notes</div>
+                    <label class="restriction-field">
+                        <span>One note per line</span>
+                        <textarea class="bt-input restriction-textarea restriction-notes-textarea"
+                            [ngModel]="draft.notesText"
+                            [ngModelOptions]="{ standalone: true }" (ngModelChange)="updateNotesText($event)"></textarea>
+                    </label>
+                </section>
+            </div>
+
+            <div class="restriction-editor-actions">
+                <button type="button" class="bt-button primary" [disabled]="!hasDraftChanges()" (click)="saveSelectedList()">SAVE</button>
+                <button type="button" class="bt-button" [disabled]="!hasDraftChanges()" (click)="resetSelectedList()">RESET</button>
+                <button type="button" class="bt-button danger" (click)="deleteSelectedList()">DELETE</button>
+            </div>
+            }
+            }
+            }
+        </section>
+    </div>
+</div>

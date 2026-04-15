@@ -95,6 +95,7 @@ import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import { UserStateService } from './userState.service';
 import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
+import { RestrictionListsService } from './restriction-lists.service';
 import { type MegaMekAvailabilityFilterContext, type MegaMekUnitAvailabilityDetail, UnitAvailabilitySourceService } from './unit-availability-source.service';
 import {
     getPositiveDropdownNamesFromFilter,
@@ -163,6 +164,7 @@ export class UnitSearchFiltersService {
     private userStateService = inject(UserStateService);
     private publicTagsService = inject(PublicTagsService);
     private tagsService = inject(TagsService);
+    private restrictionListsService = inject(RestrictionListsService);
     private unitAvailabilitySource = inject(UnitAvailabilitySourceService);
 
     ADVANCED_FILTERS = ADVANCED_FILTERS;
@@ -1653,7 +1655,8 @@ export class UnitSearchFiltersService {
         const stageCountBeforePostProcessing = telemetryStages.length;
         const postFilteredResults = this.applyWorkerPostFilters(hydratedResults, telemetryStages);
         const sortedResults = this.sortHydratedWorkerResults(postFilteredResults, telemetryStages);
-        const cappedResults = this.applyRemainingBudgetLimit(sortedResults, telemetryStages);
+        const restrictedResults = this.applyActiveRestrictionFilters(sortedResults, telemetryStages);
+        const cappedResults = this.applyRemainingBudgetLimit(restrictedResults, telemetryStages);
         const addedTelemetryMs = telemetryStages
             .slice(stageCountBeforePostProcessing)
             .reduce((totalMs, stage) => totalMs + stage.durationMs, 0);
@@ -1669,6 +1672,26 @@ export class UnitSearchFiltersService {
             stages: telemetryStages,
             totalMs: result.totalMs + addedTelemetryMs,
         }));
+    }
+
+    private applyActiveRestrictionFilters(units: readonly Unit[], telemetryStages?: SearchTelemetryStage[]): Unit[] {
+        const activeLists = this.restrictionListsService.getActiveRestrictionLists(this.gameService.currentGameSystem());
+        if (activeLists.length === 0) {
+            return units as Unit[];
+        }
+
+        const filterUnits = () => this.restrictionListsService.filterUnits(units, this.gameService.currentGameSystem());
+        if (!telemetryStages) {
+            return filterUnits();
+        }
+
+        return measureStage(
+            telemetryStages,
+            'restriction-filter',
+            units.length,
+            filterUnits,
+            (value) => value.length,
+        );
     }
 
     private applyWorkerPostFilters(units: Unit[], telemetryStages?: SearchTelemetryStage[]): Unit[] {
@@ -2929,8 +2952,10 @@ export class UnitSearchFiltersService {
 
     syncFilteredUnits = computed(() => {
         const { execution, parseTelemetry } = this.uncappedSyncSearch();
+        const restrictionTelemetry: SearchTelemetryStage[] = [];
         const budgetTelemetry: SearchTelemetryStage[] = [];
-        const cappedResults = this.applyRemainingBudgetLimit(execution.results, budgetTelemetry);
+        const restrictedResults = this.applyActiveRestrictionFilters(execution.results, restrictionTelemetry);
+        const cappedResults = this.applyRemainingBudgetLimit(restrictedResults, budgetTelemetry);
 
         this.updateSearchTelemetry({
             timestamp: Date.now(),
@@ -2941,7 +2966,7 @@ export class UnitSearchFiltersService {
             sortKey: this.selectedSort(),
             sortDirection: this.selectedSortDirection(),
             isComplex: execution.isComplex,
-            stages: [...parseTelemetry, ...execution.telemetryStages, ...budgetTelemetry],
+            stages: [...parseTelemetry, ...execution.telemetryStages, ...restrictionTelemetry, ...budgetTelemetry],
             totalMs: execution.totalMs,
         });
 
@@ -2953,19 +2978,20 @@ export class UnitSearchFiltersService {
         if (this.workerSearchActive()) {
             const pendingFallback = this.getPendingWorkerFallbackUnits();
             if (pendingFallback) {
-                return pendingFallback;
+                return this.applyActiveRestrictionFilters(pendingFallback);
             }
 
             return this.uncappedWorkerFilteredUnits();
         }
 
-        return this.uncappedSyncSearch().execution.results;
+        return this.applyActiveRestrictionFilters(this.uncappedSyncSearch().execution.results);
     });
 
     private readonly uncappedWorkerFilteredUnits = computed(() => {
         const hydratedResults = this.rawWorkerResultUnitsState();
         const postFilteredResults = this.applyWorkerPostFilters(hydratedResults);
-        return this.sortHydratedWorkerResults(postFilteredResults);
+        const sortedResults = this.sortHydratedWorkerResults(postFilteredResults);
+        return this.applyActiveRestrictionFilters(sortedResults);
     });
 
     filteredUnits = computed(() => {
@@ -3065,6 +3091,7 @@ export class UnitSearchFiltersService {
      */
     public applySearchParamsFromUrl(params: URLSearchParams, opts: { expandView?: boolean } = {}): void {
         this.clearFilters();
+        this.restrictionListsService.applyParamsFromUrl(params);
         this.applyParamsCore(params, opts);
         this.processPendingForeignTags();
     }
@@ -3144,6 +3171,7 @@ export class UnitSearchFiltersService {
             piloting: this.pilotPilotingSkill(),
             bvLimit: this.bvPvLimit(),
             publicTagsParam: this.publicTagsParam(),
+            restrictionListsParam: this.restrictionListsService.restrictionListsParam(),
         });
     });
 

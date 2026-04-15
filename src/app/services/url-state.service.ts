@@ -57,6 +57,7 @@ export const MEANINGFUL_URL_PARAMS = [
     'shareUnit',   // Shared single unit
     'q',           // Search query
     'filters',     // Search filters
+    'rl',          // Active restriction lists
 ] as const;
 
 export type MeaningfulUrlParam = typeof MEANINGFUL_URL_PARAMS[number];

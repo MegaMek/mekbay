@@ -225,6 +225,53 @@ export interface SearchTokensGroup {
     tokens: SearchToken[];
 }
 
+function tokensMatchExactWords(text: string, tokens: string[]): boolean {
+    if (tokens.length === 0) {
+        return true;
+    }
+
+    const words = text.split(/\s+/).filter(Boolean);
+    const usedWordIndices = new Set<number>();
+    let wholeTextConsumed = false;
+
+    for (const token of tokens) {
+        if (!token) {
+            continue;
+        }
+
+        if (wholeTextConsumed) {
+            return false;
+        }
+
+        let matchedWord = false;
+        for (let index = 0; index < words.length; index++) {
+            if (!usedWordIndices.has(index) && words[index] === token) {
+                usedWordIndices.add(index);
+                matchedWord = true;
+                break;
+            }
+        }
+
+        if (matchedWord) {
+            continue;
+        }
+
+        const wholeTextIsDistinctFromWordMatch = text === token && !(words.length === 1 && words[0] === token);
+        if (wholeTextIsDistinctFromWordMatch) {
+            if (usedWordIndices.size > 0) {
+                return false;
+            }
+
+            wholeTextConsumed = true;
+            continue;
+        }
+
+        return false;
+    }
+
+    return true;
+}
+
 /**
  * Parses a search query string into an array of token groups.
  * - Handles comma/semicolon for OR conditions (new groups).
@@ -273,14 +320,9 @@ export function parseSearchQuery(query: string): SearchTokensGroup[] {
             }
         }
 
-        // Deduplicate tokens, preserving longest-first for partials
-        const uniqueMap = new Map<string, SearchToken>();
         tokens.sort((a, b) => b.token.length - a.token.length);
-        for (const t of tokens) {
-            if (!uniqueMap.has(t.token)) uniqueMap.set(t.token, t);
-        }
 
-        return { tokens: Array.from(uniqueMap.values()) };
+        return { tokens };
     });
     return results;
 }
@@ -346,22 +388,9 @@ export function matchesSearch(
 
         // All exact tokens must match as whole words
         if (exactTokens.length > 0) {
-            const textWords = new Set(normalizedText.split(/\s+/));
-            const alphaNumWords = alphanumericNormalization
-                ? new Set(
-                    normalizedText
-                        .split(/\s+/)
-                        .map(word => toAlphanumericSearchValue(word))
-                        .filter(Boolean)
-                )
-                : new Set<string>();
-            for (let index = 0; index < exactTokens.length; index++) {
-                const et = exactTokens[index];
-                if (!textWords.has(et) && normalizedText !== et) {
-                    const alphaNumExactToken = alphaNumExactTokens[index];
-                    if (!alphanumericNormalization || !alphaNumExactToken || (!alphaNumWords.has(alphaNumExactToken) && alphaNumText !== alphaNumExactToken)) {
-                        return false;
-                    }
+            if (!tokensMatchExactWords(normalizedText, exactTokens)) {
+                if (!alphanumericNormalization || alphaNumExactTokens.length === 0 || !alphaNumText || !tokensMatchExactWords(alphaNumText, alphaNumExactTokens)) {
+                    return false;
                 }
             }
         }

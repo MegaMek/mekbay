@@ -50,6 +50,7 @@ import { SidebarComponent } from './components/sidebar/sidebar.component';
 import { LicenseDialogComponent } from './components/license-dialog/license-dialog.component';
 import { ToastsComponent } from './components/toasts/toasts.component';
 import { SavedSearchesService } from './services/saved-searches.service';
+import { RestrictionListsService } from './services/restriction-lists.service';
 import { WsService } from './services/ws.service';
 import { ToastService } from './services/toast.service';
 import { DialogsService } from './services/dialogs.service';
@@ -104,6 +105,7 @@ export class App {
     private toastService = inject(ToastService);
     protected optionsService = inject(OptionsService);
     public unitSearchFiltersService = inject(UnitSearchFiltersService);
+    private restrictionListsService = inject(RestrictionListsService);
     public injector = inject(Injector);
     public gameService = inject(GameService);
     private accountAuthService = inject(AccountAuthService);
@@ -590,8 +592,13 @@ export class App {
 
         const hasForceParams = params.has('instance') || params.has('units');
         const hasSearchParams = params.has('q') || params.has('filters') || params.has('sort');
+        const hasRestrictionParams = params.has('rl');
         const requestedGs = (params.get('gs') as GameSystem) ?? null;
         const hasForces = this.forceBuilderService.hasForces();
+
+        if (hasForceParams || hasSearchParams || hasRestrictionParams) {
+            this.restrictionListsService.applyParamsFromUrl(params);
+        }
 
         // ── Force params (instance= / units=) ───────────────────────────
         if (hasForceParams) {

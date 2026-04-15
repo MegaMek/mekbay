@@ -62,6 +62,7 @@ interface UnitSearchQueryParametersArgs {
     piloting: number;
     bvLimit: number;
     publicTagsParam: string | null;
+    restrictionListsParam: string | null;
 }
 
 interface UnitSearchQueryParameters {
@@ -69,6 +70,7 @@ interface UnitSearchQueryParameters {
     q: string | null;
     filters: string | null;
     pt: string | null;
+    rl: string | null;
     sort: string | null;
     sortDir: 'asc' | 'desc' | null;
     gunnery: number | null;
@@ -197,6 +199,7 @@ export function buildUnitSearchQueryParameters({
     piloting,
     bvLimit,
     publicTagsParam,
+    restrictionListsParam,
 }: UnitSearchQueryParametersArgs): UnitSearchQueryParameters {
     const uiOnlyFilters: FilterState = {};
     for (const [key, state] of Object.entries(filterState)) {
@@ -211,6 +214,7 @@ export function buildUnitSearchQueryParameters({
         q: searchText.trim() || null,
         filters: filtersParam || null,
         pt: publicTagsParam,
+        rl: restrictionListsParam,
         sort: selectedSort || null,
         sortDir: selectedSortDirection !== 'asc' ? selectedSortDirection : null,
         gunnery: gunnery !== DEFAULT_GUNNERY_SKILL ? gunnery : null,
