@@ -393,10 +393,6 @@ export class DataService {
         return this.megaMekFactionsCatalog.getFactionsByMulId(mulId);
     }
 
-    public getMegaMekFactionAffiliation(factionKey: string): MegaMekFactionAffiliation {
-        return this.megaMekFactionsCatalog.getFactionAffiliation(factionKey);
-    }
-
     public getMegaMekRulesets(): readonly MegaMekRulesetRecord[] {
         return this.megaMekRulesetsCatalog.getRulesets();
     }
