@@ -51,7 +51,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "adjusting_fire",
         name: "Adjusting Fire",
-        rulesRef: [{ book: Rulebook.ASCE, page: 102 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 102 }, { book: Rulebook.FMD, page: 80 }],
         summary: [
             "If two artillery units in this Force fire at the same target, the second and successive units receive a -2 successive shots modifier.",
             "Applies once per turn but is cumulative over multiple turns."
@@ -111,6 +111,15 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         ],
     },
     {
+        id: "cavalry",
+        name: "Cavalry",
+        rulesRef: [{ book: Rulebook.FMD, page: 80 }],
+        summary: [
+            "Each Unit can move 2\" more than their Move rating as long as it is not within its Move rating of an enemy unit at the start of its movement.",
+            "Does not affect Target Movement Modifier or otherwise change their Move rating.",
+        ],
+    },
+    {
         id: "combat_drop_specialists",
         name: "Combat Drop Specialists",
         rulesRef: [{ book: Rulebook.CO, page: 84 }, { book: Rulebook.ASCE, page: 103 }],
@@ -132,7 +141,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "counterparts",
         name: "Counterparts",
-        rulesRef: [{ book: Rulebook.ASCE, page: 103 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 103 }, { book: Rulebook.FMD, page: 80 }],
         summary: [
             "Paired unit types during Setup: +1 Initiative for the entire battle.",
             "Failing to pair: -1 Initiative for the entire battle."
@@ -141,7 +150,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "direct_fire_artillery_specialists",
         name: "Direct Fire Artillery Specialists",
-        rulesRef: [{ book: Rulebook.ASCE, page: 103 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 103 }, { book: Rulebook.FMD, page: 81 }],
         summary: ["Add 2\"/1 hex to the diameter of any Artillery area of effect when using direct fire."],
     },
     {
@@ -157,7 +166,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "environmental_specialization",
         name: "Environmental Specialization",
-        rulesRef: [{ book: Rulebook.CO, page: 84 }, { book: Rulebook.ASCE, page: 104 }],
+        rulesRef: [{ book: Rulebook.CO, page: 84 }, { book: Rulebook.ASCE, page: 104 }, { book: Rulebook.FMK, page: 86 }, { book: Rulebook.FMD, page: 80 }],
         summary: [
             "Designate terrain type or environmental condition before play.",
             "Benefits (Improved Mobility / Combat / Initiative) scale with average skill rating.",
@@ -184,14 +193,24 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "fast_withdrawal",
         name: "Fast Withdrawal",
-        rulesRef: [{ book: Rulebook.ASCE, page: 105 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 105 }, { book: Rulebook.FMK, page: 86 }, { book: Rulebook.FMD, page: 81 }],
         summary: ["Units may exit any edge (except opponent's home edge) at any time without being considered destroyed or captured."],
     },
     {
         id: "flankers",
         name: "Flankers",
-        rulesRef: [{ book: Rulebook.ASCE, page: 105 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 105 }, { book: Rulebook.FMK, page: 86 }],
         summary: ["Units may enter via any non-home map edge instead of the specified edge."],
+    },
+    {
+        id: "flexible_command",
+        name: "Flexible Command",
+        rulesRef: [{ book: Rulebook.FMK, page: 86 }, { book: Rulebook.FMD, page: 81 }],
+        summary: [
+            "Units never suffer penalty if commander is killed or disabled.",
+            "A new commander is assigned within the same Formation.",
+            "Tactical Genius SPA may be assigned to a new unit in the same Formation."
+        ],
     },
     {
         id: "focus",
@@ -206,7 +225,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "forcing_the_initiative",
         name: "Forcing the Initiative",
-        rulesRef: [{ book: Rulebook.ASCE, page: 105 }],
+        rulesRef: [{ book: Rulebook.CO, page: 85 }, { book: Rulebook.ASCE, page: 105 }],
         summary: [
             "Initiative modifier = (enemy units destroyed last turn minus own units lost last turn).",
             "Declared before rolling. Cannot be used on the first turn."
@@ -220,6 +239,15 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
             "-2 TN modifier vs ground-based targets (including jumping units and grounded air-capable units).",
             "+1 TN modifier vs airborne aerospace units and VTOL/WiGE units.",
             "Ground units without VTOL, WiGE, or aerospace movement may not use this."
+        ],
+    },
+    {
+        id: "gun_it",
+        name: "Gun It",
+        rulesRef: [{ book: Rulebook.FMD, page: 81 }],
+        summary: [
+            "Units may sprint and attack, but with a +1 TN modifier in addition to the runnong or flank movement modifiers.",
+            "Increases Heat Scale by 1 (AS) or doubles the heat of any weapons fired (TW)."
         ],
     },
     {
@@ -240,7 +268,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "infantry_defensive_experts",
         name: "Infantry Defensive Experts",
-        rulesRef: [{ book: Rulebook.ASCE, page: 106 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 106 }, { book: Rulebook.FMD, page: 81 }],
         summary: [
             "Infantry may be Hidden (even without scenario rules) and in prepared positions.",
             "Positions act as light buildings (CF 2); no map placement needed; lost once unit moves."
@@ -249,13 +277,13 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "infantry_dragoons",
         name: "Infantry Dragoons",
-        rulesRef: [{ book: Rulebook.ASCE, page: 106 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 106 }, { book: Rulebook.FMD, page: 81 }],
         summary: ["Mounted infantry may move their full movement (instead of half) after dismounting."],
     },
     {
         id: "infiltrators",
         name: "Infiltrators",
-        rulesRef: [{ book: Rulebook.ASCE, page: 106 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 106 }, { book: Rulebook.FMD, page: 81 }],
         summary: [
             "As Attacker, deploy Hidden units in Defender's zone (or within 4\" of home edge).",
             "Level 1: infantry + light (Size 1) vehicles. Level 2: + medium (Size 2) vehicles + light 'Mechs.",
@@ -265,7 +293,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "in_the_moment",
         name: "In the Moment",
-        rulesRef: [{ book: Rulebook.ASCE, page: 106 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 106 }, { book: Rulebook.FMD, page: 81 }],
         summary: [
             "After opponent sets up, may swap this SCA for another available SCA.",
             "If swapped, -1 Initiative for the first two turns."
@@ -317,7 +345,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "regional_specialization",
         name: "Regional Specialization",
-        rulesRef: [{ book: Rulebook.ASCE, page: 107 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 107 }, { book: Rulebook.FMD, page: 81 }],
         summary: [
             "+1 Initiative and -1 Morale in preferred region (system, duchy, district, etc.).",
             "May be taken twice to double the modifiers."
@@ -344,7 +372,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "shielding",
         name: "Shielding",
-        rulesRef: [{ book: Rulebook.ASCE, page: 107 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 107 }, { book: Rulebook.FMD, page: 81 }],
         summary: ["Opponents must fire on a 'Mech before targeting a vehicle or infantry unit, if the 'Mech is closer and in LOS."],
     },
     {
@@ -356,7 +384,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "strategic_command",
         name: "Strategic Command",
-        rulesRef: [{ book: Rulebook.ASCE, page: 107 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 107 }, { book: Rulebook.FMD, page: 81 }],
         summary: [
             "May alter home edge choice and reposition terrain up to 6\" from Setup position.",
             "If using mapsheets, may rearrange them while keeping the same overall shape."
@@ -365,7 +393,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "strategic_planning",
         name: "Strategic Planning",
-        rulesRef: [{ book: Rulebook.ASCE, page: 107 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 107 }, { book: Rulebook.FMK, page: 86 }],
         summary: [
             "+2 Initiative bonus.",
             "Only available to Forces with an average Experience Rating of Veteran, Elite, Heroic, or Legendary."
@@ -380,13 +408,13 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "tactical_experts_combined_fire",
         name: "Tactical Experts (Combined Fire)",
-        rulesRef: [{ book: Rulebook.ASCE, page: 108 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 108 }, { book: Rulebook.FMK, page: 86 }, { book: Rulebook.FMD, page: 81 }],
         summary: ["If an entire Formation of 3+ units attacks the same opposing unit, their attacks gain a -1 TN modifier."],
     },
     {
         id: "tactical_experts_dogfighting",
         name: "Tactical Experts (Dogfighting)",
-        rulesRef: [{ book: Rulebook.ASCE, page: 108 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 108 }, { book: Rulebook.FMK, page: 86 }, { book: Rulebook.FMD, page: 81 }],
         summary: ["-2 penalty to enemy units making Control Rolls for forming and avoiding engagements."],
     },
     {
@@ -437,7 +465,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "tactical_specialization_combined_arms",
         name: "Tactical Specialization (Combined Arms)",
-        rulesRef: [{ book: Rulebook.ASCE, page: 108 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 108 }, { book: Rulebook.FMK, page: 86 }, { book: Rulebook.FMD, page: 81 }],
         summary: [
             "+1 Initiative if Force contains at least one 'Mech, one vehicle, and one infantry.",
             "May be taken twice to also grant Tactical Experts (Attack or Defense, choose one)."
@@ -446,7 +474,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "tactical_specialization_small_unit_actions",
         name: "Tactical Specialization (Small Unit Actions)",
-        rulesRef: [{ book: Rulebook.ASCE, page: 108 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 108 }, { book: Rulebook.FMD, page: 81 }],
         summary: [
             "+2 Initiative if total friendly Force < 12 units.",
             "+1 Initiative if total friendly Force < 24 units.",
@@ -456,7 +484,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "warrior_code",
         name: "Warrior Code",
-        rulesRef: [{ book: Rulebook.ASCE, page: 109 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 109 }, { book: Rulebook.FMK, page: 86 }],
         summary: [
             "Designate 1 Champion per legal Formation (3+ units). Champion receives Blood Stalker SPA (target must be same Size or larger).",
             "Champion destroyed by target: -1 Initiative. Champion destroys target: +1 Initiative.",
