@@ -178,6 +178,7 @@ describe('ForceGeneratorService', () => {
             _searchKey: overrides._searchKey ?? '',
             _displayType: overrides._displayType ?? '',
             _maxRange: overrides._maxRange ?? 0,
+            _weightedMaxRange: overrides._weightedMaxRange ?? 0,
             _dissipationEfficiency: overrides._dissipationEfficiency ?? 0,
             _mdSumNoPhysical: overrides._mdSumNoPhysical ?? 0,
             _mdSumNoPhysicalNoOneshots: overrides._mdSumNoPhysicalNoOneshots ?? 0,
