@@ -60,6 +60,7 @@ import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
 import { NO_FORMATION_ID } from '../../utils/formation-type.model';
+import { SessionPersistenceService } from '../../services/session-persistence.service';
 
 /*
  * Author: Drake
@@ -92,6 +93,11 @@ export interface ForceLoadDialogData {
     initialTab?: string;
 }
 
+const HANGAR_SORT_SESSION_KEY = 'mekbay:force-load-dialog:hangar-sort';
+const HANGAR_SORT_DIRECTION_SESSION_KEY = 'mekbay:force-load-dialog:hangar-sort-direction';
+const DEFAULT_HANGAR_SORT_KEY = 'timestamp';
+const DEFAULT_HANGAR_SORT_DIRECTION: 'asc' | 'desc' = 'desc';
+
 @Component({
     selector: 'force-load-dialog',
     standalone: true,
@@ -105,6 +111,7 @@ export class ForceLoadDialogComponent {
     private dialogData: ForceLoadDialogData | null = inject(DIALOG_DATA, { optional: true });
     private dataService = inject(DataService);
     private destroyRef = inject(DestroyRef);
+    private sessionPersistenceService = inject(SessionPersistenceService);
     forceBuilderService = inject(ForceBuilderService);
     optionsService = inject(OptionsService);
     gameService = inject(GameService);
@@ -127,8 +134,8 @@ export class ForceLoadDialogComponent {
         { key: 'size', label: 'Size' },
     ];
 
-    hangarSort = signal<string>('timestamp');
-    hangarSortDirection = signal<'asc' | 'desc'>('desc');
+    hangarSort = signal<string>(this.getStoredHangarSortKey());
+    hangarSortDirection = signal<'asc' | 'desc'>(this.getStoredHangarSortDirection());
     packSort = signal<string>('name');
     packSortDirection = signal<'asc' | 'desc'>('asc');
 
@@ -234,6 +241,10 @@ export class ForceLoadDialogComponent {
     constructor() {
         // Load forces on init
         this.loadForces();
+
+        effect(() => {
+            this.persistHangarSortState(this.hangarSort(), this.hangarSortDirection());
+        });
         
         // Resolve force packs
         effect(() => {
@@ -422,6 +433,28 @@ export class ForceLoadDialogComponent {
         } else {
             this.hangarSortDirection.set(dir);
         }
+    }
+
+    private getStoredHangarSortKey(): string {
+        const stored = this.sessionPersistenceService.getItem(HANGAR_SORT_SESSION_KEY)?.trim();
+        if (!stored) {
+            return DEFAULT_HANGAR_SORT_KEY;
+        }
+        return this.HANGAR_SORT_OPTIONS.some(option => option.key === stored)
+            ? stored
+            : DEFAULT_HANGAR_SORT_KEY;
+    }
+
+    private getStoredHangarSortDirection(): 'asc' | 'desc' {
+        const stored = this.sessionPersistenceService.getItem(HANGAR_SORT_DIRECTION_SESSION_KEY)?.trim();
+        return stored === 'asc' || stored === 'desc'
+            ? stored
+            : DEFAULT_HANGAR_SORT_DIRECTION;
+    }
+
+    private persistHangarSortState(sortKey: string, sortDirection: 'asc' | 'desc'): void {
+        this.sessionPersistenceService.setItem(HANGAR_SORT_SESSION_KEY, sortKey);
+        this.sessionPersistenceService.setItem(HANGAR_SORT_DIRECTION_SESSION_KEY, sortDirection);
     }
 
     /** Shared sort comparator for forces and packs */
