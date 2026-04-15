@@ -21,6 +21,13 @@ jobs:
       - name: Get latest code
         uses: actions/checkout@v5
 
+      - name: Checkout mm-data
+        uses: actions/checkout@v5
+        with:
+          repository: MegaMek/mm-data
+          path: mm-data
+          fetch-depth: 1
+
       - name: Use Node.js
         uses: actions/setup-node@v6
         with:
@@ -31,13 +38,21 @@ jobs:
         run: npm ci
 
       - name: Generate metadata
+        env:
+          MM_DATA_PATH: mm-data
         run: npm run gen-meta
 
       - name: Generate sprites
+        env:
+          MM_DATA_PATH: mm-data
         run: npm run gen-sprites
 
       - name: Generate assets
+        env:
+          MM_DATA_PATH: mm-data
         run: npm run gen-assets
 
       - name: Run Angular test suite
+        env:
+          MM_DATA_PATH: mm-data
         run: npm test -- --watch=false --browsers ChromeHeadless
