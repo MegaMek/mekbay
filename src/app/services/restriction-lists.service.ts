@@ -43,6 +43,7 @@ import { generateUUID } from './ws.service';
 import {
     buildRestrictionWarningMessage,
     filterUnitsByRestrictionLists,
+    groupRestrictionViolationsByForceUnitId,
     normalizeRestrictionCatalogValues,
     normalizeRestrictionListSlugs,
     serializeRestrictionListSlugsParam,
@@ -217,6 +218,10 @@ export class RestrictionListsService {
         return buildRestrictionWarningMessage(this.getForceValidation(force));
     }
 
+    getForceUnitViolationMap(force: Force) {
+        return groupRestrictionViolationsByForceUnitId(this.getForceValidation(force));
+    }
+
     private sortRestrictionLists(lists: readonly RestrictionListDefinition[]): RestrictionListDefinition[] {
         return [...lists].sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }));
     }
@@ -333,6 +338,7 @@ export class RestrictionListsService {
                     }));
 
                     return {
+                        forceUnitId: forceUnit.id,
                         displayName: forceUnit.getDisplayName(),
                         unit,
                         classicCrewSkills: crewMembers,
@@ -341,6 +347,7 @@ export class RestrictionListsService {
 
                 if (forceUnit instanceof ASForceUnit) {
                     return {
+                        forceUnitId: forceUnit.id,
                         displayName: forceUnit.getDisplayName(),
                         unit,
                         manualAbilityCount: forceUnit.manualPilotAbilities().length,
@@ -349,6 +356,7 @@ export class RestrictionListsService {
                 }
 
                 return {
+                    forceUnitId: forceUnit.id,
                     displayName: forceUnit.getDisplayName(),
                     unit,
                 };

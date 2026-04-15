@@ -77,12 +77,28 @@ function catalogRuleValuesContain(values: readonly string[] | undefined, actualV
     return values.some((value) => normalizeCatalogRuleValue(value) === normalizedActual);
 }
 
-function createViolation(list: RestrictionListDefinition, message: string): RestrictionViolation {
+function normalizeForceUnitIds(forceUnitIds: readonly (string | null | undefined)[] | undefined): string[] | undefined {
+    const normalized = [...new Set((forceUnitIds ?? [])
+        .filter((value): value is string => typeof value === 'string')
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0))];
+
+    return normalized.length > 0 ? normalized : undefined;
+}
+
+function createViolation(
+    list: RestrictionListDefinition,
+    message: string,
+    forceUnitIds?: readonly (string | null | undefined)[],
+): RestrictionViolation {
+    const normalizedForceUnitIds = normalizeForceUnitIds(forceUnitIds);
+
     return {
         listSlug: list.slug,
         listName: list.name,
         severity: 'error',
         message,
+        ...(normalizedForceUnitIds ? { forceUnitIds: normalizedForceUnitIds } : {}),
     };
 }
 
@@ -139,41 +155,46 @@ function hasArrowIVHoming(unit: Pick<Unit, 'comp'>): boolean {
     });
 }
 
-function getCatalogViolationsForUnit(unit: Pick<Unit, 'id' | 'chassis' | 'model' | 'quirks' | 'type' | 'subtype' | 'comp' | 'as'>, list: RestrictionListDefinition): RestrictionViolation[] {
+function getCatalogViolationsForUnit(
+    unit: Pick<Unit, 'id' | 'chassis' | 'model' | 'quirks' | 'type' | 'subtype' | 'comp' | 'as'>,
+    list: RestrictionListDefinition,
+    forceUnitIds?: readonly string[],
+    displayName: string = unitDisplayName(unit),
+): RestrictionViolation[] {
     const rules = list.catalog;
     if (!rules) {
         return [];
     }
 
     const violations: RestrictionViolation[] = [];
-    const name = unitDisplayName(unit);
+    const name = displayName;
 
     if (list.gameSystem === GameSystem.CLASSIC && !catalogRuleValuesContain(rules.allowClassicUnitTypes, unit.type)) {
-        violations.push(createViolation(list, `${name} has Classic type ${unit.type}, but ${list.name} only allows types ${formatNames(normalizeRestrictionCatalogValues(rules.allowClassicUnitTypes))}.`));
+        violations.push(createViolation(list, `${name} has Classic type ${unit.type}, but ${list.name} only allows types ${formatNames(normalizeRestrictionCatalogValues(rules.allowClassicUnitTypes))}.`, forceUnitIds));
     }
 
     if (list.gameSystem === GameSystem.CLASSIC && !catalogRuleValuesContain(rules.allowClassicUnitSubtypes, unit.subtype)) {
-        violations.push(createViolation(list, `${name} has Classic subtype ${unit.subtype}, but ${list.name} only allows subtypes ${formatNames(normalizeRestrictionCatalogValues(rules.allowClassicUnitSubtypes))}.`));
+        violations.push(createViolation(list, `${name} has Classic subtype ${unit.subtype}, but ${list.name} only allows subtypes ${formatNames(normalizeRestrictionCatalogValues(rules.allowClassicUnitSubtypes))}.`, forceUnitIds));
     }
 
     if (list.gameSystem === GameSystem.ALPHA_STRIKE && !catalogRuleValuesContain(rules.allowAlphaStrikeUnitTypes, unit.as?.TP)) {
-        violations.push(createViolation(list, `${name} has Alpha Strike type ${unit.as?.TP ?? 'Unknown'}, but ${list.name} only allows Alpha Strike TP values ${formatNames(normalizeRestrictionCatalogValues(rules.allowAlphaStrikeUnitTypes))}.`));
+        violations.push(createViolation(list, `${name} has Alpha Strike type ${unit.as?.TP ?? 'Unknown'}, but ${list.name} only allows Alpha Strike TP values ${formatNames(normalizeRestrictionCatalogValues(rules.allowAlphaStrikeUnitTypes))}.`, forceUnitIds));
     }
 
     if (rules.requireCanon && unit.id <= 0) {
-        violations.push(createViolation(list, `${name} is not a canon MUL unit.`));
+        violations.push(createViolation(list, `${name} is not a canon MUL unit.`, forceUnitIds));
     }
 
     if (rules.forbidQuirks && unit.quirks.length > 0) {
-        violations.push(createViolation(list, `${name} has quirks, which are not allowed by ${list.name}.`));
+        violations.push(createViolation(list, `${name} has quirks, which are not allowed by ${list.name}.`, forceUnitIds));
     }
 
     if (rules.forbidAmmoTypes && hasForbiddenAmmoType(unit, rules.forbidAmmoTypes)) {
-        violations.push(createViolation(list, `${name} mounts equipment using banned ammunition for ${list.name}.`));
+        violations.push(createViolation(list, `${name} mounts equipment using banned ammunition for ${list.name}.`, forceUnitIds));
     }
 
     if (rules.forbidArrowIVHoming && hasArrowIVHoming(unit)) {
-        violations.push(createViolation(list, `${name} carries Arrow IV Homing ammunition, which is not allowed by ${list.name}.`));
+        violations.push(createViolation(list, `${name} carries Arrow IV Homing ammunition, which is not allowed by ${list.name}.`, forceUnitIds));
     }
 
     return violations;
@@ -197,17 +218,21 @@ function getRosterViolations(force: RestrictionForceSnapshot, list: RestrictionL
     }
 
     if (rules.uniqueChassis) {
-        const chassisToUnits = new Map<string, string[]>();
+        const chassisToUnits = new Map<string, RestrictionUnitSnapshot[]>();
         for (const unit of units) {
             const key = normalizeChassisKey(unit.unit.chassis);
-            const names = chassisToUnits.get(key) ?? [];
-            names.push(unit.displayName);
-            chassisToUnits.set(key, names);
+            const matchingUnits = chassisToUnits.get(key) ?? [];
+            matchingUnits.push(unit);
+            chassisToUnits.set(key, matchingUnits);
         }
 
-        const duplicates = [...chassisToUnits.values()].filter((names) => names.length > 1).flat();
+        const duplicates = [...chassisToUnits.values()].filter((matchingUnits) => matchingUnits.length > 1).flat();
         if (duplicates.length > 0) {
-            violations.push(createViolation(list, `${list.name} allows only one unit per chassis. Duplicate chassis found: ${formatNames(duplicates)}.`));
+            violations.push(createViolation(
+                list,
+                `${list.name} allows only one unit per chassis. Duplicate chassis found: ${formatNames(duplicates.map((unit) => unit.displayName))}.`,
+                duplicates.map((unit) => unit.forceUnitId),
+            ));
         }
     }
 
@@ -217,6 +242,7 @@ function getRosterViolations(force: RestrictionForceSnapshot, list: RestrictionL
             violations.push(createViolation(
                 list,
                 `${list.name} allows at most ${rules.maxUnitsWithJumpAtLeast.maxUnits} units with Jump MP ${rules.maxUnitsWithJumpAtLeast.minimumJump}+; found ${matchingUnits.length}: ${formatNames(matchingUnits.map((unit) => unit.displayName))}.`,
+                matchingUnits.map((unit) => unit.forceUnitId),
             ));
         }
     }
@@ -235,15 +261,15 @@ function getClassicLiveViolations(force: RestrictionForceSnapshot, list: Restric
     for (const unit of force.units) {
         for (const crew of unit.classicCrewSkills ?? []) {
             if (rules.crewSkillMin !== undefined && (crew.gunnery < rules.crewSkillMin || crew.piloting < rules.crewSkillMin)) {
-                violations.push(createViolation(list, `${unit.displayName} has crew skills below the ${rules.crewSkillMin} minimum required by ${list.name}.`));
+                violations.push(createViolation(list, `${unit.displayName} has crew skills below the ${rules.crewSkillMin} minimum required by ${list.name}.`, [unit.forceUnitId]));
             }
 
             if (rules.crewSkillMax !== undefined && (crew.gunnery > rules.crewSkillMax || crew.piloting > rules.crewSkillMax)) {
-                violations.push(createViolation(list, `${unit.displayName} has crew skills above the ${rules.crewSkillMax} maximum allowed by ${list.name}.`));
+                violations.push(createViolation(list, `${unit.displayName} has crew skills above the ${rules.crewSkillMax} maximum allowed by ${list.name}.`, [unit.forceUnitId]));
             }
 
             if (rules.maxGunneryPilotingDelta !== undefined && Math.abs(crew.gunnery - crew.piloting) > rules.maxGunneryPilotingDelta) {
-                violations.push(createViolation(list, `${unit.displayName} has Gunnery/Piloting farther apart than ${rules.maxGunneryPilotingDelta} for ${list.name}.`));
+                violations.push(createViolation(list, `${unit.displayName} has Gunnery/Piloting farther apart than ${rules.maxGunneryPilotingDelta} for ${list.name}.`, [unit.forceUnitId]));
             }
         }
     }
@@ -261,11 +287,11 @@ function getAlphaStrikeLiveViolations(force: RestrictionForceSnapshot, list: Res
 
     for (const unit of force.units) {
         if (rules.allowManualPilotAbilities === false && (unit.manualAbilityCount ?? 0) > 0) {
-            violations.push(createViolation(list, `${unit.displayName} has manual pilot abilities, which are not allowed by ${list.name}.`));
+            violations.push(createViolation(list, `${unit.displayName} has manual pilot abilities, which are not allowed by ${list.name}.`, [unit.forceUnitId]));
         }
 
         if (rules.allowFormationAbilities === false && (unit.formationAbilityCount ?? 0) > 0) {
-            violations.push(createViolation(list, `${unit.displayName} has formation abilities, which are not allowed by ${list.name}.`));
+            violations.push(createViolation(list, `${unit.displayName} has formation abilities, which are not allowed by ${list.name}.`, [unit.forceUnitId]));
         }
     }
 
@@ -319,7 +345,12 @@ export function validateForceAgainstRestrictionLists(
     return lists
         .filter((list) => list.gameSystem === force.gameSystem)
         .map((list) => {
-            const unitViolations = force.units.flatMap((unit) => getCatalogViolationsForUnit(unit.unit, list));
+            const unitViolations = force.units.flatMap((unit) => getCatalogViolationsForUnit(
+                unit.unit,
+                list,
+                unit.forceUnitId ? [unit.forceUnitId] : undefined,
+                unit.displayName,
+            ));
             const rosterViolations = getRosterViolations(force, list);
             const classicLiveViolations = getClassicLiveViolations(force, list);
             const alphaStrikeLiveViolations = getAlphaStrikeLiveViolations(force, list);
@@ -329,6 +360,24 @@ export function validateForceAgainstRestrictionLists(
                 violations: [...unitViolations, ...rosterViolations, ...classicLiveViolations, ...alphaStrikeLiveViolations],
             };
         });
+}
+
+export function groupRestrictionViolationsByForceUnitId(
+    results: readonly RestrictionValidationResult[],
+): Map<string, RestrictionViolation[]> {
+    const violationsByForceUnitId = new Map<string, RestrictionViolation[]>();
+
+    for (const result of results) {
+        for (const violation of result.violations) {
+            for (const forceUnitId of violation.forceUnitIds ?? []) {
+                const nextViolations = violationsByForceUnitId.get(forceUnitId) ?? [];
+                nextViolations.push(violation);
+                violationsByForceUnitId.set(forceUnitId, nextViolations);
+            }
+        }
+    }
+
+    return violationsByForceUnitId;
 }
 
 export function buildRestrictionWarningMessage(results: readonly RestrictionValidationResult[]): string | null {

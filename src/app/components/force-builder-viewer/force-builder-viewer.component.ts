@@ -52,6 +52,7 @@ import { formationInheritsParentEffects } from '../../utils/formation-type.model
 import { RestrictionListsService } from '../../services/restriction-lists.service';
 import { UnitAvailabilitySourceService } from '../../services/unit-availability-source.service';
 import { TooltipDirective } from '../../directives/tooltip.directive';
+import type { TooltipLine } from '../tooltip/tooltip.component';
 
 
 /*
@@ -114,6 +115,30 @@ export class ForceBuilderViewerComponent {
     forceRestrictionWarning(force: Force): string | null {
         return this.restrictionListsService.getForceWarningMessage(force);
     }
+
+    private readonly forceUnitRestrictionTooltipMap = computed(() => {
+        const tooltipsByForce = new Map<Force, Map<string, TooltipLine[]>>();
+
+        for (const slot of this.loadedSlots()) {
+            const violationsByUnit = this.restrictionListsService.getForceUnitViolationMap(slot.force);
+            const tooltipsByUnit = new Map<string, TooltipLine[]>();
+
+            for (const [forceUnitId, violations] of violationsByUnit) {
+                const uniqueMessages = [...new Set(violations.map((violation) => violation.message))];
+                tooltipsByUnit.set(forceUnitId, [
+                    {
+                        value: uniqueMessages.length === 1 ? 'Restriction mismatch' : `${uniqueMessages.length} restriction issues`,
+                        isHeader: true,
+                    },
+                    ...uniqueMessages.map((message) => ({ value: message })),
+                ]);
+            }
+
+            tooltipsByForce.set(slot.force, tooltipsByUnit);
+        }
+
+        return tooltipsByForce;
+    });
 
     /** Set of Force instances whose headers are currently blinking (remote update on visible force). */
     blinkingForces = signal<Set<Force>>(new Set());
@@ -350,6 +375,10 @@ export class ForceBuilderViewerComponent {
         const crew = unit.getCrewMembers();
         const pilot = crew.length > 0 ? crew[0] : undefined;
         await this.forceBuilderService.editPilotOfUnit(unit, pilot);
+    }
+
+    getForceUnitRestrictionTooltip(force: Force, unit: ForceUnit): TooltipLine[] | null {
+        return this.forceUnitRestrictionTooltipMap().get(force)?.get(unit.id) ?? null;
     }
 
 

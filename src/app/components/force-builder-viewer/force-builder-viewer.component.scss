@@ -472,6 +472,36 @@
 .force-unit-item {
     display: flex;
     flex-direction: column;
+    position: relative;
+    isolation: isolate;
+}
+
+.force-unit-item.restriction-flagged {
+
+    unit-block .unit-card,
+    unit-block .unit-square.compact-mode {
+        position: relative;
+        z-index: 1;
+        background-image:
+            linear-gradient(140deg, rgb(255 130 130 / 0.14), transparent 40%),
+            linear-gradient(180deg, rgb(118 0 0 / 0.14), transparent 58%);
+        box-shadow:
+            inset 0 0 0 1px rgb(255 148 148 / 0.14),
+            0 0 0 1px rgb(164 34 34 / 0.32),
+            0 10px 22px rgb(70 0 0 / 0.18);
+    }
+
+    &:hover unit-block .unit-card,
+    &:hover unit-block .unit-square.compact-mode {
+        box-shadow:
+            inset 0 0 0 1px rgb(255 173 173 / 0.18),
+            0 0 0 1px rgb(193 55 55 / 0.38),
+            0 12px 26px rgb(86 0 0 / 0.22);
+    }
+}
+
+.force-unit-item.restriction-flagged.compact-layout::after {
+    display: none;
 }
 
 .force-slot-footer {

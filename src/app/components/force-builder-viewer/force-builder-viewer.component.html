@@ -150,7 +150,12 @@
                         </div>
                         }
                         @for (unit of units; let i = $index; track unit.id) {
-                        <div #forceUnitItem [id]="'unit-'+unit.id" class="force-unit-item" (click)="selectUnit(unit)"
+                        @let unitRestrictionTooltip = getForceUnitRestrictionTooltip(slotForce, unit);
+                        <div #forceUnitItem [id]="'unit-'+unit.id" class="force-unit-item"
+                            [class.restriction-flagged]="!!unitRestrictionTooltip"
+                            [class.compact-layout]="compactMode() || miniMode()"
+                            [tooltip]="unitRestrictionTooltip" tooltipType="error"
+                            (click)="selectUnit(unit)"
                             tabindex="0" (keydown)="onUnitKeydown($event, i)" cdkDrag
                             [cdkDragDisabled]="isReadOnly" (cdkDragStarted)="onUnitDragStart(slotForce)"
                             (cdkDragMoved)="onUnitDragMoved($event)" (cdkDragEnded)="onUnitDragEnd(slotForce)"
@@ -159,6 +164,7 @@
                             <unit-block class="selectable" [forceUnit]="unit" [compactMode]="compactMode() || miniMode()"
                                 [ctrlHeld]="ctrlHeld()"
                                 [class.miniMode]="miniMode()"
+                                [class.restriction-flagged]="!!unitRestrictionTooltip"
                                 [class.friendly]="showAlignment && slot.alignment === 'friendly'"
                                 [class.enemy]="showAlignment && slot.alignment === 'enemy'"
                                 [class.selected]="unit.id === forceBuilderService.selectedUnit()?.id"

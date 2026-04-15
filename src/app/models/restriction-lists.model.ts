@@ -44,6 +44,7 @@ export interface RestrictionCrewSkillSnapshot {
 }
 
 export interface RestrictionUnitSnapshot {
+    readonly forceUnitId?: string;
     readonly displayName: string;
     readonly unit: Pick<Unit, 'id' | 'chassis' | 'model' | 'jump' | 'quirks' | 'type' | 'subtype' | 'comp' | 'as'>;
     readonly classicCrewSkills?: readonly RestrictionCrewSkillSnapshot[];
@@ -110,6 +111,7 @@ export interface RestrictionViolation {
     readonly listName: string;
     readonly severity: RestrictionViolationSeverity;
     readonly message: string;
+    readonly forceUnitIds?: readonly string[];
 }
 
 export interface RestrictionValidationResult {

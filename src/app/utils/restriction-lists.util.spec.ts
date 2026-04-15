@@ -4,6 +4,7 @@ import type { RestrictionForceSnapshot, RestrictionListDefinition } from '../mod
 import type { Unit } from '../models/units.model';
 import {
     filterUnitsByRestrictionLists,
+    groupRestrictionViolationsByForceUnitId,
     parseRestrictionListSlugsParam,
     serializeRestrictionListSlugsParam,
     validateForceAgainstRestrictionLists,
@@ -177,36 +178,43 @@ describe('restriction lists util', () => {
             gameSystem: GameSystem.CLASSIC,
             units: [
                 {
+                    forceUnitId: 'atlas-a',
                     displayName: 'Atlas AS7-D',
                     unit: createUnit({ chassis: 'Atlas', model: 'AS7-D', jump: 7 }),
                     classicCrewSkills: [{ label: 'Pilot 1', gunnery: 3, piloting: 5 }],
                 },
                 {
+                    forceUnitId: 'atlas-k',
                     displayName: 'Atlas AS7-K',
                     unit: createUnit({ chassis: 'Atlas', model: 'AS7-K', jump: 7 }),
                     classicCrewSkills: [{ label: 'Pilot 2', gunnery: 4, piloting: 5 }],
                 },
                 {
+                    forceUnitId: 'phoenix-hawk',
                     displayName: 'Phoenix Hawk PXH-1',
                     unit: createUnit({ chassis: 'Phoenix Hawk', model: 'PXH-1', jump: 7 }),
                     classicCrewSkills: [{ label: 'Pilot 3', gunnery: 4, piloting: 5 }],
                 },
                 {
+                    forceUnitId: 'warhammer',
                     displayName: 'Warhammer WHM-6R',
                     unit: createUnit({ chassis: 'Warhammer', model: 'WHM-6R', jump: 0 }),
                     classicCrewSkills: [{ label: 'Pilot 4', gunnery: 4, piloting: 5 }],
                 },
                 {
+                    forceUnitId: 'marauder',
                     displayName: 'Marauder MAD-3R',
                     unit: createUnit({ chassis: 'Marauder', model: 'MAD-3R', jump: 0 }),
                     classicCrewSkills: [{ label: 'Pilot 5', gunnery: 4, piloting: 5 }],
                 },
                 {
+                    forceUnitId: 'rifleman',
                     displayName: 'Rifleman RFL-3N',
                     unit: createUnit({ chassis: 'Rifleman', model: 'RFL-3N', jump: 0 }),
                     classicCrewSkills: [{ label: 'Pilot 6', gunnery: 4, piloting: 5 }],
                 },
                 {
+                    forceUnitId: 'shadow-hawk',
                     displayName: 'Shadow Hawk SHD-2H',
                     unit: createUnit({ chassis: 'Shadow Hawk', model: 'SHD-2H', jump: 0 }),
                     classicCrewSkills: [{ label: 'Pilot 7', gunnery: 4, piloting: 5 }],
@@ -221,5 +229,13 @@ describe('restriction lists util', () => {
         expect(messages.some((message) => message.includes('only one unit per chassis'))).toBeTrue();
         expect(messages.some((message) => message.includes('Jump MP 7+'))).toBeTrue();
         expect(messages.some((message) => message.includes('Gunnery/Piloting farther apart than 1'))).toBeTrue();
+
+        const violationsByForceUnitId = groupRestrictionViolationsByForceUnitId([result]);
+
+        expect(violationsByForceUnitId.get('atlas-a')?.some((violation) => violation.message.includes('only one unit per chassis'))).toBeTrue();
+        expect(violationsByForceUnitId.get('atlas-k')?.some((violation) => violation.message.includes('only one unit per chassis'))).toBeTrue();
+        expect(violationsByForceUnitId.get('phoenix-hawk')?.some((violation) => violation.message.includes('Jump MP 7+'))).toBeTrue();
+        expect(violationsByForceUnitId.get('atlas-a')?.some((violation) => violation.message.includes('Gunnery/Piloting farther apart than 1'))).toBeTrue();
+        expect(violationsByForceUnitId.has('warhammer')).toBeFalse();
     });
 });
