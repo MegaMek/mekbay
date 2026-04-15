@@ -1,5 +1,16 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    effect,
+    type ElementRef,
+    inject,
+    input,
+    output,
+    signal,
+    viewChild,
+} from '@angular/core';
 
 import {
     getLoadForceUnitPilotStats,
@@ -18,6 +29,10 @@ import { getOrgFromForce, getOrgFromGroup } from '../../utils/org/org-namer.util
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 
+const UNIT_TILE_MIN_WIDTH = 86;
+const UNIT_TILE_MAX_WIDTH = 114;
+const UNIT_TILE_GAP = 4;
+
 @Component({
     selector: 'load-force-preview-panel',
     standalone: true,
@@ -26,7 +41,11 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
     template: `
     @let unitDisplayName = effectiveUnitDisplayName();
     @let entry = force();
-    <div class="force-preview-shell" [class.scroll-units-only]="scrollUnitsOnly()">
+    <div class="force-preview-shell"
+        [class.scroll-units-only]="scrollUnitsOnly()"
+        [style.--preview-unit-columns]="unitColumnCount()"
+        [style.--preview-unit-width.px]="unitTileWidth()">
+        @if (showHeader()) {
         <div class="force-preview-header">
             <div class="faction-name-wrapper">
                 @if (entry.faction?.img; as factionImg) {
@@ -54,7 +73,8 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
                 }
             </span>
         </div>
-        <div class="force-preview">
+        }
+        <div #forcePreviewViewport class="force-preview">
             <div class="unit-scroll">
                 @for (gd of groupDisplayData(); track gd.group) {
                 <div class="unit-group">
@@ -267,7 +287,7 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 
         .units {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(86px, 92px));
+            grid-template-columns: repeat(var(--preview-unit-columns, 1), minmax(0, var(--preview-unit-width, 92px)));
             gap: 4px;
             justify-content: start;
             align-items: stretch;
@@ -279,6 +299,7 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
             gap: 2px;
             width: 100%;
             min-width: 0;
+            max-width: 114px;
             min-height: 0;
             height: 100%;
             align-self: stretch;
@@ -447,8 +468,11 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 export class LoadForcePreviewPanelComponent {
     private readonly dialogsService = inject(DialogsService);
     readonly optionsService = inject(OptionsService);
+    private readonly forcePreviewViewport = viewChild<ElementRef<HTMLElement>>('forcePreviewViewport');
+    private readonly previewViewportWidth = signal(UNIT_TILE_MAX_WIDTH);
 
     readonly force = input.required<LoadForceEntry>();
+    readonly showHeader = input(true);
     readonly showHint = input(true);
     readonly scrollUnitsOnly = input(false);
     readonly showLockControls = input(false);
@@ -456,6 +480,20 @@ export class LoadForcePreviewPanelComponent {
     readonly lockedUnitKeys = input<ReadonlySet<string>>(new Set<string>());
     readonly lockToggle = input<((unitEntry: LoadForceUnit) => void) | null>(null);
     readonly hoveredUnitChange = output<LoadForceUnit | null>();
+
+    readonly unitColumnCount = computed(() => {
+        const viewportWidth = Math.max(this.previewViewportWidth(), UNIT_TILE_MIN_WIDTH);
+        return Math.max(1, Math.floor((viewportWidth + UNIT_TILE_GAP) / (UNIT_TILE_MIN_WIDTH + UNIT_TILE_GAP)));
+    });
+
+    readonly unitTileWidth = computed(() => {
+        const viewportWidth = Math.max(this.previewViewportWidth(), UNIT_TILE_MIN_WIDTH);
+        const columns = this.unitColumnCount();
+        const totalGapWidth = UNIT_TILE_GAP * Math.max(0, columns - 1);
+        const availableTileWidth = (viewportWidth - totalGapWidth) / columns;
+
+        return Math.min(UNIT_TILE_MAX_WIDTH, Math.max(UNIT_TILE_MIN_WIDTH, availableTileWidth));
+    });
 
     readonly effectiveUnitDisplayName = computed<Options['unitDisplayName']>(
         () => this.displayMode() ?? this.optionsService.options().unitDisplayName,
@@ -487,6 +525,30 @@ export class LoadForcePreviewPanelComponent {
 
         return { group, name, orgName, formationName };
     }));
+
+    constructor() {
+        effect((onCleanup) => {
+            const viewport = this.forcePreviewViewport()?.nativeElement;
+            if (!viewport) {
+                return;
+            }
+
+            const updateViewportWidth = () => {
+                this.previewViewportWidth.set(Math.max(UNIT_TILE_MIN_WIDTH, viewport.clientWidth));
+            };
+
+            updateViewportWidth();
+
+            if (typeof ResizeObserver === 'undefined') {
+                return;
+            }
+
+            const resizeObserver = new ResizeObserver(() => updateViewportWidth());
+            resizeObserver.observe(viewport);
+
+            onCleanup(() => resizeObserver.disconnect());
+        });
+    }
 
     getPilotStats(loadForceUnit: LoadForceUnit): string {
         return getLoadForceUnitPilotStats(loadForceUnit, this.force().type);

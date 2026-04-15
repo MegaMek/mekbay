@@ -50,6 +50,20 @@
     }
 }
 
+.dialog-header-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.dialog-faction-icon {
+    width: 1.75rem;
+    height: 1.75rem;
+    object-fit: contain;
+    flex: 0 0 auto;
+}
+
 .dialog-header-actions {
     display: flex;
     align-items: center;
@@ -70,6 +84,56 @@
     }
 }
 
+.dialog-tabs {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 1em;
+    margin-bottom: -2px;
+    padding: 0 8px;
+    background-color: var(--background-color-menu);
+    border-bottom: 2px solid #666;
+    position: relative;
+    z-index: 2;
+}
+
+.dialog-tabs .tab-buttons {
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+    flex: 1;
+    min-width: 0;
+    margin-bottom: -2px;
+}
+
+.dialog-tabs .tab-button {
+    background: none;
+    border: none;
+    color: var(--text-color-secondary);
+    padding: 0.5em 1em;
+    cursor: pointer;
+    font-size: 1em;
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+    outline: none;
+    white-space: nowrap;
+}
+
+.dialog-tabs .tab-button:hover {
+    color: var(--text-color);
+    border-bottom-color: silver;
+}
+
+.dialog-tabs .tab-button:focus-visible:not(.active) {
+    color: var(--text-color);
+}
+
+.dialog-tabs .tab-button.active {
+    color: var(--text-color);
+    border-bottom-color: var(--accent-color);
+}
+
 // Content - scrollable area
 .dialog-content {
     display: flex;
@@ -83,6 +147,41 @@
 
 .dialog-content.table-mode {
     overflow: hidden;
+}
+
+.dialog-content.preview-tab {
+    overflow: hidden;
+}
+
+.radar-tab-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.95fr);
+    gap: 12px;
+    width: 100%;
+    min-height: 0;
+    padding: 12px;
+    box-sizing: border-box;
+}
+
+.radar-tab-preview,
+.radar-tab-chart {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.radar-tab-preview load-force-preview-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.radar-tab-chart {
+    align-self: start;
+}
+
+.radar-tab-chart load-force-radar-panel {
+    width: 100%;
 }
 
 .units-list {
@@ -583,5 +682,45 @@
 .as-td-specials .special-pill {
     padding: 1px 4px;
     font-size: 0.8em;
+}
+
+@media (max-width: 920px) {
+    .radar-tab-layout {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 10px;
+    }
+
+    .radar-tab-chart {
+        order: -1;
+        flex: 0 0 auto;
+    }
+
+    .radar-tab-preview {
+        flex: 1 1 auto;
+        overflow: hidden;
+    }
+}
+
+@media (max-width: 640px) {
+    .dialog-tabs {
+        padding: 0 8px;
+    }
+
+    .dialog-tabs .tab-button {
+        flex: 1 1 0;
+        text-align: center;
+        min-width: 0;
+        padding: 0.5em 0.5em;
+        font-size: 0.95em;
+    }
+}
+
+@media (max-height: 550px) {
+    .dialog-tabs .tab-button {
+        padding: 0.3em 0.7em;
+        font-size: 0.9em;
+    }
 }
 
