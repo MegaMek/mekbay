@@ -76,6 +76,7 @@ function createUnit(overrides: Partial<Unit>): Unit {
         _searchKey: '',
         _displayType: 'Mek',
         _maxRange: 0,
+        _weightedMaxRange: 0,
         _dissipationEfficiency: 0,
         _mdSumNoPhysical: 0,
         _mdSumNoPhysicalNoOneshots: 0,
@@ -98,6 +99,11 @@ describe('UnitSearchIndexService', () => {
                 internal: 5,
                 dpt: 4,
                 run2: 6,
+                comp: [
+                    { id: 'laser-a', q: 1, n: 'Weapon A', t: 'E', p: 1, l: 'RA', md: '10', r: '5/10' },
+                    { id: 'laser-b', q: 1, n: 'Weapon B', t: 'E', p: 1, l: 'LA', md: '10', r: '4/8' },
+                    { id: 'missile-a', q: 1, n: 'Weapon C', t: 'M', p: 1, l: 'LT', md: '2', r: '8/16/24' },
+                ],
                 as: {
                     TP: 'BM',
                     PV: 0,
@@ -125,6 +131,11 @@ describe('UnitSearchIndexService', () => {
                 internal: 9,
                 dpt: 8,
                 run2: 4,
+                comp: [
+                    { id: 'laser-c', q: 1, n: 'Weapon D', t: 'E', p: 1, l: 'RA', md: '5', r: '3/6/9' },
+                    { id: 'ac-a', q: 2, n: 'Weapon E', t: 'B', p: 1, l: 'LT', md: '2', r: '8/16/24' },
+                    { id: 'laser-d', q: 1, n: 'Weapon F', t: 'E', p: 1, l: 'LA', md: 'variable', r: '4/8/12' },
+                ],
                 as: {
                     TP: 'BM',
                     PV: 0,
@@ -215,6 +226,7 @@ describe('UnitSearchIndexService', () => {
         expect(service.getUnitSubtypeMaxStats('BattleMek').armor).toEqual({ min: 10, max: 30, average: 20 });
         expect(service.getUnitSubtypeMaxStats('BattleMek').dpt).toEqual({ min: 4, max: 8, average: 6 });
         expect(service.getUnitSubtypeMaxStats('BattleMek').run2MP).toEqual({ min: 4, max: 6, average: 5 });
+        expect(service.getUnitSubtypeMaxStats('BattleMek').weightedMaxRange).toEqual({ min: 10, max: 12, average: 11 });
         expect(service.getASUnitTypeMaxStats('BM').asTmm).toEqual({ min: 2, max: 4, average: 3 });
         expect(service.getASUnitTypeMaxStats('BM').asDmgM).toEqual({ min: 1, max: 3, average: 2 });
         expect(service.getUnitSubtypeMaxStats('WarShip').dropshipCapacity).toEqual({ min: 2, max: 6, average: 4 });
@@ -225,6 +237,7 @@ describe('UnitSearchIndexService', () => {
         const service = new UnitSearchIndexService();
 
         expect(service.getUnitSubtypeMaxStats('Missing').armor).toEqual({ min: 0, max: 0, average: 0 });
+        expect(service.getUnitSubtypeMaxStats('Missing').weightedMaxRange).toEqual({ min: 0, max: 0, average: 0 });
         expect(service.getASUnitTypeMaxStats('Missing').asTmm).toEqual({ min: 0, max: 0, average: 0 });
         expect(service.getUnitSubtypeMaxStats('Missing').gravDecks).toEqual({ min: 0, max: 0, average: 0 });
     });

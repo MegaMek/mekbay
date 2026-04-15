@@ -105,6 +105,7 @@ export interface MinMaxStatsRange {
     alphaNoPhysical: BucketStatSummary,
     alphaNoPhysicalNoOneshots: BucketStatSummary,
     maxRange: BucketStatSummary,
+    weightedMaxRange: BucketStatSummary,
     dpt: BucketStatSummary,
     asTmm: BucketStatSummary,
     asArm: BucketStatSummary,
