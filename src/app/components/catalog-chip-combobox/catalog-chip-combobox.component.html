@@ -1,0 +1,76 @@
+<div class="chip-combobox" [class.is-open]="isOpen" (focusout)="onFocusOut($event)">
+    <div class="chip-combobox-shell" [class.is-open]="isOpen" (mousedown)="onShellMouseDown($event)">
+        <div class="chip-combobox-list">
+            @for (value of values; track value) {
+            <span class="chip-combobox-chip" [class.chip-combobox-chip-with-badge]="getChipBadge(value)">
+                @if (getChipBadge(value); as badge) {
+                <span class="chip-combobox-badge">{{ badge }}</span>
+                }
+                <span class="chip-combobox-chip-text">{{ getChipLabel(value) }}</span>
+                <button type="button" class="chip-combobox-chip-remove" (click)="removeValue(value)" [attr.aria-label]="'Remove ' + label + ' value'">&#10005;</button>
+            </span>
+            }
+            <input #inputEl class="chip-combobox-input" type="text"
+                autocomplete="off" spellcheck="false"
+                [value]="query"
+                [placeholder]="values.length === 0 ? placeholder : placeholderWhenPopulated"
+                role="combobox"
+                aria-autocomplete="list"
+                [attr.aria-label]="label"
+                [attr.aria-expanded]="isOpen"
+                [attr.aria-controls]="getListboxId()"
+                [attr.aria-activedescendant]="getActiveDescendantId()"
+                (focus)="onFocus()"
+                (input)="onInput($any($event.target).value)"
+                (keydown)="onKeydown($event)" />
+        </div>
+        <button type="button" class="chip-combobox-toggle" (click)="toggleOpen()" [attr.aria-label]="'Toggle ' + label + ' suggestions'" [attr.aria-expanded]="isOpen">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+        </button>
+    </div>
+
+    @if (isOpen) {
+    <div class="chip-combobox-panel framed-borders has-shadow" [id]="getListboxId()" role="listbox" [attr.aria-label]="label + ' suggestions'">
+        <div class="chip-combobox-panel-header">
+            <span>{{ summaryText() }}</span>
+            <span>{{ getHintText() }}</span>
+        </div>
+
+        @if (filteredSuggestions().length > 0) {
+        <div class="chip-combobox-option-list">
+            @for (option of filteredSuggestions(); track option.value; let index = $index) {
+            <button type="button" class="chip-combobox-option" [id]="getOptionId(index)" role="option"
+                [attr.aria-selected]="isActiveSuggestion(index)"
+                [class.active]="isActiveSuggestion(index)"
+                (mouseenter)="setActiveSuggestion(index)"
+                (focus)="setActiveSuggestion(index)"
+                (click)="selectSuggestion(option.value)">
+                <div class="chip-combobox-option-copy">
+                    <div class="chip-combobox-option-title-row">
+                        @if (option.badge) {
+                        <span class="chip-combobox-badge">{{ option.badge }}</span>
+                        }
+                        <span class="chip-combobox-option-title">{{ option.label }}</span>
+                    </div>
+                    @if (option.description) {
+                    <span class="chip-combobox-option-description">{{ option.description }}</span>
+                    }
+                </div>
+                <span class="chip-combobox-option-action">{{ optionActionText }}</span>
+            </button>
+            }
+        </div>
+        } @else {
+        <div class="chip-combobox-empty">
+            @if (query.trim().length > 0) {
+            No catalog match. Press Enter or comma to add "{{ previewQuery() }}".
+            } @else {
+            {{ allSelectedText }}
+            }
+        </div>
+        }
+    </div>
+    }
+</div>

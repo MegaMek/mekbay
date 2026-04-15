@@ -112,85 +112,52 @@
                     <div class="restriction-pill-editor">
                         <div class="restriction-subtitle">Allowed Classic types</div>
                         <p class="restriction-field-help">Uses the unit <strong>type</strong> field. Leave empty to allow any type.</p>
-                        <div class="restriction-pill-input-row">
-                            <input class="bt-input" type="text" list="restriction-classic-type-suggestions" placeholder="Add a Classic type"
-                                [value]="classicTypeInput()" (input)="updateClassicTypeInput($any($event.target).value)"
-                                (keydown)="onCatalogPillKeydown($event, 'classicUnitTypes')" />
-                            <button type="button" class="bt-button" (click)="addClassicUnitType()">ADD</button>
-                        </div>
-                        <datalist id="restriction-classic-type-suggestions">
-                            @for (option of classicTypeSuggestions(); track option) {
-                            <option [value]="option"></option>
-                            }
-                        </datalist>
-                        @if (draft.classicUnitTypes.length > 0) {
-                        <div class="restriction-pill-list">
-                            @for (value of draft.classicUnitTypes; track value) {
-                            <span class="restriction-pill">
-                                <span>{{ value }}</span>
-                                <button type="button" class="restriction-pill-remove" (click)="removeClassicUnitType(value)" aria-label="Remove Classic type">&#10005;</button>
-                            </span>
-                            }
-                        </div>
-                        } @else {
-                        <div class="restriction-mini-empty">Any Classic type</div>
-                        }
+                        <catalog-chip-combobox
+                            label="Classic type"
+                            [values]="draft.classicUnitTypes"
+                            [options]="classicTypeCatalogOptions()"
+                            placeholder="Search or add Classic types"
+                            placeholderWhenPopulated="Add another type"
+                            emptySelectionText="Any Classic type"
+                            allSelectedText="All available Classic types are already selected."
+                            [normalizeValue]="normalizeClassicCatalogValue"
+                            (valuesChange)="updateClassicUnitTypes($any($event))">
+                        </catalog-chip-combobox>
+                        <div class="restriction-token-footer">{{ getCatalogFooterText('classicUnitTypes') }}</div>
                     </div>
 
                     <div class="restriction-pill-editor">
                         <div class="restriction-subtitle">Allowed Classic subtypes</div>
                         <p class="restriction-field-help">Uses the unit <strong>subtype</strong> field. Leave empty to allow any subtype.</p>
-                        <div class="restriction-pill-input-row">
-                            <input class="bt-input" type="text" list="restriction-classic-subtype-suggestions" placeholder="Add a Classic subtype"
-                                [value]="classicSubtypeInput()" (input)="updateClassicSubtypeInput($any($event.target).value)"
-                                (keydown)="onCatalogPillKeydown($event, 'classicUnitSubtypes')" />
-                            <button type="button" class="bt-button" (click)="addClassicUnitSubtype()">ADD</button>
-                        </div>
-                        <datalist id="restriction-classic-subtype-suggestions">
-                            @for (option of classicSubtypeSuggestions(); track option) {
-                            <option [value]="option"></option>
-                            }
-                        </datalist>
-                        @if (draft.classicUnitSubtypes.length > 0) {
-                        <div class="restriction-pill-list">
-                            @for (value of draft.classicUnitSubtypes; track value) {
-                            <span class="restriction-pill">
-                                <span>{{ value }}</span>
-                                <button type="button" class="restriction-pill-remove" (click)="removeClassicUnitSubtype(value)" aria-label="Remove Classic subtype">&#10005;</button>
-                            </span>
-                            }
-                        </div>
-                        } @else {
-                        <div class="restriction-mini-empty">Any Classic subtype</div>
-                        }
+                        <catalog-chip-combobox
+                            label="Classic subtype"
+                            [values]="draft.classicUnitSubtypes"
+                            [options]="classicSubtypeCatalogOptions()"
+                            placeholder="Search or add Classic subtypes"
+                            placeholderWhenPopulated="Add another subtype"
+                            emptySelectionText="Any Classic subtype"
+                            allSelectedText="All available Classic subtypes are already selected."
+                            [normalizeValue]="normalizeClassicCatalogValue"
+                            (valuesChange)="updateClassicUnitSubtypes($any($event))">
+                        </catalog-chip-combobox>
+                        <div class="restriction-token-footer">{{ getCatalogFooterText('classicUnitSubtypes') }}</div>
                     </div>
                     } @else {
                     <div class="restriction-pill-editor">
                         <div class="restriction-subtitle">Allowed Alpha Strike types</div>
                         <p class="restriction-field-help">Uses the unit <strong>as.TP</strong> value. Leave empty to allow any Alpha Strike type.</p>
-                        <div class="restriction-pill-input-row">
-                            <input class="bt-input" type="text" list="restriction-alpha-strike-type-suggestions" placeholder="Add an Alpha Strike TP code"
-                                [value]="alphaStrikeTypeInput()" (input)="updateAlphaStrikeTypeInput($any($event.target).value)"
-                                (keydown)="onCatalogPillKeydown($event, 'alphaStrikeUnitTypes')" />
-                            <button type="button" class="bt-button" (click)="addAlphaStrikeUnitType()">ADD</button>
-                        </div>
-                        <datalist id="restriction-alpha-strike-type-suggestions">
-                            @for (option of alphaStrikeTypeSuggestions(); track option.value) {
-                            <option [value]="option.value">{{ option.label }}</option>
-                            }
-                        </datalist>
-                        @if (draft.alphaStrikeUnitTypes.length > 0) {
-                        <div class="restriction-pill-list">
-                            @for (value of draft.alphaStrikeUnitTypes; track value) {
-                            <span class="restriction-pill">
-                                <span>{{ formatAlphaStrikeType(value) }}</span>
-                                <button type="button" class="restriction-pill-remove" (click)="removeAlphaStrikeUnitType(value)" aria-label="Remove Alpha Strike type">&#10005;</button>
-                            </span>
-                            }
-                        </div>
-                        } @else {
-                        <div class="restriction-mini-empty">Any Alpha Strike TP value</div>
-                        }
+                        <catalog-chip-combobox
+                            label="Alpha Strike type"
+                            [values]="draft.alphaStrikeUnitTypes"
+                            [options]="alphaStrikeCatalogOptions()"
+                            placeholder="Search by TP code or name"
+                            placeholderWhenPopulated="Add another TP value"
+                            emptySelectionText="Any Alpha Strike TP value"
+                            allSelectedText="All available Alpha Strike TP values are already selected."
+                            [normalizeValue]="normalizeAlphaStrikeCatalogValue"
+                            (valuesChange)="updateAlphaStrikeUnitTypes($any($event))">
+                        </catalog-chip-combobox>
+                        <div class="restriction-token-footer">{{ getCatalogFooterText('alphaStrikeUnitTypes') }}</div>
                     </div>
                     }
                     <label class="restriction-toggle-row">

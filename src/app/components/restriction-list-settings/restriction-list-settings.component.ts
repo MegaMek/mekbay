@@ -34,6 +34,8 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { CatalogChipComboboxComponent } from '../catalog-chip-combobox/catalog-chip-combobox.component';
+import type { CatalogChipComboboxOption } from '../catalog-chip-combobox/catalog-chip-combobox.component';
 import { GameSystem } from '../../models/common.model';
 import type { AmmoType } from '../../models/equipment.model';
 import type { RestrictionListDefinition } from '../../models/restriction-lists.model';
@@ -92,13 +94,24 @@ function normalizeCatalogInputValue(value: string): string {
     return value.trim().replace(/\s+/g, ' ');
 }
 
-function sortCatalogValues(values: readonly string[]): string[] {
-    return [...values].sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
+function coerceDraftTextValue(value: unknown): string {
+    if (typeof value === 'string') {
+        return value;
+    }
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return `${value}`;
+    }
+
+    return '';
 }
 
-function resolveSuggestedCatalogValue(value: string, suggestions: readonly string[]): string {
-    const normalized = normalizeCatalogInputValue(value).toLowerCase();
-    return suggestions.find((suggestion) => suggestion.toLowerCase() === normalized) ?? normalizeCatalogInputValue(value);
+function normalizeDraftNumberInput(value: unknown): string {
+    return coerceDraftTextValue(value).trim();
+}
+
+function sortCatalogValues(values: readonly string[]): string[] {
+    return [...values].sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
 }
 
 function resolveAlphaStrikeTypeValue(value: string): string {
@@ -112,18 +125,12 @@ function resolveAlphaStrikeTypeValue(value: string): string {
     return normalizeCatalogInputValue(value).toUpperCase();
 }
 
-function formatAlphaStrikeTypeValue(value: string): string {
-    const code = value.toUpperCase();
-    const displayName = AS_TYPE_DISPLAY_NAMES[code];
-    return displayName ? `${code} - ${displayName}` : value;
-}
-
 function stringifyNumber(value: number | undefined): string {
     return value === undefined ? '' : `${value}`;
 }
 
-function parseInteger(value: string, minimum: number): number | undefined {
-    const trimmed = value.trim();
+function parseInteger(value: unknown, minimum: number): number | undefined {
+    const trimmed = normalizeDraftNumberInput(value);
     if (!trimmed) {
         return undefined;
     }
@@ -182,8 +189,8 @@ function buildDefinitionFromDraft(draft: RestrictionListEditorDraft, updatedAt: 
 
     return {
         slug: draft.slug,
-        name: draft.name.trim() || 'New Restriction List',
-        description: draft.description.trim(),
+        name: coerceDraftTextValue(draft.name).trim() || 'New Restriction List',
+        description: coerceDraftTextValue(draft.description).trim(),
         updatedAt,
         gameSystem: draft.gameSystem,
         catalog: {
@@ -220,7 +227,7 @@ function buildDefinitionFromDraft(draft: RestrictionListEditorDraft, updatedAt: 
                     allowFormationAbilities: draft.allowFormationAbilities,
                 },
             },
-        notes: normalizeNotes(draft.notesText),
+        notes: normalizeNotes(coerceDraftTextValue(draft.notesText)),
     };
 }
 
@@ -231,7 +238,7 @@ function normalizeDefinition(list: RestrictionListDefinition): RestrictionListDe
 @Component({
     selector: 'restriction-list-settings',
     standalone: true,
-    imports: [CommonModule, FormsModule],
+    imports: [CommonModule, FormsModule, CatalogChipComboboxComponent],
     templateUrl: './restriction-list-settings.component.html',
     styleUrls: ['./restriction-list-settings.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -249,9 +256,6 @@ export class RestrictionListSettingsComponent {
     readonly activeRestrictionCount = computed(() => this.restrictionListsService.getActiveRestrictionLists().length);
     readonly selectedSlug = signal<string | null>(null);
     readonly draft = signal<RestrictionListEditorDraft | null>(null);
-    readonly classicTypeInput = signal('');
-    readonly classicSubtypeInput = signal('');
-    readonly alphaStrikeTypeInput = signal('');
     readonly classicTypeSuggestions = computed(() => {
         this.dataService.searchCorpusVersion();
 
@@ -275,6 +279,20 @@ export class RestrictionListSettingsComponent {
             label: AS_TYPE_DISPLAY_NAMES[value.toUpperCase()] ?? value,
         }));
     });
+    readonly classicTypeCatalogOptions = computed<CatalogChipComboboxOption[]>(() => this.classicTypeSuggestions().map((value) => ({
+        value,
+        label: value,
+    })));
+    readonly classicSubtypeCatalogOptions = computed<CatalogChipComboboxOption[]>(() => this.classicSubtypeSuggestions().map((value) => ({
+        value,
+        label: value,
+    })));
+    readonly alphaStrikeCatalogOptions = computed<CatalogChipComboboxOption[]>(() => this.alphaStrikeTypeSuggestions().map((option) => ({
+        value: option.value,
+        label: option.label,
+        badge: option.value,
+        searchTerms: [option.value, option.label],
+    })));
     readonly selectedRestrictionList = computed(() => this.restrictionListsService.getRestrictionListBySlug(this.selectedSlug()));
     readonly hasDraftChanges = computed(() => {
         const draft = this.draft();
@@ -285,6 +303,8 @@ export class RestrictionListSettingsComponent {
 
         return JSON.stringify(buildDefinitionFromDraft(draft, selected.updatedAt)) !== JSON.stringify(normalizeDefinition(selected));
     });
+    readonly normalizeClassicCatalogValue = normalizeCatalogInputValue;
+    readonly normalizeAlphaStrikeCatalogValue = resolveAlphaStrikeTypeValue;
 
     constructor() {
         effect(() => {
@@ -424,12 +444,12 @@ export class RestrictionListSettingsComponent {
         this.patchDraft({ forbidArrowIVHoming: value });
     }
 
-    updateMinUnits(value: string): void {
-        this.patchDraft({ minUnits: value });
+    updateMinUnits(value: string | number | null | undefined): void {
+        this.patchDraft({ minUnits: normalizeDraftNumberInput(value) });
     }
 
-    updateMaxUnits(value: string): void {
-        this.patchDraft({ maxUnits: value });
+    updateMaxUnits(value: string | number | null | undefined): void {
+        this.patchDraft({ maxUnits: normalizeDraftNumberInput(value) });
     }
 
     updateUniqueChassis(value: boolean): void {
@@ -440,24 +460,24 @@ export class RestrictionListSettingsComponent {
         this.patchDraft({ jumpRuleEnabled: value });
     }
 
-    updateJumpMinimum(value: string): void {
-        this.patchDraft({ jumpMinimum: value });
+    updateJumpMinimum(value: string | number | null | undefined): void {
+        this.patchDraft({ jumpMinimum: normalizeDraftNumberInput(value) });
     }
 
-    updateJumpMaxUnits(value: string): void {
-        this.patchDraft({ jumpMaxUnits: value });
+    updateJumpMaxUnits(value: string | number | null | undefined): void {
+        this.patchDraft({ jumpMaxUnits: normalizeDraftNumberInput(value) });
     }
 
-    updateCrewSkillMin(value: string): void {
-        this.patchDraft({ crewSkillMin: value });
+    updateCrewSkillMin(value: string | number | null | undefined): void {
+        this.patchDraft({ crewSkillMin: normalizeDraftNumberInput(value) });
     }
 
-    updateCrewSkillMax(value: string): void {
-        this.patchDraft({ crewSkillMax: value });
+    updateCrewSkillMax(value: string | number | null | undefined): void {
+        this.patchDraft({ crewSkillMax: normalizeDraftNumberInput(value) });
     }
 
-    updateMaxGunneryPilotingDelta(value: string): void {
-        this.patchDraft({ maxGunneryPilotingDelta: value });
+    updateMaxGunneryPilotingDelta(value: string | number | null | undefined): void {
+        this.patchDraft({ maxGunneryPilotingDelta: normalizeDraftNumberInput(value) });
     }
 
     updateAllowManualPilotAbilities(value: boolean): void {
@@ -472,59 +492,24 @@ export class RestrictionListSettingsComponent {
         this.patchDraft({ notesText: value });
     }
 
-    updateClassicTypeInput(value: string): void {
-        this.classicTypeInput.set(value);
-    }
-
-    updateClassicSubtypeInput(value: string): void {
-        this.classicSubtypeInput.set(value);
-    }
-
-    updateAlphaStrikeTypeInput(value: string): void {
-        this.alphaStrikeTypeInput.set(value);
-    }
-
-    onCatalogPillKeydown(event: KeyboardEvent, field: CatalogPillField): void {
-        if (event.key !== 'Enter' && event.key !== ',') {
-            return;
-        }
-
-        event.preventDefault();
-
-        switch (field) {
-            case 'classicUnitTypes':
-                this.addClassicUnitType();
-                break;
-            case 'classicUnitSubtypes':
-                this.addClassicUnitSubtype();
-                break;
-            case 'alphaStrikeUnitTypes':
-                this.addAlphaStrikeUnitType();
-                break;
-        }
-    }
-
-    addClassicUnitType(): void {
-        this.addCatalogPill('classicUnitTypes', this.classicTypeInput(), this.classicTypeSuggestions());
-        this.classicTypeInput.set('');
+    updateClassicUnitTypes(values: readonly string[]): void {
+        this.patchDraft({ classicUnitTypes: [...values] });
     }
 
     removeClassicUnitType(value: string): void {
         this.removeCatalogPill('classicUnitTypes', value);
     }
 
-    addClassicUnitSubtype(): void {
-        this.addCatalogPill('classicUnitSubtypes', this.classicSubtypeInput(), this.classicSubtypeSuggestions());
-        this.classicSubtypeInput.set('');
+    updateClassicUnitSubtypes(values: readonly string[]): void {
+        this.patchDraft({ classicUnitSubtypes: [...values] });
     }
 
     removeClassicUnitSubtype(value: string): void {
         this.removeCatalogPill('classicUnitSubtypes', value);
     }
 
-    addAlphaStrikeUnitType(): void {
-        this.addCatalogPill('alphaStrikeUnitTypes', this.alphaStrikeTypeInput(), this.alphaStrikeTypeSuggestions().map((option) => option.value), resolveAlphaStrikeTypeValue);
-        this.alphaStrikeTypeInput.set('');
+    updateAlphaStrikeUnitTypes(values: readonly string[]): void {
+        this.patchDraft({ alphaStrikeUnitTypes: [...values] });
     }
 
     removeAlphaStrikeUnitType(value: string): void {
@@ -548,15 +533,33 @@ export class RestrictionListSettingsComponent {
         return gameSystem === GameSystem.CLASSIC ? 'Classic' : 'Alpha Strike';
     }
 
-    formatAlphaStrikeType(value: string): string {
-        return formatAlphaStrikeTypeValue(value);
+    getCatalogFooterText(field: CatalogPillField): string {
+        const count = this.draft()?.[field].length ?? 0;
+        if (count === 0) {
+            switch (field) {
+                case 'classicUnitTypes':
+                    return 'Any Classic type';
+                case 'classicUnitSubtypes':
+                    return 'Any Classic subtype';
+                case 'alphaStrikeUnitTypes':
+                    return 'Any Alpha Strike TP value';
+            }
+        }
+
+        switch (field) {
+            case 'classicUnitTypes':
+                return `${count} Classic type${count === 1 ? '' : 's'} selected`;
+            case 'classicUnitSubtypes':
+                return `${count} Classic subtype${count === 1 ? '' : 's'} selected`;
+            case 'alphaStrikeUnitTypes':
+                return `${count} Alpha Strike TP value${count === 1 ? '' : 's'} selected`;
+        }
     }
 
     private setSelectedList(slug: string | null): void {
         const list = this.restrictionListsService.getRestrictionListBySlug(slug);
         this.selectedSlug.set(list?.slug ?? null);
         this.draft.set(list ? createDraftFromDefinition(list) : null);
-        this.clearCatalogInputs();
     }
 
     private patchDraft(patch: Partial<RestrictionListEditorDraft>): void {
@@ -571,26 +574,6 @@ export class RestrictionListSettingsComponent {
         });
     }
 
-    private addCatalogPill(
-        field: CatalogPillField,
-        rawValue: string,
-        suggestions: readonly string[],
-        resolver: (value: string) => string = (value) => resolveSuggestedCatalogValue(value, suggestions),
-    ): void {
-        const draft = this.draft();
-        const normalizedInput = normalizeCatalogInputValue(rawValue);
-        if (!draft || !normalizedInput) {
-            return;
-        }
-
-        const nextValues = normalizeRestrictionCatalogValues([
-            ...draft[field],
-            resolver(normalizedInput),
-        ]);
-
-        this.patchDraft({ [field]: nextValues } as Partial<RestrictionListEditorDraft>);
-    }
-
     private removeCatalogPill(field: CatalogPillField, value: string): void {
         const draft = this.draft();
         if (!draft) {
@@ -601,12 +584,6 @@ export class RestrictionListSettingsComponent {
         this.patchDraft({
             [field]: draft[field].filter((entry) => normalizeCatalogInputValue(entry).toLowerCase() !== normalizedValue),
         } as Partial<RestrictionListEditorDraft>);
-    }
-
-    private clearCatalogInputs(): void {
-        this.classicTypeInput.set('');
-        this.classicSubtypeInput.set('');
-        this.alphaStrikeTypeInput.set('');
     }
 
     private async confirmDiscardChanges(): Promise<boolean> {
