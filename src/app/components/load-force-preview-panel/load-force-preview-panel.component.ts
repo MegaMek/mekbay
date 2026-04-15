@@ -154,9 +154,6 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 
         .force-preview {
             width: 100%;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--border-color, #333);
-            padding: 8px 12px;
             box-sizing: border-box;
             min-height: 0;
         }
@@ -500,7 +497,7 @@ export class LoadForcePreviewPanelComponent {
             return;
         }
 
-        const unitIndex = this.allUnits().findIndex((unit) => unit.name === loadForceUnit.unit?.name);
+        const unitIndex = this.allUnits().findIndex((unit) => unit === loadForceUnit.unit || unit.name === loadForceUnit.unit?.name);
         this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: {
                 unitList: this.allUnits(),
