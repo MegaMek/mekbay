@@ -183,6 +183,8 @@ const ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
 
 const RADAR_VIEWBOX_WIDTH = 500;
 const RADAR_VIEWBOX_HEIGHT = 400;
+const RADAR_RENDER_WIDTH = 800;
+const RADAR_RENDER_HEIGHT = 640;
 const RADAR_CENTER_X = RADAR_VIEWBOX_WIDTH / 2;
 const RADAR_CENTER_Y = RADAR_VIEWBOX_HEIGHT / 2;
 const RADAR_RADIUS = 140;
@@ -386,8 +388,8 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
                 <svg
                     class="radar-chart"
                     [attr.viewBox]="'0 0 ' + viewBoxWidth + ' ' + viewBoxHeight"
-                    [attr.width]="viewBoxWidth"
-                    [attr.height]="viewBoxHeight"
+                    [attr.width]="renderWidth"
+                    [attr.height]="renderHeight"
                     preserveAspectRatio="xMidYMid meet"
                     role="img">
 
@@ -463,14 +465,16 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
 
         .force-radar-shell {
             width: 100%;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--border-color, #333);
+            max-height: inherit;
             box-sizing: border-box;
             overflow: hidden;
         }
 
         .radar-area {
+            display: flex;
+            justify-content: center;
             width: 100%;
+            max-height: inherit;
             padding: 0 2px;
             box-sizing: border-box;
             overflow: hidden;
@@ -478,8 +482,10 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
 
         .radar-chart {
             display: block;
-            width: 100%;
+            width: auto;
             height: auto;
+            max-width: 100%;
+            max-height: inherit;
         }
 
         .radar-ring {
@@ -576,6 +582,8 @@ export class ForceRadarPanelComponent {
     readonly centerY = RADAR_CENTER_Y;
     readonly viewBoxWidth = RADAR_VIEWBOX_WIDTH;
     readonly viewBoxHeight = RADAR_VIEWBOX_HEIGHT;
+    readonly renderWidth = RADAR_RENDER_WIDTH;
+    readonly renderHeight = RADAR_RENDER_HEIGHT;
     readonly force = input.required<ForcePreviewEntry>();
     readonly hoveredUnit = input<Unit | null>(null);
     readonly axisDefinitions = computed(() => this.force().type === GameSystem.ALPHA_STRIKE

@@ -9,6 +9,7 @@ import {
     input,
     output,
     signal,
+    untracked,
     viewChild,
 } from '@angular/core';
 
@@ -33,6 +34,7 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 const UNIT_TILE_MIN_WIDTH = 86;
 const UNIT_TILE_MAX_WIDTH = 114;
 const UNIT_TILE_GAP = 4;
+type ForcePreviewSelectionMode = 'multi' | 'single';
 
 @Component({
     selector: 'force-preview-panel',
@@ -132,14 +134,28 @@ const UNIT_TILE_GAP = 4;
                                 </div>
                             </div>
 
-                            @if (showLockControls()) {
-                                <button
-                                    class="unit-lock-button bt-button"
-                                    type="button"
-                                    [class.locked]="isLocked(unitEntry)"
-                                    (click)="onLockButtonClick($event, unitEntry)">
-                                    {{ isLocked(unitEntry) ? 'UNLOCK' : 'LOCK' }}
-                                </button>
+                            @if (showLockControls() || showSelectionControls()) {
+                                <div class="unit-actions" [class.single-action]="showLockControls() !== showSelectionControls()">
+                                    @if (showLockControls()) {
+                                        <button
+                                            class="unit-lock-button bt-button"
+                                            type="button"
+                                            [class.locked]="isLocked(unitEntry)"
+                                            (click)="onLockButtonClick($event, unitEntry)">
+                                            {{ isLocked(unitEntry) ? 'UNLOCK' : 'LOCK' }}
+                                        </button>
+                                    }
+
+                                    @if (showSelectionControls()) {
+                                        <input
+                                            class="bt-checkbox unit-selection-checkbox"
+                                            type="checkbox"
+                                            [checked]="isSelected(unitEntry)"
+                                            [attr.aria-label]="selectionMode() === 'single' ? 'Select unit' : 'Toggle unit selection'"
+                                            (click)="$event.stopPropagation()"
+                                            (change)="onSelectionChange($event, unitEntry)" />
+                                    }
+                                </div>
                             }
                         </div>
                         }
@@ -158,6 +174,7 @@ const UNIT_TILE_GAP = 4;
             display: flex;
             flex-direction: column;
             width: 100%;
+            --preview-selection-accent: #62c4ff;
         }
 
         .force-preview-shell {
@@ -398,11 +415,60 @@ const UNIT_TILE_GAP = 4;
         }
 
         .unit-lock-button {
-            width: 100%;
             min-height: 24px;
             padding: 2px 4px;
             font-size: 0.62em;
             letter-spacing: 0.08em;
+        }
+
+        .unit-actions {
+            display: flex;
+            align-items: stretch;
+            gap: 2px;
+            width: 100%;
+        }
+
+        .unit-actions > .bt-button {
+            flex: 1 1 0;
+            min-width: 0;
+            align-self: stretch;
+        }
+
+        .unit-actions.single-action > * {
+            flex-basis: 100%;
+        }
+
+        .unit-actions.single-action > .unit-selection-checkbox {
+            flex: 1 1 100%;
+            width: 100%;
+            min-width: 0;
+        }
+
+        .unit-selection-checkbox {
+            margin: 0;
+            flex: 0 0 24px;
+            width: 24px;
+            min-width: 24px;
+            min-height: 24px;
+            height: auto;
+            box-sizing: border-box;
+        }
+
+        .unit-selection-checkbox:checked {
+            background-image:
+                linear-gradient(var(--preview-selection-accent), var(--preview-selection-accent)),
+                linear-gradient(var(--preview-selection-accent), var(--preview-selection-accent)),
+                linear-gradient(var(--preview-selection-accent), var(--preview-selection-accent)),
+                linear-gradient(var(--preview-selection-accent), var(--preview-selection-accent)),
+                linear-gradient(var(--preview-selection-accent), var(--preview-selection-accent)),
+                linear-gradient(var(--preview-selection-accent), var(--preview-selection-accent)),
+                linear-gradient(var(--preview-selection-accent), var(--preview-selection-accent)),
+                linear-gradient(var(--preview-selection-accent), var(--preview-selection-accent)),
+                linear-gradient(var(--preview-selection-accent), var(--preview-selection-accent));
+        }
+
+        .unit-selection-label {
+            line-height: 1;
         }
 
         .unit-lock-button.locked {
@@ -481,10 +547,14 @@ export class ForcePreviewPanelComponent {
     readonly showHint = input(true);
     readonly scrollUnitsOnly = input(false);
     readonly showLockControls = input(false);
+    readonly showSelectionControls = input(false);
+    readonly selectionMode = input<ForcePreviewSelectionMode>('multi');
     readonly displayMode = input<Options['unitDisplayName'] | null>(null);
     readonly lockedUnitKeys = input<ReadonlySet<string>>(new Set<string>());
     readonly lockToggle = input<((unitEntry: ForcePreviewUnit) => void) | null>(null);
     readonly hoveredUnitChange = output<ForcePreviewUnit | null>();
+    readonly selectedUnitsChange = output<ForcePreviewUnit[]>();
+    private readonly selectedUnits = signal<ReadonlySet<ForcePreviewUnit>>(new Set<ForcePreviewUnit>());
 
     readonly unitColumnCount = computed(() => {
         const viewportWidth = Math.max(this.previewViewportWidth(), UNIT_TILE_MIN_WIDTH);
@@ -550,6 +620,18 @@ export class ForcePreviewPanelComponent {
 
             onCleanup(() => resizeObserver.disconnect());
         });
+
+        effect(() => {
+            this.force();
+            untracked(() => {
+                if (this.selectedUnits().size === 0) {
+                    return;
+                }
+
+                this.selectedUnits.set(new Set<ForcePreviewUnit>());
+                this.selectedUnitsChange.emit([]);
+            });
+        });
     }
 
     getPilotStats(loadForceUnit: ForcePreviewUnit): string {
@@ -581,8 +663,38 @@ export class ForcePreviewPanelComponent {
         return !!loadForceUnit.lockKey && this.lockedUnitKeys().has(loadForceUnit.lockKey);
     }
 
+    isSelected(loadForceUnit: ForcePreviewUnit): boolean {
+        return this.selectedUnits().has(loadForceUnit);
+    }
+
     onLockButtonClick(event: Event, loadForceUnit: ForcePreviewUnit): void {
         event.stopPropagation();
         this.lockToggle()?.(loadForceUnit);
+    }
+
+    onSelectionChange(event: Event, loadForceUnit: ForcePreviewUnit): void {
+        event.stopPropagation();
+
+        const checked = (event.target as HTMLInputElement).checked;
+        const nextSelectedUnits = new Set<ForcePreviewUnit>();
+
+        if (this.selectionMode() === 'single') {
+            if (checked) {
+                nextSelectedUnits.add(loadForceUnit);
+            }
+        } else {
+            for (const unit of this.selectedUnits()) {
+                nextSelectedUnits.add(unit);
+            }
+
+            if (checked) {
+                nextSelectedUnits.add(loadForceUnit);
+            } else {
+                nextSelectedUnits.delete(loadForceUnit);
+            }
+        }
+
+        this.selectedUnits.set(nextSelectedUnits);
+        this.selectedUnitsChange.emit([...nextSelectedUnits]);
     }
 }
