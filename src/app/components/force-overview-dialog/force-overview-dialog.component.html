@@ -49,23 +49,23 @@
 
 <div class="dialog-content" #scrollContainer [class.table-mode]="activeTab() === 'units' && isTableMode()" [class.preview-tab]="isSummaryTab()">
     @if (isSummaryTab()) {
-        @let previewForce = summaryPreviewForce();
+        @let previewEntry = summaryPreviewEntry();
         <div class="radar-tab-layout">
             <div class="radar-tab-preview">
-                <load-force-preview-panel
-                    [force]="previewForce"
+                <force-preview-panel
+                    [force]="previewEntry"
                     [showHeader]="false"
                     [showHint]="false"
                     [scrollUnitsOnly]="true"
                     (hoveredUnitChange)="onPreviewUnitHover($event)">
-                </load-force-preview-panel>
+                </force-preview-panel>
             </div>
 
             <div class="radar-tab-chart">
-                <load-force-radar-panel
-                    [force]="previewForce"
+                <force-radar-panel
+                    [force]="previewEntry"
                     [hoveredUnit]="hoveredRadarUnit()">
-                </load-force-radar-panel>
+                </force-radar-panel>
             </div>
         </div>
     } @else {

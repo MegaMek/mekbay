@@ -35,7 +35,7 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 
 import { GameSystem } from '../../models/common.model';
-import type { LoadForceEntry } from '../../models/load-force-entry.model';
+import { getForcePreviewResolvedUnits, type ForcePreviewEntry } from '../../models/force-preview.model';
 import type { Unit } from '../../models/units.model';
 import { DataService, DOES_NOT_TRACK, type MinMaxStatsRange } from '../../services/data.service';
 
@@ -372,7 +372,7 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
 }
 
 @Component({
-    selector: 'load-force-radar-panel',
+    selector: 'force-radar-panel',
     standalone: true,
     imports: [CommonModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -569,23 +569,20 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
         }
     `],
 })
-export class LoadForceRadarPanelComponent {
+export class ForceRadarPanelComponent {
     private readonly dataService = inject(DataService);
 
     readonly centerX = RADAR_CENTER_X;
     readonly centerY = RADAR_CENTER_Y;
     readonly viewBoxWidth = RADAR_VIEWBOX_WIDTH;
     readonly viewBoxHeight = RADAR_VIEWBOX_HEIGHT;
-    readonly force = input.required<LoadForceEntry>();
+    readonly force = input.required<ForcePreviewEntry>();
     readonly hoveredUnit = input<Unit | null>(null);
     readonly axisDefinitions = computed(() => this.force().type === GameSystem.ALPHA_STRIKE
         ? ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS
         : CLASSIC_RADAR_AXIS_DEFINITIONS);
 
-    readonly units = computed(() => this.force().groups
-        .flatMap((group) => group.units)
-        .map((entry) => entry.unit)
-        .filter((unit): unit is Unit => unit !== undefined));
+    readonly units = computed<Unit[]>(() => getForcePreviewResolvedUnits(this.force()));
 
     readonly hasUnits = computed(() => this.units().length > 0);
 

@@ -48,10 +48,10 @@ import { ToastService } from '../../services/toast.service';
 import { OptionsService } from '../../services/options.service';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { formatSummaryMovement } from '../../models/pilot-abilities.model';
-import { createLoadForceEntryFromSerializedForce, type LoadForceEntry, type LoadForceUnit } from '../../models/load-force-entry.model';
+import { createForcePreviewEntryFromForce, type ForcePreviewEntry, type ForcePreviewUnit } from '../../models/force-preview.model';
+import { ForcePreviewPanelComponent } from '../force-preview-panel/force-preview-panel.component';
+import { ForceRadarPanelComponent } from '../force-radar-panel/force-radar-panel.component';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
-import { LoadForcePreviewPanelComponent } from '../load-force-preview-panel/load-force-preview-panel.component';
-import { LoadForceRadarPanelComponent } from '../load-force-radar-panel/load-force-radar-panel.component';
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import type { TagClickEvent } from '../unit-tags/unit-tags.component';
@@ -108,8 +108,8 @@ export const DEFAULT_OVERVIEW_STATE: OverviewState = {
         CommonModule,
         DragDropModule,
         UnitCardExpandedComponent,
-        LoadForcePreviewPanelComponent,
-        LoadForceRadarPanelComponent,
+        ForcePreviewPanelComponent,
+        ForceRadarPanelComponent,
         UnitBlockComponent,
         UnitIconComponent,
         DataTableComponent,
@@ -158,7 +158,7 @@ export class ForceOverviewDialogComponent {
     readonly activeTab = signal<ForceOverviewTab>('summary');
 
     /** Hovered unit for the radar overlay */
-    readonly hoveredPreviewUnit = signal<LoadForceUnit | null>(null);
+    readonly hoveredPreviewUnit = signal<ForcePreviewUnit | null>(null);
 
     // --- Autoscroll State ---
     private autoScrollVelocity = signal<number>(0);
@@ -201,9 +201,9 @@ export class ForceOverviewDialogComponent {
     /** Force name for display */
     forceName = computed(() => this.data.force.displayName());
 
-    /** Serialized force adapter for the preview and summary panels */
-    readonly summaryPreviewForce = computed<LoadForceEntry>(() => {
-        return createLoadForceEntryFromSerializedForce(this.data.force.serialize(), this.dataService);
+    /** Live force adapter for the preview and summary panels */
+    readonly summaryPreviewEntry = computed<ForcePreviewEntry>(() => {
+        return createForcePreviewEntryFromForce(this.data.force);
     });
 
     /** Total unit count */
@@ -564,7 +564,7 @@ export class ForceOverviewDialogComponent {
         this.onUnitClick(event.row.vm);
     }
 
-    onPreviewUnitHover(unitEntry: LoadForceUnit | null): void {
+    onPreviewUnitHover(unitEntry: ForcePreviewUnit | null): void {
         this.hoveredPreviewUnit.set(unitEntry?.unit ? unitEntry : null);
     }
 

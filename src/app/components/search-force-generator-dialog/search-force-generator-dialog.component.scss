@@ -19,8 +19,8 @@
     min-height: 0;
 }
 
-:host ::ng-deep .preview-body load-force-preview-panel,
-:host ::ng-deep .preview-body load-force-radar-panel {
+:host ::ng-deep .preview-body force-preview-panel,
+:host ::ng-deep .preview-body force-radar-panel {
     display: block;
 }
 
@@ -546,7 +546,7 @@
     min-height: 100%;
 }
 
-:host ::ng-deep .preview-stack load-force-radar-panel {
+:host ::ng-deep .preview-stack force-radar-panel {
     width: 100%;
     padding-bottom: 52px;
 }
@@ -605,7 +605,7 @@
         min-height: 320px;
     }
 
-    :host ::ng-deep .preview-stack load-force-radar-panel {
+    :host ::ng-deep .preview-stack force-radar-panel {
         max-height: 420px;
     }
 }

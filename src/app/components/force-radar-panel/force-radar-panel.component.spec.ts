@@ -4,7 +4,7 @@ import { GameSystem } from '../../models/common.model';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { Unit } from '../../models/units.model';
 import { DataService, type BucketStatSummary, type MinMaxStatsRange } from '../../services/data.service';
-import { LoadForceRadarPanelComponent } from './load-force-radar-panel.component';
+import { ForceRadarPanelComponent } from './force-radar-panel.component';
 
 type MaxStatsOverride = {
     [Key in keyof MinMaxStatsRange]?: Partial<BucketStatSummary>;
@@ -140,7 +140,7 @@ function createUnit(overrides: Partial<Unit>): Unit {
     };
 }
 
-describe('LoadForceRadarPanelComponent', () => {
+describe('ForceRadarPanelComponent', () => {
     let subtypeMaxStats = new Map<string, MinMaxStatsRange>();
     let asTypeMaxStats = new Map<string, MinMaxStatsRange>();
 
@@ -202,7 +202,7 @@ describe('LoadForceRadarPanelComponent', () => {
         ]);
 
         TestBed.configureTestingModule({
-            imports: [LoadForceRadarPanelComponent],
+            imports: [ForceRadarPanelComponent],
             providers: [
                 {
                     provide: DataService,
@@ -216,7 +216,7 @@ describe('LoadForceRadarPanelComponent', () => {
     });
 
     it('aggregates classic radar stats using global subtype maxima', () => {
-        const fixture = TestBed.createComponent(LoadForceRadarPanelComponent);
+        const fixture = TestBed.createComponent(ForceRadarPanelComponent);
         const mekA = createUnit({
             id: 1,
             name: 'Mek A',
@@ -282,7 +282,7 @@ describe('LoadForceRadarPanelComponent', () => {
     });
 
     it('maps aggregated bucket averages to the midpoint ring', () => {
-        const fixture = TestBed.createComponent(LoadForceRadarPanelComponent);
+        const fixture = TestBed.createComponent(ForceRadarPanelComponent);
         const averageMekA = createUnit({
             id: 31,
             name: 'Average Mek A',
@@ -328,7 +328,7 @@ describe('LoadForceRadarPanelComponent', () => {
     });
 
     it('overlays hovered classic unit stats using that unit subtype range', () => {
-        const fixture = TestBed.createComponent(LoadForceRadarPanelComponent);
+        const fixture = TestBed.createComponent(ForceRadarPanelComponent);
         const mekA = createUnit({
             id: 7,
             name: 'Hover Mek',
@@ -391,7 +391,7 @@ describe('LoadForceRadarPanelComponent', () => {
     });
 
     it('uses the lower global subtype ceiling when jump and run are tied for a unit', () => {
-        const fixture = TestBed.createComponent(LoadForceRadarPanelComponent);
+        const fixture = TestBed.createComponent(ForceRadarPanelComponent);
         const tiedMobilityMek = createUnit({
             id: 4,
             name: 'Tie Mek',
@@ -412,7 +412,7 @@ describe('LoadForceRadarPanelComponent', () => {
     });
 
     it('aggregates Alpha Strike radar stats from global as.TP maxima', () => {
-        const fixture = TestBed.createComponent(LoadForceRadarPanelComponent);
+        const fixture = TestBed.createComponent(ForceRadarPanelComponent);
 
         const asMek = createUnit({
             id: 5,
@@ -498,7 +498,7 @@ describe('LoadForceRadarPanelComponent', () => {
     });
 
     it('overlays hovered Alpha Strike unit stats using that unit as.TP range', () => {
-        const fixture = TestBed.createComponent(LoadForceRadarPanelComponent);
+        const fixture = TestBed.createComponent(ForceRadarPanelComponent);
 
         const asMek = createUnit({
             id: 9,
@@ -596,7 +596,7 @@ describe('LoadForceRadarPanelComponent', () => {
     });
 
     it('maps hovered unit bucket averages to the midpoint ring', () => {
-        const fixture = TestBed.createComponent(LoadForceRadarPanelComponent);
+        const fixture = TestBed.createComponent(ForceRadarPanelComponent);
         const averageMek = createUnit({
             id: 33,
             name: 'Average Hover Mek',
@@ -632,7 +632,7 @@ describe('LoadForceRadarPanelComponent', () => {
     });
 
     it('shows the empty state when the force has no resolvable units', () => {
-        const fixture = TestBed.createComponent(LoadForceRadarPanelComponent);
+        const fixture = TestBed.createComponent(ForceRadarPanelComponent);
 
         fixture.componentRef.setInput('force', new LoadForceEntry({
             groups: [{

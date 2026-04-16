@@ -40,7 +40,8 @@ import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { Pipe, type PipeTransform } from "@angular/core";
-import { getLoadForceUnitPilotStats, type LoadForceEntry, type LoadForceGroup } from '../../models/load-force-entry.model';
+import { getForcePreviewUnitPilotStats } from '../../models/force-preview.model';
+import type { LoadForceEntry, LoadForceGroup } from '../../models/load-force-entry.model';
 import type { LoadOperationEntry } from '../../models/operation.model';
 import type { SerializedOperation } from '../../models/operation.model';
 import type { LoadOrganizationEntry } from '../../models/organization.model';
@@ -134,7 +135,7 @@ export class ForceLoadDialogComponent {
     searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
     readonly GameSystem = GameSystem;
-    readonly getLoadForceUnitPilotStats = getLoadForceUnitPilotStats;
+    readonly getUnitPilotStats = getForcePreviewUnitPilotStats;
 
     readonly HANGAR_SORT_OPTIONS: { key: string; label: string }[] = [
         { key: 'timestamp', label: 'Date' },

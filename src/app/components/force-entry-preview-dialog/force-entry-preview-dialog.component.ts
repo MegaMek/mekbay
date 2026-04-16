@@ -41,7 +41,7 @@ import { ToastService } from '../../services/toast.service';
 import { type ForceAddModePickerData, ForceAddModePickerDialogComponent, type ForceAddModePickerResult } from '../force-add-mode-picker-dialog/force-add-mode-picker-dialog.component';
 import { firstValueFrom } from 'rxjs';
 import { DialogsService } from '../../services/dialogs.service';
-import { LoadForcePreviewPanelComponent } from '../load-force-preview-panel/load-force-preview-panel.component';
+import { ForcePreviewPanelComponent } from '../force-preview-panel/force-preview-panel.component';
 
 export interface ForceEntryPreviewDialogData {
     force: LoadForceEntry;
@@ -58,7 +58,7 @@ export interface ForceEntryPreviewDialogData {
     selector: 'force-entry-preview-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, LoadForcePreviewPanelComponent],
+    imports: [CommonModule, ForcePreviewPanelComponent],
     host: {
         class: 'fullscreen-dialog-host glass'
     },

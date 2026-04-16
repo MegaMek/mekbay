@@ -9,7 +9,7 @@ import { DialogsService } from '../../services/dialogs.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { OptionsService } from '../../services/options.service';
 import { ToastService } from '../../services/toast.service';
-import { LoadForcePreviewPanelComponent } from '../load-force-preview-panel/load-force-preview-panel.component';
+import { ForcePreviewPanelComponent } from '../force-preview-panel/force-preview-panel.component';
 import { ForceEntryPreviewDialogComponent } from './force-entry-preview-dialog.component';
 
 describe('ForceEntryPreviewDialogComponent', () => {
@@ -106,8 +106,8 @@ describe('ForceEntryPreviewDialogComponent', () => {
             unitDisplayNameOverride: 'both',
         });
 
-        const previewPanel = fixture.debugElement.query(By.directive(LoadForcePreviewPanelComponent))
-            .componentInstance as LoadForcePreviewPanelComponent;
+        const previewPanel = fixture.debugElement.query(By.directive(ForcePreviewPanelComponent))
+            .componentInstance as ForcePreviewPanelComponent;
 
         expect(previewPanel.displayMode()).toBe('both');
         expect(previewPanel.effectiveUnitDisplayName()).toBe('both');
@@ -116,8 +116,8 @@ describe('ForceEntryPreviewDialogComponent', () => {
     it('pins the preview summary and scrolls the unit list inside the panel', async () => {
         const { fixture } = await render(createForceEntry());
         const nativeElement = fixture.nativeElement as HTMLElement;
-        const previewDebugElement = fixture.debugElement.query(By.directive(LoadForcePreviewPanelComponent));
-        const previewPanel = previewDebugElement.componentInstance as LoadForcePreviewPanelComponent;
+        const previewDebugElement = fixture.debugElement.query(By.directive(ForcePreviewPanelComponent));
+        const previewPanel = previewDebugElement.componentInstance as ForcePreviewPanelComponent;
         const previewHost = previewDebugElement.nativeElement as HTMLElement;
         const dialogBody = nativeElement.querySelector('.wide-dialog-body') as HTMLElement | null;
         const previewShell = previewHost.querySelector('.force-preview-shell') as HTMLElement | null;
@@ -144,7 +144,7 @@ describe('ForceEntryPreviewDialogComponent', () => {
                 units: createUnitEntries(20),
             }],
         }));
-        const previewHost = fixture.debugElement.query(By.directive(LoadForcePreviewPanelComponent))
+        const previewHost = fixture.debugElement.query(By.directive(ForcePreviewPanelComponent))
             .nativeElement as HTMLElement;
         const units = previewHost.querySelector('.units') as HTMLElement | null;
         const unitTiles = Array.from(previewHost.querySelectorAll('.unit-tile')) as HTMLElement[];
@@ -174,7 +174,7 @@ describe('ForceEntryPreviewDialogComponent', () => {
         }), {
             unitDisplayNameOverride: 'alias',
         });
-        const previewHost = fixture.debugElement.query(By.directive(LoadForcePreviewPanelComponent))
+        const previewHost = fixture.debugElement.query(By.directive(ForcePreviewPanelComponent))
             .nativeElement as HTMLElement;
         const units = previewHost.querySelector('.units') as HTMLElement | null;
         const unitTiles = Array.from(previewHost.querySelectorAll('.unit-tile')) as HTMLElement[];
