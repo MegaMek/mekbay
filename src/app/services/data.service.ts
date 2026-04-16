@@ -1199,6 +1199,7 @@ export class DataService {
                     cloudForce.name = localForce.name ?? cloudForce.name;
                     cloudForce.type = localForce.type ?? cloudForce.type;
                     cloudForce.factionId = localForce.factionId ?? cloudForce.factionId;
+                    cloudForce.eraId = localForce.eraId ?? cloudForce.eraId;
                     cloudForce.bv = localForce.bv ?? cloudForce.bv;
                     cloudForce.pv = localForce.pv ?? cloudForce.pv;
                     cloudForce.forceTimestamp = localForce.forceTimestamp;
@@ -1225,6 +1226,7 @@ export class DataService {
                     name: localForce?.name,
                     type: localForce?.type as GameSystem | undefined,
                     factionId: localForce?.factionId,
+                    eraId: localForce?.eraId,
                     bv: localForce?.bv,
                     pv: localForce?.pv,
                     forceTimestamp: localForce?.timestamp,
@@ -1265,6 +1267,7 @@ export class DataService {
                 name: f.name,
                 type: f.type,
                 factionId: f.factionId,
+                eraId: f.eraId,
                 bv: f.bv,
                 pv: f.pv,
                 forceTimestamp: f.forceTimestamp,
@@ -1339,6 +1342,7 @@ export class DataService {
                         name: entry.name,
                         type: entry.type,
                         factionId: entry.factionId,
+                        eraId: entry.eraId,
                         bv: entry.bv,
                         pv: entry.pv,
                         forceTimestamp: entry.timestamp,

@@ -48,9 +48,9 @@
 .op-force {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
+    align-items: center;
     padding: 2px 6px;
-    gap: 4px;
+    gap: 8px;
 }
 
 .op-force.missing {
@@ -58,12 +58,27 @@
     text-decoration: line-through;
 }
 
-.op-faction-icon {
+.op-force-main {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+}
+
+.op-force-icons {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: 0 0 auto;
+}
+
+.op-faction-icon,
+.op-era-icon {
     width: 1.2em;
     height: 1.2em;
     object-fit: contain;
     flex-shrink: 0;
-    align-self: center;
 }
 
 .op-force-name {
@@ -89,6 +104,11 @@
 .enemy .op-force {
     flex-direction: row-reverse;
     text-align: right;
+}
+
+.enemy .op-force-main,
+.enemy .op-force-icons {
+    flex-direction: row-reverse;
 }
 
 .op-total {
@@ -170,6 +190,11 @@
     .enemy .op-force {
         flex-direction: row;
         text-align: left;
+    }
+
+    .enemy .op-force-main,
+    .enemy .op-force-icons {
+        flex-direction: row;
     }
 
     .enemy .op-total {

@@ -2262,6 +2262,7 @@ export class ForceBuilderService {
             alignment: slot.alignment,
             type: slot.force.gameSystem,
             factionId: slot.force.faction()?.id,
+            eraId: slot.force.era()?.id,
             bv: slot.force.gameSystem !== 'as' ? slot.force.totalBv() : undefined,
             pv: slot.force.gameSystem === 'as' ? slot.force.totalBv() : undefined,
         }));
@@ -2336,10 +2337,16 @@ export class ForceBuilderService {
                 name: op.name,
                 note: op.note,
                 timestamp: op.timestamp,
-                forces: forces.map(f => ({
-                    instanceId: f.instanceId,
-                    alignment: f.alignment,
-                    timestamp: f.timestamp,
+                forces: slots.map(slot => ({
+                    instanceId: slot.force.instanceId()!,
+                    alignment: slot.alignment,
+                    timestamp: slot.force.timestamp || new Date().toISOString(),
+                    name: slot.force.displayName(),
+                    type: slot.force.gameSystem,
+                    factionId: slot.force.faction()?.id,
+                    eraId: slot.force.era()?.id,
+                    bv: slot.force.gameSystem !== 'as' ? slot.force.totalBv() : undefined,
+                    pv: slot.force.gameSystem === 'as' ? slot.force.totalBv() : undefined,
                 })),
                 local: true,
                 cloud: true,
@@ -2378,6 +2385,7 @@ export class ForceBuilderService {
             alignment: slot.alignment,
             type: slot.force.gameSystem,
             factionId: slot.force.faction()?.id,
+            eraId: slot.force.era()?.id,
             bv: slot.force.gameSystem !== 'as' ? slot.force.totalBv() : undefined,
             pv: slot.force.gameSystem === 'as' ? slot.force.totalBv() : undefined,
         }));
@@ -2451,10 +2459,16 @@ export class ForceBuilderService {
             currentOp.name = result.name;
             currentOp.note = result.note;
             currentOp.timestamp = op.timestamp;
-            currentOp.forces = forces.map(f => ({
-                instanceId: f.instanceId,
-                alignment: f.alignment,
-                timestamp: f.timestamp,
+            currentOp.forces = slots.map(slot => ({
+                instanceId: slot.force.instanceId()!,
+                alignment: slot.alignment,
+                timestamp: slot.force.timestamp || new Date().toISOString(),
+                name: slot.force.displayName(),
+                type: slot.force.gameSystem,
+                factionId: slot.force.faction()?.id,
+                eraId: slot.force.era()?.id,
+                bv: slot.force.gameSystem !== 'as' ? slot.force.totalBv() : undefined,
+                pv: slot.force.gameSystem === 'as' ? slot.force.totalBv() : undefined,
             }));
             this.currentOperation.set(currentOp);
             this.toastService.showToast('Operation updated.', 'success');
