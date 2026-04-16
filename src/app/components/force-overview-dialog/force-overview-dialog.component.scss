@@ -57,7 +57,15 @@
     min-width: 0;
 }
 
-.dialog-faction-icon {
+.dialog-header-icons {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+}
+
+.dialog-faction-icon,
+.dialog-era-icon {
     width: 1.75rem;
     height: 1.75rem;
     object-fit: contain;
@@ -171,7 +179,7 @@
     min-height: 0;
 }
 
-.radar-tab-preview load-force-preview-panel {
+.radar-tab-preview force-preview-panel {
     flex: 1 1 auto;
     min-height: 0;
 }
@@ -180,7 +188,7 @@
     align-self: start;
 }
 
-.radar-tab-chart load-force-radar-panel {
+.radar-tab-chart force-radar-panel {
     width: 100%;
 }
 

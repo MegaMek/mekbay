@@ -54,10 +54,14 @@ import { getFactionImg } from '../../models/factions.model';
     template: `
     @let unitDisplayName = optionsService.options().unitDisplayName;
     @let f = force();
+    @let era = f.era();
     <div class="force-preview-header">
         <div class="faction-name-wrapper">
             @if (factionImg(); as factionImgUrl) {
                 <img [src]="factionImgUrl" class="faction-icon" />
+            }
+            @if (era?.img || era?.icon; as eraImg) {
+                <img [src]="eraImg" class="era-icon" [alt]="era?.name || 'Era'" [title]="era?.name || 'Era'" />
             }
             <span class="force-preview-name">{{ f.displayName() }}</span>
         </div>
@@ -139,7 +143,8 @@ import { getFactionImg } from '../../models/factions.model';
             flex: 1 1 0;
         }
 
-        .faction-icon {
+        .faction-icon,
+        .era-icon {
             width: 1.2em;
             height: 1.2em;
             object-fit: contain;

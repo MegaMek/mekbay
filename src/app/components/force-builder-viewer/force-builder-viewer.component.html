@@ -36,6 +36,9 @@
                                     <img [src]="faction.img" class="force-faction-icon" [alt]="faction.name" [title]="faction.name" />
                                 }
                             }
+                            @if (slotForce.era()?.img || slotForce.era()?.icon; as eraImg) {
+                                <img [src]="eraImg" class="force-era-icon" [alt]="slotForce.era()?.name || 'Era'" [title]="slotForce.era()?.name || 'Era'" />
+                            }
                             {{ slotForce.displayName() }}
                         </span>
                         @if (forceEraWarning(slotForce); as eraWarning) {

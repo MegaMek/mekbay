@@ -39,16 +39,13 @@ import { GameSystem } from '../../models/common.model';
 import type { Era } from '../../models/eras.model';
 import type { Faction } from '../../models/factions.model';
 import { MAX_UNITS as FORCE_MAX_UNITS } from '../../models/force.model';
-import {
-    createLoadForceEntryFromSerializedForce,
-    type LoadForceEntry,
-    type LoadForceUnit,
-} from '../../models/load-force-entry.model';
+import { createForcePreviewEntryFromForce, getForcePreviewUnitEntries, type ForcePreviewEntry, type ForcePreviewUnit } from '../../models/force-preview.model';
+import type { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { AvailabilitySource } from '../../models/options.model';
 import { DROPDOWN_FILTERS, RANGE_FILTERS } from '../../services/unit-search-filters.model';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
-import { LoadForcePreviewPanelComponent } from '../load-force-preview-panel/load-force-preview-panel.component';
-import { LoadForceRadarPanelComponent } from '../load-force-radar-panel/load-force-radar-panel.component';
+import { ForcePreviewPanelComponent } from '../force-preview-panel/force-preview-panel.component';
+import { ForceRadarPanelComponent } from '../force-radar-panel/force-radar-panel.component';
 import { MultiSelectDropdownComponent, type MultiStateSelection } from '../multi-select-dropdown/multi-select-dropdown.component';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { UnitSearchAdvancedFiltersComponent } from '../unit-search-advanced-filters/unit-search-advanced-filters.component';
@@ -92,8 +89,8 @@ type UnitTypeFilterKey = 'type' | 'as.TP';
     imports: [
         CommonModule,
         BaseDialogComponent,
-        LoadForcePreviewPanelComponent,
-        LoadForceRadarPanelComponent,
+        ForcePreviewPanelComponent,
+        ForceRadarPanelComponent,
         MultiSelectDropdownComponent,
         TooltipDirective,
         UnitSearchAdvancedFiltersComponent,
@@ -190,10 +187,10 @@ export class SearchForceGeneratorDialogComponent {
                 .filter((lockKey): lockKey is string => !!lockKey),
         );
     });
-    readonly previewLockToggle = (unitEntry: LoadForceUnit): void => {
+    readonly previewLockToggle = (unitEntry: ForcePreviewUnit): void => {
         this.togglePreviewUnitLock(unitEntry);
     };
-    readonly hoveredPreviewUnit = signal<LoadForceUnit | null>(null);
+    readonly hoveredPreviewUnit = signal<ForcePreviewUnit | null>(null);
     readonly hoveredRadarUnit = computed(() => this.hoveredPreviewUnit()?.unit ?? null);
     readonly descriptionLines = computed(() => {
         const lines = [];
@@ -274,9 +271,9 @@ export class SearchForceGeneratorDialogComponent {
             this.generationSettings(),
         );
     });
-    readonly previewEntry = computed(() => {
+    readonly previewEntry = computed<ForcePreviewEntry | null>(() => {
         const preview = this.preview();
-        return this.forceGeneratorService.createForceEntry(preview);
+        return this.forceGeneratorService.createForcePreviewEntry(preview);
     });
 
     constructor() {
@@ -443,16 +440,15 @@ export class SearchForceGeneratorDialogComponent {
 
         this.clearHoveredPreviewUnit();
 
-        const importedForceEntry = createLoadForceEntryFromSerializedForce(currentForce.serialize(), this.dataService);
-        const importedUnits = importedForceEntry.groups
-            .flatMap((group) => group.units)
+        const importedPreviewEntry = createForcePreviewEntryFromForce(currentForce);
+        const importedUnits = getForcePreviewUnitEntries(importedPreviewEntry)
             .map((unitEntry, index) => this.toLockedGeneratedUnit(unitEntry, index))
             .filter((unit): unit is GeneratedForceUnit => unit !== null);
 
         this.lockedUnits.set(importedUnits);
         this.previewState.set(this.createPreviewFromUnits(importedUnits, {
-            faction: importedForceEntry.faction,
-            era: importedForceEntry.era,
+            faction: importedPreviewEntry.faction,
+            era: importedPreviewEntry.era,
             explanationLines: ['Imported current force into preview. Press REROLL to generate a new result for the current settings.'],
             error: importedUnits.length === 0 ? 'No units from the current force could be loaded into the preview.' : null,
         }));
@@ -462,21 +458,24 @@ export class SearchForceGeneratorDialogComponent {
         this.collapsedHowPicksWhereChosen.update((value) => !value);
     }
 
-    onPreviewUnitHover(unitEntry: LoadForceUnit | null): void {
+    onPreviewUnitHover(unitEntry: ForcePreviewUnit | null): void {
         this.hoveredPreviewUnit.set(unitEntry?.unit ? unitEntry : null);
     }
 
     submit(): void {
-        const previewEntry = this.previewEntry();
-        if (!previewEntry || this.previewError()) {
+        if (!this.previewEntry() || this.previewError()) {
             return;
         }
 
         const preview = this.preview();
+        const forceEntry = this.forceGeneratorService.createForceEntry(preview);
+        if (!forceEntry) {
+            return;
+        }
 
         this.filtersService.requestClosePanels({ exitExpandedView: true });
         this.dialogRef.close({
-            forceEntry: previewEntry,
+            forceEntry,
             config: {
                 gameSystem: this.gameSystem(),
                 availabilitySource: this.availabilitySource(),
@@ -861,7 +860,7 @@ export class SearchForceGeneratorDialogComponent {
         input.value = `${value}`;
     }
 
-    private togglePreviewUnitLock(unitEntry: LoadForceUnit): void {
+    private togglePreviewUnitLock(unitEntry: ForcePreviewUnit): void {
         const lockKey = unitEntry.lockKey;
         if (!lockKey) {
             return;
@@ -877,7 +876,7 @@ export class SearchForceGeneratorDialogComponent {
         });
     }
 
-    private toLockedGeneratedUnit(unitEntry: LoadForceUnit, index: number): GeneratedForceUnit | null {
+    private toLockedGeneratedUnit(unitEntry: ForcePreviewUnit, index: number): GeneratedForceUnit | null {
         if (!unitEntry.unit) {
             return null;
         }

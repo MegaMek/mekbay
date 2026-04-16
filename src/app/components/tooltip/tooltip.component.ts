@@ -62,22 +62,37 @@ export type TooltipContent = string | TooltipLine[];
         }
         .tooltip-html {
             white-space: normal;
+            overflow-wrap: anywhere;
         }
         .tooltip-row {
             display: flex;
+            align-items: flex-start;
             justify-content: space-between;
             gap: 16px;
-            white-space: nowrap;
+            white-space: normal;
         }
         .tooltip-row.plain {
             justify-content: flex-start;
             gap: 8px;
         }
+        .tooltip-row .label,
+        .tooltip-row .value {
+            min-width: 0;
+        }
+        .tooltip-row .label {
+            flex: 0 0 auto;
+        }
         .tooltip-row.header .value {
             font-weight: 600;
         }
         .tooltip-row .value {
+            flex: 1 1 auto;
             font-weight: 500;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+        .tooltip-row:not(.plain) .value {
+            text-align: right;
         }
         .tooltip-icon {
             width: 1.1em;

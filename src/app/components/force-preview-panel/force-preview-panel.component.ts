@@ -13,11 +13,12 @@ import {
 } from '@angular/core';
 
 import {
-    getLoadForceUnitPilotStats,
-    type LoadForceEntry,
-    type LoadForceGroup,
-    type LoadForceUnit,
-} from '../../models/load-force-entry.model';
+    getForcePreviewResolvedUnits,
+    getForcePreviewUnitPilotStats,
+    type ForcePreviewEntry,
+    type ForcePreviewGroup,
+    type ForcePreviewUnit,
+} from '../../models/force-preview.model';
 import type { Options } from '../../models/options.model';
 import type { Unit } from '../../models/units.model';
 import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
@@ -34,7 +35,7 @@ const UNIT_TILE_MAX_WIDTH = 114;
 const UNIT_TILE_GAP = 4;
 
 @Component({
-    selector: 'load-force-preview-panel',
+    selector: 'force-preview-panel',
     standalone: true,
     imports: [CommonModule, CleanModelStringPipe, UnitIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -50,6 +51,9 @@ const UNIT_TILE_GAP = 4;
             <div class="faction-name-wrapper">
                 @if (entry.faction?.img; as factionImg) {
                     <img [src]="factionImg" class="faction-icon" />
+                }
+                @if (entry.era?.img || entry.era?.icon; as eraImg) {
+                    <img [src]="eraImg" class="era-icon" [alt]="entry.era?.name || 'Era'" [title]="entry.era?.name || 'Era'" />
                 }
                 <div class="force-name-block">
                     <span class="force-preview-name">{{ entry.name || forceOrgName() }}</span>
@@ -202,7 +206,8 @@ const UNIT_TILE_GAP = 4;
             flex: 1 1 0;
         }
 
-        .faction-icon {
+        .faction-icon,
+        .era-icon {
             width: 1.2em;
             height: 1.2em;
             object-fit: contain;
@@ -465,21 +470,21 @@ const UNIT_TILE_GAP = 4;
         }
     `],
 })
-export class LoadForcePreviewPanelComponent {
+export class ForcePreviewPanelComponent {
     private readonly dialogsService = inject(DialogsService);
     readonly optionsService = inject(OptionsService);
     private readonly forcePreviewViewport = viewChild<ElementRef<HTMLElement>>('forcePreviewViewport');
     private readonly previewViewportWidth = signal(UNIT_TILE_MAX_WIDTH);
 
-    readonly force = input.required<LoadForceEntry>();
+    readonly force = input.required<ForcePreviewEntry>();
     readonly showHeader = input(true);
     readonly showHint = input(true);
     readonly scrollUnitsOnly = input(false);
     readonly showLockControls = input(false);
     readonly displayMode = input<Options['unitDisplayName'] | null>(null);
     readonly lockedUnitKeys = input<ReadonlySet<string>>(new Set<string>());
-    readonly lockToggle = input<((unitEntry: LoadForceUnit) => void) | null>(null);
-    readonly hoveredUnitChange = output<LoadForceUnit | null>();
+    readonly lockToggle = input<((unitEntry: ForcePreviewUnit) => void) | null>(null);
+    readonly hoveredUnitChange = output<ForcePreviewUnit | null>();
 
     readonly unitColumnCount = computed(() => {
         const viewportWidth = Math.max(this.previewViewportWidth(), UNIT_TILE_MIN_WIDTH);
@@ -499,17 +504,14 @@ export class LoadForcePreviewPanelComponent {
         () => this.displayMode() ?? this.optionsService.options().unitDisplayName,
     );
 
-    readonly allUnits = computed(() => this.force().groups
-        .flatMap((group) => group.units)
-        .map((entry) => entry.unit)
-        .filter((unit): unit is Unit => unit !== undefined));
+    readonly resolvedUnits = computed<Unit[]>(() => getForcePreviewResolvedUnits(this.force()));
 
     readonly forceOrgName = computed(() => {
         const result = getOrgFromForce(this.force());
         return result.name !== 'Force' ? result.name : null;
     });
 
-    readonly groupDisplayData = computed(() => this.force().groups.map((group) => {
+    readonly groupDisplayData = computed(() => this.force().groups.map((group: ForcePreviewGroup) => {
         const sizeResult = getOrgFromGroup(group);
         const orgName = sizeResult.name && sizeResult.name !== 'Force' ? sizeResult.name : null;
 
@@ -550,19 +552,20 @@ export class LoadForcePreviewPanelComponent {
         });
     }
 
-    getPilotStats(loadForceUnit: LoadForceUnit): string {
-        return getLoadForceUnitPilotStats(loadForceUnit, this.force().type);
+    getPilotStats(loadForceUnit: ForcePreviewUnit): string {
+        return getForcePreviewUnitPilotStats(loadForceUnit, this.force().type);
     }
 
-    onUnitClick(loadForceUnit: LoadForceUnit): void {
+    onUnitClick(loadForceUnit: ForcePreviewUnit): void {
         if (!loadForceUnit.unit) {
             return;
         }
 
-        const unitIndex = this.allUnits().findIndex((unit) => unit === loadForceUnit.unit || unit.name === loadForceUnit.unit?.name);
+        const unitList = this.resolvedUnits();
+        const unitIndex = unitList.findIndex((unit: Unit) => unit === loadForceUnit.unit || unit.name === loadForceUnit.unit?.name);
         this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: {
-                unitList: this.allUnits(),
+                unitList,
                 unitIndex: unitIndex >= 0 ? unitIndex : 0,
                 hideAddButton: true,
                 gameSystem: this.force().type,
@@ -570,15 +573,15 @@ export class LoadForcePreviewPanelComponent {
         });
     }
 
-    onUnitHover(loadForceUnit: LoadForceUnit | null): void {
+    onUnitHover(loadForceUnit: ForcePreviewUnit | null): void {
         this.hoveredUnitChange.emit(loadForceUnit?.unit ? loadForceUnit : null);
     }
 
-    isLocked(loadForceUnit: LoadForceUnit): boolean {
+    isLocked(loadForceUnit: ForcePreviewUnit): boolean {
         return !!loadForceUnit.lockKey && this.lockedUnitKeys().has(loadForceUnit.lockKey);
     }
 
-    onLockButtonClick(event: Event, loadForceUnit: LoadForceUnit): void {
+    onLockButtonClick(event: Event, loadForceUnit: ForcePreviewUnit): void {
         event.stopPropagation();
         this.lockToggle()?.(loadForceUnit);
     }

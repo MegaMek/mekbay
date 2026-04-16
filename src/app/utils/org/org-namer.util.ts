@@ -1,7 +1,7 @@
 import { type Force, UnitGroup } from '../../models/force.model';
 import type { Era } from '../../models/eras.model';
 import { type Faction } from '../../models/factions.model';
-import { LoadForceEntry, type LoadForceGroup } from '../../models/load-force-entry.model';
+import { isForcePreviewEntry, type ForcePreviewEntry, type ForcePreviewGroup } from '../../models/force-preview.model';
 import type { Unit } from '../../models/units.model';
 import { resolveOrgDefinition } from './org-registry.util';
 import { getAggregatedTier, getDynamicTierForModifier } from './org-tier.util';
@@ -44,8 +44,8 @@ const DEFAULT_FACTION: Faction = {
 // Public API
 
 export function getOrgFromGroup(group: UnitGroup, options?: OrgNamingOptions): OrgSizeResult;
-export function getOrgFromGroup(group: LoadForceGroup, options?: OrgNamingOptions): OrgSizeResult;
-export function getOrgFromGroup(group: UnitGroup | LoadForceGroup, options: OrgNamingOptions = {}): OrgSizeResult {
+export function getOrgFromGroup(group: ForcePreviewGroup, options?: OrgNamingOptions): OrgSizeResult;
+export function getOrgFromGroup(group: UnitGroup | ForcePreviewGroup, options: OrgNamingOptions = {}): OrgSizeResult {
 	const resolvedOptions = options;
 
 	if (group instanceof UnitGroup) {
@@ -68,16 +68,16 @@ export function getOrgFromGroup(group: UnitGroup | LoadForceGroup, options: OrgN
 }
 
 export function getOrgFromForce(force: Force, options?: OrgNamingOptions): OrgSizeResult;
-export function getOrgFromForce(entry: LoadForceEntry, options?: OrgNamingOptions): OrgSizeResult;
-export function getOrgFromForce(forceOrEntry: Force | LoadForceEntry, options: OrgNamingOptions = {}): OrgSizeResult {
+export function getOrgFromForce(entry: ForcePreviewEntry, options?: OrgNamingOptions): OrgSizeResult;
+export function getOrgFromForce(forceOrEntry: Force | ForcePreviewEntry, options: OrgNamingOptions = {}): OrgSizeResult {
 	const resolvedOptions = options;
 
-	if (forceOrEntry instanceof LoadForceEntry) {
+	if (isForcePreviewEntry(forceOrEntry)) {
 		const resolvedFaction = forceOrEntry.faction ?? DEFAULT_FACTION;
 		const resolvedEra = forceOrEntry.era ?? null;
 		const groupResults = forceOrEntry.groups
 			.filter((group) => group.units.some((unit) => unit.unit !== undefined))
-			.flatMap((group) => getGroupResultsFromLoadForceGroup(group, resolvedFaction, resolvedEra));
+			.flatMap((group) => getGroupResultsFromForcePreviewGroup(group, resolvedFaction, resolvedEra));
 		const rawGroups = resolveFromGroups(groupResults, resolvedFaction, resolvedEra);
 		return getResolvedOrgResult(rawGroups, resolvedFaction, resolvedEra, resolvedOptions);
 	}
@@ -92,7 +92,7 @@ export function getOrgFromForce(forceOrEntry: Force | LoadForceEntry, options: O
 }
 
 export function getOrgFromForceCollection(
-	entries: readonly LoadForceEntry[],
+	entries: readonly ForcePreviewEntry[],
 	faction: Faction | null | undefined,
 	era: Era | null = null,
 	childGroupResults?: readonly GroupSizeResult[],
@@ -117,12 +117,11 @@ export function getOrgFromResolvedGroups(
 
 // Internal utilities
 
-function getGroupResultsFromLoadForceGroup(
-	group: LoadForceGroup,
+function getGroupResultsFromForcePreviewGroup(
+	group: ForcePreviewGroup,
 	faction: Faction,
 	era: Era | null | undefined,
 ): GroupSizeResult[] {
-	const force = group.force ?? null;
 	const units = group.units
 		.filter((entry): entry is typeof entry & { unit: Unit } => entry.unit !== undefined)
 		.map((entry) => entry.unit);

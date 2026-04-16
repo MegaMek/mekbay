@@ -37,6 +37,7 @@ import type { MultiStateSelection } from '../components/multi-select-dropdown/mu
 import { GameSystem } from '../models/common.model';
 import type { Era } from '../models/eras.model';
 import type { Faction } from '../models/factions.model';
+import type { ForcePreviewEntry, ForcePreviewGroup } from '../models/force-preview.model';
 import type { MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
 import type {
     MegaMekRulesetAssign,
@@ -51,7 +52,7 @@ import type {
     MegaMekRulesetSubforceNode,
     MegaMekRulesetWhen,
 } from '../models/megamek/rulesets.model';
-import { LoadForceEntry, type LoadForceGroup } from '../models/load-force-entry.model';
+import { LoadForceEntry } from '../models/load-force-entry.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import { MAX_UNITS as FORCE_MAX_UNITS } from '../models/force.model';
 import { MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.model';
@@ -375,13 +376,13 @@ interface PreviewGroupPlanContext {
     factionName: string;
 }
 
-interface PlannedPreviewLoadGroup {
-    loadGroup: LoadForceGroup;
+interface PlannedPreviewGroup {
+    previewGroup: ForcePreviewGroup;
     firstUnitIndex: number;
 }
 
 interface PreviewGroupPlan {
-    groups: PlannedPreviewLoadGroup[];
+    groups: PlannedPreviewGroup[];
     score: number;
     formationCount: number;
 }
@@ -526,11 +527,11 @@ function isBetterPreviewGroupPlan(candidate: PreviewGroupPlan, incumbent: Previe
     return false;
 }
 
-function createGeneratedLoadForceGroup(
+function createGeneratedPreviewGroup(
     generatedUnits: readonly GeneratedForceUnit[],
     gameSystem: GameSystem,
     formationId?: string,
-): LoadForceGroup {
+): ForcePreviewGroup {
     return {
         formationId,
         units: generatedUnits.map((generatedUnit) => ({
@@ -619,7 +620,7 @@ function createPreviewLeafGroupPlan(
 
     return {
         groups: [{
-            loadGroup: createGeneratedLoadForceGroup(orderedGeneratedUnits, context.gameSystem, formationId),
+            previewGroup: createGeneratedPreviewGroup(orderedGeneratedUnits, context.gameSystem, formationId),
             firstUnitIndex: getGeneratedUnitFirstIndex(orderedGeneratedUnits, unitIndexByGeneratedUnit),
         }],
         score: bestMatch
@@ -875,10 +876,10 @@ function buildPreviewGroupPlanFromResolvedGroup(
     return createPreviewLeafGroupPlan(group, generatedUnits, context, unitIndexByGeneratedUnit);
 }
 
-function buildPreviewLoadGroups(
+function buildPreviewGroups(
     generatedUnits: readonly GeneratedForceUnit[],
     context: PreviewGroupPlanContext,
-): LoadForceGroup[] {
+): ForcePreviewGroup[] {
     const resolvedUnitGroups = resolveFromUnits(
         generatedUnits.map((generatedUnit) => generatedUnit.unit),
         context.faction,
@@ -895,7 +896,7 @@ function buildPreviewLoadGroups(
         unitIndexByGeneratedUnit,
     );
     if (optimizedTopLevelPlan) {
-        return optimizedTopLevelPlan.groups.map((plannedGroup) => plannedGroup.loadGroup);
+        return optimizedTopLevelPlan.groups.map((plannedGroup) => plannedGroup.previewGroup);
     }
 
     const queueByUnit = createGeneratedUnitQueues(generatedUnits);
@@ -904,7 +905,7 @@ function buildPreviewLoadGroups(
     for (const resolvedGroup of resolvedGroups) {
         const groupGeneratedUnits = takeGeneratedUnitsForUnitList(collectGroupUnits(resolvedGroup), queueByUnit);
         if (!groupGeneratedUnits) {
-            return [createGeneratedLoadForceGroup(generatedUnits, context.gameSystem)];
+            return [createGeneratedPreviewGroup(generatedUnits, context.gameSystem)];
         }
 
         plannedGroups.push(buildPreviewGroupPlanFromResolvedGroup(
@@ -916,10 +917,10 @@ function buildPreviewLoadGroups(
     }
 
     if (countQueuedGeneratedUnits(queueByUnit) > 0) {
-        return [createGeneratedLoadForceGroup(generatedUnits, context.gameSystem)];
+        return [createGeneratedPreviewGroup(generatedUnits, context.gameSystem)];
     }
 
-    return combinePreviewGroupPlans(plannedGroups).groups.map((plannedGroup) => plannedGroup.loadGroup);
+    return combinePreviewGroupPlans(plannedGroups).groups.map((plannedGroup) => plannedGroup.previewGroup);
 }
 
 function normalizeInitialBudgetRange(min: number, max: number): ForceGenerationBudgetRange {
@@ -948,6 +949,14 @@ function normalizeBudgetBound(value: number): number {
 
 function normalizeUnitCountBound(value: number): number {
     return Number.isFinite(value) ? Math.min(FORCE_MAX_UNITS, Math.max(1, Math.floor(value))) : 1;
+}
+
+function clonePreviewGroups(groups: readonly ForcePreviewGroup[]): ForcePreviewGroup[] {
+    return groups.map((group) => ({
+        name: group.name,
+        formationId: group.formationId,
+        units: group.units.map((unit) => ({ ...unit })),
+    }));
 }
 
 function resolveBudgetRangeWithEditedMin(
@@ -1897,6 +1906,20 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     public createForceEntry(preview: ForceGenerationPreview, name?: string): LoadForceEntry | null {
+        const previewEntry = this.createForcePreviewEntry(preview, name);
+        if (!previewEntry) {
+            return null;
+        }
+
+        return new LoadForceEntry({
+            ...previewEntry,
+            instanceId: `generated-${Date.now()}-${Math.round(Math.random() * 1_000_000)}`,
+            timestamp: new Date().toISOString(),
+            groups: clonePreviewGroups(previewEntry.groups),
+        });
+    }
+
+    public createForcePreviewEntry(preview: ForceGenerationPreview, name?: string): ForcePreviewEntry | null {
         if (preview.units.length === 0) {
             return null;
         }
@@ -1904,7 +1927,7 @@ export class ForceGeneratorService implements OnDestroy {
         const faction = preview.faction ?? null;
         const era = preview.era ?? null;
         const resolvedName = name?.trim() || ForceNamerUtil.generateForceNameForFaction(faction);
-        const previewGroups = buildPreviewLoadGroups(preview.units, {
+        const previewGroups = buildPreviewGroups(preview.units, {
             faction: preview.faction
                 ?? this.dataService.getFactionById(MULFACTION_MERCENARY)
                 ?? DEFAULT_PREVIEW_FORCE_FACTION,
@@ -1915,9 +1938,9 @@ export class ForceGeneratorService implements OnDestroy {
                 ?? DEFAULT_PREVIEW_FORCE_FACTION.name,
         });
 
-        return new LoadForceEntry({
-            instanceId: `generated-${Date.now()}-${Math.round(Math.random() * 1_000_000)}`,
-            timestamp: new Date().toISOString(),
+        const previewEntry: ForcePreviewEntry = {
+            instanceId: '',
+            timestamp: '',
             type: preview.gameSystem,
             owned: true,
             cloud: false,
@@ -1929,7 +1952,13 @@ export class ForceGeneratorService implements OnDestroy {
             bv: preview.gameSystem === GameSystem.CLASSIC ? preview.totalCost : undefined,
             pv: preview.gameSystem === GameSystem.ALPHA_STRIKE ? preview.totalCost : undefined,
             groups: previewGroups,
-        });
+        };
+
+        for (const group of previewGroups) {
+            group.force = previewEntry;
+        }
+
+        return previewEntry;
     }
 
     private resolveSelectedEras(): Era[] {

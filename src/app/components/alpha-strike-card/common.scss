@@ -60,6 +60,42 @@
     }
 }
 
+.commander-nameplate {
+    position: relative;
+    isolation: isolate;
+
+    > :not(.group-commander-indicator) {
+        position: relative;
+        z-index: 1;
+    }
+}
+
+.group-commander-indicator {
+    position: absolute;
+    top: 0em;
+    left: 0em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 8.4em;
+    color: var(--bt-yellow);
+    opacity: 0.6;
+    pointer-events: none;
+    z-index: 0;
+
+    :host(.monochrome) & {
+        color: #000;
+        opacity: 0.3;
+    }
+}
+
+.group-commander-icon {
+    width: 100%;
+    height: auto;
+    transform: rotate(180deg);
+    flex-shrink: 0;
+}
+
 
 // PV Box
 .pv-box {

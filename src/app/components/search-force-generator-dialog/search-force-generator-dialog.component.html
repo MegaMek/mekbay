@@ -295,18 +295,18 @@
                 <div class="preview-body">
                     @if (previewEntry(); as previewForceEntry) {
                         <div class="preview-stack">
-                            <load-force-preview-panel
+                            <force-preview-panel
                                 [force]="previewForceEntry"
                                 [showLockControls]="true"
                                 [lockedUnitKeys]="lockedUnitKeys()"
                                 [lockToggle]="previewLockToggle"
                                 (hoveredUnitChange)="onPreviewUnitHover($event)">
-                            </load-force-preview-panel>
+                            </force-preview-panel>
 
-                            <load-force-radar-panel
+                            <force-radar-panel
                                 [force]="previewForceEntry"
                                 [hoveredUnit]="hoveredRadarUnit()">
-                            </load-force-radar-panel>
+                            </force-radar-panel>
 
                             @if (previewError(); as errorMessage) {
                                 <div class="preview-inline-error error framed-borders">{{ errorMessage }}</div>
