@@ -116,6 +116,17 @@
     .tab-buttons.wrap {
         flex-wrap: wrap;
         overflow: visible;
+        
+        @container (max-width: 500px) {
+            justify-content: flex-start;
+        }
+
+        .tab-button {
+            @container (max-width: 500px) {
+                flex: 1 1 auto;
+                text-align: center;
+            }
+        }
     }
 
     .tab-overflow-trigger {
@@ -148,6 +159,10 @@
         flex-direction: row;
         align-items: center;
         margin-right: 6px;
+
+        &:empty {
+            display: none;
+        }
     }
 
     ::ng-deep .tab-actions-button {
@@ -176,10 +191,15 @@
         transition: color 0.2s, border-color 0.2s;
         outline: none;
         white-space: nowrap;
+        text-transform: uppercase;
+
+        @container (max-width: 640px) {
+            padding: 0.5em 0.5em;
+        }
 
         @container (max-width: 500px) {
-            padding: 0.5em 0.5em;
-            font-size: 0.95em;
+            padding: 0.9em 0.3em 0.5em 0.3em;
+            font-size: 0.82em;
         }
     }
 
