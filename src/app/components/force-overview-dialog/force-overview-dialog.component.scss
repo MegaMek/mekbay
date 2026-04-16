@@ -191,11 +191,12 @@
     box-sizing: border-box;
     overflow: hidden;
     width: 100%;
-    max-height: 30vh;
 }
 
 .radar-tab-chart force-radar-panel {
-    width: 100%;
+    display: block;
+    width: auto;
+    margin-inline: auto;
 }
 
 .units-list {
@@ -698,7 +699,7 @@
     font-size: 0.8em;
 }
 
-@media (max-width: 920px) {
+@media (max-width: 800px) {
     .summary-tab-layout {
         display: flex;
         flex-direction: column;
@@ -709,8 +710,12 @@
     .radar-tab-chart {
         order: -1;
         flex: 0 0 auto;
-    }
 
+        force-radar-panel {
+            max-height: 30vh;
+        }
+    }
+    
     .summary-tab-preview {
         flex: 1 1 auto;
         overflow: hidden;
