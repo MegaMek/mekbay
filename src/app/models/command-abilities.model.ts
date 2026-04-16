@@ -115,7 +115,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         name: "Cavalry",
         rulesRef: [{ book: Rulebook.FMD, page: 80 }],
         summary: [
-            "Each Unit can move 2\" more than their Move rating as long as it is not within its Move rating of an enemy unit at the start of its movement.",
+            "Each Unit can move [[2]] more than their Move rating as long as it is not within its Move rating of an enemy unit at the start of its movement.",
             "Does not affect Target Movement Modifier or otherwise change their Move rating.",
         ],
     },
@@ -133,7 +133,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         name: "Communications Disruption",
         rulesRef: [{ book: Rulebook.CO, page: 84 }, { book: Rulebook.ASCE, page: 103 }],
         summary: [
-            "Each turn roll 1D6; on a 6, one random enemy lance/Star/Level II reduces Move by 4\" (min 1\") for the turn.",
+            "Each turn roll 1D6; on a 6, one random enemy lance/Star/Level II reduces Move by [[4]] (min [[1]]) for the turn.",
             "Aerospace elements reduce base Thrust by 1 instead.",
             "Requires 2:1 Battlefield Intelligence ratio if BI rules are in play."
         ],
@@ -151,7 +151,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         id: "direct_fire_artillery_specialists",
         name: "Direct Fire Artillery Specialists",
         rulesRef: [{ book: Rulebook.ASCE, page: 103 }, { book: Rulebook.FMD, page: 81 }],
-        summary: ["Add 2\"/1 hex to the diameter of any Artillery area of effect when using direct fire."],
+        summary: ["Add [[2]] to the diameter of any Artillery area of effect when using direct fire."],
     },
     {
         id: "enemy_specialization",
@@ -285,7 +285,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         name: "Infiltrators",
         rulesRef: [{ book: Rulebook.ASCE, page: 106 }, { book: Rulebook.FMD, page: 81 }],
         summary: [
-            "As Attacker, deploy Hidden units in Defender's zone (or within 4\" of home edge).",
+            "As Attacker, deploy Hidden units in Defender's zone (or within [[4]] of home edge).",
             "Level 1: infantry + light (Size 1) vehicles. Level 2: + medium (Size 2) vehicles + light 'Mechs.",
             "Level 3: + heavy (Size 3) vehicles + medium 'Mechs."
         ],
@@ -386,7 +386,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         name: "Strategic Command",
         rulesRef: [{ book: Rulebook.ASCE, page: 107 }, { book: Rulebook.FMD, page: 81 }],
         summary: [
-            "May alter home edge choice and reposition terrain up to 6\" from Setup position.",
+            "May alter home edge choice and reposition terrain up to [[6]] from Setup position.",
             "If using mapsheets, may rearrange them while keeping the same overall shape."
         ],
     },
@@ -422,7 +422,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         name: "Tactical Experts (Engineers)",
         rulesRef: [{ book: Rulebook.CO, page: 87 }, { book: Rulebook.ASCE, page: 108 }],
         summary: [
-            "During setup, place 1 light building (2\" / 1 hex) or 5 minefield density points per Formation with 4+ units.",
+            "During setup, place 1 light building [[2]] or 5 minefield density points per Formation with 4+ units.",
             "Buildings and minefields must be placed on the Engineers' half of the play area."
         ],
     },
@@ -432,7 +432,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         rulesRef: [{ book: Rulebook.CO, page: 87 }, { book: Rulebook.ASCE, page: 108 }],
         summary: [
             "In scenarios allowing Hidden Units, may place twice as many (max +4 extra).",
-            "If scenario does not allow Hidden Units, may place up to 4 on own half, at least 12\" from enemies."
+            "If scenario does not allow Hidden Units, may place up to 4 on own half, at least [[12]] from enemies."
         ],
     },
     {
@@ -496,8 +496,8 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         name: "Zone of Control",
         rulesRef: [{ book: Rulebook.CO, page: 87 }, { book: Rulebook.ASCE, page: 109 }],
         summary: [
-            "Unit ending Move in base contact with unmoving opponents (forward arc, 2\"+ Move remaining) exerts a zone of control.",
-            "Affected units must spend +4\" Move for any direction except directly away (unless jumping/VTOL).",
+            "Unit ending Move in base contact with unmoving opponents (forward arc, [[2]]+ Move remaining) exerts a zone of control.",
+            "Affected units must spend +[[4]] Move for any direction except directly away (unless jumping/VTOL).",
             "Infantry may only exert zone of control over other infantry."
         ],
     },
