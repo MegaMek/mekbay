@@ -127,6 +127,7 @@ export abstract class AsLayoutBaseComponent {
     });
 
     // Skill and PV
+    isCommander = computed<boolean>(() => this.forceUnit()?.commander() ?? false);
     skill = computed<number>(() => this.forceUnit()?.getPilotStats() ?? 4);
     basePV = computed<number>(() => this.asStats().PV);
     adjustedPV = computed<number>(() => {
