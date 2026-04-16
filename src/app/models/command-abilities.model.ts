@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Rulebook, type RulesReference } from './common.model';
+import { GameSystem, Rulebook, type RulesReference } from './common.model';
 
 // ── Special Command Abilities (SCAs) ─────────────────────────────────────────
 
@@ -43,6 +43,7 @@ import { Rulebook, type RulesReference } from './common.model';
 export interface CommandAbility {
     id: string;
     name: string;
+    exclusiveFaction?: string[];
     summary: string[];
     rulesRef: RulesReference[];
 }
@@ -51,10 +52,19 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "adjusting_fire",
         name: "Adjusting Fire",
-        rulesRef: [{ book: Rulebook.ASCE, page: 102 }, { book: Rulebook.FMD, page: 80 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 102 }, { book: Rulebook.FMD, page: 80 }, { book: Rulebook.DD, page: 134 }],
         summary: [
-            "If two artillery units in this Force fire at the same target, the second and successive units receive a -2 successive shots modifier.",
+            "If two artillery units in this Force fire at the same target, the second and successive units receive a \u20132 successive shots modifier.",
             "Applies once per turn but is cumulative over multiple turns."
+        ],
+    },
+    {
+        id: "aerial_duelists",
+        name: "Aerial/Vacuum Duelists",
+        rulesRef:[{ book: Rulebook.DD, page: 130 }, { book: Rulebook.IEO, page: [194, 195] }],
+        summary: [
+            "AS: Air-to-air attacks against these units have a +1 TN modifier. If using Battlefield Support rules, \u20131 TN of any aerospace cover.",
+            "TW: Aerospace units may lower the minimum velocity by 1 and control modifier by 2 (minimum control modifier of \u20131) of any special maneuver. Air-to-air attacks against these units have a +1 TN modifier. If using Battlefield Support rules, \u20131 TN of any aerospace cover."
         ],
     },
     {
@@ -62,7 +72,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         name: "Anti-Aircraft Specialists",
         rulesRef: [{ book: Rulebook.CO, page: 83 }, { book: Rulebook.ASCE, page: 102 }],
         summary: [
-            "-2 TN modifier to attacks against airborne targets (VTOL, WiGE, aerospace, Small Craft, DropShips, etc.).",
+            "\u20132 TN modifier to attacks against airborne targets (VTOL, WiGE, aerospace, Small Craft, DropShips, etc.).",
             "+1 TN modifier against ground-based units or grounded airborne-capable units.",
             "Aerospace units may not use this ability."
         ],
@@ -71,7 +81,16 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         id: "anti_mech_training",
         name: "Anti-'Mech Training",
         rulesRef: [{ book: Rulebook.ASCE, page: 102 }],
-        summary: ["Infantry units receive a -1 TN modifier on anti-'Mech attacks."],
+        summary: ["Infantry units receive a \u20131 TN modifier on anti-'Mech attacks."],
+    },
+    {
+        id: "assault_operations",
+        name: "Assault Operations",
+        rulesRef: [{ book: Rulebook.EA, page: 119 }],
+        summary: [
+            "AS: Weapon attacks receive a \u20131 TN modifier if the unit used jumping movement mode. BMs may move an additional [[2]] above their normal MV when using ground movement mode.",
+            "TW: BattleMech units reduce their Attacker Movement Modifier using Running or Jumping MP by 1 (for a net +1 for Running and +2 for Jumping)."
+        ],
     },
     {
         id: "banking_initiative",
@@ -89,7 +108,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         rulesRef: [{ book: Rulebook.CO, page: 83 }, { book: Rulebook.ASCE, page: 103 }],
         summary: [
             "At start of any turn, may elect to go berserk for the rest of the battle.",
-            "-1 TN modifier for all attacks, but target movement modifier reduced by 1 (min 0)."
+            "\u20131 TN modifier for all attacks, but target movement modifier reduced by 1 (min 0)."
         ],
     },
     {
@@ -97,7 +116,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         name: "Brawlers",
         rulesRef: [{ book: Rulebook.CO, page: 83 }, { book: Rulebook.ASCE, page: 103 }],
         summary: [
-            "Replace normal range modifiers: Short -1, Medium +2, Long +5, Extreme +10.",
+            "Replace normal range modifiers: Short \u20131, Medium +2, Long +5, Extreme +10.",
             "Limit to no more than one-third of a deployed force."
         ],
     },
@@ -144,7 +163,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         rulesRef: [{ book: Rulebook.ASCE, page: 103 }, { book: Rulebook.FMD, page: 80 }],
         summary: [
             "Paired unit types during Setup: +1 Initiative for the entire battle.",
-            "Failing to pair: -1 Initiative for the entire battle."
+            "Failing to pair: \u20131 Initiative for the entire battle."
         ],
     },
     {
@@ -159,18 +178,18 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         rulesRef: [{ book: Rulebook.CO, page: 84 }, { book: Rulebook.ASCE, page: 103 }],
         summary: [
             "Designate one enemy faction or group before play.",
-            "Regular: +1 Init vs chosen enemy, -1 vs others. Veteran: double modifiers or pick second enemy.",
+            "Regular: +1 Init vs chosen enemy, \u20131 vs others. Veteran: double modifiers or pick second enemy.",
             "Elite: also negate one enemy SCA. Heroic/Legendary: negate two or gain an SCA vs that enemy."
         ],
     },
     {
         id: "environmental_specialization",
         name: "Environmental Specialization",
-        rulesRef: [{ book: Rulebook.CO, page: 84 }, { book: Rulebook.ASCE, page: 104 }, { book: Rulebook.FMK, page: 86 }, { book: Rulebook.FMD, page: 80 }, { book: Rulebook.FMMERC, page: 90 }],
+        rulesRef: [{ book: Rulebook.CO, page: 84 }, { book: Rulebook.ASCE, page: 104 }, { book: Rulebook.FMK, page: 86 }, { book: Rulebook.FMD, page: 80 }, { book: Rulebook.FMMERC, page: 90 }, { book: Rulebook.DD, page: 134 }],
         summary: [
             "Designate terrain type or environmental condition before play.",
             "Benefits (Improved Mobility / Combat / Initiative) scale with average skill rating.",
-            "-1 Initiative when specialized terrain/environment is not present.",
+            "\u20131 Initiative when specialized terrain/environment is not present.",
             "Terrain types: Clear, Desert, Urban, Vacuum, Winter, Woods."
         ],
     },
@@ -191,6 +210,16 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         ],
     },
     {
+        id: "family",
+        name: "Family",
+        exclusiveFaction: ['Rasalhague Dominion'],
+        rulesRef: [{ book: Rulebook.DD, page: 134 }],
+        summary: [
+            "AS: Any unit in this force receives \u20132 TN modifier against any target that is within short range of a friendly Rasalhague Dominion unit with half of its original armor or less remaining.",
+            "TW: Any unit in this force receives \u20132 TN modifier against any target that is within short range of a friendly Rasalhague Dominion unit that has at least one location which originally had armor but has none remaining."
+        ],
+    },
+    {
         id: "fast_withdrawal",
         name: "Fast Withdrawal",
         rulesRef: [{ book: Rulebook.ASCE, page: 105 }, { book: Rulebook.FMK, page: 86 }, { book: Rulebook.FMD, page: 81 }],
@@ -199,7 +228,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "flankers",
         name: "Flankers",
-        rulesRef: [{ book: Rulebook.ASCE, page: 105 }, { book: Rulebook.FMK, page: 86 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 105 }, { book: Rulebook.FMK, page: 86 }, { book: Rulebook.DD, page: 130 }],
         summary: ["Units may enter via any non-home map edge instead of the specified edge."],
     },
     {
@@ -236,7 +265,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         name: "Ground Attack Specialists",
         rulesRef: [{ book: Rulebook.CO, page: 85 }, { book: Rulebook.ASCE, page: 105 }],
         summary: [
-            "-2 TN modifier vs ground-based targets (including jumping units and grounded air-capable units).",
+            "\u20132 TN modifier vs ground-based targets (including jumping units and grounded air-capable units).",
             "+1 TN modifier vs airborne aerospace units and VTOL/WiGE units.",
             "Ground units without VTOL, WiGE, or aerospace movement may not use this."
         ],
@@ -254,7 +283,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         id: "highlander_burial",
         name: "Highlander Burial",
         rulesRef: [{ book: Rulebook.CO, page: 85 }, { book: Rulebook.ASCE, page: 105 }],
-        summary: ["-1 TN modifier and +1 damage on Death From Above attacks."],
+        summary: ["\u20131 TN modifier and +1 damage on Death From Above attacks."],
     },
     {
         id: "hit_and_run",
@@ -262,7 +291,16 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         rulesRef: [{ book: Rulebook.CO, page: 85 }, { book: Rulebook.ASCE, page: 106 }],
         summary: [
             "When outnumbered at start of a turn, units ignore Attacker Movement Modifier for jumping,",
-            "or receive -1 Attacker Movement Modifier if not standing still or immobile."
+            "or receive \u20131 Attacker Movement Modifier if not standing still or immobile."
+        ],
+    },
+    {
+        id: "infantry_cross-training",
+        name: "Infantry Cross-Training",
+        rulesRef: [{ book: Rulebook.EA, page: 117}],
+        summary: [
+            "AS: If a BM/IM is destroyed solely by a Unit Destroyed critical hit, a CI in base-to-base contact with it may roll 2D6 with a target of 7. If successful, remove the Unit Destroyed critical hit and the BM/IM is no longer destroyed, but the skill is one higher (worse) with the replacement MechWarrior.",
+            "TW: If a BattleMech is destroyed solely by damage to the MechWwarrior, a Conventional Infantry unit in the sme hex may take over the BattleMech. BattleMech's MechWarrior damage is reset to no damage and it is no longer destroyed after the current End Phase of the turn. The new MechWarrior has one higher (worse) Piloting and Gunnery skills."
         ],
     },
     {
@@ -283,7 +321,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "infiltrators",
         name: "Infiltrators",
-        rulesRef: [{ book: Rulebook.ASCE, page: 106 }, { book: Rulebook.FMD, page: 81 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 106 }, { book: Rulebook.FMD, page: 81 }, { book: Rulebook.TR, page: 120 }, { book: Rulebook.DD, page: 132 }, { book: Rulebook.IEO, page: 191 }],
         summary: [
             "As Attacker, deploy Hidden units in Defender's zone (or within [[4]] of home edge).",
             "Level 1: infantry + light (Size 1) vehicles. Level 2: + medium (Size 2) vehicles + light 'Mechs.",
@@ -296,7 +334,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         rulesRef: [{ book: Rulebook.ASCE, page: 106 }, { book: Rulebook.FMD, page: 81 }],
         summary: [
             "After opponent sets up, may swap this SCA for another available SCA.",
-            "If swapped, -1 Initiative for the first two turns."
+            "If swapped, \u20131 Initiative for the first two turns."
         ],
     },
     {
@@ -306,12 +344,28 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         summary: ["Add the MHQ5 special ability to one unit in the Force."],
     },
     {
+        id: "logistics",
+        name: "Logistics",
+        rulesRef: [{ book: Rulebook.TR, page: 112 }],
+        summary: ["Reduces all Warchest Point and Support Point costs by 10%, or any C-bill costs of repairs or purchases by 10%."],
+    },
+    {
         id: "loppers",
         name: "Loppers",
         rulesRef: [{ book: Rulebook.ASCE, page: 106 }],
         summary: [
             "MEL attack (instead of weapon attacks): +1 damage and an extra Critical Hit roll (even with armor remaining).",
             "After hit, roll 1D6: on 6 the hatchet breaks and the unit loses MEL for the rest of the battle."
+        ],
+    },
+    {
+        id: "messengers_of_atrocity",
+        name: "Messengers of Atrocity",
+        rulesRef: [{ book: Rulebook.IEO, page: 192 }],
+        summary: [
+            "Once per scenario, force commander may make a special \"psychological\" attack on the target in place of a normal weapon attack. Attack is a Piloting Skill (Special Weapon Attack in AS) Roll with +4 TN modifier. ",
+            "If successful, all enemy units within line of sight of the commander are affected as if by a successful use of Antagonizer SPA.",
+            "Target of each affected enemy unit is the nearest unit in the force."
         ],
     },
     {
@@ -333,6 +387,14 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
             "Overrunning units act outside normal alternation; remaining units alternate normally."
         ],
     },
+    {   id: "raiders",
+        name: "Raiders",
+        rulesRef:[{ book: Rulebook.DD, page: 130 }, { book: Rulebook.IEO, page: 189 }],
+        summary: [
+            "Units receive a +2 TN modifier when attempting to scan any objectives or identify their objectives.",
+            "When using Chaos Campaign system, this force gains 10 SP for every enemy unit destroyed, beyond any listed for the track."
+        ],
+    },
     {
         id: "rapid_strike",
         name: "Rapid Strike",
@@ -345,9 +407,9 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "regional_specialization",
         name: "Regional Specialization",
-        rulesRef: [{ book: Rulebook.ASCE, page: 107 }, { book: Rulebook.FMD, page: 81 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 107 }, { book: Rulebook.FMD, page: 81 }, { book: Rulebook.DD, page: 135, }],
         summary: [
-            "+1 Initiative and -1 Morale in preferred region (system, duchy, district, etc.).",
+            "+1 Initiative and \u20131 Morale in preferred region (system, duchy, district, etc.).",
             "May be taken twice to double the modifiers."
         ],
     },
@@ -376,10 +438,29 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         summary: ["Opponents must fire on a 'Mech before targeting a vehicle or infantry unit, if the 'Mech is closer and in LOS."],
     },
     {
+        id: "slow_but_steady",
+        name: "Slow but Steady",
+        rulesRef: [{ book: Rulebook.TR, page: 112 }],
+        summary: [
+            "Unit is not counted for Initiative, always acting as if it had lost Initiative for its own side.",
+            "Unit moves and declares attacks first. For each turn acting as the Initiative loser, bank one Initiative.",
+            "At the beginning of any Initiative phase, before rolling, this unit may spend two banked Initiatives to win Initiative, moving and declaring attacks last."
+        ],
+    },
+    {
         id: "speed_fire",
         name: "Speed Fire",
-        rulesRef: [{ book: Rulebook.ASCE, page: 107 }],
-        summary: ["-1 TN modifier when using full Move in a direct line away from starting location."],
+        rulesRef: [{ book: Rulebook.ASCE, page: 107 }, { book: Rulebook.DD, page: 134 }, { book: Rulebook.IEO, page: 190 }],
+        summary: ["\u20131 TN modifier when using full Move in a direct line away from starting location."],
+    },
+    {
+        id: "steady",
+        name: "Steady",
+        rulesRef: [{ book: Rulebook.TR, page: 112 }],
+        summary: [
+            "AS: Units may move up to half their Move value (minimum [[2]]) while using standstill movement.",
+            "TW: Attacker Movement Modifier is +0 for units that use half their MV or less while Walking/Cruising."
+        ],
     },
     {
         id: "strategic_command",
@@ -393,7 +474,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "strategic_planning",
         name: "Strategic Planning",
-        rulesRef: [{ book: Rulebook.ASCE, page: 107 }, { book: Rulebook.FMK, page: 86 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 107 }, { book: Rulebook.FMK, page: 86 }, { book: Rulebook.DD, page: 132 }],
         summary: [
             "+2 Initiative bonus.",
             "Only available to Forces with an average Experience Rating of Veteran, Elite, Heroic, or Legendary."
@@ -409,13 +490,13 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         id: "tactical_experts_combined_fire",
         name: "Tactical Experts (Combined Fire)",
         rulesRef: [{ book: Rulebook.ASCE, page: 108 }, { book: Rulebook.FMK, page: 86 }, { book: Rulebook.FMD, page: 81 }],
-        summary: ["If an entire Formation of 3+ units attacks the same opposing unit, their attacks gain a -1 TN modifier."],
+        summary: ["If an entire Formation of 3+ units attacks the same opposing unit, their attacks gain a \u20131 TN modifier."],
     },
     {
         id: "tactical_experts_dogfighting",
         name: "Tactical Experts (Dogfighting)",
         rulesRef: [{ book: Rulebook.ASCE, page: 108 }, { book: Rulebook.FMK, page: 86 }, { book: Rulebook.FMD, page: 81 }],
-        summary: ["-2 penalty to enemy units making Control Rolls for forming and avoiding engagements."],
+        summary: ["\u20132 penalty to enemy units making Control Rolls for forming and avoiding engagements."],
     },
     {
         id: "tactical_experts_engineers",
@@ -440,7 +521,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         name: "Tactical Experts (Physical)",
         rulesRef: [{ book: Rulebook.CO, page: 87 }, { book: Rulebook.ASCE, page: 108 }],
         summary: [
-            "Each turn (Combat Phase, before attacks), may choose: +1 TN for weapon attacks, -1 TN for physical/melee attacks.",
+            "Each turn (Combat Phase, before attacks), may choose: +1 TN for weapon attacks, \u20131 TN for physical/melee attacks.",
             "Applies to all units in the Force for that turn."
         ],
     },
@@ -456,16 +537,16 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         rulesRef: [{ book: Rulebook.CO, page: 87 }, { book: Rulebook.ASCE, page: 108 }],
         summary: [
             "Choose benefits from Tactical Specialist Benefits List based on average skill rating.",
-            "Attack Specialization: +1 Init as Attacker, -1 as Defender.",
-            "Defense Specialization: +1 Init as Defender, -1 as Attacker.",
-            "Scenario Specialization: +1 Init in specified scenario type, -1 in all others.",
+            "Attack Specialization: +1 Init as Attacker, \u20131 as Defender.",
+            "Defense Specialization: +1 Init as Defender, \u20131 as Attacker.",
+            "Scenario Specialization: +1 Init in specified scenario type, \u20131 in all others.",
             "Attack + Defense cancel when equal; unequal levels yield net effect."
         ],
     },
     {
         id: "tactical_specialization_combined_arms",
         name: "Tactical Specialization (Combined Arms)",
-        rulesRef: [{ book: Rulebook.ASCE, page: 108 }, { book: Rulebook.FMK, page: 86 }, { book: Rulebook.FMD, page: 81 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 108 }, { book: Rulebook.FMK, page: 86 }, { book: Rulebook.FMD, page: 81 }, { book: Rulebook.TR, page: 120 }, { book: Rulebook.IEO, page: 194 }],
         summary: [
             "+1 Initiative if Force contains at least one 'Mech, one vehicle, and one infantry.",
             "May be taken twice to also grant Tactical Experts (Attack or Defense, choose one)."
@@ -474,11 +555,20 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "tactical_specialization_small_unit_actions",
         name: "Tactical Specialization (Small Unit Actions)",
-        rulesRef: [{ book: Rulebook.ASCE, page: 108 }, { book: Rulebook.FMD, page: 81 }],
+        rulesRef: [{ book: Rulebook.ASCE, page: 108 }, { book: Rulebook.FMD, page: 81 }, { book: Rulebook.DD, page: 132 }],
         summary: [
             "+2 Initiative if total friendly Force < 12 units.",
             "+1 Initiative if total friendly Force < 24 units.",
-            "-1 Initiative if total friendly Force is 24+ units."
+            "\u20131 Initiative if total friendly Force is 24+ units."
+        ],
+    },
+    {
+        id: "terrain_specialization_solar_objects",
+        name: "Terrain Specialization / Solar Objects",
+        rulesRef: [{ book: Rulebook.IEO, page: 195 }], // Ability description seems wrong, hoping for clarification/errata
+        summary: [
+            "Aerospace units have Terrain Master (Mountaineer), Terrain Master (Nightwalker), Jumping Jack an Environmental Specialization (Vacuum) SPAs.",
+            "Ignore +1 to-hit modifier for Missile and Direct-Fire Ballistic weaponattacks affected by Low Gravity environments.",
         ],
     },
     {
@@ -487,7 +577,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
         rulesRef: [{ book: Rulebook.ASCE, page: 109 }, { book: Rulebook.FMK, page: 86 }],
         summary: [
             "Designate 1 Champion per legal Formation (3+ units). Champion receives Blood Stalker SPA (target must be same Size or larger).",
-            "Champion destroyed by target: -1 Initiative. Champion destroys target: +1 Initiative.",
+            "Champion destroyed by target: \u20131 Initiative. Champion destroys target: +1 Initiative.",
             "Modifiers apply only to first target per Champion; stackable across multiple Champions."
         ],
     },

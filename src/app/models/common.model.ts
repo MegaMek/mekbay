@@ -47,6 +47,10 @@ export enum Rulebook {
     FMD = "Force Manual: Davion",
     FMK = "Force Manual: Kurita",
     FMMERC = "Force Manual: Mercenaries",
+    EA = "Empire Alone",
+    TR = "Tamar Rising",
+    DD = "Dominions Divided",
+    IEO = "IlKhan's Eyes Only"
 }
 
 /**
