@@ -1,283 +1,347 @@
 <div class="dialog-header">
-    <h2 class="force-name" [class.clickable]="!isReadOnly()" (click)="onForceNameClick()" [title]="isReadOnly() ? '' : 'Click to rename'">{{ forceName() }}</h2>
+    <div class="dialog-header-main">
+        <div class="dialog-header-icons">
+            @if (forceFaction()?.img; as factionImg) {
+                <img
+                    class="dialog-faction-icon"
+                    [src]="factionImg"
+                    [alt]="forceFaction()?.name || 'Faction'"
+                    [title]="forceFaction()?.name || ''" />
+            }
+            @if (forceEra()?.img || forceEra()?.icon; as eraImg) {
+                <img
+                    class="dialog-era-icon"
+                    [src]="eraImg"
+                    [alt]="forceEra()?.name || 'Era'"
+                    [title]="forceEra()?.name || ''" />
+            }
+        </div>
+        <h2 class="force-name" [class.clickable]="!isReadOnly()" (click)="onForceNameClick()" [title]="isReadOnly() ? '' : 'Click to rename'">{{ forceName() }}</h2>
+    </div>
     <div class="dialog-header-actions">
         <span class="unit-count">{{ unitCount() }} unit{{ unitCount() !== 1 ? 's' : '' }}</span>
         <span class="force-total">Total {{ isAlphaStrike() ? 'PV' : 'BV' }}: {{ totalBv() | number }}</span>
     </div>
 </div>
 
-<div class="dialog-content" #scrollContainer [class.table-mode]="isTableMode()">
-    <div class="units-list" 
-        id="force-groups"
-        [class.compact]="viewMode() === 'compact'" 
-        [class.single-group]="hasSingleGroup()" 
-        [class.as-table-mode]="isTableMode()"
-        cdkDropList 
-        [cdkDropListData]="groups()" 
-        cdkDropListOrientation="vertical"
-        [cdkDropListAutoScrollDisabled]="true"
-        [cdkDropListDisabled]="!canDragDrop()"
-        (cdkDropListDropped)="dropGroup($event)">
-        @if (isTableMode()) {
-            <mb-data-table class="force-as-table"
-                [rows]="forceTableRows()"
-                [columns]="forceTableColumns()"
-                [itemSize]="48"
-                [minWidth]="forceTableMinWidth()"
-                [sortDirection]="selectedSortDirection()"
-                [rowTrackBy]="trackByForceUnitId"
-                [fullRowTemplate]="tableGroupRow"
-                [isFullRow]="isForceTableGroupRow"
-                [minBufferPx]="720"
-                [maxBufferPx]="1440"
-                (sort)="onForceTableSort($event)"
-                (rowClick)="onForceTableRowClick($event)">
-            </mb-data-table>
-
-            <ng-template #tableGroupRow let-row>
-                @if (row.kind === 'group') {
-                <div class="table-group-row">
-                    <div class="table-group-name-area">
-                        <span class="table-group-name" [class.clickable]="!isReadOnly()"
-                            (click)="onGroupNameClick(row.group)"
-                            [title]="isReadOnly() ? '' : 'Click to rename'">{{ row.group.groupDisplayName() }}</span>
-                        @if (row.group.activeFormation()) {
-                        <span class="table-group-formation-wrapper">
-                            @if (!row.group.isFormationAlreadyInGroupName()) {
-                            <span class="table-group-formation" [class.clickable]="!isReadOnly()"
-                                (click)="onGroupNameClick(row.group)">{{ row.group.formationDisplayName() }}</span>
-                            }
-                            @if (row.group.hasValidFormation()) {
-                            <button class="btn-formation-info" (click)="showFormationInfo($event, row.group)" title="Formation info">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                            </button>
-                            } @else {
-                            <button class="btn-formation-info formation-mismatch" (click)="showFormationInfo($event, row.group)" [title]="getFormationMismatchTitle(row.group)">
-                                <svg fill="currentColor" width="14" height="14" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z"/></svg>
-                            </button>
-                            }
-                        </span>
-                        }
-                    </div>
-                    <div class="table-group-footer">
-                        <span class="table-group-bv">{{ isAlphaStrike() ? 'PV' : 'BV' }}: {{ row.group.totalBV() | number }}</span>
-                    </div>
-                </div>
-                }
-            </ng-template>
-
-            <ng-template #tableIconCell let-row>
-                @if (row.kind === 'unit') {
-                <div class="as-td as-td-icon"><unit-icon [unit]="row.vm.unit" [size]="36"></unit-icon></div>
-                }
-            </ng-template>
-
-            <ng-template #tableNameCell let-row>
-                @if (row.kind === 'unit') {
-                <div class="as-td as-td-name">
-                    <span class="as-td-model">{{ row.vm.unit.model }}</span>
-                    <span class="as-td-chassis">{{ row.vm.unit.chassis }}@if (row.vm.forceUnit.alias(); as alias) { <span class="as-td-alias">({{ alias }})</span>}</span>
-                </div>
-                }
-            </ng-template>
-
-            <ng-template #tableYearCell let-row>
-                @if (row.kind === 'unit') {
-                <div class="as-td as-td-year">
-                    @if (row.vm.unit._era?.img) {
-                    <img class="as-era-icon" [src]="row.vm.unit._era?.img" [alt]="row.vm.unit._era?.name || 'Era'" [title]="row.vm.unit._era?.name || ''" />
-                    }
-                    <span>{{ row.vm.unit.year ?? '—' }}</span>
-                </div>
-                }
-            </ng-template>
-
-            <ng-template #tableSkillCell let-row>
-                @if (row.kind === 'unit') {
-                <div class="as-td as-td-skill clickable" (click)="onPilotClick(row.vm.forceUnit); $event.stopPropagation()" title="Click to edit pilot">{{ getPilotSkill(row.vm) }}</div>
-                }
-            </ng-template>
-
-            <ng-template #tableMovementCell let-row>
-                @if (row.kind === 'unit') {
-                <div class="as-td as-td-mv" [innerHTML]="formatASMovement(row.vm.unit)"></div>
-                }
-            </ng-template>
-
-            <ng-template #tableSpecialsCell let-row>
-                @if (row.kind === 'unit') {
-                <div class="as-td as-td-specials">
-                    @for (special of row.vm.unit.as.specials; let i = $index; track i) {
-                    <span class="special-pill" (click)="showAbilityInfoDialog(special); $event.stopPropagation()" title="Click for details">{{ special }}</span>
-                    }
-                </div>
-                }
-            </ng-template>
-        } @else {
-        @for (group of groups(); let gi = $index; track group.id) {
-            <div class="group-container" cdkDrag
-                [cdkDragDisabled]="!canDragDrop() || hasSingleGroup()"
-                (cdkDragStarted)="onGroupDragStart()"
-                (cdkDragMoved)="onUnitDragMoved($event)"
-                (cdkDragEnded)="onGroupDragEnd()"
-                cdkDragLockAxis="y"
-                [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
-                @if (!hasSingleGroup()) {
-                    <div class="group-header" cdkDragHandle>
-                        <div class="group-name-area">
-                            <span class="group-name" [class.clickable]="!isReadOnly()" 
-                                (click)="onGroupNameClick(group)" 
-                                [title]="isReadOnly() ? '' : 'Click to rename'">{{ group.groupDisplayName() }}</span>
-                            @if (group.activeFormation()) {
-                                <span class="group-formation-wrapper">
-                                    @if (!group.isFormationAlreadyInGroupName()) {
-                                        <span class="group-formation" [class.clickable]="!isReadOnly()" (click)="onGroupNameClick(group)">{{ group.formationDisplayName() }}</span>
-                                    }
-                                    @if (group.hasValidFormation()) {
-                                    <button class="btn-formation-info" (click)="showFormationInfo($event, group)" title="Formation info">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                                    </button>
-                                    } @else {
-                                    <button class="btn-formation-info formation-mismatch" (click)="showFormationInfo($event, group)" [title]="getFormationMismatchTitle(group)">
-                                        <svg fill="currentColor" width="14" height="14" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z"/></svg>
-                                    </button>
-                                    }
-                                </span>
-                            }
-                        </div>
-                        <div class="group-footer">
-                            <span class="group-bv">{{ isAlphaStrike() ? 'PV' : 'BV' }}: {{ group.totalBV() | number }}</span>
-                        </div>
-                    </div>
-                }
-                @let units = group.units();
-                <div class="group-units"
-                    cdkDropList 
-                    id="group-{{ group.id }}"
-                    cdkDropListOrientation="mixed"
-                    [cdkDropListData]="units"
-                    [cdkDropListConnectedTo]="connectedDropLists()"
-                    [cdkDropListDisabled]="!canDragDrop()"
-                    [cdkDropListAutoScrollDisabled]="true"
-                    (cdkDropListDropped)="drop($event)">
-                    @if (viewMode() === 'compact' && units.length === 0) {
-                        <div class="empty-group-placeholder" (click)="onEmptyGroupClick(group)">
-                            No units in this group. Drop units here or click to remove.
-                        </div>
-                    }
-                    @if (viewMode() === 'compact') {
-                        @for (forceUnit of units; let last = $last; track forceUnit.id) {
-                            <div class="drag-item" 
-                                cdkDrag
-                                cdkDragPreviewClass="glass"
-                                [cdkDragDisabled]="!canDragDrop()"
-                                (cdkDragStarted)="onUnitDragStart()"
-                                (cdkDragMoved)="onUnitDragMoved($event)"
-                                (cdkDragEnded)="onUnitDragEnd()"
-                                [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
-                                <unit-block
-                                    [forceUnit]="forceUnit"
-                                    [compactMode]="false"
-                                    (onEditPilot)="onPilotClick(forceUnit)"
-                                    (onOpenC3Network)="openC3Network($event, forceUnit)"
-                                    (onRemoveUnit)="removeUnit($event, forceUnit)"
-                                    (onRepairUnit)="repairUnit($event, forceUnit)"
-                                    (onInfo)="showUnitInfo($event, forceUnit)">
-                                </unit-block>
-                            </div>
-                        }
-                    } @else {
-                        @for (vm of getSortedUnitsForGroup(group); let last = $last; track vm.forceUnit.id) {
-                            <!-- Expanded Card View (AS or BT) -->
-                            <unit-card-expanded
-                                [unit]="vm.forceUnit"
-                                [expandedView]="true"
-                                [sortKey]="selectedSort()"
-                                [sortSlotLabel]="selectedSortLabel()"
-                                [useHex]="useHex()"
-                                (cardClick)="onUnitClick(vm)"
-                                (tagClick)="onTagClick($event)"
-                                (pilotClick)="onPilotClick($event)">
-                            </unit-card-expanded>
-                            @if (!last && !isTableMode()) {
-                                <hr class="divider" />
-                            }
-                        }
-                    }
-                </div>
-            </div>
-        }
-        @if (canDragDrop() && !hasMaxGroups()) {
-            <div #newGroupDropzone class="group-container new-group-dropzone" 
-                cdkDropList 
-                id="new-group-dropzone"
-                [cdkDropListData]="[]"
-                [cdkDropListConnectedTo]="connectedDropLists()"
-                [cdkDropListAutoScrollDisabled]="true"
-                [class.visible]="isUnitDragging() && !isGroupDragging() && !hasEmptyGroups()"
-                (cdkDropListDropped)="dropForNewGroup($event)">
-                <div class="new-group-placeholder">Drop units here to form a new group</div>
-            </div>
-        }
-        }
+<div class="dialog-tabs tab-header" role="tablist" aria-label="Force overview sections">
+    <div class="tab-buttons">
+        <button
+            type="button"
+            class="tab-button"
+            role="tab"
+            [class.active]="isSummaryTab()"
+            [attr.aria-selected]="isSummaryTab()"
+            (click)="setActiveTab('summary')">
+            SUMMARY
+        </button>
+        <button
+            type="button"
+            class="tab-button"
+            role="tab"
+            [class.active]="activeTab() === 'units'"
+            [attr.aria-selected]="activeTab() === 'units'"
+            (click)="setActiveTab('units')">
+            UNITS
+        </button>
     </div>
 </div>
 
-<div class="dialog-footer">
-    <div class="sort-controls">
-        <select class="bt-input sort-select"
-            (change)="setSortOrder($any($event.target).value)">
-            @for (opt of SORT_OPTIONS; let i = $index; track i) {
-                @if (!opt.gameSystem || opt.gameSystem === gameSystem()) {
-                    <option [value]="opt.key" [selected]="opt.key === selectedSort()">{{ opt.label }}</option>
-                }
+<div class="dialog-content" #scrollContainer [class.table-mode]="activeTab() === 'units' && isTableMode()" [class.preview-tab]="isSummaryTab()">
+    @if (isSummaryTab()) {
+        @let previewEntry = summaryPreviewEntry();
+        <div class="summary-tab-layout">
+            <div class="summary-tab-preview">
+                <force-preview-panel
+                    [force]="previewEntry"
+                    [showHeader]="false"
+                    [showHint]="false"
+                    [scrollUnitsOnly]="true"
+                    (hoveredUnitChange)="onPreviewUnitHover($event)">
+                </force-preview-panel>
+            </div>
+
+            <div class="radar-tab-chart">
+                <force-radar-panel
+                    [force]="previewEntry"
+                    [hoveredUnit]="hoveredRadarUnit()">
+                </force-radar-panel>
+            </div>
+        </div>
+    } @else {
+        <div class="units-list" 
+            id="force-groups"
+            [class.compact]="viewMode() === 'compact'" 
+            [class.single-group]="hasSingleGroup()" 
+            [class.as-table-mode]="isTableMode()"
+            cdkDropList 
+            [cdkDropListData]="groups()" 
+            cdkDropListOrientation="vertical"
+            [cdkDropListAutoScrollDisabled]="true"
+            [cdkDropListDisabled]="!canDragDrop()"
+            (cdkDropListDropped)="dropGroup($event)">
+            @if (isTableMode()) {
+                <mb-data-table class="force-as-table"
+                    [rows]="forceTableRows()"
+                    [columns]="forceTableColumns()"
+                    [itemSize]="48"
+                    [minWidth]="forceTableMinWidth()"
+                    [sortDirection]="selectedSortDirection()"
+                    [rowTrackBy]="trackByForceUnitId"
+                    [fullRowTemplate]="tableGroupRow"
+                    [isFullRow]="isForceTableGroupRow"
+                    [minBufferPx]="720"
+                    [maxBufferPx]="1440"
+                    (sort)="onForceTableSort($event)"
+                    (rowClick)="onForceTableRowClick($event)">
+                </mb-data-table>
+
+                <ng-template #tableGroupRow let-row>
+                    @if (row.kind === 'group') {
+                    <div class="table-group-row">
+                        <div class="table-group-name-area">
+                            <span class="table-group-name" [class.clickable]="!isReadOnly()"
+                                (click)="onGroupNameClick(row.group)"
+                                [title]="isReadOnly() ? '' : 'Click to rename'">{{ row.group.groupDisplayName() }}</span>
+                            @if (row.group.activeFormation()) {
+                            <span class="table-group-formation-wrapper">
+                                @if (!row.group.isFormationAlreadyInGroupName()) {
+                                <span class="table-group-formation" [class.clickable]="!isReadOnly()"
+                                    (click)="onGroupNameClick(row.group)">{{ row.group.formationDisplayName() }}</span>
+                                }
+                                @if (row.group.hasValidFormation()) {
+                                <button class="btn-formation-info" (click)="showFormationInfo($event, row.group)" title="Formation info">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                                </button>
+                                } @else {
+                                <button class="btn-formation-info formation-mismatch" type="button" (click)="showFormationInfo($event, row.group)" [tooltip]="getFormationMismatchTitle(row.group)" tooltipType="error" aria-label="Formation requirements mismatch">
+                                    <svg fill="currentColor" width="14" height="14" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z"/></svg>
+                                </button>
+                                }
+                            </span>
+                            }
+                        </div>
+                        <div class="table-group-footer">
+                            <span class="table-group-bv">{{ isAlphaStrike() ? 'PV' : 'BV' }}: {{ row.group.totalBV() | number }}</span>
+                        </div>
+                    </div>
+                    }
+                </ng-template>
+
+                <ng-template #tableIconCell let-row>
+                    @if (row.kind === 'unit') {
+                    <div class="as-td as-td-icon"><unit-icon [unit]="row.vm.unit" [size]="36"></unit-icon></div>
+                    }
+                </ng-template>
+
+                <ng-template #tableNameCell let-row>
+                    @if (row.kind === 'unit') {
+                    <div class="as-td as-td-name">
+                        <span class="as-td-model">{{ row.vm.unit.model }}</span>
+                        <span class="as-td-chassis">{{ row.vm.unit.chassis }}@if (row.vm.forceUnit.alias(); as alias) { <span class="as-td-alias">({{ alias }})</span>}</span>
+                    </div>
+                    }
+                </ng-template>
+
+                <ng-template #tableYearCell let-row>
+                    @if (row.kind === 'unit') {
+                    <div class="as-td as-td-year">
+                        @if (row.vm.unit._era?.img) {
+                        <img class="as-era-icon" [src]="row.vm.unit._era?.img" [alt]="row.vm.unit._era?.name || 'Era'" [title]="row.vm.unit._era?.name || ''" />
+                        }
+                        <span>{{ row.vm.unit.year ?? '—' }}</span>
+                    </div>
+                    }
+                </ng-template>
+
+                <ng-template #tableSkillCell let-row>
+                    @if (row.kind === 'unit') {
+                    <div class="as-td as-td-skill clickable" (click)="onPilotClick(row.vm.forceUnit); $event.stopPropagation()" title="Click to edit pilot">{{ getPilotSkill(row.vm) }}</div>
+                    }
+                </ng-template>
+
+                <ng-template #tableMovementCell let-row>
+                    @if (row.kind === 'unit') {
+                    <div class="as-td as-td-mv" [innerHTML]="formatASMovement(row.vm.unit)"></div>
+                    }
+                </ng-template>
+
+                <ng-template #tableSpecialsCell let-row>
+                    @if (row.kind === 'unit') {
+                    <div class="as-td as-td-specials">
+                        @for (special of row.vm.unit.as.specials; let i = $index; track i) {
+                        <span class="special-pill" (click)="showAbilityInfoDialog(special); $event.stopPropagation()" title="Click for details">{{ special }}</span>
+                        }
+                    </div>
+                    }
+                </ng-template>
+            } @else {
+            @for (group of groups(); let gi = $index; track group.id) {
+                <div class="group-container" cdkDrag
+                    [cdkDragDisabled]="!canDragDrop() || hasSingleGroup()"
+                    (cdkDragStarted)="onGroupDragStart()"
+                    (cdkDragMoved)="onUnitDragMoved($event)"
+                    (cdkDragEnded)="onGroupDragEnd()"
+                    cdkDragLockAxis="y"
+                    [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
+                    @if (!hasSingleGroup()) {
+                        <div class="group-header" cdkDragHandle>
+                            <div class="group-name-area">
+                                <span class="group-name" [class.clickable]="!isReadOnly()" 
+                                    (click)="onGroupNameClick(group)" 
+                                    [title]="isReadOnly() ? '' : 'Click to rename'">{{ group.groupDisplayName() }}</span>
+                                @if (group.activeFormation()) {
+                                    <span class="group-formation-wrapper">
+                                        @if (!group.isFormationAlreadyInGroupName()) {
+                                            <span class="group-formation" [class.clickable]="!isReadOnly()" (click)="onGroupNameClick(group)">{{ group.formationDisplayName() }}</span>
+                                        }
+                                        @if (group.hasValidFormation()) {
+                                        <button class="btn-formation-info" (click)="showFormationInfo($event, group)" title="Formation info">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                                        </button>
+                                        } @else {
+                                        <button class="btn-formation-info formation-mismatch" type="button" (click)="showFormationInfo($event, group)" [tooltip]="getFormationMismatchTitle(group)" tooltipType="error" aria-label="Formation requirements mismatch">
+                                            <svg fill="currentColor" width="14" height="14" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M15.83 13.23l-7-11.76a1 1 0 0 0-1.66 0L.16 13.3c-.38.64-.07 1.7.68 1.7H15.2C15.94 15 16.21 13.87 15.83 13.23Zm-7 .37H7.14V11.89h1.7Zm0-3.57H7.16L7 4H9Z"/></svg>
+                                        </button>
+                                        }
+                                    </span>
+                                }
+                            </div>
+                            <div class="group-footer">
+                                <span class="group-bv">{{ isAlphaStrike() ? 'PV' : 'BV' }}: {{ group.totalBV() | number }}</span>
+                            </div>
+                        </div>
+                    }
+                    @let units = group.units();
+                    <div class="group-units"
+                        cdkDropList 
+                        id="group-{{ group.id }}"
+                        cdkDropListOrientation="mixed"
+                        [cdkDropListData]="units"
+                        [cdkDropListConnectedTo]="connectedDropLists()"
+                        [cdkDropListDisabled]="!canDragDrop()"
+                        [cdkDropListAutoScrollDisabled]="true"
+                        (cdkDropListDropped)="drop($event)">
+                        @if (viewMode() === 'compact' && units.length === 0) {
+                            <div class="empty-group-placeholder" (click)="onEmptyGroupClick(group)">
+                                No units in this group. Drop units here or click to remove.
+                            </div>
+                        }
+                        @if (viewMode() === 'compact') {
+                            @for (forceUnit of units; let last = $last; track forceUnit.id) {
+                                <div class="drag-item" 
+                                    cdkDrag
+                                    cdkDragPreviewClass="glass"
+                                    [cdkDragDisabled]="!canDragDrop()"
+                                    (cdkDragStarted)="onUnitDragStart()"
+                                    (cdkDragMoved)="onUnitDragMoved($event)"
+                                    (cdkDragEnded)="onUnitDragEnd()"
+                                    [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
+                                    <unit-block
+                                        [forceUnit]="forceUnit"
+                                        [compactMode]="false"
+                                        (onEditPilot)="onPilotClick(forceUnit)"
+                                        (onOpenC3Network)="openC3Network($event, forceUnit)"
+                                        (onRemoveUnit)="removeUnit($event, forceUnit)"
+                                        (onRepairUnit)="repairUnit($event, forceUnit)"
+                                        (onInfo)="showUnitInfo($event, forceUnit)">
+                                    </unit-block>
+                                </div>
+                            }
+                        } @else {
+                            @for (vm of getSortedUnitsForGroup(group); let last = $last; track vm.forceUnit.id) {
+                                <unit-card-expanded
+                                    [unit]="vm.forceUnit"
+                                    [expandedView]="true"
+                                    [sortKey]="selectedSort()"
+                                    [sortSlotLabel]="selectedSortLabel()"
+                                    [useHex]="useHex()"
+                                    (cardClick)="onUnitClick(vm)"
+                                    (tagClick)="onTagClick($event)"
+                                    (pilotClick)="onPilotClick($event)">
+                                </unit-card-expanded>
+                                @if (!last && !isTableMode()) {
+                                    <hr class="divider" />
+                                }
+                            }
+                        }
+                    </div>
+                </div>
             }
-        </select>
-        <button type="button" class="bt-button sort-direction-btn"
-            (click)="setSortDirection(selectedSortDirection() === 'asc' ? 'desc' : 'asc')"
-            [title]="selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'"
-            [attr.aria-label]="selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'">
-            @if (selectedSortDirection() === 'asc') {
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                    aria-hidden="true" role="img">
-                    <path d="M4 16L13 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                    <path d="M6 11H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                    <path d="M8 6L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                    <path d="M17 4L17 20L20 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                        stroke-linejoin="round" />
+            @if (canDragDrop() && !hasMaxGroups()) {
+                <div #newGroupDropzone class="group-container new-group-dropzone" 
+                    cdkDropList 
+                    id="new-group-dropzone"
+                    [cdkDropListData]="[]"
+                    [cdkDropListConnectedTo]="connectedDropLists()"
+                    [cdkDropListAutoScrollDisabled]="true"
+                    [class.visible]="isUnitDragging() && !isGroupDragging() && !hasEmptyGroups()"
+                    (cdkDropListDropped)="dropForNewGroup($event)">
+                    <div class="new-group-placeholder">Drop units here to form a new group</div>
+                </div>
+            }
+            }
+        </div>
+    }
+</div>
+
+<div class="dialog-footer">
+    @if (!isSummaryTab()) {
+        <div class="sort-controls">
+            <select class="bt-input sort-select"
+                (change)="setSortOrder($any($event.target).value)">
+                @for (opt of SORT_OPTIONS; let i = $index; track i) {
+                    @if (!opt.gameSystem || opt.gameSystem === gameSystem()) {
+                        <option [value]="opt.key" [selected]="opt.key === selectedSort()">{{ opt.label }}</option>
+                    }
+                }
+            </select>
+            <button type="button" class="bt-button sort-direction-btn"
+                (click)="setSortDirection(selectedSortDirection() === 'asc' ? 'desc' : 'asc')"
+                [title]="selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'"
+                [attr.aria-label]="selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'">
+                @if (selectedSortDirection() === 'asc') {
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                        aria-hidden="true" role="img">
+                        <path d="M4 16L13 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M6 11H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M8 6L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M17 4L17 20L20 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                            stroke-linejoin="round" />
+                    </svg>
+                } @else {
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                        aria-hidden="true" role="img">
+                        <path d="M4 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M6 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M8 18H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M17 20V4L20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                            stroke-linejoin="round" />
+                    </svg>
+                }
+            </button>
+        </div>
+        <button type="button" class="bt-button view-toggle-btn" (click)="toggleViewMode()" 
+            [title]="nextViewModeTitle()">
+            @if (viewMode() === 'compact') {
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2.5" y="2.5" width="8" height="8" rx="1"/>
+                    <rect x="13.5" y="2.5" width="8" height="8" rx="1"/>
+                    <rect x="2.5" y="13.5" width="8" height="8" rx="1"/>
+                    <rect x="13.5" y="13.5" width="8" height="8" rx="1"/>
+                </svg>
+            } @else if (viewMode() === 'expanded') {
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2.5" y="3" width="19" height="7" rx="1"/>
+                    <rect x="2.5" y="14" width="19" height="7" rx="1"/>
                 </svg>
             } @else {
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                    aria-hidden="true" role="img">
-                    <path d="M4 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                    <path d="M6 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                    <path d="M8 18H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                    <path d="M17 20V4L20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                        stroke-linejoin="round" />
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M21.167 22H2V2h19.167v20zM15.333 20.333H19.5V17h-4.167v3.333zM9.5 20.333h4.167V17H9.5v3.333zM3.667 20.333h4.167V17H3.667v3.333zM15.333 15.333H19.5V7h-4.167v3.333H19.5V12h-4.167v3.333zM9.5 15.333h4.167V12H9.5v3.333zM3.667 15.333h4.167V12H3.667v3.333zM9.5 10.333h4.167V7H9.5v3.333zM3.667 10.333h4.167V7H3.667v3.333zM3.667 5.333H19.5V3.667H3.667v1.666z" />
                 </svg>
             }
         </button>
-    </div>
-    <button type="button" class="bt-button view-toggle-btn" (click)="toggleViewMode()" 
-        [title]="nextViewModeTitle()">
-        @if (viewMode() === 'compact') {
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="2.5" y="2.5" width="8" height="8" rx="1"/>
-                <rect x="13.5" y="2.5" width="8" height="8" rx="1"/>
-                <rect x="2.5" y="13.5" width="8" height="8" rx="1"/>
-                <rect x="13.5" y="13.5" width="8" height="8" rx="1"/>
-            </svg>
-        } @else if (viewMode() === 'expanded') {
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="2.5" y="3" width="19" height="7" rx="1"/>
-                <rect x="2.5" y="14" width="19" height="7" rx="1"/>
-            </svg>
-        } @else {
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                <path d="M21.167 22H2V2h19.167v20zM15.333 20.333H19.5V17h-4.167v3.333zM9.5 20.333h4.167V17H9.5v3.333zM3.667 20.333h4.167V17H3.667v3.333zM15.333 15.333H19.5V7h-4.167v3.333H19.5V12h-4.167v3.333zM9.5 15.333h4.167V12H9.5v3.333zM3.667 15.333h4.167V12H3.667v3.333zM9.5 10.333h4.167V7H9.5v3.333zM3.667 10.333h4.167V7H3.667v3.333zM3.667 5.333H19.5V3.667H3.667v1.666z" />
-            </svg>
-        }
-    </button>
+    }
     <div class="spanner"></div>
     <button class="modal-btn bt-button" (click)="close()">DISMISS</button>
 </div>

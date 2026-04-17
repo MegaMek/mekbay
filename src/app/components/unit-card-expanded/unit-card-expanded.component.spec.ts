@@ -6,10 +6,11 @@ import type { Unit } from '../../models/units.model';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { GameService } from '../../services/game.service';
-import { MEGAMEK_RARITY_SORT_KEY } from '../../services/unit-search-filters.model';
+import { MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from '../../services/unit-search-filters.model';
+import { MEGAMEK_AVAILABILITY_BADGE_COLORS, MEGAMEK_AVAILABILITY_RARITY_ICON_COLORS, MEGAMEK_AVAILABILITY_UNKNOWN } from '../../models/megamek/availability.model';
 import { UnitCardExpandedComponent } from './unit-card-expanded.component';
 
-describe('UnitCardExpandedComponent MegaMek rarity display', () => {
+describe('UnitCardExpandedComponent MegaMek availability display', () => {
     const currentGameSystemSignal = signal(GameSystem.CLASSIC);
 
     const gameServiceStub = {
@@ -56,46 +57,83 @@ describe('UnitCardExpandedComponent MegaMek rarity display', () => {
             .compileComponents();
     });
 
-    it('suppresses the expanded rarity sort slot when a fixed search-result rarity is provided', () => {
+    it('suppresses the expanded rarity sort slot when fixed availability badges are provided', () => {
         const fixture = TestBed.createComponent(UnitCardExpandedComponent);
 
         fixture.componentRef.setInput('unit', createUnit());
-        fixture.componentRef.setInput('sortKey', MEGAMEK_RARITY_SORT_KEY);
-        fixture.componentRef.setInput('sortSlotLabel', 'RAT Rarity');
+        fixture.componentRef.setInput('sortKey', MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
+        fixture.componentRef.setInput('sortSlotLabel', 'RAT Rarity (P)');
         fixture.componentRef.setInput('sortSlotOverride', { value: 'Rare', numeric: false });
-        fixture.componentRef.setInput('megaMekRarity', 'Rare');
+        fixture.componentRef.setInput('megaMekAvailability', [{ source: 'Production', score: 4, rarity: 'Rare' }]);
         fixture.detectChanges();
 
         expect(fixture.componentInstance.sortSlot()).toBeNull();
     });
 
-    it('suppresses the compact rarity sort slot when a fixed search-result rarity is provided', () => {
+    it('suppresses the compact rarity sort slot when fixed availability badges are provided', () => {
         const fixture = TestBed.createComponent(UnitCardExpandedComponent);
         const unit = createUnit();
 
         fixture.componentRef.setInput('unit', unit);
         fixture.componentRef.setInput('expandedView', false);
-        fixture.componentRef.setInput('sortKey', MEGAMEK_RARITY_SORT_KEY);
-        fixture.componentRef.setInput('sortSlotLabel', 'RAT Rarity');
+        fixture.componentRef.setInput('sortKey', MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
+        fixture.componentRef.setInput('sortSlotLabel', 'RAT Rarity (P)');
         fixture.componentRef.setInput('sortSlotOverride', { value: 'Rare', numeric: false });
-        fixture.componentRef.setInput('megaMekRarity', 'Rare');
+        fixture.componentRef.setInput('megaMekAvailability', [{ source: 'Production', score: 4, rarity: 'Rare' }]);
         fixture.detectChanges();
 
         expect(fixture.componentInstance.getSortSlotForCompact(unit)).toBeNull();
     });
 
-    it('keeps the rarity sort slot behavior for non-search contexts without a fixed rarity field', () => {
+    it('builds a combined tooltip and rarity colors for availability badges', () => {
         const fixture = TestBed.createComponent(UnitCardExpandedComponent);
 
         fixture.componentRef.setInput('unit', createUnit());
-        fixture.componentRef.setInput('sortKey', MEGAMEK_RARITY_SORT_KEY);
-        fixture.componentRef.setInput('sortSlotLabel', 'RAT Rarity');
+        fixture.componentRef.setInput('megaMekAvailability', [
+            { source: 'Production', score: 4, rarity: 'Rare' },
+            { source: 'Salvage', score: 7, rarity: 'Common' },
+        ]);
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.megaMekAvailabilityTooltip()).toEqual([
+            { label: 'Production', value: 'Rare' },
+            { label: 'Salvage', value: 'Common' },
+        ]);
+        expect(fixture.componentInstance.megaMekAvailabilityBadges()).toEqual([
+            { source: 'Production', score: 4, rarity: 'Rare', color: MEGAMEK_AVAILABILITY_BADGE_COLORS['Rare'] },
+            { source: 'Salvage', score: 7, rarity: 'Common', color: MEGAMEK_AVAILABILITY_BADGE_COLORS['Common'] },
+        ]);
+    });
+
+    it('renders an Unknown pseudo-badge with a neutral tooltip label', () => {
+        const fixture = TestBed.createComponent(UnitCardExpandedComponent);
+
+        fixture.componentRef.setInput('unit', createUnit());
+        fixture.componentRef.setInput('megaMekAvailability', [
+            { source: MEGAMEK_AVAILABILITY_UNKNOWN, score: -1, rarity: MEGAMEK_AVAILABILITY_UNKNOWN },
+        ]);
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.megaMekAvailabilityTooltip()).toEqual([
+            { label: 'Availability', value: MEGAMEK_AVAILABILITY_UNKNOWN },
+        ]);
+        expect(fixture.componentInstance.megaMekAvailabilityBadges()).toEqual([
+            { source: MEGAMEK_AVAILABILITY_UNKNOWN, score: -1, rarity: MEGAMEK_AVAILABILITY_UNKNOWN, color: MEGAMEK_AVAILABILITY_BADGE_COLORS[MEGAMEK_AVAILABILITY_UNKNOWN] },
+        ]);
+    });
+
+    it('keeps the rarity sort slot behavior for non-search contexts without fixed availability badges', () => {
+        const fixture = TestBed.createComponent(UnitCardExpandedComponent);
+
+        fixture.componentRef.setInput('unit', createUnit());
+        fixture.componentRef.setInput('sortKey', MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
+        fixture.componentRef.setInput('sortSlotLabel', 'RAT Rarity (P)');
         fixture.componentRef.setInput('sortSlotOverride', { value: 'Rare', numeric: false });
         fixture.detectChanges();
 
         expect(fixture.componentInstance.sortSlot()).toEqual({
             value: 'Rare',
-            label: 'RAT Rarity',
+            label: 'RAT Rarity (P)',
         });
     });
 });

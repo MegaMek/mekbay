@@ -33,6 +33,7 @@ describe('ForceGeneratorService negative era filters', () => {
 
     const dataServiceMock = {
         searchCorpusVersion: signal(1),
+        megaMekAvailabilityVersion: signal(0),
         getUnits: jasmine.createSpy('getUnits').and.callFake(() => units),
         getEras: jasmine.createSpy('getEras').and.callFake(() => [...erasById.values()]),
         getEraByName: jasmine.createSpy('getEraByName').and.callFake((name: string) => erasByName.get(name)),
@@ -77,6 +78,7 @@ describe('ForceGeneratorService negative era filters', () => {
         megaMekAvailabilityRecords.length = 0;
         units.length = 0;
         dataServiceMock.searchCorpusVersion.set(1);
+        dataServiceMock.megaMekAvailabilityVersion.set(0);
         optionsServiceMock.options.set({ availabilitySource: 'megamek' });
         filtersServiceMock.effectiveFilterState.calls.reset();
         filtersServiceMock.effectiveFilterState.and.returnValue({});
@@ -144,7 +146,7 @@ describe('ForceGeneratorService negative era filters', () => {
         const context = service.resolveGenerationContext([unit]);
 
         expect(context.forceEra?.id).toBe(3150);
-        expect(context.averagingEraIds).toEqual([3150]);
+        expect(context.availabilityEraIds).toEqual([3150]);
     });
 
     it('does not roll MUL-invisible eras when only the faction filter is active', () => {
@@ -197,7 +199,7 @@ describe('ForceGeneratorService negative era filters', () => {
 
         expect(context.forceFaction).toBe(faction);
         expect(context.forceEra).toBe(visibleEra);
-        expect(context.averagingEraIds).toEqual([visibleEra.id]);
+        expect(context.availabilityEraIds).toEqual([visibleEra.id]);
         expect(context.availablePairCount).toBe(1);
     });
 });

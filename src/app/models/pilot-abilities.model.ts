@@ -34,15 +34,22 @@
 import { Rulebook, type RulesReference } from './common.model';
 import { GameSystem } from '../models/common.model';
 import type { ASUnitTypeCode } from './units.model';
-import { OptionsService } from '../services/options.service';
+import { formatMovement } from '../utils/as-common.util';
 
-export function hexDisplay(summaries: string[]): string[] {
-    const useHex = OptionsService.get()?.options()?.ASUseHex ?? false;
-    return summaries.map(text => {
-        return text.replace(/\[\[(\d+)\]\]/g, (_, val) => {
-            return useHex ? `${Math.floor(val) / 2}⬢` : `${val}″`;
-        });
+function formatMovementPlaceholders(text: string, useHex: boolean): string {
+    return text.replace(/\[\[(\d+)\]\]/g, (_, val) => {
+        return formatMovement(Number(val), '', useHex);
     });
+}
+
+export function formatSummaryMovement(summary: string, useHex?: boolean): string;
+export function formatSummaryMovement(summaries: string[], useHex?: boolean): string[];
+export function formatSummaryMovement(summaries: string | string[], useHex: boolean = false): string | string[] {
+    if (Array.isArray(summaries)) {
+        return summaries.map(text => formatMovementPlaceholders(text, useHex));
+    }
+
+    return formatMovementPlaceholders(summaries, useHex);
 }
 
 /** Game-system-specific details for a pilot ability */
@@ -512,6 +519,32 @@ export const PILOT_ABILITIES: PilotAbility[] = [
                 "When resolving air-to-ground combat rules this SPA applies a \u20131 Target Number modifier for air-to-ground strafing or striking attacks, and a \u20132 modifier for bombing attacks.",
             ],
         },
+    },
+    {
+        id: "goshen_grad",
+        name: "Goshen Grad",
+        cost: 2,
+        cbt: {
+            rulesRef: [{ book: Rulebook.FMD, page: 81 }],
+            unitType: "'Mechs",
+            summary: ["Applies Shielding SCA to this unit."],
+            description: [
+                "Any opposing unit must fire on this unit before targeting another unit, as long as the Goshen Grad is closer and in the LOS between the attacker and the other unit.",
+                "Actual grads (not in the Training Battalion) with this SPA possess that ability and once per battle may cause one enemy to possess the Blood Stalker SPA, with the grad as target.",
+                "The Blood Stalker SPA stays with that enemy unit until it is broken."
+            ],
+        },
+        as: {
+            rulesRef: [{ book: Rulebook.FMD, page: 81 }],
+            unitType: "'Mechs",
+            unitTypeFilter: ['BM', 'IM'],
+            summary: ["Applies Shielding SCA to this unit."],
+            description: [
+                "Any opposing unit must fire on this unit before targeting another unit, as long as the Goshen Grad is closer and in the LOS between the attacker and the other unit.",
+                "Actual grads (not in the Training Battalion) with this SPA possess that ability and once per battle may cause one enemy to possess the Blood Stalker SPA, with the grad as target.",
+                "The Blood Stalker SPA stays with that enemy unit until it is broken."
+            ],
+        }
     },
     {
         id: "ground_hugger",

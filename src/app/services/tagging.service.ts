@@ -52,7 +52,7 @@ import { PublicTagsService } from './public-tags.service';
 /**
  * Maximum length for tag names.
  */
-export const TAG_MAX_LENGTH = 16;
+export const TAG_MAX_LENGTH = 32;
 
 /**
  * Allowed characters in tag names.

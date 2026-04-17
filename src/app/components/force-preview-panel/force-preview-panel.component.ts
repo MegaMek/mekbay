@@ -1,12 +1,26 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    effect,
+    type ElementRef,
+    inject,
+    input,
+    output,
+    signal,
+    untracked,
+    viewChild,
+} from '@angular/core';
 
 import {
-    getLoadForceUnitPilotStats,
-    type LoadForceEntry,
-    type LoadForceGroup,
-    type LoadForceUnit,
-} from '../../models/load-force-entry.model';
+    getForcePreviewResolvedUnits,
+    getForcePreviewUnitPilotStats,
+    type ForcePreviewEntry,
+    type ForcePreviewGroup,
+    type ForcePreviewUnit,
+} from '../../models/force-preview.model';
+import type { Options } from '../../models/options.model';
 import type { Unit } from '../../models/units.model';
 import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 import { DialogsService } from '../../services/dialogs.service';
@@ -17,19 +31,31 @@ import { getOrgFromForce, getOrgFromGroup } from '../../utils/org/org-namer.util
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 
+const UNIT_TILE_MIN_WIDTH = 86;
+const UNIT_TILE_MAX_WIDTH = 114;
+const UNIT_TILE_GAP = 4;
+type ForcePreviewSelectionMode = 'multi' | 'single';
+
 @Component({
-    selector: 'load-force-preview-panel',
+    selector: 'force-preview-panel',
     standalone: true,
     imports: [CommonModule, CleanModelStringPipe, UnitIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-    @let unitDisplayName = optionsService.options().unitDisplayName;
+    @let unitDisplayName = effectiveUnitDisplayName();
     @let entry = force();
-    <div class="force-preview-shell">
+    <div class="force-preview-shell"
+        [class.scroll-units-only]="scrollUnitsOnly()"
+        [style.--preview-unit-columns]="unitColumnCount()"
+        [style.--preview-unit-width.px]="unitTileWidth()">
+        @if (showHeader()) {
         <div class="force-preview-header">
             <div class="faction-name-wrapper">
                 @if (entry.faction?.img; as factionImg) {
                     <img [src]="factionImg" class="faction-icon" />
+                }
+                @if (entry.era?.img || entry.era?.icon; as eraImg) {
+                    <img [src]="eraImg" class="era-icon" [alt]="entry.era?.name || 'Era'" [title]="entry.era?.name || 'Era'" />
                 }
                 <div class="force-name-block">
                     <span class="force-preview-name">{{ entry.name || forceOrgName() }}</span>
@@ -53,7 +79,8 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
                 }
             </span>
         </div>
-        <div class="force-preview">
+        }
+        <div #forcePreviewViewport class="force-preview">
             <div class="unit-scroll">
                 @for (gd of groupDisplayData(); track gd.group) {
                 <div class="unit-group">
@@ -107,14 +134,28 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
                                 </div>
                             </div>
 
-                            @if (showLockControls()) {
-                                <button
-                                    class="unit-lock-button bt-button"
-                                    type="button"
-                                    [class.locked]="isLocked(unitEntry)"
-                                    (click)="onLockButtonClick($event, unitEntry)">
-                                    {{ isLocked(unitEntry) ? 'UNLOCK' : 'LOCK' }}
-                                </button>
+                            @if (showLockControls() || showSelectionControls()) {
+                                <div class="unit-actions" [class.single-action]="showLockControls() !== showSelectionControls()">
+                                    @if (showLockControls()) {
+                                        <button
+                                            class="unit-lock-button bt-button"
+                                            type="button"
+                                            [class.locked]="isLocked(unitEntry)"
+                                            (click)="onLockButtonClick($event, unitEntry)">
+                                            {{ isLocked(unitEntry) ? 'UNLOCK' : 'LOCK' }}
+                                        </button>
+                                    }
+
+                                    @if (showSelectionControls()) {
+                                        <input
+                                            class="bt-checkbox unit-selection-checkbox"
+                                            type="checkbox"
+                                            [checked]="isSelected(unitEntry)"
+                                            [attr.aria-label]="selectionMode() === 'single' ? 'Select unit' : 'Toggle unit selection'"
+                                            (click)="$event.stopPropagation()"
+                                            (change)="onSelectionChange($event, unitEntry)" />
+                                    }
+                                </div>
                             }
                         </div>
                         }
@@ -130,20 +171,41 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
     `,
     styles: [`
         :host {
-            display: block;
+            display: flex;
+            flex-direction: column;
             width: 100%;
+            --preview-selection-accent: #62c4ff;
         }
 
         .force-preview-shell {
+            display: flex;
+            flex-direction: column;
             width: 100%;
+            min-height: 0;
+        }
+
+        .force-preview-shell.scroll-units-only {
+            flex: 1 1 auto;
+        }
+
+        .force-preview-shell.scroll-units-only .force-preview-header,
+        .force-preview-shell.scroll-units-only .hint {
+            flex-shrink: 0;
         }
 
         .force-preview {
             width: 100%;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--border-color, #333);
-            padding: 8px 12px;
             box-sizing: border-box;
+            min-height: 0;
+        }
+
+        .force-preview-shell.scroll-units-only .force-preview {
+            display: flex;
+            flex: 1 1 auto;
+            flex-direction: column;
+            min-height: 0;
+            overflow-x: hidden;
+            overflow-y: auto;
         }
 
         .force-preview-header {
@@ -161,7 +223,8 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
             flex: 1 1 0;
         }
 
-        .faction-icon {
+        .faction-icon,
+        .era-icon {
             width: 1.2em;
             height: 1.2em;
             object-fit: contain;
@@ -219,6 +282,12 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
             overflow-y: auto;
         }
 
+        .force-preview-shell.scroll-units-only .unit-scroll {
+            flex: 0 0 auto;
+            min-height: auto;
+            overflow: visible;
+        }
+
         .unit-group {
             display: flex;
             flex-direction: column;
@@ -239,17 +308,27 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
         }
 
         .units {
-            display: flex;
-            flex-direction: row;
-            flex-wrap: wrap;
+            display: grid;
+            grid-template-columns: repeat(var(--preview-unit-columns, 1), minmax(0, var(--preview-unit-width, 92px)));
             gap: 4px;
+            justify-content: start;
+            align-items: stretch;
         }
 
         .unit-tile {
-            width: 86px;
             display: flex;
             flex-direction: column;
             gap: 2px;
+            width: 100%;
+            min-width: 0;
+            max-width: 114px;
+            min-height: 0;
+            height: 100%;
+            align-self: stretch;
+
+            .unit-square {
+                width: 100%;
+            }
         }
 
         .group-sep {
@@ -264,10 +343,11 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
         }
 
         .unit-square.compact-mode {
-            width: 86px;
-            height: 80px;
+            width: 100%;
+            flex: 1 1 auto;
+            min-height: 80px;
             max-height: 105px;
-            min-width: 86px;
+            min-width: 0;
             background: #0003;
             border: 1px solid var(--border-color, #333);
             padding: 2px;
@@ -335,11 +415,60 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
         }
 
         .unit-lock-button {
-            width: 100%;
             min-height: 24px;
             padding: 2px 4px;
             font-size: 0.62em;
             letter-spacing: 0.08em;
+        }
+
+        .unit-actions {
+            display: flex;
+            align-items: stretch;
+            gap: 2px;
+            width: 100%;
+        }
+
+        .unit-actions > .bt-button {
+            flex: 1 1 0;
+            min-width: 0;
+            align-self: stretch;
+        }
+
+        .unit-actions.single-action > * {
+            flex-basis: 100%;
+        }
+
+        .unit-actions.single-action > .unit-selection-checkbox {
+            flex: 1 1 100%;
+            width: 100%;
+            min-width: 0;
+        }
+
+        .unit-selection-checkbox {
+            margin: 0;
+            flex: 0 0 24px;
+            width: 24px;
+            min-width: 24px;
+            min-height: 24px;
+            height: auto;
+            box-sizing: border-box;
+        }
+
+        .unit-selection-checkbox:checked {
+            background-image:
+                linear-gradient(var(--preview-selection-accent), var(--preview-selection-accent)),
+                linear-gradient(var(--preview-selection-accent), var(--preview-selection-accent)),
+                linear-gradient(var(--preview-selection-accent), var(--preview-selection-accent)),
+                linear-gradient(var(--preview-selection-accent), var(--preview-selection-accent)),
+                linear-gradient(var(--preview-selection-accent), var(--preview-selection-accent)),
+                linear-gradient(var(--preview-selection-accent), var(--preview-selection-accent)),
+                linear-gradient(var(--preview-selection-accent), var(--preview-selection-accent)),
+                linear-gradient(var(--preview-selection-accent), var(--preview-selection-accent)),
+                linear-gradient(var(--preview-selection-accent), var(--preview-selection-accent));
+        }
+
+        .unit-selection-label {
+            line-height: 1;
         }
 
         .unit-lock-button.locked {
@@ -407,28 +536,52 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
         }
     `],
 })
-export class LoadForcePreviewPanelComponent {
+export class ForcePreviewPanelComponent {
     private readonly dialogsService = inject(DialogsService);
     readonly optionsService = inject(OptionsService);
+    private readonly forcePreviewViewport = viewChild<ElementRef<HTMLElement>>('forcePreviewViewport');
+    private readonly previewViewportWidth = signal(UNIT_TILE_MAX_WIDTH);
 
-    readonly force = input.required<LoadForceEntry>();
+    readonly force = input.required<ForcePreviewEntry>();
+    readonly showHeader = input(true);
     readonly showHint = input(true);
+    readonly scrollUnitsOnly = input(false);
     readonly showLockControls = input(false);
+    readonly showSelectionControls = input(false);
+    readonly selectionMode = input<ForcePreviewSelectionMode>('multi');
+    readonly displayMode = input<Options['unitDisplayName'] | null>(null);
     readonly lockedUnitKeys = input<ReadonlySet<string>>(new Set<string>());
-    readonly lockToggle = input<((unitEntry: LoadForceUnit) => void) | null>(null);
-    readonly hoveredUnitChange = output<LoadForceUnit | null>();
+    readonly lockToggle = input<((unitEntry: ForcePreviewUnit) => void) | null>(null);
+    readonly hoveredUnitChange = output<ForcePreviewUnit | null>();
+    readonly selectedUnitsChange = output<ForcePreviewUnit[]>();
+    private readonly selectedUnits = signal<ReadonlySet<ForcePreviewUnit>>(new Set<ForcePreviewUnit>());
 
-    readonly allUnits = computed(() => this.force().groups
-        .flatMap((group) => group.units)
-        .map((entry) => entry.unit)
-        .filter((unit): unit is Unit => unit !== undefined));
+    readonly unitColumnCount = computed(() => {
+        const viewportWidth = Math.max(this.previewViewportWidth(), UNIT_TILE_MIN_WIDTH);
+        return Math.max(1, Math.floor((viewportWidth + UNIT_TILE_GAP) / (UNIT_TILE_MIN_WIDTH + UNIT_TILE_GAP)));
+    });
+
+    readonly unitTileWidth = computed(() => {
+        const viewportWidth = Math.max(this.previewViewportWidth(), UNIT_TILE_MIN_WIDTH);
+        const columns = this.unitColumnCount();
+        const totalGapWidth = UNIT_TILE_GAP * Math.max(0, columns - 1);
+        const availableTileWidth = (viewportWidth - totalGapWidth) / columns;
+
+        return Math.min(UNIT_TILE_MAX_WIDTH, Math.max(UNIT_TILE_MIN_WIDTH, availableTileWidth));
+    });
+
+    readonly effectiveUnitDisplayName = computed<Options['unitDisplayName']>(
+        () => this.displayMode() ?? this.optionsService.options().unitDisplayName,
+    );
+
+    readonly resolvedUnits = computed<Unit[]>(() => getForcePreviewResolvedUnits(this.force()));
 
     readonly forceOrgName = computed(() => {
         const result = getOrgFromForce(this.force());
         return result.name !== 'Force' ? result.name : null;
     });
 
-    readonly groupDisplayData = computed(() => this.force().groups.map((group) => {
+    readonly groupDisplayData = computed(() => this.force().groups.map((group: ForcePreviewGroup) => {
         const sizeResult = getOrgFromGroup(group);
         const orgName = sizeResult.name && sizeResult.name !== 'Force' ? sizeResult.name : null;
 
@@ -445,19 +598,56 @@ export class LoadForcePreviewPanelComponent {
         return { group, name, orgName, formationName };
     }));
 
-    getPilotStats(loadForceUnit: LoadForceUnit): string {
-        return getLoadForceUnitPilotStats(loadForceUnit, this.force().type);
+    constructor() {
+        effect((onCleanup) => {
+            const viewport = this.forcePreviewViewport()?.nativeElement;
+            if (!viewport) {
+                return;
+            }
+
+            const updateViewportWidth = () => {
+                this.previewViewportWidth.set(Math.max(UNIT_TILE_MIN_WIDTH, viewport.clientWidth));
+            };
+
+            updateViewportWidth();
+
+            if (typeof ResizeObserver === 'undefined') {
+                return;
+            }
+
+            const resizeObserver = new ResizeObserver(() => updateViewportWidth());
+            resizeObserver.observe(viewport);
+
+            onCleanup(() => resizeObserver.disconnect());
+        });
+
+        effect(() => {
+            this.force();
+            untracked(() => {
+                if (this.selectedUnits().size === 0) {
+                    return;
+                }
+
+                this.selectedUnits.set(new Set<ForcePreviewUnit>());
+                this.selectedUnitsChange.emit([]);
+            });
+        });
     }
 
-    onUnitClick(loadForceUnit: LoadForceUnit): void {
+    getPilotStats(loadForceUnit: ForcePreviewUnit): string {
+        return getForcePreviewUnitPilotStats(loadForceUnit, this.force().type);
+    }
+
+    onUnitClick(loadForceUnit: ForcePreviewUnit): void {
         if (!loadForceUnit.unit) {
             return;
         }
 
-        const unitIndex = this.allUnits().findIndex((unit) => unit.name === loadForceUnit.unit?.name);
+        const unitList = this.resolvedUnits();
+        const unitIndex = unitList.findIndex((unit: Unit) => unit === loadForceUnit.unit || unit.name === loadForceUnit.unit?.name);
         this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: {
-                unitList: this.allUnits(),
+                unitList,
                 unitIndex: unitIndex >= 0 ? unitIndex : 0,
                 hideAddButton: true,
                 gameSystem: this.force().type,
@@ -465,16 +655,46 @@ export class LoadForcePreviewPanelComponent {
         });
     }
 
-    onUnitHover(loadForceUnit: LoadForceUnit | null): void {
+    onUnitHover(loadForceUnit: ForcePreviewUnit | null): void {
         this.hoveredUnitChange.emit(loadForceUnit?.unit ? loadForceUnit : null);
     }
 
-    isLocked(loadForceUnit: LoadForceUnit): boolean {
+    isLocked(loadForceUnit: ForcePreviewUnit): boolean {
         return !!loadForceUnit.lockKey && this.lockedUnitKeys().has(loadForceUnit.lockKey);
     }
 
-    onLockButtonClick(event: Event, loadForceUnit: LoadForceUnit): void {
+    isSelected(loadForceUnit: ForcePreviewUnit): boolean {
+        return this.selectedUnits().has(loadForceUnit);
+    }
+
+    onLockButtonClick(event: Event, loadForceUnit: ForcePreviewUnit): void {
         event.stopPropagation();
         this.lockToggle()?.(loadForceUnit);
+    }
+
+    onSelectionChange(event: Event, loadForceUnit: ForcePreviewUnit): void {
+        event.stopPropagation();
+
+        const checked = (event.target as HTMLInputElement).checked;
+        const nextSelectedUnits = new Set<ForcePreviewUnit>();
+
+        if (this.selectionMode() === 'single') {
+            if (checked) {
+                nextSelectedUnits.add(loadForceUnit);
+            }
+        } else {
+            for (const unit of this.selectedUnits()) {
+                nextSelectedUnits.add(unit);
+            }
+
+            if (checked) {
+                nextSelectedUnits.add(loadForceUnit);
+            } else {
+                nextSelectedUnits.delete(loadForceUnit);
+            }
+        }
+
+        this.selectedUnits.set(nextSelectedUnits);
+        this.selectedUnitsChange.emit([...nextSelectedUnits]);
     }
 }

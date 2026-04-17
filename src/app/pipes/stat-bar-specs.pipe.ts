@@ -102,12 +102,15 @@ export class StatBarSpecsPipe implements PipeTransform {
             );
         }
 
+        const maxRangeValue = unit._maxRange === unit._weightedMaxRange ? `${unit._maxRange}` : `${unit._maxRange} (${unit._weightedMaxRange})`;
+        const dissipationValue = (unit.diss?.length === 2 && (unit.diss[0] != unit.diss[1])) ? `${unit.diss[0]} (${unit.diss[1]})` : `${unit.dissipation}`;
+        
         statDefs.push(
             { key: 'alphaNoPhysical', label: 'Firepower', value: unit._mdSumNoPhysical, max: bucketStats.alphaNoPhysicalNoOneshots.max, description: 'Total maximum damage from all weapons fired simultaneously' },
             { key: 'dpt', label: 'Damage/Turn', value: unit.dpt, max: bucketStats.dpt.max, description: 'Average damage per turn over a 10-turn engagement, accounting for heat and ammo limits' },
-            { key: 'maxRange', label: 'Range', value: unit._maxRange, max: bucketStats.maxRange.max, description: 'Maximum weapon range in hexes' },
+            { key: 'maxRange', label: 'Range', value: unit._maxRange, valueText: maxRangeValue, max: bucketStats.maxRange.max, description: 'Maximum weapon range in hexes, and weighted maximum range for effective damage output' },
             { key: 'heat', label: 'Heat', value: unit.heat, max: bucketStats.heat.max, description: 'Maximum heat generated when firing all weapons and activating all equipment' },
-            { key: 'dissipation', label: 'Dissipation', value: unit.dissipation, max: bucketStats.dissipation.max, description: 'Heat dissipation capacity per turn from heat sinks' },
+            { key: 'dissipation', label: 'Dissipation', value: unit.dissipation, valueText: dissipationValue, max: bucketStats.dissipation.max, description: 'Heat dissipation capacity per turn from heat sinks. If two values are present, the first is the minimum and the second is the maximum' },
             { key: 'runMP', label: 'Top Speed', value: unit.run2, max: bucketStats.run2MP.max, description: 'Maximum running/cruising speed in hexes per turn' },
             { key: 'jumpMP', label: jumpLabel, value: jumpValue, max: bucketStats.jumpMP.max, description: jumpLabel === 'VTOL' ? 'VTOL movement capability in hexes' : 'Jump movement capability in hexes' },
         );

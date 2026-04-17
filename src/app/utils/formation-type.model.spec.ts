@@ -1,4 +1,5 @@
 import {
+    formationInheritsParentEffects,
     formationNameMatchesGroupName,
     getFormationNameMatchStrings,
     type FormationTypeDefinition,
@@ -60,5 +61,15 @@ describe('getFormationNameMatchStrings', () => {
             'Light Striker',
             'Light Cavalry',
         ]);
+    });
+});
+
+describe('formationInheritsParentEffects', () => {
+    it('defaults to false when inheritParentEffects is omitted', () => {
+        expect(formationInheritsParentEffects(createFormation())).toBeFalse();
+    });
+
+    it('returns true only when inheritParentEffects is explicitly enabled', () => {
+        expect(formationInheritsParentEffects(createFormation({ inheritParentEffects: true }))).toBeTrue();
     });
 });

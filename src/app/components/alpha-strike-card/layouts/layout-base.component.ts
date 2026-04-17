@@ -127,6 +127,7 @@ export abstract class AsLayoutBaseComponent {
     });
 
     // Skill and PV
+    isCommander = computed<boolean>(() => this.forceUnit()?.commander() ?? false);
     skill = computed<number>(() => this.forceUnit()?.getPilotStats() ?? 4);
     basePV = computed<number>(() => this.asStats().PV);
     adjustedPV = computed<number>(() => {
@@ -153,21 +154,12 @@ export abstract class AsLayoutBaseComponent {
             abilities.filter((ability): ability is string => typeof ability === 'string')
         );
 
-        for (const effect of preview.unsupportedEffects) {
-            if (effect.reason !== 'auto-command-ability' || effect.group.distribution !== 'all') {
+        for (const abilityId of preview.assignmentsByUnitId.get(forceUnit.id) ?? []) {
+            if (seenAbilityIds.has(abilityId)) {
                 continue;
             }
-            if (effect.group.excludeCommander && forceUnit.commander()) {
-                continue;
-            }
-
-            for (const commandAbilityId of effect.group.commandAbilityIds ?? []) {
-                if (seenAbilityIds.has(commandAbilityId)) {
-                    continue;
-                }
-                abilities.push(commandAbilityId);
-                seenAbilityIds.add(commandAbilityId);
-            }
+            abilities.push(abilityId);
+            seenAbilityIds.add(abilityId);
         }
 
         return abilities;

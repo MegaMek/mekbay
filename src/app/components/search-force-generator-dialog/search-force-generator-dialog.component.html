@@ -2,7 +2,33 @@
     <div dialog-header><div class="title">GENERATE FORCE</div></div>
 
     <div dialog-body class="dialog-body">
-        <div class="dialog-layout">
+        <div class="mobile-tabs tab-header" role="tablist" aria-label="Force generator sections">
+            <div class="tab-buttons">
+                <button
+                    type="button"
+                    class="tab-button"
+                    role="tab"
+                    [class.active]="mobileTab() === 'configuration'"
+                    [attr.aria-selected]="mobileTab() === 'configuration'"
+                    (click)="setMobileTab('configuration')">
+                    CONFIGURATION
+                </button>
+                <button
+                    type="button"
+                    class="tab-button"
+                    role="tab"
+                    [class.active]="mobileTab() === 'preview'"
+                    [attr.aria-selected]="mobileTab() === 'preview'"
+                    (click)="setMobileTab('preview')">
+                    PREVIEW
+                </button>
+            </div>
+        </div>
+
+        <div
+            class="dialog-layout"
+            [class.mobile-configuration-active]="mobileTab() === 'configuration'"
+            [class.mobile-preview-active]="mobileTab() === 'preview'">
             <section class="panel controls-panel">
                 <div class="description-panel framed-borders">
                     <div class="description-title">Current Search</div>
@@ -71,7 +97,7 @@
                                 step="1"
                                 [value]="budgetRange().min"
                                 (input)="onBudgetMinChange($event)"
-                                placeholder="0 = no minimum" />
+                                placeholder="0" />
                         </div>
 
                         <div class="form-fields">
@@ -83,24 +109,39 @@
                                 step="1"
                                 [value]="budgetRange().max || ''"
                                 (blur)="onBudgetMaxBlur($event)"
-                                placeholder="0 = no maximum; 0/0 = first result" />
+                                placeholder="0 = No maximum" />
                         </div>
                     </div>
 
                     <div class="form-fields span-all">
                         <div class="form-fields">
                             <label class="field-label">Era</label>
-                            <multi-select-dropdown
-                                class="generator-dropdown"
-                                [label]="''"
-                                [options]="eraFilter()?.options ?? []"
-                                [selected]="selectedEraValues()"
-                                [multistate]="true"
-                                [semanticOnly]="eraFilter()?.semanticOnly ?? false"
-                                [displayText]="eraFilter()?.displayText"
-                                [displayItems]="eraFilter()?.displayItems"
-                                (selectionChange)="onEraSelectionChange($event)">
-                            </multi-select-dropdown>
+                            <div class="dropdown-option-row">
+                                <multi-select-dropdown
+                                    class="generator-dropdown era-dropdown"
+                                    [label]="''"
+                                    [options]="eraFilter()?.options ?? []"
+                                    [selected]="selectedEraValues()"
+                                    [multistate]="true"
+                                    [semanticOnly]="eraFilter()?.semanticOnly ?? false"
+                                    [displayText]="eraFilter()?.displayText"
+                                    [displayItems]="eraFilter()?.displayItems"
+                                    (selectionChange)="onEraSelectionChange($event)">
+                                </multi-select-dropdown>
+
+                                <label
+                                    class="generator-option generator-option-inline"
+                                    [class.disabled]="!crossEraAvailabilityToggleEnabled()"
+                                    [tooltip]="crossEraAvailabilityTooltip()">
+                                    <input
+                                        class="bt-checkbox"
+                                        type="checkbox"
+                                        [checked]="crossEraAvailabilityInMultiEraSelection()"
+                                        [disabled]="!crossEraAvailabilityToggleEnabled()"
+                                        (change)="onCrossEraAvailabilityInMultiEraSelectionChange($event)" />
+                                    <span class="generator-option-label">Multi-Era</span>
+                                </label>
+                            </div>
                         </div>
 
                         <div class="form-fields span-all">
@@ -279,31 +320,38 @@
             <section class="panel preview-panel">
                 <div class="preview-body">
                     @if (previewEntry(); as previewForceEntry) {
-                        <div class="preview-stack">
-                            <load-force-preview-panel
-                                [force]="previewForceEntry"
-                                [showLockControls]="true"
-                                [lockedUnitKeys]="lockedUnitKeys()"
-                                [lockToggle]="previewLockToggle"
-                                (hoveredUnitChange)="onPreviewUnitHover($event)">
-                            </load-force-preview-panel>
+                        <div class="preview-layout">
+                            <div class="preview-summary">
+                                <force-preview-panel
+                                    [force]="previewForceEntry"
+                                    [showHint]="false"
+                                    [scrollUnitsOnly]="true"
+                                    [showLockControls]="true"
+                                    [showSelectionControls]="true"
+                                    [selectionMode]="'single'"
+                                    [lockedUnitKeys]="lockedUnitKeys()"
+                                    [lockToggle]="previewLockToggle"
+                                    (hoveredUnitChange)="onPreviewUnitHover($event)"
+                                    (selectedUnitsChange)="onPreviewSelectedUnitsChange($event)">
+                                </force-preview-panel>
 
-                            <load-force-radar-panel
-                                [force]="previewForceEntry"
-                                [hoveredUnit]="hoveredRadarUnit()">
-                            </load-force-radar-panel>
+                                @if (previewError(); as errorMessage) {
+                                    <div class="preview-inline-error error framed-borders">{{ errorMessage }}</div>
+                                }
+                            </div>
 
-                            @if (previewError(); as errorMessage) {
-                                <div class="preview-inline-error error framed-borders">{{ errorMessage }}</div>
-                            }
+                            <div class="preview-radar">
+                                <force-radar-panel
+                                    [force]="previewForceEntry"
+                                    [hoveredUnit]="hoveredRadarUnit()">
+                                </force-radar-panel>
+                            </div>
                         </div>
                     } @else if (previewError(); as errorMessage) {
                         <div class="preview-empty">{{ errorMessage }}</div>
                     }
-                </div>
 
-                @if (preview().explanationLines.length > 0) {
-                    <div class="preview-explanation-overlay">
+                    @if (preview().explanationLines.length > 0) {
                         <div class="preview-explanation-shell framed-borders" [class.expanded]="collapsedHowPicksWhereChosen()">
                             <button class="preview-explanation-toggle" type="button" (click)="toggleHowPicksWereChosen()">
                                 <svg class="chevron" width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!collapsedHowPicksWhereChosen()">
@@ -320,8 +368,8 @@
                                 </div>
                             }
                         </div>
-                    </div>
-                }
+                    }
+                </div>
             </section>
         </div>
     </div>

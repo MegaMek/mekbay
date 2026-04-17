@@ -127,6 +127,7 @@ export interface GroupSizeResult {
     children?: GroupSizeResult[];
     units?: Unit[];
     unitAllocations?: GroupUnitAllocation[];
+    formationMatchingIgnoredUnits?: Unit[];
     leftoverUnits?: Unit[];
     leftoverUnitAllocations?: GroupUnitAllocation[];
     tag?: OrgGroupTag;
@@ -354,7 +355,8 @@ export interface OrgRuleMetadata {
 }
 
 export interface OrgFormationMatchingSpec {
-    readonly ignoredChildRoles: readonly OrgChildRoleSpec[];
+    readonly ignoredChildRoles?: readonly OrgChildRoleSpec[];
+    readonly ignoredPatternRefs?: readonly OrgPatternReferenceName[];
     readonly notice?: string;
 }
 

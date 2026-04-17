@@ -38,7 +38,10 @@ import {
     MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS,
     MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS,
     MEGAMEK_AVAILABILITY_FROM_OPTIONS,
+    getMegaMekAvailabilityRarityForScore,
+    getMegaMekAvailabilityValueForSource,
     MEGAMEK_AVAILABILITY_UNKNOWN,
+    MEGAMEK_AVAILABILITY_NOT_AVAILABLE,
     type MegaMekAvailabilityFrom,
     type MegaMekAvailabilityRarity,
 } from '../models/megamek/availability.model';
@@ -50,6 +53,7 @@ import { parseSearchQuery, type SearchTokensGroup } from '../utils/search.util';
 import { OptionsService } from './options.service';
 import { LoggerService } from './logger.service';
 import { GameSystem } from '../models/common.model';
+import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
@@ -58,7 +62,7 @@ import { parseSemanticQueryAST, type ParseResult, type ParseError, isComplexQuer
 import { getSnapshotForcePackNames, type AdvOptionsContextSnapshot } from '../utils/unit-search-adv-options.util';
 import { buildUnitSearchAdvOptions } from '../utils/unit-search-adv-options-builder.util';
 import type { UnitSearchDropdownValuesDependencies } from '../utils/unit-search-dropdown-values.util';
-import { type UnitFilterKernelDependencies } from '../utils/unit-filter-kernel.util';
+import { applyFilterStateToUnits, type UnitFilterKernelDependencies } from '../utils/unit-filter-kernel.util';
 import { getAdvancedFilterConfigByKey, isFilterAvailableForAvailabilitySource } from '../utils/unit-search-filter-config.util';
 import { buildUnitSearchQueryParameters, parseAndValidateCompactFiltersFromUrl, parseUnitSearchScalarUrlState } from '../utils/unit-search-url-filters.util';
 import { generatePublicTagsParam, mergePublicTagReferences, parsePublicTagsParam } from '../utils/unit-search-public-tags-url.util';
@@ -91,7 +95,7 @@ import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import { UserStateService } from './userState.service';
 import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
-import { type MegaMekAvailabilityFilterContext, UnitAvailabilitySourceService } from './unit-availability-source.service';
+import { type MegaMekAvailabilityFilterContext, type MegaMekUnitAvailabilityDetail, UnitAvailabilitySourceService } from './unit-availability-source.service';
 import {
     getPositiveDropdownNamesFromFilter,
     hasResolvedDropdownNames,
@@ -109,7 +113,8 @@ import {
     AdvFilterType,
     type FilterState,
     DROPDOWN_FILTERS,
-    MEGAMEK_RARITY_SORT_KEY,
+    getMegaMekRaritySortAvailabilitySources,
+    isMegaMekRaritySortKey,
     RANGE_FILTERS,
     type DropdownFilterConfig,
     type RangeFilterConfig,
@@ -119,6 +124,10 @@ import {
 } from './unit-search-filters.model';
 
 const FORCE_PACK_OPTION_UNIVERSE = getForcePacks().map(pack => ({ name: pack.name }));
+const MEGAMEK_WORKER_CONTEXT_FILTER_KEYS = new Set(['era', 'faction']);
+const MEGAMEK_WORKER_AVAILABILITY_FILTER_KEYS = new Set(['availabilityFrom', 'availabilityRarity']);
+const MEGAMEK_WORKER_AVAILABILITY_SEMANTIC_FIELDS = new Set(['from', 'rarity']);
+const MEGAMEK_WORKER_SEMANTIC_FIELDS = new Set(['era', 'faction', 'from', 'rarity']);
 
 /** Check if any element in sourceSet exists in targetSet. */
 function setHasAny<T>(sourceSet: ReadonlySet<T>, targetSet: ReadonlySet<T>): boolean {
@@ -235,7 +244,7 @@ export class UnitSearchFiltersService {
     private readonly advOptionsTelemetryState = signal<AdvOptionsTelemetrySnapshot | null>(null);
     readonly advOptionsTelemetry = this.advOptionsTelemetryState.asReadonly();
     private readonly workerSearchEnabled = signal(this.canUseSearchWorker());
-    private readonly uncappedWorkerFilteredUnitsState = signal<Unit[]>([]);
+    private readonly rawWorkerResultUnitsState = signal<Unit[]>([]);
     private advOptionsTelemetryPublishVersion = 0;
     private lastSearchTelemetryLogKey = '';
     private readonly slowSearchTelemetryThresholdMs = 75;
@@ -243,11 +252,12 @@ export class UnitSearchFiltersService {
     private cachedWorkerCorpusVersion: string | null = null;
     private cachedWorkerCorpusSnapshot: UnitSearchWorkerCorpusSnapshot | null = null;
     private searchRequestRevision = 0;
+    private lastWorkerSearchExecutionKey: string | null = null;
     private readonly availabilitySelectionScopePartsCache = new WeakMap<FilterState, AvailabilitySelectionScopeParts>();
     private readonly workerRequestRevision = signal(0);
     private readonly workerResultRevision = signal(0);
     private readonly workerSearchActive = computed(() => {
-        return this.workerSearchEnabled();
+        return this.workerSearchEnabled() && !this.shouldForceMegaMekSyncSearch();
     });
 
     requestClosePanels(options: { exitExpandedView?: boolean } = {}): void {
@@ -443,6 +453,80 @@ export class UnitSearchFiltersService {
         return applicableState;
     }
 
+    private shouldForceMegaMekSyncSearch(): boolean {
+        const availabilitySource = this.optionsService.options().availabilitySource;
+
+        if (this.isComplexQuery()) {
+            const hasComplexWorkerExcludedSemanticFilters = this.semanticParsedAST().tokens.some((token) => (
+                MEGAMEK_WORKER_AVAILABILITY_SEMANTIC_FIELDS.has(token.field)
+                || (
+                    availabilitySource === 'megamek'
+                    && MEGAMEK_WORKER_SEMANTIC_FIELDS.has(token.field)
+                )
+            ));
+            if (hasComplexWorkerExcludedSemanticFilters) {
+                return true;
+            }
+        }
+
+        if (availabilitySource !== 'megamek') {
+            return false;
+        }
+
+        const workerFilterState = this.getWorkerFilterState(this.getApplicableFilterState(this.effectiveFilterState()));
+        return this.effectiveTextSearch().trim().length === 0 && Object.keys(workerFilterState).length === 0;
+    }
+
+    private shouldStripFilterFromWorker(key: string): boolean {
+        return MEGAMEK_WORKER_AVAILABILITY_FILTER_KEYS.has(key)
+            || (
+                this.optionsService.options().availabilitySource === 'megamek'
+                && MEGAMEK_WORKER_CONTEXT_FILTER_KEYS.has(key)
+            );
+    }
+
+    private getWorkerFilterState(state: FilterState): FilterState {
+        const workerState: FilterState = { ...state };
+        for (const key of Object.keys(workerState)) {
+            if (this.shouldStripFilterFromWorker(key)) {
+                delete workerState[key];
+            }
+        }
+
+        return workerState;
+    }
+
+    private getWorkerPostFilterState(state: FilterState): FilterState {
+        const postFilterState: FilterState = {};
+        for (const [key, filterState] of Object.entries(state)) {
+            if (filterState && this.shouldStripFilterFromWorker(key)) {
+                postFilterState[key] = filterState;
+            }
+        }
+
+        const needsMulAvailabilityScope = !this.unitAvailabilitySource.useMegaMekAvailability()
+            && (
+                postFilterState['availabilityFrom']?.interactedWith
+                || postFilterState['availabilityRarity']?.interactedWith
+            );
+        if (needsMulAvailabilityScope) {
+            if (state['era']?.interactedWith) {
+                postFilterState['era'] = state['era'];
+            }
+            if (state['faction']?.interactedWith) {
+                postFilterState['faction'] = state['faction'];
+            }
+        }
+
+        return postFilterState;
+    }
+
+    private getWorkerSortKey(): string {
+        return isMegaMekRaritySortKey(this.selectedSort())
+            ? ''
+            : this.selectedSort();
+    }
+
     private getSelectedRegularDropdownNames(filterStateEntry?: FilterState[string]): string[] {
         if (!filterStateEntry?.interactedWith) {
             return [];
@@ -496,12 +580,21 @@ export class UnitSearchFiltersService {
         return parts;
     }
 
+    private useAllScopedMegaMekAvailabilityOptions(): boolean {
+        return this.optionsService.options().megaMekAvailabilityFiltersUseAllScopedOptions;
+    }
+
     private buildAvailabilityFilterContext(scope?: AvailabilityFilterScope): MegaMekAvailabilityFilterContext | null {
         if (!scope) {
-            return {};
+            return {
+                bridgeThroughMulMembership: !this.unitAvailabilitySource.useMegaMekAvailability(),
+            };
         }
 
-        const context: MegaMekAvailabilityFilterContext = {};
+        const context: MegaMekAvailabilityFilterContext = {
+            bridgeThroughMulMembership: scope.bridgeThroughMulMembership
+                ?? !this.unitAvailabilitySource.useMegaMekAvailability(),
+        };
 
         if (scope.eraNames !== undefined) {
             const eraIds = new Set(
@@ -539,12 +632,29 @@ export class UnitSearchFiltersService {
             }
         }
 
+        if (this.useAllScopedMegaMekAvailabilityOptions() && scope.availabilityRarityNames !== undefined) {
+            const availabilityRarities = new Set(
+                scope.availabilityRarityNames.filter((rarity): rarity is Exclude<MegaMekAvailabilityRarity, typeof MEGAMEK_AVAILABILITY_UNKNOWN | typeof MEGAMEK_AVAILABILITY_NOT_AVAILABLE> => (
+                    rarity !== MEGAMEK_AVAILABILITY_UNKNOWN && rarity !== MEGAMEK_AVAILABILITY_NOT_AVAILABLE
+                )),
+            );
+            if (availabilityRarities.size > 0) {
+                context.availabilityRarities = availabilityRarities;
+            }
+        }
+
         return context;
     }
 
-    private buildMegaMekRaritySortScope(state: FilterState): AvailabilityFilterScope | undefined {
+    private buildMegaMekAvailabilityScope(
+        state: FilterState,
+        options: { includeAvailabilityFrom?: boolean } = {},
+    ): AvailabilityFilterScope | undefined {
         const { eraNames, factionNames, availabilityFromNames } = this.getAvailabilitySelectionScopeParts(state);
-        const scope: AvailabilityFilterScope = {};
+        const scope: AvailabilityFilterScope = this.unitAvailabilitySource.useMegaMekAvailability()
+            ? {}
+            : { bridgeThroughMulMembership: true };
+        const includeAvailabilityFrom = options.includeAvailabilityFrom ?? true;
 
         if (eraNames.length > 0) {
             scope.eraNames = eraNames;
@@ -552,12 +662,40 @@ export class UnitSearchFiltersService {
         if (factionNames.length > 0) {
             scope.factionNames = factionNames;
         }
-        if (availabilityFromNames.length > 0) {
+        if (includeAvailabilityFrom && availabilityFromNames.length > 0) {
             scope.availabilityFromNames = availabilityFromNames;
         }
 
         return Object.keys(scope).length > 0 ? scope : undefined;
     }
+
+    private buildMegaMekRaritySortScope(state: FilterState): AvailabilityFilterScope | undefined {
+        const { availabilityRarityNames } = this.getAvailabilitySelectionScopeParts(state);
+        const scope = this.buildMegaMekAvailabilityScope(state, { includeAvailabilityFrom: true });
+        const selectedSort = this.selectedSort();
+        const scopedSort: AvailabilityFilterScope = !isMegaMekRaritySortKey(selectedSort)
+            ? { ...(scope ?? {}) }
+            : {
+                ...(scope ?? {}),
+                availabilityFromNames: [...getMegaMekRaritySortAvailabilitySources(selectedSort)],
+            };
+
+        if (this.useAllScopedMegaMekAvailabilityOptions() && availabilityRarityNames.length > 0) {
+            scopedSort.availabilityRarityNames = availabilityRarityNames;
+        }
+
+        return Object.keys(scopedSort).length > 0 ? scopedSort : undefined;
+    }
+
+    private readonly megaMekAvailabilityDisplayScope = computed(() => {
+        return this.buildMegaMekAvailabilityScope(this.getApplicableFilterState(this.effectiveFilterState()), {
+            includeAvailabilityFrom: false,
+        });
+    });
+
+    private readonly megaMekAvailabilityDisplayContext = computed<MegaMekAvailabilityFilterContext | null>(() => {
+        return this.buildAvailabilityFilterContext(this.megaMekAvailabilityDisplayScope());
+    });
 
     private readonly megaMekRaritySortScope = computed(() => {
         return this.buildMegaMekRaritySortScope(this.getApplicableFilterState(this.effectiveFilterState()));
@@ -581,6 +719,113 @@ export class UnitSearchFiltersService {
         }
 
         return this.getMegaMekRaritySortScoreFromContext(unit, this.buildAvailabilityFilterContext(scope));
+    }
+
+    public getMegaMekAvailabilitySources(unit: Unit, scope?: AvailabilityFilterScope): readonly MegaMekAvailabilityFrom[] {
+        const context = scope === undefined
+            ? this.megaMekAvailabilityDisplayContext()
+            : this.buildAvailabilityFilterContext(scope);
+        if (context === null) {
+            return [];
+        }
+
+        return this.getScopedMegaMekAvailabilitySources(scope).filter((source) => {
+            return this.unitAvailabilitySource.unitMatchesAvailabilityFrom(unit, source, context);
+        });
+    }
+
+    public getMegaMekAvailabilityBadges(unit: Unit, scope?: AvailabilityFilterScope): readonly MegaMekUnitAvailabilityDetail[] {
+        const selectionScope = scope === undefined
+            ? this.megaMekAvailabilityDisplayScope()
+            : scope;
+        const baseScope = selectionScope === undefined
+            ? undefined
+            : {
+                ...(selectionScope.eraNames !== undefined ? { eraNames: selectionScope.eraNames } : {}),
+                ...(selectionScope.factionNames !== undefined ? { factionNames: selectionScope.factionNames } : {}),
+                ...(selectionScope.bridgeThroughMulMembership ? { bridgeThroughMulMembership: true } : {}),
+            };
+        const baseContext = this.buildAvailabilityFilterContext(baseScope);
+        if (baseContext === null) {
+            return [];
+        }
+
+        const availabilitySelectionScopeParts = this.getAvailabilitySelectionScopeParts(
+            this.getApplicableFilterState(this.effectiveFilterState()),
+        );
+        const selectedAvailabilityFromNames = selectionScope?.availabilityFromNames
+            ?? availabilitySelectionScopeParts.availabilityFromNames;
+        const selectedAvailabilityRarityNames = (selectionScope?.availabilityRarityNames
+            ?? availabilitySelectionScopeParts.availabilityRarityNames) as MegaMekAvailabilityRarity[];
+        const selectedPositiveSources = selectedAvailabilityFromNames.filter((value): value is MegaMekAvailabilityFrom => (
+            value === 'Production' || value === 'Salvage'
+        ));
+        const selectedPositiveRarities = new Set(
+            selectedAvailabilityRarityNames.filter((rarity): rarity is Exclude<MegaMekAvailabilityRarity, typeof MEGAMEK_AVAILABILITY_UNKNOWN | typeof MEGAMEK_AVAILABILITY_NOT_AVAILABLE> => (
+                rarity !== MEGAMEK_AVAILABILITY_UNKNOWN && rarity !== MEGAMEK_AVAILABILITY_NOT_AVAILABLE
+            )),
+        );
+        const includesUnknownSelection = selectedAvailabilityFromNames.includes(MEGAMEK_AVAILABILITY_UNKNOWN)
+            || selectedAvailabilityRarityNames.includes(MEGAMEK_AVAILABILITY_UNKNOWN);
+        const badges: MegaMekUnitAvailabilityDetail[] = [];
+        const activeSources = selectedPositiveSources.length > 0
+            ? selectedPositiveSources
+            : selectedAvailabilityFromNames.length === 0
+                ? MEGAMEK_AVAILABILITY_FROM_OPTIONS
+                : [];
+
+        for (const source of activeSources) {
+            const score = this.getMegaMekRaritySortScore(unit, {
+                ...(baseScope ?? {}),
+                availabilityFromNames: [source],
+                ...(this.useAllScopedMegaMekAvailabilityOptions() && selectedPositiveRarities.size > 0
+                    ? { availabilityRarityNames: [...selectedPositiveRarities] }
+                    : {}),
+            });
+            if (score < 1) {
+                continue;
+            }
+
+            const rarity = getMegaMekAvailabilityRarityForScore(score);
+            if (rarity === MEGAMEK_AVAILABILITY_NOT_AVAILABLE) {
+                continue;
+            }
+
+            if (selectedAvailabilityRarityNames.length > 0 && !selectedPositiveRarities.has(rarity)) {
+                continue;
+            }
+
+            badges.push({
+                source,
+                score,
+                rarity,
+            });
+        }
+
+        if (
+            this.unitAvailabilitySource.unitMatchesAvailabilityFrom(unit, MEGAMEK_AVAILABILITY_UNKNOWN, baseContext)
+            && (includesUnknownSelection || badges.length === 0)
+        ) {
+            badges.unshift({
+                source: MEGAMEK_AVAILABILITY_UNKNOWN,
+                score: -1,
+                rarity: MEGAMEK_AVAILABILITY_UNKNOWN,
+            });
+        }
+
+        return badges;
+    }
+
+    private getScopedMegaMekAvailabilitySources(scope?: AvailabilityFilterScope): readonly MegaMekAvailabilityFrom[] {
+        const selectedAvailabilityFromNames = scope?.availabilityFromNames
+            ?? this.getAvailabilitySelectionScopeParts(this.getApplicableFilterState(this.effectiveFilterState())).availabilityFromNames;
+        const selectedSources = selectedAvailabilityFromNames.filter((value): value is MegaMekAvailabilityFrom => (
+            value === 'Production' || value === 'Salvage'
+        ));
+
+        return selectedSources.length > 0
+            ? selectedSources
+            : MEGAMEK_AVAILABILITY_FROM_OPTIONS;
     }
 
     private unitMatchesAvailabilityFrom(unit: Unit, availabilityFromName: string, scope?: AvailabilityFilterScope): boolean {
@@ -607,25 +852,25 @@ export class UnitSearchFiltersService {
         state: FilterState,
     ): { name: string; img?: string; displayName?: string; available: boolean }[] | null {
         const useMegaMekAvailability = this.unitAvailabilitySource.useMegaMekAvailability();
+        const { availabilityFromNames, availabilityRarityNames } = this.getAvailabilitySelectionScopeParts(state);
+        const useScopedAvailabilityDropdowns = useMegaMekAvailability
+            || availabilityFromNames.length > 0
+            || availabilityRarityNames.length > 0;
 
         if (conf.key === 'era') {
-            return useMegaMekAvailability
+            return useScopedAvailabilityDropdowns
                 ? this.buildMegaMekEraDropdownOptions(conf, contextUnits, state)
                 : this.buildExternalDropdownOptions(conf, contextUnits, state);
         }
 
         if (conf.key === 'faction') {
-            return useMegaMekAvailability
+            return useScopedAvailabilityDropdowns
                 ? this.buildMegaMekFactionDropdownOptions(conf, contextUnits, state)
                 : this.buildExternalDropdownOptions(conf, contextUnits, state);
         }
 
         if (conf.key === 'availabilityRarity' || conf.key === 'availabilityFrom') {
             return this.buildInferredAvailabilityDropdownOptions(conf, contextUnits, state);
-        }
-
-        if (!useMegaMekAvailability) {
-            return null;
         }
 
         return null;
@@ -704,12 +949,15 @@ export class UnitSearchFiltersService {
         contextUnits: Unit[],
         state: FilterState,
     ): { name: string; img?: string; displayName?: string; available: boolean }[] {
-        const { eraNames, factionNames, availabilityFromNames } = this.getAvailabilitySelectionScopeParts(state);
+        const { eraNames, factionNames, availabilityFromNames, availabilityRarityNames } = this.getAvailabilitySelectionScopeParts(state);
         const scope: AvailabilityFilterScope = {
             ...(eraNames.length > 0 ? { eraNames } : {}),
             ...(factionNames.length > 0 ? { factionNames } : {}),
             ...(conf.key !== 'availabilityFrom' && availabilityFromNames.length > 0
                 ? { availabilityFromNames }
+                : {}),
+            ...(!this.unitAvailabilitySource.useMegaMekAvailability()
+                ? { bridgeThroughMulMembership: true }
                 : {}),
         };
 
@@ -721,28 +969,31 @@ export class UnitSearchFiltersService {
         }
 
         const contextUnitIds = new Set(contextUnits.map((unit) => unit.name));
-        const unknownUnitIds = this.unitAvailabilitySource.getMegaMekUnknownUnitIds();
 
         if (conf.key === 'availabilityFrom') {
             return MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS.map((availabilityFromName) => ({
                 name: availabilityFromName,
-                available: availabilityFromName === MEGAMEK_AVAILABILITY_UNKNOWN
-                    ? setHasAny(contextUnitIds, unknownUnitIds)
-                    : setHasAny(contextUnitIds, this.getMegaMekOptionScopeUnitIds({
-                        ...scope,
-                        availabilityFromNames: [availabilityFromName],
-                    }, state)),
+                available: setHasAny(
+                    contextUnitIds,
+                    this.getMegaMekAvailabilityCandidateUnitIds(
+                        scope,
+                        [availabilityFromName],
+                        availabilityRarityNames,
+                    ),
+                ),
             }));
         }
 
         return MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS.map((rarityName) => ({
             name: rarityName,
-            available: rarityName === MEGAMEK_AVAILABILITY_UNKNOWN
-                ? setHasAny(contextUnitIds, unknownUnitIds)
-                : setHasAny(
-                    contextUnitIds,
-                    this.unitAvailabilitySource.getMegaMekRarityUnitIds(rarityName, context),
+            available: setHasAny(
+                contextUnitIds,
+                this.getMegaMekAvailabilityCandidateUnitIds(
+                    scope,
+                    availabilityFromNames,
+                    [rarityName],
                 ),
+            ),
         }));
     }
 
@@ -751,7 +1002,21 @@ export class UnitSearchFiltersService {
         contextUnits: Unit[],
         state: FilterState,
     ): { name: string; img?: string; displayName?: string; available: boolean }[] {
-        const { factionNames, availabilityFromNames } = this.getAvailabilitySelectionScopeParts(state);
+        const { factionNames } = this.getAvailabilitySelectionScopeParts(state);
+        const extinctFactionName = this.dataService.getFactionById(MULFACTION_EXTINCT)?.name;
+        if (!extinctFactionName || !factionNames.includes(extinctFactionName)) {
+            const optimizedAvailableEraIds = this.collectFastMegaMekAvailableOptionIds(contextUnits, state, 'era');
+            if (optimizedAvailableEraIds) {
+                const options = this.dataService.getDropdownOptionUniverse(conf.key).map((option) => ({
+                    name: option.name,
+                    ...(option.img ? { img: option.img } : {}),
+                    available: optimizedAvailableEraIds.has(this.dataService.getEraByName(option.name)?.id ?? -1),
+                }));
+
+                return sortDropdownOptionObjects(options, conf.sortOptions);
+            }
+        }
+        const { availabilityFromNames } = this.getAvailabilitySelectionScopeParts(state);
         const contextUnitIds = new Set(contextUnits.map((unit) => unit.name));
 
         const options = this.dataService.getDropdownOptionUniverse(conf.key).map((option) => {
@@ -776,6 +1041,26 @@ export class UnitSearchFiltersService {
         contextUnits: Unit[],
         state: FilterState,
     ): { name: string; img?: string; displayName?: string; available: boolean }[] {
+        const optimizedAvailableFactionIds = this.collectFastMegaMekAvailableOptionIds(contextUnits, state, 'faction');
+        if (optimizedAvailableFactionIds) {
+            const { eraNames, availabilityFromNames } = this.getAvailabilitySelectionScopeParts(state);
+            const contextUnitIds = new Set(contextUnits.map((unit) => unit.name));
+            const extinctFactionName = this.dataService.getFactionById(MULFACTION_EXTINCT)?.name;
+            const options = this.dataService.getDropdownOptionUniverse(conf.key).map((option) => ({
+                name: option.name,
+                ...(option.img ? { img: option.img } : {}),
+                available: extinctFactionName && option.name === extinctFactionName
+                    ? setHasAny(contextUnitIds, this.getMegaMekOptionScopeUnitIds({
+                        ...(eraNames.length > 0 ? { eraNames } : {}),
+                        factionNames: [option.name],
+                        ...(availabilityFromNames.length > 0 ? { availabilityFromNames } : {}),
+                    }, state))
+                    : optimizedAvailableFactionIds.has(this.dataService.getFactionByName(option.name)?.id ?? -1),
+            }));
+
+            return sortDropdownOptionObjects(options, conf.sortOptions);
+        }
+
         const { eraNames, availabilityFromNames } = this.getAvailabilitySelectionScopeParts(state);
         const contextUnitIds = new Set(contextUnits.map((unit) => unit.name));
 
@@ -800,26 +1085,347 @@ export class UnitSearchFiltersService {
         scope: AvailabilityFilterScope,
         state: FilterState,
     ): ReadonlySet<string> {
-        const context = this.buildAvailabilityFilterContext(scope);
-        if (context === null) {
+        const { availabilityFromNames, availabilityRarityNames } = this.getAvailabilitySelectionScopeParts(state);
+        return this.getMegaMekAvailabilityCandidateUnitIds(
+            scope,
+            scope.availabilityFromNames ?? availabilityFromNames,
+            availabilityRarityNames,
+        );
+    }
+
+    private getMegaMekAvailabilityCandidateUnitIds(
+        scope: AvailabilityFilterScope,
+        availabilityFromNames: readonly string[],
+        availabilityRarityNames: readonly MegaMekAvailabilityRarity[],
+    ): ReadonlySet<string> {
+        const baseScope: AvailabilityFilterScope = {
+            ...(scope.eraNames !== undefined ? { eraNames: scope.eraNames } : {}),
+            ...(scope.factionNames !== undefined ? { factionNames: scope.factionNames } : {}),
+            ...(scope.bridgeThroughMulMembership ? { bridgeThroughMulMembership: true } : {}),
+        };
+        const baseContext = this.buildAvailabilityFilterContext(baseScope);
+        if (baseContext === null) {
             return new Set<string>();
         }
 
-        const { availabilityRarityNames } = this.getAvailabilitySelectionScopeParts(state);
-        if (availabilityRarityNames.length === 0) {
-            return context.availabilityFrom
-                ? this.unitAvailabilitySource.getMegaMekAvailabilityUnitIds(context)
-                : this.unitAvailabilitySource.getMegaMekMembershipUnitIds(context);
+        const selectedPositiveSources = availabilityFromNames.filter((value): value is MegaMekAvailabilityFrom => (
+            value === 'Production' || value === 'Salvage'
+        ));
+        const includesUnknownSource = availabilityFromNames.includes(MEGAMEK_AVAILABILITY_UNKNOWN);
+        const hasSourceFilter = availabilityFromNames.length > 0;
+        const hasRarityFilter = availabilityRarityNames.length > 0;
+
+        if (!hasSourceFilter && !hasRarityFilter) {
+            return this.unitAvailabilitySource.getMegaMekMembershipUnitIds(baseContext);
         }
 
         const unitIds = new Set<string>();
-        for (const rarityName of availabilityRarityNames) {
-            for (const unitId of this.unitAvailabilitySource.getMegaMekRarityUnitIds(rarityName, context)) {
+
+        if (!hasRarityFilter) {
+            if (includesUnknownSource) {
+                for (const unitId of this.unitAvailabilitySource.getMegaMekUnknownUnitIds(baseContext)) {
+                    unitIds.add(unitId);
+                }
+            }
+
+            if (selectedPositiveSources.length > 0) {
+                const sourceContext = {
+                    ...baseContext,
+                    availabilityFrom: new Set(selectedPositiveSources),
+                };
+                for (const unitId of this.unitAvailabilitySource.getMegaMekAvailabilityUnitIds(sourceContext)) {
+                    unitIds.add(unitId);
+                }
+            }
+
+            return hasSourceFilter
+                ? unitIds
+                : this.unitAvailabilitySource.getMegaMekMembershipUnitIds(baseContext);
+        }
+
+        if (!hasSourceFilter) {
+            for (const rarityName of availabilityRarityNames) {
+                for (const unitId of this.unitAvailabilitySource.getMegaMekRarityUnitIds(rarityName, baseContext)) {
+                    unitIds.add(unitId);
+                }
+            }
+
+            return unitIds;
+        }
+
+        if (includesUnknownSource && availabilityRarityNames.includes(MEGAMEK_AVAILABILITY_UNKNOWN)) {
+            for (const unitId of this.unitAvailabilitySource.getMegaMekUnknownUnitIds(baseContext)) {
                 unitIds.add(unitId);
             }
         }
 
+        if (selectedPositiveSources.length > 0) {
+            const sourceContext = {
+                ...baseContext,
+                availabilityFrom: new Set(selectedPositiveSources),
+            };
+            for (const rarityName of availabilityRarityNames) {
+                if (rarityName === MEGAMEK_AVAILABILITY_UNKNOWN) {
+                    continue;
+                }
+
+                for (const unitId of this.unitAvailabilitySource.getMegaMekRarityUnitIds(rarityName, sourceContext)) {
+                    unitIds.add(unitId);
+                }
+            }
+        }
+
         return unitIds;
+    }
+
+    private collectFastMegaMekAvailableOptionIds(
+        contextUnits: readonly Unit[],
+        state: FilterState,
+        target: 'era' | 'faction',
+    ): ReadonlySet<number> | null {
+        const { eraNames, factionNames, availabilityFromNames, availabilityRarityNames } = this.getAvailabilitySelectionScopeParts(state);
+        const includesUnknownAvailabilityFrom = availabilityFromNames.includes(MEGAMEK_AVAILABILITY_UNKNOWN);
+        const includesUnknownRarity = availabilityRarityNames.includes(MEGAMEK_AVAILABILITY_UNKNOWN);
+        const includesNotAvailable = availabilityRarityNames.includes(MEGAMEK_AVAILABILITY_NOT_AVAILABLE);
+        if (includesNotAvailable) {
+            return null;
+        }
+
+        const selectedSources = availabilityFromNames.filter((value): value is MegaMekAvailabilityFrom => (
+            value === 'Production' || value === 'Salvage'
+        ));
+        const useMegaMekAvailability = this.unitAvailabilitySource.useMegaMekAvailability();
+        const selectedEraIds = target === 'faction'
+            ? this.resolveAvailabilityScopeIds(eraNames, 'era')
+            : undefined;
+        const selectedFactionIds = target === 'era'
+            ? this.resolveAvailabilityScopeIds(factionNames, 'faction')
+            : undefined;
+
+        const pureUnknownAvailabilityFrom = includesUnknownAvailabilityFrom
+            && availabilityFromNames.length === 1
+            && availabilityRarityNames.length === 0;
+        const pureUnknownRarity = includesUnknownRarity
+            && availabilityRarityNames.length === 1
+            && availabilityFromNames.length === 0;
+        if (!useMegaMekAvailability && (pureUnknownAvailabilityFrom || pureUnknownRarity)) {
+            return this.collectFastMulUnknownOptionIds(contextUnits, target, selectedEraIds, selectedFactionIds);
+        }
+
+        if (includesUnknownAvailabilityFrom || includesUnknownRarity) {
+            return null;
+        }
+
+        const activeSources = selectedSources.length > 0
+            ? selectedSources
+            : [...MEGAMEK_AVAILABILITY_FROM_OPTIONS];
+        const selectedRarityNames = availabilityRarityNames as Array<Exclude<MegaMekAvailabilityRarity, typeof MEGAMEK_AVAILABILITY_UNKNOWN | typeof MEGAMEK_AVAILABILITY_NOT_AVAILABLE>>;
+        const selectedRarities = selectedRarityNames.length > 0
+            ? new Set(selectedRarityNames)
+            : null;
+
+        if (!useMegaMekAvailability && selectedSources.length === 0 && !selectedRarities) {
+            return this.collectMulMembershipOptionIds(contextUnits, target, selectedEraIds, selectedFactionIds);
+        }
+
+        const availableIds = new Set<number>();
+        const useAllScopedAvailabilityOptions = this.useAllScopedMegaMekAvailabilityOptions() && selectedRarities !== null;
+
+        for (const unit of contextUnits) {
+            const availabilityRecord = this.dataService.getMegaMekAvailabilityRecordForUnit(unit);
+            if (!availabilityRecord) {
+                continue;
+            }
+
+            const maxScoresByOptionId = useAllScopedAvailabilityOptions
+                ? null
+                : new Map<number, Record<MegaMekAvailabilityFrom, number>>();
+
+            for (const eraIdText in availabilityRecord.e) {
+                const eraId = Number(eraIdText);
+                if (Number.isNaN(eraId) || (selectedEraIds && !selectedEraIds.has(eraId))) {
+                    continue;
+                }
+
+                const eraAvailability = availabilityRecord.e[eraIdText];
+                for (const factionIdText in eraAvailability) {
+                    const factionId = Number(factionIdText);
+                    if (Number.isNaN(factionId) || (selectedFactionIds && !selectedFactionIds.has(factionId))) {
+                        continue;
+                    }
+
+                    if (!useMegaMekAvailability && !this.unitBelongsToMulFactionInEra(unit, factionId, eraId)) {
+                        continue;
+                    }
+
+                    const candidateId = target === 'faction' ? factionId : eraId;
+                    const value = eraAvailability[factionIdText];
+                    for (const source of activeSources) {
+                        const score = getMegaMekAvailabilityValueForSource(value, source);
+                        if (useAllScopedAvailabilityOptions) {
+                            if (score <= 0) {
+                                continue;
+                            }
+
+                            const rarity = getMegaMekAvailabilityRarityForScore(score);
+                            if (rarity !== MEGAMEK_AVAILABILITY_NOT_AVAILABLE && selectedRarities.has(rarity)) {
+                                availableIds.add(candidateId);
+                            }
+                            continue;
+                        }
+
+                        let maxScores = maxScoresByOptionId?.get(candidateId);
+                        if (!maxScores) {
+                            maxScores = {
+                                Production: 0,
+                                Salvage: 0,
+                            };
+                            maxScoresByOptionId?.set(candidateId, maxScores);
+                        }
+
+                        if (score > maxScores[source]) {
+                            maxScores[source] = score;
+                        }
+                    }
+                }
+            }
+
+            if (useAllScopedAvailabilityOptions) {
+                continue;
+            }
+
+            const scopedMaxScoresByOptionId = maxScoresByOptionId;
+            if (!scopedMaxScoresByOptionId) {
+                continue;
+            }
+
+            if (!selectedRarities) {
+                for (const [optionId, maxScores] of scopedMaxScoresByOptionId.entries()) {
+                    if (activeSources.some((source) => maxScores[source] > 0)) {
+                        availableIds.add(optionId);
+                    }
+                }
+                continue;
+            }
+
+            for (const [optionId, maxScores] of scopedMaxScoresByOptionId.entries()) {
+                const matchesSelectedRarity = activeSources.some((source) => {
+                    const maxScore = maxScores[source];
+                    if (maxScore <= 0) {
+                        return false;
+                    }
+
+                    const rarity = getMegaMekAvailabilityRarityForScore(maxScore);
+                    return rarity !== MEGAMEK_AVAILABILITY_NOT_AVAILABLE && selectedRarities.has(rarity);
+                });
+
+                if (matchesSelectedRarity) {
+                    availableIds.add(optionId);
+                }
+            }
+        }
+
+        return availableIds;
+    }
+
+    private collectFastMulUnknownOptionIds(
+        contextUnits: readonly Unit[],
+        target: 'era' | 'faction',
+        selectedEraIds?: ReadonlySet<number>,
+        selectedFactionIds?: ReadonlySet<number>,
+    ): ReadonlySet<number> {
+        return this.unitAvailabilitySource.collectFastMulUnknownOptionIds(
+            contextUnits,
+            target,
+            selectedEraIds,
+            selectedFactionIds,
+        );
+    }
+
+    private resolveAvailabilityScopeIds(
+        names: readonly string[],
+        kind: 'era' | 'faction',
+    ): ReadonlySet<number> | undefined {
+        if (names.length === 0) {
+            return undefined;
+        }
+
+        const ids = new Set(
+            names
+                .map((name) => kind === 'era'
+                    ? this.dataService.getEraByName(name)?.id
+                    : this.dataService.getFactionByName(name)?.id)
+                .filter((id): id is number => id !== undefined),
+        );
+
+        return ids.size > 0 ? ids : new Set<number>();
+    }
+
+    private collectMulMembershipOptionIds(
+        contextUnits: readonly Unit[],
+        target: 'era' | 'faction',
+        selectedEraIds?: ReadonlySet<number>,
+        selectedFactionIds?: ReadonlySet<number>,
+    ): ReadonlySet<number> {
+        const availableIds = new Set<number>();
+        const allFactions = this.dataService.getFactions();
+
+        for (const unit of contextUnits) {
+            if (target === 'faction') {
+                for (const faction of allFactions) {
+                    if (selectedEraIds) {
+                        for (const eraId of selectedEraIds) {
+                            if (this.unitBelongsToMulFactionInEra(unit, faction.id, eraId)) {
+                                availableIds.add(faction.id);
+                            }
+                        }
+                        continue;
+                    }
+
+                    for (const [eraIdText, membership] of Object.entries(faction.eras) as Array<[string, Set<number> | number[]]>) {
+                        const eraId = Number(eraIdText);
+                        if (!Number.isNaN(eraId) && this.membershipContainsUnitId(membership, unit.id)) {
+                            availableIds.add(faction.id);
+                            break;
+                        }
+                    }
+                }
+
+                continue;
+            }
+
+            const factions = selectedFactionIds
+                ? [...selectedFactionIds].map((factionId) => this.dataService.getFactionById(factionId)).filter((faction): faction is NonNullable<typeof faction> => !!faction)
+                : allFactions;
+
+            for (const faction of factions) {
+                for (const [eraIdText, membership] of Object.entries(faction.eras) as Array<[string, Set<number> | number[]]>) {
+                    const eraId = Number(eraIdText);
+                    if (!Number.isNaN(eraId) && this.membershipContainsUnitId(membership, unit.id)) {
+                        availableIds.add(eraId);
+                    }
+                }
+            }
+        }
+
+        return availableIds;
+    }
+
+    private unitBelongsToMulFactionInEra(unit: Pick<Unit, 'id'>, factionId: number, eraId: number): boolean {
+        return this.membershipContainsUnitId(this.dataService.getFactionById(factionId)?.eras[eraId] as Set<number> | number[] | undefined, unit.id);
+    }
+
+    private membershipContainsUnitId(
+        membership: Set<number> | number[] | undefined,
+        unitId: number,
+    ): boolean {
+        if (!membership) {
+            return false;
+        }
+
+        return membership instanceof Set
+            ? membership.has(unitId)
+            : membership.includes(unitId);
     }
 
     public setSearchText(rawText: string): string {
@@ -841,6 +1447,8 @@ export class UnitSearchFiltersService {
                 return updated;
             });
         }
+
+        this.refreshWorkerSearchIfNeeded();
 
         return next.text;
     }
@@ -909,6 +1517,40 @@ export class UnitSearchFiltersService {
         this.logger.warn(`Unit search worker disabled, falling back to main-thread execution: ${message}`);
     }
 
+    private submitWorkerSearchRequest(): void {
+        const workerSearchExecutionState = this.workerSearchExecutionState();
+        if (!workerSearchExecutionState) {
+            return;
+        }
+
+        const executionKey = JSON.stringify(workerSearchExecutionState);
+        if (executionKey === this.lastWorkerSearchExecutionKey) {
+            return;
+        }
+
+        const corpusVersion = workerSearchExecutionState.corpusVersion;
+        const request = this.buildWorkerSearchRequest(corpusVersion);
+        const snapshot = this.getWorkerCorpusSnapshot(corpusVersion);
+
+        try {
+            this.workerRequestRevision.set(request.revision);
+            this.searchWorkerClient?.submit(snapshot, request);
+            this.lastWorkerSearchExecutionKey = executionKey;
+        } catch (error) {
+            this.disableWorkerSearch(error instanceof Error ? error.message : 'Search worker submission failed');
+        }
+    }
+
+    private refreshWorkerSearchIfNeeded(): void {
+        if (!this.searchWorkerClient || !this.workerSearchEnabled() || !this.isDataReady() || !this.workerSearchActive()) {
+            return;
+        }
+
+        untracked(() => {
+            this.submitWorkerSearchRequest();
+        });
+    }
+
     private getWorkerCorpusVersion(): string {
         return getUnitSearchWorkerCorpusVersion(this.dataService.searchCorpusVersion(), this.tagsVersion());
     }
@@ -923,7 +1565,6 @@ export class UnitSearchFiltersService {
             this.units,
             this.dataService.getSearchWorkerIndexSnapshot(),
             this.dataService.getSearchWorkerFactionEraSnapshot(),
-            this.unitAvailabilitySource.getSearchWorkerMegaMekAvailabilitySnapshot(),
         );
 
         this.cachedWorkerCorpusVersion = result.cache.version;
@@ -945,8 +1586,9 @@ export class UnitSearchFiltersService {
 
     private buildWorkerSearchRequest(corpusVersion: string): UnitSearchWorkerQueryRequest {
         const gameSystem = this.gameService.currentGameSystem();
+        const workerFilterState = this.getWorkerFilterState(this.getApplicableFilterState(this.effectiveFilterState()));
         const executionQuery = buildWorkerExecutionQuery({
-            effectiveFilterState: this.getApplicableFilterState(this.effectiveFilterState()),
+            effectiveFilterState: workerFilterState,
             effectiveTextSearch: this.effectiveTextSearch(),
             gameSystem,
             totalRangesCache: this.totalRangesCache,
@@ -960,8 +1602,7 @@ export class UnitSearchFiltersService {
             executionQuery,
             telemetryQuery: this.searchText().trim(),
             gameSystem,
-            availabilitySource: this.optionsService.options().availabilitySource,
-            sortKey: this.selectedSort(),
+            sortKey: this.getWorkerSortKey(),
             sortDirection: this.selectedSortDirection(),
             bvPvLimit: 0,
             forceTotalBvPv: 0,
@@ -1008,10 +1649,16 @@ export class UnitSearchFiltersService {
         }
 
         const hydratedResults = hydrateWorkerResultUnits(result, unitName => this.dataService.getUnitByName(unitName));
-        const sortedResults = this.sortHydratedWorkerResults(hydratedResults);
-        const cappedResults = this.applyRemainingBudgetLimit(sortedResults);
+        const telemetryStages = [...result.stages];
+        const stageCountBeforePostProcessing = telemetryStages.length;
+        const postFilteredResults = this.applyWorkerPostFilters(hydratedResults, telemetryStages);
+        const sortedResults = this.sortHydratedWorkerResults(postFilteredResults, telemetryStages);
+        const cappedResults = this.applyRemainingBudgetLimit(sortedResults, telemetryStages);
+        const addedTelemetryMs = telemetryStages
+            .slice(stageCountBeforePostProcessing)
+            .reduce((totalMs, stage) => totalMs + stage.durationMs, 0);
 
-        this.uncappedWorkerFilteredUnitsState.set(sortedResults);
+        this.rawWorkerResultUnitsState.set(hydratedResults);
         this.workerResultRevision.set(result.revision);
         this.updateSearchTelemetry(buildWorkerSearchTelemetrySnapshot(result, {
             timestamp: Date.now(),
@@ -1019,11 +1666,53 @@ export class UnitSearchFiltersService {
             sortKey: this.selectedSort(),
             sortDirection: this.selectedSortDirection(),
             resultCount: cappedResults.length,
+            stages: telemetryStages,
+            totalMs: result.totalMs + addedTelemetryMs,
         }));
     }
 
-    private sortHydratedWorkerResults(units: Unit[]): Unit[] {
-        if (this.selectedSort() !== MEGAMEK_RARITY_SORT_KEY) {
+    private applyWorkerPostFilters(units: Unit[], telemetryStages?: SearchTelemetryStage[]): Unit[] {
+        const postFilterState = this.getWorkerPostFilterState(this.getApplicableFilterState(this.effectiveFilterState()));
+        if (Object.keys(postFilterState).length === 0) {
+            return units;
+        }
+
+        const applyPostFilters = () => applyFilterStateToUnits({
+            units,
+            state: postFilterState,
+            dependencies: this.getUnitFilterKernelDependencies(),
+        });
+
+        if (!telemetryStages) {
+            return applyPostFilters();
+        }
+
+        return measureStage(
+            telemetryStages,
+            'megamek-post-filter',
+            units.length,
+            applyPostFilters,
+            (value) => value.length,
+        );
+    }
+
+    private getPendingWorkerFallbackUnits(): Unit[] | null {
+        if (this.isSearchSettled()) {
+            return null;
+        }
+
+        const postFilterState = this.getWorkerPostFilterState(
+            this.getApplicableFilterState(this.effectiveFilterState()),
+        );
+        if (Object.keys(postFilterState).length === 0) {
+            return null;
+        }
+
+        return this.uncappedSyncSearch().execution.results;
+    }
+
+    private sortHydratedWorkerResults(units: Unit[], telemetryStages?: SearchTelemetryStage[]): Unit[] {
+        if (!isMegaMekRaritySortKey(this.selectedSort())) {
             return units;
         }
 
@@ -1038,44 +1727,109 @@ export class UnitSearchFiltersService {
             scores.set(unit.name, scoreResolver(unit));
         }
 
-        const sorted = [...units];
-        sorted.sort((left, right) => {
-            let comparison = (scores.get(left.name) ?? 0) - (scores.get(right.name) ?? 0);
-            if (comparison === 0) {
-                comparison = compareUnitsByName(left, right);
-            }
+        const sortResults = () => {
+            const sorted = [...units];
+            sorted.sort((left, right) => {
+                let comparison = (scores.get(left.name) ?? 0) - (scores.get(right.name) ?? 0);
+                if (comparison === 0) {
+                    comparison = compareUnitsByName(left, right);
+                }
 
-            return this.selectedSortDirection() === 'desc' ? -comparison : comparison;
-        });
+                return this.selectedSortDirection() === 'desc' ? -comparison : comparison;
+            });
 
-        return sorted;
+            return sorted;
+        };
+
+        if (!telemetryStages) {
+            return sortResults();
+        }
+
+        return measureStage(
+            telemetryStages,
+            'megamek-post-sort',
+            units.length,
+            sortResults,
+            (value) => value.length,
+        );
     }
+
+    private readonly workerSearchExecutionState = computed(() => {
+        if (!this.workerSearchEnabled()) {
+            return null;
+        }
+
+        const availabilitySource = this.optionsService.options().availabilitySource;
+        const selectedSort = this.selectedSort();
+        const workerFilterState = this.getWorkerFilterState(this.getApplicableFilterState(this.effectiveFilterState()));
+
+        return {
+            workerSearchActive: !this.shouldForceMegaMekSyncSearch(),
+            isDataReady: this.isDataReady(),
+            corpusVersion: this.getWorkerCorpusVersion(),
+            searchText: this.searchText(),
+            effectiveTextSearch: this.effectiveTextSearch(),
+            workerFilterState,
+            gameSystem: this.gameService.currentGameSystem(),
+            sortKey: this.getWorkerSortKey(),
+            sortDirection: this.selectedSortDirection(),
+            pilotGunnerySkill: this.pilotGunnerySkill(),
+            pilotPilotingSkill: this.pilotPilotingSkill(),
+            megaMekAvailabilityVersion: availabilitySource === 'megamek' || isMegaMekRaritySortKey(selectedSort)
+                ? this.dataService.megaMekAvailabilityVersion()
+                : 0,
+        };
+    });
 
     private setupWorkerSearchExecution(): void {
         effect(() => {
-            if (!this.workerSearchActive()) {
+            const workerSearchExecutionState = this.workerSearchExecutionState();
+            if (!workerSearchExecutionState) {
                 return;
             }
 
-            if (!this.isDataReady()) {
-                this.uncappedWorkerFilteredUnitsState.set([]);
+            if (!workerSearchExecutionState.isDataReady) {
+                if (workerSearchExecutionState.workerSearchActive) {
+                    this.rawWorkerResultUnitsState.set([]);
+                }
                 return;
             }
 
-            this.dataService.searchCorpusVersion();
-            this.tagsVersion();
-
-            const corpusVersion = this.getWorkerCorpusVersion();
-            const request = this.buildWorkerSearchRequest(corpusVersion);
-            const snapshot = this.getWorkerCorpusSnapshot(corpusVersion);
+            if (!workerSearchExecutionState.workerSearchActive) {
+                return;
+            }
 
             untracked(() => {
-                try {
-                    this.workerRequestRevision.set(request.revision);
-                    this.searchWorkerClient?.submit(snapshot, request);
-                } catch (error) {
-                    this.disableWorkerSearch(error instanceof Error ? error.message : 'Search worker submission failed');
-                }
+                this.submitWorkerSearchRequest();
+            });
+        });
+    }
+
+    private setupMegaMekAvailabilityOptionRefresh(): void {
+        let previousMode = this.useAllScopedMegaMekAvailabilityOptions();
+        let initialized = false;
+
+        effect(() => {
+            const currentMode = this.useAllScopedMegaMekAvailabilityOptions();
+
+            if (!initialized) {
+                initialized = true;
+                previousMode = currentMode;
+                return;
+            }
+
+            if (currentMode === previousMode) {
+                return;
+            }
+
+            previousMode = currentMode;
+
+            if (!this.workerSearchActive() || !this.isDataReady() || !this.searchWorkerClient) {
+                return;
+            }
+
+            untracked(() => {
+                this.submitWorkerSearchRequest();
             });
         });
     }
@@ -1140,6 +1894,7 @@ export class UnitSearchFiltersService {
         // This ensures filters aren't silently applied without being visible
         this.setupComplexQueryFilterConversion();
         this.setupWorkerSearchExecution();
+        this.setupMegaMekAvailabilityOptionRefresh();
         this.loadFiltersFromUrlOnStartup();
         this.updateUrlOnFiltersChange();
     }
@@ -1346,10 +2101,12 @@ export class UnitSearchFiltersService {
 
     public setSortOrder(key: string) {
         this.selectedSort.set(key);
+        this.refreshWorkerSearchIfNeeded();
     }
 
     public setSortDirection(direction: 'asc' | 'desc') {
         this.selectedSortDirection.set(direction);
+        this.refreshWorkerSearchIfNeeded();
     }
 
     private updateSearchTelemetry(snapshot: SearchTelemetrySnapshot): void {
@@ -1882,6 +2639,33 @@ export class UnitSearchFiltersService {
                 : this.unitAvailabilitySource.getFactionUnitIds(faction, contextEraIds);
         }
 
+        if (filterKey === 'availabilityFrom') {
+            const context = this.buildAvailabilityFilterContext(scope);
+            if (context === null) {
+                return new Set<string>();
+            }
+
+            if (value === MEGAMEK_AVAILABILITY_UNKNOWN) {
+                return this.unitAvailabilitySource.getMegaMekUnknownUnitIds(context);
+            }
+
+            return this.unitAvailabilitySource.getMegaMekAvailabilityUnitIds({
+                ...context,
+                availabilityFrom: new Set([value as MegaMekAvailabilityFrom]),
+            });
+        }
+
+        if (filterKey === 'availabilityRarity') {
+            const context = this.buildAvailabilityFilterContext(scope);
+            if (context === null) {
+                return new Set<string>();
+            }
+
+            return value === MEGAMEK_AVAILABILITY_UNKNOWN
+                ? this.unitAvailabilitySource.getMegaMekUnknownUnitIds(context)
+                : this.unitAvailabilitySource.getMegaMekRarityUnitIds(value as MegaMekAvailabilityRarity, context);
+        }
+
         return this.dataService.getIndexedUnitIds(filterKey, value);
     }
 
@@ -1896,6 +2680,14 @@ export class UnitSearchFiltersService {
 
         if (filterKey === 'faction') {
             return this.dataService.getFactions().map((faction) => faction.name);
+        }
+
+        if (filterKey === 'availabilityFrom') {
+            return [...MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS];
+        }
+
+        if (filterKey === 'availabilityRarity') {
+            return [...MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS];
         }
 
         return this.dataService.getIndexedFilterValues(filterKey);
@@ -2068,6 +2860,12 @@ export class UnitSearchFiltersService {
         parseTelemetry: SearchTelemetryStage[];
     } {
         this.dataService.searchCorpusVersion();
+        if (
+            this.optionsService.options().availabilitySource === 'megamek'
+            || isMegaMekRaritySortKey(this.selectedSort())
+        ) {
+            this.dataService.megaMekAvailabilityVersion();
+        }
 
         // Depend on tagsVersion so we recompute when tags change (user tags or public tags)
         // This is needed because unit._tags/_publicTags are mutated in place, not via signals
@@ -2153,10 +2951,21 @@ export class UnitSearchFiltersService {
     /** Force generator eligibility uses the active search criteria but ignores the remaining BV/PV cap from unit search. */
     readonly forceGeneratorEligibleUnits = computed(() => {
         if (this.workerSearchActive()) {
-            return this.uncappedWorkerFilteredUnitsState();
+            const pendingFallback = this.getPendingWorkerFallbackUnits();
+            if (pendingFallback) {
+                return pendingFallback;
+            }
+
+            return this.uncappedWorkerFilteredUnits();
         }
 
         return this.uncappedSyncSearch().execution.results;
+    });
+
+    private readonly uncappedWorkerFilteredUnits = computed(() => {
+        const hydratedResults = this.rawWorkerResultUnitsState();
+        const postFilteredResults = this.applyWorkerPostFilters(hydratedResults);
+        return this.sortHydratedWorkerResults(postFilteredResults);
     });
 
     filteredUnits = computed(() => {
@@ -2164,7 +2973,12 @@ export class UnitSearchFiltersService {
             return this.syncFilteredUnits();
         }
 
-        return this.applyRemainingBudgetLimit(this.uncappedWorkerFilteredUnitsState());
+        const pendingFallback = this.getPendingWorkerFallbackUnits();
+        if (pendingFallback) {
+            return this.applyRemainingBudgetLimit(pendingFallback);
+        }
+
+        return this.applyRemainingBudgetLimit(this.uncappedWorkerFilteredUnits());
     });
 
     // Advanced filter options
@@ -2397,6 +3211,7 @@ export class UnitSearchFiltersService {
                 ...current,
                 [key]: { value, interactedWith: interacted }
             }));
+            this.refreshWorkerSearchIfNeeded();
         }
     }
 
@@ -2425,6 +3240,7 @@ export class UnitSearchFiltersService {
                 delete updated[key];
                 return updated;
             });
+            this.refreshWorkerSearchIfNeeded();
         }
     }
 
@@ -2475,6 +3291,7 @@ export class UnitSearchFiltersService {
                 delete updated[key];
                 return updated;
             });
+            this.refreshWorkerSearchIfNeeded();
         } finally {
             this.isSyncingToText = false;
         }
@@ -2492,6 +3309,7 @@ export class UnitSearchFiltersService {
         this.pilotGunnerySkill.set(4);
         this.pilotPilotingSkill.set(5);
         this.bvPvLimit.set(0);
+        this.refreshWorkerSearchIfNeeded();
     }
 
     /**
@@ -2632,6 +3450,7 @@ export class UnitSearchFiltersService {
     setPilotSkills(gunnery: number, piloting: number) {
         this.pilotGunnerySkill.set(gunnery);
         this.pilotPilotingSkill.set(piloting);
+        this.refreshWorkerSearchIfNeeded();
     }
 
     getAdjustedBV(unit: Unit): number {

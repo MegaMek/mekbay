@@ -62,7 +62,7 @@ import { ADVANCED_FILTERS, type AdvFilterConfig, AdvFilterType, type Availabilit
 import { type SemanticOperator, type SemanticToken, buildSemanticKeyMap, VIRTUAL_SEMANTIC_KEYS, parseValues, parseValueWithQuantity, type QuantityConstraint } from './semantic-filter.util';
 import { normalizeLooseText, wildcardToRegex } from './string.util';
 import { usesIndexedDropdownUniverse } from './unit-search-filter-config.util';
-import { checkQuantityConstraint as checkQuantityConstraintCore } from './unit-search-shared.util';
+import { checkQuantityConstraint as checkQuantityConstraintCore, isEmbeddedApostrophe } from './unit-search-shared.util';
 
 // ============================================================================
 // Helpers
@@ -259,7 +259,7 @@ function tokenize(input: string, semanticKeyMap: Map<string, AdvFilterConfig>): 
                     continue;
                 }
 
-                if (char === inTextQuote) {
+                if (char === inTextQuote && (char !== '\'' || !isEmbeddedApostrophe(input, textEnd))) {
                     inTextQuote = null;
                 }
                 textEnd++;
@@ -272,7 +272,7 @@ function tokenize(input: string, semanticKeyMap: Map<string, AdvFilterConfig>): 
                 continue;
             }
 
-            if (char === '"' || char === "'") {
+            if (char === '"' || (char === "'" && !isEmbeddedApostrophe(input, textEnd))) {
                 inTextQuote = char;
                 textEnd++;
                 continue;
@@ -390,11 +390,11 @@ function tryParseFilterToken(
                 i += 2; // Skip escaped character
                 continue;
             }
-            if (char === inQuote) {
+            if (char === inQuote && (char !== '\'' || !isEmbeddedApostrophe(input, i))) {
                 inQuote = null;
             }
             i++;
-        } else if (char === '"' || char === "'") {
+        } else if (char === '"' || (char === "'" && !isEmbeddedApostrophe(input, i))) {
             inQuote = char;
             i++;
         } else if (char === ' ' || char === '\t' || char === '\n' || char === '\r' || 
@@ -1296,6 +1296,9 @@ function getUnitMatchedExternalNames(
 function buildExternalFilterScopeCacheKey(activeScope?: AvailabilityFilterScope): string {
     const scopeParts: string[] = [];
 
+    if (activeScope?.bridgeThroughMulMembership) {
+        scopeParts.push('bridge=mul');
+    }
     if (activeScope?.eraNames && activeScope.eraNames.length > 0) {
         scopeParts.push(`era=${[...activeScope.eraNames].map(name => name.toLowerCase()).sort().join('\u0001')}`);
     }
@@ -1824,6 +1827,7 @@ function getIndexedCandidateIdsForNode(
 
             if (node.operator === 'AND') {
                 const nextActiveScope: AvailabilityFilterScope = {
+                    bridgeThroughMulMembership: activeScope?.bridgeThroughMulMembership,
                     eraNames: mergeActiveNames(activeScope?.eraNames, collectScopedNames(node, context, 'era')),
                     factionNames: mergeActiveNames(activeScope?.factionNames, collectScopedNames(node, context, 'faction')),
                     availabilityFromNames: mergeActiveNames(activeScope?.availabilityFromNames, collectScopedNames(node, context, 'availabilityFrom')),
@@ -2346,6 +2350,7 @@ function evaluateGroup(
     
     if (group.operator === 'AND') {
         const nextActiveScope: AvailabilityFilterScope = {
+            bridgeThroughMulMembership: activeScope?.bridgeThroughMulMembership,
             eraNames: mergeActiveNames(activeScope?.eraNames, collectScopedNames(group, context, 'era')),
             factionNames: mergeActiveNames(activeScope?.factionNames, collectScopedNames(group, context, 'faction')),
             availabilityFromNames: mergeActiveNames(activeScope?.availabilityFromNames, collectScopedNames(group, context, 'availabilityFrom')),

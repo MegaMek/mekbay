@@ -42,6 +42,9 @@
                                 @if (force.faction) {
                                     <img [src]="force.faction.img" class="faction-icon" />
                                 }
+                                @if (force.era?.img || force.era?.icon; as eraImg) {
+                                    <img [src]="eraImg" class="era-icon" [alt]="force.era?.name || 'Era'" [title]="force.era?.name || 'Era'" />
+                                }
                                 <div class="force-name">{{ force.name }}</div>
                             </div>
                             <div class="force-info">                                
@@ -105,7 +108,7 @@
                                             [class.thin]="unitDisplayName === 'both'">{{ unitEntry.alias }}</div>
                                         }
                                         <div class="pilot-info info-slot numeric slim">
-                                            <span class="value">{{ getLoadForceUnitPilotStats(unitEntry, force.type) }}</span>
+                                            <span class="value">{{ getUnitPilotStats(unitEntry, force.type) }}</span>
                                         </div>
                                     </div>
                                     }
@@ -120,40 +123,6 @@
                     }
                 </div>
             }
-            <div class="tab-footer glass">
-                <div class="sort-controls">
-                    <select class="bt-input sort-select"
-                        (change)="setSortOrder($any($event.target).value)">
-                        @for (opt of activeSortOptions(); let i = $index; track i) {
-                            <option [value]="opt.key" [selected]="opt.key === activeSort()">{{ opt.label }}</option>
-                        }
-                    </select>
-                    <button type="button" class="bt-button sort-direction-btn"
-                        (click)="setSortDirection(activeSortDirection() === 'asc' ? 'desc' : 'asc')"
-                        [title]="activeSortDirection() === 'asc' ? 'Ascending' : 'Descending'"
-                        [attr.aria-label]="activeSortDirection() === 'asc' ? 'Ascending' : 'Descending'">
-                        @if (activeSortDirection() === 'asc') {
-                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                                aria-hidden="true" role="img">
-                                <path d="M4 16L13 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M6 11H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M8 6L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M17 4L17 20L20 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                                    stroke-linejoin="round" />
-                            </svg>
-                        } @else {
-                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                                aria-hidden="true" role="img">
-                                <path d="M4 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M6 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M8 18H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M17 20V4L20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                                    stroke-linejoin="round" />
-                            </svg>
-                        }
-                    </button>
-                </div>
-            </div>
         }
         @if (activeTab() === 'Force Packs') {
             @if (filteredPacks().length === 0) {
@@ -198,40 +167,6 @@
                     }
                 </div>
             }
-            <div class="tab-footer glass">
-                <div class="sort-controls">
-                    <select class="bt-input sort-select"
-                        (change)="setSortOrder($any($event.target).value)">
-                        @for (opt of activeSortOptions(); let i = $index; track i) {
-                            <option [value]="opt.key" [selected]="opt.key === activeSort()">{{ opt.label }}</option>
-                        }
-                    </select>
-                    <button type="button" class="bt-button sort-direction-btn"
-                        (click)="setSortDirection(activeSortDirection() === 'asc' ? 'desc' : 'asc')"
-                        [title]="activeSortDirection() === 'asc' ? 'Ascending' : 'Descending'"
-                        [attr.aria-label]="activeSortDirection() === 'asc' ? 'Ascending' : 'Descending'">
-                        @if (activeSortDirection() === 'asc') {
-                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                                aria-hidden="true" role="img">
-                                <path d="M4 16L13 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M6 11H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M8 6L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M17 4L17 20L20 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                                    stroke-linejoin="round" />
-                            </svg>
-                        } @else {
-                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                                aria-hidden="true" role="img">
-                                <path d="M4 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M6 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M8 18H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M17 20V4L20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                                    stroke-linejoin="round" />
-                            </svg>
-                        }
-                    </button>
-                </div>
-            </div>
         }
         @if (activeTab() === 'Operations') {
             <div class="filter-bar">
@@ -320,6 +255,40 @@
                 </div>
             }
         }
+        <div class="tab-footer glass">
+            <div class="sort-controls">
+                <select class="bt-input sort-select"
+                    (change)="setSortOrder($any($event.target).value)">
+                    @for (opt of activeSortOptions(); let i = $index; track i) {
+                        <option [value]="opt.key" [selected]="opt.key === activeSort()">{{ opt.label }}</option>
+                    }
+                </select>
+                <button type="button" class="bt-button sort-direction-btn"
+                    (click)="setSortDirection(activeSortDirection() === 'asc' ? 'desc' : 'asc')"
+                    [title]="activeSortDirection() === 'asc' ? 'Ascending' : 'Descending'"
+                    [attr.aria-label]="activeSortDirection() === 'asc' ? 'Ascending' : 'Descending'">
+                    @if (activeSortDirection() === 'asc') {
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                            aria-hidden="true" role="img">
+                            <path d="M4 16L13 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            <path d="M6 11H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            <path d="M8 6L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            <path d="M17 4L17 20L20 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                stroke-linejoin="round" />
+                        </svg>
+                    } @else {
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                            aria-hidden="true" role="img">
+                            <path d="M4 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            <path d="M6 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            <path d="M8 18H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            <path d="M17 20V4L20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                stroke-linejoin="round" />
+                        </svg>
+                    }
+                </button>
+            </div>
+        </div>
     </div>
     <div dialog-footer class="footer">
         @if (activeTab() === 'TO&E') {

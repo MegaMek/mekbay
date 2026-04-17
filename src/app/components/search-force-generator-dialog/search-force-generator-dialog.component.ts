@@ -39,25 +39,25 @@ import { GameSystem } from '../../models/common.model';
 import type { Era } from '../../models/eras.model';
 import type { Faction } from '../../models/factions.model';
 import { MAX_UNITS as FORCE_MAX_UNITS } from '../../models/force.model';
-import {
-    createLoadForceEntryFromSerializedForce,
-    type LoadForceEntry,
-    type LoadForceUnit,
-} from '../../models/load-force-entry.model';
+import { createForcePreviewEntryFromForce, getForcePreviewUnitEntries, type ForcePreviewEntry, type ForcePreviewUnit } from '../../models/force-preview.model';
+import type { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { AvailabilitySource } from '../../models/options.model';
 import { DROPDOWN_FILTERS, RANGE_FILTERS } from '../../services/unit-search-filters.model';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
-import { LoadForcePreviewPanelComponent } from '../load-force-preview-panel/load-force-preview-panel.component';
-import { LoadForceRadarPanelComponent } from '../load-force-radar-panel/load-force-radar-panel.component';
+import { ForcePreviewPanelComponent } from '../force-preview-panel/force-preview-panel.component';
+import { ForceRadarPanelComponent } from '../force-radar-panel/force-radar-panel.component';
 import { MultiSelectDropdownComponent, type MultiStateSelection } from '../multi-select-dropdown/multi-select-dropdown.component';
+import { TooltipDirective } from '../../directives/tooltip.directive';
 import { UnitSearchAdvancedFiltersComponent } from '../unit-search-advanced-filters/unit-search-advanced-filters.component';
 import { DataService } from '../../services/data.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { ForceGeneratorService, type ForceGenerationPreview, type GeneratedForceUnit } from '../../services/force-generator.service';
 import { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
+import { WsService } from '../../services/ws.service';
 import type { AdvFilterOptions, DropdownFilterOptions } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
+import { resolveDropdownNamesFromFilter } from '../../utils/filter-name-resolution.util';
 import { normalizeMultiStateSelection } from '../../utils/unit-search-shared.util';
 
 export interface SearchForceGeneratorDialogConfig {
@@ -69,6 +69,7 @@ export interface SearchForceGeneratorDialogConfig {
     };
     minUnitCount: number;
     maxUnitCount: number;
+    crossEraAvailabilityInMultiEraSelection: boolean;
     preventDuplicateChassis: boolean;
 }
 
@@ -80,16 +81,19 @@ export interface SearchForceGeneratorDialogResult {
 
 type MultiStateFilterKey = 'era' | 'faction' | '_tags';
 type UnitTypeFilterKey = 'type' | 'as.TP';
+type GeneratorDialogTab = 'configuration' | 'preview';
 
 @Component({
     selector: 'search-force-generator-dialog',
     standalone: true,
+    providers: [ForceGeneratorService],
     imports: [
         CommonModule,
         BaseDialogComponent,
-        LoadForcePreviewPanelComponent,
-        LoadForceRadarPanelComponent,
+        ForcePreviewPanelComponent,
+        ForceRadarPanelComponent,
         MultiSelectDropdownComponent,
+        TooltipDirective,
         UnitSearchAdvancedFiltersComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -105,6 +109,7 @@ export class SearchForceGeneratorDialogComponent {
     private readonly forceGeneratorService = inject(ForceGeneratorService);
     private readonly gameService = inject(GameService);
     private readonly optionsService = inject(OptionsService);
+    private readonly wsService = inject(WsService);
     readonly filtersService = inject(UnitSearchFiltersService);
     private readonly initialGameSystem = this.gameService.currentGameSystem();
     private readonly selectedGameSystem = signal<GameSystem>(this.initialGameSystem);
@@ -137,6 +142,18 @@ export class SearchForceGeneratorDialogComponent {
     readonly selectedUnitTypeValues = computed(() => this.getSelectedDropdownValues(this.unitTypeFilter()));
     readonly selectedSubtypeValues = computed(() => this.getSelectedDropdownValues(this.subtypeFilter()));
     readonly selectedTagValues = computed(() => this.getSelectedMultiStateValues(this.tagsFilter()));
+    readonly crossEraAvailabilityInMultiEraSelection = signal(false);
+    readonly positiveEraSelectionCount = computed(() => this.countPositiveMultiStateSelections(this.eraFilter()));
+    readonly crossEraAvailabilityToggleEnabled = computed(() => {
+        const positiveEraSelectionCount = this.positiveEraSelectionCount();
+        return positiveEraSelectionCount === 0 || positiveEraSelectionCount > 1;
+    });
+    readonly crossEraAvailabilityTooltip = computed(() => {
+        const baseMessage = 'When enabled, MegaMek availability weights can span the full multi-era selection instead of staying on a single resolved era.';
+        return this.crossEraAvailabilityToggleEnabled()
+            ? baseMessage
+            : `${baseMessage} Available only when no positive era is selected or when multiple eras are selected.`;
+    });
     readonly advPanelFilterGameSystem = signal<GameSystem>(this.initialGameSystem);
     readonly additionalFiltersOpen = signal(false);
     readonly additionalFiltersExcludedKeys = computed(() => {
@@ -171,11 +188,12 @@ export class SearchForceGeneratorDialogComponent {
                 .filter((lockKey): lockKey is string => !!lockKey),
         );
     });
-    readonly previewLockToggle = (unitEntry: LoadForceUnit): void => {
+    readonly previewLockToggle = (unitEntry: ForcePreviewUnit): void => {
         this.togglePreviewUnitLock(unitEntry);
     };
-    readonly hoveredPreviewUnit = signal<LoadForceUnit | null>(null);
-    readonly hoveredRadarUnit = computed(() => this.hoveredPreviewUnit()?.unit ?? null);
+    readonly hoveredPreviewUnit = signal<ForcePreviewUnit | null>(null);
+    readonly selectedPreviewUnit = signal<ForcePreviewUnit | null>(null);
+    readonly hoveredRadarUnit = computed(() => this.hoveredPreviewUnit()?.unit ?? this.selectedPreviewUnit()?.unit ?? null);
     readonly descriptionLines = computed(() => {
         const lines = [];
         const query = this.filtersService.searchText().trim();
@@ -236,6 +254,7 @@ export class SearchForceGeneratorDialogComponent {
             maxUnitCount: this.maxUnitCount(),
         };
     });
+    readonly mobileTab = signal<GeneratorDialogTab>('configuration');
     private readonly previewState = signal<ForceGenerationPreview>(this.createEmptyPreview(
         'Press REROLL to generate a force preview for the current settings.',
     ));
@@ -255,15 +274,21 @@ export class SearchForceGeneratorDialogComponent {
             this.generationSettings(),
         );
     });
-    readonly previewEntry = computed(() => {
+    readonly previewEntry = computed<ForcePreviewEntry | null>(() => {
         const preview = this.preview();
-        return this.forceGeneratorService.createForceEntry(preview);
+        return this.forceGeneratorService.createForcePreviewEntry(preview);
     });
 
     constructor() {
         effect(() => {
             const currentGameSystem = this.gameSystem();
             untracked(() => this.advPanelFilterGameSystem.set(currentGameSystem));
+        });
+
+        effect(() => {
+            if (!this.crossEraAvailabilityToggleEnabled()) {
+                untracked(() => this.crossEraAvailabilityInMultiEraSelection.set(false));
+            }
         });
     }
 
@@ -350,6 +375,13 @@ export class SearchForceGeneratorDialogComponent {
         this.preventDuplicateChassis.set((event.target as HTMLInputElement).checked);
     }
 
+    onCrossEraAvailabilityInMultiEraSelectionChange(event: Event): void {
+        const target = event.target as HTMLInputElement;
+        this.crossEraAvailabilityInMultiEraSelection.set(
+            this.crossEraAvailabilityToggleEnabled() && target.checked,
+        );
+    }
+
     onBudgetMinChange(event: Event): void {
         this.setBudgetRangeForSystem(
             this.gameSystem(),
@@ -365,7 +397,7 @@ export class SearchForceGeneratorDialogComponent {
             this.gameSystem(),
             this.forceGeneratorService.resolveBudgetRangeForEditedMax(
                 this.budgetRange(),
-                this.parseNumericValue(event, this.budgetRange().max),
+                this.parseNumericValue(event, 0),
             ),
         );
         this.syncInputValue(event, this.budgetRange().max || '');
@@ -391,14 +423,22 @@ export class SearchForceGeneratorDialogComponent {
                 min: this.minUnitCount(),
                 max: this.maxUnitCount(),
             },
-            this.parseNumericValue(event, this.maxUnitCount()),
+            this.parseNumericValue(event, this.minUnitCount()),
         ));
         this.syncInputValue(event, this.maxUnitCount());
     }
 
+    setMobileTab(tab: GeneratorDialogTab): void {
+        this.mobileTab.set(tab);
+    }
+
     reroll(): void {
         this.clearHoveredPreviewUnit();
-        this.previewState.set(this.buildGeneratedPreview());
+        this.clearSelectedPreviewUnit();
+        const preview = this.buildGeneratedPreview();
+        this.previewState.set(preview);
+        this.mobileTab.set('preview');
+        this.recordForceGeneration(preview);
     }
 
     importCurrentForce(): void {
@@ -408,17 +448,17 @@ export class SearchForceGeneratorDialogComponent {
         }
 
         this.clearHoveredPreviewUnit();
+        this.clearSelectedPreviewUnit();
 
-        const importedForceEntry = createLoadForceEntryFromSerializedForce(currentForce.serialize(), this.dataService);
-        const importedUnits = importedForceEntry.groups
-            .flatMap((group) => group.units)
+        const importedPreviewEntry = createForcePreviewEntryFromForce(currentForce);
+        const importedUnits = getForcePreviewUnitEntries(importedPreviewEntry)
             .map((unitEntry, index) => this.toLockedGeneratedUnit(unitEntry, index))
             .filter((unit): unit is GeneratedForceUnit => unit !== null);
 
         this.lockedUnits.set(importedUnits);
         this.previewState.set(this.createPreviewFromUnits(importedUnits, {
-            faction: importedForceEntry.faction,
-            era: importedForceEntry.era,
+            faction: importedPreviewEntry.faction,
+            era: importedPreviewEntry.era,
             explanationLines: ['Imported current force into preview. Press REROLL to generate a new result for the current settings.'],
             error: importedUnits.length === 0 ? 'No units from the current force could be loaded into the preview.' : null,
         }));
@@ -428,27 +468,35 @@ export class SearchForceGeneratorDialogComponent {
         this.collapsedHowPicksWhereChosen.update((value) => !value);
     }
 
-    onPreviewUnitHover(unitEntry: LoadForceUnit | null): void {
+    onPreviewUnitHover(unitEntry: ForcePreviewUnit | null): void {
         this.hoveredPreviewUnit.set(unitEntry?.unit ? unitEntry : null);
     }
 
+    onPreviewSelectedUnitsChange(selectedUnits: ForcePreviewUnit[]): void {
+        this.selectedPreviewUnit.set(selectedUnits[0] ?? null);
+    }
+
     submit(): void {
-        const previewEntry = this.previewEntry();
-        if (!previewEntry || this.previewError()) {
+        if (!this.previewEntry() || this.previewError()) {
             return;
         }
 
         const preview = this.preview();
+        const forceEntry = this.forceGeneratorService.createForceEntry(preview);
+        if (!forceEntry) {
+            return;
+        }
 
         this.filtersService.requestClosePanels({ exitExpandedView: true });
         this.dialogRef.close({
-            forceEntry: previewEntry,
+            forceEntry,
             config: {
                 gameSystem: this.gameSystem(),
                 availabilitySource: this.availabilitySource(),
                 budgetRange: this.budgetRange(),
                 minUnitCount: this.minUnitCount(),
                 maxUnitCount: this.maxUnitCount(),
+                crossEraAvailabilityInMultiEraSelection: this.crossEraAvailabilityInMultiEraSelection(),
                 preventDuplicateChassis: this.preventDuplicateChassis(),
             },
             totalCost: preview.totalCost,
@@ -461,6 +509,10 @@ export class SearchForceGeneratorDialogComponent {
 
     private clearHoveredPreviewUnit(): void {
         this.hoveredPreviewUnit.set(null);
+    }
+
+    private clearSelectedPreviewUnit(): void {
+        this.selectedPreviewUnit.set(null);
     }
 
     private getDropdownFilter(key: string): DropdownFilterOptions | null {
@@ -476,6 +528,19 @@ export class SearchForceGeneratorDialogComponent {
         return Array.isArray(option?.value) ? [...option.value] : [];
     }
 
+    private countPositiveMultiStateSelections(option: DropdownFilterOptions | null): number {
+        if (!option) {
+            return 0;
+        }
+
+        const resolvedNames = resolveDropdownNamesFromFilter(
+            this.getSelectedMultiStateValues(option),
+            option.options.map((entry) => entry.name),
+        );
+
+        return new Set([...resolvedNames.or, ...resolvedNames.and]).size;
+    }
+
     private buildGeneratedPreview(): ForceGenerationPreview {
         const settings = this.generationSettings();
         const eligibleUnits = this.eligibleUnits();
@@ -488,7 +553,9 @@ export class SearchForceGeneratorDialogComponent {
 
         return this.forceGeneratorService.buildPreview({
             eligibleUnits,
-            context: this.forceGeneratorService.resolveGenerationContext(eligibleUnits),
+            context: this.forceGeneratorService.resolveGenerationContext(eligibleUnits, {
+                crossEraAvailabilityInMultiEraSelection: this.crossEraAvailabilityInMultiEraSelection(),
+            }),
             gameSystem: settings.gameSystem,
             budgetRange: settings.budgetRange,
             minUnitCount: settings.minUnitCount,
@@ -498,6 +565,14 @@ export class SearchForceGeneratorDialogComponent {
             lockedUnits,
             preventDuplicateChassis: this.preventDuplicateChassis(),
         });
+    }
+
+    private recordForceGeneration(preview: ForceGenerationPreview): void {
+        if (preview.error || preview.units.length === 0 || !this.wsService.wsConnected()) {
+            return;
+        }
+
+        this.wsService.send({ action: 'recordForceGeneration' });
     }
 
     private createEmptyPreview(error: string | null = null): ForceGenerationPreview {
@@ -803,7 +878,7 @@ export class SearchForceGeneratorDialogComponent {
         input.value = `${value}`;
     }
 
-    private togglePreviewUnitLock(unitEntry: LoadForceUnit): void {
+    private togglePreviewUnitLock(unitEntry: ForcePreviewUnit): void {
         const lockKey = unitEntry.lockKey;
         if (!lockKey) {
             return;
@@ -819,7 +894,7 @@ export class SearchForceGeneratorDialogComponent {
         });
     }
 
-    private toLockedGeneratedUnit(unitEntry: LoadForceUnit, index: number): GeneratedForceUnit | null {
+    private toLockedGeneratedUnit(unitEntry: ForcePreviewUnit, index: number): GeneratedForceUnit | null {
         if (!unitEntry.unit) {
             return null;
         }

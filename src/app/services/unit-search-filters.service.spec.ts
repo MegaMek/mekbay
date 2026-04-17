@@ -25,8 +25,8 @@ import {
     usesIndexedDropdownAvailability,
     usesIndexedDropdownUniverse,
 } from '../utils/unit-search-filter-config.util';
-import type { MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
-import { MEGAMEK_RARITY_SORT_KEY } from './unit-search-filters.model';
+import { MEGAMEK_AVAILABILITY_UNKNOWN, type MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
+import { MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from './unit-search-filters.model';
 import { SEARCH_WORKER_FACTORY } from '../utils/unit-search-worker-factory.util';
 import type { SearchWorkerLike } from '../utils/unit-search-worker-client.util';
 import type { UnitSearchWorkerResponseMessage } from '../utils/unit-search-worker-protocol.util';
@@ -294,6 +294,7 @@ function createTestUnit(overrides: Partial<Unit>): Unit {
         _searchKey: '',
         _displayType: '',
         _maxRange: 0,
+        _weightedMaxRange: 0,
         _dissipationEfficiency: 0,
         _mdSumNoPhysical: 0,
         _mdSumNoPhysicalNoOneshots: 0,
@@ -458,6 +459,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             options: signal({
                 automaticallyConvertFiltersToSemantic: options?.automaticallyConvertFiltersToSemantic ?? false,
                 availabilitySource: 'mul' as AvailabilitySource,
+                megaMekAvailabilityFiltersUseAllScopedOptions: true,
             }),
         };
 
@@ -1378,6 +1380,672 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(namedAvailabilityFromOptions.find((option) => option.name === 'Salvage')).toEqual(jasmine.objectContaining({ available: true }));
     });
 
+    it('scopes MegaMek rarity dropdown availability by all scoped availability options when the feature flag is enabled', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'BattleMaster C3';
+        bundle.units.units[0].chassis = 'BattleMaster';
+        bundle.units.units[0].model = 'C3';
+        bundle.units.units[1].name = 'Other Unit';
+        bundle.units.units[1].chassis = 'Other';
+        bundle.units.units[1].model = 'OTHER-1';
+        bundle.eras.eras = [
+            {
+                id: 3131,
+                name: 'Dark Age',
+                img: '',
+                years: {
+                    from: 3131,
+                    to: 3150,
+                },
+                units: [1],
+                factions: [],
+            },
+            {
+                id: 3151,
+                name: 'ilClan',
+                img: '',
+                years: {
+                    from: 3151,
+                    to: 9999,
+                },
+                units: [1],
+                factions: [],
+            },
+        ];
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: 'Rasalhague Dominion',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    3131: new Set([1]),
+                    3151: new Set([1]),
+                },
+            },
+            {
+                id: 2,
+                name: 'Clan Protectorate',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    3151: new Set([1]),
+                },
+            },
+        ];
+
+        const { dataService, service, optionsServiceStub } = createService(bundle);
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'BattleMaster C3',
+                e: {
+                    '3131': {
+                        '1': [2, 2],
+                    },
+                    '3151': {
+                        '1': [2, 2],
+                        '2': [7, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        const rasalhagueDominion = {
+            'Rasalhague Dominion': {
+                name: 'Rasalhague Dominion',
+                state: 'or',
+                count: 1,
+            },
+        };
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+        service.searchText.set('BattleMaster');
+        service.setFilter('era', ['ilClan']);
+
+        let rarityOptions = service.advOptions()['availabilityRarity']?.options ?? [];
+        let namedRarityOptions = rarityOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
+
+        expect(namedRarityOptions.find((option) => option.name === 'Common')).toEqual(jasmine.objectContaining({ available: true }));
+        expect(namedRarityOptions.find((option) => option.name === 'Very Rare')).toEqual(jasmine.objectContaining({ available: true }));
+
+        service.setFilter('availabilityFrom', ['Salvage']);
+
+        rarityOptions = service.advOptions()['availabilityRarity']?.options ?? [];
+        namedRarityOptions = rarityOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
+
+        expect(namedRarityOptions.find((option) => option.name === 'Common')).toEqual(jasmine.objectContaining({ available: false }));
+        expect(namedRarityOptions.find((option) => option.name === 'Very Rare')).toEqual(jasmine.objectContaining({ available: true }));
+
+        service.setFilter('availabilityFrom', ['Production']);
+
+        rarityOptions = service.advOptions()['availabilityRarity']?.options ?? [];
+        namedRarityOptions = rarityOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
+
+        expect(namedRarityOptions.find((option) => option.name === 'Common')).toEqual(jasmine.objectContaining({ available: true }));
+        expect(namedRarityOptions.find((option) => option.name === 'Very Rare')).toEqual(jasmine.objectContaining({ available: true }));
+
+        service.setFilter('faction', rasalhagueDominion);
+
+        rarityOptions = service.advOptions()['availabilityRarity']?.options ?? [];
+        namedRarityOptions = rarityOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
+
+        expect(namedRarityOptions.find((option) => option.name === 'Common')).toEqual(jasmine.objectContaining({ available: false }));
+        expect(namedRarityOptions.find((option) => option.name === 'Very Rare')).toEqual(jasmine.objectContaining({ available: true }));
+    });
+
+    it('filters MegaMek units by any scoped availability option that matches the current filters', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'BattleMaster C3';
+        bundle.units.units[0].chassis = 'BattleMaster';
+        bundle.units.units[0].model = 'C3';
+        bundle.units.units[1].name = 'Other Unit';
+        bundle.units.units[1].chassis = 'Other';
+        bundle.units.units[1].model = 'OTHER-1';
+        bundle.eras.eras = [
+            {
+                id: 3131,
+                name: 'Dark Age',
+                img: '',
+                years: {
+                    from: 3131,
+                    to: 3150,
+                },
+                units: [1],
+                factions: [],
+            },
+            {
+                id: 3151,
+                name: 'ilClan',
+                img: '',
+                years: {
+                    from: 3151,
+                    to: 9999,
+                },
+                units: [1],
+                factions: [],
+            },
+        ];
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: 'Rasalhague Dominion',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    3131: new Set([1]),
+                    3151: new Set([1]),
+                },
+            },
+            {
+                id: 2,
+                name: 'Clan Protectorate',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    3151: new Set([1]),
+                },
+            },
+        ];
+
+        const { dataService, service, optionsServiceStub } = createService(bundle);
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'BattleMaster C3',
+                e: {
+                    '3131': {
+                        '1': [2, 2],
+                    },
+                    '3151': {
+                        '1': [2, 2],
+                        '2': [7, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        const rasalhagueDominion = {
+            'Rasalhague Dominion': {
+                name: 'Rasalhague Dominion',
+                state: 'or',
+                count: 1,
+            },
+        };
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+        service.searchText.set('BattleMaster');
+        service.setFilter('era', ['ilClan']);
+        service.setFilter('availabilityRarity', ['Common']);
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
+
+        service.setFilter('availabilityRarity', ['Very Rare']);
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
+
+        service.setFilter('availabilityFrom', ['Salvage']);
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
+
+        service.setFilter('availabilityFrom', ['Production']);
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
+
+        service.setFilter('faction', rasalhagueDominion);
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
+
+        service.setFilter('era', ['Dark Age']);
+        service.unsetFilter('faction');
+        service.unsetFilter('availabilityFrom');
+        service.setFilter('availabilityRarity', ['Common']);
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual([]);
+
+        service.setFilter('availabilityRarity', ['Very Rare']);
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
+    });
+
+    it('localizes displayed MegaMek badges by era, faction, and source filters', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'BattleMaster C3';
+        bundle.units.units[0].chassis = 'BattleMaster';
+        bundle.units.units[0].model = 'C3';
+        bundle.eras.eras = [
+            {
+                id: 3131,
+                name: 'Dark Age',
+                img: '',
+                years: {
+                    from: 3131,
+                    to: 3150,
+                },
+                units: [1],
+                factions: [],
+            },
+            {
+                id: 3151,
+                name: 'ilClan',
+                img: '',
+                years: {
+                    from: 3151,
+                    to: 9999,
+                },
+                units: [1],
+                factions: [],
+            },
+        ];
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: 'Rasalhague Dominion',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    3131: new Set([1]),
+                    3151: new Set([1]),
+                },
+            },
+            {
+                id: 2,
+                name: 'Clan Protectorate',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    3151: new Set([1]),
+                },
+            },
+        ];
+
+        const { dataService, service, optionsServiceStub } = createService(bundle);
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'BattleMaster C3',
+                e: {
+                    '3131': {
+                        '1': [2, 2],
+                    },
+                    '3151': {
+                        '1': [2, 2],
+                        '2': [7, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        const rasalhagueDominion = {
+            'Rasalhague Dominion': {
+                name: 'Rasalhague Dominion',
+                state: 'or',
+                count: 1,
+            },
+        };
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+
+        service.setFilter('era', ['Dark Age']);
+        expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
+            { source: 'Production', score: 2, rarity: 'Very Rare' },
+            { source: 'Salvage', score: 2, rarity: 'Very Rare' },
+        ]);
+
+        service.setFilter('era', ['ilClan']);
+        expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
+            { source: 'Production', score: 7, rarity: 'Common' },
+            { source: 'Salvage', score: 2, rarity: 'Very Rare' },
+        ]);
+
+        service.setFilter('availabilityFrom', ['Production']);
+        expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
+            { source: 'Production', score: 7, rarity: 'Common' },
+        ]);
+
+        service.setFilter('faction', rasalhagueDominion);
+        expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
+            { source: 'Production', score: 2, rarity: 'Very Rare' },
+        ]);
+    });
+
+    it('bridges MUL availability badges and rarity filters through MUL faction membership', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'BattleMaster C3';
+        bundle.units.units[0].chassis = 'BattleMaster';
+        bundle.units.units[0].model = 'C3';
+        bundle.units.units[1].name = 'Other Unit';
+        bundle.units.units[1].chassis = 'Other';
+        bundle.units.units[1].model = 'OTHER-1';
+        bundle.eras.eras = [
+            {
+                id: 3131,
+                name: 'Dark Age',
+                img: '',
+                years: {
+                    from: 3131,
+                    to: 3150,
+                },
+                units: [1],
+                factions: [],
+            },
+            {
+                id: 3151,
+                name: 'ilClan',
+                img: '',
+                years: {
+                    from: 3151,
+                    to: 9999,
+                },
+                units: [1],
+                factions: [],
+            },
+        ];
+        bundle.factions.factions = [
+            {
+                id: 40,
+                name: 'Rasalhague Dominion',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    3131: new Set([1]),
+                    3151: new Set([1]),
+                },
+            },
+            {
+                id: 82,
+                name: 'Clan Sea Fox',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    3131: new Set([1]),
+                },
+            },
+            {
+                id: 100,
+                name: 'Clan Protectorate',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    3151: new Set([1]),
+                },
+            },
+        ];
+
+        const { dataService, service } = createService(bundle);
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'BattleMaster C3',
+                e: {
+                    '3131': {
+                        '40': [2, 0],
+                        '82': [0, 1],
+                        '100': [7, 0],
+                    },
+                    '3151': {
+                        '40': [2, 0],
+                        '100': [7, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        service.searchText.set('BattleMaster');
+        service.setFilter('era', ['Dark Age']);
+
+        expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
+            { source: 'Production', score: 2, rarity: 'Very Rare' },
+            { source: 'Salvage', score: 1, rarity: 'Very Rare' },
+        ]);
+
+        let rarityOptions = service.advOptions()['availabilityRarity']?.options ?? [];
+        let namedRarityOptions = rarityOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
+
+        expect(namedRarityOptions.find((option) => option.name === 'Common')).toEqual(jasmine.objectContaining({ available: false }));
+        expect(namedRarityOptions.find((option) => option.name === 'Very Rare')).toEqual(jasmine.objectContaining({ available: true }));
+
+        service.setFilter('availabilityRarity', ['Common']);
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual([]);
+
+        service.setFilter('availabilityRarity', ['Very Rare']);
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
+
+        service.setFilter('era', ['ilClan']);
+        service.setFilter('availabilityRarity', ['Common']);
+
+        let factionOptions = service.advOptions()['faction']?.options ?? [];
+        let namedFactionOptions = factionOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
+
+        expect(namedFactionOptions.find((option) => option.name === 'Clan Protectorate')).toEqual(jasmine.objectContaining({ available: true }));
+        expect(namedFactionOptions.find((option) => option.name === 'Rasalhague Dominion')).toEqual(jasmine.objectContaining({ available: false }));
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
+    });
+
+    it('surfaces Unknown MUL availability options for factions without MegaMek data', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'BattleMaster C3';
+        bundle.units.units[0].chassis = 'BattleMaster';
+        bundle.units.units[0].model = 'C3';
+        bundle.eras.eras = [{
+            id: 3151,
+            name: 'ilClan',
+            img: '',
+            years: {
+                from: 3151,
+                to: 9999,
+            },
+            units: [1],
+            factions: [],
+        }];
+        bundle.factions.factions = [
+            {
+                id: 40,
+                name: 'Rasalhague Dominion',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    3151: new Set([1]),
+                },
+            },
+            {
+                id: 100,
+                name: 'Clan Protectorate',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    3151: new Set([1]),
+                },
+            },
+            {
+                id: 120,
+                name: 'Raven Alliance',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    3151: new Set([1]),
+                },
+            },
+        ];
+
+        const { dataService, service } = createService(bundle);
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'BattleMaster C3',
+                e: {
+                    '3151': {
+                        '40': [2, 0],
+                        '100': [7, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        service.searchText.set('BattleMaster');
+        service.setFilter('era', ['ilClan']);
+
+        let availabilityFromOptions = service.advOptions()['availabilityFrom']?.options ?? [];
+        let namedAvailabilityFromOptions = availabilityFromOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
+
+        expect(namedAvailabilityFromOptions.find((option) => option.name === 'Unknown')).toEqual(jasmine.objectContaining({ available: true }));
+        expect(namedAvailabilityFromOptions.find((option) => option.name === 'Production')).toEqual(jasmine.objectContaining({ available: true }));
+        expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
+            { source: 'Production', score: 7, rarity: 'Common' },
+        ]);
+
+        service.setFilter('availabilityFrom', ['Unknown']);
+        expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
+            { source: MEGAMEK_AVAILABILITY_UNKNOWN, score: -1, rarity: MEGAMEK_AVAILABILITY_UNKNOWN },
+        ]);
+
+        let factionOptions = service.advOptions()['faction']?.options ?? [];
+        let namedFactionOptions = factionOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
+        expect(namedFactionOptions.find((option) => option.name === 'Raven Alliance')).toEqual(jasmine.objectContaining({ available: true }));
+        expect(namedFactionOptions.find((option) => option.name === 'Rasalhague Dominion')).toEqual(jasmine.objectContaining({ available: false }));
+        expect(namedFactionOptions.find((option) => option.name === 'Clan Protectorate')).toEqual(jasmine.objectContaining({ available: false }));
+
+        let availabilityRarityOptions = service.advOptions()['availabilityRarity']?.options ?? [];
+        let namedAvailabilityRarityOptions = availabilityRarityOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
+        expect(namedAvailabilityRarityOptions.filter((option) => option.available !== false).map((option) => option.name)).toEqual(['Unknown']);
+
+        service.unsetFilter('availabilityFrom');
+        service.setFilter('availabilityRarity', ['Unknown']);
+        expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
+            { source: MEGAMEK_AVAILABILITY_UNKNOWN, score: -1, rarity: MEGAMEK_AVAILABILITY_UNKNOWN },
+        ]);
+
+        factionOptions = service.advOptions()['faction']?.options ?? [];
+        namedFactionOptions = factionOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
+        expect(namedFactionOptions.find((option) => option.name === 'Raven Alliance')).toEqual(jasmine.objectContaining({ available: true }));
+        expect(namedFactionOptions.find((option) => option.name === 'Rasalhague Dominion')).toEqual(jasmine.objectContaining({ available: false }));
+        expect(namedFactionOptions.find((option) => option.name === 'Clan Protectorate')).toEqual(jasmine.objectContaining({ available: false }));
+
+        availabilityFromOptions = service.advOptions()['availabilityFrom']?.options ?? [];
+        namedAvailabilityFromOptions = availabilityFromOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
+        expect(namedAvailabilityFromOptions.filter((option) => option.available !== false).map((option) => option.name)).toEqual(['Unknown']);
+
+        service.unsetFilter('availabilityRarity');
+
+        service.setFilter('faction', {
+            'Raven Alliance': {
+                name: 'Raven Alliance',
+                state: 'or',
+                count: 1,
+            },
+        });
+
+        availabilityFromOptions = service.advOptions()['availabilityFrom']?.options ?? [];
+        namedAvailabilityFromOptions = availabilityFromOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
+        expect(namedAvailabilityFromOptions.filter((option) => option.available !== false).map((option) => option.name)).toEqual(['Unknown']);
+
+        availabilityRarityOptions = service.advOptions()['availabilityRarity']?.options ?? [];
+        namedAvailabilityRarityOptions = availabilityRarityOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
+        expect(namedAvailabilityRarityOptions.filter((option) => option.available !== false).map((option) => option.name)).toEqual(['Unknown']);
+
+        expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
+            { source: MEGAMEK_AVAILABILITY_UNKNOWN, score: -1, rarity: MEGAMEK_AVAILABILITY_UNKNOWN },
+        ]);
+
+        service.setFilter('availabilityRarity', ['Unknown']);
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
+    });
+
+    it('uses the selected positive rarity scope for MUL badge and sort resolution', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'BattleMaster C3';
+        bundle.units.units[0].chassis = 'BattleMaster';
+        bundle.units.units[0].model = 'C3';
+        bundle.eras.eras = [{
+            id: 3151,
+            name: 'ilClan',
+            img: '',
+            years: {
+                from: 3151,
+                to: 9999,
+            },
+            units: [1],
+            factions: [],
+        }];
+        bundle.factions.factions = [
+            {
+                id: 40,
+                name: 'Rasalhague Dominion',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    3151: new Set([1]),
+                },
+            },
+            {
+                id: 100,
+                name: 'Clan Protectorate',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    3151: new Set([1]),
+                },
+            },
+            {
+                id: 120,
+                name: 'Raven Alliance',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    3151: new Set([1]),
+                },
+            },
+        ];
+
+        const { dataService, service } = createService(bundle);
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'BattleMaster C3',
+                e: {
+                    '3151': {
+                        '40': [2, 1],
+                        '100': [7, 1],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        service.searchText.set('BattleMaster');
+        service.setFilter('era', ['ilClan']);
+        service.setFilter('availabilityFrom', ['Production']);
+        service.setFilter('availabilityRarity', ['Very Rare']);
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
+        expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
+            { source: 'Production', score: 2, rarity: 'Very Rare' },
+        ]);
+        expect(service.getMegaMekRaritySortScore(bundle.units.units[0])).toBe(2);
+    });
+
     it('keeps units without MegaMek availability data visible by default but excludes them when an availability filter is applied', () => {
         if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
             pending('Real unit data could not be loaded for the MegaMek no-data availability test.');
@@ -1449,6 +2117,264 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Available Unit', 'Missing Data Unit']);
     });
 
+    it('filters MegaMek units by Available From from the UI', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Production Unit';
+        bundle.units.units[0].chassis = 'Production Unit';
+        bundle.units.units[0].model = 'PROD-1';
+        bundle.units.units[1].name = 'Salvage Unit';
+        bundle.units.units[1].chassis = 'Salvage Unit';
+        bundle.units.units[1].model = 'SALV-1';
+        bundle.eras.eras[0].units = [1, 2];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
+
+        const { dataService, service, optionsServiceStub } = createService(bundle);
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'Production Unit',
+                e: {
+                    '1': {
+                        '1': [5, 0],
+                    },
+                },
+            },
+            {
+                n: 'Salvage Unit',
+                e: {
+                    '1': {
+                        '1': [0, 3],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+
+        service.setFilter('availabilityFrom', ['Production']);
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Production Unit']);
+
+        service.setFilter('availabilityFrom', ['Salvage']);
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Salvage Unit']);
+    });
+
+    it('filters MegaMek units by semantic rarity queries', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Very Rare Unit';
+        bundle.units.units[0].chassis = 'Very Rare Unit';
+        bundle.units.units[0].model = 'VR-1';
+        bundle.units.units[1].name = 'Common Unit';
+        bundle.units.units[1].chassis = 'Common Unit';
+        bundle.units.units[1].model = 'COM-1';
+        bundle.eras.eras[0].units = [1, 2];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
+
+        const { dataService, service, optionsServiceStub } = createService(bundle);
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'Very Rare Unit',
+                e: {
+                    '1': {
+                        '1': [1, 0],
+                    },
+                },
+            },
+            {
+                n: 'Common Unit',
+                e: {
+                    '1': {
+                        '1': [7, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+
+        service.searchText.set('rarity="very rare"');
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Very Rare Unit']);
+    });
+
+    it('filters MegaMek units by semantic rarity queries while the worker is active', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Very Common Crab';
+        bundle.units.units[0].chassis = 'Very Common Crab';
+        bundle.units.units[0].model = 'VCC-1';
+        bundle.units.units[1].name = 'Unknown Crab';
+        bundle.units.units[1].chassis = 'Unknown Crab';
+        bundle.units.units[1].model = 'UNC-1';
+        bundle.eras.eras[0].units = [1, 2];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
+
+        const { dataService, service, optionsServiceStub } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'Very Common Crab',
+                e: {
+                    '1': {
+                        '1': [9, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        await flushAsyncWork();
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+        service.searchText.set('crab rarity="very common"');
+        service.filteredUnits();
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        (service as any).searchWorkerClient.submit(snapshot, request);
+
+        const initMessage = worker.messages.at(-1) as any;
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+
+        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        worker.emit({
+            type: 'result',
+            revision: executeMessage.request.revision,
+            corpusVersion: executeMessage.request.corpusVersion,
+            telemetryQuery: executeMessage.request.telemetryQuery,
+            unitNames: ['Very Common Crab', 'Unknown Crab'],
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Very Common Crab']);
+    });
+
+    it('filters MegaMek units by semantic Unknown rarity queries while the worker is active', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Known Crab';
+        bundle.units.units[0].chassis = 'Known Crab';
+        bundle.units.units[0].model = 'KNC-1';
+        bundle.units.units[1].name = 'Unknown Crab';
+        bundle.units.units[1].chassis = 'Unknown Crab';
+        bundle.units.units[1].model = 'UNC-1';
+        bundle.eras.eras[0].units = [1, 2];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
+
+        const { dataService, service, optionsServiceStub } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'Known Crab',
+                e: {
+                    '1': {
+                        '1': [9, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        await flushAsyncWork();
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+        service.searchText.set('crab rarity="unknown"');
+        service.filteredUnits();
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        (service as any).searchWorkerClient.submit(snapshot, request);
+
+        const initMessage = worker.messages.at(-1) as any;
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+
+        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        worker.emit({
+            type: 'result',
+            revision: executeMessage.request.revision,
+            corpusVersion: executeMessage.request.corpusVersion,
+            telemetryQuery: executeMessage.request.telemetryQuery,
+            unitNames: ['Known Crab', 'Unknown Crab'],
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Unknown Crab']);
+    });
+
+    it('filters MegaMek units by Unknown rarity from the UI', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Known Unit';
+        bundle.units.units[0].chassis = 'Known Unit';
+        bundle.units.units[0].model = 'KNO-1';
+        bundle.units.units[1].name = 'Unknown Unit';
+        bundle.units.units[1].chassis = 'Unknown Unit';
+        bundle.units.units[1].model = 'UNK-1';
+        bundle.eras.eras[0].units = [1, 2];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
+
+        const { dataService, service, optionsServiceStub } = createService(bundle);
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'Known Unit',
+                e: {
+                    '1': {
+                        '1': [9, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+
+        service.setFilter('availabilityRarity', ['Unknown']);
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Unknown Unit']);
+    });
+
     it('sorts by MegaMek rarity even when MUL availability is selected', () => {
         const bundle = createStandaloneBundle();
         const lowUnit = bundle.units.units[0];
@@ -1493,7 +2419,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
-        service.setSortOrder(MEGAMEK_RARITY_SORT_KEY);
+        service.setSortOrder(MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
         service.setSortDirection('desc');
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['High Unit', 'Low Unit', 'Unknown Unit']);
@@ -1773,7 +2699,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Boomerang']);
     });
 
-    it('keeps the worker active in MegaMek mode and sends MegaMek availability data to the worker', async () => {
+    it('keeps the worker active in MegaMek mode while applying MegaMek availability filters after worker search', async () => {
         const worker = new FakeSearchWorker();
         const bundle = benchmarkBundle && benchmarkBundle.units.units.length >= 2
             ? buildSmallBundle(benchmarkBundle)
@@ -1806,7 +2732,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             availabilitySource: 'megamek',
         });
         service.setFilter('availabilityFrom', ['Production']);
-        service.searchText.set('Test Mek');
+        service.searchText.set('Test');
         service.filteredUnits();
 
         expect((service as any).workerSearchActive()).toBeTrue();
@@ -1816,28 +2742,23 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
         const request = (service as any).buildWorkerSearchRequest(corpusVersion);
 
-        expect(snapshot.megaMekAvailability).toBeTruthy();
-        expect(request.availabilitySource).toBe('megamek');
-
         (service as any).searchWorkerClient.submit(snapshot, request);
 
         const initMessage = worker.messages.at(-1) as any;
-        expect(initMessage?.snapshot?.megaMekAvailability).toBeTruthy();
 
         worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
         await flushAsyncWork();
 
         const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
         expect(executeMessage).toBeTruthy();
-        expect(executeMessage.request.availabilitySource).toBe('megamek');
-        expect(executeMessage.request.executionQuery).toContain('from=Production');
+        expect(executeMessage.request.executionQuery).not.toContain('from=Production');
 
         worker.emit({
             type: 'result',
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            unitNames: [bundle.units.units[0].name],
+            unitNames: bundle.units.units.map((unit) => unit.name),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -1846,6 +2767,845 @@ describe('UnitSearchFiltersService search telemetry', () => {
         await flushAsyncWork();
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
+    });
+
+    it('updates MegaMek worker post-filters when faction or era changes', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'BattleMaster C3';
+        bundle.units.units[0].chassis = 'BattleMaster';
+        bundle.units.units[0].model = 'C3';
+        bundle.units.units[1].name = 'Common Dominion Mek';
+        bundle.units.units[1].chassis = 'Common Dominion';
+        bundle.units.units[1].model = 'CDM-1';
+        bundle.units.units[1].type = 'Mek';
+        bundle.units.units[1].subtype = 'BattleMek';
+        bundle.units.units[1].moveType = 'Biped';
+        bundle.units.units[1].as = {
+            ...bundle.units.units[1].as,
+            TP: 'BM',
+        };
+        bundle.eras.eras = [
+            {
+                id: 1,
+                name: 'ilClan',
+                img: '',
+                years: {
+                    from: 3151,
+                    to: 9999,
+                },
+                units: [1, 2],
+                factions: [],
+            },
+            {
+                id: 2,
+                name: 'Dark Age',
+                img: '',
+                years: {
+                    from: 3131,
+                    to: 3150,
+                },
+                units: [1],
+                factions: [],
+            },
+        ];
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: 'Rasalhague Dominion',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    1: new Set([1, 2]),
+                    2: new Set([1]),
+                },
+            },
+            {
+                id: 2,
+                name: 'Clan Protectorate',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    1: new Set([1]),
+                },
+            },
+        ];
+
+        const { dataService, service, optionsServiceStub } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'BattleMaster C3',
+                e: {
+                    '1': {
+                        '1': [4, 0],
+                        '2': [7, 0],
+                    },
+                    '2': {
+                        '1': [7, 0],
+                    },
+                },
+            },
+            {
+                n: 'Common Dominion Mek',
+                e: {
+                    '1': {
+                        '1': [7, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        const rasalhagueDominion = {
+            'Rasalhague Dominion': {
+                name: 'Rasalhague Dominion',
+                state: 'or',
+                count: 1,
+            },
+        };
+        const clanProtectorate = {
+            'Clan Protectorate': {
+                name: 'Clan Protectorate',
+                state: 'or',
+                count: 1,
+            },
+        };
+
+        await flushAsyncWork();
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+        service.setFilter('type', ['Mek']);
+        service.setFilter('era', ['ilClan']);
+        service.setFilter('faction', rasalhagueDominion);
+        service.setFilter('availabilityRarity', ['Common']);
+        service.filteredUnits();
+
+        expect((service as any).workerSearchActive()).toBeTrue();
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        expect(request.executionQuery).not.toContain('era=ilClan');
+        expect(request.executionQuery).not.toContain('faction="Rasalhague Dominion"');
+        expect(request.executionQuery.toLowerCase()).not.toContain('rarity');
+
+        (service as any).searchWorkerClient.submit(snapshot, request);
+
+        const initMessage = worker.messages.at(-1) as any;
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+
+        const firstExecuteMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        expect(firstExecuteMessage.request.executionQuery).not.toContain('era=ilClan');
+        expect(firstExecuteMessage.request.executionQuery).not.toContain('faction="Rasalhague Dominion"');
+        expect(firstExecuteMessage.request.executionQuery.toLowerCase()).not.toContain('rarity');
+
+        worker.emit({
+            type: 'result',
+            revision: firstExecuteMessage.request.revision,
+            corpusVersion: firstExecuteMessage.request.corpusVersion,
+            telemetryQuery: firstExecuteMessage.request.telemetryQuery,
+            unitNames: ['BattleMaster C3', 'Common Dominion Mek'],
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Common Dominion Mek']);
+
+        service.setFilter('faction', clanProtectorate);
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
+
+        service.setFilter('era', ['Dark Age']);
+        service.setFilter('faction', rasalhagueDominion);
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
+    });
+
+    it('reapplies MegaMek worker post-filters when the scoped rarity mode changes', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'BattleMaster C3';
+        bundle.units.units[0].chassis = 'BattleMaster';
+        bundle.units.units[0].model = 'C3';
+        bundle.units.units[1].name = 'Other Unit';
+        bundle.units.units[1].chassis = 'Other Unit';
+        bundle.units.units[1].model = 'OTH-1';
+        bundle.eras.eras = [
+            {
+                id: 1,
+                name: 'ilClan',
+                img: '',
+                years: {
+                    from: 3151,
+                    to: 9999,
+                },
+                units: [1, 2],
+                factions: [],
+            },
+        ];
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: 'Rasalhague Dominion',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    1: new Set([1]),
+                },
+            },
+            {
+                id: 2,
+                name: 'Clan Protectorate',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    1: new Set([1]),
+                },
+            },
+        ];
+
+        const { dataService, service, optionsServiceStub } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'BattleMaster C3',
+                e: {
+                    '1': {
+                        '1': [2, 0],
+                        '2': [7, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        await flushAsyncWork();
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+            megaMekAvailabilityFiltersUseAllScopedOptions: true,
+        });
+        service.searchText.set('BattleMaster');
+        service.setFilter('era', ['ilClan']);
+        service.setFilter('availabilityRarity', ['Very Rare']);
+        service.filteredUnits();
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        (service as any).searchWorkerClient.submit(snapshot, request);
+
+        const initMessage = worker.messages.at(-1) as any;
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+
+        const firstExecuteMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        worker.emit({
+            type: 'result',
+            revision: firstExecuteMessage.request.revision,
+            corpusVersion: firstExecuteMessage.request.corpusVersion,
+            telemetryQuery: firstExecuteMessage.request.telemetryQuery,
+            unitNames: ['BattleMaster C3'],
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            megaMekAvailabilityFiltersUseAllScopedOptions: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits()).toEqual([]);
+    });
+
+    it('keeps MegaMek-backed availability filters on the main thread while MUL worker search stays active', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Rare Salvage Crab';
+        bundle.units.units[0].chassis = 'Rare Salvage Crab';
+        bundle.units.units[0].model = 'RSC-1';
+        bundle.units.units[1].name = 'Common Production Crab';
+        bundle.units.units[1].chassis = 'Common Production Crab';
+        bundle.units.units[1].model = 'CPC-1';
+        bundle.eras.eras[0].units = [1, 2];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
+
+        const { dataService, service } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'Rare Salvage Crab',
+                e: {
+                    '1': {
+                        '1': [0, 4],
+                    },
+                },
+            },
+            {
+                n: 'Common Production Crab',
+                e: {
+                    '1': {
+                        '1': [7, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        await flushAsyncWork();
+
+        service.setFilter('availabilityFrom', ['Salvage']);
+        service.setFilter('availabilityRarity', ['Rare']);
+        service.searchText.set('Crab');
+        service.filteredUnits();
+
+        expect((service as any).workerSearchActive()).toBeTrue();
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        expect(request.executionQuery.toLowerCase()).not.toContain('from');
+        expect(request.executionQuery.toLowerCase()).not.toContain('rarity');
+
+        (service as any).searchWorkerClient.submit(snapshot, request);
+
+        const initMessage = worker.messages.at(-1) as any;
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+
+        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        expect(executeMessage.request.executionQuery.toLowerCase()).not.toContain('from');
+        expect(executeMessage.request.executionQuery.toLowerCase()).not.toContain('rarity');
+
+        worker.emit({
+            type: 'result',
+            revision: executeMessage.request.revision,
+            corpusVersion: executeMessage.request.corpusVersion,
+            telemetryQuery: executeMessage.request.telemetryQuery,
+            unitNames: ['Rare Salvage Crab', 'Common Production Crab'],
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Rare Salvage Crab']);
+    });
+
+    it('keeps MUL worker rarity post-filters scoped to the selected era and faction', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'BattleMaster C3';
+        bundle.units.units[0].chassis = 'BattleMaster';
+        bundle.units.units[0].model = 'C3';
+        bundle.units.units[1].name = 'Common Dominion Mek';
+        bundle.units.units[1].chassis = 'Common Dominion';
+        bundle.units.units[1].model = 'CDM-1';
+        bundle.units.units[1].type = 'Mek';
+        bundle.units.units[1].subtype = 'BattleMek';
+        bundle.units.units[1].moveType = 'Biped';
+        bundle.units.units[1].as = {
+            ...bundle.units.units[1].as,
+            TP: 'BM',
+        };
+        bundle.eras.eras = [{
+            id: 1,
+            name: 'ilClan',
+            img: '',
+            years: {
+                from: 3151,
+                to: 9999,
+            },
+            units: [1, 2],
+            factions: [],
+        }];
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: 'Rasalhague Dominion',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    1: new Set([1, 2]),
+                },
+            },
+            {
+                id: 2,
+                name: 'Clan Protectorate',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    1: new Set([1]),
+                },
+            },
+        ];
+
+        const { dataService, service } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'BattleMaster C3',
+                e: {
+                    '1': {
+                        '1': [4, 0],
+                        '2': [7, 0],
+                    },
+                },
+            },
+            {
+                n: 'Common Dominion Mek',
+                e: {
+                    '1': {
+                        '1': [7, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        await flushAsyncWork();
+
+        service.setFilter('era', ['ilClan']);
+        service.setFilter('faction', {
+            'Rasalhague Dominion': {
+                name: 'Rasalhague Dominion',
+                state: 'or',
+                count: 1,
+            },
+        });
+        service.setFilter('availabilityRarity', ['Common']);
+        service.filteredUnits();
+
+        expect((service as any).workerSearchActive()).toBeTrue();
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        expect(request.executionQuery).toContain('era=ilClan');
+        expect(request.executionQuery).toContain('faction="Rasalhague Dominion"');
+        expect(request.executionQuery.toLowerCase()).not.toContain('rarity');
+
+        (service as any).searchWorkerClient.submit(snapshot, request);
+
+        const initMessage = worker.messages.at(-1) as any;
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+
+        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        expect(executeMessage.request.executionQuery).toContain('era=ilClan');
+        expect(executeMessage.request.executionQuery).toContain('faction="Rasalhague Dominion"');
+        expect(executeMessage.request.executionQuery.toLowerCase()).not.toContain('rarity');
+
+        worker.emit({
+            type: 'result',
+            revision: executeMessage.request.revision,
+            corpusVersion: executeMessage.request.corpusVersion,
+            telemetryQuery: executeMessage.request.telemetryQuery,
+            unitNames: ['BattleMaster C3', 'Common Dominion Mek'],
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Common Dominion Mek']);
+    });
+
+    it('keeps MUL worker rarity post-filters scoped when text search narrows results to a single unit', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'BattleMaster C3';
+        bundle.units.units[0].chassis = 'BattleMaster';
+        bundle.units.units[0].model = 'C3';
+        bundle.eras.eras = [{
+            id: 1,
+            name: 'ilClan',
+            img: '',
+            years: {
+                from: 3151,
+                to: 9999,
+            },
+            units: [1],
+            factions: [],
+        }];
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: 'Rasalhague Dominion',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    1: new Set([1]),
+                },
+            },
+            {
+                id: 2,
+                name: 'Clan Protectorate',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    1: new Set([1]),
+                },
+            },
+        ];
+
+        const { dataService, service } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'BattleMaster C3',
+                e: {
+                    '1': {
+                        '1': [4, 0],
+                        '2': [7, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        await flushAsyncWork();
+
+        service.searchText.set('BattleMaster');
+        service.setFilter('era', ['ilClan']);
+        service.setFilter('faction', {
+            'Rasalhague Dominion': {
+                name: 'Rasalhague Dominion',
+                state: 'or',
+                count: 1,
+            },
+        });
+        service.setFilter('availabilityRarity', ['Common']);
+        service.filteredUnits();
+
+        expect((service as any).workerSearchActive()).toBeTrue();
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        expect(request.executionQuery).toContain('BattleMaster');
+        expect(request.executionQuery).toContain('era=ilClan');
+        expect(request.executionQuery).toContain('faction="Rasalhague Dominion"');
+        expect(request.executionQuery.toLowerCase()).not.toContain('rarity');
+
+        (service as any).searchWorkerClient.submit(snapshot, request);
+
+        const initMessage = worker.messages.at(-1) as any;
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+
+        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        expect(executeMessage.request.executionQuery).toContain('BattleMaster');
+        expect(executeMessage.request.executionQuery).toContain('era=ilClan');
+        expect(executeMessage.request.executionQuery).toContain('faction="Rasalhague Dominion"');
+        expect(executeMessage.request.executionQuery.toLowerCase()).not.toContain('rarity');
+
+        worker.emit({
+            type: 'result',
+            revision: executeMessage.request.revision,
+            corpusVersion: executeMessage.request.corpusVersion,
+            telemetryQuery: executeMessage.request.telemetryQuery,
+            unitNames: ['BattleMaster C3'],
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual([]);
+    });
+
+    it('filters MUL semantic rarity queries after worker results', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Very Common Crab';
+        bundle.units.units[0].chassis = 'Very Common Crab';
+        bundle.units.units[0].model = 'VCC-1';
+        bundle.units.units[1].name = 'Unknown Crab';
+        bundle.units.units[1].chassis = 'Unknown Crab';
+        bundle.units.units[1].model = 'UNC-1';
+        bundle.eras.eras[0].units = [1, 2];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
+
+        const { dataService, service } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'Very Common Crab',
+                e: {
+                    '1': {
+                        '1': [9, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        await flushAsyncWork();
+
+        service.searchText.set('crab rarity="very common"');
+        service.filteredUnits();
+
+        expect((service as any).workerSearchActive()).toBeTrue();
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        expect(request.executionQuery.toLowerCase()).not.toContain('rarity');
+
+        (service as any).searchWorkerClient.submit(snapshot, request);
+
+        const initMessage = worker.messages.at(-1) as any;
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+
+        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        expect(executeMessage.request.executionQuery.toLowerCase()).not.toContain('rarity');
+
+        worker.emit({
+            type: 'result',
+            revision: executeMessage.request.revision,
+            corpusVersion: executeMessage.request.corpusVersion,
+            telemetryQuery: executeMessage.request.telemetryQuery,
+            unitNames: ['Very Common Crab', 'Unknown Crab'],
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Very Common Crab']);
+    });
+
+    it('uses sync fallback results while MegaMek availability worker filters are pending', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Rare Salvage Crab';
+        bundle.units.units[0].chassis = 'Rare Salvage Crab';
+        bundle.units.units[0].model = 'RSC-1';
+        bundle.units.units[1].name = 'Common Salvage Crab';
+        bundle.units.units[1].chassis = 'Common Salvage Crab';
+        bundle.units.units[1].model = 'CSC-1';
+        bundle.eras.eras[0].units = [1, 2];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
+
+        const { dataService, service, optionsServiceStub } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'Rare Salvage Crab',
+                e: {
+                    '1': {
+                        '1': [0, 4],
+                    },
+                },
+            },
+            {
+                n: 'Common Salvage Crab',
+                e: {
+                    '1': {
+                        '1': [0, 7],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        await flushAsyncWork();
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+        service.setFilter('availabilityFrom', ['Salvage']);
+        service.setFilter('availabilityRarity', ['Rare']);
+        service.searchText.set('Crab');
+        await flushAsyncWork();
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        (service as any).workerRequestRevision.set(request.revision);
+        (service as any).searchWorkerClient.submit(snapshot, request);
+
+        expect((service as any).workerSearchActive()).toBeTrue();
+        expect(service.isSearchSettled()).toBeFalse();
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Rare Salvage Crab']);
+        expect(service.forceGeneratorEligibleUnits().map((unit) => unit.name)).toEqual(['Rare Salvage Crab']);
+    });
+
+    it('filters Unknown rarity on the main thread after worker results', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Known Unit';
+        bundle.units.units[0].chassis = 'Known Unit';
+        bundle.units.units[0].model = 'KNO-1';
+        bundle.units.units[1].name = 'Unknown Unit';
+        bundle.units.units[1].chassis = 'Unknown Unit';
+        bundle.units.units[1].model = 'UNK-1';
+        bundle.eras.eras[0].units = [1, 2];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
+
+        const { dataService, service, optionsServiceStub } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'Known Unit',
+                e: {
+                    '1': {
+                        '1': [9, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        await flushAsyncWork();
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+        service.setFilter('availabilityRarity', ['Unknown']);
+        service.searchText.set('Unit');
+        service.filteredUnits();
+
+        expect((service as any).workerSearchActive()).toBeTrue();
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        (service as any).searchWorkerClient.submit(snapshot, request);
+
+        const initMessage = worker.messages.at(-1) as any;
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+
+        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        worker.emit({
+            type: 'result',
+            revision: executeMessage.request.revision,
+            corpusVersion: executeMessage.request.corpusVersion,
+            telemetryQuery: executeMessage.request.telemetryQuery,
+            unitNames: ['Known Unit', 'Unknown Unit'],
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Unknown Unit']);
+    });
+
+    it('falls back to sync execution for complex MegaMek semantic queries', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        const { service, optionsServiceStub } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+
+        await flushAsyncWork();
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+        service.searchText.set('Test OR from=Production');
+        service.filteredUnits();
+
+        expect((service as any).workerSearchActive()).toBeFalse();
+    });
+
+    it('falls back to sync execution for complex MUL semantic availability queries', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Very Common Crab';
+        bundle.units.units[0].chassis = 'Very Common Crab';
+        bundle.units.units[0].model = 'VCC-1';
+        bundle.units.units[1].name = 'Unknown Crab';
+        bundle.units.units[1].chassis = 'Unknown Crab';
+        bundle.units.units[1].model = 'UNC-1';
+        bundle.eras.eras[0].units = [1, 2];
+        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
+
+        const { dataService, service } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: 'Very Common Crab',
+                e: {
+                    '1': {
+                        '1': [9, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        await flushAsyncWork();
+
+        service.searchText.set('NoMatch OR rarity="very common"');
+        service.filteredUnits();
+
+        expect((service as any).workerSearchActive()).toBeFalse();
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Very Common Crab']);
     });
 
     it('re-sorts worker results by MegaMek rarity on the main thread', async () => {
@@ -1897,7 +3657,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         await flushAsyncWork();
 
-        service.setSortOrder(MEGAMEK_RARITY_SORT_KEY);
+        service.setSortOrder(MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
         service.setSortDirection('desc');
 
         const corpusVersion = (service as any).getWorkerCorpusVersion();
@@ -1913,7 +3673,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         await flushAsyncWork();
 
         const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
-        expect(executeMessage?.request.sortKey).toBe(MEGAMEK_RARITY_SORT_KEY);
+        expect(executeMessage?.request.sortKey).toBe('');
 
         worker.emit({
             type: 'result',
@@ -2436,6 +4196,30 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         expect(request.executionQuery).toContain('era="Succession Wars"');
         expect(request.executionQuery).toContain('era&=Jihad');
+    });
+
+    it('keeps MUL era and faction filters in worker execution queries while stripping availability filters', () => {
+        const bundle = createStandaloneBundle();
+
+        const { service } = createService(bundle);
+
+        service.setFilter('era', ['Succession Wars']);
+        service.setFilter('faction', {
+            'Test Faction': {
+                name: 'Test Faction',
+                state: 'or',
+                count: 1,
+            },
+        });
+        service.setFilter('availabilityFrom', ['Production']);
+        service.setFilter('availabilityRarity', ['Common']);
+
+        const request = (service as any).buildWorkerSearchRequest((service as any).getWorkerCorpusVersion());
+
+        expect(request.executionQuery).toContain('era="Succession Wars"');
+        expect(request.executionQuery).toContain('faction="Test Faction"');
+        expect(request.executionQuery.toLowerCase()).not.toContain('from');
+        expect(request.executionQuery.toLowerCase()).not.toContain('rarity');
     });
 
     it('canonicalizes semantic dropdown values to existing option casing', () => {
@@ -3294,7 +5078,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         await flushAsyncWork();
         const setupMs = performance.now() - setupStartedAt;
 
-        service.setSortOrder(MEGAMEK_RARITY_SORT_KEY);
+        service.setSortOrder(MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
         service.setSortDirection('desc');
         service.searchText.set('');
 
@@ -3311,7 +5095,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         service.filteredUnits();
         await flushAsyncWork();
 
-        service.setSortOrder(MEGAMEK_RARITY_SORT_KEY);
+        service.setSortOrder(MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
 
         const warmStartedAt = performance.now();
         const filteredUnits = service.filteredUnits();
@@ -3473,6 +5257,77 @@ describe('UnitSearchFiltersService search telemetry', () => {
         await flushAsyncWork();
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Tank']);
+    });
+
+    it('resubmits worker searches when the text query changes', async () => {
+        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
+            pending('Real unit data could not be loaded for the worker integration test.');
+            return;
+        }
+
+        const worker = new FakeSearchWorker();
+        const bundle = buildSmallBundle(benchmarkBundle);
+        bundle.units.units[0].name = 'BattleMaster C3';
+        bundle.units.units[0].chassis = 'BattleMaster C3';
+        bundle.units.units[0].model = 'BLR-1C3';
+        bundle.units.units[1].name = 'Awesome PPC';
+        bundle.units.units[1].chassis = 'Awesome PPC';
+        bundle.units.units[1].model = 'AWS-8Q';
+
+        const { service } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+
+        service.filteredUnits();
+        await flushAsyncWork();
+
+        const initialCorpusVersion = (service as any).getWorkerCorpusVersion();
+        const initialSnapshot = (service as any).getWorkerCorpusSnapshot(initialCorpusVersion);
+        const initialRequest = (service as any).buildWorkerSearchRequest(initialCorpusVersion);
+        (service as any).searchWorkerClient.submit(initialSnapshot, initialRequest);
+
+        const initMessage = worker.messages.at(-1) as any;
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+
+        const initialExecute = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        worker.emit({
+            type: 'result',
+            revision: initialExecute.request.revision,
+            corpusVersion: initialExecute.request.corpusVersion,
+            telemetryQuery: initialExecute.request.telemetryQuery,
+            unitNames: bundle.units.units.map((unit) => unit.name),
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3', 'Awesome PPC']);
+
+        service.setSearchText('battlemaster c3');
+        service.filteredUnits();
+        await flushAsyncWork();
+
+        const updatedExecute = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        expect(updatedExecute.request.revision).toBeGreaterThan(initialExecute.request.revision);
+        expect(updatedExecute.request.telemetryQuery).toBe('battlemaster c3');
+
+        worker.emit({
+            type: 'result',
+            revision: updatedExecute.request.revision,
+            corpusVersion: updatedExecute.request.corpusVersion,
+            telemetryQuery: updatedExecute.request.telemetryQuery,
+            unitNames: ['BattleMaster C3'],
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
     });
 
     it('falls back to synchronous execution when the worker fails', async () => {

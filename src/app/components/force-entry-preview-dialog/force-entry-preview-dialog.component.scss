@@ -1,3 +1,12 @@
+.wide-dialog-body {
+    overflow: hidden;
+}
+
+force-preview-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
 .wide-dialog-actions {
     justify-content: space-evenly;
     margin-top: 12px;

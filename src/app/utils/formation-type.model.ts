@@ -96,6 +96,8 @@ export interface FormationTypeDefinition {
     nameAliases?: string[];
     description: string;
     effectDescription?: string;
+    /** Whether this formation explicitly inherits parent effect groups and parent requirement display. Defaults to false. */
+    inheritParentEffects?: boolean;
     /** Structured SPA distribution rules for this formation's bonus ability. */
     effectGroups?: FormationEffectGroup[];
     validator?: (units: ForceUnit[], gameSystem: GameSystem) => boolean;
@@ -166,6 +168,11 @@ export function formationNameMatchesGroupName(definition: FormationTypeDefinitio
 /** Returns `true` when the given definition is the "No Formation" sentinel. */
 export function isNoFormation(def: FormationTypeDefinition | null | undefined): boolean {
     return def?.id === NO_FORMATION_ID;
+}
+
+/** Returns `true` when this formation explicitly opts into inheriting parent effects. */
+export function formationInheritsParentEffects(def: FormationTypeDefinition | null | undefined): boolean {
+    return def?.inheritParentEffects === true;
 }
 
 /**

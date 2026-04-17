@@ -35,15 +35,17 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import type { LoadForceEntry } from '../../models/load-force-entry.model';
+import type { Options } from '../../models/options.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { ToastService } from '../../services/toast.service';
 import { type ForceAddModePickerData, ForceAddModePickerDialogComponent, type ForceAddModePickerResult } from '../force-add-mode-picker-dialog/force-add-mode-picker-dialog.component';
 import { firstValueFrom } from 'rxjs';
 import { DialogsService } from '../../services/dialogs.service';
-import { LoadForcePreviewPanelComponent } from '../load-force-preview-panel/load-force-preview-panel.component';
+import { ForcePreviewPanelComponent } from '../force-preview-panel/force-preview-panel.component';
 
 export interface ForceEntryPreviewDialogData {
     force: LoadForceEntry;
+    unitDisplayNameOverride?: Options['unitDisplayName'];
 }
 
 /**
@@ -56,7 +58,7 @@ export interface ForceEntryPreviewDialogData {
     selector: 'force-entry-preview-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, LoadForcePreviewPanelComponent],
+    imports: [CommonModule, ForcePreviewPanelComponent],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
@@ -69,6 +71,7 @@ export class ForceEntryPreviewDialogComponent {
     private dialogsService = inject(DialogsService);
     private forceBuilderService = inject(ForceBuilderService);
     private toastService = inject(ToastService);
+    readonly displayMode = this.data.unitDisplayNameOverride ?? null;
     force: LoadForceEntry;
 
     isForceLoaded = signal(false);

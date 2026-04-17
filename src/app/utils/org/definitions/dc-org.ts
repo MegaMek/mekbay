@@ -1,7 +1,7 @@
 import { DEFAULT_ORG_RULE_REGISTRY } from '../org-facts.util';
 import type {
     OrgComposedCountRule,
-    OrgDefinitionSpec,
+    OrgDefinition,
     OrgLeafCountRule,
 } from '../org-types';
 import {
@@ -59,7 +59,7 @@ export const DC_WING: OrgComposedCountRule = {
     childBucketBy: 'promotionBasic',
 };
 
-export const DC_CORE_ORG: OrgDefinitionSpec = {
+export const DC_CORE_ORG: OrgDefinition = {
     rules: [
         DC_LANCE,
         DC_FLIGHT,

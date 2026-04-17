@@ -50,8 +50,8 @@ import type { SerializedSearchFilter } from './unit-search-filters.model';
 import {
     createLoadForceEntryFromSerializedForce,
     LoadForceEntry,
-    type LoadForceEntryResolver,
 } from '../models/load-force-entry.model';
+import type { ForceEntryResolver } from '../models/force-entry-resolver.model';
 import { LoggerService } from './logger.service';
 import type { SerializedOperation } from '../models/operation.model';
 import type { SerializedOrganization } from '../models/organization.model';
@@ -990,7 +990,7 @@ export class DbService {
     /**
      * Retrieves all forces from IndexedDB, sorted by timestamp descending.
      */
-    public async listForces(dataService: LoadForceEntryResolver): Promise<LoadForceEntry[]> {
+    public async listForces(dataService: ForceEntryResolver): Promise<LoadForceEntry[]> {
         const db = await this.dbPromise;
         if (!db) return []; // Degraded mode
         return new Promise<LoadForceEntry[]>((resolve, reject) => {

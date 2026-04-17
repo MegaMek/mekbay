@@ -34,13 +34,13 @@
 import { ChangeDetectionStrategy, Component, ElementRef, inject, signal, viewChild, computed, DestroyRef, Injector } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { PILOT_ABILITIES, type PilotAbility, type ASCustomPilotAbility, getAbilityLimitsForSkill, type PilotAbilityLimits, getAbilityDetails, hexDisplay } from '../../models/pilot-abilities.model';
+import { PILOT_ABILITIES, type PilotAbility, type ASCustomPilotAbility, getAbilityLimitsForSkill, type PilotAbilityLimits, getAbilityDetails, formatSummaryMovement } from '../../models/pilot-abilities.model';
 import type { ASForceUnit } from '../../models/as-force-unit.model';
 import { COMMAND_ABILITIES } from '../../models/command-abilities.model';
 import type { UnitGroup } from '../../models/force.model';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { DialogsService } from '../../services/dialogs.service';
-import { AbilityDropdownPanelComponent } from './ability-dropdown-panel.component';
+import { AbilityDropdownPanelComponent, type AbilityDropdownOption } from './ability-dropdown-panel.component';
 import { CustomAbilityDialogComponent } from './custom-ability-dialog.component';
 import { SkillDropdownPanelComponent, type SkillPreviewEntry } from '../skill-dropdown-panel/skill-dropdown-panel.component';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -54,6 +54,7 @@ import {
     type FormationEffectPreview,
     type UnsupportedFormationEffectDescriptor,
 } from '../../utils/formation-ability-assignment.util';
+import { OptionsService } from '../../services/options.service';
 
 /*
  * Author: Drake
@@ -116,6 +117,7 @@ export class EditASPilotDialogComponent {
     private dialogsService = inject(DialogsService);
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
+    private readonly optionsService = inject(OptionsService);
     readonly formatRuleReference = formatRulesReference;
 
     availableAbilities = signal<PilotAbility[]>(PILOT_ABILITIES);
@@ -212,10 +214,6 @@ export class EditASPilotDialogComponent {
 
     unsupportedFormationEffects = computed<UnsupportedFormationEffectDescriptor[]>(() => {
         return [...(this.formationPreview()?.unsupportedEffects ?? [])];
-    });
-
-    hasAutoGrantedFormationEffects = computed<boolean>(() => {
-        return this.unsupportedFormationEffects().some((effect) => effect.reason === 'auto-command-ability');
     });
 
     hasResettableFormationAssignments = computed<boolean>(() => {
@@ -358,7 +356,7 @@ export class EditASPilotDialogComponent {
         return {
             name: standardAbility.name,
             cost: standardAbility.cost,
-            summary: hexDisplay(details.summary)[0],
+            summary: formatSummaryMovement(details.summary, this.optionsService.options().ASUseHex)[0],
             isCustom: false,
             rulesRef: details.rulesRef,
             unitTypeInvalid
@@ -423,17 +421,52 @@ export class EditASPilotDialogComponent {
         return PILOT_ABILITIES.find((ability) => ability.id === id);
     }
 
+    private buildPilotAbilityDropdownOption(ability: PilotAbility): AbilityDropdownOption {
+        const details = getAbilityDetails(ability, GameSystem.ALPHA_STRIKE);
+        const unitTypeCode = this.data.unitTypeCode;
+        const unitTypeRestricted = !!(unitTypeCode && details.unitTypeFilter?.length && !details.unitTypeFilter.includes(unitTypeCode));
+
+        return {
+            id: ability.id,
+            name: ability.name,
+            cost: ability.cost,
+            summary: formatSummaryMovement(details.summary, this.optionsService.options().ASUseHex)[0] ?? '',
+            rulesRef: details.rulesRef ?? [],
+            unitTypeRestricted,
+            unitTypeLabel: details.unitType,
+        };
+    }
+
+    private getFormationDropdownOptionById(id: string): AbilityDropdownOption | null {
+        const pilotAbility = this.getFormationAbilityById(id);
+        if (pilotAbility) {
+            return this.buildPilotAbilityDropdownOption(pilotAbility);
+        }
+
+        const commandAbility = COMMAND_ABILITIES.find((ability) => ability.id === id);
+        if (!commandAbility) {
+            return null;
+        }
+
+        return {
+            id: commandAbility.id,
+            name: commandAbility.name,
+            cost: 0,
+            summary: commandAbility.summary[0] ?? '',
+            rulesRef: commandAbility.rulesRef,
+        };
+    }
+
     getFormationAbilityDisplayInfo(id: string): { name: string; summary: string; rulesRef?: RulesReference[] } | null {
-        const ability = this.getFormationAbilityById(id);
+        const ability = this.getFormationDropdownOptionById(id);
         if (!ability) {
             return null;
         }
 
-        const details = getAbilityDetails(ability, GameSystem.ALPHA_STRIKE);
         return {
             name: ability.name,
-            summary: details.summary[0] ?? '',
-            rulesRef: details.rulesRef,
+            summary: ability.summary,
+            rulesRef: ability.rulesRef,
         };
     }
 
@@ -564,12 +597,9 @@ export class EditASPilotDialogComponent {
             }
         );
 
-        componentRef.setInput('abilities', this.availableAbilities());
+        componentRef.setInput('abilities', this.availableAbilities().map((ability) => this.buildPilotAbilityDropdownOption(ability)));
         componentRef.setInput('disabledIds', disabledIds);
         componentRef.setInput('remainingCost', this.remainingCost());
-        if (this.data.unitTypeCode) {
-            componentRef.setInput('unitTypeCode', this.data.unitTypeCode);
-        }
 
         // Handle standard ability selection - cleanup when dialog closes
         outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((abilityId: string) => {
@@ -586,10 +616,10 @@ export class EditASPilotDialogComponent {
         this.openDropdown.set(slot);
     }
 
-    getFormationDropdownAbilities(effect: FormationEffectPreview): PilotAbility[] {
+    getFormationDropdownAbilities(effect: FormationEffectPreview): AbilityDropdownOption[] {
         return effect.descriptor.abilityIds
-            .map((abilityId) => this.getFormationAbilityById(abilityId))
-            .filter((ability): ability is PilotAbility => ability !== undefined);
+            .map((abilityId) => this.getFormationDropdownOptionById(abilityId))
+            .filter((ability): ability is AbilityDropdownOption => ability !== null);
     }
 
     getFormationEffectSlots(effect: FormationEffectPreview): (string | null)[] {
@@ -960,18 +990,7 @@ export class EditASPilotDialogComponent {
     }
 
     getUnsupportedFormationEffectNotice(effect: UnsupportedFormationEffectDescriptor): string {
-        if (effect.reason === 'shared-pool') {
-            return `${effect.sourceFormationName}: shared-pool SPAs are tracked at the formation level and are not assigned per unit here.`;
-        }
-
-        if (effect.reason === 'auto-command-ability') {
-            const names = (effect.group.commandAbilityIds ?? [])
-                .map((commandAbilityId) => COMMAND_ABILITIES.find((ability) => ability.id === commandAbilityId)?.name ?? commandAbilityId)
-                .join(' • ');
-            return `${effect.sourceFormationName}: ${names} is automatically granted to the full formation and does not require per-unit assignment.`;
-        }
-
-        return `${effect.sourceFormationName}: command abilities are formation-level effects and are not edited in Warrior Data.`;
+        return `${effect.sourceFormationName}: shared-pool formation abilities are tracked at the formation level and are not assigned per unit here.`;
     }
 
     async setFormationCommanderSelected(value: boolean): Promise<void> {

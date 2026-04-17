@@ -1,0 +1,58 @@
+name: Pull Request Tests
+run-name: Validate PR #${{ github.event.pull_request.number }}
+
+on:
+  pull_request:
+    branches:
+      - main
+      - next
+
+concurrency:
+  group: pr-tests-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test-suite:
+    name: Test suite
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Get latest code
+        uses: actions/checkout@v5
+
+      - name: Checkout mm-data
+        uses: actions/checkout@v5
+        with:
+          repository: MegaMek/mm-data
+          path: mm-data
+          fetch-depth: 1
+
+      - name: Use Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 'latest'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate metadata
+        env:
+          MM_DATA_PATH: mm-data
+        run: npm run gen-meta
+
+      - name: Generate sprites
+        env:
+          MM_DATA_PATH: mm-data
+        run: npm run gen-sprites
+
+      - name: Generate assets
+        env:
+          MM_DATA_PATH: mm-data
+        run: npm run gen-assets
+
+      - name: Run Angular test suite
+        env:
+          MM_DATA_PATH: mm-data
+        run: npm test -- --watch=false --browsers ChromeHeadless

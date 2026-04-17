@@ -43,7 +43,10 @@ export enum Rulebook {
     ASC = "Alpha Strike: Companion",
     ASC_ERR16 = "Alpha Strike Companion Errata v1.6 (2022)",
     BOT = "Battle of Tukayyid",
-    CO = "BattleTech: Campaign Operations"
+    CO = "BattleTech: Campaign Operations",
+    FMD = "Force Manual: Davion",
+    FMK = "Force Manual: Kurita",
+    FMMERC = "Force Manual: Mercenaries",
 }
 
 /**

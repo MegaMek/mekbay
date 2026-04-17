@@ -54,10 +54,23 @@ import { FilterAmmoPipe } from '../../pipes/filter-ammo.pipe';
 import { ExpandedComponentsPipe } from '../../pipes/expanded-components.pipe';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { type SearchTokensGroup, highlightMatches } from '../../utils/search.util';
-import { AS_TYPE_DISPLAY_NAMES, MEGAMEK_RARITY_SORT_KEY } from '../../services/unit-search-filters.model';
+import type { TooltipLine } from '../tooltip/tooltip.component';
+import {
+    MEGAMEK_AVAILABILITY_BADGE_COLORS,
+    MEGAMEK_AVAILABILITY_UNKNOWN,
+    MEGAMEK_PRODUCTION_ICON_PATH,
+    MEGAMEK_SALVAGE_ICON_PATH,
+} from '../../models/megamek/availability.model';
+import {
+    AS_TYPE_DISPLAY_NAMES,
+    MEGAMEK_RARITY_PRODUCTION_SORT_KEY,
+    MEGAMEK_RARITY_SALVAGE_SORT_KEY,
+    isMegaMekRaritySortKey,
+} from '../../services/unit-search-filters.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
 import { formatMovement, isAerospace } from '../../utils/as-common.util';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
+import type { MegaMekUnitAvailabilityDetail } from '../../services/unit-availability-source.service';
 
 /**
  * Author: Drake
@@ -85,12 +98,17 @@ import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card
     styleUrl: './unit-card-expanded.component.scss'
 })
 export class UnitCardExpandedComponent {
+    readonly megaMekAvailabilityUnknown = MEGAMEK_AVAILABILITY_UNKNOWN;
+
     gameService = inject(GameService);
     private dialogsService = inject(DialogsService);
     private abilityLookup = inject(AsAbilityLookupService);
     private expandedComponentsPipe = new ExpandedComponentsPipe();
     readonly unitTypeDisplayNames = AS_TYPE_DISPLAY_NAMES;
-    readonly megaMekRaritySortKey = MEGAMEK_RARITY_SORT_KEY;
+    readonly megaMekProductionIconPath = MEGAMEK_PRODUCTION_ICON_PATH;
+    readonly megaMekSalvageIconPath = MEGAMEK_SALVAGE_ICON_PATH;
+    readonly megaMekRarityProductionSortKey = MEGAMEK_RARITY_PRODUCTION_SORT_KEY;
+    readonly megaMekRaritySalvageSortKey = MEGAMEK_RARITY_SALVAGE_SORT_KEY;
 
     /** 
      * The unit to display. Can be either a Unit or a ForceUnit.
@@ -219,8 +237,28 @@ export class UnitCardExpandedComponent {
     /** Optional per-card sort slot override for custom sort keys. */
     sortSlotOverride = input<{ value: string; numeric?: boolean } | null>(null);
 
-    /** Optional fixed MegaMek rarity display, used by unit-search results only. */
-    megaMekRarity = input<string | null>(null);
+    /** Optional fixed MegaMek availability display, used by unit-search results only. */
+    megaMekAvailability = input<readonly MegaMekUnitAvailabilityDetail[] | null>(null);
+
+    readonly megaMekAvailabilityBadges = computed(() => {
+        const badges = this.megaMekAvailability() ?? [];
+        return badges.map((badge) => ({
+            ...badge,
+            color: MEGAMEK_AVAILABILITY_BADGE_COLORS[badge.rarity],
+        }));
+    });
+
+    readonly megaMekAvailabilityTooltip = computed<TooltipLine[] | null>(() => {
+        const badges = this.megaMekAvailability();
+        if (!badges || badges.length === 0) {
+            return null;
+        }
+
+        return badges.map((badge) => ({
+            label: badge.source === MEGAMEK_AVAILABILITY_UNKNOWN ? 'Availability' : badge.source,
+            value: badge.rarity,
+        }));
+    });
 
     /** Search tokens for text highlighting (optional) */
     searchTokens = input<SearchTokensGroup[]>([]);
@@ -489,7 +527,7 @@ export class UnitCardExpandedComponent {
      * Check if a sort key is actually displayed for a specific unit.
      */
     private isSortKeyDisplayedForUnit(sortKey: string, unit: Unit): boolean {
-        if (sortKey === MEGAMEK_RARITY_SORT_KEY && this.megaMekRarity() !== null) {
+        if (isMegaMekRaritySortKey(sortKey) && this.megaMekAvailability() !== null) {
             return true;
         }
 

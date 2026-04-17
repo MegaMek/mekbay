@@ -35,7 +35,7 @@ import type { GameSystem } from '../models/common.model';
 import { AdvFilterType, ADVANCED_FILTERS, type AdvFilterConfig } from '../services/unit-search-filters.model';
 import type { CountOperator, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { getAdvancedFilterConfigByKey } from './unit-search-filter-config.util';
-import { normalizeMultiStateSelection } from './unit-search-shared.util';
+import { isEmbeddedApostrophe, normalizeMultiStateSelection } from './unit-search-shared.util';
 
 // Cache for semantic key maps
 const semanticKeyMapCache = new Map<GameSystem, Map<string, AdvFilterConfig>>();
@@ -272,13 +272,13 @@ export function parseValues(valueStr: string): string[] {
                     continue;
                 }
             }
-            if (char === inQuote) {
+            if (char === inQuote && (char !== "'" || !isEmbeddedApostrophe(valueStr, i))) {
                 // End of quoted string
                 inQuote = null;
             } else {
                 current += char;
             }
-        } else if (char === '"' || char === "'") {
+        } else if (char === '"' || (char === "'" && !isEmbeddedApostrophe(valueStr, i))) {
             // Start of quoted string
             inQuote = char;
         } else if (char === ',') {

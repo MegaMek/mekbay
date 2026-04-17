@@ -121,7 +121,7 @@ export const IS_LANCE: OrgLeafCountRule = {
     modifiers: { 'Short ': 2, 'Under-Strength ': 3, '': 4, 'Reinforced ': 5, 'Fortified ': 6 },
     commandRank: 'Lieutenant',
     tier: 1,
-    unitSelector: ['BM', 'CV'],
+    unitSelector: ['BM', 'CV', 'IM', 'SV'],
     pointModel: 'fixed',
 };
 

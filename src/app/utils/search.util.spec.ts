@@ -19,6 +19,33 @@ describe('search.util', () => {
         expect(highlightMatches('Wolf’s Dragoons', query, true)).toContain('matchHighlight');
     });
 
+    it('matches punctuation-insensitive model tokens within a single word', () => {
+        const query = parseSearchQuery('whm6r');
+
+        expect(matchesSearch('Warhammer WHM-6R', query, true)).toBeTrue();
+        expect(highlightMatches('Warhammer WHM-6R', query, true)).toContain('matchHighlight');
+    });
+
+    it('matches concatenated tokens across whitespace when they start at a word boundary', () => {
+        const query = parseSearchQuery('yaolien');
+
+        expect(matchesSearch('Yao Lien YOL-4C', query, true)).toBeTrue();
+    });
+
+    it('does not bridge alphanumeric partial matches across whitespace boundaries', () => {
+        const query = parseSearchQuery('enyo');
+
+        expect(matchesSearch('Yao Lien YOL-4C', query, true)).toBeFalse();
+        expect(highlightMatches('Yao Lien YOL-4C', query, true)).not.toContain('matchHighlight');
+    });
+
+    it('prefers the longest alphanumeric highlight span before shorter overlapping tokens', () => {
+        const query = parseSearchQuery('yaolien y');
+
+        expect(highlightMatches('Yao Lien', query, true)).toBe('<span class="matchHighlight">Yao Lien</span>');
+        expect(highlightMatches('YOL-4C', query, true)).toBe('<span class="matchHighlight">Y</span>OL-4C');
+    });
+
     it('keeps quoted specials intact as a single exact search token', () => {
         const query = parseSearchQuery('"TUR(4/4/2,IF1,TAG)"');
 

@@ -368,18 +368,44 @@ describe('DataService', () => {
         expect(dbServiceMock.saveForce).toHaveBeenCalledWith(jasmine.objectContaining({ instanceId: 'force-missing' }));
     });
 
-    it('logs the failing supplemental catalog name during initialize', async () => {
-        megaMekFactionsCatalogMock.initialize.and.rejectWith(
+    it('initializes only MegaMek availability during startup initialize', async () => {
+        await service.initialize();
+
+        expect(megaMekAvailabilityCatalogMock.initialize).toHaveBeenCalledTimes(1);
+        expect(megaMekFactionsCatalogMock.initialize).not.toHaveBeenCalled();
+        expect(megaMekRulesetsCatalogMock.initialize).not.toHaveBeenCalled();
+        expect(quirksCatalogMock.initialize).toHaveBeenCalledTimes(1);
+        expect(sourcebooksCatalogMock.initialize).toHaveBeenCalledTimes(1);
+        expect(service.isDataReady()).toBeTrue();
+    });
+
+    it('initializes MegaMek availability on demand once without bumping the search corpus version', async () => {
+        expect(service.searchCorpusVersion()).toBe(0);
+        expect(service.megaMekAvailabilityVersion()).toBe(0);
+
+        expect(await service.ensureMegaMekAvailabilityCatalogInitialized()).toBeTrue();
+        expect(service.searchCorpusVersion()).toBe(0);
+        expect(service.megaMekAvailabilityVersion()).toBe(1);
+        expect(megaMekAvailabilityCatalogMock.initialize).toHaveBeenCalledTimes(1);
+
+        expect(await service.ensureMegaMekAvailabilityCatalogInitialized()).toBeTrue();
+        expect(service.searchCorpusVersion()).toBe(0);
+        expect(service.megaMekAvailabilityVersion()).toBe(1);
+        expect(megaMekAvailabilityCatalogMock.initialize).toHaveBeenCalledTimes(1);
+    });
+
+    it('logs the failing startup catalog name during initialize', async () => {
+        quirksCatalogMock.initialize.and.rejectWith(
             new TypeError("Cannot read properties of undefined (reading 'length')"),
         );
 
         await service.initialize();
 
         expect(loggerServiceMock.error.calls.allArgs()).toContain([
-            'Failed to initialize catalog service "megamek_factions": TypeError: Cannot read properties of undefined (reading \'length\')',
+            'Failed to initialize catalog service "quirks": TypeError: Cannot read properties of undefined (reading \'length\')',
         ]);
         expect(loggerServiceMock.error.calls.allArgs()).toContain([
-            'Failed to initialize 1 catalog service: "megamek_factions"',
+            'Failed to initialize 1 catalog service: "quirks"',
         ]);
         expect(service.isDataReady()).toBeTrue();
     });

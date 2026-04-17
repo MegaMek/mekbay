@@ -104,8 +104,8 @@ export interface OperationDialogResult {
         .op-textarea {
             font-size: 0.9em;
             resize: vertical;
-            min-height: 2.5em;
-            max-height: 8em;
+            min-height: 6em;
+            max-height: 24em;
         }
     `]
 })

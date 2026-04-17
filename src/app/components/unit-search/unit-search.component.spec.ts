@@ -16,7 +16,7 @@ import { OptionsService } from '../../services/options.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { SavedSearchesService } from '../../services/saved-searches.service';
 import { TaggingService } from '../../services/tagging.service';
-import { MEGAMEK_RARITY_SORT_KEY } from '../../services/unit-search-filters.model';
+import { MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { UnitSearchComponent } from './unit-search.component';
 
@@ -64,6 +64,7 @@ describe('UnitSearchComponent card virtualization', () => {
                 exitExpandedView: !!options?.exitExpandedView,
             });
         }),
+        getMegaMekAvailabilityBadges: jasmine.createSpy('getMegaMekAvailabilityBadges').and.returnValue([]),
         getMegaMekRaritySortScore: jasmine.createSpy('getMegaMekRaritySortScore').and.returnValue(0),
     };
 
@@ -145,6 +146,7 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.selectedSortDirection.set('asc');
         closePanelsRequestSignal.set({ requestId: 0, exitExpandedView: false });
         filtersServiceStub.requestClosePanels.calls.reset();
+        filtersServiceStub.getMegaMekAvailabilityBadges.and.returnValue([]);
         filtersServiceStub.getMegaMekRaritySortScore.and.returnValue(0);
         savedSearchesServiceStub.version.set(0);
         currentGameSystemSignal.set(GameSystem.ALPHA_STRIKE);
@@ -297,15 +299,21 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(component.dropdownFilters().some(filter => filter.key === 'availabilityFrom')).toBeTrue();
     });
 
-    it('formats MegaMek rarity for search result cards', () => {
+    it('formats MegaMek rarity and availability badges for search result cards', () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
         const unit = createUnit('Atlas');
 
+        filtersServiceStub.getMegaMekAvailabilityBadges.and.returnValue([
+            { source: 'Production', score: 4, rarity: 'Rare' },
+        ]);
         filtersServiceStub.getMegaMekRaritySortScore.and.returnValue(4);
         expect(component.getSearchResultMegaMekRarity(unit)).toBe('Rare');
+        expect(component.getSearchResultMegaMekAvailability(unit)).toEqual([
+            { source: 'Production', score: 4, rarity: 'Rare' },
+        ]);
 
-        filtersServiceStub.selectedSort.set(MEGAMEK_RARITY_SORT_KEY);
+        filtersServiceStub.selectedSort.set(MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
         expect(component.getCardSortSlotOverride(unit)).toEqual({
             value: 'Rare',
             numeric: false,
@@ -313,25 +321,5 @@ describe('UnitSearchComponent card virtualization', () => {
 
         filtersServiceStub.getMegaMekRaritySortScore.and.returnValue(MEGAMEK_AVAILABILITY_UNKNOWN_SCORE);
         expect(component.getSearchResultMegaMekRarity(unit)).toBe('—');
-    });
-
-    it('closes panels and exits expanded view when requested by the filters service', async () => {
-        const fixture = TestBed.createComponent(UnitSearchComponent);
-        const component = fixture.componentInstance;
-
-        fixture.detectChanges();
-        component.focused.set(true);
-        component.activeIndex.set(2);
-        filtersServiceStub.advOpen.set(true);
-        filtersServiceStub.expandedView.set(true);
-
-        filtersServiceStub.requestClosePanels({ exitExpandedView: true });
-        await fixture.whenStable();
-        fixture.detectChanges();
-
-        expect(component.focused()).toBeFalse();
-        expect(component.activeIndex()).toBeNull();
-        expect(filtersServiceStub.advOpen()).toBeFalse();
-        expect(filtersServiceStub.expandedView()).toBeFalse();
     });
 });

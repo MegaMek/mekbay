@@ -34,7 +34,7 @@
 import type { Unit } from '../models/units.model';
 import { GameSystem } from '../models/common.model';
 import { getForcePacks } from '../models/forcepacks.model';
-import { ADVANCED_FILTERS, AS_MOVEMENT_MODE_DISPLAY_NAMES, AdvFilterType, MEGAMEK_RARITY_SORT_KEY, normalizeMotiveValue, type FilterState, type SearchTelemetryStage } from '../services/unit-search-filters.model';
+import { ADVANCED_FILTERS, AS_MOVEMENT_MODE_DISPLAY_NAMES, AdvFilterType, isMegaMekRaritySortKey, normalizeMotiveValue, type FilterState, type SearchTelemetryStage } from '../services/unit-search-filters.model';
 import {
     filterUnitsWithAST,
     getMatchingTextForUnit,
@@ -280,7 +280,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
         );
     }
 
-    if (request.sortKey === MEGAMEK_RARITY_SORT_KEY && request.getMegaMekRaritySortScore) {
+    if (isMegaMekRaritySortKey(request.sortKey) && request.getMegaMekRaritySortScore) {
         megaMekRarityScores = new WeakMap<Unit, number>();
         for (const unit of sorted) {
             megaMekRarityScores.set(unit, request.getMegaMekRaritySortScore(unit, request.availabilitySortScope));
@@ -308,7 +308,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
                     comparison = request.getAdjustedBV(a) - request.getAdjustedBV(b);
                 } else if (request.sortKey === 'as.PV') {
                     comparison = request.getAdjustedPV(a) - request.getAdjustedPV(b);
-                } else if (request.sortKey === MEGAMEK_RARITY_SORT_KEY) {
+                } else if (isMegaMekRaritySortKey(request.sortKey)) {
                     comparison = (megaMekRarityScores?.get(a) ?? 0) - (megaMekRarityScores?.get(b) ?? 0);
                     if (comparison === 0) {
                         comparison = compareUnitsByName(a, b);

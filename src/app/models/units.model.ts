@@ -206,6 +206,7 @@ export interface Unit {
     internal: number;
     heat: number;
     dissipation: number;
+    diss?: number[]; // Mix/Max dissipation
     moveType: MoveType;
     walk: number;
     walk2: number; // Max possible
@@ -253,6 +254,7 @@ export interface Unit {
     _searchKey: string; // Pre-compiled lowercase search key: "chassis model"
     _displayType: string;
     _maxRange: number; // Max range of any weapon on this unit
+    _weightedMaxRange: number; // Damage-weighted average of weapon max ranges
     _dissipationEfficiency: number; // Dissipation - Heat
     _mdSumNoPhysical: number; // Max damage sum for all weapons except physical
     _mdSumNoPhysicalNoOneshots: number; // Max damage sum for all weapons except physical, ignoring oneshots

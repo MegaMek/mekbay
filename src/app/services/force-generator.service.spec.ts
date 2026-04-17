@@ -6,7 +6,7 @@ import type { Era } from '../models/eras.model';
 import type { Faction } from '../models/factions.model';
 import type { MegaMekFactionRecord } from '../models/megamek/factions.model';
 import type { MegaMekRulesetRecord } from '../models/megamek/rulesets.model';
-import { MULFACTION_MERCENARY } from '../models/mulfactions.model';
+import { MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.model';
 import type { AvailabilitySource } from '../models/options.model';
 import type { Unit } from '../models/units.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
@@ -19,6 +19,7 @@ import { UnitSearchFiltersService } from './unit-search-filters.service';
 
 describe('ForceGeneratorService', () => {
     let service: ForceGeneratorService;
+    let unitAvailabilitySourceService: UnitAvailabilitySourceService;
     let consoleLogSpy: jasmine.Spy;
 
     const erasByName = new Map<string, Era>();
@@ -42,6 +43,7 @@ describe('ForceGeneratorService', () => {
 
     const dataServiceMock = {
         searchCorpusVersion: signal(1),
+        megaMekAvailabilityVersion: signal(0),
         getUnits: jasmine.createSpy('getUnits').and.callFake(() => units),
         getEras: jasmine.createSpy('getEras').and.callFake(() => [...erasById.values()]),
         getEraById: jasmine.createSpy('getEraById').and.callFake((id: number) => erasById.get(id)),
@@ -176,6 +178,7 @@ describe('ForceGeneratorService', () => {
             _searchKey: overrides._searchKey ?? '',
             _displayType: overrides._displayType ?? '',
             _maxRange: overrides._maxRange ?? 0,
+            _weightedMaxRange: overrides._weightedMaxRange ?? 0,
             _dissipationEfficiency: overrides._dissipationEfficiency ?? 0,
             _mdSumNoPhysical: overrides._mdSumNoPhysical ?? 0,
             _mdSumNoPhysicalNoOneshots: overrides._mdSumNoPhysicalNoOneshots ?? 0,
@@ -188,8 +191,10 @@ describe('ForceGeneratorService', () => {
         return {
             forceFaction,
             forceEra,
-            averagingFactionIds: [forceFaction.id],
-            averagingEraIds: [forceEra.id],
+            availabilityFactionIds: [forceFaction.id],
+            availabilityEraIds: [forceEra.id],
+            useAvailabilityFactionScope: false,
+            useAvailabilityEraScope: false,
             availablePairCount: 1,
             ruleset: null,
         };
@@ -207,6 +212,7 @@ describe('ForceGeneratorService', () => {
         megaMekFactionsByKey.clear();
         units.length = 0;
         dataServiceMock.searchCorpusVersion.set(1);
+        dataServiceMock.megaMekAvailabilityVersion.set(0);
         optionsServiceMock.options.set({ availabilitySource: 'megamek' });
 
         filtersServiceMock.filteredUnits.set([]);
@@ -232,6 +238,7 @@ describe('ForceGeneratorService', () => {
         });
 
         service = TestBed.inject(ForceGeneratorService);
+        unitAvailabilitySourceService = TestBed.inject(UnitAvailabilitySourceService);
     });
 
     it('uses the stored force generator defaults when no unit-search limit is active', () => {
@@ -362,11 +369,302 @@ describe('ForceGeneratorService', () => {
 
         const context = service.resolveGenerationContext([unit]);
 
-        expect(context.averagingEraIds).toEqual([3150]);
-        expect(context.averagingFactionIds).toEqual([10, 20]);
+        expect(context.availabilityEraIds).toEqual([3150]);
+        expect(context.availabilityFactionIds).toEqual([10, 20]);
+        expect(context.useAvailabilityFactionScope).toBeTrue();
+        expect(context.useAvailabilityEraScope).toBeFalse();
         expect(context.forceFaction).toBe(lyranAlliance);
         expect(context.forceEra).toBe(era);
         expect(context.availablePairCount).toBe(2);
+    });
+
+    it('uses Mercenary as the generated force faction and the remaining factions as scope when no positive faction is selected', () => {
+        const era = createEra(3150, 'ilClan');
+        const extinct = createFaction(MULFACTION_EXTINCT, 'Extinct');
+        const federatedSuns = createFaction(10, 'Federated Suns');
+        const lyranAlliance = createFaction(20, 'Lyran Alliance');
+        const mercenary = createFaction(MULFACTION_MERCENARY, 'Mercenary');
+        const unit = createUnit({ name: 'Atlas' });
+
+        erasByName.set(era.name, era);
+        erasById.set(era.id, era);
+        factionsByName.set(extinct.name, extinct);
+        factionsByName.set(federatedSuns.name, federatedSuns);
+        factionsByName.set(lyranAlliance.name, lyranAlliance);
+        factionsByName.set(mercenary.name, mercenary);
+        factionsById.set(extinct.id, extinct);
+        factionsById.set(federatedSuns.id, federatedSuns);
+        factionsById.set(lyranAlliance.id, lyranAlliance);
+        factionsById.set(mercenary.id, mercenary);
+        megaMekAvailabilityByUnitName.set(unit.name, {
+            e: {
+                '3150': {
+                    '20': [3, 1],
+                },
+            },
+        });
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            era: {
+                interactedWith: true,
+                value: ['ilClan'],
+            },
+            faction: {
+                interactedWith: true,
+                value: {
+                    fs: { name: 'Federated Suns', state: 'not', count: 1 },
+                    merc: { name: 'Mercenary', state: 'not', count: 1 },
+                },
+            },
+        });
+
+        const context = service.resolveGenerationContext([unit]);
+
+        expect(context.forceFaction).toBe(mercenary);
+        expect(context.forceEra).toBe(era);
+        expect(context.availabilityFactionIds).toEqual([20]);
+        expect(context.useAvailabilityFactionScope).toBeTrue();
+    });
+
+    it('limits implicit faction scope to factions with positive availability in the selected era', () => {
+        const ilClan = createEra(3150, 'ilClan');
+        const jihad = createEra(3067, 'Jihad');
+        const capellanConfederation = createFaction(10, 'Capellan Confederation');
+        const federatedSuns = createFaction(20, 'Federated Suns');
+        const lyranAlliance = createFaction(30, 'Lyran Alliance');
+        const draconisCombine = createFaction(40, 'Draconis Combine');
+        const mercenary = createFaction(MULFACTION_MERCENARY, 'Mercenary');
+        const unit = createUnit({ id: 8, name: 'Era Scoped Unit' });
+
+        erasByName.set(ilClan.name, ilClan);
+        erasById.set(ilClan.id, ilClan);
+        erasByName.set(jihad.name, jihad);
+        erasById.set(jihad.id, jihad);
+        factionsByName.set(capellanConfederation.name, capellanConfederation);
+        factionsByName.set(federatedSuns.name, federatedSuns);
+        factionsByName.set(lyranAlliance.name, lyranAlliance);
+        factionsByName.set(draconisCombine.name, draconisCombine);
+        factionsByName.set(mercenary.name, mercenary);
+        factionsById.set(capellanConfederation.id, capellanConfederation);
+        factionsById.set(federatedSuns.id, federatedSuns);
+        factionsById.set(lyranAlliance.id, lyranAlliance);
+        factionsById.set(draconisCombine.id, draconisCombine);
+        factionsById.set(mercenary.id, mercenary);
+        megaMekAvailabilityByUnitName.set(unit.name, {
+            e: {
+                '3150': {
+                    '20': [2, 0],
+                    '30': [1, 1],
+                },
+                '3067': {
+                    '40': [3, 0],
+                },
+            },
+        });
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            era: {
+                interactedWith: true,
+                value: ['ilClan'],
+            },
+            faction: {
+                interactedWith: false,
+                value: {},
+            },
+        });
+
+        const context = service.resolveGenerationContext([unit]);
+
+        expect(context.forceFaction).toBe(mercenary);
+        expect(context.forceEra).toBe(ilClan);
+        expect(context.availabilityFactionIds).toEqual([20, 30]);
+        expect(context.availablePairCount).toBe(2);
+    });
+
+    it('limits implicit faction scope to the rolled era when no era or faction is selected', () => {
+        const ilClan = createEra(3150, 'ilClan');
+        const jihad = createEra(3067, 'Jihad');
+        const federatedSuns = createFaction(20, 'Federated Suns');
+        const lyranAlliance = createFaction(30, 'Lyran Alliance');
+        const draconisCombine = createFaction(40, 'Draconis Combine');
+        const mercenary = createFaction(MULFACTION_MERCENARY, 'Mercenary');
+        const unit = createUnit({ id: 9, name: 'Rolled Era Scoped Unit' });
+
+        erasByName.set(ilClan.name, ilClan);
+        erasById.set(ilClan.id, ilClan);
+        erasByName.set(jihad.name, jihad);
+        erasById.set(jihad.id, jihad);
+        factionsByName.set(federatedSuns.name, federatedSuns);
+        factionsByName.set(lyranAlliance.name, lyranAlliance);
+        factionsByName.set(draconisCombine.name, draconisCombine);
+        factionsByName.set(mercenary.name, mercenary);
+        factionsById.set(federatedSuns.id, federatedSuns);
+        factionsById.set(lyranAlliance.id, lyranAlliance);
+        factionsById.set(draconisCombine.id, draconisCombine);
+        factionsById.set(mercenary.id, mercenary);
+        megaMekAvailabilityByUnitName.set(unit.name, {
+            e: {
+                '3150': {
+                    '20': [2, 0],
+                    '30': [1, 1],
+                },
+                '3067': {
+                    '40': [3, 0],
+                },
+            },
+        });
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            era: {
+                interactedWith: false,
+                value: {},
+            },
+            faction: {
+                interactedWith: false,
+                value: {},
+            },
+        });
+        spyOn(Math, 'random').and.returnValue(0.9);
+
+        const context = service.resolveGenerationContext([unit]);
+
+        expect(context.forceFaction).toBe(mercenary);
+        expect(context.forceEra).toBe(ilClan);
+        expect(context.availabilityFactionIds).toEqual([20, 30]);
+        expect(context.availablePairCount).toBe(3);
+    });
+
+    it('includes Extinct in the faction scope only when it is explicitly selected positively', () => {
+        const era = createEra(3150, 'ilClan');
+        const extinct = createFaction(MULFACTION_EXTINCT, 'Extinct');
+        const unit = createUnit({ id: 7, name: 'Doomed Atlas' });
+
+        erasByName.set(era.name, era);
+        erasById.set(era.id, era);
+        factionsByName.set(extinct.name, extinct);
+        factionsById.set(extinct.id, extinct);
+        megaMekAvailabilityByUnitName.set(unit.name, {
+            e: {
+                '3150': {
+                    [String(MULFACTION_EXTINCT)]: [2, 1],
+                },
+            },
+        });
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            era: {
+                interactedWith: true,
+                value: ['ilClan'],
+            },
+            faction: {
+                interactedWith: true,
+                value: {
+                    extinct: { name: 'Extinct', state: 'or', count: 1 },
+                },
+            },
+        });
+
+        const context = service.resolveGenerationContext([unit]);
+
+        expect(context.forceFaction).toBe(extinct);
+        expect(context.forceEra).toBe(era);
+        expect(context.availabilityFactionIds).toEqual([MULFACTION_EXTINCT]);
+        expect(context.availablePairCount).toBe(1);
+    });
+
+    it('derives MegaMek positive availability pairs directly from eligible unit records', () => {
+        const era = createEra(3150, 'Jihad');
+        const capellanConfederation = createFaction(10, 'Capellan Confederation');
+        const federatedSuns = createFaction(20, 'Federated Suns');
+        const mercenary = createFaction(MULFACTION_MERCENARY, 'Mercenary');
+        const unit = createUnit({ id: 1, name: 'Direct Pair Unit' });
+
+        erasByName.set(era.name, era);
+        erasById.set(era.id, era);
+        factionsByName.set(capellanConfederation.name, capellanConfederation);
+        factionsByName.set(federatedSuns.name, federatedSuns);
+        factionsByName.set(mercenary.name, mercenary);
+        factionsById.set(capellanConfederation.id, capellanConfederation);
+        factionsById.set(federatedSuns.id, federatedSuns);
+        factionsById.set(mercenary.id, mercenary);
+
+        megaMekAvailabilityByUnitName.set(unit.name, {
+            e: {
+                '3150': {
+                    '10': [2, 0],
+                    '20': [0, 3],
+                },
+            },
+        });
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            era: {
+                interactedWith: true,
+                value: ['Jihad'],
+            },
+            faction: {
+                interactedWith: false,
+                value: {},
+            },
+        });
+
+        const getFactionEraUnitIdsSpy = spyOn(unitAvailabilitySourceService, 'getFactionEraUnitIds').and.callThrough();
+
+        const context = service.resolveGenerationContext([unit]);
+
+        expect(getFactionEraUnitIdsSpy).not.toHaveBeenCalled();
+        expect(context.availablePairCount).toBe(2);
+        expect(context.forceFaction).toBe(mercenary);
+        expect(context.forceEra).toBe(era);
+    });
+
+    it('uses the highest remaining era and expands availability scope when cross-era availability is enabled without positive era selections', () => {
+        const ageOfWar = createEra(2570, 'Age of War');
+        const civilWar = createEra(3067, 'Civil War');
+        const ilClan = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Capellan Confederation');
+        const unit = createUnit({ id: 1, name: 'Vindicator' });
+
+        erasByName.set(ageOfWar.name, ageOfWar);
+        erasById.set(ageOfWar.id, ageOfWar);
+        erasByName.set(civilWar.name, civilWar);
+        erasById.set(civilWar.id, civilWar);
+        erasByName.set(ilClan.name, ilClan);
+        erasById.set(ilClan.id, ilClan);
+        factionsByName.set(faction.name, faction);
+        factionsById.set(faction.id, faction);
+        megaMekAvailabilityByUnitName.set(unit.name, {
+            e: {
+                '3067': {
+                    '10': [2, 0],
+                },
+                '3150': {
+                    '10': [4, 0],
+                },
+            },
+        });
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            era: {
+                interactedWith: true,
+                value: {
+                    age: { name: 'Age of War', state: 'not', count: 1 },
+                },
+            },
+            faction: {
+                interactedWith: true,
+                value: {
+                    cc: { name: 'Capellan Confederation', state: 'or', count: 1 },
+                },
+            },
+        });
+        spyOn(service as any, 'shouldUseCrossEraAvailabilityForSelection').and.returnValue(true);
+
+        const context = service.resolveGenerationContext([unit]);
+
+        expect(context.forceEra).toBe(ilClan);
+        expect(context.availabilityEraIds).toEqual([3067, 3150]);
+        expect(context.useAvailabilityEraScope).toBeTrue();
     });
 
     it('resolves positive multistate era selections from the active filter', () => {
@@ -460,7 +758,7 @@ describe('ForceGeneratorService', () => {
 
         expect(context.forceFaction).toBe(capellanConfederation);
         expect(context.forceEra).toBe(civilWar);
-        expect(context.averagingEraIds).toEqual([civilWar.id]);
+        expect(context.availabilityEraIds).toEqual([civilWar.id]);
         expect(context.availablePairCount).toBe(1);
     });
 
@@ -497,7 +795,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.totalCost).toBe(5);
     });
 
-    it('filters out units with no availability in the rolled faction and era even if they are positive elsewhere in the selected scope', () => {
+    it('uses max weights across selected eras and factions when multiselect expansion is enabled', () => {
         const rolledEra = createEra(3150, 'Jihad');
         const rolledFaction = createFaction(10, 'Capellan Confederation');
         const extinctUnit = createUnit({ id: 1, name: 'Extinct Unit', as: { PV: 5 } as Unit['as'] });
@@ -529,8 +827,10 @@ describe('ForceGeneratorService', () => {
             context: {
                 forceFaction: rolledFaction,
                 forceEra: rolledEra,
-                averagingFactionIds: [10, 20],
-                averagingEraIds: [3150, 3075],
+                availabilityFactionIds: [10, 20],
+                availabilityEraIds: [3150, 3075],
+                useAvailabilityFactionScope: true,
+                useAvailabilityEraScope: true,
                 availablePairCount: 3,
                 ruleset: null,
             },
@@ -543,8 +843,498 @@ describe('ForceGeneratorService', () => {
         });
 
         expect(preview.error).toBeNull();
-        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Available Unit']);
-        expect(preview.explanationLines[0]).toContain('Candidates: 1 units.');
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Extinct Unit']);
+        expect(preview.explanationLines[0]).toContain('Eligible units: 2 units. Availability-positive candidates: 2 units.');
+        expect(preview.explanationLines.some((line) => line.includes('Generation context: Capellan Confederation - Jihad. Availability weights: max P/S across 2 eras x 2 factions.'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('production pick, P 20 / S 0'))).toBeTrue();
+    });
+
+    it('uses max weights across selected eras for a single rolled faction when multiselect expansion is enabled', () => {
+        const rolledEra = createEra(3150, 'Jihad');
+        const rolledFaction = createFaction(10, 'Capellan Confederation');
+        const scopedUnit = createUnit({ id: 1, name: 'Scoped Era Unit', as: { PV: 5 } as Unit['as'] });
+
+        megaMekAvailabilityByUnitName.set(scopedUnit.name, {
+            e: {
+                '3150': {
+                    '10': [0, 0],
+                },
+                '3075': {
+                    '10': [1, 9],
+                },
+                '3067': {
+                    '10': [2, 4],
+                },
+            },
+        });
+
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [scopedUnit],
+            context: {
+                forceFaction: rolledFaction,
+                forceEra: rolledEra,
+                availabilityFactionIds: [10],
+                availabilityEraIds: [3150, 3075, 3067],
+                useAvailabilityFactionScope: false,
+                useAvailabilityEraScope: true,
+                availablePairCount: 3,
+                ruleset: null,
+            },
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Scoped Era Unit']);
+        expect(preview.explanationLines.some((line) => line.includes('Generation context: Capellan Confederation - Jihad. Availability weights: max P/S across 3 eras.'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('P 2 / S 9'))).toBeTrue();
+    });
+
+    it('uses max weights across selected factions for a single rolled era when multiselect expansion is enabled', () => {
+        const rolledEra = createEra(3150, 'Jihad');
+        const rolledFaction = createFaction(10, 'Capellan Confederation');
+        const scopedUnit = createUnit({ id: 1, name: 'Scoped Faction Unit', as: { PV: 5 } as Unit['as'] });
+
+        megaMekAvailabilityByUnitName.set(scopedUnit.name, {
+            e: {
+                '3150': {
+                    '10': [0, 0],
+                    '20': [7, 1],
+                    '30': [3, 6],
+                },
+            },
+        });
+
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [scopedUnit],
+            context: {
+                forceFaction: rolledFaction,
+                forceEra: rolledEra,
+                availabilityFactionIds: [10, 20, 30],
+                availabilityEraIds: [3150],
+                useAvailabilityFactionScope: true,
+                useAvailabilityEraScope: false,
+                availablePairCount: 3,
+                ruleset: null,
+            },
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Scoped Faction Unit']);
+        expect(preview.explanationLines.some((line) => line.includes('Generation context: Capellan Confederation - Jihad. Availability weights: max P/S across 3 factions.'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('P 7 / S 6'))).toBeTrue();
+    });
+
+    it('reuses cached availability weights across identical preview requests and rebuilds them when the scope changes', () => {
+        const era = createEra(3150, 'Jihad');
+        const capellanConfederation = createFaction(10, 'Capellan Confederation');
+        const federatedSuns = createFaction(20, 'Federated Suns');
+        const draconisCombine = createFaction(30, 'Draconis Combine');
+        const unitA = createUnit({ id: 1, name: 'Cache Test A', as: { PV: 5 } as Unit['as'] });
+        const unitB = createUnit({ id: 2, name: 'Cache Test B', as: { PV: 6 } as Unit['as'] });
+
+        erasByName.set(era.name, era);
+        erasById.set(era.id, era);
+        factionsByName.set(capellanConfederation.name, capellanConfederation);
+        factionsByName.set(federatedSuns.name, federatedSuns);
+        factionsByName.set(draconisCombine.name, draconisCombine);
+        factionsById.set(capellanConfederation.id, capellanConfederation);
+        factionsById.set(federatedSuns.id, federatedSuns);
+        factionsById.set(draconisCombine.id, draconisCombine);
+        units.push(unitA, unitB);
+
+        megaMekAvailabilityByUnitName.set(unitA.name, {
+            e: {
+                '3150': {
+                    '10': [2, 1],
+                    '20': [4, 0],
+                    '30': [3, 2],
+                },
+            },
+        });
+        megaMekAvailabilityByUnitName.set(unitB.name, {
+            e: {
+                '3150': {
+                    '10': [1, 3],
+                    '20': [2, 2],
+                    '30': [5, 1],
+                },
+            },
+        });
+
+        const buildAvailabilityWeightCacheSpy = spyOn(service as any, 'buildAvailabilityWeightCache').and.callThrough();
+        const baseRequest = {
+            eligibleUnits: [unitA, unitB],
+            context: {
+                forceFaction: capellanConfederation,
+                forceEra: era,
+                availabilityFactionIds: [10, 20],
+                availabilityEraIds: [3150],
+                useAvailabilityFactionScope: true,
+                useAvailabilityEraScope: false,
+                availablePairCount: 2,
+                ruleset: null,
+            } as ForceGenerationContext,
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        };
+
+        service.buildPreview(baseRequest);
+        expect(buildAvailabilityWeightCacheSpy).toHaveBeenCalledTimes(1);
+
+        service.buildPreview(baseRequest);
+        expect(buildAvailabilityWeightCacheSpy).toHaveBeenCalledTimes(1);
+
+        service.buildPreview({
+            ...baseRequest,
+            context: {
+                ...baseRequest.context,
+                availabilityFactionIds: [10, 20, 30],
+                availablePairCount: 3,
+            },
+        });
+        expect(buildAvailabilityWeightCacheSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('reuses cached availability weights when the rolled faction changes inside the same multi-faction scope', () => {
+        const era = createEra(3150, 'Jihad');
+        const capellanConfederation = createFaction(10, 'Capellan Confederation');
+        const federatedSuns = createFaction(20, 'Federated Suns');
+        const unitA = createUnit({ id: 1, name: 'Scoped Cache A', as: { PV: 5 } as Unit['as'] });
+        const unitB = createUnit({ id: 2, name: 'Scoped Cache B', as: { PV: 6 } as Unit['as'] });
+
+        erasByName.set(era.name, era);
+        erasById.set(era.id, era);
+        factionsByName.set(capellanConfederation.name, capellanConfederation);
+        factionsByName.set(federatedSuns.name, federatedSuns);
+        factionsById.set(capellanConfederation.id, capellanConfederation);
+        factionsById.set(federatedSuns.id, federatedSuns);
+        units.push(unitA, unitB);
+
+        megaMekAvailabilityByUnitName.set(unitA.name, {
+            e: {
+                '3150': {
+                    '10': [2, 1],
+                    '20': [4, 0],
+                },
+            },
+        });
+        megaMekAvailabilityByUnitName.set(unitB.name, {
+            e: {
+                '3150': {
+                    '10': [1, 3],
+                    '20': [2, 2],
+                },
+            },
+        });
+
+        const buildAvailabilityWeightCacheSpy = spyOn(service as any, 'buildAvailabilityWeightCache').and.callThrough();
+        const baseContext: ForceGenerationContext = {
+            forceFaction: capellanConfederation,
+            forceEra: era,
+            availabilityFactionIds: [10, 20],
+            availabilityEraIds: [3150],
+            useAvailabilityFactionScope: true,
+            useAvailabilityEraScope: false,
+            availablePairCount: 2,
+            ruleset: null,
+        };
+
+        service.buildPreview({
+            eligibleUnits: [unitA, unitB],
+            context: baseContext,
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        });
+        expect(buildAvailabilityWeightCacheSpy).toHaveBeenCalledTimes(1);
+
+        service.buildPreview({
+            eligibleUnits: [unitA, unitB],
+            context: {
+                ...baseContext,
+                forceFaction: federatedSuns,
+            },
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        });
+        expect(buildAvailabilityWeightCacheSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('rebuilds cached availability weights when revisiting a previously built era scope after another scope replaced the single cache', () => {
+        const firstEra = createEra(3075, 'Jihad');
+        const secondEra = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Capellan Confederation');
+        const unitA = createUnit({ id: 1, name: 'Era Cache A', as: { PV: 5 } as Unit['as'] });
+        const unitB = createUnit({ id: 2, name: 'Era Cache B', as: { PV: 6 } as Unit['as'] });
+
+        erasByName.set(firstEra.name, firstEra);
+        erasById.set(firstEra.id, firstEra);
+        erasByName.set(secondEra.name, secondEra);
+        erasById.set(secondEra.id, secondEra);
+        factionsByName.set(faction.name, faction);
+        factionsById.set(faction.id, faction);
+        units.push(unitA, unitB);
+
+        megaMekAvailabilityByUnitName.set(unitA.name, {
+            e: {
+                '3075': {
+                    '10': [2, 1],
+                },
+                '3150': {
+                    '10': [5, 0],
+                },
+            },
+        });
+        megaMekAvailabilityByUnitName.set(unitB.name, {
+            e: {
+                '3075': {
+                    '10': [1, 3],
+                },
+                '3150': {
+                    '10': [4, 2],
+                },
+            },
+        });
+
+        const buildAvailabilityWeightCacheSpy = spyOn(service as any, 'buildAvailabilityWeightCache').and.callThrough();
+        const baseRequest = {
+            eligibleUnits: [unitA, unitB],
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        };
+
+        service.buildPreview({
+            ...baseRequest,
+            context: createContext(faction, firstEra),
+        });
+        expect(buildAvailabilityWeightCacheSpy).toHaveBeenCalledTimes(1);
+
+        service.buildPreview({
+            ...baseRequest,
+            context: createContext(faction, secondEra),
+        });
+        expect(buildAvailabilityWeightCacheSpy).toHaveBeenCalledTimes(2);
+
+        service.buildPreview({
+            ...baseRequest,
+            context: createContext(faction, firstEra),
+        });
+        expect(buildAvailabilityWeightCacheSpy).toHaveBeenCalledTimes(3);
+    });
+
+    it('reuses the prepared candidate list across identical rerolls', () => {
+        const era = createEra(3150, 'Jihad');
+        const faction = createFaction(10, 'Capellan Confederation');
+        const unitA = createUnit({ id: 1, name: 'Prepared Cache A', as: { PV: 5 } as Unit['as'] });
+        const unitB = createUnit({ id: 2, name: 'Prepared Cache B', as: { PV: 6 } as Unit['as'] });
+
+        erasByName.set(era.name, era);
+        erasById.set(era.id, era);
+        factionsByName.set(faction.name, faction);
+        factionsById.set(faction.id, faction);
+        units.push(unitA, unitB);
+
+        megaMekAvailabilityByUnitName.set(unitA.name, {
+            e: {
+                '3150': {
+                    '10': [3, 0],
+                },
+            },
+        });
+        megaMekAvailabilityByUnitName.set(unitB.name, {
+            e: {
+                '3150': {
+                    '10': [2, 1],
+                },
+            },
+        });
+
+        const buildPreparedCandidateCacheSpy = spyOn(service as any, 'buildPreparedCandidateCache').and.callThrough();
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const request = {
+            eligibleUnits: [unitA, unitB],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        };
+
+        const firstPreview = service.buildPreview(request);
+        const secondPreview = service.buildPreview(request);
+
+        expect(firstPreview.error).toBeNull();
+        expect(secondPreview.error).toBeNull();
+        expect(buildPreparedCandidateCacheSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('reuses no-lock selection preparation across identical rerolls', () => {
+        const era = createEra(3150, 'Jihad');
+        const faction = createFaction(10, 'Capellan Confederation');
+        const unitA = createUnit({ id: 1, name: 'Selection Cache A', as: { PV: 5 } as Unit['as'] });
+        const unitB = createUnit({ id: 2, name: 'Selection Cache B', as: { PV: 6 } as Unit['as'] });
+
+        erasByName.set(era.name, era);
+        erasById.set(era.id, era);
+        factionsByName.set(faction.name, faction);
+        factionsById.set(faction.id, faction);
+        units.push(unitA, unitB);
+
+        megaMekAvailabilityByUnitName.set(unitA.name, {
+            e: {
+                '3150': {
+                    '10': [3, 0],
+                },
+            },
+        });
+        megaMekAvailabilityByUnitName.set(unitB.name, {
+            e: {
+                '3150': {
+                    '10': [2, 1],
+                },
+            },
+        });
+
+        const prepareSelectionPreparationSpy = spyOn(service as any, 'prepareSelectionPreparation').and.callThrough();
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const request = {
+            eligibleUnits: [unitA, unitB],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        };
+
+        const firstPreview = service.buildPreview(request);
+        const secondPreview = service.buildPreview(request);
+
+        expect(firstPreview.error).toBeNull();
+        expect(secondPreview.error).toBeNull();
+        expect(prepareSelectionPreparationSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('fingerprints single-era weights with the rolled context era and involved factions when multi-era scope is off', () => {
+        const rolledEra = createEra(3075, 'Jihad');
+        const latestEra = createEra(3150, 'ilClan');
+        const rolledFaction = createFaction(10, 'Capellan Confederation');
+
+        const signature = (service as any).buildAvailabilityWeightCacheSignature({
+            forceFaction: rolledFaction,
+            forceEra: rolledEra,
+            availabilityFactionIds: [10, 20],
+            availabilityEraIds: [3075, 3150],
+            useAvailabilityFactionScope: true,
+            useAvailabilityEraScope: false,
+            availablePairCount: 4,
+            ruleset: null,
+        } as ForceGenerationContext, true);
+
+        expect(signature).toContain('weightFactions:10,20');
+        expect(signature).toContain('weightEras:3075');
+        expect(signature).not.toContain(`weightEras:${rolledEra.id},${latestEra.id}`);
+    });
+
+    it('fingerprints cross-era weights with all involved eras and factions when multi-era scope is on', () => {
+        const rolledEra = createEra(3150, 'ilClan');
+        const signature = (service as any).buildAvailabilityWeightCacheSignature({
+            forceFaction: createFaction(10, 'Capellan Confederation'),
+            forceEra: rolledEra,
+            availabilityFactionIds: [10, 20],
+            availabilityEraIds: [3075, 3150],
+            useAvailabilityFactionScope: true,
+            useAvailabilityEraScope: true,
+            availablePairCount: 4,
+            ruleset: null,
+        } as ForceGenerationContext, true);
+
+        expect(signature).toContain('weightFactions:10,20');
+        expect(signature).toContain('weightEras:3075,3150');
+    });
+
+    it('prepares ruleset guidance once per preview instead of rebuilding it on every attempt', () => {
+        const era = createEra(3150, 'Jihad');
+        const faction = createFaction(10, 'Capellan Confederation');
+        const unitA = createUnit({ id: 1, name: 'Attempt Cache A', bv: 100, as: { PV: 5 } as Unit['as'] });
+        const unitB = createUnit({ id: 2, name: 'Attempt Cache B', bv: 100, as: { PV: 5 } as Unit['as'] });
+
+        erasByName.set(era.name, era);
+        erasById.set(era.id, era);
+        factionsByName.set(faction.name, faction);
+        factionsById.set(faction.id, faction);
+        units.push(unitA, unitB);
+
+        megaMekAvailabilityByUnitName.set(unitA.name, {
+            e: {
+                '3150': {
+                    '10': [2, 0],
+                },
+            },
+        });
+        megaMekAvailabilityByUnitName.set(unitB.name, {
+            e: {
+                '3150': {
+                    '10': [2, 0],
+                },
+            },
+        });
+
+        const buildRulesetProfileSpy = spyOn(service as any, 'buildRulesetProfile').and.callThrough();
+        spyOn(service as any, 'createAttemptBudget').and.returnValue({
+            minAttempts: 3,
+            maxAttempts: 3,
+            targetDurationMs: 0,
+        });
+
+        const preview = service.buildPreview({
+            eligibleUnits: [unitA, unitB],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.CLASSIC,
+            budgetRange: { min: 1000, max: 1001 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.units.length).toBe(1);
+        expect(buildRulesetProfileSpy).toHaveBeenCalledTimes(1);
     });
 
     it('uses exact MegaMek weights for MUL-visible units when MegaMek has an exact-context record', () => {
@@ -656,7 +1446,7 @@ describe('ForceGeneratorService', () => {
 
         expect(preview.error).toBeNull();
         expect(preview.units.map((generatedUnit) => generatedUnit.unit.name)).toEqual(['MUL Visible Unknown']);
-        expect(preview.explanationLines[0]).toContain('Candidates: 1 units.');
+        expect(preview.explanationLines[0]).toContain('Eligible units: 1 units. Availability-positive candidates: 1 units.');
         expect(preview.explanationLines.some((line) => line.includes('P 1 / S 1'))).toBeTrue();
     });
 
@@ -770,7 +1560,7 @@ describe('ForceGeneratorService', () => {
         });
 
         expect(preview.error).toBeNull();
-        expect(preview.explanationLines[0]).toContain('Candidates: 1 units.');
+        expect(preview.explanationLines[0]).toContain('Eligible units: 1 units. Availability-positive candidates: 1 units.');
         expect(preview.explanationLines.some((line) => line.includes('Generation context: Federated Suns - ilClan.'))).toBeTrue();
         expect(preview.explanationLines.some((line) => line.includes('Warhammer WHM-6R: production pick'))).toBeTrue();
         expect(preview.explanationLines.some((line) => line.includes('Explained Unit: production pick'))).toBeFalse();

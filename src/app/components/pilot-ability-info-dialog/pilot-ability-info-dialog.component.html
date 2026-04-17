@@ -17,7 +17,11 @@
         <div class="ability-section main-ability">
             <div class="summary">
                 @for (line of summary(); track line) {
+                @if (summaryIsHtml()) {
+                <p [innerHTML]="line"></p>
+                } @else {
                 <p>{{ line }}</p>
+                }
                 }
             </div>
 

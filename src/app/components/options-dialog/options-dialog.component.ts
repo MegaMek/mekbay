@@ -353,9 +353,23 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('gameSystem', value);
     }
 
-    onAvailabilitySourceChange(event: Event) {
+    async onAvailabilitySourceChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as AvailabilitySource;
+
+        if (value === 'megamek' && this.dataService.isDataReady()) {
+            const ready = await this.dataService.ensureMegaMekAvailabilityCatalogInitialized();
+            if (!ready) {
+                this.toastService.showToast('MegaMek availability data could not be loaded.', 'error');
+                return;
+            }
+        }
+
         this.optionsService.setOption('availabilitySource', value);
+    }
+
+    onMegaMekAvailabilityFiltersUseAllScopedOptionsChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value === 'true';
+        this.optionsService.setOption('megaMekAvailabilityFiltersUseAllScopedOptions', value);
     }
 
     onSheetsColorChange(event: Event) {

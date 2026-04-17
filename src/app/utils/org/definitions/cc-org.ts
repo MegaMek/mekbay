@@ -15,6 +15,7 @@ import {
     IS_REGIMENT,
     IS_BRIGADE,
     IS_UNIT,
+    IS_AIR_LANCE,
 } from './is-org';
 import {
     TRANSPORT_BA_ALL_BUCKETS,
@@ -107,22 +108,15 @@ export const CC_FLEET_REGIMENT: OrgComposedCountRule = {
 };
 
 export const CC_AIR_LANCE: OrgComposedCountRule = {
-    kind: 'composed-count',
-    type: 'Air Lance',
-    priority: 1,
-    countsAs: 'Lance',
-    modifiers: { '': 2 },
-    commandRank: 'Lieutenant',
-    tier: 1.5,
+    ...IS_AIR_LANCE,
     formationMatching: {
         ignoredChildRoles: [{ matches: ['Element'] }],
         notice: 'Element child groups are ignored for formation requirements.',
     },
     childRoles: [
-        { matches: ['Element'], min: 1 },
+        { matches: ['Element'], min: 1, max: 1 },
         { matches: ['Lance'], min: 1, onlyUnitTypes: ['BM'] },
     ],
-    childBucketBy: 'promotionWithUnitKinds',
 };
 
 export const CC_AUGMENTED_LANCE: OrgLeafPatternRule = {
@@ -133,74 +127,56 @@ export const CC_AUGMENTED_LANCE: OrgLeafPatternRule = {
     modifiers: { '': 6 },
     commandRank: 'Lieutenant',
     tier: 1.05,
+    formationMatching: {
+        ignoredPatternRefs: ['other', 'qualifiedBa'],
+        notice: 'Transported units are ignored for formation requirements.',
+    },
     unitSelector: ['BM', 'CV', 'BA'],
     bucketBy: 'transport',
     patterns: [
         {
             copySize: 6,
-            matchMode: 'score',
             bucketGroups: {
                 carrier: TRANSPORT_BM_CARRIER_BUCKETS,
                 other: TRANSPORT_CV_CARRIER_BUCKETS,
                 ba: TRANSPORT_BA_ALL_BUCKETS,
             },
-            scoreTerms: [
-                { kind: 'target', ref: 'carrier', target: 4 },
-                { kind: 'target', ref: 'other', target: 2 },
-                { kind: 'target', ref: 'ba', target: 0 },
-            ],
+            minSums: { carrier: 4, other: 2 },
+            maxSums: { carrier: 4, other: 2 },
         },
         {
             copySize: 6,
-            matchMode: 'score',
             bucketGroups: {
                 carrier: TRANSPORT_CV_CARRIER_BUCKETS,
                 other: TRANSPORT_BM_CARRIER_BUCKETS,
                 ba: TRANSPORT_BA_ALL_BUCKETS,
             },
-            scoreTerms: [
-                { kind: 'target', ref: 'carrier', target: 4 },
-                { kind: 'target', ref: 'other', target: 2 },
-                { kind: 'target', ref: 'ba', target: 0 },
-            ],
+            minSums: { carrier: 4, other: 2 },
+            maxSums: { carrier: 4, other: 2 },
         },
         {
             copySize: 6,
-            matchMode: 'score',
             bucketGroups: {
                 carrier: TRANSPORT_BM_CARRIER_BUCKETS,
-                other: TRANSPORT_CV_CARRIER_BUCKETS,
                 carrierOmni: TRANSPORT_BM_OMNI_CARRIER_BUCKETS,
-                ba: TRANSPORT_BA_ALL_BUCKETS,
                 qualifiedBa: TRANSPORT_BA_QUALIFIED_BUCKETS,
-                baMec: TRANSPORT_BA_MEC_BUCKETS,
+                mecBa: TRANSPORT_BA_MEC_BUCKETS,
             },
-            scoreTerms: [
-                { kind: 'target', ref: 'carrier', target: 4 },
-                { kind: 'target', ref: 'other', target: 0 },
-                { kind: 'target', ref: 'qualifiedBa', target: 2 },
-                { kind: 'positive-diff', left: 'ba', right: 'qualifiedBa' },
-                { kind: 'positive-diff', left: 'baMec', right: 'carrierOmni' },
-            ],
+            minSums: { carrier: 4, qualifiedBa: 2 },
+            maxSums: { carrier: 4, qualifiedBa: 2 },
+            constraints: [{ left: 'sum:mecBa', op: '<=', right: 'sum:carrierOmni' }],
         },
         {
-            copySize: 6,
-            matchMode: 'score',
+            copySize: 8,
             bucketGroups: {
                 carrier: TRANSPORT_CV_CARRIER_BUCKETS,
-                other: TRANSPORT_BM_CARRIER_BUCKETS,
                 carrierOmni: TRANSPORT_CV_OMNI_CARRIER_BUCKETS,
-                ba: TRANSPORT_BA_ALL_BUCKETS,
                 qualifiedBa: TRANSPORT_BA_QUALIFIED_BUCKETS,
-                baMec: TRANSPORT_BA_MEC_BUCKETS,
+                mecBa: TRANSPORT_BA_MEC_BUCKETS,
             },
-            scoreTerms: [
-                { kind: 'target', ref: 'carrier', target: 4 },
-                { kind: 'target', ref: 'other', target: 0 },
-                { kind: 'target', ref: 'qualifiedBa', target: 4 },
-                { kind: 'positive-diff', left: 'ba', right: 'qualifiedBa' },
-                { kind: 'positive-diff', left: 'baMec', right: 'carrierOmni' },
-            ],
+            minSums: { carrier: 4, qualifiedBa: 4 },
+            maxSums: { carrier: 4, qualifiedBa: 4 },
+            constraints: [{ left: 'sum:mecBa', op: '<=', right: 'sum:carrierOmni' }],
         },
     ],
 };

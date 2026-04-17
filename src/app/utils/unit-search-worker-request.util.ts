@@ -32,14 +32,12 @@
  */
 
 import type { GameSystem } from '../models/common.model';
-import type { AvailabilitySource } from '../models/options.model';
 import type { Unit } from '../models/units.model';
 import { filterStateToSemanticText } from './semantic-filter.util';
 import type {
     UnitSearchWorkerCorpusSnapshot,
     UnitSearchWorkerFactionEraSnapshot,
     UnitSearchWorkerIndexSnapshot,
-    UnitSearchWorkerMegaMekAvailabilitySnapshot,
     UnitSearchWorkerQueryRequest,
 } from './unit-search-worker-protocol.util';
 import type { FilterState } from '../services/unit-search-filters.model';
@@ -62,13 +60,18 @@ interface BuildWorkerSearchRequestArgs {
     executionQuery: string;
     telemetryQuery: string;
     gameSystem: GameSystem;
-    availabilitySource: AvailabilitySource;
     sortKey: string;
     sortDirection: 'asc' | 'desc';
     bvPvLimit: number;
     forceTotalBvPv: number;
     pilotGunnerySkill: number;
     pilotPilotingSkill: number;
+}
+
+const SEMANTIC_TEXT_ESCAPE_PATTERN = /([()=><!"'&\\])/g;
+
+function escapePlainTextForWorkerExecutionQuery(text: string): string {
+    return text.replace(SEMANTIC_TEXT_ESCAPE_PATTERN, '\\$1');
 }
 
 export function getWorkerCorpusVersion(searchCorpusVersion: string | number, tagsVersion: number): string {
@@ -81,7 +84,6 @@ export function getWorkerCorpusSnapshot(
     units: Unit[],
     indexes: UnitSearchWorkerIndexSnapshot,
     factionEraIndex: UnitSearchWorkerFactionEraSnapshot,
-    megaMekAvailability: UnitSearchWorkerMegaMekAvailabilitySnapshot,
 ): { snapshot: UnitSearchWorkerCorpusSnapshot; cache: UnitSearchWorkerCorpusCache } {
     if (cache.snapshot && cache.version === corpusVersion) {
         return { snapshot: cache.snapshot, cache };
@@ -92,7 +94,6 @@ export function getWorkerCorpusSnapshot(
         units,
         indexes,
         factionEraIndex,
-        megaMekAvailability,
     };
 
     return {
@@ -112,7 +113,7 @@ export function buildWorkerExecutionQuery({
 }: BuildWorkerExecutionQueryArgs): string {
     return filterStateToSemanticText(
         effectiveFilterState,
-        effectiveTextSearch,
+        escapePlainTextForWorkerExecutionQuery(effectiveTextSearch),
         gameSystem,
         totalRangesCache,
     ).trim();
@@ -125,7 +126,6 @@ export function buildWorkerSearchRequest(args: BuildWorkerSearchRequestArgs): Un
         executionQuery: args.executionQuery,
         telemetryQuery: args.telemetryQuery,
         gameSystem: args.gameSystem,
-        availabilitySource: args.availabilitySource,
         sortKey: args.sortKey,
         sortDirection: args.sortDirection,
         bvPvLimit: args.bvPvLimit,

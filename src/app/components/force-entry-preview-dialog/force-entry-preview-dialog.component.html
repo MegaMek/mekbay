@@ -1,5 +1,7 @@
 <div class="wide-dialog">
-    <load-force-preview-panel [force]="force"></load-force-preview-panel>
+    <div class="wide-dialog-body">
+        <force-preview-panel [force]="force" [displayMode]="displayMode" [scrollUnitsOnly]="true"></force-preview-panel>
+    </div>
     <div class="wide-dialog-actions">
         @if (canLoadForce()) {
             <button class="bt-button primary" (click)="onLoad()">LOAD</button>

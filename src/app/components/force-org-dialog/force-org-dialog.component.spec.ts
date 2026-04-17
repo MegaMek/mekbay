@@ -181,6 +181,7 @@ describe('ForceOrgDialogComponent', () => {
             _searchKey: '',
             _displayType: '',
             _maxRange: 0,
+            _weightedMaxRange: 0,
             _dissipationEfficiency: 0,
             _mdSumNoPhysical: 0,
             _mdSumNoPhysicalNoOneshots: 0,
@@ -213,6 +214,13 @@ describe('ForceOrgDialogComponent', () => {
     async function flushPromises(): Promise<void> {
         await Promise.resolve();
         await Promise.resolve();
+    }
+
+    function setDirtyState(isDirty: boolean): void {
+        const baseline = isDirty
+            ? '__dirty-baseline__'
+            : (component as any).captureOrganizationSnapshot();
+        (component as any).savedOrganizationSnapshot.set(baseline);
     }
 
     it('keeps a grouped force in place while its card still overlaps the group bounds', () => {
@@ -373,6 +381,121 @@ describe('ForceOrgDialogComponent', () => {
         expect((component as any).rectsOverlap(rectA, rectB)).toBeFalse();
     });
 
+    it('does not mark the TO&E dirty when clicking a force without starting a drag', () => {
+        const lowerForce = createPlacedForce('force-1', 0, 0, null);
+        const upperForce = createPlacedForce('force-2', 40, 0, null);
+        lowerForce.zIndex.set(0);
+        upperForce.zIndex.set(1);
+
+        (component as any).placedForces.set([lowerForce, upperForce]);
+        (component as any).resetDirtyTracking();
+
+        (component as any).onForcePointerDown({
+            pointerId: 1,
+            clientX: 100,
+            clientY: 120,
+            preventDefault: jasmine.createSpy('preventDefault'),
+            stopPropagation: jasmine.createSpy('stopPropagation'),
+        } as unknown as PointerEvent, lowerForce);
+        (component as any).onGlobalPointerUp({
+            pointerId: 1,
+            clientX: 100,
+            clientY: 120,
+        } as PointerEvent);
+
+        expect((component as any).dirty()).toBeFalse();
+        expect(lowerForce.zIndex()).toBe(0);
+        expect(upperForce.zIndex()).toBe(1);
+    });
+
+    it('does not mark the TO&E dirty when clicking a group without starting a drag', () => {
+        const lowerGroup = createGroup('group-1', 0, 0, 260, 220);
+        const upperGroup = createGroup('group-2', 80, 40, 260, 220);
+        lowerGroup.zIndex.set(0);
+        upperGroup.zIndex.set(1);
+
+        (component as any).groups.set([lowerGroup, upperGroup]);
+        (component as any).resetDirtyTracking();
+
+        (component as any).onGroupPointerDown({
+            pointerId: 2,
+            clientX: 140,
+            clientY: 160,
+            preventDefault: jasmine.createSpy('preventDefault'),
+            stopPropagation: jasmine.createSpy('stopPropagation'),
+        } as unknown as PointerEvent, lowerGroup);
+        (component as any).onGlobalPointerUp({
+            pointerId: 2,
+            clientX: 140,
+            clientY: 160,
+        } as PointerEvent);
+
+        expect((component as any).dirty()).toBeFalse();
+        expect(lowerGroup.zIndex()).toBe(0);
+        expect(upperGroup.zIndex()).toBe(1);
+    });
+
+    it('does not mark the TO&E dirty when a group rename keeps the saved name', async () => {
+        const group = createGroup('group-1', 0, 0, 260, 220);
+        group.name.set('Alpha');
+
+        (component as any).groups.set([group]);
+        (component as any).resetDirtyTracking();
+        dialogsServiceStub.prompt.and.resolveTo('Alpha');
+
+        await (component as any).renameGroup(group);
+
+        expect((component as any).dirty()).toBeFalse();
+    });
+
+    it('tracks dirty state from the current saved snapshot and clears when restored', () => {
+        const force = createPlacedForce('force-1', 0, 0, null);
+
+        (component as any).placedForces.set([force]);
+        (component as any).resetDirtyTracking();
+
+        force.x.set(20);
+        expect((component as any).dirty()).toBeTrue();
+
+        force.x.set(0);
+        expect((component as any).dirty()).toBeFalse();
+    });
+
+    it('does not mark the TO&E dirty for drag jitter that stays in the same snapped position', () => {
+        const lowerForce = createPlacedForce('force-1', 0, 0, null);
+        const upperForce = createPlacedForce('force-2', 40, 0, null);
+        lowerForce.zIndex.set(0);
+        upperForce.zIndex.set(1);
+
+        (component as any).placedForces.set([lowerForce, upperForce]);
+        (component as any).resetDirtyTracking();
+        spyOn(component as any, 'updateDropPreview');
+
+        (component as any).onForcePointerDown({
+            pointerId: 3,
+            clientX: 100,
+            clientY: 120,
+            preventDefault: jasmine.createSpy('preventDefault'),
+            stopPropagation: jasmine.createSpy('stopPropagation'),
+        } as unknown as PointerEvent, lowerForce);
+        (component as any).processPointerMove({
+            pointerId: 3,
+            clientX: 104,
+            clientY: 122,
+        } as PointerEvent);
+        (component as any).onGlobalPointerUp({
+            pointerId: 3,
+            clientX: 104,
+            clientY: 122,
+        } as PointerEvent);
+
+        expect((component as any).dirty()).toBeFalse();
+        expect(lowerForce.x()).toBe(0);
+        expect(lowerForce.y()).toBe(0);
+        expect(lowerForce.zIndex()).toBe(0);
+        expect(upperForce.zIndex()).toBe(1);
+    });
+
     it('shows a centered loading message while the organization shell is pending', async () => {
         const orgDeferred = createDeferred<any>();
 
@@ -464,7 +587,7 @@ describe('ForceOrgDialogComponent', () => {
     });
 
     it('keeps the dialog open when dismiss is cancelled with uncommitted changes', async () => {
-        (component as any).dirty.set(true);
+        setDirtyState(true);
         dialogsServiceStub.choose.and.resolveTo('cancel');
         dialogRefStub.close.calls.reset();
 
@@ -484,7 +607,7 @@ describe('ForceOrgDialogComponent', () => {
     });
 
     it('closes the dialog after confirming discard of uncommitted changes', async () => {
-        (component as any).dirty.set(true);
+        setDirtyState(true);
         dialogsServiceStub.choose.and.resolveTo('discard');
         dialogRefStub.close.calls.reset();
 
@@ -496,13 +619,13 @@ describe('ForceOrgDialogComponent', () => {
     it('only enables guarded dialog closing while the TO&E has uncommitted changes', async () => {
         expect(dialogRefStub.disableClose).toBeFalse();
 
-        (component as any).dirty.set(true);
+        setDirtyState(true);
         fixture.detectChanges();
         await flushPromises();
 
         expect(dialogRefStub.disableClose).toBeTrue();
 
-        (component as any).dirty.set(false);
+        setDirtyState(false);
         fixture.detectChanges();
         await flushPromises();
 
@@ -510,7 +633,7 @@ describe('ForceOrgDialogComponent', () => {
     });
 
     it('routes backdrop dismiss attempts through the unsaved changes guard', async () => {
-        (component as any).dirty.set(true);
+        setDirtyState(true);
         dialogsServiceStub.choose.and.resolveTo('cancel');
         dialogRefStub.close.calls.reset();
 
@@ -537,7 +660,7 @@ describe('ForceOrgDialogComponent', () => {
             returnValue: undefined,
         } as unknown as BeforeUnloadEvent;
 
-        (component as any).dirty.set(true);
+        setDirtyState(true);
 
         const result = (component as any).onBeforeUnload(event);
 
@@ -575,7 +698,7 @@ describe('ForceOrgDialogComponent', () => {
         });
 
         await (component as any).loadOrganization('org-shared');
-        (component as any).dirty.set(true);
+    setDirtyState(true);
         fixture.detectChanges();
         dataServiceStub.saveOrganization.calls.reset();
 
@@ -771,6 +894,11 @@ describe('ForceOrgDialogComponent', () => {
             clientX: 0,
             clientY: 0,
         } as PointerEvent, draggedGroup);
+
+        (component as any).processPointerMove({
+            clientX: 20,
+            clientY: 0,
+        } as PointerEvent);
 
         expect(draggedGroup.zIndex()).toBe(1);
         expect(lowerGroup.zIndex()).toBe(0);

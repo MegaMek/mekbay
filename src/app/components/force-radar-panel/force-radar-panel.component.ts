@@ -32,17 +32,17 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, effect, ElementRef, inject, input, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 
 import { GameSystem } from '../../models/common.model';
-import type { LoadForceEntry } from '../../models/load-force-entry.model';
+import { getForcePreviewResolvedUnits, type ForcePreviewEntry } from '../../models/force-preview.model';
 import type { Unit } from '../../models/units.model';
 import { DataService, DOES_NOT_TRACK, type MinMaxStatsRange } from '../../services/data.service';
 
 type RadarStatKey =
     | 'armor'
     | 'internal'
-    | 'firepower'
+    | 'range'
     | 'dpt'
     | 'mobility'
     | 'endurance'
@@ -62,9 +62,9 @@ interface RadarPoint {
     y: number;
 }
 
-interface RadarRenderSize {
-    width: number;
-    height: number;
+interface RadarRing {
+    factor: number;
+    points: string;
 }
 
 interface RadarAxisDefinition {
@@ -107,18 +107,18 @@ const CLASSIC_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
         }),
     },
     {
-        key: 'firepower',
-        label: 'Firepower',
+        key: 'range',
+        label: 'Range',
         getContribution: (unit, bucketStats) => ({
-            value: sanitizeStatValue(unit._mdSumNoPhysical),
-            min: sanitizeStatValue(bucketStats.alphaNoPhysicalNoOneshots.min),
-            average: sanitizeStatValue(bucketStats.alphaNoPhysicalNoOneshots.average),
-            max: sanitizeStatValue(bucketStats.alphaNoPhysicalNoOneshots.max),
+            value: sanitizeStatValue(unit._weightedMaxRange),
+            min: sanitizeStatValue(bucketStats.weightedMaxRange.min),
+            average: sanitizeStatValue(bucketStats.weightedMaxRange.average),
+            max: sanitizeStatValue(bucketStats.weightedMaxRange.max),
         }),
     },
     {
         key: 'dpt',
-        label: 'Damage/Turn',
+        label: 'Damage',
         getContribution: (unit, bucketStats) => ({
             value: sanitizeStatValue(unit.dpt),
             min: sanitizeStatValue(bucketStats.dpt.min),
@@ -183,6 +183,8 @@ const ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
 
 const RADAR_VIEWBOX_WIDTH = 500;
 const RADAR_VIEWBOX_HEIGHT = 400;
+const RADAR_RENDER_WIDTH = 800;
+const RADAR_RENDER_HEIGHT = 640;
 const RADAR_CENTER_X = RADAR_VIEWBOX_WIDTH / 2;
 const RADAR_CENTER_Y = RADAR_VIEWBOX_HEIGHT / 2;
 const RADAR_RADIUS = 140;
@@ -191,8 +193,6 @@ const RADAR_LABEL_SAFE_X = 58;
 const RADAR_LABEL_SAFE_TOP = 22;
 const RADAR_LABEL_SAFE_BOTTOM = 50;
 const RADAR_RING_FACTORS = [0.25, 0.5, 0.75, 1] as const;
-const RADAR_FALLBACK_RENDER_HEIGHT = 270;
-const RADAR_FALLBACK_RENDER_WIDTH = Math.round((RADAR_VIEWBOX_WIDTH / RADAR_VIEWBOX_HEIGHT) * RADAR_FALLBACK_RENDER_HEIGHT);
 
 function roundCoordinate(value: number): number {
     return Math.round(value * 100) / 100;
@@ -227,34 +227,6 @@ function getLabelPoint(angleDegrees: number): RadarPoint {
     return {
         x: roundCoordinate(clamp(point.x, RADAR_LABEL_SAFE_X, RADAR_VIEWBOX_WIDTH - RADAR_LABEL_SAFE_X)),
         y: roundCoordinate(clamp(point.y, RADAR_LABEL_SAFE_TOP, RADAR_VIEWBOX_HEIGHT - RADAR_LABEL_SAFE_BOTTOM)),
-    };
-}
-
-function getRadarRenderSize(width: number, height: number): RadarRenderSize {
-    const availableWidth = Math.floor(Math.max(0, width));
-    const availableHeight = Math.floor(Math.max(0, height));
-
-    if (availableWidth === 0 || availableHeight === 0) {
-        return {
-            width: RADAR_FALLBACK_RENDER_WIDTH,
-            height: RADAR_FALLBACK_RENDER_HEIGHT,
-        };
-    }
-
-    const scale = Math.min(availableWidth / RADAR_VIEWBOX_WIDTH, availableHeight / RADAR_VIEWBOX_HEIGHT);
-    const renderWidth = Math.floor(RADAR_VIEWBOX_WIDTH * scale);
-    const renderHeight = Math.floor(RADAR_VIEWBOX_HEIGHT * scale);
-
-    if (renderWidth === 0 || renderHeight === 0) {
-        return {
-            width: RADAR_FALLBACK_RENDER_WIDTH,
-            height: RADAR_FALLBACK_RENDER_HEIGHT,
-        };
-    }
-
-    return {
-        width: renderWidth,
-        height: renderHeight,
     };
 }
 
@@ -402,7 +374,7 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
 }
 
 @Component({
-    selector: 'load-force-radar-panel',
+    selector: 'force-radar-panel',
     standalone: true,
     imports: [CommonModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -412,16 +384,20 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
     @let overlayAxisMap = hoveredAxisMap();
     <div class="force-radar-shell">
         @if (hasUnits()) {
-            <div class="radar-area" #radarArea>
+            <div class="radar-area">
                 <svg
                     class="radar-chart"
                     [attr.viewBox]="'0 0 ' + viewBoxWidth + ' ' + viewBoxHeight"
-                    width="100%"
+                    [attr.width]="renderWidth"
+                    [attr.height]="renderHeight"
                     preserveAspectRatio="xMidYMid meet"
                     role="img">
 
-                    @for (ringPoints of gridPolygonPoints(); track $index) {
-                        <polygon class="radar-ring" [attr.points]="ringPoints"></polygon>
+                    @for (ring of gridRings(); track ring.factor) {
+                        <polygon
+                            class="radar-ring"
+                            [class.radar-ring-midpoint]="ring.factor === 0.5"
+                            [attr.points]="ring.points"></polygon>
                     }
 
                     @for (axis of axes; track axis.key) {
@@ -485,41 +461,43 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
         :host {
             display: block;
             width: 100%;
-            min-height: var(--radar-panel-min-height, 280px);
         }
 
         .force-radar-shell {
-            display: flex;
-            flex-direction: column;
             width: 100%;
-            min-height: inherit;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--border-color, #333);
+            max-height: inherit;
             box-sizing: border-box;
             overflow: hidden;
         }
 
         .radar-area {
-            flex: 1 1 auto;
             display: flex;
-            align-items: center;
             justify-content: center;
-            min-height: calc(var(--radar-panel-min-height, 280px) - 20px);
+            width: 100%;
+            max-height: inherit;
             padding: 0 2px;
+            box-sizing: border-box;
             overflow: hidden;
         }
 
         .radar-chart {
             display: block;
+            width: auto;
+            height: auto;
             max-width: 100%;
-            max-height: 100%;
-            flex: 0 0 auto;
+            max-height: inherit;
         }
 
         .radar-ring {
             fill: none;
             stroke: rgba(255, 255, 255, 0.14);
             stroke-width: 1;
+        }
+
+        .radar-ring-midpoint {
+            stroke: rgba(255, 255, 255, 0.18);
+            stroke-width: 1.5;
+            stroke-dasharray: 6 4;
         }
 
         .radar-axis {
@@ -578,7 +556,6 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
         }
 
         .radar-empty {
-            min-height: calc(var(--radar-panel-min-height, 280px) - 20px);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -588,10 +565,6 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
         }
 
         @media (max-width: 700px) {
-            :host {
-                min-height: var(--radar-panel-min-height-mobile, 250px);
-            }
-
             .radar-label {
                 font-size: 19px;
             }
@@ -600,38 +573,24 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
                 font-size: 17px;
             }
         }
-
-        @media (max-width: 520px) {
-            :host {
-                min-height: var(--radar-panel-min-height-mobile, 230px);
-            }
-        }
     `],
 })
-export class LoadForceRadarPanelComponent {
+export class ForceRadarPanelComponent {
     private readonly dataService = inject(DataService);
-    private readonly radarArea = viewChild<ElementRef<HTMLDivElement>>('radarArea');
-    private readonly chartRenderSize = signal<RadarRenderSize>({
-        width: RADAR_FALLBACK_RENDER_WIDTH,
-        height: RADAR_FALLBACK_RENDER_HEIGHT,
-    });
 
     readonly centerX = RADAR_CENTER_X;
     readonly centerY = RADAR_CENTER_Y;
     readonly viewBoxWidth = RADAR_VIEWBOX_WIDTH;
     readonly viewBoxHeight = RADAR_VIEWBOX_HEIGHT;
-    readonly force = input.required<LoadForceEntry>();
+    readonly renderWidth = RADAR_RENDER_WIDTH;
+    readonly renderHeight = RADAR_RENDER_HEIGHT;
+    readonly force = input.required<ForcePreviewEntry>();
     readonly hoveredUnit = input<Unit | null>(null);
     readonly axisDefinitions = computed(() => this.force().type === GameSystem.ALPHA_STRIKE
         ? ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS
         : CLASSIC_RADAR_AXIS_DEFINITIONS);
-    readonly chartRenderWidth = computed(() => this.chartRenderSize().width);
-    readonly chartRenderHeight = computed(() => this.chartRenderSize().height);
 
-    readonly units = computed(() => this.force().groups
-        .flatMap((group) => group.units)
-        .map((entry) => entry.unit)
-        .filter((unit): unit is Unit => unit !== undefined));
+    readonly units = computed<Unit[]>(() => getForcePreviewResolvedUnits(this.force()));
 
     readonly hasUnits = computed(() => this.units().length > 0);
 
@@ -692,11 +651,14 @@ export class LoadForceRadarPanelComponent {
         return new Map(this.hoveredUnitAxes().map((axis) => [axis.key, axis] as const));
     });
 
-    readonly gridPolygonPoints = computed(() => {
+    readonly gridRings = computed<RadarRing[]>(() => {
         const axisDefinitions = this.axisDefinitions();
-        return RADAR_RING_FACTORS.map((factor) => toPointString(
-            axisDefinitions.map((_, index) => toPoint(getAngle(index, axisDefinitions.length), RADAR_RADIUS * factor)),
-        ));
+        return RADAR_RING_FACTORS.map((factor) => ({
+            factor,
+            points: toPointString(
+                axisDefinitions.map((_, index) => toPoint(getAngle(index, axisDefinitions.length), RADAR_RADIUS * factor)),
+            ),
+        }));
     });
 
     readonly valuePolygonPoints = computed(() => {
@@ -706,42 +668,6 @@ export class LoadForceRadarPanelComponent {
     readonly hoveredValuePolygonPoints = computed(() => {
         return toPointString(this.hoveredUnitAxes().map((axis) => axis.dataPoint));
     });
-
-    constructor() {
-        effect((onCleanup) => {
-            const radarArea = this.radarArea()?.nativeElement;
-            if (!radarArea) {
-                return;
-            }
-
-            const updateChartSize = (width: number, height: number): void => {
-                const nextSize = getRadarRenderSize(width, height);
-                const currentSize = this.chartRenderSize();
-                if (currentSize.width !== nextSize.width || currentSize.height !== nextSize.height) {
-                    this.chartRenderSize.set(nextSize);
-                }
-            };
-
-            updateChartSize(radarArea.clientWidth, radarArea.clientHeight);
-
-            if (typeof ResizeObserver === 'undefined') {
-                return;
-            }
-
-            const observer = new ResizeObserver((entries) => {
-                const entry = entries[0];
-                if (entry) {
-                    updateChartSize(entry.contentRect.width, entry.contentRect.height);
-                }
-            });
-
-            observer.observe(radarArea);
-
-            onCleanup(() => {
-                observer.disconnect();
-            });
-        });
-    }
 
     private getUnitBucketMaxStats(unit: Unit): MinMaxStatsRange {
         return getUnitBucketMaxStats(this.dataService, this.force().type, unit);

@@ -314,7 +314,6 @@ export class ForceOrgDialogComponent {
     protected organizationOwned = signal(true);
     protected readOnly = computed(() => !this.organizationOwned());
     protected saving = signal(false);
-    protected dirty = signal(false);
 
     getFactionImg = getFactionImg;
 
@@ -405,6 +404,9 @@ export class ForceOrgDialogComponent {
 
     // Groups
     protected groups = signal<OrgGroup[]>([]);
+    private currentOrganizationSnapshot = computed(() => this.captureOrganizationSnapshot());
+    private savedOrganizationSnapshot = signal(this.currentOrganizationSnapshot());
+    protected dirty = computed(() => this.currentOrganizationSnapshot() !== this.savedOrganizationSnapshot());
 
     // Pan/zoom state
     protected viewOffset = signal({ x: 0, y: 0 });
@@ -779,6 +781,7 @@ export class ForceOrgDialogComponent {
             this.loadOrganization(this.dialogData.organizationId);
         } else {
             this.loadForces();
+            this.resetDirtyTracking();
         }
     }
 
@@ -867,6 +870,37 @@ export class ForceOrgDialogComponent {
         this.nextGroupZIndex = groups.reduce((max, group) => Math.max(max, group.zIndex() + 1), 0);
     }
 
+    private captureOrganizationSnapshot(): string {
+        const snapshot = {
+            name: this.organizationName(),
+            forces: this.placedForces()
+                .map((pf) => ({
+                    instanceId: pf.force.instanceId,
+                    x: pf.x(),
+                    y: pf.y(),
+                    groupId: pf.groupId,
+                }))
+                .sort((left, right) => left.instanceId.localeCompare(right.instanceId)),
+            groups: this.groups()
+                .map((group) => ({
+                    id: group.id,
+                    name: group.name(),
+                    x: group.x(),
+                    y: group.y(),
+                    width: group.width(),
+                    height: group.height(),
+                    parentGroupId: group.parentGroupId,
+                }))
+                .sort((left, right) => left.id.localeCompare(right.id)),
+        };
+
+        return JSON.stringify(snapshot);
+    }
+
+    private resetDirtyTracking(): void {
+        this.savedOrganizationSnapshot.set(this.currentOrganizationSnapshot());
+    }
+
     private restoreOrganizationShell(org: LoadedOrganization, forceMap?: ReadonlyMap<string, LoadForceEntry>): void {
         const placed = this.buildPlacedForces(org.forces, forceMap);
         const groups = this.buildGroups(org.groups);
@@ -877,7 +911,7 @@ export class ForceOrgDialogComponent {
 
         this.organizationId.set(org.organizationId);
         this.organizationName.set(org.name);
-        this.dirty.set(false);
+        this.resetDirtyTracking();
 
         this.updateZIndexCounters(this.placedForces(), this.groups());
 
@@ -1188,7 +1222,10 @@ export class ForceOrgDialogComponent {
 
     protected async previewForce(force: LoadForceEntry): Promise<void> {
         this.dialogsService.createDialog(ForceEntryPreviewDialogComponent, {
-            data: { force }
+            data: {
+                force,
+                unitDisplayNameOverride: 'both',
+            }
         });
     }
 
@@ -1309,20 +1346,20 @@ export class ForceOrgDialogComponent {
         this.forceDragged = false;
         this.dragStartPos = { x: event.clientX, y: event.clientY };
         this.forceStartPos = { x: pf.x(), y: pf.y() };
-        this.bringForceToFront(pf);
         this.addGlobalPointerListeners();
     }
 
     private bringForceToFront(pf: PlacedForce): void {
         const forces = this.placedForces();
+        const topZ = forces.length - 1;
         const currentZ = pf.zIndex();
+        if (currentZ >= topZ) return;
         for (const f of forces) {
             if (f.zIndex() > currentZ) f.zIndex.update(v => v - 1);
         }
-        pf.zIndex.set(forces.length - 1);
+        pf.zIndex.set(topZ);
         this.nextZIndex = forces.length;
         this.placedForces.set([...forces]);
-        this.dirty.set(true);
     }
 
     // ==================== Group Drag ====================
@@ -1346,20 +1383,20 @@ export class ForceOrgDialogComponent {
         this.groupDragged = false;
         this.groupDragStartPos = { x: event.clientX, y: event.clientY };
         this.groupStartPos = { x: group.x(), y: group.y() };
-        this.bringGroupToFront(group);
         this.addGlobalPointerListeners();
     }
 
     private bringGroupToFront(group: OrgGroup): void {
         const groups = this.groups();
+        const topZ = groups.length - 1;
         const currentZ = group.zIndex();
+        if (currentZ >= topZ) return;
         for (const other of groups) {
             if (other.zIndex() > currentZ) other.zIndex.update(v => v - 1);
         }
-        group.zIndex.set(groups.length - 1);
+        group.zIndex.set(topZ);
         this.nextGroupZIndex = groups.length;
         this.groups.set([...groups]);
-        this.dirty.set(true);
     }
 
     // ==================== Remove Force ====================
@@ -1375,7 +1412,6 @@ export class ForceOrgDialogComponent {
         this.placedForces.set(this.placedForces().filter(f => f !== pf));
         // Clean up empty groups
         this.cleanupEmptyGroups();
-        this.dirty.set(true);
     }
 
     // ==================== Group Management ====================
@@ -1391,7 +1427,6 @@ export class ForceOrgDialogComponent {
         if (newName !== null) {
             group.name.set(newName.trim());
             this.groups.set([...this.groups()]);
-            this.dirty.set(true);
         }
     }
 
@@ -1399,7 +1434,6 @@ export class ForceOrgDialogComponent {
         if (this.readOnly()) return;
         if (this.groupDragged) return;
         this.dissolveGroup(group);
-        this.dirty.set(true);
     }
 
     private dissolveGroup(group: OrgGroup): void {
@@ -2354,9 +2388,14 @@ export class ForceOrgDialogComponent {
         if (dragged) {
             const worldPos = this.screenToWorld(event.clientX, event.clientY);
             const { dx, dy } = this.getScaledDelta(event, this.dragStartPos);
-            if (Math.abs(dx) > 3 || Math.abs(dy) > 3) this.forceDragged = true;
-            dragged.x.set(snapToGrid(this.forceStartPos.x + dx));
-            dragged.y.set(snapToGrid(this.forceStartPos.y + dy));
+            const newX = snapToGrid(this.forceStartPos.x + dx);
+            const newY = snapToGrid(this.forceStartPos.y + dy);
+            if (!this.forceDragged && (newX !== this.forceStartPos.x || newY !== this.forceStartPos.y)) {
+                this.forceDragged = true;
+                this.bringForceToFront(dragged);
+            }
+            dragged.x.set(newX);
+            dragged.y.set(newY);
             // Update drop preview
             const forceAction = this.detectForceDrop(dragged, worldPos);
             if (!forceAction && dragged.groupId) {
@@ -2388,9 +2427,12 @@ export class ForceOrgDialogComponent {
         if (draggedGrp) {
             const worldPos = this.screenToWorld(event.clientX, event.clientY);
             const { dx, dy } = this.getScaledDelta(event, this.groupDragStartPos);
-            if (Math.abs(dx) > 3 || Math.abs(dy) > 3) this.groupDragged = true;
             const newX = snapGroupXToGrid(this.groupStartPos.x + dx);
             const newY = snapGroupYToGrid(this.groupStartPos.y + dy);
+            if (!this.groupDragged && (newX !== this.groupStartPos.x || newY !== this.groupStartPos.y)) {
+                this.groupDragged = true;
+                this.bringGroupToFront(draggedGrp);
+            }
             const moveDx = newX - draggedGrp.x();
             const moveDy = newY - draggedGrp.y();
 
@@ -2527,7 +2569,6 @@ export class ForceOrgDialogComponent {
                             this.placedForces.set([...this.placedForces(), newPlaced]);
                             // Try grouping with nearby forces
                             this.tryFormGroup(newPlaced, worldPos);
-                            this.dirty.set(true);
                         }
                     }
                 }
@@ -2542,7 +2583,6 @@ export class ForceOrgDialogComponent {
         if (dragged) {
             if (this.forceDragged) {
                 this.tryFormGroup(dragged, this.screenToWorld(event.clientX, event.clientY));
-                this.dirty.set(true);
             }
             this.draggedForce.set(null);
             this.isDragging.set(false);
@@ -2574,7 +2614,6 @@ export class ForceOrgDialogComponent {
                     const parent = this.groups().find(g => g.id === dragEndGroup.parentGroupId);
                     if (parent) this.recalcGroupBounds(parent);
                 }
-                this.dirty.set(true);
             } else if (this.titleDragGroupId === dragEndGroup.id) {
                 void this.renameGroup(dragEndGroup);
             }
@@ -2599,7 +2638,6 @@ export class ForceOrgDialogComponent {
         );
         if (newName !== null) {
             this.organizationName.set(newName.trim() || 'Unnamed Organization');
-            this.dirty.set(true);
         }
     }
 
@@ -2662,7 +2700,7 @@ export class ForceOrgDialogComponent {
             };
 
             await this.dataService.saveOrganization(serialized);
-            this.dirty.set(false);
+            this.resetDirtyTracking();
         } finally {
             this.saving.set(false);
         }
