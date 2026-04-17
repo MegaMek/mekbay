@@ -67,7 +67,6 @@
 
 .faction-megamek-availability {
     display: inline-flex;
-    align-items: center;
     margin-left: 4px;
     padding: 2px 4px;
     color: var(--text-color-secondary);
@@ -75,14 +74,15 @@
 
 .faction-megamek-availability-badges {
     display: inline-flex;
-    align-items: center;
 }
 
 .faction-megamek-availability-badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    line-height: 1;
+    line-height: 0;
+    position: relative;
+    top: 0.18em;
 }
 
 .faction-megamek-availability-icon {

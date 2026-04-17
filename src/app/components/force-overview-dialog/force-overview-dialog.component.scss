@@ -161,7 +161,7 @@
     overflow: hidden;
 }
 
-.radar-tab-layout {
+.summary-tab-layout {
     display: grid;
     grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.95fr);
     gap: 12px;
@@ -171,7 +171,7 @@
     box-sizing: border-box;
 }
 
-.radar-tab-preview,
+.summary-tab-preview,
 .radar-tab-chart {
     display: flex;
     flex-direction: column;
@@ -179,17 +179,24 @@
     min-height: 0;
 }
 
-.radar-tab-preview force-preview-panel {
+.summary-tab-preview force-preview-panel {
     flex: 1 1 auto;
     min-height: 0;
 }
 
 .radar-tab-chart {
     align-self: start;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color, #333);
+    box-sizing: border-box;
+    overflow: hidden;
+    width: 100%;
 }
 
 .radar-tab-chart force-radar-panel {
-    width: 100%;
+    display: block;
+    width: auto;
+    margin-inline: auto;
 }
 
 .units-list {
@@ -692,8 +699,8 @@
     font-size: 0.8em;
 }
 
-@media (max-width: 920px) {
-    .radar-tab-layout {
+@media (max-width: 800px) {
+    .summary-tab-layout {
         display: flex;
         flex-direction: column;
         gap: 10px;
@@ -703,9 +710,13 @@
     .radar-tab-chart {
         order: -1;
         flex: 0 0 auto;
-    }
 
-    .radar-tab-preview {
+        force-radar-panel {
+            max-height: 30vh;
+        }
+    }
+    
+    .summary-tab-preview {
         flex: 1 1 auto;
         overflow: hidden;
     }

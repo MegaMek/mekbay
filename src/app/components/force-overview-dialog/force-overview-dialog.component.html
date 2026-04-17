@@ -50,8 +50,8 @@
 <div class="dialog-content" #scrollContainer [class.table-mode]="activeTab() === 'units' && isTableMode()" [class.preview-tab]="isSummaryTab()">
     @if (isSummaryTab()) {
         @let previewEntry = summaryPreviewEntry();
-        <div class="radar-tab-layout">
-            <div class="radar-tab-preview">
+        <div class="summary-tab-layout">
+            <div class="summary-tab-preview">
                 <force-preview-panel
                     [force]="previewEntry"
                     [showHeader]="false"

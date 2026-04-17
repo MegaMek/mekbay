@@ -206,6 +206,7 @@ export interface Unit {
     internal: number;
     heat: number;
     dissipation: number;
+    diss?: number[]; // Mix/Max dissipation
     moveType: MoveType;
     walk: number;
     walk2: number; // Max possible

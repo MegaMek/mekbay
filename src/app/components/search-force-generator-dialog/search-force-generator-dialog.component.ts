@@ -81,6 +81,7 @@ export interface SearchForceGeneratorDialogResult {
 
 type MultiStateFilterKey = 'era' | 'faction' | '_tags';
 type UnitTypeFilterKey = 'type' | 'as.TP';
+type GeneratorDialogTab = 'configuration' | 'preview';
 
 @Component({
     selector: 'search-force-generator-dialog',
@@ -191,7 +192,8 @@ export class SearchForceGeneratorDialogComponent {
         this.togglePreviewUnitLock(unitEntry);
     };
     readonly hoveredPreviewUnit = signal<ForcePreviewUnit | null>(null);
-    readonly hoveredRadarUnit = computed(() => this.hoveredPreviewUnit()?.unit ?? null);
+    readonly selectedPreviewUnit = signal<ForcePreviewUnit | null>(null);
+    readonly hoveredRadarUnit = computed(() => this.hoveredPreviewUnit()?.unit ?? this.selectedPreviewUnit()?.unit ?? null);
     readonly descriptionLines = computed(() => {
         const lines = [];
         const query = this.filtersService.searchText().trim();
@@ -252,6 +254,7 @@ export class SearchForceGeneratorDialogComponent {
             maxUnitCount: this.maxUnitCount(),
         };
     });
+    readonly mobileTab = signal<GeneratorDialogTab>('configuration');
     private readonly previewState = signal<ForceGenerationPreview>(this.createEmptyPreview(
         'Press REROLL to generate a force preview for the current settings.',
     ));
@@ -425,10 +428,16 @@ export class SearchForceGeneratorDialogComponent {
         this.syncInputValue(event, this.maxUnitCount());
     }
 
+    setMobileTab(tab: GeneratorDialogTab): void {
+        this.mobileTab.set(tab);
+    }
+
     reroll(): void {
         this.clearHoveredPreviewUnit();
+        this.clearSelectedPreviewUnit();
         const preview = this.buildGeneratedPreview();
         this.previewState.set(preview);
+        this.mobileTab.set('preview');
         this.recordForceGeneration(preview);
     }
 
@@ -439,6 +448,7 @@ export class SearchForceGeneratorDialogComponent {
         }
 
         this.clearHoveredPreviewUnit();
+        this.clearSelectedPreviewUnit();
 
         const importedPreviewEntry = createForcePreviewEntryFromForce(currentForce);
         const importedUnits = getForcePreviewUnitEntries(importedPreviewEntry)
@@ -460,6 +470,10 @@ export class SearchForceGeneratorDialogComponent {
 
     onPreviewUnitHover(unitEntry: ForcePreviewUnit | null): void {
         this.hoveredPreviewUnit.set(unitEntry?.unit ? unitEntry : null);
+    }
+
+    onPreviewSelectedUnitsChange(selectedUnits: ForcePreviewUnit[]): void {
+        this.selectedPreviewUnit.set(selectedUnits[0] ?? null);
     }
 
     submit(): void {
@@ -495,6 +509,10 @@ export class SearchForceGeneratorDialogComponent {
 
     private clearHoveredPreviewUnit(): void {
         this.hoveredPreviewUnit.set(null);
+    }
+
+    private clearSelectedPreviewUnit(): void {
+        this.selectedPreviewUnit.set(null);
     }
 
     private getDropdownFilter(key: string): DropdownFilterOptions | null {

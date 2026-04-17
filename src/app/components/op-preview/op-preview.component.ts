@@ -55,11 +55,14 @@ export interface OpPreviewForce {
     bv?: number;
     pv?: number;
     factionId?:  FactionId;
+    eraId?: number;
     exists?: boolean;
 }
 
 interface OpPreviewDisplayForce extends OpPreviewForce {
     factionImgUrl?: string;
+    eraImgUrl?: string;
+    eraName?: string;
 }
 
 @Component({
@@ -81,22 +84,42 @@ export class OpPreviewComponent {
 
     private displayForces = computed<OpPreviewDisplayForce[]>(() => {
         const factionImgCache = new Map<FactionId, string | undefined>();
+        const eraCache = new Map<number, { imgUrl?: string; name?: string }>();
 
         return this.forces().map(force => {
             const factionId = force.factionId;
+            const eraId = force.eraId;
 
-            if (!factionId) {
-                return force;
+            let factionImgUrl: string | undefined;
+            if (factionId != null) {
+                if (!factionImgCache.has(factionId)) {
+                    const faction = this.dataService.getFactionById(factionId);
+                    factionImgCache.set(factionId, faction ? getFactionImg(faction) : undefined);
+                }
+                factionImgUrl = factionImgCache.get(factionId);
             }
 
-            if (!factionImgCache.has(factionId)) {
-                const faction = this.dataService.getFactionById(factionId);
-                factionImgCache.set(factionId, faction ? getFactionImg(faction) : undefined);
+            let eraImgUrl: string | undefined;
+            let eraName: string | undefined;
+            if (eraId != null) {
+                if (!eraCache.has(eraId)) {
+                    const era = this.dataService.getEraById(eraId);
+                    eraCache.set(eraId, {
+                        imgUrl: era?.img || era?.icon,
+                        name: era?.name,
+                    });
+                }
+
+                const eraInfo = eraCache.get(eraId);
+                eraImgUrl = eraInfo?.imgUrl;
+                eraName = eraInfo?.name;
             }
 
             return {
                 ...force,
-                factionImgUrl: factionImgCache.get(factionId)
+                factionImgUrl,
+                eraImgUrl,
+                eraName,
             };
         });
     });

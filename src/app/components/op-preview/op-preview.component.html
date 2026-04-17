@@ -7,10 +7,19 @@
              (cdkDropListDropped)="onDrop($event, 'friendly')">
             @for (f of friendlyForces(); track f.instanceId) {
                 <div class="op-force" [class.missing]="f.exists === false" cdkDrag [cdkDragData]="f" [cdkDragDisabled]="!allowDragDrop()">
-                    @if (f.factionImgUrl; as factionImgUrl) {
-                        <img [src]="factionImgUrl" class="op-faction-icon" />
-                    }
-                    <span class="op-force-name">{{ f.name || f.instanceId }}</span>
+                    <div class="op-force-main">
+                        @if (f.factionImgUrl || f.eraImgUrl) {
+                            <span class="op-force-icons">
+                                @if (f.factionImgUrl; as factionImgUrl) {
+                                    <img [src]="factionImgUrl" class="op-faction-icon" />
+                                }
+                                @if (f.eraImgUrl; as eraImgUrl) {
+                                    <img [src]="eraImgUrl" class="op-era-icon" [alt]="f.eraName || 'Era'" [title]="f.eraName || 'Era'" />
+                                }
+                            </span>
+                        }
+                        <span class="op-force-name">{{ f.name || f.instanceId }}</span>
+                    </div>
                     @if (f.type === 'as') {
                         <span class="op-force-val">PV: {{ (f.pv || f.bv || 0) | number }}</span>
                     } @else if (f.bv) {
@@ -43,10 +52,19 @@
              (cdkDropListDropped)="onDrop($event, 'enemy')">
             @for (f of enemyForces(); track f.instanceId) {
                 <div class="op-force" [class.missing]="f.exists === false" cdkDrag [cdkDragData]="f" [cdkDragDisabled]="!allowDragDrop()">
-                    @if (f.factionImgUrl; as factionImgUrl) {
-                        <img [src]="factionImgUrl" class="op-faction-icon" />
-                    }
-                    <span class="op-force-name">{{ f.name || f.instanceId }}</span>
+                    <div class="op-force-main">
+                        @if (f.factionImgUrl || f.eraImgUrl) {
+                            <span class="op-force-icons">
+                                @if (f.factionImgUrl; as factionImgUrl) {
+                                    <img [src]="factionImgUrl" class="op-faction-icon" />
+                                }
+                                @if (f.eraImgUrl; as eraImgUrl) {
+                                    <img [src]="eraImgUrl" class="op-era-icon" [alt]="f.eraName || 'Era'" [title]="f.eraName || 'Era'" />
+                                }
+                            </span>
+                        }
+                        <span class="op-force-name">{{ f.name || f.instanceId }}</span>
+                    </div>
                     @if (f.type === 'as') {
                         <span class="op-force-val">PV: {{ (f.pv || f.bv || 0) | number }}</span>
                     } @else if (f.bv) {
