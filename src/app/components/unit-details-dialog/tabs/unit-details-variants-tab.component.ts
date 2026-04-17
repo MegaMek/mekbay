@@ -191,5 +191,4 @@ export class UnitDetailsVariantsTabComponent {
     onTagClick(event: TagClickEvent): void {
         this.tagClick.emit(event);
     }
-
 }
