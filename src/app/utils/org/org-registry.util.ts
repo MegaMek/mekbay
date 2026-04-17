@@ -7,6 +7,7 @@ import {
 	DC_CORE_ORG,
 	IS_CORE_ORG,
 	MH_CORE_ORG,
+	SLDF_CORE_ORG,
 	SOCIETY_CORE_ORG,
 	WD_CORE_ORG,
 } from './definitions';
@@ -36,6 +37,7 @@ export const ORG_DEFINITION_REGISTRY: readonly OrgDefinitionRegistryEntry[] = [
 	{ match: (faction) => faction.name.includes('Capellan Confederation'), org: CC_CORE_ORG },
 	{ match: (faction) => faction.name.includes('Draconis'), org: DC_CORE_ORG },
 	{ match: (faction) => isClan(faction), org: CLAN_CORE_ORG },
+	{ match: (faction) => faction.name.includes('Star League') || faction.name.includes('Terran Hegemony'), org: SLDF_CORE_ORG },
 ];
 
 export const DEFAULT_ORG_DEFINITION: OrgDefinition = IS_CORE_ORG;
@@ -44,5 +46,5 @@ export function resolveOrgDefinition(
 	faction: Faction,
 	era?: Era | null,
 ): OrgDefinition {
-	return ORG_SPEC_REGISTRY.find((entry) => entry.match(faction, era))?.org ?? DEFAULT_ORG_DEFINITION;
+	return ORG_DEFINITION_REGISTRY.find((entry) => entry.match(faction, era))?.org ?? DEFAULT_ORG_DEFINITION;
 }
