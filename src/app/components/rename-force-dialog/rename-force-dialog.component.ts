@@ -68,6 +68,10 @@ export interface RenameForceDialogResult {
     action: 'confirm' | 'unset';
 }
 
+function formatEraWarningUnits(unitNames: readonly string[]): string {
+    return unitNames.map((unitName) => `"${unitName}"`).join(', ');
+}
+
 @Component({
     selector: 'rename-force-dialog',
     standalone: true,
@@ -447,7 +451,10 @@ export class RenameForceDialogComponent {
 
     selectedFaction = signal<Faction | null>(this.data.force.faction());
     selectedEra = signal<Era | null>(this.data.force.era());
-    availabilityContext = computed(() => this.unitAvailabilitySource.getForceAvailabilityContext());
+    availabilityContext = computed(() => this.unitAvailabilitySource.createForceAvailabilityContextForUnits(
+        this.data.force.units().map((unit) => unit.getUnit()),
+        this.dataService.getEras(),
+    ));
 
     eraDisplayList = computed<EraDisplayInfo[]>(() => {
         const eras = this.dataService.getEras();
@@ -476,11 +483,58 @@ export class RenameForceDialogComponent {
     });
 
     selectedEraWarning = computed<string | null>(() => {
-        return this.data.force.getEraWarningMessage(
-            this.selectedEra(),
-            this.selectedFaction(),
-            this.availabilityContext()
+        const era = this.selectedEra();
+        if (!era) {
+            return null;
+        }
+
+        const availabilityContext = this.availabilityContext();
+        if (availabilityContext.source !== 'megamek') {
+            return this.data.force.getEraWarningMessage(
+                era,
+                this.selectedFaction(),
+                availabilityContext,
+            );
+        }
+
+        const warnings: string[] = [];
+        const extinctFaction = this.dataService.getFactionById(MULFACTION_EXTINCT) ?? null;
+        const {
+            invalidTrackedUnits,
+            invalidTrackedUnitNames,
+            extinctTrackedUnits,
+            extinctTrackedUnitNames,
+            invalidYearFallbackUnits,
+            invalidYearFallbackUnitNames,
+        } = getEraUnitValidationSummary(
+            this.data.force.units(),
+            era,
+            this.dataService.getEras(),
+            extinctFaction,
+            availabilityContext,
         );
+
+        const faction = this.selectedFaction();
+        if (faction && !this.unitAvailabilitySource.factionExistsInEra(faction, era, availabilityContext.source)) {
+            warnings.push(`${faction.name} does not exist in this era.`);
+        }
+
+        if (invalidTrackedUnits > 0) {
+            const unitLabel = invalidTrackedUnits === 1 ? 'unit is' : 'units are';
+            warnings.push(`${invalidTrackedUnits} ${unitLabel} not listed in the ${era.name} era: ${formatEraWarningUnits(invalidTrackedUnitNames)}.`);
+        }
+
+        if (extinctTrackedUnits > 0) {
+            const unitLabel = extinctTrackedUnits === 1 ? 'unit is' : 'units are';
+            warnings.push(`${extinctTrackedUnits} ${unitLabel} extinct in the ${era.name} era: ${formatEraWarningUnits(extinctTrackedUnitNames)}.`);
+        }
+
+        if (invalidYearFallbackUnits > 0) {
+            const unitLabel = invalidYearFallbackUnits === 1 ? 'unit is' : 'units are';
+            warnings.push(`${invalidYearFallbackUnits} ${unitLabel} newer than this era ends in ${era.years.to}: ${formatEraWarningUnits(invalidYearFallbackUnitNames)}.`);
+        }
+
+        return warnings.length > 0 ? warnings.join(' ') : null;
     });
 
     hasEraWarningState = computed<boolean>(() => {

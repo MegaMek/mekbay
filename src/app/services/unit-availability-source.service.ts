@@ -35,6 +35,7 @@ import { Injectable, inject } from '@angular/core';
 
 import type { Era } from '../models/eras.model';
 import type { Faction } from '../models/factions.model';
+import { isMegaMekFactionActiveInYearRange } from '../models/megamek/factions.model';
 import {
     type MegaMekAvailabilityFromFilter,
     MEGAMEK_AVAILABILITY_UNKNOWN_SCORE,
@@ -244,6 +245,159 @@ export class UnitAvailabilitySourceService {
             ...(contextEraIds ? { eraIds: contextEraIds } : {}),
             factionIds: new Set([faction.id]),
         }));
+    }
+
+    public createForceAvailabilityContextForUnits(
+        units: readonly Pick<Unit, 'id' | 'name'>[],
+        eras: readonly Era[],
+        availabilitySource?: AvailabilitySource,
+    ): ForceAvailabilityContext {
+        const resolvedSource = availabilitySource ?? this.optionsService.options().availabilitySource;
+        if (resolvedSource !== 'megamek') {
+            return this.getForceAvailabilityContext(resolvedSource);
+        }
+
+        const distinctUnitsByKey = new Map<AvailabilityUnitKey, Pick<Unit, 'id' | 'name'>>();
+        for (const unit of units) {
+            if (!distinctUnitsByKey.has(unit.name)) {
+                distinctUnitsByKey.set(unit.name, unit);
+            }
+        }
+
+        const visibleUnitIdsByEra = new Map<number, Set<AvailabilityUnitKey>>();
+        const factionEraUnitIds = new Map<number, Map<number, Set<AvailabilityUnitKey>>>();
+        const availableEraIdsByUnitKey = new Map<AvailabilityUnitKey, Set<number>>();
+
+        for (const unit of distinctUnitsByKey.values()) {
+            const availabilityRecord = this.dataService.getMegaMekAvailabilityRecordForUnit(unit);
+            if (!availabilityRecord) {
+                continue;
+            }
+
+            const availableEraIds = new Set<number>();
+
+            for (const [eraIdText, eraAvailability] of Object.entries(availabilityRecord.e)) {
+                const eraId = Number(eraIdText);
+                if (Number.isNaN(eraId)) {
+                    continue;
+                }
+
+                let isVisibleInEra = false;
+                for (const [factionIdText, value] of Object.entries(eraAvailability)) {
+                    const factionId = Number(factionIdText);
+                    if (Number.isNaN(factionId) || !isMegaMekAvailabilityValueAvailable(value)) {
+                        continue;
+                    }
+
+                    isVisibleInEra = true;
+                    const eraUnitIdsByFaction = getOrCreateMapValue(
+                        factionEraUnitIds,
+                        factionId,
+                        () => new Map<number, Set<AvailabilityUnitKey>>(),
+                    );
+                    getOrCreateMapValue(eraUnitIdsByFaction, eraId, () => new Set<AvailabilityUnitKey>()).add(unit.name);
+                }
+
+                if (!isVisibleInEra) {
+                    continue;
+                }
+
+                availableEraIds.add(eraId);
+                getOrCreateMapValue(visibleUnitIdsByEra, eraId, () => new Set<AvailabilityUnitKey>()).add(unit.name);
+            }
+
+            if (availableEraIds.size > 0) {
+                availableEraIdsByUnitKey.set(unit.name, availableEraIds);
+            }
+        }
+
+        const extinctUnitIdsByEra = new Map<number, Set<AvailabilityUnitKey>>();
+        for (const [unitKey, availableEraIds] of availableEraIdsByUnitKey.entries()) {
+            let wasPreviouslyAvailable = false;
+
+            for (const era of eras) {
+                if (availableEraIds.has(era.id)) {
+                    wasPreviouslyAvailable = true;
+                    continue;
+                }
+
+                if (wasPreviouslyAvailable) {
+                    getOrCreateMapValue(extinctUnitIdsByEra, era.id, () => new Set<AvailabilityUnitKey>()).add(unitKey);
+                }
+            }
+        }
+
+        return {
+            source: 'megamek',
+            getUnitKey: (unit) => unit.name,
+            getVisibleEraUnitIds: (era) => new Set(visibleUnitIdsByEra.get(era.id) ?? []),
+            getFactionUnitIds: (faction, contextEraIds) => {
+                const unitIds = new Set<AvailabilityUnitKey>();
+
+                if (faction.id === MULFACTION_EXTINCT) {
+                    if (contextEraIds) {
+                        for (const eraId of contextEraIds) {
+                            addUnitKeys(unitIds, extinctUnitIdsByEra.get(eraId));
+                        }
+                        return unitIds;
+                    }
+
+                    for (const era of eras) {
+                        addUnitKeys(unitIds, extinctUnitIdsByEra.get(era.id));
+                    }
+                    return unitIds;
+                }
+
+                const eraUnitIdsByFaction = factionEraUnitIds.get(faction.id);
+                if (!eraUnitIdsByFaction) {
+                    return unitIds;
+                }
+
+                if (contextEraIds) {
+                    for (const eraId of contextEraIds) {
+                        addUnitKeys(unitIds, eraUnitIdsByFaction.get(eraId));
+                    }
+                    return unitIds;
+                }
+
+                for (const eraUnitIds of eraUnitIdsByFaction.values()) {
+                    addUnitKeys(unitIds, eraUnitIds);
+                }
+                return unitIds;
+            },
+            getFactionEraUnitIds: (faction, era) => {
+                if (faction.id === MULFACTION_EXTINCT) {
+                    return new Set(extinctUnitIdsByEra.get(era.id) ?? []);
+                }
+
+                return new Set(factionEraUnitIds.get(faction.id)?.get(era.id) ?? []);
+            },
+        };
+    }
+
+    public factionExistsInEra(
+        faction: Faction,
+        era: Era,
+        availabilitySource?: AvailabilitySource,
+    ): boolean {
+        if (!this.useMegaMekAvailability(availabilitySource)) {
+            return this.getFactionEraUnitIds(faction, era, availabilitySource).size > 0;
+        }
+
+        if (faction.id === MULFACTION_EXTINCT) {
+            return false;
+        }
+
+        const megaMekFactions = this.dataService.getMegaMekFactionsByMulId(faction.id);
+        if (megaMekFactions.length > 0) {
+            return megaMekFactions.some((megaMekFaction) => isMegaMekFactionActiveInYearRange(
+                megaMekFaction,
+                era.years.from,
+                era.years.to,
+            ));
+        }
+
+        return this.getFactionEraUnitIds(faction, era, 'mul').size > 0;
     }
 
     public unitBelongsToEra(unit: Unit, era: Era, availabilitySource?: AvailabilitySource): boolean {
