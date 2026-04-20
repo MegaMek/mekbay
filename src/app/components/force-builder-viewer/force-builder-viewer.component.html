@@ -108,7 +108,7 @@
                             <div class="group-footer">
                                 <span class="group-bv"><span class="muted">{{ group.units().length }} Unit{{ group.units().length !== 1 ? 's' : '' }} · </span>{{ slotForce.gameSystem === 'as' ? 'PV' : 'BV' }}: {{ group.totalBV() | number }}</span>
                             </div>
-                            @if (!isReadOnly) {
+                            @if (!isReadOnly && groups.length > 1) {
                             <button class="btn-remove group-remove" (click)="removeGroup($event, group)" title="Remove group">
                                 <svg width="12px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" xmlns="http://www.w3.org/2000/svg">
                                     <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
