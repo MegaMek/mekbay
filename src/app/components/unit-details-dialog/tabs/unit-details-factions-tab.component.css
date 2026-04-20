@@ -65,10 +65,22 @@
     align-items: baseline;
 }
 
+.faction-name-head {
+    display: inline-flex;
+    align-items: baseline;
+    white-space: nowrap;
+}
+
+.faction-name-tail {
+    display: inline-flex;
+    align-items: baseline;
+    white-space: nowrap;
+}
+
 .faction-megamek-availability {
     display: inline-flex;
     margin-left: 4px;
-    padding: 2px 4px;
+    white-space: nowrap;
     color: var(--text-color-secondary);
 }
 
@@ -125,13 +137,13 @@ hr.divider {
     vertical-align: text-bottom;
 }
 
-.catch-all-faction > .parent-faction {
+.catch-all-faction .parent-faction {
     text-decoration: underline dotted;
     color: var(--bt-yellow);
     cursor: pointer;
 }
 
-.catch-all-faction > .parent-faction:hover {
+.catch-all-faction .parent-faction:hover {
     color: var(--bt-yellow-background-light);
 }
 
