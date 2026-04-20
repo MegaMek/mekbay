@@ -14,6 +14,7 @@ import { LoggerService } from './logger.service';
 import { OptionsService } from './options.service';
 import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
+import { UnitAvailabilitySourceService } from './unit-availability-source.service';
 import { UnitInitializerService } from './unit-initializer.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 import { UrlStateService } from './url-state.service';
@@ -2492,6 +2493,185 @@ describe('UnitSearchFiltersService search telemetry', () => {
         service.searchText.set('era="Age of War"');
 
         expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Aquarius Escort']);
+    });
+
+    it('uses direct MegaMek membership checks for scoped era membership queries', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Combine Scout';
+        bundle.units.units[0].chassis = 'Combine Scout';
+        bundle.units.units[0].model = 'CS-1';
+        bundle.units.units[1].name = 'Suns Raider';
+        bundle.units.units[1].chassis = 'Suns Raider';
+        bundle.units.units[1].model = 'SR-1';
+        bundle.eras.eras = [{
+            id: 1,
+            name: 'Age of War',
+            img: '',
+            years: {
+                from: 2005,
+                to: 2570,
+            },
+            units: [1, 2],
+            factions: [],
+        }];
+        bundle.factions.factions = [
+            {
+                id: 30,
+                name: 'Draconis Combine',
+                group: 'Inner Sphere',
+                img: '',
+                eras: {
+                    1: new Set([1]),
+                },
+            },
+            {
+                id: 31,
+                name: 'Federated Suns',
+                group: 'Inner Sphere',
+                img: '',
+                eras: {
+                    1: new Set([2]),
+                },
+            },
+        ];
+
+        const { dataService, service, optionsServiceStub } = createService(bundle);
+        const unitAvailabilitySource = TestBed.inject(UnitAvailabilitySourceService);
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: bundle.units.units[0].name,
+                e: {
+                    '1': {
+                        '30': [6, 0],
+                    },
+                },
+            },
+            {
+                n: bundle.units.units[1].name,
+                e: {
+                    '1': {
+                        '31': [5, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+
+        const directMembershipSpy = spyOn(unitAvailabilitySource, 'unitMatchesMegaMekMembership').and.callThrough();
+        const scopedSetSpy = spyOn(unitAvailabilitySource, 'getMegaMekMembershipUnitIds').and.callThrough();
+
+        expect(service.unitBelongsToEra(bundle.units.units[0], 'Age of War', { factionNames: ['Draconis Combine'] })).toBeTrue();
+        expect(service.unitBelongsToEra(bundle.units.units[0], 'Age of War', { factionNames: ['Federated Suns'] })).toBeFalse();
+        expect(service.unitBelongsToEra(bundle.units.units[1], 'Age of War', { factionNames: ['Federated Suns'] })).toBeTrue();
+        expect(directMembershipSpy).toHaveBeenCalledTimes(3);
+        expect(scopedSetSpy).not.toHaveBeenCalled();
+    });
+
+    it('returns scoped MegaMek indexed unit ids for semantic era and faction lookups', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Combine Scout';
+        bundle.units.units[0].chassis = 'Combine Scout';
+        bundle.units.units[0].model = 'CS-1';
+        bundle.units.units[1].name = 'Suns Raider';
+        bundle.units.units[1].chassis = 'Suns Raider';
+        bundle.units.units[1].model = 'SR-1';
+        bundle.eras.eras = [
+            {
+                id: 1,
+                name: 'Age of War',
+                img: '',
+                years: {
+                    from: 2005,
+                    to: 2570,
+                },
+                units: [1, 2],
+                factions: [],
+            },
+            {
+                id: 2,
+                name: 'Succession Wars',
+                img: '',
+                years: {
+                    from: 2781,
+                    to: 3049,
+                },
+                units: [1, 2],
+                factions: [],
+            },
+        ];
+        bundle.factions.factions = [
+            {
+                id: 30,
+                name: 'Draconis Combine',
+                group: 'Inner Sphere',
+                img: '',
+                eras: {
+                    1: new Set([1]),
+                    2: new Set([1]),
+                },
+            },
+            {
+                id: 31,
+                name: 'Federated Suns',
+                group: 'Inner Sphere',
+                img: '',
+                eras: {
+                    1: new Set([2]),
+                    2: new Set([2]),
+                },
+            },
+        ];
+
+        const { dataService, service, optionsServiceStub } = createService(bundle);
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: bundle.units.units[0].name,
+                e: {
+                    '1': {
+                        '30': [6, 0],
+                    },
+                    '2': {
+                        '30': [5, 0],
+                    },
+                },
+            },
+            {
+                n: bundle.units.units[1].name,
+                e: {
+                    '1': {
+                        '31': [4, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+
+        expect(Array.from((service as any).getSemanticIndexedUnitIds('era', 'Age of War', {
+            factionNames: ['Draconis Combine'],
+        }) ?? [])).toEqual(['Combine Scout']);
+        expect(Array.from((service as any).getSemanticIndexedUnitIds('era', 'Age of War', {
+            factionNames: ['Federated Suns'],
+        }) ?? [])).toEqual(['Suns Raider']);
+        expect(Array.from((service as any).getSemanticIndexedUnitIds('faction', 'Draconis Combine', {
+            eraNames: ['Age of War'],
+        }) ?? [])).toEqual(['Combine Scout']);
+        expect(Array.from((service as any).getSemanticIndexedUnitIds('faction', 'Federated Suns', {
+            eraNames: ['Succession Wars'],
+        }) ?? [])).toEqual([]);
     });
 
     it('marks the MegaMek Extinct faction as available when extinct units exist', () => {

@@ -2475,8 +2475,7 @@ export class UnitSearchFiltersService {
             return this.unitAvailabilitySource.unitBelongsToEra(unit, era);
         }
 
-        return this.unitAvailabilitySource.getMegaMekMembershipUnitIds(context)
-            .has(this.unitAvailabilitySource.getUnitAvailabilityKey(unit));
+        return this.unitAvailabilitySource.unitMatchesMegaMekMembership(unit, context);
     }
 
     /**

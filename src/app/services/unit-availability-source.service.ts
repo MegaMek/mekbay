@@ -53,7 +53,7 @@ import {
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import type { AvailabilitySource } from '../models/options.model';
 import type { Unit } from '../models/units.model';
-import type { ForceAvailabilityContext } from '../utils/force-availability.util';
+import { createMulForceAvailabilityContext, type ForceAvailabilityContext } from '../utils/force-availability.util';
 import { DataService } from './data.service';
 import { OptionsService } from './options.service';
 
@@ -177,7 +177,6 @@ function addUnitKeys(target: Set<AvailabilityUnitKey>, source: ReadonlySet<Avail
 export class UnitAvailabilitySourceService {
     private readonly dataService = inject(DataService);
     private readonly optionsService = inject(OptionsService);
-    private readonly forceAvailabilityContextBySource = new Map<AvailabilitySource, ForceAvailabilityContext>();
 
     private mulEraUnitIdsCache = new WeakMap<Era, Set<AvailabilityUnitKey>>();
     private mulFactionUnitIdsCache = new WeakMap<Faction, Set<AvailabilityUnitKey>>();
@@ -254,7 +253,7 @@ export class UnitAvailabilitySourceService {
     ): ForceAvailabilityContext {
         const resolvedSource = availabilitySource ?? this.optionsService.options().availabilitySource;
         if (resolvedSource !== 'megamek') {
-            return this.getForceAvailabilityContext(resolvedSource);
+            return createMulForceAvailabilityContext();
         }
 
         const distinctUnitsByKey = new Map<AvailabilityUnitKey, Pick<Unit, 'id' | 'name'>>();
@@ -401,7 +400,16 @@ export class UnitAvailabilitySourceService {
     }
 
     public unitBelongsToEra(unit: Unit, era: Era, availabilitySource?: AvailabilitySource): boolean {
-        return this.getVisibleEraUnitIds(era, availabilitySource).has(this.getUnitAvailabilityKey(unit, availabilitySource));
+        if (!this.useMegaMekAvailability(availabilitySource)) {
+            return this.getVisibleEraUnitIds(era, availabilitySource).has(this.getUnitAvailabilityKey(unit, availabilitySource));
+        }
+
+        this.ensureMulCacheVersion();
+        this.ensureMegaMekIndexes();
+
+        return this.getMegaMekEntries(unit.name).some((entry) => (
+            entry.eraId === era.id && this.entryHasAnyAvailability(entry)
+        ));
     }
 
     public unitBelongsToFaction(
@@ -410,7 +418,56 @@ export class UnitAvailabilitySourceService {
         contextEraIds?: ReadonlySet<number>,
         availabilitySource?: AvailabilitySource,
     ): boolean {
-        return this.getFactionUnitIds(faction, contextEraIds, availabilitySource).has(this.getUnitAvailabilityKey(unit, availabilitySource));
+        if (!this.useMegaMekAvailability(availabilitySource)) {
+            return this.getFactionUnitIds(faction, contextEraIds, availabilitySource).has(this.getUnitAvailabilityKey(unit, availabilitySource));
+        }
+
+        this.ensureMulCacheVersion();
+        this.ensureMegaMekIndexes();
+
+        if (faction.id === MULFACTION_EXTINCT) {
+            if (!contextEraIds) {
+                return this.megaMekExtinctAllUnitIds.has(unit.name);
+            }
+
+            for (const eraId of contextEraIds) {
+                if (this.megaMekExtinctEraUnitIds.get(eraId)?.has(unit.name)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        return this.getMegaMekEntries(unit.name).some((entry) => (
+            entry.factionId === faction.id
+            && (!contextEraIds || contextEraIds.has(entry.eraId))
+            && this.entryHasAnyAvailability(entry)
+        ));
+    }
+
+    public unitMatchesMegaMekMembership(
+        unit: Pick<Unit, 'id' | 'name'>,
+        context?: MegaMekAvailabilityFilterContext,
+    ): boolean {
+        this.ensureMulCacheVersion();
+        this.ensureMegaMekIndexes();
+
+        if (this.hasEmptyMegaMekScope(context)) {
+            return false;
+        }
+
+        if (context?.bridgeThroughMulMembership) {
+            return this.matchesMulMembershipScope(unit.id, context);
+        }
+
+        const entries = this.getMegaMekEntries(unit.name);
+        const hasScopedMembershipFilters = context?.eraIds !== undefined || context?.factionIds !== undefined;
+        if (hasScopedMembershipFilters) {
+            return this.matchesMegaMekMembership(unit.name, entries, context);
+        }
+
+        return entries.some((entry) => this.entryHasAnyAvailability(entry));
     }
 
     public getUnitAvailabilityKey(unit: Pick<Unit, 'id' | 'name'>, availabilitySource?: AvailabilitySource): AvailabilityUnitKey {
@@ -568,25 +625,6 @@ export class UnitAvailabilitySourceService {
         }
 
         return this.getMegaMekRarityUnitIds(rarity, context).has(unit.name);
-    }
-
-    public getForceAvailabilityContext(availabilitySource?: AvailabilitySource): ForceAvailabilityContext {
-        const resolvedSource = availabilitySource ?? this.optionsService.options().availabilitySource;
-        const existing = this.forceAvailabilityContextBySource.get(resolvedSource);
-        if (existing) {
-            return existing;
-        }
-
-        const context: ForceAvailabilityContext = {
-            source: resolvedSource,
-            getUnitKey: (unit) => this.getUnitAvailabilityKey(unit, resolvedSource),
-            getVisibleEraUnitIds: (era) => this.getVisibleEraUnitIds(era, resolvedSource),
-            getFactionUnitIds: (faction, contextEraIds) => this.getFactionUnitIds(faction, contextEraIds, resolvedSource),
-            getFactionEraUnitIds: (faction, era) => this.getFactionEraUnitIds(faction, era, resolvedSource),
-        };
-
-        this.forceAvailabilityContextBySource.set(resolvedSource, context);
-        return context;
     }
 
     public collectFastMulUnknownOptionIds(

@@ -177,6 +177,72 @@ describe('UnitAvailabilitySourceService', () => {
         expect(service.useMegaMekAvailability()).toBeTrue();
     });
 
+    it('checks single-unit MegaMek membership without building a scoped block', () => {
+        const earlyEra = {
+            id: 3050,
+            name: 'Clan Invasion',
+            units: new Set<number>(),
+            years: { from: 3050, to: 3061 },
+        } as Era;
+        const lateEra = {
+            id: 3067,
+            name: 'Civil War',
+            units: new Set<number>(),
+            years: { from: 3062, to: 3080 },
+        } as Era;
+        const faction = {
+            id: 7,
+            name: 'Draconis Combine',
+            group: 'Inner Sphere',
+            img: '',
+            eras: {},
+        } as Faction;
+        const extinctFaction = {
+            id: MULFACTION_EXTINCT,
+            name: 'Extinct',
+            group: 'Other',
+            img: '',
+            eras: {},
+        } as Faction;
+        const unit = {
+            id: 1,
+            name: 'Atlas',
+            type: 'Mek',
+            chassis: 'Atlas',
+            model: 'AS7-D',
+        } as Unit;
+
+        orderedEras.push(earlyEra, lateEra);
+        units.push(unit);
+        optionsServiceMock.options.set({ availabilitySource: 'megamek' });
+        megaMekAvailabilityByUnitName.set(unit.name, {
+            n: unit.name,
+            e: {
+                '3050': {
+                    '7': [5, 0],
+                },
+            },
+        });
+
+        const scopedBlockSpy = spyOn<any>(service as any, 'getMegaMekScopedAvailabilityBlock').and.callThrough();
+
+        expect(service.unitBelongsToEra(unit, earlyEra)).toBeTrue();
+        expect(service.unitBelongsToEra(unit, lateEra)).toBeFalse();
+        expect(service.unitBelongsToFaction(unit, faction)).toBeTrue();
+        expect(service.unitBelongsToFaction(unit, faction, new Set([lateEra.id]))).toBeFalse();
+        expect(service.unitMatchesMegaMekMembership(unit, {
+            eraIds: new Set([earlyEra.id]),
+            factionIds: new Set([faction.id]),
+        })).toBeTrue();
+        expect(service.unitMatchesMegaMekMembership(unit, {
+            eraIds: new Set([lateEra.id]),
+            factionIds: new Set([faction.id]),
+        })).toBeFalse();
+        expect(service.unitBelongsToFaction(unit, extinctFaction, new Set([earlyEra.id]))).toBeFalse();
+        expect(service.unitBelongsToFaction(unit, extinctFaction, new Set([lateEra.id]))).toBeTrue();
+        expect(scopedBlockSpy).not.toHaveBeenCalled();
+    });
+
     it('builds a force-scoped MegaMek availability context from only the provided units', () => {
         const earlyEra = {
             id: 3050,
