@@ -107,7 +107,20 @@ export type OrgType =
     | 'Augmented Lance'
     | 'Augmented Company'
     | 'Augmented Battalion'
-    | 'Augmented Regiment';
+    | 'Augmented Regiment'
+
+    // SLDF-specific types
+    | 'Division'
+    | 'Corps'
+    | 'Army'
+    | 'Army Group'
+    | 'Group'
+    | 'Vessel'
+    | 'Flotilla'
+    | 'Naval Division'
+    | 'Naval Squadron'
+    | 'Fleet'
+    ;
 
 export interface PointRange {
     min: number;
