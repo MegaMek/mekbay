@@ -87,6 +87,53 @@ function formatEraWarningUnits(unitNames: readonly string[]): string {
     return unitNames.map(unitName => `"${unitName}"`).join(', ');
 }
 
+export function buildEraWarningMessage(
+    units: readonly ForceUnit[],
+    era: Era | null,
+    faction: Faction | null,
+    eras: readonly Era[],
+    extinctFaction: Faction | null,
+    availabilityContext: ForceAvailabilityContext = createMulForceAvailabilityContext(),
+    factionExistsInEra: (faction: Faction, era: Era) => boolean = (candidateFaction, candidateEra) => (
+        hasFactionEraAvailability(candidateFaction, candidateEra, availabilityContext)
+    ),
+): string | null {
+    if (!era) {
+        return null;
+    }
+
+    const warnings: string[] = [];
+    const {
+        invalidTrackedUnits,
+        invalidTrackedUnitNames,
+        extinctTrackedUnits,
+        extinctTrackedUnitNames,
+        invalidYearFallbackUnits,
+        invalidYearFallbackUnitNames,
+    } = getEraUnitValidationSummary(units, era, eras, extinctFaction, availabilityContext);
+
+    if (faction && !factionExistsInEra(faction, era)) {
+        warnings.push(`${faction.name} does not exist in this era.`);
+    }
+
+    if (invalidTrackedUnits > 0) {
+        const unitLabel = invalidTrackedUnits === 1 ? 'unit is' : 'units are';
+        warnings.push(`${invalidTrackedUnits} ${unitLabel} not listed in the ${era.name} era: ${formatEraWarningUnits(invalidTrackedUnitNames)}.`);
+    }
+
+    if (extinctTrackedUnits > 0) {
+        const unitLabel = extinctTrackedUnits === 1 ? 'unit is' : 'units are';
+        warnings.push(`${extinctTrackedUnits} ${unitLabel} extinct in the ${era.name} era: ${formatEraWarningUnits(extinctTrackedUnitNames)}.`);
+    }
+
+    if (invalidYearFallbackUnits > 0) {
+        const unitLabel = invalidYearFallbackUnits === 1 ? 'unit is' : 'units are';
+        warnings.push(`${invalidYearFallbackUnits} ${unitLabel} newer than this era ends in ${era.years.to}: ${formatEraWarningUnits(invalidYearFallbackUnitNames)}.`);
+    }
+
+    return warnings.length > 0 ? warnings.join(' ') : null;
+}
+
 export function getEraUnitValidationSummary(
     units: readonly ForceUnit[],
     era: Era,
@@ -417,42 +464,16 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         faction: Faction | null,
         availabilityContext: ForceAvailabilityContext = createMulForceAvailabilityContext(),
     ): string | null {
-        if (!era) {
-            return null;
-        }
-
-        const warnings: string[] = [];
         const eras = this.dataService.getEras();
         const extinctFaction = this.dataService.getFactionById(MULFACTION_EXTINCT) ?? null;
-        const {
-            invalidTrackedUnits,
-            invalidTrackedUnitNames,
-            extinctTrackedUnits,
-            extinctTrackedUnitNames,
-            invalidYearFallbackUnits,
-            invalidYearFallbackUnitNames,
-        } = getEraUnitValidationSummary(this.units(), era, eras, extinctFaction, availabilityContext);
-
-        if (faction && !hasFactionEraAvailability(faction, era, availabilityContext)) {
-            warnings.push(`${faction.name} does not exist in this era.`);
-        }
-
-        if (invalidTrackedUnits > 0) {
-            const unitLabel = invalidTrackedUnits === 1 ? 'unit is' : 'units are';
-            warnings.push(`${invalidTrackedUnits} ${unitLabel} not listed in the ${era.name} era: ${formatEraWarningUnits(invalidTrackedUnitNames)}.`);
-        }
-
-        if (extinctTrackedUnits > 0) {
-            const unitLabel = extinctTrackedUnits === 1 ? 'unit is' : 'units are';
-            warnings.push(`${extinctTrackedUnits} ${unitLabel} extinct in the ${era.name} era: ${formatEraWarningUnits(extinctTrackedUnitNames)}.`);
-        }
-
-        if (invalidYearFallbackUnits > 0) {
-            const unitLabel = invalidYearFallbackUnits === 1 ? 'unit is' : 'units are';
-            warnings.push(`${invalidYearFallbackUnits} ${unitLabel} newer than this era ends in ${era.years.to}: ${formatEraWarningUnits(invalidYearFallbackUnitNames)}.`);
-        }
-
-        return warnings.length > 0 ? warnings.join(' ') : null;
+        return buildEraWarningMessage(
+            this.units(),
+            era,
+            faction,
+            eras,
+            extinctFaction,
+            availabilityContext,
+        );
     }
 
     public addUnit(unit: Unit, targetGroup?: UnitGroup<TUnit>): TUnit {

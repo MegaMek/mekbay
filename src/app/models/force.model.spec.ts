@@ -1,6 +1,6 @@
 import type { Era } from './eras.model';
 import type { Faction } from './factions.model';
-import { getEraUnitValidationSummary } from './force.model';
+import { buildEraWarningMessage, getEraUnitValidationSummary } from './force.model';
 import type { ForceUnit } from './force-unit.model';
 import type { Unit } from './units.model';
 import type { ForceAvailabilityContext } from '../utils/force-availability.util';
@@ -137,5 +137,33 @@ describe('getEraUnitValidationSummary', () => {
         expect(summary.extinctTrackedUnits).toBe(1);
         expect(summary.extinctTrackedUnitNames).toEqual([unit.name]);
         expect(summary.invalidTrackedUnits).toBe(0);
+    });
+});
+
+describe('buildEraWarningMessage', () => {
+    it('accepts a custom faction-exists predicate for force-scoped availability contexts', () => {
+        const selectedEra = createEra(3025, 3025, 3049);
+        const unit = createUnit(101, 'Phoenix Hawk PXH-1', 3020);
+        const faction = createFaction(11, 'Context Faction');
+
+        const availabilityContext: ForceAvailabilityContext = {
+            source: 'megamek',
+            getUnitKey: (candidate) => candidate.name,
+            getVisibleEraUnitIds: () => new Set([unit.name]),
+            getFactionUnitIds: () => new Set<string>(),
+            getFactionEraUnitIds: () => new Set<string>(),
+        };
+
+        const warning = buildEraWarningMessage(
+            [createForceUnit(unit)],
+            selectedEra,
+            faction,
+            [selectedEra],
+            null,
+            availabilityContext,
+            () => true,
+        );
+
+        expect(warning).toBeNull();
     });
 });

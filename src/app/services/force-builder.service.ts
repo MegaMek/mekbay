@@ -1249,12 +1249,16 @@ export class ForceBuilderService {
         let faction = respectFilter ? this.pickFactionFromFilter() : null;
 
         if (!faction) {
+            const eras = this.dataService.getEras();
             faction = ForceNamerUtil.pickBestFaction(
                 force.units(),
                 this.dataService.getFactions(),
-                this.dataService.getEras(),
+                eras,
                 force.faction(),
-                this.unitAvailabilitySource.getForceAvailabilityContext()
+                this.unitAvailabilitySource.createForceAvailabilityContextForUnits(
+                    force.units().map((unit) => unit.getUnit()),
+                    eras,
+                )
             );
         }
         if (faction?.id === force.faction()?.id) {

@@ -39,7 +39,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { outputToObservable } from '@angular/core/rxjs-interop';
 import { DecimalPipe } from '@angular/common';
 import { DataService } from '../../services/data.service';
-import { getEraUnitValidationSummary, type Force } from '../../models/force.model';
+import { buildEraWarningMessage, getEraUnitValidationSummary, type Force } from '../../models/force.model';
 import { getFactionImg, type Faction } from '../../models/factions.model';
 import type { Era } from '../../models/eras.model';
 import { ForceNamerUtil, type FactionDisplayInfo } from '../../utils/force-namer.util';
@@ -447,7 +447,10 @@ export class RenameForceDialogComponent {
 
     selectedFaction = signal<Faction | null>(this.data.force.faction());
     selectedEra = signal<Era | null>(this.data.force.era());
-    availabilityContext = computed(() => this.unitAvailabilitySource.getForceAvailabilityContext());
+    availabilityContext = computed(() => this.unitAvailabilitySource.createForceAvailabilityContextForUnits(
+        this.data.force.units().map((unit) => unit.getUnit()),
+        this.dataService.getEras(),
+    ));
 
     eraDisplayList = computed<EraDisplayInfo[]>(() => {
         const eras = this.dataService.getEras();
@@ -476,10 +479,16 @@ export class RenameForceDialogComponent {
     });
 
     selectedEraWarning = computed<string | null>(() => {
-        return this.data.force.getEraWarningMessage(
+        const availabilityContext = this.availabilityContext();
+        const extinctFaction = this.dataService.getFactionById(MULFACTION_EXTINCT) ?? null;
+        return buildEraWarningMessage(
+            this.data.force.units(),
             this.selectedEra(),
             this.selectedFaction(),
-            this.availabilityContext()
+            this.dataService.getEras(),
+            extinctFaction,
+            availabilityContext,
+            (faction, era) => this.unitAvailabilitySource.factionExistsInEra(faction, era, availabilityContext.source),
         );
     });
 
