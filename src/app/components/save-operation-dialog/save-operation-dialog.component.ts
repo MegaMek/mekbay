@@ -40,6 +40,10 @@ import { OpPreviewComponent, type OpPreviewForce } from '../op-preview/op-previe
  * Author: Drake
  */
 
+const OPERATION_NAME_MAX_LENGTH = 100;
+const OPERATION_NOTE_MAX_LENGTH = 2000;
+const OPERATION_LENGTH_META_THRESHOLD = 0.9;
+
 export interface OperationDialogData {
     title: string;
     name: string;
@@ -71,8 +75,15 @@ export interface OperationDialogResult {
                     [value]="name()"
                     (input)="onNameChange($event)"
                     autocomplete="off"
+                    [attr.maxlength]="nameLimit"
                     (keydown.enter)="$event.preventDefault(); submit()"
                     autofocus />
+                @if (showNameMeta()) {
+                <div class="field-meta">
+                    <span class="field-limit">Max {{ nameLimit }} characters</span>
+                    <span class="field-counter">{{ name().length }}/{{ nameLimit }}</span>
+                </div>
+                }
             </div>
 
             @if (forces().length > 0) {
@@ -87,7 +98,14 @@ export interface OperationDialogResult {
                     (input)="onNoteChange($event)"
                     rows="2"
                     autocomplete="off"
+                    [attr.maxlength]="noteLimit"
                     placeholder="Add a description..."></textarea>
+                @if (showNoteMeta()) {
+                <div class="field-meta">
+                    <span class="field-limit">Max {{ noteLimit }} characters</span>
+                    <span class="field-counter">{{ note().length }}/{{ noteLimit }}</span>
+                </div>
+                }
             </div>
         </div>
         <div class="wide-dialog-actions">
@@ -107,22 +125,48 @@ export interface OperationDialogResult {
             min-height: 6em;
             max-height: 24em;
         }
+
+        .field-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-top: 0.35rem;
+            font-size: 0.78em;
+            opacity: 0.72;
+        }
+
+        .field-counter {
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
     `]
 })
 export class SaveOperationDialogComponent {
     dialogRef = inject(DialogRef<OperationDialogResult | null>);
     data: OperationDialogData = inject(DIALOG_DATA);
 
-    name = signal(this.data.name || '');
-    note = signal(this.data.note || '');
+    readonly nameLimit = OPERATION_NAME_MAX_LENGTH;
+    readonly noteLimit = OPERATION_NOTE_MAX_LENGTH;
+
+    name = signal(this.clampText(this.data.name || '', this.nameLimit));
+    note = signal(this.clampText(this.data.note || '', this.noteLimit));
     forces = signal<OpPreviewForce[]>(this.data.forces || []);
 
     onNameChange(e: Event): void {
-        this.name.set((e.target as HTMLInputElement).value);
+        this.name.set(this.clampText((e.target as HTMLInputElement).value, this.nameLimit));
     }
 
     onNoteChange(e: Event): void {
-        this.note.set((e.target as HTMLTextAreaElement).value);
+        this.note.set(this.clampText((e.target as HTMLTextAreaElement).value, this.noteLimit));
+    }
+
+    showNameMeta(): boolean {
+        return this.shouldShowLengthMeta(this.name().length, this.nameLimit);
+    }
+
+    showNoteMeta(): boolean {
+        return this.shouldShowLengthMeta(this.note().length, this.noteLimit);
     }
 
     isValid(): boolean {
@@ -130,15 +174,25 @@ export class SaveOperationDialogComponent {
     }
 
     submit(): void {
+        const name = this.clampText(this.name().trim(), this.nameLimit);
+        const note = this.clampText(this.note().trim(), this.noteLimit);
         if (!this.isValid()) return;
         this.dialogRef.close({
-            name: this.name().trim(),
-            note: this.note().trim() || undefined,
+            name,
+            note: note || undefined,
             forces: this.forces(),
         });
     }
 
     close(): void {
         this.dialogRef.close(null);
+    }
+
+    private clampText(value: string, maxLength: number): string {
+        return value.slice(0, maxLength);
+    }
+
+    private shouldShowLengthMeta(currentLength: number, maxLength: number): boolean {
+        return currentLength > maxLength * OPERATION_LENGTH_META_THRESHOLD;
     }
 }
