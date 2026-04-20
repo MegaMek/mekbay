@@ -35,7 +35,7 @@ export const ORG_DEFINITION_REGISTRY: readonly OrgDefinitionRegistryEntry[] = [
 	{ match: (faction, era) => faction.name.includes('Dragoons') && (era?.years.to ?? Number.POSITIVE_INFINITY) <= 3050, org: IS_CORE_ORG },
 	{ match: (faction) => faction.name.includes('Dragoons'), org: WD_CORE_ORG },
 	{ match: (faction) => faction.name.includes('Capellan Confederation'), org: CC_CORE_ORG },
-	{ match: (faction) => faction.name.includes('Draconis'), org: DC_CORE_ORG },
+	{ match: (faction) => faction.name.includes('Draconis') || faction.name.includes('Free Rasalhague Republic'), org: DC_CORE_ORG },
 	{ match: (faction) => isClan(faction), org: CLAN_CORE_ORG },
 	{ match: (faction) => faction.name.includes('Star League') || faction.name.includes('Terran Hegemony'), org: SLDF_CORE_ORG },
 ];
