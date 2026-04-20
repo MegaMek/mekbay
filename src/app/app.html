@@ -94,8 +94,11 @@
                             </svg>
                         </div>
                     </div>
-                    <div class="search-container">
-                        <div [cdkPortalOutlet]="unitSearchPortalMain()"></div>
+                    <div class="search-status-stack">
+                        <div class="search-container">
+                            <div [cdkPortalOutlet]="unitSearchPortalMain()"></div>
+                        </div>
+                        <connection-status-badge placement="home"></connection-status-badge>
                     </div>
                     @if (this.dataService.isDownloading() || this.dataService.isCloudForceLoading()) {
                     <div class="spinner-container">
