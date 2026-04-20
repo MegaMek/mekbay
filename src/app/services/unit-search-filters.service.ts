@@ -152,10 +152,9 @@ interface UnitSearchClosePanelsRequest {
     exitExpandedView: boolean;
 }
 
-@Injectable({ providedIn: 'root' })
-export class UnitSearchFiltersService {
-    dataService = inject(DataService);
-    optionsService = inject(OptionsService);
+class UnitSearchFiltersServiceBase {
+    protected dataService = inject(DataService);
+    protected optionsService = inject(OptionsService);
     gameService = inject(GameService);
     logger = inject(LoggerService);
     private readonly searchWorkerFactory = inject(SEARCH_WORKER_FACTORY);
@@ -163,7 +162,7 @@ export class UnitSearchFiltersService {
     private userStateService = inject(UserStateService);
     private publicTagsService = inject(PublicTagsService);
     private tagsService = inject(TagsService);
-    private unitAvailabilitySource = inject(UnitAvailabilitySourceService);
+    protected unitAvailabilitySource = inject(UnitAvailabilitySourceService);
 
     ADVANCED_FILTERS = ADVANCED_FILTERS;
 
@@ -237,7 +236,6 @@ export class UnitSearchFiltersService {
     });
     readonly closePanelsRequest = this.closePanelsRequestState.asReadonly();
     private totalRangesCache: Record<string, [number, number]> = {};
-    private indexedUniverseNamesCache = new Map<string, string[]>();
     private urlStateInitialized = signal(false);
     private readonly searchTelemetryState = signal<SearchTelemetrySnapshot | null>(null);
     readonly searchTelemetry = this.searchTelemetryState.asReadonly();
@@ -249,11 +247,8 @@ export class UnitSearchFiltersService {
     private lastSearchTelemetryLogKey = '';
     private readonly slowSearchTelemetryThresholdMs = 75;
     private searchWorkerClient: UnitSearchWorkerClient | null = null;
-    private cachedWorkerCorpusVersion: string | null = null;
-    private cachedWorkerCorpusSnapshot: UnitSearchWorkerCorpusSnapshot | null = null;
     private searchRequestRevision = 0;
     private lastWorkerSearchExecutionKey: string | null = null;
-    private readonly availabilitySelectionScopePartsCache = new WeakMap<FilterState, AvailabilitySelectionScopeParts>();
     private readonly workerRequestRevision = signal(0);
     private readonly workerResultRevision = signal(0);
     private readonly workerSearchActive = computed(() => {
@@ -281,14 +276,10 @@ export class UnitSearchFiltersService {
     /** Signal that changes when unit tags are updated. Used to trigger reactivity in tag-dependent components. */
     readonly tagsVersion = signal(0);
 
-    private invalidateIndexedDropdownUniverseCache(): void {
-        this.indexedUniverseNamesCache.clear();
-    }
+    protected invalidateIndexedDropdownUniverseCache(): void {}
 
-    private invalidateCorpusCaches(): void {
+    protected invalidateCorpusCaches(): void {
         this.invalidateIndexedDropdownUniverseCache();
-        this.cachedWorkerCorpusVersion = null;
-        this.cachedWorkerCorpusSnapshot = null;
         this.searchTelemetryState.set(null);
         this.advOptionsTelemetryState.set(null);
         this.advOptionsTelemetryPublishVersion = 0;
@@ -564,27 +555,20 @@ export class UnitSearchFiltersService {
         return hasResolvedDropdownNames(resolved);
     }
 
-    private getAvailabilitySelectionScopeParts(state: FilterState): AvailabilitySelectionScopeParts {
-        const cached = this.availabilitySelectionScopePartsCache.get(state);
-        if (cached) {
-            return cached;
-        }
-
-        const parts: AvailabilitySelectionScopeParts = {
+    protected getAvailabilitySelectionScopeParts(state: FilterState): AvailabilitySelectionScopeParts {
+        return {
             eraNames: this.getSelectedRegularDropdownNames(state['era']),
             factionNames: this.getPositiveFactionNames(state['faction']),
             availabilityFromNames: this.getSelectedRegularDropdownNames(state['availabilityFrom']),
             availabilityRarityNames: this.getSelectedRegularDropdownNames(state['availabilityRarity']) as MegaMekAvailabilityRarity[],
         };
-        this.availabilitySelectionScopePartsCache.set(state, parts);
-        return parts;
     }
 
-    private useAllScopedMegaMekAvailabilityOptions(): boolean {
+    protected useAllScopedMegaMekAvailabilityOptions(): boolean {
         return this.optionsService.options().megaMekAvailabilityFiltersUseAllScopedOptions;
     }
 
-    private buildAvailabilityFilterContext(scope?: AvailabilityFilterScope): MegaMekAvailabilityFilterContext | null {
+    protected buildAvailabilityFilterContext(scope?: AvailabilityFilterScope): MegaMekAvailabilityFilterContext | null {
         if (!scope) {
             return {
                 bridgeThroughMulMembership: !this.unitAvailabilitySource.useMegaMekAvailability(),
@@ -876,7 +860,7 @@ export class UnitSearchFiltersService {
         return null;
     }
 
-    private buildExternalDropdownCandidateState(
+    protected buildExternalDropdownCandidateState(
         currentFilterState: FilterState[string] | undefined,
         optionName: string,
     ): FilterState[string] {
@@ -907,14 +891,16 @@ export class UnitSearchFiltersService {
             };
         }
 
-        return {
+        const result: FilterState[string] = {
             ...currentFilterState,
             value: nextSelection,
             interactedWith: true,
         };
+
+        return result;
     }
 
-    private buildExternalDropdownOptions(
+    protected buildExternalDropdownOptions(
         conf: AdvFilterConfig,
         contextUnits: Unit[],
         state: FilterState,
@@ -944,7 +930,7 @@ export class UnitSearchFiltersService {
         return sortDropdownOptionObjects(options, conf.sortOptions);
     }
 
-    private buildInferredAvailabilityDropdownOptions(
+    protected buildInferredAvailabilityDropdownOptions(
         conf: AdvFilterConfig,
         contextUnits: Unit[],
         state: FilterState,
@@ -1093,7 +1079,7 @@ export class UnitSearchFiltersService {
         );
     }
 
-    private getMegaMekAvailabilityCandidateUnitIds(
+    protected getMegaMekAvailabilityCandidateUnitIds(
         scope: AvailabilityFilterScope,
         availabilityFromNames: readonly string[],
         availabilityRarityNames: readonly MegaMekAvailabilityRarity[],
@@ -1129,9 +1115,9 @@ export class UnitSearchFiltersService {
             }
 
             if (selectedPositiveSources.length > 0) {
-                const sourceContext = {
+                const sourceContext: MegaMekAvailabilityFilterContext = {
                     ...baseContext,
-                    availabilityFrom: new Set(selectedPositiveSources),
+                    availabilityFrom: new Set<MegaMekAvailabilityFrom>(selectedPositiveSources),
                 };
                 for (const unitId of this.unitAvailabilitySource.getMegaMekAvailabilityUnitIds(sourceContext)) {
                     unitIds.add(unitId);
@@ -1150,6 +1136,12 @@ export class UnitSearchFiltersService {
                 }
             }
 
+            if (availabilityRarityNames.includes(MEGAMEK_AVAILABILITY_UNKNOWN)) {
+                for (const unitId of this.unitAvailabilitySource.getMegaMekUnknownUnitIds(baseContext)) {
+                    unitIds.add(unitId);
+                }
+            }
+
             return unitIds;
         }
 
@@ -1159,10 +1151,10 @@ export class UnitSearchFiltersService {
             }
         }
 
-        if (selectedPositiveSources.length > 0) {
-            const sourceContext = {
+        for (const source of selectedPositiveSources) {
+            const sourceContext: MegaMekAvailabilityFilterContext = {
                 ...baseContext,
-                availabilityFrom: new Set(selectedPositiveSources),
+                availabilityFrom: new Set<MegaMekAvailabilityFrom>([source]),
             };
             for (const rarityName of availabilityRarityNames) {
                 if (rarityName === MEGAMEK_AVAILABILITY_UNKNOWN) {
@@ -1268,78 +1260,54 @@ export class UnitSearchFiltersService {
                             }
 
                             const rarity = getMegaMekAvailabilityRarityForScore(score);
-                            if (rarity !== MEGAMEK_AVAILABILITY_NOT_AVAILABLE && selectedRarities.has(rarity)) {
-                                availableIds.add(candidateId);
+                            if (
+                                selectedRarities
+                                && (rarity === MEGAMEK_AVAILABILITY_NOT_AVAILABLE || !selectedRarities.has(rarity))
+                            ) {
+                                continue;
                             }
+
+                            availableIds.add(candidateId);
+                            break;
+                        }
+
+                        if (score <= 0) {
                             continue;
                         }
 
-                        let maxScores = maxScoresByOptionId?.get(candidateId);
-                        if (!maxScores) {
-                            maxScores = {
-                                Production: 0,
-                                Salvage: 0,
-                            };
-                            maxScoresByOptionId?.set(candidateId, maxScores);
-                        }
-
-                        if (score > maxScores[source]) {
-                            maxScores[source] = score;
-                        }
+                        const candidateScores = maxScoresByOptionId?.get(candidateId) ?? {
+                            Production: 0,
+                            Salvage: 0,
+                        };
+                        candidateScores[source] = Math.max(candidateScores[source], score);
+                        maxScoresByOptionId?.set(candidateId, candidateScores);
                     }
                 }
             }
 
-            if (useAllScopedAvailabilityOptions) {
-                continue;
-            }
-
-            const scopedMaxScoresByOptionId = maxScoresByOptionId;
-            if (!scopedMaxScoresByOptionId) {
-                continue;
-            }
-
-            if (!selectedRarities) {
-                for (const [optionId, maxScores] of scopedMaxScoresByOptionId.entries()) {
-                    if (activeSources.some((source) => maxScores[source] > 0)) {
-                        availableIds.add(optionId);
-                    }
-                }
-                continue;
-            }
-
-            for (const [optionId, maxScores] of scopedMaxScoresByOptionId.entries()) {
-                const matchesSelectedRarity = activeSources.some((source) => {
-                    const maxScore = maxScores[source];
+            if (!useAllScopedAvailabilityOptions && maxScoresByOptionId) {
+                for (const [candidateId, scores] of maxScoresByOptionId) {
+                    const maxScore = selectedSources.length > 0
+                        ? Math.max(...selectedSources.map((source) => scores[source]))
+                        : Math.max(scores.Production, scores.Salvage);
                     if (maxScore <= 0) {
-                        return false;
+                        continue;
                     }
 
                     const rarity = getMegaMekAvailabilityRarityForScore(maxScore);
-                    return rarity !== MEGAMEK_AVAILABILITY_NOT_AVAILABLE && selectedRarities.has(rarity);
-                });
+                    if (
+                        selectedRarities
+                        && (rarity === MEGAMEK_AVAILABILITY_NOT_AVAILABLE || !selectedRarities.has(rarity))
+                    ) {
+                        continue;
+                    }
 
-                if (matchesSelectedRarity) {
-                    availableIds.add(optionId);
+                    availableIds.add(candidateId);
                 }
             }
         }
 
         return availableIds;
-    }
-
-    private collectFastMulUnknownOptionIds(
-        contextUnits: readonly Unit[],
-        target: 'era' | 'faction',
-        selectedEraIds?: ReadonlySet<number>,
-        selectedFactionIds?: ReadonlySet<number>,
-    ): ReadonlySet<number> {
-        return this.unitAvailabilitySource.collectFastMulUnknownOptionIds(
-            contextUnits,
-            target,
-            selectedEraIds,
-            selectedFactionIds,
-        );
     }
 
     private resolveAvailabilityScopeIds(
@@ -1359,6 +1327,20 @@ export class UnitSearchFiltersService {
         );
 
         return ids.size > 0 ? ids : new Set<number>();
+    }
+
+    private collectFastMulUnknownOptionIds(
+        contextUnits: readonly Pick<Unit, 'id' | 'name'>[],
+        target: 'era' | 'faction',
+        selectedEraIds?: ReadonlySet<number>,
+        selectedFactionIds?: ReadonlySet<number>,
+    ): ReadonlySet<number> {
+        return this.unitAvailabilitySource.collectFastMulUnknownOptionIds(
+            contextUnits,
+            target,
+            selectedEraIds,
+            selectedFactionIds,
+        );
     }
 
     private collectMulMembershipOptionIds(
@@ -1555,20 +1537,17 @@ export class UnitSearchFiltersService {
         return getUnitSearchWorkerCorpusVersion(this.dataService.searchCorpusVersion(), this.tagsVersion());
     }
 
-    private getWorkerCorpusSnapshot(corpusVersion: string): UnitSearchWorkerCorpusSnapshot {
+    protected getWorkerCorpusSnapshot(corpusVersion: string): UnitSearchWorkerCorpusSnapshot {
         const result = getCachedWorkerCorpusSnapshot(
             {
-                version: this.cachedWorkerCorpusVersion,
-                snapshot: this.cachedWorkerCorpusSnapshot,
+                version: null,
+                snapshot: null,
             },
             corpusVersion,
             this.units,
             this.dataService.getSearchWorkerIndexSnapshot(),
             this.dataService.getSearchWorkerFactionEraSnapshot(),
         );
-
-        this.cachedWorkerCorpusVersion = result.cache.version;
-        this.cachedWorkerCorpusSnapshot = result.cache.snapshot;
         return result.snapshot;
     }
 
@@ -2134,20 +2113,11 @@ export class UnitSearchFiltersService {
         return this.dataService.getDropdownOptionUniverse(filterKey).map(option => option.name);
     }
 
-    private getSortedIndexedUniverseNames(conf: AdvFilterConfig): string[] {
-        const cacheVersion = conf.key === '_tags'
-            ? this.dataService.tagsVersion()
-            : this.dataService.searchCorpusVersion();
-        const cacheKey = `${conf.key}|${conf.sortOptions?.join('\u0001') ?? ''}|${cacheVersion}`;
-        let cached = this.indexedUniverseNamesCache.get(cacheKey);
-        if (!cached) {
-            const optionNames = this.getIndexedUniverseNames(conf.key);
-            cached = conf.key === 'era' && (!conf.sortOptions || conf.sortOptions.length === 0)
-                ? optionNames
-                : sortAvailableDropdownOptions(optionNames, conf.sortOptions);
-            this.indexedUniverseNamesCache.set(cacheKey, cached);
-        }
-        return cached;
+    protected getSortedIndexedUniverseNames(conf: AdvFilterConfig): string[] {
+        const optionNames = this.getIndexedUniverseNames(conf.key);
+        return conf.key === 'era' && (!conf.sortOptions || conf.sortOptions.length === 0)
+            ? optionNames
+            : sortAvailableDropdownOptions(optionNames, conf.sortOptions);
     }
 
     private collectIndexedAvailabilityNames(
@@ -2543,34 +2513,34 @@ export class UnitSearchFiltersService {
         for (const eraName of selectedEraNames) {
             const era = this.dataService.getEraByName(eraName);
             if (era) {
-                this.unitAvailabilitySource.getVisibleEraUnitIds(era).forEach((id) => unitIds.add(id));
+                this.unitAvailabilitySource.getVisibleEraUnitIdsView(era).forEach((id) => unitIds.add(id));
             }
         }
         return unitIds;
     }
 
-    private getUnitIdsForSelectedEras(filterStateEntry?: FilterState[string]): Set<string> | null {
+    protected getUnitIdsForSelectedEras(filterStateEntry?: FilterState[string]): Set<string> | null {
         const resolvedEras = this.resolveEraNamesFromFilter(filterStateEntry);
         return this.combineResolvedUnitIds(
             resolvedEras,
             (eraName) => {
                 const era = this.dataService.getEraByName(eraName);
                 return era
-                    ? this.unitAvailabilitySource.getVisibleEraUnitIds(era)
+                    ? this.unitAvailabilitySource.getVisibleEraUnitIdsView(era)
                     : new Set<string>();
             },
             () => this.getAllUnitIdsInContext(),
         );
     }
 
-    private getUnitIdsForFaction(factionName: string, contextEraIds?: Set<number>): Set<string> {
+    private getUnitIdsForFaction(factionName: string, contextEraIds?: Set<number>): ReadonlySet<string> {
         const faction = this.dataService.getFactionByName(factionName);
         return faction
-            ? this.unitAvailabilitySource.getFactionUnitIds(faction, contextEraIds)
+            ? this.unitAvailabilitySource.getFactionUnitIdsView(faction, contextEraIds)
             : new Set<string>();
     }
 
-    private getSemanticIndexedUnitIds(
+    protected getSemanticIndexedUnitIds(
         filterKey: string,
         value: string,
         scope?: AvailabilityFilterScope,
@@ -2593,7 +2563,7 @@ export class UnitSearchFiltersService {
                 );
                 return contextEraIds.size === 0
                     ? new Set<string>()
-                    : this.unitAvailabilitySource.getFactionUnitIds(faction, contextEraIds);
+                    : this.unitAvailabilitySource.getFactionUnitIdsView(faction, contextEraIds);
             }
 
             return this.dataService.getIndexedUnitIds(filterKey, value);
@@ -2606,7 +2576,7 @@ export class UnitSearchFiltersService {
             }
 
             if (scope?.factionNames === undefined) {
-                return this.unitAvailabilitySource.getVisibleEraUnitIds(era);
+                return this.unitAvailabilitySource.getVisibleEraUnitIdsView(era);
             }
 
             const context = this.buildAvailabilityFilterContext({
@@ -2625,7 +2595,7 @@ export class UnitSearchFiltersService {
             }
 
             if (scope?.eraNames === undefined) {
-                return this.unitAvailabilitySource.getFactionUnitIds(faction);
+                return this.unitAvailabilitySource.getFactionUnitIdsView(faction);
             }
 
             const contextEraIds = new Set(
@@ -2635,7 +2605,7 @@ export class UnitSearchFiltersService {
             );
             return contextEraIds.size === 0
                 ? new Set<string>()
-                : this.unitAvailabilitySource.getFactionUnitIds(faction, contextEraIds);
+                : this.unitAvailabilitySource.getFactionUnitIdsView(faction, contextEraIds);
         }
 
         if (filterKey === 'availabilityFrom') {
@@ -2692,7 +2662,7 @@ export class UnitSearchFiltersService {
         return this.dataService.getIndexedFilterValues(filterKey);
     }
 
-    private getAllUnitIdsInContext(contextEraIds?: Set<number>): Set<string> {
+    protected getAllUnitIdsInContext(contextEraIds?: Set<number>): Set<string> {
         if (!contextEraIds || contextEraIds.size === 0) {
             if (this.unitAvailabilitySource.useMegaMekAvailability()) {
                 return new Set(
@@ -2713,7 +2683,7 @@ export class UnitSearchFiltersService {
         return this.getUnitIdsForEraNames(contextEraNames) || new Set<string>();
     }
 
-    private getUnitIdsForSelectedFactions(selectedFactionEntries: MultiStateSelection, contextEraNames?: string[], wildcardPatterns?: WildcardPattern[]): Set<string> | null {
+    protected getUnitIdsForSelectedFactions(selectedFactionEntries: MultiStateSelection, contextEraNames?: string[], wildcardPatterns?: WildcardPattern[]): Set<string> | null {
         const allFactionNames = this.dataService.getFactions().map(f => f.name);
         const { or: orFactions, and: andFactions, not: notFactions } = resolveDropdownNamesFromFilter(
             selectedFactionEntries, allFactionNames, wildcardPatterns
@@ -2759,7 +2729,7 @@ export class UnitSearchFiltersService {
         if (notFactions.length > 0) {
             if (resultSet === null) {
                 // If no ORs or ANDs, start with all units in context.
-                resultSet = this.getAllUnitIdsInContext(contextEraIds);
+                resultSet = new Set(this.getAllUnitIdsInContext(contextEraIds));
             }
             for (const factionName of notFactions) {
                 this.getUnitIdsForFaction(factionName, contextEraIds)
@@ -2770,7 +2740,7 @@ export class UnitSearchFiltersService {
         return resultSet;
     }
 
-    private getUnitIdsForExternalFilters(
+    protected getUnitIdsForExternalFilters(
         eraFilterState?: FilterState[string],
         factionFilterState?: FilterState[string],
     ): Set<string> | null {
@@ -3562,5 +3532,486 @@ export class UnitSearchFiltersService {
             const p = typeof filter.piloting === 'number' ? filter.piloting : this.pilotPilotingSkill();
             this.setPilotSkills(g, p);
         }
+    }
+}
+
+@Injectable({ providedIn: 'root' })
+export class UnitSearchFiltersService extends UnitSearchFiltersServiceBase {
+    private indexedUniverseNamesCache = new Map<string, string[]>();
+    private cachedWorkerCorpusVersion: string | null = null;
+    private cachedWorkerCorpusSnapshot: UnitSearchWorkerCorpusSnapshot | null = null;
+    private readonly availabilitySelectionScopePartsCache = new WeakMap<FilterState, AvailabilitySelectionScopeParts>();
+    private inferredAvailabilityDropdownOptionsCache = new Map<string, { name: string; img?: string; displayName?: string; available: boolean }[]>();
+    private inferredAvailabilityDropdownOptionsCacheVersion = '';
+    private externalDropdownOrCandidateStateCache = new Map<string, FilterState[string]>();
+    private externalDropdownAndCandidateStateCache = new Map<string, FilterState[string]>();
+    private externalDropdownOptionsCache = new Map<string, { name: string; img?: string; displayName?: string; available: boolean }[]>();
+    private availabilityFilterContextCache = new Map<string, MegaMekAvailabilityFilterContext | null>();
+    private availabilityFilterContextCacheVersion = '';
+    private externalFilterUnitIdsCache = new Map<string, Set<string> | null>();
+    private allUnitIdsInContextCache = new Map<string, Set<string>>();
+    private selectedEraUnitIdsCache = new Map<string, Set<string> | null>();
+    private selectedFactionUnitIdsCache = new Map<string, Set<string> | null>();
+    private selectedExternalUnitIdsCacheVersion = '';
+    private semanticIndexedUnitIdsCache = new Map<string, ReadonlySet<string>>();
+    private semanticIndexedUnitIdsCacheVersion = '';
+    private megaMekAvailabilityCandidateUnitIdsCache = new Map<string, ReadonlySet<string>>();
+    private megaMekAvailabilityCandidateUnitIdsCacheVersion = '';
+
+    protected override invalidateIndexedDropdownUniverseCache(): void {
+        this.indexedUniverseNamesCache.clear();
+    }
+
+    protected override invalidateCorpusCaches(): void {
+        this.inferredAvailabilityDropdownOptionsCache.clear();
+        this.inferredAvailabilityDropdownOptionsCacheVersion = '';
+        this.externalDropdownOrCandidateStateCache.clear();
+        this.externalDropdownAndCandidateStateCache.clear();
+        this.externalDropdownOptionsCache.clear();
+        this.availabilityFilterContextCache.clear();
+        this.availabilityFilterContextCacheVersion = '';
+        this.externalFilterUnitIdsCache.clear();
+        this.allUnitIdsInContextCache.clear();
+        this.selectedEraUnitIdsCache.clear();
+        this.selectedFactionUnitIdsCache.clear();
+        this.selectedExternalUnitIdsCacheVersion = '';
+        this.semanticIndexedUnitIdsCache.clear();
+        this.semanticIndexedUnitIdsCacheVersion = '';
+        this.megaMekAvailabilityCandidateUnitIdsCache.clear();
+        this.megaMekAvailabilityCandidateUnitIdsCacheVersion = '';
+        this.cachedWorkerCorpusVersion = null;
+        this.cachedWorkerCorpusSnapshot = null;
+        super.invalidateCorpusCaches();
+    }
+
+    protected override getAvailabilitySelectionScopeParts(state: FilterState): AvailabilitySelectionScopeParts {
+        const cached = this.availabilitySelectionScopePartsCache.get(state);
+        if (cached) {
+            return cached;
+        }
+
+        const result = super.getAvailabilitySelectionScopeParts(state);
+        this.availabilitySelectionScopePartsCache.set(state, result);
+        return result;
+    }
+
+    protected override buildAvailabilityFilterContext(scope?: AvailabilityFilterScope): MegaMekAvailabilityFilterContext | null {
+        if (!scope) {
+            return super.buildAvailabilityFilterContext(scope);
+        }
+
+        this.ensureAvailabilityFilterContextCacheVersion();
+        const cacheKey = this.buildAvailabilityFilterContextCacheKey(scope);
+        if (this.availabilityFilterContextCache.has(cacheKey)) {
+            return this.availabilityFilterContextCache.get(cacheKey) ?? null;
+        }
+
+        const result = super.buildAvailabilityFilterContext(scope);
+        this.availabilityFilterContextCache.set(cacheKey, result);
+        return result;
+    }
+
+    protected override buildExternalDropdownCandidateState(
+        currentFilterState: FilterState[string] | undefined,
+        optionName: string,
+    ): FilterState[string] {
+        const currentSelection = currentFilterState?.interactedWith
+            ? normalizeMultiStateSelection(currentFilterState.value)
+            : {};
+        const hasAndSelections = Object.values(currentSelection).some((selection) => selection.state === 'and');
+
+        if (!hasAndSelections) {
+            const cached = this.externalDropdownOrCandidateStateCache.get(optionName);
+            if (cached) {
+                return cached;
+            }
+
+            const result = super.buildExternalDropdownCandidateState(currentFilterState, optionName);
+            this.externalDropdownOrCandidateStateCache.set(optionName, result);
+            return result;
+        }
+
+        const cacheKey = `${optionName}|${this.buildFilterStateSelectionCacheKey(currentFilterState)}`;
+        const cached = this.externalDropdownAndCandidateStateCache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        const result = super.buildExternalDropdownCandidateState(currentFilterState, optionName);
+        this.externalDropdownAndCandidateStateCache.set(cacheKey, result);
+        return result;
+    }
+
+    protected override buildExternalDropdownOptions(
+        conf: AdvFilterConfig,
+        contextUnits: Unit[],
+        state: FilterState,
+    ): { name: string; img?: string; displayName?: string; available: boolean }[] | null {
+        if (conf.key !== 'era' && conf.key !== 'faction') {
+            return null;
+        }
+
+        const contextUnitIds = new Set(
+            contextUnits.map((unit) => this.unitAvailabilitySource.getUnitAvailabilityKey(unit)),
+        );
+        const currentFilterState = state[conf.key];
+        this.ensureSelectedExternalUnitIdsCacheVersion();
+        const cacheKey = [
+            conf.key,
+            `context=${[...contextUnitIds].sort((left, right) => left.localeCompare(right)).join('\u0001')}`,
+            `current=${this.buildFilterStateSelectionCacheKey(currentFilterState)}`,
+            `paired=${this.buildFilterStateSelectionCacheKey(conf.key === 'era' ? state['faction'] : state['era'])}`,
+        ].join('|');
+        const cached = this.externalDropdownOptionsCache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        const result = super.buildExternalDropdownOptions(conf, contextUnits, state);
+        if (result !== null) {
+            this.externalDropdownOptionsCache.set(cacheKey, result);
+        }
+        return result;
+    }
+
+    protected override buildInferredAvailabilityDropdownOptions(
+        conf: AdvFilterConfig,
+        contextUnits: Unit[],
+        state: FilterState,
+    ): { name: string; img?: string; displayName?: string; available: boolean }[] {
+        this.ensureInferredAvailabilityDropdownOptionsCacheVersion();
+        const contextUnitIds = [...new Set(contextUnits.map((unit) => unit.name))]
+            .sort((left, right) => left.localeCompare(right));
+        const cacheKey = [
+            conf.key,
+            `context=${contextUnitIds.join('\u0001')}`,
+            `era=${this.buildFilterStateSelectionCacheKey(state['era'])}`,
+            `faction=${this.buildFilterStateSelectionCacheKey(state['faction'])}`,
+            `from=${conf.key === 'availabilityRarity' ? this.buildFilterStateSelectionCacheKey(state['availabilityFrom']) : '*'}`,
+            `rarity=${conf.key === 'availabilityFrom' ? this.buildFilterStateSelectionCacheKey(state['availabilityRarity']) : '*'}`,
+        ].join('|');
+        const cached = this.inferredAvailabilityDropdownOptionsCache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        const result = super.buildInferredAvailabilityDropdownOptions(conf, contextUnits, state);
+        this.inferredAvailabilityDropdownOptionsCache.set(cacheKey, result);
+        return result;
+    }
+
+    protected override getMegaMekAvailabilityCandidateUnitIds(
+        scope: AvailabilityFilterScope,
+        availabilityFromNames: readonly string[],
+        availabilityRarityNames: readonly MegaMekAvailabilityRarity[],
+    ): ReadonlySet<string> {
+        this.ensureMegaMekAvailabilityCandidateUnitIdsCacheVersion();
+        const cacheKey = this.buildMegaMekAvailabilityCandidateUnitIdsCacheKey(scope, availabilityFromNames, availabilityRarityNames);
+        const cached = this.megaMekAvailabilityCandidateUnitIdsCache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        const result = super.getMegaMekAvailabilityCandidateUnitIds(scope, availabilityFromNames, availabilityRarityNames);
+        this.megaMekAvailabilityCandidateUnitIdsCache.set(cacheKey, result);
+        return result;
+    }
+
+    protected override getWorkerCorpusSnapshot(corpusVersion: string): UnitSearchWorkerCorpusSnapshot {
+        const result = getCachedWorkerCorpusSnapshot(
+            {
+                version: this.cachedWorkerCorpusVersion,
+                snapshot: this.cachedWorkerCorpusSnapshot,
+            },
+            corpusVersion,
+            this.units,
+            this.dataService.getSearchWorkerIndexSnapshot(),
+            this.dataService.getSearchWorkerFactionEraSnapshot(),
+        );
+
+        this.cachedWorkerCorpusVersion = result.cache.version;
+        this.cachedWorkerCorpusSnapshot = result.cache.snapshot;
+        return result.snapshot;
+    }
+
+    protected override getSortedIndexedUniverseNames(conf: AdvFilterConfig): string[] {
+        const cacheVersion = conf.key === '_tags'
+            ? this.dataService.tagsVersion()
+            : this.dataService.searchCorpusVersion();
+        const cacheKey = `${conf.key}|${conf.sortOptions?.join('\u0001') ?? ''}|${cacheVersion}`;
+        const cached = this.indexedUniverseNamesCache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        const result = super.getSortedIndexedUniverseNames(conf);
+        this.indexedUniverseNamesCache.set(cacheKey, result);
+        return result;
+    }
+
+    protected override getUnitIdsForSelectedEras(filterStateEntry?: FilterState[string]): Set<string> | null {
+        this.ensureSelectedExternalUnitIdsCacheVersion();
+        const cacheKey = this.buildSelectedEraUnitIdsCacheKey(filterStateEntry);
+        if (this.selectedEraUnitIdsCache.has(cacheKey)) {
+            return this.selectedEraUnitIdsCache.get(cacheKey) ?? null;
+        }
+
+        const result = super.getUnitIdsForSelectedEras(filterStateEntry);
+        this.selectedEraUnitIdsCache.set(cacheKey, result);
+        return result;
+    }
+
+    protected override getSemanticIndexedUnitIds(
+        filterKey: string,
+        value: string,
+        scope?: AvailabilityFilterScope,
+    ): ReadonlySet<string> | undefined {
+        if (filterKey !== 'era' && filterKey !== 'faction' && filterKey !== 'availabilityFrom' && filterKey !== 'availabilityRarity') {
+            return super.getSemanticIndexedUnitIds(filterKey, value, scope);
+        }
+
+        this.ensureSemanticIndexedUnitIdsCacheVersion();
+        const cacheKey = this.buildSemanticIndexedUnitIdsCacheKey(filterKey, value, scope);
+        const cached = this.semanticIndexedUnitIdsCache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        const result = super.getSemanticIndexedUnitIds(filterKey, value, scope);
+        if (result !== undefined) {
+            this.semanticIndexedUnitIdsCache.set(cacheKey, result);
+        }
+
+        return result;
+    }
+
+    protected override getAllUnitIdsInContext(contextEraIds?: Set<number>): Set<string> {
+        this.ensureSelectedExternalUnitIdsCacheVersion();
+        const cacheKey = !contextEraIds || contextEraIds.size === 0
+            ? '*'
+            : [...contextEraIds].sort((left, right) => left - right).join('\u0001');
+        const cached = this.allUnitIdsInContextCache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        const result = super.getAllUnitIdsInContext(contextEraIds);
+        this.allUnitIdsInContextCache.set(cacheKey, result);
+        return result;
+    }
+
+    protected override getUnitIdsForSelectedFactions(
+        selectedFactionEntries: MultiStateSelection,
+        contextEraNames?: string[],
+        wildcardPatterns?: WildcardPattern[],
+    ): Set<string> | null {
+        this.ensureSelectedExternalUnitIdsCacheVersion();
+        const cacheKey = this.buildSelectedFactionUnitIdsCacheKey(selectedFactionEntries, contextEraNames, wildcardPatterns);
+        if (this.selectedFactionUnitIdsCache.has(cacheKey)) {
+            return this.selectedFactionUnitIdsCache.get(cacheKey) ?? null;
+        }
+
+        const result = super.getUnitIdsForSelectedFactions(selectedFactionEntries, contextEraNames, wildcardPatterns);
+        this.selectedFactionUnitIdsCache.set(cacheKey, result);
+        return result;
+    }
+
+    protected override getUnitIdsForExternalFilters(
+        eraFilterState?: FilterState[string],
+        factionFilterState?: FilterState[string],
+    ): Set<string> | null {
+        this.ensureSelectedExternalUnitIdsCacheVersion();
+        const cacheKey = [
+            `era=${this.buildFilterStateSelectionCacheKey(eraFilterState)}`,
+            `faction=${this.buildFilterStateSelectionCacheKey(factionFilterState)}`,
+        ].join('|');
+        if (this.externalFilterUnitIdsCache.has(cacheKey)) {
+            return this.externalFilterUnitIdsCache.get(cacheKey) ?? null;
+        }
+
+        const result = super.getUnitIdsForExternalFilters(eraFilterState, factionFilterState);
+        this.externalFilterUnitIdsCache.set(cacheKey, result);
+        return result;
+    }
+
+    private getAvailabilityScopedCacheVersion(): string {
+        return [
+            this.dataService.searchCorpusVersion(),
+            this.dataService.megaMekAvailabilityVersion(),
+            this.optionsService.options().availabilitySource,
+            this.useAllScopedMegaMekAvailabilityOptions() ? 'all' : 'max',
+        ].join(':');
+    }
+
+    private ensureSelectedExternalUnitIdsCacheVersion(): void {
+        const nextVersion = this.getAvailabilityScopedCacheVersion();
+
+        if (this.selectedExternalUnitIdsCacheVersion === nextVersion) {
+            return;
+        }
+
+        this.selectedExternalUnitIdsCacheVersion = nextVersion;
+        this.externalDropdownOptionsCache.clear();
+        this.externalFilterUnitIdsCache.clear();
+        this.allUnitIdsInContextCache.clear();
+        this.selectedEraUnitIdsCache.clear();
+        this.selectedFactionUnitIdsCache.clear();
+    }
+
+    private ensureInferredAvailabilityDropdownOptionsCacheVersion(): void {
+        const nextVersion = this.getAvailabilityScopedCacheVersion();
+
+        if (this.inferredAvailabilityDropdownOptionsCacheVersion === nextVersion) {
+            return;
+        }
+
+        this.inferredAvailabilityDropdownOptionsCacheVersion = nextVersion;
+        this.inferredAvailabilityDropdownOptionsCache.clear();
+    }
+
+    private buildFilterStateSelectionCacheKey(filterStateEntry?: FilterState[string]): string {
+        return [
+            `interacted=${filterStateEntry?.interactedWith ? '1' : '0'}`,
+            `selection=${this.serializeMultiStateSelectionCacheKey(normalizeMultiStateSelection(filterStateEntry?.value))}`,
+            `wildcards=${this.serializeWildcardPatternCacheKey(filterStateEntry?.wildcardPatterns)}`,
+        ].join('|');
+    }
+
+    private buildSelectedEraUnitIdsCacheKey(filterStateEntry?: FilterState[string]): string {
+        return this.buildFilterStateSelectionCacheKey(filterStateEntry);
+    }
+
+    private buildSelectedFactionUnitIdsCacheKey(
+        selectedFactionEntries: MultiStateSelection,
+        contextEraNames?: readonly string[],
+        wildcardPatterns?: readonly WildcardPattern[],
+    ): string {
+        return [
+            `selection=${this.serializeMultiStateSelectionCacheKey(selectedFactionEntries)}`,
+            `wildcards=${this.serializeWildcardPatternCacheKey(wildcardPatterns)}`,
+            `eras=${this.serializeNameCacheKey(contextEraNames)}`,
+        ].join('|');
+    }
+
+    private serializeNameCacheKey(names?: readonly string[]): string {
+        return names === undefined
+            ? '*'
+            : [...names].sort((left, right) => left.localeCompare(right)).join('\u0001');
+    }
+
+    private serializeMultiStateSelectionCacheKey(selection: MultiStateSelection): string {
+        const entries = Object.values(selection);
+        if (entries.length === 0) {
+            return '*';
+        }
+
+        return [...entries]
+            .sort((left, right) => left.name.localeCompare(right.name) || String(left.state).localeCompare(String(right.state)))
+            .map((entry) => [
+                entry.name,
+                String(entry.state),
+                String(entry.count ?? 1),
+                entry.countOperator ?? '=',
+                entry.countMax === undefined ? '' : String(entry.countMax),
+                JSON.stringify(entry.countIncludeRanges ?? []),
+                JSON.stringify(entry.countExcludeRanges ?? []),
+            ].join('\u0001'))
+            .join('\u0002');
+    }
+
+    private serializeWildcardPatternCacheKey(wildcardPatterns?: readonly WildcardPattern[]): string {
+        if (!wildcardPatterns || wildcardPatterns.length === 0) {
+            return '*';
+        }
+
+        return [...wildcardPatterns]
+            .sort((left, right) => left.pattern.localeCompare(right.pattern) || left.state.localeCompare(right.state))
+            .map((pattern) => `${pattern.pattern}\u0001${pattern.state}`)
+            .join('\u0002');
+    }
+
+    private ensureAvailabilityFilterContextCacheVersion(): void {
+        const nextVersion = this.getAvailabilityScopedCacheVersion();
+
+        if (this.availabilityFilterContextCacheVersion === nextVersion) {
+            return;
+        }
+
+        this.availabilityFilterContextCacheVersion = nextVersion;
+        this.availabilityFilterContextCache.clear();
+    }
+
+    private buildAvailabilityFilterContextCacheKey(scope: AvailabilityFilterScope): string {
+        const serialize = (names?: readonly string[]): string => names === undefined
+            ? '*'
+            : [...names].sort((left, right) => left.localeCompare(right)).join('\u0001');
+
+        return [
+            `era=${serialize(scope.eraNames)}`,
+            `faction=${serialize(scope.factionNames)}`,
+            `from=${serialize(scope.availabilityFromNames)}`,
+            `rarity=${this.useAllScopedMegaMekAvailabilityOptions() ? serialize(scope.availabilityRarityNames) : '*'}`,
+            `bridge=${scope.bridgeThroughMulMembership ? 'mul' : 'default'}`,
+        ].join('|');
+    }
+
+    private ensureSemanticIndexedUnitIdsCacheVersion(): void {
+        const nextVersion = this.getAvailabilityScopedCacheVersion();
+
+        if (this.semanticIndexedUnitIdsCacheVersion === nextVersion) {
+            return;
+        }
+
+        this.semanticIndexedUnitIdsCacheVersion = nextVersion;
+        this.semanticIndexedUnitIdsCache.clear();
+    }
+
+    private ensureMegaMekAvailabilityCandidateUnitIdsCacheVersion(): void {
+        const nextVersion = this.getAvailabilityScopedCacheVersion();
+
+        if (this.megaMekAvailabilityCandidateUnitIdsCacheVersion === nextVersion) {
+            return;
+        }
+
+        this.megaMekAvailabilityCandidateUnitIdsCacheVersion = nextVersion;
+        this.megaMekAvailabilityCandidateUnitIdsCache.clear();
+    }
+
+    private buildSemanticIndexedUnitIdsCacheKey(
+        filterKey: string,
+        value: string,
+        scope?: AvailabilityFilterScope,
+    ): string {
+        const serialize = (names?: readonly string[]): string => names === undefined
+            ? '*'
+            : [...names].sort((left, right) => left.localeCompare(right)).join('\u0001');
+
+        return [
+            filterKey,
+            value,
+            `era=${serialize(scope?.eraNames)}`,
+            `faction=${serialize(scope?.factionNames)}`,
+            `from=${serialize(scope?.availabilityFromNames)}`,
+            `rarity=${serialize(scope?.availabilityRarityNames)}`,
+            `bridge=${scope?.bridgeThroughMulMembership ? 'mul' : 'default'}`,
+        ].join('|');
+    }
+
+    private buildMegaMekAvailabilityCandidateUnitIdsCacheKey(
+        scope: AvailabilityFilterScope,
+        availabilityFromNames: readonly string[],
+        availabilityRarityNames: readonly MegaMekAvailabilityRarity[],
+    ): string {
+        const serialize = (names?: readonly string[]): string => names === undefined
+            ? '*'
+            : [...names].sort((left, right) => left.localeCompare(right)).join('\u0001');
+
+        return [
+            `era=${serialize(scope.eraNames)}`,
+            `faction=${serialize(scope.factionNames)}`,
+            `from=${serialize(availabilityFromNames)}`,
+            `rarity=${serialize(availabilityRarityNames)}`,
+            `bridge=${scope.bridgeThroughMulMembership ? 'mul' : 'default'}`,
+        ].join('|');
     }
 }

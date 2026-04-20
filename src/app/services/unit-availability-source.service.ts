@@ -207,6 +207,18 @@ export class UnitAvailabilitySourceService {
         }));
     }
 
+    public getVisibleEraUnitIdsView(era: Era, availabilitySource?: AvailabilitySource): ReadonlySet<AvailabilityUnitKey> {
+        this.ensureMulCacheVersion();
+
+        if (!this.useMegaMekAvailability(availabilitySource)) {
+            return this.getMulVisibleEraUnitIds(era);
+        }
+
+        return this.getMegaMekMembershipUnitIds({
+            eraIds: new Set([era.id]),
+        });
+    }
+
     public getFactionEraUnitIds(
         faction: Faction,
         era: Era,
@@ -222,6 +234,23 @@ export class UnitAvailabilitySourceService {
             eraIds: new Set([era.id]),
             factionIds: new Set([faction.id]),
         }));
+    }
+
+    public getFactionEraUnitIdsView(
+        faction: Faction,
+        era: Era,
+        availabilitySource?: AvailabilitySource,
+    ): ReadonlySet<AvailabilityUnitKey> {
+        this.ensureMulCacheVersion();
+
+        if (!this.useMegaMekAvailability(availabilitySource)) {
+            return this.getMulFactionEraUnitIds(faction, era.id);
+        }
+
+        return this.getMegaMekMembershipUnitIds({
+            eraIds: new Set([era.id]),
+            factionIds: new Set([faction.id]),
+        });
     }
 
     public getFactionUnitIds(
@@ -244,6 +273,28 @@ export class UnitAvailabilitySourceService {
             ...(contextEraIds ? { eraIds: contextEraIds } : {}),
             factionIds: new Set([faction.id]),
         }));
+    }
+
+    public getFactionUnitIdsView(
+        faction: Faction,
+        contextEraIds?: ReadonlySet<number>,
+        availabilitySource?: AvailabilitySource,
+    ): ReadonlySet<AvailabilityUnitKey> {
+        this.ensureMulCacheVersion();
+        const singleEraId = this.getSingleScopedEraId(contextEraIds);
+
+        if (!this.useMegaMekAvailability(availabilitySource)) {
+            if (singleEraId !== null) {
+                return this.getMulFactionEraUnitIds(faction, singleEraId);
+            }
+
+            return this.getMulFactionUnitIds(faction, contextEraIds);
+        }
+
+        return this.getMegaMekMembershipUnitIds({
+            ...(contextEraIds ? { eraIds: contextEraIds } : {}),
+            factionIds: new Set([faction.id]),
+        });
     }
 
     public createForceAvailabilityContextForUnits(
