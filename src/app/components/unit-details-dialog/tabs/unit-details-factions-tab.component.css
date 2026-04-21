@@ -61,14 +61,17 @@
 }
 
 .faction-item {
-    display: inline-flex;
-    align-items: baseline;
+    display: inline;
 }
 
 .faction-name-head {
     display: inline-flex;
     align-items: baseline;
     white-space: nowrap;
+}
+
+.faction-name-middle {
+    white-space: pre-wrap;
 }
 
 .faction-name-tail {
@@ -133,14 +136,18 @@ hr.divider {
     display: inline;
 }
 
-.catch-all-faction > .faction-icon {
+.faction-name-head > .faction-icon,
+.faction-name-tail > .faction-icon {
     vertical-align: text-bottom;
 }
 
 .catch-all-faction .parent-faction {
-    text-decoration: underline dotted;
     color: var(--bt-yellow);
     cursor: pointer;
+}
+
+.catch-all-faction .parent-faction-label {
+    text-decoration: underline dotted;
 }
 
 .catch-all-faction .parent-faction:hover {
@@ -148,8 +155,7 @@ hr.divider {
 }
 
 .collapsed-faction-item {
-    display: inline-flex;
-    align-items: baseline;
+    display: inline;
 }
 
 /* Responsive */

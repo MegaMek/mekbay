@@ -74,9 +74,9 @@ interface FactionMegaMekAvailability {
 }
 
 interface FactionNameWrapParts {
-    first: string;
+    head: string;
     middle: string;
-    last: string;
+    tail: string;
     hasMultipleWords: boolean;
 }
 
@@ -159,17 +159,18 @@ export class UnitDetailsFactionTabComponent {
         }
 
         const firstSpaceIndex = name.indexOf(' ');
+        const lastSpaceIndex = name.lastIndexOf(' ');
         const parts = firstSpaceIndex > 0
             ? {
-                first: name.slice(0, firstSpaceIndex),
-                middle: name.slice(firstSpaceIndex, name.lastIndexOf(' ') + 1),
-                last: name.slice(name.lastIndexOf(' ') + 1),
+                head: name.slice(0, firstSpaceIndex),
+                middle: name.slice(firstSpaceIndex, lastSpaceIndex + 1),
+                tail: name.slice(lastSpaceIndex + 1),
                 hasMultipleWords: true,
             }
             : {
-                first: '',
+                head: '',
                 middle: '',
-                last: name,
+                tail: name,
                 hasMultipleWords: false,
             };
 

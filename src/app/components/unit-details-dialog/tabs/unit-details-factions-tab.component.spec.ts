@@ -10,6 +10,8 @@ import { DataService } from '../../../services/data.service';
 import { UnitAvailabilitySourceService } from '../../../services/unit-availability-source.service';
 import { UnitDetailsFactionTabComponent } from './unit-details-factions-tab.component';
 
+const TEST_ICON_SRC = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+
 describe('UnitDetailsFactionTabComponent', () => {
     const eras: Era[] = [
         {
@@ -151,6 +153,66 @@ describe('UnitDetailsFactionTabComponent', () => {
             },
         ]);
         expect(viewModel[0].factions.find((faction) => faction.name === 'Extinct')?.megaMekTooltip).toBeNull();
+    });
+
+    it('splits multiword faction labels into head, middle, and tail wrap groups', () => {
+        const originalFactionCount = factions.length;
+        factions.push(
+            {
+                id: 77,
+                name: 'Clan Sea Fox',
+                group: 'Clan',
+                img: TEST_ICON_SRC,
+                eras: {
+                    3050: new Set([1]),
+                },
+            } as unknown as Faction,
+            {
+                id: 99,
+                name: 'Inner Sphere General',
+                group: 'Inner Sphere',
+                img: TEST_ICON_SRC,
+                eras: {
+                    3050: new Set([1]),
+                },
+            } as unknown as Faction,
+        );
+        megaMekAvailabilityRecord = {
+            n: unit.name,
+            e: {
+                '3050': {
+                    '7': [7, 3],
+                    '77': [6, 0],
+                    '99': [5, 0],
+                },
+            },
+        };
+
+        try {
+            const fixture = TestBed.createComponent(UnitDetailsFactionTabComponent);
+            fixture.componentRef.setInput('unit', unit);
+            fixture.detectChanges();
+
+            const element = fixture.nativeElement as HTMLElement;
+            const clanSeaFoxItem = Array.from(element.querySelectorAll('.faction-item'))
+                .find((item) => item.textContent?.includes('Clan Sea Fox'));
+            const catchAllLabel = Array.from(element.querySelectorAll('.parent-faction'))
+                .find((item) => item.textContent?.includes('Inner Sphere General'));
+
+            expect(clanSeaFoxItem).toBeTruthy();
+            expect(clanSeaFoxItem?.querySelector('.faction-name-head')?.textContent?.trim()).toBe('Clan');
+            expect(clanSeaFoxItem?.querySelector('.faction-name-middle')?.textContent).toBe(' Sea ');
+            expect(clanSeaFoxItem?.querySelector('.faction-name-tail')?.textContent?.trim().startsWith('Fox')).toBeTrue();
+            expect(clanSeaFoxItem?.querySelector('.faction-name-head .faction-icon')).toBeTruthy();
+
+            expect(catchAllLabel).toBeTruthy();
+            expect(catchAllLabel?.querySelector('.faction-name-head')?.textContent?.trim()).toBe('Inner');
+            expect(catchAllLabel?.querySelector('.faction-name-middle')?.textContent).toBe(' Sphere ');
+            expect(catchAllLabel?.querySelector('.faction-name-tail')?.textContent?.trim().startsWith('General')).toBeTrue();
+            expect(catchAllLabel?.querySelector('.faction-name-head .faction-icon')).toBeTruthy();
+        } finally {
+            factions.length = originalFactionCount;
+        }
     });
 
     it('renders MegaMek factions directly from the unit record and adds extinct eras', () => {
