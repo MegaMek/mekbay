@@ -234,7 +234,7 @@ export class LanceTypeIdentifierUtil {
         factionName: string,
     ): number {
         let weight = 1;
-        if (definition.exclusiveFaction && factionName.includes(definition.exclusiveFaction)) {
+        if (definition.exclusiveFaction && definition.exclusiveFaction.some(f => factionName.includes(f))) {
             weight *= 5;
         } else if (definition.parent) {
             weight *= 3;
@@ -259,7 +259,7 @@ export class LanceTypeIdentifierUtil {
                     continue;
                 }
 
-                if (definition.exclusiveFaction && !factionName.includes(definition.exclusiveFaction)) {
+                if (definition.exclusiveFaction && !definition.exclusiveFaction.some(f => factionName.includes(f))) {
                     continue;
                 }
 

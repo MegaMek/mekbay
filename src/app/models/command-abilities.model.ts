@@ -43,7 +43,7 @@ import { GameSystem, Rulebook, type RulesReference } from './common.model';
 export interface CommandAbility {
     id: string;
     name: string;
-    exclusiveFaction?: string;
+    exclusiveFaction?: string[];
     summary: string[];
     rulesRef: RulesReference[];
 }
@@ -212,7 +212,7 @@ export const COMMAND_ABILITIES: CommandAbility[] = [
     {
         id: "family",
         name: "Family",
-        exclusiveFaction: 'Rasalhague Dominion',
+        exclusiveFaction: ['Rasalhague Dominion'],
         rulesRef: [{ book: Rulebook.DD, page: 134 }],
         summary: [
             "AS: Any unit in this force receives \u20132 TN modifier against any target that is within short range of a friendly Rasalhague Dominion unit with half of its original armor or less remaining.",
