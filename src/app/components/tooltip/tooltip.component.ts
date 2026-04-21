@@ -75,6 +75,9 @@ export type TooltipContent = string | TooltipLine[];
             justify-content: flex-start;
             gap: 8px;
         }
+        .tooltip-row.plain .tooltip-icon {
+            align-self: center;
+        }
         .tooltip-row .label,
         .tooltip-row .value {
             min-width: 0;
