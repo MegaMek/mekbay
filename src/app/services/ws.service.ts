@@ -56,6 +56,8 @@ export function generateUUID(): string {
 /** Client protocol version - increment when breaking changes are made */
 export const PROTOCOL_VERSION = 2;
 
+export type ConnectionStatusPhase = 'hidden' | 'offline' | 'online';
+
 @Injectable({
     providedIn: 'root'
 })
@@ -77,6 +79,10 @@ export class WsService {
     private readonly baseReconnectDelay = 1000;
     private readonly maxReconnectDelay = 15000;
     private readonly connectionTimeout = 3000;
+    private readonly connectionStatusHideDelay = 3500;
+    private connectionStatusHideTimeoutId: number | null = null;
+    private connectionStatusHasFailed = false;
+    public readonly connectionStatusPhase = signal<ConnectionStatusPhase>('hidden');
 
     public wsConnected = signal<boolean>(false);
     private userStateService = inject(UserStateService);
@@ -160,6 +166,7 @@ export class WsService {
     private handleNetworkOffline(): void {
         this.wsConnected.set(false);
         this.clearReconnectTimer();
+        this.showDisconnectedBadge();
     }
 
     /**
@@ -185,6 +192,7 @@ export class WsService {
         } catch (error) {
             this.logger.error(`Failed to create WebSocket: ${error}`);
             this.isConnecting = false;
+            this.showDisconnectedBadge();
             this.scheduleReconnect();
         }
     }
@@ -227,6 +235,7 @@ export class WsService {
         this.isConnecting = false;
         this.reconnectAttempt = 0; // Reset backoff on successful connection
         this.wsConnected.set(true);
+        this.showReconnectedBadge();
         this.resolveConnectionPromise();
         this.registerSession();
     }
@@ -238,6 +247,7 @@ export class WsService {
         this.logger.error(`WebSocket closed: ${event.code}, ${event.reason}`);
         this.isConnecting = false;
         this.wsConnected.set(false);
+        this.showDisconnectedBadge();
 
         // Only attempt reconnection if we should reconnect and network is online
         if (this.shouldReconnect && navigator.onLine && this.getCurrentUuid()) {
@@ -252,6 +262,7 @@ export class WsService {
         this.logger.error('WebSocket error occurred');
         this.isConnecting = false;
         this.wsConnected.set(false);
+        this.showDisconnectedBadge();
     }
 
     /**
@@ -356,6 +367,39 @@ export class WsService {
         }
     }
 
+    private showDisconnectedBadge(): void {
+        this.connectionStatusHasFailed = true;
+        this.clearConnectionStatusHideTimer();
+        this.connectionStatusPhase.set('offline');
+    }
+
+    private showReconnectedBadge(): void {
+        if (!this.connectionStatusHasFailed) {
+            return;
+        }
+
+        this.clearConnectionStatusHideTimer();
+        this.connectionStatusPhase.set('online');
+        this.connectionStatusHideTimeoutId = window.setTimeout(() => {
+            this.connectionStatusHideTimeoutId = null;
+            if (this.wsConnected()) {
+                this.connectionStatusPhase.set('hidden');
+            }
+        }, this.connectionStatusHideDelay);
+    }
+
+    private clearConnectionStatusHideTimer(): void {
+        if (this.connectionStatusHideTimeoutId !== null) {
+            clearTimeout(this.connectionStatusHideTimeoutId);
+            this.connectionStatusHideTimeoutId = null;
+        }
+    }
+
+    private hideConnectionStatusBadge(): void {
+        this.clearConnectionStatusHideTimer();
+        this.connectionStatusPhase.set('hidden');
+    }
+
     /**
      * Close WebSocket connection
      */
@@ -458,6 +502,7 @@ export class WsService {
         this.closeWebSocket(true);
         this.wsConnected.set(false);
         this.wsReady = Promise.resolve();
+        this.hideConnectionStatusBadge();
     }
 
     /**

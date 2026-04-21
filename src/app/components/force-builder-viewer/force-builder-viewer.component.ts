@@ -37,7 +37,7 @@ import type { Subscription } from 'rxjs';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
 import { OptionsService } from '../../services/options.service';
-import type { Force, UnitGroup } from '../../models/force.model';
+import { buildEraWarningMessage, type Force, UnitGroup } from '../../models/force.model';
 import type { ForceSlot } from '../../models/force-slot.model';
 import type { ForceUnit } from '../../models/force-unit.model';
 import { DragDropModule, type CdkDragDrop, type CdkDragMove } from '@angular/cdk/drag-drop'
@@ -49,8 +49,10 @@ import { ToastService } from '../../services/toast.service';
 import { formatSummaryMovement } from '../../models/pilot-abilities.model';
 import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
 import { formationInheritsParentEffects } from '../../utils/formation-type.model';
+import { DataService } from '../../services/data.service';
 import { UnitAvailabilitySourceService } from '../../services/unit-availability-source.service';
 import { TooltipDirective } from '../../directives/tooltip.directive';
+import { MULFACTION_EXTINCT } from '../../models/mulfactions.model';
 
 
 /*
@@ -72,6 +74,7 @@ export class ForceBuilderViewerComponent {
     private dialogsService = inject(DialogsService);
     private optionsService = inject(OptionsService);
     private injector = inject(Injector);
+    private dataService = inject(DataService);
     private unitAvailabilitySource = inject(UnitAvailabilitySourceService);
     private scrollableContent = viewChild<ElementRef<HTMLDivElement>>('scrollableContent');
 
@@ -85,8 +88,6 @@ export class ForceBuilderViewerComponent {
     compactMode = computed(() => {
         return this.compactModeService.compactMode();
     });
-
-    availabilityContext = computed(() => this.unitAvailabilitySource.getForceAvailabilityContext());
 
     /**
      * Alignment styling (friendly/enemy) is shown on non-owned forces only when:
@@ -106,7 +107,22 @@ export class ForceBuilderViewerComponent {
     hasOwnedForce = computed<boolean>(() => this.forceBuilderService.loadedForces().some(s => !s.force.readOnly()));
 
     forceEraWarning(force: Force): string | null {
-        return force.getEraWarningMessage(force.era(), force.faction(), this.availabilityContext());
+        const eras = this.dataService.getEras();
+        const availabilityContext = this.unitAvailabilitySource.createForceAvailabilityContextForUnits(
+            force.units().map((unit) => unit.getUnit()),
+            eras,
+        );
+        const extinctFaction = this.dataService.getFactionById(MULFACTION_EXTINCT) ?? null;
+
+        return buildEraWarningMessage(
+            force.units(),
+            force.era(),
+            force.faction(),
+            eras,
+            extinctFaction,
+            availabilityContext,
+            (faction, era) => this.unitAvailabilitySource.factionExistsInEra(faction, era, availabilityContext.source),
+        );
     }
 
     /** Set of Force instances whose headers are currently blinking (remote update on visible force). */

@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+concurrency:
+  group: deploy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build-and-deploy:
     name: Build and Upload

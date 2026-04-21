@@ -1,0 +1,155 @@
+:host {
+    display: flex;
+    width: 100%;
+    justify-content: center;
+}
+
+@keyframes connection-status-expand-vertical {
+    0% {
+        max-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        opacity: 0;
+    }
+
+    100% {
+        max-height: var(--connection-status-expanded-height, 1.2rem);
+        padding-top: var(--connection-status-spacing-before, 0px);
+        padding-bottom: var(--connection-status-spacing-after, 0px);
+        opacity: 1;
+    }
+}
+
+@keyframes connection-status-compress-vertical {
+    0% {
+        max-height: var(--connection-status-expanded-height, 1.2rem);
+        padding-top: var(--connection-status-spacing-before, 0px);
+        padding-bottom: var(--connection-status-spacing-after, 0px);
+        opacity: 1;
+    }
+
+    100% {
+        max-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        opacity: 0;
+    }
+}
+
+@keyframes connection-status-text-expand {
+    0% {
+        opacity: 0;
+        transform: scaleY(0.2);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scaleY(1);
+    }
+}
+
+@keyframes connection-status-text-compress {
+    0% {
+        opacity: 1;
+        transform: scaleY(1);
+    }
+
+    100% {
+        opacity: 0;
+        transform: scaleY(0.2);
+    }
+}
+
+.connection-status-slot {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    width: 100%;
+    max-height: var(--connection-status-expanded-height, 1.2rem);
+    padding-top: var(--connection-status-spacing-before, 0px);
+    padding-bottom: var(--connection-status-spacing-after, 0px);
+    overflow: hidden;
+    box-sizing: border-box;
+    transform-origin: center top;
+
+    &.home {
+        --connection-status-expanded-height: 1.1rem;
+        --connection-status-spacing-before: 0px;
+        --connection-status-spacing-after: 10px;
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+
+    &.sidebar {
+        --connection-status-expanded-height: 1rem;
+        --connection-status-spacing-before: 0px;
+        --connection-status-spacing-after: 8px;
+        padding-left: 4px;
+        padding-right: 4px;
+    }
+}
+
+.connection-status-enter {
+    animation: connection-status-expand-vertical 210ms cubic-bezier(0.23, 1.02, 0.35, 1) both;
+}
+
+.connection-status-leave {
+    animation: connection-status-compress-vertical 210ms cubic-bezier(0.55, 0, 0.8, 0.35) both;
+}
+
+.connection-status-enter .connection-status-badge {
+    animation: connection-status-text-expand 210ms cubic-bezier(0.23, 1.02, 0.35, 1) both;
+}
+
+.connection-status-leave .connection-status-badge {
+    animation: connection-status-text-compress 210ms cubic-bezier(0.55, 0, 0.8, 0.35) both;
+}
+
+.connection-status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    max-width: min(100%, 260px);
+    box-sizing: border-box;
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    line-height: 1.2;
+    text-align: center;
+    white-space: normal;
+    pointer-events: none;
+    transform-origin: center top;
+    color: var(--text-color-tertiary);
+
+    &.offline {
+        color: #999;
+    }
+
+    &.online {
+        color: #8cd5a0;
+    }
+}
+
+.connection-status-icon {
+    width: 0.9rem;
+    height: 0.9rem;
+    flex: 0 0 auto;
+    display: block;
+    opacity: 0.9;
+}
+
+:host-context(.tiny) .connection-status-slot.sidebar {
+    --connection-status-expanded-height: 1.9rem;
+}
+
+:host-context(.tiny) .connection-status-slot.sidebar .connection-status-badge {
+    max-width: 64px;
+    font-size: 0.65rem;
+    line-height: 1.15;
+}
+
+:host-context(.tiny) .connection-status-slot.sidebar .connection-status-icon {
+    width: 0.8rem;
+    height: 0.8rem;
+}
