@@ -65,17 +65,7 @@
     align-items: baseline;
 }
 
-.faction-name-head {
-    display: inline-flex;
-    align-items: baseline;
-    white-space: nowrap;
-}
-
-.faction-name-middle {
-    white-space: pre-wrap;
-}
-
-.faction-name-tail {
+.catch-all-heading {
     display: inline-flex;
     align-items: baseline;
     white-space: nowrap;
@@ -137,7 +127,7 @@ hr.divider {
     display: inline;
 }
 
-.catch-all-faction > .faction-icon {
+.catch-all-heading > .faction-icon {
     vertical-align: text-bottom;
 }
 
