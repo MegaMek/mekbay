@@ -111,7 +111,7 @@ export class StatBarSpecsPipe implements PipeTransform {
             { key: 'maxRange', label: 'Range', value: unit._maxRange, valueText: maxRangeValue, max: bucketStats.maxRange.max, description: 'Maximum weapon range in hexes, and weighted maximum range for effective damage output' },
             { key: 'heat', label: 'Heat', value: unit.heat, max: bucketStats.heat.max, description: 'Maximum heat generated when firing all weapons and activating all equipment' },
             { key: 'dissipation', label: 'Dissipation', value: unit.dissipation, valueText: dissipationValue, max: bucketStats.dissipation.max, description: 'Heat dissipation capacity per turn from heat sinks. If two values are present, the first is the minimum and the second is the maximum' },
-            { key: 'runMP', label: 'Top Speed', value: unit.run2, max: bucketStats.run2MP.max, description: 'Maximum running/cruising speed in hexes per turn' },
+            { key: 'run2MP', label: 'Top Speed', value: unit.run2, max: bucketStats.run2MP.max, description: 'Maximum running/cruising speed in hexes per turn' },
             { key: 'jumpMP', label: jumpLabel, value: jumpValue, max: bucketStats.jumpMP.max, description: jumpLabel === 'VTOL' ? 'VTOL movement capability in hexes' : 'Jump movement capability in hexes' },
         );
 
