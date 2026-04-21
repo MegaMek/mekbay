@@ -71,6 +71,10 @@
     white-space: nowrap;
 }
 
+.faction-name-middle {
+    white-space: pre-wrap;
+}
+
 .faction-name-tail {
     display: inline-flex;
     align-items: baseline;
