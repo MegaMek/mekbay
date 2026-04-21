@@ -106,6 +106,7 @@ export class LoadForceEntry implements ForcePreviewEntry {
     local: boolean;
     missing: boolean;
     name: string;
+    note?: string;
     faction: Faction | null;
     era: Era | null;
     bv?: number;
@@ -122,6 +123,7 @@ export class LoadForceEntry implements ForcePreviewEntry {
         this.local = data.local ?? false;
         this.missing = data.missing ?? false;
         this.name = data.name ?? '';
+        this.note = data.note || undefined;
         this.faction = data.faction ?? null;
         this.era = data.era ?? null;
         this.bv = data.bv ?? undefined;

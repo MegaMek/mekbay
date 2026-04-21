@@ -45,6 +45,7 @@ export interface ForcePreviewEntry {
     local: boolean;
     missing: boolean;
     name: string;
+    note?: string;
     faction: Faction | null;
     era: Era | null;
     bv?: number;
@@ -113,6 +114,7 @@ function createForcePreviewEntryData(data: Partial<ForcePreviewEntry>): ForcePre
         local: data.local ?? false,
         missing: data.missing ?? false,
         name: data.name ?? '',
+        note: data.note || undefined,
         faction: data.faction ?? null,
         era: data.era ?? null,
         bv: data.bv,
@@ -225,6 +227,7 @@ export function createForcePreviewEntry(
         owned: raw.owned ?? true,
         instanceId: raw.instanceId,
         name: raw.name,
+        note: raw.note || undefined,
         type: raw.type ?? GameSystem.CLASSIC,
         faction: raw.factionId != null ? resolver.getFactionById(raw.factionId) ?? null : null,
         era: raw.eraId != null ? resolver.getEraById(raw.eraId) ?? null : null,
@@ -246,6 +249,7 @@ export function createForcePreviewEntryFromSerializedForce(
         owned: raw.owned ?? true,
         instanceId: raw.instanceId,
         name: raw.name,
+        note: raw.note || undefined,
         type: raw.type ?? GameSystem.CLASSIC,
         faction: raw.factionId != null ? resolver.getFactionById(raw.factionId) ?? null : null,
         era: raw.eraId != null ? resolver.getEraById(raw.eraId) ?? null : null,
@@ -278,6 +282,7 @@ export function createForcePreviewEntryFromForce(
         owned: force.owned(),
         instanceId: force.instanceId() ?? '',
         name: force.name,
+        note: force.note || undefined,
         type: force.gameSystem,
         faction: force.faction(),
         era: force.era(),

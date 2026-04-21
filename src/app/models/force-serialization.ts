@@ -40,6 +40,8 @@ import type { ASCustomPilotAbility } from './pilot-abilities.model';
 import type { C3NetworkType } from './c3-network.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './crew-member.model';
 
+export const FORCE_NOTE_MAX_LENGTH = 2000;
+
 export interface LocationData {
     armor?: number;
     internal?: number;
@@ -60,6 +62,7 @@ export interface SerializedForce {
     instanceId: string;
     type: GameSystem;
     name: string;
+    note?: string;
     factionId?: number;
     factionLock?: boolean;
     eraId?: number;
@@ -419,6 +422,7 @@ export const CBT_SERIALIZED_FORCE_SCHEMA = Sanitizer.schema<CBTSerializedForce>(
     .string('instanceId')
     .string('type')
     .string('name', { default: 'Unnamed Force' })
+    .string('note', { maxLength: FORCE_NOTE_MAX_LENGTH })
     .boolean('factionLock')
     .number('factionId')
     .number('eraId')
@@ -584,6 +588,7 @@ export const AS_SERIALIZED_FORCE_SCHEMA = Sanitizer.schema<ASSerializedForce>()
     .string('instanceId')
     .string('type')
     .string('name', { default: 'Unnamed Force' })
+    .string('note', { maxLength: FORCE_NOTE_MAX_LENGTH })
     .boolean('factionLock')
     .number('factionId')
     .number('eraId')

@@ -37,7 +37,7 @@ import type { DataService } from '../services/data.service';
 import type { Unit } from "./units.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
 import { generateUUID } from '../services/ws.service';
-import { type SerializedForce, type SerializedUnit, type SerializedGroup, type SerializedC3NetworkGroup, C3_NETWORK_GROUP_SCHEMA } from './force-serialization';
+import { type SerializedForce, type SerializedUnit, type SerializedGroup, type SerializedC3NetworkGroup, C3_NETWORK_GROUP_SCHEMA, FORCE_NOTE_MAX_LENGTH } from './force-serialization';
 import type { ForceUnit } from './force-unit.model';
 import { GameSystem } from './common.model';
 import { C3NetworkUtil } from '../utils/c3-network.util';
@@ -359,6 +359,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     gameSystem: GameSystem = GameSystem.CLASSIC;
     instanceId: WritableSignal<string | null> = signal(null);
     _name: WritableSignal<string>;
+    _note: WritableSignal<string>;
     timestamp: string | null = null;
     groups: WritableSignal<UnitGroup<TUnit>[]> = signal([]);
     _c3Networks: WritableSignal<SerializedC3NetworkGroup[]> = signal([]); // C3 network configurations
@@ -383,6 +384,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         unitInitializer: UnitInitializerService,
         injector: Injector) {
         this._name = signal(name);
+        this._note = signal('');
         this.dataService = dataService;
         this.unitInitializer = unitInitializer;
         this.injector = injector;
@@ -405,6 +407,10 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         return this._name();
     }
 
+    get note(): string {
+        return this._note();
+    }
+
     displayName = computed<string>(() => {
         const name = this.name;
         if (!name) {
@@ -415,6 +421,14 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
 
     public setName(name: string, emitChange: boolean = true) {
         this._name.set(name);
+        if (this.instanceId() || emitChange) {
+            this.emitChanged();
+        }
+    }
+
+    public setNote(note: string | null | undefined, emitChange: boolean = true) {
+        const nextNote = (note ?? '').slice(0, FORCE_NOTE_MAX_LENGTH);
+        this._note.set(nextNote);
         if (this.instanceId() || emitChange) {
             this.emitChanged();
         }
@@ -761,6 +775,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             instanceId: instanceId,
             type: this.gameSystem,
             name: this.name,
+            note: this.note || undefined,
             factionId: this.faction()?.id,
             factionLock: this.factionLock || undefined,
             eraId: this.era()?.id,
@@ -842,6 +857,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         try {
             this.instanceId.set(sanitizedData.instanceId);
             this.owned.set(sanitizedData.owned !== false);
+            this.setNote(sanitizedData.note ?? '', false);
 
             // Resolve faction from factionId
             this.factionLock = sanitizedData.factionLock || false;
@@ -912,6 +928,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         this.loading = true;
         try {
             if (this.name !== sanitizedData.name) this.setName(sanitizedData.name, false);
+            if (this.note !== (sanitizedData.note ?? '')) this.setNote(sanitizedData.note ?? '', false);
             this.timestamp = sanitizedData.timestamp ?? null;
 
             // Resolve faction from factionId
