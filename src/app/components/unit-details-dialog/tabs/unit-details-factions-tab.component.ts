@@ -73,6 +73,13 @@ interface FactionMegaMekAvailability {
     label: string;
 }
 
+interface FactionNameWrapParts {
+    head: string;
+    middle: string;
+    tail: string;
+    hasMultipleWords: boolean;
+}
+
 interface FactionAvailabilityItem {
     name: string;
     img: string;
@@ -104,6 +111,7 @@ export interface FactionAvailability {
 export class UnitDetailsFactionTabComponent {
     private dataService = inject(DataService);
     private unitAvailabilitySource = inject(UnitAvailabilitySourceService);
+    private factionNameWrapPartsCache = new Map<string, FactionNameWrapParts>();
 
     readonly megaMekProductionIconPath = MEGAMEK_PRODUCTION_ICON_PATH;
     readonly megaMekSalvageIconPath = MEGAMEK_SALVAGE_ICON_PATH;
@@ -142,6 +150,32 @@ export class UnitDetailsFactionTabComponent {
 
     isCatchAllExpanded(eraIndex: number, factionName: string): boolean {
         return this.expandedCatchAlls().has(`${eraIndex}:${factionName}`);
+    }
+
+    getFactionNameWrapParts(name: string): FactionNameWrapParts {
+        const cached = this.factionNameWrapPartsCache.get(name);
+        if (cached) {
+            return cached;
+        }
+
+        const firstSpaceIndex = name.indexOf(' ');
+        const lastSpaceIndex = name.lastIndexOf(' ');
+        const parts = firstSpaceIndex > 0
+            ? {
+                head: name.slice(0, firstSpaceIndex),
+                middle: name.slice(firstSpaceIndex, lastSpaceIndex + 1),
+                tail: name.slice(lastSpaceIndex + 1),
+                hasMultipleWords: true,
+            }
+            : {
+                head: '',
+                middle: '',
+                tail: name,
+                hasMultipleWords: false,
+            };
+
+        this.factionNameWrapPartsCache.set(name, parts);
+        return parts;
     }
 
     private buildMulFactionAvailability(

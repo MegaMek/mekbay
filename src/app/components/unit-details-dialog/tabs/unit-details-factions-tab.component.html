@@ -52,32 +52,32 @@
                 </div>
                 <div class="faction-list">
                     @for (faction of era.factions; let isLast = $last; track faction.name) {
+                        @let factionNameParts = getFactionNameWrapParts(faction.name);
                         @if (faction.isCatchAll) {
                             @let catchAllExpanded = isCatchAllExpanded(i, faction.name) && !!faction.collapsedFactions?.length;
                             <span class="faction-item catch-all-faction" [tooltip]="faction.megaMekTooltip">
-                                <span class="catch-all-heading">
-                                    @if (faction.img) {
-                                        <img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" />
-                                    }
-                                    <span class="parent-faction" (click)="toggleCatchAll(i, faction.name)">{{ faction.name }}</span>
-                                    <ng-container
-                                        [ngTemplateOutlet]="megaMekAvailability"
-                                        [ngTemplateOutletContext]="{ badges: faction.megaMekAvailability }"
-                                    ></ng-container>
-                                    @if (!catchAllExpanded) {
-                                        {{ !isLast ? ',' : '' }}
+                                <span class="parent-faction" (click)="toggleCatchAll(i, faction.name)">
+                                    @if (factionNameParts.hasMultipleWords) {
+                                        <span class="parent-faction-label faction-name-head">@if (faction.img) {<img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" /> }{{ factionNameParts.head }}</span><span class="parent-faction-label faction-name-middle">{{ factionNameParts.middle }}</span><span class="faction-name-tail"><span class="parent-faction-label">{{ factionNameParts.tail }}</span><ng-container [ngTemplateOutlet]="megaMekAvailability" [ngTemplateOutletContext]="{ badges: faction.megaMekAvailability }"></ng-container>@if (!catchAllExpanded) { {{ !isLast ? ',' : '' }} }</span>
+                                    } @else {
+                                        <span class="faction-name-tail"><span class="parent-faction-label">@if (faction.img) {
+                                            <img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" />
+                                        }{{ factionNameParts.tail }}</span><ng-container [ngTemplateOutlet]="megaMekAvailability" [ngTemplateOutletContext]="{ badges: faction.megaMekAvailability }"></ng-container>@if (!catchAllExpanded) { {{ !isLast ? ',' : '' }} }</span>
                                     }
                                 </span>
                                 @if (catchAllExpanded) {
-                                    <span class="collapsed-factions"> (@for (cf of faction.collapsedFactions; let cfLast = $last; track cf.name) {<span class="collapsed-faction-item" [tooltip]="cf.megaMekTooltip">@if (cf.img) {<img [src]="cf.img" class="faction-icon" alt="{{cf.name}}" title="{{cf.name}}" />} {{ cf.name }}<ng-container [ngTemplateOutlet]="megaMekAvailability" [ngTemplateOutletContext]="{ badges: cf.megaMekAvailability }"></ng-container>{{ !cfLast ? ',&nbsp; ' : '' }}</span>}){{ !isLast ? ',' : '' }}</span>
+                                    <span class="collapsed-factions"> (@for (cf of faction.collapsedFactions; let cfLast = $last; track cf.name) {@let collapsedFactionNameParts = getFactionNameWrapParts(cf.name);<span class="collapsed-faction-item" [tooltip]="cf.megaMekTooltip">@if (collapsedFactionNameParts.hasMultipleWords) {<span class="faction-name-head">@if (cf.img) {<img [src]="cf.img" class="faction-icon" alt="{{cf.name}}" title="{{cf.name}}" /> }{{ collapsedFactionNameParts.head }}</span><span class="faction-name-middle">{{ collapsedFactionNameParts.middle }}</span><span class="faction-name-tail">{{ collapsedFactionNameParts.tail }}<ng-container [ngTemplateOutlet]="megaMekAvailability" [ngTemplateOutletContext]="{ badges: cf.megaMekAvailability }"></ng-container>{{ !cfLast ? ',&nbsp; ' : '' }}</span>} @else {<span class="faction-name-tail">@if (cf.img) {<img [src]="cf.img" class="faction-icon" alt="{{cf.name}}" title="{{cf.name}}" />}{{ collapsedFactionNameParts.tail }}<ng-container [ngTemplateOutlet]="megaMekAvailability" [ngTemplateOutletContext]="{ badges: cf.megaMekAvailability }"></ng-container>{{ !cfLast ? ',&nbsp; ' : '' }}</span>}</span>}){{ !isLast ? ',' : '' }}</span>
                                 }
                             </span>
                         } @else {
                             <span class="faction-item" [tooltip]="faction.megaMekTooltip">
-                                @if (faction.img) {
-                                    <img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" />
+                                @if (factionNameParts.hasMultipleWords) {
+                                    <span class="faction-name-head">@if (faction.img) {<img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" /> }{{ factionNameParts.head }}</span><span class="faction-name-middle">{{ factionNameParts.middle }}</span><span class="faction-name-tail">{{ factionNameParts.tail }}<ng-container [ngTemplateOutlet]="megaMekAvailability" [ngTemplateOutletContext]="{ badges: faction.megaMekAvailability }"></ng-container>{{ !isLast ? ',&nbsp;' : '' }}</span>
+                                } @else {
+                                    <span class="faction-name-tail">@if (faction.img) {
+                                        <img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" />
+                                    }{{ factionNameParts.tail }}<ng-container [ngTemplateOutlet]="megaMekAvailability" [ngTemplateOutletContext]="{ badges: faction.megaMekAvailability }"></ng-container>{{ !isLast ? ',&nbsp;' : '' }}</span>
                                 }
-                                {{ faction.name }}<ng-container [ngTemplateOutlet]="megaMekAvailability" [ngTemplateOutletContext]="{ badges: faction.megaMekAvailability }"></ng-container>{{ !isLast ? ',&nbsp;' : '' }}
                             </span>
                         }
                     }
