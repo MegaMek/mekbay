@@ -136,7 +136,6 @@ describe('ForceGeneratorService', () => {
             run: overrides.run ?? 0,
             run2: overrides.run2 ?? 0,
             jump: overrides.jump ?? 0,
-            jump2: overrides.jump2 ?? 0,
             umu: overrides.umu ?? 0,
             c3: overrides.c3 ?? '',
             dpt: overrides.dpt ?? 0,

@@ -44,7 +44,6 @@ function createUnit(name: string): Unit {
         run: 8,
         run2: 8,
         jump: 0,
-        jump2: 0,
         umu: 0,
         c3: '',
         dpt: 10,
