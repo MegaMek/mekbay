@@ -229,7 +229,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         cost: 3,
         cbt: {
             rulesRef: [{ book: Rulebook.CO, page: 73 }],
-            summary: ["Declare focus in End Phase (inflicts 1 pilot damage; vehicle crews are stunned). Next turn the unit may act after all others, or pre-empt any single unit\u2019s actions. Damage from pre-emptive attacks applies immediately."],
+            summary: ["Declare focus in End Phase (inflicts 1 pilot damage; vehicle crews are stunned). Next turn the unit may act after all others, or pre-empt any single unit\u2019s actions. Damage and effects from pre-emptive attacks applies immediately."],
             description: [
                 "A MechWarrior, pilot, or vehicle crew commander with the Combat Intuition SPA can accurately predict an opponent's actions by focusing intently on them.",
                 "To use this special ability, a player must declare that a pilot with this SPA is focusing on his environment during the End Phase. This action is extremely taxing, and inflicts 1 point of pilot damage to the pilot. For vehicle crews, they are stunned in the turn after next. No Consciousness Roll is required when this damage is taken. Though Combat Intuition may be used as often as every turn, this damage effect can pose a danger to the warrior if the ability is overused.",
@@ -239,7 +239,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         },
         as: {
             rulesRef: [{ book: Rulebook.ASCE, page: 93 }],
-            summary: ["If this unit's side wins Initiative, the unit may move and resolve all attacks during the Movement Phase, applying damage immediately\u2014before targets can act. Usable once every 3 turns."],
+            summary: ["If this unit's side wins Initiative, the unit may move and resolve all attacks during the Movement Phase, applying all damage effects immediately\u2014before targets can act. Usable once every 3 turns."],
             description: [
                 "The pilot or crew commander with this SPA has a knack for accurately predicting an enemy's actions if they focus hard enough on them. Though this intuition is not quite powerful enough to pass along to an entire force before the enemy has time to react, the warrior can make use of their insight to cut off a single opponent once in a while.",
                 "If this unit's side wins Initiative, the unit whose pilot has this SPA can move and resolve all of its attacks during the Movement Phase, applying all damage effects immediately\u2014before any target units can act. This ability can only be used once every 3 turns.",
