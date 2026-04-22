@@ -272,6 +272,7 @@ export function createForcePreviewEntryFromForce(
     force: Force,
     options: { cloud?: boolean; local?: boolean } = {},
 ): ForcePreviewEntry {
+    const tags = force.tags ?? [];
     const groups = force.groups()
         .filter((group) => group.units().length > 0)
         .map((group) => ({
@@ -287,7 +288,7 @@ export function createForcePreviewEntryFromForce(
         instanceId: force.instanceId() ?? '',
         name: force.name,
         note: force.note || undefined,
-        tags: force.tags.length ? [...force.tags] : undefined,
+        tags: tags.length ? [...tags] : undefined,
         type: force.gameSystem,
         faction: force.faction(),
         era: force.era(),
