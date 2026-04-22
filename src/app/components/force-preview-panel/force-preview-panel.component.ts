@@ -13,6 +13,7 @@ import {
     viewChild,
 } from '@angular/core';
 
+import { MeasureClampOverflowDirective } from '../../directives/measure-clamp-overflow.directive';
 import {
     getForcePreviewResolvedUnits,
     getForcePreviewUnitPilotStats,
@@ -26,6 +27,10 @@ import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 import { DialogsService } from '../../services/dialogs.service';
 import { OptionsService } from '../../services/options.service';
 import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
+import {
+    NOTE_PREVIEW_LINE_COUNT,
+    hasVisibleNoteText,
+} from '../../utils/note-preview.util';
 import { NO_FORMATION_ID } from '../../utils/formation-type.model';
 import { getOrgFromForce, getOrgFromGroup } from '../../utils/org/org-namer.util';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
@@ -39,7 +44,7 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
 @Component({
     selector: 'force-preview-panel',
     standalone: true,
-    imports: [CommonModule, CleanModelStringPipe, UnitIconComponent],
+    imports: [CommonModule, CleanModelStringPipe, MeasureClampOverflowDirective, UnitIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
     @let unitDisplayName = effectiveUnitDisplayName();
@@ -81,6 +86,37 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
         </div>
         }
         <div #forcePreviewViewport class="force-preview">
+            @if (showNote() && hasVisibleNote(entry.note)) {
+            @let noteIsExpandable = noteOverflowing();
+            <div class="force-preview-note-shell">
+                @if (noteIsExpandable) {
+                <button
+                    type="button"
+                    class="force-preview-note-toggle"
+                    [attr.aria-expanded]="noteExpanded()"
+                    (click)="toggleNoteExpanded()">
+                    <svg class="chevron" width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!noteExpanded()">
+                        <path d="M0 2l5 6 5-6z"/>
+                    </svg>
+                    <span
+                        class="force-preview-note-summary"
+                        [class.clamped]="!noteExpanded()"
+                        [measureClampOverflow]="entry.note ?? ''"
+                        [measureClampOverflowLines]="notePreviewLineCount"
+                        (measureClampOverflowChange)="onNoteOverflowChange($event)">{{ entry.note }}</span>
+                </button>
+                } @else {
+                <div class="force-preview-note-static">
+                    <span
+                        class="force-preview-note-summary"
+                        [class.clamped]="true"
+                        [measureClampOverflow]="entry.note ?? ''"
+                        [measureClampOverflowLines]="notePreviewLineCount"
+                        (measureClampOverflowChange)="onNoteOverflowChange($event)">{{ entry.note }}</span>
+                </div>
+                }
+            </div>
+            }
             <div class="unit-scroll">
                 @for (gd of groupDisplayData(); track gd.group) {
                 <div class="unit-group">
@@ -254,6 +290,70 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
             align-items: first baseline;
             font-size: 0.85em;
             color: var(--text-color-secondary);
+        }
+
+        .force-preview-note-shell {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 8px;
+        }
+
+        .force-preview-note-toggle {
+            display: flex;
+            align-items: flex-start;
+            gap: 4px;
+            width: 100%;
+            padding: 4px;
+            border: 0;
+            background: transparent;
+            color: inherit;
+            font: inherit;
+            cursor: pointer;
+            text-align: left;
+        }
+
+        .force-preview-note-toggle:hover {
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .force-preview-note-static {
+            display: flex;
+            align-items: flex-start;
+            gap: 4px;
+            width: 100%;
+            padding: 4px;
+            box-sizing: border-box;
+        }
+
+        .force-preview-note-summary {
+            display: block;
+            flex: 1 1 auto;
+            color: var(--text-color-secondary);
+            font-size: 0.75em;
+            line-height: 1.45;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            min-width: 0;
+        }
+
+        .force-preview-note-summary.clamped {
+            display: -webkit-box;
+            line-clamp: 2;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .chevron {
+            color: var(--text-color-secondary);
+            transition: transform 0.15s ease;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .chevron.collapsed {
+            transform: rotate(-90deg);
         }
 
         .game-type-badge {
@@ -545,6 +645,7 @@ export class ForcePreviewPanelComponent {
     readonly force = input.required<ForcePreviewEntry>();
     readonly showHeader = input(true);
     readonly showHint = input(true);
+    readonly showNote = input(true);
     readonly scrollUnitsOnly = input(false);
     readonly showLockControls = input(false);
     readonly showSelectionControls = input(false);
@@ -555,6 +656,7 @@ export class ForcePreviewPanelComponent {
     readonly hoveredUnitChange = output<ForcePreviewUnit | null>();
     readonly selectedUnitsChange = output<ForcePreviewUnit[]>();
     private readonly selectedUnits = signal<ReadonlySet<ForcePreviewUnit>>(new Set<ForcePreviewUnit>());
+    readonly noteExpanded = signal(false);
 
     readonly unitColumnCount = computed(() => {
         const viewportWidth = Math.max(this.previewViewportWidth(), UNIT_TILE_MIN_WIDTH);
@@ -575,6 +677,8 @@ export class ForcePreviewPanelComponent {
     );
 
     readonly resolvedUnits = computed<Unit[]>(() => getForcePreviewResolvedUnits(this.force()));
+    readonly notePreviewLineCount = NOTE_PREVIEW_LINE_COUNT;
+    readonly noteOverflowing = signal(false);
 
     readonly forceOrgName = computed(() => {
         const result = getOrgFromForce(this.force());
@@ -619,6 +723,19 @@ export class ForcePreviewPanelComponent {
             resizeObserver.observe(viewport);
 
             onCleanup(() => resizeObserver.disconnect());
+        });
+
+        effect(() => {
+            const force = this.force();
+            const showNote = this.showNote();
+            void force.instanceId;
+            void force.note;
+            void showNote;
+
+            untracked(() => {
+                this.noteExpanded.set(false);
+                this.noteOverflowing.set(false);
+            });
         });
 
         effect(() => {
@@ -696,5 +813,24 @@ export class ForcePreviewPanelComponent {
 
         this.selectedUnits.set(nextSelectedUnits);
         this.selectedUnitsChange.emit([...nextSelectedUnits]);
+    }
+
+    hasVisibleNote(note: string | null | undefined): boolean {
+        return hasVisibleNoteText(note);
+    }
+
+    onNoteOverflowChange(isOverflowing: boolean): void {
+        if (this.noteOverflowing() === isOverflowing) {
+            return;
+        }
+
+        this.noteOverflowing.set(isOverflowing);
+        if (!isOverflowing) {
+            this.noteExpanded.set(false);
+        }
+    }
+
+    toggleNoteExpanded(): void {
+        this.noteExpanded.update((expanded) => !expanded);
     }
 }

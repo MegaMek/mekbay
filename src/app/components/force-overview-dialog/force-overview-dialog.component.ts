@@ -64,6 +64,7 @@ import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-
 import { formatMovement } from '../../utils/as-common.util';
 import { DataTableComponent, type DataTableCellContext, type DataTableColumn, type DataTableRowClickEvent, type DataTableSortEvent } from '../data-table/data-table.component';
 import { TooltipDirective } from '../../directives/tooltip.directive';
+import { FORCE_NOTE_MAX_LENGTH } from '../../models/force-serialization';
 
 export interface ForceOverviewDialogData {
     force: Force;
@@ -79,7 +80,9 @@ type ForceTableRow =
     | { kind: 'group'; group: UnitGroup }
     | { kind: 'unit'; vm: ForceUnitViewModel; group: UnitGroup };
 
-type ForceOverviewTab = 'summary' | 'units';
+type ForceOverviewTab = 'primer' | 'summary' | 'units';
+
+const FORCE_PRIMER_META_THRESHOLD = 0.9;
 
 /**
  * State for the overview that can be persisted.
@@ -155,7 +158,21 @@ export class ForceOverviewDialogComponent {
     readonly isGroupDragging = signal<boolean>(false);
 
     /** Active high-level tab */
-    readonly activeTab = signal<ForceOverviewTab>('summary');
+    readonly activeTab = signal<ForceOverviewTab>(
+        this.data.force.readOnly() && (this.data.force.note ?? '').trim().length > 0
+            ? 'primer'
+            : 'summary'
+    );
+
+    /** Active tab after visibility-based fallbacks are applied */
+    readonly effectiveActiveTab = computed<ForceOverviewTab>(() => {
+        const activeTab = this.activeTab();
+        if (activeTab === 'primer' && !this.showPrimerTab()) {
+            return 'summary';
+        }
+
+        return activeTab;
+    });
 
     /** Hovered unit for the radar overlay */
     readonly hoveredPreviewUnit = signal<ForcePreviewUnit | null>(null);
@@ -175,6 +192,8 @@ export class ForceOverviewDialogComponent {
 
     /** Current view mode */
     viewMode = signal<'expanded' | 'compact' | 'table'>(this.optionsService.options().forceOverviewViewMode);
+
+    readonly noteLimit = FORCE_NOTE_MAX_LENGTH;
 
     /** Current sort key */
     selectedSort = signal<string>(DEFAULT_OVERVIEW_STATE.sortKey);
@@ -219,7 +238,19 @@ export class ForceOverviewDialogComponent {
     readonly isTableMode = computed(() => this.viewMode() === 'table' && this.isAlphaStrike());
 
     /** Whether the summary tab is active */
-    readonly isSummaryTab = computed(() => this.activeTab() === 'summary');
+    readonly isSummaryTab = computed(() => this.effectiveActiveTab() === 'summary');
+
+    /** Whether the primer tab is active */
+    readonly isPrimerTab = computed(() => this.effectiveActiveTab() === 'primer');
+
+    /** Current primer note */
+    readonly primerNote = computed(() => this.data.force.note ?? '');
+
+    /** Primer note with whitespace-only content normalized away for visibility checks */
+    readonly trimmedPrimerNote = computed(() => this.primerNote().trim());
+
+    /** Whether the PRIMER tab should be available in the current state */
+    readonly showPrimerTab = computed(() => !this.isReadOnly() || this.trimmedPrimerNote().length > 0);
 
     readonly nextViewMode = computed<'compact' | 'expanded' | 'table'>(() => {
         const current = this.viewMode();
@@ -532,12 +563,14 @@ export class ForceOverviewDialogComponent {
     }
 
     setActiveTab(tab: ForceOverviewTab): void {
-        if (this.activeTab() === tab) {
+        const nextTab = tab === 'primer' && !this.showPrimerTab() ? 'summary' : tab;
+
+        if (this.effectiveActiveTab() === nextTab) {
             return;
         }
 
-        this.activeTab.set(tab);
-        if (tab !== 'summary') {
+        this.activeTab.set(nextTab);
+        if (nextTab !== 'summary') {
             this.clearHoveredPreviewUnit();
         }
     }
@@ -566,6 +599,23 @@ export class ForceOverviewDialogComponent {
 
     onPreviewUnitHover(unitEntry: ForcePreviewUnit | null): void {
         this.hoveredPreviewUnit.set(unitEntry?.unit ? unitEntry : null);
+    }
+
+    onPrimerNoteChange(event: Event): void {
+        if (this.isReadOnly()) {
+            return;
+        }
+
+        const textArea = event.target as HTMLTextAreaElement;
+        const nextNote = this.clampText(textArea.value, this.noteLimit);
+        if (textArea.value !== nextNote) {
+            textArea.value = nextNote;
+        }
+        this.data.force.setNote(nextNote);
+    }
+
+    showPrimerMeta(): boolean {
+        return this.shouldShowLengthMeta(this.primerNote().length, this.noteLimit);
     }
 
     trackByForceUnitId = (_index: number, row: ForceTableRow) => row.kind === 'group' ? `group-${row.group.id}` : row.vm.forceUnit.id;
@@ -998,6 +1048,14 @@ export class ForceOverviewDialogComponent {
 
     private tableCellClass(base: string, active: boolean): string {
         return active ? `${base} sort-slot` : base;
+    }
+
+    private clampText(value: string, maxLength: number): string {
+        return value.slice(0, maxLength);
+    }
+
+    private shouldShowLengthMeta(currentLength: number, maxLength: number): boolean {
+        return currentLength > maxLength * FORCE_PRIMER_META_THRESHOLD;
     }
 
     /** Show ability info dialog for an Alpha Strike special ability */

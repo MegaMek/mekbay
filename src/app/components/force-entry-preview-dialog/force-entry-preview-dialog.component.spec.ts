@@ -1,7 +1,7 @@
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { provideZonelessChangeDetection, signal } from '@angular/core';
-import { By } from '@angular/platform-browser';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { GameSystem } from '../../models/common.model';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { Options } from '../../models/options.model';
@@ -78,6 +78,11 @@ describe('ForceEntryPreviewDialogComponent', () => {
         fixture.detectChanges();
 
         return { fixture };
+    }
+
+    async function waitForClampMeasurement() {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     }
 
     it('shows LOAD, ADD, and DISMISS for owned forces', async () => {
@@ -192,5 +197,99 @@ describe('ForceEntryPreviewDialogComponent', () => {
         expect(getComputedStyle(unitSquares[0]).flexGrow).toBe('1');
         expect(Math.abs(firstTileHeight - secondTileHeight)).toBeLessThan(0.5);
         expect(Math.abs(firstSquareHeight - secondSquareHeight)).toBeLessThan(0.5);
+    });
+
+    it('shows a formatted note in the preview and lets it open and close with the chevron toggle', async () => {
+        const note = Array.from({ length: 10 }, (_, index) => `Line ${index + 1}`).join('\n');
+        const { fixture } = await render(createForceEntry({ note }));
+        const previewHost = fixture.debugElement.query(By.directive(ForcePreviewPanelComponent))
+            .nativeElement as HTMLElement;
+
+        fixture.detectChanges();
+        await waitForClampMeasurement();
+        fixture.detectChanges();
+
+        const toggleButton = previewHost.querySelector('.force-preview-note-toggle') as HTMLButtonElement | null;
+        const collapsedChevron = toggleButton?.querySelector('.chevron') as SVGElement | null;
+        const noteSummary = previewHost.querySelector('.force-preview-note-summary') as HTMLElement | null;
+        const collapsedLineHeight = noteSummary ? Number.parseFloat(getComputedStyle(noteSummary).lineHeight) : 0;
+        const collapsedHeight = noteSummary?.getBoundingClientRect().height ?? 0;
+
+        expect(toggleButton).not.toBeNull();
+        expect(noteSummary?.textContent).toContain('Line 1');
+        expect(noteSummary?.textContent).toContain('Line 10');
+        expect(noteSummary?.classList.contains('clamped')).toBeTrue();
+        expect(collapsedHeight).toBeLessThanOrEqual((collapsedLineHeight * 2) + 1);
+        expect(toggleButton?.getAttribute('aria-expanded')).toBe('false');
+        expect(collapsedChevron?.classList.contains('collapsed')).toBeTrue();
+
+        toggleButton?.click();
+        fixture.detectChanges();
+        await waitForClampMeasurement();
+        fixture.detectChanges();
+
+        const expandedSummary = previewHost.querySelector('.force-preview-note-summary') as HTMLElement | null;
+        const expandedChevron = previewHost.querySelector('.force-preview-note-toggle .chevron') as SVGElement | null;
+        const expandedHeight = expandedSummary?.getBoundingClientRect().height ?? 0;
+
+        expect(expandedSummary).not.toBeNull();
+        expect(expandedSummary?.classList.contains('clamped')).toBeFalse();
+        expect(expandedSummary?.textContent).toContain('Line 1');
+        expect(expandedSummary?.textContent).toContain('Line 10');
+        expect(getComputedStyle(expandedSummary!).whiteSpace).toBe('pre-wrap');
+        expect(expandedHeight).toBeGreaterThan(collapsedHeight + 1);
+        expect((previewHost.querySelector('.force-preview-note-toggle') as HTMLButtonElement | null)?.getAttribute('aria-expanded')).toBe('true');
+        expect(expandedChevron?.classList.contains('collapsed')).toBeFalse();
+
+        (previewHost.querySelector('.force-preview-note-toggle') as HTMLButtonElement | null)?.click();
+        fixture.detectChanges();
+        await waitForClampMeasurement();
+        fixture.detectChanges();
+
+        const recollapsedSummary = previewHost.querySelector('.force-preview-note-summary') as HTMLElement | null;
+
+        expect(recollapsedSummary?.classList.contains('clamped')).toBeTrue();
+        expect(recollapsedSummary?.getBoundingClientRect().height ?? 0).toBeLessThanOrEqual((collapsedLineHeight * 2) + 1);
+    });
+
+    it('shows notes up to two lines inline without a chevron when no expansion is needed', async () => {
+        const note = 'Line 1\nLine 2';
+        const { fixture } = await render(createForceEntry({ note }));
+        const previewHost = fixture.debugElement.query(By.directive(ForcePreviewPanelComponent))
+            .nativeElement as HTMLElement;
+
+        fixture.detectChanges();
+        await waitForClampMeasurement();
+        fixture.detectChanges();
+
+        const staticNote = previewHost.querySelector('.force-preview-note-static') as HTMLElement | null;
+        const noteSummary = previewHost.querySelector('.force-preview-note-summary') as HTMLElement | null;
+
+        expect(staticNote).not.toBeNull();
+        expect(noteSummary?.textContent).toContain('Line 1');
+        expect(noteSummary?.textContent).toContain('Line 2');
+        expect(previewHost.querySelector('.force-preview-note-toggle')).toBeNull();
+        expect(previewHost.querySelector('.chevron')).toBeNull();
+    });
+
+    it('treats a single wrapped line as expandable when it renders past two lines', async () => {
+        const note = 'This is a single very long line that should wrap past two rendered lines when the preview is narrow enough. '.repeat(6).trim();
+        const { fixture } = await render(createForceEntry({ note }));
+        const previewHost = fixture.debugElement.query(By.directive(ForcePreviewPanelComponent))
+            .nativeElement as HTMLElement;
+
+        previewHost.style.display = 'block';
+        previewHost.style.width = '180px';
+        fixture.detectChanges();
+        await waitForClampMeasurement();
+        fixture.detectChanges();
+
+        const toggleButton = previewHost.querySelector('.force-preview-note-toggle') as HTMLButtonElement | null;
+        const noteSummary = previewHost.querySelector('.force-preview-note-summary') as HTMLElement | null;
+        const lineHeight = noteSummary ? Number.parseFloat(getComputedStyle(noteSummary).lineHeight) : 0;
+
+        expect(toggleButton).not.toBeNull();
+        expect(noteSummary?.classList.contains('clamped')).toBeTrue();
+        expect(noteSummary?.getBoundingClientRect().height ?? 0).toBeLessThanOrEqual((lineHeight * 2) + 1);
     });
 });
