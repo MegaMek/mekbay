@@ -183,6 +183,18 @@
     stroke-dasharray: 6, 3;
 }
 
+.force-card.highlighted-hover {
+    opacity: 1;
+}
+
+.force-card.highlighted-hover:not(.highlighted-selected):not(.highlighted-friendly):not(.highlighted-enemy) .card-border {
+    stroke: #ddd;
+}
+
+.force-card.highlighted-hover:not(.highlighted-selected):not(.highlighted-friendly):not(.highlighted-enemy) .card-bg {
+    fill: #383838;
+}
+
 .force-card.highlighted-selected .card-border {
     stroke: #f0c040;
     stroke-width: 2.5;

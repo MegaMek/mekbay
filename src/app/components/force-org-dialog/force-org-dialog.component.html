@@ -179,6 +179,7 @@
             @let shadowLabel = shadowCloneLabels().get(pf.placementId);
             <g class="force-card"
                 [class.shadow-clone]="!!shadowLabel"
+                [class.highlighted-hover]="hoveredForceInstanceId() === pf.force.instanceId"
                 [class.readonly-clickable]="readOnly() && !pf.force.missing"
                 [class.highlighted-selected]="selectedForceInstanceId() === pf.force.instanceId"
                 [class.highlighted-friendly]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'friendly'"
@@ -274,6 +275,7 @@
             @let shadowLabel = shadowCloneLabels().get(pf.placementId);
             <g class="force-card"
                 [class.shadow-clone]="!!shadowLabel"
+                [class.highlighted-hover]="hoveredForceInstanceId() === pf.force.instanceId"
                 [class.highlighted-selected]="selectedForceInstanceId() === pf.force.instanceId"
                 [class.highlighted-friendly]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'friendly'"
                 [class.highlighted-enemy]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'enemy'"

@@ -461,6 +461,12 @@ export class ForceOrgDialogComponent {
 
     // Hover state
     protected hoveredForceId = signal<string | null>(null);
+    protected hoveredForceInstanceId = computed<string | null>(() => {
+        const hoveredPlacementId = this.hoveredForceId();
+        if (!hoveredPlacementId) return null;
+
+        return this.placedForces().find(pf => pf.placementId === hoveredPlacementId)?.force.instanceId ?? null;
+    });
 
     // Drop preview state
     protected dropTargetGroupId = signal<string | null>(null);

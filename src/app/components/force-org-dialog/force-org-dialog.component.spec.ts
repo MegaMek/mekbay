@@ -331,6 +331,21 @@ describe('ForceOrgDialogComponent', () => {
         expect((component as any).shadowCloneLabels().get(secondShadow.placementId)).toBe('Shadow 1');
     });
 
+    it('highlights all placements for a hovered force clone family', () => {
+        const mainForce = createPlacedForce('force-1', 0, 0, null, 'main-placement');
+        const shadowForce = createPlacedForce('force-1', 40, 0, null, 'shadow-placement');
+        const otherForce = createPlacedForce('force-2', 80, 0, null, 'other-placement');
+
+        (component as any).placedForces.set([mainForce, shadowForce, otherForce]);
+        (component as any).hoveredForceId.set('shadow-placement');
+        fixture.detectChanges();
+
+        const host = fixture.nativeElement as HTMLElement;
+        expect(host.querySelector('[data-force-id="main-placement"]')?.classList.contains('highlighted-hover')).toBeTrue();
+        expect(host.querySelector('[data-force-id="shadow-placement"]')?.classList.contains('highlighted-hover')).toBeTrue();
+        expect(host.querySelector('[data-force-id="other-placement"]')?.classList.contains('highlighted-hover')).toBeFalse();
+    });
+
     it('saves duplicate placements with distinct placement ids', async () => {
         const mainForce = createPlacedForce('force-1', 0, 0, null, 'main-placement');
         const shadowForce = createPlacedForce('force-1', 40, 0, null, 'shadow-placement');
