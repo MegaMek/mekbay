@@ -18,6 +18,7 @@ describe('createLoadForceEntry', () => {
             instanceId: 'force-1',
             name: 'Alpha Lance',
             note: 'Fast cavalry reserve.',
+            tags: ['Recon', 'Skirmish'],
             type: GameSystem.ALPHA_STRIKE,
             factionId: 1,
             eraId: 3025,
@@ -44,6 +45,7 @@ describe('createLoadForceEntry', () => {
         expect(result.cloud).toBe(true);
         expect(result.local).toBe(false);
         expect(result.note).toBe('Fast cavalry reserve.');
+        expect(result.tags).toEqual(['Recon', 'Skirmish']);
         expect(result.faction).toBe(resolvedFaction);
         expect(result.era).toBe(resolvedEra);
         expect(result.groups[0]).toEqual(jasmine.objectContaining({
@@ -98,6 +100,7 @@ describe('createLoadForceEntryFromSerializedForce', () => {
             instanceId: 'force-2',
             name: 'Classic Lance',
             note: 'House guard detachment.',
+            tags: ['Guard', '3025'],
             type: GameSystem.CLASSIC,
             factionId: 1,
             eraId: 3025,
@@ -118,6 +121,7 @@ describe('createLoadForceEntryFromSerializedForce', () => {
         expect(result.cloud).toBe(false);
         expect(result.bv).toBe(1400);
         expect(result.note).toBe('House guard detachment.');
+        expect(result.tags).toEqual(['Guard', '3025']);
         expect(result.groups[0]).toEqual(jasmine.objectContaining({
             name: 'Command Lance',
             formationId: 'command-lance',

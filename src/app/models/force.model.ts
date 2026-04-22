@@ -37,7 +37,7 @@ import type { DataService } from '../services/data.service';
 import type { Unit } from "./units.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
 import { generateUUID } from '../services/ws.service';
-import { type SerializedForce, type SerializedUnit, type SerializedGroup, type SerializedC3NetworkGroup, C3_NETWORK_GROUP_SCHEMA, FORCE_NOTE_MAX_LENGTH } from './force-serialization';
+import { type SerializedForce, type SerializedUnit, type SerializedGroup, type SerializedC3NetworkGroup, C3_NETWORK_GROUP_SCHEMA, FORCE_NOTE_MAX_LENGTH, sanitizeForceTags } from './force-serialization';
 import type { ForceUnit } from './force-unit.model';
 import { GameSystem } from './common.model';
 import { C3NetworkUtil } from '../utils/c3-network.util';
@@ -360,6 +360,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     instanceId: WritableSignal<string | null> = signal(null);
     _name: WritableSignal<string>;
     _note: WritableSignal<string>;
+    _tags: WritableSignal<string[]>;
     timestamp: string | null = null;
     groups: WritableSignal<UnitGroup<TUnit>[]> = signal([]);
     _c3Networks: WritableSignal<SerializedC3NetworkGroup[]> = signal([]); // C3 network configurations
@@ -385,6 +386,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         injector: Injector) {
         this._name = signal(name);
         this._note = signal('');
+        this._tags = signal([]);
         this.dataService = dataService;
         this.unitInitializer = unitInitializer;
         this.injector = injector;
@@ -411,6 +413,10 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         return this._note();
     }
 
+    get tags(): string[] {
+        return this._tags();
+    }
+
     displayName = computed<string>(() => {
         const name = this.name;
         if (!name) {
@@ -429,6 +435,14 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     public setNote(note: string | null | undefined, emitChange: boolean = true) {
         const nextNote = (note ?? '').slice(0, FORCE_NOTE_MAX_LENGTH);
         this._note.set(nextNote);
+        if (this.instanceId() || emitChange) {
+            this.emitChanged();
+        }
+    }
+
+    public setTags(tags: readonly string[] | null | undefined, emitChange: boolean = true) {
+        const nextTags = sanitizeForceTags(tags);
+        this._tags.set(nextTags);
         if (this.instanceId() || emitChange) {
             this.emitChanged();
         }
@@ -776,6 +790,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             type: this.gameSystem,
             name: this.name,
             note: this.note || undefined,
+            tags: this.tags.length > 0 ? [...this.tags] : undefined,
             factionId: this.faction()?.id,
             factionLock: this.factionLock || undefined,
             eraId: this.era()?.id,
@@ -858,6 +873,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             this.instanceId.set(sanitizedData.instanceId);
             this.owned.set(sanitizedData.owned !== false);
             this.setNote(sanitizedData.note ?? '', false);
+            this.setTags(sanitizedData.tags ?? [], false);
 
             // Resolve faction from factionId
             this.factionLock = sanitizedData.factionLock || false;
@@ -929,6 +945,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         try {
             if (this.name !== sanitizedData.name) this.setName(sanitizedData.name, false);
             if (this.note !== (sanitizedData.note ?? '')) this.setNote(sanitizedData.note ?? '', false);
+            if (!this.areTagsEqual(this.tags, sanitizedData.tags ?? [])) this.setTags(sanitizedData.tags ?? [], false);
             this.timestamp = sanitizedData.timestamp ?? null;
 
             // Resolve faction from factionId
@@ -1037,6 +1054,14 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         } finally {
             this.loading = false;
         }
+    }
+
+    private areTagsEqual(currentTags: readonly string[], nextTags: readonly string[]): boolean {
+        if (currentTags.length !== nextTags.length) {
+            return false;
+        }
+
+        return currentTags.every((tag, index) => tag === nextTags[index]);
     }
 
     /**

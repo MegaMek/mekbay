@@ -174,18 +174,20 @@
             }
 
             <!-- Forces layer -->
-            @for (pf of baseLayerForces(); track pf.force.instanceId) {
+            @for (pf of baseLayerForces(); track pf.placementId) {
             @let metadata = forcesData().get(pf.force.instanceId);
+            @let shadowLabel = shadowCloneLabels().get(pf.placementId);
             <g class="force-card"
+                [class.shadow-clone]="!!shadowLabel"
                 [class.readonly-clickable]="readOnly() && !pf.force.missing"
                 [class.highlighted-selected]="selectedForceInstanceId() === pf.force.instanceId"
                 [class.highlighted-friendly]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'friendly'"
                 [class.highlighted-enemy]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'enemy'"
-                [attr.data-force-id]="pf.force.instanceId"
+                [attr.data-force-id]="pf.placementId"
                 [attr.transform]="'translate(' + pf.x() + ',' + pf.y() + ')'" (pointerdown)="onForcePointerDown($event, pf)"
                 (click)="onReadonlyForceClick($event, pf)"
                 [attr.title]="readOnly() && !pf.force.missing ? 'Click to view details' : null"
-                (pointerenter)="hoveredForceId.set(pf.force.instanceId)" (pointerleave)="hoveredForceId.set(null)">
+                (pointerenter)="hoveredForceId.set(pf.placementId)" (pointerleave)="hoveredForceId.set(null)">
 
                 <!-- Card background -->
                 <rect class="card-bg" x="0" y="0" [attr.width]="CARD_WIDTH" [attr.height]="CARD_HEIGHT"
@@ -240,6 +242,14 @@
                                     d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
                             </svg>
                         </button>
+                        <button class="force-action-btn clone"
+                            (click)="shadowCloneForce(pf); $event.stopPropagation()"
+                            (pointerdown)="$event.stopPropagation()" title="Create shadow clone">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <rect x="9" y="9" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.8" />
+                                <path d="M7 15H6C4.89543 15 4 14.1046 4 13V6C4 4.89543 4.89543 4 6 4H13C14.1046 4 15 4.89543 15 6V7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                            </svg>
+                        </button>
                         @if (!pf.force.missing) {
                         <button class="force-action-btn preview"
                             (click)="previewForce(pf.force); $event.stopPropagation()"
@@ -259,13 +269,15 @@
             }
 
             <!-- Dragged force overlay (rendered above groups) -->
-            @for (pf of dragOverlayForces(); track pf.force.instanceId) {
+            @for (pf of dragOverlayForces(); track pf.placementId) {
             @let metadata = forcesData().get(pf.force.instanceId);
+            @let shadowLabel = shadowCloneLabels().get(pf.placementId);
             <g class="force-card"
+                [class.shadow-clone]="!!shadowLabel"
                 [class.highlighted-selected]="selectedForceInstanceId() === pf.force.instanceId"
                 [class.highlighted-friendly]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'friendly'"
                 [class.highlighted-enemy]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'enemy'"
-                [attr.data-force-id]="pf.force.instanceId"
+                [attr.data-force-id]="pf.placementId"
                 [attr.transform]="'translate(' + pf.x() + ',' + pf.y() + ')'"
                 pointer-events="none">
 
@@ -312,6 +324,12 @@
                                 xmlns="http://www.w3.org/2000/svg">
                                 <path
                                     d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
+                            </svg>
+                        </button>
+                        <button class="force-action-btn clone" tabindex="-1">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <rect x="9" y="9" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.8" />
+                                <path d="M7 15H6C4.89543 15 4 14.1046 4 13V6C4 4.89543 4.89543 4 6 4H13C14.1046 4 15 4.89543 15 6V7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
                             </svg>
                         </button>
                         <button class="force-action-btn preview" tabindex="-1">

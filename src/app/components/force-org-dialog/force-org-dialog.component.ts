@@ -206,6 +206,7 @@ type GroupDropAction =
 
 /** A force card placed in the main canvas */
 interface PlacedForce {
+    placementId: string;
     force: LoadForceEntry;
     x: WritableSignal<number>;
     y: WritableSignal<number>;
@@ -401,6 +402,20 @@ export class ForceOrgDialogComponent {
 
     // Placed forces on canvas
     protected placedForces = signal<PlacedForce[]>([]);
+    protected shadowCloneLabels = computed<Map<string, string>>(() => {
+        const labels = new Map<string, string>();
+        const counts = new Map<string, number>();
+
+        for (const pf of this.placedForces()) {
+            const count = counts.get(pf.force.instanceId) ?? 0;
+            if (count > 0) {
+                labels.set(pf.placementId, `Shadow ${count}`);
+            }
+            counts.set(pf.force.instanceId, count + 1);
+        }
+
+        return labels;
+    });
 
     // Groups
     protected groups = signal<OrgGroup[]>([]);
@@ -419,8 +434,8 @@ export class ForceOrgDialogComponent {
     private pinchStartDistance = 0;
     private pinchStartZoom = 1;
     private activeTouches = new Map<number, PointerEvent>();
-    private pendingReadonlyPreview: { pointerId: number; startX: number; startY: number; force: LoadForceEntry } | null = null;
-    private pendingReadonlyClickForceId: string | null = null;
+    private pendingReadonlyPreview: { pointerId: number; startX: number; startY: number; force: LoadForceEntry; placementId: string } | null = null;
+    private pendingReadonlyClickPlacementId: string | null = null;
 
     // Drag state for forces
     protected draggedForce = signal<PlacedForce | null>(null);
@@ -842,14 +857,38 @@ export class ForceOrgDialogComponent {
         }
     }
 
+    private createPlacedForceState(
+        force: LoadForceEntry,
+        params: {
+            placementId?: string;
+            x: number;
+            y: number;
+            zIndex: number;
+            groupId: string | null;
+        },
+    ): PlacedForce {
+        const placementId = params.placementId?.trim();
+        return {
+            placementId: placementId && placementId.length > 0 ? placementId : crypto.randomUUID(),
+            force,
+            x: signal(snapToGrid(params.x)),
+            y: signal(snapToGrid(params.y)),
+            zIndex: signal(params.zIndex),
+            groupId: params.groupId,
+        };
+    }
+
     private buildPlacedForces(orgForces: readonly OrgPlacedForce[], forceMap?: ReadonlyMap<string, LoadForceEntry>): PlacedForce[] {
-        return orgForces.map((pf) => ({
-            force: forceMap?.get(pf.instanceId) ?? createMissingForceEntry(pf.instanceId),
-            x: signal(snapToGrid(pf.x)),
-            y: signal(snapToGrid(pf.y)),
-            zIndex: signal(pf.zIndex),
-            groupId: pf.groupId,
-        }));
+        return orgForces.map((pf) => this.createPlacedForceState(
+            forceMap?.get(pf.instanceId) ?? createMissingForceEntry(pf.instanceId),
+            {
+                placementId: pf.placementId,
+                x: pf.x,
+                y: pf.y,
+                zIndex: pf.zIndex,
+                groupId: pf.groupId,
+            },
+        ));
     }
 
     private buildGroups(groupData: readonly OrgGroupData[]): OrgGroup[] {
@@ -875,12 +914,15 @@ export class ForceOrgDialogComponent {
             name: this.organizationName(),
             forces: this.placedForces()
                 .map((pf) => ({
+                    placementId: pf.placementId,
                     instanceId: pf.force.instanceId,
                     x: pf.x(),
                     y: pf.y(),
                     groupId: pf.groupId,
                 }))
-                .sort((left, right) => left.instanceId.localeCompare(right.instanceId)),
+                .sort((left, right) =>
+                    left.instanceId.localeCompare(right.instanceId) || left.placementId.localeCompare(right.placementId),
+                ),
             groups: this.groups()
                 .map((group) => ({
                     id: group.id,
@@ -1035,6 +1077,7 @@ export class ForceOrgDialogComponent {
         const orgName = getOrgFromForce(force).name;
 
         if (force.name) s += force.name + ' ';
+        if (force.note) s += force.note + ' ';
         if (force.faction?.name) s += force.faction.name + ' ';
         if (force.era?.name) s += force.era.name + ' ';
         if (orgName) s += orgName + ' ';
@@ -1231,9 +1274,9 @@ export class ForceOrgDialogComponent {
 
     protected onReadonlyForceClick(event: MouseEvent, pf: PlacedForce): void {
         if (!this.readOnly() || pf.force.missing) return;
-        if (this.pendingReadonlyClickForceId !== pf.force.instanceId) return;
+        if (this.pendingReadonlyClickPlacementId !== pf.placementId) return;
 
-        this.pendingReadonlyClickForceId = null;
+        this.pendingReadonlyClickPlacementId = null;
         event.preventDefault();
         event.stopPropagation();
         void this.previewForce(pf.force);
@@ -1329,13 +1372,14 @@ export class ForceOrgDialogComponent {
     // ==================== Canvas Force Drag ====================
 
     protected onForcePointerDown(event: PointerEvent, pf: PlacedForce): void {
-        this.pendingReadonlyClickForceId = null;
+        this.pendingReadonlyClickPlacementId = null;
         if (this.readOnly()) {
             this.pendingReadonlyPreview = pf.force.missing ? null : {
                 pointerId: event.pointerId,
                 startX: event.clientX,
                 startY: event.clientY,
                 force: pf.force,
+                placementId: pf.placementId,
             };
             return;
         }
@@ -1400,6 +1444,28 @@ export class ForceOrgDialogComponent {
     }
 
     // ==================== Remove Force ====================
+
+    protected shadowCloneForce(pf: PlacedForce): void {
+        if (this.readOnly()) return;
+
+        const cloned = this.createPlacedForceState(pf.force, {
+            x: pf.x() + GRID_SNAP_SIZE * 2,
+            y: pf.y() + GRID_SNAP_SIZE * 2,
+            zIndex: this.nextZIndex++,
+            groupId: pf.groupId,
+        });
+
+        this.placedForces.set([...this.placedForces(), cloned]);
+        this.resolveForceSiblingCollisions(cloned);
+
+        if (cloned.groupId) {
+            const group = this.getGroupById(cloned.groupId);
+            if (group) {
+                this.recalcGroupBounds(group);
+                this.resolveAncestorGroupCollisionsFrom(group);
+            }
+        }
+    }
 
     protected removeForce(pf: PlacedForce): void {
         if (this.readOnly()) return;
@@ -1961,10 +2027,10 @@ export class ForceOrgDialogComponent {
         if (bestForce) {
             if (this.dropTargetGroupId() !== null) this.dropTargetGroupId.set(null);
             if (this.previewExtraForces() !== null) this.previewExtraForces.set(null);
-            if (this.previewOtherId === bestForce.force.instanceId && this.previewOrgCache) {
+            if (this.previewOtherId === bestForce.placementId && this.previewOrgCache) {
                 this.dropPreviewRect.set({ ...this.computeGroupPreviewRect(rect, this.forceRect(bestForce)), ...this.previewOrgCache });
             } else {
-                this.previewOtherId = bestForce.force.instanceId;
+                this.previewOtherId = bestForce.placementId;
                 this.dropPreviewRect.set(this.computeGroupPreview(rect, this.forceRect(bestForce), [sidebarForce, bestForce.force]));
             }
             return;
@@ -2004,7 +2070,7 @@ export class ForceOrgDialogComponent {
             case 'new-group':
             case 'create-parent': {
                 const otherId = action.type === 'new-group'
-                    ? (action as { type: 'new-group'; other: PlacedForce }).other.force.instanceId
+                    ? (action as { type: 'new-group'; other: PlacedForce }).other.placementId
                     : (action as { type: 'create-parent'; other: OrgGroup }).other.id;
                 if (this.dropTargetGroupId() !== null) this.dropTargetGroupId.set(null);
                 if (this.previewExtraForces() !== null) this.previewExtraForces.set(null);
@@ -2313,7 +2379,7 @@ export class ForceOrgDialogComponent {
     private onGlobalPointerCancel = (event: PointerEvent): void => {
         if (this.pendingReadonlyPreview?.pointerId === event.pointerId) {
             this.pendingReadonlyPreview = null;
-            this.pendingReadonlyClickForceId = null;
+            this.pendingReadonlyClickPlacementId = null;
         }
         this.activeTouches.delete(event.pointerId);
         // Treat cancel same as pointer up to clean state
@@ -2407,7 +2473,7 @@ export class ForceOrgDialogComponent {
             }
             const otherRect = forceAction?.type === 'new-group' ? this.forceRect(forceAction.other) : undefined;
             // Skip building entries if still overlapping the same target
-            const forceOtherId = forceAction?.type === 'new-group' ? forceAction.other.force.instanceId
+            const forceOtherId = forceAction?.type === 'new-group' ? forceAction.other.placementId
                 : forceAction?.type === 'join-group' ? forceAction.groupId
                 : null;
             let entries: LoadForceEntry[] | undefined;
@@ -2534,7 +2600,7 @@ export class ForceOrgDialogComponent {
         if (readonlyPreview) {
             this.pendingReadonlyPreview = null;
         } else {
-            this.pendingReadonlyClickForceId = null;
+            this.pendingReadonlyClickPlacementId = null;
         }
 
         this.activeTouches.delete(event.pointerId);
@@ -2559,13 +2625,12 @@ export class ForceOrgDialogComponent {
                         const rect = svg.getBoundingClientRect();
                         if (event.clientX >= rect.left && event.clientX <= rect.right &&
                             event.clientY >= rect.top && event.clientY <= rect.bottom) {
-                            const newPlaced: PlacedForce = {
-                                force,
-                                x: signal(snapToGrid(worldPos.x - CARD_WIDTH / 2)),
-                                y: signal(snapToGrid(worldPos.y - CARD_HEIGHT / 2)),
-                                zIndex: signal(this.nextZIndex++),
-                                groupId: null
-                            };
+                            const newPlaced = this.createPlacedForceState(force, {
+                                x: worldPos.x - CARD_WIDTH / 2,
+                                y: worldPos.y - CARD_HEIGHT / 2,
+                                zIndex: this.nextZIndex++,
+                                groupId: null,
+                            });
                             this.placedForces.set([...this.placedForces(), newPlaced]);
                             // Try grouping with nearby forces
                             this.tryFormGroup(newPlaced, worldPos);
@@ -2623,7 +2688,7 @@ export class ForceOrgDialogComponent {
         if (this.activeTouches.size === 0) this.cleanupGlobalPointerState();
 
         if (readonlyPreview) {
-            this.pendingReadonlyClickForceId = readonlyPreview.force.instanceId;
+            this.pendingReadonlyClickPlacementId = readonlyPreview.placementId;
         }
     };
 
@@ -2681,6 +2746,7 @@ export class ForceOrgDialogComponent {
                 timestamp: Date.now(),
                 factionId: this.organizationFactionId(),
                 forces: this.placedForces().map(pf => ({
+                    placementId: pf.placementId,
                     instanceId: pf.force.instanceId,
                     x: pf.x(),
                     y: pf.y(),

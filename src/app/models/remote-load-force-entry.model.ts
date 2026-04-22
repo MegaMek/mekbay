@@ -56,6 +56,7 @@ export interface RemoteLoadForceEntry {
     owned?: boolean;
     name: string;
     note?: string;
+    tags?: string[];
     factionId?: number;
     eraId?: number;
     bv?: number;

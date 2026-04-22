@@ -15,6 +15,7 @@ import { ForceOrgDialogComponent } from './force-org-dialog.component';
 describe('ForceOrgDialogComponent', () => {
     let component: ForceOrgDialogComponent;
     let fixture: import('@angular/core/testing').ComponentFixture<ForceOrgDialogComponent>;
+    let nextPlacementId = 0;
     let dialogRefStub: {
         close: jasmine.Spy;
         backdropClick: Subject<MouseEvent>;
@@ -52,6 +53,7 @@ describe('ForceOrgDialogComponent', () => {
     };
 
     beforeEach(async () => {
+        nextPlacementId = 0;
         dialogRefStub = {
             close: jasmine.createSpy('close'),
             backdropClick: new Subject<MouseEvent>(),
@@ -79,8 +81,9 @@ describe('ForceOrgDialogComponent', () => {
         urlStateServiceStub.setParams.calls.reset();
     });
 
-    function createPlacedForce(instanceId: string, x: number, y: number, groupId: string | null) {
+    function createPlacedForce(instanceId: string, x: number, y: number, groupId: string | null, placementId = `${instanceId}-placement-${nextPlacementId++}`) {
         return {
+            placementId,
             force: {
                 instanceId,
                 groups: [],
@@ -144,7 +147,6 @@ describe('ForceOrgDialogComponent', () => {
             run: 0,
             run2: 0,
             jump: 0,
-            jump2: 0,
             umu: 0,
             c3: '',
             dpt: 0,
@@ -290,6 +292,60 @@ describe('ForceOrgDialogComponent', () => {
         expect(draggedForce.groupId).toBe(targetForce.groupId);
         expect(draggedForce.groupId).not.toBeNull();
         expect(draggedForce.x() !== targetForce.x() || draggedForce.y() !== targetForce.y()).toBeTrue();
+    });
+
+    it('creates a shadow clone placement that keeps the same source force and group membership', () => {
+        const group = createGroup('group-1', 0, 0, 400, 300);
+        const mainForce = createPlacedForce('force-1', 100, 100, group.id, 'main-placement');
+
+        (component as any).groups.set([group]);
+        (component as any).placedForces.set([mainForce]);
+
+        (component as any).shadowCloneForce(mainForce);
+
+        const placed = (component as any).placedForces();
+        expect(placed.length).toBe(2);
+        expect(placed[1].placementId).not.toBe(mainForce.placementId);
+        expect(placed[1].force).toBe(mainForce.force);
+        expect(placed[1].groupId).toBe(group.id);
+        expect((component as any).shadowCloneLabels().get(mainForce.placementId)).toBeUndefined();
+        expect((component as any).shadowCloneLabels().get(placed[1].placementId)).toBe('Shadow 1');
+    });
+
+    it('promotes the earliest remaining shadow clone when the main placement is removed', () => {
+        const mainForce = createPlacedForce('force-1', 0, 0, null, 'main-placement');
+
+        (component as any).placedForces.set([mainForce]);
+        (component as any).shadowCloneForce(mainForce);
+        (component as any).shadowCloneForce(mainForce);
+
+        const [, firstShadow, secondShadow] = (component as any).placedForces();
+        expect((component as any).shadowCloneLabels().get(firstShadow.placementId)).toBe('Shadow 1');
+        expect((component as any).shadowCloneLabels().get(secondShadow.placementId)).toBe('Shadow 2');
+
+        (component as any).removeForce(mainForce);
+
+        const remaining = (component as any).placedForces();
+        expect(remaining).toEqual([firstShadow, secondShadow]);
+        expect((component as any).shadowCloneLabels().get(firstShadow.placementId)).toBeUndefined();
+        expect((component as any).shadowCloneLabels().get(secondShadow.placementId)).toBe('Shadow 1');
+    });
+
+    it('saves duplicate placements with distinct placement ids', async () => {
+        const mainForce = createPlacedForce('force-1', 0, 0, null, 'main-placement');
+        const shadowForce = createPlacedForce('force-1', 40, 0, null, 'shadow-placement');
+
+        (component as any).placedForces.set([mainForce, shadowForce]);
+        dataServiceStub.saveOrganization.calls.reset();
+
+        await (component as any).saveOrganization();
+
+        expect(dataServiceStub.saveOrganization).toHaveBeenCalledWith(jasmine.objectContaining({
+            forces: [
+                jasmine.objectContaining({ placementId: 'main-placement', instanceId: 'force-1' }),
+                jasmine.objectContaining({ placementId: 'shadow-placement', instanceId: 'force-1' }),
+            ],
+        }));
     });
 
     it('chooses the group with the largest overlap for group drops', () => {

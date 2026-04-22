@@ -175,6 +175,14 @@
     transition: stroke 0.2s;
 }
 
+.force-card.shadow-clone {
+    opacity: 0.68;
+}
+
+.force-card.shadow-clone .card-border {
+    stroke-dasharray: 6, 3;
+}
+
 .force-card.highlighted-selected .card-border {
     stroke: #f0c040;
     stroke-width: 2.5;
@@ -299,6 +307,10 @@
 
     &.preview:hover {
         color: #fff;
+    }
+
+    &.clone:hover {
+        color: #8fd3ff;
     }
 
     &.remove:hover {

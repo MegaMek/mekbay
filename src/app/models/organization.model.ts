@@ -42,6 +42,8 @@ import { FactionId } from "./factions.model";
 
 /** A placed force card on the organization canvas. */
 export interface OrgPlacedForce {
+    /** Stable placement ID for this card on the canvas */
+    placementId?: string;
     /** Force instance ID */
     instanceId: string;
     x: number;

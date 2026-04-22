@@ -94,6 +94,7 @@ describe('createForcePreviewEntryFromForce', () => {
             owned: () => true,
             name: 'Unsaved Alpha Force',
             note: 'Forward recon screen.',
+            tags: ['Recon', 'Priority'],
             gameSystem: GameSystem.ALPHA_STRIKE,
             faction: () => null,
             era: () => null,
@@ -112,6 +113,7 @@ describe('createForcePreviewEntryFromForce', () => {
         expect(result instanceof LoadForceEntry).toBe(false);
         expect(result.instanceId).toBe('');
         expect(result.note).toBe('Forward recon screen.');
+        expect(result.tags).toEqual(['Recon', 'Priority']);
         expect(result.pv).toBe(123);
         expect(result.groups[0]).toEqual(jasmine.objectContaining({
             name: 'Striker',
@@ -141,6 +143,7 @@ describe('createForcePreviewEntryFromForce', () => {
             owned: () => true,
             name: 'Unsaved Classic Force',
             note: 'Drop-ready line unit.',
+            tags: ['Line', 'Drop'],
             gameSystem: GameSystem.CLASSIC,
             faction: () => null,
             era: () => null,
@@ -165,6 +168,7 @@ describe('createForcePreviewEntryFromForce', () => {
         expect(force.serialize).not.toHaveBeenCalled();
         expect(result.bv).toBe(1400);
         expect(result.note).toBe('Drop-ready line unit.');
+        expect(result.tags).toEqual(['Line', 'Drop']);
         expect(result.groups.length).toBe(1);
         expect(result.groups[0].units[0]).toEqual(jasmine.objectContaining({
             alias: 'Veteran',
