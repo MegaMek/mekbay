@@ -383,7 +383,7 @@ describe('LanceTypeIdentifierUtil formation priority weights', () => {
             name: 'Faction',
             description: 'Exclusive formation used to test weighting.',
             minUnits: 4,
-            exclusiveFaction: 'Dragoons',
+            exclusiveFaction: ['Dragoons'],
         } as FormationTypeDefinition;
 
         spyOn(LanceTypeIdentifierUtil, 'identifyFormations').and.returnValue([

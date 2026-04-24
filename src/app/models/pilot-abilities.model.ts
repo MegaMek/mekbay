@@ -396,6 +396,30 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         },
     },
     {
+        id: "evasive_maneuver",
+        name: "Evasive Maneuver",
+        cost: 2,
+        cbt: {
+            rulesRef: [{ book: Rulebook.TR, page: 109 }],
+            unitType: "Combat Vehicles (ground movement types only)",
+            summary: ["Vehicles using cruising or flanking movement with at least 5 cruising speed apply a \u20132 modifier on the motive system damage table."],
+            description: [
+                "A skilled driver can make last second turns to avoid taking hits to exposed treads, wheels, skirts.",
+                "When using cruising or flanking movement in a vehicle with at least 5 cruising speed, the unit applies a \u20132 modifier on the motive system damage table."
+            ],
+        },
+        as:{
+            rulesRef: [{ book: Rulebook.TR, page: 109 }],
+            unitType: "Combat Vehicles (ground movement types only)",
+            unitTypeFilter: ['CV'],
+            summary: ["Unit with [[10]]+ Move applies a \u20132 modifier to the motive effects table."],
+            description: [
+                "A skilled driver can make last second turns to avoid taking hits to exposed treads, wheels, skirts.",
+                "A Unit with a MV value of [[10]]+ applies a \u20132 modifier to the motive effects table."
+            ],
+        },
+    },
+    {
         id: "fist_fire",
         name: "Fist Fire",
         cost: 2,
@@ -426,7 +450,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         name: "Float Like a Butterfly",
         cost: 1,
         as: {
-            rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
+            rulesRef: [{ book: Rulebook.ASCE, page: 96 }, { book: Rulebook.EA, page: 117 }],
             summary: ["For each point spent on this SPA, may force an opponent to reroll one attack roll or critical hit effects roll targeting this unit. The second roll stands even if worse. Cannot affect own attack rolls, hull breach checks, Initiative, or Morale rolls."],
             description: [
                 "For every point spent on purchasing this special pilot ability, this unit may force an opponent to reroll an attack with this unit as the target. This unit may force a reroll of the attack roll, or the critical hit effects roll. The second roll result stands, even if it fails or is worse than the first.",
@@ -439,7 +463,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         name: "Float Like a Butterfly",
         cost: 2,
         as: {
-            rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
+            rulesRef: [{ book: Rulebook.ASCE, page: 96 }, { book: Rulebook.EA, page: 117 }],
             summary: ["For each point spent on this SPA, may force an opponent to reroll one attack roll or critical hit effects roll targeting this unit. The second roll stands even if worse. Cannot affect own attack rolls, hull breach checks, Initiative, or Morale rolls."],
             description: [
                 "For every point spent on purchasing this special pilot ability, this unit may force an opponent to reroll an attack with this unit as the target. This unit may force a reroll of the attack roll, or the critical hit effects roll. The second roll result stands, even if it fails or is worse than the first.",
@@ -452,7 +476,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         name: "Float Like a Butterfly",
         cost: 3,
         as: {
-            rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
+            rulesRef: [{ book: Rulebook.ASCE, page: 96 }, { book: Rulebook.EA, page: 117 }],
             summary: ["For each point spent on this SPA, may force an opponent to reroll one attack roll or critical hit effects roll targeting this unit. The second roll stands even if worse. Cannot affect own attack rolls, hull breach checks, Initiative, or Morale rolls."],
             description: [
                 "For every point spent on purchasing this special pilot ability, this unit may force an opponent to reroll an attack with this unit as the target. This unit may force a reroll of the attack roll, or the critical hit effects roll. The second roll result stands, even if it fails or is worse than the first.",
@@ -465,7 +489,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         name: "Float Like a Butterfly",
         cost: 4,
         as: {
-            rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
+            rulesRef: [{ book: Rulebook.ASCE, page: 96 }, { book: Rulebook.EA, page: 117 }],
             summary: ["For each point spent on this SPA, may force an opponent to reroll one attack roll or critical hit effects roll targeting this unit. The second roll stands even if worse. Cannot affect own attack rolls, hull breach checks, Initiative, or Morale rolls."],
             description: [
                 "For every point spent on purchasing this special pilot ability, this unit may force an opponent to reroll an attack with this unit as the target. This unit may force a reroll of the attack roll, or the critical hit effects roll. The second roll result stands, even if it fails or is worse than the first.",
@@ -577,7 +601,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         name: "Headhunter",
         cost: 2,
         as: {
-            rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
+            rulesRef: [{ book: Rulebook.ASCE, page: 96 }, { book: Rulebook.TR, page: 113 }],
             summary: ["Automatically identifies enemy command units (overall and sub-unit commanders). Gains +1 Initiative bonus (cumulative, max +3) for each opposing command unit killed/disabled. If no designated commanders, highest PV unit (after Skill mod) in a Formation is the commander."],
             description: [
                 "Can automatically identify enemy command units. This includes overall (e.g., company) and subunit (lance) commanders in a given battle.",
@@ -687,6 +711,90 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         },
     },
     {
+        id: "inspiring_commander",
+        name: "Inspiring Commander",
+        cost: 1,
+        cbt: {
+            rulesRef: [{ book: Rulebook.EA, page: 118 }],
+            summary: ["For each point spent on this SPA, may grant one friendly unit the ability to reroll one attack per scenario. The second result stands, even if worse."],
+            description: [
+                "For every point spent on purchasing this special pilot ability, this unit may grant a friendly unit the ability to reroll one attack per scenario.",
+                "The second roll result stands, even if it fails or is worse than the first."
+            ],
+        },
+        as: {
+            rulesRef: [{ book: Rulebook.EA, page: 118 }],
+            summary: ["For each point spent on this SPA, may grant one friendly unit the ability to reroll one attack per scenario. The second result stands, even if worse."],
+            description: [
+                "For every point spent on purchasing this special pilot ability, this unit may grant a friendly unit the ability to reroll one attack per scenario.",
+                "The second roll result stands, even if it fails or is worse than the first."
+            ],
+        },
+    },
+    {
+        id: "inspiring_commander2",
+        name: "Inspiring Commander",
+        cost: 2,
+        cbt: {
+            rulesRef: [{ book: Rulebook.EA, page: 118 }],
+            summary: ["For each point spent on this SPA, may grant one friendly unit the ability to reroll one attack per scenario. The second result stands, even if worse."],
+            description: [
+                "For every point spent on purchasing this special pilot ability, this unit may grant a friendly unit the ability to reroll one attack per scenario.",
+                "The second roll result stands, even if it fails or is worse than the first."
+            ],
+        },
+        as: {
+            rulesRef: [{ book: Rulebook.EA, page: 118 }],
+            summary: ["For each point spent on this SPA, may grant one friendly unit the ability to reroll one attack per scenario. The second result stands, even if worse."],
+            description: [
+                "For every point spent on purchasing this special pilot ability, this unit may grant a friendly unit the ability to reroll one attack per scenario.",
+                "The second roll result stands, even if it fails or is worse than the first."
+            ],
+        },
+    },
+    {
+        id: "inspiring_commander3",
+        name: "Inspiring Commander",
+        cost: 3,
+        cbt: {
+            rulesRef: [{ book: Rulebook.EA, page: 118 }],
+            summary: ["For each point spent on this SPA, may grant one friendly unit the ability to reroll one attack per scenario. The second result stands, even if worse."],
+            description: [
+                "For every point spent on purchasing this special pilot ability, this unit may grant a friendly unit the ability to reroll one attack per scenario.",
+                "The second roll result stands, even if it fails or is worse than the first."
+            ],
+        },
+        as: {
+            rulesRef: [{ book: Rulebook.EA, page: 118 }],
+            summary: ["For each point spent on this SPA, may grant one friendly unit the ability to reroll one attack per scenario. The second result stands, even if worse."],
+            description: [
+                "For every point spent on purchasing this special pilot ability, this unit may grant a friendly unit the ability to reroll one attack per scenario.",
+                "The second roll result stands, even if it fails or is worse than the first."
+            ],
+        },
+    },
+    {
+        id: "inspiring_commander4",
+        name: "Inspiring Commander",
+        cost: 4,
+        cbt: {
+            rulesRef: [{ book: Rulebook.EA, page: 118 }],
+            summary: ["For each point spent on this SPA, may grant one friendly unit the ability to reroll one attack per scenario. The second result stands, even if worse."],
+            description: [
+                "For every point spent on purchasing this special pilot ability, this unit may grant a friendly unit the ability to reroll one attack per scenario.",
+                "The second roll result stands, even if it fails or is worse than the first."
+            ],
+        },
+        as: {
+            rulesRef: [{ book: Rulebook.EA, page: 118 }],
+            summary: ["For each point spent on this SPA, may grant one friendly unit the ability to reroll one attack per scenario. The second result stands, even if worse."],
+            description: [
+                "For every point spent on purchasing this special pilot ability, this unit may grant a friendly unit the ability to reroll one attack per scenario.",
+                "The second roll result stands, even if it fails or is worse than the first."
+            ],
+        },
+    },
+    {
         id: "iron_will",
         name: "Iron Will",
         cost: 1,
@@ -706,6 +814,31 @@ export const PILOT_ABILITIES: PilotAbility[] = [
                 "This warrior knows no fear. A unit with this ability is resistant to 'psychological attacks' by opposing units, and can even overcome their natural impulse to flee when all hope seems lost.",
                 "When forced to make a roll against the intimidating or enraging effects of an opponent using the Animal Mimicry, Antagonizer, or Demoralizer SPAs, a unit whose pilot or crew has the Iron Will SPA applies a +2 modifier to the roll result to resist these effects.",
                 "Furthermore, if the Morale rules are in play, a unit controlled by a pilot or crew with this ability adds a \u20132 target modifier to avoid being routed or when recovering its nerve.",
+            ],
+        },
+    },
+        {
+        id: "judo",
+        name: "Judo",
+        cost: 3,
+        cbt: {
+            rulesRef: [{ book: Rulebook.DD, page: 132 }],
+            unitType: "'Mechs",
+            summary: [ "Target 'mech unit that moved this turn must make a Piloting Skill Roll with a +1 TN modifier +1 modifier for each 25 tons it outweights the attacker, or fall if succesfully attacked by a physical attack." ],
+            description: [
+                "If the target 'Mech unit moves this turn and this pilot makes a successful physical attack against it, the target must make a Piloting Skill Roll with a +1 TN modifier or fall.",
+                "This roll applies a +1 modifier for every full 25 tons the target is heavier than the Attacker."
+            ],
+        },
+        as: {
+            rulesRef: [{ book: Rulebook.DD, page: 132 }],
+            unitType: "'Mechs",
+            unitTypeFilter: ['BM', 'IM'],
+            summary: ["Target 'mech not using standstill movement succesfully attacked by a physical attack must make a Skill roll +1, + attacker size, \u2013 target size. If the roll fails, the target takes 1 damage, \u2013[[2]] Move and \u20131 TMM during the following turn." ],
+            description: [
+                "If this unit makes a successful physical attack against a target that is not using standstill movement, the target makes a 2D6 roll with a TN equal to the unit's Skill Rating +1.",
+                "Add the Attacker's size and subtract the target's Size from the Target Number.",
+                "If the roll fails, the target takes 1 damage, \u2013[[2]] Move and \u20131 TMM during the following turn."
             ],
         },
     },

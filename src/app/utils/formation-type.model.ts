@@ -110,7 +110,7 @@ export interface FormationTypeDefinition {
     techBase?: 'Inner Sphere' | 'Clan' | 'Special';
     minUnits: number;
     maxUnits?: number;
-    exclusiveFaction?: string;
+    exclusiveFaction?: string[];
     /** Multiple rulebook references (e.g. CO p.62, AS:CE p.117). */
     rulesRef?: RulesReference[];
 }
