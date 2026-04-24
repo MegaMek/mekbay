@@ -31,12 +31,14 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, viewChild, type ElementRef, DestroyRef } from '@angular/core';
+import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, viewChild, viewChildren, type ElementRef, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { CdkMenuModule, CdkMenuTrigger, MenuTracker } from '@angular/cdk/menu';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { firstValueFrom, map, race } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
+import { MeasureClampOverflowDirective } from '../../directives/measure-clamp-overflow.directive';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { Pipe, type PipeTransform } from "@angular/core";
@@ -59,7 +61,12 @@ import type { ForceAlignment } from '../../models/force-slot.model';
 import { ForceAddModePickerDialogComponent, type ForceAddModePickerData, type ForceAddModePickerResult } from '../force-add-mode-picker-dialog/force-add-mode-picker-dialog.component';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
+import { sanitizeForceTags } from '../../models/force-serialization';
 import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
+import {
+    NOTE_PREVIEW_LINE_COUNT,
+    hasVisibleNoteText,
+} from '../../utils/note-preview.util';
 import { NO_FORMATION_ID } from '../../utils/formation-type.model';
 import { SessionPersistenceService } from '../../services/session-persistence.service';
 
@@ -96,9 +103,16 @@ export interface ForceLoadDialogData {
 
 type SortDirection = 'asc' | 'desc';
 type SortOption = { key: string; label: string };
+type HangarTagRecord = { id: string; label: string; count: number; ownedCount: number };
 
 const HANGAR_SORT_SESSION_KEY = 'mekbay:force-load-dialog:hangar-sort';
 const HANGAR_SORT_DIRECTION_SESSION_KEY = 'mekbay:force-load-dialog:hangar-sort-direction';
+const HANGAR_TAG_FILTER_SESSION_KEY = 'mekbay:force-load-dialog:hangar-tag-filter';
+const HANGAR_FILTER_ALL = 'all';
+const HANGAR_FILTER_UNFILED = 'unfiled';
+const HANGAR_FILTER_CLASSIC = 'game-type:cbt';
+const HANGAR_FILTER_ALPHA_STRIKE = 'game-type:as';
+const HANGAR_FILTER_TAG_PREFIX = 'tag:';
 const PACK_SORT_SESSION_KEY = 'mekbay:force-load-dialog:pack-sort';
 const PACK_SORT_DIRECTION_SESSION_KEY = 'mekbay:force-load-dialog:pack-sort-direction';
 const ORGANIZATION_SORT_SESSION_KEY = 'mekbay:force-load-dialog:organization-sort';
@@ -118,7 +132,7 @@ const DEFAULT_OPERATION_SORT_DIRECTION: SortDirection = 'desc';
     selector: 'force-load-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, UnitIconComponent, OpPreviewComponent, FactionImgPipe],
+    imports: [CommonModule, CdkMenuModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, MeasureClampOverflowDirective, UnitIconComponent, OpPreviewComponent, FactionImgPipe],
     templateUrl: './force-load-dialog.component.html',
     styleUrls: ['./force-load-dialog.component.css']
 })
@@ -132,7 +146,12 @@ export class ForceLoadDialogComponent {
     optionsService = inject(OptionsService);
     gameService = inject(GameService);
     private dialogsService = inject(DialogsService);
+    readonly hangarAllFilter = HANGAR_FILTER_ALL;
+    readonly hangarUnfiledFilter = HANGAR_FILTER_UNFILED;
+    readonly hangarClassicFilter = HANGAR_FILTER_CLASSIC;
+    readonly hangarAlphaStrikeFilter = HANGAR_FILTER_ALPHA_STRIKE;
     searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
+    menuTriggers = viewChildren<CdkMenuTrigger>(CdkMenuTrigger);
 
     readonly GameSystem = GameSystem;
     readonly getUnitPilotStats = getForcePreviewUnitPilotStats;
@@ -211,6 +230,7 @@ export class ForceLoadDialogComponent {
     forces = signal<LoadForceEntry[]>([]);
     selectedForce = signal<LoadForceEntry | null>(null);
     loading = signal<boolean>(true);
+    activeHangarMenuForce = signal<LoadForceEntry | null>(null);
 
     tabs = ['Hangar', 'Force Packs', 'TO&E', 'Operations'];
     activeTab = signal(this.dialogData?.initialTab ?? this.tabs[0]);
@@ -224,25 +244,127 @@ export class ForceLoadDialogComponent {
         return this.forceBuilderService.loadedForces().some(s => s.force.instanceId() === sel.instanceId);
     });
     gameTypeFilter = signal<'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE>('all');
+    hangarTagFilter = signal<string>(this.getStoredHangarTagFilter());
+
+    private hangarCountSourceForces = computed(() => {
+        const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
+        return this.forces().filter(force => this.matchesHangarSearch(force, tokens));
+    });
+
+    hangarGameTypeCounts = computed(() => {
+        const counts = new Map<string, number>([
+            [HANGAR_FILTER_ALL, 0],
+            [GameSystem.CLASSIC, 0],
+            [GameSystem.ALPHA_STRIKE, 0],
+        ]);
+
+        for (const force of this.hangarCountSourceForces()) {
+            counts.set(HANGAR_FILTER_ALL, (counts.get(HANGAR_FILTER_ALL) ?? 0) + 1);
+            const forceType = force.type || GameSystem.CLASSIC;
+            counts.set(forceType, (counts.get(forceType) ?? 0) + 1);
+        }
+
+        return counts;
+    });
+
+    hangarTagData = computed(() => {
+        const counts = new Map<string, number>([
+            [HANGAR_FILTER_UNFILED, 0],
+        ]);
+        const labels = new Map<string, string>();
+        const ownedCounts = new Map<string, number>();
+
+        for (const force of this.forces()) {
+            const forceTags = this.getForceTags(force);
+            if (forceTags.length === 0) {
+                counts.set(HANGAR_FILTER_UNFILED, (counts.get(HANGAR_FILTER_UNFILED) ?? 0) + 1);
+                continue;
+            }
+
+            const seen = new Set<string>();
+            for (const tag of forceTags) {
+                const tagId = this.getHangarTagFilterId(tag);
+                if (seen.has(tagId)) {
+                    continue;
+                }
+
+                seen.add(tagId);
+                if (!labels.has(tagId)) {
+                    labels.set(tagId, tag);
+                }
+                counts.set(tagId, (counts.get(tagId) ?? 0) + 1);
+                if (force.owned) {
+                    ownedCounts.set(tagId, (ownedCounts.get(tagId) ?? 0) + 1);
+                }
+            }
+        }
+
+        return { counts, labels, ownedCounts };
+    });
+
+    hangarDisplayCounts = computed(() => {
+        const counts = new Map<string, number>([
+            [HANGAR_FILTER_ALL, 0],
+            [GameSystem.CLASSIC, 0],
+            [GameSystem.ALPHA_STRIKE, 0],
+            [HANGAR_FILTER_UNFILED, 0],
+        ]);
+
+        for (const force of this.hangarCountSourceForces()) {
+            counts.set(HANGAR_FILTER_ALL, (counts.get(HANGAR_FILTER_ALL) ?? 0) + 1);
+
+            const forceType = force.type || GameSystem.CLASSIC;
+            counts.set(forceType, (counts.get(forceType) ?? 0) + 1);
+
+            const forceTags = this.getForceTags(force);
+            if (forceTags.length === 0) {
+                counts.set(HANGAR_FILTER_UNFILED, (counts.get(HANGAR_FILTER_UNFILED) ?? 0) + 1);
+                continue;
+            }
+
+            const seen = new Set<string>();
+            for (const tag of forceTags) {
+                const tagId = this.getHangarTagFilterId(tag);
+                if (seen.has(tagId)) {
+                    continue;
+                }
+
+                seen.add(tagId);
+                counts.set(tagId, (counts.get(tagId) ?? 0) + 1);
+            }
+        }
+
+        return counts;
+    });
+
+    hangarTags = computed<HangarTagRecord[]>(() => {
+        const { labels, ownedCounts } = this.hangarTagData();
+        const counts = this.hangarDisplayCounts();
+        return Array.from(labels.entries())
+            .map(([id, label]) => ({
+                id,
+                label,
+                count: counts.get(id) ?? 0,
+                ownedCount: ownedCounts.get(id) ?? 0,
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+    });
+
+    activeHangarTagRecord = computed<HangarTagRecord | null>(() => {
+        const filter = this.hangarTagFilter();
+        if (filter === HANGAR_FILTER_ALL || filter === HANGAR_FILTER_UNFILED || this.isVirtualHangarTagFilter(filter)) {
+            return null;
+        }
+        return this.hangarTags().find(tag => tag.id === filter) ?? null;
+    });
     
     filteredForces = computed<LoadForceEntry[]>(() => {
-        const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
-        const typeFilter = this.gameTypeFilter();
+        const tagFilter = this.hangarTagFilter();
         
         const sortKey = this.hangarSort();
         const sortDir = this.hangarSortDirection();
 
-        const filtered = this.forces().filter(force => {
-            // Game type filter (forces with no type are considered CBT)
-            const forceType = force.type || GameSystem.CLASSIC;
-            if (typeFilter !== 'all' && forceType !== typeFilter) {
-                return false;
-            }
-            // Text search filter
-            if (tokens.length === 0) return true;
-            const hay = force._searchText || '';
-            return tokens.every(t => hay.indexOf(t) !== -1);
-        });
+        const filtered = this.hangarCountSourceForces().filter(force => this.matchesHangarTagFilter(force, tagFilter));
 
         return this.sortItems(filtered, sortKey, sortDir);
     });
@@ -270,6 +392,11 @@ export class ForceLoadDialogComponent {
     selectedOperation = signal<LoadOperationEntry | null>(null);
     operationsLoading = signal<boolean>(false);
     private operationsLoaded = signal<boolean>(false);
+    expandedForceNotes = signal<ReadonlySet<string>>(new Set<string>());
+    expandedOperationNotes = signal<ReadonlySet<string>>(new Set<string>());
+    overflowingForceNotes = signal<ReadonlySet<string>>(new Set<string>());
+    overflowingOperationNotes = signal<ReadonlySet<string>>(new Set<string>());
+    readonly notePreviewLineCount = NOTE_PREVIEW_LINE_COUNT;
 
     // Organizations
     organizations = signal<LoadOrganizationEntry[]>([]);
@@ -306,7 +433,15 @@ export class ForceLoadDialogComponent {
         this.loadForces();
 
         effect(() => {
+            this.ensureHangarTagFilterIsValid();
+        });
+
+        effect(() => {
             this.persistSortState(HANGAR_SORT_SESSION_KEY, HANGAR_SORT_DIRECTION_SESSION_KEY, this.hangarSort(), this.hangarSortDirection());
+        });
+
+        effect(() => {
+            this.sessionPersistenceService.setItem(HANGAR_TAG_FILTER_SESSION_KEY, this.hangarTagFilter());
         });
 
         effect(() => {
@@ -339,6 +474,9 @@ export class ForceLoadDialogComponent {
                 this.loadOrganizations();
             }
         });
+
+        this.ensureHangarTagFilterIsValid();
+        this.destroyRef.onDestroy(() => this.cleanupMenuTriggers());
     }
 
     private async loadForces(): Promise<void> {
@@ -350,6 +488,7 @@ export class ForceLoadDialogComponent {
                 return f;
             });
             this.forces.set(enriched);
+            this.ensureHangarTagFilterIsValid();
         } finally {
             this.loading.set(false);
         }
@@ -358,6 +497,8 @@ export class ForceLoadDialogComponent {
     private computeSearchText(force: LoadForceEntry): string {
         let s = '';
         if (force.name) s += force.name + ' ';
+        if (force.note) s += force.note + ' ';
+        if (force.tags?.length) s += force.tags.join(' ') + ' ';
         for (const g of (force.groups || [])) {
             if (g.name) s += g.name + ' ';
             for (const ue of (g.units || [])) {
@@ -459,6 +600,114 @@ export class ForceLoadDialogComponent {
         this.selectedOperation.set(op);
     }
 
+    hasVisibleNote(note: string | null | undefined): boolean {
+        return hasVisibleNoteText(note);
+    }
+
+    isForceNoteExpandable(force: LoadForceEntry): boolean {
+        return this.overflowingForceNotes().has(this.getForceNoteKey(force));
+    }
+
+    onForceNoteOverflowChange(force: LoadForceEntry, isOverflowing: boolean): void {
+        const noteKey = this.getForceNoteKey(force);
+
+        this.overflowingForceNotes.update((current) => {
+            if (current.has(noteKey) === isOverflowing) {
+                return current;
+            }
+
+            const next = new Set(current);
+            if (isOverflowing) {
+                next.add(noteKey);
+            } else {
+                next.delete(noteKey);
+            }
+            return next;
+        });
+
+        if (!isOverflowing) {
+            this.expandedForceNotes.update((current) => {
+                if (!current.has(noteKey)) {
+                    return current;
+                }
+
+                const next = new Set(current);
+                next.delete(noteKey);
+                return next;
+            });
+        }
+    }
+
+    isForceNoteExpanded(force: LoadForceEntry): boolean {
+        return this.expandedForceNotes().has(this.getForceNoteKey(force));
+    }
+
+    toggleForceNote(force: LoadForceEntry, event?: Event): void {
+        event?.stopPropagation();
+        const noteKey = this.getForceNoteKey(force);
+        this.expandedForceNotes.update((current) => {
+            const next = new Set(current);
+            if (next.has(noteKey)) {
+                next.delete(noteKey);
+            } else {
+                next.add(noteKey);
+            }
+            return next;
+        });
+    }
+
+    isOperationNoteExpanded(op: LoadOperationEntry): boolean {
+        return this.expandedOperationNotes().has(this.getOperationNoteKey(op));
+    }
+
+    isOperationNoteExpandable(op: LoadOperationEntry): boolean {
+        return this.overflowingOperationNotes().has(this.getOperationNoteKey(op));
+    }
+
+    onOperationNoteOverflowChange(op: LoadOperationEntry, isOverflowing: boolean): void {
+        const noteKey = this.getOperationNoteKey(op);
+
+        this.overflowingOperationNotes.update((current) => {
+            if (current.has(noteKey) === isOverflowing) {
+                return current;
+            }
+
+            const next = new Set(current);
+            if (isOverflowing) {
+                next.add(noteKey);
+            } else {
+                next.delete(noteKey);
+            }
+            return next;
+        });
+
+        if (!isOverflowing) {
+            this.expandedOperationNotes.update((current) => {
+                if (!current.has(noteKey)) {
+                    return current;
+                }
+
+                const next = new Set(current);
+                next.delete(noteKey);
+                return next;
+            });
+        }
+    }
+
+    toggleOperationNote(op: LoadOperationEntry, event?: Event): void {
+        event?.stopPropagation();
+        const noteKey = this.getOperationNoteKey(op);
+        this.expandedOperationNotes.update((current) => {
+            const next = new Set(current);
+            if (next.has(noteKey)) {
+                next.delete(noteKey);
+            } else {
+                next.add(noteKey);
+            }
+            return next;
+        });
+    }
+
     selectOrganization(org: LoadOrganizationEntry) {
         this.selectedForce.set(null);
         this.selectedPack.set(null);
@@ -474,6 +723,136 @@ export class ForceLoadDialogComponent {
     onGameTypeFilter(type: 'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE) {
         this.gameTypeFilter.set(type);
         this.clearFilteredOutSelections();
+    }
+
+    getHangarGameTypeCount(type: 'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE): number {
+        return this.hangarGameTypeCounts().get(type) ?? 0;
+    }
+
+    setHangarTagFilter(filter: string) {
+        this.hangarTagFilter.set(filter);
+        this.clearFilteredOutSelections();
+    }
+
+    toggleHangarTagFilter(filter: string) {
+        this.setHangarTagFilter(this.hangarTagFilter() === filter ? HANGAR_FILTER_ALL : filter);
+    }
+
+    getHangarTagCount(filter: string): number {
+        return this.hangarDisplayCounts().get(filter) ?? 0;
+    }
+
+    getForceTagNames(force: LoadForceEntry): string[] {
+        return this.getForceTags(force);
+    }
+
+    getHangarEmptyStateMessage(): string {
+        if (this.searchText().trim().length > 0) {
+            return 'No forces match the current search.';
+        }
+
+        const activeTag = this.activeHangarTagRecord();
+        if (activeTag) {
+            return 'No forces with this tag yet.';
+        }
+
+        if (this.hangarTagFilter() === HANGAR_FILTER_CLASSIC) {
+            return 'No BattleTech forces found.';
+        }
+
+        if (this.hangarTagFilter() === HANGAR_FILTER_ALPHA_STRIKE) {
+            return 'No Alpha Strike forces found.';
+        }
+
+        if (this.hangarTagFilter() === HANGAR_FILTER_UNFILED) {
+            return 'No untagged forces found.';
+        }
+
+        return 'No saved forces found.';
+    }
+
+    onHangarMenuOpen(force: LoadForceEntry, event: MouseEvent): void {
+        event.stopPropagation();
+        this.selectForce(force);
+        this.activeHangarMenuForce.set(force);
+    }
+
+    onHangarMenuClosed(): void {
+        this.activeHangarMenuForce.set(null);
+    }
+
+    activeHangarMenuForceIsEditable(): boolean {
+        const force = this.activeHangarMenuForce();
+        return !!force?.instanceId && !!force.owned;
+    }
+
+    activeHangarMenuHasAssignableTags(): boolean {
+        const force = this.activeHangarMenuForce();
+        if (!force?.instanceId || !force.owned) {
+            return false;
+        }
+
+        const currentTagIds = new Set(this.getForceTags(force).map(tag => this.getHangarTagFilterId(tag)));
+        return this.hangarTags().some(tag => !currentTagIds.has(tag.id));
+    }
+
+    activeHangarAssignableTags = computed(() => {
+        const force = this.activeHangarMenuForce();
+        if (!force?.instanceId || !force.owned) {
+            return [] as HangarTagRecord[];
+        }
+
+        const currentTagIds = new Set(this.getForceTags(force).map(tag => this.getHangarTagFilterId(tag)));
+        return this.hangarTags().filter(tag => !currentTagIds.has(tag.id));
+    });
+
+    activeHangarRemovableTags = computed(() => {
+        const force = this.activeHangarMenuForce();
+        if (!force?.instanceId) {
+            return [] as HangarTagRecord[];
+        }
+
+        return this.getForceTags(force).map(tag => {
+            const tagId = this.getHangarTagFilterId(tag);
+            const existing = this.hangarTags().find(record => record.id === tagId);
+            return existing ?? {
+                id: tagId,
+                label: tag,
+                count: 1,
+                ownedCount: force.owned ? 1 : 0,
+            };
+        });
+    });
+
+    async onCreateTagFromMenu(): Promise<void> {
+        const force = this.activeHangarMenuForce();
+        this.closeAllMenus();
+        if (!force) return;
+
+        const tag = await this.promptCreateHangarTag(force);
+        if (!tag) return;
+
+        await this.persistForceTags(force, [...this.getForceTags(force), tag]);
+    }
+
+    async onAssignActiveMenuForceToTag(tagId: string): Promise<void> {
+        const force = this.activeHangarMenuForce();
+        if (!force?.instanceId) return;
+
+        const tag = this.hangarTags().find(record => record.id === tagId);
+        if (!tag) return;
+
+        await this.persistForceTags(force, [...this.getForceTags(force), tag.label]);
+        this.closeAllMenus();
+    }
+
+    async onClearActiveMenuForceTag(tagId: string): Promise<void> {
+        const force = this.activeHangarMenuForce();
+        if (!force?.instanceId) return;
+
+        const nextTags = this.getForceTags(force).filter(tag => this.getHangarTagFilterId(tag) !== tagId);
+        await this.persistForceTags(force, nextTags);
+        this.closeAllMenus();
     }
 
     private clearFilteredOutSelections() {
@@ -651,6 +1030,191 @@ export class ForceLoadDialogComponent {
             return null;
         }
         return formationName;
+    }
+
+    private matchesGameTypeFilter(item: { type?: GameSystem }, typeFilter: 'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE): boolean {
+        const itemType = item.type || GameSystem.CLASSIC;
+        return typeFilter === 'all' || itemType === typeFilter;
+    }
+
+    private matchesHangarSearch(force: LoadForceEntry, tokens: readonly string[]): boolean {
+        if (tokens.length === 0) {
+            return true;
+        }
+
+        const tagText = this.getForceTags(force).join(' ').toLowerCase();
+        const hay = `${force._searchText || ''} ${tagText}`.trim();
+        return tokens.every(t => hay.indexOf(t) !== -1);
+    }
+
+    private matchesHangarTagFilter(force: LoadForceEntry, filter: string): boolean {
+        const forceType = force.type || GameSystem.CLASSIC;
+        const forceTags = this.getForceTags(force);
+
+        switch (filter) {
+            case HANGAR_FILTER_ALL:
+                return true;
+            case HANGAR_FILTER_CLASSIC:
+                return forceType === GameSystem.CLASSIC;
+            case HANGAR_FILTER_ALPHA_STRIKE:
+                return forceType === GameSystem.ALPHA_STRIKE;
+            case HANGAR_FILTER_UNFILED:
+                return forceTags.length === 0;
+            default:
+                return forceTags.some(tag => this.getHangarTagFilterId(tag) === filter);
+        }
+    }
+
+    private getForceNoteKey(force: LoadForceEntry): string {
+        return force.instanceId || `${force.name || 'force'}::${force.timestamp || ''}`;
+    }
+
+    private getOperationNoteKey(op: LoadOperationEntry): string {
+        return String(op.operationId || `${op.name || 'operation'}::${op.timestamp || ''}`);
+    }
+
+    private getStoredHangarTagFilter(): string {
+        const stored = this.sessionPersistenceService.getItem(HANGAR_TAG_FILTER_SESSION_KEY)?.trim();
+        if (!stored) {
+            return HANGAR_FILTER_ALL;
+        }
+        if (stored === GameSystem.CLASSIC) {
+            return HANGAR_FILTER_CLASSIC;
+        }
+        if (stored === GameSystem.ALPHA_STRIKE) {
+            return HANGAR_FILTER_ALPHA_STRIKE;
+        }
+        return stored;
+    }
+
+    private ensureHangarTagFilterIsValid(): void {
+        const activeTag = this.hangarTagFilter();
+        if (activeTag === HANGAR_FILTER_ALL || this.isVirtualHangarTagFilter(activeTag)) {
+            return;
+        }
+        if (activeTag === HANGAR_FILTER_UNFILED) {
+            if (this.getHangarTagCount(HANGAR_FILTER_UNFILED) === 0) {
+                this.hangarTagFilter.set(HANGAR_FILTER_ALL);
+            }
+            return;
+        }
+        if (!this.hangarTags().some(tag => tag.id === activeTag)) {
+            this.hangarTagFilter.set(HANGAR_FILTER_ALL);
+        }
+    }
+
+    private isVirtualHangarTagFilter(filter: string): boolean {
+        return filter === HANGAR_FILTER_CLASSIC || filter === HANGAR_FILTER_ALPHA_STRIKE;
+    }
+
+    private getHangarTagFilterId(tag: string): string {
+        return `${HANGAR_FILTER_TAG_PREFIX}${tag.toLocaleLowerCase()}`;
+    }
+
+    private getForceTags(force: LoadForceEntry): string[] {
+        return sanitizeForceTags(force.tags ?? []);
+    }
+
+    private findExistingHangarTagLabel(tag: string): string | null {
+        const tagId = this.getHangarTagFilterId(tag);
+        return this.hangarTags().find(record => record.id === tagId)?.label ?? null;
+    }
+
+    private normalizeHangarTagLabel(tag: string): string {
+        const normalized = sanitizeForceTags([tag])[0];
+        if (!normalized) {
+            throw new Error('Tag names cannot be empty.');
+        }
+        return this.findExistingHangarTagLabel(normalized) ?? normalized;
+    }
+
+    private async promptCreateHangarTag(force?: LoadForceEntry): Promise<string | null> {
+        if (force && (!force.instanceId || !force.owned)) {
+            await this.dialogsService.showError('Shared forces cannot be retagged.', 'New Tag');
+            return null;
+        }
+
+        const name = await this.dialogsService.prompt(
+            force
+                ? `Create a new tag for "${force.name}".`
+                : 'Create a new hangar tag for the selected force.',
+            'New Tag',
+            '',
+            'Tags are saved on the force itself and can be shared across multiple forces.'
+        );
+
+        if (name == null) {
+            return null;
+        }
+
+        try {
+            return this.normalizeHangarTagLabel(name);
+        } catch (error) {
+            await this.dialogsService.showError((error as Error).message, 'New Tag');
+            return null;
+        }
+    }
+
+    private async persistForceTags(forceEntry: LoadForceEntry, nextTags: readonly string[]): Promise<boolean> {
+        if (!forceEntry.instanceId) {
+            return false;
+        }
+
+        if (!forceEntry.owned) {
+            await this.dialogsService.showError('Shared forces cannot be retagged.', 'Force Tags');
+            return false;
+        }
+
+        try {
+            const normalizedTags = await this.dataService.updateForceTags(forceEntry.instanceId, nextTags, forceEntry.cloud);
+
+            forceEntry.tags = normalizedTags.length > 0 ? normalizedTags : undefined;
+            forceEntry._searchText = this.computeSearchText(forceEntry);
+
+            for (const loadedForce of this.forceBuilderService.loadedForces()) {
+                if (loadedForce.force.instanceId() === forceEntry.instanceId) {
+                    loadedForce.force.setTags(normalizedTags, false);
+                }
+            }
+
+            this.forces.set([...this.forces()]);
+            this.ensureHangarTagFilterIsValid();
+            this.clearFilteredOutSelections();
+            return true;
+        } catch (error) {
+            await this.dialogsService.showError((error as Error).message, 'Force Tags');
+            return false;
+        }
+    }
+
+    private closeAllMenus(): void {
+        const triggers = this.menuTriggers();
+        if (!triggers) return;
+
+        triggers.forEach(trigger => {
+            try {
+                if (trigger.isOpen()) {
+                    trigger.close();
+                }
+            } catch {}
+        });
+    }
+
+    private cleanupMenuTriggers(): void {
+        const triggers = this.menuTriggers();
+        if (!triggers) return;
+
+        triggers.forEach(trigger => {
+            try {
+                if (trigger.isOpen()) {
+                    trigger.close();
+                }
+                const tracker = MenuTracker as unknown as { _openMenuTrigger?: CdkMenuTrigger };
+                if (tracker._openMenuTrigger === trigger) {
+                    tracker._openMenuTrigger = undefined;
+                }
+            } catch {}
+        });
     }
 
     async onLoad() {
@@ -833,6 +1397,7 @@ export class ForceLoadDialogComponent {
                 await this.dataService.deleteForce(force.instanceId);
             }
             this.forces.set(this.forces().filter(f => f !== force));
+            this.ensureHangarTagFilterIsValid();
             this.selectedForce.set(null);
         }
     }

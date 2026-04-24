@@ -434,22 +434,49 @@
             <input class="bt-input sidebar-search-input" type="text" placeholder="Search..."
                 [value]="sidebarSearchText()" (input)="onSidebarSearch($any($event.target).value)" />
             <div class="sidebar-filter-bar">
-                <button class="filter-btn" [class.active]="sidebarGameTypeFilter() === 'all'"
-                    (click)="onSidebarGameTypeFilter('all')">All</button>
-                <button class="filter-btn" [class.active]="sidebarGameTypeFilter() === GameSystem.CLASSIC"
-                    (click)="onSidebarGameTypeFilter(GameSystem.CLASSIC)">BattleTech</button>
-                <button class="filter-btn" [class.active]="sidebarGameTypeFilter() === GameSystem.ALPHA_STRIKE"
-                    (click)="onSidebarGameTypeFilter(GameSystem.ALPHA_STRIKE)">Alpha Strike</button>
+                <button class="filter-btn" [class.active]="sidebarFilter() === sidebarAllFilter"
+                    (click)="setSidebarFilter(sidebarAllFilter)">
+                    <span class="filter-label">All</span>
+                    <span class="filter-count">{{ getSidebarFilterCount(sidebarAllFilter) }}</span>
+                </button>
+                <button class="filter-btn" [class.active]="sidebarFilter() === GameSystem.CLASSIC"
+                    (click)="toggleSidebarFilter(GameSystem.CLASSIC)">
+                    <span class="filter-label">BattleTech</span>
+                    <span class="filter-count">{{ getSidebarFilterCount(GameSystem.CLASSIC) }}</span>
+                </button>
+                <button class="filter-btn" [class.active]="sidebarFilter() === GameSystem.ALPHA_STRIKE"
+                    (click)="toggleSidebarFilter(GameSystem.ALPHA_STRIKE)">
+                    <span class="filter-label">Alpha Strike</span>
+                    <span class="filter-count">{{ getSidebarFilterCount(GameSystem.ALPHA_STRIKE) }}</span>
+                </button>
+            </div>
+            <div class="sidebar-tag-bar">
+                @if (getSidebarTagCount(sidebarUntaggedFilter) > 0) {
+                <button class="filter-btn sidebar-tag-btn" type="button"
+                    [class.active]="sidebarFilter() === sidebarUntaggedFilter"
+                    (click)="toggleSidebarFilter(sidebarUntaggedFilter)">
+                    <span class="filter-label">Untagged</span>
+                    <span class="filter-count">{{ getSidebarTagCount(sidebarUntaggedFilter) }}</span>
+                </button>
+                }
+                @for (tag of sidebarTags(); track tag.id) {
+                    @if (tag.count > 0) {
+                    <button class="filter-btn sidebar-tag-btn" type="button"
+                        [class.active]="sidebarFilter() === tag.id"
+                        (click)="toggleSidebarFilter(tag.id)">
+                        <span class="filter-label">{{ tag.label }}</span>
+                        <span class="filter-count">{{ tag.count }}</span>
+                    </button>
+                    }
+                }
             </div>
         </div>
 
         <div class="forces-list">
             @if (sidebarLoading()) {
             <div class="sidebar-empty">Loading forces...</div>
-            } @else if (sidebarForces().length === 0 && placedForces().length === 0) {
-            <div class="sidebar-empty">No saved forces found.</div>
             } @else if (sidebarForces().length === 0) {
-            <div class="sidebar-empty">All forces placed.<br>Drag them back here to remove.</div>
+            <div class="sidebar-empty">{{ getSidebarEmptyStateMessage() }}</div>
             } @else {
             @for (force of sidebarForces(); track force.instanceId) {
             @let metadata = forcesData().get(force.instanceId);
