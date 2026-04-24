@@ -1,9 +1,15 @@
+import type { Injector } from '@angular/core';
+import { GameSystem } from './common.model';
 import type { Era } from './eras.model';
 import type { Faction } from './factions.model';
-import { buildEraWarningMessage, getEraUnitValidationSummary } from './force.model';
+import { Force, buildEraWarningMessage, getEraUnitValidationSummary } from './force.model';
 import type { ForceUnit } from './force-unit.model';
+import type { SerializedForce, SerializedUnit } from './force-serialization';
 import type { Unit } from './units.model';
+import type { DataService } from '../services/data.service';
+import type { UnitInitializerService } from '../services/unit-initializer.service';
 import type { ForceAvailabilityContext } from '../utils/force-availability.util';
+import { NO_FORMATION } from '../utils/formation-type.model';
 
 function createUnit(id: number, name: string, year: number): Unit {
     return {
@@ -100,6 +106,86 @@ function createFaction(id: number, name: string): Faction {
     };
 }
 
+function createSerializedUnit(id: string): SerializedUnit {
+    return {
+        id,
+        unit: 'Test Unit',
+        state: {
+            modified: false,
+            destroyed: false,
+            shutdown: false,
+        },
+    };
+}
+
+function createStubDeserializedUnit(data: SerializedUnit): ForceUnit {
+    const unit = createUnit(1, data.unit, 3025);
+
+    return {
+        id: data.id,
+        destroy: () => undefined,
+        update: () => undefined,
+        getUnit: () => unit,
+        getDisplayName: () => unit.name,
+        serialize: () => data,
+    } as unknown as ForceUnit;
+}
+
+class TestForce extends Force<ForceUnit> {
+    override gameSystem = GameSystem.CLASSIC;
+
+    constructor() {
+        const dataService = {
+            getFactionById: () => null,
+            getEraById: () => null,
+            getEras: () => [],
+        } as unknown as DataService;
+        const unitInitializer = {} as UnitInitializerService;
+        const injector = {
+            get: () => ({
+                warn: () => undefined,
+                error: () => undefined,
+            }),
+        } as unknown as Injector;
+
+        super('Test Force', dataService, unitInitializer, injector);
+    }
+
+    protected override createForceUnit(_unit: Unit): ForceUnit {
+        throw new Error('Not used in TestForce');
+    }
+
+    protected override deserializeForceUnit(data: SerializedUnit): ForceUnit {
+        return createStubDeserializedUnit(data);
+    }
+
+    protected override transferPilotData(_fromUnit: ForceUnit, _toUnit: ForceUnit): void {
+    }
+
+    protected override sanitizeForceData(data: SerializedForce): SerializedForce {
+        return data;
+    }
+
+    protected override deserializeFrom(_serialized: SerializedForce): Force<ForceUnit> {
+        throw new Error('Not used in TestForce');
+    }
+
+    loadSerialized(data: SerializedForce): void {
+        this.populateFromSerialized(data);
+    }
+}
+
+function createSerializedForce(groups: SerializedForce['groups']): SerializedForce {
+    return {
+        version: 1,
+        timestamp: new Date().toISOString(),
+        instanceId: 'force-id',
+        type: GameSystem.CLASSIC,
+        name: 'Test Force',
+        groups: groups ?? [],
+    };
+}
+
 describe('getEraUnitValidationSummary', () => {
     it('treats context-provided extinct units as extinct even when they are absent from visible era units', () => {
         const selectedEra = createEra(3025, 3025, 3049);
@@ -164,5 +250,44 @@ describe('buildEraWarningMessage', () => {
         );
 
         expect(warning).toBeNull();
+    });
+});
+
+describe('Force formation deserialization', () => {
+    it('loads locked groups without a formation id as NO_FORMATION', () => {
+        const force = new TestForce();
+
+        force.loadSerialized(createSerializedForce([
+            {
+                id: 'group-1',
+                formationLock: true,
+                units: [],
+            },
+        ]));
+
+        expect(force.groups()[0].formation()).toBe(NO_FORMATION);
+        expect(force.groups()[0].formationLock).toBeTrue();
+    });
+
+    it('updates existing groups without a formation id to NO_FORMATION when locked', () => {
+        const force = new TestForce();
+
+        force.loadSerialized(createSerializedForce([
+            {
+                id: 'group-1',
+                units: [],
+            },
+        ]));
+
+        force.update(createSerializedForce([
+            {
+                id: 'group-1',
+                formationLock: true,
+                units: [createSerializedUnit('unit-1')],
+            },
+        ]));
+
+        expect(force.groups()[0].formation()).toBe(NO_FORMATION);
+        expect(force.groups()[0].formationLock).toBeTrue();
     });
 });

@@ -45,7 +45,7 @@ import { Sanitizer } from '../utils/sanitizer.util';
 import { LoggerService } from '../services/logger.service';
 import { type Faction } from './factions.model';
 import type { Era } from './eras.model';
-import { type FormationTypeDefinition, type FormationMatch, formationNameMatchesGroupName, isNoFormation } from '../utils/formation-type.model';
+import { type FormationTypeDefinition, type FormationMatch, formationNameMatchesGroupName, isNoFormation, NO_FORMATION } from '../utils/formation-type.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
 import type { OrgSizeResult } from '../utils/org/org-types';
@@ -70,6 +70,18 @@ function hasFactionEraAvailability(
     availabilityContext: ForceAvailabilityContext = createMulForceAvailabilityContext(),
 ): boolean {
     return availabilityContext.getFactionEraUnitIds(faction, era).size > 0;
+}
+
+function resolveSerializedFormation(
+    formationId: string | undefined,
+    formationLock: boolean | undefined,
+    gameSystem: GameSystem,
+): FormationTypeDefinition | null {
+    if (formationId) {
+        return LanceTypeIdentifierUtil.getDefinitionById(formationId, gameSystem);
+    }
+
+    return formationLock ? NO_FORMATION : null;
 }
 
 export interface EraUnitValidationSummary {
@@ -911,13 +923,8 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                     group.setName(undefined, false);
                 }
                 group.color = g.color || '';
-                if (g.formationId) {
-                    group.formation.set(LanceTypeIdentifierUtil.getDefinitionById(g.formationId, this.gameSystem));
-                    group.formationLock = g.formationLock || undefined;
-                } else {
-                    group.formation.set(null);
-                    group.formationLock = undefined;
-                }
+                group.formationLock = g.formationLock || undefined;
+                group.formation.set(resolveSerializedFormation(g.formationId, group.formationLock, this.gameSystem));
                 group.units.set(groupUnits);
                 parsedGroups.push(group);
             }
@@ -993,10 +1000,8 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                         }
                     }
                     group.color = groupData.color;
-                    group.formation.set(groupData.formationId
-                        ? LanceTypeIdentifierUtil.getDefinitionById(groupData.formationId, this.gameSystem)
-                        : null);
                     group.formationLock = groupData.formationLock || undefined;
+                    group.formation.set(resolveSerializedFormation(groupData.formationId, group.formationLock, this.gameSystem));
                     if (!group.formationLock && groupData.formationId) {
                         group.formationHistory.add(groupData.formationId);
                     }
@@ -1008,15 +1013,10 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                     }
                     group.id = groupData.id;
                     group.color = groupData.color;
-                    if (groupData.formationId) {
-                        group.formation.set(LanceTypeIdentifierUtil.getDefinitionById(groupData.formationId, this.gameSystem));
-                        group.formationLock = groupData.formationLock || undefined;
-                        if (!group.formationLock) {
-                            group.formationHistory.add(groupData.formationId);
-                        }
-                    } else {
-                        group.formation.set(null);
-                        group.formationLock = undefined;
+                    group.formationLock = groupData.formationLock || undefined;
+                    group.formation.set(resolveSerializedFormation(groupData.formationId, group.formationLock, this.gameSystem));
+                    if (groupData.formationId && !group.formationLock) {
+                        group.formationHistory.add(groupData.formationId);
                     }
                 }
 
