@@ -174,18 +174,21 @@
             }
 
             <!-- Forces layer -->
-            @for (pf of baseLayerForces(); track pf.force.instanceId) {
+            @for (pf of baseLayerForces(); track pf.placementId) {
             @let metadata = forcesData().get(pf.force.instanceId);
+            @let shadowLabel = shadowCloneLabels().get(pf.placementId);
             <g class="force-card"
+                [class.shadow-clone]="!!shadowLabel"
+                [class.highlighted-hover]="hoveredForceInstanceId() === pf.force.instanceId"
                 [class.readonly-clickable]="readOnly() && !pf.force.missing"
                 [class.highlighted-selected]="selectedForceInstanceId() === pf.force.instanceId"
                 [class.highlighted-friendly]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'friendly'"
                 [class.highlighted-enemy]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'enemy'"
-                [attr.data-force-id]="pf.force.instanceId"
+                [attr.data-force-id]="pf.placementId"
                 [attr.transform]="'translate(' + pf.x() + ',' + pf.y() + ')'" (pointerdown)="onForcePointerDown($event, pf)"
                 (click)="onReadonlyForceClick($event, pf)"
                 [attr.title]="readOnly() && !pf.force.missing ? 'Click to view details' : null"
-                (pointerenter)="hoveredForceId.set(pf.force.instanceId)" (pointerleave)="hoveredForceId.set(null)">
+                (pointerenter)="hoveredForceId.set(pf.placementId)" (pointerleave)="hoveredForceId.set(null)">
 
                 <!-- Card background -->
                 <rect class="card-bg" x="0" y="0" [attr.width]="CARD_WIDTH" [attr.height]="CARD_HEIGHT"
@@ -240,6 +243,14 @@
                                     d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
                             </svg>
                         </button>
+                        <button class="force-action-btn clone"
+                            (click)="shadowCloneForce(pf); $event.stopPropagation()"
+                            (pointerdown)="$event.stopPropagation()" title="Create shadow clone">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <rect x="9" y="9" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.8" />
+                                <path d="M7 15H6C4.89543 15 4 14.1046 4 13V6C4 4.89543 4.89543 4 6 4H13C14.1046 4 15 4.89543 15 6V7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                            </svg>
+                        </button>
                         @if (!pf.force.missing) {
                         <button class="force-action-btn preview"
                             (click)="previewForce(pf.force); $event.stopPropagation()"
@@ -259,13 +270,16 @@
             }
 
             <!-- Dragged force overlay (rendered above groups) -->
-            @for (pf of dragOverlayForces(); track pf.force.instanceId) {
+            @for (pf of dragOverlayForces(); track pf.placementId) {
             @let metadata = forcesData().get(pf.force.instanceId);
+            @let shadowLabel = shadowCloneLabels().get(pf.placementId);
             <g class="force-card"
+                [class.shadow-clone]="!!shadowLabel"
+                [class.highlighted-hover]="hoveredForceInstanceId() === pf.force.instanceId"
                 [class.highlighted-selected]="selectedForceInstanceId() === pf.force.instanceId"
                 [class.highlighted-friendly]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'friendly'"
                 [class.highlighted-enemy]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'enemy'"
-                [attr.data-force-id]="pf.force.instanceId"
+                [attr.data-force-id]="pf.placementId"
                 [attr.transform]="'translate(' + pf.x() + ',' + pf.y() + ')'"
                 pointer-events="none">
 
@@ -312,6 +326,12 @@
                                 xmlns="http://www.w3.org/2000/svg">
                                 <path
                                     d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
+                            </svg>
+                        </button>
+                        <button class="force-action-btn clone" tabindex="-1">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <rect x="9" y="9" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.8" />
+                                <path d="M7 15H6C4.89543 15 4 14.1046 4 13V6C4 4.89543 4.89543 4 6 4H13C14.1046 4 15 4.89543 15 6V7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
                             </svg>
                         </button>
                         <button class="force-action-btn preview" tabindex="-1">
@@ -414,22 +434,49 @@
             <input class="bt-input sidebar-search-input" type="text" placeholder="Search..."
                 [value]="sidebarSearchText()" (input)="onSidebarSearch($any($event.target).value)" />
             <div class="sidebar-filter-bar">
-                <button class="filter-btn" [class.active]="sidebarGameTypeFilter() === 'all'"
-                    (click)="onSidebarGameTypeFilter('all')">All</button>
-                <button class="filter-btn" [class.active]="sidebarGameTypeFilter() === GameSystem.CLASSIC"
-                    (click)="onSidebarGameTypeFilter(GameSystem.CLASSIC)">BattleTech</button>
-                <button class="filter-btn" [class.active]="sidebarGameTypeFilter() === GameSystem.ALPHA_STRIKE"
-                    (click)="onSidebarGameTypeFilter(GameSystem.ALPHA_STRIKE)">Alpha Strike</button>
+                <button class="filter-btn" [class.active]="sidebarFilter() === sidebarAllFilter"
+                    (click)="setSidebarFilter(sidebarAllFilter)">
+                    <span class="filter-label">All</span>
+                    <span class="filter-count">{{ getSidebarFilterCount(sidebarAllFilter) }}</span>
+                </button>
+                <button class="filter-btn" [class.active]="sidebarFilter() === GameSystem.CLASSIC"
+                    (click)="toggleSidebarFilter(GameSystem.CLASSIC)">
+                    <span class="filter-label">BattleTech</span>
+                    <span class="filter-count">{{ getSidebarFilterCount(GameSystem.CLASSIC) }}</span>
+                </button>
+                <button class="filter-btn" [class.active]="sidebarFilter() === GameSystem.ALPHA_STRIKE"
+                    (click)="toggleSidebarFilter(GameSystem.ALPHA_STRIKE)">
+                    <span class="filter-label">Alpha Strike</span>
+                    <span class="filter-count">{{ getSidebarFilterCount(GameSystem.ALPHA_STRIKE) }}</span>
+                </button>
+            </div>
+            <div class="sidebar-tag-bar">
+                @if (getSidebarTagCount(sidebarUntaggedFilter) > 0) {
+                <button class="filter-btn sidebar-tag-btn" type="button"
+                    [class.active]="sidebarFilter() === sidebarUntaggedFilter"
+                    (click)="toggleSidebarFilter(sidebarUntaggedFilter)">
+                    <span class="filter-label">Untagged</span>
+                    <span class="filter-count">{{ getSidebarTagCount(sidebarUntaggedFilter) }}</span>
+                </button>
+                }
+                @for (tag of sidebarTags(); track tag.id) {
+                    @if (tag.count > 0) {
+                    <button class="filter-btn sidebar-tag-btn" type="button"
+                        [class.active]="sidebarFilter() === tag.id"
+                        (click)="toggleSidebarFilter(tag.id)">
+                        <span class="filter-label">{{ tag.label }}</span>
+                        <span class="filter-count">{{ tag.count }}</span>
+                    </button>
+                    }
+                }
             </div>
         </div>
 
         <div class="forces-list">
             @if (sidebarLoading()) {
             <div class="sidebar-empty">Loading forces...</div>
-            } @else if (sidebarForces().length === 0 && placedForces().length === 0) {
-            <div class="sidebar-empty">No saved forces found.</div>
             } @else if (sidebarForces().length === 0) {
-            <div class="sidebar-empty">All forces placed.<br>Drag them back here to remove.</div>
+            <div class="sidebar-empty">{{ getSidebarEmptyStateMessage() }}</div>
             } @else {
             @for (force of sidebarForces(); track force.instanceId) {
             @let metadata = forcesData().get(force.instanceId);

@@ -53,7 +53,7 @@
 .dialog-header-main {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 4px;
     min-width: 0;
 }
 
@@ -159,6 +159,82 @@
 
 .dialog-content.preview-tab {
     overflow: hidden;
+}
+
+.primer-tab {
+    display: flex;
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    padding: 0px;
+    box-sizing: border-box;
+}
+
+.primer-panel {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    width: 100%;
+    min-height: 0;
+}
+
+.primer-field {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+}
+
+.primer-textarea,
+.primer-note-display {
+    user-select: auto;
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    padding: 0;
+    box-sizing: border-box;
+    border: none;
+    background: transparent;
+    color: var(--text-color);
+    font: inherit;
+    line-height: 1.45;
+    overflow-y: auto;
+    padding: 12px;
+}
+
+.primer-textarea {
+    resize: none;
+}
+
+.primer-textarea:focus {
+    outline: none;
+    box-shadow: none;
+}
+
+.primer-note-display {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.primer-note-display.empty {
+    color: var(--text-color-tertiary);
+    font-style: italic;
+}
+
+.primer-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    font-size: 0.78em;
+    opacity: 0.72;
+    padding: 0px 4px 4px 4px;
+}
+
+.primer-counter {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 
 .summary-tab-layout {

@@ -1115,6 +1115,7 @@ export class ForceBuilderService {
             ? new CBTForce(force.name, this.dataService, this.unitInitializer, this.injector)
             : new ASForce(force.name, this.dataService, this.unitInitializer, this.injector);
 
+        newForce.setNote(force.note, false);
         newForce.faction.set(force.faction());
         newForce.factionLock = force.factionLock;
         newForce.loading = true;

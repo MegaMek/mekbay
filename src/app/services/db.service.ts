@@ -986,6 +986,46 @@ export class DbService {
         }
         return await this.saveDataToStore(force, force.instanceId, FORCE_STORE);
     }
+
+    public async updateForceTags(instanceId: string, tags: readonly string[]): Promise<SerializedForce | null> {
+        const db = await this.dbPromise;
+        if (!db) return null;
+
+        return new Promise<SerializedForce | null>((resolve, reject) => {
+            const transaction = db.transaction(FORCE_STORE, 'readwrite');
+            const store = transaction.objectStore(FORCE_STORE);
+            const request = store.get(instanceId);
+            let updatedForce: SerializedForce | null = null;
+
+            request.onsuccess = () => {
+                const force = request.result as SerializedForce | undefined;
+                if (!force) {
+                    return;
+                }
+
+                updatedForce = { ...force };
+                if (tags.length > 0) {
+                    updatedForce.tags = [...tags];
+                } else {
+                    delete updatedForce.tags;
+                }
+
+                store.put(updatedForce, instanceId);
+            };
+
+            request.onerror = () => {
+                reject(request.error);
+            };
+
+            transaction.oncomplete = () => {
+                resolve(updatedForce);
+            };
+
+            transaction.onerror = () => {
+                reject(transaction.error);
+            };
+        });
+    }
     
     /**
      * Retrieves all forces from IndexedDB, sorted by timestamp descending.

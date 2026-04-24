@@ -46,6 +46,7 @@ import {
 } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
+import { sanitizeForceTags } from '../../models/force-serialization';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -77,6 +78,9 @@ const READONLY_PREVIEW_MOVE_THRESHOLD = 6;
 const GROUP_ORG_NAME_TIER_CUTOFF = 0;
 const AUTO_FIT_MAX_RETRIES = 24;
 const UNSAVED_ORGANIZATION_WARNING = 'This TO&E has uncommitted changes. If you leave now, those changes will be discarded.';
+const SIDEBAR_FILTER_ALL = 'all';
+const SIDEBAR_FILTER_UNTAGGED = 'untagged';
+const SIDEBAR_TAG_FILTER_PREFIX = 'tag:';
 
 function snapToGrid(value: number): number {
     return Math.round(value / GRID_SNAP_SIZE) * GRID_SNAP_SIZE;
@@ -187,6 +191,7 @@ function getDominantFactionId(entries: LoadForceEntry[]): FactionId | undefined 
 
 interface Rect { x: number; y: number; width: number; height: number }
 interface GroupPreview extends Rect { orgName: string; totals: string; factionId: FactionId | undefined }
+interface SidebarTagRecord { id: string; label: string; count: number }
 
 interface PreviewOrgExtras {
     targetGroupId: string;
@@ -206,6 +211,7 @@ type GroupDropAction =
 
 /** A force card placed in the main canvas */
 interface PlacedForce {
+    placementId: string;
     force: LoadForceEntry;
     x: WritableSignal<number>;
     y: WritableSignal<number>;
@@ -380,7 +386,9 @@ export class ForceOrgDialogComponent {
     // Sidebar
     protected sidebarOpen = signal(false);
     protected sidebarSearchText = signal('');
-    protected sidebarGameTypeFilter = signal<'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE>('all');
+    protected readonly sidebarAllFilter = SIDEBAR_FILTER_ALL;
+    protected readonly sidebarUntaggedFilter = SIDEBAR_FILTER_UNTAGGED;
+    protected sidebarFilter = signal<string>(SIDEBAR_FILTER_ALL);
     protected sidebarAnimated = signal(false);
     protected sidebarLoading = signal(false);
     protected loading = signal(false);
@@ -401,6 +409,20 @@ export class ForceOrgDialogComponent {
 
     // Placed forces on canvas
     protected placedForces = signal<PlacedForce[]>([]);
+    protected shadowCloneLabels = computed<Map<string, string>>(() => {
+        const labels = new Map<string, string>();
+        const counts = new Map<string, number>();
+
+        for (const pf of this.placedForces()) {
+            const count = counts.get(pf.force.instanceId) ?? 0;
+            if (count > 0) {
+                labels.set(pf.placementId, `Shadow ${count}`);
+            }
+            counts.set(pf.force.instanceId, count + 1);
+        }
+
+        return labels;
+    });
 
     // Groups
     protected groups = signal<OrgGroup[]>([]);
@@ -419,8 +441,8 @@ export class ForceOrgDialogComponent {
     private pinchStartDistance = 0;
     private pinchStartZoom = 1;
     private activeTouches = new Map<number, PointerEvent>();
-    private pendingReadonlyPreview: { pointerId: number; startX: number; startY: number; force: LoadForceEntry } | null = null;
-    private pendingReadonlyClickForceId: string | null = null;
+    private pendingReadonlyPreview: { pointerId: number; startX: number; startY: number; force: LoadForceEntry; placementId: string } | null = null;
+    private pendingReadonlyClickPlacementId: string | null = null;
 
     // Drag state for forces
     protected draggedForce = signal<PlacedForce | null>(null);
@@ -446,6 +468,12 @@ export class ForceOrgDialogComponent {
 
     // Hover state
     protected hoveredForceId = signal<string | null>(null);
+    protected hoveredForceInstanceId = computed<string | null>(() => {
+        const hoveredPlacementId = this.hoveredForceId();
+        if (!hoveredPlacementId) return null;
+
+        return this.placedForces().find(pf => pf.placementId === hoveredPlacementId)?.force.instanceId ?? null;
+    });
 
     // Drop preview state
     protected dropTargetGroupId = signal<string | null>(null);
@@ -456,22 +484,116 @@ export class ForceOrgDialogComponent {
     /** Cached org metadata for the current preview (orgName, totals, factionId). */
     private previewOrgCache: { orgName: string; totals: string; factionId: FactionId | undefined } | null = null;
 
-    /** Forces available in sidebar (not yet placed) */
-    protected sidebarForces = computed(() => {
+    /** Forces available in sidebar before tag/text filtering. */
+    protected sidebarBaseForces = computed(() => {
         const placedIds = new Set(this.placedForces().map(p => p.force.instanceId));
-        const typeFilter = this.sidebarGameTypeFilter();
-        const tokens = this.sidebarSearchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
-        const sortKey = this.sidebarSort();
-        const sortDir = this.sidebarSortDirection();
-        const filtered = this.allForces().filter(f => {
+        return this.allForces().filter(f => {
             if (placedIds.has(f.instanceId)) return false;
-            if (typeFilter !== 'all' && (f.type || GameSystem.CLASSIC) !== typeFilter) return false;
-            if (tokens.length > 0) {
-                const hay = f._searchText || '';
-                if (!tokens.every(t => hay.indexOf(t) !== -1)) return false;
-            }
             return true;
         });
+    });
+
+    /** Forces available in sidebar after text search, before tag/system filtering. */
+    private sidebarCountSourceForces = computed(() => {
+        const tokens = this.sidebarSearchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
+        return this.sidebarBaseForces().filter(force => this.matchesSidebarSearch(force, tokens));
+    });
+
+    private sidebarDisplayCounts = computed(() => {
+        const counts = new Map<string, number>([
+            [SIDEBAR_FILTER_ALL, 0],
+            [GameSystem.CLASSIC, 0],
+            [GameSystem.ALPHA_STRIKE, 0],
+            [SIDEBAR_FILTER_UNTAGGED, 0],
+        ]);
+
+        for (const force of this.sidebarCountSourceForces()) {
+            counts.set(SIDEBAR_FILTER_ALL, (counts.get(SIDEBAR_FILTER_ALL) ?? 0) + 1);
+
+            const forceType = force.type || GameSystem.CLASSIC;
+            counts.set(forceType, (counts.get(forceType) ?? 0) + 1);
+
+            const forceTags = this.getForceTags(force);
+            if (forceTags.length === 0) {
+                counts.set(SIDEBAR_FILTER_UNTAGGED, (counts.get(SIDEBAR_FILTER_UNTAGGED) ?? 0) + 1);
+                continue;
+            }
+
+            const seen = new Set<string>();
+            for (const tag of forceTags) {
+                const tagId = this.getSidebarTagFilterId(tag);
+                if (seen.has(tagId)) {
+                    continue;
+                }
+
+                seen.add(tagId);
+                counts.set(tagId, (counts.get(tagId) ?? 0) + 1);
+            }
+        }
+
+        return counts;
+    });
+
+    protected sidebarTagData = computed(() => {
+        const counts = new Map<string, number>([[SIDEBAR_FILTER_UNTAGGED, 0]]);
+        const labels = new Map<string, string>();
+
+        for (const force of this.sidebarBaseForces()) {
+            const forceTags = this.getForceTags(force);
+            if (forceTags.length === 0) {
+                counts.set(SIDEBAR_FILTER_UNTAGGED, (counts.get(SIDEBAR_FILTER_UNTAGGED) ?? 0) + 1);
+                continue;
+            }
+
+            const seen = new Set<string>();
+            for (const tag of forceTags) {
+                const tagId = this.getSidebarTagFilterId(tag);
+                if (seen.has(tagId)) {
+                    continue;
+                }
+
+                seen.add(tagId);
+                if (!labels.has(tagId)) {
+                    labels.set(tagId, tag);
+                }
+                counts.set(tagId, (counts.get(tagId) ?? 0) + 1);
+            }
+        }
+
+        return { counts, labels };
+    });
+
+    protected sidebarTags = computed<SidebarTagRecord[]>(() => {
+        const { labels } = this.sidebarTagData();
+        const counts = this.sidebarDisplayCounts();
+        return Array.from(labels.entries())
+            .map(([id, label]) => ({
+                id,
+                label,
+                count: counts.get(id) ?? 0,
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+    });
+
+    protected activeSidebarTagRecord = computed<SidebarTagRecord | null>(() => {
+        const filter = this.sidebarFilter();
+        if (
+            filter === SIDEBAR_FILTER_ALL
+            || filter === SIDEBAR_FILTER_UNTAGGED
+            || filter === GameSystem.CLASSIC
+            || filter === GameSystem.ALPHA_STRIKE
+        ) {
+            return null;
+        }
+        return this.sidebarTags().find(tag => tag.id === filter) ?? null;
+    });
+
+    /** Forces available in sidebar (not yet placed) */
+    protected sidebarForces = computed(() => {
+        const filter = this.sidebarFilter();
+        const sortKey = this.sidebarSort();
+        const sortDir = this.sidebarSortDirection();
+        const filtered = this.sidebarCountSourceForces().filter(f => this.matchesSidebarFilter(f, filter));
         return this.sortForces(filtered, sortKey, sortDir);
     });
 
@@ -757,6 +879,9 @@ export class ForceOrgDialogComponent {
 
     constructor() {
         effect(() => {
+            this.ensureSidebarFilterIsValid();
+        });
+        effect(() => {
             this.dialogRef.disableClose = this.hasPendingUnsavedChanges();
         });
         this.dialogRef.backdropClick.subscribe(() => {
@@ -842,14 +967,38 @@ export class ForceOrgDialogComponent {
         }
     }
 
+    private createPlacedForceState(
+        force: LoadForceEntry,
+        params: {
+            placementId?: string;
+            x: number;
+            y: number;
+            zIndex: number;
+            groupId: string | null;
+        },
+    ): PlacedForce {
+        const placementId = params.placementId?.trim();
+        return {
+            placementId: placementId && placementId.length > 0 ? placementId : crypto.randomUUID(),
+            force,
+            x: signal(snapToGrid(params.x)),
+            y: signal(snapToGrid(params.y)),
+            zIndex: signal(params.zIndex),
+            groupId: params.groupId,
+        };
+    }
+
     private buildPlacedForces(orgForces: readonly OrgPlacedForce[], forceMap?: ReadonlyMap<string, LoadForceEntry>): PlacedForce[] {
-        return orgForces.map((pf) => ({
-            force: forceMap?.get(pf.instanceId) ?? createMissingForceEntry(pf.instanceId),
-            x: signal(snapToGrid(pf.x)),
-            y: signal(snapToGrid(pf.y)),
-            zIndex: signal(pf.zIndex),
-            groupId: pf.groupId,
-        }));
+        return orgForces.map((pf) => this.createPlacedForceState(
+            forceMap?.get(pf.instanceId) ?? createMissingForceEntry(pf.instanceId),
+            {
+                placementId: pf.placementId,
+                x: pf.x,
+                y: pf.y,
+                zIndex: pf.zIndex,
+                groupId: pf.groupId,
+            },
+        ));
     }
 
     private buildGroups(groupData: readonly OrgGroupData[]): OrgGroup[] {
@@ -875,12 +1024,15 @@ export class ForceOrgDialogComponent {
             name: this.organizationName(),
             forces: this.placedForces()
                 .map((pf) => ({
+                    placementId: pf.placementId,
                     instanceId: pf.force.instanceId,
                     x: pf.x(),
                     y: pf.y(),
                     groupId: pf.groupId,
                 }))
-                .sort((left, right) => left.instanceId.localeCompare(right.instanceId)),
+                .sort((left, right) =>
+                    left.instanceId.localeCompare(right.instanceId) || left.placementId.localeCompare(right.placementId),
+                ),
             groups: this.groups()
                 .map((group) => ({
                     id: group.id,
@@ -989,8 +1141,58 @@ export class ForceOrgDialogComponent {
         this.sidebarSearchText.set(text);
     }
 
-    protected onSidebarGameTypeFilter(type: 'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE): void {
-        this.sidebarGameTypeFilter.set(type);
+    protected setSidebarFilter(filter: string): void {
+        this.sidebarFilter.set(filter);
+    }
+
+    protected toggleSidebarFilter(filter: string): void {
+        this.setSidebarFilter(this.sidebarFilter() === filter ? SIDEBAR_FILTER_ALL : filter);
+    }
+
+    protected getSidebarTagCount(filter: string): number {
+        return this.sidebarDisplayCounts().get(filter) ?? 0;
+    }
+
+    protected getSidebarFilterCount(filter: string): number {
+        return this.sidebarDisplayCounts().get(filter) ?? 0;
+    }
+
+    protected getSidebarEmptyStateMessage(): string {
+        if (this.sidebarSearchText().trim().length > 0) {
+            return 'No forces match the current search.';
+        }
+
+        const activeTag = this.activeSidebarTagRecord();
+        if (activeTag) {
+            return 'No forces with this tag available.';
+        }
+
+        if (this.sidebarFilter() === SIDEBAR_FILTER_UNTAGGED) {
+            return 'No untagged forces available.';
+        }
+
+        if (this.sidebarFilter() === GameSystem.CLASSIC) {
+            return 'No BattleTech forces available.';
+        }
+
+        if (this.sidebarFilter() === GameSystem.ALPHA_STRIKE) {
+            return 'No Alpha Strike forces available.';
+        }
+
+        if (this.allForces().length === 0 && this.placedForces().length === 0) {
+            return 'No saved forces found.';
+        }
+
+        return 'All forces placed. Drag them back here to remove.';
+    }
+
+    private ensureSidebarFilterIsValid(): void {
+        if (this.sidebarFilter() !== SIDEBAR_FILTER_UNTAGGED) {
+            return;
+        }
+        if (this.getSidebarTagCount(SIDEBAR_FILTER_UNTAGGED) === 0) {
+            this.sidebarFilter.set(SIDEBAR_FILTER_ALL);
+        }
     }
 
     protected setSidebarSort(key: string): void {
@@ -1035,6 +1237,8 @@ export class ForceOrgDialogComponent {
         const orgName = getOrgFromForce(force).name;
 
         if (force.name) s += force.name + ' ';
+        if (force.note) s += force.note + ' ';
+        if (force.tags?.length) s += this.getForceTags(force).join(' ') + ' ';
         if (force.faction?.name) s += force.faction.name + ' ';
         if (force.era?.name) s += force.era.name + ' ';
         if (orgName) s += orgName + ' ';
@@ -1049,6 +1253,40 @@ export class ForceOrgDialogComponent {
             }
         }
         return s.trim().toLowerCase();
+    }
+
+    private matchesSidebarSearch(force: LoadForceEntry, tokens: readonly string[]): boolean {
+        if (tokens.length === 0) {
+            return true;
+        }
+
+        const hay = force._searchText || '';
+        return tokens.every(t => hay.indexOf(t) !== -1);
+    }
+
+    private matchesSidebarFilter(force: LoadForceEntry, filter: string): boolean {
+        const forceTags = this.getForceTags(force);
+
+        switch (filter) {
+            case SIDEBAR_FILTER_ALL:
+                return true;
+            case GameSystem.CLASSIC:
+                return (force.type || GameSystem.CLASSIC) === GameSystem.CLASSIC;
+            case GameSystem.ALPHA_STRIKE:
+                return (force.type || GameSystem.CLASSIC) === GameSystem.ALPHA_STRIKE;
+            case SIDEBAR_FILTER_UNTAGGED:
+                return forceTags.length === 0;
+            default:
+                return forceTags.some(tag => this.getSidebarTagFilterId(tag) === filter);
+        }
+    }
+
+    private getSidebarTagFilterId(tag: string): string {
+        return `${SIDEBAR_TAG_FILTER_PREFIX}${tag.toLocaleLowerCase()}`;
+    }
+
+    private getForceTags(force: LoadForceEntry): string[] {
+        return sanitizeForceTags(force.tags ?? []);
     }
 
     private getFactionById(factionId: FactionId | undefined): Faction | undefined {
@@ -1231,9 +1469,9 @@ export class ForceOrgDialogComponent {
 
     protected onReadonlyForceClick(event: MouseEvent, pf: PlacedForce): void {
         if (!this.readOnly() || pf.force.missing) return;
-        if (this.pendingReadonlyClickForceId !== pf.force.instanceId) return;
+        if (this.pendingReadonlyClickPlacementId !== pf.placementId) return;
 
-        this.pendingReadonlyClickForceId = null;
+        this.pendingReadonlyClickPlacementId = null;
         event.preventDefault();
         event.stopPropagation();
         void this.previewForce(pf.force);
@@ -1329,13 +1567,14 @@ export class ForceOrgDialogComponent {
     // ==================== Canvas Force Drag ====================
 
     protected onForcePointerDown(event: PointerEvent, pf: PlacedForce): void {
-        this.pendingReadonlyClickForceId = null;
+        this.pendingReadonlyClickPlacementId = null;
         if (this.readOnly()) {
             this.pendingReadonlyPreview = pf.force.missing ? null : {
                 pointerId: event.pointerId,
                 startX: event.clientX,
                 startY: event.clientY,
                 force: pf.force,
+                placementId: pf.placementId,
             };
             return;
         }
@@ -1400,6 +1639,28 @@ export class ForceOrgDialogComponent {
     }
 
     // ==================== Remove Force ====================
+
+    protected shadowCloneForce(pf: PlacedForce): void {
+        if (this.readOnly()) return;
+
+        const cloned = this.createPlacedForceState(pf.force, {
+            x: pf.x() + GRID_SNAP_SIZE * 2,
+            y: pf.y() + GRID_SNAP_SIZE * 2,
+            zIndex: this.nextZIndex++,
+            groupId: pf.groupId,
+        });
+
+        this.placedForces.set([...this.placedForces(), cloned]);
+        this.resolveForceSiblingCollisions(cloned);
+
+        if (cloned.groupId) {
+            const group = this.getGroupById(cloned.groupId);
+            if (group) {
+                this.recalcGroupBounds(group);
+                this.resolveAncestorGroupCollisionsFrom(group);
+            }
+        }
+    }
 
     protected removeForce(pf: PlacedForce): void {
         if (this.readOnly()) return;
@@ -1961,10 +2222,10 @@ export class ForceOrgDialogComponent {
         if (bestForce) {
             if (this.dropTargetGroupId() !== null) this.dropTargetGroupId.set(null);
             if (this.previewExtraForces() !== null) this.previewExtraForces.set(null);
-            if (this.previewOtherId === bestForce.force.instanceId && this.previewOrgCache) {
+            if (this.previewOtherId === bestForce.placementId && this.previewOrgCache) {
                 this.dropPreviewRect.set({ ...this.computeGroupPreviewRect(rect, this.forceRect(bestForce)), ...this.previewOrgCache });
             } else {
-                this.previewOtherId = bestForce.force.instanceId;
+                this.previewOtherId = bestForce.placementId;
                 this.dropPreviewRect.set(this.computeGroupPreview(rect, this.forceRect(bestForce), [sidebarForce, bestForce.force]));
             }
             return;
@@ -2004,7 +2265,7 @@ export class ForceOrgDialogComponent {
             case 'new-group':
             case 'create-parent': {
                 const otherId = action.type === 'new-group'
-                    ? (action as { type: 'new-group'; other: PlacedForce }).other.force.instanceId
+                    ? (action as { type: 'new-group'; other: PlacedForce }).other.placementId
                     : (action as { type: 'create-parent'; other: OrgGroup }).other.id;
                 if (this.dropTargetGroupId() !== null) this.dropTargetGroupId.set(null);
                 if (this.previewExtraForces() !== null) this.previewExtraForces.set(null);
@@ -2313,7 +2574,7 @@ export class ForceOrgDialogComponent {
     private onGlobalPointerCancel = (event: PointerEvent): void => {
         if (this.pendingReadonlyPreview?.pointerId === event.pointerId) {
             this.pendingReadonlyPreview = null;
-            this.pendingReadonlyClickForceId = null;
+            this.pendingReadonlyClickPlacementId = null;
         }
         this.activeTouches.delete(event.pointerId);
         // Treat cancel same as pointer up to clean state
@@ -2407,7 +2668,7 @@ export class ForceOrgDialogComponent {
             }
             const otherRect = forceAction?.type === 'new-group' ? this.forceRect(forceAction.other) : undefined;
             // Skip building entries if still overlapping the same target
-            const forceOtherId = forceAction?.type === 'new-group' ? forceAction.other.force.instanceId
+            const forceOtherId = forceAction?.type === 'new-group' ? forceAction.other.placementId
                 : forceAction?.type === 'join-group' ? forceAction.groupId
                 : null;
             let entries: LoadForceEntry[] | undefined;
@@ -2534,7 +2795,7 @@ export class ForceOrgDialogComponent {
         if (readonlyPreview) {
             this.pendingReadonlyPreview = null;
         } else {
-            this.pendingReadonlyClickForceId = null;
+            this.pendingReadonlyClickPlacementId = null;
         }
 
         this.activeTouches.delete(event.pointerId);
@@ -2559,13 +2820,12 @@ export class ForceOrgDialogComponent {
                         const rect = svg.getBoundingClientRect();
                         if (event.clientX >= rect.left && event.clientX <= rect.right &&
                             event.clientY >= rect.top && event.clientY <= rect.bottom) {
-                            const newPlaced: PlacedForce = {
-                                force,
-                                x: signal(snapToGrid(worldPos.x - CARD_WIDTH / 2)),
-                                y: signal(snapToGrid(worldPos.y - CARD_HEIGHT / 2)),
-                                zIndex: signal(this.nextZIndex++),
-                                groupId: null
-                            };
+                            const newPlaced = this.createPlacedForceState(force, {
+                                x: worldPos.x - CARD_WIDTH / 2,
+                                y: worldPos.y - CARD_HEIGHT / 2,
+                                zIndex: this.nextZIndex++,
+                                groupId: null,
+                            });
                             this.placedForces.set([...this.placedForces(), newPlaced]);
                             // Try grouping with nearby forces
                             this.tryFormGroup(newPlaced, worldPos);
@@ -2623,7 +2883,7 @@ export class ForceOrgDialogComponent {
         if (this.activeTouches.size === 0) this.cleanupGlobalPointerState();
 
         if (readonlyPreview) {
-            this.pendingReadonlyClickForceId = readonlyPreview.force.instanceId;
+            this.pendingReadonlyClickPlacementId = readonlyPreview.placementId;
         }
     };
 
@@ -2681,6 +2941,7 @@ export class ForceOrgDialogComponent {
                 timestamp: Date.now(),
                 factionId: this.organizationFactionId(),
                 forces: this.placedForces().map(pf => ({
+                    placementId: pf.placementId,
                     instanceId: pf.force.instanceId,
                     x: pf.x(),
                     y: pf.y(),

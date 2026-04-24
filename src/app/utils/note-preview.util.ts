@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -31,35 +31,13 @@
  * affiliated with Microsoft.
  */
 
-import { GameSystem } from './common.model';
+export const NOTE_PREVIEW_LINE_COUNT = 2;
 
-export interface RemoteLoadForceUnit {
-    unit: string;
-    alias?: string;
-    skill?: number;
-    g?: number; // gunnery
-    p?: number; // piloting
-    commander?: boolean;
-    state?: { destroyed?: boolean };
+function getNormalizedNoteLines(note: string | null | undefined): string[] {
+    const normalizedNote = (note ?? '').trim();
+    return normalizedNote ? normalizedNote.split(/\r?\n/) : [];
 }
 
-export interface RemoteLoadForceGroup {
-    name?: string;
-    formationId?: string;
-    units: RemoteLoadForceUnit[];
-}
-
-export interface RemoteLoadForceEntry {
-    instanceId: string;
-    timestamp: string;
-    type?: GameSystem;
-    owned?: boolean;
-    name: string;
-    note?: string;
-    tags?: string[];
-    factionId?: number;
-    eraId?: number;
-    bv?: number;
-    pv?: number;
-    groups?: RemoteLoadForceGroup[];
+export function hasVisibleNoteText(note: string | null | undefined): boolean {
+    return getNormalizedNoteLines(note).length > 0;
 }

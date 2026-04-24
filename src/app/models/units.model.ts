@@ -213,7 +213,6 @@ export interface Unit {
     run: number; // Without MASC systems
     run2: number; // Max possible
     jump: number;
-    jump2: number; // Max possible
     umu: number; // UMU movement points
     c3: string;
     dpt: number;

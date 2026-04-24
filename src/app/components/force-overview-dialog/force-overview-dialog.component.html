@@ -26,6 +26,17 @@
 
 <div class="dialog-tabs tab-header" role="tablist" aria-label="Force overview sections">
     <div class="tab-buttons">
+        @if (showPrimerTab()) {
+        <button
+            type="button"
+            class="tab-button"
+            role="tab"
+            [class.active]="isPrimerTab()"
+            [attr.aria-selected]="isPrimerTab()"
+            (click)="setActiveTab('primer')">
+            PRIMER
+        </button>
+        }
         <button
             type="button"
             class="tab-button"
@@ -48,7 +59,32 @@
 </div>
 
 <div class="dialog-content" #scrollContainer [class.table-mode]="activeTab() === 'units' && isTableMode()" [class.preview-tab]="isSummaryTab()">
-    @if (isSummaryTab()) {
+    @if (isPrimerTab()) {
+        <div class="primer-tab">
+            <div class="primer-panel">
+                <div class="primer-field">
+                    @if (isReadOnly()) {
+                        <div class="primer-note-display" [class.empty]="!primerNote()">{{ primerNote() || 'No primer added.' }}</div>
+                    } @else {
+                        <textarea
+                            class="primer-textarea"
+                            [value]="primerNote()"
+                            (input)="onPrimerNoteChange($event)"
+                            rows="12"
+                            autocomplete="off"
+                            [attr.maxlength]="noteLimit"
+                            placeholder="Add campaign context, doctrine, or scenario notes for this force..."></textarea>
+                        @if (showPrimerMeta()) {
+                            <div class="primer-meta">
+                                <span class="primer-limit">Max {{ noteLimit }} characters</span>
+                                <span class="primer-counter">{{ primerNote().length }}/{{ noteLimit }}</span>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    } @else if (isSummaryTab()) {
         @let previewEntry = summaryPreviewEntry();
         <div class="summary-tab-layout">
             <div class="summary-tab-preview">
@@ -57,6 +93,7 @@
                     [showHeader]="false"
                     [showHint]="false"
                     [scrollUnitsOnly]="true"
+                    [showNote]="false"
                     (hoveredUnitChange)="onPreviewUnitHover($event)">
                 </force-preview-panel>
             </div>

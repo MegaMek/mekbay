@@ -32,6 +32,7 @@ describe('DataService', () => {
     const dbServiceMock = {
         getForce: jasmine.createSpy('getForce'),
         saveForce: jasmine.createSpy('saveForce'),
+        updateForceTags: jasmine.createSpy('updateForceTags'),
         waitForDbReady: jasmine.createSpy('waitForDbReady').and.resolveTo(undefined),
     };
     const wsServiceMock = {
@@ -123,6 +124,8 @@ describe('DataService', () => {
         dbServiceMock.getForce.calls.reset();
         dbServiceMock.getForce.and.resolveTo(null);
         dbServiceMock.saveForce.calls.reset();
+        dbServiceMock.updateForceTags.calls.reset();
+        dbServiceMock.updateForceTags.and.resolveTo(null);
         dbServiceMock.waitForDbReady.calls.reset();
         dbServiceMock.waitForDbReady.and.resolveTo(undefined);
         wsServiceMock.sendAndWaitForResponse.calls.reset();
@@ -366,6 +369,43 @@ describe('DataService', () => {
         });
         expect(dbServiceMock.saveForce).toHaveBeenCalledTimes(1);
         expect(dbServiceMock.saveForce).toHaveBeenCalledWith(jasmine.objectContaining({ instanceId: 'force-missing' }));
+    });
+
+    it('updates force tags through the lightweight local and cloud path', async () => {
+        dbServiceMock.updateForceTags.and.resolveTo({
+            version: 1,
+            instanceId: 'force-1',
+            timestamp: '2026-04-01T00:00:00Z',
+            type: GameSystem.CLASSIC,
+            name: 'Tagged Force',
+            tags: ['Recon', 'Fire Support'],
+            groups: [],
+        });
+        wsServiceMock.sendAndWaitForResponse.and.resolveTo({
+            action: 'forceTagsUpdated',
+            instanceId: 'force-1',
+            tags: ['Recon', 'Fire Support'],
+        });
+        spyOn<any>(service, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
+
+        const tags = await service.updateForceTags('force-1', ['  Recon ', 'recon', 'Fire   Support'], true);
+
+        expect(tags).toEqual(['Recon', 'Fire Support']);
+        expect(dbServiceMock.updateForceTags).toHaveBeenCalledWith('force-1', ['Recon', 'Fire Support']);
+        expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith({
+            action: 'setForceTags',
+            uuid: 'user-1',
+            instanceId: 'force-1',
+            tags: ['Recon', 'Fire Support'],
+        });
+    });
+
+    it('rejects lightweight tag updates when neither local nor cloud storage can be updated', async () => {
+        spyOn<any>(service, 'canUseCloud').and.returnValue(Promise.resolve(null));
+
+        await expectAsync(service.updateForceTags('force-missing', ['Recon'], true)).toBeRejectedWithError(
+            'The selected force could not be updated.',
+        );
     });
 
     it('initializes only MegaMek availability during startup initialize', async () => {

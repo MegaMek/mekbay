@@ -123,7 +123,6 @@ function unitToCBTRow(unit: Unit): Record<string, unknown> {
         walk: unit.walk,
         maxWalk: unit.walk2,
         jump: unit.jump,
-        maxJump: unit.jump2,
         umu: unit.umu,
         c3: unit.c3,
         dpt: unit.dpt,

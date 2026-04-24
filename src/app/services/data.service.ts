@@ -44,7 +44,7 @@ import type { Quirk } from '../models/quirks.model';
 import { generateUUID, WsService } from './ws.service';
 import type { ForceUnit } from '../models/force-unit.model';
 import type { Force }    from '../models/force.model';
-import type { ASSerializedForce, CBTSerializedForce, SerializedForce } from '../models/force-serialization';
+import { sanitizeForceTags, type ASSerializedForce, type CBTSerializedForce, type SerializedForce } from '../models/force-serialization';
 import { UnitInitializerService } from './unit-initializer.service';
 import { UserStateService } from './userState.service';
 import {
@@ -733,6 +733,22 @@ export class DataService {
         if (!localOnly) {
             this.saveForceCloud(force);
         }
+    }
+
+    public async updateForceTags(instanceId: string, tags: readonly string[], updateCloud: boolean = true): Promise<string[]> {
+        const normalizedTags = sanitizeForceTags(tags);
+        const updatedLocalForce = await this.dbService.updateForceTags(instanceId, normalizedTags);
+        let updated = updatedLocalForce !== null;
+
+        if (updateCloud) {
+            updated = (await this.updateForceTagsCloud(instanceId, normalizedTags)) || updated;
+        }
+
+        if (!updated) {
+            throw new Error('The selected force could not be updated.');
+        }
+
+        return normalizedTags;
     }
 
 
@@ -1431,6 +1447,42 @@ export class DataService {
                 });
             }
         });
+    }
+
+    private async updateForceTagsCloud(instanceId: string, tags: readonly string[]): Promise<boolean> {
+        const ws = await this.canUseCloud();
+        if (!ws) {
+            return false;
+        }
+
+        try {
+            const uuid = this.userStateService.uuid();
+            const response = await this.wsService.sendAndWaitForResponse({
+                action: 'setForceTags',
+                uuid,
+                instanceId,
+                tags,
+            });
+
+            if (!response) {
+                return false;
+            }
+
+            if (response.code === 'not_owner') {
+                this.logger.warn(`Cannot update force tags in cloud for ${instanceId}: not the owner.`);
+                return false;
+            }
+
+            if (response.action === 'error') {
+                this.logger.error(`Failed to update force tags in cloud for ${instanceId}: ${response.message ?? 'unknown error'}`);
+                return false;
+            }
+
+            return response.action === 'forceTagsUpdated';
+        } catch (err) {
+            this.logger.error(`Failed to update force tags in cloud for ${instanceId}: ${err}`);
+            return false;
+        }
     }
 
     // Flush function performs the actual cloud save for the latest Force for a given instanceId
