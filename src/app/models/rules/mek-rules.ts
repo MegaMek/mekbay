@@ -35,7 +35,7 @@ import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { MountedEquipment } from '../force-serialization';
 import type { UnitTypeRules } from './unit-type-rules';
-import { linkedLocs, LEG_LOCATIONS, FOUR_LEGGED_LOCATIONS } from '../common.model';
+import { LINKED_LOCATIONS, LEG_LOCATIONS, FOUR_LEGGED_LOCATIONS } from '../common.model';
 import type { PSRCheck } from '../turn-state.model';
 import { type HeatScaleEntry, HeatManagement, getHeatEffects } from './heat-management';
 
@@ -65,7 +65,7 @@ export class MekRules implements UnitTypeRules {
         this.unit.locations?.internal?.forEach((_value, loc) => {
             if (this.unit.isInternalLocDestroyed(loc)) {
                 locationsToDestroy.add(loc);
-                const linked = linkedLocs[loc];
+                const linked = LINKED_LOCATIONS[loc];
                 if (linked) {
                     for (const linkedLoc of linked) {
                         if (this.unit.locations?.internal?.has(linkedLoc)) {

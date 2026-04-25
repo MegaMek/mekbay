@@ -126,9 +126,9 @@ export const uidTranslations: { [key: string]: string } = {
 };
 
 
-export const linkedLocs: { [key: string]: string[] } = {
-    'RT': ['RA'],
-    'LT': ['LA'],
+export const LINKED_LOCATIONS: { [key: string]: string[] } = {
+    'RT': ['RA', 'FRL'],
+    'LT': ['LA', 'FLL'],
 };
 
 export const LEG_LOCATIONS = new Set(['LL', 'RL', 'CL', 'FRL', 'FLL', 'RRL', 'RLL']);
