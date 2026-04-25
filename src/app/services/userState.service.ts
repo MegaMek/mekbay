@@ -148,11 +148,11 @@ export class UserStateService {
             nextUserData.oauthProviderCount = snapshot.oauthProviderCount;
         }
 
-        if (snapshot.oauthProviders) {
+        if (Array.isArray(snapshot.oauthProviders)) {
             nextUserData.oauthProviders = snapshot.oauthProviders;
         }
 
-        if (snapshot.availableAuthProviders) {
+        if (Array.isArray(snapshot.availableAuthProviders)) {
             this.availableAuthProvidersState.set(snapshot.availableAuthProviders);
         }
 

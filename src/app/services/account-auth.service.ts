@@ -257,17 +257,13 @@ export class AccountAuthService {
 
         const providerLabel = this.getProviderLabel(provider);
         try {
-            if (result.userState) {
-                await this.userStateService.applyServerState(result.userState);
-            }
-
             if (result.mode === 'login') {
                 const targetUuid = result.uuid?.trim();
                 if (!targetUuid) {
                     throw new Error(`${providerLabel} sign-in did not return a MekBay account.`);
                 }
 
-                if (targetUuid !== this.userStateService.uuid()) {
+                if (targetUuid !== this.userStateService.uuid().trim()) {
                     const confirmed = await this.dialogsService.requestConfirmation(
                         'Signing in with a provider will switch this device to the linked MekBay account UUID. Local data on this device remains local, but cloud sync will follow the linked account. Continue?',
                         'Confirm Provider Sign-In',
@@ -279,14 +275,23 @@ export class AccountAuthService {
                     }
 
                     await this.userStateService.setUuid(targetUuid);
+                    if (result.userState) {
+                        await this.userStateService.applyServerState(result.userState);
+                    }
                     window.location.reload();
                     return true;
                 }
 
+                if (result.userState) {
+                    await this.userStateService.applyServerState(result.userState);
+                }
                 this.toastService.showToast(`Signed in with ${providerLabel}`, 'success');
                 return true;
             }
 
+            if (result.userState) {
+                await this.userStateService.applyServerState(result.userState);
+            }
             this.toastService.showToast(
                 result.replaceExisting
                     ? `${providerLabel} was replaced successfully`
