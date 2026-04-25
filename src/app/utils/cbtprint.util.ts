@@ -741,6 +741,10 @@ export class CBTPrintUtil {
                 font-weight: 700;
             }
 
+            #multipage-container .cbt-roster-table .col-unit {
+                min-width: 80px;
+            }
+
             #multipage-container .cbt-roster-table .col-unit,
             #multipage-container .cbt-roster-table .col-role,
             #multipage-container .cbt-roster-table .col-equipment {
