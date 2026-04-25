@@ -754,13 +754,6 @@ export class ASPrintUtil {
                 white-space: nowrap;
             }
 
-            .as-roster-table td.as-roster-specials {
-                font-size: 7pt;
-                color: #555;
-                white-space: normal;
-                max-width: 2.5in;
-            }
-
             .as-roster-footer {
                 display: flex;
                 justify-content: space-between;
@@ -861,7 +854,7 @@ export class ASPrintUtil {
                     { content: as.dmg.dmgL },
                     { content: `${as.Arm}+${as.Str}` },
                     { content: String(as.OV) },
-                    { content: (as.specials || []).join(', '), className: 'as-roster-specials' }
+                    { content: (as.specials || []).join(', ') }
                 ];
 
                 for (const cell of cells) {
