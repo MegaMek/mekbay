@@ -87,4 +87,12 @@ export class QuirksCatalogService extends CatalogBaseService<Quirks, Quirks> {
             etag,
         };
     }
+
+    protected override getDatasetSize(data: Quirks): number {
+        return Array.isArray(data.quirks) ? data.quirks.length : 0;
+    }
+
+    protected override getMinimumDatasetSize(): number {
+        return 70;
+    }
 }

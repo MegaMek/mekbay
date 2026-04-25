@@ -521,6 +521,19 @@ export class OptionsDialogComponent {
         }
     }
 
+    async onPurgeCatalogs() {
+        const confirmed = await this.dialogsService.requestConfirmation(
+            'Are you sure you want to delete the downloaded catalogs? MekBay will keep your forces, tags, and other local user data, then reload and download fresh catalog data.',
+            'Confirm Purge Catalogs',
+            'info'
+        );
+
+        if (confirmed) {
+            await this.dbService.clearCatalogCaches();
+            window.location.reload();
+        }
+    }
+
     async onUserUuidKeydown(event: KeyboardEvent) {
         if (event.key === 'Escape') {
             event.preventDefault();

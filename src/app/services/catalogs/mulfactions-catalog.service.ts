@@ -123,6 +123,14 @@ export class FactionsCatalogService extends CatalogBaseService<MULFactions | Raw
         };
     }
 
+    protected override getDatasetSize(data: MULFactions | RawMULFactions): number {
+        return Array.isArray(data.factions) ? data.factions.length : 0;
+    }
+
+    protected override getMinimumDatasetSize(): number {
+        return 82;
+    }
+
     private hydrateEraMembership(units: RawFactionEraMembership): FactionEraMembership {
         return units instanceof Set ? new Set(units) : new Set(units);
     }

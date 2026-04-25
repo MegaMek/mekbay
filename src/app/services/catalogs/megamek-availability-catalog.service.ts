@@ -117,6 +117,10 @@ export class MegaMekAvailabilityCatalogService extends CatalogBaseService<MegaMe
         return this.wrapData(data, etag);
     }
 
+    protected override getDatasetSize(data: MegaMekAvailabilityData | MegaMekWeightedAvailabilityRecord[]): number {
+        return this.wrapData(data, '').records.length;
+    }
+
     private wrapData(
         data: MegaMekAvailabilityData | MegaMekWeightedAvailabilityRecord[],
         etag: string,

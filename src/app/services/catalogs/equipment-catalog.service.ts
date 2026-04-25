@@ -97,4 +97,12 @@ export class EquipmentCatalogService extends CatalogBaseService<RawEquipmentData
             etag,
         };
     }
+
+    protected override getDatasetSize(data: RawEquipmentData): number {
+        return Object.keys(data.equipment ?? {}).length;
+    }
+
+    protected override getMinimumDatasetSize(): number {
+        return 4000;
+    }
 }

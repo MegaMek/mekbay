@@ -177,6 +177,10 @@ export class MegaMekFactionsCatalogService extends CatalogBaseService<MegaMekFac
         return this.wrapData(data, etag);
     }
 
+    protected override getDatasetSize(data: MegaMekFactionsData | MegaMekFactions): number {
+        return Object.keys(this.wrapData(data, '').factions).length;
+    }
+
     private wrapData(data: MegaMekFactionsData | Record<string, MegaMekFactionRecordData>, etag: string): MegaMekFactionsData {
         if (isMegaMekFactionsData(data)) {
             return {

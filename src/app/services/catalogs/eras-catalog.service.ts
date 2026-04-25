@@ -108,6 +108,14 @@ export class ErasCatalogService extends CatalogBaseService<Eras, Eras> {
         };
     }
 
+    protected override getDatasetSize(data: Eras): number {
+        return Array.isArray(data.eras) ? data.eras.length : 0;
+    }
+
+    protected override getMinimumDatasetSize(): number {
+        return 12;
+    }
+
     private compareEras(left: Era, right: Era): number {
         const leftFrom = left.years.from ?? 0;
         const rightFrom = right.years.from ?? 0;

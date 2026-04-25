@@ -106,6 +106,10 @@ export class MulUnitSourcesCatalogService extends CatalogBaseService<MULUnitSour
         return this.wrapData(data, etag);
     }
 
+    protected override getDatasetSize(data: MULUnitSources | MULUnitSourcesData): number {
+        return Object.keys(this.wrapData(data, '').sources).length;
+    }
+
     private wrapData(data: MULUnitSources | MULUnitSourcesData, etag: string): MULUnitSources {
         if (isMulUnitSourcesData(data)) {
             return {

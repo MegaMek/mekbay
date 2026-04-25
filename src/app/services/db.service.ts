@@ -85,6 +85,19 @@ const USER_KEY = 'user';
 const QUIRKS_KEY = 'quirks';
 const MUL_UNIT_SOURCES_KEY = 'mulUnitSources';
 
+const CATALOG_GENERAL_STORE_KEYS = [
+    UNITS_KEY,
+    EQUIPMENT_KEY,
+    FACTIONS_KEY,
+    MEGAMEK_FACTIONS_KEY,
+    MEGAMEK_AVAILABILITY_KEY,
+    MEGAMEK_RULESETS_KEY,
+    ERAS_KEY,
+    SOURCEBOOKS_KEY,
+    QUIRKS_KEY,
+    MUL_UNIT_SOURCES_KEY,
+] as const;
+
 const MAX_SHEET_CACHE_COUNT = 5000; // Max number of sheets to cache
 
 export interface StoredSheet {
@@ -1276,6 +1289,23 @@ export class DbService {
 
     public async clearCanvasStore(): Promise<void> {
         await this.clearStore(CANVAS_STORE);
+    }
+
+    public async clearCatalogCaches(): Promise<void> {
+        const db = await this.dbPromise;
+        if (!db) return; // Degraded mode
+
+        return new Promise<void>((resolve, reject) => {
+            const transaction = db.transaction(DB_STORE, 'readwrite');
+            const store = transaction.objectStore(DB_STORE);
+
+            for (const key of CATALOG_GENERAL_STORE_KEYS) {
+                store.delete(key);
+            }
+
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
     }
 
     /**

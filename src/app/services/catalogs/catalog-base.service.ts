@@ -38,6 +38,8 @@ import { firstValueFrom } from 'rxjs';
 import { LoggerService } from '../logger.service';
 import { generateUUID } from '../ws.service';
 
+type CatalogDataSource = 'cache' | 'remote';
+
 export abstract class CatalogBaseService<THydrateInput, TStored extends THydrateInput, TRemoteBody = TStored> {
     protected readonly http = inject(HttpClient);
     protected readonly logger = inject(LoggerService);
@@ -45,8 +47,12 @@ export abstract class CatalogBaseService<THydrateInput, TStored extends THydrate
 
     public async initialize(): Promise<void> {
         const localData = await this.loadFromCache();
-        if (localData) {
-            this.hydrate(localData);
+        const validLocalData = localData && this.tryHydrateData(localData, 'cache')
+            ? localData
+            : undefined;
+
+        if (!validLocalData) {
+            this.etag = '';
         }
 
         const remoteEtag = await this.getRemoteEtag();
@@ -65,7 +71,7 @@ export abstract class CatalogBaseService<THydrateInput, TStored extends THydrate
             return;
         }
 
-        await this.fetchRemote();
+        await this.fetchRemote(validLocalData);
     }
 
     protected abstract get catalogKey(): string;
@@ -75,6 +81,35 @@ export abstract class CatalogBaseService<THydrateInput, TStored extends THydrate
     protected abstract saveToCache(data: TStored): Promise<void>;
     protected abstract hydrate(data: THydrateInput): void;
     protected abstract normalizeFetchedData(data: TRemoteBody, etag: string): TStored;
+
+    protected getDatasetSize(_data: THydrateInput): number | undefined {
+        return undefined;
+    }
+
+    /**
+     * This method is used to determine the minimum acceptable size of a newly fetched remote dataset. If the size of the new dataset is below this threshold, it will be rejected as invalid. 
+     * This is to prevent loading incomplete or corrupted datasets that could break the application.
+     */
+    protected getMinimumDatasetSize(): number {
+        return 1;
+    }
+
+    /**
+     * This method is used to determine the minimum acceptable size of a newly fetched remote dataset relative to the previously loaded dataset. 
+     * It is only applied if the previous dataset size is above the threshold defined by `getMinimumRelativeComparisonSize()`.
+     */
+    protected getMinimumRelativeDatasetSize(): number | undefined {
+        return 0.75;
+    }
+
+    /**
+     * This method defines the minimum size a previously loaded dataset must have for the relative size check to be applied when validating a newly fetched remote dataset. 
+     * This is to avoid rejecting new datasets that are legitimately smaller than the previous one when the previous dataset is too small to be a reliable reference for comparison.
+     * For example, if the previous dataset has only 10 entries, it might be normal for a new dataset to have only 7 entries after an update, and rejecting it for being below 75% of the previous size would be too strict.
+     */
+    protected getMinimumRelativeComparisonSize(): number {
+        return 100;
+    }
 
     protected async getRemoteEtag(): Promise<string> {
         try {
@@ -89,7 +124,7 @@ export abstract class CatalogBaseService<THydrateInput, TStored extends THydrate
         }
     }
 
-    protected async fetchRemote(): Promise<void> {
+    protected async fetchRemote(previousData?: THydrateInput): Promise<void> {
         this.logger.info(`Downloading ${this.catalogKey}...`);
 
         const response = await firstValueFrom(this.http.get<TRemoteBody>(this.remoteUrl, {
@@ -104,8 +139,93 @@ export abstract class CatalogBaseService<THydrateInput, TStored extends THydrate
 
         const etag = response.headers.get('ETag') || generateUUID();
         const wrappedData = this.normalizeFetchedData(body, etag);
+
+        try {
+            this.validateData(wrappedData, 'remote', previousData);
+            this.hydrate(wrappedData);
+            this.ensureHydratedData('remote');
+        } catch (error) {
+            if (previousData) {
+                try {
+                    this.hydrate(previousData);
+                    this.ensureHydratedData('cache');
+                    this.logger.warn(`Preserved cached ${this.catalogKey} after rejecting the remote update.`);
+                } catch (restoreError) {
+                    this.logger.error(`Failed to restore cached ${this.catalogKey}: ${this.describeError(restoreError)}`);
+                }
+            }
+
+            const message = `Rejected ${this.catalogKey} update: ${this.describeError(error)}`;
+            this.logger.error(message);
+            throw new Error(message);
+        }
+
         await this.saveToCache(wrappedData);
-        this.hydrate(wrappedData);
         this.logger.info(`${this.catalogKey} updated. (ETag: ${etag})`);
+    }
+
+    private tryHydrateData(data: THydrateInput, source: CatalogDataSource): boolean {
+        try {
+            this.validateData(data, source);
+            this.hydrate(data);
+            this.ensureHydratedData(source);
+            return true;
+        } catch (error) {
+            this.logger.warn(`Ignoring invalid ${source} ${this.catalogKey} dataset: ${this.describeError(error)}`);
+            return false;
+        }
+    }
+
+    private validateData(data: THydrateInput, source: CatalogDataSource, previousData?: THydrateInput): void {
+        const size = this.getDatasetSize(data);
+        if (size === undefined) {
+            return;
+        }
+
+        const minimumDatasetSize = this.getMinimumDatasetSize();
+        if (size < minimumDatasetSize) {
+            throw new Error(`expected at least ${minimumDatasetSize} entries, received ${size}`);
+        }
+
+        if (source !== 'remote' || !previousData) {
+            return;
+        }
+
+        const previousSize = this.getDatasetSize(previousData);
+        const minimumRelativeDatasetSize = this.getMinimumRelativeDatasetSize();
+        if (
+            previousSize === undefined
+            || minimumRelativeDatasetSize === undefined
+            || previousSize < this.getMinimumRelativeComparisonSize()
+        ) {
+            return;
+        }
+
+        const minimumAcceptedSize = Math.max(
+            minimumDatasetSize,
+            Math.ceil(previousSize * minimumRelativeDatasetSize),
+        );
+
+        if (size < minimumAcceptedSize) {
+            throw new Error(
+                `received only ${size} entries after previously loading ${previousSize}`,
+            );
+        }
+    }
+
+    private ensureHydratedData(source: CatalogDataSource): void {
+        if (this.hasHydratedData()) {
+            return;
+        }
+
+        throw new Error(`${source} ${this.catalogKey} dataset hydrated to an empty catalog`);
+    }
+
+    private describeError(error: unknown): string {
+        if (error instanceof Error) {
+            return `${error.name}: ${error.message}`;
+        }
+
+        return String(error);
     }
 }

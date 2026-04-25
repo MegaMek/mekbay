@@ -88,6 +88,10 @@ export class SourcebooksCatalogService extends CatalogBaseService<Sourcebooks | 
         return this.wrapData(data, etag);
     }
 
+    protected override getDatasetSize(data: Sourcebooks | Sourcebook[]): number {
+        return this.wrapData(data, '').sourcebooks.length;
+    }
+
     private wrapData(data: Sourcebooks | Sourcebook[], etag: string): Sourcebooks {
         if (Array.isArray(data)) {
             return {

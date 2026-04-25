@@ -244,6 +244,10 @@ export class MegaMekRulesetsCatalogService extends CatalogBaseService<MegaMekRul
         return normalizeRulesetsData(data, etag);
     }
 
+    protected override getDatasetSize(data: MegaMekRulesetsData | MegaMekRulesetRecord[]): number {
+        return normalizeRulesetsData(data, '').rulesets.length;
+    }
+
     private wrapData(
         data: MegaMekRulesetsData | MegaMekRulesetRecord[],
         etag: string,

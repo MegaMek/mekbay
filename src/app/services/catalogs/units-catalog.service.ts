@@ -83,4 +83,12 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
             etag,
         };
     }
+
+    protected override getDatasetSize(data: Units): number {
+        return Array.isArray(data.units) ? data.units.length : 0;
+    }
+
+    protected override getMinimumDatasetSize(): number {
+        return 9000;
+    }
 }
