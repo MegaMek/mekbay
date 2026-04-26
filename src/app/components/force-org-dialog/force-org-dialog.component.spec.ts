@@ -192,11 +192,17 @@ describe('ForceOrgDialogComponent', () => {
         };
     }
 
-    function createLoadForce(instanceId: string, units: Unit[]): LoadForceEntry {
+    function createLoadForce(
+        instanceId: string,
+        units: Unit[],
+        overrides: { bv?: number; pv?: number; type?: GameSystem } = {},
+    ): LoadForceEntry {
         return new LoadForceEntry({
             instanceId,
             name: `Force ${instanceId}`,
-            type: GameSystem.CLASSIC,
+            type: overrides.type ?? GameSystem.CLASSIC,
+            bv: overrides.bv,
+            pv: overrides.pv,
             groups: [{
                 units: units.map(unit => ({ unit, destroyed: false })),
             }],
@@ -450,6 +456,25 @@ describe('ForceOrgDialogComponent', () => {
         expect(groupB.width()).toBeGreaterThan(20);
         expect(groupB.height()).toBeGreaterThan(20);
         expect((component as any).rectsOverlap(rectA, rectB)).toBeFalse();
+    });
+
+    it('uses the saved force BV for group totals instead of recalculating from units', () => {
+        const force = createLoadForce('force-a', [createBattleMek('Atlas')], { bv: 1800 });
+        const [group] = (component as any).buildGroups([
+            { id: 'group-a', name: 'Alpha', x: 0, y: 0, width: 240, height: 180, zIndex: 0, parentGroupId: null },
+        ]);
+        const placedForce = (component as any).createPlacedForceState(force, {
+            x: 40,
+            y: 60,
+            zIndex: 0,
+            groupId: group.id,
+        });
+
+        (component as any).groups.set([group]);
+        (component as any).placedForces.set([placedForce]);
+        fixture.detectChanges();
+
+        expect(group.totals()).toBe('BV: 1,800');
     });
 
     it('does not mark the TO&E dirty when clicking a force without starting a drag', () => {

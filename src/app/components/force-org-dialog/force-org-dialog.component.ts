@@ -118,11 +118,18 @@ function snapGroupYUpToGrid(value: number): number {
     return snapUpToGrid(value + GROUP_HEADER_HEIGHT + GROUP_PADDING) - GROUP_HEADER_HEIGHT - GROUP_PADDING;
 }
 
-/** Compute total BV and PV for a force by summing base unit values.
+/** Compute total BV and PV for a force, preferring saved values over unit-derived sums.
  *  Only sums BV for Classic forces and PV for Alpha Strike forces. */
 function computeForceUnitTotals(force: LoadForceEntry): { totalBv: number; totalPv: number } {
-    let totalBv = 0, totalPv = 0;
     const isAS = force.type === GameSystem.ALPHA_STRIKE;
+    if (isAS && typeof force.pv === 'number') {
+        return { totalBv: 0, totalPv: force.pv };
+    }
+    if (!isAS && typeof force.bv === 'number') {
+        return { totalBv: force.bv, totalPv: 0 };
+    }
+
+    let totalBv = 0, totalPv = 0;
     for (const g of force.groups ?? []) {
         for (const ue of g.units ?? []) {
             if (ue.unit) {
