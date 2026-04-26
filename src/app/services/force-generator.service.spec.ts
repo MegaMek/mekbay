@@ -761,7 +761,7 @@ describe('ForceGeneratorService', () => {
         expect(context.availablePairCount).toBe(1);
     });
 
-    it('prefers the higher MegaMek availability weight and falls back unknown units to weight 2', () => {
+    it('prefers the higher MegaMek availability weight and falls back unknown units to the minimum production-only weight', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
         const knownUnit = createUnit({ id: 1, name: 'Known Unit', as: { PV: 5 } as Unit['as'] });
@@ -792,6 +792,9 @@ describe('ForceGeneratorService', () => {
         expect(preview.units.length).toBe(1);
         expect(preview.units[0].unit).toBe(knownUnit);
         expect(preview.totalCost).toBe(5);
+        const rulesetGuidanceIndex = preview.explanationLines.findIndex((line) => line.includes('Ruleset guidance: none resolved, so picks used weighted search only.'));
+        const sourceRollOddsIndex = preview.explanationLines.findIndex((line) => line.includes('Source roll odds: production 88.9% / salvage 11.1%.'));
+        expect(sourceRollOddsIndex).toBeGreaterThan(rulesetGuidanceIndex);
     });
 
     it('uses max weights across selected eras and factions when multiselect expansion is enabled', () => {
@@ -1446,7 +1449,68 @@ describe('ForceGeneratorService', () => {
         expect(preview.error).toBeNull();
         expect(preview.units.map((generatedUnit) => generatedUnit.unit.name)).toEqual(['MUL Visible Unknown']);
         expect(preview.explanationLines[0]).toContain('Eligible units: 1 units. Availability-positive candidates: 1 units.');
-        expect(preview.explanationLines.some((line) => line.includes('P 1 / S 1'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('P 1 / S 0'))).toBeTrue();
+    });
+
+    it('keeps MUL fallback unknown weights production-only when another scoped pair already contributed exact MegaMek weights', () => {
+        const era = createEra(2570, 'Age of War', 2570, 2780);
+        const primaryFaction = createFaction(10, 'Draconis Combine');
+        const secondaryFaction = createFaction(20, 'Free Worlds League');
+        const mixedScopeUnit = createUnit({ id: 1, name: 'Mixed Scope Unknown', as: { PV: 5 } as Unit['as'] });
+
+        era.units = new Set<number>([mixedScopeUnit.id]);
+        primaryFaction.eras = {
+            [era.id]: new Set<number>([mixedScopeUnit.id]),
+        };
+        secondaryFaction.eras = {
+            [era.id]: new Set<number>([mixedScopeUnit.id]),
+        };
+
+        megaMekAvailabilityByUnitName.set(mixedScopeUnit.name, {
+            e: {
+                [String(era.id)]: {
+                    [String(primaryFaction.id)]: [1, 0],
+                },
+            },
+        });
+
+        erasByName.set(era.name, era);
+        erasById.set(era.id, era);
+        factionsByName.set(primaryFaction.name, primaryFaction);
+        factionsByName.set(secondaryFaction.name, secondaryFaction);
+        factionsById.set(primaryFaction.id, primaryFaction);
+        factionsById.set(secondaryFaction.id, secondaryFaction);
+        units.push(mixedScopeUnit);
+        optionsServiceMock.options.set({ availabilitySource: 'mul' });
+
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [mixedScopeUnit],
+            context: {
+                forceFaction: primaryFaction,
+                forceEra: era,
+                availabilityFactionIds: [primaryFaction.id, secondaryFaction.id],
+                availabilityEraIds: [era.id],
+                useAvailabilityFactionScope: true,
+                useAvailabilityEraScope: false,
+                availablePairCount: 2,
+                ruleset: null,
+            },
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 10 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((generatedUnit) => generatedUnit.unit.name)).toEqual(['Mixed Scope Unknown']);
+        expect(preview.explanationLines.some((line) => {
+            return line.includes('Generation context: Draconis Combine - Age of War. Availability weights: max P/S across 2 factions.');
+        })).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('production pick, P 1 / S 0'))).toBeTrue();
     });
 
     it('keeps excluding MUL-invisible units that are missing MegaMek availability records', () => {

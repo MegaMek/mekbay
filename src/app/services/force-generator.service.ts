@@ -78,6 +78,8 @@ import { UnitSearchFiltersService } from './unit-search-filters.service';
  */
 const LOG_ATTEMPTS = false;
 const DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT = 1;
+const FORCE_GENERATION_PRODUCTION_SOURCE_ROLL_WEIGHT = 2;
+const FORCE_GENERATION_SALVAGE_SOURCE_ROLL_WEIGHT = 1;
 const IMPLICIT_MULTI_FACTION_EXCLUDED_IDS = new Set<number>([MULFACTION_EXTINCT]);
 const FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS = 200;
 const PREVIEW_GROUP_SPLIT_MIN_TIER = 1;
@@ -1275,6 +1277,10 @@ function formatForceGeneratorWeight(value: number): string {
     return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
+function formatForceGeneratorPercent(value: number): string {
+    return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
 function getForceGeneratorNow(): number {
     if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
         return performance.now();
@@ -1564,6 +1570,9 @@ export class ForceGeneratorService implements OnDestroy {
             options,
             availabilityWeightCache,
         );
+        const candidates = lockedUnitNames.size === 0
+            ? preparedCandidateCache.candidates
+            : preparedCandidateCache.candidates.filter((candidate) => !lockedUnitNames.has(candidate.unit.name));
         const availableUnitCapacity = unlockedEligibleUnits.length + lockedCandidates.length;
 
         if (availableUnitCapacity < minUnitCount) {
@@ -1581,6 +1590,8 @@ export class ForceGeneratorService implements OnDestroy {
                     maxUnitCount,
                     this.createSelectionAttemptFromCandidates(lockedCandidates, null),
                     message,
+                    undefined,
+                    candidates,
                 );
             }
 
@@ -1592,12 +1603,10 @@ export class ForceGeneratorService implements OnDestroy {
                 minUnitCount,
                 maxUnitCount,
                 message,
+                candidates,
             );
         }
 
-        const candidates = lockedUnitNames.size === 0
-            ? preparedCandidateCache.candidates
-            : preparedCandidateCache.candidates.filter((candidate) => !lockedUnitNames.has(candidate.unit.name));
         const availableCandidateCapacity = candidates.length + lockedCandidates.length;
 
         if (availableCandidateCapacity < minUnitCount) {
@@ -1615,6 +1624,8 @@ export class ForceGeneratorService implements OnDestroy {
                     maxUnitCount,
                     this.createSelectionAttemptFromCandidates(lockedCandidates, null),
                     message,
+                    undefined,
+                    candidates,
                 );
             }
 
@@ -1626,6 +1637,7 @@ export class ForceGeneratorService implements OnDestroy {
                 minUnitCount,
                 maxUnitCount,
                 message,
+                candidates,
             );
         }
 
@@ -1668,6 +1680,7 @@ export class ForceGeneratorService implements OnDestroy {
                 selectionAttempt,
                 null,
                 'Budget 0/0 requested, so the first compatible result was returned.',
+                candidates,
             );
         }
 
@@ -1821,6 +1834,7 @@ export class ForceGeneratorService implements OnDestroy {
                             null,
                             lockedCandidates.length,
                             options.preventDuplicateChassis === true,
+                            candidates,
                         ),
                         error: null,
                     };
@@ -1871,6 +1885,7 @@ export class ForceGeneratorService implements OnDestroy {
                     null,
                     lockedCandidates.length,
                     options.preventDuplicateChassis === true,
+                    candidates,
                 ),
                 error: null,
             };
@@ -1890,6 +1905,7 @@ export class ForceGeneratorService implements OnDestroy {
                 noUnderMaxForcePossible && bestAttemptExceedsMax
                     ? `No attempt stayed at or below the selected ${budgetLabel} maximum, so the lowest-total force in the requested unit-count range was returned.`
                     : 'No force matched the full budget and unit-count constraints, so the nearest force toward the target was returned.',
+                candidates,
             );
         }
 
@@ -1901,6 +1917,7 @@ export class ForceGeneratorService implements OnDestroy {
             minUnitCount,
             maxUnitCount,
             'Unable to build a force within the selected BV/PV range and unit count constraints.',
+            candidates,
         );
     }
 
@@ -2684,13 +2701,10 @@ export class ForceGeneratorService implements OnDestroy {
                     continue;
                 }
 
-                const weights = weightsByUnitId.get(unitId);
-                if (weights) {
-                    if (weights.production < DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT) {
-                        weights.production = DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT;
-                    }
-                    if (weights.salvage < DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT) {
-                        weights.salvage = DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT;
+                const existingScopedWeights = weightsByUnitId.get(unitId);
+                if (existingScopedWeights) {
+                    if (existingScopedWeights.production < DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT) {
+                        existingScopedWeights.production = DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT;
                     }
                     continue;
                 }
@@ -3239,10 +3253,12 @@ export class ForceGeneratorService implements OnDestroy {
         error: string | null,
         lockedUnitCount: number,
         preventDuplicateChassis: boolean,
+        availabilitySourceCandidates: readonly ForceGenerationCandidateUnit[] = [],
     ): string[] {
         const lines: string[] = [];
         const budgetLabel = gameSystem === GameSystem.ALPHA_STRIKE ? 'PV' : 'BV';
         const maxLabel = Number.isFinite(budgetRange.max) ? budgetRange.max.toLocaleString() : 'no max';
+        const availabilitySourceRollNote = this.getAvailabilitySourceRollNote(availabilitySourceCandidates);
         lines.push(`Eligible units: ${eligibleUnitCount} units. Availability-positive candidates: ${candidateUnitCount} units. Target: ${minUnitCount}-${maxUnitCount} units, ${budgetLabel} ${budgetRange.min.toLocaleString()} to ${maxLabel}.`);
 
         if (lockedUnitCount > 0) {
@@ -3268,6 +3284,9 @@ export class ForceGeneratorService implements OnDestroy {
                 ? `, echelon ${selectionAttempt.rulesetProfile.selectedEchelon}`
                 : '';
             lines.push(`Ruleset guidance: ${rulesetKey}${echelonNote}.`);
+            if (availabilitySourceRollNote) {
+                lines.push(availabilitySourceRollNote);
+            }
             for (const note of selectionAttempt.rulesetProfile.explanationNotes) {
                 lines.push(note);
             }
@@ -3276,8 +3295,14 @@ export class ForceGeneratorService implements OnDestroy {
             }
         } else if (context.ruleset) {
             lines.push(`Ruleset guidance: ${context.ruleset.factionKey}, but no matching force node added extra constraints.`);
+            if (availabilitySourceRollNote) {
+                lines.push(availabilitySourceRollNote);
+            }
         } else {
             lines.push('Ruleset guidance: none resolved, so picks used weighted search only.');
+            if (availabilitySourceRollNote) {
+                lines.push(availabilitySourceRollNote);
+            }
         }
 
         for (const [index, step] of (selectionAttempt?.selectionSteps ?? []).entries()) {
@@ -3307,6 +3332,24 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         return lines;
+    }
+
+    private getAvailabilitySourceRollNote(
+        candidates: readonly Pick<ForceGenerationCandidateUnit, 'productionWeight' | 'salvageWeight'>[],
+    ): string | null {
+        if (candidates.length === 0) {
+            return null;
+        }
+
+        const totals = this.getAvailabilitySourceRollTotals(candidates);
+        const total = totals.production + totals.salvage;
+        if (total <= 0) {
+            return null;
+        }
+
+        const productionPercent = (totals.production / total) * 100;
+        const salvagePercent = (totals.salvage / total) * 100;
+        return `Source roll odds: production ${formatForceGeneratorPercent(productionPercent)}% / salvage ${formatForceGeneratorPercent(salvagePercent)}%.`;
     }
 
     private getPositiveAvailabilityMessage(candidateCount: number, context: ForceGenerationContext): string {
@@ -3349,6 +3392,7 @@ export class ForceGeneratorService implements OnDestroy {
         selectionAttempt: ForceGenerationSelectionAttempt,
         error: string | null,
         resultNote?: string,
+        availabilitySourceCandidates: readonly ForceGenerationCandidateUnit[] = [],
     ): ForceGenerationPreview {
         if (!selectionAttempt.structureEvaluation) {
             const structureEvaluation = this.evaluateSelectionStructure(selectionAttempt, options.context);
@@ -3371,6 +3415,7 @@ export class ForceGeneratorService implements OnDestroy {
             error,
             (options.lockedUnits ?? []).length,
             options.preventDuplicateChassis === true,
+            availabilitySourceCandidates,
         );
 
         if (resultNote && resultNote !== error) {
@@ -3396,6 +3441,7 @@ export class ForceGeneratorService implements OnDestroy {
         minUnitCount: number,
         maxUnitCount: number,
         error: string,
+        availabilitySourceCandidates: readonly ForceGenerationCandidateUnit[] = [],
     ): ForceGenerationPreview {
         return {
             gameSystem: options.gameSystem,
@@ -3415,6 +3461,7 @@ export class ForceGeneratorService implements OnDestroy {
                 error,
                 (options.lockedUnits ?? []).length,
                 options.preventDuplicateChassis === true,
+                availabilitySourceCandidates,
             ),
             error,
         };
@@ -3719,13 +3766,31 @@ export class ForceGeneratorService implements OnDestroy {
         return source === 'production' ? candidate.productionWeight : candidate.salvageWeight;
     }
 
+    private getAvailabilitySourceRollWeight(source: ForceGenerationAvailabilitySource): number {
+        return source === 'production'
+            ? FORCE_GENERATION_PRODUCTION_SOURCE_ROLL_WEIGHT
+            : FORCE_GENERATION_SALVAGE_SOURCE_ROLL_WEIGHT;
+    }
+
+    private getAvailabilitySourceRollTotals(
+        candidates: readonly Pick<ForceGenerationCandidateUnit, 'productionWeight' | 'salvageWeight'>[],
+    ): { production: number; salvage: number } {
+        return {
+            production: candidates.reduce((sum, candidate) => {
+                return sum + (Math.max(0, candidate.productionWeight) * this.getAvailabilitySourceRollWeight('production'));
+            }, 0),
+            salvage: candidates.reduce((sum, candidate) => {
+                return sum + (Math.max(0, candidate.salvageWeight) * this.getAvailabilitySourceRollWeight('salvage'));
+            }, 0),
+        };
+    }
+
     private pickAvailabilitySource(candidates: readonly ForceGenerationCandidateUnit[]): ForceGenerationAvailabilitySource {
-        const productionTotal = candidates.reduce((sum, candidate) => sum + Math.max(0, candidate.productionWeight), 0);
-        const salvageTotal = candidates.reduce((sum, candidate) => sum + Math.max(0, candidate.salvageWeight), 0);
+        const totals = this.getAvailabilitySourceRollTotals(candidates);
 
         return pickWeightedRandomEntry<ForceGenerationAvailabilitySource>(
             ['production', 'salvage'],
-            (source) => source === 'production' ? productionTotal : salvageTotal,
+            (source) => source === 'production' ? totals.production : totals.salvage,
         );
     }
 
