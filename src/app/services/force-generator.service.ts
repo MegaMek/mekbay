@@ -33,7 +33,6 @@
 
 import { Injectable, OnDestroy, inject } from '@angular/core';
 
-import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { GameSystem } from '../models/common.model';
 import type { Era } from '../models/eras.model';
 import type { Faction } from '../models/factions.model';
@@ -2539,7 +2538,7 @@ export class ForceGeneratorService implements OnDestroy {
                 for (const unit of eligibleUnits) {
                     weightsByUnitId.set(unit.id, {
                         production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
-                        salvage: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                        salvage: 0,
                     });
                 }
             }
@@ -2558,7 +2557,7 @@ export class ForceGeneratorService implements OnDestroy {
                 if (includeUnknownForMissingRecords) {
                     weightsByUnitId.set(unit.id, {
                         production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
-                        salvage: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                        salvage: 0,
                     });
                 }
                 continue;
@@ -2698,7 +2697,7 @@ export class ForceGeneratorService implements OnDestroy {
 
                 weightsByUnitId.set(unitId, {
                     production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
-                    salvage: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                    salvage: 0,
                 });
             }
         }
@@ -3027,7 +3026,7 @@ export class ForceGeneratorService implements OnDestroy {
             return useMegaMekAvailability
                 ? {
                     production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
-                    salvage: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                    salvage: 0,
                 }
                 : {
                     production: 0,
@@ -3038,7 +3037,7 @@ export class ForceGeneratorService implements OnDestroy {
         if (!availabilityRecord && useMegaMekAvailability) {
             return {
                 production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
-                salvage: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                salvage: 0,
             };
         }
 
@@ -3121,7 +3120,7 @@ export class ForceGeneratorService implements OnDestroy {
         if (!availabilityRecord) {
             return {
                 production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
-                salvage: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                salvage: 0,
             };
         }
 
@@ -3155,7 +3154,7 @@ export class ForceGeneratorService implements OnDestroy {
         if (useMegaMekAvailability) {
             return {
                 production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
-                salvage: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                salvage: 0,
             };
         }
 
@@ -3211,7 +3210,7 @@ export class ForceGeneratorService implements OnDestroy {
 
         return {
             production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
-            salvage: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+            salvage: 0,
         };
     }
 
