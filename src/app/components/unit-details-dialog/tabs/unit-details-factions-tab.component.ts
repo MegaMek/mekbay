@@ -115,6 +115,7 @@ export class UnitDetailsFactionTabComponent {
 
     readonly megaMekProductionIconPath = MEGAMEK_PRODUCTION_ICON_PATH;
     readonly megaMekSalvageIconPath = MEGAMEK_SALVAGE_ICON_PATH;
+    readonly megaMekAvailabilitySourceSelected = computed(() => this.unitAvailabilitySource.useMegaMekAvailability());
 
     unit = input.required<Unit>();
 

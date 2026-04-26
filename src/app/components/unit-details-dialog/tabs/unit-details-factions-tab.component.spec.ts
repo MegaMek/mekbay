@@ -116,6 +116,7 @@ describe('UnitDetailsFactionTabComponent', () => {
         fixture.detectChanges();
 
         const element = fixture.nativeElement as HTMLElement;
+        const disclaimer = element.querySelector('.availability-source-disclaimer');
         const factionItems = Array.from(element.querySelectorAll('.faction-item'));
         const availabilityBadges = Array.from(element.querySelectorAll('.faction-megamek-availability-badge'));
         const badgeLabels = availabilityBadges.map((badge) => badge.getAttribute('aria-label'));
@@ -123,6 +124,7 @@ describe('UnitDetailsFactionTabComponent', () => {
         const mercenariesItem = factionItems.find((item) => item.textContent?.includes('Mercenaries'));
         const extinctItem = factionItems.find((item) => item.textContent?.includes('Extinct'));
 
+        expect(disclaimer).toBeNull();
         expect(factionItems.length).toBe(2);
         expect(draconisCombineItem).toBeTruthy();
         expect(mercenariesItem).toBeUndefined();
@@ -222,8 +224,11 @@ describe('UnitDetailsFactionTabComponent', () => {
         fixture.componentRef.setInput('unit', unit);
         fixture.detectChanges();
 
+        const element = fixture.nativeElement as HTMLElement;
+        const disclaimer = element.querySelector('.availability-source-disclaimer');
         const viewModel = fixture.componentInstance.factionAvailability();
 
+        expect(disclaimer?.textContent?.trim()).toBe("Availability source: MegaMek's RAT.");
         expect(viewModel.map((era) => era.eraName)).toEqual(['Clan Invasion', 'ilClan']);
         expect(viewModel[0].factions.map((faction) => faction.name)).toEqual(['Draconis Combine']);
         expect(viewModel[1].factions.map((faction) => faction.name)).toEqual(['Extinct']);

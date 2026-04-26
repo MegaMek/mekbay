@@ -21,6 +21,24 @@
     padding: 16px;
     gap: 8px 16px;
     align-items: start;
+    flex: 1;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.availability-source-disclaimer {
+    width: 100%;
+    font-size: 0.8rem;
+    margin-top: 0;
+    padding: 2px;
+    box-sizing: border-box;
+    text-align: center;
+    background-color: orange;
+    color: black;
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
 }
 
 .era-wrapper {
