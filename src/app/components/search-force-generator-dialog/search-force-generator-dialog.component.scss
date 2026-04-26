@@ -311,6 +311,10 @@
     letter-spacing: 0.1em;
 }
 
+.additional-filters-title.active {
+    color: var(--bt-yellow);
+}
+
 .additional-filters-panel {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;

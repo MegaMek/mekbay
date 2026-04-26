@@ -30,6 +30,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
     let resolveInitialBudgetDefaultsSpy: jasmine.Spy;
     let sendWsMessageSpy: jasmine.Spy;
     let advOptionsSignal: WritableSignal<any>;
+    let effectiveFilterStateSignal: WritableSignal<any>;
     let filteredUnitsSignal: WritableSignal<Unit[]>;
     let forceGeneratorEligibleUnitsSignal: WritableSignal<Unit[]>;
     let gameSystemSignal: WritableSignal<GameSystem>;
@@ -122,6 +123,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
                 interacted: false,
             },
         });
+        effectiveFilterStateSignal = signal({});
 
         const currentForceSignal = signal<any>(null);
         filteredUnitsSignal = signal<Unit[]>([]);
@@ -305,7 +307,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
                         advOptions: advOptionsSignal,
                         bvPvLimit: signal(5000),
                         closePanelsRequest: signal({ requestId: 0, exitExpandedView: false }),
-                        effectiveFilterState: signal({}),
+                        effectiveFilterState: effectiveFilterStateSignal,
                         filteredUnits: filteredUnitsSignal,
                         forceGeneratorEligibleUnits: forceGeneratorEligibleUnitsSignal,
                         isComplexQuery: signal(false),
@@ -1121,6 +1123,31 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(fixture.nativeElement.textContent).toContain('Additional Filters and Settings');
         expect(panel).not.toBeNull();
         expect(panel?.textContent).toContain('Tech');
+    });
+
+    it('highlights the additional filters title when pilot skills or advanced filters are active', async () => {
+        const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        const title = fixture.nativeElement.querySelector('.additional-filters-title') as HTMLElement | null;
+
+        expect(title?.classList.contains('active')).toBeFalse();
+
+        fixture.componentInstance.setPilotSkill('gunnery', 3);
+        fixture.detectChanges();
+
+        expect(title?.classList.contains('active')).toBeTrue();
+
+        fixture.componentInstance.setPilotSkill('gunnery', 4);
+        effectiveFilterStateSignal.set({
+            bv: {
+                interactedWith: true,
+            },
+        });
+        fixture.detectChanges();
+
+        expect(title?.classList.contains('active')).toBeTrue();
     });
 
     it('toggles preview units in and out of the locked set', () => {

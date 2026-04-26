@@ -177,6 +177,17 @@ export class SearchForceGeneratorDialogComponent {
             filter.game === otherGameSystem && filterState[filter.key]?.interactedWith
         ));
     });
+    readonly additionalFiltersHasActiveSettings = computed(() => {
+        const filterState = this.filtersService.effectiveFilterState();
+        const excludedKeys = new Set(this.additionalFiltersExcludedKeys());
+        const hasActiveAdvancedFilters = [...DROPDOWN_FILTERS, ...RANGE_FILTERS].some((filter) => (
+            !excludedKeys.has(filter.key) && filterState[filter.key]?.interactedWith
+        ));
+
+        return hasActiveAdvancedFilters
+            || this.pilotGunnerySkill() !== 4
+            || (this.gameSystem() === GameSystem.CLASSIC && this.pilotPilotingSkill() !== 5);
+    });
     readonly currentForce = this.forceBuilderService.smartCurrentForce;
     readonly canImportCurrentForce = computed(() => (this.currentForce()?.units().length ?? 0) > 0);
     readonly preventDuplicateChassis = signal(false);
