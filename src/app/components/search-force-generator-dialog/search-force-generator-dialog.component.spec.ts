@@ -1271,6 +1271,64 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(component.lockedUnitKeys().has('generated:0:Atlas AS7-D')).toBeFalse();
     });
 
+    it('changes a generated preview unit to a selected variant without rerolling', () => {
+        const atlas = {
+            id: 1,
+            name: 'Atlas AS7-D',
+            chassis: 'Atlas',
+            model: 'AS7-D',
+            bv: 1897,
+            as: { PV: 54 },
+        } as Unit;
+        const atlasVariant = {
+            id: 2,
+            name: 'Atlas AS7-K',
+            chassis: 'Atlas',
+            model: 'AS7-K',
+            bv: 2200,
+            as: { PV: 60 },
+        } as Unit;
+
+        (component as any).__test.setPreviewResult({
+            gameSystem: GameSystem.CLASSIC,
+            units: [{
+                unit: atlas,
+                cost: 1897,
+                gunnery: 3,
+                piloting: 4,
+                lockKey: 'generated:0:Atlas AS7-D',
+            }],
+            totalCost: 1897,
+            error: null,
+            faction: null,
+            era: null,
+            explanationLines: [],
+        });
+
+        component.reroll();
+        buildPreviewSpy.calls.reset();
+        component.previewVariantChange({
+            unit: atlas,
+            destroyed: false,
+            gunnery: 3,
+            piloting: 4,
+            lockKey: 'generated:0:Atlas AS7-D',
+        }, atlasVariant);
+
+        const preview = component.preview();
+        expect(buildPreviewSpy).not.toHaveBeenCalled();
+        expect(preview.totalCost).toBe(2200);
+        expect(preview.units).toEqual([
+            jasmine.objectContaining({
+                unit: atlasVariant,
+                cost: 2200,
+                gunnery: 3,
+                piloting: 4,
+                lockKey: 'generated:0:Atlas AS7-D',
+            }),
+        ]);
+    });
+
     it('recomputes locked unit values when switching from Alpha Strike to Classic', () => {
         const atlas = {
             id: 1,

@@ -36,8 +36,7 @@ import { CommonModule } from '@angular/common';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import type { Unit } from '../../models/units.model';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { firstValueFrom, takeUntil } from 'rxjs';
-import { outputToObservable } from '@angular/core/rxjs-interop';
+import { firstValueFrom } from 'rxjs';
 import { ToastService } from '../../services/toast.service';
 import { ForceUnit } from '../../models/force-unit.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -75,10 +74,17 @@ export interface UnitDetailsDialogData {
     hideAddButton?: boolean;
     /** When true, ADD only emits the unit without adding to force */
     selectMode?: boolean;
-    /** When set, show CHANGE button that replaces the original unit with the selected variant */
-    originalForceUnit?: ForceUnit;
+    changeAction?: UnitDetailsChangeAction;
+    showChangeButton?: boolean;
     /** Override game system (used when the unit list has no ForceUnit context). */
     gameSystem?: GameSystem;
+}
+
+export interface UnitDetailsChangeAction {
+    originalUnit: Unit;
+    apply: (unit: Unit) => boolean | void | Promise<boolean | void>;
+    disabled?: () => boolean;
+    closeParentOnChange?: boolean;
 }
 
 @Component({
@@ -114,13 +120,12 @@ export class UnitDetailsDialogComponent {
 
     /** Computed property to determine if we're in change mode */
     isChangeMode = computed(() => {
-        return !!this.data.originalForceUnit;
+        return !!this.activeChangeAction();
     });
 
     isChangeDisabled = computed(() => {
-        return !this.data.originalForceUnit 
-            || this.data.originalForceUnit.readOnly()
-            || this.data.originalForceUnit.getUnit().name === this.unit.name;
+        const action = this.activeChangeAction();
+        return !action || action.disabled?.() === true || action.originalUnit.name === this.unit.name;
     });
 
     tabs = computed<string[]>(() => {
@@ -510,22 +515,13 @@ export class UnitDetailsDialogComponent {
     }
 
     async onChange() {
-        const originalUnit = this.data.originalForceUnit;
-        if (!originalUnit) return;
-        
-        const selectedUnit = (this.unit instanceof ForceUnit) ? this.unit.getUnit() : this.unit;
-        
-        // Call the service to replace the unit (includes confirmation dialog)
-        const result = await this.forceBuilderService.replaceUnit(originalUnit, selectedUnit);
-        
-        if (result) {
-            this.toastService.showToast(
-                `Changed ${originalUnit.getUnit().chassis} ${originalUnit.getUnit().model} to ${selectedUnit.chassis} ${selectedUnit.model}.`,
-                'success'
-            );
-            this.change.emit({ oldUnit: originalUnit, newUnit: selectedUnit });
-            this.onClose();
-        }
+        const action = this.activeChangeAction();
+        if (!action) return;
+
+        const result = await action.apply(this.unit);
+        if (result === false) return;
+
+        this.onClose();
     }
 
     onClose() {
@@ -570,16 +566,10 @@ export class UnitDetailsDialogComponent {
     /** Handle variant card click - opens a new dialog for that variant */
     onVariantClick(event: { variant: Unit; variants: Unit[] }): void {
         if (this.data.selectMode) return;
-        
-        // Determine if we should enable change mode:
-        let originalForceUnit: ForceUnit | undefined;
-        // Check if current unit is a ForceUnit (user is browsing force units)
-        const currentItem = this.unitList()[this.unitIndex()];
-        if (currentItem instanceof ForceUnit) {
-            originalForceUnit = currentItem;
-        }
+
+        const changeAction = this.wrapParentClose(this.variantChangeAction());
     
-        const ref = this.dialogsService.createDialog(UnitDetailsDialogComponent, {
+        this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
                 unitList: event.variants,
                 unitIndex: event.variants.indexOf(event.variant),
@@ -587,21 +577,65 @@ export class UnitDetailsDialogComponent {
                 pilotingSkill: this.pilotingSkill(),
                 hideAddButton: this.data.hideAddButton,
                 selectMode: this.data.selectMode,
-                originalForceUnit
+                changeAction,
+                showChangeButton: !!changeAction,
             }
         });
-        
-        // When a unit change occurs in the variant dialog, navigate to the newly selected unit.
-        outputToObservable(ref.componentInstance.change).pipe(takeUntil(ref.closed)).subscribe(() => {
-            // Navigate to the newly selected unit (replaceUnit selects the new unit)
-            const selectedUnit = this.forceBuilderService.selectedUnit();
-            if (selectedUnit) {
-                const newIndex = this.unitList().findIndex(u => u.id === selectedUnit.id);
+    }
+
+    private activeChangeAction(): UnitDetailsChangeAction | null {
+        return this.data.showChangeButton === true ? this.data.changeAction ?? null : null;
+    }
+
+    private variantChangeAction(): UnitDetailsChangeAction | undefined {
+        const currentItem = this.unitList()[this.unitIndex()];
+        if (currentItem instanceof ForceUnit) {
+            return this.forceUnitChangeAction(currentItem);
+        }
+
+        return this.data.showChangeButton === true ? undefined : this.data.changeAction;
+    }
+
+    private forceUnitChangeAction(originalForceUnit: ForceUnit): UnitDetailsChangeAction {
+        return {
+            originalUnit: originalForceUnit.getUnit(),
+            disabled: () => originalForceUnit.readOnly(),
+            closeParentOnChange: true,
+            apply: async (selectedUnit: Unit) => {
+                const result = await this.forceBuilderService.replaceUnit(originalForceUnit, selectedUnit);
+                if (!result) return false;
+
+                this.toastService.showToast(
+                    `Changed ${originalForceUnit.getUnit().chassis} ${originalForceUnit.getUnit().model} to ${selectedUnit.chassis} ${selectedUnit.model}.`,
+                    'success'
+                );
+                this.change.emit({ oldUnit: originalForceUnit, newUnit: selectedUnit });
+
+                const newIndex = this.unitList().findIndex((unit) => unit instanceof ForceUnit && unit.id === result.id);
                 if (newIndex >= 0) {
                     this.unitIndex.set(newIndex);
                 }
-            }
-        });
+                return true;
+            },
+        };
+    }
+
+    private wrapParentClose(action: UnitDetailsChangeAction | undefined): UnitDetailsChangeAction | undefined {
+        if (!action?.closeParentOnChange) {
+            return action;
+        }
+
+        return {
+            ...action,
+            closeParentOnChange: false,
+            apply: async (unit: Unit) => {
+                const result = await action.apply(unit);
+                if (result === false) return false;
+
+                this.onClose();
+                return true;
+            },
+        };
     }
 
     public shouldBlockSwipe = (): boolean => {

@@ -42,6 +42,7 @@ import { MAX_UNITS as FORCE_MAX_UNITS } from '../../models/force.model';
 import { createForcePreviewEntryFromForce, getForcePreviewUnitEntries, type ForcePreviewEntry, type ForcePreviewUnit } from '../../models/force-preview.model';
 import type { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { AvailabilitySource } from '../../models/options.model';
+import type { Unit } from '../../models/units.model';
 import { DROPDOWN_FILTERS, RANGE_FILTERS } from '../../services/unit-search-filters.model';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { ForcePreviewPanelComponent } from '../force-preview-panel/force-preview-panel.component';
@@ -249,6 +250,9 @@ export class SearchForceGeneratorDialogComponent {
     });
     readonly previewLockToggle = (unitEntry: ForcePreviewUnit): void => {
         this.togglePreviewUnitLock(unitEntry);
+    };
+    readonly previewVariantChange = (unitEntry: ForcePreviewUnit, variant: Unit): void => {
+        this.changePreviewUnitVariant(unitEntry, variant);
     };
     readonly hoveredPreviewUnit = signal<ForcePreviewUnit | null>(null);
     readonly selectedPreviewUnit = signal<ForcePreviewUnit | null>(null);
@@ -1047,6 +1051,91 @@ export class SearchForceGeneratorDialogComponent {
             const previewUnit = this.preview().units.find((unit) => unit.lockKey === lockKey);
             return previewUnit ? [...lockedUnits, { ...previewUnit }] : lockedUnits;
         });
+    }
+
+    private changePreviewUnitVariant(unitEntry: ForcePreviewUnit, variant: Unit): void {
+        if (!unitEntry.unit || unitEntry.unit.name === variant.name) {
+            return;
+        }
+
+        let didChange = false;
+        let gameSystem = this.gameSystem();
+        this.previewState.update((preview) => {
+            const index = this.findPreviewUnitIndex(preview.units, unitEntry);
+            if (index < 0) {
+                return preview;
+            }
+
+            gameSystem = preview.gameSystem;
+            const units = [...preview.units];
+            units[index] = this.createReplacementPreviewUnit(units[index], variant, gameSystem);
+            didChange = true;
+
+            return {
+                ...preview,
+                units,
+                totalCost: units.reduce((sum, unit) => sum + unit.cost, 0),
+            };
+        });
+
+        if (!didChange) {
+            return;
+        }
+
+        const lockKey = unitEntry.lockKey;
+        if (lockKey) {
+            this.lockedUnits.update((lockedUnits) => lockedUnits.map((unit) => (
+                unit.lockKey === lockKey
+                    ? this.createReplacementPreviewUnit(unit, variant, gameSystem)
+                    : unit
+            )));
+        }
+
+        this.clearHoveredPreviewUnit();
+        this.clearSelectedPreviewUnit();
+    }
+
+    private findPreviewUnitIndex(units: readonly GeneratedForceUnit[], unitEntry: ForcePreviewUnit): number {
+        if (unitEntry.lockKey) {
+            const lockKeyIndex = units.findIndex((unit) => unit.lockKey === unitEntry.lockKey);
+            if (lockKeyIndex >= 0) {
+                return lockKeyIndex;
+            }
+        }
+
+        return units.findIndex((unit) => unit.unit === unitEntry.unit || unit.unit.name === unitEntry.unit?.name);
+    }
+
+    private createReplacementPreviewUnit(
+        original: GeneratedForceUnit,
+        variant: Unit,
+        gameSystem: GameSystem,
+    ): GeneratedForceUnit {
+        const defaultGunnery = this.gunnerySkillRange()[0];
+        const defaultPiloting = this.pilotingSkillRange()[0];
+        const skill = gameSystem === GameSystem.ALPHA_STRIKE
+            ? original.skill ?? original.gunnery ?? defaultGunnery
+            : undefined;
+        const gunnery = gameSystem === GameSystem.CLASSIC
+            ? original.gunnery ?? original.skill ?? defaultGunnery
+            : undefined;
+        const piloting = gameSystem === GameSystem.CLASSIC
+            ? original.piloting ?? defaultPiloting
+            : undefined;
+
+        return {
+            ...original,
+            unit: variant,
+            cost: this.forceGeneratorService.getBudgetMetric(
+                variant,
+                gameSystem,
+                skill ?? gunnery ?? defaultGunnery,
+                piloting ?? defaultPiloting,
+            ),
+            skill,
+            gunnery,
+            piloting,
+        };
     }
 
     private toLockedGeneratedUnit(unitEntry: ForcePreviewUnit, index: number): GeneratedForceUnit | null {

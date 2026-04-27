@@ -653,6 +653,7 @@ export class ForcePreviewPanelComponent {
     readonly displayMode = input<Options['unitDisplayName'] | null>(null);
     readonly lockedUnitKeys = input<ReadonlySet<string>>(new Set<string>());
     readonly lockToggle = input<((unitEntry: ForcePreviewUnit) => void) | null>(null);
+    readonly variantChange = input<((unitEntry: ForcePreviewUnit, variant: Unit) => void) | null>(null);
     readonly hoveredUnitChange = output<ForcePreviewUnit | null>();
     readonly selectedUnitsChange = output<ForcePreviewUnit[]>();
     private readonly selectedUnits = signal<ReadonlySet<ForcePreviewUnit>>(new Set<ForcePreviewUnit>());
@@ -762,12 +763,19 @@ export class ForcePreviewPanelComponent {
 
         const unitList = this.resolvedUnits();
         const unitIndex = unitList.findIndex((unit: Unit) => unit === loadForceUnit.unit || unit.name === loadForceUnit.unit?.name);
+        const variantChange = this.variantChange();
         this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: {
                 unitList,
                 unitIndex: unitIndex >= 0 ? unitIndex : 0,
                 hideAddButton: true,
                 gameSystem: this.force().type,
+                changeAction: variantChange ? {
+                    originalUnit: loadForceUnit.unit,
+                    apply: (variant: Unit) => variantChange(loadForceUnit, variant),
+                    closeParentOnChange: true,
+                } : undefined,
+                showChangeButton: false,
             } satisfies UnitDetailsDialogData,
         });
     }
