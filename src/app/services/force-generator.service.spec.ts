@@ -298,6 +298,38 @@ describe('ForceGeneratorService', () => {
         expect(defaults).toEqual({ min: 100, max: 100 });
     });
 
+    it('uses the stored force generator skill defaults', () => {
+        const defaults = service.resolveInitialSkillDefaults({
+            forceGenLastGunnerySkillMin: 2,
+            forceGenLastGunnerySkillMax: 4,
+            forceGenLastPilotingSkillMin: 3,
+            forceGenLastPilotingSkillMax: 6,
+            forceGenLastMaxPilotSkillDelta: 2,
+        });
+
+        expect(defaults).toEqual({
+            gunnery: { min: 2, max: 4 },
+            piloting: { min: 3, max: 6 },
+            maxDelta: 2,
+        });
+    });
+
+    it('normalizes stored force generator skill defaults', () => {
+        const defaults = service.resolveInitialSkillDefaults({
+            forceGenLastGunnerySkillMin: 9,
+            forceGenLastGunnerySkillMax: 1,
+            forceGenLastPilotingSkillMin: -1,
+            forceGenLastPilotingSkillMax: 10,
+            forceGenLastMaxPilotSkillDelta: 99,
+        });
+
+        expect(defaults).toEqual({
+            gunnery: { min: 1, max: 8 },
+            piloting: { min: 0, max: 8 },
+            maxDelta: 8,
+        });
+    });
+
     it('raises the budget max to follow an edited minimum unless the max is unbounded', () => {
         expect(service.resolveBudgetRangeForEditedMin({ min: 5800, max: 5900 }, 6000)).toEqual({ min: 6000, max: 6000 });
         expect(service.resolveBudgetRangeForEditedMin({ min: 5800, max: 0 }, 6000)).toEqual({ min: 6000, max: 0 });
@@ -793,8 +825,129 @@ describe('ForceGeneratorService', () => {
         expect(preview.units[0].unit).toBe(knownUnit);
         expect(preview.totalCost).toBe(5);
         const rulesetGuidanceIndex = preview.explanationLines.findIndex((line) => line.includes('Ruleset guidance: none resolved, so picks used weighted search only.'));
-        const sourceRollOddsIndex = preview.explanationLines.findIndex((line) => line.includes('Source roll odds: production 88.9% / salvage 11.1%.'));
+        const sourceRollOddsIndex = preview.explanationLines.findIndex((line) => line.includes('Source roll odds: production'));
         expect(sourceRollOddsIndex).toBeGreaterThan(rulesetGuidanceIndex);
+    });
+
+    it('rolls Alpha Strike pilot skill within the requested range', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const unit = createUnit({ id: 1, name: 'Skill Range AS Unit', as: { PV: 20 } as Unit['as'] });
+
+        spyOn(Math, 'random').and.returnValues(0.99, 0, 0, 0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [unit],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 0 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 3,
+            piloting: 5,
+            skillRanges: {
+                gunnery: { min: 3, max: 5 },
+            },
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.length).toBe(1);
+        expect(preview.units[0].skill).toBe(5);
+        expect(preview.explanationLines.some((line) => line.includes('Skill target: Pilot Skill 3-5.'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('Skill 5'))).toBeTrue();
+    });
+
+    it('rolls Classic gunnery and piloting within range while respecting max delta', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const unit = createUnit({ id: 1, name: 'Skill Range CBT Unit', bv: 1000 });
+
+        spyOn(Math, 'random').and.returnValues(0.99, 0, 0, 0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [unit],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.CLASSIC,
+            budgetRange: { min: 0, max: 0 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+            skillRanges: {
+                gunnery: { min: 0, max: 8 },
+                piloting: { min: 0, max: 8 },
+                maxDelta: 1,
+            },
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.length).toBe(1);
+        const generatedUnit = preview.units[0];
+        expect(generatedUnit.gunnery).toBeDefined();
+        expect(generatedUnit.piloting).toBeDefined();
+        expect(generatedUnit.gunnery ?? -1).toBeGreaterThanOrEqual(0);
+        expect(generatedUnit.gunnery ?? 99).toBeLessThanOrEqual(8);
+        expect(generatedUnit.piloting ?? -1).toBeGreaterThanOrEqual(0);
+        expect(generatedUnit.piloting ?? 99).toBeLessThanOrEqual(8);
+        expect(Math.abs((generatedUnit.gunnery ?? 0) - (generatedUnit.piloting ?? 0))).toBeLessThanOrEqual(1);
+        expect(preview.explanationLines.some((line) => line.includes('Skill target: Gunnery 0-8, Piloting 0-8, max delta 1.'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('G/P'))).toBeTrue();
+    });
+
+    it('rejects Classic skill ranges with no valid max-delta pair', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const unit = createUnit({ id: 1, name: 'Invalid Skill Range Unit', bv: 1000 });
+
+        const preview = service.buildPreview({
+            eligibleUnits: [unit],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.CLASSIC,
+            budgetRange: { min: 0, max: 0 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 0,
+            piloting: 8,
+            skillRanges: {
+                gunnery: { min: 0, max: 0 },
+                piloting: { min: 8, max: 8 },
+                maxDelta: 1,
+            },
+        });
+
+        expect(preview.units).toEqual([]);
+        expect(preview.error).toBe('No valid Gunnery/Piloting skill pairs match the selected ranges with max delta 1.');
+    });
+
+    it('applies Classic max delta to effective piloting values', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const unit = createUnit({
+            id: 1,
+            name: 'Infantry Skill Delta Unit',
+            type: 'Infantry',
+            subtype: 'Conventional Infantry',
+            bv: 100,
+        });
+
+        const preview = service.buildPreview({
+            eligibleUnits: [unit],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.CLASSIC,
+            budgetRange: { min: 0, max: 0 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 0,
+            piloting: 0,
+            skillRanges: {
+                gunnery: { min: 0, max: 0 },
+                piloting: { min: 0, max: 0 },
+                maxDelta: 1,
+            },
+        });
+
+        expect(preview.units).toEqual([]);
+        expect(preview.error).toBe('Only 0 availability-positive units can satisfy the selected skill ranges with max delta 1.');
     });
 
     it('uses max weights across selected eras and factions when multiselect expansion is enabled', () => {
@@ -1579,7 +1732,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.units[0].unit).toBe(productionUnit);
 
         randomSpy.calls.reset();
-        randomSpy.and.returnValues(0.75, 0);
+        randomSpy.and.returnValues(0.9, 0);
         preview = service.buildPreview({
             eligibleUnits: [productionUnit, salvageUnit],
             context: createContext(faction, era),

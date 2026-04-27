@@ -29,6 +29,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
     let resolveGenerationContextSpy: jasmine.Spy;
     let resolveInitialBudgetDefaultsSpy: jasmine.Spy;
     let sendWsMessageSpy: jasmine.Spy;
+    let optionsSignal: WritableSignal<any>;
     let advOptionsSignal: WritableSignal<any>;
     let effectiveFilterStateSignal: WritableSignal<any>;
     let filteredUnitsSignal: WritableSignal<Unit[]>;
@@ -36,7 +37,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
     let gameSystemSignal: WritableSignal<GameSystem>;
 
     beforeEach(() => {
-        const optionsSignal = signal({
+        optionsSignal = signal({
             availabilitySource: 'mul',
             forceGenLastBVMin: 7900,
             forceGenLastBVMax: 8000,
@@ -44,6 +45,11 @@ describe('SearchForceGeneratorDialogComponent', () => {
             forceGenLastPVMax: 300,
             forceGenLastMinUnitCount: 4,
             forceGenLastMaxUnitCount: 8,
+            forceGenLastGunnerySkillMin: 4,
+            forceGenLastGunnerySkillMax: 4,
+            forceGenLastPilotingSkillMin: 5,
+            forceGenLastPilotingSkillMax: 5,
+            forceGenLastMaxPilotSkillDelta: 1,
         });
 
         setOptionSpy = jasmine.createSpy('setOption').and.callFake((key: string, value: number) => {
@@ -214,6 +220,17 @@ describe('SearchForceGeneratorDialogComponent', () => {
         const forceGeneratorServiceMock = {
             resolveInitialBudgetDefaults: resolveInitialBudgetDefaultsSpy,
             resolveInitialUnitCountDefaults: () => ({ min: 4, max: 8 }),
+            resolveInitialSkillDefaults: (options: any) => ({
+                gunnery: {
+                    min: Math.min(options.forceGenLastGunnerySkillMin, options.forceGenLastGunnerySkillMax),
+                    max: Math.max(options.forceGenLastGunnerySkillMin, options.forceGenLastGunnerySkillMax),
+                },
+                piloting: {
+                    min: Math.min(options.forceGenLastPilotingSkillMin, options.forceGenLastPilotingSkillMax),
+                    max: Math.max(options.forceGenLastPilotingSkillMin, options.forceGenLastPilotingSkillMax),
+                },
+                maxDelta: options.forceGenLastMaxPilotSkillDelta,
+            }),
             resolveBudgetRangeForEditedMin: (range: { min: number; max: number }, editedMin: number) => {
                 const nextMin = Math.max(0, Math.floor(editedMin));
                 const nextMax = range.max > 0
@@ -250,6 +267,13 @@ describe('SearchForceGeneratorDialogComponent', () => {
             getStoredBudgetOptionKeys: () => ({
                 min: 'forceGenLastBVMin',
                 max: 'forceGenLastBVMax',
+            }),
+            getStoredSkillOptionKeys: () => ({
+                gunneryMin: 'forceGenLastGunnerySkillMin',
+                gunneryMax: 'forceGenLastGunnerySkillMax',
+                pilotingMin: 'forceGenLastPilotingSkillMin',
+                pilotingMax: 'forceGenLastPilotingSkillMax',
+                maxDelta: 'forceGenLastMaxPilotSkillDelta',
             }),
             resolveGenerationContext: resolveGenerationContextSpy,
             buildPreview: buildPreviewSpy,
@@ -361,6 +385,26 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(buildPreviewSpy).not.toHaveBeenCalled();
         expect(component.previewEntry()).toBeNull();
         expect(component.previewError()).toBe('Press REROLL to generate a force preview for the current settings.');
+    });
+
+    it('uses the stored force generator skill defaults', async () => {
+        optionsSignal.update((options) => ({
+            ...options,
+            forceGenLastGunnerySkillMin: 2,
+            forceGenLastGunnerySkillMax: 4,
+            forceGenLastPilotingSkillMin: 3,
+            forceGenLastPilotingSkillMax: 6,
+            forceGenLastMaxPilotSkillDelta: 2,
+        }));
+
+        const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        const dialog = fixture.componentInstance;
+        expect(dialog.gunnerySkillRange()).toEqual([2, 4]);
+        expect(dialog.pilotingSkillRange()).toEqual([3, 6]);
+        expect(dialog.maxPilotSkillDelta()).toBe(2);
     });
 
     it('uses uncapped force-generator eligible units for preview requests', () => {
@@ -1064,44 +1108,75 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(dialogCloseSpy.calls.mostRecent().args[0].config.crossEraAvailabilityInMultiEraSelection).toBeTrue();
     });
 
-    it('renders pilot skill controls and updates them for the current game system', async () => {
+    it('renders pilot skill range controls and sends them to preview generation', async () => {
         const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
         await fixture.whenStable();
         fixture.detectChanges();
 
+        const skillToggle = fixture.nativeElement.querySelector('.skill-settings-toggle') as HTMLButtonElement | null;
+        expect(skillToggle).not.toBeNull();
         expect(fixture.nativeElement.querySelector('#force-generator-gunnery-skill')).toBeNull();
-        expect(fixture.nativeElement.querySelector('#force-generator-piloting-skill')).toBeNull();
 
-        const toggle = fixture.nativeElement.querySelector('.additional-filters-toggle') as HTMLButtonElement | null;
-        toggle?.click();
+        skillToggle?.click();
         fixture.detectChanges();
 
         const classicText = fixture.nativeElement.textContent as string;
-        const gunnerySelect = fixture.nativeElement.querySelector('#force-generator-gunnery-skill') as HTMLSelectElement | null;
-        const pilotingSelect = fixture.nativeElement.querySelector('#force-generator-piloting-skill') as HTMLSelectElement | null;
+        const gunneryControl = fixture.nativeElement.querySelector('#force-generator-gunnery-skill') as HTMLElement | null;
+        const pilotingControl = fixture.nativeElement.querySelector('#force-generator-piloting-skill') as HTMLElement | null;
+        const deltaInput = fixture.nativeElement.querySelector('#force-generator-skill-delta') as HTMLInputElement | null;
+        const deltaDescription = fixture.nativeElement.querySelector('.skill-delta-description') as HTMLElement | null;
 
-        expect(classicText).toContain('Gunnery:');
-        expect(classicText).toContain('Piloting:');
-        expect(gunnerySelect).not.toBeNull();
-        expect(pilotingSelect).not.toBeNull();
+        expect(classicText).toContain('Gunnery');
+        expect(classicText).toContain('Piloting');
+        expect(classicText).toContain('Max Delta');
+        expect(gunneryControl).not.toBeNull();
+        expect(pilotingControl).not.toBeNull();
+        expect(deltaInput).not.toBeNull();
+        expect(gunneryControl?.closest('.filter-row')).not.toBeNull();
+        expect(pilotingControl?.closest('.filter-row')).not.toBeNull();
+        expect(gunneryControl?.closest('.range')?.querySelector('.range-values')?.textContent).toContain('4~4');
+        expect(pilotingControl?.closest('.range')?.querySelector('.range-values')?.textContent).toContain('5~5');
+        expect(deltaDescription?.textContent?.trim()).toBe('Maximum allowed difference between generated Gunnery and Piloting.');
+        expect(gunneryControl?.closest('.additional-filters-shell')).toBeNull();
+        expect(pilotingControl?.closest('.additional-filters-shell')).toBeNull();
+        expect(deltaInput?.closest('.additional-filters-shell')).toBeNull();
 
-        if (!gunnerySelect) {
-            fail('Expected gunnery select to be rendered.');
+        if (!deltaInput) {
+            fail('Expected max delta input to be rendered.');
             return;
         }
 
-        gunnerySelect.value = '3';
-        gunnerySelect.dispatchEvent(new Event('change'));
+        fixture.componentInstance.onGunnerySkillRangeChange([3, 5]);
+        fixture.componentInstance.onPilotingSkillRangeChange([4, 6]);
+        deltaInput.value = '2';
+        deltaInput.dispatchEvent(new Event('input'));
         fixture.detectChanges();
 
-        expect(setPilotSkillsSpy).toHaveBeenCalledWith(3, 5);
+        expect(fixture.componentInstance.gunnerySkillRange()).toEqual([3, 5]);
+        expect(fixture.componentInstance.pilotingSkillRange()).toEqual([4, 6]);
+        expect(fixture.componentInstance.maxPilotSkillDelta()).toBe(2);
+        expect(setOptionSpy).toHaveBeenCalledWith('forceGenLastGunnerySkillMin', 3);
+        expect(setOptionSpy).toHaveBeenCalledWith('forceGenLastGunnerySkillMax', 5);
+        expect(setOptionSpy).toHaveBeenCalledWith('forceGenLastPilotingSkillMin', 4);
+        expect(setOptionSpy).toHaveBeenCalledWith('forceGenLastPilotingSkillMax', 6);
+        expect(setOptionSpy).toHaveBeenCalledWith('forceGenLastMaxPilotSkillDelta', 2);
+
+        fixture.componentInstance.reroll();
+
+        expect(buildPreviewSpy.calls.mostRecent().args[0].skillRanges).toEqual({
+            gunnery: { min: 3, max: 5 },
+            piloting: { min: 4, max: 6 },
+            maxDelta: 2,
+        });
 
         fixture.componentInstance.setGameSystem(GameSystem.ALPHA_STRIKE);
         fixture.detectChanges();
 
         const alphaStrikeText = fixture.nativeElement.textContent as string;
-        expect(alphaStrikeText).toContain('Pilot Skill:');
+        expect(alphaStrikeText).toContain('Pilot Skill');
         expect(fixture.nativeElement.querySelector('#force-generator-piloting-skill')).toBeNull();
+        expect(fixture.nativeElement.querySelector('#force-generator-skill-delta')).toBeNull();
+        expect(fixture.nativeElement.querySelector('.skill-delta-description')).toBeNull();
     });
 
     it('shows additional search filters behind an accordion without the force limit block', async () => {
@@ -1119,25 +1194,30 @@ describe('SearchForceGeneratorDialogComponent', () => {
         fixture.detectChanges();
 
         const panel = fixture.nativeElement.querySelector('.additional-filters-panel') as HTMLElement | null;
+        const systemToggleDescription = fixture.nativeElement.querySelector('.adv-filter-system-toggle-description') as HTMLElement | null;
 
         expect(fixture.nativeElement.textContent).toContain('Additional Filters and Settings');
         expect(panel).not.toBeNull();
         expect(panel?.textContent).toContain('Tech');
+        expect(systemToggleDescription?.textContent?.trim()).toBe(fixture.componentInstance.advPanelFilterGameSystemToggleTitle());
     });
 
-    it('highlights the additional filters title when pilot skills or advanced filters are active', async () => {
+    it('highlights skill values separately from advanced filters title', async () => {
         const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
         await fixture.whenStable();
         fixture.detectChanges();
 
         const title = fixture.nativeElement.querySelector('.additional-filters-title') as HTMLElement | null;
+        const skillsTitle = fixture.nativeElement.querySelector('.skill-settings-title') as HTMLElement | null;
 
         expect(title?.classList.contains('active')).toBeFalse();
+        expect(skillsTitle?.classList.contains('active')).toBeFalse();
 
         fixture.componentInstance.setPilotSkill('gunnery', 3);
         fixture.detectChanges();
 
-        expect(title?.classList.contains('active')).toBeTrue();
+        expect(title?.classList.contains('active')).toBeFalse();
+        expect(skillsTitle?.classList.contains('active')).toBeTrue();
 
         fixture.componentInstance.setPilotSkill('gunnery', 4);
         effectiveFilterStateSignal.set({
@@ -1148,6 +1228,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         fixture.detectChanges();
 
         expect(title?.classList.contains('active')).toBeTrue();
+        expect(skillsTitle?.classList.contains('active')).toBeFalse();
     });
 
     it('toggles preview units in and out of the locked set', () => {

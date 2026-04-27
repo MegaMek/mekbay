@@ -78,4 +78,9 @@ export interface Options {
     forceGenLastPVMax: number;
     forceGenLastMinUnitCount: number;
     forceGenLastMaxUnitCount: number;
+    forceGenLastGunnerySkillMin: number;
+    forceGenLastGunnerySkillMax: number;
+    forceGenLastPilotingSkillMin: number;
+    forceGenLastPilotingSkillMax: number;
+    forceGenLastMaxPilotSkillDelta: number;
 }

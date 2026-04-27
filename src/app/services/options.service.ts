@@ -77,6 +77,11 @@ const DEFAULT_OPTIONS: Options = {
     forceGenLastPVMax: 300,
     forceGenLastMinUnitCount: 4,
     forceGenLastMaxUnitCount: 8,
+    forceGenLastGunnerySkillMin: 4,
+    forceGenLastGunnerySkillMax: 4,
+    forceGenLastPilotingSkillMin: 5,
+    forceGenLastPilotingSkillMax: 5,
+    forceGenLastMaxPilotSkillDelta: 1,
 };
 
 @Injectable({ providedIn: 'root' })
@@ -116,6 +121,11 @@ export class OptionsService {
         forceGenLastPVMax: DEFAULT_OPTIONS.forceGenLastPVMax,
         forceGenLastMinUnitCount: DEFAULT_OPTIONS.forceGenLastMinUnitCount,
         forceGenLastMaxUnitCount: DEFAULT_OPTIONS.forceGenLastMaxUnitCount,
+        forceGenLastGunnerySkillMin: DEFAULT_OPTIONS.forceGenLastGunnerySkillMin,
+        forceGenLastGunnerySkillMax: DEFAULT_OPTIONS.forceGenLastGunnerySkillMax,
+        forceGenLastPilotingSkillMin: DEFAULT_OPTIONS.forceGenLastPilotingSkillMin,
+        forceGenLastPilotingSkillMax: DEFAULT_OPTIONS.forceGenLastPilotingSkillMax,
+        forceGenLastMaxPilotSkillDelta: DEFAULT_OPTIONS.forceGenLastMaxPilotSkillDelta,
     });
 
     constructor() {
@@ -159,6 +169,11 @@ export class OptionsService {
             forceGenLastPVMax: saved?.forceGenLastPVMax ?? DEFAULT_OPTIONS.forceGenLastPVMax,
             forceGenLastMinUnitCount: saved?.forceGenLastMinUnitCount ?? DEFAULT_OPTIONS.forceGenLastMinUnitCount,
             forceGenLastMaxUnitCount: saved?.forceGenLastMaxUnitCount ?? DEFAULT_OPTIONS.forceGenLastMaxUnitCount,
+            forceGenLastGunnerySkillMin: saved?.forceGenLastGunnerySkillMin ?? DEFAULT_OPTIONS.forceGenLastGunnerySkillMin,
+            forceGenLastGunnerySkillMax: saved?.forceGenLastGunnerySkillMax ?? DEFAULT_OPTIONS.forceGenLastGunnerySkillMax,
+            forceGenLastPilotingSkillMin: saved?.forceGenLastPilotingSkillMin ?? DEFAULT_OPTIONS.forceGenLastPilotingSkillMin,
+            forceGenLastPilotingSkillMax: saved?.forceGenLastPilotingSkillMax ?? DEFAULT_OPTIONS.forceGenLastPilotingSkillMax,
+            forceGenLastMaxPilotSkillDelta: saved?.forceGenLastMaxPilotSkillDelta ?? DEFAULT_OPTIONS.forceGenLastMaxPilotSkillDelta,
         });
     }
 

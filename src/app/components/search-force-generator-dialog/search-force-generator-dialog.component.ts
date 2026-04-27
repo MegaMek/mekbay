@@ -47,11 +47,21 @@ import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { ForcePreviewPanelComponent } from '../force-preview-panel/force-preview-panel.component';
 import { ForceRadarPanelComponent } from '../force-radar-panel/force-radar-panel.component';
 import { MultiSelectDropdownComponent, type MultiStateSelection } from '../multi-select-dropdown/multi-select-dropdown.component';
+import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { UnitSearchAdvancedFiltersComponent } from '../unit-search-advanced-filters/unit-search-advanced-filters.component';
 import { DataService } from '../../services/data.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { ForceGeneratorService, type ForceGenerationPreview, type GeneratedForceUnit } from '../../services/force-generator.service';
+import {
+    DEFAULT_FORCE_GENERATION_MAX_CBT_SKILL_DELTA,
+    FORCE_GENERATION_MAX_PILOT_SKILL,
+    FORCE_GENERATION_MIN_PILOT_SKILL,
+    ForceGeneratorService,
+    type ForceGenerationPreview,
+    type ForceGenerationSkillRange,
+    type ForceGenerationSkillRanges,
+    type GeneratedForceUnit,
+} from '../../services/force-generator.service';
 import { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
 import { WsService } from '../../services/ws.service';
@@ -69,6 +79,7 @@ export interface SearchForceGeneratorDialogConfig {
     };
     minUnitCount: number;
     maxUnitCount: number;
+    skillRanges: ForceGenerationSkillRanges;
     crossEraAvailabilityInMultiEraSelection: boolean;
     preventDuplicateChassis: boolean;
 }
@@ -93,6 +104,7 @@ type GeneratorDialogTab = 'configuration' | 'preview';
         ForcePreviewPanelComponent,
         ForceRadarPanelComponent,
         MultiSelectDropdownComponent,
+        RangeSliderComponent,
         TooltipDirective,
         UnitSearchAdvancedFiltersComponent,
     ],
@@ -121,6 +133,9 @@ export class SearchForceGeneratorDialogComponent {
     private readonly initialUnitCountDefaults = this.forceGeneratorService.resolveInitialUnitCountDefaults(
         this.optionsService.options(),
     );
+    private readonly initialSkillDefaults = this.forceGeneratorService.resolveInitialSkillDefaults(
+        this.optionsService.options(),
+    );
 
     readonly gameSystem = this.selectedGameSystem.asReadonly();
     readonly isAlphaStrike = computed(() => this.gameSystem() === GameSystem.ALPHA_STRIKE);
@@ -128,6 +143,32 @@ export class SearchForceGeneratorDialogComponent {
     readonly eligibleUnits = this.filtersService.forceGeneratorEligibleUnits;
     readonly pilotGunnerySkill = computed(() => this.filtersService.pilotGunnerySkill());
     readonly pilotPilotingSkill = computed(() => this.filtersService.pilotPilotingSkill());
+    readonly minPilotSkill = FORCE_GENERATION_MIN_PILOT_SKILL;
+    readonly maxPilotSkill = FORCE_GENERATION_MAX_PILOT_SKILL;
+    readonly pilotSkillAvailableRange: [number, number] = [FORCE_GENERATION_MIN_PILOT_SKILL, FORCE_GENERATION_MAX_PILOT_SKILL];
+    readonly gunnerySkillRange = signal<[number, number]>([
+        this.initialSkillDefaults.gunnery.min,
+        this.initialSkillDefaults.gunnery.max,
+    ]);
+    readonly pilotingSkillRange = signal<[number, number]>([
+        this.initialSkillDefaults.piloting.min,
+        this.initialSkillDefaults.piloting.max,
+    ]);
+    readonly maxPilotSkillDelta = signal(this.initialSkillDefaults.maxDelta);
+    readonly forceGenerationSkillRanges = computed<ForceGenerationSkillRanges>(() => ({
+        gunnery: this.toSkillRangeObject(this.gunnerySkillRange()),
+        piloting: this.toSkillRangeObject(this.pilotingSkillRange()),
+        maxDelta: this.maxPilotSkillDelta(),
+    }));
+    readonly gunnerySkillRangeActive = computed(() => {
+        const range = this.gunnerySkillRange();
+        return range[0] !== 4 || range[1] !== 4;
+    });
+    readonly pilotingSkillRangeActive = computed(() => {
+        const range = this.pilotingSkillRange();
+        return range[0] !== 5 || range[1] !== 5;
+    });
+    readonly maxPilotSkillDeltaActive = computed(() => this.maxPilotSkillDelta() !== DEFAULT_FORCE_GENERATION_MAX_CBT_SKILL_DELTA);
     readonly eraFilter = computed(() => this.getDropdownFilter('era'));
     readonly factionFilter = computed(() => this.getDropdownFilter('faction'));
     readonly unitTypeFilterKey = computed<UnitTypeFilterKey | null>(() => this.resolveUnitTypeFilterKey());
@@ -155,7 +196,16 @@ export class SearchForceGeneratorDialogComponent {
             : `${baseMessage} Available only when no positive era is selected or when multiple eras are selected.`;
     });
     readonly advPanelFilterGameSystem = signal<GameSystem>(this.initialGameSystem);
+    readonly pilotSkillsOpen = signal(false);
     readonly additionalFiltersOpen = signal(false);
+    readonly pilotSkillsHasActiveSettings = computed(() => {
+        if (this.gunnerySkillRangeActive()) {
+            return true;
+        }
+
+        return this.gameSystem() === GameSystem.CLASSIC
+            && (this.pilotingSkillRangeActive() || this.maxPilotSkillDeltaActive());
+    });
     readonly additionalFiltersExcludedKeys = computed(() => {
         const excludedKeys = new Set<string>(['era', 'faction', '_tags']);
         const unitTypeFilterKey = this.unitTypeFilterKey();
@@ -184,9 +234,7 @@ export class SearchForceGeneratorDialogComponent {
             !excludedKeys.has(filter.key) && filterState[filter.key]?.interactedWith
         ));
 
-        return hasActiveAdvancedFilters
-            || this.pilotGunnerySkill() !== 4
-            || (this.gameSystem() === GameSystem.CLASSIC && this.pilotPilotingSkill() !== 5);
+        return hasActiveAdvancedFilters;
     });
     readonly currentForce = this.forceBuilderService.smartCurrentForce;
     readonly canImportCurrentForce = computed(() => (this.currentForce()?.units().length ?? 0) > 0);
@@ -218,8 +266,8 @@ export class SearchForceGeneratorDialogComponent {
         }
 
         const skillLabel = this.gameSystem() === GameSystem.ALPHA_STRIKE
-            ? `Pilot Skill ${this.pilotGunnerySkill()}`
-            : `Gunnery ${this.pilotGunnerySkill()} Piloting ${this.pilotPilotingSkill()}`;
+            ? `Pilot Skill ${this.formatSkillRange(this.gunnerySkillRange())}`
+            : `Gunnery ${this.formatSkillRange(this.gunnerySkillRange())} Piloting ${this.formatSkillRange(this.pilotingSkillRange())} Delta ${this.maxPilotSkillDelta()}`;
         lines.push(`${skillLabel}`);
 
         // if (this.lockedUnits().length > 0) {
@@ -249,18 +297,20 @@ export class SearchForceGeneratorDialogComponent {
     readonly collapsedHowPicksWhereChosen = signal(false);
     readonly previewDisplaySettings = computed(() => ({
         gameSystem: this.gameSystem(),
-        gunnery: this.pilotGunnerySkill(),
-        piloting: this.pilotPilotingSkill(),
+        gunnery: this.gunnerySkillRange()[0],
+        piloting: this.pilotingSkillRange()[0],
     }));
     readonly generationSettings = computed(() => {
         const gameSystem = this.gameSystem();
+        const skillRanges = this.forceGenerationSkillRanges();
         return {
             gameSystem,
             budgetRange: gameSystem === GameSystem.ALPHA_STRIKE
                 ? { min: this.alphaStrikeBudgetMin(), max: this.alphaStrikeBudgetMax() }
                 : { min: this.classicBudgetMin(), max: this.classicBudgetMax() },
-            gunnery: this.pilotGunnerySkill(),
-            piloting: this.pilotPilotingSkill(),
+            gunnery: skillRanges.gunnery.min,
+            piloting: skillRanges.piloting?.min ?? this.pilotingSkillRange()[0],
+            skillRanges,
             minUnitCount: this.minUnitCount(),
             maxUnitCount: this.maxUnitCount(),
         };
@@ -312,23 +362,47 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     setPilotSkill(type: 'gunnery' | 'piloting', value: number): void {
+        const normalizedValue = this.normalizeSkillValue(value, type === 'gunnery' ? this.gunnerySkillRange()[0] : this.pilotingSkillRange()[0]);
         const currentGunnery = this.filtersService.pilotGunnerySkill();
         const currentPiloting = this.filtersService.pilotPilotingSkill();
         if (type === 'gunnery') {
-            this.filtersService.setPilotSkills(value, currentPiloting);
+            this.setSkillRange('gunnery', [normalizedValue, normalizedValue]);
+            this.filtersService.setPilotSkills(normalizedValue, currentPiloting);
         } else {
-            this.filtersService.setPilotSkills(currentGunnery, value);
+            this.setSkillRange('piloting', [normalizedValue, normalizedValue]);
+            this.filtersService.setPilotSkills(currentGunnery, normalizedValue);
         }
     }
 
-    openSelect(event: Event, select: HTMLSelectElement): void {
-        event.preventDefault();
-        event.stopPropagation();
-        select.showPicker?.() ?? select.focus();
+    onGunnerySkillRangeChange(range: [number, number]): void {
+        this.setSkillRange('gunnery', range);
+    }
+
+    onPilotingSkillRangeChange(range: [number, number]): void {
+        this.setSkillRange('piloting', range);
+    }
+
+    onMaxPilotSkillDeltaChange(event: Event): void {
+        this.setMaxPilotSkillDelta(this.normalizeMaxPilotSkillDelta(
+            this.parseNumericValue(event, this.maxPilotSkillDelta()),
+        ));
+    }
+
+    onMaxPilotSkillDeltaBlur(event: Event): void {
+        this.onMaxPilotSkillDeltaChange(event);
+        this.syncInputValue(event, this.maxPilotSkillDelta());
+    }
+
+    formatSkillRange(range: readonly [number, number]): string {
+        return range[0] === range[1] ? `${range[0]}` : `${range[0]}-${range[1]}`;
     }
 
     toggleAdditionalFilters(): void {
         this.additionalFiltersOpen.update((value) => !value);
+    }
+
+    togglePilotSkills(): void {
+        this.pilotSkillsOpen.update((value) => !value);
     }
 
     setAdvPanelFilterGameSystem(gameSystem: GameSystem): void {
@@ -507,6 +581,7 @@ export class SearchForceGeneratorDialogComponent {
                 budgetRange: this.budgetRange(),
                 minUnitCount: this.minUnitCount(),
                 maxUnitCount: this.maxUnitCount(),
+                skillRanges: this.forceGenerationSkillRanges(),
                 crossEraAvailabilityInMultiEraSelection: this.crossEraAvailabilityInMultiEraSelection(),
                 preventDuplicateChassis: this.preventDuplicateChassis(),
             },
@@ -573,6 +648,7 @@ export class SearchForceGeneratorDialogComponent {
             maxUnitCount: settings.maxUnitCount,
             gunnery: settings.gunnery,
             piloting: settings.piloting,
+            skillRanges: settings.skillRanges,
             lockedUnits,
             preventDuplicateChassis: this.preventDuplicateChassis(),
         });
@@ -875,6 +951,74 @@ export class SearchForceGeneratorDialogComponent {
         }
     }
 
+    private setSkillRange(type: 'gunnery' | 'piloting', range: readonly [number, number]): void {
+        const currentRange = type === 'gunnery'
+            ? this.gunnerySkillRange()
+            : this.pilotingSkillRange();
+        const nextRange = this.normalizeSkillRange(range, currentRange);
+        const didChangeMin = currentRange[0] !== nextRange[0];
+        const didChangeMax = currentRange[1] !== nextRange[1];
+
+        if (!didChangeMin && !didChangeMax) {
+            return;
+        }
+
+        if (type === 'gunnery') {
+            this.gunnerySkillRange.set(nextRange);
+        } else {
+            this.pilotingSkillRange.set(nextRange);
+        }
+
+        const optionKeys = this.forceGeneratorService.getStoredSkillOptionKeys();
+        const minOptionKey = type === 'gunnery' ? optionKeys.gunneryMin : optionKeys.pilotingMin;
+        const maxOptionKey = type === 'gunnery' ? optionKeys.gunneryMax : optionKeys.pilotingMax;
+
+        if (didChangeMin) {
+            void this.optionsService.setOption(minOptionKey, nextRange[0]);
+        }
+        if (didChangeMax) {
+            void this.optionsService.setOption(maxOptionKey, nextRange[1]);
+        }
+    }
+
+    private setMaxPilotSkillDelta(value: number): void {
+        const nextValue = this.normalizeMaxPilotSkillDelta(value);
+        if (this.maxPilotSkillDelta() === nextValue) {
+            return;
+        }
+
+        this.maxPilotSkillDelta.set(nextValue);
+        void this.optionsService.setOption(
+            this.forceGeneratorService.getStoredSkillOptionKeys().maxDelta,
+            nextValue,
+        );
+    }
+
+    private normalizeSkillValue(value: number, fallback: number): number {
+        const resolvedValue = Number.isFinite(value) ? value : fallback;
+        return Math.min(this.maxPilotSkill, Math.max(this.minPilotSkill, Math.floor(resolvedValue)));
+    }
+
+    private normalizeSkillRange(
+        range: readonly [number, number],
+        fallback: readonly [number, number],
+    ): [number, number] {
+        const firstValue = this.normalizeSkillValue(range[0], fallback[0]);
+        const secondValue = this.normalizeSkillValue(range[1], fallback[1]);
+        return [Math.min(firstValue, secondValue), Math.max(firstValue, secondValue)];
+    }
+
+    private normalizeMaxPilotSkillDelta(value: number): number {
+        return Math.min(this.maxPilotSkill, Math.max(0, Math.floor(Number.isFinite(value) ? value : this.maxPilotSkillDelta())));
+    }
+
+    private toSkillRangeObject(range: readonly [number, number]): ForceGenerationSkillRange {
+        return {
+            min: range[0],
+            max: range[1],
+        };
+    }
+
     private parseNumericValue(event: Event, fallback: number): number {
         const value = Number.parseInt((event.target as HTMLInputElement).value, 10);
         return Number.isFinite(value) ? value : fallback;
@@ -911,14 +1055,16 @@ export class SearchForceGeneratorDialogComponent {
         }
 
         const gameSystem = this.gameSystem();
+        const defaultGunnery = this.gunnerySkillRange()[0];
+        const defaultPiloting = this.pilotingSkillRange()[0];
         const skill = gameSystem === GameSystem.ALPHA_STRIKE
-            ? unitEntry.skill ?? this.pilotGunnerySkill()
+            ? unitEntry.skill ?? defaultGunnery
             : undefined;
         const gunnery = gameSystem === GameSystem.CLASSIC
-            ? unitEntry.gunnery ?? this.pilotGunnerySkill()
+            ? unitEntry.gunnery ?? defaultGunnery
             : undefined;
         const piloting = gameSystem === GameSystem.CLASSIC
-            ? unitEntry.piloting ?? this.pilotPilotingSkill()
+            ? unitEntry.piloting ?? defaultPiloting
             : undefined;
 
         return {
@@ -926,8 +1072,8 @@ export class SearchForceGeneratorDialogComponent {
             cost: this.forceGeneratorService.getBudgetMetric(
                 unitEntry.unit,
                 gameSystem,
-                skill ?? gunnery ?? this.pilotGunnerySkill(),
-                piloting ?? this.pilotPilotingSkill(),
+                skill ?? gunnery ?? defaultGunnery,
+                piloting ?? defaultPiloting,
             ),
             skill,
             gunnery,

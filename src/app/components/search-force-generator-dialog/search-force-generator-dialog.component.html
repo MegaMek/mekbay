@@ -210,6 +210,102 @@
                     </div>
 
                     <div class="form-fields span-all">
+                        <div class="skill-settings-shell framed-borders">
+                            <button class="skill-settings-toggle" type="button" (click)="togglePilotSkills()">
+                                <svg class="chevron" width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!pilotSkillsOpen()">
+                                    <path d="M0 2l5 6 5-6z"/>
+                                </svg>
+                                <span class="skill-settings-title" [class.active]="pilotSkillsHasActiveSettings()">Pilot Skills</span>
+                            </button>
+
+                            @if (pilotSkillsOpen()) {
+                            <div class="skill-settings-panel">
+                                <div class="pilot-skills-controls" [class.alpha-strike]="isAlphaStrike()">
+                                @if (isAlphaStrike()) {
+                                <div class="filter-row">
+                                    <div class="range">
+                                        <label class="range-label" id="force-generator-gunnery-skill-label">Pilot Skill
+                                            <span class="range-values">
+                                                (<span class="range-value-min">{{ gunnerySkillRange()[0] }}</span>~<span class="range-value-max">{{ gunnerySkillRange()[1] }}</span>)
+                                            </span>
+                                        </label>
+                                        <range-slider
+                                            id="force-generator-gunnery-skill"
+                                            [attr.aria-labelledby]="'force-generator-gunnery-skill-label'"
+                                            [min]="minPilotSkill"
+                                            [max]="maxPilotSkill"
+                                            [value]="gunnerySkillRange()"
+                                            [availableRange]="pilotSkillAvailableRange"
+                                            [interacted]="gunnerySkillRangeActive()"
+                                            [stepSize]="1"
+                                            (valueChange)="onGunnerySkillRangeChange($event)">
+                                        </range-slider>
+                                    </div>
+                                </div>
+                                } @else {
+                                <div class="filter-row">
+                                    <div class="range">
+                                        <label class="range-label" id="force-generator-gunnery-skill-label">Gunnery
+                                            <span class="range-values">
+                                                (<span class="range-value-min">{{ gunnerySkillRange()[0] }}</span>~<span class="range-value-max">{{ gunnerySkillRange()[1] }}</span>)
+                                            </span>
+                                        </label>
+                                        <range-slider
+                                            id="force-generator-gunnery-skill"
+                                            [attr.aria-labelledby]="'force-generator-gunnery-skill-label'"
+                                            [min]="minPilotSkill"
+                                            [max]="maxPilotSkill"
+                                            [value]="gunnerySkillRange()"
+                                            [availableRange]="pilotSkillAvailableRange"
+                                            [interacted]="gunnerySkillRangeActive()"
+                                            [stepSize]="1"
+                                            (valueChange)="onGunnerySkillRangeChange($event)">
+                                        </range-slider>
+                                    </div>
+                                </div>
+                                <div class="filter-row">
+                                    <div class="range">
+                                        <label class="range-label" id="force-generator-piloting-skill-label">Piloting
+                                            <span class="range-values">
+                                                (<span class="range-value-min">{{ pilotingSkillRange()[0] }}</span>~<span class="range-value-max">{{ pilotingSkillRange()[1] }}</span>)
+                                            </span>
+                                        </label>
+                                        <range-slider
+                                            id="force-generator-piloting-skill"
+                                            [attr.aria-labelledby]="'force-generator-piloting-skill-label'"
+                                            [min]="minPilotSkill"
+                                            [max]="maxPilotSkill"
+                                            [value]="pilotingSkillRange()"
+                                            [availableRange]="pilotSkillAvailableRange"
+                                            [interacted]="pilotingSkillRangeActive()"
+                                            [stepSize]="1"
+                                            (valueChange)="onPilotingSkillRangeChange($event)">
+                                        </range-slider>
+                                    </div>
+                                </div>
+                                <div class="skill-delta-control">
+                                    <label class="skill-delta-label" for="force-generator-skill-delta">Max Delta</label>
+                                    <input
+                                        id="force-generator-skill-delta"
+                                        class="bt-input skill-delta-input"
+                                        [class.active]="maxPilotSkillDeltaActive()"
+                                        type="number"
+                                        min="0"
+                                        [max]="maxPilotSkill"
+                                        step="1"
+                                        [value]="maxPilotSkillDelta()"
+                                        (input)="onMaxPilotSkillDeltaChange($event)"
+                                        (blur)="onMaxPilotSkillDeltaBlur($event)" />
+                                    <span class="skill-delta-description">Maximum allowed difference between generated Gunnery and Piloting.</span>
+                                </div>
+                                }
+                                </div>
+                            </div>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="form-fields span-all">
                         <div class="additional-filters-shell framed-borders">
                             <button class="additional-filters-toggle" type="button" (click)="toggleAdditionalFilters()">
                                 <svg class="chevron" width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!additionalFiltersOpen()">
@@ -221,44 +317,8 @@
                             @if (additionalFiltersOpen()) {
                                 <div class="additional-filters-panel">
                                     <div class="additional-filters-header">
-
-                                        <div class="pilot-skills-controls">
-                                            @if (isAlphaStrike()) {
-                                            <div class="skill-control">
-                                                <label for="force-generator-gunnery-skill" (click)="openSelect($event, gunnerySelect)">Pilot Skill:</label>
-                                                <select #gunnerySelect id="force-generator-gunnery-skill" class="bt-input skill-select"
-                                                    [class.active]="pilotGunnerySkill() !== 4" [value]="pilotGunnerySkill()"
-                                                    (change)="setPilotSkill('gunnery', +$any($event.target).value)">
-                                                    @for (n of [0,1,2,3,4,5,6,7,8]; track n) {
-                                                    <option [value]="n" [selected]="n === pilotGunnerySkill()">{{ n }}</option>
-                                                    }
-                                                </select>
-                                            </div>
-                                            } @else {
-                                            <div class="skill-control">
-                                                <label for="force-generator-gunnery-skill" (click)="openSelect($event, gunnerySelect)">Gunnery:</label>
-                                                <select #gunnerySelect id="force-generator-gunnery-skill" class="bt-input skill-select"
-                                                    [class.active]="pilotGunnerySkill() !== 4" [value]="pilotGunnerySkill()"
-                                                    (change)="setPilotSkill('gunnery', +$any($event.target).value)">
-                                                    @for (n of [0,1,2,3,4,5,6,7,8]; track n) {
-                                                    <option [value]="n" [selected]="n === pilotGunnerySkill()">{{ n }}</option>
-                                                    }
-                                                </select>
-                                            </div>
-                                            <div class="skill-control">
-                                                <label for="force-generator-piloting-skill" (click)="openSelect($event, pilotingSelect)">Piloting:</label>
-                                                <select #pilotingSelect id="force-generator-piloting-skill" class="bt-input skill-select"
-                                                    [class.active]="pilotPilotingSkill() !== 5" [value]="pilotPilotingSkill()"
-                                                    (change)="setPilotSkill('piloting', +$any($event.target).value)">
-                                                    @for (n of [0,1,2,3,4,5,6,7,8]; track n) {
-                                                    <option [value]="n" [selected]="n === pilotPilotingSkill()">{{ n }}</option>
-                                                    }
-                                                </select>
-                                            </div>
-                                            }
-                                        </div>
-    
                                         <div class="additional-filters-actions">
+                                            <span class="adv-filter-system-toggle-description">{{ advPanelFilterGameSystemToggleTitle() }}</span>
                                             <button type="button" class="bt-button square adv-filter-system-toggle"
                                                 [class.active]="otherAdvPanelFilterGameSystemHasActiveFilters()"
                                                 [title]="advPanelFilterGameSystemToggleTitle()"

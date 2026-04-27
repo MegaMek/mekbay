@@ -82,6 +82,9 @@ const FORCE_GENERATION_PRODUCTION_SOURCE_ROLL_WEIGHT = 5;
 const FORCE_GENERATION_SALVAGE_SOURCE_ROLL_WEIGHT = 1;
 const IMPLICIT_MULTI_FACTION_EXCLUDED_IDS = new Set<number>([MULFACTION_EXTINCT]);
 const FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS = 200;
+export const FORCE_GENERATION_MIN_PILOT_SKILL = 0;
+export const FORCE_GENERATION_MAX_PILOT_SKILL = 8;
+export const DEFAULT_FORCE_GENERATION_MAX_CBT_SKILL_DELTA = 1;
 const PREVIEW_GROUP_SPLIT_MIN_TIER = 1;
 const PREVIEW_GROUP_TIER_EPSILON = 0.0001;
 const PREVIEW_GROUP_SEARCH_MAX_UNITS = 12;
@@ -270,6 +273,9 @@ interface ForceGenerationSelectionStep {
     productionWeight: number;
     salvageWeight: number;
     cost: number;
+    skill?: number;
+    gunnery?: number;
+    piloting?: number;
     rulesetReasons: string[];
 }
 
@@ -293,6 +299,17 @@ interface ForceGenerationAttemptBudget {
     minAttempts: number;
     maxAttempts: number;
     targetDurationMs: number;
+}
+
+interface ForceGenerationSkillSettings {
+    gunnery: ForceGenerationSkillRange;
+    piloting: ForceGenerationSkillRange;
+    maxDelta: number;
+}
+
+interface ForceGenerationClassicSkillPair {
+    gunnery: number;
+    piloting: number;
 }
 
 interface ForceGenerationStructureEvaluation {
@@ -325,8 +342,20 @@ export interface ForceGenerationRequest {
     maxUnitCount: number;
     gunnery: number;
     piloting: number;
+    skillRanges?: ForceGenerationSkillRanges;
     lockedUnits?: readonly GeneratedForceUnit[];
     preventDuplicateChassis?: boolean;
+}
+
+export interface ForceGenerationSkillRange {
+    min: number;
+    max: number;
+}
+
+export interface ForceGenerationSkillRanges {
+    gunnery: ForceGenerationSkillRange;
+    piloting?: ForceGenerationSkillRange;
+    maxDelta?: number;
 }
 
 export interface ForceGenerationBudgetRange {
@@ -368,6 +397,12 @@ export interface ForceGeneratorBudgetDefaults {
 export interface ForceGeneratorUnitCountDefaults {
     min: number;
     max: number;
+}
+
+export interface ForceGeneratorSkillDefaults {
+    gunnery: ForceGenerationSkillRange;
+    piloting: ForceGenerationSkillRange;
+    maxDelta: number;
 }
 
 interface PreviewGroupPlanContext {
@@ -952,6 +987,127 @@ function normalizeUnitCountBound(value: number): number {
     return Number.isFinite(value) ? Math.min(FORCE_MAX_UNITS, Math.max(1, Math.floor(value))) : 1;
 }
 
+function normalizeForceGenerationSkillValue(value: number | undefined, fallback: number): number {
+    const resolvedValue = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+    return Math.min(
+        FORCE_GENERATION_MAX_PILOT_SKILL,
+        Math.max(FORCE_GENERATION_MIN_PILOT_SKILL, Math.floor(resolvedValue)),
+    );
+}
+
+function normalizeForceGenerationSkillRange(
+    range: ForceGenerationSkillRange | undefined,
+    fallback: number,
+): ForceGenerationSkillRange {
+    const fallbackSkill = normalizeForceGenerationSkillValue(fallback, fallback);
+    const firstValue = normalizeForceGenerationSkillValue(range?.min, fallbackSkill);
+    const secondValue = normalizeForceGenerationSkillValue(range?.max, fallbackSkill);
+
+    return {
+        min: Math.min(firstValue, secondValue),
+        max: Math.max(firstValue, secondValue),
+    };
+}
+
+function normalizeForceGenerationMaxSkillDelta(value: number | undefined): number {
+    const resolvedValue = typeof value === 'number' && Number.isFinite(value)
+        ? value
+        : DEFAULT_FORCE_GENERATION_MAX_CBT_SKILL_DELTA;
+    return Math.min(
+        FORCE_GENERATION_MAX_PILOT_SKILL,
+        Math.max(
+            0,
+            Math.floor(resolvedValue),
+        ),
+    );
+}
+
+function resolveForceGenerationSkillSettings(
+    options: Pick<ForceGenerationRequest, 'gunnery' | 'piloting' | 'skillRanges'>,
+): ForceGenerationSkillSettings {
+    return {
+        gunnery: normalizeForceGenerationSkillRange(options.skillRanges?.gunnery, options.gunnery),
+        piloting: normalizeForceGenerationSkillRange(options.skillRanges?.piloting, options.piloting),
+        maxDelta: normalizeForceGenerationMaxSkillDelta(options.skillRanges?.maxDelta),
+    };
+}
+
+function isForceGenerationSkillRangeVariable(range: ForceGenerationSkillRange): boolean {
+    return range.min !== range.max;
+}
+
+function hasVariableForceGenerationSkillSettings(
+    gameSystem: GameSystem,
+    settings: ForceGenerationSkillSettings,
+): boolean {
+    return isForceGenerationSkillRangeVariable(settings.gunnery)
+        || (gameSystem === GameSystem.CLASSIC && isForceGenerationSkillRangeVariable(settings.piloting));
+}
+
+function pickRandomIntegerInRange(range: ForceGenerationSkillRange): number {
+    if (range.min === range.max) {
+        return range.min;
+    }
+
+    return range.min + Math.floor(Math.random() * (range.max - range.min + 1));
+}
+
+function getForceGenerationClassicSkillPairs(
+    settings: ForceGenerationSkillSettings,
+    unit?: Unit,
+): ForceGenerationClassicSkillPair[] {
+    const pairs: ForceGenerationClassicSkillPair[] = [];
+    const pairKeys = new Set<string>();
+
+    for (let gunnery = settings.gunnery.min; gunnery <= settings.gunnery.max; gunnery += 1) {
+        for (let requestedPiloting = settings.piloting.min; requestedPiloting <= settings.piloting.max; requestedPiloting += 1) {
+            const piloting = unit ? getEffectivePilotingSkill(unit, requestedPiloting) : requestedPiloting;
+            if (Math.abs(gunnery - piloting) <= settings.maxDelta) {
+                const pairKey = `${gunnery}:${piloting}`;
+                if (!pairKeys.has(pairKey)) {
+                    pairKeys.add(pairKey);
+                    pairs.push({ gunnery, piloting });
+                }
+            }
+        }
+    }
+
+    return pairs;
+}
+
+function hasValidForceGenerationSkillSettings(
+    gameSystem: GameSystem,
+    settings: ForceGenerationSkillSettings,
+): boolean {
+    return gameSystem !== GameSystem.CLASSIC || getForceGenerationClassicSkillPairs(settings).length > 0;
+}
+
+function formatForceGenerationSkillRange(range: ForceGenerationSkillRange): string {
+    return range.min === range.max ? `${range.min}` : `${range.min}-${range.max}`;
+}
+
+function formatForceGenerationSkillSettingsNote(
+    gameSystem: GameSystem,
+    skillSettings: ForceGenerationSkillSettings,
+): string {
+    if (gameSystem === GameSystem.ALPHA_STRIKE) {
+        return `Skill target: Pilot Skill ${formatForceGenerationSkillRange(skillSettings.gunnery)}.`;
+    }
+
+    return `Skill target: Gunnery ${formatForceGenerationSkillRange(skillSettings.gunnery)}, Piloting ${formatForceGenerationSkillRange(skillSettings.piloting)}, max delta ${skillSettings.maxDelta}.`;
+}
+
+function buildForceGenerationSkillSettingsSignature(
+    options: Pick<ForceGenerationRequest, 'gunnery' | 'piloting' | 'skillRanges'>,
+): string {
+    const skillSettings = resolveForceGenerationSkillSettings(options);
+    return [
+        `g:${skillSettings.gunnery.min}-${skillSettings.gunnery.max}`,
+        `p:${skillSettings.piloting.min}-${skillSettings.piloting.max}`,
+        `d:${skillSettings.maxDelta}`,
+    ].join(',');
+}
+
 function clonePreviewGroups(groups: readonly ForcePreviewGroup[]): ForcePreviewGroup[] {
     return groups.map((group) => ({
         name: group.name,
@@ -1294,6 +1450,19 @@ function formatForceGenerationUnitLabel(unit: Pick<Unit, 'chassis' | 'model'>): 
     return model.length > 0 ? `${unit.chassis} ${model}` : unit.chassis;
 }
 
+function formatForceGenerationSkillSummary(
+    gameSystem: GameSystem,
+    step: Pick<ForceGenerationSelectionStep, 'skill' | 'gunnery' | 'piloting'>,
+): string | null {
+    if (gameSystem === GameSystem.ALPHA_STRIKE) {
+        return step.skill === undefined ? null : `Skill ${step.skill}`;
+    }
+
+    return step.gunnery === undefined || step.piloting === undefined
+        ? null
+        : `G/P ${step.gunnery}/${step.piloting}`;
+}
+
 function toMegaMekUnitType(unit: Unit): string {
     switch (unit.type) {
         case 'Mek':
@@ -1437,6 +1606,27 @@ export class ForceGeneratorService implements OnDestroy {
         );
     }
 
+    public resolveInitialSkillDefaults(
+        options: Pick<Options,
+            'forceGenLastGunnerySkillMin'
+            | 'forceGenLastGunnerySkillMax'
+            | 'forceGenLastPilotingSkillMin'
+            | 'forceGenLastPilotingSkillMax'
+            | 'forceGenLastMaxPilotSkillDelta'>,
+    ): ForceGeneratorSkillDefaults {
+        return {
+            gunnery: normalizeForceGenerationSkillRange({
+                min: options.forceGenLastGunnerySkillMin,
+                max: options.forceGenLastGunnerySkillMax,
+            }, 4),
+            piloting: normalizeForceGenerationSkillRange({
+                min: options.forceGenLastPilotingSkillMin,
+                max: options.forceGenLastPilotingSkillMax,
+            }, 5),
+            maxDelta: normalizeForceGenerationMaxSkillDelta(options.forceGenLastMaxPilotSkillDelta),
+        };
+    }
+
     public getStoredBudgetOptionKeys(gameSystem: GameSystem): {
         min: 'forceGenLastBVMin' | 'forceGenLastPVMin';
         max: 'forceGenLastBVMax' | 'forceGenLastPVMax';
@@ -1453,6 +1643,22 @@ export class ForceGeneratorService implements OnDestroy {
         return {
             min: 'forceGenLastMinUnitCount',
             max: 'forceGenLastMaxUnitCount',
+        };
+    }
+
+    public getStoredSkillOptionKeys(): {
+        gunneryMin: 'forceGenLastGunnerySkillMin';
+        gunneryMax: 'forceGenLastGunnerySkillMax';
+        pilotingMin: 'forceGenLastPilotingSkillMin';
+        pilotingMax: 'forceGenLastPilotingSkillMax';
+        maxDelta: 'forceGenLastMaxPilotSkillDelta';
+    } {
+        return {
+            gunneryMin: 'forceGenLastGunnerySkillMin',
+            gunneryMax: 'forceGenLastGunnerySkillMax',
+            pilotingMin: 'forceGenLastPilotingSkillMin',
+            pilotingMax: 'forceGenLastPilotingSkillMax',
+            maxDelta: 'forceGenLastMaxPilotSkillDelta',
         };
     }
 
@@ -1551,6 +1757,8 @@ export class ForceGeneratorService implements OnDestroy {
         const minUnitCount = Math.min(FORCE_MAX_UNITS, Math.max(1, Math.floor(options.minUnitCount)));
         const maxUnitCount = Math.min(FORCE_MAX_UNITS, Math.max(minUnitCount, Math.floor(options.maxUnitCount)));
         const budgetRange = this.normalizeBudgetRange(options.budgetRange);
+        const skillSettings = resolveForceGenerationSkillSettings(options);
+        const hasVariableSkillSettings = hasVariableForceGenerationSkillSettings(options.gameSystem, skillSettings);
         const availabilityWeightCache = this.resolveAvailabilityWeightCache(eligibleUnits, options.context);
         const lockedCandidates = (options.lockedUnits ?? []).map((lockedUnit, index) => this.createCandidateUnit(
             lockedUnit.unit,
@@ -1570,9 +1778,15 @@ export class ForceGeneratorService implements OnDestroy {
             options,
             availabilityWeightCache,
         );
-        const candidates = lockedUnitNames.size === 0
+        const availabilityCandidates = lockedUnitNames.size === 0
             ? preparedCandidateCache.candidates
             : preparedCandidateCache.candidates.filter((candidate) => !lockedUnitNames.has(candidate.unit.name));
+        const skillCompatibleCandidates = this.filterCandidatesForSkillSettings(
+            availabilityCandidates,
+            options.gameSystem,
+            skillSettings,
+        );
+        const candidates = [...skillCompatibleCandidates];
         const availableUnitCapacity = unlockedEligibleUnits.length + lockedCandidates.length;
 
         if (availableUnitCapacity < minUnitCount) {
@@ -1607,12 +1821,45 @@ export class ForceGeneratorService implements OnDestroy {
             );
         }
 
+        if (!hasValidForceGenerationSkillSettings(options.gameSystem, skillSettings)) {
+            const message = `No valid Gunnery/Piloting skill pairs match the selected ranges with max delta ${skillSettings.maxDelta}.`;
+            const availableCandidateCapacity = availabilityCandidates.length + lockedCandidates.length;
+
+            if (lockedCandidates.length > 0) {
+                return this.buildPreviewFromSelectionAttempt(
+                    options,
+                    eligibleUnits.length,
+                    availableCandidateCapacity,
+                    budgetRange,
+                    minUnitCount,
+                    maxUnitCount,
+                    this.createSelectionAttemptFromCandidates(lockedCandidates, null),
+                    message,
+                    undefined,
+                    candidates,
+                );
+            }
+
+            return this.buildEmptyPreview(
+                options,
+                eligibleUnits.length,
+                availableCandidateCapacity,
+                budgetRange,
+                minUnitCount,
+                maxUnitCount,
+                message,
+                candidates,
+            );
+        }
+
         const availableCandidateCapacity = candidates.length + lockedCandidates.length;
 
         if (availableCandidateCapacity < minUnitCount) {
             const message = lockedCandidates.length > 0
                 ? `Only ${availableCandidateCapacity} total units are available after preserving ${lockedCandidates.length} locked ${lockedCandidates.length === 1 ? 'unit' : 'units'}.`
-                : this.getPositiveAvailabilityMessage(candidates.length, options.context);
+                : candidates.length < availabilityCandidates.length
+                    ? `Only ${candidates.length} availability-positive units can satisfy the selected skill ranges with max delta ${skillSettings.maxDelta}.`
+                    : this.getPositiveAvailabilityMessage(candidates.length, options.context);
 
             if (lockedCandidates.length > 0) {
                 return this.buildPreviewFromSelectionAttempt(
@@ -1642,25 +1889,45 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         const hasResolvedRuleset = this.resolveRulesetContext(options.context.forceFaction, options.context.forceEra).primary !== null;
-        const canReuseSelectionPreparationCache = lockedCandidates.length === 0 && !hasResolvedRuleset;
-        const selectionPreparation = canReuseSelectionPreparationCache
-            ? this.resolveSelectionPreparationCache(
-                preparedCandidateCache,
-                options.context,
-                minUnitCount,
-                maxUnitCount,
-            )
-            : this.prepareSelectionPreparation(
-                candidates,
-                lockedCandidates,
-                options.context,
-                minUnitCount,
-                maxUnitCount,
-            );
+        const didFilterCandidatesForSkills = candidates.length !== availabilityCandidates.length;
+        const canReuseSelectionPreparationCache = !hasVariableSkillSettings
+            && !didFilterCandidatesForSkills
+            && lockedCandidates.length === 0
+            && !hasResolvedRuleset;
+        const selectionPreparation = hasVariableSkillSettings
+            ? undefined
+            : (canReuseSelectionPreparationCache
+                ? this.resolveSelectionPreparationCache(
+                    preparedCandidateCache,
+                    options.context,
+                    minUnitCount,
+                    maxUnitCount,
+                )
+                : this.prepareSelectionPreparation(
+                    candidates,
+                    lockedCandidates,
+                    options.context,
+                    minUnitCount,
+                    maxUnitCount,
+                ));
 
         if (this.isFirstCompatibleResultBudgetRequest(options.budgetRange)) {
-            const selectionAttempt = this.buildCandidateSelection(
+            const firstCompatibleCandidates = this.createSkillAdjustedCandidatesForAttempt(
                 candidates,
+                options.gameSystem,
+                skillSettings,
+            );
+            const firstCompatibleSelectionPreparation = hasVariableSkillSettings
+                ? this.prepareSelectionPreparation(
+                    firstCompatibleCandidates,
+                    lockedCandidates,
+                    options.context,
+                    minUnitCount,
+                    maxUnitCount,
+                )
+                : selectionPreparation;
+            const selectionAttempt = this.buildCandidateSelection(
+                firstCompatibleCandidates,
                 options.context,
                 budgetRange,
                 minUnitCount,
@@ -1668,7 +1935,7 @@ export class ForceGeneratorService implements OnDestroy {
                 false,
                 lockedCandidates,
                 options.preventDuplicateChassis === true,
-                selectionPreparation,
+                firstCompatibleSelectionPreparation,
             );
             return this.buildPreviewFromSelectionAttempt(
                 options,
@@ -1693,7 +1960,14 @@ export class ForceGeneratorService implements OnDestroy {
             remainingMinUnitCount,
             remainingMaxUnitCount,
         );
-        const candidateCosts = effectiveFallbackCandidates.map((candidate) => candidate.cost);
+        const costPlanningCandidates = hasVariableSkillSettings
+            ? effectiveFallbackCandidates.map((candidate) => this.createLowestCostCandidateForSkillSettings(
+                candidate,
+                options.gameSystem,
+                skillSettings,
+            ))
+            : effectiveFallbackCandidates;
+        const candidateCosts = costPlanningCandidates.map((candidate) => candidate.cost);
         const noUnderMaxForcePossible = Number.isFinite(budgetRange.max)
             && (lockedTotalCost > budgetRange.max
                 || lockedTotalCost + getMinimumMetricTotal(candidateCosts, remainingMinUnitCount) > budgetRange.max);
@@ -1718,8 +1992,22 @@ export class ForceGeneratorService implements OnDestroy {
 
         for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
             const attemptStartedAt = getForceGeneratorNow();
-            const selectionAttempt = this.buildCandidateSelection(
+            const attemptCandidates = this.createSkillAdjustedCandidatesForAttempt(
                 candidates,
+                options.gameSystem,
+                skillSettings,
+            );
+            const attemptSelectionPreparation = hasVariableSkillSettings
+                ? this.prepareSelectionPreparation(
+                    attemptCandidates,
+                    lockedCandidates,
+                    options.context,
+                    minUnitCount,
+                    maxUnitCount,
+                )
+                : selectionPreparation;
+            const selectionAttempt = this.buildCandidateSelection(
+                attemptCandidates,
                 options.context,
                 budgetRange,
                 minUnitCount,
@@ -1727,7 +2015,7 @@ export class ForceGeneratorService implements OnDestroy {
                 noUnderMaxForcePossible,
                 lockedCandidates,
                 options.preventDuplicateChassis === true,
-                selectionPreparation,
+                attemptSelectionPreparation,
             );
             const totalCost = selectionAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
             const attemptExceedsMax = Number.isFinite(budgetRange.max) && totalCost > budgetRange.max;
@@ -1830,6 +2118,7 @@ export class ForceGeneratorService implements OnDestroy {
                             budgetRange,
                             minUnitCount,
                             maxUnitCount,
+                            skillSettings,
                             selectionAttempt,
                             null,
                             lockedCandidates.length,
@@ -1881,6 +2170,7 @@ export class ForceGeneratorService implements OnDestroy {
                     budgetRange,
                     minUnitCount,
                     maxUnitCount,
+                    skillSettings,
                     bestValidAttempt,
                     null,
                     lockedCandidates.length,
@@ -2475,14 +2765,15 @@ export class ForceGeneratorService implements OnDestroy {
         unit: Unit,
         options: ForceGenerationRequest,
     ): ForceGenerationBaseCandidateUnit {
+        const skillSettings = resolveForceGenerationSkillSettings(options);
         const skill = options.gameSystem === GameSystem.ALPHA_STRIKE
-            ? options.gunnery
+            ? skillSettings.gunnery.min
             : undefined;
         const gunnery = options.gameSystem === GameSystem.CLASSIC
-            ? options.gunnery
+            ? skillSettings.gunnery.min
             : undefined;
         const piloting = options.gameSystem === GameSystem.CLASSIC
-            ? getEffectivePilotingSkill(unit, options.piloting)
+            ? getEffectivePilotingSkill(unit, skillSettings.piloting.min)
             : undefined;
 
         return {
@@ -2501,6 +2792,131 @@ export class ForceGeneratorService implements OnDestroy {
             role: normalizeRole(unit.role),
             motive: toMegaMekMotive(unit),
         };
+    }
+
+    private createSkillAdjustedCandidate(
+        candidate: ForceGenerationCandidateUnit,
+        gameSystem: GameSystem,
+        skillSettings: ForceGenerationSkillSettings,
+    ): ForceGenerationCandidateUnit {
+        if (candidate.locked) {
+            return candidate;
+        }
+
+        if (gameSystem === GameSystem.ALPHA_STRIKE) {
+            const skill = pickRandomIntegerInRange(skillSettings.gunnery);
+            return {
+                ...candidate,
+                cost: getBudgetMetric(candidate.unit, gameSystem, skill, skillSettings.piloting.min),
+                skill,
+                gunnery: undefined,
+                piloting: undefined,
+            };
+        }
+
+        const classicSkillPairs = getForceGenerationClassicSkillPairs(skillSettings, candidate.unit);
+        const skillPair = classicSkillPairs[Math.floor(Math.random() * classicSkillPairs.length)]
+            ?? { gunnery: skillSettings.gunnery.min, piloting: skillSettings.piloting.min };
+
+        return {
+            ...candidate,
+            cost: getBudgetMetric(candidate.unit, gameSystem, skillPair.gunnery, skillPair.piloting),
+            skill: undefined,
+            gunnery: skillPair.gunnery,
+            piloting: skillPair.piloting,
+        };
+    }
+
+    private createCandidateWithSpecificSkills(
+        candidate: ForceGenerationCandidateUnit,
+        gameSystem: GameSystem,
+        gunnery: number,
+        piloting: number,
+    ): ForceGenerationCandidateUnit {
+        if (gameSystem === GameSystem.ALPHA_STRIKE) {
+            return {
+                ...candidate,
+                cost: getBudgetMetric(candidate.unit, gameSystem, gunnery, piloting),
+                skill: gunnery,
+                gunnery: undefined,
+                piloting: undefined,
+            };
+        }
+
+        const effectivePiloting = getEffectivePilotingSkill(candidate.unit, piloting);
+        return {
+            ...candidate,
+            cost: getBudgetMetric(candidate.unit, gameSystem, gunnery, effectivePiloting),
+            skill: undefined,
+            gunnery,
+            piloting: effectivePiloting,
+        };
+    }
+
+    private createLowestCostCandidateForSkillSettings(
+        candidate: ForceGenerationCandidateUnit,
+        gameSystem: GameSystem,
+        skillSettings: ForceGenerationSkillSettings,
+    ): ForceGenerationCandidateUnit {
+        let lowestCostCandidate: ForceGenerationCandidateUnit | null = null;
+
+        if (gameSystem === GameSystem.ALPHA_STRIKE) {
+            for (let skill = skillSettings.gunnery.min; skill <= skillSettings.gunnery.max; skill += 1) {
+                const adjustedCandidate = this.createCandidateWithSpecificSkills(
+                    candidate,
+                    gameSystem,
+                    skill,
+                    skillSettings.piloting.min,
+                );
+                if (!lowestCostCandidate || adjustedCandidate.cost < lowestCostCandidate.cost) {
+                    lowestCostCandidate = adjustedCandidate;
+                }
+            }
+        } else {
+            for (const skillPair of getForceGenerationClassicSkillPairs(skillSettings, candidate.unit)) {
+                const adjustedCandidate = this.createCandidateWithSpecificSkills(
+                    candidate,
+                    gameSystem,
+                    skillPair.gunnery,
+                    skillPair.piloting,
+                );
+                if (!lowestCostCandidate || adjustedCandidate.cost < lowestCostCandidate.cost) {
+                    lowestCostCandidate = adjustedCandidate;
+                }
+            }
+        }
+
+        return lowestCostCandidate ?? candidate;
+    }
+
+    private createSkillAdjustedCandidatesForAttempt(
+        candidates: readonly ForceGenerationCandidateUnit[],
+        gameSystem: GameSystem,
+        skillSettings: ForceGenerationSkillSettings,
+    ): ForceGenerationCandidateUnit[] {
+        if (!hasVariableForceGenerationSkillSettings(gameSystem, skillSettings)) {
+            return [...candidates];
+        }
+
+        return candidates.map((candidate) => this.createSkillAdjustedCandidate(
+            candidate,
+            gameSystem,
+            skillSettings,
+        ));
+    }
+
+    private filterCandidatesForSkillSettings(
+        candidates: readonly ForceGenerationCandidateUnit[],
+        gameSystem: GameSystem,
+        skillSettings: ForceGenerationSkillSettings,
+    ): readonly ForceGenerationCandidateUnit[] {
+        if (gameSystem !== GameSystem.CLASSIC) {
+            return candidates;
+        }
+
+        return candidates.filter((candidate) => {
+            return getForceGenerationClassicSkillPairs(skillSettings, candidate.unit).length > 0;
+        });
     }
 
     private resolveAvailabilityWeightCache(
@@ -2807,8 +3223,7 @@ export class ForceGeneratorService implements OnDestroy {
             availabilityWeightCache.signature,
             `eligible:${buildForceGenerationUnitListSignature(eligibleUnits)}`,
             `game:${options.gameSystem}`,
-            `g:${options.gunnery}`,
-            `p:${options.piloting}`,
+            `skills:${buildForceGenerationSkillSettingsSignature(options)}`,
         ].join('|');
     }
 
@@ -2876,8 +3291,7 @@ export class ForceGeneratorService implements OnDestroy {
         return [
             `eligible:${buildForceGenerationUnitListSignature(eligibleUnits)}`,
             `game:${options.gameSystem}`,
-            `g:${options.gunnery}`,
-            `p:${options.piloting}`,
+            `skills:${buildForceGenerationSkillSettingsSignature(options)}`,
         ].join('|');
     }
 
@@ -3249,6 +3663,7 @@ export class ForceGeneratorService implements OnDestroy {
         budgetRange: { min: number; max: number },
         minUnitCount: number,
         maxUnitCount: number,
+        skillSettings: ForceGenerationSkillSettings,
         selectionAttempt: ForceGenerationSelectionAttempt | null,
         error: string | null,
         lockedUnitCount: number,
@@ -3260,6 +3675,7 @@ export class ForceGeneratorService implements OnDestroy {
         const maxLabel = Number.isFinite(budgetRange.max) ? budgetRange.max.toLocaleString() : 'no max';
         const availabilitySourceRollNote = this.getAvailabilitySourceRollNote(availabilitySourceCandidates);
         lines.push(`Eligible units: ${eligibleUnitCount} units. Availability-positive candidates: ${candidateUnitCount} units. Target: ${minUnitCount}-${maxUnitCount} units, ${budgetLabel} ${budgetRange.min.toLocaleString()} to ${maxLabel}.`);
+        lines.push(formatForceGenerationSkillSettingsNote(gameSystem, skillSettings));
 
         if (lockedUnitCount > 0) {
             lines.push(`Locked units: ${lockedUnitCount} preserved across rerolls.`);
@@ -3306,12 +3722,14 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         for (const [index, step] of (selectionAttempt?.selectionSteps ?? []).entries()) {
+            const skillSummary = formatForceGenerationSkillSummary(gameSystem, step);
+            const skillNote = skillSummary ? `, ${skillSummary}` : '';
             if (step.locked) {
                 const reasons = step.rulesetReasons.length > 0
                     ? `; ruleset bias ${step.rulesetReasons.join(', ')}`
                     : '';
                 lines.push(
-                    `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: locked, P ${formatForceGeneratorWeight(step.productionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
+                    `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: locked, P ${formatForceGeneratorWeight(step.productionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}${skillNote}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
                 );
                 continue;
             }
@@ -3323,7 +3741,7 @@ export class ForceGeneratorService implements OnDestroy {
                 ? `; ruleset bias ${step.rulesetReasons.join(', ')}`
                 : '';
             lines.push(
-                `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: ${step.source} pick${fallbackNote}, P ${formatForceGeneratorWeight(step.productionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
+                `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: ${step.source} pick${fallbackNote}, P ${formatForceGeneratorWeight(step.productionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}${skillNote}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
             );
         }
 
@@ -3411,6 +3829,7 @@ export class ForceGeneratorService implements OnDestroy {
             budgetRange,
             minUnitCount,
             maxUnitCount,
+            resolveForceGenerationSkillSettings(options),
             selectionAttempt,
             error,
             (options.lockedUnits ?? []).length,
@@ -3457,6 +3876,7 @@ export class ForceGeneratorService implements OnDestroy {
                 budgetRange,
                 minUnitCount,
                 maxUnitCount,
+                resolveForceGenerationSkillSettings(options),
                 null,
                 error,
                 (options.lockedUnits ?? []).length,
@@ -4008,6 +4428,9 @@ export class ForceGeneratorService implements OnDestroy {
             productionWeight: candidate.productionWeight,
             salvageWeight: candidate.salvageWeight,
             cost: candidate.cost,
+            skill: candidate.skill,
+            gunnery: candidate.gunnery,
+            piloting: candidate.piloting,
             rulesetReasons: selectionPreparation?.rulesetReasonsByCandidate.get(candidate)
                 ?? this.getRulesetMatchReasons(candidate, rulesetProfile),
         };

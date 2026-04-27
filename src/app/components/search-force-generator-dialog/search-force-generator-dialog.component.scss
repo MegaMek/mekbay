@@ -238,8 +238,23 @@
     line-height: 1.4;
 }
 
-.additional-filters-shell {
+.additional-filters-shell,
+.skill-settings-shell {
     background-color: var(--background-color-light);
+    min-width: 0;
+}
+
+.skill-settings-panel {
+    padding: 0 12px 12px;
+}
+
+.skill-settings-title {
+    color: var(--text-color-secondary);
+    font-size: 0.75em;
+    line-height: 1.2;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    white-space: nowrap;
 }
 
 .additional-filters-header {
@@ -253,41 +268,91 @@
 }
 
 .pilot-skills-controls {
-    flex: 1 1 auto;
     min-width: 0;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 8px;
-    padding: 4px 6px 4px 6px;
-    justify-content: flex-start;
 }
 
-.skill-control {
-    max-width: 160px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: 1 1 160px;
+.pilot-skills-controls.alpha-strike {
+    grid-template-columns: minmax(0, 1fr);
 }
 
-.skill-control label {
+.pilot-skills-controls .filter-row {
+    min-width: 0;
+}
+
+.pilot-skills-controls .range {
+    min-width: 0;
+}
+
+.pilot-skills-controls range-slider {
+    display: block;
+    min-width: 0;
+}
+
+.range-label {
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.range-label:hover {
+    color: var(--bt-yellow);
+    text-decoration: underline;
+}
+
+.range-values {
     color: var(--text-color-secondary);
-    white-space: nowrap;
     font-size: 0.9em;
 }
 
-.skill-select {
-    height: 32px;
-    min-width: 48px;
+.range-label:hover .range-values {
+    color: var(--bt-yellow);
+}
+
+.skill-delta-control {
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 32px;
+    padding: 2px 0 0;
+}
+
+.skill-delta-label {
+    color: var(--text-color-secondary);
+    font-size: 0.82em;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.skill-delta-input {
+    flex: 0 0 46px;
+    height: 30px;
+    width: 46px;
+    min-width: 46px;
     padding: 0 4px;
     background-color: #222;
-    flex: 1 0 auto;
     text-align: center;
     font-size: 1em;
 }
 
-.additional-filters-toggle {
+.skill-delta-input.active {
+    color: var(--bt-yellow);
+    border-color: var(--bt-yellow);
+}
+
+.skill-delta-description {
+    color: var(--text-color-secondary);
+    font-size: 0.78em;
+    line-height: 1.25;
+    max-width: 36ch;
+}
+
+.additional-filters-toggle,
+.skill-settings-toggle {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -300,7 +365,8 @@
     text-align: left;
 }
 
-.additional-filters-toggle:hover {
+.additional-filters-toggle:hover,
+.skill-settings-toggle:hover {
     background: rgba(255, 255, 255, 0.04);
 }
 
@@ -311,7 +377,8 @@
     letter-spacing: 0.1em;
 }
 
-.additional-filters-title.active {
+.additional-filters-title.active,
+.skill-settings-title.active {
     color: var(--bt-yellow);
 }
 
@@ -331,6 +398,13 @@
     align-self: center;
     flex: 0 0 auto;
     margin-left: auto;
+}
+
+.adv-filter-system-toggle-description {
+    color: var(--text-color-secondary);
+    font-size: 0.8em;
+    line-height: 1.2;
+    white-space: nowrap;
 }
 
 :host ::ng-deep .additional-filters-panel unit-search-advanced-filters {
@@ -711,8 +785,13 @@
         align-items: flex-start;
     }
 
-    .skill-control {
-        max-width: none;
+    .pilot-skills-controls,
+    .pilot-skills-controls.alpha-strike {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .skill-delta-control {
+        min-width: 0;
     }
 
     .additional-filters-panel {
