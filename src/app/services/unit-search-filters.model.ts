@@ -404,7 +404,7 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     ...SEMANTIC_FILTERS.map(f => ({ ...f, type: AdvFilterType.SEMANTIC as const })),
 ];
 
-export const MEGAMEK_RARITY_PRODUCTION_SORT_KEY = 'mmRarityProduction';
+export const MEGAMEK_RARITY_PRODUCTION_SORT_KEY = 'mmRarityRequisition';
 export const MEGAMEK_RARITY_SALVAGE_SORT_KEY = 'mmRaritySalvage';
 export const MEGAMEK_RARITY_SORT_KEYS = [
     MEGAMEK_RARITY_PRODUCTION_SORT_KEY,
@@ -417,7 +417,7 @@ export function isMegaMekRaritySortKey(key: string | null | undefined): key is M
 
 export function getMegaMekRaritySortAvailabilitySources(sortKey: MegaMekRaritySortKey): readonly MegaMekAvailabilityFrom[] {
     return sortKey === MEGAMEK_RARITY_PRODUCTION_SORT_KEY
-        ? ['Production']
+        ? ['Requisition']
         : ['Salvage'];
 }
 

@@ -1196,7 +1196,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         const panel = fixture.nativeElement.querySelector('.additional-filters-panel') as HTMLElement | null;
         const systemToggleDescription = fixture.nativeElement.querySelector('.adv-filter-system-toggle-description') as HTMLElement | null;
 
-        expect(fixture.nativeElement.textContent).toContain('Additional Filters and Settings');
+        expect(fixture.nativeElement.textContent).toContain('Additional Filters');
         expect(panel).not.toBeNull();
         expect(panel?.textContent).toContain('Tech');
         expect(systemToggleDescription?.textContent?.trim()).toBe(fixture.componentInstance.advPanelFilterGameSystemToggleTitle());

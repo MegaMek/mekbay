@@ -105,9 +105,9 @@ export class UnitCardExpandedComponent {
     private abilityLookup = inject(AsAbilityLookupService);
     private expandedComponentsPipe = new ExpandedComponentsPipe();
     readonly unitTypeDisplayNames = AS_TYPE_DISPLAY_NAMES;
-    readonly megaMekProductionIconPath = MEGAMEK_PRODUCTION_ICON_PATH;
+    readonly megaMekRequisitionIconPath = MEGAMEK_PRODUCTION_ICON_PATH;
     readonly megaMekSalvageIconPath = MEGAMEK_SALVAGE_ICON_PATH;
-    readonly megaMekRarityProductionSortKey = MEGAMEK_RARITY_PRODUCTION_SORT_KEY;
+    readonly megaMekRarityRequisitionSortKey = MEGAMEK_RARITY_PRODUCTION_SORT_KEY;
     readonly megaMekRaritySalvageSortKey = MEGAMEK_RARITY_SALVAGE_SORT_KEY;
 
     /** 

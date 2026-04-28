@@ -1056,7 +1056,7 @@ export interface EvaluatorContext {
     unitBelongsToEra?: (unit: any, eraName: string, scope?: AvailabilityFilterScope) => boolean;
     /** Check if a unit belongs to a specific faction (external filter) */
     unitBelongsToFaction?: (unit: any, factionName: string, eraNames?: readonly string[]) => boolean;
-    /** Check if a unit matches a MegaMek availability source (production or salvage). */
+    /** Check if a unit matches a MegaMek availability source (requisition or salvage). */
     unitMatchesAvailabilityFrom?: (unit: any, availabilityFromName: string, scope?: AvailabilityFilterScope) => boolean;
     /** Check if a unit matches a MegaMek availability rarity in the active scope. */
     unitMatchesAvailabilityRarity?: (unit: any, rarityName: string, scope?: AvailabilityFilterScope) => boolean;

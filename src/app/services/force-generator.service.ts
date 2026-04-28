@@ -107,7 +107,7 @@ interface RulesetPreferenceSource {
 
 interface ForceGenerationCandidateUnit {
     unit: Unit;
-    productionWeight: number;
+    requisitionWeight: number;
     salvageWeight: number;
     cost: number;
     alias?: string;
@@ -123,7 +123,7 @@ interface ForceGenerationCandidateUnit {
     motive?: string;
 }
 
-type ForceGenerationAvailabilitySource = 'production' | 'salvage';
+type ForceGenerationAvailabilitySource = 'requisition' | 'salvage';
 
 type ForceGenerationForceNodeSelectionMode = 'first' | 'weighted';
 
@@ -162,7 +162,7 @@ interface ForceGenerationAvailabilityWeightCache {
     signature: string;
     useMegaMekAvailability: boolean;
     scopeState: ForceGenerationAvailabilityScopeState;
-    weightsByUnitId: Map<number, { production: number; salvage: number }>;
+    weightsByUnitId: Map<number, { requisition: number; salvage: number }>;
 }
 
 interface ForceGenerationPreparedCandidateCache {
@@ -203,7 +203,7 @@ interface ForceGenerationAvailabilityScopeState {
 }
 
 interface ForceGenerationAvailabilityReductionState {
-    productionMax: number;
+    requisitionMax: number;
     salvageMax: number;
 }
 
@@ -270,7 +270,7 @@ interface ForceGenerationSelectionStep {
     rolledSource: ForceGenerationAvailabilitySource;
     source: ForceGenerationAvailabilitySource;
     usedFallbackSource: boolean;
-    productionWeight: number;
+    requisitionWeight: number;
     salvageWeight: number;
     cost: number;
     skill?: number;
@@ -2589,9 +2589,9 @@ export class ForceGeneratorService implements OnDestroy {
                         continue;
                     }
 
-                    const productionWeight = weights[0] ?? 0;
+                    const requisitionWeight = weights[0] ?? 0;
                     const salvageWeight = weights[1] ?? 0;
-                    if (productionWeight <= 0 && salvageWeight <= 0) {
+                    if (requisitionWeight <= 0 && salvageWeight <= 0) {
                         continue;
                     }
 
@@ -2744,7 +2744,7 @@ export class ForceGeneratorService implements OnDestroy {
 
         return {
             unit,
-            productionWeight: availabilityWeights.production,
+            requisitionWeight: availabilityWeights.requisition,
             salvageWeight: availabilityWeights.salvage,
             cost: lockedUnit?.cost ?? baseCandidate.cost,
             alias: lockedUnit?.alias,
@@ -2964,13 +2964,13 @@ export class ForceGeneratorService implements OnDestroy {
         eligibleUnits: readonly Unit[],
         exactPairKeysByUnitId?: Map<number, Set<string>>,
         includeUnknownForMissingRecords = true,
-    ): Map<number, { production: number; salvage: number }> {
-        const weightsByUnitId = new Map<number, { production: number; salvage: number }>();
+    ): Map<number, { requisition: number; salvage: number }> {
+        const weightsByUnitId = new Map<number, { requisition: number; salvage: number }>();
         if (scopeState.pairCount <= 0) {
             if (includeUnknownForMissingRecords) {
                 for (const unit of eligibleUnits) {
                     weightsByUnitId.set(unit.id, {
-                        production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                        requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
                         salvage: 0,
                     });
                 }
@@ -2989,7 +2989,7 @@ export class ForceGeneratorService implements OnDestroy {
             if (!record) {
                 if (includeUnknownForMissingRecords) {
                     weightsByUnitId.set(unit.id, {
-                        production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                        requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
                         salvage: 0,
                     });
                 }
@@ -2998,7 +2998,7 @@ export class ForceGeneratorService implements OnDestroy {
 
             if (exactEraIdText !== null && exactFactionIdText !== null) {
                 const exactWeights = {
-                    production: record.e[exactEraIdText]?.[exactFactionIdText]?.[0] ?? 0,
+                    requisition: record.e[exactEraIdText]?.[exactFactionIdText]?.[0] ?? 0,
                     salvage: record.e[exactEraIdText]?.[exactFactionIdText]?.[1] ?? 0,
                 };
                 const exactValue = record.e[exactEraIdText]?.[exactFactionIdText];
@@ -3011,7 +3011,7 @@ export class ForceGeneratorService implements OnDestroy {
                 continue;
             }
 
-            let productionMax = 0;
+            let requisitionMax = 0;
             let salvageMax = 0;
             let exactPairKeys: Set<string> | undefined;
 
@@ -3032,10 +3032,10 @@ export class ForceGeneratorService implements OnDestroy {
                     }
 
                     const value = eraAvailability[factionIdText];
-                    const production = value[0] ?? 0;
+                    const requisition = value[0] ?? 0;
                     const salvage = value[1] ?? 0;
-                    if (production > productionMax) {
-                        productionMax = production;
+                    if (requisition > requisitionMax) {
+                        requisitionMax = requisition;
                     }
                     if (salvage > salvageMax) {
                         salvageMax = salvage;
@@ -3044,7 +3044,7 @@ export class ForceGeneratorService implements OnDestroy {
             }
 
             weightsByUnitId.set(unit.id, {
-                production: productionMax,
+                requisition: requisitionMax,
                 salvage: salvageMax,
             });
 
@@ -3060,12 +3060,12 @@ export class ForceGeneratorService implements OnDestroy {
         scopeState: ForceGenerationAvailabilityScopeState,
         eligibleUnits: readonly Unit[],
         unitById: ReadonlyMap<number, Unit>,
-    ): Map<number, { production: number; salvage: number }> {
+    ): Map<number, { requisition: number; salvage: number }> {
         if (scopeState.pairCount <= 0) {
-            const zeroWeightsByUnitId = new Map<number, { production: number; salvage: number }>();
+            const zeroWeightsByUnitId = new Map<number, { requisition: number; salvage: number }>();
             for (const unit of eligibleUnits) {
                 zeroWeightsByUnitId.set(unit.id, {
-                    production: 0,
+                    requisition: 0,
                     salvage: 0,
                 });
             }
@@ -3102,13 +3102,13 @@ export class ForceGeneratorService implements OnDestroy {
                     : undefined;
                 if (exactValue !== undefined) {
                     const weights = weightsByUnitId.get(unitId) ?? {
-                        production: 0,
+                        requisition: 0,
                         salvage: 0,
                     };
-                    const production = exactValue[0] ?? 0;
+                    const requisition = exactValue[0] ?? 0;
                     const salvage = exactValue[1] ?? 0;
-                    if (production > weights.production) {
-                        weights.production = production;
+                    if (requisition > weights.requisition) {
+                        weights.requisition = requisition;
                     }
                     if (salvage > weights.salvage) {
                         weights.salvage = salvage;
@@ -3119,14 +3119,14 @@ export class ForceGeneratorService implements OnDestroy {
 
                 const existingScopedWeights = weightsByUnitId.get(unitId);
                 if (existingScopedWeights) {
-                    if (existingScopedWeights.production < DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT) {
-                        existingScopedWeights.production = DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT;
+                    if (existingScopedWeights.requisition < DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT) {
+                        existingScopedWeights.requisition = DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT;
                     }
                     continue;
                 }
 
                 weightsByUnitId.set(unitId, {
-                    production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                    requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
                     salvage: 0,
                 });
             }
@@ -3135,7 +3135,7 @@ export class ForceGeneratorService implements OnDestroy {
         for (const unit of eligibleUnits) {
             if (!weightsByUnitId.has(unit.id)) {
                 weightsByUnitId.set(unit.id, {
-                    production: 0,
+                    requisition: 0,
                     salvage: 0,
                 });
             }
@@ -3178,7 +3178,7 @@ export class ForceGeneratorService implements OnDestroy {
         unit: Unit,
         context: ForceGenerationContext,
         availabilityWeightCache?: ForceGenerationAvailabilityWeightCache,
-    ): { production: number; salvage: number } {
+    ): { requisition: number; salvage: number } {
         const cachedWeights = availabilityWeightCache?.weightsByUnitId.get(unit.id);
         if (cachedWeights !== undefined) {
             return cachedWeights;
@@ -3245,13 +3245,13 @@ export class ForceGeneratorService implements OnDestroy {
                 availabilityWeightCache,
             );
 
-            if (availabilityWeights.production <= 0 && availabilityWeights.salvage <= 0) {
+            if (availabilityWeights.requisition <= 0 && availabilityWeights.salvage <= 0) {
                 continue;
             }
 
             candidates.push({
                 unit: baseCandidate.unit,
-                productionWeight: availabilityWeights.production,
+                requisitionWeight: availabilityWeights.requisition,
                 salvageWeight: availabilityWeights.salvage,
                 cost: baseCandidate.cost,
                 skill: baseCandidate.skill,
@@ -3394,7 +3394,7 @@ export class ForceGeneratorService implements OnDestroy {
         unit: Unit,
         context: ForceGenerationContext,
         availabilityScopeState?: ForceGenerationAvailabilityScopeState,
-    ): { production: number; salvage: number } {
+    ): { requisition: number; salvage: number } {
         const useMegaMekAvailability = this.unitAvailabilitySource.useMegaMekAvailability();
         const availabilityRecord = this.dataService.getMegaMekAvailabilityRecordForUnit(unit);
         return this.getScopedAvailabilityWeights(
@@ -3448,23 +3448,23 @@ export class ForceGeneratorService implements OnDestroy {
         availabilityRecord: MegaMekWeightedAvailabilityRecord | undefined,
         useMegaMekAvailability: boolean,
         availabilityScopeState?: ForceGenerationAvailabilityScopeState,
-    ): { production: number; salvage: number } {
+    ): { requisition: number; salvage: number } {
         const scopeState = availabilityScopeState ?? this.buildAvailabilityScopeState(context);
         if (scopeState.pairCount <= 0) {
             return useMegaMekAvailability
                 ? {
-                    production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                    requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
                     salvage: 0,
                 }
                 : {
-                    production: 0,
+                    requisition: 0,
                     salvage: 0,
                 };
         }
 
         if (!availabilityRecord && useMegaMekAvailability) {
             return {
-                production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
                 salvage: 0,
             };
         }
@@ -3491,25 +3491,25 @@ export class ForceGeneratorService implements OnDestroy {
 
     private createAvailabilityReductionState(): ForceGenerationAvailabilityReductionState {
         return {
-            productionMax: 0,
+            requisitionMax: 0,
             salvageMax: 0,
         };
     }
 
     private accumulateAvailabilityReductionState(
         state: ForceGenerationAvailabilityReductionState,
-        weights: { production: number; salvage: number },
+        weights: { requisition: number; salvage: number },
     ): void {
-        this.accumulateAvailabilityReductionValues(state, weights.production, weights.salvage);
+        this.accumulateAvailabilityReductionValues(state, weights.requisition, weights.salvage);
     }
 
     private accumulateAvailabilityReductionValues(
         state: ForceGenerationAvailabilityReductionState,
-        production: number,
+        requisition: number,
         salvage: number,
     ): void {
-        if (production > state.productionMax) {
-            state.productionMax = production;
+        if (requisition > state.requisitionMax) {
+            state.requisitionMax = requisition;
         }
 
         if (salvage > state.salvageMax) {
@@ -3519,17 +3519,17 @@ export class ForceGeneratorService implements OnDestroy {
 
     private finalizeAvailabilityReductionState(
         state: ForceGenerationAvailabilityReductionState,
-    ): { production: number; salvage: number } {
+    ): { requisition: number; salvage: number } {
         return {
-            production: state.productionMax,
+            requisition: state.requisitionMax,
             salvage: state.salvageMax,
         };
     }
 
     private reduceScopedAvailabilityWeights(
         scopeState: ForceGenerationAvailabilityScopeState,
-        getPairWeights: (eraId: number, factionId: number) => { production: number; salvage: number },
-    ): { production: number; salvage: number } {
+        getPairWeights: (eraId: number, factionId: number) => { requisition: number; salvage: number },
+    ): { requisition: number; salvage: number } {
         const state = this.createAvailabilityReductionState();
 
         for (const eraId of scopeState.eraIds) {
@@ -3544,10 +3544,10 @@ export class ForceGeneratorService implements OnDestroy {
     private reduceMegaMekScopedAvailabilityWeights(
         availabilityRecord: MegaMekWeightedAvailabilityRecord | undefined,
         scopeState: ForceGenerationAvailabilityScopeState,
-    ): { production: number; salvage: number } {
+    ): { requisition: number; salvage: number } {
         if (!availabilityRecord) {
             return {
-                production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
                 salvage: 0,
             };
         }
@@ -3578,16 +3578,16 @@ export class ForceGeneratorService implements OnDestroy {
         eraId: number,
         factionId: number,
         useMegaMekAvailability: boolean,
-    ): { production: number; salvage: number } {
+    ): { requisition: number; salvage: number } {
         if (useMegaMekAvailability) {
             return {
-                production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
                 salvage: 0,
             };
         }
 
         return this.getMulFallbackWeightsForPair(unit, eraId, factionId) ?? {
-            production: 0,
+            requisition: 0,
             salvage: 0,
         };
     }
@@ -3598,12 +3598,12 @@ export class ForceGeneratorService implements OnDestroy {
         eraId: number,
         factionId: number,
         useMegaMekAvailability: boolean,
-    ): { production: number; salvage: number } {
+    ): { requisition: number; salvage: number } {
         const exactValue = availabilityRecord.e[String(eraId)]?.[String(factionId)];
 
         if (useMegaMekAvailability || exactValue) {
             return {
-                production: exactValue?.[0] ?? 0,
+                requisition: exactValue?.[0] ?? 0,
                 salvage: exactValue?.[1] ?? 0,
             };
         }
@@ -3614,7 +3614,7 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         return {
-            production: 0,
+            requisition: 0,
             salvage: 0,
         };
     }
@@ -3623,7 +3623,7 @@ export class ForceGeneratorService implements OnDestroy {
         unit: Unit,
         eraId: number,
         factionId: number,
-    ): { production: number; salvage: number } | null {
+    ): { requisition: number; salvage: number } | null {
         const forceFaction = this.dataService.getFactionById(factionId);
         const forceEra = this.dataService.getEraById(eraId);
         if (!forceFaction || !forceEra) {
@@ -3637,7 +3637,7 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         return {
-            production: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+            requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
             salvage: 0,
         };
     }
@@ -3729,7 +3729,7 @@ export class ForceGeneratorService implements OnDestroy {
                     ? `; ruleset bias ${step.rulesetReasons.join(', ')}`
                     : '';
                 lines.push(
-                    `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: locked, P ${formatForceGeneratorWeight(step.productionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}${skillNote}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
+                    `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: locked, P ${formatForceGeneratorWeight(step.requisitionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}${skillNote}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
                 );
                 continue;
             }
@@ -3741,7 +3741,7 @@ export class ForceGeneratorService implements OnDestroy {
                 ? `; ruleset bias ${step.rulesetReasons.join(', ')}`
                 : '';
             lines.push(
-                `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: ${step.source} pick${fallbackNote}, P ${formatForceGeneratorWeight(step.productionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}${skillNote}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
+                `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: ${step.source} pick${fallbackNote}, P ${formatForceGeneratorWeight(step.requisitionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}${skillNote}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
             );
         }
 
@@ -3753,21 +3753,21 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private getAvailabilitySourceRollNote(
-        candidates: readonly Pick<ForceGenerationCandidateUnit, 'productionWeight' | 'salvageWeight'>[],
+        candidates: readonly Pick<ForceGenerationCandidateUnit, 'requisitionWeight' | 'salvageWeight'>[],
     ): string | null {
         if (candidates.length === 0) {
             return null;
         }
 
         const totals = this.getAvailabilitySourceRollTotals(candidates);
-        const total = totals.production + totals.salvage;
+        const total = totals.requisition + totals.salvage;
         if (total <= 0) {
             return null;
         }
 
-        const productionPercent = (totals.production / total) * 100;
+        const requisitionPercent = (totals.requisition / total) * 100;
         const salvagePercent = (totals.salvage / total) * 100;
-        return `Source roll odds: production ${formatForceGeneratorPercent(productionPercent)}% / salvage ${formatForceGeneratorPercent(salvagePercent)}%.`;
+        return `Source roll odds: requisition ${formatForceGeneratorPercent(requisitionPercent)}% / salvage ${formatForceGeneratorPercent(salvagePercent)}%.`;
     }
 
     private getPositiveAvailabilityMessage(candidateCount: number, context: ForceGenerationContext): string {
@@ -4183,21 +4183,21 @@ export class ForceGeneratorService implements OnDestroy {
         candidate: ForceGenerationCandidateUnit,
         source: ForceGenerationAvailabilitySource,
     ): number {
-        return source === 'production' ? candidate.productionWeight : candidate.salvageWeight;
+        return source === 'requisition' ? candidate.requisitionWeight : candidate.salvageWeight;
     }
 
     private getAvailabilitySourceRollWeight(source: ForceGenerationAvailabilitySource): number {
-        return source === 'production'
+        return source === 'requisition'
             ? FORCE_GENERATION_PRODUCTION_SOURCE_ROLL_WEIGHT
             : FORCE_GENERATION_SALVAGE_SOURCE_ROLL_WEIGHT;
     }
 
     private getAvailabilitySourceRollTotals(
-        candidates: readonly Pick<ForceGenerationCandidateUnit, 'productionWeight' | 'salvageWeight'>[],
-    ): { production: number; salvage: number } {
+        candidates: readonly Pick<ForceGenerationCandidateUnit, 'requisitionWeight' | 'salvageWeight'>[],
+    ): { requisition: number; salvage: number } {
         return {
-            production: candidates.reduce((sum, candidate) => {
-                return sum + (Math.max(0, candidate.productionWeight) * this.getAvailabilitySourceRollWeight('production'));
+            requisition: candidates.reduce((sum, candidate) => {
+                return sum + (Math.max(0, candidate.requisitionWeight) * this.getAvailabilitySourceRollWeight('requisition'));
             }, 0),
             salvage: candidates.reduce((sum, candidate) => {
                 return sum + (Math.max(0, candidate.salvageWeight) * this.getAvailabilitySourceRollWeight('salvage'));
@@ -4209,8 +4209,8 @@ export class ForceGeneratorService implements OnDestroy {
         const totals = this.getAvailabilitySourceRollTotals(candidates);
 
         return pickWeightedRandomEntry<ForceGenerationAvailabilitySource>(
-            ['production', 'salvage'],
-            (source) => source === 'production' ? totals.production : totals.salvage,
+            ['requisition', 'salvage'],
+            (source) => source === 'requisition' ? totals.requisition : totals.salvage,
         );
     }
 
@@ -4229,7 +4229,7 @@ export class ForceGeneratorService implements OnDestroy {
         usedFallbackSource: boolean;
     } {
         const source = this.pickAvailabilitySource(candidates);
-        const alternateSource: ForceGenerationAvailabilitySource = source === 'production' ? 'salvage' : 'production';
+        const alternateSource: ForceGenerationAvailabilitySource = source === 'requisition' ? 'salvage' : 'requisition';
         const sourceCandidates = candidates.filter((candidate) => this.getAvailabilityWeightForSource(candidate, source) > 0);
         const alternateCandidates = candidates.filter((candidate) => this.getAvailabilityWeightForSource(candidate, alternateSource) > 0);
         const weightedCandidates = sourceCandidates.length > 0
@@ -4415,8 +4415,8 @@ export class ForceGeneratorService implements OnDestroy {
         overrides: Partial<Pick<ForceGenerationSelectionStep, 'rolledSource' | 'source' | 'usedFallbackSource'>> = {},
         selectionPreparation?: ForceGenerationSelectionPreparation,
     ): ForceGenerationSelectionStep {
-        const source: ForceGenerationAvailabilitySource = candidate.productionWeight >= candidate.salvageWeight
-            ? 'production'
+        const source: ForceGenerationAvailabilitySource = candidate.requisitionWeight >= candidate.salvageWeight
+            ? 'requisition'
             : 'salvage';
 
         return {
@@ -4425,7 +4425,7 @@ export class ForceGeneratorService implements OnDestroy {
             rolledSource: overrides.rolledSource ?? source,
             source: overrides.source ?? source,
             usedFallbackSource: overrides.usedFallbackSource ?? false,
-            productionWeight: candidate.productionWeight,
+            requisitionWeight: candidate.requisitionWeight,
             salvageWeight: candidate.salvageWeight,
             cost: candidate.cost,
             skill: candidate.skill,
@@ -4693,7 +4693,7 @@ export class ForceGeneratorService implements OnDestroy {
                 totalAvailabilityWeight: 0,
             };
             currentSummary.candidateCount += 1;
-            currentSummary.totalAvailabilityWeight += Math.max(0, candidate.productionWeight) + Math.max(0, candidate.salvageWeight);
+            currentSummary.totalAvailabilityWeight += Math.max(0, candidate.requisitionWeight) + Math.max(0, candidate.salvageWeight);
             summaries.set(candidate.megaMekUnitType, currentSummary);
         }
 

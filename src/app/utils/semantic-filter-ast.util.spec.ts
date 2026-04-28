@@ -300,19 +300,19 @@ describe('semantic filter exclusivity', () => {
             {
                 id: 1,
                 bySource: {
-                    Production: 'Common',
+                    Requisition: 'Common',
                     Salvage: 'Rare',
                 },
             },
             {
                 id: 2,
                 bySource: {
-                    Production: 'Rare',
+                    Requisition: 'Rare',
                     Salvage: 'Common',
                 },
             },
         ];
-        const result = parseSemanticQueryAST('from=Production rarity=Rare', GameSystem.CLASSIC);
+        const result = parseSemanticQueryAST('from=Requisition rarity=Rare', GameSystem.CLASSIC);
 
         const filtered = filterUnitsWithAST(units, result.ast, {
             gameSystem: GameSystem.CLASSIC,
@@ -326,10 +326,10 @@ describe('semantic filter exclusivity', () => {
                 rarityName: string,
                 scope,
             ) => {
-                const activeSources = scope?.availabilityFromNames ?? ['Production', 'Salvage'];
+                const activeSources = scope?.availabilityFromNames ?? ['Requisition', 'Salvage'];
                 return activeSources.some((availabilityFromName) => unit.bySource[availabilityFromName] === rarityName);
             },
-            getAllAvailabilityFromNames: () => ['Production', 'Salvage'],
+            getAllAvailabilityFromNames: () => ['Requisition', 'Salvage'],
             getAllAvailabilityRarityNames: () => ['Not Available', 'Very Rare', 'Rare', 'Uncommon', 'Common', 'Very Common'],
         });
 

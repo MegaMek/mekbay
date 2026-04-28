@@ -64,7 +64,7 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
         fixture.componentRef.setInput('sortKey', MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
         fixture.componentRef.setInput('sortSlotLabel', 'RAT Rarity (P)');
         fixture.componentRef.setInput('sortSlotOverride', { value: 'Rare', numeric: false });
-        fixture.componentRef.setInput('megaMekAvailability', [{ source: 'Production', score: 4, rarity: 'Rare' }]);
+        fixture.componentRef.setInput('megaMekAvailability', [{ source: 'Requisition', score: 4, rarity: 'Rare' }]);
         fixture.detectChanges();
 
         expect(fixture.componentInstance.sortSlot()).toBeNull();
@@ -79,7 +79,7 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
         fixture.componentRef.setInput('sortKey', MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
         fixture.componentRef.setInput('sortSlotLabel', 'RAT Rarity (P)');
         fixture.componentRef.setInput('sortSlotOverride', { value: 'Rare', numeric: false });
-        fixture.componentRef.setInput('megaMekAvailability', [{ source: 'Production', score: 4, rarity: 'Rare' }]);
+        fixture.componentRef.setInput('megaMekAvailability', [{ source: 'Requisition', score: 4, rarity: 'Rare' }]);
         fixture.detectChanges();
 
         expect(fixture.componentInstance.getSortSlotForCompact(unit)).toBeNull();
@@ -90,17 +90,17 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
 
         fixture.componentRef.setInput('unit', createUnit());
         fixture.componentRef.setInput('megaMekAvailability', [
-            { source: 'Production', score: 4, rarity: 'Rare' },
+            { source: 'Requisition', score: 4, rarity: 'Rare' },
             { source: 'Salvage', score: 7, rarity: 'Common' },
         ]);
         fixture.detectChanges();
 
         expect(fixture.componentInstance.megaMekAvailabilityTooltip()).toEqual([
-            { label: 'Production', value: 'Rare' },
+            { label: 'Requisition', value: 'Rare' },
             { label: 'Salvage', value: 'Common' },
         ]);
         expect(fixture.componentInstance.megaMekAvailabilityBadges()).toEqual([
-            { source: 'Production', score: 4, rarity: 'Rare', color: MEGAMEK_AVAILABILITY_BADGE_COLORS['Rare'] },
+            { source: 'Requisition', score: 4, rarity: 'Rare', color: MEGAMEK_AVAILABILITY_BADGE_COLORS['Rare'] },
             { source: 'Salvage', score: 7, rarity: 'Common', color: MEGAMEK_AVAILABILITY_BADGE_COLORS['Common'] },
         ]);
     });

@@ -131,7 +131,7 @@ describe('UnitDetailsFactionTabComponent', () => {
         expect(extinctItem).toBeTruthy();
         expect(draconisCombineItem?.querySelectorAll('.faction-megamek-availability-badge').length).toBe(2);
         expect(extinctItem?.querySelectorAll('.faction-megamek-availability-badge').length).toBe(0);
-        expect(badgeLabels).toEqual(['Production: Common', 'Salvage: Rare']);
+        expect(badgeLabels).toEqual(['Requisition: Common', 'Salvage: Rare']);
         expect(dataServiceMock.getMegaMekAvailabilityRecordForUnit).toHaveBeenCalledWith(unit);
         expect(unitAvailabilitySourceMock.useMegaMekAvailability).toHaveBeenCalled();
         expect(unitAvailabilitySourceMock.getFactionEraUnitIds).not.toHaveBeenCalled();
@@ -146,7 +146,7 @@ describe('UnitDetailsFactionTabComponent', () => {
                 isHeader: true,
             },
             {
-                label: 'Production',
+                label: 'Requisition',
                 value: 'Common',
             },
             {
@@ -240,7 +240,7 @@ describe('UnitDetailsFactionTabComponent', () => {
                 isHeader: true,
             },
             {
-                label: 'Production',
+                label: 'Requisition',
                 value: 'Common',
             },
             {

@@ -113,7 +113,7 @@ export class UnitDetailsFactionTabComponent {
     private unitAvailabilitySource = inject(UnitAvailabilitySourceService);
     private factionNameWrapPartsCache = new Map<string, FactionNameWrapParts>();
 
-    readonly megaMekProductionIconPath = MEGAMEK_PRODUCTION_ICON_PATH;
+    readonly megaMekRequisitionIconPath = MEGAMEK_PRODUCTION_ICON_PATH;
     readonly megaMekSalvageIconPath = MEGAMEK_SALVAGE_ICON_PATH;
     readonly megaMekAvailabilitySourceSelected = computed(() => this.unitAvailabilitySource.useMegaMekAvailability());
 

@@ -11,9 +11,9 @@
                             [attr.aria-label]="badge.label"
                             [style.color]="badge.color"
                         >
-                            @if (badge.source === 'Production') {
+                            @if (badge.source === 'Requisition') {
                                 <svg class="faction-megamek-availability-icon" viewBox="0 0 36 36" aria-hidden="true">
-                                    <path [attr.d]="megaMekProductionIconPath" fill="currentColor" />
+                                    <path [attr.d]="megaMekRequisitionIconPath" fill="currentColor" />
                                 </svg>
                             } @else {
                                 <svg class="faction-megamek-availability-icon" viewBox="0 0 256 256" aria-hidden="true">

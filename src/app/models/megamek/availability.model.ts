@@ -39,7 +39,7 @@ export const MEGAMEK_AVAILABILITY_UNKNOWN_SCORE = -1;
 export const MEGAMEK_AVAILABILITY_UNKNOWN = 'Unknown' as const;
 export const MEGAMEK_AVAILABILITY_NOT_AVAILABLE = 'Not Available' as const;
 
-export const MEGAMEK_AVAILABILITY_FROM_OPTIONS = ['Production', 'Salvage'] as const;
+export const MEGAMEK_AVAILABILITY_FROM_OPTIONS = ['Requisition', 'Salvage'] as const;
 export type MegaMekAvailabilityFrom = typeof MEGAMEK_AVAILABILITY_FROM_OPTIONS[number];
 export const MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS = [
     ...MEGAMEK_AVAILABILITY_FROM_OPTIONS,
@@ -102,7 +102,7 @@ export function getMegaMekAvailabilityValueForSource(
     value: MegaMekWeightedAvailabilityValue,
     availabilityFrom: MegaMekAvailabilityFrom,
 ): number {
-    return availabilityFrom === 'Production'
+    return availabilityFrom === 'Requisition'
         ? value[0] ?? 0
         : value[1] ?? 0;
 }

@@ -389,24 +389,24 @@ function buildSyntheticMegaMekRarityBenchmarkScenario(targetCount: number): Synt
             return [];
         }
 
-        let productionScore = (index % 10) + 1;
+        let requisitionScore = (index % 10) + 1;
         let salvageScore = (((index + 3) % 8) + 1) * 1.2;
 
         if (index % 10 === 0) {
-            productionScore = 0;
+            requisitionScore = 0;
         }
         if (index % 15 === 0) {
             salvageScore = 0;
         }
 
-        const effectiveScore = Math.max(productionScore, salvageScore);
+        const effectiveScore = Math.max(requisitionScore, salvageScore);
         expectedTopScore = Math.max(expectedTopScore, effectiveScore);
 
         return [{
             n: unit.name,
             e: {
                 '1': {
-                    '1': [productionScore, salvageScore] as [number, number],
+                    '1': [requisitionScore, salvageScore] as [number, number],
                 },
             },
         }];
@@ -1263,7 +1263,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         });
         service.setFilter('era', ['Age of War']);
         service.searchText.set('BWP-2B');
-        service.setFilter('availabilityFrom', ['Production']);
+        service.setFilter('availabilityFrom', ['Requisition']);
 
         let factionOptions = service.advOptions()['faction']?.options ?? [];
         let namedFactionOptions = factionOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
@@ -1368,7 +1368,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         let availabilityFromOptions = service.advOptions()['availabilityFrom']?.options ?? [];
         let namedAvailabilityFromOptions = availabilityFromOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
 
-        expect(namedAvailabilityFromOptions.find((option) => option.name === 'Production')).toEqual(jasmine.objectContaining({ available: true }));
+        expect(namedAvailabilityFromOptions.find((option) => option.name === 'Requisition')).toEqual(jasmine.objectContaining({ available: true }));
         expect(namedAvailabilityFromOptions.find((option) => option.name === 'Salvage')).toEqual(jasmine.objectContaining({ available: false }));
 
         service.setFilter('availabilityRarity', ['Very Rare']);
@@ -1376,7 +1376,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         availabilityFromOptions = service.advOptions()['availabilityFrom']?.options ?? [];
         namedAvailabilityFromOptions = availabilityFromOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
 
-        expect(namedAvailabilityFromOptions.find((option) => option.name === 'Production')).toEqual(jasmine.objectContaining({ available: false }));
+        expect(namedAvailabilityFromOptions.find((option) => option.name === 'Requisition')).toEqual(jasmine.objectContaining({ available: false }));
         expect(namedAvailabilityFromOptions.find((option) => option.name === 'Salvage')).toEqual(jasmine.objectContaining({ available: true }));
     });
 
@@ -1482,7 +1482,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(namedRarityOptions.find((option) => option.name === 'Common')).toEqual(jasmine.objectContaining({ available: false }));
         expect(namedRarityOptions.find((option) => option.name === 'Very Rare')).toEqual(jasmine.objectContaining({ available: true }));
 
-        service.setFilter('availabilityFrom', ['Production']);
+        service.setFilter('availabilityFrom', ['Requisition']);
 
         rarityOptions = service.advOptions()['availabilityRarity']?.options ?? [];
         namedRarityOptions = rarityOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
@@ -1598,7 +1598,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
 
-        service.setFilter('availabilityFrom', ['Production']);
+        service.setFilter('availabilityFrom', ['Requisition']);
 
         expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
 
@@ -1703,24 +1703,24 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         service.setFilter('era', ['Dark Age']);
         expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
-            { source: 'Production', score: 2, rarity: 'Very Rare' },
+            { source: 'Requisition', score: 2, rarity: 'Very Rare' },
             { source: 'Salvage', score: 2, rarity: 'Very Rare' },
         ]);
 
         service.setFilter('era', ['ilClan']);
         expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
-            { source: 'Production', score: 7, rarity: 'Common' },
+            { source: 'Requisition', score: 7, rarity: 'Common' },
             { source: 'Salvage', score: 2, rarity: 'Very Rare' },
         ]);
 
-        service.setFilter('availabilityFrom', ['Production']);
+        service.setFilter('availabilityFrom', ['Requisition']);
         expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
-            { source: 'Production', score: 7, rarity: 'Common' },
+            { source: 'Requisition', score: 7, rarity: 'Common' },
         ]);
 
         service.setFilter('faction', rasalhagueDominion);
         expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
-            { source: 'Production', score: 2, rarity: 'Very Rare' },
+            { source: 'Requisition', score: 2, rarity: 'Very Rare' },
         ]);
     });
 
@@ -1812,7 +1812,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         service.setFilter('era', ['Dark Age']);
 
         expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
-            { source: 'Production', score: 2, rarity: 'Very Rare' },
+            { source: 'Requisition', score: 2, rarity: 'Very Rare' },
             { source: 'Salvage', score: 1, rarity: 'Very Rare' },
         ]);
 
@@ -1909,9 +1909,9 @@ describe('UnitSearchFiltersService search telemetry', () => {
         let namedAvailabilityFromOptions = availabilityFromOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
 
         expect(namedAvailabilityFromOptions.find((option) => option.name === 'Unknown')).toEqual(jasmine.objectContaining({ available: true }));
-        expect(namedAvailabilityFromOptions.find((option) => option.name === 'Production')).toEqual(jasmine.objectContaining({ available: true }));
+        expect(namedAvailabilityFromOptions.find((option) => option.name === 'Requisition')).toEqual(jasmine.objectContaining({ available: true }));
         expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
-            { source: 'Production', score: 7, rarity: 'Common' },
+            { source: 'Requisition', score: 7, rarity: 'Common' },
         ]);
 
         service.setFilter('availabilityFrom', ['Unknown']);
@@ -2036,12 +2036,12 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         service.searchText.set('BattleMaster');
         service.setFilter('era', ['ilClan']);
-        service.setFilter('availabilityFrom', ['Production']);
+        service.setFilter('availabilityFrom', ['Requisition']);
         service.setFilter('availabilityRarity', ['Very Rare']);
 
         expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
         expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
-            { source: 'Production', score: 2, rarity: 'Very Rare' },
+            { source: 'Requisition', score: 2, rarity: 'Very Rare' },
         ]);
         expect(service.getMegaMekRaritySortScore(bundle.units.units[0])).toBe(2);
     });
@@ -2119,8 +2119,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
     it('filters MegaMek units by Available From from the UI', () => {
         const bundle = createStandaloneBundle();
-        bundle.units.units[0].name = 'Production Unit';
-        bundle.units.units[0].chassis = 'Production Unit';
+        bundle.units.units[0].name = 'Requisition Unit';
+        bundle.units.units[0].chassis = 'Requisition Unit';
         bundle.units.units[0].model = 'PROD-1';
         bundle.units.units[1].name = 'Salvage Unit';
         bundle.units.units[1].chassis = 'Salvage Unit';
@@ -2131,7 +2131,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const { dataService, service, optionsServiceStub } = createService(bundle);
         spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
             {
-                n: 'Production Unit',
+                n: 'Requisition Unit',
                 e: {
                     '1': {
                         '1': [5, 0],
@@ -2156,9 +2156,9 @@ describe('UnitSearchFiltersService search telemetry', () => {
             availabilitySource: 'megamek',
         });
 
-        service.setFilter('availabilityFrom', ['Production']);
+        service.setFilter('availabilityFrom', ['Requisition']);
 
-        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Production Unit']);
+        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Requisition Unit']);
 
         service.setFilter('availabilityFrom', ['Salvage']);
 
@@ -2910,7 +2910,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             ...optionsServiceStub.options(),
             availabilitySource: 'megamek',
         });
-        service.setFilter('availabilityFrom', ['Production']);
+        service.setFilter('availabilityFrom', ['Requisition']);
         service.searchText.set('Test');
         service.filteredUnits();
 
@@ -2930,7 +2930,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
         expect(executeMessage).toBeTruthy();
-        expect(executeMessage.request.executionQuery).not.toContain('from=Production');
+        expect(executeMessage.request.executionQuery).not.toContain('from=Requisition');
 
         worker.emit({
             type: 'result',
@@ -3228,8 +3228,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.units.units[0].name = 'Rare Salvage Crab';
         bundle.units.units[0].chassis = 'Rare Salvage Crab';
         bundle.units.units[0].model = 'RSC-1';
-        bundle.units.units[1].name = 'Common Production Crab';
-        bundle.units.units[1].chassis = 'Common Production Crab';
+        bundle.units.units[1].name = 'Common Requisition Crab';
+        bundle.units.units[1].chassis = 'Common Requisition Crab';
         bundle.units.units[1].model = 'CPC-1';
         bundle.eras.eras[0].units = [1, 2];
         bundle.factions.factions[0].eras[1] = new Set([1, 2]);
@@ -3247,7 +3247,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
             {
-                n: 'Common Production Crab',
+                n: 'Common Requisition Crab',
                 e: {
                     '1': {
                         '1': [7, 0],
@@ -3290,7 +3290,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            unitNames: ['Rare Salvage Crab', 'Common Production Crab'],
+            unitNames: ['Rare Salvage Crab', 'Common Requisition Crab'],
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -3743,7 +3743,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             ...optionsServiceStub.options(),
             availabilitySource: 'megamek',
         });
-        service.searchText.set('Test OR from=Production');
+        service.searchText.set('Test OR from=Requisition');
         service.filteredUnits();
 
         expect((service as any).workerSearchActive()).toBeFalse();
@@ -4390,7 +4390,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 count: 1,
             },
         });
-        service.setFilter('availabilityFrom', ['Production']);
+        service.setFilter('availabilityFrom', ['Requisition']);
         service.setFilter('availabilityRarity', ['Common']);
 
         const request = (service as any).buildWorkerSearchRequest((service as any).getWorkerCorpusVersion());

@@ -624,7 +624,7 @@ export class UnitSearchFiltersService {
             const availabilityFrom = new Set(
                 scope.availabilityFromNames
                     .filter((value): value is MegaMekAvailabilityFrom => (
-                        value === 'Production' || value === 'Salvage'
+                        value === 'Requisition' || value === 'Salvage'
                     )),
             );
             if (availabilityFrom.size > 0) {
@@ -758,7 +758,7 @@ export class UnitSearchFiltersService {
         const selectedAvailabilityRarityNames = (selectionScope?.availabilityRarityNames
             ?? availabilitySelectionScopeParts.availabilityRarityNames) as MegaMekAvailabilityRarity[];
         const selectedPositiveSources = selectedAvailabilityFromNames.filter((value): value is MegaMekAvailabilityFrom => (
-            value === 'Production' || value === 'Salvage'
+            value === 'Requisition' || value === 'Salvage'
         ));
         const selectedPositiveRarities = new Set(
             selectedAvailabilityRarityNames.filter((rarity): rarity is Exclude<MegaMekAvailabilityRarity, typeof MEGAMEK_AVAILABILITY_UNKNOWN | typeof MEGAMEK_AVAILABILITY_NOT_AVAILABLE> => (
@@ -820,7 +820,7 @@ export class UnitSearchFiltersService {
         const selectedAvailabilityFromNames = scope?.availabilityFromNames
             ?? this.getAvailabilitySelectionScopeParts(this.getApplicableFilterState(this.effectiveFilterState())).availabilityFromNames;
         const selectedSources = selectedAvailabilityFromNames.filter((value): value is MegaMekAvailabilityFrom => (
-            value === 'Production' || value === 'Salvage'
+            value === 'Requisition' || value === 'Salvage'
         ));
 
         return selectedSources.length > 0
@@ -1109,7 +1109,7 @@ export class UnitSearchFiltersService {
         }
 
         const selectedPositiveSources = availabilityFromNames.filter((value): value is MegaMekAvailabilityFrom => (
-            value === 'Production' || value === 'Salvage'
+            value === 'Requisition' || value === 'Salvage'
         ));
         const includesUnknownSource = availabilityFromNames.includes(MEGAMEK_AVAILABILITY_UNKNOWN);
         const hasSourceFilter = availabilityFromNames.length > 0;
@@ -1192,7 +1192,7 @@ export class UnitSearchFiltersService {
         }
 
         const selectedSources = availabilityFromNames.filter((value): value is MegaMekAvailabilityFrom => (
-            value === 'Production' || value === 'Salvage'
+            value === 'Requisition' || value === 'Salvage'
         ));
         const useMegaMekAvailability = this.unitAvailabilitySource.useMegaMekAvailability();
         const selectedEraIds = target === 'faction'
@@ -1277,7 +1277,7 @@ export class UnitSearchFiltersService {
                         let maxScores = maxScoresByOptionId?.get(candidateId);
                         if (!maxScores) {
                             maxScores = {
-                                Production: 0,
+                                Requisition: 0,
                                 Salvage: 0,
                             };
                             maxScoresByOptionId?.set(candidateId, maxScores);

@@ -793,7 +793,7 @@ describe('ForceGeneratorService', () => {
         expect(context.availablePairCount).toBe(1);
     });
 
-    it('prefers the higher MegaMek availability weight and falls back unknown units to the minimum production-only weight', () => {
+    it('prefers the higher MegaMek availability weight and falls back unknown units to the minimum requisition-only weight', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
         const knownUnit = createUnit({ id: 1, name: 'Known Unit', as: { PV: 5 } as Unit['as'] });
@@ -825,7 +825,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.units[0].unit).toBe(knownUnit);
         expect(preview.totalCost).toBe(5);
         const rulesetGuidanceIndex = preview.explanationLines.findIndex((line) => line.includes('Ruleset guidance: none resolved, so picks used weighted search only.'));
-        const sourceRollOddsIndex = preview.explanationLines.findIndex((line) => line.includes('Source roll odds: production'));
+        const sourceRollOddsIndex = preview.explanationLines.findIndex((line) => line.includes('Source roll odds: requisition'));
         expect(sourceRollOddsIndex).toBeGreaterThan(rulesetGuidanceIndex);
     });
 
@@ -1001,7 +1001,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Extinct Unit']);
         expect(preview.explanationLines[0]).toContain('Eligible units: 2 units. Availability-positive candidates: 2 units.');
         expect(preview.explanationLines.some((line) => line.includes('Generation context: Capellan Confederation - Jihad. Availability weights: max P/S across 2 eras x 2 factions.'))).toBeTrue();
-        expect(preview.explanationLines.some((line) => line.includes('production pick, P 20 / S 0'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('requisition pick, P 20 / S 0'))).toBeTrue();
     });
 
     it('uses max weights across selected eras for a single rolled faction when multiselect expansion is enabled', () => {
@@ -1605,7 +1605,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.explanationLines.some((line) => line.includes('P 1 / S 0'))).toBeTrue();
     });
 
-    it('keeps MUL fallback unknown weights production-only when another scoped pair already contributed exact MegaMek weights', () => {
+    it('keeps MUL fallback unknown weights requisition-only when another scoped pair already contributed exact MegaMek weights', () => {
         const era = createEra(2570, 'Age of War', 2570, 2780);
         const primaryFaction = createFaction(10, 'Draconis Combine');
         const secondaryFaction = createFaction(20, 'Free Worlds League');
@@ -1663,7 +1663,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.explanationLines.some((line) => {
             return line.includes('Generation context: Draconis Combine - Age of War. Availability weights: max P/S across 2 factions.');
         })).toBeTrue();
-        expect(preview.explanationLines.some((line) => line.includes('production pick, P 1 / S 0'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('requisition pick, P 1 / S 0'))).toBeTrue();
     });
 
     it('keeps excluding MUL-invisible units that are missing MegaMek availability records', () => {
@@ -1693,13 +1693,13 @@ describe('ForceGeneratorService', () => {
         expect(preview.units.length).toBe(0);
     });
 
-    it('rolls production and salvage separately before picking the unit', () => {
+    it('rolls requisition and salvage separately before picking the unit', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const productionUnit = createUnit({ id: 1, name: 'Production Unit', chassis: 'Phoenix Hawk', model: 'PXH-1', as: { PV: 5 } as Unit['as'] });
+        const requisitionUnit = createUnit({ id: 1, name: 'Requisition Unit', chassis: 'Phoenix Hawk', model: 'PXH-1', as: { PV: 5 } as Unit['as'] });
         const salvageUnit = createUnit({ id: 2, name: 'Salvage Unit', chassis: 'Shadow Hawk', model: 'SHD-2H', as: { PV: 5 } as Unit['as'] });
 
-        megaMekAvailabilityByUnitName.set(productionUnit.name, {
+        megaMekAvailabilityByUnitName.set(requisitionUnit.name, {
             e: {
                 '3150': {
                     '10': [10, 0],
@@ -1718,7 +1718,7 @@ describe('ForceGeneratorService', () => {
 
         randomSpy.and.returnValues(0.25, 0);
         let preview = service.buildPreview({
-            eligibleUnits: [productionUnit, salvageUnit],
+            eligibleUnits: [requisitionUnit, salvageUnit],
             context: createContext(faction, era),
             gameSystem: GameSystem.ALPHA_STRIKE,
             budgetRange: { min: 0, max: 20 },
@@ -1729,12 +1729,12 @@ describe('ForceGeneratorService', () => {
         });
 
         expect(preview.error).toBeNull();
-        expect(preview.units[0].unit).toBe(productionUnit);
+        expect(preview.units[0].unit).toBe(requisitionUnit);
 
         randomSpy.calls.reset();
         randomSpy.and.returnValues(0.9, 0);
         preview = service.buildPreview({
-            eligibleUnits: [productionUnit, salvageUnit],
+            eligibleUnits: [requisitionUnit, salvageUnit],
             context: createContext(faction, era),
             gameSystem: GameSystem.ALPHA_STRIKE,
             budgetRange: { min: 0, max: 20 },
@@ -1778,8 +1778,8 @@ describe('ForceGeneratorService', () => {
         expect(preview.error).toBeNull();
         expect(preview.explanationLines[0]).toContain('Eligible units: 1 units. Availability-positive candidates: 1 units.');
         expect(preview.explanationLines.some((line) => line.includes('Generation context: Federated Suns - ilClan.'))).toBeTrue();
-        expect(preview.explanationLines.some((line) => line.includes('Warhammer WHM-6R: production pick'))).toBeTrue();
-        expect(preview.explanationLines.some((line) => line.includes('Explained Unit: production pick'))).toBeFalse();
+        expect(preview.explanationLines.some((line) => line.includes('Warhammer WHM-6R: requisition pick'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('Explained Unit: requisition pick'))).toBeFalse();
     });
 
     it('stays inside an exact budget range without adjusting skill', () => {
@@ -1922,7 +1922,7 @@ describe('ForceGeneratorService', () => {
         const firstAttempt = {
             selectedCandidates: [firstUnit].map((unit) => ({
                 unit,
-                productionWeight: 1,
+                requisitionWeight: 1,
                 salvageWeight: 1,
                 cost: unit.as.PV,
                 megaMekUnitType: 'Mek',
@@ -1933,7 +1933,7 @@ describe('ForceGeneratorService', () => {
         const secondAttempt = {
             selectedCandidates: [secondUnit].map((unit) => ({
                 unit,
-                productionWeight: 1,
+                requisitionWeight: 1,
                 salvageWeight: 1,
                 cost: unit.as.PV,
                 megaMekUnitType: 'Mek',
@@ -2279,7 +2279,7 @@ describe('ForceGeneratorService', () => {
         const budgetCloserAttempt = {
             selectedCandidates: [nearBudgetA, nearBudgetB].map((unit) => ({
                 unit,
-                productionWeight: 1,
+                requisitionWeight: 1,
                 salvageWeight: 1,
                 cost: unit.as.PV,
                 megaMekUnitType: 'Mek',
@@ -2290,7 +2290,7 @@ describe('ForceGeneratorService', () => {
         const countCloserAttempt = {
             selectedCandidates: [countMatchA, countMatchB, countMatchC, countMatchD].map((unit) => ({
                 unit,
-                productionWeight: 1,
+                requisitionWeight: 1,
                 salvageWeight: 1,
                 cost: unit.as.PV,
                 megaMekUnitType: 'Mek',
@@ -2338,7 +2338,7 @@ describe('ForceGeneratorService', () => {
         const underTargetAttempt = {
             selectedCandidates: [underTargetUnit].map((unit) => ({
                 unit,
-                productionWeight: 1,
+                requisitionWeight: 1,
                 salvageWeight: 1,
                 cost: unit.as.PV,
                 megaMekUnitType: 'Mek',
@@ -2349,7 +2349,7 @@ describe('ForceGeneratorService', () => {
         const overTargetAttempt = {
             selectedCandidates: [overTargetUnit].map((unit) => ({
                 unit,
-                productionWeight: 1,
+                requisitionWeight: 1,
                 salvageWeight: 1,
                 cost: unit.as.PV,
                 megaMekUnitType: 'Mek',
@@ -2990,7 +2990,7 @@ describe('ForceGeneratorService', () => {
             callCount += 1;
             return (callCount === 1
                 ? {
-                    selectedCandidates: companyUnits.map((unit) => ({ unit, productionWeight: 1, salvageWeight: 1, cost: unit.bv, megaMekUnitType: 'Mek' })),
+                    selectedCandidates: companyUnits.map((unit) => ({ unit, requisitionWeight: 1, salvageWeight: 1, cost: unit.bv, megaMekUnitType: 'Mek' })),
                     selectionSteps: [],
                     rulesetProfile: {
                         selectedEchelon: 'LANCE',
@@ -3005,7 +3005,7 @@ describe('ForceGeneratorService', () => {
                     },
                 }
                 : {
-                    selectedCandidates: lanceUnits.map((unit) => ({ unit, productionWeight: 1, salvageWeight: 1, cost: unit.bv, megaMekUnitType: 'Mek' })),
+                    selectedCandidates: lanceUnits.map((unit) => ({ unit, requisitionWeight: 1, salvageWeight: 1, cost: unit.bv, megaMekUnitType: 'Mek' })),
                     selectionSteps: [],
                     rulesetProfile: {
                         selectedEchelon: 'LANCE',
@@ -3066,7 +3066,7 @@ describe('ForceGeneratorService', () => {
             callCount += 1;
             return (callCount === 1
                 ? {
-                    selectedCandidates: companyUnits.map((unit) => ({ unit, productionWeight: 1, salvageWeight: 1, cost: unit.bv, megaMekUnitType: 'Mek' })),
+                    selectedCandidates: companyUnits.map((unit) => ({ unit, requisitionWeight: 1, salvageWeight: 1, cost: unit.bv, megaMekUnitType: 'Mek' })),
                     selectionSteps: [],
                     rulesetProfile: {
                         selectedEchelon: 'SQUADRON',
@@ -3081,7 +3081,7 @@ describe('ForceGeneratorService', () => {
                     },
                 }
                 : {
-                    selectedCandidates: squadronUnits.map((unit) => ({ unit, productionWeight: 1, salvageWeight: 1, cost: unit.bv, megaMekUnitType: 'AeroSpaceFighter' })),
+                    selectedCandidates: squadronUnits.map((unit) => ({ unit, requisitionWeight: 1, salvageWeight: 1, cost: unit.bv, megaMekUnitType: 'AeroSpaceFighter' })),
                     selectionSteps: [],
                     rulesetProfile: {
                         selectedEchelon: 'SQUADRON',

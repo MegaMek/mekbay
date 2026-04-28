@@ -417,7 +417,7 @@ describe('UnitAvailabilitySourceService', () => {
 
         expect(service.getMegaMekAvailabilityScore(scopedUnit)).toBe(6.6);
         expect(service.getMegaMekAvailabilityScore(scopedUnit, {
-            availabilityFrom: new Set(['Production']),
+            availabilityFrom: new Set(['Requisition']),
         })).toBe(5);
         expect(service.getMegaMekAvailabilityScore(scopedUnit, {
             factionIds: new Set([8]),
@@ -499,11 +499,11 @@ describe('UnitAvailabilitySourceService', () => {
         })).toBeFalse();
         expect(service.unitMatchesAvailabilityRarity(unit, 'Very Rare', {
             eraIds: new Set([ilClan.id]),
-            availabilityFrom: new Set(['Production']),
+            availabilityFrom: new Set(['Requisition']),
         })).toBeTrue();
         expect(service.unitMatchesAvailabilityRarity(unit, 'Common', {
             eraIds: new Set([ilClan.id]),
-            availabilityFrom: new Set(['Production']),
+            availabilityFrom: new Set(['Requisition']),
         })).toBeTrue();
 
         expect(service.getMegaMekRarityUnitIds('Common', {
@@ -514,11 +514,11 @@ describe('UnitAvailabilitySourceService', () => {
         }).has(unit.name)).toBeTrue();
         expect(service.getMegaMekRarityUnitIds('Common', {
             eraIds: new Set([ilClan.id]),
-            availabilityFrom: new Set(['Production']),
+            availabilityFrom: new Set(['Requisition']),
         }).has(unit.name)).toBeTrue();
         expect(service.getMegaMekRarityUnitIds('Very Rare', {
             eraIds: new Set([ilClan.id]),
-            availabilityFrom: new Set(['Production']),
+            availabilityFrom: new Set(['Requisition']),
         }).has(unit.name)).toBeTrue();
     });
 
@@ -552,7 +552,7 @@ describe('UnitAvailabilitySourceService', () => {
 
         const context = {
             eraIds: new Set([ilClan.id]),
-            availabilityFrom: new Set(['Production' as const]),
+            availabilityFrom: new Set(['Requisition' as const]),
         };
 
         optionsServiceMock.options.set({
@@ -650,7 +650,7 @@ describe('UnitAvailabilitySourceService', () => {
 
         expect(service.getMegaMekAvailabilityScore(unit, {
             ...darkAgeContext,
-            availabilityFrom: new Set(['Production']),
+            availabilityFrom: new Set(['Requisition']),
         })).toBe(1.7);
         expect(service.getMegaMekAvailabilityScore(unit, {
             ...darkAgeContext,
@@ -663,7 +663,7 @@ describe('UnitAvailabilitySourceService', () => {
 
         expect(service.getMegaMekAvailabilityScore(unit, {
             ...ilClanContext,
-            availabilityFrom: new Set(['Production']),
+            availabilityFrom: new Set(['Requisition']),
         })).toBe(7.6);
         expect(service.unitMatchesAvailabilityRarity(unit, 'Common', ilClanContext)).toBeTrue();
     });
@@ -742,7 +742,7 @@ describe('UnitAvailabilitySourceService', () => {
 
         expect(service.getMegaMekUnknownUnitIds(ravenAllianceContext).has(unit.name)).toBeTrue();
         expect(service.unitMatchesAvailabilityFrom(unit, MEGAMEK_AVAILABILITY_UNKNOWN, ravenAllianceContext)).toBeTrue();
-        expect(service.unitMatchesAvailabilityFrom(unit, 'Production', ravenAllianceContext)).toBeFalse();
+        expect(service.unitMatchesAvailabilityFrom(unit, 'Requisition', ravenAllianceContext)).toBeFalse();
         expect(service.unitMatchesAvailabilityRarity(unit, MEGAMEK_AVAILABILITY_UNKNOWN, ravenAllianceContext)).toBeTrue();
         expect(service.unitMatchesAvailabilityRarity(unit, 'Common', ravenAllianceContext)).toBeFalse();
     });
@@ -906,7 +906,7 @@ describe('UnitAvailabilitySourceService', () => {
 
         expect(optionsServiceMock.options().availabilitySource).toBe('mul');
         expect(service.unitMatchesAvailabilityFrom(unknownUnit, MEGAMEK_AVAILABILITY_UNKNOWN)).toBeTrue();
-        expect(service.unitMatchesAvailabilityFrom(unknownUnit, 'Production')).toBeFalse();
+        expect(service.unitMatchesAvailabilityFrom(unknownUnit, 'Requisition')).toBeFalse();
         expect(service.unitMatchesAvailabilityRarity(unknownUnit, MEGAMEK_AVAILABILITY_UNKNOWN)).toBeTrue();
         expect(service.unitMatchesAvailabilityRarity(unknownUnit, 'Not Available', salvageScope)).toBeFalse();
         expect(service.unitMatchesAvailabilityRarity(knownUnit, 'Not Available', salvageScope)).toBeTrue();

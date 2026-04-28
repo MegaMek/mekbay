@@ -60,7 +60,7 @@ import { OptionsService } from './options.service';
 interface MegaMekUnitAvailabilityEntry {
     eraId: number;
     factionId: number;
-    production: number;
+    requisition: number;
     salvage: number;
 }
 
@@ -114,14 +114,14 @@ const MEGAMEK_SCOPED_UNIT_SCORE_CACHE_LIMIT = 48;
 
 function createMegaMekSourceScoreMaps(): Record<MegaMekAvailabilityFrom, Map<AvailabilityUnitKey, number>> {
     return {
-        Production: new Map<AvailabilityUnitKey, number>(),
+        Requisition: new Map<AvailabilityUnitKey, number>(),
         Salvage: new Map<AvailabilityUnitKey, number>(),
     };
 }
 
 function createMegaMekSourceUnitIdSets(): Record<MegaMekAvailabilityFrom, Set<AvailabilityUnitKey>> {
     return {
-        Production: new Set<AvailabilityUnitKey>(),
+        Requisition: new Set<AvailabilityUnitKey>(),
         Salvage: new Set<AvailabilityUnitKey>(),
     };
 }
@@ -138,14 +138,14 @@ function createMegaMekRarityUnitIdSets(): Map<MegaMekPositiveAvailabilityRarity,
 
 function createMegaMekSourceRarityUnitIdSets(): Record<MegaMekAvailabilityFrom, Map<MegaMekPositiveAvailabilityRarity, Set<AvailabilityUnitKey>>> {
     return {
-        Production: createMegaMekRarityUnitIdSets(),
+        Requisition: createMegaMekRarityUnitIdSets(),
         Salvage: createMegaMekRarityUnitIdSets(),
     };
 }
 
 function createMegaMekSourceRaritySets(): Record<MegaMekAvailabilityFrom, Set<MegaMekPositiveAvailabilityRarity>> {
     return {
-        Production: new Set<MegaMekPositiveAvailabilityRarity>(),
+        Requisition: new Set<MegaMekPositiveAvailabilityRarity>(),
         Salvage: new Set<MegaMekPositiveAvailabilityRarity>(),
     };
 }
@@ -815,7 +815,7 @@ export class UnitAvailabilitySourceService {
                     entries.push({
                         eraId,
                         factionId,
-                        production: value[0],
+                        requisition: value[0],
                         salvage: value[1],
                     });
 
@@ -1169,7 +1169,7 @@ export class UnitAvailabilitySourceService {
         entries: readonly MegaMekUnitAvailabilityEntry[],
         context?: MegaMekAvailabilityFilterContext,
     ): Record<MegaMekAvailabilityFrom, number> {
-        let production = 0;
+        let requisition = 0;
         let salvage = 0;
 
         for (const entry of entries) {
@@ -1177,8 +1177,8 @@ export class UnitAvailabilitySourceService {
                 continue;
             }
 
-            if (entry.production > production) {
-                production = entry.production;
+            if (entry.requisition > requisition) {
+                requisition = entry.requisition;
             }
             if (entry.salvage > salvage) {
                 salvage = entry.salvage;
@@ -1186,7 +1186,7 @@ export class UnitAvailabilitySourceService {
         }
 
         return {
-            Production: production,
+            Requisition: requisition,
             Salvage: salvage,
         };
     }
@@ -1203,7 +1203,7 @@ export class UnitAvailabilitySourceService {
                 continue;
             }
 
-            const value = [entry.production, entry.salvage] as [number, number];
+            const value = [entry.requisition, entry.salvage] as [number, number];
             for (const source of MEGAMEK_AVAILABILITY_FROM_OPTIONS) {
                 const score = getMegaMekAvailabilityValueForSource(value, source);
                 if (score <= 0) {
@@ -1433,8 +1433,8 @@ export class UnitAvailabilitySourceService {
         let maxScore = 0;
 
         for (const source of availabilityFrom) {
-            const score = source === 'Production'
-                ? entry.production
+            const score = source === 'Requisition'
+                ? entry.requisition
                 : entry.salvage;
             if (score <= 0) {
                 continue;
@@ -1650,12 +1650,12 @@ export class UnitAvailabilitySourceService {
         entry: MegaMekUnitAvailabilityEntry,
         availabilityFrom: readonly MegaMekAvailabilityFrom[],
     ): boolean {
-        const value = [entry.production, entry.salvage] as [number, number];
+        const value = [entry.requisition, entry.salvage] as [number, number];
         return availabilityFrom.some((source) => getMegaMekAvailabilityValueForSource(value, source) > 0);
     }
 
     private entryHasAnyAvailability(entry: MegaMekUnitAvailabilityEntry): boolean {
-        return entry.production > 0 || entry.salvage > 0;
+        return entry.requisition > 0 || entry.salvage > 0;
     }
 
     private entryMatchesSelectedRarity(
@@ -1663,7 +1663,7 @@ export class UnitAvailabilitySourceService {
         rarity: MegaMekAvailabilityRarity,
         availabilityFrom: readonly MegaMekAvailabilityFrom[],
     ): boolean {
-        const value = [entry.production, entry.salvage] as [number, number];
+        const value = [entry.requisition, entry.salvage] as [number, number];
         return availabilityFrom.some((source) => {
             const score = getMegaMekAvailabilityValueForSource(value, source);
             return getMegaMekAvailabilityRarityForScore(score) === rarity;
