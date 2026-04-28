@@ -274,10 +274,10 @@ describe('ForceRadarPanelComponent', () => {
         expect(getAxis('endurance')).toEqual(jasmine.objectContaining({ value: 88, min: 54, max: 170 }));
         expect(getAxis('range')).toEqual(jasmine.objectContaining({ value: 28, min: 22, max: 46 }));
         expect(getAxis('dpt')).toEqual(jasmine.objectContaining({ value: 19, min: 10, max: 40 }));
-        expect(getAxis('mobility')?.ratio).toBeCloseTo(6 / 17, 6);
-        expect(getAxis('endurance')?.ratio).toBeCloseTo(34 / 116, 6);
-        expect(getAxis('range')?.ratio).toBeCloseTo(0.25, 6);
-        expect(getAxis('dpt')?.ratio).toBeCloseTo(0.3, 6);
+        expect(getAxis('mobility')?.ratio).toBeCloseTo(72 / 289, 6);
+        expect(getAxis('endurance')?.ratio).toBeCloseTo(289 / 1682, 6);
+        expect(getAxis('range')?.ratio).toBeCloseTo(0.125, 6);
+        expect(getAxis('dpt')?.ratio).toBeCloseTo(0.18, 6);
     });
 
     it('maps aggregated bucket averages to the midpoint ring', () => {
@@ -374,10 +374,10 @@ describe('ForceRadarPanelComponent', () => {
         expect(getAxis('endurance')).toEqual(jasmine.objectContaining({ value: 40, min: 15, max: 62 }));
         expect(getAxis('range')).toEqual(jasmine.objectContaining({ value: 8, min: 6, max: 14 }));
         expect(getAxis('dpt')).toEqual(jasmine.objectContaining({ value: 7, min: 3, max: 15 }));
-        expect(getAxis('mobility')?.ratio).toBeCloseTo(3 / 7, 6);
-        expect(getAxis('endurance')?.ratio).toBeCloseTo(25 / 47, 6);
-        expect(getAxis('range')?.ratio).toBeCloseTo(0.25, 6);
-        expect(getAxis('dpt')?.ratio).toBeCloseTo(1 / 3, 6);
+        expect(getAxis('mobility')?.ratio).toBeCloseTo(18 / 49, 6);
+        expect(getAxis('endurance')?.ratio).toBeCloseTo(1241 / 2209, 6);
+        expect(getAxis('range')?.ratio).toBeCloseTo(0.125, 6);
+        expect(getAxis('dpt')?.ratio).toBeCloseTo(2 / 9, 6);
         expect(fixture.nativeElement.querySelectorAll('.radar-hover-node').length).toBe(4);
         const classicHoveredLabels = Array.from(fixture.nativeElement.querySelectorAll('.radar-label-value-hover')) as SVGTextElement[];
 
@@ -407,7 +407,7 @@ describe('ForceRadarPanelComponent', () => {
         const mobilityAxis = fixture.componentInstance.chartAxes().find((axis) => axis.key === 'mobility');
 
         expect(mobilityAxis).toEqual(jasmine.objectContaining({ value: 6, min: 1, max: 7 }));
-        expect(mobilityAxis?.ratio).toBeCloseTo(5 / 6, 6);
+        expect(mobilityAxis?.ratio).toBeCloseTo(17 / 18, 6);
     });
 
     it('aggregates Alpha Strike radar stats from global as.TP maxima', () => {
@@ -489,9 +489,9 @@ describe('ForceRadarPanelComponent', () => {
         expect(getAxis('shortRangeDamage')).toEqual(jasmine.objectContaining({ value: 5, min: 2, max: 6 }));
         expect(getAxis('mediumRangeDamage')).toEqual(jasmine.objectContaining({ value: 5, min: 3, max: 7 }));
         expect(getAxis('longRangeDamage')).toEqual(jasmine.objectContaining({ value: 5, min: 3, max: 7 }));
-        expect(getAxis('mobility')?.ratio).toBeCloseTo(1 / 3, 6);
-        expect(getAxis('endurance')?.ratio).toBeCloseTo(5 / 9, 6);
-        expect(getAxis('shortRangeDamage')?.ratio).toBeCloseTo(0.75, 6);
+        expect(getAxis('mobility')?.ratio).toBeCloseTo(2 / 9, 6);
+        expect(getAxis('endurance')?.ratio).toBeCloseTo(49 / 81, 6);
+        expect(getAxis('shortRangeDamage')?.ratio).toBeCloseTo(0.875, 6);
         expect(getAxis('mediumRangeDamage')?.ratio).toBeCloseTo(0.5, 6);
         expect(getAxis('longRangeDamage')?.ratio).toBeCloseTo(0.5, 6);
     });
@@ -577,8 +577,8 @@ describe('ForceRadarPanelComponent', () => {
         expect(getAxis('shortRangeDamage')).toEqual(jasmine.objectContaining({ value: 2, min: 1, max: 2 }));
         expect(getAxis('mediumRangeDamage')).toEqual(jasmine.objectContaining({ value: 3, min: 2, max: 4 }));
         expect(getAxis('longRangeDamage')).toEqual(jasmine.objectContaining({ value: 4, min: 3, max: 5 }));
-        expect(getAxis('mobility')?.ratio).toBeCloseTo(1 / 3, 6);
-        expect(getAxis('endurance')?.ratio).toBeCloseTo(1 / 3, 6);
+        expect(getAxis('mobility')?.ratio).toBeCloseTo(2 / 9, 6);
+        expect(getAxis('endurance')?.ratio).toBeCloseTo(2 / 9, 6);
         expect(getAxis('shortRangeDamage')?.ratio).toBeCloseTo(1, 6);
         expect(getAxis('mediumRangeDamage')?.ratio).toBeCloseTo(0.5, 6);
         expect(getAxis('longRangeDamage')?.ratio).toBeCloseTo(0.5, 6);

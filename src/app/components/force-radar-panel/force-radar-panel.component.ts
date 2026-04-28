@@ -301,6 +301,11 @@ function formatStatValue(value: number): string {
     });
 }
 
+function easeOutRadarDeviation(value: number): number {
+    const clampedValue = clamp(value, 0, 1);
+    return 1 - ((1 - clampedValue) * (1 - clampedValue));
+}
+
 function getRadarRatio(value: number, min: number, average: number, max: number): number {
     if (max <= min) {
         if (value < average) {
@@ -327,7 +332,8 @@ function getRadarRatio(value: number, min: number, average: number, max: number)
         }
 
         const lowerValue = clamp(value, min, clampedAverage);
-        return clamp(0.5 * ((lowerValue - min) / lowerSpan), 0, 1);
+        const lowerDeviation = (clampedAverage - lowerValue) / lowerSpan;
+        return clamp(0.5 - (0.5 * easeOutRadarDeviation(lowerDeviation)), 0, 1);
     }
 
     const upperSpan = max - clampedAverage;
@@ -336,7 +342,8 @@ function getRadarRatio(value: number, min: number, average: number, max: number)
     }
 
     const upperValue = clamp(value, clampedAverage, max);
-    return clamp(0.5 + (0.5 * ((upperValue - clampedAverage) / upperSpan)), 0, 1);
+    const upperDeviation = (upperValue - clampedAverage) / upperSpan;
+    return clamp(0.5 + (0.5 * easeOutRadarDeviation(upperDeviation)), 0, 1);
 }
 
 function buildRadarAxis(
