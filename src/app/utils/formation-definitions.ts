@@ -1583,7 +1583,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
     //
     {
         id: 'interceptor-squadron',
-        name: 'Interceptor Squadron',
+        name: 'Interceptor',
         description: 'Interceptor specialists',
         effectDescription: 'Any units with Move (Thrust) of 9 or less receive the Speed Demon SPA. In addition, up to 2 fighters may also receive the Range Master (Long) SPA.',
         effectGroups: [
@@ -1615,7 +1615,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
     //
     {
         id: 'aerospace-superiority-squadron',
-        name: 'Aerospace Superiority Squadron',
+        name: 'Aerospace Superiority',
         description: 'Air superiority specialists',
         effectDescription: 'Prior to the start of the scenario, select up to 50% of the units and assign up to 2 of the following SPAs (in any combination): Blood Stalker, Ride the Wash, Hot Dog.',
         effectGroups: [{
@@ -1642,7 +1642,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
     //
     {
         id: 'fire-support-squadron',
-        name: 'Fire Support Squadron',
+        name: 'Fire Support',
         description: 'Fire support specialists',
         effectDescription: 'Prior to the start of the scenario, choose 2 pairs of fighters and assign one SPA each pair: Golden Goose, Ground Hugger, Hot Dog, or Shaky Stick. The two pairs may not receive the same SPA.',
         effectGroups: [{
@@ -1668,7 +1668,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
     //
     {
         id: 'strike-squadron',
-        name: 'Strike Squadron',
+        name: 'Strike',
         description: 'Strike specialists',
         effectDescription: 'Up to 50% of the units may receive the Speed Demon SPA. The remaining fighters receive the Golden Goose SPA.',
         effectGroups: [
@@ -1700,7 +1700,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
     //
     {
         id: 'electronic-warfare-squadron',
-        name: 'Electronic Warfare Squadron',
+        name: 'Electronic Warfare',
         description: 'Electronic warfare specialists',
         effectDescription: 'This squadron receives the Communications Disruption Special Command Ability, enabling it to disrupt the communications of one randomly-determined enemy lance or squadron on a 1D6 roll of 6 (persists one turn).',
         effectGroups: [{
@@ -1739,7 +1739,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
     //
     {
         id: 'transport-squadron',
-        name: 'Transport Squadron',
+        name: 'Transport',
         description: 'Transport specialists',
         effectDescription: 'Choose one SPA to apply to all Transport-role units: Dust-Off, Ride the Wash, or Wind Walker.',
         effectGroups: [{
