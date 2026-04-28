@@ -69,7 +69,9 @@ import { WsService } from '../../services/ws.service';
 import type { AdvFilterOptions, DropdownFilterOptions } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { resolveDropdownNamesFromFilter } from '../../utils/filter-name-resolution.util';
+import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
 import { normalizeMultiStateSelection } from '../../utils/unit-search-shared.util';
+import { SyntaxInputComponent } from '../syntax-input/syntax-input.component';
 
 export interface SearchForceGeneratorDialogConfig {
     gameSystem: GameSystem;
@@ -106,6 +108,7 @@ type GeneratorDialogTab = 'configuration' | 'preview';
         ForceRadarPanelComponent,
         MultiSelectDropdownComponent,
         RangeSliderComponent,
+        SyntaxInputComponent,
         TooltipDirective,
         UnitSearchAdvancedFiltersComponent,
     ],
@@ -229,13 +232,20 @@ export class SearchForceGeneratorDialogComponent {
         ));
     });
     readonly additionalFiltersHasActiveSettings = computed(() => {
+        const hasSearchText = this.filtersService.searchText().trim().length > 0;
         const filterState = this.filtersService.effectiveFilterState();
         const excludedKeys = new Set(this.additionalFiltersExcludedKeys());
         const hasActiveAdvancedFilters = [...DROPDOWN_FILTERS, ...RANGE_FILTERS].some((filter) => (
             !excludedKeys.has(filter.key) && filterState[filter.key]?.interactedWith
         ));
 
-        return hasActiveAdvancedFilters;
+        return hasSearchText || hasActiveAdvancedFilters;
+    });
+    readonly searchHighlightTokens = computed((): HighlightToken[] => {
+        const text = this.filtersService.searchText();
+        return text.length > 0
+            ? tokenizeForHighlight(text, this.gameSystem())
+            : [];
     });
     readonly currentForce = this.forceBuilderService.smartCurrentForce;
     readonly canImportCurrentForce = computed(() => (this.currentForce()?.units().length ?? 0) > 0);
@@ -458,6 +468,14 @@ export class SearchForceGeneratorDialogComponent {
 
     onTagsSelectionChange(selection: MultiStateSelection | readonly string[]): void {
         this.setMultiStateFilter('_tags', selection);
+    }
+
+    onSearchTextChange(value: string): void {
+        this.filtersService.setSearchText(value);
+    }
+
+    clearSearchText(): void {
+        this.filtersService.setSearchText('');
     }
 
     onPreventDuplicateChassisChange(event: Event): void {

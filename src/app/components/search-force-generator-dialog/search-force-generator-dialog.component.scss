@@ -390,6 +390,17 @@
     padding: 0 12px 12px;
 }
 
+.additional-search-filter {
+    grid-column: 1 / -1;
+    min-width: 0;
+}
+
+.additional-search-input {
+    display: block;
+    width: 100%;
+    min-width: 0;
+}
+
 .additional-filters-actions {
     display: flex;
     align-items: center;
