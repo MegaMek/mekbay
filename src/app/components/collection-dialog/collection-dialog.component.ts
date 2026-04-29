@@ -33,14 +33,22 @@
 
 import { ChangeDetectionStrategy, Component, ElementRef, HostListener, computed, inject, signal } from '@angular/core';
 import { DialogRef } from '@angular/cdk/dialog';
+import { ActivatedRoute, Router } from '@angular/router';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
 import type { Unit, UnitTagEntry } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
+import { GameService } from '../../services/game.service';
 import { TagsService } from '../../services/tags.service';
-import { TAG_MAX_LENGTH, validateTagName } from '../../services/tagging.service';
+import { TAG_MAX_LENGTH, TaggingService, validateTagName } from '../../services/tagging.service';
+import { ToastService } from '../../services/toast.service';
+import type { FilterState } from '../../services/unit-search-filters.model';
+import { UserStateService } from '../../services/userState.service';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { matchesSearch, parseSearchQuery } from '../../utils/search.util';
 import { compareUnitsByName } from '../../utils/sort.util';
+import { copyTextToClipboard } from '../../utils/clipboard.util';
+import { buildUnitSearchQueryParameters } from '../../utils/unit-search-url-filters.util';
 
 type CollectionRowType = 'chassis' | 'name';
 
@@ -99,9 +107,15 @@ interface QuickAddQuantityConflict {
 export class CollectionDialogComponent {
     private readonly hostElement = inject(ElementRef<HTMLElement>);
     private readonly dialogRef = inject(DialogRef<void>);
+    private readonly router = inject(Router);
+    private readonly route = inject(ActivatedRoute);
     private readonly dataService = inject(DataService);
     private readonly dialogsService = inject(DialogsService);
+    private readonly gameService = inject(GameService);
     private readonly tagsService = inject(TagsService);
+    private readonly taggingService = inject(TaggingService);
+    private readonly toastService = inject(ToastService);
+    private readonly userStateService = inject(UserStateService);
     private interactingWithChassisSuggestions = false;
     private readonly createdTagOptions = signal<string[]>([]);
 
@@ -326,6 +340,10 @@ export class CollectionDialogComponent {
         return this.resolveSelectedTagValue(this.addTag());
     });
 
+    readonly selectedHeaderTag = computed(() => this.tagFilter().trim());
+
+    readonly canUseHeaderTagActions = computed(() => this.selectedHeaderTag().length > 0);
+
     readonly canAddChassis = computed(() => {
         return !!this.selectedAddChassisOption() && this.addTag().trim().length > 0;
     });
@@ -362,6 +380,50 @@ export class CollectionDialogComponent {
     onUnitTextFilterInput(event: Event): void {
         this.unitTextFilter.set((event.target as HTMLInputElement).value);
         this.clearMissingSelections();
+    }
+
+    shareSelectedTagLink(): void {
+        const tag = this.selectedHeaderTag();
+        if (!tag) {
+            return;
+        }
+
+        const publicId = this.userStateService.publicId();
+        if (!publicId) {
+            this.toastService.showToast('You need to be registered to share tags', 'error');
+            return;
+        }
+
+        const shareUrl = this.buildTagShareUrl(publicId, tag);
+        const shareTitle = `MekBay tag: ${tag}`;
+
+        if (navigator.share) {
+            navigator.share({
+                title: shareTitle,
+                url: shareUrl,
+            }).catch(() => {
+                copyTextToClipboard(shareUrl);
+                this.toastService.showToast('Tag link copied to clipboard.', 'success');
+            });
+        } else {
+            copyTextToClipboard(shareUrl);
+            this.toastService.showToast('Tag link copied to clipboard.', 'success');
+        }
+    }
+
+    async renameSelectedTag(): Promise<void> {
+        const oldTag = this.selectedHeaderTag();
+        if (!oldTag) {
+            return;
+        }
+
+        const renamedTag = await this.taggingService.renameTag(oldTag);
+        if (!renamedTag) {
+            return;
+        }
+
+        this.replaceSelectedTagReferences(oldTag, renamedTag);
+        this.statusMessage.set(`Renamed "${oldTag}" to "${renamedTag}".`);
     }
 
     async onMassTagChange(event: Event): Promise<void> {
@@ -798,6 +860,50 @@ export class CollectionDialogComponent {
         }
 
         return this.tagOptions().find(option => option.toLowerCase() === tag.toLowerCase()) ?? tag;
+    }
+
+    private buildTagShareUrl(publicId: string, tag: string): string {
+        const filterState: FilterState = {
+            _tags: {
+                value: {
+                    [tag]: { name: tag, state: 'or', count: 1 },
+                },
+                interactedWith: true,
+            },
+        };
+        const queryParameters = buildUnitSearchQueryParameters({
+            searchText: '',
+            filterState,
+            semanticKeys: new Set<string>(),
+            selectedSort: '',
+            selectedSortDirection: 'asc',
+            expanded: false,
+            gunnery: DEFAULT_GUNNERY_SKILL,
+            piloting: DEFAULT_PILOTING_SKILL,
+            bvLimit: 0,
+            publicTagsParam: `${publicId}:${tag}`,
+        });
+        queryParameters.gs = this.gameService.currentGameSystem();
+
+        const tree = this.router.createUrlTree([], {
+            relativeTo: this.route,
+            queryParams: queryParameters,
+        });
+        return (window.location.origin || '') + this.router.serializeUrl(tree);
+    }
+
+    private replaceSelectedTagReferences(oldTag: string, newTag: string): void {
+        this.tagFilter.update(tag => this.replaceMatchingTag(tag, oldTag, newTag));
+        this.massTag.update(tag => this.replaceMatchingTag(tag, oldTag, newTag));
+        this.addTag.update(tag => this.replaceMatchingTag(tag, oldTag, newTag));
+        this.createdTagOptions.update(tags => this.addUniqueTag(
+            tags.filter(tag => tag.toLowerCase() !== oldTag.toLowerCase()),
+            newTag
+        ));
+    }
+
+    private replaceMatchingTag(tag: string, oldTag: string, newTag: string): string {
+        return tag.trim().toLowerCase() === oldTag.toLowerCase() ? newTag : tag;
     }
 
     private addUniqueTag(tags: string[], tag: string): string[] {

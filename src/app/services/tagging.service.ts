@@ -378,9 +378,9 @@ export class TaggingService {
      * 
      * @param oldTag The current tag name to rename
      * @param tagType Whether this is a 'name' or 'chassis' tag (optional - will check both if not specified)
-     * @returns true if rename was successful, false if cancelled or failed
+     * @returns The final tag name if rename was successful, or null if cancelled or failed
      */
-    async renameTag(oldTag: string, tagType?: 'name' | 'chassis'): Promise<boolean> {
+    async renameTag(oldTag: string, tagType?: 'name' | 'chassis'): Promise<string | null> {
         const newTag = await this.dialogsService.prompt(
             'Enter new tag name:',
             `Rename Tag "${oldTag}"`,
@@ -389,21 +389,21 @@ export class TaggingService {
 
         // User cancelled or entered empty string
         if (!newTag || newTag.trim().length === 0) {
-            return false;
+            return null;
         }
         
         // Validate tag name
         const validationError = validateTagName(newTag);
         if (validationError) {
             await this.dialogsService.showError(validationError, 'Invalid Tag');
-            return false;
+            return null;
         }
 
         const trimmedNew = newTag.trim();
         
         // No change (case-insensitive for same tag, but allow case changes)
         if (trimmedNew.toLowerCase() === oldTag.toLowerCase() && trimmedNew === oldTag) {
-            return false;
+            return null;
         }
 
         // Determine tag type if not specified - check both stores
@@ -420,7 +420,7 @@ export class TaggingService {
                 effectiveTagType = 'chassis';
             } else {
                 await this.dialogsService.showError('Tag not found.', 'Rename Failed');
-                return false;
+                return null;
             }
         }
 
@@ -439,7 +439,7 @@ export class TaggingService {
             
             if (!merge) {
                 // User declined merge, abort rename
-                return false;
+                return null;
             }
         }
 
@@ -448,17 +448,17 @@ export class TaggingService {
         
         if (result === 'not-found') {
             await this.dialogsService.showError('Tag not found.', 'Rename Failed');
-            return false;
+            return null;
         }
         if (result === 'conflict') {
             // Should not happen since we already prompted for merge
             await this.dialogsService.showError('Tag name conflict.', 'Rename Failed');
-            return false;
+            return null;
         }
 
         // No need to rename "other type" separately - renameTag now merges BOTH collections
 
         this.filtersService.invalidateTagsCache();
-        return true;
+        return existingTag ?? trimmedNew;
     }
 }

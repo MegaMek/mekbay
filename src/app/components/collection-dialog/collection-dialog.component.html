@@ -1,14 +1,28 @@
 <div class="collection-dialog">
     <header class="collection-header">
         <div class="title-block">
-            <label class="title-filter-control">
-                <select class="title-tag-select" [value]="tagFilter()" (change)="onTagFilterChange($event)" aria-label="Tag filter">
-                    <option value="">All Tags</option>
-                    @for (tag of allTags(); track tag) {
-                        <option [value]="tag">{{ tag }}</option>
-                    }
-                </select>
-            </label>
+            <div class="title-tag-row">
+                <label class="title-filter-control">
+                    <select class="title-tag-select" [value]="tagFilter()" (change)="onTagFilterChange($event)" aria-label="Tag filter">
+                        <option value="">All Tags</option>
+                        @for (tag of allTags(); track tag) {
+                            <option [value]="tag">{{ tag }}</option>
+                        }
+                    </select>
+                </label>
+                <div class="title-tag-actions">
+                    <button type="button" class="tag-action-button" [disabled]="!canUseHeaderTagActions()" (click)="shareSelectedTagLink()" aria-label="Share tag" title="Share tag">
+                        <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path fill-rule="evenodd" clip-rule="evenodd" d="M13.803 5.333C13.803 3.492 15.302 2 17.152 2S20.5 3.492 20.5 5.333s-1.499 3.334-3.348 3.334a3.35 3.35 0 0 1-2.385-.993l-4.635 3.156c.043.213.065.433.065.657 0 .445-.088.871-.247 1.259l5.082 3.34a3.34 3.34 0 0 1 2.12-.753c1.849 0 3.348 1.492 3.348 3.334S19.001 22 17.152 22s-3.349-1.492-3.349-3.333c0-.482.103-.941.289-1.356L9.05 13.999a3.34 3.34 0 0 1-2.202.821C4.999 14.82 3.5 13.328 3.5 11.487s1.499-3.333 3.348-3.333c1.064 0 2.011.493 2.623 1.261l4.492-3.059a3.37 3.37 0 0 1-.16-1.023Z" />
+                        </svg>
+                    </button>
+                    <button type="button" class="tag-action-button" [disabled]="!canUseHeaderTagActions()" (click)="renameSelectedTag()" aria-label="Rename tag" title="Rename tag">
+                        <svg fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 0 0 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
             <div class="collection-summary">
                 <span>{{ filteredRows().length }}/{{ allRows().length }} entries</span>
             </div>
