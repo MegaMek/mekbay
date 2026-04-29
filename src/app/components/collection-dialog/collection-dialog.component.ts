@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, HostListener, computed, inject, signal } from '@angular/core';
 import { DialogRef } from '@angular/cdk/dialog';
 import type { Unit, UnitTagEntry } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
@@ -46,6 +46,13 @@ interface PendingRemovedTag {
     quantity: number;
 }
 
+interface QuickAddQuantityConflict {
+    chassis: string;
+    tag: string;
+    currentQuantity: number;
+    nextQuantity: number;
+}
+
 @Component({
     selector: 'collection-dialog',
     standalone: true,
@@ -57,10 +64,15 @@ interface PendingRemovedTag {
     styleUrl: './collection-dialog.component.scss'
 })
 export class CollectionDialogComponent {
+    private readonly hostElement = inject(ElementRef<HTMLElement>);
     private readonly dialogRef = inject(DialogRef<void>);
     private readonly dataService = inject(DataService);
     private readonly dialogsService = inject(DialogsService);
     private readonly tagsService = inject(TagsService);
+    private interactingWithChassisSuggestions = false;
+    private readonly quickAddCreatedTags = signal<string[]>([]);
+
+    readonly addNewTagOptionValue = '__add_new_tag__';
 
     readonly tagFilter = signal('');
     readonly unitTextFilter = signal('');
@@ -71,6 +83,7 @@ export class CollectionDialogComponent {
     readonly addTag = signal('');
     readonly addQuantity = signal(1);
     readonly quickAddOpen = signal(false);
+    readonly showChassisSuggestions = signal(false);
     readonly statusMessage = signal('');
     readonly pendingRemovedTags = signal<Record<string, PendingRemovedTag>>({});
 
@@ -173,19 +186,6 @@ export class CollectionDialogComponent {
         return rows;
     });
 
-    readonly totalVisibleTags = computed(() => {
-        const tags = new Map<string, string>();
-        for (const row of this.filteredRows()) {
-            for (const tag of row.tags) {
-                if (!tags.has(tag.lowerTag)) {
-                    tags.set(tag.lowerTag, tag.tag);
-                }
-            }
-        }
-
-        return tags.size;
-    });
-
     readonly selectedCount = computed(() => {
         const selected = this.selectedRows();
         return this.filteredRows().filter(row => selected.has(row.key)).length;
@@ -255,6 +255,47 @@ export class CollectionDialogComponent {
         return this.chassisOptions().find(option => option.inputLabel.toLowerCase() === text) ?? null;
     });
 
+    readonly quickAddQuantityConflict = computed((): QuickAddQuantityConflict | null => {
+        this.tagsService.version();
+        this.dataService.tagsVersion();
+        const option = this.selectedAddChassisOption();
+        const tag = this.addTag().trim();
+        if (!option || !tag) {
+            return null;
+        }
+
+        const existingTag = this.findChassisTag(option.unit, tag);
+        const nextQuantity = this.addQuantity();
+        if (!existingTag || existingTag.quantity === nextQuantity) {
+            return null;
+        }
+
+        return {
+            chassis: option.inputLabel,
+            tag: existingTag.tag,
+            currentQuantity: existingTag.quantity,
+            nextQuantity
+        };
+    });
+
+    readonly quickAddTagOptions = computed(() => {
+        const tags = this.allTags();
+        const lowerTags = new Set(tags.map(tag => tag.toLowerCase()));
+        const createdTags = this.quickAddCreatedTags()
+            .filter(tag => !lowerTags.has(tag.toLowerCase()));
+
+        return [...createdTags, ...tags];
+    });
+
+    readonly selectedQuickAddTagValue = computed(() => {
+        const selectedTag = this.addTag();
+        if (!selectedTag) {
+            return '';
+        }
+
+        return this.quickAddTagOptions().find(tag => tag.toLowerCase() === selectedTag.toLowerCase()) ?? selectedTag;
+    });
+
     readonly canAddChassis = computed(() => {
         return !!this.selectedAddChassisOption() && this.addTag().trim().length > 0;
     });
@@ -266,7 +307,11 @@ export class CollectionDialogComponent {
     }
 
     toggleQuickAdd(): void {
-        this.quickAddOpen.update(open => !open);
+        const nextOpen = !this.quickAddOpen();
+        this.quickAddOpen.set(nextOpen);
+        if (!nextOpen) {
+            this.showChassisSuggestions.set(false);
+        }
     }
 
     onTagFilterChange(event: Event): void {
@@ -279,8 +324,8 @@ export class CollectionDialogComponent {
         this.clearMissingSelections();
     }
 
-    onMassTagInput(event: Event): void {
-        this.massTag.set((event.target as HTMLInputElement).value);
+    onMassTagChange(event: Event): void {
+        this.massTag.set((event.target as HTMLSelectElement).value);
     }
 
     onMassQuantityInput(event: Event): void {
@@ -289,10 +334,73 @@ export class CollectionDialogComponent {
 
     onAddChassisInput(event: Event): void {
         this.addChassisText.set((event.target as HTMLInputElement).value);
+        this.showChassisSuggestions.set(true);
     }
 
-    onAddTagInput(event: Event): void {
-        this.addTag.set((event.target as HTMLInputElement).value);
+    onAddChassisFocus(): void {
+        this.showChassisSuggestions.set(true);
+    }
+
+    onAddChassisBlur(event: FocusEvent): void {
+        if (this.interactingWithChassisSuggestions || this.isInChassisSuggestionArea(event.relatedTarget)) {
+            return;
+        }
+
+        this.showChassisSuggestions.set(false);
+    }
+
+    onChassisSuggestionsPointerDown(): void {
+        this.interactingWithChassisSuggestions = true;
+    }
+
+    @HostListener('document:pointerdown', ['$event'])
+    onDocumentPointerDown(event: PointerEvent): void {
+        if (!this.showChassisSuggestions() || this.isInChassisSuggestionArea(event.target)) {
+            return;
+        }
+
+        this.showChassisSuggestions.set(false);
+    }
+
+    @HostListener('document:pointerup')
+    @HostListener('document:pointercancel')
+    onDocumentPointerEnd(): void {
+        this.interactingWithChassisSuggestions = false;
+    }
+
+    async onAddTagChange(event: Event): Promise<void> {
+        const select = event.target as HTMLSelectElement;
+        if (select.value !== this.addNewTagOptionValue) {
+            this.addTag.set(select.value);
+            return;
+        }
+
+        const previousTag = this.addTag();
+        select.value = previousTag;
+        const newTag = await this.dialogsService.prompt(
+            'Enter the new tag name:',
+            'Add New Tag',
+            '',
+            `Maximum ${TAG_MAX_LENGTH} characters.`
+        );
+
+        const trimmedTag = newTag?.trim() ?? '';
+        if (!trimmedTag) {
+            this.addTag.set(previousTag);
+            return;
+        }
+
+        const validationError = validateTagName(trimmedTag);
+        if (validationError) {
+            this.addTag.set(previousTag);
+            await this.dialogsService.showError(validationError, 'Invalid Tag');
+            return;
+        }
+
+        const selectedTag = this.allTags().find(tag => tag.toLowerCase() === trimmedTag.toLowerCase()) ?? trimmedTag;
+        this.quickAddCreatedTags.update(tags => this.addUniqueTag(tags, selectedTag));
+        this.addTag.set(selectedTag);
+        select.value = selectedTag;
     }
 
     onAddQuantityInput(event: Event): void {
@@ -332,14 +440,19 @@ export class CollectionDialogComponent {
         try {
             await this.tagsService.modifyTag([row.unit], tag.tag, row.rowType, 'add', quantity);
             this.clearPendingRemovedTags([tag.removalKey]);
-            this.statusMessage.set(`Restored ${tag.tag} to ${row.title}.`);
+            this.statusMessage.set(`Restored "${tag.tag}" to "${row.title}".`);
         } catch {
-            this.statusMessage.set(`Could not restore ${tag.tag} to ${row.title}.`);
+            this.statusMessage.set(`Could not restore "${tag.tag}" to "${row.title}".`);
         }
     }
 
     selectSuggestion(option: ChassisOption): void {
         this.addChassisText.set(option.inputLabel);
+        this.showChassisSuggestions.set(false);
+    }
+
+    isSelectedAddChassisOption(option: ChassisOption): boolean {
+        return this.selectedAddChassisOption()?.key === option.key;
     }
 
     toggleRow(row: CollectionRow, event: Event): void {
@@ -402,7 +515,7 @@ export class CollectionDialogComponent {
 
         this.clearPendingRemovalsForRows(selectedRows, tag);
 
-        this.statusMessage.set(`Added ${tag} to ${selectedRows.length} selected entries.`);
+        this.statusMessage.set(`Added "${tag}" to ${selectedRows.length} selected entries.`);
     }
 
     async removeTagFromSelected(): Promise<void> {
@@ -414,7 +527,7 @@ export class CollectionDialogComponent {
         const selectedRows = this.getSelectedVisibleRows();
         const pendingTags = this.createPendingRemovedTagsForRows(selectedRows, tag);
         if (pendingTags.length === 0) {
-            this.statusMessage.set(`No selected entries have ${tag}.`);
+            this.statusMessage.set(`No selected entries have "${tag}".`);
             return;
         }
 
@@ -425,23 +538,40 @@ export class CollectionDialogComponent {
                 await this.tagsService.modifyTag(units, tag, rowType, 'remove');
             }
 
-            this.statusMessage.set(`Marked ${tag} for removal from ${pendingTags.length} selected entries.`);
+            this.statusMessage.set(`Marked "${tag}" for removal from ${pendingTags.length} selected entries.`);
         } catch {
             this.clearPendingRemovedTags(pendingTags.map(pendingTag => pendingTag.key));
-            this.statusMessage.set(`Could not remove ${tag} from the selected entries.`);
+            this.statusMessage.set(`Could not remove "${tag}" from the selected entries.`);
         }
     }
 
     async addChassisTag(): Promise<void> {
         const option = this.selectedAddChassisOption();
         const tag = this.addTag().trim();
+        const quantityConflict = this.quickAddQuantityConflict();
         if (!option || !this.validateLocalTag(tag)) {
             return;
         }
 
+        if (quantityConflict) {
+            const confirmed = await this.dialogsService.requestConfirmation(
+                `${quantityConflict.chassis} already has "${quantityConflict.tag}" with quantity ${quantityConflict.currentQuantity}. Adding it again will change quantity to ${quantityConflict.nextQuantity}.`,
+                'Update Tag Quantity',
+                'info'
+            );
+            if (!confirmed) {
+                this.statusMessage.set(`No changes made to "${quantityConflict.tag}" on ${option.inputLabel}.`);
+                return;
+            }
+        }
+
         await this.tagsService.modifyTag([option.unit], tag, 'chassis', 'add', this.addQuantity());
         this.clearPendingRemovedTags([this.getRemovalKey(this.getRowKey('chassis', option.unit), tag)]);
-        this.statusMessage.set(`Added ${tag} to ${option.inputLabel}.`);
+        if (quantityConflict) {
+            this.statusMessage.set(`Updated "${quantityConflict.tag}" on ${option.inputLabel} from ${quantityConflict.currentQuantity} to ${quantityConflict.nextQuantity}.`);
+        } else {
+            this.statusMessage.set(`Added "${tag}" to ${option.inputLabel}.`);
+        }
         this.addChassisText.set('');
     }
 
@@ -581,6 +711,32 @@ export class CollectionDialogComponent {
 
     private getUnitDisplayName(unit: Unit): string {
         return unit.model ? `${unit.chassis} ${unit.model}` : unit.chassis;
+    }
+
+    private addUniqueTag(tags: string[], tag: string): string[] {
+        if (tags.some(existingTag => existingTag.toLowerCase() === tag.toLowerCase())) {
+            return tags;
+        }
+
+        return [tag, ...tags];
+    }
+
+    private isInChassisSuggestionArea(target: EventTarget | null): boolean {
+        if (!(target instanceof Node)) {
+            return false;
+        }
+
+        const element = target instanceof Element ? target : target.parentElement;
+        if (!element || !this.hostElement.nativeElement.contains(element)) {
+            return false;
+        }
+
+        return !!element.closest('.chassis-field, .chassis-suggestions');
+    }
+
+    private findChassisTag(unit: Unit, tag: string): UnitTagEntry | null {
+        const lowerTag = tag.trim().toLowerCase();
+        return (unit._chassisTags ?? []).find(entry => entry.tag.trim().toLowerCase() === lowerTag) ?? null;
     }
 
     private parseQuantity(event: Event): number {

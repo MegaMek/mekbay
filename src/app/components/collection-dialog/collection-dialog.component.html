@@ -11,7 +11,6 @@
             </label>
             <div class="collection-summary">
                 <span>{{ filteredRows().length }}/{{ allRows().length }} entries</span>
-                <span>{{ totalVisibleTags() }}/{{ allTags().length }} tags</span>
             </div>
         </div>
 
@@ -35,12 +34,6 @@
             </svg>
         </button>
     </header>
-
-    <datalist id="collection-tag-options">
-        @for (tag of allTags(); track tag) {
-            <option [value]="tag"></option>
-        }
-    </datalist>
 
     <main class="collection-body">
         <div class="collection-table" role="table">
@@ -150,14 +143,16 @@
                     <div class="bulk-controls">
                         <label class="field compact">
                             <span>TAG</span>
-                            <input
-                                type="text"
-                                class="bt-input"
-                                list="collection-tag-options"
-                                [maxLength]="32"
+                            <select
+                                class="bt-select tag-field"
                                 [value]="massTag()"
-                                (input)="onMassTagInput($event)"
-                            />
+                                (change)="onMassTagChange($event)"
+                            >
+                                <option value="">Select Tag</option>
+                                @for (tag of allTags(); track tag) {
+                                    <option [value]="tag">{{ tag }}</option>
+                                }
+                            </select>
                         </label>
                         <label class="field quantity-field">
                             <span>QTY</span>
@@ -183,7 +178,7 @@
                     xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!quickAddOpen()">
                     <path d="M0 2l5 6 5-6z" />
                 </svg>
-                <span class="panel-title">Quick Add Chassis</span>
+                <span class="panel-title">Quick Add Chassis Tag</span>
             </button>
 
             @if (quickAddOpen()) {
@@ -192,26 +187,49 @@
                         <label class="field chassis-field">
                             <span>CHASSIS</span>
                             <input
+                                id="quick-add-chassis"
                                 type="text"
                                 class="bt-input"
-                                list="collection-chassis-options"
+                                autocomplete="off"
                                 [value]="addChassisText()"
                                 (input)="onAddChassisInput($event)"
+                                (focus)="onAddChassisFocus()"
+                                (blur)="onAddChassisBlur($event)"
                             />
                         </label>
+
+                        @if (showChassisSuggestions() && chassisSuggestions().length > 0 && addChassisText().trim().length > 0) {
+                            <div class="suggestion-strip chassis-suggestions" role="listbox" aria-label="Chassis suggestions" (pointerdown)="onChassisSuggestionsPointerDown()">
+                                @for (option of chassisSuggestions(); track option.key) {
+                                    <button
+                                        type="button"
+                                        class="suggestion-button"
+                                        role="option"
+                                        [class.selected]="isSelectedAddChassisOption(option)"
+                                        [attr.aria-selected]="isSelectedAddChassisOption(option)"
+                                        (click)="selectSuggestion(option)">
+                                        <span>{{ option.inputLabel }}</span>
+                                        <small>{{ option.unitCount }}</small>
+                                    </button>
+                                }
+                            </div>
+                        }
                         <label class="field tag-field">
                             <span>TAG</span>
-                            <input
-                                type="text"
-                                class="bt-input"
-                                list="collection-tag-options"
-                                [maxLength]="32"
-                                [value]="addTag()"
-                                (input)="onAddTagInput($event)"
-                            />
+                            <select
+                                class="bt-select tag-field"
+                                [value]="selectedQuickAddTagValue()"
+                                (change)="onAddTagChange($event)"
+                            >
+                                <option value="">Select Tag</option>
+                                <option [value]="addNewTagOptionValue">+ Add new tag...</option>
+                                @for (tag of quickAddTagOptions(); track tag) {
+                                    <option [value]="tag" [selected]="tag === selectedQuickAddTagValue()">{{ tag }}</option>
+                                }
+                            </select>
                         </label>
                         <label class="field quantity-field">
-                            <span>QTY</span>
+                            <span>QUANTITY</span>
                             <input
                                 type="number"
                                 class="bt-input quantity-input"
@@ -221,28 +239,12 @@
                                 (input)="onAddQuantityInput($event)"
                             />
                         </label>
+
                         <button type="button" class="bt-button primary add-button" [disabled]="!canAddChassis()" (click)="addChassisTag()">ADD</button>
                     </div>
-
-                    @if (chassisSuggestions().length > 0 && addChassisText().trim().length > 0) {
-                        <div class="suggestion-strip">
-                            @for (option of chassisSuggestions(); track option.key) {
-                                <button type="button" class="suggestion-button" (click)="selectSuggestion(option)">
-                                    <span>{{ option.inputLabel }}</span>
-                                    <small>{{ option.unitCount }}</small>
-                                </button>
-                            }
-                        </div>
-                    }
                 </div>
             }
         </section>
-
-        <datalist id="collection-chassis-options">
-            @for (option of chassisOptions(); track option.key) {
-                <option [value]="option.inputLabel"></option>
-            }
-        </datalist>
 
         @if (statusMessage()) {
             <div class="status-line">{{ statusMessage() }}</div>
