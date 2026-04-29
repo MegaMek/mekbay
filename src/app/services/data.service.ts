@@ -253,11 +253,11 @@ export class DataService {
         }
 
         // Wire up TagsService callbacks
-        this.tagsService.setRefreshUnitsCallback((tagData) => {
-            this.applyTagDataToUnits(tagData);
+        this.tagsService.setRefreshUnitsCallback((tagData, options) => {
+            this.applyTagDataToUnits(tagData, options);
         });
-        this.tagsService.setNotifyStoreUpdatedCallback(() => {
-            this.notifyStoreUpdated('update', 'tags');
+        this.tagsService.setNotifyStoreUpdatedCallback((options) => {
+            this.notifyStoreUpdated('update', 'tags', options);
         });
 
         // Register WS message handlers for tag sync (handled by TagsService)
@@ -281,9 +281,12 @@ export class DataService {
      * 
      * V3 format: tags = { tagId: { label, units: {unitName: {}}, chassis: {chassisKey: {}} } }
      */
-    private applyTagDataToUnits(tagData: TagData | null): void {
-        this.unitRuntimeService.applyTagDataToUnits(this.getUnits(), tagData);
-        this.tagsVersion.set(this.tagsVersion() + 1);
+    private applyTagDataToUnits(tagData: TagData | null, options?: { searchIndexChanged?: boolean }): void {
+        const searchIndexChanged = options?.searchIndexChanged ?? true;
+        this.unitRuntimeService.applyTagDataToUnits(this.getUnits(), tagData, { rebuildTagSearchIndex: searchIndexChanged });
+        if (searchIndexChanged) {
+            this.tagsVersion.set(this.tagsVersion() + 1);
+        }
     }
 
     /**
@@ -311,7 +314,7 @@ export class DataService {
             if (action === 'update' && context === 'tags') {
                 // Reload tag data from TagsService and apply to units
                 const tagData = await this.tagsService.getTagData();
-                this.applyTagDataToUnits(tagData);
+                this.applyTagDataToUnits(tagData, msg.meta);
             }
         } catch (err) {
             this.logger.error('Error handling store update broadcast: ' + err);

@@ -42,10 +42,11 @@ import { DataService } from './data.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 import { OverlayManagerService } from './overlay-manager.service';
 import { DialogsService } from './dialogs.service';
-import { TagSelectorComponent, type TagSelectionEvent } from '../components/tag-selector/tag-selector.component';
+import { TagSelectorComponent, type TagSelectionEvent, type TagQuantityChangeEvent } from '../components/tag-selector/tag-selector.component';
 import { InputDialogComponent, type InputDialogData } from '../components/input-dialog/input-dialog.component';
 import { TagsService } from './tags.service';
 import { PublicTagsService } from './public-tags.service';
+import type { TagData } from './db.service';
 
 // const PRECONFIGURED_TAGS = [];
 
@@ -167,25 +168,29 @@ export class TaggingService {
         componentRef.instance.publicTags.set(Array.from(publicTagsSet.values()));
 
         // Calculate tag states for all selected units
-        const updateTagStates = () => {
+        const updateTagStates = async () => {
             const { fullyAssigned: nameFullyAssigned, partiallyAssigned: namePartiallyAssigned } = 
                 this.calculateTagStates(units, 'name');
             const { fullyAssigned: chassisFullyAssigned, partiallyAssigned: chassisPartiallyAssigned } = 
                 this.calculateTagStates(units, 'chassis');
+            const nameTagQuantities = await this.calculateTagQuantities(units, 'name');
+            const chassisTagQuantities = await this.calculateTagQuantities(units, 'chassis');
             
             // Update signals to trigger reactivity
             componentRef.instance.assignedNameTags.set([...nameFullyAssigned]);
             componentRef.instance.partialNameTags.set([...namePartiallyAssigned]);
             componentRef.instance.assignedChassisTags.set([...chassisFullyAssigned]);
             componentRef.instance.partialChassisTags.set([...chassisPartiallyAssigned]);
+            componentRef.instance.nameTagQuantities.set(nameTagQuantities);
+            componentRef.instance.chassisTagQuantities.set(chassisTagQuantities);
         };
 
-        updateTagStates();
+        await updateTagStates();
 
         // Handle tag removal - cleanup when overlay closes
         outputToObservable(componentRef.instance.tagRemoved).pipe(takeUntil(closed)).subscribe(async (event: TagSelectionEvent) => {
             await this.tagsService.modifyTag(units, event.tag, event.tagType, 'remove');
-            updateTagStates();
+            await updateTagStates();
             this.filtersService.invalidateTagsCache();
         });
 
@@ -243,8 +248,14 @@ export class TaggingService {
             }
 
             await this.tagsService.modifyTag(units, selectedTag, tagType, 'add');
-            updateTagStates();
+            await updateTagStates();
             this.filtersService.invalidateTagsCache();
+        });
+
+        // Handle tag quantity edits
+        outputToObservable(componentRef.instance.quantityChanged).pipe(takeUntil(closed)).subscribe(async (event: TagQuantityChangeEvent) => {
+            await this.tagsService.setTagQuantity(units, event.tag, event.tagType, event.quantity);
+            await updateTagStates();
         });
 
         // Handle unsubscribe from public tag
@@ -282,8 +293,8 @@ export class TaggingService {
         
         for (const unit of units) {
             const tags = tagType === 'name' ? (unit._nameTags || []) : (unit._chassisTags || []);
-            for (const tag of tags) {
-                const lowerTag = tag.toLowerCase();
+            for (const entry of tags) {
+                const lowerTag = entry.tag.toLowerCase();
                 tagCounts.set(lowerTag, (tagCounts.get(lowerTag) || 0) + 1);
             }
         }
@@ -296,9 +307,9 @@ export class TaggingService {
             let originalTag = lowerTag;
             for (const unit of units) {
                 const tags = tagType === 'name' ? (unit._nameTags || []) : (unit._chassisTags || []);
-                const found = tags.find(t => t.toLowerCase() === lowerTag);
+                const found = tags.find(t => t.tag.toLowerCase() === lowerTag);
                 if (found) {
-                    originalTag = found;
+                    originalTag = found.tag;
                     break;
                 }
             }
@@ -311,6 +322,46 @@ export class TaggingService {
         }
 
         return { fullyAssigned, partiallyAssigned };
+    }
+
+    /**
+     * Build a lowercase tag-id keyed map of quantities for selected units.
+     * Quantity defaults to 1 when not explicitly stored.
+     */
+    private async calculateTagQuantities(units: Unit[], tagType: 'name' | 'chassis'): Promise<Record<string, number>> {
+        const result: Record<string, number> = {};
+        if (units.length === 0) {
+            return result;
+        }
+
+        const tagData = await this.tagsService.getTagData();
+        const selectedUnitNames = new Set(units.map(unit => unit.name));
+        const selectedChassisKeys = new Set(units.map(unit => TagsService.getChassisTagKey(unit)));
+
+        for (const [tagId, entry] of Object.entries(tagData.tags)) {
+            if (tagType === 'name') {
+                for (const [unitName, unitTagData] of Object.entries(entry.units)) {
+                    if (selectedUnitNames.has(unitName)) {
+                        result[tagId] = this.getUnitTagQuantity(unitTagData);
+                        break;
+                    }
+                }
+            } else {
+                for (const [chassisKey, chassisTagData] of Object.entries(entry.chassis)) {
+                    if (selectedChassisKeys.has(chassisKey)) {
+                        result[tagId] = this.getUnitTagQuantity(chassisTagData);
+                        break;
+                    }
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private getUnitTagQuantity(unitTagData: TagData['tags'][string]['units'][string]): number {
+        const quantity = unitTagData?.q;
+        return quantity && quantity > 0 ? quantity : 1;
     }
 
     /**

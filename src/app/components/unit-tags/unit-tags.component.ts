@@ -33,9 +33,9 @@
 
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import type { Unit, PublicTagInfo } from '../../models/units.model';
-import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
+import type { Unit, PublicTagInfo, UnitTagEntry } from '../../models/units.model';
 import { PublicTagsService } from '../../services/public-tags.service';
+import { TagsService } from '../../services/tags.service';
 
 /** Event data emitted when the tag button is clicked */
 export interface TagClickEvent {
@@ -58,8 +58,8 @@ export interface TagClickEvent {
     styleUrl: './unit-tags.component.css'
 })
 export class UnitTagsComponent {
-    private filtersService = inject(UnitSearchFiltersService);
     private publicTagsService = inject(PublicTagsService);
+    private tagsService = inject(TagsService);
     unit = input.required<Unit>();
 
     /** 
@@ -72,30 +72,33 @@ export class UnitTagsComponent {
     /** Emitted when the add/edit tag button is clicked. Passes both the unit and MouseEvent for overlay positioning. */
     tagClick = output<TagClickEvent>();
 
-    /** Name tags derived from unit, invalidated when tagsVersion changes */
-    nameTags = computed(() => {
-        this.filtersService.tagsVersion(); // dependency for cache invalidation
+    /** Quantity-aware name tags for full-mode rendering */
+    nameTagEntries = computed((): UnitTagEntry[] => {
+        this.tagsService.version();
         return [...(this.unit()._nameTags ?? [])];
     });
 
-    /** Chassis tags derived from unit, invalidated when tagsVersion changes */
-    chassisTags = computed(() => {
-        this.filtersService.tagsVersion(); // dependency for cache invalidation
+    /** Quantity-aware chassis tags for full-mode rendering */
+    chassisTagEntries = computed((): UnitTagEntry[] => {
+        this.tagsService.version();
         return [...(this.unit()._chassisTags ?? [])];
     });
 
     /** Public tags from other users (temporary or subscribed) */
     publicTags = computed((): PublicTagInfo[] => {
-        this.filtersService.tagsVersion(); // dependency for cache invalidation
         this.publicTagsService.version(); // dependency for public tags updates
         return this.publicTagsService.getPublicTagsForUnit(this.unit());
     });
 
-    totalTagCount = computed(() => this.nameTags().length + this.chassisTags().length + this.publicTags().length);
+    totalTagCount = computed(() => this.nameTagEntries().length + this.chassisTagEntries().length + this.publicTags().length);
     hasTags = computed(() => this.totalTagCount() > 0);
 
     onTagClick(event: MouseEvent): void {
         event.stopPropagation();
         this.tagClick.emit({ unit: this.unit(), event });
+    }
+
+    formatTagEntry(entry: UnitTagEntry): string {
+        return entry.quantity > 1 ? `${entry.tag} (${entry.quantity})` : entry.tag;
     }
 }

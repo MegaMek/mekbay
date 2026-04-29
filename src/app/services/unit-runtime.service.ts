@@ -33,9 +33,9 @@
 
 import { Injectable, inject } from '@angular/core';
 import type { Era } from '../models/eras.model';
-import type { Unit, UnitComponent } from '../models/units.model';
+import type { Unit, UnitComponent, UnitTagEntry } from '../models/units.model';
 import type { EquipmentMap } from '../models/equipment.model';
-import type { TagData } from './db.service';
+import type { TagData, UnitTagData } from './db.service';
 import { TagsService } from './tags.service';
 import { PublicTagsService } from './public-tags.service';
 import { MulUnitSourcesCatalogService } from './catalogs/mul-unit-sources-catalog.service';
@@ -88,20 +88,37 @@ export class UnitRuntimeService {
         this.applyTagDataToUnits(units, tagData);
     }
 
-    public applyTagDataToUnits(units: Unit[], tagData: TagData | null): void {
+    public applyTagDataToUnits(
+        units: Unit[],
+        tagData: TagData | null,
+        options?: { rebuildTagSearchIndex?: boolean }
+    ): void {
         const tags = tagData?.tags || {};
 
         for (const unit of units) {
             const chassisKey = TagsService.getChassisTagKey(unit);
             unit._nameTags = Object.values(tags)
                 .filter(entry => entry.units[unit.name] !== undefined)
-                .map(entry => entry.label);
+                .map(entry => ({
+                    tag: entry.label,
+                    quantity: this.getTagQuantity(entry.units[unit.name])
+                } as UnitTagEntry));
             unit._chassisTags = Object.values(tags)
                 .filter(entry => entry.chassis[chassisKey] !== undefined)
-                .map(entry => entry.label);
+                .map(entry => ({
+                    tag: entry.label,
+                    quantity: this.getTagQuantity(entry.chassis[chassisKey])
+                } as UnitTagEntry));
         }
 
-        this.unitSearchIndexService.rebuildTagSearchIndex(units);
+        if (options?.rebuildTagSearchIndex ?? true) {
+            this.unitSearchIndexService.rebuildTagSearchIndex(units);
+        }
+    }
+
+    private getTagQuantity(unitTagData: UnitTagData | undefined): number {
+        const quantity = unitTagData?.q;
+        return quantity && quantity > 0 ? quantity : 1;
     }
 
     public applyPublicTagsToUnits(units: Unit[]): void {

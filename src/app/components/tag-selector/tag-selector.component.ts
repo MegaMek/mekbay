@@ -45,6 +45,13 @@ export interface TagSelectionEvent {
     tagType: 'name' | 'chassis';
 }
 
+/** Event data for tag quantity edits */
+export interface TagQuantityChangeEvent {
+    tag: string;
+    tagType: 'name' | 'chassis';
+    quantity: number;
+}
+
 @Component({
     selector: 'tag-selector',
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -59,6 +66,10 @@ export class TagSelectorComponent {
     chassisTags = signal<string[]>([]);
     /** Public tags from other users (read-only) */
     publicTags = signal<PublicTagInfo[]>([]);
+    /** Per-tag quantity values for unit-specific tags, keyed by lowercase tag id */
+    nameTagQuantities = signal<Record<string, number>>({});
+    /** Per-tag quantity values for chassis-wide tags, keyed by lowercase tag id */
+    chassisTagQuantities = signal<Record<string, number>>({});
     /** Tags assigned to ALL selected units via name */
     assignedNameTags = signal<string[]>([]);
     /** Tags assigned to SOME (but not all) selected units via name */
@@ -71,6 +82,7 @@ export class TagSelectorComponent {
     tagSelected = output<TagSelectionEvent>();
     tagRemoved = output<TagSelectionEvent>();
     unsubscribeRequested = output<PublicTagInfo>();
+    quantityChanged = output<TagQuantityChangeEvent>();
 
     onNameTagClick(tag: string) {
         // Don't allow clicking if covered by chassis tag or already fully assigned
@@ -108,6 +120,67 @@ export class TagSelectorComponent {
     onUnsubscribe(pt: PublicTagInfo, event: MouseEvent) {
         event.stopPropagation();
         this.unsubscribeRequested.emit(pt);
+    }
+
+    getNameTagQuantity(tag: string): number {
+        return this.nameTagQuantities()[tag.toLowerCase()] ?? 1;
+    }
+
+    getChassisTagQuantity(tag: string): number {
+        return this.chassisTagQuantities()[tag.toLowerCase()] ?? 1;
+    }
+
+    onNameTagQuantityInput(tag: string, event: Event): void {
+        const quantity = this.parseQuantityFromEvent(event);
+        if (quantity == null) {
+            return;
+        }
+
+        const key = tag.toLowerCase();
+        this.nameTagQuantities.update(current => ({ ...current, [key]: quantity }));
+    }
+
+    onChassisTagQuantityInput(tag: string, event: Event): void {
+        const quantity = this.parseQuantityFromEvent(event);
+        if (quantity == null) {
+            return;
+        }
+
+        const key = tag.toLowerCase();
+        this.chassisTagQuantities.update(current => ({ ...current, [key]: quantity }));
+    }
+
+    onNameTagQuantityChange(tag: string, event: Event): void {
+        const quantity = this.parseQuantityFromEvent(event);
+        if (quantity == null) {
+            return;
+        }
+
+        this.quantityChanged.emit({ tag, tagType: 'name', quantity });
+    }
+
+    onChassisTagQuantityChange(tag: string, event: Event): void {
+        const quantity = this.parseQuantityFromEvent(event);
+        if (quantity == null) {
+            return;
+        }
+
+        this.quantityChanged.emit({ tag, tagType: 'chassis', quantity });
+    }
+
+    private parseQuantityFromEvent(event: Event): number | null {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement)) {
+            return null;
+        }
+
+        const parsed = Number.parseInt(target.value, 10);
+        const quantity = Number.isFinite(parsed) ? Math.max(1, parsed) : 1;
+        if (target.value !== String(quantity)) {
+            target.value = String(quantity);
+        }
+
+        return quantity;
     }
 
     /** Tag is assigned to ALL selected units */

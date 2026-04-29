@@ -67,16 +67,16 @@ export class TagsService {
     public readonly version = signal(0);
 
     /** Callback to refresh unit tags on units - set by DataService */
-    private refreshUnitsCallback: ((tagData: TagData | null) => void) | null = null;
+    private refreshUnitsCallback: ((tagData: TagData | null, options?: { searchIndexChanged?: boolean }) => void) | null = null;
 
     /** Callback to notify other tabs - set by DataService */
-    private notifyStoreUpdatedCallback: (() => void) | null = null;
+    private notifyStoreUpdatedCallback: ((options?: { searchIndexChanged?: boolean }) => void) | null = null;
 
     /**
      * Set the callback to refresh unit tags on units.
      * This is called by DataService to wire up the connection.
      */
-    public setRefreshUnitsCallback(callback: (tagData: TagData | null) => void): void {
+    public setRefreshUnitsCallback(callback: (tagData: TagData | null, options?: { searchIndexChanged?: boolean }) => void): void {
         this.refreshUnitsCallback = callback;
     }
 
@@ -84,7 +84,7 @@ export class TagsService {
      * Set the callback to notify other tabs of changes.
      * This is called by DataService to wire up the connection.
      */
-    public setNotifyStoreUpdatedCallback(callback: () => void): void {
+    public setNotifyStoreUpdatedCallback(callback: (options?: { searchIndexChanged?: boolean }) => void): void {
         this.notifyStoreUpdatedCallback = callback;
     }
 
@@ -217,11 +217,13 @@ export class TagsService {
         units: Unit[], 
         tag: string, 
         tagType: 'name' | 'chassis',
-        action: 'add' | 'remove'
+        action: 'add' | 'remove',
+        quantity: number = 1
     ): Promise<void> {
         const tagData = await this.getTagData();
         const trimmedTag = tag.trim();
         const tagId = trimmedTag.toLowerCase();
+        const normalizedQuantity = this.normalizeQuantity(quantity);
         const now = Date.now();
         const ops: TagOp[] = [];
 
@@ -246,8 +248,25 @@ export class TagsService {
 
                     // Add to chassis tags if not already present
                     if (!this.hasChassisTag(tagData, tagId, chassisKey)) {
-                        this.addChassisTag(tagData, trimmedTag, chassisKey);
-                        ops.push({ k: chassisKey, t: trimmedTag, c: 1, a: 1, ts: now });
+                        this.addChassisTag(tagData, trimmedTag, chassisKey, normalizedQuantity);
+                        ops.push({
+                            k: chassisKey,
+                            t: trimmedTag,
+                            c: 1,
+                            a: 1,
+                            ts: now,
+                            q: normalizedQuantity > 1 ? normalizedQuantity : undefined
+                        });
+                    } else if (!this.isChassisTagQuantity(tagData, tagId, chassisKey, normalizedQuantity)) {
+                        this.setChassisTagQuantity(tagData, tagId, chassisKey, normalizedQuantity);
+                        ops.push({
+                            k: chassisKey,
+                            t: trimmedTag,
+                            c: 1,
+                            a: 1,
+                            ts: now,
+                            q: normalizedQuantity > 1 ? normalizedQuantity : undefined
+                        });
                     }
                 } else {
                     // Remove from chassis tags
@@ -263,8 +282,25 @@ export class TagsService {
 
                 if (action === 'add') {
                     if (!this.hasUnitTag(tagData, tagId, unit.name)) {
-                        this.addUnitTag(tagData, trimmedTag, unit.name);
-                        ops.push({ k: unit.name, t: trimmedTag, c: 0, a: 1, ts: now });
+                        this.addUnitTag(tagData, trimmedTag, unit.name, normalizedQuantity);
+                        ops.push({
+                            k: unit.name,
+                            t: trimmedTag,
+                            c: 0,
+                            a: 1,
+                            ts: now,
+                            q: normalizedQuantity > 1 ? normalizedQuantity : undefined
+                        });
+                    } else if (!this.isUnitTagQuantity(tagData, tagId, unit.name, normalizedQuantity)) {
+                        this.setUnitTagQuantity(tagData, tagId, unit.name, normalizedQuantity);
+                        ops.push({
+                            k: unit.name,
+                            t: trimmedTag,
+                            c: 0,
+                            a: 1,
+                            ts: now,
+                            q: normalizedQuantity > 1 ? normalizedQuantity : undefined
+                        });
                     }
                 } else {
                     if (this.hasUnitTag(tagData, tagId, unit.name)) {
@@ -288,11 +324,96 @@ export class TagsService {
 
         // Update cached data and notify
         this.cachedTagData = tagData;
-        this.refreshUnitsCallback?.(tagData);
-        this.notifyStoreUpdatedCallback?.();
+        this.refreshUnitsCallback?.(tagData, { searchIndexChanged: true });
+        this.notifyStoreUpdatedCallback?.({ searchIndexChanged: true });
         this.version.update(v => v + 1);
 
         // Sync operations to cloud (incremental, fire-and-forget)
+        void this.syncToCloud(ops);
+    }
+
+    /**
+     * Update the numeric value for an existing tag on selected units.
+     * Quantity defaults to 1 and is clamped to integer >= 1.
+     */
+    public async setTagQuantity(
+        units: Unit[],
+        tag: string,
+        tagType: 'name' | 'chassis',
+        quantity: number
+    ): Promise<void> {
+        const tagData = await this.getTagData();
+        const trimmedTag = tag.trim();
+        const tagId = trimmedTag.toLowerCase();
+        const normalizedQuantity = this.normalizeQuantity(quantity);
+        const now = Date.now();
+        const ops: TagOp[] = [];
+
+        if (tagType === 'name') {
+            const processedKeys = new Set<string>();
+            for (const unit of units) {
+                if (processedKeys.has(unit.name)) {
+                    continue;
+                }
+                processedKeys.add(unit.name);
+
+                if (!this.hasUnitTag(tagData, tagId, unit.name)) {
+                    continue;
+                }
+                if (this.isUnitTagQuantity(tagData, tagId, unit.name, normalizedQuantity)) {
+                    continue;
+                }
+
+                this.setUnitTagQuantity(tagData, tagId, unit.name, normalizedQuantity);
+                ops.push({
+                    k: unit.name,
+                    t: trimmedTag,
+                    c: 0,
+                    a: 1,
+                    ts: now,
+                    q: normalizedQuantity > 1 ? normalizedQuantity : undefined
+                });
+            }
+        } else {
+            const processedKeys = new Set<string>();
+            for (const unit of units) {
+                const chassisKey = TagsService.getChassisTagKey(unit);
+                if (processedKeys.has(chassisKey)) {
+                    continue;
+                }
+                processedKeys.add(chassisKey);
+
+                if (!this.hasChassisTag(tagData, tagId, chassisKey)) {
+                    continue;
+                }
+                if (this.isChassisTagQuantity(tagData, tagId, chassisKey, normalizedQuantity)) {
+                    continue;
+                }
+
+                this.setChassisTagQuantity(tagData, tagId, chassisKey, normalizedQuantity);
+                ops.push({
+                    k: chassisKey,
+                    t: trimmedTag,
+                    c: 1,
+                    a: 1,
+                    ts: now,
+                    q: normalizedQuantity > 1 ? normalizedQuantity : undefined
+                });
+            }
+        }
+
+        if (ops.length === 0) {
+            return;
+        }
+
+        tagData.timestamp = now;
+        await this.dbService.appendTagOps(ops, tagData);
+
+        this.cachedTagData = tagData;
+        this.refreshUnitsCallback?.(tagData, { searchIndexChanged: false });
+        this.notifyStoreUpdatedCallback?.({ searchIndexChanged: false });
+        this.version.update(v => v + 1);
+
         void this.syncToCloud(ops);
     }
 
@@ -338,8 +459,8 @@ export class TagsService {
 
         // Update cached data and notify
         this.cachedTagData = tagData;
-        this.refreshUnitsCallback?.(tagData);
-        this.notifyStoreUpdatedCallback?.();
+        this.refreshUnitsCallback?.(tagData, { searchIndexChanged: true });
+        this.notifyStoreUpdatedCallback?.({ searchIndexChanged: true });
         this.version.update(v => v + 1);
 
         // Sync operations to cloud (incremental, fire-and-forget)
@@ -450,8 +571,8 @@ export class TagsService {
 
             await this.dbService.appendTagOps(ops, tagData);
             this.cachedTagData = tagData;
-            this.refreshUnitsCallback?.(tagData);
-            this.notifyStoreUpdatedCallback?.();
+            this.refreshUnitsCallback?.(tagData, { searchIndexChanged: true });
+            this.notifyStoreUpdatedCallback?.({ searchIndexChanged: true });
             this.version.update(v => v + 1);
             void this.syncToCloud(ops);
         } else {
@@ -482,8 +603,8 @@ export class TagsService {
                 // This ensures all clients and subscribers get the complete merged data
                 await this.dbService.saveAllTagData(tagData);
                 this.cachedTagData = tagData;
-                this.refreshUnitsCallback?.(tagData);
-                this.notifyStoreUpdatedCallback?.();
+                this.refreshUnitsCallback?.(tagData, { searchIndexChanged: true });
+                this.notifyStoreUpdatedCallback?.({ searchIndexChanged: true });
                 this.version.update(v => v + 1);
 
                 // Push full state to cloud - this triggers broadcast to other sessions
@@ -564,8 +685,8 @@ export class TagsService {
 
         // Update cached data and notify
         this.cachedTagData = tagData;
-        this.refreshUnitsCallback?.(tagData);
-        this.notifyStoreUpdatedCallback?.();
+        this.refreshUnitsCallback?.(tagData, { searchIndexChanged: true });
+        this.notifyStoreUpdatedCallback?.({ searchIndexChanged: true });
         this.version.update(v => v + 1);
 
         // Sync operations to cloud (incremental, fire-and-forget)
@@ -609,7 +730,7 @@ export class TagsService {
 
         return null;
     }
-    
+
     // ================== V3 Format Helpers ==================
     // V3 format: tags = { tagId: { label, units: {}, chassis: {} } }
     // Tag IDs are always lowercase for O(1) lookup
@@ -623,14 +744,54 @@ export class TagsService {
     private hasChassisTag(tagData: TagData, tagId: string, chassisKey: string): boolean {
         return tagData.tags[tagId]?.chassis[chassisKey] !== undefined;
     }
+
+    private normalizeQuantity(quantity: number): number {
+        const parsed = Number.isFinite(quantity) ? Math.trunc(quantity) : 1;
+        return Math.max(1, parsed);
+    }
+
+    private getStoredQuantity(unitTagData: UnitTagData | undefined): number {
+        const quantity = unitTagData?.q;
+        return quantity && quantity > 0 ? quantity : 1;
+    }
+
+    private toUnitTagData(quantity: number): UnitTagData {
+        return quantity > 1 ? { q: quantity } : {};
+    }
+
+    private isUnitTagQuantity(tagData: TagData, tagId: string, unitName: string, quantity: number): boolean {
+        const current = tagData.tags[tagId]?.units[unitName];
+        return this.getStoredQuantity(current) === quantity;
+    }
+
+    private isChassisTagQuantity(tagData: TagData, tagId: string, chassisKey: string, quantity: number): boolean {
+        const current = tagData.tags[tagId]?.chassis[chassisKey];
+        return this.getStoredQuantity(current) === quantity;
+    }
+
+    private setUnitTagQuantity(tagData: TagData, tagId: string, unitName: string, quantity: number): void {
+        const entry = tagData.tags[tagId];
+        if (!entry || entry.units[unitName] === undefined) {
+            return;
+        }
+        entry.units[unitName] = this.toUnitTagData(quantity);
+    }
+
+    private setChassisTagQuantity(tagData: TagData, tagId: string, chassisKey: string, quantity: number): void {
+        const entry = tagData.tags[tagId];
+        if (!entry || entry.chassis[chassisKey] === undefined) {
+            return;
+        }
+        entry.chassis[chassisKey] = this.toUnitTagData(quantity);
+    }
     
     /** Add a tag to a unit */
-    private addUnitTag(tagData: TagData, tag: string, unitName: string): void {
+    private addUnitTag(tagData: TagData, tag: string, unitName: string, quantity: number = 1): void {
         const tagId = tag.toLowerCase();
         if (!tagData.tags[tagId]) {
             tagData.tags[tagId] = { label: tag, units: {}, chassis: {} };
         }
-        tagData.tags[tagId].units[unitName] = {};
+        tagData.tags[tagId].units[unitName] = this.toUnitTagData(quantity);
     }
     
     /** Remove a tag from a unit */
@@ -645,12 +806,12 @@ export class TagsService {
     }
     
     /** Add a tag to a chassis */
-    private addChassisTag(tagData: TagData, tag: string, chassisKey: string): void {
+    private addChassisTag(tagData: TagData, tag: string, chassisKey: string, quantity: number = 1): void {
         const tagId = tag.toLowerCase();
         if (!tagData.tags[tagId]) {
             tagData.tags[tagId] = { label: tag, units: {}, chassis: {} };
         }
-        tagData.tags[tagId].chassis[chassisKey] = {};
+        tagData.tags[tagId].chassis[chassisKey] = this.toUnitTagData(quantity);
     }
     
     /** Remove a tag from a chassis */
@@ -824,8 +985,8 @@ export class TagsService {
             await this.dbService.saveAllTagData(v3Data);
             await this.dbService.clearPendingTagOps(serverTs);
             this.cachedTagData = v3Data;
-            this.refreshUnitsCallback?.(v3Data);
-            this.notifyStoreUpdatedCallback?.();
+            this.refreshUnitsCallback?.(v3Data, { searchIndexChanged: true });
+            this.notifyStoreUpdatedCallback?.({ searchIndexChanged: true });
             this.version.update(v => v + 1);
         } else if (response.ops && response.ops.length > 0) {
             // Apply incremental operations
@@ -835,8 +996,8 @@ export class TagsService {
             await this.dbService.saveAllTagData(localData);
             await this.dbService.clearPendingTagOps(serverTs);
             this.cachedTagData = localData;
-            this.refreshUnitsCallback?.(localData);
-            this.notifyStoreUpdatedCallback?.();
+            this.refreshUnitsCallback?.(localData, { searchIndexChanged: true });
+            this.notifyStoreUpdatedCallback?.({ searchIndexChanged: true });
             this.version.update(v => v + 1);
         } else {
             // No new ops, just update sync timestamp
@@ -886,12 +1047,12 @@ export class TagsService {
         // Save merged state locally
         await this.dbService.saveAllTagData(tagData);
         this.cachedTagData = tagData;
-        this.refreshUnitsCallback?.(tagData);
+        this.refreshUnitsCallback?.(tagData, { searchIndexChanged: true });
 
         // Push merged state to cloud
         await this.pushFullStateToCloud();
         
-        this.notifyStoreUpdatedCallback?.();
+        this.notifyStoreUpdatedCallback?.({ searchIndexChanged: true });
         this.version.update(v => v + 1);
     }
 
@@ -1004,8 +1165,8 @@ export class TagsService {
 
         await this.dbService.saveAllTagData(localData);
         this.cachedTagData = localData;
-        this.refreshUnitsCallback?.(localData);
-        this.notifyStoreUpdatedCallback?.();
+        this.refreshUnitsCallback?.(localData, { searchIndexChanged: true });
+        this.notifyStoreUpdatedCallback?.({ searchIndexChanged: true });
         this.version.update(v => v + 1);
     }
 }

@@ -175,6 +175,14 @@ export interface UnitComponent {
     bay?: UnitComponent[];
     eq?: Equipment; // linked equipment data
 }
+
+export interface UnitTagEntry {
+    /** Tag display label */
+    tag: string;
+    /** Quantity for this tag assignment, defaults to 1 */
+    quantity: number;
+}
+
 export interface Unit {
     name: string; // Internal unique name
     id: number; // MUL id
@@ -258,8 +266,8 @@ export interface Unit {
     _mdSumNoPhysical: number; // Max damage sum for all weapons except physical
     _mdSumNoPhysicalNoOneshots: number; // Max damage sum for all weapons except physical, ignoring oneshots
     _era?: Era; // Cached era for this unit
-    _nameTags: string[]; // Tags assigned to this specific unit name
-    _chassisTags: string[]; // Tags assigned to the chassis (applies to all variants)
+    _nameTags: UnitTagEntry[]; // Quantity-aware tags assigned to this specific unit name
+    _chassisTags: UnitTagEntry[]; // Quantity-aware tags assigned to the chassis (applies to all variants)
     _publicTags?: PublicTagInfo[]; // Tags from other users (temporary or subscribed)
 }
 
