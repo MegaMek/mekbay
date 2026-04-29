@@ -43,6 +43,7 @@ import { TAG_MAX_LENGTH, TaggingService, validateTagName } from '../../services/
 import { ToastService } from '../../services/toast.service';
 import { UserStateService } from '../../services/userState.service';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
+import { getChassisTagTargetUnits } from '../../utils/chassis-tag-target.util';
 import { matchesSearch, parseSearchQuery } from '../../utils/search.util';
 import { compareUnitsByName } from '../../utils/sort.util';
 import { shareUrlWithClipboardFallback } from '../../utils/clipboard.util';
@@ -569,7 +570,9 @@ export class CollectionDialogComponent {
     async restoreTag(row: CollectionRow, tag: CollectionTagEntry): Promise<void> {
         const pendingTag = this.pendingRemovedTags()[tag.removalKey];
         const quantity = pendingTag?.quantity ?? tag.quantity;
-        const unitsToTag = row.rowType === 'chassis' ? this.getChassisTagTargetUnits([row.unit]) : [row.unit];
+        const unitsToTag = row.rowType === 'chassis'
+            ? getChassisTagTargetUnits([row.unit], this.dataService.getUnits())
+            : [row.unit];
 
         try {
             await this.tagsService.modifyTag(unitsToTag, tag.tag, row.rowType, 'add', quantity);
@@ -644,7 +647,7 @@ export class CollectionDialogComponent {
         const selectedRows = this.getSelectedVisibleRows();
         const quantity = this.massQuantity();
         for (const [rowType, units] of this.groupRowsByType(selectedRows)) {
-            const unitsToTag = rowType === 'chassis' ? this.getChassisTagTargetUnits(units) : units;
+            const unitsToTag = rowType === 'chassis' ? getChassisTagTargetUnits(units, this.dataService.getUnits()) : units;
             await this.tagsService.modifyTag(unitsToTag, tag, rowType, 'add', quantity);
         }
 
@@ -700,7 +703,7 @@ export class CollectionDialogComponent {
             }
         }
 
-        await this.tagsService.modifyTag(this.getChassisTagTargetUnits([option.unit]), tag, 'chassis', 'add', this.addQuantity());
+        await this.tagsService.modifyTag(getChassisTagTargetUnits([option.unit], this.dataService.getUnits()), tag, 'chassis', 'add', this.addQuantity());
         this.clearPendingRemovedTags([this.getRemovalKey(this.getRowKey('chassis', option.unit), tag)]);
         if (quantityConflict) {
             this.statusMessage.set(`Updated "${quantityConflict.tag}" on ${option.inputLabel} from ${quantityConflict.currentQuantity} to ${quantityConflict.nextQuantity}.`);
@@ -842,19 +845,6 @@ export class CollectionDialogComponent {
         return this.dataService.getUnits()
             .filter(candidate => TagsService.getChassisTagKey(candidate) === chassisKey)
             .sort((left, right) => (left.year ?? 0) - (right.year ?? 0) || compareUnitsByName(left, right));
-    }
-
-    private getChassisTagTargetUnits(units: Unit[]): Unit[] {
-        const unitsByName = new Map<string, Unit>();
-
-        for (const unit of units) {
-            for (const chassisUnit of this.getChassisUnitList(unit)) {
-                unitsByName.set(chassisUnit.name, chassisUnit);
-            }
-            unitsByName.set(unit.name, unit);
-        }
-
-        return Array.from(unitsByName.values());
     }
 
     private getUnitDisplayName(unit: Unit): string {

@@ -160,4 +160,14 @@ describe('TagsService', () => {
             jasmine.objectContaining({ k: 'Dasher C', t: 'CLAN', c: 0, a: 0 }),
         ]));
     });
+
+    it('persists deletion of empty tag entries', async () => {
+        tagData.tags['empty'] = { label: 'Empty', units: {}, chassis: {} };
+
+        await service.deleteTag('Empty');
+
+        expect(tagData.tags['empty']).toBeUndefined();
+        expect(dbServiceMock.appendTagOps).not.toHaveBeenCalled();
+        expect(dbServiceMock.saveAllTagData).toHaveBeenCalledOnceWith(tagData);
+    });
 });

@@ -84,6 +84,17 @@ describe('UnitRuntimeService', () => {
             timestamp: 1,
             formatVersion: 3,
         };
+        tagsServiceMock.fixNameTagsCoveredByChassis.and.callFake((units: Unit[], data: TagData | null) => {
+            for (const unit of units) {
+                const chassisKey = `${unit.chassis}|${unit.type}`;
+                for (const entry of Object.values(data?.tags ?? {})) {
+                    if (entry.units[unit.name] !== undefined && entry.chassis[chassisKey] !== undefined) {
+                        delete entry.units[unit.name];
+                    }
+                }
+            }
+            return Promise.resolve();
+        });
 
         service.applyTagDataToUnits([prime, variantA, adder], tagData, { rebuildTagSearchIndex: false });
 

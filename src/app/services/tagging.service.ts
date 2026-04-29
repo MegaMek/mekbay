@@ -37,6 +37,7 @@ import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { firstValueFrom, takeUntil } from 'rxjs';
 import type { Unit, PublicTagInfo } from '../models/units.model';
+import { getChassisTagTargetUnits } from '../utils/chassis-tag-target.util';
 import { collectAllChassisTags, collectAllNameTags } from '../utils/tag-list.util';
 import { DataService } from './data.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
@@ -248,7 +249,7 @@ export class TaggingService {
             }
 
             const unitsToTag = tagType === 'chassis'
-                ? this.getChassisTagTargetUnits(units, allUnits)
+                ? getChassisTagTargetUnits(units, allUnits)
                 : units;
 
             await this.tagsService.modifyTag(unitsToTag, selectedTag, tagType, 'add');
@@ -326,23 +327,6 @@ export class TaggingService {
         }
 
         return { fullyAssigned, partiallyAssigned };
-    }
-
-    private getChassisTagTargetUnits(units: Unit[], allUnits: Unit[]): Unit[] {
-        const chassisKeys = new Set(units.map(unit => TagsService.getChassisTagKey(unit)));
-        const unitsByName = new Map<string, Unit>();
-
-        for (const unit of allUnits) {
-            if (chassisKeys.has(TagsService.getChassisTagKey(unit))) {
-                unitsByName.set(unit.name, unit);
-            }
-        }
-
-        for (const unit of units) {
-            unitsByName.set(unit.name, unit);
-        }
-
-        return Array.from(unitsByName.values());
     }
 
     /**
