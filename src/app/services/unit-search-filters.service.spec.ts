@@ -165,7 +165,7 @@ function buildSmallBundle(payload: BenchmarkBundle): BenchmarkBundle {
     firstUnit.comp = [{ id: 'laser', q: 1, n: 'Laser', t: 'E', p: 0, l: 'CT' }];
     firstUnit.features = ['CASE'];
     firstUnit.quirks = ['Accurate Weapon'];
-    firstUnit._nameTags = ['tag-a'];
+    firstUnit._nameTags = [{ tag: 'tag-a', quantity: 1 }];
     firstUnit._chassisTags = [];
     firstUnit._publicTags = [];
 
@@ -183,7 +183,7 @@ function buildSmallBundle(payload: BenchmarkBundle): BenchmarkBundle {
     secondUnit.comp = [{ id: 'cannon', q: 1, n: 'Cannon', t: 'B', p: 0, l: 'FR' }];
     secondUnit.features = ['Amphibious'];
     secondUnit.quirks = ['Poor Performance'];
-    secondUnit._nameTags = ['tag-b'];
+    secondUnit._nameTags = [{ tag: 'tag-b', quantity: 1 }];
     secondUnit._chassisTags = [];
     secondUnit._publicTags = [];
 
@@ -325,7 +325,7 @@ function createStandaloneBundle(): BenchmarkBundle {
             TP: 'BM',
             specials: ['ECM'],
         },
-        _nameTags: ['tag-a'],
+        _nameTags: [{ tag: 'tag-a', quantity: 1 }],
     });
     const secondUnit = createTestUnit({
         id: 2,
@@ -344,7 +344,7 @@ function createStandaloneBundle(): BenchmarkBundle {
             TP: 'CV',
             specials: ['TAG'],
         },
-        _nameTags: ['tag-b'],
+        _nameTags: [{ tag: 'tag-b', quantity: 1 }],
     });
 
     return {
