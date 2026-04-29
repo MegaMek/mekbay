@@ -77,6 +77,10 @@ function cloneUnit<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function legacyMegaMekScore(score: number): number {
+    return score <= 0 ? 0 : Math.round((score - 0.5) * 10);
+}
+
 function prepareUnitForSearch(unit: Unit, index: number): Unit {
     const clone = cloneUnit(unit);
     clone.id = index + 1;
@@ -389,8 +393,8 @@ function buildSyntheticMegaMekRarityBenchmarkScenario(targetCount: number): Synt
             return [];
         }
 
-        let requisitionScore = (index % 10) + 1;
-        let salvageScore = (((index + 3) % 8) + 1) * 1.2;
+        let requisitionScore = legacyMegaMekScore((index % 10) + 1);
+        let salvageScore = legacyMegaMekScore((((index + 3) % 8) + 1) * 1.2);
 
         if (index % 10 === 0) {
             requisitionScore = 0;
@@ -859,8 +863,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 // c: bundle.units.units[0].chassis,
                 // m: bundle.units.units[0].model,
                 e: {
-                    '1': { '1': [5, 0] },
-                    '2': { '1': [4, 0] },
+                    '1': { '1': [45, 0] },
+                    '2': { '1': [35, 0] },
                 },
             },
             {
@@ -869,8 +873,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 // c: bundle.units.units[1].chassis,
                 // m: bundle.units.units[1].model,
                 e: {
-                    '1': { '2': [4, 0] },
-                    '2': { '2': [6, 0] },
+                    '1': { '2': [35, 0] },
+                    '2': { '2': [55, 0] },
                 },
             },
         ]);
@@ -955,8 +959,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 // c: bundle.units.units[0].chassis,
                 // m: bundle.units.units[0].model,
                 e: {
-                    '1': { '1': [5, 0] },
-                    '2': { '1': [4, 0] },
+                    '1': { '1': [45, 0] },
+                    '2': { '1': [35, 0] },
                 },
             },
             {
@@ -965,8 +969,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 // c: bundle.units.units[1].chassis,
                 // m: bundle.units.units[1].model,
                 e: {
-                    '1': { '2': [4, 0] },
-                    '2': { '2': [6, 0] },
+                    '1': { '2': [35, 0] },
+                    '2': { '2': [55, 0] },
                 },
             },
         ]);
@@ -1240,13 +1244,13 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 // m: 'BWP-2B',
                 e: {
                     '9': {
-                        '27': [0, 1],
-                        '30': [0, 1],
-                        '34': [0, 1],
-                        '38': [0, 1],
-                        '42': [0, 1],
-                        '60': [6.6, 0],
-                        '87': [0, 1],
+                        '27': [0, 5],
+                        '30': [0, 5],
+                        '34': [0, 5],
+                        '38': [0, 5],
+                        '42': [0, 5],
+                        '60': [61, 0],
+                        '87': [0, 5],
                     },
                 },
             },
@@ -1342,7 +1346,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: bundle.units.units[0].name,
                 e: {
                     '9': {
-                        '30': [6.6, 1],
+                        '30': [61, 5],
                     },
                 },
             },
@@ -1440,11 +1444,11 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'BattleMaster C3',
                 e: {
                     '3131': {
-                        '1': [2, 2],
+                        '1': [15, 15],
                     },
                     '3151': {
-                        '1': [2, 2],
-                        '2': [7, 0],
+                        '1': [15, 15],
+                        '2': [65, 0],
                     },
                 },
             },
@@ -1559,11 +1563,11 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'BattleMaster C3',
                 e: {
                     '3131': {
-                        '1': [2, 2],
+                        '1': [15, 15],
                     },
                     '3151': {
-                        '1': [2, 2],
-                        '2': [7, 0],
+                        '1': [15, 15],
+                        '2': [65, 0],
                     },
                 },
             },
@@ -1675,11 +1679,11 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'BattleMaster C3',
                 e: {
                     '3131': {
-                        '1': [2, 2],
+                        '1': [15, 15],
                     },
                     '3151': {
-                        '1': [2, 2],
-                        '2': [7, 0],
+                        '1': [15, 15],
+                        '2': [65, 0],
                     },
                 },
             },
@@ -1703,24 +1707,24 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         service.setFilter('era', ['Dark Age']);
         expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
-            { source: 'Requisition', score: 2, rarity: 'Very Rare' },
-            { source: 'Salvage', score: 2, rarity: 'Very Rare' },
+            { source: 'Requisition', score: legacyMegaMekScore(2), rarity: 'Very Rare' },
+            { source: 'Salvage', score: legacyMegaMekScore(2), rarity: 'Very Rare' },
         ]);
 
         service.setFilter('era', ['ilClan']);
         expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
-            { source: 'Requisition', score: 7, rarity: 'Common' },
-            { source: 'Salvage', score: 2, rarity: 'Very Rare' },
+            { source: 'Requisition', score: legacyMegaMekScore(7), rarity: 'Common' },
+            { source: 'Salvage', score: legacyMegaMekScore(2), rarity: 'Very Rare' },
         ]);
 
         service.setFilter('availabilityFrom', ['Requisition']);
         expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
-            { source: 'Requisition', score: 7, rarity: 'Common' },
+            { source: 'Requisition', score: legacyMegaMekScore(7), rarity: 'Common' },
         ]);
 
         service.setFilter('faction', rasalhagueDominion);
         expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
-            { source: 'Requisition', score: 2, rarity: 'Very Rare' },
+            { source: 'Requisition', score: legacyMegaMekScore(2), rarity: 'Very Rare' },
         ]);
     });
 
@@ -1793,13 +1797,13 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'BattleMaster C3',
                 e: {
                     '3131': {
-                        '40': [2, 0],
-                        '82': [0, 1],
-                        '100': [7, 0],
+                        '40': [15, 0],
+                        '82': [0, 5],
+                        '100': [65, 0],
                     },
                     '3151': {
-                        '40': [2, 0],
-                        '100': [7, 0],
+                        '40': [15, 0],
+                        '100': [65, 0],
                     },
                 },
             },
@@ -1812,8 +1816,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
         service.setFilter('era', ['Dark Age']);
 
         expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
-            { source: 'Requisition', score: 2, rarity: 'Very Rare' },
-            { source: 'Salvage', score: 1, rarity: 'Very Rare' },
+            { source: 'Requisition', score: legacyMegaMekScore(2), rarity: 'Very Rare' },
+            { source: 'Salvage', score: legacyMegaMekScore(1), rarity: 'Very Rare' },
         ]);
 
         let rarityOptions = service.advOptions()['availabilityRarity']?.options ?? [];
@@ -1892,8 +1896,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'BattleMaster C3',
                 e: {
                     '3151': {
-                        '40': [2, 0],
-                        '100': [7, 0],
+                        '40': [15, 0],
+                        '100': [65, 0],
                     },
                 },
             },
@@ -1911,7 +1915,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(namedAvailabilityFromOptions.find((option) => option.name === 'Unknown')).toEqual(jasmine.objectContaining({ available: true }));
         expect(namedAvailabilityFromOptions.find((option) => option.name === 'Requisition')).toEqual(jasmine.objectContaining({ available: true }));
         expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
-            { source: 'Requisition', score: 7, rarity: 'Common' },
+            { source: 'Requisition', score: legacyMegaMekScore(7), rarity: 'Common' },
         ]);
 
         service.setFilter('availabilityFrom', ['Unknown']);
@@ -2024,8 +2028,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'BattleMaster C3',
                 e: {
                     '3151': {
-                        '40': [2, 1],
-                        '100': [7, 1],
+                        '40': [15, 5],
+                        '100': [65, 5],
                     },
                 },
             },
@@ -2041,9 +2045,9 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
         expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
-            { source: 'Requisition', score: 2, rarity: 'Very Rare' },
+            { source: 'Requisition', score: legacyMegaMekScore(2), rarity: 'Very Rare' },
         ]);
-        expect(service.getMegaMekRaritySortScore(bundle.units.units[0])).toBe(2);
+        expect(service.getMegaMekRaritySortScore(bundle.units.units[0])).toBe(legacyMegaMekScore(2));
     });
 
     it('keeps units without MegaMek availability data visible by default but excludes them when an availability filter is applied', () => {
@@ -2090,7 +2094,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 // m: bundle.units.units[0].model,
                 e: {
                     '9': {
-                        '60': [6.6, 0],
+                        '60': [61, 0],
                     },
                 },
             },
@@ -2134,7 +2138,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'Requisition Unit',
                 e: {
                     '1': {
-                        '1': [5, 0],
+                        '1': [45, 0],
                     },
                 },
             },
@@ -2142,7 +2146,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'Salvage Unit',
                 e: {
                     '1': {
-                        '1': [0, 3],
+                        '1': [0, 25],
                     },
                 },
             },
@@ -2182,7 +2186,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'Very Rare Unit',
                 e: {
                     '1': {
-                        '1': [1, 0],
+                        '1': [5, 0],
                     },
                 },
             },
@@ -2190,7 +2194,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'Common Unit',
                 e: {
                     '1': {
-                        '1': [7, 0],
+                        '1': [65, 0],
                     },
                 },
             },
@@ -2229,7 +2233,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'Very Common Crab',
                 e: {
                     '1': {
-                        '1': [9, 0],
+                        '1': [85, 0],
                     },
                 },
             },
@@ -2294,7 +2298,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'Known Crab',
                 e: {
                     '1': {
-                        '1': [9, 0],
+                        '1': [85, 0],
                     },
                 },
             },
@@ -2356,7 +2360,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'Known Unit',
                 e: {
                     '1': {
-                        '1': [9, 0],
+                        '1': [85, 0],
                     },
                 },
             },
@@ -2402,7 +2406,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: lowUnit.name,
                 e: {
                     '1': {
-                        '1': [3, 0],
+                        '1': [25, 0],
                     },
                 },
             },
@@ -2410,7 +2414,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: highUnit.name,
                 e: {
                     '1': {
-                        '1': [5, 1],
+                        '1': [45, 5],
                     },
                 },
             },
@@ -2468,7 +2472,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: bundle.units.units[0].name,
                 e: {
                     '9': {
-                        '30': [7.2, 0],
+                        '30': [67, 0],
                     },
                 },
             },
@@ -2476,7 +2480,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: bundle.units.units[1].name,
                 e: {
                     '10': {
-                        '30': [7.2, 0],
+                        '30': [67, 0],
                     },
                 },
             },
@@ -2541,7 +2545,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: bundle.units.units[0].name,
                 e: {
                     '1': {
-                        '30': [6, 0],
+                        '30': [55, 0],
                     },
                 },
             },
@@ -2549,7 +2553,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: bundle.units.units[1].name,
                 e: {
                     '1': {
-                        '31': [5, 0],
+                        '31': [45, 0],
                     },
                 },
             },
@@ -2634,10 +2638,10 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: bundle.units.units[0].name,
                 e: {
                     '1': {
-                        '30': [6, 0],
+                        '30': [55, 0],
                     },
                     '2': {
-                        '30': [5, 0],
+                        '30': [45, 0],
                     },
                 },
             },
@@ -2645,7 +2649,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: bundle.units.units[1].name,
                 e: {
                     '1': {
-                        '31': [4, 0],
+                        '31': [35, 0],
                     },
                 },
             },
@@ -2741,15 +2745,15 @@ describe('UnitSearchFiltersService search telemetry', () => {
             {
                 n: bundle.units.units[0].name,
                 e: {
-                    '1': { '30': [6, 0] },
-                    '2': { '30': [5, 0] },
-                    '4': { '30': [4, 0] },
+                    '1': { '30': [55, 0] },
+                    '2': { '30': [45, 0] },
+                    '4': { '30': [35, 0] },
                 },
             },
             {
                 n: bundle.units.units[1].name,
                 e: {
-                    '4': { '30': [4, 0] },
+                    '4': { '30': [35, 0] },
                 },
             },
         ]);
@@ -2836,15 +2840,15 @@ describe('UnitSearchFiltersService search telemetry', () => {
             {
                 n: bundle.units.units[0].name,
                 e: {
-                    '1': { '30': [6, 0] },
-                    '2': { '30': [5, 0] },
-                    '4': { '30': [4, 0] },
+                    '1': { '30': [55, 0] },
+                    '2': { '30': [45, 0] },
+                    '4': { '30': [35, 0] },
                 },
             },
             {
                 n: bundle.units.units[1].name,
                 e: {
-                    '4': { '30': [4, 0] },
+                    '4': { '30': [35, 0] },
                 },
             },
         ]);
@@ -2895,7 +2899,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 // m: bundle.units.units[0].model,
                 e: {
                     '1': {
-                        '1': [6, 0],
+                        '1': [55, 0],
                     },
                 },
             },
@@ -3018,11 +3022,11 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'BattleMaster C3',
                 e: {
                     '1': {
-                        '1': [4, 0],
-                        '2': [7, 0],
+                        '1': [35, 0],
+                        '2': [65, 0],
                     },
                     '2': {
-                        '1': [7, 0],
+                        '1': [65, 0],
                     },
                 },
             },
@@ -3030,7 +3034,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'Common Dominion Mek',
                 e: {
                     '1': {
-                        '1': [7, 0],
+                        '1': [65, 0],
                     },
                 },
             },
@@ -3165,8 +3169,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'BattleMaster C3',
                 e: {
                     '1': {
-                        '1': [2, 0],
-                        '2': [7, 0],
+                        '1': [15, 0],
+                        '2': [65, 0],
                     },
                 },
             },
@@ -3242,7 +3246,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'Rare Salvage Crab',
                 e: {
                     '1': {
-                        '1': [0, 4],
+                        '1': [0, 35],
                     },
                 },
             },
@@ -3250,7 +3254,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'Common Requisition Crab',
                 e: {
                     '1': {
-                        '1': [7, 0],
+                        '1': [65, 0],
                     },
                 },
             },
@@ -3357,8 +3361,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'BattleMaster C3',
                 e: {
                     '1': {
-                        '1': [4, 0],
-                        '2': [7, 0],
+                        '1': [35, 0],
+                        '2': [65, 0],
                     },
                 },
             },
@@ -3366,7 +3370,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'Common Dominion Mek',
                 e: {
                     '1': {
-                        '1': [7, 0],
+                        '1': [65, 0],
                     },
                 },
             },
@@ -3471,8 +3475,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'BattleMaster C3',
                 e: {
                     '1': {
-                        '1': [4, 0],
-                        '2': [7, 0],
+                        '1': [35, 0],
+                        '2': [65, 0],
                     },
                 },
             },
@@ -3554,7 +3558,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'Very Common Crab',
                 e: {
                     '1': {
-                        '1': [9, 0],
+                        '1': [85, 0],
                     },
                 },
             },
@@ -3621,7 +3625,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'Rare Salvage Crab',
                 e: {
                     '1': {
-                        '1': [0, 4],
+                        '1': [0, 35],
                     },
                 },
             },
@@ -3629,7 +3633,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'Common Salvage Crab',
                 e: {
                     '1': {
-                        '1': [0, 7],
+                        '1': [0, 65],
                     },
                 },
             },
@@ -3682,7 +3686,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'Known Unit',
                 e: {
                     '1': {
-                        '1': [9, 0],
+                        '1': [85, 0],
                     },
                 },
             },
@@ -3769,7 +3773,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: 'Very Common Crab',
                 e: {
                     '1': {
-                        '1': [9, 0],
+                        '1': [85, 0],
                     },
                 },
             },
@@ -3817,7 +3821,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: lowUnit.name,
                 e: {
                     '1': {
-                        '1': [3, 0],
+                        '1': [25, 0],
                     },
                 },
             },
@@ -3825,7 +3829,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 n: highUnit.name,
                 e: {
                     '1': {
-                        '1': [5, 1],
+                        '1': [45, 5],
                     },
                 },
             },

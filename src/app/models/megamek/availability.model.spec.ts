@@ -1,24 +1,25 @@
 import { getMegaMekAvailabilityRarityForScore } from './availability.model';
 
 describe('getMegaMekAvailabilityRarityForScore', () => {
-    it('treats scores below 1 as unavailable', () => {
+    it('treats non-positive scores as unavailable', () => {
+        expect(getMegaMekAvailabilityRarityForScore(-1)).toBe('Not Available');
         expect(getMegaMekAvailabilityRarityForScore(0)).toBe('Not Available');
-        expect(getMegaMekAvailabilityRarityForScore(0.99)).toBe('Not Available');
     });
 
-    it('splits scores 1 through 10 into even 1.8-wide rarity buckets', () => {
+    it('splits scores 1 through 100 into 20-point rarity buckets', () => {
         expect(getMegaMekAvailabilityRarityForScore(1)).toBe('Very Rare');
-        expect(getMegaMekAvailabilityRarityForScore(2.8)).toBe('Very Rare');
-        expect(getMegaMekAvailabilityRarityForScore(2.8001)).toBe('Rare');
+        expect(getMegaMekAvailabilityRarityForScore(19)).toBe('Very Rare');
 
-        expect(getMegaMekAvailabilityRarityForScore(4.6)).toBe('Rare');
-        expect(getMegaMekAvailabilityRarityForScore(4.6001)).toBe('Uncommon');
+        expect(getMegaMekAvailabilityRarityForScore(20)).toBe('Rare');
+        expect(getMegaMekAvailabilityRarityForScore(39)).toBe('Rare');
 
-        expect(getMegaMekAvailabilityRarityForScore(6.4)).toBe('Uncommon');
-        expect(getMegaMekAvailabilityRarityForScore(6.4001)).toBe('Common');
+        expect(getMegaMekAvailabilityRarityForScore(40)).toBe('Uncommon');
+        expect(getMegaMekAvailabilityRarityForScore(59)).toBe('Uncommon');
 
-        expect(getMegaMekAvailabilityRarityForScore(8.2)).toBe('Common');
-        expect(getMegaMekAvailabilityRarityForScore(8.2001)).toBe('Very Common');
-        expect(getMegaMekAvailabilityRarityForScore(10)).toBe('Very Common');
+        expect(getMegaMekAvailabilityRarityForScore(60)).toBe('Common');
+        expect(getMegaMekAvailabilityRarityForScore(79)).toBe('Common');
+
+        expect(getMegaMekAvailabilityRarityForScore(80)).toBe('Very Common');
+        expect(getMegaMekAvailabilityRarityForScore(100)).toBe('Very Common');
     });
 });

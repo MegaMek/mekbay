@@ -16,6 +16,10 @@ import { DataService } from './data.service';
 import { OptionsService } from './options.service';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
 
+function legacyMegaMekScore(score: number): number {
+    return score <= 0 ? 0 : Math.round((score - 0.5) * 10);
+}
+
 describe('UnitAvailabilitySourceService', () => {
     let service: UnitAvailabilitySourceService;
 
@@ -138,7 +142,7 @@ describe('UnitAvailabilitySourceService', () => {
             n: unit.name,
             e: {
                 '3150': {
-                    '99': [7, 0],
+                    '99': [65, 0],
                 },
             },
         });
@@ -219,7 +223,7 @@ describe('UnitAvailabilitySourceService', () => {
             n: unit.name,
             e: {
                 '3050': {
-                    '7': [5, 0],
+                    '7': [45, 0],
                 },
             },
         });
@@ -288,14 +292,14 @@ describe('UnitAvailabilitySourceService', () => {
         megaMekAvailabilityByUnitName.set(atlas.name, {
             n: atlas.name,
             e: {
-                '3050': { '7': [5, 0] },
-                '3067': { '8': [4, 0] },
+                '3050': { '7': [45, 0] },
+                '3067': { '8': [35, 0] },
             },
         });
         megaMekAvailabilityByUnitName.set(locust.name, {
             n: locust.name,
             e: {
-                '3050': { '7': [0, 3] },
+                '3050': { '7': [0, 25] },
             },
         });
 
@@ -405,23 +409,23 @@ describe('UnitAvailabilitySourceService', () => {
             n: scopedUnit.name,
             e: {
                 '3050': {
-                    '7': [5, 1],
-                    '8': [0, 2],
+                    '7': [45, 5],
+                    '8': [0, 15],
                 },
                 '3067': {
-                    '7': [4, 6.6],
+                    '7': [35, 61],
                 },
             },
         });
         megaMekAvailabilityRecords.push(megaMekAvailabilityByUnitName.get(scopedUnit.name)!);
 
-        expect(service.getMegaMekAvailabilityScore(scopedUnit)).toBe(6.6);
+        expect(service.getMegaMekAvailabilityScore(scopedUnit)).toBe(legacyMegaMekScore(6.6));
         expect(service.getMegaMekAvailabilityScore(scopedUnit, {
             availabilityFrom: new Set(['Requisition']),
-        })).toBe(5);
+        })).toBe(legacyMegaMekScore(5));
         expect(service.getMegaMekAvailabilityScore(scopedUnit, {
             factionIds: new Set([8]),
-        })).toBe(2);
+        })).toBe(legacyMegaMekScore(2));
         expect(service.getMegaMekAvailabilityScore(scopedUnit, {
             eraIds: new Set([3067]),
             factionIds: new Set([8]),
@@ -456,11 +460,11 @@ describe('UnitAvailabilitySourceService', () => {
             n: unit.name,
             e: {
                 '3131': {
-                    '1': [2, 2],
+                    '1': [15, 15],
                 },
                 '3151': {
-                    '1': [2, 2],
-                    '2': [7, 0],
+                    '1': [15, 15],
+                    '2': [65, 0],
                 },
             },
         });
@@ -543,8 +547,8 @@ describe('UnitAvailabilitySourceService', () => {
             n: unit.name,
             e: {
                 '3151': {
-                    '1': [2, 0],
-                    '2': [7, 0],
+                    '1': [15, 0],
+                    '2': [65, 0],
                 },
             },
         });
@@ -627,13 +631,13 @@ describe('UnitAvailabilitySourceService', () => {
             n: unit.name,
             e: {
                 '3131': {
-                    '40': [1.7, 0],
-                    '82': [0, 1],
-                    '100': [7.7, 1],
+                    '40': [12, 0],
+                    '82': [0, 5],
+                    '100': [72, 5],
                 },
                 '3151': {
-                    '40': [1.2, 0],
-                    '100': [7.6, 1],
+                    '40': [7, 0],
+                    '100': [71, 5],
                 },
             },
         });
@@ -651,11 +655,11 @@ describe('UnitAvailabilitySourceService', () => {
         expect(service.getMegaMekAvailabilityScore(unit, {
             ...darkAgeContext,
             availabilityFrom: new Set(['Requisition']),
-        })).toBe(1.7);
+        })).toBe(legacyMegaMekScore(1.7));
         expect(service.getMegaMekAvailabilityScore(unit, {
             ...darkAgeContext,
             availabilityFrom: new Set(['Salvage']),
-        })).toBe(1);
+        })).toBe(legacyMegaMekScore(1));
         expect(service.unitMatchesAvailabilityRarity(unit, 'Common', darkAgeContext)).toBeFalse();
         expect(service.unitMatchesAvailabilityRarity(unit, 'Very Rare', darkAgeContext)).toBeTrue();
         expect(service.getMegaMekRarityUnitIds('Common', darkAgeContext).has(unit.name)).toBeFalse();
@@ -664,7 +668,7 @@ describe('UnitAvailabilitySourceService', () => {
         expect(service.getMegaMekAvailabilityScore(unit, {
             ...ilClanContext,
             availabilityFrom: new Set(['Requisition']),
-        })).toBe(7.6);
+        })).toBe(legacyMegaMekScore(7.6));
         expect(service.unitMatchesAvailabilityRarity(unit, 'Common', ilClanContext)).toBeTrue();
     });
 
@@ -717,8 +721,8 @@ describe('UnitAvailabilitySourceService', () => {
             n: unit.name,
             e: {
                 '3151': {
-                    '40': [2, 0],
-                    '100': [7, 0],
+                    '40': [15, 0],
+                    '100': [65, 0],
                 },
             },
         });
@@ -791,7 +795,7 @@ describe('UnitAvailabilitySourceService', () => {
             n: unit.name,
             e: {
                 '3050': {
-                    '7': [0, 3],
+                    '7': [0, 25],
                 },
             },
         });
@@ -850,14 +854,14 @@ describe('UnitAvailabilitySourceService', () => {
         megaMekAvailabilityByUnitName.set(returningUnit.name, {
             n: returningUnit.name,
             e: {
-                '900': { '1': [5, 0] },
-                '700': { '1': [4, 0] },
+                '900': { '1': [45, 0] },
+                '700': { '1': [35, 0] },
             },
         });
         megaMekAvailabilityByUnitName.set(goneUnit.name, {
             n: goneUnit.name,
             e: {
-                '900': { '1': [6, 0] },
+                '900': { '1': [55, 0] },
             },
         });
         megaMekAvailabilityRecords.push(
@@ -892,7 +896,7 @@ describe('UnitAvailabilitySourceService', () => {
             n: knownUnit.name,
             e: {
                 '3050': {
-                    '7': [4, 0],
+                    '7': [35, 0],
                 },
             },
         });
@@ -915,7 +919,7 @@ describe('UnitAvailabilitySourceService', () => {
         expect(service.getMegaMekRarityUnitIds('Not Available', salvageScope).has(unknownUnit.name)).toBeFalse();
     });
 
-    it('distributes MegaMek rarity buckets evenly across scores 1 through 10', () => {
+    it('distributes MegaMek rarity buckets across scores 1 through 100', () => {
         const era = {
             id: 3050,
             name: 'Clan Invasion',
@@ -935,15 +939,15 @@ describe('UnitAvailabilitySourceService', () => {
 
         const scoredUnits = [
             { id: 31, name: 'VR1', type: 'Mek', chassis: 'VR1', model: 'A', score: 1, rarity: 'Very Rare' },
-            { id: 32, name: 'VR2', type: 'Mek', chassis: 'VR2', model: 'A', score: 2, rarity: 'Very Rare' },
-            { id: 33, name: 'R3', type: 'Mek', chassis: 'R3', model: 'A', score: 3, rarity: 'Rare' },
-            { id: 34, name: 'R4', type: 'Mek', chassis: 'R4', model: 'A', score: 4, rarity: 'Rare' },
-            { id: 35, name: 'U5', type: 'Mek', chassis: 'U5', model: 'A', score: 5, rarity: 'Uncommon' },
-            { id: 36, name: 'U6', type: 'Mek', chassis: 'U6', model: 'A', score: 6, rarity: 'Uncommon' },
-            { id: 37, name: 'C7', type: 'Mek', chassis: 'C7', model: 'A', score: 7, rarity: 'Common' },
-            { id: 38, name: 'C8', type: 'Mek', chassis: 'C8', model: 'A', score: 8, rarity: 'Common' },
-            { id: 39, name: 'VC9', type: 'Mek', chassis: 'VC9', model: 'A', score: 9, rarity: 'Very Common' },
-            { id: 40, name: 'VC10', type: 'Mek', chassis: 'VC10', model: 'A', score: 10, rarity: 'Very Common' },
+            { id: 32, name: 'VR19', type: 'Mek', chassis: 'VR19', model: 'A', score: 19, rarity: 'Very Rare' },
+            { id: 33, name: 'R20', type: 'Mek', chassis: 'R20', model: 'A', score: 20, rarity: 'Rare' },
+            { id: 34, name: 'R39', type: 'Mek', chassis: 'R39', model: 'A', score: 39, rarity: 'Rare' },
+            { id: 35, name: 'U40', type: 'Mek', chassis: 'U40', model: 'A', score: 40, rarity: 'Uncommon' },
+            { id: 36, name: 'U59', type: 'Mek', chassis: 'U59', model: 'A', score: 59, rarity: 'Uncommon' },
+            { id: 37, name: 'C60', type: 'Mek', chassis: 'C60', model: 'A', score: 60, rarity: 'Common' },
+            { id: 38, name: 'C79', type: 'Mek', chassis: 'C79', model: 'A', score: 79, rarity: 'Common' },
+            { id: 39, name: 'VC80', type: 'Mek', chassis: 'VC80', model: 'A', score: 80, rarity: 'Very Common' },
+            { id: 40, name: 'VC100', type: 'Mek', chassis: 'VC100', model: 'A', score: 100, rarity: 'Very Common' },
         ] as Array<Unit & { score: number; rarity: typeof MEGAMEK_AVAILABILITY_RARITY_OPTIONS[number] }>;
 
         units.push(...scoredUnits);
