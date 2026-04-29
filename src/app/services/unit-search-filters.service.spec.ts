@@ -501,6 +501,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             getNameTags: () => ({}),
             getChassisTags: () => ({}),
             getTagData: async () => ({ tags: {}, timestamp: 0, formatVersion: 3 as const }),
+            fixNameTagsCoveredByChassis: jasmine.createSpy('fixNameTagsCoveredByChassis').and.resolveTo(undefined),
             setRefreshUnitsCallback: jasmine.createSpy('setRefreshUnitsCallback'),
             setNotifyStoreUpdatedCallback: jasmine.createSpy('setNotifyStoreUpdatedCallback'),
             registerWsHandlers: jasmine.createSpy('registerWsHandlers'),
