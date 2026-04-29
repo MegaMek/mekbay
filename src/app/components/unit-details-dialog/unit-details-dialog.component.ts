@@ -138,6 +138,22 @@ export class UnitDetailsDialogComponent {
         return isSignal(input) ? input() : input;
     });
     unitIndex = signal(this.data.unitIndex);
+    prevUnit = computed<Unit | null>(() => {
+        if (!this.hasPrev) return null;
+        return this.getUnitAtIndex(this.unitIndex() - 1);
+    });
+    nextUnit = computed<Unit | null>(() => {
+        if (!this.hasNext) return null;
+        return this.getUnitAtIndex(this.unitIndex() + 1);
+    });
+    prevUnitLabel = computed(() => {
+        const unit = this.prevUnit();
+        return unit ? this.formatUnitLabel(unit) : '';
+    });
+    nextUnitLabel = computed(() => {
+        const unit = this.nextUnit();
+        return unit ? this.formatUnitLabel(unit) : '';
+    });
 
     /** Derives game system from the current unit's force (when ForceUnit), otherwise falls back to global. */
     currentGameSystem = computed<GameSystem>(() => {
@@ -316,6 +332,10 @@ export class UnitDetailsDialogComponent {
             return item.getUnit();
         }
         return item;
+    }
+
+    private formatUnitLabel(unit: Unit): string {
+        return [unit.chassis, unit.model].filter(Boolean).join(' ') || unit.name;
     }
 
     onPrev() {

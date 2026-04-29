@@ -125,10 +125,16 @@
         </div>
     </div>
     <div class="footer" dialog-footer>
-        <button [class.hidden]="!hasPrev" class="nav-arrow nav-arrow-left" (click)="onPrev()"
-            aria-label="Previous Unit">
-            &#10094;
+        <button [class.hidden]="!hasPrev" class="footer-nav footer-nav-left" (click)="onPrev()"
+            [attr.aria-label]="prevUnitLabel() ? 'Previous Unit: ' + prevUnitLabel() : 'Previous Unit'"
+            [title]="prevUnitLabel()">
+            <span class="nav-arrow-symbol" aria-hidden="true">&#10094;</span>
+            <span class="nav-unit-name">
+                <span class="nav-unit-model">{{ prevUnit()?.model }}</span>
+                <span class="nav-unit-chassis">{{ prevUnit()?.chassis }}</span>
+            </span>
         </button>
+        <div class="footer-actions">
         @if (data.selectMode) {
         <button class="modal-btn bt-button" (click)="onSelect()">SELECT</button>
         } @else if (!data.hideAddButton) {
@@ -147,8 +153,15 @@
             (click)="onChange()">CHANGE</button>
         }
         <button class="modal-btn bt-button" (click)="onClose()">DISMISS</button>
-        <button [class.hidden]="!hasNext" class="nav-arrow nav-arrow-right" (click)="onNext()" aria-label="Next Unit">
-            &#10095;
+        </div>
+        <button [class.hidden]="!hasNext" class="footer-nav footer-nav-right" (click)="onNext()"
+            [attr.aria-label]="nextUnitLabel() ? 'Next Unit: ' + nextUnitLabel() : 'Next Unit'"
+            [title]="nextUnitLabel()">
+            <span class="nav-unit-name">
+                <span class="nav-unit-model">{{ nextUnit()?.model }}</span>
+                <span class="nav-unit-chassis">{{ nextUnit()?.chassis }}</span>
+            </span>
+            <span class="nav-arrow-symbol" aria-hidden="true">&#10095;</span>
         </button>
     </div>
 </base-dialog>
