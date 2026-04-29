@@ -131,46 +131,68 @@ export class TagSelectorComponent {
     }
 
     onNameTagQuantityInput(tag: string, event: Event): void {
-        const quantity = this.parseQuantityFromEvent(event);
+        const quantity = this.parseQuantityFromEvent(event, false);
         if (quantity == null) {
             return;
         }
 
+        this.setNameTagQuantity(tag, quantity);
+    }
+
+    onChassisTagQuantityInput(tag: string, event: Event): void {
+        const quantity = this.parseQuantityFromEvent(event, false);
+        if (quantity == null) {
+            return;
+        }
+
+        this.setChassisTagQuantity(tag, quantity);
+    }
+
+    onNameTagQuantityBlur(tag: string, event: Event): void {
+        const quantity = this.parseQuantityFromEvent(event, true);
+        if (quantity == null) {
+            return;
+        }
+
+        this.setNameTagQuantity(tag, quantity);
+        this.quantityChanged.emit({ tag, tagType: 'name', quantity });
+    }
+
+    onChassisTagQuantityBlur(tag: string, event: Event): void {
+        const quantity = this.parseQuantityFromEvent(event, true);
+        if (quantity == null) {
+            return;
+        }
+
+        this.setChassisTagQuantity(tag, quantity);
+        this.quantityChanged.emit({ tag, tagType: 'chassis', quantity });
+    }
+
+    onNameTagQuantityChange(tag: string, event: Event): void {
+        this.onNameTagQuantityBlur(tag, event);
+    }
+
+    onChassisTagQuantityChange(tag: string, event: Event): void {
+        this.onChassisTagQuantityBlur(tag, event);
+    }
+
+    private setNameTagQuantity(tag: string, quantity: number): void {
         const key = tag.toLowerCase();
         this.nameTagQuantities.update(current => ({ ...current, [key]: quantity }));
     }
 
-    onChassisTagQuantityInput(tag: string, event: Event): void {
-        const quantity = this.parseQuantityFromEvent(event);
-        if (quantity == null) {
-            return;
-        }
-
+    private setChassisTagQuantity(tag: string, quantity: number): void {
         const key = tag.toLowerCase();
         this.chassisTagQuantities.update(current => ({ ...current, [key]: quantity }));
     }
 
-    onNameTagQuantityChange(tag: string, event: Event): void {
-        const quantity = this.parseQuantityFromEvent(event);
-        if (quantity == null) {
-            return;
-        }
-
-        this.quantityChanged.emit({ tag, tagType: 'name', quantity });
-    }
-
-    onChassisTagQuantityChange(tag: string, event: Event): void {
-        const quantity = this.parseQuantityFromEvent(event);
-        if (quantity == null) {
-            return;
-        }
-
-        this.quantityChanged.emit({ tag, tagType: 'chassis', quantity });
-    }
-
-    private parseQuantityFromEvent(event: Event): number | null {
+    private parseQuantityFromEvent(event: Event, normalizeEmpty: boolean): number | null {
         const target = event.target;
         if (!(target instanceof HTMLInputElement)) {
+            return null;
+        }
+
+        if (target.value.trim() === '' && !normalizeEmpty) {
             return null;
         }
 

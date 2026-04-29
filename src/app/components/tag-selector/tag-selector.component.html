@@ -26,7 +26,7 @@
                         [disabled]="!isNameTagAssignedToAny(tag)"
                         (click)="$event.stopPropagation()"
                         (input)="onNameTagQuantityInput(tag, $event)"
-                        (change)="onNameTagQuantityChange(tag, $event)"
+                        (blur)="onNameTagQuantityBlur(tag, $event)"
                         title="Tag value"
                         aria-label="Tag value" />
                     @if (isNameTagAssignedToAny(tag)) {
@@ -74,7 +74,7 @@
                         [disabled]="!isChassisTagAssignedToAny(tag)"
                         (click)="$event.stopPropagation()"
                         (input)="onChassisTagQuantityInput(tag, $event)"
-                        (change)="onChassisTagQuantityChange(tag, $event)"
+                        (blur)="onChassisTagQuantityBlur(tag, $event)"
                         title="Tag value"
                         aria-label="Tag value" />
                     @if (isChassisTagAssignedToAny(tag)) {
