@@ -2,9 +2,12 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { DialogRef } from '@angular/cdk/dialog';
 import type { Unit, UnitTagEntry } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
+import { DialogsService } from '../../services/dialogs.service';
 import { TagsService } from '../../services/tags.service';
 import { TAG_MAX_LENGTH, validateTagName } from '../../services/tagging.service';
+import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { matchesSearch, parseSearchQuery } from '../../utils/search.util';
+import { compareUnitsByName } from '../../utils/sort.util';
 
 type CollectionRowType = 'chassis' | 'name';
 
@@ -56,6 +59,7 @@ interface PendingRemovedTag {
 export class CollectionDialogComponent {
     private readonly dialogRef = inject(DialogRef<void>);
     private readonly dataService = inject(DataService);
+    private readonly dialogsService = inject(DialogsService);
     private readonly tagsService = inject(TagsService);
 
     readonly tagFilter = signal('');
@@ -371,6 +375,19 @@ export class CollectionDialogComponent {
         return this.selectedRows().has(row.key);
     }
 
+    showUnitDetails(row: CollectionRow): void {
+        const unitList = row.rowType === 'chassis'
+            ? this.getChassisUnitList(row.unit)
+            : [row.unit];
+
+        this.dialogsService.createDialog(UnitDetailsDialogComponent, {
+            data: {
+                unitList,
+                unitIndex: 0
+            } satisfies UnitDetailsDialogData
+        });
+    }
+
     async addTagToSelected(): Promise<void> {
         const tag = this.massTag().trim();
         if (!this.validateLocalTag(tag)) {
@@ -553,6 +570,13 @@ export class CollectionDialogComponent {
         }
 
         return row.unit._searchKey || `${row.unit.chassis ?? ''} ${row.unit.model ?? ''}`;
+    }
+
+    private getChassisUnitList(unit: Unit): Unit[] {
+        const chassisKey = TagsService.getChassisTagKey(unit);
+        return this.dataService.getUnits()
+            .filter(candidate => TagsService.getChassisTagKey(candidate) === chassisKey)
+            .sort((left, right) => (left.year ?? 0) - (right.year ?? 0) || compareUnitsByName(left, right));
     }
 
     private getUnitDisplayName(unit: Unit): string {

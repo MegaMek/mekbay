@@ -56,11 +56,21 @@
                         />
                         <span>SELECT ALL</span>
                     </label>
-                    <div class="list-count">{{ filteredRows().length }} shown</div>
                 </div>
 
                 <div class="table-header" role="row">
-                    <div></div>
+                    <div>
+                        <label class="select-all-control table-select-all-control">
+                            <input
+                                type="checkbox"
+                                class="bt-checkbox"
+                                [checked]="allFilteredSelected()"
+                                [disabled]="filteredRows().length === 0"
+                                (change)="toggleAllFiltered($event)"
+                                aria-label="Select all visible entries"
+                            />
+                        </label>
+                    </div>
                     <div>NAME</div>
                     <div>TYPE</div>
                     <div>TAGS</div>
@@ -87,7 +97,14 @@
                                     <path d="M199.173,0H104.65L0,104.651v94.523l273.442,273.442l199.173-199.173L199.173,0z M168.539,168.54c-15.397,15.397-40.361,15.397-55.759,0c-15.397-15.397-15.397-40.362,0-55.76c15.396-15.397,40.361-15.397,55.759,0C183.936,128.177,183.936,153.142,168.539,168.54z" />
                                 </svg>
                             </span>
-                            <div class="target-title">{{ row.title }}</div>
+                            <button
+                                type="button"
+                                class="target-title-button"
+                                (click)="showUnitDetails(row)"
+                                [attr.aria-label]="row.rowType === 'chassis' ? 'Open chassis details' : 'Open unit details'"
+                                [attr.title]="row.rowType === 'chassis' ? 'Open chassis details' : 'Open unit details'">
+                                <span class="target-title">{{ row.title }}</span>
+                            </button>
                         </div>
                     </div>
                     <div class="type-cell">{{ row.subtitle }}</div>
