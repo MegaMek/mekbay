@@ -1,0 +1,275 @@
+<div class="collection-dialog">
+    <header class="collection-header">
+        <div class="title-block">
+            <div class="title-tag-row">
+                <label class="title-filter-control">
+                    <select class="title-tag-select" [value]="tagFilter()" (change)="onTagFilterChange($event)" aria-label="Tag filter">
+                        <option value="">All Tags</option>
+                        @for (tag of allTags(); track tag) {
+                            <option [value]="tag">{{ tag }}</option>
+                        }
+                    </select>
+                </label>
+                <div class="title-tag-actions">
+                    <button type="button" class="tag-action-button" [disabled]="!canUseHeaderTagActions()" (click)="shareSelectedTagLink()" aria-label="Share tag" title="Share tag">
+                        <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path fill-rule="evenodd" clip-rule="evenodd" d="M13.803 5.333C13.803 3.492 15.302 2 17.152 2S20.5 3.492 20.5 5.333s-1.499 3.334-3.348 3.334a3.35 3.35 0 0 1-2.385-.993l-4.635 3.156c.043.213.065.433.065.657 0 .445-.088.871-.247 1.259l5.082 3.34a3.34 3.34 0 0 1 2.12-.753c1.849 0 3.348 1.492 3.348 3.334S19.001 22 17.152 22s-3.349-1.492-3.349-3.333c0-.482.103-.941.289-1.356L9.05 13.999a3.34 3.34 0 0 1-2.202.821C4.999 14.82 3.5 13.328 3.5 11.487s1.499-3.333 3.348-3.333c1.064 0 2.011.493 2.623 1.261l4.492-3.059a3.37 3.37 0 0 1-.16-1.023Z" />
+                        </svg>
+                    </button>
+                    <button type="button" class="tag-action-button" [disabled]="!canUseHeaderTagActions()" (click)="renameSelectedTag()" aria-label="Rename tag" title="Rename tag">
+                        <svg fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 0 0 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="collection-summary">
+                <span>{{ filteredRows().length }}/{{ allRows().length }} entries</span>
+            </div>
+        </div>
+
+        <label class="filter-control">
+            <span>UNIT FILTER</span>
+            <input
+                type="text"
+                class="bt-input"
+                [value]="unitTextFilter()"
+                (input)="onUnitTextFilterInput($event)"
+                placeholder="Chassis and/or model..."
+                aria-label="Filter units"
+            />
+        </label>
+
+        <button type="button" class="header-icon-button" (click)="close()" aria-label="Dismiss" title="Dismiss">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                <path d="M18 6L6 18" />
+                <path d="M6 6L18 18" />
+            </svg>
+        </button>
+    </header>
+
+    <main class="collection-body">
+        <div class="collection-table" role="table">
+            <div class="collection-list-header">
+                <div class="list-toolbar">
+                    <label class="select-all-control">
+                        <input
+                            type="checkbox"
+                            class="bt-checkbox"
+                            [checked]="allFilteredSelected()"
+                            [disabled]="filteredRows().length === 0"
+                            (change)="toggleAllFiltered($event)"
+                        />
+                        <span>SELECT ALL</span>
+                    </label>
+                </div>
+
+                <div class="table-header" role="row">
+                    <div>
+                        <label class="select-all-control table-select-all-control">
+                            <input
+                                type="checkbox"
+                                class="bt-checkbox"
+                                [checked]="allFilteredSelected()"
+                                [disabled]="filteredRows().length === 0"
+                                (change)="toggleAllFiltered($event)"
+                                aria-label="Select all visible entries"
+                            />
+                        </label>
+                    </div>
+                    <div>NAME</div>
+                    <div>TYPE</div>
+                    <div>TAGS</div>
+                </div>
+            </div>
+
+            @for (row of filteredRows(); track row.key) {
+                <div class="collection-row" role="row" [class.selected]="isRowSelected(row)">
+                    <label class="row-select">
+                        <input
+                            type="checkbox"
+                            class="bt-checkbox"
+                            [checked]="isRowSelected(row)"
+                            (change)="toggleRow(row, $event)"
+                        />
+                    </label>
+                    <div class="target-cell">
+                        <div class="target-title-line">
+                            <span
+                                class="target-type-tag"
+                                [class.chassis]="row.rowType === 'chassis'"
+                                [attr.title]="row.rowType === 'chassis' ? 'Chassis tag' : 'Unit tag'">
+                                <svg fill="currentColor" height="14px" width="14px" version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 472.615 472.615" aria-hidden="true">
+                                    <path d="M199.173,0H104.65L0,104.651v94.523l273.442,273.442l199.173-199.173L199.173,0z M168.539,168.54c-15.397,15.397-40.361,15.397-55.759,0c-15.397-15.397-15.397-40.362,0-55.76c15.396-15.397,40.361-15.397,55.759,0C183.936,128.177,183.936,153.142,168.539,168.54z" />
+                                </svg>
+                            </span>
+                            <button
+                                type="button"
+                                class="target-title-button"
+                                (click)="showUnitDetails(row)"
+                                [attr.aria-label]="row.rowType === 'chassis' ? 'Open chassis details' : 'Open unit details'"
+                                [attr.title]="row.rowType === 'chassis' ? 'Open chassis details' : 'Open unit details'">
+                                <span class="target-title">{{ row.title }}</span>
+                            </button>
+                            <span class="target-inline-type">{{ row.subtitle }}</span>
+                        </div>
+                    </div>
+                    <div class="type-cell">{{ row.subtitle }}</div>
+                    <div class="tag-list">
+                        @for (tag of row.tags; track tag.removalKey) {
+                            <div class="tag-chip" [class.pending-removal]="tag.pendingRemoval">
+                                <span class="tag-label">{{ tag.tag }}</span>
+                                <input
+                                    type="number"
+                                    class="tag-quantity"
+                                    min="1"
+                                    step="1"
+                                    [value]="tag.quantity"
+                                    [disabled]="tag.pendingRemoval"
+                                    (change)="onRowQuantityInput(row, tag, $event)"
+                                    aria-label="Quantity"
+                                />
+                                @if (tag.pendingRemoval) {
+                                    <button type="button" class="tag-restore" (click)="restoreTag(row, tag)" aria-label="Restore tag">RESTORE</button>
+                                } @else {
+                                    <button type="button" class="tag-remove" (click)="removeTag(row, tag)" aria-label="Remove tag">X</button>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            } @empty {
+                <div class="empty-state">NO COLLECTION ENTRIES</div>
+            }
+        </div>
+    </main>
+
+    <footer class="collection-footer">
+        
+        @if (selectedCount() > 0) {
+            <section class="bulk-panel framed-borders">
+                <div class="bulk-panel-header panel-header">
+                    <span class="panel-title">Bulk Tags</span>
+                    <span class="bulk-selection-summary">{{ selectedCount() }} selected</span>
+                </div>
+
+                <div class="bulk-panel-content">
+                    <div class="bulk-controls">
+                        <label class="field compact">
+                            <span>TAG</span>
+                            <select
+                                class="bt-select tag-field"
+                                [value]="selectedMassTagValue()"
+                                (change)="onMassTagChange($event)"
+                            >
+                                <option value=""></option>
+                                <option [value]="addNewTagOptionValue">+ Add new tag...</option>
+                                @for (tag of tagOptions(); track tag) {
+                                    <option [value]="tag" [selected]="tag === selectedMassTagValue()">{{ tag }}</option>
+                                }
+                            </select>
+                        </label>
+                        <label class="field quantity-field">
+                            <span>QUANTITY</span>
+                            <input
+                                type="number"
+                                class="bt-input quantity-input"
+                                min="1"
+                                step="1"
+                                placeholder="1"
+                                [value]="massQuantity()"
+                                (input)="onMassQuantityInput($event)"
+                                (blur)="onMassQuantityBlur($event)"
+                            />
+                        </label>
+                        <button type="button" class="bt-button" [disabled]="!canApplyMassChange()" (click)="addTagToSelected()">ADD</button>
+                        <button type="button" class="bt-button danger" [disabled]="!canRemoveMassTag()" (click)="removeTagFromSelected()">REMOVE</button>
+                    </div>
+                </div>
+            </section>
+        }
+
+        <section class="quick-add-panel framed-borders" [class.expanded]="quickAddOpen()">
+            <button class="quick-add-toggle panel-header" type="button" (click)="toggleQuickAdd()">
+                <svg class="chevron" width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10"
+                    xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!quickAddOpen()">
+                    <path d="M0 2l5 6 5-6z" />
+                </svg>
+                <span class="panel-title">Quick Add Chassis Tag</span>
+            </button>
+
+            @if (quickAddOpen()) {
+                <div class="quick-add-content">
+                    <div class="quick-add-fields">
+                        <label class="field chassis-field">
+                            <span>CHASSIS</span>
+                            <input
+                                id="quick-add-chassis"
+                                type="text"
+                                class="bt-input"
+                                autocomplete="off"
+                                [value]="addChassisText()"
+                                (input)="onAddChassisInput($event)"
+                                (focus)="onAddChassisFocus()"
+                                (blur)="onAddChassisBlur($event)"
+                                placeholder="Enter chassis..."
+                            />
+                        </label>
+
+                        @if (showChassisSuggestions() && chassisSuggestions().length > 0 && addChassisText().trim().length > 0) {
+                            <div class="suggestion-strip chassis-suggestions" role="listbox" aria-label="Chassis suggestions" (pointerdown)="onChassisSuggestionsPointerDown()">
+                                @for (option of chassisSuggestions(); track option.key) {
+                                    <button
+                                        type="button"
+                                        class="suggestion-button"
+                                        role="option"
+                                        [class.selected]="isSelectedAddChassisOption(option)"
+                                        [attr.aria-selected]="isSelectedAddChassisOption(option)"
+                                        (click)="selectSuggestion(option)">
+                                        <span>{{ option.inputLabel }}</span>
+                                        <small>{{ option.unitCount }}</small>
+                                    </button>
+                                }
+                            </div>
+                        }
+                        <label class="field tag-field">
+                            <span>TAG</span>
+                            <select
+                                class="bt-select tag-field"
+                                [value]="selectedQuickAddTagValue()"
+                                (change)="onAddTagChange($event)"
+                            >
+                                <option value=""></option>
+                                <option [value]="addNewTagOptionValue">+ Add new tag...</option>
+                                @for (tag of tagOptions(); track tag) {
+                                    <option [value]="tag" [selected]="tag === selectedQuickAddTagValue()">{{ tag }}</option>
+                                }
+                            </select>
+                        </label>
+                        <label class="field quantity-field">
+                            <span>QUANTITY</span>
+                            <input
+                                type="number"
+                                class="bt-input quantity-input"
+                                min="1"
+                                step="1"
+                                placeholder="1"
+                                [value]="addQuantity()"
+                                (input)="onAddQuantityInput($event)"
+                                (blur)="onAddQuantityBlur($event)"
+                            />
+                        </label>
+
+                        <button type="button" class="bt-button primary add-button" [disabled]="!canAddChassis()" (click)="addChassisTag()">ADD</button>
+                    </div>
+                </div>
+            }
+        </section>
+
+        @if (statusMessage()) {
+            <div class="status-line">{{ statusMessage() }}</div>
+        }
+    </footer>
+</div>
+

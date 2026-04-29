@@ -190,6 +190,7 @@ export class DataService {
     private forcePackToLookupKey: Map<string, Set<string>> | null = null;
     /** chassis|type|subtype -> sorted pack names[] for reverse lookups */
     private lookupKeyToForcePacks: Map<string, string[]> | null = null;
+    private cachedForceTagsByInstanceId = new Map<string, string[]>();
 
     public tagsVersion = signal(0);
     public searchCorpusVersion = signal(0);
@@ -252,11 +253,11 @@ export class DataService {
         }
 
         // Wire up TagsService callbacks
-        this.tagsService.setRefreshUnitsCallback((tagData) => {
-            this.applyTagDataToUnits(tagData);
+        this.tagsService.setRefreshUnitsCallback((tagData, options) => {
+            this.applyTagDataToUnits(tagData, options);
         });
-        this.tagsService.setNotifyStoreUpdatedCallback(() => {
-            this.notifyStoreUpdated('update', 'tags');
+        this.tagsService.setNotifyStoreUpdatedCallback((options) => {
+            this.notifyStoreUpdated('update', 'tags', options);
         });
 
         // Register WS message handlers for tag sync (handled by TagsService)
@@ -280,9 +281,12 @@ export class DataService {
      * 
      * V3 format: tags = { tagId: { label, units: {unitName: {}}, chassis: {chassisKey: {}} } }
      */
-    private applyTagDataToUnits(tagData: TagData | null): void {
-        this.unitRuntimeService.applyTagDataToUnits(this.getUnits(), tagData);
-        this.tagsVersion.set(this.tagsVersion() + 1);
+    private applyTagDataToUnits(tagData: TagData | null, options?: { searchIndexChanged?: boolean }): void {
+        const searchIndexChanged = options?.searchIndexChanged ?? true;
+        this.unitRuntimeService.applyTagDataToUnits(this.getUnits(), tagData, { rebuildTagSearchIndex: searchIndexChanged });
+        if (searchIndexChanged) {
+            this.tagsVersion.set(this.tagsVersion() + 1);
+        }
     }
 
     /**
@@ -310,7 +314,7 @@ export class DataService {
             if (action === 'update' && context === 'tags') {
                 // Reload tag data from TagsService and apply to units
                 const tagData = await this.tagsService.getTagData();
-                this.applyTagDataToUnits(tagData);
+                this.applyTagDataToUnits(tagData, msg.meta);
             }
         } catch (err) {
             this.logger.error('Error handling store update broadcast: ' + err);
@@ -748,7 +752,44 @@ export class DataService {
             throw new Error('The selected force could not be updated.');
         }
 
+        this.updateCachedForceTags(instanceId, normalizedTags);
         return normalizedTags;
+    }
+
+    public getCachedForceTagLabels(): string[] {
+        const labels = new Map<string, string>();
+        for (const tags of this.cachedForceTagsByInstanceId.values()) {
+            for (const tag of tags) {
+                const key = tag.toLocaleLowerCase();
+                if (!labels.has(key)) {
+                    labels.set(key, tag);
+                }
+            }
+        }
+
+        return Array.from(labels.values())
+            .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
+    }
+
+    public updateCachedForceTags(instanceId: string, tags: readonly string[] | null | undefined): void {
+        if (!instanceId) {
+            return;
+        }
+
+        this.cachedForceTagsByInstanceId.set(instanceId, sanitizeForceTags(tags ?? []));
+    }
+
+    private refreshCachedForceTags(forces: readonly Pick<LoadForceEntry, 'instanceId' | 'tags'>[]): void {
+        const nextCache = new Map<string, string[]>();
+        for (const force of forces) {
+            if (!force.instanceId) {
+                continue;
+            }
+
+            nextCache.set(force.instanceId, sanitizeForceTags(force.tags ?? []));
+        }
+
+        this.cachedForceTagsByInstanceId = nextCache;
     }
 
 
@@ -787,6 +828,7 @@ export class DataService {
             }
         }
         const mergedForces = Array.from(forceMap.values()).sort((a, b) => getTimestamp(b) - getTimestamp(a));
+        this.refreshCachedForceTags(mergedForces);
         this.logger.info(`Found ${mergedForces.length} unique forces.`);
         return mergedForces;
     }

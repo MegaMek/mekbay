@@ -50,26 +50,12 @@
     font-weight: 500;
 }
 
-.tag-option-chassis-item.tag-assigned {
-    color: var(--bt-teal, #4ec9b0);
-}
-
 .tag-option.tag-assigned {
     color: var(--bt-yellow);
 }
 
 .tag-option.tag-assigned:hover {
     cursor: default;
-}
-
-.tag-option.tag-covered {
-    color: #666;
-    cursor: default;
-    opacity: 0.6;
-}
-
-.tag-option.tag-covered:hover {
-    background-color: transparent;
 }
 
 .tag-option.tag-partial:hover {
@@ -88,23 +74,6 @@
     font-size: 1.2em;
     font-weight: bold;
     flex-shrink: 0;
-}
-
-.tag-quantity-input {
-    width: 42px;
-    min-width: 42px;
-    background: var(--background-color);
-    color: var(--text-color);
-    border: 1px solid var(--border-color);
-    padding: 2px;
-    box-sizing: border-box;
-    text-align: center;
-    margin-top: -2px;
-    margin-bottom: -2px;
-}
-
-.tag-quantity-input:disabled {
-    display: none;
 }
 
 .tag-action-btn {
@@ -143,31 +112,4 @@
 
 .tag-list .tag-option:last-child {
     border-bottom: none;
-}
-
-/* Public tags section */
-.tag-section-header {
-    padding: 6px 10px;
-    font-size: 0.8em;
-    color: var(--text-color-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.tag-section-public .tag-option-public {
-    color: #8ab4f8;
-    cursor: default;
-}
-
-.tag-option-public:hover {
-    background-color: transparent;
-}
-
-.tag-option-public.subscribed {
-    color: #58a6ff;
-}
-
-.tag-subscribed-icon {
-    font-size: 1.1em;
-    opacity: 0.7;
 }

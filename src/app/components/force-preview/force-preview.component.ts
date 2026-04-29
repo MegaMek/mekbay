@@ -167,10 +167,11 @@ import { getFactionImg } from '../../models/factions.model';
         }
 
         .game-type-badge {
-            font-size: 0.8em;
+            font-size: 0.7em;
             font-weight: bold;
-            padding: 2px 6px;
+            padding: 1px 5px;
             background: #a2792c;
+            border: 1px solid #a2792c;
             color: #fff;
             text-transform: uppercase;
             flex-shrink: 0;
@@ -179,6 +180,7 @@ import { getFactionImg } from '../../models/factions.model';
 
         .game-type-badge.as {
             background: #811313;
+            border: 1px solid #811313;
         }
 
         .force-bv {

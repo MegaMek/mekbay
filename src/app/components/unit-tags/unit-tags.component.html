@@ -1,10 +1,10 @@
 <div class="unit-tags" [class.compact]="mode() === 'compact'" [class.full]="mode() === 'full'">
     @if (mode() === 'full') {
-        @for (tag of chassisTags(); track $index) {
-            <span class="tag tag-chassis">{{ tag }}</span>
+        @for (entry of chassisTagEntries(); track entry.tag.toLowerCase()) {
+            <span class="tag tag-chassis">{{ formatTagEntry(entry) }}</span>
         }
-        @for (tag of nameTags(); track $index) {
-            <span class="tag tag-name">{{ tag }}</span>
+        @for (entry of nameTagEntries(); track entry.tag.toLowerCase()) {
+            <span class="tag tag-name">{{ formatTagEntry(entry) }}</span>
         }
         @for (pt of publicTags(); track pt.publicId + ':' + pt.tag) {
             <span class="tag tag-public" [class.subscribed]="pt.subscribed" [title]="'From: ' + pt.publicId">{{ pt.tag }}</span>

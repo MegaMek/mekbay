@@ -115,7 +115,6 @@
     gap: 8px;
     align-items: start;
     position: relative;
-    padding-right: 42px;
 }
 
 .force-header-main {
@@ -125,18 +124,12 @@
     min-width: 0;
 }
 
-.force-header-actions {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    margin-left: auto;
-}
-
 .game-type-badge {
-    font-size: 0.8em;
+    font-size: 0.7em;
     font-weight: bold;
-    padding: 2px 6px;
+    padding: 1px 5px;
     background: #a2792c;
+    border: 1px solid #a2792c;
     color: #fff;
     text-transform: uppercase;
     flex-shrink: 0;
@@ -145,14 +138,29 @@
 
 .game-type-badge.as {
     background: #811313;
+    border: 1px solid #811313;
 }
 
 .force-info {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: center;
+    gap: 0px 4px;
     text-align: right;
-    margin-left: 0;
+    margin-left: 1em;
     min-width: 0;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.timestamp {
+    color: var(--text-color-secondary);
+    font-size: 0.8em;
+    text-align: right;
+}
+
+.hangar-force-bv {
+    flex: 0 0 100%;
 }
 
 .faction-name-wrapper {
@@ -177,36 +185,8 @@
     min-width: 0;
 }
 
-.force-inline-tags {
-    display: inline-flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 4px;
-    min-width: 0;
-}
-
-.new-tag {
-    border-bottom: 1px solid var(--border-color);
-}
-
-.force-folder-row {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 4px;
-    min-width: 0;
-}
-
-.folder-pill {
-    font-size: 0.8em;
-    padding: 2px 6px;
-    display: inline-flex;
-    align-items: center;
-    border: 1px solid var(--border-color);
-    background: #0004;
-    color: var(--text-color-secondary);
-    text-transform: none;
-    max-width: 100%;
+.force-entry-tags {
+    max-width: min(360px, 100%);
 }
 
 .variant-name {
@@ -221,75 +201,12 @@
     font-size: 0.8em;
 }
 
-.force-timestamp {
-    color: var(--text-color-secondary);
-    font-size: 0.8em;
-    margin-left: 1em;
-    text-align: right;
-    display: flex;
-    flex-direction: row;
-    gap: 4px;
-    align-items: first baseline;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-}
-
 .save-state-icon {
     width: 16px;
     height: 16px;
     vertical-align: text-bottom;
     opacity: 0.8;
     align-self: center;
-}
-
-.entry-action-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 34px;
-    height: 34px;
-    border: 1px solid transparent;
-    background: #0002;
-    color: var(--text-color-secondary);
-    cursor: pointer;
-    padding: 0;
-    flex-shrink: 0;
-    position: absolute;
-    top: 0;
-    right: 0;
-    z-index: 1;
-}
-
-.entry-action-btn:hover {
-    color: var(--text-color);
-    border-color: var(--border-color);
-    background: var(--background-highlight);
-}
-
-.entry-action-btn svg {
-    width: 18px;
-    height: 18px;
-}
-
-.hangar-menu {
-    max-width: min(320px, calc(100vw - 24px));
-    max-height: min(60vh, 420px);
-    overflow-y: auto;
-    overflow-x: hidden;
-}
-
-.hangar-folder-menu {
-    min-width: min(240px, calc(100vw - 32px));
-}
-
-.hangar-folder-menu .menu-item {
-    min-width: 0;
-}
-
-.hangar-folder-menu-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 .unit-scroll {
@@ -615,15 +532,6 @@
     transform: rotate(-90deg);
 }
 
-.operation-meta {
-    display: flex;
-    align-items: first baseline;
-    gap: 4px;
-    font-size: 0.8em;
-    color: var(--text-color-secondary);
-    margin-left: auto;
-}
-
 .operation-timestamp {
     display: flex;
     align-items: first baseline;
@@ -671,28 +579,8 @@
         grid-template-columns: minmax(0, 1fr);
     }
 
-    .force-header-actions {
-        width: 100%;
-        justify-content: flex-start;
-        align-items: flex-start;
-    }
-
     .force-info {
-        text-align: left;
+        margin-left: auto;
     }
 
-    .force-timestamp {
-        margin-left: 0;
-        text-align: left;
-        justify-content: flex-start;
-    }
-
-    .hangar-menu {
-        max-width: min(280px, calc(100vw - 16px));
-        max-height: min(55vh, 360px);
-    }
-
-    .hangar-folder-menu {
-        min-width: min(220px, calc(100vw - 20px));
-    }
 }

@@ -81,10 +81,31 @@ function formatArcDamage(arc: AlphaStrikeArcStats | undefined, type: 'STD' | 'CA
 }
 
 function getMergedUnitTags(unit: Unit): string {
-    const merged = new Set<string>();
-    for (const tag of unit._chassisTags ?? []) merged.add(tag);
-    for (const tag of unit._nameTags ?? []) merged.add(tag);
-    return Array.from(merged).join(', ');
+    const merged = new Map<string, { label: string; quantity: number }>();
+
+    const mergeTag = (tag: string, quantity: number) => {
+        const key = tag.toLowerCase();
+        const existing = merged.get(key);
+        if (!existing) {
+            merged.set(key, { label: tag, quantity });
+            return;
+        }
+
+        if (quantity > existing.quantity) {
+            existing.quantity = quantity;
+        }
+    };
+
+    for (const entry of unit._chassisTags ?? []) {
+        mergeTag(entry.tag, entry.quantity);
+    }
+    for (const entry of unit._nameTags ?? []) {
+        mergeTag(entry.tag, entry.quantity);
+    }
+
+    return Array.from(merged.values())
+        .map(entry => entry.quantity > 1 ? `${entry.label} (${entry.quantity})` : entry.label)
+        .join(', ');
 }
 
 /**

@@ -44,8 +44,8 @@ const unitComponentCache = new WeakMap<Unit, UnitComponentData>();
 
 export function getMergedTags(unit: Unit): string[] {
     const merged = new Set<string>();
-    for (const tag of unit._chassisTags ?? []) merged.add(tag);
-    for (const tag of unit._nameTags ?? []) merged.add(tag);
+    for (const entry of unit._chassisTags ?? []) merged.add(entry.tag);
+    for (const entry of unit._nameTags ?? []) merged.add(entry.tag);
     for (const publicTag of unit._publicTags ?? []) merged.add(publicTag.tag);
     return Array.from(merged);
 }

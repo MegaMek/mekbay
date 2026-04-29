@@ -55,6 +55,7 @@ import { WsService } from './services/ws.service';
 import { ToastService } from './services/toast.service';
 import { DialogsService } from './services/dialogs.service';
 import { BetaDialogComponent } from './components/beta-dialog/beta-dialog.component';
+import { CollectionDialogComponent } from './components/collection-dialog/collection-dialog.component';
 import { UpdateButtonComponent } from './components/update-button/update-button.component';
 import { UnitSearchFiltersService } from './services/unit-search-filters.service';
 import { DomPortal, PortalModule } from '@angular/cdk/portal';
@@ -128,6 +129,17 @@ export class App {
     private lastHandledCapturedUrlAt = 0;
     private readonly capturedUrlDedupWindowMs = 2000;
     private pendingUpdateHash: string | null = null;
+    private readonly keyboardNavigationKeys = new Set([
+        'Tab',
+        'ArrowUp',
+        'ArrowRight',
+        'ArrowDown',
+        'ArrowLeft',
+        'Home',
+        'End',
+        'PageUp',
+        'PageDown',
+    ]);
 
 
     private readonly unitSearchContainer = viewChild.required<ElementRef>('unitSearchContainer');
@@ -165,6 +177,10 @@ export class App {
         document.addEventListener('contextmenu', this.contextMenuHandler);
         window.addEventListener('beforeunload', this.beforeUnloadHandler);
         window.addEventListener('blur', this.onBlur);
+        window.addEventListener('keydown', this.keyboardNavigationHandler, true);
+        window.addEventListener('pointerdown', this.pointerNavigationHandler, true);
+        window.addEventListener('mousedown', this.pointerNavigationHandler, true);
+        window.addEventListener('touchstart', this.pointerNavigationHandler, true);
         // window.addEventListener('popstate', this.historyNavigationHandler);
         // if ('serviceWorker' in navigator) {
         //     navigator.serviceWorker.addEventListener('message', this.serviceWorkerMessageHandler);
@@ -308,6 +324,10 @@ export class App {
             window.removeEventListener('appinstalled', this.appInstalledHandler);
             document.removeEventListener('contextmenu', this.contextMenuHandler);
             window.removeEventListener('blur', this.onBlur);
+            window.removeEventListener('keydown', this.keyboardNavigationHandler, true);
+            window.removeEventListener('pointerdown', this.pointerNavigationHandler, true);
+            window.removeEventListener('mousedown', this.pointerNavigationHandler, true);
+            window.removeEventListener('touchstart', this.pointerNavigationHandler, true);
             // window.removeEventListener('popstate', this.historyNavigationHandler);
             // if ('serviceWorker' in navigator) {
             //     navigator.serviceWorker.removeEventListener('message', this.serviceWorkerMessageHandler);
@@ -316,6 +336,20 @@ export class App {
     }
 
     hasForces = this.forceBuilderService.hasForces;
+
+    private readonly keyboardNavigationHandler = (event: KeyboardEvent) => {
+        if (event.metaKey || event.ctrlKey || event.altKey) {
+            return;
+        }
+
+        if (this.keyboardNavigationKeys.has(event.key)) {
+            document.documentElement.classList.add('keyboard-navigation');
+        }
+    };
+
+    private readonly pointerNavigationHandler = () => {
+        document.documentElement.classList.remove('keyboard-navigation');
+    };
 
     isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
 
@@ -761,6 +795,10 @@ export class App {
 
     showLoadForceDialog(): void {
         this.forceBuilderService.showLoadForceDialog();
+    }
+
+    showCollectionDialog(): void {
+        this.dialogService.createDialog(CollectionDialogComponent);
     }
 
     showForceGeneratorDialog(): void {

@@ -103,6 +103,17 @@ body {
     cursor: default;
 }
 
+:root:not(.keyboard-navigation) *:focus,
+:root:not(.keyboard-navigation) *:focus-visible {
+    outline: none !important;
+    outline-offset: 0 !important;
+}
+
+:root.keyboard-navigation *:focus {
+    outline: 2px solid var(--primary-focus-color-highlight) !important;
+    outline-offset: 2px !important;
+}
+
 @media print {
     :root {
         color-scheme: light;
@@ -225,6 +236,10 @@ hr {
         min-height: 100dvh;
         max-height: 100vh;
         max-height: 100dvh;
+    }
+
+    &.nopadding {
+        padding: 0;
     }
 }
 
