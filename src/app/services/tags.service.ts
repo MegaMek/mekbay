@@ -228,23 +228,24 @@ export class TagsService {
         const ops: TagOp[] = [];
 
         // Track processed keys to avoid duplicate operations
-        const processedKeys = new Set<string>();
+        const processedNameKeys = new Set<string>();
+        const processedChassisKeys = new Set<string>();
 
         for (const unit of units) {
             if (tagType === 'chassis') {
                 const chassisKey = TagsService.getChassisTagKey(unit);
 
-                // Skip if already processed this chassis
-                if (processedKeys.has(`c:${chassisKey}`)) continue;
-                processedKeys.add(`c:${chassisKey}`);
-
                 if (action === 'add') {
                     // When adding a chassis tag, remove any existing name tag with the same value
                     // This "expands" the tag from unit-specific to chassis-wide
-                    if (this.hasUnitTag(tagData, tagId, unit.name)) {
+                    if (!processedNameKeys.has(unit.name) && this.hasUnitTag(tagData, tagId, unit.name)) {
+                        processedNameKeys.add(unit.name);
                         this.removeUnitTag(tagData, tagId, unit.name);
                         ops.push({ k: unit.name, t: trimmedTag, c: 0, a: 0, ts: now });
                     }
+
+                    if (processedChassisKeys.has(chassisKey)) continue;
+                    processedChassisKeys.add(chassisKey);
 
                     // Add to chassis tags if not already present
                     if (!this.hasChassisTag(tagData, tagId, chassisKey)) {
@@ -269,6 +270,9 @@ export class TagsService {
                         });
                     }
                 } else {
+                    if (processedChassisKeys.has(chassisKey)) continue;
+                    processedChassisKeys.add(chassisKey);
+
                     // Remove from chassis tags
                     if (this.hasChassisTag(tagData, tagId, chassisKey)) {
                         this.removeChassisTag(tagData, tagId, chassisKey);
@@ -277,8 +281,8 @@ export class TagsService {
                 }
             } else {
                 // Name-based tagging - skip if already processed
-                if (processedKeys.has(`n:${unit.name}`)) continue;
-                processedKeys.add(`n:${unit.name}`);
+                if (processedNameKeys.has(unit.name)) continue;
+                processedNameKeys.add(unit.name);
 
                 if (action === 'add') {
                     if (!this.hasUnitTag(tagData, tagId, unit.name)) {
