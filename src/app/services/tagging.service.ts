@@ -247,7 +247,11 @@ export class TaggingService {
                 }
             }
 
-            await this.tagsService.modifyTag(units, selectedTag, tagType, 'add');
+            const unitsToTag = tagType === 'chassis'
+                ? this.getChassisTagTargetUnits(units, allUnits)
+                : units;
+
+            await this.tagsService.modifyTag(unitsToTag, selectedTag, tagType, 'add');
             await updateTagStates();
             this.filtersService.invalidateTagsCache();
         });
@@ -322,6 +326,23 @@ export class TaggingService {
         }
 
         return { fullyAssigned, partiallyAssigned };
+    }
+
+    private getChassisTagTargetUnits(units: Unit[], allUnits: Unit[]): Unit[] {
+        const chassisKeys = new Set(units.map(unit => TagsService.getChassisTagKey(unit)));
+        const unitsByName = new Map<string, Unit>();
+
+        for (const unit of allUnits) {
+            if (chassisKeys.has(TagsService.getChassisTagKey(unit))) {
+                unitsByName.set(unit.name, unit);
+            }
+        }
+
+        for (const unit of units) {
+            unitsByName.set(unit.name, unit);
+        }
+
+        return Array.from(unitsByName.values());
     }
 
     /**
