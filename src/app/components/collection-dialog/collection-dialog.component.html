@@ -4,9 +4,9 @@
             <div class="title-tag-row">
                 <label class="title-filter-control">
                     <select class="title-tag-select" [value]="tagFilter()" (change)="onTagFilterChange($event)" aria-label="Tag filter">
-                        <option value="">All Tags</option>
-                        @for (tag of allTags(); track tag) {
-                            <option [value]="tag">{{ tag }}</option>
+                        <option value="" [selected]="!selectedHeaderTag()">All Tags</option>
+                        @for (tag of titleTagOptions(); track tag) {
+                            <option [value]="tag" [selected]="tag.toLowerCase() === selectedHeaderTagLower()">{{ tag }}</option>
                         }
                     </select>
                 </label>

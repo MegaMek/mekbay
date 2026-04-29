@@ -62,3 +62,23 @@ export function copyTextToClipboard(text: string): Promise<void> {
         });
     }
 }
+
+export async function shareUrlWithClipboardFallback({
+    title,
+    url,
+}: {
+    title: string;
+    url: string;
+}): Promise<'shared' | 'copied'> {
+    if (navigator.share) {
+        try {
+            await navigator.share({ title, url });
+            return 'shared';
+        } catch {
+            // Fall back to copying for cancellations or share errors.
+        }
+    }
+
+    await copyTextToClipboard(url);
+    return 'copied';
+}

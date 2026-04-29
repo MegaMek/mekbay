@@ -40,7 +40,7 @@ import { firstValueFrom } from 'rxjs';
 import { ToastService } from '../../services/toast.service';
 import { ForceUnit } from '../../models/force-unit.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { copyTextToClipboard } from '../../utils/clipboard.util';
+import { shareUrlWithClipboardFallback } from '../../utils/clipboard.util';
 import { FloatingOverlayService } from '../../services/floating-overlay.service';
 import { SwipeDirective, type SwipeEndEvent, type SwipeMoveEvent, type SwipeStartEvent } from '../../directives/swipe.directive';
 import { LongPressDirective } from '../../directives/long-press.directive';
@@ -553,8 +553,8 @@ export class UnitDetailsDialogComponent {
         return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     }
 
-    onShare() {
-        const { httpsUrl, appUrl } = buildUnitShareLinks(
+    async onShare() {
+        const { httpsUrl } = buildUnitShareLinks(
             window.location.origin,
             window.location.pathname,
             this.currentGameSystem(),
@@ -562,17 +562,8 @@ export class UnitDetailsDialogComponent {
             this.activeTab(),
         );
         const shareTitle = `${this.unit.chassis} ${this.unit.model}`;
-        if (navigator.share) {
-            navigator.share({
-                title: shareTitle,
-                url: httpsUrl,
-            }).catch(() => {
-                // fallback if user cancels or error
-                copyTextToClipboard(httpsUrl);
-                this.toastService.showToast('Unit links copied to clipboard.', 'success');
-            });
-        } else {
-            copyTextToClipboard(httpsUrl);
+        const result = await shareUrlWithClipboardFallback({ title: shareTitle, url: httpsUrl });
+        if (result === 'copied') {
             this.toastService.showToast('Unit links copied to clipboard.', 'success');
         }
     }

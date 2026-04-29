@@ -34,7 +34,6 @@
 import { ChangeDetectionStrategy, Component, ElementRef, HostListener, computed, inject, signal } from '@angular/core';
 import { DialogRef } from '@angular/cdk/dialog';
 import { ActivatedRoute, Router } from '@angular/router';
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
 import type { Unit, UnitTagEntry } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -42,13 +41,12 @@ import { GameService } from '../../services/game.service';
 import { TagsService } from '../../services/tags.service';
 import { TAG_MAX_LENGTH, TaggingService, validateTagName } from '../../services/tagging.service';
 import { ToastService } from '../../services/toast.service';
-import type { FilterState } from '../../services/unit-search-filters.model';
 import { UserStateService } from '../../services/userState.service';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { matchesSearch, parseSearchQuery } from '../../utils/search.util';
 import { compareUnitsByName } from '../../utils/sort.util';
-import { copyTextToClipboard } from '../../utils/clipboard.util';
-import { buildUnitSearchQueryParameters } from '../../utils/unit-search-url-filters.util';
+import { shareUrlWithClipboardFallback } from '../../utils/clipboard.util';
+import { buildPublicTagSearchQueryParameters } from '../../utils/unit-search-public-tags-url.util';
 
 type CollectionRowType = 'chassis' | 'name';
 
@@ -117,6 +115,7 @@ export class CollectionDialogComponent {
     private readonly toastService = inject(ToastService);
     private readonly userStateService = inject(UserStateService);
     private interactingWithChassisSuggestions = false;
+    private suppressEmptyHeaderTagChange = false;
     private readonly createdTagOptions = signal<string[]>([]);
 
     readonly addNewTagOptionValue = '__add_new_tag__';
@@ -334,6 +333,17 @@ export class CollectionDialogComponent {
         return [...createdTags, ...tags];
     });
 
+    readonly titleTagOptions = computed(() => {
+        const tags = this.allTags();
+        const selectedTag = this.tagFilter().trim();
+        if (!selectedTag || tags.some(tag => tag.toLowerCase() === selectedTag.toLowerCase())) {
+            return tags;
+        }
+
+        return [...tags, selectedTag]
+            .sort((left, right) => left.toLowerCase().localeCompare(right.toLowerCase()));
+    });
+
     readonly selectedMassTagValue = computed(() => this.resolveSelectedTagValue(this.massTag()));
 
     readonly selectedQuickAddTagValue = computed(() => {
@@ -341,6 +351,8 @@ export class CollectionDialogComponent {
     });
 
     readonly selectedHeaderTag = computed(() => this.tagFilter().trim());
+
+    readonly selectedHeaderTagLower = computed(() => this.selectedHeaderTag().toLowerCase());
 
     readonly canUseHeaderTagActions = computed(() => this.selectedHeaderTag().length > 0);
 
@@ -373,7 +385,12 @@ export class CollectionDialogComponent {
     }
 
     onTagFilterChange(event: Event): void {
-        this.tagFilter.set((event.target as HTMLSelectElement).value);
+        const value = (event.target as HTMLSelectElement).value;
+        if (this.suppressEmptyHeaderTagChange && !value) {
+            return;
+        }
+
+        this.tagFilter.set(value);
         this.clearMissingSelections();
     }
 
@@ -382,7 +399,7 @@ export class CollectionDialogComponent {
         this.clearMissingSelections();
     }
 
-    shareSelectedTagLink(): void {
+    async shareSelectedTagLink(): Promise<void> {
         const tag = this.selectedHeaderTag();
         if (!tag) {
             return;
@@ -397,16 +414,8 @@ export class CollectionDialogComponent {
         const shareUrl = this.buildTagShareUrl(publicId, tag);
         const shareTitle = `MekBay tag: ${tag}`;
 
-        if (navigator.share) {
-            navigator.share({
-                title: shareTitle,
-                url: shareUrl,
-            }).catch(() => {
-                copyTextToClipboard(shareUrl);
-                this.toastService.showToast('Tag link copied to clipboard.', 'success');
-            });
-        } else {
-            copyTextToClipboard(shareUrl);
+        const result = await shareUrlWithClipboardFallback({ title: shareTitle, url: shareUrl });
+        if (result === 'copied') {
             this.toastService.showToast('Tag link copied to clipboard.', 'success');
         }
     }
@@ -417,13 +426,20 @@ export class CollectionDialogComponent {
             return;
         }
 
-        const renamedTag = await this.taggingService.renameTag(oldTag);
-        if (!renamedTag) {
-            return;
-        }
+        this.suppressEmptyHeaderTagChange = true;
+        try {
+            const renamedTag = await this.taggingService.renameTag(oldTag);
+            if (!renamedTag) {
+                return;
+            }
 
-        this.replaceSelectedTagReferences(oldTag, renamedTag);
-        this.statusMessage.set(`Renamed "${oldTag}" to "${renamedTag}".`);
+            this.replaceSelectedTagReferences(oldTag, renamedTag);
+            this.statusMessage.set(`Renamed "${oldTag}" to "${renamedTag}".`);
+        } finally {
+            setTimeout(() => {
+                this.suppressEmptyHeaderTagChange = false;
+            }, 0);
+        }
     }
 
     async onMassTagChange(event: Event): Promise<void> {
@@ -863,27 +879,11 @@ export class CollectionDialogComponent {
     }
 
     private buildTagShareUrl(publicId: string, tag: string): string {
-        const filterState: FilterState = {
-            _tags: {
-                value: {
-                    [tag]: { name: tag, state: 'or', count: 1 },
-                },
-                interactedWith: true,
-            },
-        };
-        const queryParameters = buildUnitSearchQueryParameters({
-            searchText: '',
-            filterState,
-            semanticKeys: new Set<string>(),
-            selectedSort: '',
-            selectedSortDirection: 'asc',
-            expanded: false,
-            gunnery: DEFAULT_GUNNERY_SKILL,
-            piloting: DEFAULT_PILOTING_SKILL,
-            bvLimit: 0,
-            publicTagsParam: `${publicId}:${tag}`,
+        const queryParameters = buildPublicTagSearchQueryParameters({
+            publicId,
+            tagName: tag,
+            gameSystem: this.gameService.currentGameSystem(),
         });
-        queryParameters.gs = this.gameService.currentGameSystem();
 
         const tree = this.router.createUrlTree([], {
             relativeTo: this.route,
@@ -893,7 +893,7 @@ export class CollectionDialogComponent {
     }
 
     private replaceSelectedTagReferences(oldTag: string, newTag: string): void {
-        this.tagFilter.update(tag => this.replaceMatchingTag(tag, oldTag, newTag));
+        this.tagFilter.set(newTag);
         this.massTag.update(tag => this.replaceMatchingTag(tag, oldTag, newTag));
         this.addTag.update(tag => this.replaceMatchingTag(tag, oldTag, newTag));
         this.createdTagOptions.update(tags => this.addUniqueTag(

@@ -32,9 +32,11 @@
  */
 
 import type { GameSystem } from '../models/common.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import type { FilterState } from '../services/unit-search-filters.model';
 import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { parseSemanticQueryAST } from './semantic-filter-ast.util';
+import { buildUnitSearchQueryParameters } from './unit-search-url-filters.util';
 
 export interface PublicTagReference {
     publicId: string;
@@ -60,6 +62,14 @@ interface ParsePublicTagsParamArgs {
     myPublicId: string | null | undefined;
     subscribedTags: readonly PublicTagReference[];
 }
+
+interface BuildPublicTagSearchQueryParametersArgs {
+    publicId: string;
+    tagName: string;
+    gameSystem: GameSystem;
+}
+
+export type PublicTagSearchQueryParameters = Record<string, string | number | null | undefined>;
 
 function collectReferencedTagNames(
     searchText: string | null | undefined,
@@ -165,6 +175,35 @@ export function generatePublicTagsParam({
     }
 
     return parts.length > 0 ? parts.join(',') : null;
+}
+
+export function buildPublicTagSearchQueryParameters({
+    publicId,
+    tagName,
+    gameSystem,
+}: BuildPublicTagSearchQueryParametersArgs): PublicTagSearchQueryParameters {
+    const filterState: FilterState = {
+        _tags: {
+            value: {
+                [tagName]: { name: tagName, state: 'or', count: 1 },
+            },
+            interactedWith: true,
+        },
+    };
+    const queryParameters: PublicTagSearchQueryParameters = buildUnitSearchQueryParameters({
+        searchText: '',
+        filterState,
+        semanticKeys: new Set<string>(),
+        selectedSort: '',
+        selectedSortDirection: 'asc',
+        expanded: false,
+        gunnery: DEFAULT_GUNNERY_SKILL,
+        piloting: DEFAULT_PILOTING_SKILL,
+        bvLimit: 0,
+        publicTagsParam: `${publicId}:${tagName}`,
+    });
+    queryParameters['gs'] = gameSystem;
+    return queryParameters;
 }
 
 export function parsePublicTagsParam({
