@@ -204,6 +204,31 @@ export class TagsService {
         return result;
     }
 
+    /**
+     * Removes stale unit-level tag assignments when the same tag is already assigned to that unit's chassis.
+     */
+    public async fixNameTagsCoveredByChassis(units: Unit[], tagData?: TagData | null): Promise<void> {
+        if (units.length === 0 || tagData === null) {
+            return;
+        }
+
+        try {
+            const data = tagData ?? await this.getTagData();
+            const now = Date.now();
+            const ops = this.removeNameTagsCoveredByChassis(data, units, now);
+            if (ops.length === 0) {
+                return;
+            }
+
+            data.timestamp = now;
+            await this.dbService.appendTagOps(ops, data);
+            this.cachedTagData = data;
+            void this.syncToCloud(ops);
+        } catch (err) {
+            this.logger.error('Failed to fix duplicate unit/chassis tags: ' + err);
+        }
+    }
+
     // ================== Tag Modification ==================
 
     /**
@@ -827,6 +852,29 @@ export class TagsService {
         if (Object.keys(entry.units).length === 0 && Object.keys(entry.chassis).length === 0) {
             delete tagData.tags[tagId];
         }
+    }
+
+    private removeNameTagsCoveredByChassis(tagData: TagData, units: Unit[], timestamp: number): TagOp[] {
+        const ops: TagOp[] = [];
+        const processedUnitTags = new Set<string>();
+
+        for (const unit of units) {
+            const chassisKey = TagsService.getChassisTagKey(unit);
+            for (const [tagId, entry] of Object.entries(tagData.tags)) {
+                const processedKey = `${unit.name}\0${tagId}`;
+                if (processedUnitTags.has(processedKey)) {
+                    continue;
+                }
+
+                if (entry.units[unit.name] !== undefined && entry.chassis[chassisKey] !== undefined) {
+                    processedUnitTags.add(processedKey);
+                    this.removeUnitTag(tagData, tagId, unit.name);
+                    ops.push({ k: unit.name, t: entry.label, c: 0, a: 0, ts: timestamp });
+                }
+            }
+        }
+
+        return ops;
     }
 
     // ================== Cloud Sync ==================

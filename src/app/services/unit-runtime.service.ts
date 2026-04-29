@@ -94,6 +94,8 @@ export class UnitRuntimeService {
         options?: { rebuildTagSearchIndex?: boolean }
     ): void {
         const tags = tagData?.tags || {};
+        void this.tagsService.fixNameTagsCoveredByChassis(units, tagData);
+        this.removeNameTagsCoveredByChassis(units, tagData);
 
         for (const unit of units) {
             const chassisKey = TagsService.getChassisTagKey(unit);
@@ -119,6 +121,21 @@ export class UnitRuntimeService {
     private getTagQuantity(unitTagData: UnitTagData | undefined): number {
         const quantity = unitTagData?.q;
         return quantity && quantity > 0 ? quantity : 1;
+    }
+
+    private removeNameTagsCoveredByChassis(units: Unit[], tagData: TagData | null): void {
+        if (!tagData) {
+            return;
+        }
+
+        for (const unit of units) {
+            const chassisKey = TagsService.getChassisTagKey(unit);
+            for (const entry of Object.values(tagData.tags)) {
+                if (entry.units[unit.name] !== undefined && entry.chassis[chassisKey] !== undefined) {
+                    delete entry.units[unit.name];
+                }
+            }
+        }
     }
 
     public applyPublicTagsToUnits(units: Unit[]): void {

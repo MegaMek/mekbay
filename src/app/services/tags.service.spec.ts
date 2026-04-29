@@ -144,4 +144,20 @@ describe('TagsService', () => {
             jasmine.objectContaining({ k: 'Dasher|Mek', t: 'CLAN', c: 1, a: 1 }),
         ]));
     });
+
+    it('persists cleanup of unit tags covered by same-named chassis tags', async () => {
+        tagData.tags['clan'].chassis['Dasher|Mek'] = {};
+        const units = [createUnit('Dasher A'), createUnit('Dasher B'), createUnit('Dasher C')];
+
+        await service.fixNameTagsCoveredByChassis(units, tagData);
+
+        expect(tagData.tags['clan'].units).toEqual({});
+        const [ops] = dbServiceMock.appendTagOps.calls.mostRecent().args as [TagOp[], TagData];
+        expect(ops.length).toBe(3);
+        expect(ops).toEqual(jasmine.arrayContaining([
+            jasmine.objectContaining({ k: 'Dasher A', t: 'CLAN', c: 0, a: 0 }),
+            jasmine.objectContaining({ k: 'Dasher B', t: 'CLAN', c: 0, a: 0 }),
+            jasmine.objectContaining({ k: 'Dasher C', t: 'CLAN', c: 0, a: 0 }),
+        ]));
+    });
 });
