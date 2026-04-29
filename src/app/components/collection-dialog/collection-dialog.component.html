@@ -21,7 +21,7 @@
                 class="bt-input"
                 [value]="unitTextFilter()"
                 (input)="onUnitTextFilterInput($event)"
-                placeholder="CHASSIS OR MODEL"
+                placeholder="Chassis and/or model..."
                 aria-label="Filter units"
             />
         </label>
@@ -98,6 +98,7 @@
                                 [attr.title]="row.rowType === 'chassis' ? 'Open chassis details' : 'Open unit details'">
                                 <span class="target-title">{{ row.title }}</span>
                             </button>
+                            <span class="target-inline-type">{{ row.subtitle }}</span>
                         </div>
                     </div>
                     <div class="type-cell">{{ row.subtitle }}</div>
@@ -145,24 +146,27 @@
                             <span>TAG</span>
                             <select
                                 class="bt-select tag-field"
-                                [value]="massTag()"
+                                [value]="selectedMassTagValue()"
                                 (change)="onMassTagChange($event)"
                             >
-                                <option value="">Select Tag</option>
-                                @for (tag of allTags(); track tag) {
-                                    <option [value]="tag">{{ tag }}</option>
+                                <option value=""></option>
+                                <option [value]="addNewTagOptionValue">+ Add new tag...</option>
+                                @for (tag of tagOptions(); track tag) {
+                                    <option [value]="tag" [selected]="tag === selectedMassTagValue()">{{ tag }}</option>
                                 }
                             </select>
                         </label>
                         <label class="field quantity-field">
-                            <span>QTY</span>
+                            <span>QUANTITY</span>
                             <input
                                 type="number"
                                 class="bt-input quantity-input"
                                 min="1"
                                 step="1"
+                                placeholder="1"
                                 [value]="massQuantity()"
                                 (input)="onMassQuantityInput($event)"
+                                (blur)="onMassQuantityBlur($event)"
                             />
                         </label>
                         <button type="button" class="bt-button" [disabled]="!canApplyMassChange()" (click)="addTagToSelected()">ADD</button>
@@ -195,6 +199,7 @@
                                 (input)="onAddChassisInput($event)"
                                 (focus)="onAddChassisFocus()"
                                 (blur)="onAddChassisBlur($event)"
+                                placeholder="Enter chassis..."
                             />
                         </label>
 
@@ -221,9 +226,9 @@
                                 [value]="selectedQuickAddTagValue()"
                                 (change)="onAddTagChange($event)"
                             >
-                                <option value="">Select Tag</option>
+                                <option value=""></option>
                                 <option [value]="addNewTagOptionValue">+ Add new tag...</option>
-                                @for (tag of quickAddTagOptions(); track tag) {
+                                @for (tag of tagOptions(); track tag) {
                                     <option [value]="tag" [selected]="tag === selectedQuickAddTagValue()">{{ tag }}</option>
                                 }
                             </select>
@@ -235,8 +240,10 @@
                                 class="bt-input quantity-input"
                                 min="1"
                                 step="1"
+                                placeholder="1"
                                 [value]="addQuantity()"
                                 (input)="onAddQuantityInput($event)"
+                                (blur)="onAddQuantityBlur($event)"
                             />
                         </label>
 

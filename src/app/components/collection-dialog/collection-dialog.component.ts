@@ -70,7 +70,7 @@ export class CollectionDialogComponent {
     private readonly dialogsService = inject(DialogsService);
     private readonly tagsService = inject(TagsService);
     private interactingWithChassisSuggestions = false;
-    private readonly quickAddCreatedTags = signal<string[]>([]);
+    private readonly createdTagOptions = signal<string[]>([]);
 
     readonly addNewTagOptionValue = '__add_new_tag__';
 
@@ -278,22 +278,19 @@ export class CollectionDialogComponent {
         };
     });
 
-    readonly quickAddTagOptions = computed(() => {
+    readonly tagOptions = computed(() => {
         const tags = this.allTags();
         const lowerTags = new Set(tags.map(tag => tag.toLowerCase()));
-        const createdTags = this.quickAddCreatedTags()
+        const createdTags = this.createdTagOptions()
             .filter(tag => !lowerTags.has(tag.toLowerCase()));
 
         return [...createdTags, ...tags];
     });
 
-    readonly selectedQuickAddTagValue = computed(() => {
-        const selectedTag = this.addTag();
-        if (!selectedTag) {
-            return '';
-        }
+    readonly selectedMassTagValue = computed(() => this.resolveSelectedTagValue(this.massTag()));
 
-        return this.quickAddTagOptions().find(tag => tag.toLowerCase() === selectedTag.toLowerCase()) ?? selectedTag;
+    readonly selectedQuickAddTagValue = computed(() => {
+        return this.resolveSelectedTagValue(this.addTag());
     });
 
     readonly canAddChassis = computed(() => {
@@ -324,11 +321,34 @@ export class CollectionDialogComponent {
         this.clearMissingSelections();
     }
 
-    onMassTagChange(event: Event): void {
-        this.massTag.set((event.target as HTMLSelectElement).value);
+    async onMassTagChange(event: Event): Promise<void> {
+        const select = event.target as HTMLSelectElement;
+        if (select.value !== this.addNewTagOptionValue) {
+            this.massTag.set(select.value);
+            return;
+        }
+
+        const previousTag = this.massTag();
+        select.value = this.resolveSelectedTagValue(previousTag);
+        const newTag = await this.promptForNewTag();
+        if (!newTag) {
+            this.massTag.set(previousTag);
+            return;
+        }
+
+        this.massTag.set(newTag);
+        select.value = newTag;
     }
 
     onMassQuantityInput(event: Event): void {
+        if (this.isEmptyQuantityInput(event)) {
+            return;
+        }
+
+        this.massQuantity.set(this.parseQuantity(event));
+    }
+
+    onMassQuantityBlur(event: Event): void {
         this.massQuantity.set(this.parseQuantity(event));
     }
 
@@ -376,34 +396,26 @@ export class CollectionDialogComponent {
         }
 
         const previousTag = this.addTag();
-        select.value = previousTag;
-        const newTag = await this.dialogsService.prompt(
-            'Enter the new tag name:',
-            'Add New Tag',
-            '',
-            `Maximum ${TAG_MAX_LENGTH} characters.`
-        );
-
-        const trimmedTag = newTag?.trim() ?? '';
-        if (!trimmedTag) {
+        select.value = this.resolveSelectedTagValue(previousTag);
+        const newTag = await this.promptForNewTag();
+        if (!newTag) {
             this.addTag.set(previousTag);
             return;
         }
 
-        const validationError = validateTagName(trimmedTag);
-        if (validationError) {
-            this.addTag.set(previousTag);
-            await this.dialogsService.showError(validationError, 'Invalid Tag');
-            return;
-        }
-
-        const selectedTag = this.allTags().find(tag => tag.toLowerCase() === trimmedTag.toLowerCase()) ?? trimmedTag;
-        this.quickAddCreatedTags.update(tags => this.addUniqueTag(tags, selectedTag));
-        this.addTag.set(selectedTag);
-        select.value = selectedTag;
+        this.addTag.set(newTag);
+        select.value = newTag;
     }
 
     onAddQuantityInput(event: Event): void {
+        if (this.isEmptyQuantityInput(event)) {
+            return;
+        }
+
+        this.addQuantity.set(this.parseQuantity(event));
+    }
+
+    onAddQuantityBlur(event: Event): void {
         this.addQuantity.set(this.parseQuantity(event));
     }
 
@@ -713,6 +725,38 @@ export class CollectionDialogComponent {
         return unit.model ? `${unit.chassis} ${unit.model}` : unit.chassis;
     }
 
+    private async promptForNewTag(): Promise<string | null> {
+        const newTag = await this.dialogsService.prompt(
+            'Enter the new tag name:',
+            'Add New Tag',
+            '',
+            `Maximum ${TAG_MAX_LENGTH} characters.`
+        );
+
+        const trimmedTag = newTag?.trim() ?? '';
+        if (!trimmedTag) {
+            return null;
+        }
+
+        const validationError = validateTagName(trimmedTag);
+        if (validationError) {
+            await this.dialogsService.showError(validationError, 'Invalid Tag');
+            return null;
+        }
+
+        const selectedTag = this.allTags().find(tag => tag.toLowerCase() === trimmedTag.toLowerCase()) ?? trimmedTag;
+        this.createdTagOptions.update(tags => this.addUniqueTag(tags, selectedTag));
+        return selectedTag;
+    }
+
+    private resolveSelectedTagValue(tag: string): string {
+        if (!tag) {
+            return '';
+        }
+
+        return this.tagOptions().find(option => option.toLowerCase() === tag.toLowerCase()) ?? tag;
+    }
+
     private addUniqueTag(tags: string[], tag: string): string[] {
         if (tags.some(existingTag => existingTag.toLowerCase() === tag.toLowerCase())) {
             return tags;
@@ -747,6 +791,10 @@ export class CollectionDialogComponent {
             input.value = String(quantity);
         }
         return quantity;
+    }
+
+    private isEmptyQuantityInput(event: Event): boolean {
+        return (event.target as HTMLInputElement).value.trim().length === 0;
     }
 
     private validateLocalTag(tag: string): boolean {
