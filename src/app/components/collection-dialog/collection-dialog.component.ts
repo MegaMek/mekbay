@@ -43,6 +43,7 @@ import { TAG_MAX_LENGTH, TaggingService, validateTagName } from '../../services/
 import { ToastService } from '../../services/toast.service';
 import { UserStateService } from '../../services/userState.service';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
+import { getChassisTagTargetUnits } from '../../utils/chassis-tag-target.util';
 import { matchesSearch, parseSearchQuery } from '../../utils/search.util';
 import { compareUnitsByName } from '../../utils/sort.util';
 import { shareUrlWithClipboardFallback } from '../../utils/clipboard.util';
@@ -569,9 +570,12 @@ export class CollectionDialogComponent {
     async restoreTag(row: CollectionRow, tag: CollectionTagEntry): Promise<void> {
         const pendingTag = this.pendingRemovedTags()[tag.removalKey];
         const quantity = pendingTag?.quantity ?? tag.quantity;
+        const unitsToTag = row.rowType === 'chassis'
+            ? getChassisTagTargetUnits([row.unit], this.dataService.getUnits())
+            : [row.unit];
 
         try {
-            await this.tagsService.modifyTag([row.unit], tag.tag, row.rowType, 'add', quantity);
+            await this.tagsService.modifyTag(unitsToTag, tag.tag, row.rowType, 'add', quantity);
             this.clearPendingRemovedTags([tag.removalKey]);
             this.statusMessage.set(`Restored "${tag.tag}" to "${row.title}".`);
         } catch {
@@ -643,7 +647,8 @@ export class CollectionDialogComponent {
         const selectedRows = this.getSelectedVisibleRows();
         const quantity = this.massQuantity();
         for (const [rowType, units] of this.groupRowsByType(selectedRows)) {
-            await this.tagsService.modifyTag(units, tag, rowType, 'add', quantity);
+            const unitsToTag = rowType === 'chassis' ? getChassisTagTargetUnits(units, this.dataService.getUnits()) : units;
+            await this.tagsService.modifyTag(unitsToTag, tag, rowType, 'add', quantity);
         }
 
         this.clearPendingRemovalsForRows(selectedRows, tag);
@@ -698,7 +703,7 @@ export class CollectionDialogComponent {
             }
         }
 
-        await this.tagsService.modifyTag([option.unit], tag, 'chassis', 'add', this.addQuantity());
+        await this.tagsService.modifyTag(getChassisTagTargetUnits([option.unit], this.dataService.getUnits()), tag, 'chassis', 'add', this.addQuantity());
         this.clearPendingRemovedTags([this.getRemovalKey(this.getRowKey('chassis', option.unit), tag)]);
         if (quantityConflict) {
             this.statusMessage.set(`Updated "${quantityConflict.tag}" on ${option.inputLabel} from ${quantityConflict.currentQuantity} to ${quantityConflict.nextQuantity}.`);

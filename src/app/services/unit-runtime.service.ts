@@ -93,6 +93,7 @@ export class UnitRuntimeService {
         tagData: TagData | null,
         options?: { rebuildTagSearchIndex?: boolean }
     ): void {
+        void this.tagsService.fixNameTagsCoveredByChassis(units, tagData);
         const tags = tagData?.tags || {};
 
         for (const unit of units) {

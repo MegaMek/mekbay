@@ -37,6 +37,7 @@ import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { firstValueFrom, takeUntil } from 'rxjs';
 import type { Unit, PublicTagInfo } from '../models/units.model';
+import { getChassisTagTargetUnits } from '../utils/chassis-tag-target.util';
 import { collectAllChassisTags, collectAllNameTags } from '../utils/tag-list.util';
 import { DataService } from './data.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
@@ -247,7 +248,11 @@ export class TaggingService {
                 }
             }
 
-            await this.tagsService.modifyTag(units, selectedTag, tagType, 'add');
+            const unitsToTag = tagType === 'chassis'
+                ? getChassisTagTargetUnits(units, allUnits)
+                : units;
+
+            await this.tagsService.modifyTag(unitsToTag, selectedTag, tagType, 'add');
             await updateTagStates();
             this.filtersService.invalidateTagsCache();
         });
