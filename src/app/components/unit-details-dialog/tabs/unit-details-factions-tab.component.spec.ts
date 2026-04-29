@@ -87,7 +87,7 @@ describe('UnitDetailsFactionTabComponent', () => {
             n: unit.name,
             e: {
                 '3050': {
-                    '7': [7, 3],
+                    '7': [70, 30],
                 },
             },
         };

@@ -305,12 +305,12 @@ describe('UnitSearchComponent card virtualization', () => {
         const unit = createUnit('Atlas');
 
         filtersServiceStub.getMegaMekAvailabilityBadges.and.returnValue([
-            { source: 'Requisition', score: 4, rarity: 'Rare' },
+            { source: 'Requisition', score: 30, rarity: 'Rare' },
         ]);
-        filtersServiceStub.getMegaMekRaritySortScore.and.returnValue(4);
+        filtersServiceStub.getMegaMekRaritySortScore.and.returnValue(30);
         expect(component.getSearchResultMegaMekRarity(unit)).toBe('Rare');
         expect(component.getSearchResultMegaMekAvailability(unit)).toEqual([
-            { source: 'Requisition', score: 4, rarity: 'Rare' },
+            { source: 'Requisition', score: 30, rarity: 'Rare' },
         ]);
 
         filtersServiceStub.selectedSort.set(MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
