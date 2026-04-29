@@ -237,6 +237,10 @@ hr {
         max-height: 100vh;
         max-height: 100dvh;
     }
+
+    &.nopadding {
+        padding: 0;
+    }
 }
 
 .cdk-overlay-pane {

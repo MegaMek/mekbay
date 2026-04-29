@@ -58,7 +58,7 @@ interface QuickAddQuantityConflict {
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
-        class: 'fullscreen-dialog-host fullheight glass'
+        class: 'fullscreen-dialog-host nopadding fullheight'
     },
     templateUrl: './collection-dialog.component.html',
     styleUrl: './collection-dialog.component.scss'
