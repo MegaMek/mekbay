@@ -62,6 +62,7 @@
                 <div class="table-header" role="row">
                     <div></div>
                     <div>NAME</div>
+                    <div>TYPE</div>
                     <div>TAGS</div>
                 </div>
             </div>
@@ -88,10 +89,8 @@
                             </span>
                             <div class="target-title">{{ row.title }}</div>
                         </div>
-                        @if (row.subtitle) {
-                            <div class="target-subtitle">{{ row.subtitle }}</div>
-                        }
                     </div>
+                    <div class="type-cell">{{ row.subtitle }}</div>
                     <div class="tag-list">
                         @for (tag of row.tags; track tag.removalKey) {
                             <div class="tag-chip" [class.pending-removal]="tag.pendingRemoval">
