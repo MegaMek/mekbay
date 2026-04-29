@@ -170,7 +170,7 @@
                             />
                         </label>
                         <button type="button" class="bt-button" [disabled]="!canApplyMassChange()" (click)="addTagToSelected()">ADD</button>
-                        <button type="button" class="bt-button danger" [disabled]="!canApplyMassChange()" (click)="removeTagFromSelected()">REMOVE</button>
+                        <button type="button" class="bt-button danger" [disabled]="!canRemoveMassTag()" (click)="removeTagFromSelected()">REMOVE</button>
                     </div>
                 </div>
             </section>

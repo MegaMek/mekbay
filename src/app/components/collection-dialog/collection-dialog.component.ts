@@ -299,6 +299,16 @@ export class CollectionDialogComponent {
 
     readonly canApplyMassChange = computed(() => this.selectedCount() > 0 && this.massTag().trim().length > 0);
 
+    readonly canRemoveMassTag = computed(() => {
+        const lowerTag = this.massTag().trim().toLowerCase();
+        if (!lowerTag || this.selectedCount() === 0) {
+            return false;
+        }
+
+        return this.getSelectedVisibleRows()
+            .some(row => row.tags.some(tag => tag.lowerTag === lowerTag && !tag.pendingRemoval));
+    });
+
     close(): void {
         this.dialogRef.close();
     }
