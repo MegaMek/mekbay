@@ -1,0 +1,55 @@
+:host {
+    display: flex;
+}
+
+.force-tags {
+    display: flex;
+    flex-wrap: wrap-reverse;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+}
+
+.tag {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.7em;
+    color: var(--text-color);
+    border: 1px solid var(--text-color-secondary);
+    background-color: rgba(0, 0, 0, 0.1);
+    padding: 1px 5px;
+    white-space: nowrap;
+}
+
+.add-tag-btn,
+.readonly-tag-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-color-secondary);
+    position: relative;
+    width: auto;
+}
+
+.add-tag-btn {
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+.add-tag-btn:hover {
+    color: var(--bt-yellow);
+}
+
+.add-tag-btn svg,
+.readonly-tag-icon svg {
+    display: block;
+}
+
+.readonly-tag-icon {
+    cursor: default;
+}
+
+.tags-counter {
+    font-size: 0.7em;
+    color: var(--bt-yellow);
+}

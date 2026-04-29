@@ -64,7 +64,6 @@
                 <div class="force-list">
                     @for (force of filteredForces(); let i = $index; track force.instanceId) {
                     @defer (on viewport) {
-                    @let forceTagNames = getForceTagNames(force);
                     <div class="force-entry" [class.selected]="selectedForce() === force" (click)="selectForce(force)"
                         tabindex="0">
                         <div class="force-header">
@@ -79,53 +78,32 @@
                                     <div class="force-name">{{ force.name }}</div>
                                 </div>
                             </div>
-                            <div class="force-header-actions">
-                                <div class="force-info">
-                                    <span class="force-timestamp">
-                                        @if (forceTagNames.length > 0) {
-                                            <span class="force-inline-tags">
-                                                @for (tagName of forceTagNames; track tagName) {
-                                                    <span class="folder-pill">{{ tagName }}</span>
-                                                }
-                                            </span>
-                                        }
-                                        <span class="game-type-badge" [class.as]="force.type === 'as'">{{ getGameTypeLabel(force.type) }}</span>
-                                            @if (force.local) {
-                                                <img
-                                            src="/images/floppy.svg"
-                                            class="save-state-icon" alt="Saved locally"
-                                            title="Stored locally" />
-                                        }
-                                            <img
-                                            [src]="force.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'"
-                                            class="save-state-icon" alt="Cloud status"
-                                            title="{{ force.cloud ? 'Stored online' : 'Not stored online' }}" />
+                            <div class="force-info">
+                                <force-tags
+                                    class="force-entry-tags"
+                                    [force]="force"
+                                    [mode]="'full'"
+                                    [editable]="!!force.instanceId && force.owned"
+                                    [tagsVersion]="forceTagsVersion()"
+                                    (tagClick)="onForceTagClick($event)">
+                                </force-tags>
+                                <span class="game-type-badge" [class.as]="force.type === 'as'">{{ getGameTypeLabel(force.type) }}</span>
+                                @if (force.local) {
+                                    <img src="/images/floppy.svg" class="save-state-icon" alt="Saved locally" title="Stored locally" />
+                                }
+                                <img [src]="force.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'" class="save-state-icon" alt="Cloud status"
+                                    title="{{ force.cloud ? 'Stored online' : 'Not stored online' }}" />
 
-                                            {{ force.timestamp | formatTimestamp }}</span>
-                                    @if (force.type === 'as') {
-                                        @if (force.pv && force.pv > 0) {
-                                            <span class="force-bv">PV: {{ force.pv | number }}</span>
-                                        }
-                                    } @else {
-                                        @if (force.bv && force.bv > 0) {
-                                            <span class="force-bv">BV: {{ force.bv | number }}</span>
-                                        }
+                                <span class="timestamp">{{ force.timestamp | formatTimestamp }}</span>
+                                @if (force.type === 'as') {
+                                    @if (force.pv && force.pv > 0) {
+                                        <span class="force-bv hangar-force-bv">PV: {{ force.pv | number }}</span>
                                     }
-                                </div>
-                                <button
-                                    type="button"
-                                    class="entry-action-btn"
-                                    [cdkMenuTriggerFor]="hangarEntryMenu"
-                                    (click)="onHangarMenuOpen(force, $event)"
-                                    (cdkMenuClosed)="onHangarMenuClosed()"
-                                    title="Hangar actions"
-                                    aria-label="Hangar actions">
-                                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
-                                        <path d="M4 7H20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                        <path d="M4 12H20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                        <path d="M4 17H20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                    </svg>
-                                </button>
+                                } @else {
+                                    @if (force.bv && force.bv > 0) {
+                                        <span class="force-bv hangar-force-bv">BV: {{ force.bv | number }}</span>
+                                    }
+                                }
                             </div>
                         </div>
                         @if (hasVisibleNote(force.note)) {
@@ -278,17 +256,15 @@
                                     </button>
                                 </span>
                             </div>
-                            <div class="operation-meta">
+                            <div class="force-info">
                                 @for (gt of op.gameTypes; track gt) {
                                     <span class="game-type-badge" [class.as]="gt === 'as'">{{ gt === 'as' ? 'AS' : 'CBT' }}</span>
                                 }
-                                <span class="operation-timestamp">
-                                    @if (op.local) {
-                                        <img src="/images/floppy.svg" class="save-state-icon" alt="Saved locally" title="Stored locally" />
-                                    }
-                                    <img [src]="op.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'" class="save-state-icon" alt="Cloud status" [title]="op.cloud ? 'Stored online' : 'Not stored online'" />
-                                    {{ op.timestamp | formatTimestamp }}
-                                </span>
+                                @if (op.local) {
+                                    <img src="/images/floppy.svg" class="save-state-icon" alt="Saved locally" title="Stored locally" />
+                                }
+                                <img [src]="op.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'" class="save-state-icon" alt="Cloud status" [title]="op.cloud ? 'Stored online' : 'Not stored online'" />
+                                <span class="timestamp">{{ op.timestamp | formatTimestamp }}</span>
                             </div>
                         </div>
                         @if (hasVisibleNote(op.note)) {
@@ -343,11 +319,11 @@
                                 <div class="force-name">{{ org.name || 'Unnamed Organization' }}</div>
                             </div>
                             <div class="force-info">
-                                <span class="force-timestamp">
-                                    @if (org.local) {
-                                        <img src="/images/floppy.svg" class="save-state-icon" alt="Saved locally" title="Stored locally" />
-                                    }
-                                    <img [src]="org.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'" class="save-state-icon" alt="Cloud status" [title]="org.cloud ? 'Stored online' : 'Not stored online'" />
+                                @if (org.local) {
+                                    <img src="/images/floppy.svg" class="save-state-icon" alt="Saved locally" title="Stored locally" />
+                                }
+                                <img [src]="org.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'" class="save-state-icon" alt="Cloud status" [title]="org.cloud ? 'Stored online' : 'Not stored online'" />
+                                <span class="timestamp">
                                     {{ org.timestamp | formatTimestamp }}
                                 </span>
                             </div>
@@ -361,81 +337,6 @@
                 </div>
             }
         }
-        <ng-template #hangarEntryMenu>
-            <div class="popup-menu hangar-menu glass framed-borders has-shadow" cdkMenu>
-                @if (!activeHangarMenuForceIsEditable()) {
-                    <button class="menu-item" cdkMenuItem disabled>
-                        <span class="icon">
-                            <svg width="16px" height="16px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                <path d="M12 2C9.243 2 7 4.243 7 7V10H6C4.895 10 4 10.895 4 12V20C4 21.105 4.895 22 6 22H18C19.105 22 20 21.105 20 20V12C20 10.895 19.105 10 18 10H17V7C17 4.243 14.757 2 12 2ZM9 7C9 5.346 10.346 4 12 4C13.654 4 15 5.346 15 7V10H9V7Z" />
-                            </svg>
-                        </span>
-                        Tags are read-only
-                    </button>
-                }
-                @if (activeHangarMenuHasAssignableTags()) {
-                    <button class="menu-item" cdkMenuItem [cdkMenuTriggerFor]="hangarAddTagMenu">
-                        <span class="icon">
-                            <svg width="20px" height="20px" viewBox="0 0 24 24" fill="currentColor"
-                                xmlns="http://www.w3.org/2000/svg">
-                                <path fill-rule="evenodd" clip-rule="evenodd"
-                                    d="M11.25 12.75V18H12.75V12.75H18V11.25H12.75V6H11.25V11.25H6V12.75H11.25Z" />
-                            </svg>
-                        </span>
-                        Add Tag
-                    </button>
-                }
-                @if (activeHangarMenuForceIsEditable()) {
-                    @if (!activeHangarMenuHasAssignableTags()) {
-                    <button class="menu-item" cdkMenuItem (cdkMenuItemTriggered)="onCreateTagFromMenu()">
-                        <span class="icon">
-                            <svg width="20px" height="20px" viewBox="0 0 24 24" fill="currentColor"
-                                xmlns="http://www.w3.org/2000/svg">
-                                <path fill-rule="evenodd" clip-rule="evenodd"
-                                    d="M11.25 12.75V18H12.75V12.75H18V11.25H12.75V6H11.25V11.25H6V12.75H11.25Z" />
-                            </svg>
-                        </span>
-                        New Tag...
-                    </button>
-                    }
-                }
-                @if (activeHangarRemovableTags().length > 0 && activeHangarMenuForceIsEditable()) {
-                    <button class="menu-item" cdkMenuItem [cdkMenuTriggerFor]="hangarRemoveTagMenu">
-                        <span class="icon">
-                            <svg width="16px" height="16px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                <path d="M4 7H20" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-                                <path d="M7 7V18C7 19.1046 7.89543 20 9 20H15C16.1046 20 17 19.1046 17 18V7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-                                <path d="M10 11V16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-                                <path d="M14 11V16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-                                <path d="M9 7V5C9 3.89543 9.89543 3 11 3H13C14.1046 3 15 3.89543 15 5V7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-                            </svg>
-                        </span>
-                        Remove Tag
-                    </button>
-                }
-            </div>
-        </ng-template>
-        <ng-template #hangarAddTagMenu>
-            <div class="popup-menu hangar-menu hangar-folder-menu glass framed-borders has-shadow" cdkMenu>
-                <button class="menu-item new-tag" cdkMenuItem (cdkMenuItemTriggered)="onCreateTagFromMenu()">
-                    New Tag...
-                </button>
-                @for (tag of activeHangarAssignableTags(); track tag.id) {
-                    <button class="menu-item" cdkMenuItem (cdkMenuItemTriggered)="onAssignActiveMenuForceToTag(tag.id)">
-                        <span class="hangar-folder-menu-label">{{ tag.label }}</span>
-                    </button>
-                }
-            </div>
-        </ng-template>
-        <ng-template #hangarRemoveTagMenu>
-            <div class="popup-menu hangar-menu hangar-folder-menu glass framed-borders has-shadow" cdkMenu>
-                @for (tag of activeHangarRemovableTags(); track tag.id) {
-                    <button class="menu-item" cdkMenuItem (cdkMenuItemTriggered)="onClearActiveMenuForceTag(tag.id)">
-                        <span class="hangar-folder-menu-label">{{ tag.label }}</span>
-                    </button>
-                }
-            </div>
-        </ng-template>
         <div class="tab-footer glass">
             <div class="sort-controls">
                 <select class="bt-input sort-select"

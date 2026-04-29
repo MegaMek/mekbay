@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -31,9 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, viewChild, viewChildren, type ElementRef, DestroyRef } from '@angular/core';
+import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, viewChild, type ElementRef, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { CdkMenuModule, CdkMenuTrigger, MenuTracker } from '@angular/cdk/menu';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { firstValueFrom, map, race } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -69,6 +68,8 @@ import {
 } from '../../utils/note-preview.util';
 import { NO_FORMATION_ID } from '../../utils/formation-type.model';
 import { SessionPersistenceService } from '../../services/session-persistence.service';
+import { ForceTagsComponent, type ForceTagClickEvent } from '../force-tags/force-tags.component';
+import { ForceTaggingService } from '../../services/force-tagging.service';
 
 /*
  * Author: Drake
@@ -132,7 +133,7 @@ const DEFAULT_OPERATION_SORT_DIRECTION: SortDirection = 'desc';
     selector: 'force-load-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, CdkMenuModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, MeasureClampOverflowDirective, UnitIconComponent, OpPreviewComponent, FactionImgPipe],
+    imports: [CommonModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, MeasureClampOverflowDirective, UnitIconComponent, OpPreviewComponent, FactionImgPipe, ForceTagsComponent],
     templateUrl: './force-load-dialog.component.html',
     styleUrls: ['./force-load-dialog.component.css']
 })
@@ -142,6 +143,7 @@ export class ForceLoadDialogComponent {
     private dataService = inject(DataService);
     private destroyRef = inject(DestroyRef);
     private sessionPersistenceService = inject(SessionPersistenceService);
+    private forceTaggingService = inject(ForceTaggingService);
     forceBuilderService = inject(ForceBuilderService);
     optionsService = inject(OptionsService);
     gameService = inject(GameService);
@@ -151,7 +153,6 @@ export class ForceLoadDialogComponent {
     readonly hangarClassicFilter = HANGAR_FILTER_CLASSIC;
     readonly hangarAlphaStrikeFilter = HANGAR_FILTER_ALPHA_STRIKE;
     searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
-    menuTriggers = viewChildren<CdkMenuTrigger>(CdkMenuTrigger);
 
     readonly GameSystem = GameSystem;
     readonly getUnitPilotStats = getForcePreviewUnitPilotStats;
@@ -230,7 +231,7 @@ export class ForceLoadDialogComponent {
     forces = signal<LoadForceEntry[]>([]);
     selectedForce = signal<LoadForceEntry | null>(null);
     loading = signal<boolean>(true);
-    activeHangarMenuForce = signal<LoadForceEntry | null>(null);
+    forceTagsVersion = signal(0);
 
     tabs = ['Hangar', 'Force Packs', 'TO&E', 'Operations'];
     activeTab = signal(this.dialogData?.initialTab ?? this.tabs[0]);
@@ -476,7 +477,6 @@ export class ForceLoadDialogComponent {
         });
 
         this.ensureHangarTagFilterIsValid();
-        this.destroyRef.onDestroy(() => this.cleanupMenuTriggers());
     }
 
     private async loadForces(): Promise<void> {
@@ -742,10 +742,6 @@ export class ForceLoadDialogComponent {
         return this.hangarDisplayCounts().get(filter) ?? 0;
     }
 
-    getForceTagNames(force: LoadForceEntry): string[] {
-        return this.getForceTags(force);
-    }
-
     getHangarEmptyStateMessage(): string {
         if (this.searchText().trim().length > 0) {
             return 'No forces match the current search.';
@@ -771,88 +767,25 @@ export class ForceLoadDialogComponent {
         return 'No saved forces found.';
     }
 
-    onHangarMenuOpen(force: LoadForceEntry, event: MouseEvent): void {
+    async onForceTagClick({ force, event }: ForceTagClickEvent): Promise<void> {
         event.stopPropagation();
-        this.selectForce(force);
-        this.activeHangarMenuForce.set(force);
-    }
+        const forceEntry = force as LoadForceEntry;
+        this.selectForce(forceEntry);
 
-    onHangarMenuClosed(): void {
-        this.activeHangarMenuForce.set(null);
-    }
-
-    activeHangarMenuForceIsEditable(): boolean {
-        const force = this.activeHangarMenuForce();
-        return !!force?.instanceId && !!force.owned;
-    }
-
-    activeHangarMenuHasAssignableTags(): boolean {
-        const force = this.activeHangarMenuForce();
-        if (!force?.instanceId || !force.owned) {
-            return false;
-        }
-
-        const currentTagIds = new Set(this.getForceTags(force).map(tag => this.getHangarTagFilterId(tag)));
-        return this.hangarTags().some(tag => !currentTagIds.has(tag.id));
-    }
-
-    activeHangarAssignableTags = computed(() => {
-        const force = this.activeHangarMenuForce();
-        if (!force?.instanceId || !force.owned) {
-            return [] as HangarTagRecord[];
-        }
-
-        const currentTagIds = new Set(this.getForceTags(force).map(tag => this.getHangarTagFilterId(tag)));
-        return this.hangarTags().filter(tag => !currentTagIds.has(tag.id));
-    });
-
-    activeHangarRemovableTags = computed(() => {
-        const force = this.activeHangarMenuForce();
-        if (!force?.instanceId) {
-            return [] as HangarTagRecord[];
-        }
-
-        return this.getForceTags(force).map(tag => {
-            const tagId = this.getHangarTagFilterId(tag);
-            const existing = this.hangarTags().find(record => record.id === tagId);
-            return existing ?? {
-                id: tagId,
-                label: tag,
-                count: 1,
-                ownedCount: force.owned ? 1 : 0,
-            };
+        const target = (event.currentTarget as HTMLElement) || (event.target as HTMLElement);
+        const anchorElement = (target.closest('.add-tag-btn') as HTMLElement) || target;
+        await this.forceTaggingService.openForceTagSelector([forceEntry], anchorElement, {
+            availableTags: this.hangarTags().map(tag => tag.label),
+            updateCloud: forceEntry.cloud,
+            onTagsChanged: (updatedForce) => {
+                const updatedForceEntry = updatedForce as LoadForceEntry;
+                updatedForceEntry._searchText = this.computeSearchText(updatedForceEntry);
+                this.forceTagsVersion.update(version => version + 1);
+                this.forces.set([...this.forces()]);
+                this.ensureHangarTagFilterIsValid();
+                this.clearFilteredOutSelections();
+            },
         });
-    });
-
-    async onCreateTagFromMenu(): Promise<void> {
-        const force = this.activeHangarMenuForce();
-        this.closeAllMenus();
-        if (!force) return;
-
-        const tag = await this.promptCreateHangarTag(force);
-        if (!tag) return;
-
-        await this.persistForceTags(force, [...this.getForceTags(force), tag]);
-    }
-
-    async onAssignActiveMenuForceToTag(tagId: string): Promise<void> {
-        const force = this.activeHangarMenuForce();
-        if (!force?.instanceId) return;
-
-        const tag = this.hangarTags().find(record => record.id === tagId);
-        if (!tag) return;
-
-        await this.persistForceTags(force, [...this.getForceTags(force), tag.label]);
-        this.closeAllMenus();
-    }
-
-    async onClearActiveMenuForceTag(tagId: string): Promise<void> {
-        const force = this.activeHangarMenuForce();
-        if (!force?.instanceId) return;
-
-        const nextTags = this.getForceTags(force).filter(tag => this.getHangarTagFilterId(tag) !== tagId);
-        await this.persistForceTags(force, nextTags);
-        this.closeAllMenus();
     }
 
     private clearFilteredOutSelections() {
@@ -1113,108 +1046,6 @@ export class ForceLoadDialogComponent {
 
     private getForceTags(force: LoadForceEntry): string[] {
         return sanitizeForceTags(force.tags ?? []);
-    }
-
-    private findExistingHangarTagLabel(tag: string): string | null {
-        const tagId = this.getHangarTagFilterId(tag);
-        return this.hangarTags().find(record => record.id === tagId)?.label ?? null;
-    }
-
-    private normalizeHangarTagLabel(tag: string): string {
-        const normalized = sanitizeForceTags([tag])[0];
-        if (!normalized) {
-            throw new Error('Tag names cannot be empty.');
-        }
-        return this.findExistingHangarTagLabel(normalized) ?? normalized;
-    }
-
-    private async promptCreateHangarTag(force?: LoadForceEntry): Promise<string | null> {
-        if (force && (!force.instanceId || !force.owned)) {
-            await this.dialogsService.showError('Shared forces cannot be retagged.', 'New Tag');
-            return null;
-        }
-
-        const name = await this.dialogsService.prompt(
-            force
-                ? `Create a new tag for "${force.name}".`
-                : 'Create a new hangar tag for the selected force.',
-            'New Tag',
-            '',
-            'Tags are saved on the force itself and can be shared across multiple forces.'
-        );
-
-        if (name == null) {
-            return null;
-        }
-
-        try {
-            return this.normalizeHangarTagLabel(name);
-        } catch (error) {
-            await this.dialogsService.showError((error as Error).message, 'New Tag');
-            return null;
-        }
-    }
-
-    private async persistForceTags(forceEntry: LoadForceEntry, nextTags: readonly string[]): Promise<boolean> {
-        if (!forceEntry.instanceId) {
-            return false;
-        }
-
-        if (!forceEntry.owned) {
-            await this.dialogsService.showError('Shared forces cannot be retagged.', 'Force Tags');
-            return false;
-        }
-
-        try {
-            const normalizedTags = await this.dataService.updateForceTags(forceEntry.instanceId, nextTags, forceEntry.cloud);
-
-            forceEntry.tags = normalizedTags.length > 0 ? normalizedTags : undefined;
-            forceEntry._searchText = this.computeSearchText(forceEntry);
-
-            for (const loadedForce of this.forceBuilderService.loadedForces()) {
-                if (loadedForce.force.instanceId() === forceEntry.instanceId) {
-                    loadedForce.force.setTags(normalizedTags, false);
-                }
-            }
-
-            this.forces.set([...this.forces()]);
-            this.ensureHangarTagFilterIsValid();
-            this.clearFilteredOutSelections();
-            return true;
-        } catch (error) {
-            await this.dialogsService.showError((error as Error).message, 'Force Tags');
-            return false;
-        }
-    }
-
-    private closeAllMenus(): void {
-        const triggers = this.menuTriggers();
-        if (!triggers) return;
-
-        triggers.forEach(trigger => {
-            try {
-                if (trigger.isOpen()) {
-                    trigger.close();
-                }
-            } catch {}
-        });
-    }
-
-    private cleanupMenuTriggers(): void {
-        const triggers = this.menuTriggers();
-        if (!triggers) return;
-
-        triggers.forEach(trigger => {
-            try {
-                if (trigger.isOpen()) {
-                    trigger.close();
-                }
-                const tracker = MenuTracker as unknown as { _openMenuTrigger?: CdkMenuTrigger };
-                if (tracker._openMenuTrigger === trigger) {
-                    tracker._openMenuTrigger = undefined;
-                }
-            } catch {}
-        });
     }
 
     async onLoad() {

@@ -1,3 +1,36 @@
+/*
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
+ *
+ * This file is part of MekBay.
+ *
+ * MekBay is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MekBay is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
+ */
+
 import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
@@ -25,6 +58,7 @@ import type { Options } from '../../models/options.model';
 import type { Unit } from '../../models/units.model';
 import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 import { DialogsService } from '../../services/dialogs.service';
+import { ForceTaggingService } from '../../services/force-tagging.service';
 import { OptionsService } from '../../services/options.service';
 import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
 import {
@@ -34,6 +68,7 @@ import {
 import { NO_FORMATION_ID } from '../../utils/formation-type.model';
 import { getOrgFromForce, getOrgFromGroup } from '../../utils/org/org-namer.util';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
+import { ForceTagsComponent, type ForceTagClickEvent } from '../force-tags/force-tags.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 
 const UNIT_TILE_MIN_WIDTH = 86;
@@ -44,7 +79,7 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
 @Component({
     selector: 'force-preview-panel',
     standalone: true,
-    imports: [CommonModule, CleanModelStringPipe, MeasureClampOverflowDirective, UnitIconComponent],
+    imports: [CommonModule, CleanModelStringPipe, MeasureClampOverflowDirective, UnitIconComponent, ForceTagsComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
     @let unitDisplayName = effectiveUnitDisplayName();
@@ -69,20 +104,32 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
                     }
                 </div>
             </div>
-            <span class="force-preview-info">
-                <span class="game-type-badge" [class.as]="entry.type === 'as'">
-                    {{ entry.type === 'as' ? 'AS' : 'CBT' }}
+            <div class="force-preview-info">
+                <span class="force-preview-meta">
+                    <span class="game-type-badge" [class.as]="entry.type === 'as'">
+                        {{ entry.type === 'as' ? 'AS' : 'CBT' }}
+                    </span>
+                    @if (entry.type === 'as') {
+                        @if (entry.pv && entry.pv > 0) {
+                            <span class="force-bv">PV: {{ entry.pv | number }}</span>
+                        }
+                    } @else {
+                        @if (entry.bv && entry.bv > 0) {
+                            <span class="force-bv">BV: {{ entry.bv | number }}</span>
+                        }
+                    }
                 </span>
-                @if (entry.type === 'as') {
-                    @if (entry.pv && entry.pv > 0) {
-                        <span class="force-bv">PV: {{ entry.pv | number }}</span>
-                    }
-                } @else {
-                    @if (entry.bv && entry.bv > 0) {
-                        <span class="force-bv">BV: {{ entry.bv | number }}</span>
-                    }
+                @if (showEditableForceTags()) {
+                    <force-tags
+                        class="force-preview-tags"
+                        [force]="entry"
+                        [mode]="'full'"
+                        [editable]="true"
+                        [tagsVersion]="forceTagsVersion()"
+                        (tagClick)="onForceTagClick($event)">
+                    </force-tags>
                 }
-            </span>
+            </div>
         </div>
         }
         <div #forcePreviewViewport class="force-preview">
@@ -286,10 +333,22 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
 
         .force-preview-info {
             display: flex;
-            gap: 8px;
-            align-items: first baseline;
+            flex-direction: column;
+            gap: 4px;
+            align-items: flex-end;
             font-size: 0.85em;
             color: var(--text-color-secondary);
+        }
+
+        .force-preview-meta {
+            display: flex;
+            gap: 8px;
+            align-items: first baseline;
+            justify-content: flex-end;
+        }
+
+        .force-preview-tags {
+            max-width: min(280px, 100%);
         }
 
         .force-preview-note-shell {
@@ -357,10 +416,11 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
         }
 
         .game-type-badge {
-            font-size: 0.8em;
+            font-size: 0.7em;
             font-weight: bold;
-            padding: 2px 6px;
+            padding: 1px 5px;
             background: #a2792c;
+            border: 1px solid #a2792c;
             color: #fff;
             text-transform: uppercase;
             flex-shrink: 0;
@@ -369,6 +429,7 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
 
         .game-type-badge.as {
             background: #811313;
+            border: 1px solid #811313;
         }
 
         .force-bv {
@@ -638,6 +699,7 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
 })
 export class ForcePreviewPanelComponent {
     private readonly dialogsService = inject(DialogsService);
+    private readonly forceTaggingService = inject(ForceTaggingService);
     readonly optionsService = inject(OptionsService);
     private readonly forcePreviewViewport = viewChild<ElementRef<HTMLElement>>('forcePreviewViewport');
     private readonly previewViewportWidth = signal(UNIT_TILE_MAX_WIDTH);
@@ -658,6 +720,7 @@ export class ForcePreviewPanelComponent {
     readonly selectedUnitsChange = output<ForcePreviewUnit[]>();
     private readonly selectedUnits = signal<ReadonlySet<ForcePreviewUnit>>(new Set<ForcePreviewUnit>());
     readonly noteExpanded = signal(false);
+    readonly forceTagsVersion = signal(0);
 
     readonly unitColumnCount = computed(() => {
         const viewportWidth = Math.max(this.previewViewportWidth(), UNIT_TILE_MIN_WIDTH);
@@ -684,6 +747,11 @@ export class ForcePreviewPanelComponent {
     readonly forceOrgName = computed(() => {
         const result = getOrgFromForce(this.force());
         return result.name !== 'Force' ? result.name : null;
+    });
+
+    readonly showEditableForceTags = computed(() => {
+        const entry = this.force();
+        return !!entry.instanceId && entry.owned;
     });
 
     readonly groupDisplayData = computed(() => this.force().groups.map((group: ForcePreviewGroup) => {
@@ -777,6 +845,17 @@ export class ForcePreviewPanelComponent {
                 } : undefined,
                 showChangeButton: false,
             } satisfies UnitDetailsDialogData,
+        });
+    }
+
+    async onForceTagClick({ force, event }: ForceTagClickEvent): Promise<void> {
+        event.stopPropagation();
+        const target = (event.currentTarget as HTMLElement) || (event.target as HTMLElement);
+        const anchorElement = (target.closest('.add-tag-btn') as HTMLElement) || target;
+
+        await this.forceTaggingService.openForceTagSelector([force], anchorElement, {
+            updateCloud: force.cloud ?? true,
+            onTagsChanged: () => this.forceTagsVersion.update(version => version + 1),
         });
     }
 
