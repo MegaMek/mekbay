@@ -36,6 +36,12 @@ import { CommonModule } from '@angular/common';
 import type { Unit } from '../../../models/units.model';
 import { REMOTE_HOST } from '../../../models/common.model';
 
+interface ManufacturerFactoryDisplay {
+    pairedText: string;
+    manufacturersText: string;
+    primaryFactoriesText: string;
+}
+
 @Component({
     selector: 'unit-details-intel-tab',
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -105,5 +111,63 @@ export class UnitDetailsIntelTabComponent {
             .trim();
 
         return sanitized;
+    }
+
+    manufacturerFactoryDisplay(manufacturerText: string | undefined, primaryFactoryText: string | undefined): ManufacturerFactoryDisplay {
+        const manufacturers = this.splitFluffEntries(manufacturerText);
+        const primaryFactories = this.splitFluffEntries(primaryFactoryText);
+
+        if (manufacturers.length > 0 && manufacturers.length === primaryFactories.length) {
+            const factoryGroups = new Map<string, string[]>();
+
+            for (let index = 0; index < manufacturers.length; index += 1) {
+                const manufacturer = manufacturers[index];
+                const factory = primaryFactories[index];
+                const factories = factoryGroups.get(manufacturer) ?? [];
+
+                if (!factories.includes(factory)) {
+                    factories.push(factory);
+                }
+
+                factoryGroups.set(manufacturer, factories);
+            }
+
+            return {
+                pairedText: Array.from(factoryGroups.entries())
+                    .map(([manufacturer, factories]) => `${manufacturer} (${factories.join(', ')})`)
+                    .join('\n'),
+                manufacturersText: '',
+                primaryFactoriesText: '',
+            };
+        }
+
+        return {
+            pairedText: '',
+            manufacturersText: this.uniqueEntries(manufacturers).join('\n'),
+            primaryFactoriesText: this.uniqueEntries(primaryFactories).join(', '),
+        };
+    }
+
+    private splitFluffEntries(text: string | undefined): string[] {
+        const sanitized = this.sanitizeFluffHtml(text);
+        if (!sanitized) return [];
+
+        return sanitized
+            .split('|')
+            .map((part) => part.trim())
+            .filter(Boolean);
+    }
+
+    private uniqueEntries(entries: readonly string[]): string[] {
+        const seen = new Set<string>();
+        const unique: string[] = [];
+
+        for (const entry of entries) {
+            if (seen.has(entry)) continue;
+            seen.add(entry);
+            unique.push(entry);
+        }
+
+        return unique;
     }
 }

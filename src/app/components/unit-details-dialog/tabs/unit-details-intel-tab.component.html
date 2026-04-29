@@ -32,18 +32,27 @@
                 </div>
             }
 
-            @if (fluff.manufacturer) {
-                <div class="fluff-section">
-                    <div class="fluff-label">Manufacturers:</div>
-                    <div class="fluff-text">{{ sanitizeFluffHtml(fluff.manufacturer) }}</div>
-                </div>
-            }
+            @if (manufacturerFactoryDisplay(fluff.manufacturer, fluff.primaryFactory); as manufacturerFactories) {
+                @if (manufacturerFactories.pairedText) {
+                    <div class="fluff-section">
+                        <div class="fluff-label">Manufacturers and Primary Factories:</div>
+                        <div class="fluff-text">{{ manufacturerFactories.pairedText }}</div>
+                    </div>
+                } @else {
+                    @if (manufacturerFactories.manufacturersText) {
+                        <div class="fluff-section">
+                            <div class="fluff-label">Manufacturers:</div>
+                            <div class="fluff-text">{{ manufacturerFactories.manufacturersText }}</div>
+                        </div>
+                    }
 
-            @if (fluff.primaryFactory) {
-                <div class="fluff-section">
-                    <div class="fluff-label">Primary Factories:</div>
-                    <div class="fluff-text">{{ sanitizeFluffHtml(fluff.primaryFactory) }}</div>
-                </div>
+                    @if (manufacturerFactories.primaryFactoriesText) {
+                        <div class="fluff-section">
+                            <div class="fluff-label">Primary Factories:</div>
+                            <div class="fluff-text">{{ manufacturerFactories.primaryFactoriesText }}</div>
+                        </div>
+                    }
+                }
             }
 
             @if (fluff.capabilities) {
