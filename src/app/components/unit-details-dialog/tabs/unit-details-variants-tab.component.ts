@@ -139,13 +139,13 @@ export class UnitDetailsVariantsTabComponent {
         if (!currentUnit) return [];
 
         const targetType = currentUnit.type;
-        const targetSubtype = currentUnit.subtype;
         const targetChassis = currentUnit.chassis;
+        const targetOmni = currentUnit.omni ? true : false;
         const sortKey = this.selectedSort();
         const sortDir = this.selectedSortDirection();
 
         const filtered = this.dataService.getUnits()
-            .filter(u => u.type === targetType && u.subtype === targetSubtype && u.chassis === targetChassis);
+            .filter(u => u.type === targetType && u.chassis === targetChassis && (u.omni ? true : false) === targetOmni);
 
         // Sort based on selected key
         return filtered.sort((a, b) => {
