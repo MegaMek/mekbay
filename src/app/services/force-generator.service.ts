@@ -121,6 +121,13 @@ interface ForceGenerationCandidateUnit {
     megaMekWeightClass?: string;
     role?: string;
     motive?: string;
+    taggedQuantityCapKey?: string;
+    taggedQuantityCap?: number;
+}
+
+interface ForceGenerationTaggedQuantityCaps {
+    capByKey: ReadonlyMap<string, number>;
+    keyByUnitName: ReadonlyMap<string, string>;
 }
 
 type ForceGenerationAvailabilitySource = 'requisition' | 'salvage';
@@ -345,6 +352,7 @@ export interface ForceGenerationRequest {
     skillRanges?: ForceGenerationSkillRanges;
     lockedUnits?: readonly GeneratedForceUnit[];
     preventDuplicateChassis?: boolean;
+    useTaggedQuantities?: boolean;
 }
 
 export interface ForceGenerationSkillRange {
@@ -1368,8 +1376,27 @@ function normalizeRole(value: string | undefined): string | undefined {
     return value?.trim().toLowerCase() || undefined;
 }
 
-function normalizeChassisKey(value: string | undefined): string {
+function normalizeSelectionKey(value: string | undefined): string {
     return value?.trim().toLowerCase() || '';
+}
+
+function buildDuplicateChassisKey(unit: Pick<Unit, 'chassis' | 'type'>): string {
+    const chassisKey = normalizeSelectionKey(unit.chassis);
+    if (chassisKey.length === 0) {
+        return '';
+    }
+
+    const typeKey = normalizeSelectionKey(unit.type);
+    return typeKey.length > 0 ? `${chassisKey}|${typeKey}` : chassisKey;
+}
+
+function buildTaggedQuantityUnitKey(unit: Unit): string {
+    return `unit:${normalizeSelectionKey(unit.name)}`;
+}
+
+function buildTaggedQuantityChassisKey(unit: Unit): string {
+    const chassisKey = buildDuplicateChassisKey(unit);
+    return chassisKey.length > 0 ? `chassis:${chassisKey}` : buildTaggedQuantityUnitKey(unit);
 }
 
 function buildAvailabilityPairKey(eraId: number, factionId: number): string {
@@ -1771,6 +1798,13 @@ export class ForceGeneratorService implements OnDestroy {
             availabilityWeightCache,
         ));
         const lockedUnitNames = new Set(lockedCandidates.map((candidate) => candidate.unit.name));
+        const taggedQuantityCaps = options.useTaggedQuantities === true && options.preventDuplicateChassis !== true
+            ? this.resolveTaggedQuantityCaps(eligibleUnits, maxUnitCount)
+            : null;
+        const useTaggedQuantityCaps = (taggedQuantityCaps?.capByKey.size ?? 0) > 0;
+        const lockedTaggedQuantityCounts = useTaggedQuantityCaps && taggedQuantityCaps
+            ? this.countTaggedQuantityCandidates(lockedCandidates, taggedQuantityCaps)
+            : new Map<string, number>();
         const unlockedEligibleUnits = eligibleUnits.filter((unit) => !lockedUnitNames.has(unit.name));
         const preparedCandidateCache = this.resolvePreparedCandidateCache(
             eligibleUnits,
@@ -1778,7 +1812,7 @@ export class ForceGeneratorService implements OnDestroy {
             options,
             availabilityWeightCache,
         );
-        const availabilityCandidates = lockedUnitNames.size === 0
+        const availabilityCandidates = lockedUnitNames.size === 0 || useTaggedQuantityCaps
             ? preparedCandidateCache.candidates
             : preparedCandidateCache.candidates.filter((candidate) => !lockedUnitNames.has(candidate.unit.name));
         const skillCompatibleCandidates = this.filterCandidatesForSkillSettings(
@@ -1786,8 +1820,23 @@ export class ForceGeneratorService implements OnDestroy {
             options.gameSystem,
             skillSettings,
         );
-        const candidates = [...skillCompatibleCandidates];
-        const availableUnitCapacity = unlockedEligibleUnits.length + lockedCandidates.length;
+        const candidates = useTaggedQuantityCaps
+            ? this.expandCandidatesForTaggedQuantities(
+                skillCompatibleCandidates,
+                taggedQuantityCaps!,
+                lockedTaggedQuantityCounts,
+                maxUnitCount,
+            )
+            : [...skillCompatibleCandidates];
+        const availableUnitCapacity = useTaggedQuantityCaps
+            ? lockedCandidates.length + this.countTaggedQuantityCapacity(
+                eligibleUnits,
+                (unit) => unit,
+                taggedQuantityCaps!,
+                lockedTaggedQuantityCounts,
+                maxUnitCount,
+            )
+            : unlockedEligibleUnits.length + lockedCandidates.length;
 
         if (availableUnitCapacity < minUnitCount) {
             const message = lockedCandidates.length > 0
@@ -1852,7 +1901,15 @@ export class ForceGeneratorService implements OnDestroy {
             );
         }
 
-        const availableCandidateCapacity = candidates.length + lockedCandidates.length;
+        const availableCandidateCapacity = useTaggedQuantityCaps
+            ? lockedCandidates.length + this.countTaggedQuantityCapacity(
+                skillCompatibleCandidates,
+                (candidate) => candidate.unit,
+                taggedQuantityCaps!,
+                lockedTaggedQuantityCounts,
+                maxUnitCount,
+            )
+            : candidates.length + lockedCandidates.length;
 
         if (availableCandidateCapacity < minUnitCount) {
             const message = lockedCandidates.length > 0
@@ -1893,6 +1950,7 @@ export class ForceGeneratorService implements OnDestroy {
         const canReuseSelectionPreparationCache = !hasVariableSkillSettings
             && !didFilterCandidatesForSkills
             && lockedCandidates.length === 0
+            && !useTaggedQuantityCaps
             && !hasResolvedRuleset;
         const selectionPreparation = hasVariableSkillSettings
             ? undefined
@@ -2100,33 +2158,18 @@ export class ForceGeneratorService implements OnDestroy {
                             ? 'Stopped early because this successful attempt was a perfect structure match.'
                             : 'Stopped early because no structure preference applied, so the first successful attempt was accepted immediately.',
                     );
-                    const generatedUnits = selectionAttempt.selectedCandidates.map((candidate, index) => {
-                        return this.createGeneratedUnit(candidate, index);
-                    });
-
-                    return {
-                        gameSystem: options.gameSystem,
-                        units: generatedUnits,
-                        totalCost,
-                        faction: options.context.forceFaction,
-                        era: options.context.forceEra,
-                        explanationLines: this.buildPreviewExplanation(
-                            options.gameSystem,
-                            eligibleUnits.length,
-                            availableCandidateCapacity,
-                            options.context,
-                            budgetRange,
-                            minUnitCount,
-                            maxUnitCount,
-                            skillSettings,
-                            selectionAttempt,
-                            null,
-                            lockedCandidates.length,
-                            options.preventDuplicateChassis === true,
-                            candidates,
-                        ),
-                        error: null,
-                    };
+                    return this.buildPreviewFromSelectionAttempt(
+                        options,
+                        eligibleUnits.length,
+                        availableCandidateCapacity,
+                        budgetRange,
+                        minUnitCount,
+                        maxUnitCount,
+                        selectionAttempt,
+                        null,
+                        undefined,
+                        candidates,
+                    );
                 }
             }
 
@@ -2151,34 +2194,18 @@ export class ForceGeneratorService implements OnDestroy {
                 bestValidAttemptNumber ?? 1,
                 'Search ended without a perfect structure match, so the best successful attempt was chosen by structure score, then target distance, then unit count.',
             );
-            const totalCost = bestValidAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
-            const generatedUnits = bestValidAttempt.selectedCandidates.map((candidate, index) => {
-                return this.createGeneratedUnit(candidate, index);
-            });
-
-            return {
-                gameSystem: options.gameSystem,
-                units: generatedUnits,
-                totalCost,
-                faction: options.context.forceFaction,
-                era: options.context.forceEra,
-                explanationLines: this.buildPreviewExplanation(
-                    options.gameSystem,
-                    eligibleUnits.length,
-                    availableCandidateCapacity,
-                    options.context,
-                    budgetRange,
-                    minUnitCount,
-                    maxUnitCount,
-                    skillSettings,
-                    bestValidAttempt,
-                    null,
-                    lockedCandidates.length,
-                    options.preventDuplicateChassis === true,
-                    candidates,
-                ),
-                error: null,
-            };
+            return this.buildPreviewFromSelectionAttempt(
+                options,
+                eligibleUnits.length,
+                availableCandidateCapacity,
+                budgetRange,
+                minUnitCount,
+                maxUnitCount,
+                bestValidAttempt,
+                null,
+                undefined,
+                candidates,
+            );
         }
 
         if (bestAttempt.selectedCandidates.length > 0) {
@@ -2792,6 +2819,228 @@ export class ForceGeneratorService implements OnDestroy {
             role: normalizeRole(unit.role),
             motive: toMegaMekMotive(unit),
         };
+    }
+
+    private countTaggedQuantityCandidates(
+        candidates: readonly Pick<ForceGenerationCandidateUnit, 'unit'>[],
+        taggedQuantityCaps: ForceGenerationTaggedQuantityCaps,
+    ): Map<string, number> {
+        const counts = new Map<string, number>();
+
+        for (const candidate of candidates) {
+            const capKey = taggedQuantityCaps.keyByUnitName.get(candidate.unit.name);
+            if (!capKey) {
+                continue;
+            }
+
+            counts.set(capKey, (counts.get(capKey) ?? 0) + 1);
+        }
+
+        return counts;
+    }
+
+    private resolveTaggedQuantityCaps(
+        eligibleUnits: readonly Unit[],
+        maxUnitCount: number,
+    ): ForceGenerationTaggedQuantityCaps {
+        const selectedTagKeys = this.resolvePositiveTaggedQuantityFilterKeys(eligibleUnits);
+        if (selectedTagKeys.size === 0) {
+            return {
+                capByKey: new Map<string, number>(),
+                keyByUnitName: new Map<string, string>(),
+            };
+        }
+
+        const capByKey = new Map<string, number>();
+        const keyByUnitName = new Map<string, string>();
+        for (const unit of eligibleUnits) {
+            const resolvedCap = this.getTaggedQuantityCapForUnit(unit, selectedTagKeys, maxUnitCount)
+                ?? {
+                    key: buildTaggedQuantityUnitKey(unit),
+                    cap: 1,
+                };
+            keyByUnitName.set(unit.name, resolvedCap.key);
+            capByKey.set(resolvedCap.key, Math.max(capByKey.get(resolvedCap.key) ?? 1, resolvedCap.cap));
+        }
+
+        return {
+            capByKey,
+            keyByUnitName,
+        };
+    }
+
+    private resolvePositiveTaggedQuantityFilterKeys(eligibleUnits: readonly Unit[]): Set<string> {
+        const filterState = this.filtersService.effectiveFilterState()['_tags'];
+        if (!filterState?.interactedWith) {
+            return new Set<string>();
+        }
+
+        const resolvedNames = resolveDropdownNamesFromFilter(
+            normalizeMultiStateSelection(filterState.value),
+            this.collectTaggedQuantityFilterNames(eligibleUnits),
+            filterState.wildcardPatterns,
+        );
+
+        return new Set(
+            [...resolvedNames.or, ...resolvedNames.and]
+                .map((tagName) => normalizeSelectionKey(tagName))
+                .filter((tagKey) => tagKey.length > 0),
+        );
+    }
+
+    private collectTaggedQuantityFilterNames(eligibleUnits: readonly Unit[]): string[] {
+        const tagNames = new Set<string>();
+
+        for (const unit of eligibleUnits) {
+            for (const tagEntry of unit._chassisTags ?? []) {
+                if (tagEntry.tag.trim().length > 0) {
+                    tagNames.add(tagEntry.tag);
+                }
+            }
+
+            for (const tagEntry of unit._nameTags ?? []) {
+                if (tagEntry.tag.trim().length > 0) {
+                    tagNames.add(tagEntry.tag);
+                }
+            }
+        }
+
+        return [...tagNames];
+    }
+
+    private getTaggedQuantityCapForUnit(
+        unit: Unit,
+        selectedTagKeys: ReadonlySet<string>,
+        maxUnitCount: number,
+    ): { key: string; cap: number } | null {
+        let chassisQuantityCap = 0;
+        let unitQuantityCap = 0;
+
+        for (const tagEntry of unit._chassisTags ?? []) {
+            if (!selectedTagKeys.has(normalizeSelectionKey(tagEntry.tag))) {
+                continue;
+            }
+
+            chassisQuantityCap = Math.max(
+                chassisQuantityCap,
+                this.normalizeTaggedQuantityCap(tagEntry.quantity, maxUnitCount),
+            );
+        }
+
+        if (chassisQuantityCap > 0) {
+            return {
+                key: buildTaggedQuantityChassisKey(unit),
+                cap: chassisQuantityCap,
+            };
+        }
+
+        for (const tagEntry of unit._nameTags ?? []) {
+            if (!selectedTagKeys.has(normalizeSelectionKey(tagEntry.tag))) {
+                continue;
+            }
+
+            unitQuantityCap = Math.max(
+                unitQuantityCap,
+                this.normalizeTaggedQuantityCap(tagEntry.quantity, maxUnitCount),
+            );
+        }
+
+        if (unitQuantityCap > 0) {
+            return {
+                key: buildTaggedQuantityUnitKey(unit),
+                cap: unitQuantityCap,
+            };
+        }
+
+        return null;
+    }
+
+    private normalizeTaggedQuantityCap(quantity: number | undefined, maxUnitCount: number): number {
+        const parsedQuantity = typeof quantity === 'number' && Number.isFinite(quantity)
+            ? Math.floor(quantity)
+            : 1;
+        return Math.min(maxUnitCount, Math.max(1, parsedQuantity));
+    }
+
+    private getTaggedQuantityCap(
+        capKey: string,
+        taggedQuantityCaps: ForceGenerationTaggedQuantityCaps,
+        maxUnitCount: number,
+    ): number {
+        return Math.min(maxUnitCount, Math.max(1, taggedQuantityCaps.capByKey.get(capKey) ?? 1));
+    }
+
+    private getAvailableTaggedQuantityCopies(
+        capKey: string,
+        taggedQuantityCaps: ForceGenerationTaggedQuantityCaps,
+        lockedCountsByKey: ReadonlyMap<string, number>,
+        maxUnitCount: number,
+    ): number {
+        const quantityCap = this.getTaggedQuantityCap(capKey, taggedQuantityCaps, maxUnitCount);
+        const lockedCount = lockedCountsByKey.get(capKey) ?? 0;
+        return Math.max(0, quantityCap - lockedCount);
+    }
+
+    private countTaggedQuantityCapacity<T>(
+        items: readonly T[],
+        getUnit: (item: T) => Unit,
+        taggedQuantityCaps: ForceGenerationTaggedQuantityCaps,
+        lockedCountsByKey: ReadonlyMap<string, number>,
+        maxUnitCount: number,
+    ): number {
+        const countedKeys = new Set<string>();
+        let capacity = 0;
+
+        for (const item of items) {
+            const capKey = taggedQuantityCaps.keyByUnitName.get(getUnit(item).name);
+            if (!capKey || countedKeys.has(capKey)) {
+                continue;
+            }
+            countedKeys.add(capKey);
+
+            capacity += this.getAvailableTaggedQuantityCopies(
+                capKey,
+                taggedQuantityCaps,
+                lockedCountsByKey,
+                maxUnitCount,
+            );
+        }
+
+        return capacity;
+    }
+
+    private expandCandidatesForTaggedQuantities(
+        candidates: readonly ForceGenerationCandidateUnit[],
+        taggedQuantityCaps: ForceGenerationTaggedQuantityCaps,
+        lockedCountsByKey: ReadonlyMap<string, number>,
+        maxUnitCount: number,
+    ): ForceGenerationCandidateUnit[] {
+        const expandedCandidates: ForceGenerationCandidateUnit[] = [];
+
+        for (const candidate of candidates) {
+            const capKey = taggedQuantityCaps.keyByUnitName.get(candidate.unit.name);
+            const availableCopies = capKey
+                ? this.getAvailableTaggedQuantityCopies(
+                    capKey,
+                    taggedQuantityCaps,
+                    lockedCountsByKey,
+                    maxUnitCount,
+                )
+                : 1;
+
+            for (let copyIndex = 0; copyIndex < availableCopies; copyIndex += 1) {
+                const expandedCandidate = copyIndex === 0 ? candidate : { ...candidate };
+                expandedCandidates.push(capKey
+                    ? {
+                        ...expandedCandidate,
+                        taggedQuantityCapKey: capKey,
+                        taggedQuantityCap: availableCopies,
+                    }
+                    : expandedCandidate);
+            }
+        }
+
+        return expandedCandidates;
     }
 
     private createSkillAdjustedCandidate(
@@ -4296,9 +4545,20 @@ export class ForceGeneratorService implements OnDestroy {
         const useOverMaxFallbackSelection = allowOverMaxFallbackSelection && Number.isFinite(budgetRange.max);
         const selectedChassisKeys = new Set(
             selectedCandidates
-                .map((candidate) => normalizeChassisKey(candidate.unit.chassis))
+                .map((candidate) => buildDuplicateChassisKey(candidate.unit))
                 .filter((key) => key.length > 0),
         );
+        const selectedTaggedQuantityCounts = new Map<string, number>();
+        for (const candidate of selectedCandidates) {
+            if (!candidate.taggedQuantityCapKey) {
+                continue;
+            }
+
+            selectedTaggedQuantityCounts.set(
+                candidate.taggedQuantityCapKey,
+                (selectedTaggedQuantityCounts.get(candidate.taggedQuantityCapKey) ?? 0) + 1,
+            );
+        }
 
         while (selectedCandidates.length < maxUnitCount) {
             if (
@@ -4358,12 +4618,21 @@ export class ForceGeneratorService implements OnDestroy {
                     ? remainingCandidates
                     : underMaxCandidates;
 
+            const cappedCandidatePool = candidatePool.filter((candidate) => {
+                if (!candidate.taggedQuantityCapKey) {
+                    return true;
+                }
+
+                const quantityCap = Math.max(1, candidate.taggedQuantityCap ?? 1);
+                return (selectedTaggedQuantityCounts.get(candidate.taggedQuantityCapKey) ?? 0) < quantityCap;
+            });
+
             const chassisFilteredCandidatePool = preventDuplicateChassis
-                ? candidatePool.filter((candidate) => {
-                    const chassisKey = normalizeChassisKey(candidate.unit.chassis);
+                ? cappedCandidatePool.filter((candidate) => {
+                    const chassisKey = buildDuplicateChassisKey(candidate.unit);
                     return chassisKey.length === 0 || !selectedChassisKeys.has(chassisKey);
                 })
-                : candidatePool;
+                : cappedCandidatePool;
 
             if (chassisFilteredCandidatePool.length === 0) {
                 break;
@@ -4390,9 +4659,15 @@ export class ForceGeneratorService implements OnDestroy {
             if (highestCostIndex >= 0) {
                 highestCostRemainingCandidates.splice(highestCostIndex, 1);
             }
-            const chassisKey = normalizeChassisKey(nextCandidate.unit.chassis);
+            const chassisKey = buildDuplicateChassisKey(nextCandidate.unit);
             if (chassisKey.length > 0) {
                 selectedChassisKeys.add(chassisKey);
+            }
+            if (nextCandidate.taggedQuantityCapKey) {
+                selectedTaggedQuantityCounts.set(
+                    nextCandidate.taggedQuantityCapKey,
+                    (selectedTaggedQuantityCounts.get(nextCandidate.taggedQuantityCapKey) ?? 0) + 1,
+                );
             }
 
             selectionSteps.push(this.createSelectionStep(nextCandidate, rulesetProfile, {

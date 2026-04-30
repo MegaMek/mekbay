@@ -140,12 +140,11 @@ export class UnitDetailsVariantsTabComponent {
 
         const targetType = currentUnit.type;
         const targetChassis = currentUnit.chassis;
-        const targetOmni = currentUnit.omni ? true : false;
         const sortKey = this.selectedSort();
         const sortDir = this.selectedSortDirection();
 
         const filtered = this.dataService.getUnits()
-            .filter(u => u.type === targetType && u.chassis === targetChassis && (u.omni ? true : false) === targetOmni);
+            .filter(u => u.type === targetType && u.chassis === targetChassis);
 
         // Sort based on selected key
         return filtered.sort((a, b) => {

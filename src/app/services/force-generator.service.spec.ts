@@ -2044,6 +2044,243 @@ describe('ForceGeneratorService', () => {
         expect(uniquePreview.explanationLines).toContain('Duplicate chassis prevention: enabled.');
     });
 
+    it('uses chassis and type for duplicate chassis prevention', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const battleMek = createUnit({
+            id: 1,
+            name: 'Peacekeeper Mek',
+            chassis: 'Peacekeeper',
+            model: 'PK-M',
+            type: 'Mek',
+            subtype: 'BattleMek',
+            as: { PV: 4 } as Unit['as'],
+        });
+        const tank = createUnit({
+            id: 2,
+            name: 'Peacekeeper Tank',
+            chassis: 'Peacekeeper',
+            model: 'PK-T',
+            type: 'Tank',
+            subtype: 'Combat Vehicle',
+            as: { PV: 4 } as Unit['as'],
+        });
+
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [battleMek, tank],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 2,
+            maxUnitCount: 2,
+            gunnery: 4,
+            piloting: 5,
+            preventDuplicateChassis: true,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Peacekeeper Mek', 'Peacekeeper Tank']);
+    });
+
+    it('uses selected positive tag quantities as exact-unit duplicate caps', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const unitA = createUnit({
+            id: 1,
+            name: 'Unit A',
+            chassis: 'Unit A',
+            model: 'Prime',
+            as: { PV: 4 } as Unit['as'],
+            _nameTags: [
+                { tag: 'owned', quantity: 2 },
+                { tag: 'painted', quantity: 1 },
+                { tag: 'test', quantity: 5 },
+            ],
+        });
+        const unitB = createUnit({
+            id: 2,
+            name: 'Unit B',
+            chassis: 'Unit B',
+            model: 'Prime',
+            as: { PV: 4 } as Unit['as'],
+            _nameTags: [
+                { tag: 'owned', quantity: 1 },
+                { tag: 'painted', quantity: 1 },
+            ],
+        });
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            _tags: {
+                interactedWith: true,
+                value: {
+                    owned: { name: 'owned', state: 'or', count: 1 },
+                    painted: { name: 'painted', state: 'or', count: 1 },
+                    test: { name: 'test', state: 'not', count: 1 },
+                },
+            },
+        });
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [unitA, unitB],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 3,
+            maxUnitCount: 3,
+            gunnery: 4,
+            piloting: 5,
+            preventDuplicateChassis: false,
+            useTaggedQuantities: true,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Unit A', 'Unit A', 'Unit B']);
+    });
+
+    it('uses chassis tag quantities as duplicate-chassis-key caps across variants', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const locustOne = createUnit({
+            id: 1,
+            name: 'Locust LCT-1V',
+            chassis: 'Locust',
+            model: 'LCT-1V',
+            type: 'Mek',
+            as: { PV: 4 } as Unit['as'],
+            _chassisTags: [{ tag: 'collection', quantity: 1 }],
+        });
+        const locustTwo = createUnit({
+            id: 2,
+            name: 'Locust LCT-3D',
+            chassis: 'Locust',
+            model: 'LCT-3D',
+            type: 'Mek',
+            as: { PV: 4 } as Unit['as'],
+            _chassisTags: [{ tag: 'collection', quantity: 1 }],
+        });
+        const wasp = createUnit({
+            id: 3,
+            name: 'Wasp WSP-1A',
+            chassis: 'Wasp',
+            model: 'WSP-1A',
+            type: 'Mek',
+            as: { PV: 4 } as Unit['as'],
+            _chassisTags: [{ tag: 'collection', quantity: 1 }],
+        });
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            _tags: {
+                interactedWith: true,
+                value: {
+                    collection: { name: 'collection', state: 'or', count: 1 },
+                },
+            },
+        });
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [locustOne, locustTwo, wasp],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 2,
+            maxUnitCount: 2,
+            gunnery: 4,
+            piloting: 5,
+            preventDuplicateChassis: false,
+            useTaggedQuantities: true,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.filter((unit) => unit.unit.chassis === 'Locust')).toHaveSize(1);
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Locust LCT-1V', 'Wasp WSP-1A']);
+    });
+
+    it('ignores negative tag quantities when resolving exact-unit duplicate caps', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const unitA = createUnit({
+            id: 1,
+            name: 'Unit A',
+            chassis: 'Unit A',
+            model: 'Prime',
+            as: { PV: 4 } as Unit['as'],
+            _nameTags: [
+                { tag: 'owned', quantity: 1 },
+                { tag: 'test', quantity: 5 },
+            ],
+        });
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            _tags: {
+                interactedWith: true,
+                value: {
+                    owned: { name: 'owned', state: 'or', count: 1 },
+                    test: { name: 'test', state: 'not', count: 1 },
+                },
+            },
+        });
+
+        const preview = service.buildPreview({
+            eligibleUnits: [unitA],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 2,
+            maxUnitCount: 2,
+            gunnery: 4,
+            piloting: 5,
+            preventDuplicateChassis: false,
+            useTaggedQuantities: true,
+        });
+
+        expect(preview.units).toEqual([]);
+        expect(preview.error).not.toBeNull();
+    });
+
+    it('does not apply tagged quantity caps when only negative tags are selected', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const unitA = createUnit({
+            id: 1,
+            name: 'Unit A',
+            chassis: 'Unit A',
+            model: 'Prime',
+            as: { PV: 4 } as Unit['as'],
+            _nameTags: [
+                { tag: 'test', quantity: 5 },
+            ],
+        });
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            _tags: {
+                interactedWith: true,
+                value: {
+                    test: { name: 'test', state: 'not', count: 1 },
+                },
+            },
+        });
+
+        const preview = service.buildPreview({
+            eligibleUnits: [unitA],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 2,
+            maxUnitCount: 2,
+            gunnery: 4,
+            piloting: 5,
+            preventDuplicateChassis: false,
+            useTaggedQuantities: true,
+        });
+
+        expect(preview.units).toEqual([]);
+        expect(preview.error).not.toBeNull();
+    });
+
     it('creates a preview force entry even when the preview contains an error but still has units', () => {
         const preview = {
             gameSystem: GameSystem.ALPHA_STRIKE,

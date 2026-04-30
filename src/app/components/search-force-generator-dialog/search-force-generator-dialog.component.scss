@@ -224,6 +224,13 @@
     color: var(--text-color);
 }
 
+.generator-option-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0px 16px;
+    min-width: 0;
+}
+
 .generator-option-inline {
     flex: 0 0 auto;
     min-height: auto;
