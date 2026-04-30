@@ -63,12 +63,12 @@
                 </div>
                 @if (homeActionsPanelOpen()) {
                 <button type="button" class="home-actions-backdrop" (click)="closeHomeActionsPanel()" aria-label="Close actions menu"></button>
-                <aside class="home-actions-panel glass framed-borders has-shadow" id="home-actions-panel" role="dialog" aria-modal="true" aria-labelledby="home-actions-panel-title">
+                <aside class="home-actions-panel glass has-shadow" id="home-actions-panel" role="dialog" aria-modal="true" aria-labelledby="home-actions-panel-title">
                     <div class="home-actions-panel-header">
                         <div id="home-actions-panel-title" class="home-actions-panel-title"></div>
                         <button type="button" class="home-actions-close-button" (click)="closeHomeActionsPanel()" aria-label="Close actions menu">
-                            <svg fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.41L10.59 13.41 4.29 19.7 2.88 18.29 9.17 12 2.88 5.71 4.29 4.3l6.3 6.29 6.3-6.29z" />
+                            <svg fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M9 4l8 8-8 8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
                             </svg>
                         </button>
                     </div>
@@ -89,7 +89,7 @@
                             <svg fill="currentColor" viewBox="0 0 472.615 472.615" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve">
                                 <path d="M199.173,0H104.65L0,104.651v94.523l273.442,273.442l199.173-199.173L199.173,0z M168.539,168.54 c-15.397,15.397-40.361,15.397-55.759,0c-15.397-15.397-15.397-40.362,0-55.76c15.396-15.397,40.361-15.397,55.759,0 C183.936,128.177,183.936,153.142,168.539,168.54z" />
                             </svg>
-                            <span>Collection</span>
+                            <span>Collection Manager</span>
                         </button>
                         <button type="button" class="home-panel-action" (click)="showOptionsDialog(); closeHomeActionsPanel()">
                             <svg fill="currentColor" viewBox="0 0 1920 1920" xmlns="http://www.w3.org/2000/svg">

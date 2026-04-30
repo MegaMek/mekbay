@@ -73,7 +73,6 @@
 }
 
 .empty-state-container .header {
-    padding-top: calc(8px + var(--safe-area-inset-top));
     width: 100%;
     position: relative;
 }
@@ -299,8 +298,8 @@ svg-viewer {
         height: 36px;
         min-width: 110px;
         padding: 0 10px;
-        gap: 8px;
-        font-size: 0.78rem;
+        gap: 6px;
+        font-size: 0.85rem;
         font-weight: 700;
         line-height: 1;
         display: flex;
@@ -435,7 +434,7 @@ svg-viewer {
 .home-actions-panel-list {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 6px;
 }
 
 .home-panel-action {
