@@ -152,6 +152,17 @@ export class UnitDetailsGeneralTabComponent {
         return this.dataService.getForcePacksForUnit(u);
     });
 
+    sarnaPageTitle = computed(() => {
+        this.dataService.sarnaPageTitlesVersion();
+        return this.dataService.getSarnaPageTitleForUnit(this.unit());
+    });
+
+    sarnaWikiUrl = computed(() => {
+        const pageTitle = this.sarnaPageTitle();
+        if (!pageTitle) return undefined;
+        return `https://www.sarna.net/wiki/${encodeURIComponent(pageTitle).replace(/%20/g, '_')}`;
+    });
+
     typeSummary = computed(() => {
         const u = this.unit();
         const EXCLUDE_FLAGS = ['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_CASE', 'F_CASE_II', 'F_JUMP_JET'];

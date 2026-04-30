@@ -10,6 +10,10 @@ const {
     resolveMmDataRoot,
 } = require('./lib/script-paths.js') as typeof import('./lib/script-paths.js');
 
+const {
+    writeFileWithContentTimestamp,
+} = require('./lib/deterministic-output.js') as typeof import('./lib/deterministic-output');
+
 interface DateRange {
     start?: number;
     end?: number;
@@ -1425,7 +1429,7 @@ export async function buildRatGeneratorCsv(options: BuildOptions = {}): Promise<
     const csv = builder.buildCsv();
 
     fs.mkdirSync(path.dirname(outputFilePath), { recursive: true });
-    fs.writeFileSync(outputFilePath, csv, 'utf8');
+    writeFileWithContentTimestamp(outputFilePath, csv, 'utf8');
 
     return {
         csv,

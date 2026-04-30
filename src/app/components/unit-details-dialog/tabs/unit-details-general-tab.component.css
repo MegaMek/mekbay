@@ -405,6 +405,24 @@
     text-decoration: underline;
 }
 
+.sarna-link {
+    display: inline-flex;
+    margin-top: 6px;
+    line-height: 0;
+}
+
+.bottom-info .sarna-link,
+.bottom-info .sarna-link:hover {
+    text-decoration: none;
+}
+
+.sarna-logo {
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+    display: block;
+}
+
 .features-list,
 .grav-list,
 .ammo-list {

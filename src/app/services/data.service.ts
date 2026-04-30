@@ -61,6 +61,7 @@ import { GameSystem } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
 import type { Sourcebook } from '../models/sourcebook.model';
+import type { SarnaLookupUnit } from '../models/sarna-page-titles.model';
 import type { MegaMekFactionAffiliation, MegaMekFactionRecord, MegaMekFactions } from '../models/megamek/factions.model';
 import type { MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
 import type { MegaMekRulesetRecord } from '../models/megamek/rulesets.model';
@@ -74,6 +75,7 @@ import { ErasCatalogService } from './catalogs/eras-catalog.service';
 import { FactionsCatalogService } from './catalogs/mulfactions-catalog.service';
 import { MulUnitSourcesCatalogService } from './catalogs/mul-unit-sources-catalog.service';
 import { QuirksCatalogService } from './catalogs/quirks-catalog.service';
+import { SarnaPageTitlesCatalogService } from './catalogs/sarna-page-titles-catalog.service';
 import { SourcebooksCatalogService } from './catalogs/sourcebooks-catalog.service';
 import { UnitSearchIndexService } from './unit-search-index.service';
 import { UnitRuntimeService } from './unit-runtime.service';
@@ -172,11 +174,13 @@ export class DataService {
     private megaMekRulesetsCatalog = inject(MegaMekRulesetsCatalogService);
     private mulUnitSourcesCatalog = inject(MulUnitSourcesCatalogService);
     private quirksCatalog = inject(QuirksCatalogService);
+    private sarnaPageTitlesCatalog = inject(SarnaPageTitlesCatalogService);
     private sourcebooksCatalog = inject(SourcebooksCatalogService);
     private readonly megaMekAvailabilityCatalogState = createCatalogInitializationState();
     private readonly megaMekFactionsCatalogState = createCatalogInitializationState();
     private readonly megaMekRulesetsCatalogState = createCatalogInitializationState();
     private readonly quirksCatalogState = createCatalogInitializationState();
+    private readonly sarnaPageTitlesCatalogState = createCatalogInitializationState();
     private readonly sourcebooksCatalogState = createCatalogInitializationState();
 
     isDataReady = signal(false);
@@ -195,6 +199,7 @@ export class DataService {
     public tagsVersion = signal(0);
     public searchCorpusVersion = signal(0);
     public megaMekAvailabilityVersion = signal(0);
+    public sarnaPageTitlesVersion = signal(0);
 
 
     constructor() {
@@ -386,6 +391,10 @@ export class DataService {
         return this.sourcebooksCatalog.getSourcebookTitle(abbrev);
     }
 
+    public getSarnaPageTitleForUnit(unit: SarnaLookupUnit | null | undefined): string | undefined {
+        return this.sarnaPageTitlesCatalog.getPageTitleForUnit(unit);
+    }
+
     public getMegaMekFactions(): MegaMekFactions {
         return this.megaMekFactionsCatalog.getFactions();
     }
@@ -435,6 +444,10 @@ export class DataService {
 
     private bumpMegaMekAvailabilityVersion(): void {
         this.megaMekAvailabilityVersion.update(version => version + 1);
+    }
+
+    private bumpSarnaPageTitlesVersion(): void {
+        this.sarnaPageTitlesVersion.update(version => version + 1);
     }
 
     private invalidateForcePackCaches(): void {
@@ -583,10 +596,20 @@ export class DataService {
         );
     }
 
+    private ensureSarnaPageTitlesCatalogInitialized(): Promise<boolean> {
+        return this.ensureCatalogInitialized(
+            this.sarnaPageTitlesCatalogState,
+            'sarna_page_titles',
+            () => this.sarnaPageTitlesCatalog.initialize(),
+            () => this.bumpSarnaPageTitlesVersion(),
+        );
+    }
+
     private initializeStartupCatalogs(): Promise<boolean> {
         return this.ensureCatalogGroupInitialized([
             { name: 'megamek_availability', ensure: () => this.ensureMegaMekAvailabilityCatalogInitialized() },
             { name: 'quirks', ensure: () => this.ensureQuirksCatalogInitialized() },
+            { name: 'sarna_page_titles', ensure: () => this.ensureSarnaPageTitlesCatalogInitialized() },
             { name: 'sourcebooks', ensure: () => this.ensureSourcebooksCatalogInitialized() },
         ]);
     }

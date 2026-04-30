@@ -42,6 +42,7 @@ import type { MegaMekFactionsData } from '../models/megamek/factions.model';
 import type { MegaMekAvailabilityData } from '../models/megamek/availability.model';
 import type { MegaMekRulesetsData } from '../models/megamek/rulesets.model';
 import type { MULUnitSources } from '../models/mul-unit-sources.model';
+import type { SarnaPageTitlesData } from '../models/sarna-page-titles.model';
 import type { RawEquipmentData } from '../models/equipment.model';
 import type { SerializedForce } from '../models/force-serialization';
 import type { DataService } from './data.service';
@@ -84,6 +85,7 @@ const OPTIONS_KEY = 'options';
 const USER_KEY = 'user';
 const QUIRKS_KEY = 'quirks';
 const MUL_UNIT_SOURCES_KEY = 'mulUnitSources';
+const SARNA_PAGE_TITLES_KEY = 'sarnaPageTitles';
 
 const CATALOG_GENERAL_STORE_KEYS = [
     UNITS_KEY,
@@ -96,6 +98,7 @@ const CATALOG_GENERAL_STORE_KEYS = [
     SOURCEBOOKS_KEY,
     QUIRKS_KEY,
     MUL_UNIT_SOURCES_KEY,
+    SARNA_PAGE_TITLES_KEY,
 ] as const;
 
 const MAX_SHEET_CACHE_COUNT = 5000; // Max number of sheets to cache
@@ -609,6 +612,14 @@ export class DbService {
 
     public async saveMULUnitSources(data: MULUnitSources): Promise<void> {
         return await this.saveDataFromGeneralStore(data, MUL_UNIT_SOURCES_KEY);
+    }
+
+    public async getSarnaPageTitles(): Promise<SarnaPageTitlesData | null> {
+        return await this.getDataFromGeneralStore<SarnaPageTitlesData>(SARNA_PAGE_TITLES_KEY);
+    }
+
+    public async saveSarnaPageTitles(data: SarnaPageTitlesData): Promise<void> {
+        return await this.saveDataFromGeneralStore(data, SARNA_PAGE_TITLES_KEY);
     }
 
     public async getTags(): Promise<StoredTags | null> {

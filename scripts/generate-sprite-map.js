@@ -34,6 +34,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { setFileContentTimestamp, writeFileWithContentTimestamp } = require('./lib/deterministic-output.js');
 const { loadOptionalEnvFile, resolveMmDataRoot } = require('./lib/script-paths.js');
 
 const root = path.resolve(__dirname, '..');
@@ -181,6 +182,7 @@ async function generateSpriteForType(sharp, unitType, images, spriteData) {
   .composite(compositeOps)
     .webp({ lossless: true, effort: 6 })
     .toFile(spriteImagePath);
+  setFileContentTimestamp(spriteImagePath);
 
   const spriteSize = (fs.statSync(spriteImagePath).size / 1024).toFixed(2);
   console.log(`[SpriteMap] Created ${spriteImagePath} (${spriteSize} KB)`);
@@ -238,15 +240,16 @@ async function generateSprites() {
     ),
     icons: spriteData
   };
-  fs.writeFileSync(spriteJsonPath, JSON.stringify(manifest));
+  const manifestJson = JSON.stringify(manifest);
+  writeFileWithContentTimestamp(spriteJsonPath, manifestJson);
 
   // Generate combined hash
   const hashSum = crypto.createHash('sha256');
-  hashSum.update(JSON.stringify(manifest));
+  hashSum.update(manifestJson);
   const hash = hashSum.digest('hex');
   
   const hashFilePath = path.join(outputDir, 'unit-icons.hash');
-  fs.writeFileSync(hashFilePath, hash);
+  writeFileWithContentTimestamp(hashFilePath, hash);
 
   const jsonSize = (fs.statSync(spriteJsonPath).size / 1024).toFixed(2);
 

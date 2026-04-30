@@ -35,6 +35,7 @@ const fs = require('fs');
 const path = require('path');
 const JSZip = require('jszip');
 const crypto = require('crypto');
+const { setFileContentTimestamp, writeFileWithContentTimestamp } = require('./lib/deterministic-output.js');
 const { loadOptionalEnvFile, resolveMmDataRoot } = require('./lib/script-paths.js');
 
 const root = path.resolve(__dirname, '..');
@@ -121,6 +122,7 @@ async function compress() {
     })
       .pipe(fs.createWriteStream(unitIconsOutputZip))
       .on('finish', () => {
+        setFileContentTimestamp(unitIconsOutputZip);
         const size = (fs.statSync(unitIconsOutputZip).size / 1024 / 1024).toFixed(2);
         
         // Generate SHA256 hash
@@ -131,7 +133,7 @@ async function compress() {
         
         // Create unitIcons.zip.sha256 adjacent to unitIcons.zip
         const hashFile = unitIconsOutputZip + '.sha256';
-        fs.writeFileSync(hashFile, hex);
+        writeFileWithContentTimestamp(hashFile, hex);
 
         console.log(`[Compress] Created ${unitIconsOutputZip} (${size} MB) with ${counter.count} files.`);
         console.log(`[Compress] Generated hash: ${hex}`);

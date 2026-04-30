@@ -21,6 +21,7 @@ import { MegaMekFactionsCatalogService } from './catalogs/megamek-factions-catal
 import { MegaMekRulesetsCatalogService } from './catalogs/megamek-rulesets-catalog.service';
 import { MulUnitSourcesCatalogService } from './catalogs/mul-unit-sources-catalog.service';
 import { QuirksCatalogService } from './catalogs/quirks-catalog.service';
+import { SarnaPageTitlesCatalogService } from './catalogs/sarna-page-titles-catalog.service';
 import { SourcebooksCatalogService } from './catalogs/sourcebooks-catalog.service';
 
 function createUnit(name: string): Unit {
@@ -96,6 +97,10 @@ describe('DataService', () => {
     const quirksCatalogMock = {
         initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
         getQuirkByName: jasmine.createSpy('getQuirkByName').and.returnValue(undefined),
+    };
+    const sarnaPageTitlesCatalogMock = {
+        initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
+        getPageTitleForUnit: jasmine.createSpy('getPageTitleForUnit').and.returnValue(undefined),
     };
     const sourcebooksCatalogMock = {
         initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
@@ -195,6 +200,10 @@ describe('DataService', () => {
         quirksCatalogMock.initialize.and.resolveTo(undefined);
         quirksCatalogMock.getQuirkByName.calls.reset();
         quirksCatalogMock.getQuirkByName.and.returnValue(undefined);
+        sarnaPageTitlesCatalogMock.initialize.calls.reset();
+        sarnaPageTitlesCatalogMock.initialize.and.resolveTo(undefined);
+        sarnaPageTitlesCatalogMock.getPageTitleForUnit.calls.reset();
+        sarnaPageTitlesCatalogMock.getPageTitleForUnit.and.returnValue(undefined);
         sourcebooksCatalogMock.initialize.calls.reset();
         sourcebooksCatalogMock.initialize.and.resolveTo(undefined);
         sourcebooksCatalogMock.getSourcebookByAbbrev.calls.reset();
@@ -231,6 +240,7 @@ describe('DataService', () => {
                 { provide: MegaMekRulesetsCatalogService, useValue: megaMekRulesetsCatalogMock },
                 { provide: MulUnitSourcesCatalogService, useValue: mulUnitSourcesCatalogMock },
                 { provide: QuirksCatalogService, useValue: quirksCatalogMock },
+                { provide: SarnaPageTitlesCatalogService, useValue: sarnaPageTitlesCatalogMock },
                 { provide: SourcebooksCatalogService, useValue: sourcebooksCatalogMock },
                 { provide: TagsService, useValue: tagsServiceMock },
                 { provide: PublicTagsService, useValue: publicTagsServiceMock },
@@ -245,6 +255,14 @@ describe('DataService', () => {
         service.getUnitByName('Mad Cat Prime');
 
         expect(unitRuntimeServiceMock.getUnitByName).toHaveBeenCalledOnceWith('Mad Cat Prime');
+    });
+
+    it('delegates Sarna page-title lookup to the Sarna catalog', () => {
+        const unit = { chassis: 'Avatar', type: 'Mek', subtype: 'BattleMek Omni', omni: 1 } as Unit;
+        sarnaPageTitlesCatalogMock.getPageTitleForUnit.and.returnValue('Avatar (OmniMech)');
+
+        expect(service.getSarnaPageTitleForUnit(unit)).toBe('Avatar (OmniMech)');
+        expect(sarnaPageTitlesCatalogMock.getPageTitleForUnit).toHaveBeenCalledOnceWith(unit);
     });
 
     it('merges local force entries with lightweight cloud bulk entries', async () => {
@@ -408,13 +426,14 @@ describe('DataService', () => {
         );
     });
 
-    it('initializes only MegaMek availability during startup initialize', async () => {
+    it('initializes startup catalogs during initialize', async () => {
         await service.initialize();
 
         expect(megaMekAvailabilityCatalogMock.initialize).toHaveBeenCalledTimes(1);
         expect(megaMekFactionsCatalogMock.initialize).not.toHaveBeenCalled();
         expect(megaMekRulesetsCatalogMock.initialize).not.toHaveBeenCalled();
         expect(quirksCatalogMock.initialize).toHaveBeenCalledTimes(1);
+        expect(sarnaPageTitlesCatalogMock.initialize).toHaveBeenCalledTimes(1);
         expect(sourcebooksCatalogMock.initialize).toHaveBeenCalledTimes(1);
         expect(service.isDataReady()).toBeTrue();
     });
