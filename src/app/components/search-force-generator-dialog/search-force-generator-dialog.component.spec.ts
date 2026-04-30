@@ -50,9 +50,11 @@ describe('SearchForceGeneratorDialogComponent', () => {
             forceGenLastPilotingSkillMin: 5,
             forceGenLastPilotingSkillMax: 5,
             forceGenLastMaxPilotSkillDelta: 1,
+            forceGenPreventDuplicateChassis: false,
+            forceGenUseTaggedQuantities: false,
         });
 
-        setOptionSpy = jasmine.createSpy('setOption').and.callFake((key: string, value: number) => {
+        setOptionSpy = jasmine.createSpy('setOption').and.callFake((key: string, value: unknown) => {
             optionsSignal.update((options) => ({ ...options, [key]: value }));
             return Promise.resolve();
         });
@@ -405,6 +407,22 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(dialog.gunnerySkillRange()).toEqual([2, 4]);
         expect(dialog.pilotingSkillRange()).toEqual([3, 6]);
         expect(dialog.maxPilotSkillDelta()).toBe(2);
+    });
+
+    it('uses the stored force generator checkbox defaults', async () => {
+        optionsSignal.update((options) => ({
+            ...options,
+            forceGenPreventDuplicateChassis: true,
+            forceGenUseTaggedQuantities: true,
+        }));
+
+        const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        const dialog = fixture.componentInstance;
+        expect(dialog.preventDuplicateChassis()).toBeTrue();
+        expect(dialog.useTaggedQuantities()).toBeFalse();
     });
 
     it('uses uncapped force-generator eligible units for preview requests', () => {
@@ -896,10 +914,60 @@ describe('SearchForceGeneratorDialogComponent', () => {
         } as unknown as Event);
 
         expect(buildPreviewSpy).not.toHaveBeenCalled();
+        expect(setOptionSpy).toHaveBeenCalledOnceWith('forceGenPreventDuplicateChassis', true);
 
         component.reroll();
 
         expect(buildPreviewSpy.calls.mostRecent().args[0].preventDuplicateChassis).toBeTrue();
+    });
+
+    it('unchecks tagged quantities when duplicate-chassis prevention is checked', () => {
+        component.onUseTaggedQuantitiesChange({
+            target: { checked: true },
+        } as unknown as Event);
+        setOptionSpy.calls.reset();
+
+        component.onPreventDuplicateChassisChange({
+            target: { checked: true },
+        } as unknown as Event);
+
+        expect(component.preventDuplicateChassis()).toBeTrue();
+        expect(component.useTaggedQuantities()).toBeFalse();
+        expect(setOptionSpy.calls.allArgs()).toEqual([
+            ['forceGenPreventDuplicateChassis', true],
+            ['forceGenUseTaggedQuantities', false],
+        ]);
+    });
+
+    it('stores and forwards the tagged-quantities checkbox state', () => {
+        component.onUseTaggedQuantitiesChange({
+            target: { checked: true },
+        } as unknown as Event);
+
+        expect(buildPreviewSpy).not.toHaveBeenCalled();
+        expect(setOptionSpy).toHaveBeenCalledOnceWith('forceGenUseTaggedQuantities', true);
+
+        component.reroll();
+
+        expect(buildPreviewSpy.calls.mostRecent().args[0].useTaggedQuantities).toBeTrue();
+    });
+
+    it('unchecks duplicate-chassis prevention when tagged quantities is checked', () => {
+        component.onPreventDuplicateChassisChange({
+            target: { checked: true },
+        } as unknown as Event);
+        setOptionSpy.calls.reset();
+
+        component.onUseTaggedQuantitiesChange({
+            target: { checked: true },
+        } as unknown as Event);
+
+        expect(component.useTaggedQuantities()).toBeTrue();
+        expect(component.preventDuplicateChassis()).toBeFalse();
+        expect(setOptionSpy.calls.allArgs()).toEqual([
+            ['forceGenUseTaggedQuantities', true],
+            ['forceGenPreventDuplicateChassis', false],
+        ]);
     });
 
     it('renders the Multi-Era checkbox disabled for a single positive era selection', async () => {
@@ -1059,6 +1127,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         expect(checkbox).not.toBeNull();
         expect(fixture.nativeElement.textContent).toContain('Prevent Duplicate Chassis');
+        expect(fixture.nativeElement.textContent).toContain('Limit to tagged quantities');
     });
 
     it('includes the Multi-Era checkbox state in the submitted config', () => {
@@ -1106,6 +1175,46 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         expect(dialogCloseSpy).toHaveBeenCalledTimes(1);
         expect(dialogCloseSpy.calls.mostRecent().args[0].config.crossEraAvailabilityInMultiEraSelection).toBeTrue();
+    });
+
+    it('includes the tagged-quantities checkbox state in the submitted config', () => {
+        const atlas = {
+            id: 4,
+            name: 'Atlas AS7-D',
+            chassis: 'Atlas',
+            model: 'AS7-D',
+            bv: 1897,
+        } as Unit;
+
+        component.onUseTaggedQuantitiesChange({
+            target: { checked: true },
+        } as unknown as Event);
+
+        (component as any).__test.setPreviewResult({
+            gameSystem: GameSystem.CLASSIC,
+            units: [{
+                unit: atlas,
+                cost: 1897,
+                gunnery: 4,
+                piloting: 5,
+                lockKey: 'generated:0:Atlas AS7-D',
+            }],
+            totalCost: 1897,
+            error: null,
+            faction: null,
+            era: null,
+            explanationLines: [],
+        });
+
+        component.minUnitCount.set(1);
+        component.maxUnitCount.set(1);
+        component.classicBudgetMin.set(0);
+        component.classicBudgetMax.set(0);
+        component.reroll();
+        component.submit();
+
+        expect(dialogCloseSpy).toHaveBeenCalledTimes(1);
+        expect(dialogCloseSpy.calls.mostRecent().args[0].config.useTaggedQuantities).toBeTrue();
     });
 
     it('renders pilot skill range controls and sends them to preview generation', async () => {

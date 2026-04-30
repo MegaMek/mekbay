@@ -85,6 +85,7 @@ export interface SearchForceGeneratorDialogConfig {
     skillRanges: ForceGenerationSkillRanges;
     crossEraAvailabilityInMultiEraSelection: boolean;
     preventDuplicateChassis: boolean;
+    useTaggedQuantities: boolean;
 }
 
 export interface SearchForceGeneratorDialogResult {
@@ -127,18 +128,19 @@ export class SearchForceGeneratorDialogComponent {
     private readonly optionsService = inject(OptionsService);
     private readonly wsService = inject(WsService);
     readonly filtersService = inject(UnitSearchFiltersService);
+    private readonly initialOptions = this.optionsService.options();
     private readonly initialGameSystem = this.gameService.currentGameSystem();
     private readonly selectedGameSystem = signal<GameSystem>(this.initialGameSystem);
     private readonly initialBudgetDefaults = this.forceGeneratorService.resolveInitialBudgetDefaults(
-        this.optionsService.options(),
+        this.initialOptions,
         0,
         this.initialGameSystem,
     );
     private readonly initialUnitCountDefaults = this.forceGeneratorService.resolveInitialUnitCountDefaults(
-        this.optionsService.options(),
+        this.initialOptions,
     );
     private readonly initialSkillDefaults = this.forceGeneratorService.resolveInitialSkillDefaults(
-        this.optionsService.options(),
+        this.initialOptions,
     );
 
     readonly gameSystem = this.selectedGameSystem.asReadonly();
@@ -249,7 +251,10 @@ export class SearchForceGeneratorDialogComponent {
     });
     readonly currentForce = this.forceBuilderService.smartCurrentForce;
     readonly canImportCurrentForce = computed(() => (this.currentForce()?.units().length ?? 0) > 0);
-    readonly preventDuplicateChassis = signal(false);
+    readonly preventDuplicateChassis = signal(this.initialOptions.forceGenPreventDuplicateChassis);
+    readonly useTaggedQuantities = signal(
+        this.initialOptions.forceGenUseTaggedQuantities && !this.initialOptions.forceGenPreventDuplicateChassis,
+    );
     private readonly lockedUnits = signal<GeneratedForceUnit[]>([]);
     readonly lockedUnitKeys = computed(() => {
         return new Set(
@@ -479,7 +484,29 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     onPreventDuplicateChassisChange(event: Event): void {
-        this.preventDuplicateChassis.set((event.target as HTMLInputElement).checked);
+        const checked = (event.target as HTMLInputElement).checked;
+        if (this.preventDuplicateChassis() !== checked) {
+            this.preventDuplicateChassis.set(checked);
+            void this.optionsService.setOption('forceGenPreventDuplicateChassis', checked);
+        }
+
+        if (checked && this.useTaggedQuantities()) {
+            this.useTaggedQuantities.set(false);
+            void this.optionsService.setOption('forceGenUseTaggedQuantities', false);
+        }
+    }
+
+    onUseTaggedQuantitiesChange(event: Event): void {
+        const checked = (event.target as HTMLInputElement).checked;
+        if (this.useTaggedQuantities() !== checked) {
+            this.useTaggedQuantities.set(checked);
+            void this.optionsService.setOption('forceGenUseTaggedQuantities', checked);
+        }
+
+        if (checked && this.preventDuplicateChassis()) {
+            this.preventDuplicateChassis.set(false);
+            void this.optionsService.setOption('forceGenPreventDuplicateChassis', false);
+        }
     }
 
     onCrossEraAvailabilityInMultiEraSelectionChange(event: Event): void {
@@ -606,6 +633,7 @@ export class SearchForceGeneratorDialogComponent {
                 skillRanges: this.forceGenerationSkillRanges(),
                 crossEraAvailabilityInMultiEraSelection: this.crossEraAvailabilityInMultiEraSelection(),
                 preventDuplicateChassis: this.preventDuplicateChassis(),
+                useTaggedQuantities: this.useTaggedQuantities(),
             },
             totalCost: preview.totalCost,
         });
@@ -673,6 +701,7 @@ export class SearchForceGeneratorDialogComponent {
             skillRanges: settings.skillRanges,
             lockedUnits,
             preventDuplicateChassis: this.preventDuplicateChassis(),
+            useTaggedQuantities: this.useTaggedQuantities(),
         });
     }
 

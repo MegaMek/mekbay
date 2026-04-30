@@ -133,7 +133,7 @@ export class UnitDetailsVariantsTabComponent {
     /** Get the current game system for filtering sort options */
     gameSystem = computed(() => this.gameService.currentGameSystem());
 
-    /** All variants of the same chassis (same type and chassis name) */
+    /** All variants of the same chassis (same type, subtype and chassis name) */
     variants = computed<Unit[]>(() => {
         const currentUnit = this.unit();
         if (!currentUnit) return [];
