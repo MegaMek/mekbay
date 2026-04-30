@@ -93,7 +93,8 @@ const SW_UPDATE_RELOAD_HASH_STORAGE_KEY = 'mekbay:sw-update-reload-hash';
     styleUrl: './app.scss',
     host: {
         '(window:online)': 'onOnline()',
-        '(window:focus)': 'onFocus()'
+        '(window:focus)': 'onFocus()',
+        '(window:keydown.escape)': 'closeHomeActionsPanel()'
     }
 })
 export class App {
@@ -123,6 +124,7 @@ export class App {
     protected updateAvailable = signal(false);
     protected updateAutoReloadEnabled = signal(false);
     protected showInstallButton = signal(false);
+    protected homeActionsPanelOpen = signal(false);
     private deferredPrompt: any;
     private urlAtLastBlur = this.getCurrentAppUrl();
     private lastHandledCapturedUrl: string | null = null;
@@ -803,6 +805,14 @@ export class App {
 
     showForceGeneratorDialog(): void {
         void this.forceBuilderService.showForceGeneratorDialog();
+    }
+
+    openHomeActionsPanel(): void {
+        this.homeActionsPanelOpen.set(true);
+    }
+
+    closeHomeActionsPanel(): void {
+        this.homeActionsPanelOpen.set(false);
     }
 
     showSingleUnitDetails(unit: Unit, tab?: string) {

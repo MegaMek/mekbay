@@ -29,36 +29,77 @@
                             <img src="/images/discord.svg" alt="Discord">
                         </a>
                     </div>
-                    <div class="right">
-                        <button class="home-button" (click)="showForceGeneratorDialog()" aria-label="Force Generator">
-                        <svg fill="currentColor" width="32px" height="32px" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-                            <path d="M30.8,2.29A.49.49,0,0,0,30.35,2H16.42a.5.5,0,0,0-.42.23l-10.71,17A.49.49,0,0,0,5.7,20h7.67L6.6,33.25a.52.52,0,0,0,.46.75h3a.5.5,0,0,0,.37-.16L28,14.85a.5.5,0,0,0-.37-.85H20.89L30.72,2.82A.49.49,0,0,0,30.8,2.29Z"></path>
-                        </svg></button>
-                        <button class="home-button" (click)="showLoadForceDialog()" aria-label="Load Force">
-                            <svg fill="currentColor" width="32px" height="32px" viewBox="0 0 1920 1920"
-                                xmlns="http://www.w3.org/2000/svg">
-                                <path
-                                    d="m572.501 747-254.933 815.893-101.867-31.786 278.507-890.774h1105.813v-320H783.808L612.181 107H.021v1546.667c0 88.213 71.787 160 160 160h1388.054c75.946 0 141.973-54.08 156.906-128.64L1892.608 747H572.501Z"
-                                    fill-rule="evenodd" />
+                    <div class="right home-actions">
+                        <button type="button" class="home-button home-action-button" (click)="showForceGeneratorDialog()" aria-label="Force Generator">
+                            <svg fill="currentColor" width="32px" height="32px" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+                                <path d="M30.8,2.29A.49.49,0,0,0,30.35,2H16.42a.5.5,0,0,0-.42.23l-10.71,17A.49.49,0,0,0,5.7,20h7.67L6.6,33.25a.52.52,0,0,0,.46.75h3a.5.5,0,0,0,.37-.16L28,14.85a.5.5,0,0,0-.37-.85H20.89L30.72,2.82A.49.49,0,0,0,30.8,2.29Z"></path>
                             </svg>
+                            <span class="home-action-label">Force Generator</span>
                         </button>
-                        <button class="home-button" (click)="showCollectionDialog()" aria-label="Collection">
+                        <button type="button" class="home-button home-action-button" (click)="showLoadForceDialog()" aria-label="Load Force">
+                            <svg fill="currentColor" width="32px" height="32px" viewBox="0 0 1920 1920" xmlns="http://www.w3.org/2000/svg">
+                                <path d="m572.501 747-254.933 815.893-101.867-31.786 278.507-890.774h1105.813v-320H783.808L612.181 107H.021v1546.667c0 88.213 71.787 160 160 160h1388.054c75.946 0 141.973-54.08 156.906-128.64L1892.608 747H572.501Z" fill-rule="evenodd" />
+                            </svg>
+                            <span class="home-action-label">Load Force</span>
+                        </button>
+                        <button type="button" class="home-button home-action-button" (click)="showCollectionDialog()" aria-label="Collection">
                             <svg fill="currentColor" height="32px" width="32px" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 472.615 472.615" xml:space="preserve">
-                                    <path d="M199.173,0H104.65L0,104.651v94.523l273.442,273.442l199.173-199.173L199.173,0z M168.539,168.54
-                                        c-15.397,15.397-40.361,15.397-55.759,0c-15.397-15.397-15.397-40.362,0-55.76c15.396-15.397,40.361-15.397,55.759,0
-                                        C183.936,128.177,183.936,153.142,168.539,168.54z"/>
+                                <path d="M199.173,0H104.65L0,104.651v94.523l273.442,273.442l199.173-199.173L199.173,0z M168.539,168.54 c-15.397,15.397-40.361,15.397-55.759,0c-15.397-15.397-15.397-40.362,0-55.76c15.396-15.397,40.361-15.397,55.759,0 C183.936,128.177,183.936,153.142,168.539,168.54z" />
                             </svg>
+                            <span class="home-action-label">Collection</span>
                         </button>
-                        <button class="home-button" (click)="showOptionsDialog()" aria-label="Options">
-                            <svg fill="currentColor" width="32px" height="32px" viewBox="0 0 1920 1920"
-                                xmlns="http://www.w3.org/2000/svg">
-                                <path
-                                    d="M1703.534 960c0-41.788-3.84-84.48-11.633-127.172l210.184-182.174-199.454-340.856-265.186 88.433c-66.974-55.567-143.323-99.389-223.85-128.415L1158.932 0h-397.78L706.49 269.704c-81.43 29.138-156.423 72.282-223.962 128.414l-265.073-88.32L18 650.654l210.184 182.174C220.39 875.52 216.55 918.212 216.55 960s3.84 84.48 11.633 127.172L18 1269.346l199.454 340.856 265.186-88.433c66.974 55.567 143.322 99.389 223.85 128.415L761.152 1920h397.779l54.663-269.704c81.318-29.138 156.424-72.282 223.963-128.414l265.073 88.433 199.454-340.856-210.184-182.174c7.793-42.805 11.633-85.497 11.633-127.285m-743.492 395.294c-217.976 0-395.294-177.318-395.294-395.294 0-217.976 177.318-395.294 395.294-395.294 217.977 0 395.294 177.318 395.294 395.294 0 217.976-177.317 395.294-395.294 395.294"
-                                    fill-rule="evenodd" />
+                        <button type="button" class="home-button home-action-button" (click)="showOptionsDialog()" aria-label="Options">
+                            <svg fill="currentColor" width="32px" height="32px" viewBox="0 0 1920 1920" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M1703.534 960c0-41.788-3.84-84.48-11.633-127.172l210.184-182.174-199.454-340.856-265.186 88.433c-66.974-55.567-143.323-99.389-223.85-128.415L1158.932 0h-397.78L706.49 269.704c-81.43 29.138-156.423 72.282-223.962 128.414l-265.073-88.32L18 650.654l210.184 182.174C220.39 875.52 216.55 918.212 216.55 960s3.84 84.48 11.633 127.172L18 1269.346l199.454 340.856 265.186-88.433c66.974 55.567 143.322 99.389 223.85 128.415L761.152 1920h397.779l54.663-269.704c81.318-29.138 156.424-72.282 223.963-128.414l265.073 88.433 199.454-340.856-210.184-182.174c7.793-42.805 11.633-85.497 11.633-127.285m-743.492 395.294c-217.976 0-395.294-177.318-395.294-395.294 0-217.976 177.318-395.294 395.294-395.294 217.977 0 395.294 177.318 395.294 395.294 0 217.976-177.317 395.294-395.294 395.294" fill-rule="evenodd" />
                             </svg>
+                            <span class="home-action-label">Options</span>
+                        </button>
+                        <button type="button" class="home-button home-actions-menu-button" (click)="openHomeActionsPanel()" [attr.aria-expanded]="homeActionsPanelOpen()" aria-controls="home-actions-panel" aria-label="Open actions menu">
+                            <span class="burger-line"></span>
+                            <span class="burger-line"></span>
+                            <span class="burger-line"></span>
                         </button>
                     </div>
                 </div>
+                @if (homeActionsPanelOpen()) {
+                <button type="button" class="home-actions-backdrop" (click)="closeHomeActionsPanel()" aria-label="Close actions menu"></button>
+                <aside class="home-actions-panel glass framed-borders has-shadow" id="home-actions-panel" role="dialog" aria-modal="true" aria-labelledby="home-actions-panel-title">
+                    <div class="home-actions-panel-header">
+                        <div id="home-actions-panel-title" class="home-actions-panel-title"></div>
+                        <button type="button" class="home-actions-close-button" (click)="closeHomeActionsPanel()" aria-label="Close actions menu">
+                            <svg fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.41L10.59 13.41 4.29 19.7 2.88 18.29 9.17 12 2.88 5.71 4.29 4.3l6.3 6.29 6.3-6.29z" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="home-actions-panel-list">
+                        <button type="button" class="home-panel-action" (click)="showForceGeneratorDialog(); closeHomeActionsPanel()">
+                            <svg fill="currentColor" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+                                <path d="M30.8,2.29A.49.49,0,0,0,30.35,2H16.42a.5.5,0,0,0-.42.23l-10.71,17A.49.49,0,0,0,5.7,20h7.67L6.6,33.25a.52.52,0,0,0,.46.75h3a.5.5,0,0,0,.37-.16L28,14.85a.5.5,0,0,0-.37-.85H20.89L30.72,2.82A.49.49,0,0,0,30.8,2.29Z"></path>
+                            </svg>
+                            <span>Force Generator</span>
+                        </button>
+                        <button type="button" class="home-panel-action" (click)="showLoadForceDialog(); closeHomeActionsPanel()">
+                            <svg fill="currentColor" viewBox="0 0 1920 1920" xmlns="http://www.w3.org/2000/svg">
+                                <path d="m572.501 747-254.933 815.893-101.867-31.786 278.507-890.774h1105.813v-320H783.808L612.181 107H.021v1546.667c0 88.213 71.787 160 160 160h1388.054c75.946 0 141.973-54.08 156.906-128.64L1892.608 747H572.501Z" fill-rule="evenodd" />
+                            </svg>
+                            <span>Load Force</span>
+                        </button>
+                        <button type="button" class="home-panel-action" (click)="showCollectionDialog(); closeHomeActionsPanel()">
+                            <svg fill="currentColor" viewBox="0 0 472.615 472.615" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve">
+                                <path d="M199.173,0H104.65L0,104.651v94.523l273.442,273.442l199.173-199.173L199.173,0z M168.539,168.54 c-15.397,15.397-40.361,15.397-55.759,0c-15.397-15.397-15.397-40.362,0-55.76c15.396-15.397,40.361-15.397,55.759,0 C183.936,128.177,183.936,153.142,168.539,168.54z" />
+                            </svg>
+                            <span>Collection</span>
+                        </button>
+                        <button type="button" class="home-panel-action" (click)="showOptionsDialog(); closeHomeActionsPanel()">
+                            <svg fill="currentColor" viewBox="0 0 1920 1920" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M1703.534 960c0-41.788-3.84-84.48-11.633-127.172l210.184-182.174-199.454-340.856-265.186 88.433c-66.974-55.567-143.323-99.389-223.85-128.415L1158.932 0h-397.78L706.49 269.704c-81.43 29.138-156.423 72.282-223.962 128.414l-265.073-88.32L18 650.654l210.184 182.174C220.39 875.52 216.55 918.212 216.55 960s3.84 84.48 11.633 127.172L18 1269.346l199.454 340.856 265.186-88.433c66.974 55.567 143.322 99.389 223.85 128.415L761.152 1920h397.779l54.663-269.704c81.318-29.138 156.424-72.282 223.963-128.414l265.073 88.433 199.454-340.856-210.184-182.174c7.793-42.805 11.633-85.497 11.633-127.285m-743.492 395.294c-217.976 0-395.294-177.318-395.294-395.294 0-217.976 177.318-395.294 395.294-395.294 217.977 0 395.294 177.318 395.294 395.294 0 217.976-177.317 395.294-395.294 395.294" fill-rule="evenodd" />
+                            </svg>
+                            <span>Options</span>
+                        </button>
+                    </div>
+                </aside>
+                }
                 <div class="main-search">
                     <div class="empty-state-logo">
                         <img src="/images/logo.png" alt="MekBay Logo">
