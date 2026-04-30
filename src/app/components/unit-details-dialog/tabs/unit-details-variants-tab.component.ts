@@ -133,18 +133,19 @@ export class UnitDetailsVariantsTabComponent {
     /** Get the current game system for filtering sort options */
     gameSystem = computed(() => this.gameService.currentGameSystem());
 
-    /** All variants of the same chassis (same type and chassis name) */
+    /** All variants of the same chassis (same type, subtype and chassis name) */
     variants = computed<Unit[]>(() => {
         const currentUnit = this.unit();
         if (!currentUnit) return [];
 
         const targetType = currentUnit.type;
+        const targetSubtype = currentUnit.subtype;
         const targetChassis = currentUnit.chassis;
         const sortKey = this.selectedSort();
         const sortDir = this.selectedSortDirection();
 
         const filtered = this.dataService.getUnits()
-            .filter(u => u.type === targetType && u.chassis === targetChassis);
+            .filter(u => u.type === targetType && u.subtype === targetSubtype && u.chassis === targetChassis);
 
         // Sort based on selected key
         return filtered.sort((a, b) => {
