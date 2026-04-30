@@ -2199,6 +2199,66 @@ describe('ForceGeneratorService', () => {
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Locust LCT-1V', 'Wasp WSP-1A']);
     });
 
+    it('keeps name-tag quantities independent while sharing chassis-tag quantities for the same selected tag', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const locustA = createUnit({
+            id: 1,
+            name: 'Locust LCT-A',
+            chassis: 'Locust',
+            model: 'LCT-A',
+            type: 'Mek',
+            as: { PV: 1 } as Unit['as'],
+            _nameTags: [{ tag: 'owned', quantity: 2 }],
+        });
+        const locustB = createUnit({
+            id: 2,
+            name: 'Locust LCT-B',
+            chassis: 'Locust',
+            model: 'LCT-B',
+            type: 'Mek',
+            as: { PV: 1 } as Unit['as'],
+            _nameTags: [{ tag: 'owned', quantity: 1 }],
+        });
+        const crabVariants = ['A', 'B', 'C', 'D', 'E'].map((model, index) => createUnit({
+            id: 10 + index,
+            name: `Crab CRB-${model}`,
+            chassis: 'Crab',
+            model: `CRB-${model}`,
+            type: 'Mek',
+            as: { PV: 1 } as Unit['as'],
+            _chassisTags: [{ tag: 'owned', quantity: 4 }],
+        }));
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            _tags: {
+                interactedWith: true,
+                value: {
+                    owned: { name: 'owned', state: 'or', count: 1 },
+                },
+            },
+        });
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [locustA, locustB, ...crabVariants],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 100 },
+            minUnitCount: 7,
+            maxUnitCount: 7,
+            gunnery: 4,
+            piloting: 5,
+            preventDuplicateChassis: false,
+            useTaggedQuantities: true,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.filter((unit) => unit.unit.name === locustA.name)).toHaveSize(2);
+        expect(preview.units.filter((unit) => unit.unit.name === locustB.name)).toHaveSize(1);
+        expect(preview.units.filter((unit) => unit.unit.chassis === 'Crab')).toHaveSize(4);
+    });
+
     it('ignores negative tag quantities when resolving exact-unit duplicate caps', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
