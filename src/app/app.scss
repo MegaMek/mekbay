@@ -73,7 +73,6 @@
 }
 
 .empty-state-container .header {
-    padding-top: calc(8px + var(--safe-area-inset-top));
     width: 100%;
     position: relative;
 }
@@ -270,15 +269,21 @@ svg-viewer {
         flex-direction: row;
         align-items: center;
         gap: 16px;
+        min-width: 0;
 
+    }
+
+    .right {
+        justify-content: flex-end;
+        gap: 10px;
     }
 
     .home-button {
         background: none;
+        padding: 0;
         border: none;
-        padding: 0px;
-        width: 32px;
-        height: 32px;
+        min-width: 32px;
+        min-height: 32px;
         cursor: pointer;
         color: var(--text-color-secondary);
         transition: color 0.2s;
@@ -288,9 +293,197 @@ svg-viewer {
         color: var(--text-color);
     }
 
+    .home-action-button {
+        width: auto;
+        height: 36px;
+        min-width: 110px;
+        padding: 0 10px;
+        gap: 6px;
+        font-size: 0.85rem;
+        font-weight: 700;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+    }
+
+    .home-action-button svg {
+        width: 20px;
+        height: 20px;
+        flex: 0 0 auto;
+    }
+
+    .home-action-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .home-actions-menu-button {
+        display: none;
+        width: 38px;
+        height: 38px;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .burger-line {
+        width: 20px;
+        height: 2px;
+        background: currentColor;
+        display: block;
+    }
+
+    @media (max-width: 720px) {
+        gap: 12px;
+
+        .left,
+        .right {
+            gap: 12px;
+        }
+
+        .home-action-button {
+            display: none;
+        }
+
+        .home-actions-menu-button {
+            display: flex;
+        }
+    }
+
+    @media (max-width: 360px) {
+        padding-left: max(12px, var(--safe-area-inset-left));
+        padding-right: max(12px, var(--safe-area-inset-right));
+
+        .left,
+        .right {
+            gap: 10px;
+        }
+    }
+
     .home-button.disabled {
         pointer-events: none;
         opacity: 0.3;
+    }
+}
+
+.home-actions-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    border: 0;
+    padding: 0;
+    background: rgba(0, 0, 0, 0.5);
+    cursor: pointer;
+}
+
+.home-actions-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 510;
+    width: min(320px, calc(100vw - 48px));
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    box-sizing: border-box;
+    padding: calc(16px + var(--safe-area-inset-top)) max(16px, var(--safe-area-inset-right)) calc(16px + var(--safe-area-inset-bottom)) 16px;
+    color: var(--text-color);
+    animation: home-actions-panel-enter 180ms ease-out;
+}
+
+.home-actions-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.home-actions-panel-title {
+    color: var(--text-color-secondary);
+    font-size: 0.8rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.home-actions-close-button {
+    width: 36px;
+    height: 36px;
+    color: var(--text-color-secondary);
+    border: none;
+    background: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: color 0.2s;
+}
+
+.home-actions-close-button:hover {
+    color: var(--text-color);
+}
+
+.home-actions-close-button svg {
+    width: 20px;
+    height: 20px;
+}
+
+.home-actions-panel-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.home-panel-action {
+    width: 100%;
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    box-sizing: border-box;
+    border: none;
+    background: none;
+    padding: 0 14px;
+    color: var(--text-color-secondary);
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 700;
+    line-height: 1;
+    text-align: left;
+    transition: color 0.2s;
+}
+
+.home-panel-action:hover,
+.home-panel-action:focus-visible {
+    color: var(--text-color);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.42);
+}
+
+.home-panel-action svg {
+    width: 24px;
+    height: 24px;
+    flex: 0 0 auto;
+}
+
+@media (min-width: 721px) {
+    .home-actions-backdrop,
+    .home-actions-panel {
+        display: none;
+    }
+}
+
+@keyframes home-actions-panel-enter {
+    from {
+        transform: translateX(100%);
+    }
+
+    to {
+        transform: translateX(0);
     }
 }
 .gameSystemSelector {
