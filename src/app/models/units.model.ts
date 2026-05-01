@@ -212,6 +212,8 @@ export interface Unit {
     armor: number;
     armorPer: number; // Armor %
     internal: number;
+    squads?: number;
+    squadSize?: number;
     heat: number;
     dissipation: number;
     diss?: number[]; // Mix/Max dissipation
