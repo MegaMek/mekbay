@@ -358,7 +358,7 @@ function getGroupUnitAllocations(group: GroupSizeResult): GroupUnitAllocation[] 
     }
 
     if (group.units && group.units.length > 0) {
-        return group.units.map((unit) => ({ unit, troopers: unit.internal || 0 }));
+        return group.units.map((unit) => ({ unit }));
     }
 
     return null;
@@ -402,7 +402,7 @@ export function compileGroupFacts(
         groupUnitCache.set(group, groupUnits);
     }
 
-    const allocations = directAllocations ?? groupUnits.map((unit) => ({ unit, troopers: unit.internal || 0 }));
+    const allocations = directAllocations ?? groupUnits.map((unit) => ({ unit }));
 
     for (const [index, allocation] of allocations.entries()) {
         const facts = unitFactsMap?.get(allocation.unit) ?? compileUnitFacts(allocation.unit, index);
@@ -415,8 +415,7 @@ export function compileGroupFacts(
         }
         for (const [key, value] of Object.entries(facts.scalars)) {
             if (typeof value === 'number') {
-                const numericValue = key === 'troopers' ? allocation.troopers : value;
-                incrementCount(unitScalarSums, key as UnitNumericScalarName, numericValue);
+                incrementCount(unitScalarSums, key as UnitNumericScalarName, value);
             }
         }
 

@@ -149,7 +149,7 @@ export interface GroupSizeResult {
 
 export interface GroupUnitAllocation {
     readonly unit: Unit;
-    readonly troopers: number;
+    readonly squads?: number;
 }
 
 export type OrgGroupProvenance = 'input-group' | 'produced-group';
@@ -393,7 +393,6 @@ export interface OrgComposedCountAlternativeSpec {
 
 export interface OrgCIFormationEntry {
     readonly moveClass: CIMoveClass;
-    readonly troopers: number;
     readonly counts: Readonly<Record<string, number>>;
 }
 

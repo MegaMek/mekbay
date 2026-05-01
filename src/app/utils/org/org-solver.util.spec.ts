@@ -154,6 +154,7 @@ function createUnit(
     specials: string[] = [],
     internal: number = 1,
     moveType: MoveType = 'Tracked',
+    squads?: number,
 ): Unit {
     const alphaStrikeType = (() => {
         if (type === 'Mek') return 'BM';
@@ -193,6 +194,7 @@ function createUnit(
         armor: 0,
         armorPer: 0,
         internal,
+        squads,
         heat: 0,
         dissipation: 0,
         moveType,
@@ -997,7 +999,7 @@ describe('org-solver.util', () => {
         expect(result.leftoverCount).toBe(0);
     });
 
-    it('materializes an Inner Sphere Squad plus leftover trooper from a non-exact unit', () => {
+    it('materializes one Inner Sphere Squad when Unit.squads is not set', () => {
         const units = compileUnitFactsList([
             createUnit('CI Squad', 'Infantry', 'Conventional Infantry', false, [], 8, 'Tracked'),
         ]);
@@ -1006,12 +1008,10 @@ describe('org-solver.util', () => {
 
         expect(result.groups).toHaveSize(1);
         expect(result.groups[0]).toEqual(jasmine.objectContaining({ name: 'Squad', type: 'Squad', count: 1, isFragment: true }));
-        expect(result.leftoverUnitAllocations).toEqual([
-            jasmine.objectContaining({ troopers: 1 }),
-        ]);
+        expect(result.leftoverUnitAllocations).toEqual([]);
     });
 
-    it('evaluates an Inner Sphere Platoon directly from same-motive troopers', () => {
+    it('evaluates an Inner Sphere Platoon directly from same-motive squads', () => {
         const result = evaluateCIFormationRule(IS_PLATOON, compileUnitFactsList([
             createUnit('CI Squad 1', 'Infantry', 'Conventional Infantry', false, [], 7, 'Tracked'),
             createUnit('CI Squad 2', 'Infantry', 'Conventional Infantry', false, [], 7, 'Tracked'),
@@ -1038,7 +1038,7 @@ describe('org-solver.util', () => {
         expect(result.groups).toContain(jasmine.objectContaining({ name: 'Squad', type: 'Squad', count: 1 }));
     });
 
-    it('evaluates a Clan Point directly from four jump squads worth of troopers', () => {
+    it('evaluates a Clan Point directly from four jump squads', () => {
         const result = evaluateCIFormationRule(CLAN_CI_POINT, compileUnitFactsList([
             createUnit('Jump Squad 1', 'Infantry', 'Conventional Infantry', false, [], 5, 'Jump'),
             createUnit('Jump Squad 2', 'Infantry', 'Conventional Infantry', false, [], 5, 'Jump'),
@@ -1052,7 +1052,7 @@ describe('org-solver.util', () => {
         expect(result.leftoverCount).toBe(0);
     });
 
-    it('evaluates a ComStar Level I directly from five jump squads worth of troopers', () => {
+    it('evaluates a ComStar Level I directly from five jump squads', () => {
         const result = evaluateCIFormationRule(COMSTAR_LEVEL_I_FROM_SQUADS, compileUnitFactsList([
             createUnit('Jump Squad 1', 'Infantry', 'Conventional Infantry', false, [], 6, 'Jump'),
             createUnit('Jump Squad 2', 'Infantry', 'Conventional Infantry', false, [], 6, 'Jump'),
@@ -1488,8 +1488,8 @@ describe('org-solver.util', () => {
 
     it('does not mix Marian infantry move classes when building Century fragments', () => {
         const materialized = materializeCIFormationRule(MH_CENTURY_INFANTRY, compileUnitFactsList([
-            createUnit('Foot CI A', 'Infantry', 'Conventional Infantry', false, [], 20, 'Leg'),
-            createUnit('Motorized CI A', 'Infantry', 'Motorized Conventional Infantry', false, [], 80, 'Wheeled'),
+            createUnit('Foot CI A', 'Infantry', 'Conventional Infantry', false, [], 20, 'Leg', 2),
+            createUnit('Motorized CI A', 'Infantry', 'Motorized Conventional Infantry', false, [], 80, 'Wheeled', 8),
         ]));
 
         expect(materialized.groups.every((group) => group.type === 'Contubernium')).toBeTrue();
@@ -1512,11 +1512,11 @@ describe('org-solver.util', () => {
 
     it('does not mix Marian mechanized infantry move classes into a Century', () => {
         const materialized = materializeCIFormationRule(MH_CENTURY_INFANTRY, compileUnitFactsList([
-            createUnit('VTOL CI', 'Infantry', 'Mechanized Conventional Infantry', false, [], 10, 'VTOL'),
-            createUnit('Hover CI', 'Infantry', 'Mechanized Conventional Infantry', false, [], 10, 'Hover'),
-            createUnit('Wheeled CI', 'Infantry', 'Mechanized Conventional Infantry', false, [], 10, 'Wheeled'),
-            createUnit('Tracked CI', 'Infantry', 'Mechanized Conventional Infantry', false, [], 10, 'Tracked'),
-            createUnit('Submarine CI', 'Infantry', 'Mechanized Conventional Infantry', false, [], 10, 'Submarine'),
+            createUnit('VTOL CI', 'Infantry', 'Mechanized Conventional Infantry', false, [], 10, 'VTOL', 2),
+            createUnit('Hover CI', 'Infantry', 'Mechanized Conventional Infantry', false, [], 10, 'Hover', 2),
+            createUnit('Wheeled CI', 'Infantry', 'Mechanized Conventional Infantry', false, [], 10, 'Wheeled', 2),
+            createUnit('Tracked CI', 'Infantry', 'Mechanized Conventional Infantry', false, [], 10, 'Tracked', 2),
+            createUnit('Submarine CI', 'Infantry', 'Mechanized Conventional Infantry', false, [], 10, 'Submarine', 2),
         ]));
 
         expect(materialized.groups).toHaveSize(5);
@@ -2314,7 +2314,7 @@ describe('org-solver.util', () => {
             leftoverCount: 2,
         }));
         expect(platoonEvaluation).toEqual(jasmine.objectContaining({
-            leftoverCount: 1,
+            leftoverCount: 0,
         }));
         expect(companyEvaluation).toEqual(jasmine.objectContaining({
             leftoverCount: 0,
@@ -2938,9 +2938,9 @@ describe('org-solver.util resolve parity', () => {
         expect(result[1].modifierKey).toBe('');
     });
 
-    it('resolves an 18-trooper ComStar foot CI unit as a Demi-Level I', () => {
+    it('resolves a three-squad ComStar foot CI unit as a Demi-Level I', () => {
         const result = resolveFromUnits([
-            createUnit('CS Demi CI', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg'),
+            createUnit('CS Demi CI', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg', 3),
         ], 'ComStar', 'Inner Sphere');
 
         expect(result.length).toBe(1);
@@ -2949,15 +2949,15 @@ describe('org-solver.util resolve parity', () => {
         expect(result[0].modifierKey).toBe('Demi-');
         expect(result[0].children).toBeUndefined();
         expect(result[0].unitAllocations).toEqual([
-            jasmine.objectContaining({ troopers: 18 }),
+            jasmine.objectContaining({ squads: 3 }),
         ]);
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
-    it('resolves two 18-trooper ComStar foot CI units as a regular Level I', () => {
+    it('resolves two three-squad ComStar foot CI units as a regular Level I', () => {
         const result = resolveFromUnits([
-            createUnit('CS Demi CI 1', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg'),
-            createUnit('CS Demi CI 2', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg'),
+            createUnit('CS Demi CI 1', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg', 3),
+            createUnit('CS Demi CI 2', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg', 3),
         ], 'ComStar', 'Inner Sphere');
 
         expect(result.length).toBe(1);
@@ -2967,10 +2967,10 @@ describe('org-solver.util resolve parity', () => {
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
-    it('resolves two same-name 18-trooper ComStar foot CI units as a regular Level I', () => {
+    it('resolves two same-name three-squad ComStar foot CI units as a regular Level I', () => {
         const result = resolveFromUnits([
-            createUnit('CS Demi CI', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg'),
-            createUnit('CS Demi CI', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg'),
+            createUnit('CS Demi CI', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg', 3),
+            createUnit('CS Demi CI', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg', 3),
         ], 'ComStar', 'Inner Sphere');
 
         expect(result.length).toBe(1);
@@ -2982,10 +2982,10 @@ describe('org-solver.util resolve parity', () => {
 
     it('repackages two Demi-Level I groups into one regular Level I before higher-tier promotion', () => {
         const demiOne = resolveFromUnits([
-            createUnit('CS Demi Group A', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg'),
+            createUnit('CS Demi Group A', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg', 3),
         ], 'ComStar', 'Inner Sphere');
         const demiTwo = resolveFromUnits([
-            createUnit('CS Demi Group B', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg'),
+            createUnit('CS Demi Group B', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg', 3),
         ], 'ComStar', 'Inner Sphere');
 
         expect(demiOne.length).toBe(1);
@@ -3003,7 +3003,7 @@ describe('org-solver.util resolve parity', () => {
         expect(result[0].type).toBe('Level I');
         expect(result[0].modifierKey).toBe('');
         expect(result[0].children).toBeUndefined();
-        expect(result[0].unitAllocations?.reduce((sum, allocation) => sum + allocation.troopers, 0)).toBe(36);
+        expect(result[0].unitAllocations?.reduce((sum, allocation) => sum + (allocation.squads ?? 0), 0)).toBe(6);
         expect(result[0].leftoverUnits).toBeUndefined();
     });
 
@@ -3014,7 +3014,7 @@ describe('org-solver.util resolve parity', () => {
             ], 'ComStar', 'Inner Sphere')[0],
         );
         const demiLevelI = resolveFromUnits([
-            createUnit('CS Demi Repair Block', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg'),
+            createUnit('CS Demi Repair Block', 'Infantry', 'Conventional Infantry', false, [], 18, 'Leg', 3),
         ], 'ComStar', 'Inner Sphere')[0];
 
         const result = resolveFromGroups('ComStar', 'Inner Sphere', [
@@ -3528,9 +3528,9 @@ function createForeignGroup(
 }
 
 describe('org-solver.util aggregation and foreign parity', () => {
-    it('pools partial Inner Sphere CI units into virtual squad fragments before forming platoons', () => {
+    it('resolves four one-squad Inner Sphere CI units into a Platoon regardless of trooper total', () => {
         const result = resolveFromUnits(
-            Array.from({ length: 8 }, (_, index) =>
+            Array.from({ length: 4 }, (_, index) =>
                 createUnit(`IS Foot CI ${index + 1}`, 'Infantry', 'Conventional Infantry', false, [], 4, 'Leg'),
             ),
             'Federated Suns',
@@ -3540,9 +3540,9 @@ describe('org-solver.util aggregation and foreign parity', () => {
         expect(result.length).toBe(1);
         expect(result[0].name).toBe('Platoon');
         expect(result[0].type).toBe('Platoon');
-        expect(result[0].unitAllocations?.reduce((sum, allocation) => sum + allocation.troopers, 0)).toBe(28);
-        expect(result[0].leftoverUnitAllocations?.reduce((sum, allocation) => sum + allocation.troopers, 0)).toBe(4);
-        expect(result[0].leftoverUnits?.length).toBe(1);
+        expect(result[0].unitAllocations?.reduce((sum, allocation) => sum + (allocation.squads ?? 0), 0)).toBe(4);
+        expect(result[0].leftoverUnitAllocations).toBeUndefined();
+        expect(result[0].leftoverUnits).toBeUndefined();
     });
 
     it('resolves four Inner Sphere BA units as a Platoon instead of a Lance', () => {
