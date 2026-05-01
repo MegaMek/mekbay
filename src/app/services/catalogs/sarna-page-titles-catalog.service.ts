@@ -46,6 +46,33 @@ import { CatalogBaseService } from './catalog-base.service';
 
 type TitleCandidateIndex = Map<string, string[]>;
 
+const NON_ALIAS_PARENTHESES = [
+    'aerospacefighter',
+    'battlearmor',
+    'battlemech',
+    'battlemek',
+    'class',
+    'combatvehicle',
+    'conventionalfighter',
+    'dropship',
+    'dropshuttle',
+    'exoskeleton',
+    'industrialmech',
+    'industrialmek',
+    'infantryunit',
+    'jumpship',
+    'navalvessel',
+    'omnifighter',
+    'omnimech',
+    'omnimek',
+    'omnivehicle',
+    'protomek',
+    'smallcraft',
+    'spacestation',
+    'supportvehicle',
+    'warship',
+] as const;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
     return !!value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -69,6 +96,18 @@ function normalizeCompact(value: string): string {
     return normalizeText(value).replace(/[^a-z0-9]+/g, '');
 }
 
+function getLookupTokens(value: string): string[] {
+    return normalizeText(value)
+        .replace(/[^a-z0-9]+/g, ' ')
+        .split(' ')
+        .filter(Boolean);
+}
+
+function getTokenSignature(value: string): string | undefined {
+    const tokens = getLookupTokens(value).sort((left, right) => left.localeCompare(right));
+    return tokens.length > 0 ? tokens.join('|') : undefined;
+}
+
 function getTitleBase(title: string): string {
     let baseTitle = title.trim();
     let strippedTitle = baseTitle.replace(/\s+\([^()]*\)\s*$/g, '').trim();
@@ -79,6 +118,59 @@ function getTitleBase(title: string): string {
     }
 
     return baseTitle;
+}
+
+function isTitleParentheticalAlias(value: string): boolean {
+    const normalizedValue = normalizeCompact(value);
+    return normalizedValue.length > 0
+        && !NON_ALIAS_PARENTHESES.some(descriptor => normalizedValue.includes(descriptor));
+}
+
+function getTitleParentheticalAliases(title: string): string[] {
+    const aliases = new Set<string>();
+    let remainingTitle = title.trim();
+    let match = remainingTitle.match(/\s+\(([^()]*)\)\s*$/);
+
+    while (match) {
+        const alias = match[1].trim();
+        if (isTitleParentheticalAlias(alias)) {
+            aliases.add(alias);
+        }
+
+        remainingTitle = remainingTitle.slice(0, match.index).trim();
+        match = remainingTitle.match(/\s+\(([^()]*)\)\s*$/);
+    }
+
+    return [...aliases];
+}
+
+function addExactTitle(exactTitles: Map<string, string>, titleKey: string, title: string): void {
+    const normalizedTitleKey = normalizeText(titleKey);
+    if (normalizedTitleKey && !exactTitles.has(normalizedTitleKey)) {
+        exactTitles.set(normalizedTitleKey, title);
+    }
+}
+
+function addBaseCandidate(baseCandidates: TitleCandidateIndex, candidateKey: string, title: string): void {
+    const normalizedCandidateKey = normalizeText(candidateKey);
+    if (!normalizedCandidateKey) return;
+
+    const candidates = baseCandidates.get(normalizedCandidateKey) ?? [];
+    if (!candidates.includes(title)) {
+        candidates.push(title);
+        baseCandidates.set(normalizedCandidateKey, candidates);
+    }
+}
+
+function addTokenCandidate(tokenCandidates: TitleCandidateIndex, candidateKey: string, title: string): void {
+    const tokenSignature = getTokenSignature(candidateKey);
+    if (!tokenSignature) return;
+
+    const candidates = tokenCandidates.get(tokenSignature) ?? [];
+    if (!candidates.includes(title)) {
+        candidates.push(title);
+        tokenCandidates.set(tokenSignature, candidates);
+    }
 }
 
 function isUnitOmni(unit: SarnaLookupUnit): boolean {
@@ -125,6 +217,7 @@ export class SarnaPageTitlesCatalogService extends CatalogBaseService<SarnaPageT
     private titleCount = 0;
     private exactTitleByType = new Map<SarnaPageTitleLookupType, Map<string, string>>();
     private baseCandidatesByType = new Map<SarnaPageTitleLookupType, TitleCandidateIndex>();
+    private tokenCandidatesByType = new Map<SarnaPageTitleLookupType, TitleCandidateIndex>();
 
     protected override get catalogKey(): string {
         return 'sarna_page_titles';
@@ -146,9 +239,16 @@ export class SarnaPageTitlesCatalogService extends CatalogBaseService<SarnaPageT
         if (exactTitle) return exactTitle;
 
         const baseCandidates = this.baseCandidatesByType.get(lookupType)?.get(normalizedChassis);
-        if (!baseCandidates?.length) return undefined;
+        if (baseCandidates?.length) {
+            return this.selectBestCandidate(baseCandidates, unit);
+        }
 
-        return this.selectBestCandidate(baseCandidates, unit);
+        const tokenSignature = getTokenSignature(chassis);
+        const tokenCandidates = tokenSignature
+            ? this.tokenCandidatesByType.get(lookupType)?.get(tokenSignature)
+            : undefined;
+
+        return tokenCandidates?.length ? this.selectBestCandidate(tokenCandidates, unit) : undefined;
     }
 
     public hasPageForUnit(unit: SarnaLookupUnit | null | undefined): boolean {
@@ -173,24 +273,30 @@ export class SarnaPageTitlesCatalogService extends CatalogBaseService<SarnaPageT
         this.titleCount = 0;
         this.exactTitleByType.clear();
         this.baseCandidatesByType.clear();
+        this.tokenCandidatesByType.clear();
 
         for (const lookupType of SARNA_PAGE_TITLE_LOOKUP_TYPES) {
             const exactTitles = new Map<string, string>();
             const baseCandidates = new Map<string, string[]>();
+            const tokenCandidates = new Map<string, string[]>();
 
             for (const title of wrappedData.titlesByType[lookupType] ?? []) {
-                const normalizedTitle = normalizeText(title);
-                if (!normalizedTitle) continue;
+                addExactTitle(exactTitles, title, title);
 
-                if (!exactTitles.has(normalizedTitle)) {
-                    exactTitles.set(normalizedTitle, title);
+                const baseTitle = getTitleBase(title);
+                addBaseCandidate(baseCandidates, baseTitle, title);
+                addTokenCandidate(tokenCandidates, baseTitle, title);
+
+                const aliases = getTitleParentheticalAliases(title);
+                if (aliases.length > 0) {
+                    addTokenCandidate(tokenCandidates, title, title);
                 }
 
-                const normalizedBaseTitle = normalizeText(getTitleBase(title));
-                if (normalizedBaseTitle) {
-                    const candidates = baseCandidates.get(normalizedBaseTitle) ?? [];
-                    candidates.push(title);
-                    baseCandidates.set(normalizedBaseTitle, candidates);
+                for (const alias of aliases) {
+                    addExactTitle(exactTitles, `${alias} (${baseTitle})`, title);
+                    addBaseCandidate(baseCandidates, alias, title);
+                    addTokenCandidate(tokenCandidates, alias, title);
+                    addTokenCandidate(tokenCandidates, `${alias} ${baseTitle}`, title);
                 }
 
                 this.titleCount += 1;
@@ -198,6 +304,7 @@ export class SarnaPageTitlesCatalogService extends CatalogBaseService<SarnaPageT
 
             this.exactTitleByType.set(lookupType, exactTitles);
             this.baseCandidatesByType.set(lookupType, baseCandidates);
+            this.tokenCandidatesByType.set(lookupType, tokenCandidates);
         }
 
         this.etag = wrappedData.etag;

@@ -29,6 +29,7 @@ describe('SarnaPageTitlesCatalogService', () => {
                 'Avatar (BattleMech)',
                 'Avatar (OmniMech)',
                 'Centurion (BattleMech)',
+                'Nova (Black Hawk)',
             ],
             Aero: [
                 'Avatar (WarShip class)',
@@ -98,6 +99,15 @@ describe('SarnaPageTitlesCatalogService', () => {
 
         expect(service.getPageTitleForUnit({ chassis: 'Pegasus', type: 'VTOL', subtype: 'Combat Vehicle Omni', omni: 1 })).toBe('Pegasus (OmniVehicle)');
         expect(service.getPageTitleForUnit({ chassis: 'Pegasus', type: 'Naval', subtype: 'Combat Vehicle', omni: 0 })).toBe('Pegasus (Combat Vehicle)');
+    });
+
+    it('matches parenthetical chassis aliases when the catalog title and unit chassis reverse the names', async () => {
+        await initializeFromCache();
+
+        expect(service.getPageTitleForUnit({ chassis: 'Black Hawk (Nova)', type: 'Mek', subtype: 'BattleMek Omni', omni: 1 })).toBe('Nova (Black Hawk)');
+        expect(service.getPageTitleForUnit({ chassis: 'Black-Hawk Nova', type: 'Mek', subtype: 'BattleMek Omni', omni: 1 })).toBe('Nova (Black Hawk)');
+        expect(service.getPageTitleForUnit({ chassis: 'Black Hawk', type: 'Mek', subtype: 'BattleMek Omni', omni: 1 })).toBe('Nova (Black Hawk)');
+        expect(service.getPageTitleForUnit({ chassis: 'BattleMech (Avatar)', type: 'Mek', subtype: 'BattleMek', omni: 0 })).toBeUndefined();
     });
 
     it('returns undefined when the chassis is not in the Sarna title bucket', async () => {
