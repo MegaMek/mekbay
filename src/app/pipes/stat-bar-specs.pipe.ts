@@ -71,7 +71,7 @@ export class StatBarSpecsPipe implements PipeTransform {
         let internalValue;
         if (unit.type === 'Infantry') {
             structureLabel = 'Squad size';
-            internalValue = unit.squads && unit.squadSize ? `${unit.squadSize}×${unit.squads}` : `${unit.internal}`;
+            internalValue = unit.squads && unit.squads > 1 && unit.squadSize ? `${unit.squadSize}×${unit.squads}` : `${unit.internal}`;
         } else {
             structureLabel = 'Structure';
             internalValue = `${unit.internal}`;
