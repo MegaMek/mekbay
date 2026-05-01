@@ -417,8 +417,8 @@
 }
 
 .sarna-logo {
-    width: 64px;
-    height: 64px;
+    width: 55px;
+    height: auto;
     object-fit: contain;
     display: block;
 }
