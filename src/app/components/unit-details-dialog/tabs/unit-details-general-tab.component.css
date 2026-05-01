@@ -405,15 +405,17 @@
     text-decoration: underline;
 }
 
-.sarna-link {
-    display: inline-flex;
+.bottom-info .sarna-link {
+    display: flex;
     margin-top: 6px;
-    line-height: 0;
+    flex-direction: column;
+    text-decoration: underline dotted;
+    color: var(--text-color);
+    font-weight: bold;
 }
 
-.bottom-info .sarna-link,
 .bottom-info .sarna-link:hover {
-    text-decoration: none;
+    text-decoration: underline;
 }
 
 .sarna-logo {
