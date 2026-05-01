@@ -15,6 +15,8 @@ export interface MegaMekUnitFileMetadata {
     chassis: string;
     model: string;
     unitName: string;
+    mulId?: number;
+    sources: string[];
     introYear?: number;
     weightClass?: number;
     isClanTech: boolean;
@@ -29,6 +31,26 @@ function parseYear(value: unknown): number | undefined {
     const raw = String(value).trim();
     const match = raw.match(/^(\d{4})/);
     return match ? Number.parseInt(match[1], 10) : undefined;
+}
+
+function parseMulId(value: unknown): number | undefined {
+    if (value === undefined || value === null || value === '') {
+        return undefined;
+    }
+
+    const parsedId = Number.parseInt(String(value).trim(), 10);
+    return Number.isFinite(parsedId) && parsedId > 0 ? parsedId : undefined;
+}
+
+export function splitMegaMekSourceList(sourceList: string | undefined): string[] {
+    if (!sourceList) {
+        return [];
+    }
+
+    return sourceList
+        .split(/[\r\n,]+/u)
+        .map((source) => source.trim())
+        .filter((source) => source.length > 0);
 }
 
 function buildChassisName(chassis: string, clanName: string): string {
@@ -363,6 +385,8 @@ function parseBlkUnitFileMetadata(raw: string, filePath: string): MegaMekUnitFil
         chassis,
         model,
         unitName: buildMegaMekUnitName(nameUnitType, chassis, model, { motionType }),
+        mulId: parseMulId(getTaggedText(raw, 'mul id:')),
+        sources: splitMegaMekSourceList(getTaggedText(raw, 'source')),
         introYear: parseYear(getTaggedText(raw, 'year')),
         weightClass,
         isClanTech: techFlags.isClanTech,
@@ -405,6 +429,8 @@ function parseMtfUnitFileMetadata(raw: string, filePath: string, rootPath: strin
         chassis,
         model,
         unitName: buildMegaMekUnitName(unitType, unitNameChassis, model, { isIndustrialMek }),
+        mulId: parseMulId(fields.get('mul id')),
+        sources: splitMegaMekSourceList(fields.get('source')),
         introYear: parseYear(fields.get('era')),
         weightClass: deriveWeightClass(unitType, tonnage),
         isClanTech: techFlags.isClanTech,
