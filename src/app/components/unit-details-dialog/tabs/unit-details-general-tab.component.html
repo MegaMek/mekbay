@@ -208,6 +208,11 @@ unit().moveType }}</strong></div>
 }
 </div>
 <div class="bottom-right">
+@if (sarnaWikiUrl(); as wikiUrl) {
+<a class="sarna-link" target="_BLANK" rel="noopener noreferrer" [href]="wikiUrl" [title]="'Open Sarna wiki page for ' + (sarnaPageTitle() || unit().chassis)">
+    <img class="sarna-logo" src="/images/sarna.png" alt="Sarna">
+</a>
+}
 @if (unit().id && unit().id > 0) {
 <span class="label muted">MUL ID: </span><a
 class="mul-link" target=_BLANK href="http://masterunitlist.info/Unit/Details/{{unit().id}}">{{

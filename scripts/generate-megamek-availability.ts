@@ -15,6 +15,10 @@ const {
     resolveMmDataRoot,
 } = require('./lib/script-paths.js') as typeof import('./lib/script-paths.js');
 
+const {
+    writeFileWithContentTimestamp,
+} = require('./lib/deterministic-output.js') as typeof import('./lib/deterministic-output');
+
 type JsonObject = Record<string, unknown>;
 type CompactAvailabilityByRating = [number, number, number, number, number];
 type CompactAvailabilityValue = number | `${number}+` | `${number}-` | CompactAvailabilityByRating;
@@ -2771,7 +2775,7 @@ function writeJsonFile(filePath: string, data: unknown): void {
     const contents = BEAUTIFY_OUTPUT
         ? formatJsonValue(data) ?? ''
         : JSON.stringify(data);
-    fs.writeFileSync(filePath, contents + os.EOL, 'utf8');
+    writeFileWithContentTimestamp(filePath, contents + os.EOL, 'utf8');
 }
 
 function mergeCompactEraAvailabilityForWrite(

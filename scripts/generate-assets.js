@@ -35,6 +35,7 @@ const fs = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const { spawnSync } = require('child_process');
+const { writeFileWithContentTimestamp } = require('./lib/deterministic-output.js');
 const { loadOptionalEnvFile, resolveMmDataRoot } = require('./lib/script-paths.js');
 
 const root = path.resolve(__dirname, '..');
@@ -48,6 +49,7 @@ const sourcebooksDir = path.join(mmDataRoot, 'data', 'sourcebooks');
 const sourcebooksOutput = path.join(root, 'public', 'assets', 'sourcebooks.json');
 const megaMekAvailabilityScript = path.join(__dirname, 'generate-megamek-availability.ts');
 const megaMekRulesetsScript = path.join(__dirname, 'generate-megamek-rulesets.ts');
+const sarnaPageTitlesScript = path.join(__dirname, 'generate-sarna-page-titles.ts');
 const ratGeneratorCsvScript = path.join(__dirname, 'ratgenerator_build_table.ts');
 
 console.log(`[Assets] Using MM data from: ${mmDataRoot}`);
@@ -117,7 +119,7 @@ function generateSourcebooks() {
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  fs.writeFileSync(sourcebooksOutput, JSON.stringify(sourcebooks, null, 2));
+  writeFileWithContentTimestamp(sourcebooksOutput, JSON.stringify(sourcebooks, null, 2));
   console.log(`[Assets] Generated ${sourcebooksOutput} with ${sourcebooks.length} sourcebooks.`);
 }
 
@@ -155,6 +157,7 @@ async function main() {
   try {
     runTypeScriptScript(megaMekAvailabilityScript);
     runTypeScriptScript(megaMekRulesetsScript);
+    runTypeScriptScript(sarnaPageTitlesScript);
     // runTypeScriptScript(ratGeneratorCsvScript);
     generateSourcebooks();
     // await runCompressAssets();
