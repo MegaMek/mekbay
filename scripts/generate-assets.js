@@ -105,7 +105,8 @@ function generateSourcebooks() {
           title: data.title || data.abbrev,
           image: data.image || undefined,
           url: data.url || undefined,
-          mul_url: data.mul_url || undefined
+          mul_url: data.mul_url || undefined,
+          canon: !!data.canon,
         });
       }
     } catch (e) {
