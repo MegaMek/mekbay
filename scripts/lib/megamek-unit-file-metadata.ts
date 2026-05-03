@@ -17,7 +17,7 @@ export interface MegaMekUnitFileMetadata {
     unitName: string;
     mulId?: number;
     sources: string[];
-    publishedRSsources: string[];
+    publishedRSSources: string[];
     introYear?: number;
     weightClass?: number;
     isClanTech: boolean;
@@ -388,7 +388,7 @@ function parseBlkUnitFileMetadata(raw: string, filePath: string): MegaMekUnitFil
         unitName: buildMegaMekUnitName(nameUnitType, chassis, model, { motionType }),
         mulId: parseMulId(getTaggedText(raw, 'mul id:')),
         sources: splitMegaMekSourceList(getTaggedText(raw, 'source')),
-        publishedRSsources: splitMegaMekSourceList(getTaggedText(raw, 'published')),
+        publishedRSSources: splitMegaMekSourceList(getTaggedText(raw, 'published')),
         introYear: parseYear(getTaggedText(raw, 'year')),
         weightClass,
         isClanTech: techFlags.isClanTech,
@@ -433,7 +433,7 @@ function parseMtfUnitFileMetadata(raw: string, filePath: string, rootPath: strin
         unitName: buildMegaMekUnitName(unitType, unitNameChassis, model, { isIndustrialMek }),
         mulId: parseMulId(fields.get('mul id')),
         sources: splitMegaMekSourceList(fields.get('source')),
-        publishedRSsources: splitMegaMekSourceList(fields.get('published')),
+        publishedRSSources: splitMegaMekSourceList(fields.get('published')),
         introYear: parseYear(fields.get('era')),
         weightClass: deriveWeightClass(unitType, tonnage),
         isClanTech: techFlags.isClanTech,
