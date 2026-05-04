@@ -40,9 +40,18 @@ import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 /*
  * Author: Drake
  */
+export interface SourcebookInfoDialogSource extends Sourcebook {
+    sourceAnnotations?: string[];
+}
+
+export interface SourcebookInfoDialogUnknownSource {
+    abbrev: string;
+    sourceAnnotations?: string[];
+}
+
 export interface SourcebookInfoDialogData {
-    sourcebooks: Sourcebook[];
-    unknownSources: string[];
+    sourcebooks: SourcebookInfoDialogSource[];
+    unknownSources: SourcebookInfoDialogUnknownSource[];
     selectedIndex?: number;
 }
 
@@ -66,8 +75,8 @@ export interface SourcebookInfoDialogData {
                     }
                     <div class="sourcebook-title">
                         <span>{{ sourcebook.title }}</span>
-                        @if (sourcebook.canon === false) {
-                            <span class="source-non-canon">(non-canon)</span>
+                        @if (sourcebook.sourceAnnotations?.length) {
+                            <span class="source-note">({{ sourcebook.sourceAnnotations?.join(', ') }})</span>
                         }
                     </div>
                     @if (sourcebook.sku) {
@@ -89,14 +98,16 @@ export interface SourcebookInfoDialogData {
                     <hr class="sourcebook-separator" />
                 }
             }
-            @for (unknown of data.unknownSources; let last = $last; track unknown) {
+            @for (unknown of data.unknownSources; let last = $last; track unknown.abbrev) {
                 @if (data.sourcebooks.length > 0 || !$first) {
                     <hr class="sourcebook-separator" />
                 }
                 <div class="sourcebook-entry unknown">
                     <div class="sourcebook-title">
-                        <span>{{ unknown }}</span>
-                        <span class="source-non-canon">(non-canon)</span>
+                        <span>{{ unknown.abbrev }}</span>
+                        @if (unknown.sourceAnnotations?.length) {
+                            <span class="source-note">({{ unknown.sourceAnnotations?.join(', ') }})</span>
+                        }
                     </div>
                 </div>
             }
@@ -154,7 +165,7 @@ export interface SourcebookInfoDialogData {
             text-align: center;
         }
 
-        .source-non-canon {
+        .source-note {
             color: var(--text-color-secondary);
             font-weight: normal;
             font-size: 0.9em;

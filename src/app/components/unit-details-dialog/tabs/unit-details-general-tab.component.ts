@@ -44,12 +44,18 @@ import { UnitComponentItemComponent } from '../../unit-component-item/unit-compo
 import { TooltipDirective } from '../../../directives/tooltip.directive';
 import { BVCalculatorUtil } from '../../../utils/bv-calculator.util';
 import { getUnitSourceFilterValues } from '../../../utils/unit-search-shared.util';
-import { SourcebookInfoDialogComponent, type SourcebookInfoDialogData } from '../../sourcebook-info-dialog/sourcebook-info-dialog.component';
+import {
+    SourcebookInfoDialogComponent,
+    type SourcebookInfoDialogData,
+    type SourcebookInfoDialogSource,
+    type SourcebookInfoDialogUnknownSource,
+} from '../../sourcebook-info-dialog/sourcebook-info-dialog.component';
 import type { Sourcebook } from '../../../models/sourcebook.model';
 
 // Matrix layout types
 type SlotSpec = string | string[];
 type MatrixSpec = SlotSpec[][];
+type SourceListEntry = Sourcebook & { sourceAnnotations: string[] };
 
 // Matrix layouts by unit type
 // '~' = if no content, expand the area from above
@@ -153,19 +159,29 @@ export class UnitDetailsGeneralTabComponent {
         return this.dataService.getForcePacksForUnit(u);
     });
 
-    sourceList = computed<Sourcebook[]>(() => getUnitSourceFilterValues(this.unit())
-        .map((abbrev, index) => this.dataService.getSourcebookByAbbrev(abbrev) ?? {
-            id: -index - 1,
-            sku: '',
-            abbrev,
-            title: abbrev,
-            canon: false,
-        })
-        .sort((left, right) => {
-            const leftTitle = left.title || left.abbrev;
-            const rightTitle = right.title || right.abbrev;
-            return leftTitle.localeCompare(rightTitle) || left.abbrev.localeCompare(right.abbrev);
-        }));
+    sourceList = computed<SourceListEntry[]>(() => {
+        const unit = this.unit();
+        const publishedSourceKeys = this.getPublishedSourceKeys(unit);
+        return getUnitSourceFilterValues(unit)
+            .map((abbrev, index) => {
+                const sourcebook = this.dataService.getSourcebookByAbbrev(abbrev) ?? {
+                    id: -index - 1,
+                    sku: '',
+                    abbrev,
+                    title: abbrev,
+                    canon: false,
+                };
+                const sourceAnnotations: string[] = [];
+                if (sourcebook.canon === false) sourceAnnotations.push('non-canon');
+                if (publishedSourceKeys.has(this.normalizeSourceKey(abbrev))) sourceAnnotations.push('RS');
+                return { ...sourcebook, sourceAnnotations };
+            })
+            .sort((left, right) => {
+                const leftTitle = left.title || left.abbrev;
+                const rightTitle = right.title || right.abbrev;
+                return leftTitle.localeCompare(rightTitle) || left.abbrev.localeCompare(right.abbrev);
+            });
+    });
 
     sarnaPageTitle = computed(() => {
         this.dataService.sarnaPageTitlesVersion();
@@ -230,9 +246,9 @@ export class UnitDetailsGeneralTabComponent {
         const sources = this.sourceList();
         if (!sources || sources.length === 0) return;
         
-        const sourcebooks: Sourcebook[] = [];
-        const unknownSources: string[] = [];
-        let selectedSourcebook: Sourcebook | undefined;
+        const sourcebooks: SourcebookInfoDialogSource[] = [];
+        const unknownSources: SourcebookInfoDialogUnknownSource[] = [];
+        let selectedSourcebook: SourcebookInfoDialogSource | undefined;
         
         for (const [sourceIndex, source] of sources.entries()) {
             if (source.title !== source.abbrev) {
@@ -241,12 +257,12 @@ export class UnitDetailsGeneralTabComponent {
                 }
                 sourcebooks.push(source);
             } else {
-                unknownSources.push(source.abbrev);
+                unknownSources.push({ abbrev: source.abbrev, sourceAnnotations: source.sourceAnnotations });
             }
         }
 
         sourcebooks.sort((left, right) => left.title.localeCompare(right.title));
-        unknownSources.sort((left, right) => left.localeCompare(right));
+        unknownSources.sort((left, right) => left.abbrev.localeCompare(right.abbrev));
         const selectedSourcebookIndex = selectedSourcebook
             ? sourcebooks.findIndex(sourcebook => sourcebook.abbrev === selectedSourcebook.abbrev)
             : -1;
@@ -255,6 +271,20 @@ export class UnitDetailsGeneralTabComponent {
             SourcebookInfoDialogComponent,
             { data: { sourcebooks, unknownSources, selectedIndex: selectedSourcebookIndex } }
         );
+    }
+
+    private normalizeSourceKey(source: string): string {
+        return source.trim().toLowerCase();
+    }
+
+    private getPublishedSourceKeys(unit: Unit): Set<string> {
+        const keys = new Set<string>();
+        for (const source of unit.published ?? []) {
+            if (typeof source !== 'string') continue;
+            const key = this.normalizeSourceKey(source);
+            if (key && key !== 'none') keys.add(key);
+        }
+        return keys;
     }
 
     getAreaLabel(areaName: string): string {
