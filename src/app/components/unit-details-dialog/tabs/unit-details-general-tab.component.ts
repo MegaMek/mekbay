@@ -153,15 +153,19 @@ export class UnitDetailsGeneralTabComponent {
         return this.dataService.getForcePacksForUnit(u);
     });
 
-    sourceList = computed<Sourcebook[]>(() => getUnitSourceFilterValues(this.unit()).map((abbrev, index) =>
-        this.dataService.getSourcebookByAbbrev(abbrev) ?? {
+    sourceList = computed<Sourcebook[]>(() => getUnitSourceFilterValues(this.unit())
+        .map((abbrev, index) => this.dataService.getSourcebookByAbbrev(abbrev) ?? {
             id: -index - 1,
             sku: '',
             abbrev,
             title: abbrev,
             canon: true,
-        }
-    ));
+        })
+        .sort((left, right) => {
+            const leftTitle = left.title || left.abbrev;
+            const rightTitle = right.title || right.abbrev;
+            return leftTitle.localeCompare(rightTitle) || left.abbrev.localeCompare(right.abbrev);
+        }));
 
     sarnaPageTitle = computed(() => {
         this.dataService.sarnaPageTitlesVersion();
@@ -228,18 +232,24 @@ export class UnitDetailsGeneralTabComponent {
         
         const sourcebooks: Sourcebook[] = [];
         const unknownSources: string[] = [];
-        let selectedSourcebookIndex = -1;
+        let selectedSourcebook: Sourcebook | undefined;
         
         for (const [sourceIndex, source] of sources.entries()) {
-            if (source.id >= 0) {
+            if (source.title !== source.abbrev) {
                 if (sourceIndex === index) {
-                    selectedSourcebookIndex = sourcebooks.length;
+                    selectedSourcebook = source;
                 }
                 sourcebooks.push(source);
             } else {
                 unknownSources.push(source.abbrev);
             }
         }
+
+        sourcebooks.sort((left, right) => left.title.localeCompare(right.title));
+        unknownSources.sort((left, right) => left.localeCompare(right));
+        const selectedSourcebookIndex = selectedSourcebook
+            ? sourcebooks.findIndex(sourcebook => sourcebook.abbrev === selectedSourcebook.abbrev)
+            : -1;
         
         this.dialogsService.createDialog<void, SourcebookInfoDialogComponent, SourcebookInfoDialogData>(
             SourcebookInfoDialogComponent,

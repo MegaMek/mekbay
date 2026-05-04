@@ -413,8 +413,9 @@
 }
 
 .bottom-info .source-non-canon {
-    color: #ffd54f;
-    font-weight: 600;
+    color: var(--text-color-secondary);            
+    font-weight: normal;
+    font-size: 0.9em;
 }
 
 .bottom-info .sarna-link {

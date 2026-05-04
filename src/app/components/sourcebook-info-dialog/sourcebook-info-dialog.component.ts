@@ -64,7 +64,12 @@ export interface SourcebookInfoDialogData {
                             <img [src]="sourcebook.image" [alt]="sourcebook.title" (error)="onImageError($event)" />
                         </div>
                     }
-                    <div class="sourcebook-title">{{ sourcebook.title }}</div>
+                    <div class="sourcebook-title">
+                        <span>{{ sourcebook.title }}</span>
+                        @if (sourcebook.canon === false) {
+                            <span class="source-non-canon">(non-canon)</span>
+                        }
+                    </div>
                     @if (sourcebook.sku) {
                         <div class="sourcebook-sku">
                             <span class="label">SKU:</span>
@@ -136,9 +141,20 @@ export interface SourcebookInfoDialogData {
         }
 
         .sourcebook-title {
+            display: inline-flex;
+            align-items: baseline;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 4px;
             font-weight: 600;
             font-size: 1.1em;
             text-align: center;
+        }
+
+        .source-non-canon {
+            color: var(--text-color-secondary);
+            font-weight: normal;
+            font-size: 0.9em;
         }
 
         .sourcebook-sku {

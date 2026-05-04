@@ -194,7 +194,7 @@ unit().moveType }}</strong></div>
 <span class="label muted">Sources:</span>
 @for (src of sourceList(); let index = $index; track index) {
 <span class="source-entry">
-@if (src.id >= 0) {
+@if (src.title) {
 <a class="source-link" (click)="openSourcebooksDialog(index)">{{ src.title }}</a>
 @if (src.canon === false) {
 <span class="source-non-canon">(non-canon)</span>
