@@ -41,11 +41,9 @@ import type { Sourcebooks } from '../models/sourcebook.model';
 import type { MegaMekFactionsData } from '../models/megamek/factions.model';
 import type { MegaMekAvailabilityData } from '../models/megamek/availability.model';
 import type { MegaMekRulesetsData } from '../models/megamek/rulesets.model';
-import type { MULUnitSources } from '../models/mul-unit-sources.model';
 import type { SarnaPageTitlesData } from '../models/sarna-page-titles.model';
 import type { RawEquipmentData } from '../models/equipment.model';
 import type { SerializedForce } from '../models/force-serialization';
-import type { DataService } from './data.service';
 import { DialogsService } from './dialogs.service';
 import type { SerializedSearchFilter } from './unit-search-filters.model';
 import {
@@ -86,7 +84,6 @@ const ORGANIZATIONS_STORE = 'organizationsStore';
 const OPTIONS_KEY = 'options';
 const USER_KEY = 'user';
 const QUIRKS_KEY = 'quirks';
-const MUL_UNIT_SOURCES_KEY = 'mulUnitSources';
 const SARNA_PAGE_TITLES_KEY = 'sarnaPageTitles';
 
 const CATALOG_GENERAL_STORE_KEYS = [
@@ -100,7 +97,6 @@ const CATALOG_GENERAL_STORE_KEYS = [
     ERAS_KEY,
     SOURCEBOOKS_KEY,
     QUIRKS_KEY,
-    MUL_UNIT_SOURCES_KEY,
     SARNA_PAGE_TITLES_KEY,
 ] as const;
 
@@ -643,14 +639,6 @@ export class DbService {
 
     public async saveSourcebooks(sourcebooksData: Sourcebooks): Promise<void> {
         return await this.saveDataFromGeneralStore(sourcebooksData, SOURCEBOOKS_KEY);
-    }
-
-    public async getMULUnitSources(): Promise<MULUnitSources | null> {
-        return await this.getDataFromGeneralStore<MULUnitSources>(MUL_UNIT_SOURCES_KEY);
-    }
-
-    public async saveMULUnitSources(data: MULUnitSources): Promise<void> {
-        return await this.saveDataFromGeneralStore(data, MUL_UNIT_SOURCES_KEY);
     }
 
     public async getSarnaPageTitles(): Promise<SarnaPageTitlesData | null> {

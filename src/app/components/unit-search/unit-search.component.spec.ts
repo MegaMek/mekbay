@@ -18,6 +18,7 @@ import { SavedSearchesService } from '../../services/saved-searches.service';
 import { TaggingService } from '../../services/tagging.service';
 import { MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
+import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { UnitSearchComponent } from './unit-search.component';
 
 describe('UnitSearchComponent card virtualization', () => {
@@ -126,7 +127,7 @@ describe('UnitSearchComponent card virtualization', () => {
     };
 
     function createUnit(name: string): Unit {
-        return { name } as Unit;
+        return createEmptyUnit({ name });
     }
 
     beforeEach(async () => {

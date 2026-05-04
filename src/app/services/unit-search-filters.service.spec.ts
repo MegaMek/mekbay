@@ -31,6 +31,7 @@ import { MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from './unit-search-filters.model'
 import { SEARCH_WORKER_FACTORY } from '../utils/unit-search-worker-factory.util';
 import type { SearchWorkerLike } from '../utils/unit-search-worker-client.util';
 import type { UnitSearchWorkerResponseMessage } from '../utils/unit-search-worker-protocol.util';
+import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
 
 const originalJasmineTimeoutInterval = jasmine.DEFAULT_TIMEOUT_INTERVAL;
 jasmine.DEFAULT_TIMEOUT_INTERVAL = 60000;
@@ -224,30 +225,23 @@ function buildSmallBundle(payload: BenchmarkBundle): BenchmarkBundle {
     };
 }
 
-function createTestUnit(overrides: Partial<Unit>): Unit {
-    return {
+function createTestUnit(overrides: TestUnitOverrides = {}): Unit {
+    const { as: asOverrides, ...unitOverrides } = overrides;
+
+    return createEmptyUnit({
         name: 'Test Unit',
         id: 1,
         chassis: 'Test Unit',
         model: 'Prime',
         year: 3050,
-        weightClass: 'Medium',
-        tons: 50,
-        offSpeedFactor: 0,
         bv: 1000,
         pv: 35,
         cost: 1000000,
         level: 2,
-        techBase: 'Inner Sphere',
-        techRating: 'D',
-        type: 'Mek',
-        subtype: 'BattleMek',
-        omni: 0,
-        engine: 'Fusion',
         engineRating: 250,
         engineHS: 10,
-        engineHSType: 'Heat Sink',
         source: ['SRC-A'],
+        published: ['RS:AS'],
         role: 'Skirmisher',
         armorType: 'Standard',
         structureType: 'Standard',
@@ -261,52 +255,28 @@ function createTestUnit(overrides: Partial<Unit>): Unit {
         walk2: 5,
         run: 8,
         run2: 8,
-        jump: 0,
-        umu: 0,
-        c3: '',
         dpt: 10,
         comp: [{ id: 'laser', q: 1, n: 'Laser', t: 'E', p: 0, l: 'CT' }],
         su: 1,
-        crewSize: 1,
-        quirks: [],
-        features: [],
-        icon: '',
-        sheets: [],
+        _publicTags: [],
+        ...unitOverrides,
         as: {
             TP: 'BM',
             PV: 35,
             SZ: 2,
             TMM: 1,
-            usesOV: false,
-            OV: 0,
             MV: '8',
             MVm: { '': 8 },
-            usesTh: false,
-            Th: 0,
             Arm: 4,
             Str: 4,
-            specials: [],
             dmg: {
                 dmgS: '3',
                 dmgM: '2',
                 dmgL: '1',
-                dmgE: '0',
             },
-            usesE: false,
-            usesArcs: false,
+            ...asOverrides,
         },
-        _searchKey: '',
-        _displayType: '',
-        _maxRange: 0,
-        _weightedMaxRange: 0,
-        _dissipationEfficiency: 0,
-        _mdSumNoPhysical: 0,
-        _mdSumNoPhysicalNoOneshots: 0,
-        _nameTags: [],
-        _chassisTags: [],
-        _publicTags: [],
-        ...overrides,
-    };
+    });
 }
 
 function createStandaloneBundle(): BenchmarkBundle {

@@ -12,15 +12,16 @@ import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
 import { TaggingService } from './tagging.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
+import { createEmptyUnit } from '../testing/unit-test-helpers';
 
 function createUnit(name: string, chassis = 'Dasher'): Unit {
-    return {
+    return createEmptyUnit({
         name,
         chassis,
         type: 'Mek',
         _nameTags: [{ tag: 'CLAN', quantity: 1 }],
         _chassisTags: [],
-    } as unknown as Unit;
+    });
 }
 
 describe('TaggingService', () => {

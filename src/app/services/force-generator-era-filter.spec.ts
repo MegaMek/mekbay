@@ -6,6 +6,7 @@ import type { Faction } from '../models/factions.model';
 import type { MegaMekRulesetRecord } from '../models/megamek/rulesets.model';
 import type { AvailabilitySource } from '../models/options.model';
 import type { Unit } from '../models/units.model';
+import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { DataService } from './data.service';
 import { ForceGeneratorService } from './force-generator.service';
 import { OptionsService } from './options.service';
@@ -106,7 +107,7 @@ describe('ForceGeneratorService negative era filters', () => {
         const excludedEra = createEra(2570, 'Age of War');
         const allowedEra = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const unit = { name: 'Atlas' } as Unit;
+        const unit = createEmptyUnit({ name: 'Atlas' });
 
         erasByName.set(excludedEra.name, excludedEra);
         erasById.set(excludedEra.id, excludedEra);
@@ -153,7 +154,7 @@ describe('ForceGeneratorService negative era filters', () => {
         const invisibleEra = createEra(2570, 'Age of War');
         const visibleEra = createEra(3067, 'Civil War');
         const faction = createFaction(10, 'Capellan Confederation');
-        const unit = { id: 1, name: 'Vindicator' } as Unit;
+        const unit = createEmptyUnit({ id: 1, name: 'Vindicator' });
         const availabilityRecord: { e: Record<string, Record<string, [number, number]>> } = {
             e: {
                 '2570': {

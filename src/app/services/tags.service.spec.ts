@@ -7,13 +7,14 @@ import { LoggerService } from './logger.service';
 import { TagsService } from './tags.service';
 import { UserStateService } from './userState.service';
 import { WsService } from './ws.service';
+import { createEmptyUnit } from '../testing/unit-test-helpers';
 
 function createUnit(name: string): Unit {
-    return {
+    return createEmptyUnit({
         name,
         chassis: 'Dasher',
         type: 'Mek',
-    } as Unit;
+    });
 }
 
 describe('TagsService', () => {

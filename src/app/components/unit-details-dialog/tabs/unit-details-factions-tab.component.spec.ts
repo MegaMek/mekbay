@@ -7,6 +7,7 @@ import type { MegaMekWeightedAvailabilityRecord } from '../../../models/megamek/
 import { MULFACTION_EXTINCT } from '../../../models/mulfactions.model';
 import type { Unit } from '../../../models/units.model';
 import { DataService } from '../../../services/data.service';
+import { createEmptyUnit } from '../../../testing/unit-test-helpers';
 import { UnitAvailabilitySourceService } from '../../../services/unit-availability-source.service';
 import { UnitDetailsFactionTabComponent } from './unit-details-factions-tab.component';
 
@@ -60,13 +61,13 @@ describe('UnitDetailsFactionTabComponent', () => {
             },
         } as Faction,
     ];
-    const unit = {
+    const unit = createEmptyUnit({
         id: 1,
         name: 'Atlas',
         chassis: 'Atlas',
         model: 'AS7-D',
         type: 'Mek',
-    } as Unit;
+    });
 
     let megaMekAvailabilityRecord: MegaMekWeightedAvailabilityRecord | undefined;
     let useMegaMekAvailability = false;

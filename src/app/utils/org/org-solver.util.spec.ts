@@ -2,6 +2,7 @@ import type { Era } from '../../models/eras.model';
 import type { Faction } from '../../models/factions.model';
 import type { FactionAffinity } from '../../models/mulfactions.model';
 import type { ASUnitTypeCode, MoveType, Unit, UnitSubtype, UnitType } from '../../models/units.model';
+import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import {
     CC_AUGMENTED_BATTALION,
     CC_AUGMENTED_COMPANY,
@@ -165,87 +166,21 @@ function createUnit(
         return 'CV';
     })();
 
-    return {
+    return createEmptyUnit({
         name,
-        id: -1,
         chassis: `Chassis ${name}`,
         model: `Model ${name}`,
-        year: 3151,
-        weightClass: 'Medium',
-        tons: 50,
-        offSpeedFactor: 0,
-        bv: 0,
-        pv: 0,
-        cost: 0,
-        level: 0,
-        techBase: 'Inner Sphere',
-        techRating: 'D',
         type,
         subtype,
         omni: isOmni ? 1 : 0,
-        engine: 'Fusion',
-        engineRating: 0,
-        engineHS: 0,
-        engineHSType: 'Heat Sink',
-        source: [],
-        role: '',
-        armorType: '',
-        structureType: '',
-        armor: 0,
-        armorPer: 0,
         internal,
         squads,
-        heat: 0,
-        dissipation: 0,
         moveType,
-        walk: 0,
-        walk2: 0,
-        run: 0,
-        run2: 0,
-        jump: 0,
-        umu: 0,
-        c3: '',
-        dpt: 0,
-        comp: [],
-        su: 0,
-        crewSize: 1,
-        quirks: [],
-        features: [],
-        icon: '',
-        sheets: [],
         as: {
             TP: alphaStrikeType,
-            PV: 0,
-            SZ: 0,
-            TMM: 0,
-            usesOV: false,
-            OV: 0,
-            MV: '0',
-            MVm: {},
-            usesTh: false,
-            Th: 0,
-            Arm: 0,
-            Str: 0,
             specials,
-            dmg: {
-                dmgS: '0',
-                dmgM: '0',
-                dmgL: '0',
-                dmgE: '0',
-            },
-            usesE: false,
-            usesArcs: false,
         },
-        _searchKey: '',
-        _displayType: '',
-        _maxRange: 0,
-        _weightedMaxRange: 0,
-        _dissipationEfficiency: 0,
-        _mdSumNoPhysical: 0,
-        _mdSumNoPhysicalNoOneshots: 0,
-        _nameTags: [],
-        _chassisTags: [],
-    };
+    });
 }
 
 function createLance(name: string, unitNames: string[]): GroupSizeResult {

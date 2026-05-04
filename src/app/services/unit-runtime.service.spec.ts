@@ -5,11 +5,12 @@ import type { TagData } from './db.service';
 import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
 import { UnitRuntimeService } from './unit-runtime.service';
-import { MulUnitSourcesCatalogService } from './catalogs/mul-unit-sources-catalog.service';
 import { UnitSearchIndexService } from './unit-search-index.service';
+import { getProperty } from '../utils/unit-search-shared.util';
+import { createEmptyUnit } from '../testing/unit-test-helpers';
 
 function createUnit(name: string, chassis = name): Unit {
-    return { name, chassis, type: 'Mek' } as unknown as Unit;
+    return createEmptyUnit({ name, chassis, type: 'Mek' });
 }
 
 describe('UnitRuntimeService', () => {
@@ -37,7 +38,6 @@ describe('UnitRuntimeService', () => {
                 UnitRuntimeService,
                 { provide: TagsService, useValue: tagsServiceMock },
                 { provide: PublicTagsService, useValue: { getPublicTagsForUnit: jasmine.createSpy('getPublicTagsForUnit') } },
-                { provide: MulUnitSourcesCatalogService, useValue: { getUnitSourcesByMulId: jasmine.createSpy('getUnitSourcesByMulId') } },
                 { provide: UnitSearchIndexService, useValue: unitSearchIndexServiceMock },
             ],
         });
@@ -53,6 +53,21 @@ describe('UnitRuntimeService', () => {
         expect(service.getUnitByName('Mad Cat Prime')).toBe(unit);
         expect(service.getUnitByName('mad cat prime')).toBe(unit);
         expect(service.getUnitByName('MAD CAT PRIME')).toBe(unit);
+    });
+
+    it('normalizes comma-separated source and published values separately', () => {
+        const unit = createUnit('Atlas');
+        Object.assign(unit as unknown as { source: string; published: string }, {
+            source: 'TR:3039, RS:Gothic, None, TR:SW',
+            published: 'RSFP:Wave 2, RS:Gothic, RS:SW',
+        });
+
+        service.preprocessUnits([unit]);
+
+        expect(unit.source).toEqual(['TR:3039', 'RS:Gothic', 'TR:SW']);
+        expect(unit.published).toEqual(['RSFP:Wave 2', 'RS:Gothic', 'RS:SW']);
+        expect(getProperty(unit, 'source')).toEqual(['TR:3039', 'RS:Gothic', 'TR:SW', 'RSFP:Wave 2', 'RS:SW']);
+        expect(unitSearchIndexServiceMock.prepareUnits).toHaveBeenCalledOnceWith([unit]);
     });
 
     it('removes unit tags that are already covered by same-named chassis tags when applying tag data', () => {

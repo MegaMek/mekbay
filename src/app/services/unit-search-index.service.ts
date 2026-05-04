@@ -38,7 +38,7 @@ import type { Era } from '../models/eras.model';
 import type { BucketStatSummary, MinMaxStatsRange, UnitSubtypeMaxStats } from './data.service';
 import { removeAccents } from '../utils/string.util';
 import { naturalCompare } from '../utils/sort.util';
-import { getMergedTags } from '../utils/unit-search-shared.util';
+import { getMergedTags, getUnitSourceFilterValues } from '../utils/unit-search-shared.util';
 import { calculateWeightedMaxRange, getMaxRangeFromComponents } from '../utils/unit-range.util';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES } from './unit-search-filters.model';
 import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
@@ -323,7 +323,7 @@ export class UnitSearchIndexService {
             this.addSearchIndexValue('as.TP', unit.as?.TP, unit.name);
             this.addSearchIndexValues('as.specials', unit.as?.specials ?? [], unit.name);
             this.addSearchIndexValues('as._motive', this.getASMotiveDisplayNames(unit), unit.name);
-            this.addSearchIndexValues('source', unit.source ?? [], unit.name);
+            this.addSearchIndexValues('source', getUnitSourceFilterValues(unit), unit.name);
             this.addSearchIndexValues('componentName', unit.comp.map(component => component.n), unit.name);
             this.addComponentCountValues(unit);
             this.addSearchIndexValues('features', unit.features ?? [], unit.name);

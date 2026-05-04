@@ -15,6 +15,7 @@ import { OptionsService } from '../../services/options.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { WsService } from '../../services/ws.service';
+import { createEmptyUnit } from '../../testing/unit-test-helpers';
 
 describe('SearchForceGeneratorDialogComponent', () => {
     let component: SearchForceGeneratorDialogComponent;
@@ -426,20 +427,20 @@ describe('SearchForceGeneratorDialogComponent', () => {
     });
 
     it('uses uncapped force-generator eligible units for preview requests', () => {
-        const limitedUnit = {
+        const limitedUnit = createEmptyUnit({
             id: 1,
             name: 'Limited Unit',
             chassis: 'Limited',
             model: 'Prime',
             as: { PV: 25 },
-        } as Unit;
-        const extraEligibleUnit = {
+        });
+        const extraEligibleUnit = createEmptyUnit({
             id: 2,
             name: 'Extra Eligible Unit',
             chassis: 'Extra',
             model: 'Prime',
             as: { PV: 40 },
-        } as Unit;
+        });
 
         filteredUnitsSignal.set([limitedUnit]);
         forceGeneratorEligibleUnitsSignal.set([limitedUnit, extraEligibleUnit]);
@@ -517,14 +518,14 @@ describe('SearchForceGeneratorDialogComponent', () => {
     });
 
     it('does not replace the displayed preview when max units are committed on blur', () => {
-        const atlas = {
+        const atlas = createEmptyUnit({
             id: 1,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
             bv: 7950,
             as: { PV: 54 },
-        } as Unit;
+        });
 
         (component as any).__test.setPreviewResult({
             gameSystem: GameSystem.CLASSIC,
@@ -588,14 +589,14 @@ describe('SearchForceGeneratorDialogComponent', () => {
     });
 
     it('does not replace the displayed preview when max budget is committed on blur', () => {
-        const atlas = {
+        const atlas = createEmptyUnit({
             id: 1,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
             bv: 7950,
             as: { PV: 54 },
-        } as Unit;
+        });
 
         (component as any).__test.setPreviewResult({
             gameSystem: GameSystem.CLASSIC,
@@ -697,13 +698,13 @@ describe('SearchForceGeneratorDialogComponent', () => {
     });
 
     it('records successful force generations over websocket when reroll produces a preview', () => {
-        const atlas = {
+        const atlas = createEmptyUnit({
             id: 11,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
             bv: 1897,
-        } as Unit;
+        });
 
         (component as any).__test.setPreviewResult({
             gameSystem: GameSystem.CLASSIC,
@@ -743,20 +744,20 @@ describe('SearchForceGeneratorDialogComponent', () => {
     });
 
     it('imports the current force into the locked preview without rerolling', () => {
-        const atlas = {
+        const atlas = createEmptyUnit({
             id: 1,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
             as: { PV: 6 },
-        } as Unit;
-        const locust = {
+        });
+        const locust = createEmptyUnit({
             id: 2,
             name: 'Locust LCT-1V',
             chassis: 'Locust',
             model: 'LCT-1V',
             as: { PV: 4 },
-        } as Unit;
+        });
         const testState = (component as any).__test;
         const serializeSpy = jasmine.createSpy('serialize');
         const liveUnit1 = {
@@ -811,13 +812,13 @@ describe('SearchForceGeneratorDialogComponent', () => {
     });
 
     it('uses the preview adapter for rendering and the load entry adapter only on submit', () => {
-        const atlas = {
+        const atlas = createEmptyUnit({
             id: 4,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
             bv: 1897,
-        } as Unit;
+        });
 
         (component as any).__test.setPreviewResult({
             gameSystem: GameSystem.CLASSIC,
@@ -852,12 +853,12 @@ describe('SearchForceGeneratorDialogComponent', () => {
     });
 
     it('clears the hovered radar overlay when rerolling a new preview', () => {
-        const atlas = {
+        const atlas = createEmptyUnit({
             id: 3,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
-        } as Unit;
+        });
 
         component.onPreviewUnitHover({
             unit: atlas,
@@ -872,13 +873,13 @@ describe('SearchForceGeneratorDialogComponent', () => {
     });
 
     it('requests the unit search to close when CREATE submits a generated force', () => {
-        const atlas = {
+        const atlas = createEmptyUnit({
             id: 4,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
             bv: 1897,
-        } as Unit;
+        });
 
         (component as any).__test.setPreviewResult({
             gameSystem: GameSystem.CLASSIC,
@@ -1131,13 +1132,13 @@ describe('SearchForceGeneratorDialogComponent', () => {
     });
 
     it('includes the Multi-Era checkbox state in the submitted config', () => {
-        const atlas = {
+        const atlas = createEmptyUnit({
             id: 4,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
             bv: 1897,
-        } as Unit;
+        });
 
         advOptionsSignal.update((options) => ({
             ...options,
@@ -1178,13 +1179,13 @@ describe('SearchForceGeneratorDialogComponent', () => {
     });
 
     it('includes the tagged-quantities checkbox state in the submitted config', () => {
-        const atlas = {
+        const atlas = createEmptyUnit({
             id: 4,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
             bv: 1897,
-        } as Unit;
+        });
 
         component.onUseTaggedQuantitiesChange({
             target: { checked: true },
@@ -1341,13 +1342,13 @@ describe('SearchForceGeneratorDialogComponent', () => {
     });
 
     it('toggles preview units in and out of the locked set', () => {
-        const atlas = {
+        const atlas = createEmptyUnit({
             id: 1,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
             as: { PV: 6 },
-        } as Unit;
+        });
         (component as any).__test.setPreviewResult({
             gameSystem: GameSystem.ALPHA_STRIKE,
             units: [{
@@ -1381,22 +1382,22 @@ describe('SearchForceGeneratorDialogComponent', () => {
     });
 
     it('changes a generated preview unit to a selected variant without rerolling', () => {
-        const atlas = {
+        const atlas = createEmptyUnit({
             id: 1,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
             bv: 1897,
             as: { PV: 54 },
-        } as Unit;
-        const atlasVariant = {
+        });
+        const atlasVariant = createEmptyUnit({
             id: 2,
             name: 'Atlas AS7-K',
             chassis: 'Atlas',
             model: 'AS7-K',
             bv: 2200,
             as: { PV: 60 },
-        } as Unit;
+        });
 
         (component as any).__test.setPreviewResult({
             gameSystem: GameSystem.CLASSIC,
@@ -1439,14 +1440,14 @@ describe('SearchForceGeneratorDialogComponent', () => {
     });
 
     it('recomputes locked unit values when switching from Alpha Strike to Classic', () => {
-        const atlas = {
+        const atlas = createEmptyUnit({
             id: 1,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
             bv: 1897,
             as: { PV: 54 },
-        } as Unit;
+        });
 
         component.setGameSystem(GameSystem.ALPHA_STRIKE);
         (component as any).__test.setPreviewResult({
@@ -1488,14 +1489,14 @@ describe('SearchForceGeneratorDialogComponent', () => {
     });
 
     it('recomputes locked unit values when switching from Classic to Alpha Strike', () => {
-        const atlas = {
+        const atlas = createEmptyUnit({
             id: 1,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
             bv: 1897,
             as: { PV: 54 },
-        } as Unit;
+        });
 
         (component as any).__test.setPreviewResult({
             gameSystem: GameSystem.CLASSIC,
@@ -1536,13 +1537,13 @@ describe('SearchForceGeneratorDialogComponent', () => {
     });
 
     it('does not regenerate the preview when a unit lock is toggled', () => {
-        const atlas = {
+        const atlas = createEmptyUnit({
             id: 1,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
             as: { PV: 6 },
-        } as Unit;
+        });
 
         (component as any).__test.setPreviewResult({
             gameSystem: GameSystem.ALPHA_STRIKE,

@@ -38,8 +38,8 @@ import type { EquipmentMap } from '../models/equipment.model';
 import type { TagData, UnitTagData } from './db.service';
 import { TagsService } from './tags.service';
 import { PublicTagsService } from './public-tags.service';
-import { MulUnitSourcesCatalogService } from './catalogs/mul-unit-sources-catalog.service';
 import { UnitSearchIndexService } from './unit-search-index.service';
+import { normalizeSourceList } from '../utils/unit-search-shared.util';
 
 @Injectable({
     providedIn: 'root'
@@ -47,7 +47,6 @@ import { UnitSearchIndexService } from './unit-search-index.service';
 export class UnitRuntimeService {
     private readonly tagsService = inject(TagsService);
     private readonly publicTagsService = inject(PublicTagsService);
-    private readonly mulUnitSourcesCatalog = inject(MulUnitSourcesCatalogService);
     private readonly unitSearchIndexService = inject(UnitSearchIndexService);
 
     private unitNameMap = new Map<string, Unit>();
@@ -59,6 +58,7 @@ export class UnitRuntimeService {
     public preprocessUnits(units: Unit[]): void {
         this.unitNameMap.clear();
         for (const unit of units) {
+            this.normalizeUnitSources(unit);
             this.unitNameMap.set(UnitRuntimeService.getUnitNameKey(unit.name), unit);
         }
         this.unitSearchIndexService.prepareUnits(units);
@@ -66,8 +66,8 @@ export class UnitRuntimeService {
 
     public postprocessUnits(units: Unit[], eras: Era[]): void {
         for (const unit of units) {
+            this.normalizeUnitSources(unit);
             unit._era = this.findEraForYear(unit.year, eras);
-            unit.source = this.mergeUnitSources(unit.source, this.mulUnitSourcesCatalog.getUnitSourcesByMulId(unit.id));
         }
 
         void this.loadUnitTags(units);
@@ -146,18 +146,9 @@ export class UnitRuntimeService {
         return undefined;
     }
 
-    private mergeUnitSources(originalSource: string | string[] | undefined, mulSources: string[] | undefined): string[] {
-        const sourcesSet = new Set<string>();
-
-        if (Array.isArray(originalSource)) {
-            originalSource.forEach(source => sourcesSet.add(source));
-        } else if (originalSource) {
-            sourcesSet.add(originalSource);
-        }
-
-        mulSources?.forEach(source => sourcesSet.add(source));
-
-        return Array.from(sourcesSet);
+    private normalizeUnitSources(unit: Unit): void {
+        unit.source = normalizeSourceList(unit.source);
+        unit.published = normalizeSourceList(unit.published);
     }
 
     private linkEquipmentToComponents(components: UnitComponent[], equipment: EquipmentMap): void {

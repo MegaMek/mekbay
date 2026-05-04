@@ -9,6 +9,7 @@ import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
+import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { UrlStateService } from '../../services/url-state.service';
 import { ForceOrgDialogComponent } from './force-org-dialog.component';
 
@@ -110,86 +111,16 @@ describe('ForceOrgDialogComponent', () => {
     }
 
     function createBattleMek(name: string): Unit {
-        return {
+        return createEmptyUnit({
             name,
-            id: -1,
             chassis: `Chassis ${name}`,
             model: `Model ${name}`,
-            year: 3151,
-            weightClass: 'Medium',
-            tons: 50,
-            offSpeedFactor: 0,
             bv: 1000,
             pv: 25,
-            cost: 0,
-            level: 0,
-            techBase: 'Inner Sphere',
-            techRating: 'D',
-            type: 'Mek',
-            subtype: 'BattleMek',
-            omni: 0,
-            engine: 'Fusion',
-            engineRating: 0,
-            engineHS: 0,
-            engineHSType: 'Heat Sink',
-            source: [],
-            role: '',
-            armorType: '',
-            structureType: '',
-            armor: 0,
-            armorPer: 0,
-            internal: 1,
-            heat: 0,
-            dissipation: 0,
-            moveType: 'Tracked',
-            walk: 0,
-            walk2: 0,
-            run: 0,
-            run2: 0,
-            jump: 0,
-            umu: 0,
-            c3: '',
-            dpt: 0,
-            comp: [],
-            su: 0,
-            crewSize: 1,
-            quirks: [],
-            features: [],
-            icon: '',
-            sheets: [],
             as: {
-                TP: 'BM',
                 PV: 25,
-                SZ: 0,
-                TMM: 0,
-                usesOV: false,
-                OV: 0,
-                MV: '0',
-                MVm: {},
-                usesTh: false,
-                Th: 0,
-                Arm: 0,
-                Str: 0,
-                specials: [],
-                dmg: {
-                    dmgS: '0',
-                    dmgM: '0',
-                    dmgL: '0',
-                    dmgE: '0',
-                },
-                usesE: false,
-                usesArcs: false,
             },
-            _searchKey: '',
-            _displayType: '',
-            _maxRange: 0,
-            _weightedMaxRange: 0,
-            _dissipationEfficiency: 0,
-            _mdSumNoPhysical: 0,
-            _mdSumNoPhysicalNoOneshots: 0,
-            _nameTags: [],
-            _chassisTags: [],
-        };
+        });
     }
 
     function createLoadForce(

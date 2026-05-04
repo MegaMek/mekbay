@@ -3,7 +3,8 @@ import { type Faction } from '../models/factions.model';
 import { MULFACTION_MERCENARY, type FactionAffinity } from '../models/mulfactions.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import type { UnitGroup } from '../models/force.model';
-import type { Unit } from '../models/units.model';
+import type { Unit, UnitSubtype } from '../models/units.model';
+import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
 import type { FormationTypeDefinition } from './formation-type.model';
 import { FormationNamerUtil } from './formation-namer.util';
 import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
@@ -13,11 +14,13 @@ function createUnit(
     id: number,
     name: string,
     unitType: Unit['type'],
-    subtype: string,
+    subtype: UnitSubtype,
     tp: Unit['as']['TP'],
-    overrides: Partial<Unit> = {},
+    overrides: TestUnitOverrides = {},
 ): Unit {
-    return {
+    const { as: asOverrides, ...unitOverrides } = overrides;
+
+    return createEmptyUnit({
         id,
         name,
         chassis: name,
@@ -25,65 +28,18 @@ function createUnit(
         year: 3050,
         weightClass: 'Heavy',
         tons: 70,
-        offSpeedFactor: 0,
-        bv: 0,
-        pv: 0,
-        cost: 0,
-        level: 0,
         techBase: 'Clan',
-        techRating: 'D',
         type: unitType,
         subtype,
-        omni: 0,
-        engine: 'Fusion',
-        engineRating: 0,
-        engineHS: 0,
-        engineHSType: 'Heat Sink',
-        source: [],
         role: 'Brawler',
-        armorType: '',
-        structureType: '',
-        armor: 0,
-        armorPer: 0,
-        internal: 1,
-        heat: 0,
-        dissipation: 0,
-        moveType: unitType === 'Aero' ? 'a' : 'Tracked',
-        walk: 0,
-        walk2: 0,
-        run: 0,
-        run2: 0,
-        jump: 0,
-        umu: 0,
-        c3: '',
-        dpt: 0,
-        comp: [],
-        su: 0,
-        crewSize: 1,
-        quirks: [],
-        features: [],
-        icon: '',
-        sheets: [],
-        ...overrides,
+        moveType: unitType === 'Aero' ? 'Aerodyne' : 'Tracked',
+        ...unitOverrides,
         as: {
             TP: tp,
-            PV: 0,
             SZ: tp === 'AF' ? 2 : tp === 'BA' ? 1 : 3,
-            TMM: 0,
-            MV: '',
-            ROLE: '',
-            SKILL: 4,
-            M: 0,
-            S: 0,
-            MSL: 0,
-            L: 0,
-            OV: 0,
-            ARM: 0,
-            STR: 0,
-            specials: [],
-            ...(overrides.as ?? {}),
+            ...asOverrides,
         },
-    } as unknown as Unit;
+    });
 }
 
 function createForceUnit(unit: Unit, gameSystem = GameSystem.ALPHA_STRIKE): ForceUnit {

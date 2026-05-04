@@ -1,5 +1,6 @@
 import { GameSystem } from './models/common.model';
 import type { Unit } from './models/units.model';
+import { createEmptyUnit } from './testing/unit-test-helpers';
 import { __test__ } from './unit-search.worker';
 import type {
     UnitSearchWorkerCorpusSnapshot,
@@ -7,28 +8,21 @@ import type {
 } from './utils/unit-search-worker-protocol.util';
 
 function createUnit(name: string): Unit {
-    return {
+    return createEmptyUnit({
         name,
-        id: 1,
         chassis: 'Masakari',
         model: 'Prime',
         year: 3050,
-        weightClass: 'Medium',
-        tons: 50,
-        offSpeedFactor: 0,
         bv: 1000,
         pv: 35,
         cost: 1000000,
         level: 2,
         techBase: 'Clan',
         techRating: 'F',
-        type: 'Mek',
         subtype: 'BattleMek Omni',
         omni: 1,
-        engine: 'Fusion',
         engineRating: 300,
         engineHS: 10,
-        engineHSType: 'Heat Sink',
         source: ['SRC-A'],
         role: 'Sniper',
         armorType: 'Standard',
@@ -43,51 +37,24 @@ function createUnit(name: string): Unit {
         walk2: 5,
         run: 8,
         run2: 8,
-        jump: 0,
-        umu: 0,
-        c3: '',
         dpt: 10,
-        comp: [],
         su: 1,
-        crewSize: 1,
-        quirks: [],
-        features: [],
-        icon: '',
-        sheets: [],
         as: {
-            TP: 'BM',
             PV: 35,
             SZ: 2,
             TMM: 1,
-            usesOV: false,
-            OV: 0,
             MV: '8',
             MVm: { '': 8 },
-            usesTh: false,
-            Th: 0,
             Arm: 4,
             Str: 4,
-            specials: [],
             dmg: {
                 dmgS: '3',
                 dmgM: '2',
                 dmgL: '1',
-                dmgE: '0',
             },
-            usesE: false,
-            usesArcs: false,
         },
-        _searchKey: '',
-        _displayType: '',
-        _maxRange: 0,
-        _weightedMaxRange: 0,
-        _dissipationEfficiency: 0,
-        _mdSumNoPhysical: 0,
-        _mdSumNoPhysicalNoOneshots: 0,
-        _nameTags: [],
-        _chassisTags: [],
         _publicTags: [],
-    };
+    });
 }
 
 function createSnapshot(): UnitSearchWorkerCorpusSnapshot {

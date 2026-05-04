@@ -8,75 +8,18 @@ import type { SerializedForce, SerializedUnit } from './force-serialization';
 import type { Unit } from './units.model';
 import type { DataService } from '../services/data.service';
 import type { UnitInitializerService } from '../services/unit-initializer.service';
+import { createEmptyUnit } from '../testing/unit-test-helpers';
 import type { ForceAvailabilityContext } from '../utils/force-availability.util';
 import { NO_FORMATION } from '../utils/formation-type.model';
 
 function createUnit(id: number, name: string, year: number): Unit {
-    return {
+    return createEmptyUnit({
         id,
         name,
         chassis: 'Test',
         model: 'Unit',
         year,
-        weightClass: 'Medium',
-        tons: 50,
-        offSpeedFactor: 0,
-        bv: 0,
-        pv: 0,
-        cost: 0,
-        level: 0,
-        techBase: 'Inner Sphere',
-        techRating: 'D',
-        type: 'Mek',
-        subtype: 'BattleMek',
-        omni: 0,
-        engine: 'Fusion',
-        engineRating: 0,
-        engineHS: 0,
-        engineHSType: 'Heat Sink',
-        source: [],
-        role: '',
-        armorType: '',
-        structureType: '',
-        armor: 0,
-        armorPer: 0,
-        internal: 1,
-        heat: 0,
-        dissipation: 0,
-        moveType: 'Tracked',
-        walk: 0,
-        walk2: 0,
-        run: 0,
-        run2: 0,
-        jump: 0,
-        umu: 0,
-        c3: '',
-        dpt: 0,
-        comp: [],
-        su: 0,
-        crewSize: 1,
-        quirks: [],
-        features: [],
-        icon: '',
-        sheets: [],
-        as: {
-            TP: 'BM',
-            PV: 0,
-            SZ: 0,
-            TMM: 0,
-            MV: '',
-            ROLE: '',
-            SKILL: 4,
-            M: 0,
-            S: 0,
-            MSL: 0,
-            L: 0,
-            OV: 0,
-            ARM: 0,
-            STR: 0,
-            specials: [],
-        },
-    } as unknown as Unit;
+    });
 }
 
 function createForceUnit(unit: Unit): ForceUnit {

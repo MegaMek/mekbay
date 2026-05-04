@@ -14,6 +14,7 @@ import { DataService } from './data.service';
 import type { ForceGenerationContext } from './force-generator.service';
 import { ForceGeneratorService } from './force-generator.service';
 import { OptionsService } from './options.service';
+import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 
@@ -86,7 +87,7 @@ describe('ForceGeneratorService', () => {
         } as Faction;
     }
 
-    function createUnit(overrides: Partial<Unit> = {}): Unit {
+    function createUnit(overrides: TestUnitOverrides = {}): Unit {
         const type = overrides.type ?? 'Mek';
         const subtype = overrides.subtype ?? 'BattleMek';
         const moveType = overrides.moveType ?? 'Tracked';
@@ -98,92 +99,25 @@ describe('ForceGeneratorService', () => {
             if (type === 'Aero') return subtype === 'Conventional Fighter' ? 'CF' : 'AF';
             return 'CV';
         })();
+        const { as: asOverrides, ...unitOverrides } = overrides;
 
-        return {
-            id: overrides.id ?? 1,
-            name: overrides.name ?? 'Test Unit',
-            chassis: overrides.chassis ?? 'Test',
-            model: overrides.model ?? 'TST-1',
-            year: overrides.year ?? 3151,
-            weightClass: overrides.weightClass ?? 'Medium',
-            tons: overrides.tons ?? 50,
-            offSpeedFactor: overrides.offSpeedFactor ?? 0,
-            bv: overrides.bv ?? 1000,
-            pv: overrides.pv ?? 0,
-            cost: overrides.cost ?? 0,
-            level: overrides.level ?? 0,
-            techBase: overrides.techBase ?? 'Inner Sphere',
-            techRating: overrides.techRating ?? 'D',
-            role: overrides.role ?? 'skirmisher',
+        return createEmptyUnit({
+            id: 1,
+            name: 'Test Unit',
+            chassis: 'Test',
+            model: 'TST-1',
+            bv: 1000,
+            role: 'skirmisher',
+            ...unitOverrides,
             type,
             subtype,
-            omni: overrides.omni ?? 0,
-            engine: overrides.engine ?? 'Fusion',
-            engineRating: overrides.engineRating ?? 0,
-            engineHS: overrides.engineHS ?? 0,
-            engineHSType: overrides.engineHSType ?? 'Heat Sink',
-            source: overrides.source ?? [],
-            armorType: overrides.armorType ?? '',
-            structureType: overrides.structureType ?? '',
-            armor: overrides.armor ?? 0,
-            armorPer: overrides.armorPer ?? 0,
-            internal: overrides.internal ?? 1,
-            heat: overrides.heat ?? 0,
-            dissipation: overrides.dissipation ?? 0,
             moveType,
-            walk: overrides.walk ?? 0,
-            walk2: overrides.walk2 ?? 0,
-            run: overrides.run ?? 0,
-            run2: overrides.run2 ?? 0,
-            jump: overrides.jump ?? 0,
-            umu: overrides.umu ?? 0,
-            c3: overrides.c3 ?? '',
-            dpt: overrides.dpt ?? 0,
-            comp: overrides.comp ?? [],
-            su: overrides.su ?? 0,
-            crewSize: overrides.crewSize ?? 1,
-            quirks: overrides.quirks ?? [],
-            features: overrides.features ?? [],
-            icon: overrides.icon ?? '',
-            sheets: overrides.sheets ?? [],
             as: {
                 TP: alphaStrikeType,
-                PV: overrides.as?.PV ?? 5,
-                SZ: overrides.as?.SZ ?? 0,
-                TMM: overrides.as?.TMM ?? 0,
-                usesOV: overrides.as?.usesOV ?? false,
-                OV: overrides.as?.OV ?? 0,
-                MV: overrides.as?.MV ?? '0',
-                MVm: overrides.as?.MVm ?? {},
-                usesTh: overrides.as?.usesTh ?? false,
-                Th: overrides.as?.Th ?? 0,
-                Arm: overrides.as?.Arm ?? 0,
-                Str: overrides.as?.Str ?? 0,
-                specials: overrides.as?.specials ?? [],
-                dmg: {
-                    dmgS: overrides.as?.dmg?.dmgS ?? '0',
-                    dmgM: overrides.as?.dmg?.dmgM ?? '0',
-                    dmgL: overrides.as?.dmg?.dmgL ?? '0',
-                    dmgE: overrides.as?.dmg?.dmgE ?? '0',
-                    _dmgS: overrides.as?.dmg?._dmgS,
-                    _dmgM: overrides.as?.dmg?._dmgM,
-                    _dmgL: overrides.as?.dmg?._dmgL,
-                    _dmgE: overrides.as?.dmg?._dmgE,
-                },
-                usesE: overrides.as?.usesE ?? false,
-                usesArcs: overrides.as?.usesArcs ?? false,
-                ...overrides.as,
+                PV: 5,
+                ...asOverrides,
             },
-            _searchKey: overrides._searchKey ?? '',
-            _displayType: overrides._displayType ?? '',
-            _maxRange: overrides._maxRange ?? 0,
-            _weightedMaxRange: overrides._weightedMaxRange ?? 0,
-            _dissipationEfficiency: overrides._dissipationEfficiency ?? 0,
-            _mdSumNoPhysical: overrides._mdSumNoPhysical ?? 0,
-            _mdSumNoPhysicalNoOneshots: overrides._mdSumNoPhysicalNoOneshots ?? 0,
-            _nameTags: overrides._nameTags ?? [],
-            _chassisTags: overrides._chassisTags ?? [],
-        } as Unit;
+        });
     }
 
     function createContext(forceFaction: Faction, forceEra: Era): ForceGenerationContext {

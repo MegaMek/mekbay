@@ -4,6 +4,7 @@ import { GameSystem } from '../../models/common.model';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { Unit } from '../../models/units.model';
 import { DataService, type BucketStatSummary, type MinMaxStatsRange } from '../../services/data.service';
+import { createEmptyUnit, type TestUnitOverrides } from '../../testing/unit-test-helpers';
 import { ForceRadarPanelComponent } from './force-radar-panel.component';
 
 type MaxStatsOverride = {
@@ -55,88 +56,31 @@ function createMaxStats(overrides: MaxStatsOverride): MinMaxStatsRange {
     };
 }
 
-function createUnit(overrides: Partial<Unit>): Unit {
-    return {
+function createUnit(overrides: TestUnitOverrides): Unit {
+    const { as: asOverrides, ...unitOverrides } = overrides;
+
+    return createEmptyUnit({
         id: 1,
         name: 'Unit',
         chassis: 'Unit',
         model: 'A',
         year: 3050,
-        weightClass: 'Medium',
-        tons: 50,
-        offSpeedFactor: 0,
-        bv: 0,
-        pv: 0,
-        cost: 0,
-        level: 0,
-        techBase: 'Inner Sphere',
-        techRating: 'D',
-        type: 'Mek',
-        subtype: 'BattleMek',
-        omni: 0,
-        engine: 'Fusion',
         engineRating: 250,
         engineHS: 10,
-        engineHSType: 'Heat Sink',
-        source: [],
         role: 'Brawler',
         armorType: 'Standard',
         structureType: 'Standard',
-        armor: 0,
-        armorPer: 0,
         internal: 0,
-        heat: 0,
-        dissipation: 0,
         moveType: 'Biped',
-        walk: 0,
-        walk2: 0,
-        run: 0,
-        run2: 0,
-        jump: 0,
-        umu: 0,
-        c3: '',
-        dpt: 0,
-        comp: [],
-        su: 0,
-        crewSize: 1,
-        quirks: [],
-        features: [],
-        icon: '',
-        sheets: [],
+        _displayType: 'Mek',
+        ...unitOverrides,
         as: {
             TP: 'BM',
-            PV: 0,
             SZ: 2,
-            TMM: 0,
-            usesOV: false,
-            OV: 0,
-            MV: '0',
             MVm: { '': 0 },
-            usesTh: false,
-            Th: 0,
-            Arm: 0,
-            Str: 0,
-            specials: [],
-            dmg: {
-                dmgS: '0',
-                dmgM: '0',
-                dmgL: '0',
-                dmgE: '0',
-            },
-            usesE: false,
-            usesArcs: false,
+            ...asOverrides,
         },
-        _searchKey: '',
-        _displayType: 'Mek',
-        _maxRange: 0,
-        _weightedMaxRange: 0,
-        _dissipationEfficiency: 0,
-        _mdSumNoPhysical: 0,
-        _mdSumNoPhysicalNoOneshots: 0,
-        _nameTags: [],
-        _chassisTags: [],
-        ...overrides,
-    };
+    });
 }
 
 describe('ForceRadarPanelComponent', () => {

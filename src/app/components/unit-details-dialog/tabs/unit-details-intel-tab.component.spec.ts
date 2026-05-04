@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 
 import type { Unit, UnitFluffCatalogEntry } from '../../../models/units.model';
 import { DataService } from '../../../services/data.service';
+import { createEmptyUnit } from '../../../testing/unit-test-helpers';
 import { UnitDetailsIntelTabComponent } from './unit-details-intel-tab.component';
 
 describe('UnitDetailsIntelTabComponent', () => {
@@ -30,13 +31,13 @@ describe('UnitDetailsIntelTabComponent', () => {
         dataService.getUnitFluff.and.resolveTo(fluff);
 
         const fixture = TestBed.createComponent(UnitDetailsIntelTabComponent);
-        fixture.componentRef.setInput('unit', {
+        fixture.componentRef.setInput('unit', createEmptyUnit({
             name: 'Awesome AWS-8Q',
             id: 1,
             chassis: 'Awesome',
             model: 'AWS-8Q',
             fluff: fluff.img ? { img: fluff.img } : undefined,
-        } as Unit);
+        }));
         fixture.detectChanges();
         await settleMicrotasks();
         fixture.detectChanges();
@@ -57,13 +58,13 @@ describe('UnitDetailsIntelTabComponent', () => {
         }));
 
         const fixture = TestBed.createComponent(UnitDetailsIntelTabComponent);
-        fixture.componentRef.setInput('unit', {
+        fixture.componentRef.setInput('unit', createEmptyUnit({
             name: 'Awesome AWS-8Q',
             id: 1,
             chassis: 'Awesome',
             model: 'AWS-8Q',
             fluff: { img: 'awesome.png' },
-        } as Unit);
+        }));
         fixture.detectChanges();
 
         const element = fixture.nativeElement as HTMLElement;

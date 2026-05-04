@@ -73,7 +73,6 @@ import { MegaMekFactionsCatalogService } from './catalogs/megamek-factions-catal
 import { MegaMekRulesetsCatalogService } from './catalogs/megamek-rulesets-catalog.service';
 import { ErasCatalogService } from './catalogs/eras-catalog.service';
 import { FactionsCatalogService } from './catalogs/mulfactions-catalog.service';
-import { MulUnitSourcesCatalogService } from './catalogs/mul-unit-sources-catalog.service';
 import { QuirksCatalogService } from './catalogs/quirks-catalog.service';
 import { SarnaPageTitlesCatalogService } from './catalogs/sarna-page-titles-catalog.service';
 import { SourcebooksCatalogService } from './catalogs/sourcebooks-catalog.service';
@@ -174,7 +173,6 @@ export class DataService {
     private megaMekAvailabilityCatalog = inject(MegaMekAvailabilityCatalogService);
     private megaMekFactionsCatalog = inject(MegaMekFactionsCatalogService);
     private megaMekRulesetsCatalog = inject(MegaMekRulesetsCatalogService);
-    private mulUnitSourcesCatalog = inject(MulUnitSourcesCatalogService);
     private quirksCatalog = inject(QuirksCatalogService);
     private sarnaPageTitlesCatalog = inject(SarnaPageTitlesCatalogService);
     private sourcebooksCatalog = inject(SourcebooksCatalogService);
@@ -435,15 +433,6 @@ export class DataService {
         return this.megaMekAvailabilityCatalog.getRecordForUnit(unit);
     }
 
-    /**
-     * Get the sourcebook abbreviations for a unit by its MUL ID.
-     * @param mulId The Master Unit List ID of the unit
-     * @returns Array of sourcebook abbreviations, or undefined if not found
-     */
-    public getUnitSourcesByMulId(mulId: number): string[] | undefined {
-        return this.mulUnitSourcesCatalog.getUnitSourcesByMulId(mulId);
-    }
-
     private bumpSearchCorpusVersion(): void {
         this.searchCorpusVersion.update(version => version + 1);
     }
@@ -520,7 +509,6 @@ export class DataService {
             await Promise.all([
                 this.unitsCatalog.initialize(),
                 this.equipmentCatalog.initialize(),
-                this.mulUnitSourcesCatalog.initialize(),
                 this.erasCatalog.initialize(),
                 this.factionsCatalog.initialize(),
             ]);

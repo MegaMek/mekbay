@@ -19,13 +19,13 @@ import { FactionsCatalogService } from './catalogs/mulfactions-catalog.service';
 import { MegaMekAvailabilityCatalogService } from './catalogs/megamek-availability-catalog.service';
 import { MegaMekFactionsCatalogService } from './catalogs/megamek-factions-catalog.service';
 import { MegaMekRulesetsCatalogService } from './catalogs/megamek-rulesets-catalog.service';
-import { MulUnitSourcesCatalogService } from './catalogs/mul-unit-sources-catalog.service';
 import { QuirksCatalogService } from './catalogs/quirks-catalog.service';
 import { SarnaPageTitlesCatalogService } from './catalogs/sarna-page-titles-catalog.service';
 import { SourcebooksCatalogService } from './catalogs/sourcebooks-catalog.service';
+import { createEmptyUnit } from '../testing/unit-test-helpers';
 
 function createUnit(name: string): Unit {
-    return { name } as Unit;
+    return createEmptyUnit({ name });
 }
 
 describe('DataService', () => {
@@ -90,9 +90,6 @@ describe('DataService', () => {
         initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
         getRulesets: jasmine.createSpy('getRulesets').and.returnValue([]),
         getRulesetByFactionKey: jasmine.createSpy('getRulesetByFactionKey').and.returnValue(undefined),
-    };
-    const mulUnitSourcesCatalogMock = {
-        initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
     };
     const quirksCatalogMock = {
         initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
@@ -194,8 +191,6 @@ describe('DataService', () => {
         megaMekRulesetsCatalogMock.getRulesets.and.returnValue([]);
         megaMekRulesetsCatalogMock.getRulesetByFactionKey.calls.reset();
         megaMekRulesetsCatalogMock.getRulesetByFactionKey.and.returnValue(undefined);
-        mulUnitSourcesCatalogMock.initialize.calls.reset();
-        mulUnitSourcesCatalogMock.initialize.and.resolveTo(undefined);
         quirksCatalogMock.initialize.calls.reset();
         quirksCatalogMock.initialize.and.resolveTo(undefined);
         quirksCatalogMock.getQuirkByName.calls.reset();
@@ -238,7 +233,6 @@ describe('DataService', () => {
                 { provide: MegaMekAvailabilityCatalogService, useValue: megaMekAvailabilityCatalogMock },
                 { provide: MegaMekFactionsCatalogService, useValue: megaMekFactionsCatalogMock },
                 { provide: MegaMekRulesetsCatalogService, useValue: megaMekRulesetsCatalogMock },
-                { provide: MulUnitSourcesCatalogService, useValue: mulUnitSourcesCatalogMock },
                 { provide: QuirksCatalogService, useValue: quirksCatalogMock },
                 { provide: SarnaPageTitlesCatalogService, useValue: sarnaPageTitlesCatalogMock },
                 { provide: SourcebooksCatalogService, useValue: sourcebooksCatalogMock },
@@ -258,7 +252,7 @@ describe('DataService', () => {
     });
 
     it('delegates Sarna page-title lookup to the Sarna catalog', () => {
-        const unit = { chassis: 'Avatar', type: 'Mek', subtype: 'BattleMek Omni', omni: 1 } as Unit;
+        const unit = createEmptyUnit({ chassis: 'Avatar', type: 'Mek', subtype: 'BattleMek Omni', omni: 1 });
         sarnaPageTitlesCatalogMock.getPageTitleForUnit.and.returnValue('Avatar (OmniMech)');
 
         expect(service.getSarnaPageTitleForUnit(unit)).toBe('Avatar (OmniMech)');
