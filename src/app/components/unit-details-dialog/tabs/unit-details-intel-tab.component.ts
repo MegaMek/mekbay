@@ -31,10 +31,11 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, type output, type signal, computed } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, computed, effect, inject, Injector, signal, type OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import type { Unit } from '../../../models/units.model';
+import type { Unit, UnitFluffCatalogEntry, UnitImageFluff } from '../../../models/units.model';
 import { REMOTE_HOST } from '../../../models/common.model';
+import { DataService } from '../../../services/data.service';
 
 interface ManufacturerFactoryDisplay {
     pairedText: string;
@@ -49,26 +50,59 @@ interface ManufacturerFactoryDisplay {
     templateUrl: './unit-details-intel-tab.component.html',
     styleUrls: ['./unit-details-intel-tab.component.css']
 })
-export class UnitDetailsIntelTabComponent {
+export class UnitDetailsIntelTabComponent implements OnInit {
     unit = input.required<Unit>();
     isSwiping = input<boolean>(false);
+
+    private readonly dataService = inject(DataService);
+    private readonly injector = inject(Injector);
+    private fluffRequestId = 0;
+
+    fluff = signal<UnitFluffCatalogEntry | undefined>(undefined);
+    isFluffLoading = signal(false);
+
+    ngOnInit(): void {
+        effect(() => {
+            const unit = this.unit();
+            const requestId = ++this.fluffRequestId;
+
+            this.fluff.set(this.getUnitImageFallback(unit.fluff));
+            this.isFluffLoading.set(true);
+
+            void this.dataService.getUnitFluff(unit)
+                .then((fluff) => {
+                    if (requestId !== this.fluffRequestId) return;
+                    this.fluff.set(fluff);
+                })
+                .catch(() => {
+                    if (requestId !== this.fluffRequestId) return;
+                    this.fluff.set(this.getUnitImageFallback(unit.fluff));
+                })
+                .finally(() => {
+                    if (requestId !== this.fluffRequestId) return;
+                    this.isFluffLoading.set(false);
+                });
+        }, { injector: this.injector });
+    }
 
     private hasValue(text: string | undefined): boolean {
         return !!text?.trim();
     }
 
     fluffImageUrl = computed(() => {
-        const unit = this.unit();
+        const fluff = this.fluff();
 
-        if (unit?.fluff?.img) {
-            if (unit.fluff.img.endsWith('hud.png')) return; // Ignore HUD images
-            return `${REMOTE_HOST}/images/fluff/${unit.fluff.img}`;
+        if (fluff?.img) {
+            if (fluff.img.endsWith('hud.png')) return; // Ignore HUD images
+            return `${REMOTE_HOST}/images/fluff/${fluff.img}`;
         }
         return null;
     });
 
     isImageOnlyIntel = computed(() => {
-        const fluff = this.unit()?.fluff;
+        if (this.isFluffLoading()) return false;
+
+        const fluff = this.fluff();
         if (!fluff || !this.fluffImageUrl()) return false;
 
         const hasSystems = !!(fluff.systems && fluff.systems.length > 0);
@@ -84,6 +118,11 @@ export class UnitDetailsIntelTabComponent {
 
         return !hasSystems && !hasTextContent;
     });
+
+    private getUnitImageFallback(fluff: UnitImageFluff | undefined): UnitFluffCatalogEntry | undefined {
+        const image = fluff?.img?.trim();
+        return image ? { img: image } : undefined;
+    }
 
     sanitizeFluffHtml(text: string | undefined): string {
         if (!text) return '';

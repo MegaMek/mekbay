@@ -183,6 +183,39 @@ export interface UnitTagEntry {
     quantity: number;
 }
 
+export interface UnitFluffSystem {
+    label?: string;
+    manufacturer?: string;
+    model?: string;
+}
+
+export interface UnitImageFluff {
+    img?: string;
+}
+
+export interface UnitFluffCatalogEntry extends UnitImageFluff {
+    manufacturer?: string;
+    primaryFactory?: string;
+    capabilities?: string;
+    overview?: string;
+    deployment?: string;
+    history?: string;
+    notes?: string;
+    systems?: UnitFluffSystem[];
+}
+
+export interface UnitFluffCatalogMetadata {
+    version: string | number;
+    etag: string;
+    count: number;
+}
+
+export interface UnitFluffCatalog {
+    version: string | number;
+    etag: string;
+    fluff: Record<string, UnitFluffCatalogEntry>;
+}
+
 export interface Unit {
     name: string; // Internal unique name
     id: number; // MUL id
@@ -232,17 +265,7 @@ export interface Unit {
     quirks: string[];
     features: string[];
     icon: string;
-    fluff?: {
-        img?: string;
-        manufacturer?: string;
-        primaryFactory?: string;
-        capabilities?: string;
-        overview?: string;
-        deployment?: string;
-        history?: string;
-        notes?: string;
-        systems?: { label?: string, manufacturer?: string, model?: string }[];
-    };
+    fluff?: UnitImageFluff;
     cargo?: {
         n: number; // number of the cargo bay
         type: string; // type of cargo bay

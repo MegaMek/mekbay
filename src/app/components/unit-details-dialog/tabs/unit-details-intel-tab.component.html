@@ -1,7 +1,7 @@
 <!-- Intel Tab Content -->
 <div class="tab-content">
     <div class="fluff-content allow-select" [class.image-only]="isImageOnlyIntel()">
-        @if (unit().fluff; as fluff) {
+        @if (fluff(); as fluff) {
 
             <!-- Fluff Image -->
             @if (fluffImageUrl()) {
@@ -89,6 +89,10 @@
                     <div class="fluff-text">{{ sanitizeFluffHtml(fluff.notes) }}</div>
                 </div>
             }
+        } @else if (isFluffLoading()) {
+            <div class="no-fluff">
+                Loading intel...
+            </div>
         } @else {
             <div class="no-fluff">
                 No intel available for this unit.

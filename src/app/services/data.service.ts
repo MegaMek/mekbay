@@ -32,7 +32,7 @@
  */
 
 import { Injectable, signal, Injector, inject, DestroyRef } from '@angular/core';
-import type { Unit } from '../models/units.model';
+import type { Unit, UnitFluffCatalogEntry } from '../models/units.model';
 import type { Faction, FactionId } from '../models/factions.model';
 import type { Era } from '../models/eras.model';
 import { DbService, type TagData } from './db.service';
@@ -80,6 +80,7 @@ import { SourcebooksCatalogService } from './catalogs/sourcebooks-catalog.servic
 import { UnitSearchIndexService } from './unit-search-index.service';
 import { UnitRuntimeService } from './unit-runtime.service';
 import { UnitsCatalogService } from './catalogs/units-catalog.service';
+import { UnitsFluffCatalogService } from './catalogs/units-fluff-catalog.service';
 import { EquipmentCatalogService } from './catalogs/equipment-catalog.service';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 
@@ -166,6 +167,7 @@ export class DataService {
     private unitSearchIndexService = inject(UnitSearchIndexService);
     private unitRuntimeService = inject(UnitRuntimeService);
     private unitsCatalog = inject(UnitsCatalogService);
+    private unitsFluffCatalog = inject(UnitsFluffCatalogService);
     private equipmentCatalog = inject(EquipmentCatalogService);
     private erasCatalog = inject(ErasCatalogService);
     private factionsCatalog = inject(FactionsCatalogService);
@@ -341,6 +343,10 @@ export class DataService {
 
     public getUnitByName(name: string): Unit | undefined {
         return this.unitRuntimeService.getUnitByName(name);
+    }
+
+    public getUnitFluff(unit: Pick<Unit, 'name' | 'fluff'>): Promise<UnitFluffCatalogEntry | undefined> {
+        return this.unitsFluffCatalog.getUnitFluff(unit);
     }
 
     public getEquipments(): EquipmentMap {

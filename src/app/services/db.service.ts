@@ -32,7 +32,7 @@
  */
 
 import { inject, Injectable } from '@angular/core';
-import type { Units } from '../models/units.model';
+import type { UnitFluffCatalog, UnitFluffCatalogEntry, UnitFluffCatalogMetadata, Units } from '../models/units.model';
 import type { Eras } from '../models/eras.model';
 import type { RawMULFactions } from '../models/mulfactions.model';
 import type { Options } from '../models/options.model';
@@ -63,9 +63,10 @@ import type { LinkedOAuthProvider } from '../models/account-auth.model';
  * Author: Drake
  */
 const DB_NAME = 'mekbay';
-const DB_VERSION = 12;
+const DB_VERSION = 13;
 const DB_STORE = 'store';
 const UNITS_KEY = 'units';
+const UNITS_FLUFF_METADATA_KEY = 'unitsFluff';
 const EQUIPMENT_KEY = 'equipment';
 const FACTIONS_KEY = 'factions';
 const MEGAMEK_FACTIONS_KEY = 'megamekFactions';
@@ -75,6 +76,7 @@ const ERAS_KEY = 'eras';
 const SOURCEBOOKS_KEY = 'sourcebooks';
 const SHEETS_STORE = 'sheetsStore';
 const CANVAS_STORE = 'canvasStore';
+const UNIT_FLUFF_STORE = 'unitFluffStore';
 const OPERATIONS_STORE = 'operationsStore';
 const FORCE_STORE = 'forceStore';
 const TAGS_STORE = 'tagsStore';
@@ -89,6 +91,7 @@ const SARNA_PAGE_TITLES_KEY = 'sarnaPageTitles';
 
 const CATALOG_GENERAL_STORE_KEYS = [
     UNITS_KEY,
+    UNITS_FLUFF_METADATA_KEY,
     EQUIPMENT_KEY,
     FACTIONS_KEY,
     MEGAMEK_FACTIONS_KEY,
@@ -381,6 +384,7 @@ export class DbService {
                 this.createStoreIfMissing(db, transaction, TAGS_STORE);
                 this.createStoreIfMissing(db, transaction, SAVED_SEARCHES_STORE);
                 this.createStoreIfMissing(db, transaction, CANVAS_STORE);
+                this.createStoreIfMissing(db, transaction, UNIT_FLUFF_STORE);
                 this.createStoreIfMissing(db, transaction, PUBLIC_TAGS_STORE);
                 this.createStoreIfMissing(db, transaction, OPERATIONS_STORE);
                 this.createStoreIfMissing(db, transaction, ORGANIZATIONS_STORE);
@@ -532,6 +536,41 @@ export class DbService {
 
     public async saveUnits(unitsData: Units): Promise<void> {
         return await this.saveDataFromGeneralStore(unitsData, UNITS_KEY);
+    }
+
+    public async getUnitFluffCatalogMetadata(): Promise<UnitFluffCatalogMetadata | null> {
+        return await this.getDataFromGeneralStore<UnitFluffCatalogMetadata>(UNITS_FLUFF_METADATA_KEY);
+    }
+
+    public async getUnitFluff(name: string): Promise<UnitFluffCatalogEntry | null> {
+        return await this.getDataFromStore<UnitFluffCatalogEntry>(name, UNIT_FLUFF_STORE);
+    }
+
+    public async saveUnitsFluff(unitsFluffData: UnitFluffCatalog): Promise<void> {
+        const db = await this.dbPromise;
+        if (!db) return; // Degraded mode - caller may keep an in-memory copy
+
+        const entries = Object.entries(unitsFluffData.fluff ?? {});
+        const metadata: UnitFluffCatalogMetadata = {
+            version: unitsFluffData.version,
+            etag: unitsFluffData.etag || '',
+            count: entries.length,
+        };
+
+        return new Promise<void>((resolve, reject) => {
+            const transaction = db.transaction([DB_STORE, UNIT_FLUFF_STORE], 'readwrite');
+            const generalStore = transaction.objectStore(DB_STORE);
+            const unitFluffStore = transaction.objectStore(UNIT_FLUFF_STORE);
+
+            unitFluffStore.clear();
+            for (const [name, fluff] of entries) {
+                unitFluffStore.put(fluff, name);
+            }
+            generalStore.put(metadata, UNITS_FLUFF_METADATA_KEY);
+
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
     }
 
     public async getFactions(): Promise<RawMULFactions | null> {
@@ -1307,12 +1346,13 @@ export class DbService {
         if (!db) return; // Degraded mode
 
         return new Promise<void>((resolve, reject) => {
-            const transaction = db.transaction(DB_STORE, 'readwrite');
+            const transaction = db.transaction([DB_STORE, UNIT_FLUFF_STORE], 'readwrite');
             const store = transaction.objectStore(DB_STORE);
 
             for (const key of CATALOG_GENERAL_STORE_KEYS) {
                 store.delete(key);
             }
+            transaction.objectStore(UNIT_FLUFF_STORE).clear();
 
             transaction.oncomplete = () => resolve();
             transaction.onerror = () => reject(transaction.error);
@@ -1327,7 +1367,9 @@ export class DbService {
         const db = await this.dbPromise;
         if (!db) return; // Degraded mode
 
-        const storesToClear = Array.from(db.objectStoreNames).filter(storeName => storeName !== DB_STORE);
+        const storesToClear = Array.from(db.objectStoreNames).filter(
+            storeName => storeName !== DB_STORE && storeName !== UNIT_FLUFF_STORE,
+        );
         const transactionStores = [DB_STORE, ...storesToClear];
 
         return new Promise<void>((resolve, reject) => {

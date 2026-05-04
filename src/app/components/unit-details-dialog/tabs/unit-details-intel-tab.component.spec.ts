@@ -1,25 +1,44 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
-import type { Unit } from '../../../models/units.model';
+import type { Unit, UnitFluffCatalogEntry } from '../../../models/units.model';
+import { DataService } from '../../../services/data.service';
 import { UnitDetailsIntelTabComponent } from './unit-details-intel-tab.component';
 
 describe('UnitDetailsIntelTabComponent', () => {
+    let dataService: jasmine.SpyObj<Pick<DataService, 'getUnitFluff'>>;
+
     beforeEach(() => {
+        dataService = jasmine.createSpyObj<Pick<DataService, 'getUnitFluff'>>('DataService', ['getUnitFluff']);
+
         TestBed.configureTestingModule({
             imports: [UnitDetailsIntelTabComponent],
-            providers: [provideZonelessChangeDetection()],
+            providers: [
+                provideZonelessChangeDetection(),
+                { provide: DataService, useValue: dataService },
+            ],
         });
     });
 
-    function createComponent(fluff: NonNullable<Unit['fluff']>) {
+    async function settleMicrotasks(): Promise<void> {
+        for (let index = 0; index < 3; index += 1) {
+            await Promise.resolve();
+        }
+    }
+
+    async function createComponent(fluff: UnitFluffCatalogEntry) {
+        dataService.getUnitFluff.and.resolveTo(fluff);
+
         const fixture = TestBed.createComponent(UnitDetailsIntelTabComponent);
         fixture.componentRef.setInput('unit', {
+            name: 'Awesome AWS-8Q',
             id: 1,
             chassis: 'Awesome',
             model: 'AWS-8Q',
-            fluff,
+            fluff: fluff.img ? { img: fluff.img } : undefined,
         } as Unit);
+        fixture.detectChanges();
+        await settleMicrotasks();
         fixture.detectChanges();
         return fixture;
     }
@@ -31,8 +50,34 @@ describe('UnitDetailsIntelTabComponent', () => {
         return section?.querySelector('.fluff-text')?.textContent ?? undefined;
     }
 
-    it('groups paired manufacturers and primary factories under a combined section', () => {
-        const fixture = createComponent({
+    it('does not use the centered image-only layout while catalog fluff is loading', async () => {
+        let resolveFluff!: (fluff: UnitFluffCatalogEntry) => void;
+        dataService.getUnitFluff.and.returnValue(new Promise<UnitFluffCatalogEntry>((resolve) => {
+            resolveFluff = resolve;
+        }));
+
+        const fixture = TestBed.createComponent(UnitDetailsIntelTabComponent);
+        fixture.componentRef.setInput('unit', {
+            name: 'Awesome AWS-8Q',
+            id: 1,
+            chassis: 'Awesome',
+            model: 'AWS-8Q',
+            fluff: { img: 'awesome.png' },
+        } as Unit);
+        fixture.detectChanges();
+
+        const element = fixture.nativeElement as HTMLElement;
+        expect(element.querySelector('.fluff-content')?.classList.contains('image-only')).toBeFalse();
+
+        resolveFluff({ img: 'awesome.png' });
+        await settleMicrotasks();
+        fixture.detectChanges();
+
+        expect(element.querySelector('.fluff-content')?.classList.contains('image-only')).toBeTrue();
+    });
+
+    it('groups paired manufacturers and primary factories under a combined section', async () => {
+        const fixture = await createComponent({
             manufacturer: 'Earthwerks-FWL, Inc.|Bowie Industries|Bowie Industries|Diplass BattleMechs',
             primaryFactory: 'Calloway VI|Carlisle|Erdvynn|Hesperus II',
         });
@@ -44,8 +89,8 @@ describe('UnitDetailsIntelTabComponent', () => {
         expect(getFluffText(element, 'Primary Factories:')).toBeUndefined();
     });
 
-    it('deduplicates separate manufacturer and primary factory entries when counts do not match', () => {
-        const fixture = createComponent({
+    it('deduplicates separate manufacturer and primary factory entries when counts do not match', async () => {
+        const fixture = await createComponent({
             manufacturer: ' Earthwerks-FWL, Inc. | Bowie Industries | Bowie Industries ',
             primaryFactory: ' Calloway VI | Carlisle | Carlisle | Erdvynn ',
         });
