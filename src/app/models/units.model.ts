@@ -238,8 +238,8 @@ export interface Unit {
     engineRating: number;
     engineHS: number; // Number of HeatSinks on the engine
     engineHSType: string; // Type of HeatSinks on the engine: "Heat Sink", "Double Heat Sink", "Laser Heat Sink", etc...
-    source: string[]; // Normalized from comma-separated sourcebook abbreviations in units.json.
-    published: string[]; // Normalized record sheet source(s), e.g. "RS:AS".
+    source: string[]; // Sourcebook abbreviations exported from units.json.
+    published: string[]; // Record sheet source(s), e.g. "RS:AS".
     canon: boolean; // True if the unit is canon, false if is not (e.g. alt-universe or april fools units)
     role: string;
     armorType: string;

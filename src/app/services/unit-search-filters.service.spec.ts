@@ -92,7 +92,8 @@ function prepareUnitForSearch(unit: Unit, index: number): Unit {
     clone.comp = clone.comp ?? [];
     clone.quirks = clone.quirks ?? [];
     clone.features = clone.features ?? [];
-    clone.source = clone.source ?? [];
+    clone.source = Array.isArray(clone.source) ? clone.source : [];
+    clone.published = Array.isArray(clone.published) ? clone.published : [];
     return clone;
 }
 
@@ -163,6 +164,7 @@ function buildSmallBundle(payload: BenchmarkBundle): BenchmarkBundle {
     firstUnit.as.specials = ['ECM'];
     firstUnit.year = 3050;
     firstUnit.source = ['SRC-A'];
+    firstUnit.published = [];
     firstUnit.comp = [{ id: 'laser', q: 1, n: 'Laser', t: 'E', p: 0, l: 'CT' }];
     firstUnit.features = ['CASE'];
     firstUnit.quirks = ['Accurate Weapon'];
@@ -181,6 +183,7 @@ function buildSmallBundle(payload: BenchmarkBundle): BenchmarkBundle {
     secondUnit.as.specials = ['TAG'];
     secondUnit.year = 3050;
     secondUnit.source = ['SRC-B'];
+    secondUnit.published = [];
     secondUnit.comp = [{ id: 'cannon', q: 1, n: 'Cannon', t: 'B', p: 0, l: 'FR' }];
     secondUnit.features = ['Amphibious'];
     secondUnit.quirks = ['Poor Performance'];
@@ -241,7 +244,7 @@ function createTestUnit(overrides: TestUnitOverrides = {}): Unit {
         engineRating: 250,
         engineHS: 10,
         source: ['SRC-A'],
-        published: ['RS:AS'],
+        published: [],
         role: 'Skirmisher',
         armorType: 'Standard',
         structureType: 'Standard',

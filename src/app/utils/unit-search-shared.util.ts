@@ -40,8 +40,6 @@ export interface UnitComponentData {
     counts: Map<string, number>;
 }
 
-type SourceListValue = string | readonly string[] | null | undefined;
-
 const unitComponentCache = new WeakMap<Unit, UnitComponentData>();
 
 export function getMergedTags(unit: Unit): string[] {
@@ -52,38 +50,35 @@ export function getMergedTags(unit: Unit): string[] {
     return Array.from(merged);
 }
 
-export function normalizeSourceList(value: SourceListValue): string[] {
+function normalizeSourceValues(value: readonly string[] | null | undefined): string[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
     const result: string[] = [];
     const seen = new Set<string>();
-    const addEntry = (entry: string): void => {
-        for (const part of entry.split(',')) {
-            const source = part.trim();
-            const sourceKey = source.toLowerCase();
-            if (!source || sourceKey === 'none' || seen.has(sourceKey)) {
-                continue;
-            }
 
-            seen.add(sourceKey);
-            result.push(source);
+    for (const entry of value) {
+        if (typeof entry !== 'string') {
+            continue;
         }
-    };
 
-    if (Array.isArray(value)) {
-        for (const entry of value) {
-            if (typeof entry === 'string') {
-                addEntry(entry);
-            }
+        const source = entry.trim();
+        const sourceKey = source.toLowerCase();
+        if (!source || sourceKey === 'none' || seen.has(sourceKey)) {
+            continue;
         }
-    } else if (typeof value === 'string') {
-        addEntry(value);
+
+        seen.add(sourceKey);
+        result.push(source);
     }
 
     return result;
 }
 
 export function getUnitSourceFilterValues(unit: Pick<Unit, 'source' | 'published'>): string[] {
-    const sources = normalizeSourceList(unit.source);
-    const published = normalizeSourceList(unit.published);
+    const sources = normalizeSourceValues(unit.source);
+    const published = normalizeSourceValues(unit.published);
 
     if (published.length === 0) {
         return sources;

@@ -55,18 +55,16 @@ describe('UnitRuntimeService', () => {
         expect(service.getUnitByName('MAD CAT PRIME')).toBe(unit);
     });
 
-    it('normalizes comma-separated source and published values separately', () => {
+    it('keeps exported source and published arrays available to search helpers', () => {
         const unit = createUnit('Atlas');
-        Object.assign(unit as unknown as { source: string; published: string }, {
-            source: 'TR:3039, RS:Gothic, None, TR:SW',
-            published: 'RSFP:Wave 2, RS:Gothic, RS:SW',
-        });
+        unit.source = ['TR:3039', 'TR:SW'];
+        unit.published = ['RSFP:Wave 2', 'RS:Gothic'];
 
         service.preprocessUnits([unit]);
 
-        expect(unit.source).toEqual(['TR:3039', 'RS:Gothic', 'TR:SW']);
-        expect(unit.published).toEqual(['RSFP:Wave 2', 'RS:Gothic', 'RS:SW']);
-        expect(getProperty(unit, 'source')).toEqual(['TR:3039', 'RS:Gothic', 'TR:SW', 'RSFP:Wave 2', 'RS:SW']);
+        expect(unit.source).toEqual(['TR:3039', 'TR:SW']);
+        expect(unit.published).toEqual(['RSFP:Wave 2', 'RS:Gothic']);
+        expect(getProperty(unit, 'source')).toEqual(['TR:3039', 'TR:SW', 'RSFP:Wave 2', 'RS:Gothic']);
         expect(unitSearchIndexServiceMock.prepareUnits).toHaveBeenCalledOnceWith([unit]);
     });
 

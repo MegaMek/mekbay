@@ -39,7 +39,6 @@ import type { TagData, UnitTagData } from './db.service';
 import { TagsService } from './tags.service';
 import { PublicTagsService } from './public-tags.service';
 import { UnitSearchIndexService } from './unit-search-index.service';
-import { normalizeSourceList } from '../utils/unit-search-shared.util';
 
 @Injectable({
     providedIn: 'root'
@@ -58,7 +57,6 @@ export class UnitRuntimeService {
     public preprocessUnits(units: Unit[]): void {
         this.unitNameMap.clear();
         for (const unit of units) {
-            this.normalizeUnitSources(unit);
             this.unitNameMap.set(UnitRuntimeService.getUnitNameKey(unit.name), unit);
         }
         this.unitSearchIndexService.prepareUnits(units);
@@ -66,7 +64,6 @@ export class UnitRuntimeService {
 
     public postprocessUnits(units: Unit[], eras: Era[]): void {
         for (const unit of units) {
-            this.normalizeUnitSources(unit);
             unit._era = this.findEraForYear(unit.year, eras);
         }
 
@@ -144,11 +141,6 @@ export class UnitRuntimeService {
         }
 
         return undefined;
-    }
-
-    private normalizeUnitSources(unit: Unit): void {
-        unit.source = normalizeSourceList(unit.source);
-        unit.published = normalizeSourceList(unit.published);
     }
 
     private linkEquipmentToComponents(components: UnitComponent[], equipment: EquipmentMap): void {

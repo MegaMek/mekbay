@@ -185,12 +185,12 @@ describe('UnitSearchIndexService', () => {
         expect(service.getUnitSubtypeMaxStats('Missing').gravDecks).toEqual({ min: 0, max: 0, average: 0 });
     });
 
-    it('indexes the source filter from source and published values', () => {
+    it('indexes the exported source filter without duplicating published values', () => {
         const service = new UnitSearchIndexService();
         const unit = createUnit({
             name: 'Atlas AS7-D',
-            source: 'TR:3039,TR:SW' as unknown as string[],
-            published: 'RSFP:Wave 2,RS:Gothic' as unknown as string[],
+            source: ['TR:3039', 'TR:SW', 'RSFP:Wave 2', 'RS:Gothic'],
+            published: ['RSFP:Wave 2', 'RS:Gothic'],
         });
 
         service.rebuildIndexes([unit], [], []);
