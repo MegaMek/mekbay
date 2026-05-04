@@ -159,7 +159,7 @@ export class UnitDetailsGeneralTabComponent {
             sku: '',
             abbrev,
             title: abbrev,
-            canon: true,
+            canon: false,
         })
         .sort((left, right) => {
             const leftTitle = left.title || left.abbrev;

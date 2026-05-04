@@ -94,7 +94,10 @@ export interface SourcebookInfoDialogData {
                     <hr class="sourcebook-separator" />
                 }
                 <div class="sourcebook-entry unknown">
-                    <div class="sourcebook-title">{{ unknown }}</div>
+                    <div class="sourcebook-title">
+                        <span>{{ unknown }}</span>
+                        <span class="source-non-canon">(non-canon)</span>
+                    </div>
                 </div>
             }
         </div>
