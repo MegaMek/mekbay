@@ -197,8 +197,8 @@ describe('FormationAbilityAssignmentUtil', () => {
             createASForceUnit('bm-2', createUnit(2, 'Banshee', 'Mek', 'BattleMek', 'BM')),
         ];
         const flightUnits = [
-            createASForceUnit('flight-1', createUnit(10, 'Corsair', 'Aero', 'Aero', 'AF', { role: 'Interceptor', as: { MVm: { a: 12 } } })),
-            createASForceUnit('flight-2', createUnit(11, 'Lucifer', 'Aero', 'Aero', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 } } })),
+            createASForceUnit('flight-1', createUnit(10, 'Corsair', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 12 } } })),
+            createASForceUnit('flight-2', createUnit(11, 'Lucifer', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 } } })),
         ];
         const allUnits = [...flightUnits, ...bmUnits];
         const group = createGroup(
@@ -360,12 +360,12 @@ describe('FormationAbilityAssignmentUtil', () => {
     it('auto-assigns all-unit command abilities through the formation preview', () => {
         const formation = getFormation('electronic-warfare-squadron');
         const units = [
-            createASForceUnit('unit-1', createUnit(1, 'Sholagar', 'Aero', 'Aero', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: ['ECM'] } })),
-            createASForceUnit('unit-2', createUnit(2, 'Corsair', 'Aero', 'Aero', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: ['PRB'] } })),
-            createASForceUnit('unit-3', createUnit(3, 'Lucifer', 'Aero', 'Aero', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: ['TAG'] } })),
-            createASForceUnit('unit-4', createUnit(4, 'Transit', 'Aero', 'Aero', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: ['AECM'] } })),
-            createASForceUnit('unit-5', createUnit(5, 'Sabre', 'Aero', 'Aero', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: [] } })),
-            createASForceUnit('unit-6', createUnit(6, 'Chippewa', 'Aero', 'Aero', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: [] } })),
+            createASForceUnit('unit-1', createUnit(1, 'Sholagar', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: ['ECM'] } })),
+            createASForceUnit('unit-2', createUnit(2, 'Corsair', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: ['PRB'] } })),
+            createASForceUnit('unit-3', createUnit(3, 'Lucifer', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: ['TAG'] } })),
+            createASForceUnit('unit-4', createUnit(4, 'Transit', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: ['AECM'] } })),
+            createASForceUnit('unit-5', createUnit(5, 'Sabre', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: [] } })),
+            createASForceUnit('unit-6', createUnit(6, 'Chippewa', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: [] } })),
         ];
         const group = createGroup(
             units,
