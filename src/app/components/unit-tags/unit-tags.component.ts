@@ -55,7 +55,7 @@ export interface TagClickEvent {
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CommonModule],
     templateUrl: './unit-tags.component.html',
-    styleUrl: './unit-tags.component.css'
+    styleUrl: './unit-tags.component.scss'
 })
 export class UnitTagsComponent {
     private publicTagsService = inject(PublicTagsService);

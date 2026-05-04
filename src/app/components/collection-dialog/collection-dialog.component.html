@@ -196,14 +196,24 @@
                     xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!quickAddOpen()">
                     <path d="M0 2l5 6 5-6z" />
                 </svg>
-                <span class="panel-title">Quick Add Chassis Tag</span>
+                <span class="panel-title">Quick Add Tag</span>
             </button>
 
             @if (quickAddOpen()) {
                 <div class="quick-add-content">
                     <div class="quick-add-fields">
                         <label class="field chassis-field">
-                            <span>CHASSIS</span>
+                            <span class="field-label-line">
+                                <span>TARGET</span>
+                                @if (quickAddTargetTypeLabel()) {
+                                    <small
+                                        class="target-type-badge"
+                                        [class.name-tag]="quickAddTarget()?.rowType === 'name'"
+                                        [class.chassis-tag]="quickAddTarget()?.rowType === 'chassis'">
+                                        {{ quickAddTargetTypeLabel() }}
+                                    </small>
+                                }
+                            </span>
                             <input
                                 id="quick-add-chassis"
                                 type="text"
@@ -229,6 +239,35 @@
                                         (click)="selectSuggestion(option)">
                                         <span>{{ option.inputLabel }}</span>
                                         <small>{{ option.unitCount }}</small>
+                                    </button>
+                                }
+                            </div>
+                        }
+
+                        @if (showChassisSuggestions() && selectedAddChassisOption() && quickAddModelOptions().length > 0) {
+                            <div class="suggestion-strip model-suggestions" role="listbox" aria-label="Model suggestions" (pointerdown)="onChassisSuggestionsPointerDown()">
+                                <button
+                                    type="button"
+                                    class="suggestion-button model-suggestion all-models"
+                                    role="option"
+                                    [class.selected]="isAllModelsSelected()"
+                                    [attr.aria-selected]="isAllModelsSelected()"
+                                    aria-label="Use chassis tag"
+                                    title="Chassis tag"
+                                    (click)="selectAllModels()">
+                                    <span>ALL</span>
+                                </button>
+                                @for (option of quickAddModelOptions(); track option.key) {
+                                    <button
+                                        type="button"
+                                        class="suggestion-button model-suggestion"
+                                        role="option"
+                                        [class.selected]="isSelectedAddModelOption(option)"
+                                        [attr.aria-selected]="isSelectedAddModelOption(option)"
+                                        [attr.aria-label]="'Use unit tag for ' + option.label"
+                                        title="Unit tag"
+                                        (click)="selectModelSuggestion(option)">
+                                        <span>{{ option.label }}</span>
                                     </button>
                                 }
                             </div>
@@ -261,7 +300,7 @@
                             />
                         </label>
 
-                        <button type="button" class="bt-button primary add-button" [disabled]="!canAddChassis()" (click)="addChassisTag()">ADD</button>
+                        <button type="button" class="bt-button primary add-button" [disabled]="!canAddQuickTag()" (click)="addQuickTag()">ADD</button>
                     </div>
                 </div>
             }

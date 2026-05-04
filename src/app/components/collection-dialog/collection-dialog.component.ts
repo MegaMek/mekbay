@@ -74,6 +74,18 @@ interface ChassisOption {
     unitCount: number;
 }
 
+interface ModelOption {
+    label: string;
+    key: string;
+    unit: Unit;
+}
+
+interface QuickAddTarget {
+    rowType: CollectionRowType;
+    unit: Unit;
+    label: string;
+}
+
 interface PendingRemovedTag {
     key: string;
     rowKey: string;
@@ -87,7 +99,7 @@ interface PendingRemovedTag {
 }
 
 interface QuickAddQuantityConflict {
-    chassis: string;
+    targetLabel: string;
     tag: string;
     currentQuantity: number;
     nextQuantity: number;
@@ -131,6 +143,9 @@ export class CollectionDialogComponent {
     readonly addQuantity = signal(1);
     readonly quickAddOpen = signal(false);
     readonly showChassisSuggestions = signal(false);
+    readonly selectedAddChassisKey = signal('');
+    readonly selectedAddModelName = signal('');
+    readonly selectedQuickAddTargetType = signal<CollectionRowType | null>(null);
     readonly statusMessage = signal('');
     readonly pendingRemovedTags = signal<Record<string, PendingRemovedTag>>({});
 
@@ -284,16 +299,34 @@ export class CollectionDialogComponent {
 
     readonly chassisSuggestions = computed(() => {
         const text = this.addChassisText().trim().toLowerCase();
+        const selectedKey = this.selectedAddChassisKey();
         if (!text) {
             return this.chassisOptions().slice(0, 10);
         }
 
-        return this.chassisOptions()
+        const suggestions = this.chassisOptions()
             .filter(option => option.inputLabel.toLowerCase().includes(text))
             .slice(0, 10);
+
+        if (selectedKey && !suggestions.some(option => option.key === selectedKey)) {
+            const selectedOption = this.chassisOptions().find(option => option.key === selectedKey);
+            if (selectedOption) {
+                suggestions.unshift(selectedOption);
+            }
+        }
+
+        return suggestions.slice(0, 10);
     });
 
     readonly selectedAddChassisOption = computed(() => {
+        const selectedKey = this.selectedAddChassisKey();
+        if (selectedKey) {
+            const option = this.chassisOptions().find(candidate => candidate.key === selectedKey);
+            if (option) {
+                return option;
+            }
+        }
+
         const text = this.addChassisText().trim().toLowerCase();
         if (!text) {
             return null;
@@ -302,23 +335,83 @@ export class CollectionDialogComponent {
         return this.chassisOptions().find(option => option.inputLabel.toLowerCase() === text) ?? null;
     });
 
-    readonly quickAddQuantityConflict = computed((): QuickAddQuantityConflict | null => {
-        this.tagsService.version();
-        this.dataService.tagsVersion();
+    readonly quickAddModelOptions = computed((): ModelOption[] => {
         const option = this.selectedAddChassisOption();
-        const tag = this.addTag().trim();
-        if (!option || !tag) {
+        if (!option) {
+            return [];
+        }
+
+        return this.dataService.getUnits()
+            .filter(unit => TagsService.getChassisTagKey(unit) === option.key)
+            .sort(compareUnitsByName)
+            .map(unit => ({
+                label: unit.model || '(Standard)',
+                key: unit.name,
+                unit
+            }));
+    });
+
+    readonly selectedAddModelOption = computed(() => {
+        const selectedName = this.selectedAddModelName();
+        if (!selectedName) {
             return null;
         }
 
-        const existingTag = this.findChassisTag(option.unit, tag);
+        return this.quickAddModelOptions().find(option => option.key === selectedName) ?? null;
+    });
+
+    readonly quickAddTarget = computed((): QuickAddTarget | null => {
+        const option = this.selectedAddChassisOption();
+        const targetType = this.selectedQuickAddTargetType();
+        if (!option) {
+            return null;
+        }
+
+        if (targetType === 'name') {
+            const modelOption = this.selectedAddModelOption();
+            if (!modelOption) {
+                return null;
+            }
+
+            return {
+                rowType: 'name',
+                unit: modelOption.unit,
+                label: this.getQuickAddUnitDisplayName(modelOption.unit)
+            };
+        }
+
+        return {
+            rowType: 'chassis',
+            unit: option.unit,
+            label: option.inputLabel
+        };
+    });
+
+    readonly quickAddTargetTypeLabel = computed(() => {
+        if (!this.selectedAddChassisOption()) {
+            return '';
+        }
+
+        return this.selectedQuickAddTargetType() === 'name' ? 'UNIT TAG' : 'CHASSIS TAG';
+    });
+
+    readonly quickAddQuantityConflict = computed((): QuickAddQuantityConflict | null => {
+        this.tagsService.version();
+        this.dataService.tagsVersion();
+        const target = this.quickAddTarget();
+        const tag = this.addTag().trim();
+        if (!target || !tag) {
+            return null;
+        }
+
+        const existingTag = this.findQuickAddTargetTag(target, tag);
         const nextQuantity = this.addQuantity();
         if (!existingTag || existingTag.quantity === nextQuantity) {
             return null;
         }
 
         return {
-            chassis: option.inputLabel,
+            targetLabel: target.label,
             tag: existingTag.tag,
             currentQuantity: existingTag.quantity,
             nextQuantity
@@ -357,8 +450,8 @@ export class CollectionDialogComponent {
 
     readonly canUseHeaderTagActions = computed(() => this.selectedHeaderTag().length > 0);
 
-    readonly canAddChassis = computed(() => {
-        return !!this.selectedAddChassisOption() && this.addTag().trim().length > 0;
+    readonly canAddQuickTag = computed(() => {
+        return !!this.quickAddTarget() && this.addTag().trim().length > 0;
     });
 
     readonly canApplyMassChange = computed(() => this.selectedCount() > 0 && this.massTag().trim().length > 0);
@@ -476,6 +569,7 @@ export class CollectionDialogComponent {
 
     onAddChassisInput(event: Event): void {
         this.addChassisText.set((event.target as HTMLInputElement).value);
+        this.clearQuickAddTargetSelection();
         this.showChassisSuggestions.set(true);
     }
 
@@ -585,11 +679,47 @@ export class CollectionDialogComponent {
 
     selectSuggestion(option: ChassisOption): void {
         this.addChassisText.set(option.inputLabel);
+        this.selectedAddChassisKey.set(option.key);
+        this.selectedAddModelName.set('');
+        this.selectedQuickAddTargetType.set('chassis');
+        this.showChassisSuggestions.set(true);
+    }
+
+    selectAllModels(): void {
+        const option = this.selectedAddChassisOption();
+        if (!option) {
+            return;
+        }
+
+        this.addChassisText.set(option.inputLabel);
+        this.selectedAddChassisKey.set(option.key);
+        this.selectedAddModelName.set('');
+        this.selectedQuickAddTargetType.set('chassis');
+        this.showChassisSuggestions.set(false);
+    }
+
+    selectModelSuggestion(option: ModelOption): void {
+        const chassisOption = this.selectedAddChassisOption();
+        if (chassisOption) {
+            this.selectedAddChassisKey.set(chassisOption.key);
+        }
+
+        this.addChassisText.set(this.getQuickAddUnitDisplayName(option.unit));
+        this.selectedAddModelName.set(option.key);
+        this.selectedQuickAddTargetType.set('name');
         this.showChassisSuggestions.set(false);
     }
 
     isSelectedAddChassisOption(option: ChassisOption): boolean {
         return this.selectedAddChassisOption()?.key === option.key;
+    }
+
+    isAllModelsSelected(): boolean {
+        return this.selectedQuickAddTargetType() !== 'name' && !!this.selectedAddChassisOption();
+    }
+
+    isSelectedAddModelOption(option: ModelOption): boolean {
+        return this.selectedQuickAddTargetType() === 'name' && this.selectedAddModelName() === option.key;
     }
 
     toggleRow(row: CollectionRow, event: Event): void {
@@ -683,34 +813,38 @@ export class CollectionDialogComponent {
         }
     }
 
-    async addChassisTag(): Promise<void> {
-        const option = this.selectedAddChassisOption();
+    async addQuickTag(): Promise<void> {
+        const target = this.quickAddTarget();
         const tag = this.addTag().trim();
         const quantityConflict = this.quickAddQuantityConflict();
-        if (!option || !this.validateLocalTag(tag)) {
+        if (!target || !this.validateLocalTag(tag)) {
             return;
         }
 
         if (quantityConflict) {
             const confirmed = await this.dialogsService.requestConfirmation(
-                `${quantityConflict.chassis} already has "${quantityConflict.tag}" with quantity ${quantityConflict.currentQuantity}. Adding it again will change quantity to ${quantityConflict.nextQuantity}.`,
+                `${quantityConflict.targetLabel} already has "${quantityConflict.tag}" with quantity ${quantityConflict.currentQuantity}. Adding it again will change quantity to ${quantityConflict.nextQuantity}.`,
                 'Update Tag Quantity',
                 'info'
             );
             if (!confirmed) {
-                this.statusMessage.set(`No changes made to "${quantityConflict.tag}" on ${option.inputLabel}.`);
+                this.statusMessage.set(`No changes made to "${quantityConflict.tag}" on ${target.label}.`);
                 return;
             }
         }
 
-        await this.tagsService.modifyTag(getChassisTagTargetUnits([option.unit], this.dataService.getUnits()), tag, 'chassis', 'add', this.addQuantity());
-        this.clearPendingRemovedTags([this.getRemovalKey(this.getRowKey('chassis', option.unit), tag)]);
+        const unitsToTag = target.rowType === 'chassis'
+            ? getChassisTagTargetUnits([target.unit], this.dataService.getUnits())
+            : [target.unit];
+        await this.tagsService.modifyTag(unitsToTag, tag, target.rowType, 'add', this.addQuantity());
+        this.clearPendingRemovedTags([this.getRemovalKey(this.getRowKey(target.rowType, target.unit), tag)]);
         if (quantityConflict) {
-            this.statusMessage.set(`Updated "${quantityConflict.tag}" on ${option.inputLabel} from ${quantityConflict.currentQuantity} to ${quantityConflict.nextQuantity}.`);
+            this.statusMessage.set(`Updated "${quantityConflict.tag}" on ${target.label} from ${quantityConflict.currentQuantity} to ${quantityConflict.nextQuantity}.`);
         } else {
-            this.statusMessage.set(`Added "${tag}" to ${option.inputLabel}.`);
+            this.statusMessage.set(`Added "${tag}" to ${target.label}.`);
         }
         this.addChassisText.set('');
+        this.clearQuickAddTargetSelection();
     }
 
     private getSelectedVisibleRows(): CollectionRow[] {
@@ -820,6 +954,12 @@ export class CollectionDialogComponent {
         });
     }
 
+    private clearQuickAddTargetSelection(): void {
+        this.selectedAddChassisKey.set('');
+        this.selectedAddModelName.set('');
+        this.selectedQuickAddTargetType.set(null);
+    }
+
     private getRowKey(rowType: CollectionRowType, unit: Unit): string {
         if (rowType === 'chassis') {
             return `chassis:${TagsService.getChassisTagKey(unit)}`;
@@ -849,6 +989,10 @@ export class CollectionDialogComponent {
 
     private getUnitDisplayName(unit: Unit): string {
         return unit.model ? `${unit.chassis} ${unit.model}` : unit.chassis;
+    }
+
+    private getQuickAddUnitDisplayName(unit: Unit): string {
+        return unit.model ? this.getUnitDisplayName(unit) : `${unit.chassis} (Standard)`;
     }
 
     private async promptForNewTag(): Promise<string | null> {
@@ -929,12 +1073,23 @@ export class CollectionDialogComponent {
             return false;
         }
 
-        return !!element.closest('.chassis-field, .chassis-suggestions');
+        return !!element.closest('.chassis-field, .chassis-suggestions, .model-suggestions');
     }
 
     private findChassisTag(unit: Unit, tag: string): UnitTagEntry | null {
         const lowerTag = tag.trim().toLowerCase();
         return (unit._chassisTags ?? []).find(entry => entry.tag.trim().toLowerCase() === lowerTag) ?? null;
+    }
+
+    private findNameTag(unit: Unit, tag: string): UnitTagEntry | null {
+        const lowerTag = tag.trim().toLowerCase();
+        return (unit._nameTags ?? []).find(entry => entry.tag.trim().toLowerCase() === lowerTag) ?? null;
+    }
+
+    private findQuickAddTargetTag(target: QuickAddTarget, tag: string): UnitTagEntry | null {
+        return target.rowType === 'chassis'
+            ? this.findChassisTag(target.unit, tag)
+            : this.findNameTag(target.unit, tag);
     }
 
     private parseQuantity(event: Event): number {

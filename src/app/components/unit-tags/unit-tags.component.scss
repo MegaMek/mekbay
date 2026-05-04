@@ -24,12 +24,12 @@
 
 /* Name-specific tags (yellow tint) */
 .tag-name {
-    background-color: rgba(255, 193, 7, 0.2);
+    background-color: rgb(var(--name-tag-color) / 0.2);
 }
 
 /* Chassis-wide tags (teal tint) */
 .tag-chassis {
-    background-color: rgba(78, 201, 176, 0.2);
+    background-color: rgb(var(--chassis-tag-color) / 0.2);
 }
 
 /* Public tags from other users (blue tint) */
