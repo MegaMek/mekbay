@@ -405,6 +405,18 @@
     text-decoration: underline;
 }
 
+.bottom-info .source-entry {
+    display: inline-flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.bottom-info .source-non-canon {
+    color: #ffd54f;
+    font-weight: 600;
+}
+
 .bottom-info .sarna-link {
     display: flex;
     margin-top: 6px;

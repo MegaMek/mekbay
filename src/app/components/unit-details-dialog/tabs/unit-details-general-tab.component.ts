@@ -43,6 +43,7 @@ import { FilterAmmoPipe } from '../../../pipes/filter-ammo.pipe';
 import { UnitComponentItemComponent } from '../../unit-component-item/unit-component-item.component';
 import { TooltipDirective } from '../../../directives/tooltip.directive';
 import { BVCalculatorUtil } from '../../../utils/bv-calculator.util';
+import { getUnitSourceFilterValues } from '../../../utils/unit-search-shared.util';
 import { SourcebookInfoDialogComponent, type SourcebookInfoDialogData } from '../../sourcebook-info-dialog/sourcebook-info-dialog.component';
 import type { Sourcebook } from '../../../models/sourcebook.model';
 
@@ -152,6 +153,16 @@ export class UnitDetailsGeneralTabComponent {
         return this.dataService.getForcePacksForUnit(u);
     });
 
+    sourceList = computed<Sourcebook[]>(() => getUnitSourceFilterValues(this.unit()).map((abbrev, index) =>
+        this.dataService.getSourcebookByAbbrev(abbrev) ?? {
+            id: -index - 1,
+            sku: '',
+            abbrev,
+            title: abbrev,
+            canon: true,
+        }
+    ));
+
     sarnaPageTitle = computed(() => {
         this.dataService.sarnaPageTitlesVersion();
         return this.dataService.getSarnaPageTitleForUnit(this.unit());
@@ -211,35 +222,29 @@ export class UnitDetailsGeneralTabComponent {
         return q?.description || '';
     }
 
-    getSourcebookTitle(abbrev: string): string {
-        return this.dataService.getSourcebookTitle(abbrev);
-    }
-
-
     openSourcebooksDialog(index: number): void {
-        const sources = this.unit().source;
+        const sources = this.sourceList();
         if (!sources || sources.length === 0) return;
         
         const sourcebooks: Sourcebook[] = [];
         const unknownSources: string[] = [];
+        let selectedSourcebookIndex = -1;
         
-        for (const abbrev of sources) {
-            const sourcebook = this.dataService.getSourcebookByAbbrev(abbrev);
-            if (sourcebook) {
-                sourcebooks.push(sourcebook);
+        for (const [sourceIndex, source] of sources.entries()) {
+            if (source.id >= 0) {
+                if (sourceIndex === index) {
+                    selectedSourcebookIndex = sourcebooks.length;
+                }
+                sourcebooks.push(source);
             } else {
-                unknownSources.push(abbrev);
+                unknownSources.push(source.abbrev);
             }
         }
         
         this.dialogsService.createDialog<void, SourcebookInfoDialogComponent, SourcebookInfoDialogData>(
             SourcebookInfoDialogComponent,
-            { data: { sourcebooks, unknownSources, selectedIndex: index } }
+            { data: { sourcebooks, unknownSources, selectedIndex: selectedSourcebookIndex } }
         );
-    }
-
-    hasSourcebook(abbrev: string): boolean {
-        return !!this.dataService.getSourcebookByAbbrev(abbrev);
     }
 
     getAreaLabel(areaName: string): string {

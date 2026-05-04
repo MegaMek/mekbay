@@ -190,14 +190,19 @@ unit().moveType }}</strong></div>
 <div class="spanner"></div>
 <div class="bottom-info allow-select">
 <div class="bottom-left">
-@if (unit().source && unit().source.length > 0) {
+@if (sourceList().length > 0) {
 <span class="label muted">Sources:</span>
-@for (src of unit().source; let index = $index; track index) {
-@if (hasSourcebook(src)) {
-<a class="source-link" (click)="openSourcebooksDialog(index)">{{ getSourcebookTitle(src) }}</a>
-} @else {
-<span>{{ src }}</span>
+@for (src of sourceList(); let index = $index; track index) {
+<span class="source-entry">
+@if (src.id >= 0) {
+<a class="source-link" (click)="openSourcebooksDialog(index)">{{ src.title }}</a>
+@if (src.canon === false) {
+<span class="source-non-canon">(non-canon)</span>
 }
+} @else {
+<span>{{ src.abbrev }}</span>
+}
+</span>
 }
 }
 @if (forcePacks().length > 0) {
