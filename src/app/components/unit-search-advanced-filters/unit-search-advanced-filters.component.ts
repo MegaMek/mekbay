@@ -39,12 +39,13 @@ import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { GameSystem } from '../../models/common.model';
 import { DialogsService } from '../../services/dialogs.service';
 import { OptionsService } from '../../services/options.service';
-import { DROPDOWN_FILTERS, RANGE_FILTERS } from '../../services/unit-search-filters.model';
+import { BOOLEAN_FILTERS, DROPDOWN_FILTERS, RANGE_FILTERS } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
 import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { SemanticGuideComponent } from '../semantic-guide/semantic-guide.component';
+import { TriStateFilterCheckboxComponent } from '../tri-state-filter-checkbox/tri-state-filter-checkbox.component';
 import {
     type RangeModel,
     UnitSearchFilterRangeDialogComponent,
@@ -59,6 +60,7 @@ import {
         MultiSelectDropdownComponent,
         RangeSliderComponent,
         SemanticGuideComponent,
+        TriStateFilterCheckboxComponent,
     ],
     templateUrl: './unit-search-advanced-filters.component.html',
     styleUrl: './unit-search-advanced-filters.component.scss',
@@ -86,6 +88,18 @@ export class UnitSearchAdvancedFiltersComponent {
         const excludedKeys = this.excludedKeySet();
 
         return DROPDOWN_FILTERS.filter((filter) => (
+            (!filter.game || filter.game === gameSystem)
+            && isFilterAvailableForAvailabilitySource(filter, availabilitySource)
+            && !excludedKeys.has(filter.key)
+        ));
+    });
+
+    readonly booleanFilters = computed(() => {
+        const gameSystem = this.filterGameSystem();
+        const availabilitySource = this.optionsService.options().availabilitySource;
+        const excludedKeys = this.excludedKeySet();
+
+        return BOOLEAN_FILTERS.filter((filter) => (
             (!filter.game || filter.game === gameSystem)
             && isFilterAvailableForAvailabilitySource(filter, availabilitySource)
             && !excludedKeys.has(filter.key)

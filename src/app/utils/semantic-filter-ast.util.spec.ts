@@ -10,6 +10,93 @@ function getUnitId(unit: { id?: string | number; name?: string }): string {
     return unit.name ?? '';
 }
 
+describe('semantic boolean filters', () => {
+    const units = [
+        { id: 1, name: 'Canon Published', canon: true, published: ['RS:3050'] },
+        { id: 2, name: 'Canon Unpublished', canon: true, published: [] },
+        { id: 3, name: 'Non-Canon Published', canon: false, published: ['RS:Custom'] },
+        { id: 4, name: 'Non-Canon Unpublished', canon: false, published: [] },
+    ];
+
+    function filterUnitNames(query: string): string[] {
+        const result = parseSemanticQueryAST(query, GameSystem.CLASSIC);
+        const filtered = filterUnitsWithAST(units, result.ast, {
+            gameSystem: GameSystem.CLASSIC,
+            getUnitId,
+            getProperty: (unit: typeof units[number], key: string) => unit[key as keyof typeof unit],
+        });
+
+        return filtered.map(unit => unit.name);
+    }
+
+    it('parses key:yes/no boolean syntax as semantic filters', () => {
+        const result = parseSemanticQueryAST('canon:yes canon:no published:yes published:no', GameSystem.CLASSIC);
+
+        expect(result.textSearch).toBe('');
+        expect(result.tokens).toEqual([
+            jasmine.objectContaining({ field: 'canon', operator: '=', values: ['yes'], rawText: 'canon:yes' }),
+            jasmine.objectContaining({ field: 'canon', operator: '=', values: ['no'], rawText: 'canon:no' }),
+            jasmine.objectContaining({ field: 'published', operator: '=', values: ['yes'], rawText: 'published:yes' }),
+            jasmine.objectContaining({ field: 'published', operator: '=', values: ['no'], rawText: 'published:no' }),
+        ]);
+    });
+
+    it('accepts true/false and y/n aliases for boolean semantic values', () => {
+        expect(filterUnitNames('canon:true')).toEqual(['Canon Published', 'Canon Unpublished']);
+        expect(filterUnitNames('canon:y')).toEqual(['Canon Published', 'Canon Unpublished']);
+        expect(filterUnitNames('published:false')).toEqual(['Canon Unpublished', 'Non-Canon Unpublished']);
+        expect(filterUnitNames('published:n')).toEqual(['Canon Unpublished', 'Non-Canon Unpublished']);
+    });
+
+    it('filters canon and non-canon units from key:yes/no syntax', () => {
+        expect(filterUnitNames('canon:yes')).toEqual(['Canon Published', 'Canon Unpublished']);
+        expect(filterUnitNames('canon:no')).toEqual(['Non-Canon Published', 'Non-Canon Unpublished']);
+    });
+
+    it('filters published and unpublished record-sheet status from key:yes/no syntax', () => {
+        expect(filterUnitNames('published:yes')).toEqual(['Canon Published', 'Non-Canon Published']);
+        expect(filterUnitNames('published:no')).toEqual(['Canon Unpublished', 'Non-Canon Unpublished']);
+    });
+
+    it('combines boolean keywords with normal semantic filters', () => {
+        expect(filterUnitNames('canon:yes published:yes')).toEqual(['Canon Published']);
+        expect(filterUnitNames('canon:no published:no')).toEqual(['Non-Canon Unpublished']);
+    });
+
+    it('leaves bare boolean words as text search', () => {
+        const result = parseSemanticQueryAST('canon published', GameSystem.CLASSIC);
+
+        expect(result.textSearch).toBe('canon published');
+        expect(result.tokens).toEqual([]);
+    });
+
+    it('uses indexed boolean candidates when available', () => {
+        const result = parseSemanticQueryAST('canon:yes', GameSystem.CLASSIC);
+        let propertyChecks = 0;
+
+        const filtered = filterUnitsWithAST(units, result.ast, {
+            gameSystem: GameSystem.CLASSIC,
+            getUnitId,
+            getProperty: (unit: typeof units[number], key: string) => {
+                propertyChecks++;
+                return unit[key as keyof typeof unit];
+            },
+            getIndexedFilterValues: (filterKey: string) => filterKey === 'canon' ? ['no', 'yes'] : [],
+            getIndexedUnitIds: (filterKey: string, value: string) => {
+                if (filterKey !== 'canon') {
+                    return undefined;
+                }
+                return value === 'yes'
+                    ? new Set(['1', '2'])
+                    : new Set(['3', '4']);
+            },
+        });
+
+        expect(filtered).toEqual([units[0], units[1]]);
+        expect(propertyChecks).toBe(2);
+    });
+});
+
 describe('semantic filter exclusivity', () => {
     it('parses == as an operator for dropdown-like filters', () => {
         const result = parseSemanticQueryAST('faction=="Draconis Combine"', GameSystem.CLASSIC);

@@ -11,6 +11,18 @@
         <semantic-guide [compact]="true" />
     </div>
     } @else {
+        @for (conf of booleanFilters(); track conf.key) {
+            @let filterOpts = $any(filtersService.advOptions()[conf.key]);
+            <div class="filter-row boolean-filter-row" [class.semantic-only]="filterOpts?.semanticOnly">
+                <tri-state-filter-checkbox
+                        [label]="filterOpts?.label ?? conf.label"
+                        [value]="filterOpts?.value ?? null"
+                        [semanticOnly]="filterOpts?.semanticOnly ?? false"
+                        (valueChange)="setAdvFilter(conf.key, $event)">
+                </tri-state-filter-checkbox>
+            </div>
+        }
+
     @for (conf of dropdownFilters(); track conf.key) {
       @let filterOpts = $any(filtersService.advOptions()[conf.key]);
       <div class="filter-row" [class.semantic-only]="filterOpts?.semanticOnly">

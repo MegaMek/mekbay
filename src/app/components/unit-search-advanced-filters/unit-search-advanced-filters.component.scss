@@ -8,6 +8,12 @@
     gap: 4px 16px;
 }
 
+.boolean-filter-row {
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+}
+
 .availability-source-disclaimer {
     margin: 0 0 8px;
     font-size: 0.8rem;

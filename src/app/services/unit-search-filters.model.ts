@@ -65,10 +65,13 @@ export type MegaMekRaritySortKey =
 export type DropdownOptionSource = 'indexed' | 'external' | 'context';
 export type DropdownAvailabilitySource = 'indexed' | 'context';
 export type DropdownPropertyShape = 'scalar' | 'array' | 'component';
+export type BooleanFilterSource = 'boolean' | 'nonEmptyArray';
+export type TriStateBooleanFilterValue = null | 'or' | 'not';
 
 export enum AdvFilterType {
     DROPDOWN = 'dropdown',
     RANGE = 'range',
+    BOOLEAN = 'boolean',
     SEMANTIC = 'semantic' // Semantic-only filters (not shown in UI, no advOptions entry)
 }
 export interface AdvFilterConfig {
@@ -85,6 +88,7 @@ export interface AdvFilterConfig {
     countable?: boolean; // if true, show amount next to options
     stepSize?: number; // for range sliders, defines the step size
     semanticKey?: string; // Simplified key for semantic filter mode (e.g., 'tmm' instead of 'as.TMM')
+    booleanSource?: BooleanFilterSource; // How to derive a boolean filter value from the unit property
     valueNormalizer?: (value: string) => string; // Optional function to normalize semantic filter values
     displayNameFn?: (value: string) => string; // Optional function to map a raw option value to a human-readable display name
 }
@@ -122,7 +126,7 @@ export interface SearchTelemetrySnapshot {
 
 export interface AdvOptionsTelemetryFilterStage {
     key: string;
-    type: 'dropdown' | 'range';
+    type: 'dropdown' | 'range' | 'boolean';
     durationMs: number;
     contextDerivationMs: number;
     contextUnitCount: number;
@@ -175,6 +179,16 @@ export type RangeFilterOptions = {
     displayText?: string;  // Formatted effective ranges (e.g., "0-3, 5-99")
 };
 
+export type BooleanFilterOptions = {
+    type: 'boolean';
+    label: string;
+    value: TriStateBooleanFilterValue;
+    interacted: boolean;
+    semanticOnly?: boolean;
+    options?: never;
+    displayText?: never;
+};
+
 export interface SerializedSearchFilter {
     /** Unique identifier for storage/sync */
     id: string;
@@ -198,7 +212,74 @@ export interface SerializedSearchFilter {
     timestamp?: number;
 }
 
-export type AdvFilterOptions = DropdownFilterOptions | RangeFilterOptions;
+export type AdvFilterOptions = DropdownFilterOptions | RangeFilterOptions | BooleanFilterOptions;
+
+export function normalizeTriStateBooleanFilterValue(value: unknown): TriStateBooleanFilterValue {
+    if (value === null || value === undefined || value === '') {
+        return null;
+    }
+
+    if (value === 'or' || value === true) {
+        return 'or';
+    }
+
+    if (value === 'not' || value === false) {
+        return 'not';
+    }
+
+    const normalizedValue = String(value).trim().toLowerCase();
+    if (['or', 'yes', 'y', 'true', '1'].includes(normalizedValue)) {
+        return 'or';
+    }
+
+    if (['not', 'no', 'n', 'false', '0'].includes(normalizedValue)) {
+        return 'not';
+    }
+
+    return null;
+}
+
+export function getBooleanFilterSemanticExpression(
+    conf: Pick<AdvFilterConfig, 'key' | 'semanticKey'>,
+    value: TriStateBooleanFilterValue,
+): string | null {
+    const semanticKey = conf.semanticKey ?? conf.key;
+
+    if (value === 'or') {
+        return `${semanticKey}:yes`;
+    }
+
+    if (value === 'not') {
+        return `${semanticKey}:no`;
+    }
+
+    return null;
+}
+
+export function parseBooleanFilterSemanticValue(value: string): boolean | null {
+    const normalizedValue = value.trim().toLowerCase();
+
+    if (['true', 'yes', 'y', '1', 'or'].includes(normalizedValue)) {
+        return true;
+    }
+
+    if (['false', 'no', 'n', '0', 'not'].includes(normalizedValue)) {
+        return false;
+    }
+
+    return null;
+}
+
+export function getBooleanFilterUnitValue(
+    conf: Pick<AdvFilterConfig, 'booleanSource'>,
+    rawValue: unknown,
+): boolean {
+    if (conf.booleanSource === 'nonEmptyArray') {
+        return Array.isArray(rawValue) && rawValue.length > 0;
+    }
+
+    return rawValue === true;
+}
 
 // ================== Constants ==================
 
@@ -305,6 +386,16 @@ export interface RangeFilterConfig {
     ignoreValues?: any[];
 }
 
+/** Boolean tri-state filter configuration */
+export interface BooleanFilterConfig {
+    key: string;
+    label: string;
+    semanticKey?: string;
+    game?: GameSystem;
+    availabilitySources?: readonly AvailabilitySource[];
+    booleanSource: BooleanFilterSource;
+}
+
 /** Semantic-only filter configuration (not shown in UI) */
 export interface SemanticFilterConfig {
     key: string;
@@ -356,6 +447,22 @@ export const DROPDOWN_FILTERS: readonly DropdownFilterConfig[] = Object.freeze([
     { key: '_tags', semanticKey: 'tags', label: 'Tags', multistate: true, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
 ]);
 
+/** Boolean tri-state filters - shown before dropdown filters */
+export const BOOLEAN_FILTERS: readonly BooleanFilterConfig[] = Object.freeze([
+    {
+        key: 'canon',
+        semanticKey: 'canon',
+        label: 'Canon',
+        booleanSource: 'boolean',
+    },
+    {
+        key: 'published',
+        semanticKey: 'published',
+        label: 'Published Record Sheet',
+        booleanSource: 'nonEmptyArray',
+    },
+]);
+
 /** Range filters - separated for clean iteration */
 export const RANGE_FILTERS: readonly RangeFilterConfig[] = Object.freeze([
     { key: 'bv', semanticKey: 'bv', label: 'BV', curve: 0, game: GameSystem.CLASSIC },
@@ -399,6 +506,7 @@ export const SEMANTIC_FILTERS: readonly SemanticFilterConfig[] = Object.freeze([
 
 /** Combined ADVANCED_FILTERS for backwards compatibility and semantic parsing */
 export const ADVANCED_FILTERS: AdvFilterConfig[] = [
+    ...BOOLEAN_FILTERS.map(f => ({ ...f, type: AdvFilterType.BOOLEAN as const })),
     ...DROPDOWN_FILTERS.map(f => ({ ...f, type: AdvFilterType.DROPDOWN as const })),
     ...RANGE_FILTERS.map(f => ({ ...f, type: AdvFilterType.RANGE as const })),
     ...SEMANTIC_FILTERS.map(f => ({ ...f, type: AdvFilterType.SEMANTIC as const })),
@@ -425,6 +533,7 @@ export const SORT_OPTIONS: SortOption[] = [
     { key: '', label: 'Relevance' },
     { key: 'name', label: 'Name' },
     ...ADVANCED_FILTERS
+        .filter(f => f.type !== AdvFilterType.BOOLEAN)
         .filter(f => !['era', 'faction', 'availabilityRarity', 'availabilityFrom', 'forcePack', 'componentName', 'source', '_tags', 'as.specials', 'name', 'chassis', 'model', 'as._motive', 'quirks', 'features'].includes(f.key))
         .map(f => ({
             key: f.key,

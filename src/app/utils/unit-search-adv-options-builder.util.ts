@@ -41,7 +41,7 @@ import { matchesSearch, parseSearchQuery } from './search.util';
 import { getNowMs, getProperty, normalizeMultiStateSelection } from './unit-search-shared.util';
 import { isComponentBackedDropdown, usesIndexedDropdownAvailability, usesIndexedDropdownUniverse } from './unit-search-filter-config.util';
 import { sortAvailableDropdownOptions, sortDropdownOptionObjects } from './unit-search-dropdown-sort.util';
-import { AdvFilterType, type AdvFilterConfig, type AdvFilterOptions, type AdvOptionsTelemetryFilterStage, type AdvOptionsTelemetrySnapshot, type FilterState, type SemanticDisplayItem } from '../services/unit-search-filters.model';
+import { AdvFilterType, normalizeTriStateBooleanFilterValue, type AdvFilterConfig, type AdvFilterOptions, type AdvOptionsTelemetryFilterStage, type AdvOptionsTelemetrySnapshot, type FilterState, type SemanticDisplayItem } from '../services/unit-search-filters.model';
 
 const AVAILABILITY_CASCADE_FILTER_KEYS = new Set(['era', 'faction', 'availabilityFrom', 'availabilityRarity']);
 
@@ -257,7 +257,11 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
     ) => {
         const stage: AdvOptionsTelemetryFilterStage = {
             key: conf.key,
-            type: conf.type === AdvFilterType.RANGE ? 'range' : 'dropdown',
+            type: conf.type === AdvFilterType.RANGE
+                ? 'range'
+                : conf.type === AdvFilterType.BOOLEAN
+                    ? 'boolean'
+                    : 'dropdown',
             durationMs: getNowMs() - startedAt,
             contextDerivationMs,
             contextUnitCount,
@@ -330,6 +334,22 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
 
         const contextDerivationMs = getNowMs() - contextDerivationStartedAt;
         let availableOptions: { name: string; img?: string; displayName?: string; available?: boolean }[] = [];
+
+        if (conf.type === AdvFilterType.BOOLEAN) {
+            const value = normalizeTriStateBooleanFilterValue(
+                filterStateEntry?.interactedWith ? filterStateEntry.value : null,
+            );
+
+            result[conf.key] = {
+                type: 'boolean',
+                label,
+                value,
+                interacted: value !== null,
+                semanticOnly: filterStateEntry?.semanticOnly,
+            };
+            pushAdvOptionsTelemetry(conf, filterStartedAt, contextDerivationMs, contextUnits.length, contextStrategy);
+            continue;
+        }
 
         if (conf.type === AdvFilterType.DROPDOWN) {
             const displayNameFn = (value: string) => request.getDisplayName(conf.key, value);

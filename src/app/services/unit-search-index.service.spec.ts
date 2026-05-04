@@ -205,4 +205,20 @@ describe('UnitSearchIndexService', () => {
             { name: 'TR:SW' },
         ]);
     });
+
+    it('indexes canon and published status as yes/no values', () => {
+        const service = new UnitSearchIndexService();
+
+        service.rebuildIndexes([
+            createUnit({ name: 'Canon Published', canon: true, published: ['RS:3050'] }),
+            createUnit({ name: 'Non-Canon Unpublished', canon: false, published: [] }),
+        ], [], []);
+
+        expect(service.getIndexedFilterValues('canon')).toEqual(['no', 'yes']);
+        expect(service.getIndexedUnitIds('canon', 'yes')).toEqual(new Set(['Canon Published']));
+        expect(service.getIndexedUnitIds('canon', 'no')).toEqual(new Set(['Non-Canon Unpublished']));
+        expect(service.getIndexedFilterValues('published')).toEqual(['no', 'yes']);
+        expect(service.getIndexedUnitIds('published', 'yes')).toEqual(new Set(['Canon Published']));
+        expect(service.getIndexedUnitIds('published', 'no')).toEqual(new Set(['Non-Canon Unpublished']));
+    });
 });
