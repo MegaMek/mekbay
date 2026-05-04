@@ -208,8 +208,8 @@
                                 @if (quickAddTargetTypeLabel()) {
                                     <small
                                         class="target-type-badge"
-                                        [class.name-tag]="quickAddTarget()?.rowType === 'name'"
-                                        [class.chassis-tag]="quickAddTarget()?.rowType === 'chassis'">
+                                        [class.name-tag]="quickAddTargetType() === 'name'"
+                                        [class.chassis-tag]="quickAddTargetType() === 'chassis'">
                                         {{ quickAddTargetTypeLabel() }}
                                     </small>
                                 }
@@ -221,14 +221,12 @@
                                 autocomplete="off"
                                 [value]="addChassisText()"
                                 (input)="onAddChassisInput($event)"
-                                (focus)="onAddChassisFocus()"
-                                (blur)="onAddChassisBlur($event)"
                                 placeholder="Enter chassis..."
                             />
                         </label>
 
-                        @if (showChassisSuggestions() && chassisSuggestions().length > 0 && addChassisText().trim().length > 0) {
-                            <div class="suggestion-strip chassis-suggestions" role="listbox" aria-label="Chassis suggestions" (pointerdown)="onChassisSuggestionsPointerDown()">
+                        @if (addChassisText().trim().length > 0 && chassisSuggestions().length > 0) {
+                            <div class="suggestion-strip chassis-suggestions" role="listbox" aria-label="Chassis suggestions">
                                 @for (option of chassisSuggestions(); track option.key) {
                                     <button
                                         type="button"
@@ -244,31 +242,38 @@
                             </div>
                         }
 
-                        @if (showChassisSuggestions() && selectedAddChassisOption() && quickAddModelOptions().length > 0) {
-                            <div class="suggestion-strip model-suggestions" role="listbox" aria-label="Model suggestions" (pointerdown)="onChassisSuggestionsPointerDown()">
-                                <button
-                                    type="button"
-                                    class="suggestion-button model-suggestion all-models"
-                                    role="option"
-                                    [class.selected]="isAllModelsSelected()"
-                                    [attr.aria-selected]="isAllModelsSelected()"
-                                    aria-label="Use chassis tag"
-                                    title="Chassis tag"
-                                    (click)="selectAllModels()">
-                                    <span>ALL</span>
-                                </button>
-                                @for (option of quickAddModelOptions(); track option.key) {
+                        @if (addChassisText().trim().length > 0 && quickAddModelOptions().length > 0) {
+                            <div class="suggestion-strip model-suggestions" role="listbox" aria-label="Model suggestions">
+                                @if (selectedAddChassisOption()) {
                                     <button
                                         type="button"
+                                        class="suggestion-button model-suggestion all-models"
+                                        role="option"
+                                        [class.selected]="isAllModelsSelected()"
+                                        [attr.aria-selected]="isAllModelsSelected()"
+                                        aria-label="Use chassis tag"
+                                        title="Chassis tag"
+                                        (click)="selectAllModels()">
+                                        <span>ALL</span>
+                                    </button>
+                                }
+                                @for (option of quickAddModelOptions(); track option.key) {
+                                    <label
                                         class="suggestion-button model-suggestion"
                                         role="option"
                                         [class.selected]="isSelectedAddModelOption(option)"
                                         [attr.aria-selected]="isSelectedAddModelOption(option)"
                                         [attr.aria-label]="'Use unit tag for ' + option.label"
-                                        title="Unit tag"
-                                        (click)="selectModelSuggestion(option)">
+                                        title="Unit tag">
+                                        <input
+                                            type="checkbox"
+                                            class="bt-checkbox model-checkbox"
+                                            [checked]="isSelectedAddModelOption(option)"
+                                            (change)="toggleModelSuggestion(option, $event)"
+                                            [attr.aria-label]="'Select unit tag target for ' + option.label"
+                                        />
                                         <span>{{ option.label }}</span>
-                                    </button>
+                                    </label>
                                 }
                             </div>
                         }

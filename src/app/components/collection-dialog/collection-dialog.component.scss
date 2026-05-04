@@ -574,7 +574,6 @@
 .quick-add-fields {
     display: grid;
     grid-template-columns: minmax(220px, 1.1fr) minmax(160px, 0.6fr) 72px 92px;
-    grid-template-rows: auto minmax(32px, auto) minmax(32px, auto);
     gap: 10px;
     align-items: end;
 }
@@ -666,6 +665,19 @@
 
 .model-suggestion {
     max-width: 240px;
+    user-select: none;
+
+    &:not(.all-models).selected {
+        border-color: rgb(var(--name-tag-color));
+        background: rgb(var(--name-tag-color) / 0.18);
+        box-shadow: inset 0 0 0 1px rgb(var(--name-tag-color));
+    }
+}
+
+.model-checkbox {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
 }
 
 .status-line {
@@ -691,7 +703,6 @@ input[disabled] {
 
     .quick-add-fields {
         grid-template-columns: minmax(0, 1fr) 72px;
-        grid-template-rows: none;
 
         .chassis-field,
         .add-button {
