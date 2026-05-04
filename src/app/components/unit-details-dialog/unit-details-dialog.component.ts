@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, ElementRef, signal, ChangeDetectionStrategy, output, viewChild, effect, computed, type Signal, isSignal } from '@angular/core';
+import { Component, inject, ElementRef, signal, ChangeDetectionStrategy, output, viewChild, effect, computed, type Signal, isSignal, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import type { Unit } from '../../models/units.model';
@@ -62,6 +62,7 @@ import { DialogsService } from '../../services/dialogs.service';
 import { LayoutService } from '../../services/layout.service';
 import { buildUnitShareLinks } from '../../utils/force-url.util';
 import { ConfirmDialogComponent, type ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
+import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 
 /*
  * Author: Drake
@@ -95,8 +96,7 @@ export interface UnitDetailsChangeAction {
     styleUrls: ['./unit-details-dialog.component.css'],
     host: {
         '[class.fluff-background]': 'hostHasFluff',
-        '[style.--fluff-bg]': 'hostFluffBg',
-        '(window:keydown)': 'onWindowKeyDown($event)'
+        '[style.--fluff-bg]': 'hostFluffBg'
     }
 })
 export class UnitDetailsDialogComponent {
@@ -110,6 +110,8 @@ export class UnitDetailsDialogComponent {
     private taggingService = inject(TaggingService);
     private urlStateService = inject(UrlStateService);
     private dialogsService = inject(DialogsService);
+    private keyboardShortcutService = inject(KeyboardShortcutService);
+    private destroyRef = inject(DestroyRef);
     add = output<Unit>();
     select = output<Unit>();
     change = output<{ oldUnit: ForceUnit; newUnit: Unit }>();
@@ -263,6 +265,12 @@ export class UnitDetailsDialogComponent {
     }
 
     constructor() {
+        this.keyboardShortcutService.register({
+            id: 'unit-details-dialog',
+            dialogRef: this.dialogRef,
+            handle: (event) => this.handleShortcutKeyDown(event),
+        }, this.destroyRef);
+
         effect(() => {
             this.unit;
             this.activeTab()
@@ -292,30 +300,22 @@ export class UnitDetailsDialogComponent {
         });
     }
 
-    // Keyboard navigation (Left/Right)
-    onWindowKeyDown(event: KeyboardEvent) {
-        // Ignore if typing in an input/textarea/contentEditable
-        const target = event.target as HTMLElement | null;
-        if (target) {
-            const tag = target.tagName;
-            if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) {
-                return;
-            }
-        }
-        // Ignore with modifiers
-        if (event.ctrlKey || event.altKey || event.metaKey) return;
+    private handleShortcutKeyDown(event: KeyboardEvent): boolean {
+        if (event.ctrlKey || event.altKey || event.metaKey) return false;
 
         if (event.key === 'ArrowLeft') {
             if (this.hasPrev) {
                 this.onPrev();
-                event.preventDefault();
             }
+            return true;
         } else if (event.key === 'ArrowRight') {
             if (this.hasNext) {
                 this.onNext();
-                event.preventDefault();
             }
+            return true;
         }
+
+        return false;
     }
 
     get hasPrev(): boolean {

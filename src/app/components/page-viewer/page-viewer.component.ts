@@ -64,7 +64,7 @@ import {
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { OptionsService } from '../../services/options.service';
 import { DbService } from '../../services/db.service';
-import type { LayoutService } from '../../services/layout.service';
+import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { CBTForce } from '../../models/cbt-force.model';
 import { SvgInteractionService } from './svg-interaction.service';
@@ -107,9 +107,6 @@ interface ShadowDescriptor {
     changeDetection: ChangeDetectionStrategy.OnPush,
     providers: [PageViewerZoomPanService, PageViewerCanvasService],
     imports: [HeatDiffMarkerComponent, PageViewerCanvasControlsComponent],
-    host: {
-        '(window:keydown)': 'onWindowKeyDown($event)'
-    },
     templateUrl: './page-viewer.component.html',
     styleUrls: ['./page-viewer.component.scss']
 })
@@ -121,6 +118,8 @@ export class PageViewerComponent implements AfterViewInit {
     private forceBuilder = inject(ForceBuilderService);
     private optionsService = inject(OptionsService);
     private dbService = inject(DbService);
+    private keyboardShortcutService = inject(KeyboardShortcutService);
+    private destroyRef = inject(DestroyRef);
     canvasService = inject(PageViewerCanvasService);
 
     readonly unit = computed(() => {
@@ -320,6 +319,12 @@ export class PageViewerComponent implements AfterViewInit {
     private fluffImageInjectEffectRef: EffectRef | null = null;
 
     constructor() {
+        this.keyboardShortcutService.register({
+            id: 'page-viewer',
+            active: () => this.viewInitialized() && !!this.unit(),
+            handle: (event) => this.handleShortcutKeyDown(event),
+        }, this.destroyRef);
+
         // Watch for unit changes
         let previousUnit: CBTForceUnit | null = null;
         let unitEffectRunId = 0;
@@ -460,7 +465,7 @@ export class PageViewerComponent implements AfterViewInit {
             }
         });
 
-        inject(DestroyRef).onDestroy(() => this.cleanup());
+        this.destroyRef.onDestroy(() => this.cleanup());
     }
 
     ngAfterViewInit(): void {
@@ -1969,25 +1974,18 @@ export class PageViewerComponent implements AfterViewInit {
 
     // ========== Keyboard Navigation ==========
 
-    onWindowKeyDown(event: KeyboardEvent): void {
-        // Ignore if typing in an input/textarea/contentEditable
-        const target = event.target as HTMLElement | null;
-        if (target) {
-            const tag = target.tagName;
-            if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) {
-                return;
-            }
-        }
-        // Ignore with modifiers
-        if (event.ctrlKey || event.altKey || event.metaKey) return;
+    private handleShortcutKeyDown(event: KeyboardEvent): boolean {
+        if (event.ctrlKey || event.altKey || event.metaKey) return false;
 
         if (event.key === 'ArrowLeft') {
             this.handleArrowNavigation('left');
-            event.preventDefault();
+            return true;
         } else if (event.key === 'ArrowRight') {
             this.handleArrowNavigation('right');
-            event.preventDefault();
+            return true;
         }
+
+        return false;
     }
 
     /**
