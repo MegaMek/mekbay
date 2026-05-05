@@ -17,10 +17,12 @@ function dispatchKey(target: EventTarget, key: string): KeyboardEvent {
 describe('KeyboardShortcutService', () => {
     let service: KeyboardShortcutService;
     let openDialogs: unknown[];
+    let testElements: HTMLElement[];
 
     beforeEach(() => {
         TestBed.resetTestingModule();
         openDialogs = [];
+        testElements = [];
 
         TestBed.configureTestingModule({
             providers: [
@@ -37,7 +39,10 @@ describe('KeyboardShortcutService', () => {
     });
 
     afterEach(() => {
-        TestBed.inject(DOCUMENT).body.innerHTML = '';
+        for (const element of testElements) {
+            element.remove();
+        }
+        testElements = [];
         TestBed.resetTestingModule();
     });
 
@@ -73,6 +78,7 @@ describe('KeyboardShortcutService', () => {
         const document = TestBed.inject(DOCUMENT);
         const input = document.createElement('input');
         document.body.appendChild(input);
+        testElements.push(input);
 
         const skippedHandler = jasmine.createSpy('skipped').and.returnValue(true);
         const optInHandler = jasmine.createSpy('optIn').and.returnValue(true);
