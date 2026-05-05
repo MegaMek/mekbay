@@ -17,6 +17,8 @@
                 <span class="semantic-display-text">{{ displayText() }}</span>
             } @else if (!semanticOnly() && selectedOptions().length === 0) {
                 <span class="placeholder">Any</span>
+            } @else if (!multiselect() && singleSelectedOption(); as selectedOption) {
+                <span class="single-selected-value">{{ getDisplayName(selectedOption.name) }}</span>
             } @else if (compressedPills(); as compressed) {
                 @for (cp of compressed; track cp.state) {
                     <span class="pill"

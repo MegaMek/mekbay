@@ -208,6 +208,23 @@ describe('MultiSelectDropdownComponent', () => {
         expect(placeholder).toBeNull();
     });
 
+    it('renders single-select values as plain text instead of removable pills', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+
+        fixture.componentRef.setInput('multiselect', false);
+        fixture.componentRef.setInput('options', [
+            { name: 'inner-sphere', displayName: 'Inner Sphere' },
+        ]);
+        fixture.componentRef.setInput('selected', ['inner-sphere']);
+        fixture.detectChanges();
+
+        const selectedValue = fixture.nativeElement.querySelector('.single-selected-value') as HTMLElement | null;
+
+        expect(selectedValue?.textContent?.trim()).toBe('Inner Sphere');
+        expect(fixture.nativeElement.querySelector('.pill')).toBeNull();
+        expect(fixture.nativeElement.querySelector('.remove-pill')).toBeNull();
+    });
+
     xit('preserves scroll position when toggling an item in the virtualized list', async () => {
         const fixture = TestBed.createComponent(TestHostComponent);
         fixture.componentInstance.options.set(createOptions(140));
