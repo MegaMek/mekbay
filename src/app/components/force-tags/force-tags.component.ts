@@ -33,6 +33,7 @@
 
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { sanitizeForceTags } from '../../models/force-serialization';
+import { naturalCompare } from '../../utils/sort.util';
 
 export interface ForceTaggableEntry {
     instanceId?: string | null;
@@ -75,7 +76,7 @@ export class ForceTagsComponent {
 
     forceTags = computed(() => {
         this.tagsVersion();
-        return sanitizeForceTags(this.force().tags ?? []);
+        return sanitizeForceTags(this.force().tags ?? []).sort(naturalCompare);
     });
 
     totalTagCount = computed(() => this.forceTags().length);
