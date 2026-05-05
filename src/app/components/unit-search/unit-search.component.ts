@@ -77,6 +77,7 @@ import { SavedSearchesService } from '../../services/saved-searches.service';
 import { generateUUID } from '../../services/ws.service';
 import { GameSystem } from '../../models/common.model';
 import { AS_TYPE_DISPLAY_NAMES, DROPDOWN_FILTERS, RANGE_FILTERS } from '../../services/unit-search-filters.model';
+import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { UnitDetailsPanelComponent } from '../unit-details-panel/unit-details-panel.component';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
@@ -131,6 +132,7 @@ export class UnitSearchComponent {
     private optionsService = inject(OptionsService);
     private taggingService = inject(TaggingService);
     private savedSearchesService = inject(SavedSearchesService);
+    private keyboardShortcutService = inject(KeyboardShortcutService);
 
     readonly useHex = computed(() => this.optionsService.options().ASUseHex);
     readonly cardStyle = computed(() => this.optionsService.options().ASCardStyle);
@@ -363,10 +365,23 @@ export class UnitSearchComponent {
     /** Whether there is a previous unit to navigate to in the inline panel */
     inlinePanelHasPrev = computed(() => this.inlinePanelIndex() > 0);
 
+    /** Previous unit preview for the inline details panel */
+    inlinePanelPrevUnit = computed(() => {
+        const index = this.inlinePanelIndex();
+        return index > 0 ? this.filtersService.filteredUnits()[index - 1] ?? null : null;
+    });
+
     /** Whether there is a next unit to navigate to in the inline panel */
     inlinePanelHasNext = computed(() => {
         const index = this.inlinePanelIndex();
         return index >= 0 && index < this.filtersService.filteredUnits().length - 1;
+    });
+
+    /** Next unit preview for the inline details panel */
+    inlinePanelNextUnit = computed(() => {
+        const index = this.inlinePanelIndex();
+        const units = this.filtersService.filteredUnits();
+        return index >= 0 && index < units.length - 1 ? units[index + 1] ?? null : null;
     });
 
     /** Keys already visible in the chassis view (PV for AS, BV for CBT) */
@@ -938,6 +953,12 @@ export class UnitSearchComponent {
     private advPanelDragStartWidth = 0;
 
     constructor() {
+        this.keyboardShortcutService.register({
+            id: 'unit-search-results',
+            active: () => this.resultsVisible() && this.filtersService.filteredUnits().length > 0,
+            handle: (event) => this.handleSearchResultsShortcutKeyDown(event),
+        }, this.destroyRef);
+
         // Track panel visibility for flicker prevention (must be a plain boolean, not a signal,
         // so the computed reads it as a snapshot without creating a reactive dependency)
         effect(() => {
@@ -1618,20 +1639,11 @@ export class UnitSearchComponent {
             switch (event.key) {
                 case 'ArrowDown':
                     event.preventDefault();
-                    const nextIndex = currentActiveIndex !== null ? Math.min(currentActiveIndex + 1, items.length - 1) : 0;
-                    this.activeIndex.set(nextIndex);
-                    this.scrollToIndex(nextIndex);
+                    this.navigateSearchResults('next', items);
                     break;
                 case 'ArrowUp':
                     event.preventDefault();
-                    if (currentActiveIndex !== null && currentActiveIndex > 0) {
-                        const prevIndex = currentActiveIndex - 1;
-                        this.activeIndex.set(prevIndex);
-                        this.scrollToIndex(prevIndex);
-                    } else {
-                        this.activeIndex.set(null);
-                        this.focusInput();
-                    }
+                    this.navigateSearchResults('previous', items);
                     break;
                 case 'Enter':
                     event.preventDefault();
@@ -1641,6 +1653,51 @@ export class UnitSearchComponent {
                         this.showUnitDetails(items[0]);
                     }
                     break;
+            }
+        }
+    }
+
+    private handleSearchResultsShortcutKeyDown(event: KeyboardEvent): boolean {
+        if (event.ctrlKey || event.altKey || event.metaKey) return false;
+
+        if (event.key === 'ArrowDown') {
+            return this.navigateSearchResults('next');
+        } else if (event.key === 'ArrowUp') {
+            return this.navigateSearchResults('previous');
+        }
+
+        return false;
+    }
+
+    private navigateSearchResults(direction: 'next' | 'previous', items = this.filtersService.filteredUnits()): boolean {
+        if (items.length === 0) return false;
+
+        const currentActiveIndex = this.activeIndex();
+        if (direction === 'next') {
+            const nextIndex = currentActiveIndex !== null ? Math.min(currentActiveIndex + 1, items.length - 1) : 0;
+            this.setActiveResultIndex(nextIndex, items);
+            this.scrollToIndex(nextIndex);
+            return true;
+        }
+
+        if (currentActiveIndex !== null && currentActiveIndex > 0) {
+            const prevIndex = currentActiveIndex - 1;
+            this.setActiveResultIndex(prevIndex, items);
+            this.scrollToIndex(prevIndex);
+        } else {
+            this.setActiveResultIndex(null, items);
+            this.focusInput();
+        }
+        return true;
+    }
+
+    private setActiveResultIndex(index: number | null, items = this.filtersService.filteredUnits()): void {
+        this.activeIndex.set(index);
+
+        if (index !== null && this.showInlinePanel()) {
+            const unit = items[index];
+            if (unit) {
+                this.inlinePanelUnit.set(unit);
             }
         }
     }

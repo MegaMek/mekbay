@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import { Overlay } from '@angular/cdk/overlay';
+import { Dialog } from '@angular/cdk/dialog';
 import { computed, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { GameSystem } from '../../models/common.model';
@@ -25,6 +26,7 @@ describe('UnitSearchComponent card virtualization', () => {
     const filteredUnitsSignal = signal<Unit[]>([]);
     const currentGameSystemSignal = signal(GameSystem.ALPHA_STRIKE);
     const closePanelsRequestSignal = signal({ requestId: 0, exitExpandedView: false });
+    let openDialogs: unknown[];
     const optionsSignal = signal({
         ASUseHex: false,
         ASCardStyle: 'monochrome',
@@ -130,7 +132,18 @@ describe('UnitSearchComponent card virtualization', () => {
         return createEmptyUnit({ name });
     }
 
+    function dispatchWindowKey(key: string): KeyboardEvent {
+        const event = new KeyboardEvent('keydown', {
+            key,
+            bubbles: true,
+            cancelable: true,
+        });
+        window.dispatchEvent(event);
+        return event;
+    }
+
     beforeEach(async () => {
+        openDialogs = [];
         filteredUnitsSignal.set([]);
         optionsSignal.set({
             ASUseHex: false,
@@ -164,6 +177,7 @@ describe('UnitSearchComponent card virtualization', () => {
                 { provide: SavedSearchesService, useValue: savedSearchesServiceStub },
                 { provide: OverlayManagerService, useValue: overlayManagerServiceStub },
                 { provide: DialogsService, useValue: dialogsServiceStub },
+                { provide: Dialog, useValue: { openDialogs } },
                 { provide: Overlay, useValue: overlayStub },
                 { provide: DataService, useValue: dataServiceStub },
                 { provide: TaggingService, useValue: taggingServiceStub },
@@ -235,6 +249,64 @@ describe('UnitSearchComponent card virtualization', () => {
         (component as any).scrollToIndex(4);
 
         expect(scrollToIndex).toHaveBeenCalledOnceWith(1, 'smooth');
+    });
+
+    it('navigates search results with global up and down shortcuts', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const scrollToIndex = jasmine.createSpy('scrollToIndex');
+
+        filteredUnitsSignal.set([
+            createUnit('Unit 1'),
+            createUnit('Unit 2'),
+            createUnit('Unit 3'),
+        ]);
+        filtersServiceStub.expandedView.set(true);
+        layoutServiceStub.windowWidth.set(2200);
+        fixture.detectChanges();
+
+        spyOn<any>(component, 'currentViewport').and.returnValue({
+            scrollToIndex,
+        } as Partial<CdkVirtualScrollViewport>);
+
+        const downEvent = dispatchWindowKey('ArrowDown');
+        expect(downEvent.defaultPrevented).toBeTrue();
+        expect(component.activeIndex()).toBe(0);
+        expect(component.inlinePanelUnit()?.name).toBe('Unit 1');
+        expect(scrollToIndex).toHaveBeenCalledWith(0, 'smooth');
+
+        dispatchWindowKey('ArrowDown');
+        expect(component.activeIndex()).toBe(1);
+        expect(component.inlinePanelUnit()?.name).toBe('Unit 2');
+        expect(scrollToIndex).toHaveBeenCalledWith(1, 'smooth');
+
+        dispatchWindowKey('ArrowUp');
+        expect(component.activeIndex()).toBe(0);
+        expect(component.inlinePanelUnit()?.name).toBe('Unit 1');
+    });
+
+    it('does not navigate search results while a dialog is on top', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const scrollToIndex = jasmine.createSpy('scrollToIndex');
+
+        filteredUnitsSignal.set([
+            createUnit('Unit 1'),
+            createUnit('Unit 2'),
+        ]);
+        filtersServiceStub.expandedView.set(true);
+        fixture.detectChanges();
+
+        spyOn<any>(component, 'currentViewport').and.returnValue({
+            scrollToIndex,
+        } as Partial<CdkVirtualScrollViewport>);
+
+        openDialogs.push({});
+        const event = dispatchWindowKey('ArrowDown');
+
+        expect(event.defaultPrevented).toBeFalse();
+        expect(component.activeIndex()).toBeNull();
+        expect(scrollToIndex).not.toHaveBeenCalled();
     });
 
     it('toggles the visible advanced filter set locally without changing the global game mode', () => {

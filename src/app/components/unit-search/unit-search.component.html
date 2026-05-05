@@ -136,6 +136,8 @@
     <!-- Inline Details Panel (visible when screen permits in expanded view) -->
     @if (showInlinePanel()) {
     <unit-details-panel class="inline-details-panel framed-borders" [unit]="inlinePanelUnit()"
+        [prevUnit]="inlinePanelPrevUnit()"
+        [nextUnit]="inlinePanelNextUnit()"
         [gunnerySkill]="this.filtersService.pilotGunnerySkill()"
         [pilotingSkill]="this.filtersService.pilotPilotingSkill()"
         [hasPrev]="inlinePanelHasPrev()"
