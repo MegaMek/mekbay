@@ -323,6 +323,10 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
                     }
                 }
 
+                if (comparison === 0 && request.sortKey !== 'name') {
+                    comparison = compareUnitsByName(a, b);
+                }
+
                 if (request.sortDirection === 'desc') {
                     return -comparison;
                 }
