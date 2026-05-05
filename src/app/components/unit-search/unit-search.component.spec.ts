@@ -4,6 +4,7 @@ import { Overlay } from '@angular/cdk/overlay';
 import { Dialog } from '@angular/cdk/dialog';
 import { computed, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { NEVER, Subject } from 'rxjs';
 import { GameSystem } from '../../models/common.model';
 import { MEGAMEK_AVAILABILITY_UNKNOWN_SCORE } from '../../models/megamek/availability.model';
 import type { Unit } from '../../models/units.model';
@@ -162,6 +163,8 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.requestClosePanels.calls.reset();
         filtersServiceStub.getMegaMekAvailabilityBadges.and.returnValue([]);
         filtersServiceStub.getMegaMekRaritySortScore.and.returnValue(0);
+        dialogsServiceStub.createDialog.calls.reset();
+        dialogsServiceStub.createDialog.and.returnValue(undefined);
         savedSearchesServiceStub.version.set(0);
         currentGameSystemSignal.set(GameSystem.ALPHA_STRIKE);
 
@@ -254,7 +257,7 @@ describe('UnitSearchComponent card virtualization', () => {
     it('navigates search results with global up and down shortcuts', () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
-        const scrollToIndex = jasmine.createSpy('scrollToIndex');
+        const scrollToMakeVisible = spyOn<any>(component, 'scrollToMakeVisible');
 
         filteredUnitsSignal.set([
             createUnit('Unit 1'),
@@ -265,30 +268,130 @@ describe('UnitSearchComponent card virtualization', () => {
         layoutServiceStub.windowWidth.set(2200);
         fixture.detectChanges();
 
-        spyOn<any>(component, 'currentViewport').and.returnValue({
-            scrollToIndex,
-        } as Partial<CdkVirtualScrollViewport>);
-
         const downEvent = dispatchWindowKey('ArrowDown');
         expect(downEvent.defaultPrevented).toBeTrue();
         expect(component.activeIndex()).toBe(0);
         expect(component.inlinePanelUnit()?.name).toBe('Unit 1');
-        expect(scrollToIndex).toHaveBeenCalledWith(0, 'smooth');
+        expect(scrollToMakeVisible).toHaveBeenCalledWith(0, 'auto');
 
         dispatchWindowKey('ArrowDown');
         expect(component.activeIndex()).toBe(1);
         expect(component.inlinePanelUnit()?.name).toBe('Unit 2');
-        expect(scrollToIndex).toHaveBeenCalledWith(1, 'smooth');
+        expect(scrollToMakeVisible).toHaveBeenCalledWith(1, 'auto');
 
         dispatchWindowKey('ArrowUp');
         expect(component.activeIndex()).toBe(0);
         expect(component.inlinePanelUnit()?.name).toBe('Unit 1');
+        expect(scrollToMakeVisible).toHaveBeenCalledWith(0, 'auto');
+    });
+
+    it('clamps repeated down shortcut navigation at the final result', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const scrollToMakeVisible = spyOn<any>(component, 'scrollToMakeVisible');
+
+        filteredUnitsSignal.set([
+            createUnit('Unit 1'),
+            createUnit('Unit 2'),
+            createUnit('Unit 3'),
+        ]);
+        filtersServiceStub.expandedView.set(true);
+        layoutServiceStub.windowWidth.set(2200);
+        fixture.detectChanges();
+
+        for (let index = 0; index < 8; index++) {
+            dispatchWindowKey('ArrowDown');
+        }
+
+        expect(component.activeIndex()).toBe(2);
+        expect(component.inlinePanelUnit()?.name).toBe('Unit 3');
+        expect(scrollToMakeVisible.calls.allArgs()).toEqual([
+            [0, 'auto'],
+            [1, 'auto'],
+            [2, 'auto'],
+        ]);
+    });
+
+    it('ignores result hover selection briefly after keyboard navigation', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        spyOn<any>(component, 'scrollToMakeVisible');
+
+        filteredUnitsSignal.set([
+            createUnit('Unit 1'),
+            createUnit('Unit 2'),
+            createUnit('Unit 3'),
+        ]);
+        filtersServiceStub.expandedView.set(true);
+        fixture.detectChanges();
+
+        dispatchWindowKey('ArrowDown');
+        component.onResultPointerEnter(2);
+
+        expect(component.activeIndex()).toBe(0);
+
+        (component as any).resultPointerHoverSuppressedUntil = 0;
+        component.onResultPointerEnter(2);
+
+        expect(component.activeIndex()).toBe(2);
+    });
+
+    it('uses instant scrolling for inline panel previous and next navigation', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const scrollToMakeVisible = spyOn<any>(component, 'scrollToMakeVisible');
+        const units = [
+            createUnit('Unit 1'),
+            createUnit('Unit 2'),
+            createUnit('Unit 3'),
+        ];
+
+        filteredUnitsSignal.set(units);
+        component.inlinePanelUnit.set(units[1]);
+        fixture.detectChanges();
+
+        component.onInlinePanelNext();
+        expect(component.activeIndex()).toBe(2);
+        expect(component.inlinePanelUnit()?.name).toBe('Unit 3');
+        expect(scrollToMakeVisible).toHaveBeenCalledWith(2, 'auto');
+
+        component.onInlinePanelPrev();
+        expect(component.activeIndex()).toBe(1);
+        expect(component.inlinePanelUnit()?.name).toBe('Unit 2');
+        expect(scrollToMakeVisible).toHaveBeenCalledWith(1, 'auto');
+    });
+
+    it('uses instant scrolling for unit details dialog navigation', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const scrollToMakeVisible = spyOn<any>(component, 'scrollToMakeVisible');
+        const indexChange = new Subject<number>();
+        const add = new Subject<void>();
+        const units = [
+            createUnit('Unit 1'),
+            createUnit('Unit 2'),
+            createUnit('Unit 3'),
+        ];
+
+        dialogsServiceStub.createDialog.and.returnValue({
+            componentInstance: { indexChange, add },
+            closed: NEVER,
+        });
+        filteredUnitsSignal.set(units);
+        fixture.detectChanges();
+
+        component.showUnitDetails(units[0]);
+        indexChange.next(2);
+
+        expect(component.activeIndex()).toBe(2);
+        expect(component.inlinePanelUnit()?.name).toBe('Unit 3');
+        expect(scrollToMakeVisible).toHaveBeenCalledWith(2, 'auto');
     });
 
     it('does not navigate search results while a dialog is on top', () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
-        const scrollToIndex = jasmine.createSpy('scrollToIndex');
+        const scrollToMakeVisible = spyOn<any>(component, 'scrollToMakeVisible');
 
         filteredUnitsSignal.set([
             createUnit('Unit 1'),
@@ -297,16 +400,12 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.expandedView.set(true);
         fixture.detectChanges();
 
-        spyOn<any>(component, 'currentViewport').and.returnValue({
-            scrollToIndex,
-        } as Partial<CdkVirtualScrollViewport>);
-
         openDialogs.push({});
         const event = dispatchWindowKey('ArrowDown');
 
         expect(event.defaultPrevented).toBeFalse();
         expect(component.activeIndex()).toBeNull();
-        expect(scrollToIndex).not.toHaveBeenCalled();
+        expect(scrollToMakeVisible).not.toHaveBeenCalled();
     });
 
     it('toggles the visible advanced filter set locally without changing the global game mode', () => {

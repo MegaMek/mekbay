@@ -173,9 +173,11 @@ export class UnitSearchComponent {
     private searchDebounceTimer: any;
     private heightTrackingDebounceTimer: any;
     private readonly SEARCH_DEBOUNCE_MS = 300;
+    private resultPointerHoverSuppressedUntil = 0;
 
     private static readonly CHORD_ACTIVATE_KEY = 'f';
     private static readonly CHORD_TIMEOUT_MS = 1500;
+    private static readonly RESULT_POINTER_HOVER_SUPPRESSION_MS = 160;
     private static readonly FILTER_CHORD_BINDINGS: { key: string; filterKey: string }[] = [
         // Alpha Strike
         { key: 'p', filterKey: 'as.PV' },
@@ -1672,29 +1674,52 @@ export class UnitSearchComponent {
     private navigateSearchResults(direction: 'next' | 'previous', items = this.filtersService.filteredUnits()): boolean {
         if (items.length === 0) return false;
 
+        this.suppressResultPointerHover();
         const currentActiveIndex = this.activeIndex();
         if (direction === 'next') {
             const nextIndex = currentActiveIndex !== null ? Math.min(currentActiveIndex + 1, items.length - 1) : 0;
-            this.setActiveResultIndex(nextIndex, items);
-            this.scrollToIndex(nextIndex);
+            if (nextIndex === currentActiveIndex) return true;
+
+            this.selectResultIndex(nextIndex, items, 'auto');
             return true;
         }
 
         if (currentActiveIndex !== null && currentActiveIndex > 0) {
             const prevIndex = currentActiveIndex - 1;
-            this.setActiveResultIndex(prevIndex, items);
-            this.scrollToIndex(prevIndex);
+            this.selectResultIndex(prevIndex, items, 'auto');
         } else {
-            this.setActiveResultIndex(null, items);
+            if (currentActiveIndex !== null) {
+                this.setActiveResultIndex(null, items);
+            }
             this.focusInput();
         }
         return true;
     }
 
+    onResultPointerEnter(index: number): void {
+        if (this.shouldIgnoreResultPointerHover()) return;
+
+        this.activeIndex.set(index);
+    }
+
+    private suppressResultPointerHover(): void {
+        this.resultPointerHoverSuppressedUntil = Date.now() + UnitSearchComponent.RESULT_POINTER_HOVER_SUPPRESSION_MS;
+    }
+
+    private shouldIgnoreResultPointerHover(): boolean {
+        return Date.now() < this.resultPointerHoverSuppressedUntil;
+    }
+
+    private selectResultIndex(index: number, items = this.filtersService.filteredUnits(), behavior: ScrollBehavior = 'smooth'): void {
+        this.suppressResultPointerHover();
+        this.setActiveResultIndex(index, items);
+        this.scrollToMakeVisible(index, behavior);
+    }
+
     private setActiveResultIndex(index: number | null, items = this.filtersService.filteredUnits()): void {
         this.activeIndex.set(index);
 
-        if (index !== null && this.showInlinePanel()) {
+        if (index !== null) {
             const unit = items[index];
             if (unit) {
                 this.inlinePanelUnit.set(unit);
@@ -1702,15 +1727,15 @@ export class UnitSearchComponent {
         }
     }
 
-    private scrollToIndex(index: number) {
-        this.currentViewport()?.scrollToIndex(this.getViewportItemIndex(index), 'smooth');
+    private scrollToIndex(index: number, behavior: ScrollBehavior = 'smooth') {
+        this.currentViewport()?.scrollToIndex(this.getViewportItemIndex(index), behavior);
     }
 
     /**
      * Scroll to make the item at the given index visible, but only if it's not already visible.
      * If scrolling is needed, positions the item at the nearest edge (top or bottom).
      */
-    private scrollToMakeVisible(index: number) {
+    private scrollToMakeVisible(index: number, behavior: ScrollBehavior = 'smooth') {
         const vp = this.currentViewport();
         if (!vp) return;
         const viewportIndex = this.getViewportItemIndex(index);
@@ -1721,7 +1746,7 @@ export class UnitSearchComponent {
         // Check if the item is within the rendered range
         if (viewportIndex < renderedRange.start || viewportIndex >= renderedRange.end) {
             // Item is not rendered at all, need to scroll to it
-            vp.scrollToIndex(viewportIndex, 'smooth');
+            vp.scrollToIndex(viewportIndex, behavior);
             return;
         }
 
@@ -1731,7 +1756,7 @@ export class UnitSearchComponent {
 
         if (localIndex < 0 || localIndex >= items.length) {
             // Safety fallback
-            vp.scrollToIndex(viewportIndex, 'smooth');
+            vp.scrollToIndex(viewportIndex, behavior);
             return;
         }
 
@@ -1753,11 +1778,11 @@ export class UnitSearchComponent {
         if (isAbove) {
             // Item is above the visible area - scroll up by the exact amount needed
             const scrollAmount = vpRect.top - itemRect.top;
-            vp.scrollToOffset(currentOffset - scrollAmount, 'smooth');
+            vp.scrollToOffset(currentOffset - scrollAmount, behavior);
         } else {
             // Item is below the visible area - scroll down by the exact amount needed
             const scrollAmount = itemRect.bottom - vpRect.bottom;
-            vp.scrollToOffset(currentOffset + scrollAmount, 'smooth');
+            vp.scrollToOffset(currentOffset + scrollAmount, behavior);
         }
     }
 
@@ -1829,13 +1854,7 @@ export class UnitSearchComponent {
 
         // Track navigation within the dialog to keep activeIndex in sync
         const indexChangeSub = ref.componentInstance?.indexChange.subscribe((newIndex: number) => {
-            this.activeIndex.set(newIndex);
-            this.scrollToMakeVisible(newIndex);
-            // Fetch fresh to avoid closure over stale filteredUnits
-            const currentFilteredUnits = this.filtersService.filteredUnits();
-            if (newIndex < currentFilteredUnits.length) {
-                this.inlinePanelUnit.set(currentFilteredUnits[newIndex]);
-            }
+            this.selectResultIndex(newIndex, this.filtersService.filteredUnits(), 'auto');
         });
 
         const addSub = ref.componentInstance?.add.subscribe(() => {
@@ -1904,7 +1923,7 @@ export class UnitSearchComponent {
     }
 
     onUnitTableRowPointerEnter(event: DataTableRowPointerEnterEvent<Unit>): void {
-        this.activeIndex.set(event.index);
+        this.onResultPointerEnter(event.index);
     }
 
     isSortActive(...keysOrGroups: string[]): boolean {
@@ -2259,10 +2278,7 @@ export class UnitSearchComponent {
     onInlinePanelPrev(): void {
         const index = this.inlinePanelIndex();
         if (index > 0) {
-            const prevUnit = this.filtersService.filteredUnits()[index - 1];
-            this.inlinePanelUnit.set(prevUnit);
-            this.activeIndex.set(index - 1);
-            this.scrollToMakeVisible(index - 1);
+            this.selectResultIndex(index - 1, this.filtersService.filteredUnits(), 'auto');
         }
     }
 
@@ -2271,10 +2287,7 @@ export class UnitSearchComponent {
         const index = this.inlinePanelIndex();
         const filteredUnits = this.filtersService.filteredUnits();
         if (index >= 0 && index < filteredUnits.length - 1) {
-            const nextUnit = filteredUnits[index + 1];
-            this.inlinePanelUnit.set(nextUnit);
-            this.activeIndex.set(index + 1);
-            this.scrollToMakeVisible(index + 1);
+            this.selectResultIndex(index + 1, filteredUnits, 'auto');
         }
     }
 

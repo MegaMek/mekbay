@@ -190,7 +190,7 @@
                         longPress
                         [class.selected]="isUnitSelected(unit)"
                         [class.active]="activeIndex() === getCardUnitIndex(rowIndex, columnIndex)"
-                        (pointerenter)="activeIndex.set(getCardUnitIndex(rowIndex, columnIndex))"
+                        (pointerenter)="onResultPointerEnter(getCardUnitIndex(rowIndex, columnIndex))"
                         (shortPress)="onUnitCardClick(unit, $event)"
                         (longPress)="multiSelectUnit(unit)">
                         <alpha-strike-card
@@ -284,7 +284,7 @@
                     [class.selected]="isUnitSelected(unit)"
                     [class.active]="activeIndex() === i"
                     [class.panel-selected]="showInlinePanel() && inlinePanelUnit()?.name === unit.name"
-                    (pointerenter)="activeIndex.set(i)">
+                    (pointerenter)="onResultPointerEnter(i)">
 
                     @if (this.expandedView()) {
                         <!-- Expanded View Cards -->
