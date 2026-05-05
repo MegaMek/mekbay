@@ -703,7 +703,7 @@ export class UnitSearchComponent {
             columns.push({
                 id: 'tags',
                 header: 'Tags',
-                track: '120px',
+                track: '230px',
                 cellTemplate: tagsCell,
                 headerClass: 'as-th-tags',
                 cellClass: 'as-td-tags',
@@ -867,7 +867,7 @@ export class UnitSearchComponent {
             {
                 id: 'tags',
                 header: 'Tags',
-                track: '120px',
+                track: '230px',
                 cellTemplate: tagsCell,
                 headerClass: 'as-th-tags',
                 cellClass: 'as-td-tags',
