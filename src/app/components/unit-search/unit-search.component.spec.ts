@@ -254,6 +254,41 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(scrollToIndex).toHaveBeenCalledOnceWith(1, 'smooth');
     });
 
+    it('expands the search view when selecting table view from compact mode', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+
+        optionsServiceStub.setOption.calls.reset();
+        filtersServiceStub.expandedView.set(false);
+        fixture.detectChanges();
+
+        component.selectViewMode('table');
+
+        expect(filtersServiceStub.expandedView()).toBeTrue();
+        expect(component.viewMode()).toBe('table');
+        expect(optionsServiceStub.setOption).toHaveBeenCalledOnceWith('unitSearchViewMode', 'table');
+    });
+
+    it('disables Alpha Strike card view while in Classic mode', () => {
+        currentGameSystemSignal.set(GameSystem.CLASSIC);
+        optionsSignal.set({
+            ...optionsSignal(),
+            unitSearchViewMode: 'list',
+        });
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+
+        fixture.detectChanges();
+        const cardOption = component.viewModeOptions().find(option => option.mode === 'card');
+        optionsServiceStub.setOption.calls.reset();
+
+        component.selectViewMode('card');
+
+        expect(cardOption?.disabled).toBeTrue();
+        expect(component.viewMode()).toBe('list');
+        expect(optionsServiceStub.setOption).not.toHaveBeenCalled();
+    });
+
     it('navigates search results with global up and down shortcuts', () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;

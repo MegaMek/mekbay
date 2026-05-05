@@ -29,6 +29,99 @@
     display: flex;
 }
 
+.view-mode-menu {
+    min-width: 240px;
+    padding: 4px;
+    background-color: var(--background-color-menu);
+    color: #ddd;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    box-sizing: border-box;
+}
+
+.view-mode-option {
+    width: 100%;
+    min-height: 48px;
+    padding: 8px 10px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    text-align: left;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.view-mode-option:hover:not(:disabled),
+.view-mode-option.active {
+    background-color: var(--background-highlight);
+    color: white;
+}
+
+.view-mode-option.active .view-mode-option-label {
+    color: var(--bt-yellow);
+}
+
+.view-mode-option:disabled {
+    cursor: not-allowed;
+    color: #666;
+}
+
+.view-mode-option-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+}
+
+.view-mode-option-icon svg {
+    width: 22px;
+    height: 22px;
+}
+
+.view-mode-option-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.view-mode-option-label,
+.view-mode-option-caption {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.view-mode-option-label {
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.view-mode-option-caption {
+    color: var(--text-color-secondary);
+    font-size: 0.75rem;
+}
+
+.view-mode-option:disabled .view-mode-option-caption {
+    color: #555;
+}
+
+.view-mode-option-hint {
+    color: var(--bt-yellow);
+    font-size: 0.65rem;
+    font-weight: 700;
+}
+
+:host ::ng-deep .cdk-overlay-pane.view-mode-menu-overlay-pane {
+    z-index: 1002;
+}
+
 .adv-panel {
     position: absolute;
     box-sizing: border-box;
