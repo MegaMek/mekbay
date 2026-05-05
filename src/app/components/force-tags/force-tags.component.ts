@@ -76,7 +76,8 @@ export class ForceTagsComponent {
 
     forceTags = computed(() => {
         this.tagsVersion();
-        return sanitizeForceTags(this.force().tags ?? []).sort(naturalCompare);
+        const tags = sanitizeForceTags(this.force().tags ?? []);
+        return this.mode() === 'full' ? tags.sort(naturalCompare) : tags;
     });
 
     totalTagCount = computed(() => this.forceTags().length);
