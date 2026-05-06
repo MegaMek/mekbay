@@ -85,17 +85,16 @@
                                 }
                                 <img [src]="force.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'" class="save-state-icon" alt="Cloud status"
                                     title="{{ force.cloud ? 'Stored online' : 'Not stored online' }}" />
-
-                                <span class="timestamp">{{ force.timestamp | formatTimestamp }}</span>
                                 @if (force.type === 'as') {
                                     @if (force.pv && force.pv > 0) {
-                                        <span class="force-bv hangar-force-bv">PV: {{ force.pv | number }}</span>
+                                        <span class="force-bv">PV: {{ force.pv | number }}</span>
                                     }
                                 } @else {
                                     @if (force.bv && force.bv > 0) {
-                                        <span class="force-bv hangar-force-bv">BV: {{ force.bv | number }}</span>
+                                        <span class="force-bv">BV: {{ force.bv | number }}</span>
                                     }
                                 }
+                                <span class="timestamp">{{ force.timestamp | formatTimestamp }}</span>
                             </div>
                             <force-tags
                                 class="force-entry-tags"
