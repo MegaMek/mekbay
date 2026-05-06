@@ -255,7 +255,7 @@
                                     </button>
                                 </span>
                             </div>
-                            <div class="force-info">
+                            <div class="toe-info">
                                 @for (gt of op.gameTypes; track gt) {
                                     <span class="game-type-badge" [class.as]="gt === 'as'">{{ gt === 'as' ? 'AS' : 'CBT' }}</span>
                                 }
@@ -317,7 +317,7 @@
                                 }
                                 <div class="force-name">{{ org.name || 'Unnamed Organization' }}</div>
                             </div>
-                            <div class="force-info">
+                            <div class="org-info">
                                 @if (org.local) {
                                     <img src="/images/floppy.svg" class="save-state-icon" alt="Saved locally" title="Stored locally" />
                                 }

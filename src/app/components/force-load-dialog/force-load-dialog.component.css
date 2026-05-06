@@ -145,6 +145,8 @@
     border: 1px solid #811313;
 }
 
+.toe-info,
+.org-info,
 .force-info {
     grid-area: info;
     display: flex;
@@ -158,7 +160,14 @@
     justify-content: flex-end;
 }
 
-.timestamp {
+.toe-info .timestamp,
+.org-info .timestamp {
+    color: var(--text-color-tertiary);
+    font-size: 0.9em;
+    text-align: right;
+}
+
+.force-info .timestamp {
     color: var(--text-color-tertiary);
     font-size: 0.7em;
     text-align: right;
@@ -590,10 +599,20 @@
             "tags";
     }
 
+    .toe-info,
+    .org-info,
     .force-info {
         justify-content: flex-start;
         margin-left: 0;
         text-align: left;
+    }
+
+    .force-info .timestamp {
+        flex-basis: auto;
+
+        &::before {
+            content: ' · ';
+        }
     }
 
 }
