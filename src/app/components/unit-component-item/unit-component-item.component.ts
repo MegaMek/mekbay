@@ -61,7 +61,8 @@ export class UnitComponentItemComponent {
     componentEl = viewChild<ElementRef<HTMLElement>>('component');
 
     typeClass = computed(() => {
-        return getWeaponTypeCSSClass(this.comp()?.t ?? '');
+        const component = this.comp();
+        return getWeaponTypeCSSClass(component?.t ?? '', component?.eq);
     });
 
     hostDisplay = computed(() => this.displayStyle() === 'text' ? 'inline' : 'block');

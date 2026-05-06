@@ -528,7 +528,11 @@ export class AmmoEquipment extends Equipment {
 
     constructor(data: EquipmentRawData) {
         super({ ...data, type: 'ammo' });
-        this.ammo = merge(AMMO_DEFAULTS, data.ammo);
+        const ammo = merge(AMMO_DEFAULTS, data.ammo);
+        this.ammo = {
+            ...ammo,
+            category: data.ammo?.category ?? getAmmoCategory(ammo.type)
+        };
         this.munitionType = new Set(this.ammo.munitionType);
     }
 

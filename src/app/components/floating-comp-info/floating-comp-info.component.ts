@@ -36,7 +36,7 @@ import { Component, input, computed, inject, ChangeDetectionStrategy } from '@an
 import type { UnitComponent } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
 import type { Unit } from '../../models/units.model';
-import { type Equipment, WeaponEquipment } from '../../models/equipment.model';
+import { AmmoEquipment, type Equipment, WeaponEquipment } from '../../models/equipment.model';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
 
 /*
@@ -85,10 +85,17 @@ export class FloatingCompInfoComponent {
     }
 
     get typeClass(): string {
-        return getWeaponTypeCSSClass(this.comp()?.t ?? '');
+        const currentComp = this.comp();
+        return getWeaponTypeCSSClass(currentComp?.t ?? '', this.equipment() ?? currentComp?.eq);
     }
 
     get typeLabel(): string {
+        const currentComp = this.comp();
+        if (currentComp?.t === 'X') {
+            const equipment = this.equipment() ?? currentComp.eq;
+            return equipment instanceof AmmoEquipment ? `Ammo (${equipment.category})` : 'Ammo';
+        }
+
         return this.typeClass.charAt(0).toUpperCase() + this.typeClass.slice(1);
     }
 
