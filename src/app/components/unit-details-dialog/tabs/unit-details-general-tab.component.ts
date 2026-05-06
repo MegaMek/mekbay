@@ -53,52 +53,22 @@ import {
     type SourcebookInfoDialogUnknownSource,
 } from '../../sourcebook-info-dialog/sourcebook-info-dialog.component';
 import type { Sourcebook } from '../../../models/sourcebook.model';
+import {
+    buildComponentMatrixLayout,
+    createComponentMatrixAreas,
+    hasComponentMatrixLayout,
+    normalizeComponentLocation,
+    type ComponentMatrixAreaView,
+} from './unit-details-component-matrix.util';
 
-// Matrix layout types
-type SlotSpec = string | string[];
-type MatrixSpec = SlotSpec[][];
 type SourceListEntry = Sourcebook & { sourceAnnotations: string[] };
 type ComponentDetailsDisplayStyle = 'normal' | 'additional';
 type ComponentLocationGroup = { key: string; l: string; components: UnitComponent[] };
+type ComponentListOptions = { includeAmmo: boolean; splitMultiLocation: boolean };
 
 const ADDITIONAL_COMPONENT_FLAGS = ['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_JUMP_JET'];
 const CASE_COMPONENT_FLAGS = ['F_CASE', 'F_CASE_II'];
 const WEAPON_MODE_MISC_COMPONENT_FLAGS = ['F_CLUB', 'F_HAND_WEAPON'];
-
-// Matrix layouts by unit type
-// '~' = if no content, expand the area from above
-// '^' = if no content, borrow content from above (cannot move past anchor)
-// '!' prefix = anchor (content cannot move upward, area cannot expand downward)
-const MATRIX_ALIGNMENT: Record<string, MatrixSpec> = {
-    Mek: [
-        [['LA', 'FLL'], 'HD', ['RA', 'FRL']],
-        ['LT', 'CT', 'RT'],
-        [['LL', 'RLL'], ['CL', '~'], ['RL', 'RRL']],
-    ],
-    Aero: [
-        ['FLS', 'NOS', 'FRS'],
-        [['LBS', 'LWG', 'LS'], ['HULL', 'FSLG', '~'], ['RBS', 'RWG', 'RS']],
-        ['~', 'WNG', '~'],
-        [['ALS', '~'], 'AFT', ['ARS', '~']],
-    ],
-    Tank: [
-        [['!FRLS', '^'], ['FR', '^'], ['!FRRS', 'FT', '^']],
-        ['RS', ['BD', 'GUN'], ['LS', '^']],
-        [['!RRLS', '~'], ['RR', '~'], ['!RRRS', '^', '~']],
-        ['~', '~', ['TU', '~']]
-    ],
-    Naval: [
-        [['!FRLS', '^'], ['FR', '^'], ['!FRRS', 'FT', '^']],
-        ['RS', ['BD', 'GUN'], ['LS', '^']],
-        [['!RRLS', '~'], ['RR', '~'], ['!RRRS', '^', '~']],
-        ['~', '~', ['TU', '~']]
-    ],
-    VTOL: [
-        ['RS', ['FR', '^'], ['RO', '^']],
-        ['~', 'BD', ['LS', '^']],
-        ['~', ['RR', '~'], ['TU', '~']],
-    ],
-};
 
 @Component({
     selector: 'unit-details-general-tab',
@@ -120,15 +90,16 @@ export class UnitDetailsGeneralTabComponent {
 
     // Computed state - derived from unit
     groupedBays = computed(() => this.getGroupedBaysByLocation());
-    components = computed(() => this.getComponents(false));
-    componentsForMatrix = computed(() => this.getComponents(true));
+    hasBays = computed(() => this.unit()?.comp.some(component => component.bay && component.bay.length > 0) ?? false);
+    components = computed(() => this.getComponents({ includeAmmo: this.showDefaultComponentListAmmoBlocks(), splitMultiLocation: false }));
+    groupedLayoutComponents = computed(() => this.getComponents({ includeAmmo: this.showFilteredComponents(), splitMultiLocation: true }));
     componentLocationGroups = computed(() => this.getComponentLocationGroups());
     showFilteredComponents = computed(() => this.optionsService.options().showFilteredComponents);
     additionalComponentEntries = computed(() => this.getAdditionalComponentEntries());
     additionalComponentSummary = computed(() => this.getAdditionalComponentSummary());
     additionalComponentSummaryInteractive = computed(() => !this.showFilteredComponents());
     componentViewModeAvailable = computed(() => this.hasDetailOnlyComponents());
-    useGroupedComponentList = computed(() => this.layoutService.isPhone());
+    useGroupedComponentList = computed(() => this.layoutService.isPhone() && !this.hasBays());
 
     setComponentViewMode(showDetails: boolean): void {
         if (this.showFilteredComponents() === showDetails) return;
@@ -136,12 +107,10 @@ export class UnitDetailsGeneralTabComponent {
     }
 
     // Matrix layout state
-    useMatrixLayout = computed(() => {
-        const matrix = MATRIX_ALIGNMENT[this.unit()?.type];
-        return Array.isArray(matrix) && this.layoutService.windowWidth() >= 780;
-    });
+    useMatrixLayout = computed(() => hasComponentMatrixLayout(this.unit()?.type) && this.layoutService.windowWidth() >= 780);
     showGroupedComponentDetails = computed(() => this.showFilteredComponents() && (this.useMatrixLayout() || this.useGroupedComponentList()));
-    showAmmoSummary = computed(() => !this.showGroupedComponentDetails());
+    showDefaultComponentListAmmoBlocks = computed(() => this.showFilteredComponents() && this.layoutService.isMobile() && !this.useMatrixLayout() && !this.useGroupedComponentList() && !this.hasBays());
+    showAmmoSummary = computed(() => !this.showGroupedComponentDetails() && !this.showDefaultComponentListAmmoBlocks());
     showAdditionalComponentSummary = computed(() => !this.showGroupedComponentDetails());
 
     /** 
@@ -151,15 +120,12 @@ export class UnitDetailsGeneralTabComponent {
     private matrixData = computed(() => {
         const unit = this.unit();
         const groupedBays = this.groupedBays();
-        const componentsForMatrix = this.componentsForMatrix();
-        return this.buildMatrixLayout(unit, groupedBays, componentsForMatrix);
+        const groupedLayoutComponents = this.groupedLayoutComponents();
+        return buildComponentMatrixLayout(unit?.type, groupedBays, groupedLayoutComponents, (left, right) => this.compareGroupedComponents(left, right));
     });
 
     gridAreas = computed(() => this.matrixData().gridAreas);
-    matrixAreaCodes = computed(() => this.matrixData().matrixAreaCodes);
-    private areaNameToCodes = computed(() => this.matrixData().areaNameToCodes);
-    private baysForArea = computed(() => this.matrixData().baysForArea);
-    private compsForArea = computed(() => this.matrixData().compsForArea);
+    matrixAreas = computed<ComponentMatrixAreaView[]>(() => createComponentMatrixAreas(this.matrixData(), this.caseByLocation()));
 
     /** Map of normalized location code -> '[CASE]' or '[CASE II]' for locations that have CASE equipment */
     caseByLocation = computed<Map<string, string>>(() => {
@@ -171,7 +137,7 @@ export class UnitDetailsGeneralTabComponent {
             let label: string | undefined;
             if (comp.eq.hasFlag('F_CASE_II')) label = '[CASE II]';
             else if (comp.eq.hasFlag('F_CASE') || comp.eq.hasFlag('F_CASE_P')) label = '[CASE]';
-            if (label) result.set(this.normalizeLoc(comp.l), label);
+            if (label) result.set(normalizeComponentLocation(comp.l), label);
         }
         return result;
     });
@@ -249,12 +215,6 @@ export class UnitDetailsGeneralTabComponent {
         return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     }
 
-
-
-    hasBays(): boolean {
-        return this.unit()?.comp.some(c => c.bay && c.bay.length > 0) ?? false;
-    }
-
     getQuirkClass(quirk: string): string {
         const q = this.dataService.getQuirkByName(quirk);
         if (!q) return '';
@@ -311,25 +271,6 @@ export class UnitDetailsGeneralTabComponent {
         return keys;
     }
 
-    getAreaLabel(areaName: string): string {
-        const areaNameToCodes = this.areaNameToCodes();
-        const baysForArea = this.baysForArea();
-        const compsForArea = this.compsForArea();
-        const codes = areaNameToCodes.get(areaName) ?? [areaName];
-        const present = new Set<string>();
-        for (const code of codes) {
-            if ((baysForArea.get(code)?.length ?? 0) > 0) present.add(code);
-            if ((compsForArea.get(code)?.length ?? 0) > 0) present.add(code);
-        }
-        if (present.size === 0) return '';
-        const display = Array.from(present).map(c => c === 'ALL' ? '*' : c);
-        return display.join('/');
-    }
-
-    getComponentsForArea(areaName: string): UnitComponent[] {
-        return this.compsForArea().get(areaName) ?? [];
-    }
-
     getComponentDisplayStyle(comp: UnitComponent): ComponentDetailsDisplayStyle {
         return this.isAdditionalComponent(comp) ? 'additional' : 'normal';
     }
@@ -360,24 +301,9 @@ export class UnitDetailsGeneralTabComponent {
         return false;
     }
 
-    getBaysForArea(areaName: string): UnitComponent[] {
-        return this.baysForArea().get(areaName) ?? [];
-    }
-
-    areaHasBays(areaName: string): boolean {
-        return (this.baysForArea().get(areaName)?.length || 0) > 0;
-    }
-
-    getCaseLabelForArea(areaName: string): string {
-        const caseMap = this.caseByLocation();
-        const codes = this.areaNameToCodes().get(areaName) ?? [areaName];
-        const code = codes.find(c => caseMap.has(c));
-        return code ? caseMap.get(code)! : '';
-    }
-
     /** Returns the CASE label for a raw location string */
     getCaseLabel(loc: string): string {
-        return this.caseByLocation().get(this.normalizeLoc(loc)) ?? '';
+        return this.caseByLocation().get(normalizeComponentLocation(loc)) ?? '';
     }
 
     features = computed<string[]>(() => {
@@ -388,364 +314,11 @@ export class UnitDetailsGeneralTabComponent {
         return u.features.filter(f => f && !f.startsWith("Bay:")).map((value) => value.replaceAll("Chassis Mod:", "")).sort();
     });
 
-    // Matrix layout methods
-    private normalizeLoc(loc: string): string {
-        if (!loc) return 'UNK';
-        let norm = (loc === '*') ? 'ALL' : loc.trim();
-        norm = norm.replace(/[^A-Za-z0-9_-]/g, '');
-        if (/^[0-9]/.test(norm)) norm = 'L' + norm;
-        if (!norm) norm = 'UNK';
-        return norm;
-    }
-
-    /** Result type for buildMatrixLayout */
-    private static readonly EMPTY_MATRIX_DATA = {
-        gridAreas: '',
-        matrixAreaCodes: [] as string[],
-        areaNameToCodes: new Map<string, string[]>(),
-        baysForArea: new Map<string, UnitComponent[]>(),
-        compsForArea: new Map<string, UnitComponent[]>()
-    };
-
-    /**
-     * Pure function that builds all matrix layout data.
-     * Returns an object containing gridAreas, areaCodes, and lookup Maps.
-     */
-    private buildMatrixLayout(
-        unit: Unit,
-        groupedBays: Array<{ l: string, p: number, bays: UnitComponent[] }>,
-        componentsForMatrix: UnitComponent[]
-    ): typeof UnitDetailsGeneralTabComponent.EMPTY_MATRIX_DATA {
-        const matrix = MATRIX_ALIGNMENT[unit?.type];
-        if (!Array.isArray(matrix)) {
-            return UnitDetailsGeneralTabComponent.EMPTY_MATRIX_DATA;
-        }
-
-        // Helper to get bays by location (pure, no caching needed in computed context)
-        const getBaysByLoc = (loc: string): UnitComponent[] => {
-            const target = loc;
-            const matched = groupedBays.filter(g => this.normalizeLoc(g.l) === target);
-            if (!matched.length) return [];
-            const byName = new Map<string, UnitComponent>();
-            for (const g of matched) {
-                for (const bay of g.bays) {
-                    const key = bay.n ?? '';
-                    if (!byName.has(key)) byName.set(key, { ...bay });
-                    else {
-                        const agg = byName.get(key)!;
-                        agg.q = (agg.q || 1) + (bay.q || 1);
-                    }
-                }
-            }
-            return Array.from(byName.values()).sort((a, b) => {
-                if (a.n === b.n) return 0;
-                if (a.n === undefined) return 1;
-                if (b.n === undefined) return -1;
-                return a.n!.localeCompare(b.n!);
-            });
-        };
-
-        // Helper to get components by location
-        const getCompsForLoc = (loc: string): UnitComponent[] => {
-            return componentsForMatrix.filter(c => this.normalizeLoc(c.l) === loc);
-        };
-
-        const { names, areaCodes } = this.normalizeMatrixPure(matrix, getBaysByLoc, getCompsForLoc);
-        const filteredNames = names.filter(row => row.some(name => name !== '.'));
-
-        const matrixDeclaredCodes = new Set<string>();
-        for (const codes of areaCodes.values()) {
-            for (const c of codes) matrixDeclaredCodes.add(c);
-        }
-
-        const allUnitLocs = new Set<string>();
-        for (const comp of componentsForMatrix) {
-            if (comp.l) allUnitLocs.add(this.normalizeLoc(comp.l));
-        }
-        for (const g of groupedBays) {
-            if (g.l) allUnitLocs.add(this.normalizeLoc(g.l));
-        }
-
-        const extraCodes: string[] = [];
-        for (const loc of allUnitLocs) {
-            if (!matrixDeclaredCodes.has(loc)) {
-                extraCodes.push(loc);
-            }
-        }
-
-        if (extraCodes.length) {
-            const cols = matrix[0].length;
-            let i = 0;
-            while (i < extraCodes.length) {
-                const row: string[] = Array(cols).fill('.');
-                for (let c = 0; c < cols && i < extraCodes.length; c++, i++) {
-                    const code = extraCodes[i];
-                    row[c] = code;
-                    if (!areaCodes.has(code)) {
-                        areaCodes.set(code, [code]);
-                    }
-                }
-                filteredNames.push(row);
-            }
-        }
-
-        if (!filteredNames.length) {
-            return UnitDetailsGeneralTabComponent.EMPTY_MATRIX_DATA;
-        }
-
-        const gridAreas = this.computeGridAreas(filteredNames);
-
-        const seen = new Set<string>();
-        const matrixAreaCodes: string[] = [];
-        for (const row of filteredNames) {
-            for (const name of row) {
-                if (name === '.') continue;
-                if (!seen.has(name)) {
-                    seen.add(name);
-                    matrixAreaCodes.push(name);
-                }
-            }
-        }
-
-        // Build area caches
-        const baysForArea = new Map<string, UnitComponent[]>();
-        const compsForArea = new Map<string, UnitComponent[]>();
-
-        for (const area of matrixAreaCodes) {
-            const codes = areaCodes.get(area) ?? [area];
-            const merged = new Map<string, UnitComponent>();
-            for (const code of codes) {
-                for (const bay of getBaysByLoc(code)) {
-                    const key = bay.n ?? '';
-                    if (!merged.has(key)) merged.set(key, { ...bay });
-                    else {
-                        const agg = merged.get(key)!;
-                        agg.q = (agg.q || 1) + (bay.q || 1);
-                    }
-                }
-            }
-            const bays = Array.from(merged.values()).sort((a, b) => {
-                if (a.n === b.n) return 0;
-                if (a.n === undefined) return 1;
-                if (b.n === undefined) return -1;
-                return a.n!.localeCompare(b.n!);
-            });
-            baysForArea.set(area, bays);
-
-            const comps = codes
-                .flatMap(code => getCompsForLoc(code))
-                .sort((left, right) => this.compareGroupedComponents(left, right));
-            compsForArea.set(area, comps);
-        }
-
-        return {
-            gridAreas,
-            matrixAreaCodes,
-            areaNameToCodes: areaCodes,
-            baysForArea,
-            compsForArea
-        };
-    }
-
-    private parseSlotSpec(slot: SlotSpec): {
-        codes: string[];
-        hasFallback: boolean;
-        hasBorrowUp: boolean;
-        anchorCodes: string[];
-    } {
-        const arr = Array.isArray(slot) ? slot : [slot];
-        const codes: string[] = [];
-        const anchorCodes: string[] = [];
-        let hasFallback = false;
-        let hasBorrowUp = false;
-        for (let raw of arr) {
-            if (raw === '~') {
-                hasFallback = true;
-                continue;
-            }
-            if (raw === '^') {
-                hasBorrowUp = true;
-                continue;
-            }
-            if (raw.startsWith('!')) {
-                raw = raw.substring(1);
-                anchorCodes.push(raw);
-            }
-            codes.push(raw);
-        }
-        return { codes, hasFallback, hasBorrowUp, anchorCodes };
-    }
-
-    private normalizeMatrixPure(
-        matrix: MatrixSpec,
-        getBaysByLoc: (loc: string) => UnitComponent[],
-        getCompsForLoc: (loc: string) => UnitComponent[]
-    ): { names: string[][]; areaCodes: Map<string, string[]> } {
-        interface CellMeta {
-            codes: string[];
-            anchorCodes: string[];
-            hasFallback: boolean;
-            hasBorrowUp: boolean;
-            hasContent: boolean;
-            borrowUpActive: boolean;
-            contentCodes: string[];
-            anchorActive: boolean;
-        }
-
-        const expectedCols = matrix[0]?.length || 0;
-        if (!expectedCols) return { names: [], areaCodes: new Map() };
-
-        const codeHasContent = (code: string): boolean =>
-            getBaysByLoc(code).length > 0 ||
-            getCompsForLoc(code).length > 0;
-
-        const meta: CellMeta[][] = [];
-        for (let r = 0; r < matrix.length; r++) {
-            const row = matrix[r];
-            const metaRow: CellMeta[] = [];
-            for (let c = 0; c < expectedCols; c++) {
-                const spec = row[c];
-                const { codes, hasFallback, hasBorrowUp, anchorCodes } = this.parseSlotSpec(spec);
-                const contentCodes = codes.filter(codeHasContent);
-                const anchorActive = contentCodes.some(cc => anchorCodes.includes(cc));
-                metaRow.push({
-                    codes,
-                    anchorCodes,
-                    hasFallback,
-                    hasBorrowUp,
-                    hasContent: contentCodes.length > 0,
-                    borrowUpActive: false,
-                    contentCodes,
-                    anchorActive
-                });
-            }
-            meta.push(metaRow);
-        }
-
-        for (let r = 0; r < meta.length; r++) {
-            for (let c = 0; c < expectedCols; c++) {
-                const cell = meta[r][c];
-                if (cell.hasBorrowUp && !cell.hasContent) {
-                    cell.borrowUpActive = true;
-                }
-            }
-        }
-
-        for (let c = 0; c < expectedCols; c++) {
-            let changed = true;
-            while (changed) {
-                changed = false;
-                for (let r = meta.length - 1; r >= 0; r--) {
-                    const src = meta[r][c];
-                    if (!src.hasContent) continue;
-                    if (src.anchorActive) continue;
-                    let top = r - 1;
-                    if (top < 0) continue;
-                    if (!meta[top][c].borrowUpActive) continue;
-                    while (top - 1 >= 0 && meta[top - 1][c].borrowUpActive) top--;
-                    const dest = meta[top][c];
-                    if (dest.anchorActive) continue;
-                    dest.codes = [...src.codes];
-                    dest.contentCodes = [...src.contentCodes];
-                    dest.hasContent = true;
-                    src.hasContent = false;
-                    src.hasFallback = true;
-                    src.contentCodes = [];
-                    src.anchorActive = false;
-                    for (let rr = top + 1; rr < r; rr++) {
-                        meta[rr][c].hasContent = false;
-                        meta[rr][c].contentCodes = [];
-                        meta[rr][c].hasFallback = true;
-                        meta[rr][c].anchorActive = false;
-                    }
-                    changed = true;
-                    break;
-                }
-            }
-        }
-
-        const metaForNaming = meta.filter(row => row.some(c => c.hasContent));
-        if (!metaForNaming.length) {
-            return { names: [], areaCodes: new Map() };
-        }
-
-        const names: string[][] = [];
-        const areaCodes = new Map<string, string[]>();
-        const usedAreaNames = new Set<string>();
-
-        const makeUnique = (base: string): string => {
-            if (!base) base = 'A';
-            if (!usedAreaNames.has(base)) {
-                usedAreaNames.add(base);
-                return base;
-            }
-            let i = 2;
-            while (usedAreaNames.has(`${base}_${i}`)) i++;
-            const u = `${base}_${i}`;
-            usedAreaNames.add(u);
-            return u;
-        };
-
-        for (let r = 0; r < metaForNaming.length; r++) {
-            const row = metaForNaming[r];
-            const rowNames: string[] = [];
-            for (let c = 0; c < expectedCols; c++) {
-                const cell = row[c];
-                if (!cell) {
-                    rowNames.push('.');
-                    continue;
-                }
-                const aboveName = r > 0 ? names[r - 1][c] : undefined;
-                const aboveMeta = r > 0 ? metaForNaming[r - 1][c] : undefined;
-                let areaName = '.';
-
-                if (cell.hasContent) {
-                    const base = (cell.contentCodes[0] || cell.codes[0] || '').trim();
-                    if (aboveName && aboveName === base && !(aboveMeta?.anchorActive)) {
-                        areaName = aboveName;
-                    } else {
-                        areaName = makeUnique(base);
-                        if (!areaCodes.has(areaName)) areaCodes.set(areaName, []);
-                        const list = areaCodes.get(areaName)!;
-                        for (const cc of cell.contentCodes) {
-                            if (!list.includes(cc)) list.push(cc);
-                        }
-                    }
-                } else if (
-                    cell.hasFallback &&
-                    aboveName &&
-                    aboveName !== '.' &&
-                    !(aboveMeta?.anchorActive)
-                ) {
-                    areaName = aboveName;
-                } else {
-                    areaName = '.';
-                }
-
-                rowNames.push(areaName);
-            }
-            names.push(rowNames);
-        }
-
-        return { names, areaCodes };
-    }
-
-    private computeGridAreas(names: string[][]): string {
-        if (!names.length) return '';
-        const cols = names[0].length;
-        const sanitized = names.map(row => {
-            if (row.length < cols) return [...row, ...Array(cols - row.length).fill('.')];
-            if (row.length > cols) return row.slice(0, cols);
-            return row;
-        });
-        return sanitized.map(row => `"${row.join(' ')}"`).join(' ');
-    }
-
-    getComponents(isForMatrix: boolean): UnitComponent[] {
+    private getComponents(options: ComponentListOptions): UnitComponent[] {
         const expanded: UnitComponent[] = [];
         const showFilteredComponents = this.showFilteredComponents();
         for (const component of this.getHydratedComponents()) {
-            if (component.t === 'X' && (!isForMatrix || !showFilteredComponents)) continue;
+            if (component.t === 'X' && !options.includeAmmo) continue;
             if (component.t === 'HIDDEN') continue;
             if (component.t === 'S') continue;
             if (component.t === 'C') {
@@ -754,7 +327,7 @@ export class UnitDetailsGeneralTabComponent {
                 if (!showFilteredComponents && !this.isWeaponModeMiscComponent(component)) continue;
             };
 
-            if (isForMatrix && component.l && component.l.includes('/')) {
+            if (options.splitMultiLocation && component.l && component.l.includes('/')) {
                 const locs = component.l.split('/').map(s => s.trim()).filter(Boolean);
                 for (const loc of locs) {
                     expanded.push({
@@ -787,8 +360,8 @@ export class UnitDetailsGeneralTabComponent {
 
     private getComponentLocationGroups(): ComponentLocationGroup[] {
         const groups = new Map<string, ComponentLocationGroup>();
-        for (const component of this.componentsForMatrix()) {
-            const key = this.normalizeLoc(component.l);
+        for (const component of this.groupedLayoutComponents()) {
+            const key = normalizeComponentLocation(component.l);
             let group = groups.get(key);
             if (!group) {
                 group = { key, l: component.l, components: [] };

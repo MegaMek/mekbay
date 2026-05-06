@@ -101,22 +101,22 @@ unit().moveType }}</strong></div>
 <!-- Matrix layout (3x3) when supported and defined for unit.type -->
 @if (useMatrixLayout()) {
 <div class="components-matrix" [style.grid-template-areas]="gridAreas()">
-@for (area of matrixAreaCodes(); let i = $index; track i) {
-    <div class="component-rect" [style.grid-area]="area">
-        <div class="comp-loc" [class.has-case]="getCaseLabelForArea(area)">{{ getAreaLabel(area) }}@if (getCaseLabelForArea(area); as caseLabel) {
-            <span class="case-label">{{ caseLabel }}</span>
+@for (area of matrixAreas(); let i = $index; track area.area) {
+    <div class="component-rect" [style.grid-area]="area.area">
+        <div class="comp-loc" [class.has-case]="area.caseLabel">{{ area.label }}@if (area.caseLabel) {
+            <span class="case-label">{{ area.caseLabel }}</span>
         }</div>
         <div class="comp-list">
             <!-- Bays (matrix) -->
-            @if (areaHasBays(area)) {
+            @if (area.bays.length > 0) {
                 <div class="bay">
-                    @for (bay of getBaysForArea(area); let i = $index; track i) {
+                    @for (bay of area.bays; let i = $index; track i) {
                         <unit-component-item [unit]="unit()" [comp]="bay" displayStyle="small"></unit-component-item>
                     }
                 </div>
             } @else {
                 <!-- Normal components (matrix) -->
-                @for (comp of getComponentsForArea(area); let i = $index; track i) {
+                @for (comp of area.components; let i = $index; track i) {
                     <unit-component-item [unit]="unit()" [comp]="comp" [displayStyle]="getComponentDisplayStyle(comp)"></unit-component-item>
                 }
             }
