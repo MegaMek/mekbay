@@ -229,11 +229,12 @@ export class FloatingCompInfoComponent {
             return aYear - bYear;
         });
 
+        const unitType = unit.as?.TP;
         let slots = eq.critSlots;
-        if (eq.svSlots > -1) {
-            slots = eq.svSlots;
-        } else if (eq.tankSlots > -1) {
-            slots = eq.tankSlots;
+        if (unitType === 'SV') {
+            slots = eq.svSlots > -1 ? eq.svSlots : eq.critSlots;
+        } else if (unitType !== 'BM' && unitType !== 'IM') {
+            slots = eq.tankSlots > -1 ? eq.tankSlots : eq.critSlots;
         }
 
         const ratingString = `${eq.techBase} | ${eq.rating}/${eq.availability}`;
