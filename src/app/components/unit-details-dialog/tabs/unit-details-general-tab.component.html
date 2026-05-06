@@ -167,9 +167,15 @@ unit().moveType }}</strong></div>
 }
 }
 @if (additionalComponentSummary().length > 0) {
-<div class="additional-components-list"><span class="info-label muted">Additional components: </span>
+<div class="additional-components-list" [class.weapons-additional-components-list]="!showFilteredComponents()"><span class="info-label muted">Additional components: </span>
 @for (comp of additionalComponentSummary(); let last = $last; let i = $index; track i) {
-    <span class="additional-components-entry">{{ comp.q }}x{{ comp.n }}</span>@if(!last){,&#32;}
+    <span class="additional-components-entry">
+        @if (additionalComponentSummaryInteractive()) {
+            <unit-component-item [unit]="unit()" [comp]="comp" displayStyle="text"></unit-component-item>
+        } @else {
+            {{ comp.q }}x{{ comp.n }}
+        }
+    </span>@if(!last){,&#32;}
 }
 </div>
 }

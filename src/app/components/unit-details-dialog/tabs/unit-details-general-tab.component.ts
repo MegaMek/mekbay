@@ -120,9 +120,10 @@ export class UnitDetailsGeneralTabComponent {
     groupedBays = computed(() => this.getGroupedBaysByLocation());
     components = computed(() => this.getComponents(false));
     componentsForMatrix = computed(() => this.getComponents(true));
-    additionalComponents = computed(() => this.getAdditionalComponents());
-    additionalComponentSummary = computed(() => this.getAdditionalComponentSummary());
     showFilteredComponents = computed(() => this.optionsService.options().showFilteredComponents);
+    additionalComponentEntries = computed(() => this.getAdditionalComponentEntries());
+    additionalComponentSummary = computed(() => this.getAdditionalComponentSummary());
+    additionalComponentSummaryInteractive = computed(() => !this.showFilteredComponents());
     componentViewModeAvailable = computed(() => this.hasDetailOnlyComponents());
 
     setComponentViewMode(showDetails: boolean): void {
@@ -335,17 +336,18 @@ export class UnitDetailsGeneralTabComponent {
         return comp?.t === 'C' && !!comp.eq?.hasAnyFlag(WEAPON_MODE_MISC_COMPONENT_FLAGS);
     }
 
+    private isWeaponModeSummaryComponent(comp: UnitComponent | null | undefined): boolean {
+        return comp?.t === 'C'
+            && (comp.p ?? -1) >= 0
+            && !comp.eq?.hasAnyFlag(CASE_COMPONENT_FLAGS)
+            && !this.isAdditionalComponent(comp)
+            && !this.isWeaponModeMiscComponent(comp);
+    }
+
     private hasDetailOnlyComponents(): boolean {
-        const u = this.unit();
-        if (!u?.comp) return false;
-        const equipmentList = this.dataService.getEquipments();
-        for (const original of u.comp) {
-            if (original.t === 'X') return true;
-            if (original.t !== 'C' || original.p < 0) continue;
-            const component: UnitComponent = {
-                ...original,
-                eq: original.eq ?? equipmentList[original.id] ?? null
-            };
+        for (const component of this.getHydratedComponents()) {
+            if (component.t === 'X') return true;
+            if (component.t !== 'C' || component.p < 0) continue;
             if (component.eq?.hasAnyFlag(CASE_COMPONENT_FLAGS)) continue;
             if (!this.isWeaponModeMiscComponent(component)) return true;
         }
@@ -742,16 +744,9 @@ export class UnitDetailsGeneralTabComponent {
     }
 
     getComponents(isForMatrix: boolean): UnitComponent[] {
-        const u = this.unit();
-        if (!u?.comp) return [];
         const expanded: UnitComponent[] = [];
-        const equipmentList = this.dataService.getEquipments();
         const showFilteredComponents = this.showFilteredComponents();
-        for (const original of u.comp) {
-            const component: UnitComponent = {
-                ...original,
-                eq: original.eq ?? equipmentList[original.id] ?? null
-            };
+        for (const component of this.getHydratedComponents()) {
             if (component.t === 'X' && (!isForMatrix || !showFilteredComponents)) continue;
             if (component.t === 'HIDDEN') continue;
             if (component.t === 'S') continue;
@@ -792,23 +787,29 @@ export class UnitDetailsGeneralTabComponent {
         });
     }
 
-    private getAdditionalComponents(): UnitComponent[] {
-        if (!this.showFilteredComponents()) return [];
+    private getAdditionalComponentEntries(): UnitComponent[] {
+        const showFilteredComponents = this.showFilteredComponents();
+        return this.getHydratedComponents()
+            .filter(comp => showFilteredComponents
+                ? comp.p >= 0 && this.isAdditionalComponent(comp)
+                : this.isWeaponModeSummaryComponent(comp)
+            )
+            .sort((a, b) => (a.n ?? '').localeCompare(b.n ?? ''));
+    }
+
+    private getHydratedComponents(): UnitComponent[] {
         const u = this.unit();
         if (!u?.comp) return [];
         const equipmentList = this.dataService.getEquipments();
-        return u.comp
-            .map(original => ({
-                ...original,
-                eq: original.eq ?? equipmentList[original.id] ?? null
-            }))
-            .filter(comp => comp.p >= 0 && this.isAdditionalComponent(comp))
-            .sort((a, b) => (a.n ?? '').localeCompare(b.n ?? ''));
+        return u.comp.map(component => ({
+            ...component,
+            eq: component.eq ?? equipmentList[component.id] ?? null
+        }));
     }
 
     private getAdditionalComponentSummary(): UnitComponent[] {
         const byName = new Map<string, UnitComponent>();
-        for (const comp of this.additionalComponents()) {
+        for (const comp of this.additionalComponentEntries()) {
             const key = comp.n ?? '';
             if (!byName.has(key)) {
                 byName.set(key, { ...comp });

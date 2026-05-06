@@ -58,7 +58,7 @@ export class UnitComponentItemComponent {
     damaged = input<boolean>(false);
     comp = input<UnitComponent | null>(null);
     displayStyle = input<ComponentDisplayStyle>('normal');
-    componentEl = viewChild<ElementRef<HTMLDivElement>>('component');
+    componentEl = viewChild<ElementRef<HTMLElement>>('component');
 
     typeClass = computed(() => {
         return getWeaponTypeCSSClass(this.comp()?.t ?? '');
@@ -76,12 +76,12 @@ export class UnitComponentItemComponent {
         this.showFloatingOverlay();
     }
 
-    onPointerEnter(event: MouseEvent) {
-        if (!this.isInteractive()) return;
+    onPointerEnter(event: PointerEvent) {
         this.showFloatingOverlay();
     }
 
     showFloatingOverlay() {
+        if (!this.isInteractive()) return;
         const el = this.componentEl()?.nativeElement;
         if (!el) return;
         this.floatingOverlayService.show(this.unit(), this.comp(), el);
