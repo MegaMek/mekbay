@@ -30,37 +30,60 @@
 
 .view-mode-toggle {
     display: inline-flex;
-    overflow: hidden;
-    border: 1px solid #6e6e6e;
-    background: #141414;
+    align-items: center;
+    gap: 6px;
 }
 
-.view-mode-option {
-    min-width: 84px;
+.view-mode-label-button,
+.view-mode-switch {
     border: 0;
-    border-right: 1px solid #4b4b4b;
     background: transparent;
-    color: var(--text-color-secondary);
-    padding: 5px 10px;
     font: inherit;
-    font-weight: 700;
-    text-transform: uppercase;
     cursor: pointer;
 }
 
-.view-mode-option:last-child {
-    border-right: 0;
+.view-mode-label-button {
+    color: #6f6f6f;
+    padding: 0;
+    font-weight: 700;
+    line-height: 22px;
+    text-transform: uppercase;
 }
 
-.view-mode-option.active {
-    background: #2f2f2f;
+.view-mode-label-button.active {
     color: var(--text-color);
-    box-shadow: inset 0 -2px 0 #8a8a8a;
 }
 
-.view-mode-option:not(.active):hover {
-    background: #202020;
+.view-mode-label-button:not(.active):hover {
     color: var(--text-color);
+}
+
+.view-mode-switch {
+    position: relative;
+    width: 44px;
+    height: 22px;
+    box-sizing: border-box;
+    border: 2px solid #d8d8d8;
+    background: #050505;
+    padding: 2px;
+}
+
+.view-mode-switch-thumb {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 12px;
+    background: #fff;
+    transition: transform 0.12s ease-out;
+}
+
+.view-mode-switch.details-active .view-mode-switch-thumb {
+    transform: translateX(19px);
+}
+
+.view-mode-switch:hover {
+    border-color: #fff;
 }
 
 /* Basic Info */
