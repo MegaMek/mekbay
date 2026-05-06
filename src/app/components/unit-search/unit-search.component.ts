@@ -131,6 +131,14 @@ interface ViewModeOption extends ViewModeOptionConfig {
     }
 })
 export class UnitSearchComponent {
+    private static supportsCssAnchorPositioning(): boolean {
+        const css = globalThis.CSS;
+        return !!css?.supports
+            && css.supports('position-anchor: --unit-searchbar')
+            && css.supports('top: anchor(bottom)')
+            && css.supports('width: anchor-size(width)');
+    }
+
     private static readonly VIEW_MODE_MENU_POSITIONS: ConnectedPosition[] = [
         { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
         { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
@@ -169,6 +177,7 @@ export class UnitSearchComponent {
     readonly megaMekAvailabilitySourceSelected = computed(() => this.optionsService.options().availabilitySource === 'megamek');
     /** Whether the layout is filters-list-panel (filters on left) */
     readonly filtersOnLeft = computed(() => this.optionsService.options().unitSearchExpandedViewLayout === 'filters-list-panel');
+    readonly supportsCssAnchorPositioning = UnitSearchComponent.supportsCssAnchorPositioning();
 
     public readonly SORT_OPTIONS = SORT_OPTIONS;
     readonly unitTypeDisplayNames = AS_TYPE_DISPLAY_NAMES;
@@ -896,6 +905,7 @@ export class UnitSearchComponent {
         height: '100%',
         columnsCount: 1,
     });
+    readonly advPanelAnchoredBelow = signal(false);
     resultsDropdownStyle = signal<{ top: string, width: string, height: string }>({
         top: '0px',
         width: '100%',
@@ -1479,6 +1489,10 @@ export class UnitSearchComponent {
     }
 
     updateResultsDropdownPosition() {
+        if (this.supportsCssAnchorPositioning && !this.expandedView()) {
+            return;
+        }
+
         const gap = 4;
 
         const { top: safeTop, bottom: safeBottom } = this.layoutService.getSafeAreaInsets();
@@ -1551,6 +1565,7 @@ export class UnitSearchComponent {
             }
         }
         let panelWidth = columns === 2 ? doublePanelWidth : singlePanelWidth;
+        const opensBelow = !this.advPanelDocked() && spaceAvailable < panelWidth;
 
         let left: number;
         let top: number;
@@ -1589,6 +1604,7 @@ export class UnitSearchComponent {
             height: `${availableHeight}px`,
             columnsCount: columns
         });
+        this.advPanelAnchoredBelow.set(opensBelow);
     }
 
     setAdvFilter(key: string, value: any) {

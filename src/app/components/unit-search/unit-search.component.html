@@ -172,14 +172,16 @@
 <!-- Results Container -->
 <div #resultsContainer class="results-container"
     [class.expanded]="this.expandedView()"
+    [class.css-anchor-positioned]="supportsCssAnchorPositioning"
+    [class.has-results]="this.filtersService.filteredUnits().length > 0"
     [class.with-details-panel]="showInlinePanel()"
     [hidden]="!this.filtersService.isDataReady() || !resultsVisible()"
-    [style.top]="this.expandedView() ? expandedWrapperStyle().top : resultsDropdownStyle().top"
+    [style.top]="supportsCssAnchorPositioning ? null : (this.expandedView() ? expandedWrapperStyle().top : resultsDropdownStyle().top)"
     [style.left]="this.expandedView() ? expandedWrapperStyle().left : null"
     [style.right]="this.expandedView() ? expandedWrapperStyle().right : null"
     [style.bottom]="this.expandedView() ? expandedWrapperStyle().bottom : null"
-    [style.width]="this.expandedView() ? null : resultsDropdownStyle().width"
-    [style.height]="this.expandedView() ? null : resultsDropdownStyle().height"
+    [style.width]="this.expandedView() || supportsCssAnchorPositioning ? null : resultsDropdownStyle().width"
+    [style.height]="this.expandedView() || supportsCssAnchorPositioning ? null : resultsDropdownStyle().height"
     [style.flex-direction]="this.expandedView() ? expandedWrapperStyle().flexDirection : null">
 
     <!-- Inline Details Panel (visible when screen permits in expanded view) -->
@@ -480,10 +482,14 @@
 </div>
 }
 <div #advPanel class="adv-panel framed-borders has-shadow" [hidden]="!advOpen()"
-    [style.left]="advPanelStyle().left"
-    [style.top]="advPanelStyle().top"
+    [class.css-anchor-positioned]="supportsCssAnchorPositioning"
+    [class.filters-left]="this.expandedView() && filtersOnLeft()"
+    [class.anchor-below]="supportsCssAnchorPositioning && advPanelAnchoredBelow()"
+    [class.two-column-panel]="advPanelStyle().columnsCount === 2"
+    [style.left]="supportsCssAnchorPositioning ? null : advPanelStyle().left"
+    [style.top]="supportsCssAnchorPositioning ? null : advPanelStyle().top"
     [style.width]="advPanelStyle().width"
-    [style.height]="advPanelStyle().height"
+    [style.height]="supportsCssAnchorPositioning ? null : advPanelStyle().height"
     [class.docked]="advPanelDocked()" [class.docked-left]="advPanelDocked() && filtersOnLeft()">
     <div class="adv-panel-header" [class.two-columns]="advPanelStyle().columnsCount === 2">
         <div class="adv-panel-actions">

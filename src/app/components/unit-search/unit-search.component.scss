@@ -2,6 +2,85 @@
     display: block;
 }
 
+@supports (position-anchor: --unit-searchbar) and (top: anchor(bottom)) and (width: anchor-size(width)) {
+    :host {
+        anchor-scope: --unit-searchbar, --unit-search-adv-button;
+    }
+
+    .searchbar-container {
+        anchor-name: --unit-searchbar;
+    }
+
+    .adv-btn {
+        anchor-name: --unit-search-adv-button;
+    }
+
+    .results-container.css-anchor-positioned {
+        position-anchor: --unit-searchbar;
+    }
+
+    .results-container.css-anchor-positioned.expanded {
+        top: calc(anchor(bottom) + 4px);
+    }
+
+    .results-container.css-anchor-positioned:not(.expanded):not([hidden]) {
+        position: fixed;
+        top: calc(anchor(bottom) + 4px);
+        left: anchor(left);
+        width: anchor-size(width);
+    }
+
+    .results-container.css-anchor-positioned:not(.expanded).has-results:not([hidden]) {
+        bottom: max(4px, var(--safe-area-inset-bottom));
+        min-height: 80px;
+    }
+
+    .adv-panel.css-anchor-positioned {
+        --adv-panel-width: 300px;
+        position: fixed;
+        position-anchor: --unit-search-adv-button;
+    }
+
+    .adv-panel.css-anchor-positioned.two-column-panel {
+        --adv-panel-width: 600px;
+    }
+
+    .adv-panel.css-anchor-positioned:not(.docked) {
+        top: anchor(top);
+        left: calc(anchor(right) + 4px);
+        bottom: max(4px, var(--safe-area-inset-bottom));
+    }
+
+    .adv-panel.css-anchor-positioned.filters-left:not(.docked) {
+        left: calc(anchor(left) - var(--adv-panel-width) - 4px);
+        right: auto;
+    }
+
+    .adv-panel.css-anchor-positioned.anchor-below:not(.docked) {
+        top: calc(anchor(bottom) + 4px);
+        left: max(4px, calc(anchor(right) - var(--adv-panel-width)));
+        right: auto;
+    }
+
+    .adv-panel.css-anchor-positioned.anchor-below.filters-left:not(.docked) {
+        left: max(4px, anchor(left));
+    }
+
+    .adv-panel.css-anchor-positioned.docked {
+        position-anchor: --unit-searchbar;
+        top: calc(anchor(bottom) + 4px);
+        left: calc(anchor(right) - var(--adv-panel-width));
+        right: auto;
+        bottom: max(4px, var(--safe-area-inset-bottom));
+    }
+
+    .adv-panel.css-anchor-positioned.docked.docked-left {
+        left: anchor(left) !important;
+        right: auto;
+    }
+
+}
+
 .searchbar-container {
     position: relative;
     width: 100%;
