@@ -65,6 +65,13 @@ type SourceListEntry = Sourcebook & { sourceAnnotations: string[] };
 type ComponentDetailsDisplayStyle = 'normal' | 'additional';
 type ComponentLocationGroup = { key: string; l: string; components: UnitComponent[] };
 type ComponentListOptions = { includeAmmo: boolean; splitMultiLocation: boolean };
+type ComponentLayoutMode = 'matrix' | 'bays' | 'phoneGrouped' | 'default';
+type ComponentLayoutState = {
+    mode: ComponentLayoutMode;
+    includeAmmoInDefaultList: boolean;
+    showAmmoSummary: boolean;
+    showAdditionalSummary: boolean;
+};
 
 const ADDITIONAL_COMPONENT_FLAGS = ['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_JUMP_JET'];
 const CASE_COMPONENT_FLAGS = ['F_CASE', 'F_CASE_II'];
@@ -91,27 +98,37 @@ export class UnitDetailsGeneralTabComponent {
     // Computed state - derived from unit
     groupedBays = computed(() => this.getGroupedBaysByLocation());
     hasBays = computed(() => this.unit()?.comp.some(component => component.bay && component.bay.length > 0) ?? false);
-    components = computed(() => this.getComponents({ includeAmmo: this.showDefaultComponentListAmmoBlocks(), splitMultiLocation: false }));
+    showFilteredComponents = computed(() => this.optionsService.options().showFilteredComponents);
+    componentLayout = computed<ComponentLayoutState>(() => {
+        const hasBays = this.hasBays();
+        const showFilteredComponents = this.showFilteredComponents();
+        const matrixAvailable = hasComponentMatrixLayout(this.unit()?.type) && this.layoutService.windowWidth() >= 780;
+        let mode: ComponentLayoutMode = 'default';
+        if (matrixAvailable) mode = 'matrix';
+        else if (hasBays) mode = 'bays';
+        else if (this.layoutService.isPhone()) mode = 'phoneGrouped';
+
+        const groupedDetails = showFilteredComponents && (mode === 'matrix' || mode === 'phoneGrouped');
+        const includeAmmoInDefaultList = showFilteredComponents && this.layoutService.isMobile() && mode === 'default';
+        return {
+            mode,
+            includeAmmoInDefaultList,
+            showAmmoSummary: !groupedDetails && !includeAmmoInDefaultList,
+            showAdditionalSummary: !groupedDetails,
+        };
+    });
+    components = computed(() => this.getComponents({ includeAmmo: this.componentLayout().includeAmmoInDefaultList, splitMultiLocation: false }));
     groupedLayoutComponents = computed(() => this.getComponents({ includeAmmo: this.showFilteredComponents(), splitMultiLocation: true }));
     componentLocationGroups = computed(() => this.getComponentLocationGroups());
-    showFilteredComponents = computed(() => this.optionsService.options().showFilteredComponents);
     additionalComponentEntries = computed(() => this.getAdditionalComponentEntries());
     additionalComponentSummary = computed(() => this.getAdditionalComponentSummary());
     additionalComponentSummaryInteractive = computed(() => !this.showFilteredComponents());
     componentViewModeAvailable = computed(() => this.hasDetailOnlyComponents());
-    useGroupedComponentList = computed(() => this.layoutService.isPhone() && !this.hasBays());
 
     setComponentViewMode(showDetails: boolean): void {
         if (this.showFilteredComponents() === showDetails) return;
         void this.optionsService.setOption('showFilteredComponents', showDetails);
     }
-
-    // Matrix layout state
-    useMatrixLayout = computed(() => hasComponentMatrixLayout(this.unit()?.type) && this.layoutService.windowWidth() >= 780);
-    showGroupedComponentDetails = computed(() => this.showFilteredComponents() && (this.useMatrixLayout() || this.useGroupedComponentList()));
-    showDefaultComponentListAmmoBlocks = computed(() => this.showFilteredComponents() && this.layoutService.isMobile() && !this.useMatrixLayout() && !this.useGroupedComponentList() && !this.hasBays());
-    showAmmoSummary = computed(() => !this.showGroupedComponentDetails() && !this.showDefaultComponentListAmmoBlocks());
-    showAdditionalComponentSummary = computed(() => !this.showGroupedComponentDetails());
 
     /** 
      * Computed matrix layout data - derives all matrix-related state from unit.
