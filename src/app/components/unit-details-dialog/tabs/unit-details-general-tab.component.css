@@ -28,64 +28,6 @@
     margin: -8px 0 12px;
 }
 
-.view-mode-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.view-mode-label-button,
-.view-mode-switch {
-    border: 0;
-    background: transparent;
-    font: inherit;
-    cursor: pointer;
-}
-
-.view-mode-label-button {
-    color: #6f6f6f;
-    padding: 0;
-    font-weight: 700;
-    line-height: 22px;
-    text-transform: uppercase;
-}
-
-.view-mode-label-button.active {
-    color: var(--text-color);
-}
-
-.view-mode-label-button:not(.active):hover {
-    color: var(--text-color);
-}
-
-.view-mode-switch {
-    position: relative;
-    width: 44px;
-    height: 22px;
-    box-sizing: border-box;
-    border: 2px solid #d8d8d8;
-    background: #050505;
-    padding: 2px;
-}
-
-.view-mode-switch-thumb {
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 16px;
-    height: 12px;
-    background: #fff;
-    transition: transform 0.12s ease-out;
-}
-
-.view-mode-switch.details-active .view-mode-switch-thumb {
-    transform: translateX(19px);
-}
-
-.view-mode-switch:hover {
-    border-color: #fff;
-}
-
 /* Basic Info */
 .basic-info-block {
     margin-top: 12px;

@@ -92,17 +92,9 @@ unit().moveType }}</strong></div>
 </div>
 @if (componentViewModeAvailable()) {
 <div class="component-view-mode" aria-label="Component view mode">
-    <div class="view-mode-toggle" role="group" aria-label="Component view mode">
-        <button type="button" class="view-mode-label-button" [class.active]="!showFilteredComponents()"
-            [attr.aria-pressed]="!showFilteredComponents()" (click)="setComponentViewMode(false)">Weapons</button>
-        <button type="button" class="view-mode-switch" [class.details-active]="showFilteredComponents()"
-            [attr.aria-pressed]="showFilteredComponents()" aria-label="Toggle component details view"
-            (click)="setComponentViewMode(!showFilteredComponents())">
-            <span class="view-mode-switch-thumb"></span>
-        </button>
-        <button type="button" class="view-mode-label-button" [class.active]="showFilteredComponents()"
-            [attr.aria-pressed]="showFilteredComponents()" (click)="setComponentViewMode(true)">Details</button>
-    </div>
+    <mode-switch leftLabel="Weapons" rightLabel="Details" [selectedRight]="showFilteredComponents()"
+        ariaLabel="Component view mode" switchAriaLabel="Toggle component details view"
+        (selectedRightChange)="setComponentViewMode($event)"></mode-switch>
 </div>
 }
 <!-- Components Grid -->

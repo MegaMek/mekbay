@@ -47,6 +47,7 @@ import { BOOLEAN_FILTERS, DROPDOWN_FILTERS, RANGE_FILTERS } from '../../services
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { ForcePreviewPanelComponent } from '../force-preview-panel/force-preview-panel.component';
 import { ForceRadarPanelComponent } from '../force-radar-panel/force-radar-panel.component';
+import { ModeSwitchComponent } from '../mode-switch/mode-switch.component';
 import { MultiSelectDropdownComponent, type MultiStateSelection } from '../multi-select-dropdown/multi-select-dropdown.component';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { TooltipDirective } from '../../directives/tooltip.directive';
@@ -107,6 +108,7 @@ type GeneratorDialogTab = 'configuration' | 'preview';
         BaseDialogComponent,
         ForcePreviewPanelComponent,
         ForceRadarPanelComponent,
+        ModeSwitchComponent,
         MultiSelectDropdownComponent,
         RangeSliderComponent,
         SyntaxInputComponent,

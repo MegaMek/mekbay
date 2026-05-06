@@ -42,6 +42,7 @@ import { OptionsService } from '../../../services/options.service';
 import { StatBarSpecsPipe } from '../../../pipes/stat-bar-specs.pipe';
 import { FilterAmmoPipe } from '../../../pipes/filter-ammo.pipe';
 import { UnitComponentItemComponent } from '../../unit-component-item/unit-component-item.component';
+import { ModeSwitchComponent } from '../../mode-switch/mode-switch.component';
 import { TooltipDirective } from '../../../directives/tooltip.directive';
 import { BVCalculatorUtil } from '../../../utils/bv-calculator.util';
 import { getUnitSourceFilterValues } from '../../../utils/unit-search-shared.util';
@@ -101,7 +102,7 @@ const MATRIX_ALIGNMENT: Record<string, MatrixSpec> = {
 @Component({
     selector: 'unit-details-general-tab',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, UnitComponentItemComponent, StatBarSpecsPipe, FilterAmmoPipe, TooltipDirective],
+    imports: [CommonModule, UnitComponentItemComponent, ModeSwitchComponent, StatBarSpecsPipe, FilterAmmoPipe, TooltipDirective],
     templateUrl: './unit-details-general-tab.component.html',
     styleUrls: ['./unit-details-general-tab.component.css']
 })

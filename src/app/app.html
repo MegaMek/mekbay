@@ -125,12 +125,10 @@
                                 <text class="logo-text" x="750" y="30" text-anchor="start" font-size="25">TM</text>
                             </svg>
                         </div>
-                        <div class="game-system-switch"
-                            (click)="this.dataService.isDataReady() && gameService.setMode(gameService.isAlphaStrike() ? GameSystem.CLASSIC : GameSystem.ALPHA_STRIKE)">
-                            <div class="switch-track" [class.as-active]="gameService.isAlphaStrike()">
-                                <div class="switch-thumb"></div>
-                            </div>
-                        </div>
+                        <mode-switch class="game-system-switch" variant="game-system" [showLabels]="false"
+                            [selectedRight]="gameService.isAlphaStrike()" [disabled]="!this.dataService.isDataReady()"
+                            ariaLabel="Game system" switchAriaLabel="Toggle game system"
+                            (selectedRightChange)="this.dataService.isDataReady() && gameService.setMode($event ? GameSystem.ALPHA_STRIKE : GameSystem.CLASSIC)"></mode-switch>
                         <div class="as-logo" [class.inactive]="!gameService.isAlphaStrike()"
                             (click)="this.dataService.isDataReady() && gameService.setMode(GameSystem.ALPHA_STRIKE)">
                             <svg viewBox="0 0 88 14" xmlns="http://www.w3.org/2000/svg">
