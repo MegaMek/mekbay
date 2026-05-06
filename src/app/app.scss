@@ -141,9 +141,14 @@
     max-width: 240px;
     width: 50%;
     height: auto;
+}
+
+.empty-state-logo-mark {
     position: relative;
+    width: 100%;
 
     img {
+        display: block;
         width: 100%;
         height: auto;
     }

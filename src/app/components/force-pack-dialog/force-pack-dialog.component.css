@@ -81,7 +81,7 @@
 }
 
 .force-bv {
-    color: var(--text-color-secondary);
+    color: var(--text-color);
     font-size: 0.8em;
 }
 

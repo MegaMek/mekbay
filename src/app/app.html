@@ -102,8 +102,10 @@
                 }
                 <div class="main-search">
                     <div class="empty-state-logo">
-                        <img src="/images/logo.png" alt="MekBay Logo">
-                        @if (!isMainBuild) { <span class="next-badge" (click)="showNextDialog()">NEXT</span> }
+                        <div class="empty-state-logo-mark">
+                            <img src="/images/logo.png" alt="MekBay Logo">
+                            @if (!isMainBuild) { <span class="next-badge" (click)="showNextDialog()">NEXT</span> }
+                        </div>
                         <connection-status-badge placement="home"></connection-status-badge>
                     </div>
                     <div class="gameSystemSelector" [class.loading]="!this.dataService.isDataReady()">
