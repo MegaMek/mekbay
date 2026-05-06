@@ -141,6 +141,18 @@ unit().moveType }}</strong></div>
 </div>
 } @else {
 <div class="components-container">
+@if (useGroupedComponentList()) {
+@for (group of componentLocationGroups(); let i = $index; track group.key) {
+    <div class="component-rect">
+        <div class="comp-loc" [class.has-case]="getCaseLabel(group.l)">@if (getCaseLabel(group.l); as caseType) {<span class="case-bracket">[</span>}{{ group.l }}@if (getCaseLabel(group.l); as caseType) {<span class="case-bracket">]</span>}</div>
+        <div class="comp-list">
+            @for (comp of group.components; let j = $index; track j) {
+                <unit-component-item [unit]="unit()" [comp]="comp" [displayStyle]="getComponentDisplayStyle(comp)"></unit-component-item>
+            }
+        </div>
+    </div>
+}
+} @else {
 @for (comp of components(); let i = $index; track i) {
     <div class="component-rect" [class.additional-component-rect]="isAdditionalComponent(comp)">
         <div class="comp-loc" [class.has-case]="getCaseLabel(comp.l)">@if (getCaseLabel(comp.l); as caseType) {<span class="case-bracket">[</span>}{{ comp.l }}@if (getCaseLabel(comp.l); as caseType) {<span class="case-bracket">]</span>}</div>
@@ -148,6 +160,7 @@ unit().moveType }}</strong></div>
             <unit-component-item [unit]="unit()" [comp]="comp" [displayStyle]="getComponentDisplayStyle(comp)"></unit-component-item>
         </div>
     </div>
+}
 }
 </div>
 }
@@ -163,7 +176,7 @@ unit().moveType }}</strong></div>
 }
 }
 }
-@if (additionalComponentSummary().length > 0) {
+@if (showAdditionalComponentSummary() && additionalComponentSummary().length > 0) {
 <div class="additional-components-list" [class.weapons-additional-components-list]="!showFilteredComponents()"><span class="info-label muted">Additional components: </span>
 @for (comp of additionalComponentSummary(); let last = $last; let i = $index; track i) {
     <span class="additional-components-entry">

@@ -59,6 +59,7 @@ type SlotSpec = string | string[];
 type MatrixSpec = SlotSpec[][];
 type SourceListEntry = Sourcebook & { sourceAnnotations: string[] };
 type ComponentDetailsDisplayStyle = 'normal' | 'additional';
+type ComponentLocationGroup = { key: string; l: string; components: UnitComponent[] };
 
 const ADDITIONAL_COMPONENT_FLAGS = ['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_JUMP_JET'];
 const CASE_COMPONENT_FLAGS = ['F_CASE', 'F_CASE_II'];
@@ -121,11 +122,13 @@ export class UnitDetailsGeneralTabComponent {
     groupedBays = computed(() => this.getGroupedBaysByLocation());
     components = computed(() => this.getComponents(false));
     componentsForMatrix = computed(() => this.getComponents(true));
+    componentLocationGroups = computed(() => this.getComponentLocationGroups());
     showFilteredComponents = computed(() => this.optionsService.options().showFilteredComponents);
     additionalComponentEntries = computed(() => this.getAdditionalComponentEntries());
     additionalComponentSummary = computed(() => this.getAdditionalComponentSummary());
     additionalComponentSummaryInteractive = computed(() => !this.showFilteredComponents());
     componentViewModeAvailable = computed(() => this.hasDetailOnlyComponents());
+    useGroupedComponentList = computed(() => this.layoutService.isPhone());
 
     setComponentViewMode(showDetails: boolean): void {
         if (this.showFilteredComponents() === showDetails) return;
@@ -137,7 +140,9 @@ export class UnitDetailsGeneralTabComponent {
         const matrix = MATRIX_ALIGNMENT[this.unit()?.type];
         return Array.isArray(matrix) && this.layoutService.windowWidth() >= 780;
     });
-    showAmmoSummary = computed(() => !this.useMatrixLayout() || !this.showFilteredComponents());
+    showGroupedComponentDetails = computed(() => this.showFilteredComponents() && (this.useMatrixLayout() || this.useGroupedComponentList()));
+    showAmmoSummary = computed(() => !this.showGroupedComponentDetails());
+    showAdditionalComponentSummary = computed(() => !this.showGroupedComponentDetails());
 
     /** 
      * Computed matrix layout data - derives all matrix-related state from unit.
@@ -529,15 +534,7 @@ export class UnitDetailsGeneralTabComponent {
 
             const comps = codes
                 .flatMap(code => getCompsForLoc(code))
-                .sort((a, b) => {
-                    if (a.l === b.l) {
-                        if (a.n === b.n) return 0;
-                        if (a.n === undefined) return 1;
-                        if (b.n === undefined) return -1;
-                        return a.n!.localeCompare(b.n!);
-                    }
-                    return a.l.localeCompare(b.l);
-                });
+                .sort((left, right) => this.compareGroupedComponents(left, right));
             compsForArea.set(area, comps);
         }
 
@@ -786,6 +783,44 @@ export class UnitDetailsGeneralTabComponent {
             }
             return a.p - b.p;
         });
+    }
+
+    private getComponentLocationGroups(): ComponentLocationGroup[] {
+        const groups = new Map<string, ComponentLocationGroup>();
+        for (const component of this.componentsForMatrix()) {
+            const key = this.normalizeLoc(component.l);
+            let group = groups.get(key);
+            if (!group) {
+                group = { key, l: component.l, components: [] };
+                groups.set(key, group);
+            }
+            group.components.push(component);
+        }
+        return Array.from(groups.values()).map(group => ({
+            ...group,
+            components: group.components.sort((left, right) => this.compareGroupedComponents(left, right))
+        }));
+    }
+
+    private getGroupedComponentOrder(component: UnitComponent): number {
+        if (this.isAdditionalComponent(component)) return 3;
+        if (component.t === 'X') return 2;
+        if (this.isWeaponComponent(component)) return 0;
+        return 1;
+    }
+
+    private isWeaponComponent(component: UnitComponent): boolean {
+        if (this.isWeaponModeMiscComponent(component)) return true;
+        return ['E', 'M', 'B', 'A', 'P', 'O'].includes(component.t);
+    }
+
+    private compareGroupedComponents(left: UnitComponent, right: UnitComponent): number {
+        const leftOrder = this.getGroupedComponentOrder(left);
+        const rightOrder = this.getGroupedComponentOrder(right);
+        if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+        const locationOrder = left.l.localeCompare(right.l);
+        if (locationOrder !== 0) return locationOrder;
+        return (left.n ?? '').localeCompare(right.n ?? '');
     }
 
     private getAdditionalComponentEntries(): UnitComponent[] {
