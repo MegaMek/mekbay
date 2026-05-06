@@ -38,6 +38,7 @@ import { weaponTypes } from '../../../utils/equipment.util';
 import { DataService } from '../../../services/data.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import { LayoutService } from '../../../services/layout.service';
+import { OptionsService } from '../../../services/options.service';
 import { StatBarSpecsPipe } from '../../../pipes/stat-bar-specs.pipe';
 import { FilterAmmoPipe } from '../../../pipes/filter-ammo.pipe';
 import { UnitComponentItemComponent } from '../../unit-component-item/unit-component-item.component';
@@ -56,6 +57,11 @@ import type { Sourcebook } from '../../../models/sourcebook.model';
 type SlotSpec = string | string[];
 type MatrixSpec = SlotSpec[][];
 type SourceListEntry = Sourcebook & { sourceAnnotations: string[] };
+type ComponentDetailsDisplayStyle = 'normal' | 'additional';
+
+const ADDITIONAL_COMPONENT_FLAGS = ['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_JUMP_JET'];
+const CASE_COMPONENT_FLAGS = ['F_CASE', 'F_CASE_II'];
+const WEAPON_MODE_MISC_COMPONENT_FLAGS = ['F_CLUB', 'F_HAND_WEAPON'];
 
 // Matrix layouts by unit type
 // '~' = if no content, expand the area from above
@@ -103,6 +109,7 @@ export class UnitDetailsGeneralTabComponent {
     private dataService = inject(DataService);
     private dialogsService = inject(DialogsService);
     private layoutService = inject(LayoutService);
+    private optionsService = inject(OptionsService);
 
     // Inputs
     unit = input.required<Unit>();
@@ -113,12 +120,22 @@ export class UnitDetailsGeneralTabComponent {
     groupedBays = computed(() => this.getGroupedBaysByLocation());
     components = computed(() => this.getComponents(false));
     componentsForMatrix = computed(() => this.getComponents(true));
+    additionalComponents = computed(() => this.getAdditionalComponents());
+    additionalComponentSummary = computed(() => this.getAdditionalComponentSummary());
+    showFilteredComponents = computed(() => this.optionsService.options().showFilteredComponents);
+    componentViewModeAvailable = computed(() => this.hasDetailOnlyComponents());
+
+    setComponentViewMode(showDetails: boolean): void {
+        if (this.showFilteredComponents() === showDetails) return;
+        void this.optionsService.setOption('showFilteredComponents', showDetails);
+    }
 
     // Matrix layout state
     useMatrixLayout = computed(() => {
         const matrix = MATRIX_ALIGNMENT[this.unit()?.type];
         return Array.isArray(matrix) && this.layoutService.windowWidth() >= 780;
     });
+    showAmmoSummary = computed(() => !this.useMatrixLayout() || !this.showFilteredComponents());
 
     /** 
      * Computed matrix layout data - derives all matrix-related state from unit.
@@ -304,6 +321,35 @@ export class UnitDetailsGeneralTabComponent {
 
     getComponentsForArea(areaName: string): UnitComponent[] {
         return this.compsForArea().get(areaName) ?? [];
+    }
+
+    getComponentDisplayStyle(comp: UnitComponent): ComponentDetailsDisplayStyle {
+        return this.isAdditionalComponent(comp) ? 'additional' : 'normal';
+    }
+
+    isAdditionalComponent(comp: UnitComponent | null | undefined): boolean {
+        return comp?.t === 'C' && !!comp.eq?.hasAnyFlag(ADDITIONAL_COMPONENT_FLAGS);
+    }
+
+    private isWeaponModeMiscComponent(comp: UnitComponent | null | undefined): boolean {
+        return comp?.t === 'C' && !!comp.eq?.hasAnyFlag(WEAPON_MODE_MISC_COMPONENT_FLAGS);
+    }
+
+    private hasDetailOnlyComponents(): boolean {
+        const u = this.unit();
+        if (!u?.comp) return false;
+        const equipmentList = this.dataService.getEquipments();
+        for (const original of u.comp) {
+            if (original.t === 'X') return true;
+            if (original.t !== 'C' || original.p < 0) continue;
+            const component: UnitComponent = {
+                ...original,
+                eq: original.eq ?? equipmentList[original.id] ?? null
+            };
+            if (component.eq?.hasAnyFlag(CASE_COMPONENT_FLAGS)) continue;
+            if (!this.isWeaponModeMiscComponent(component)) return true;
+        }
+        return false;
     }
 
     getBaysForArea(areaName: string): UnitComponent[] {
@@ -700,31 +746,32 @@ export class UnitDetailsGeneralTabComponent {
         if (!u?.comp) return [];
         const expanded: UnitComponent[] = [];
         const equipmentList = this.dataService.getEquipments();
+        const showFilteredComponents = this.showFilteredComponents();
         for (const original of u.comp) {
-            if (!isForMatrix && original.t === 'X') continue;
-            if (original.t === 'HIDDEN') continue;
-            if (original.t === 'S') continue;
-            if (original.t === 'C') {
-                if (original.p < 0) continue; // Hide non-weapon components that are not in valid location (like HS in engine)
-                if (original.eq?.hasAnyFlag(['F_HEAT_SINK','F_DOUBLE_HEAT_SINK'])) continue; // Hide heatsinks
-                if (original.eq?.hasAnyFlag(['F_CASE','F_CASE_II'])) continue; // Hide CASE components
-                if (original.eq?.hasAnyFlag(['F_JUMP_JET'])) continue; // Hide Jump Jets
+            const component: UnitComponent = {
+                ...original,
+                eq: original.eq ?? equipmentList[original.id] ?? null
+            };
+            if (component.t === 'X' && (!isForMatrix || !showFilteredComponents)) continue;
+            if (component.t === 'HIDDEN') continue;
+            if (component.t === 'S') continue;
+            if (component.t === 'C') {
+                if (component.p < 0) continue; // Hide non-weapon components that are not in valid location (like HS in engine)
+                if (component.eq?.hasAnyFlag(CASE_COMPONENT_FLAGS)) continue; // Hide CASE components
+                if (!showFilteredComponents && !this.isWeaponModeMiscComponent(component)) continue;
             };
 
-            if (original.eq === undefined) {
-                original.eq = equipmentList[original.id] ?? null;
-            }
-            if (isForMatrix && original.l && original.l.includes('/')) {
-                const locs = original.l.split('/').map(s => s.trim()).filter(Boolean);
+            if (isForMatrix && component.l && component.l.includes('/')) {
+                const locs = component.l.split('/').map(s => s.trim()).filter(Boolean);
                 for (const loc of locs) {
                     expanded.push({
-                        ...original,
+                        ...component,
                         l: loc,
-                        n: original.n ? `${original.n} (split)` : original.n
+                        n: component.n ? `${component.n} (split)` : component.n
                     });
                 }
             } else {
-                expanded.push({ ...original });
+                expanded.push({ ...component });
             }
         }
         return expanded.sort((a, b) => {
@@ -743,6 +790,35 @@ export class UnitDetailsGeneralTabComponent {
             }
             return a.p - b.p;
         });
+    }
+
+    private getAdditionalComponents(): UnitComponent[] {
+        if (!this.showFilteredComponents()) return [];
+        const u = this.unit();
+        if (!u?.comp) return [];
+        const equipmentList = this.dataService.getEquipments();
+        return u.comp
+            .map(original => ({
+                ...original,
+                eq: original.eq ?? equipmentList[original.id] ?? null
+            }))
+            .filter(comp => comp.p >= 0 && this.isAdditionalComponent(comp))
+            .sort((a, b) => (a.n ?? '').localeCompare(b.n ?? ''));
+    }
+
+    private getAdditionalComponentSummary(): UnitComponent[] {
+        const byName = new Map<string, UnitComponent>();
+        for (const comp of this.additionalComponents()) {
+            const key = comp.n ?? '';
+            if (!byName.has(key)) {
+                byName.set(key, { ...comp });
+            } else {
+                const existing = byName.get(key)!;
+                existing.q = (existing.q || 1) + (comp.q || 1);
+            }
+        }
+        return Array.from(byName.values())
+            .sort((a, b) => (a.n ?? '').localeCompare(b.n ?? ''));
     }
 
     getGroupedBaysByLocation(): Array<{ l: string, p: number, bays: UnitComponent[] }> {

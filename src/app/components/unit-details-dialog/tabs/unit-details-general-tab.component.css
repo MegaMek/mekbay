@@ -18,6 +18,51 @@
     padding: 8px 16px;
 }
 
+.component-view-mode {
+    display: flex;
+    align-items: center;
+    align-self: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin: -8px 0 12px;
+}
+
+.view-mode-toggle {
+    display: inline-flex;
+    overflow: hidden;
+    border: 1px solid #6e6e6e;
+    background: #141414;
+}
+
+.view-mode-option {
+    min-width: 84px;
+    border: 0;
+    border-right: 1px solid #4b4b4b;
+    background: transparent;
+    color: var(--text-color-secondary);
+    padding: 5px 10px;
+    font: inherit;
+    font-weight: 700;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+
+.view-mode-option:last-child {
+    border-right: 0;
+}
+
+.view-mode-option.active {
+    background: #2f2f2f;
+    color: var(--text-color);
+    box-shadow: inset 0 -2px 0 #8a8a8a;
+}
+
+.view-mode-option:not(.active):hover {
+    background: #202020;
+    color: var(--text-color);
+}
+
 /* Basic Info */
 .basic-info-block {
     margin-top: 12px;
@@ -440,9 +485,14 @@
 
 .features-list,
 .grav-list,
-.ammo-list {
+.ammo-list,
+.additional-components-list {
     margin-bottom: 8px;
     line-height: 1.5;
+}
+
+.additional-components-list {
+    display: none;
 }
 
 .ammo-pill {
@@ -482,6 +532,14 @@
 
     .component-rect {
         max-width: 100%;
+    }
+
+    .additional-component-rect {
+        display: none;
+    }
+
+    .additional-components-list {
+        display: block;
     }
 
     .cargo-list {

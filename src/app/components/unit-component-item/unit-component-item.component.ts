@@ -37,7 +37,7 @@ import type { Unit, UnitComponent } from '../../models/units.model';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
 import { FloatingOverlayService } from '../../services/floating-overlay.service';
 
-type ComponentDisplayStyle = 'normal' | 'small' | 'tiny' | 'text';
+type ComponentDisplayStyle = 'normal' | 'small' | 'tiny' | 'text' | 'additional';
 
 /**
  * Author: Drake
@@ -65,16 +65,19 @@ export class UnitComponentItemComponent {
     });
 
     hostDisplay = computed(() => this.displayStyle() === 'text' ? 'inline' : 'block');
+    isInteractive = computed(() => this.displayStyle() !== 'additional');
 
     constructor() {}
 
     onCompClick(event: MouseEvent) {
+        if (!this.isInteractive()) return;
         event.stopPropagation();
         event.preventDefault();
         this.showFloatingOverlay();
     }
 
     onPointerEnter(event: MouseEvent) {
+        if (!this.isInteractive()) return;
         this.showFloatingOverlay();
     }
 
@@ -85,6 +88,7 @@ export class UnitComponentItemComponent {
     }
 
     onPointerLeave(event: PointerEvent) {
+        if (!this.isInteractive()) return;
         if (event.pointerType !== 'mouse') return; // only care about mouse pointers
         this.floatingOverlayService.hideWithDelay();
     }

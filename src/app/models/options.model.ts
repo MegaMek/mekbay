@@ -63,6 +63,7 @@ export interface Options {
     automaticallyConvertFiltersToSemantic: boolean;
     allowMultipleActiveSheets: boolean;
     unitSearchExpandedViewLayout: 'panel-list-filters' | 'filters-list-panel';
+    showFilteredComponents: boolean;
     unitSearchViewMode: 'list' | 'card' | 'chassis' | 'table';
     forceOverviewViewMode: 'expanded' | 'compact' | 'table';
     ASUseAutomations: boolean;

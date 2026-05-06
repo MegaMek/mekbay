@@ -90,6 +90,16 @@ unit().moveType }}</strong></div>
 </div>
 }
 </div>
+@if (componentViewModeAvailable()) {
+<div class="component-view-mode" aria-label="Component view mode">
+    <div class="view-mode-toggle" role="group" aria-label="Component view mode">
+        <button type="button" class="view-mode-option" [class.active]="!showFilteredComponents()"
+            [attr.aria-pressed]="!showFilteredComponents()" (click)="setComponentViewMode(false)">Weapons</button>
+        <button type="button" class="view-mode-option" [class.active]="showFilteredComponents()"
+            [attr.aria-pressed]="showFilteredComponents()" (click)="setComponentViewMode(true)">Details</button>
+    </div>
+</div>
+}
 <!-- Components Grid -->
 <!-- Matrix layout (3x3) when supported and defined for unit.type -->
 @if (useMatrixLayout()) {
@@ -110,7 +120,7 @@ unit().moveType }}</strong></div>
             } @else {
                 <!-- Normal components (matrix) -->
                 @for (comp of getComponentsForArea(area); let i = $index; track i) {
-                    <unit-component-item [unit]="unit()" [comp]="comp" displayStyle="normal"></unit-component-item>
+                    <unit-component-item [unit]="unit()" [comp]="comp" [displayStyle]="getComponentDisplayStyle(comp)"></unit-component-item>
                 }
             }
         </div>
@@ -135,15 +145,17 @@ unit().moveType }}</strong></div>
 } @else {
 <div class="components-container">
 @for (comp of components(); let i = $index; track i) {
-    <div class="component-rect">
+    <div class="component-rect" [class.additional-component-rect]="isAdditionalComponent(comp)">
         <div class="comp-loc" [class.has-case]="getCaseLabel(comp.l)">@if (getCaseLabel(comp.l); as caseType) {<span class="case-bracket">[</span>}{{ comp.l }}@if (getCaseLabel(comp.l); as caseType) {<span class="case-bracket">]</span>}</div>
         <div class="comp-list">
-            <unit-component-item [unit]="unit()" [comp]="comp" displayStyle="normal"></unit-component-item>
+            <unit-component-item [unit]="unit()" [comp]="comp" [displayStyle]="getComponentDisplayStyle(comp)"></unit-component-item>
         </div>
     </div>
 }
 </div>
 }
+}
+@if (showAmmoSummary()) {
 @if ((unit().comp | filterAmmo); as ammoList) {
 @if (ammoList.length > 0) {
 <div class="ammo-list"><span class="info-label muted">Ammo: </span>
@@ -153,6 +165,13 @@ unit().moveType }}</strong></div>
 </div>
 }
 }
+}
+@if (additionalComponentSummary().length > 0) {
+<div class="additional-components-list"><span class="info-label muted">Additional components: </span>
+@for (comp of additionalComponentSummary(); let last = $last; let i = $index; track i) {
+    <span class="additional-components-entry">{{ comp.q }}x{{ comp.n }}</span>@if(!last){,&#32;}
+}
+</div>
 }
 @if (unit().capital; as capital) {
   @if (capital.gravDecks && capital.gravDecks.length > 0) {
