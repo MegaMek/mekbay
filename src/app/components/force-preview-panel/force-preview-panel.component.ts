@@ -119,17 +119,17 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
                         }
                     }
                 </span>
-                @if (showEditableForceTags()) {
-                    <force-tags
-                        class="force-preview-tags"
-                        [force]="entry"
-                        [mode]="'full'"
-                        [editable]="true"
-                        [tagsVersion]="forceTagsVersion()"
-                        (tagClick)="onForceTagClick($event)">
-                    </force-tags>
-                }
             </div>
+            @if (showEditableForceTags()) {
+                <force-tags
+                    class="force-preview-tags"
+                    [force]="entry"
+                    [mode]="'full'"
+                    [editable]="true"
+                    [tagsVersion]="forceTagsVersion()"
+                    (tagClick)="onForceTagClick($event)">
+                </force-tags>
+            }
         </div>
         }
         <div #forcePreviewViewport class="force-preview">
@@ -292,18 +292,24 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
         }
 
         .force-preview-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: first baseline;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-areas:
+                "name meta"
+                "tags tags";
+            gap: 4px 8px;
+            align-items: start;
             margin-bottom: 8px;
         }
 
         .faction-name-wrapper {
+            grid-area: name;
             display: flex;
             align-items: first baseline;
             gap: 4px;
             flex-direction: row;
             flex: 1 1 0;
+            min-width: 0;
         }
 
         .faction-icon,
@@ -319,6 +325,7 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
             display: flex;
             flex-direction: column;
             text-align: left;
+            min-width: 0;
         }
 
         .force-preview-name {
@@ -332,6 +339,7 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
         }
 
         .force-preview-info {
+            grid-area: meta;
             display: flex;
             flex-direction: column;
             gap: 4px;
@@ -348,7 +356,11 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
         }
 
         .force-preview-tags {
-            max-width: min(280px, 100%);
+            grid-area: tags;
+            justify-self: stretch;
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
         }
 
         .force-preview-note-shell {

@@ -112,12 +112,16 @@
 .force-header {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
+    grid-template-areas:
+        "main info"
+        "tags tags";
+    gap: 4px 8px;
     align-items: start;
     position: relative;
 }
 
 .force-header-main {
+    grid-area: main;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -142,6 +146,7 @@
 }
 
 .force-info {
+    grid-area: info;
     display: flex;
     flex-direction: row;
     align-items: center;
@@ -186,7 +191,11 @@
 }
 
 .force-entry-tags {
-    max-width: min(360px, 100%);
+    grid-area: tags;
+    justify-self: stretch;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
 }
 
 .variant-name {
@@ -577,10 +586,16 @@
 @media (max-width: 720px) {
     .force-header {
         grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+            "main"
+            "info"
+            "tags";
     }
 
     .force-info {
-        margin-left: auto;
+        justify-content: flex-start;
+        margin-left: 0;
+        text-align: left;
     }
 
 }
