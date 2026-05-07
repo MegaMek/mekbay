@@ -53,7 +53,7 @@
         <!-- Swipe animation container -->
         <div class="swipe-container" [class.animating]="isSwipeAnimating()" [class.swiping]="isSwiping()">
             <!-- Current unit view -->
-            <div class="swipe-panel current-panel" [style.--current-offset]="currentPanelOffset()">
+            <div #currentPanel class="swipe-panel current-panel" [style.--current-offset]="currentPanelOffset()">
                 @if (activeTab() === 'General') {
                 <unit-details-general-tab [unit]="unit" [gunnerySkill]="gunnerySkill()"
                     [pilotingSkill]="pilotingSkill()">
@@ -89,7 +89,8 @@
 
             <!-- Incoming unit view (visible during animation or swiping) -->
             @if (incomingUnit()) {
-            <div #incomingPanel class="swipe-panel incoming-panel" [style.--incoming-offset]="incomingPanelOffset()">
+            <div #incomingPanel class="swipe-panel incoming-panel" [style.--incoming-offset]="incomingPanelOffset()"
+                [scrollTop]="incomingPanelScrollTop()">
                 @if (activeTab() === 'General') {
                 <unit-details-general-tab [unit]="incomingUnit()!" [gunnerySkill]="gunnerySkill()"
                     [pilotingSkill]="pilotingSkill()">
