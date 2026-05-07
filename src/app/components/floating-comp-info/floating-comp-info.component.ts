@@ -93,10 +93,21 @@ export class FloatingCompInfoComponent {
         const currentComp = this.comp();
         if (currentComp?.t === 'X') {
             const equipment = this.equipment() ?? currentComp.eq;
-            return equipment instanceof AmmoEquipment ? `Ammo (${equipment.category})` : 'Ammo';
+            if (equipment instanceof AmmoEquipment) {
+                const labels = [equipment.category, ...(equipment.stats.explosive ? ['Explosive'] : [])];
+                return `Ammo (${labels.join(', ')})`;
+            }
+
+            return 'Ammo';
         }
 
         return this.typeClass.charAt(0).toUpperCase() + this.typeClass.slice(1);
+    }
+
+    get toHitModifier(): string | null {
+        const modifier = (this.equipment() ?? this.comp()?.eq)?.stats.toHitModifier ?? 0;
+        if (modifier === 0) return null;
+        return modifier > 0 ? `+${modifier}` : String(modifier);
     }
 
     get rackSize(): number | null {

@@ -92,7 +92,7 @@ export const AMMO_TYPE_CATEGORY: Record<AmmoType, AmmoCategory> = {
     SRM_STREAK: 'Missile',
     MRM: 'Missile',
     NARC: 'Missile',
-    AMS: 'Missile',
+    AMS: 'Ballistic',
     ARROW_IV: 'Artillery',
     LONG_TOM: 'Artillery',
     SNIPER: 'Artillery',
@@ -531,7 +531,7 @@ export class AmmoEquipment extends Equipment {
         const ammo = merge(AMMO_DEFAULTS, data.ammo);
         this.ammo = {
             ...ammo,
-            category: data.ammo?.category ?? getAmmoCategory(ammo.type)
+            category: getAmmoCategory(ammo.type) // data.ammo?.category ?? 
         };
         this.munitionType = new Set(this.ammo.munitionType);
     }

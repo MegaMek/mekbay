@@ -44,11 +44,28 @@ jobs:
       - name: Configure LFTP
         run: mkdir ~/.lftp && echo "set ssl:verify-certificate false;" >> ~/.lftp/rc
 
-      - name: Load Secrets
-        run: echo "machine ${{ secrets.FTP_HOST }} login ${{ secrets.FTP_USER }} password ${{ secrets.FTP_PASSWORD }}" > ~/.netrc
-
-      - name: Upload Folder (with cleanup)  
+      - name: Upload Folder
         run: |
-          lftp -c "set ftp:list-options -a; 
+          INDEX_CSR_PUT=""
+          if [ -f ./dist/browser/index.csr.html ]; then
+            INDEX_CSR_PUT="put -O ./mekbay_next/ ./dist/browser/index.csr.html;"
+          fi
+
+          lftp -c "set cmd:fail-exit yes;
+          set ftp:list-options -a;
+          set net:max-retries 3;
+          set net:timeout 30;
           open -u ${{ secrets.FTP_USER }},${{ secrets.FTP_PASSWORD }} ${{ secrets.FTP_HOST }};
-          mirror --parallel=100 -R --delete --transfer-all --no-perms --verbose ./dist/browser/ ./mekbay_next/"
+          mirror --parallel=20 -R --transfer-all --no-perms --verbose --exclude-glob index.html --exclude-glob index.csr.html --exclude-glob ngsw.json ./dist/browser/ ./mekbay_next/;
+          put -O ./mekbay_next/ ./dist/browser/index.html;
+          ${INDEX_CSR_PUT}
+          put -O ./mekbay_next/ ./dist/browser/ngsw.json;"
+
+      - name: Cleanup Old Build Files
+        env:
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_REMOTE_DIR: ./mekbay_next
+          FTP_CLEANUP_RETENTION_DAYS: 7
+        run: node scripts/cleanup-ftp-build-output.mjs
